@@ -113,9 +113,10 @@ class TestSecretHandling:
 
 class TestRegistry:
     def test_expected_integrations_registered(self):
-        for expected in ("netbox", "prometheus", "grafana", "loki", "oxidized",
+        for expected in ("netbox", "prometheus", "grafana", "loki",
                          "kea", "topology_service", "nsot_git", "s3"):
             assert expected in REGISTRY
+        assert "oxidized" not in REGISTRY, "Oxidized is retired (Phase 3)"
 
     def test_unknown_integration_returns_none(self):
         assert get_integration("not-a-tool") is None

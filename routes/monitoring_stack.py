@@ -2,15 +2,15 @@
 
 **Everything here is fetched server-side, and that is a requirement rather
 than a preference.** The browser reaches NMAS through a Cloudflare tunnel;
-Prometheus, Loki, Oxidized, Kea, NetBox and Grafana are LAN-only. A
+Prometheus, Loki, Kea, NetBox and Grafana are LAN-only. A
 browser-side `fetch` or an `<iframe>` would work on the console at the lab
 host and show nothing at all to a remote viewer, which is every viewer that
 matters for a demo. NMAS is on the LAN, so NMAS does the asking.
 
-**One endpoint per tool, not one for all six.** A single aggregate endpoint
+**One endpoint per tool, not one for all five.** A single aggregate endpoint
 takes as long as its slowest member and fails as a unit, which is exactly the
 behaviour the panel is supposed to avoid: one dead tool must not blank the
-others. Six independent fetches run in parallel in the browser and each card
+others. Five independent fetches run in parallel in the browser and each card
 resolves on its own.
 
 Read-only. No settings, no writes, no auth changes.
@@ -28,7 +28,7 @@ bp = Blueprint("monitoring_stack", __name__, url_prefix="/monitoring/stack")
 #: nsot_git, s3 and topology_service are plumbing rather than monitoring, and
 #: a panel that lists everything registered stops being a panel about the
 #: monitoring stack.
-PANEL = ("netbox", "prometheus", "loki", "oxidized", "kea", "grafana")
+PANEL = ("netbox", "prometheus", "loki", "kea", "grafana")
 
 #: Longer than the 5s default. These run server-side while an operator waits
 #: on one card, and a tool that takes six seconds is a slow tool, not a dead

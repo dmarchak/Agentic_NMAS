@@ -1408,72 +1408,9 @@ class TestARefusedPushIsNotASuccessfulOne:
 
 
 
-def _patch_settings(monkeypatch, values):
-    """Patch `get_setting` **everywhere it is bound**.
-
-    Three modules hold the name: `modules.settings_schema` (the definition),
-    `modules.integrations.base` (for `OxidizedIntegration.url`) and
-    `modules.integrations.oxidized` (for `oxidized_username`). Patching only
-    the first reaches the chain and not the client.
-
-    It bit in the worst way. Patching one binding made these tests pass **in
-    this file and fail in the suite** — alone, `modules.integrations.base` was
-    imported for the first time *during* the patch, so its `from ... import
-    get_setting` bound the stub and kept it; run after another file had
-    imported it, it held the real function. **A test whose result depends on
-    import order is telling you which binding it is missing.** Same rule as
-    `LISTS_DIR`: patch where the value is read, not only where it is defined.
-    """
-    stub = lambda k, d=None: values.get(k, d)              # noqa: E731
-    for target in ("modules.settings_schema.get_setting",
-                   "modules.integrations.base.get_setting"):
-        monkeypatch.setattr(target, stub)
-
-
-class TestTheChainMakesOxidizedRereadRouterDb:
-    """The defect that stranded r2: writing router.db is not enough.
-
-    Measured on Oxidized 0.37.0 with the CORRECT credential already in the
-    file: every fetch failed AuthenticationFailed, GET /reload did not change
-    that, and a container restart made the very next fetch succeed. Net::SSH
-    from inside the container authenticated with that same row throughout,
-    under Oxidized's own option set — so the credential was never wrong. A
-    live node object holds its credential in memory.
-
-    The chain had no reload step at all, so `confirm_fetch` was always polling
-    an Oxidized that could not have picked the change up.
-    """
-
-    BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
-                hostname="r2", new_hash="9 $9$salt$hash",
-                after_iso="2026-09-21 08:00:00", platform="cisco_ios", list_name="Default")
-
-    def test_the_reload_never_runs_a_subprocess(self, monkeypatch):
-        """The app must not drive Docker. Structural, not a promise.
-
-        The app user is in the `docker` group, which is root-equivalent, so a
-        container restart issued by the web process would hand root-equivalent
-        capability to anything that compromised it — and it would interrupt
-        every other device's fetch on every rotation. Measured: GET /reload
-        refreshes a credential on its own, so none of that is needed.
-        """
-        import subprocess
-        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
-
-        def _forbidden(*a, **k):
-            raise AssertionError("reload_oxidized must not shell out")
-
-        monkeypatch.setattr(subprocess, "run", _forbidden)
-        monkeypatch.setattr(subprocess, "Popen", _forbidden)
-
-        # PATCHED AT `_oxidized_get`, the chain's one door to Oxidized.
-        # These used to patch `urllib.request.urlopen`; routing the chain
-        # through OxidizedIntegration made that patch intercept nothing, so
-        # the tests started making REAL DNS calls to `http://x` and passing
-        # or failing on name resolution. A test that reaches the network is
-        # a test this suite does not have.
-        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: ("[]", None))
-        assert cr.reload_oxidized()["ok"] is True
+class TestNoDockerCommandIsReachable:
+    """The app must not drive Docker (the persistence chain once restarted Oxidized's container;
+    its reload, and Oxidized, are gone since Phase 3)."""
 
     def test_no_docker_command_is_reachable_from_the_module(self):
         """A default of `docker restart oxidized` used to live in settings."""
@@ -1491,40 +1428,20 @@ class TestTheChainMakesOxidizedRereadRouterDb:
         from modules.settings_schema import DEFAULTS
         assert "docker" not in DEFAULTS.get("oxidized_reload_command", "").lower()
 
-    def test_the_reload_is_not_ok_until_the_node_list_is_served(self, monkeypatch):
-        """A fetch queued against a reloading Oxidized goes nowhere."""
-        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
-        calls = {"n": 0}
-
-        def _get(_client, path):
-            calls["n"] += 1
-            if "nodes.json" in path:
-                return None, "still reloading"
-            return "ok", None
-
-        monkeypatch.setattr(cr, "_oxidized_get", _get)
-        out = cr.reload_oxidized(timeout=0.01, sleep=lambda _s: None)
-        assert out["ok"] is False
-        assert "node list not served" in out["error"]
-
-    def test_a_failed_reload_call_is_reported_not_swallowed(self, monkeypatch):
-        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
-        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (None, "refused"))
-        out = cr.reload_oxidized()
-        assert out["ok"] is False
-        assert "/reload failed" in out["error"]
-
 
 class TestTheChainAsksNoOxidized:
-    """Phase 3 step 2 (the operator, 2026-10-08; C333): the chain's three Oxidized stages
-    (router.db row, reload, confirmed fetch) are gone; after the device's own save it goes
-    straight to the boot file, and nothing in it reaches Oxidized."""
+    """Phase 3 (the operator, 2026-10-08; C333): the chain's three Oxidized stages (router.db
+    row, reload, confirmed fetch) are gone, and so are the functions that ran them; after the
+    device's own save it goes straight to the boot file."""
 
     def test_the_stages_and_no_oxidized_call(self, monkeypatch):
-        def never(*a, **k):
-            raise AssertionError("the chain asked Oxidized")
-        for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch"):
-            monkeypatch.setattr(cr, name, never)
+        # Literal probes, one per name: nothing in the product calls any of them.
+        assert not hasattr(cr, "update_oxidized_row")
+        assert not hasattr(cr, "reload_oxidized")
+        assert not hasattr(cr, "confirm_fetch")
+        assert not hasattr(cr, "oxidized_client")
+        assert not hasattr(cr, "helper_status")
+        assert not hasattr(cr, "helper_sudo_status")
         monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file", lambda *a, **k: {"ok": True, "matches": 1})
         monkeypatch.setattr(cr, "verify_startup_carries_current", lambda *a, **k: {"ok": True})
@@ -1547,45 +1464,16 @@ class TestEveryPersistStageIsIdempotent:
     persist-only command then refused at the FIRST stage — "expected exactly
     one changed row, changed: none" — because that row was already correct. A
     recovery tool that fails on the state it was built to recover from is not
-    a recovery tool.
-
-    ``oxidized_row`` runs the REAL helper as a subprocess here, against a
-    temporary router.db, because it is the stage whose idempotence was broken
-    and a stub would only assert what the stub was told.
+    a recovery tool. (The router.db stage went with Oxidized in Phase 3; the
+    rule stands for the stages left.)
     """
 
-    HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          "scripts", "nmas-oxidized-cred")
     BASE = dict(mgmt_ip="10.255.1.12", username="admin", password="Fresh9Value",
                 hostname="r2", new_hash="9 $9$salt$hash", platform="cisco_ios", list_name="Default")
 
     @pytest.fixture
-    def world(self, tmp_path, monkeypatch):
-        db = tmp_path / "router.db"
-        db.write_text("10.255.1.11:ios:admin:Old1\n"
-                      "10.255.1.12:ios:admin:Old1\n"
-                      "10.255.1.21:ios:admin:Old1\n", encoding="utf-8")
-        calls = {"reload": 0, "fetch": 0, "sync": 0, "startup": 0}
-
-        def _row(ip, user, pw, **kw):
-            import json as _json
-            import subprocess as _sp
-            proc = _sp.run([sys.executable, self.HELPER, "--file", str(db),
-                            "--ip", ip, "--no-backup"],
-                           input=_json.dumps({"username": user, "password": pw}),
-                           capture_output=True, text=True, timeout=30)
-            try:
-                return _json.loads(proc.stdout or "{}")
-            except ValueError:
-                return {"ok": False, "error": proc.stderr[:120]}
-
-        monkeypatch.setattr(cr, "update_oxidized_row", _row)
-        monkeypatch.setattr(cr, "reload_oxidized",
-                            lambda **k: calls.__setitem__("reload", calls["reload"] + 1)
-                            or {"ok": True, "mechanism": "rest_reload"})
-        monkeypatch.setattr(cr, "confirm_fetch",
-                            lambda *a, **k: calls.__setitem__("fetch", calls["fetch"] + 1)
-                            or {"ok": True, "end": "2026-09-21 09:24:09 UTC"})
+    def world(self, monkeypatch):
+        calls = {"sync": 0, "startup": 0}
         monkeypatch.setattr(cr, "run_sync",
                             lambda **k: calls.__setitem__("sync", calls["sync"] + 1)
                             or {"ok": True, "rc": 0})
@@ -1594,7 +1482,7 @@ class TestEveryPersistStageIsIdempotent:
                             or {"ok": True, "matches": 1})
         monkeypatch.setattr(cr, "verify_startup_carries_current",
                             lambda *a, **k: {"ok": True})
-        return {"db": db, "calls": calls}
+        return {"calls": calls}
 
     def _run(self):
         return cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED,
@@ -1614,68 +1502,16 @@ class TestEveryPersistStageIsIdempotent:
         """Idempotent is not 'skipped'. The outcome is re-established."""
         self._run()
         self._run()
-        assert world["calls"] == {"reload": 0, "fetch": 0, "sync": 2,
-                                  "startup": 2}, "Oxidized's stages are gone (Phase 3)"
-
+        assert world["calls"] == {"sync": 2, "startup": 2}
 
 
 class TestTimestampsAreTimezoneAware:
-    """`confirm_fetch` decides "after the rotation" by comparing datetimes.
-
-    A naive value on either side is either a TypeError or — worse — a silent
-    comparison between two different clocks that answers confidently. The
-    symptom would be a fetch that looks like it never arrived.
-    """
+    """A rotation's start is compared as a datetime: a naive value on either side is either a
+    TypeError or a silent comparison between two different clocks. (Oxidized's timestamp
+    parser, `as_utc`, went with `confirm_fetch` in Phase 3.)"""
 
     def test_utc_now_is_aware(self):
         assert cr.utc_now().tzinfo is not None
-
-    def test_oxidized_format_parses_with_and_without_the_suffix(self):
-        """Measured on the live REST API: '2026-09-21 09:12:44 UTC'."""
-        with_suffix = cr.as_utc("2026-09-21 09:12:44 UTC")
-        without = cr.as_utc("2026-09-21 09:12:44")
-        assert with_suffix == without
-        assert with_suffix.tzinfo is not None
-
-    def test_iso_forms_parse_too(self):
-        assert cr.as_utc("2026-09-21T09:12:44+00:00") == \
-            cr.as_utc("2026-09-21 09:12:44 UTC")
-
-    def test_a_naive_datetime_is_assumed_utc_not_local(self):
-        from datetime import datetime, timezone
-        naive = datetime(2026, 9, 21, 9, 12, 44)
-        assert cr.as_utc(naive) == datetime(2026, 9, 21, 9, 12, 44,
-                                            tzinfo=timezone.utc)
-
-    def test_every_parsed_value_is_comparable_with_every_other(self):
-        """The property that matters: no mix can raise."""
-        values = [cr.utc_now(), cr.as_utc("2026-09-21 09:12:44 UTC"),
-                  cr.as_utc("2026-09-21T09:12:44+00:00")]
-        for a in values:
-            for b in values:
-                assert isinstance(a >= b, bool)
-
-    def test_confirm_fetch_accepts_a_fetch_after_the_start(self, monkeypatch):
-        self._drive(monkeypatch, end="2026-09-21 09:24:09 UTC",
-                    start="2026-09-21 09:24:00", expect=True)
-
-    def test_confirm_fetch_rejects_a_fetch_from_before_the_start(self, monkeypatch):
-        """A stale success must not be read as this run's."""
-        self._drive(monkeypatch, end="2026-09-21 09:23:00 UTC",
-                    start="2026-09-21 09:24:00", expect=False)
-
-    def _drive(self, monkeypatch, *, end, start, expect):
-        import json as _json
-
-        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
-        payload = _json.dumps([{"name": "10.255.1.12",
-                                "last": {"status": "success", "end": end}}])
-        # `_oxidized_get` is the chain's one door to Oxidized; patching
-        # `urllib` intercepts nothing now and lets the test reach the network.
-        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (payload, None))
-        out = cr.confirm_fetch("10.255.1.12", cr.as_utc(start), attempts=1,
-                               base_delay=0, sleep=lambda _s: None)
-        assert out["ok"] is expect, out
 
 
 #: Wording that must never appear during a run that succeeds. Each of these
@@ -1725,11 +1561,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
                 assert word not in summary, f"{word!r} in {summary!r}"
 
     def test_a_successful_persist_prints_no_failure_wording(self, monkeypatch):
-        for name, value in (("update_oxidized_row", {"ok": True}),
-                            ("reload_oxidized", {"ok": True,
-                                                 "mechanism": "rest_reload"}),
-                            ("confirm_fetch", {"ok": True, "end": "x"}),
-                            ("run_sync", {"ok": True}),
+        for name, value in (("run_sync", {"ok": True}),
                             ("verify_startup_file", {"ok": True, "matches": 1}),
                             ("verify_startup_carries_current", {"ok": True})):
             monkeypatch.setattr(cr, name, (lambda v: (lambda *a, **k: v))(value))
@@ -2069,53 +1901,6 @@ class TestTheRevertIsConditionalToo:
         assert sent.index("no username admin") < sent.index(ORIGINAL_LINE)
 
 
-class TestPromptUndetectIsNamedInThePersistSummary:
-    """A fleet-wide Oxidized issue must not read as a rotation failure.
-
-    PromptUndetect means Oxidized authenticated and then failed to match its
-    prompt regexp. Measured across the switches it affects s1 and s2 equally
-    (179 vs 178 failures, same kinds), predates the rotations, and says
-    nothing about the credential. An operator who cannot tell it apart from a
-    credential problem will investigate the device instead of re-running the
-    persist-only command, which is all it needs.
-    """
-
-    def _fetch(self, monkeypatch, payload):
-        import json
-        _patch_settings(monkeypatch, {"oxidized_url": "http://x"})
-        blob = json.dumps(payload)
-        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (blob, None))
-        return cr.confirm_fetch("10.255.1.21", cr.utc_now(), attempts=1,
-                                base_delay=0, sleep=lambda _s: None)
-
-    def test_prompt_undetect_is_named_and_says_what_to_do(self, monkeypatch):
-        out = self._fetch(monkeypatch, [{"name": "10.255.1.21", "last": {
-            "status": "no_connection",
-            "error": "Oxidized::PromptUndetect raised"}}])
-
-        assert out["ok"] is False
-        assert out["cause"] == "PromptUndetect"
-        assert "rotation itself succeeded" in out["error"]
-        assert "persist-only" in out["error"]
-
-    def test_an_auth_failure_is_named_differently(self, monkeypatch):
-        """That one IS credential-related and must not be waved off."""
-        out = self._fetch(monkeypatch, [{"name": "10.255.1.21", "last": {
-            "status": "no_connection",
-            "error": "Net::SSH::AuthenticationFailed"}}])
-
-        assert out["cause"] == "AuthenticationFailed"
-        assert "credential-related" in out["error"]
-        assert "rotation itself succeeded" not in out["error"]
-
-    def test_an_unrecognised_failure_keeps_the_plain_message(self, monkeypatch):
-        out = self._fetch(monkeypatch, [{"name": "10.255.1.21", "last": {
-            "status": "no_connection", "error": "something else"}}])
-
-        assert out["cause"] == ""
-        assert out["error"] == "no successful fetch after the rotation"
-
-
 class TestAConfirmationSurvivesAnUnchangedDevice:
     """s1 refused its own confirmation: "the device or the plan changed".
 
@@ -2297,32 +2082,6 @@ class TestPersistenceNeverReverts:
                           "send_config_set"):
             assert forbidden not in source, forbidden
 
-    def test_confirm_fetch_requires_success_AFTER_the_rotation(self, monkeypatch):
-        """A stale success is not a fetch of the new config."""
-        import json
-
-        class _Resp:
-            def __init__(self, payload):
-                self._p = json.dumps(payload).encode()
-            def read(self):
-                return self._p
-            def __enter__(self):
-                return self
-            def __exit__(self, *a):
-                return False
-
-        stale = [{"name": "203.0.113.12",
-                  "last": {"status": "success", "end": "2026-09-21 07:00:00 UTC"}}]
-        import json as _json
-        blob = _json.dumps(stale)
-        monkeypatch.setattr(cr, "_oxidized_get", lambda _c, _p: (blob, None))
-
-        out = cr.confirm_fetch("203.0.113.12", "2026-09-21 08:00:00",
-                               attempts=2, base_delay=0, rest="http://x",
-                               sleep=lambda s: None)
-        assert out["ok"] is False
-        assert "no successful fetch after the rotation" in out["error"]
-
 
 class TestRotateCarriesWhatPersistNeeds:
     """persist() must not re-read the device to find the hash.
@@ -2491,8 +2250,6 @@ class TestTheOnboardingParameterisationGoesBothWays:
         monkeypatch.setattr("modules.config.LISTS_DIR", "/tmp/nmas-nonexistent")
         monkeypatch.setattr("modules.device.load_saved_devices",
                             lambda p: [])          # nothing in the inventory
-        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
-        monkeypatch.setattr(cr, "helper_sudo_status", lambda: {"ok": True, "reason": ""})
         monkeypatch.setattr(cr, "live_user_line",
                             lambda dev, user: {"ok": False, "line": "",
                                                "kind": ""})
@@ -2525,8 +2282,6 @@ class TestARotatedDeviceCanBeRotatedAgain:
 
         monkeypatch.setattr("modules.config.LISTS_DIR", "/tmp/nmas-nonexistent")
         monkeypatch.setattr("modules.device.load_saved_devices", lambda p: [])
-        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
-        monkeypatch.setattr(cr, "helper_sudo_status", lambda: {"ok": True, "reason": ""})
         monkeypatch.setattr(cr, "live_user_line",
                             lambda dev, user: {"ok": True, "line": kind_line,
                                                "kind": cr.entry_kind(kind_line)})
@@ -2717,148 +2472,6 @@ class TestThePersistenceChainFailsClosedOnAHalfDeploy:
         assert out["matches"] == 0
 
 
-class TestOneOwnerForTheOxidizedConnection:
-    """Two settings keys named one fact — and underneath, **two owners of one
-    connection**.
-
-    Collapsing `oxidized_rest_url` into `oxidized_url` fixed the name. The
-    thing the name stood in for was the transport: `OxidizedIntegration`
-    carries the URL, HTTP basic auth, the TLS-verify toggle and a retry
-    policy, and the persistence chain spoke bare `urllib` and sent **none of
-    the auth** — so on an Oxidized with auth on, stages 2 and 3 take a 401 and
-    report it as a failed reload: *a credential error, during a credential
-    rotation, about the wrong credential entirely.*
-    """
-
-    def _settings(self, monkeypatch, values):
-        """Patch BOTH bindings.
-
-        `modules/integrations/base.py` does `from modules.settings_schema
-        import get_setting` at import time, so it holds its **own** name and
-        patching `modules.settings_schema.get_setting` does not reach
-        `OxidizedIntegration.url`. The same rule as `LISTS_DIR`: patch where
-        the value is read, not only where it is defined.
-
-        It bit in the worst way — these tests passed **alone** and failed in
-        the file, because in isolation `base` had not been imported yet and
-        the `from` ran after the patch. A test whose result depends on import
-        order is telling you which binding it is missing.
-        """
-        _patch_settings(monkeypatch, values)
-
-    def test_the_client_is_the_owner_and_reads_oxidized_url(self, monkeypatch):
-        self._settings(monkeypatch, {"oxidized_url": "http://ox:8888/"})
-        client, refusal = cr.oxidized_client()
-        assert refusal is None
-        assert client.url == "http://ox:8888", "the trailing slash is the client's job"
-
-    def test_the_auth_the_client_holds_reaches_the_session(self, monkeypatch):
-        """**The divergence this closes.** The chain could not send these."""
-        self._settings(monkeypatch, {"oxidized_url": "http://ox:8888",
-                                     "oxidized_username": "oxi"})
-        # `oxidized.py` holds its own `get_secret` too — same binding rule.
-        monkeypatch.setattr("modules.integrations.base.get_secret",
-                            lambda _k, _d="": "s3cret")
-        client, _refusal = cr.oxidized_client()
-        assert client.session().auth == ("oxi", "s3cret")
-
-    def test_nothing_in_the_chain_speaks_urllib_any_more(self):
-        """One transport, or the auth diverges again. Parsed, not grepped:
-        the module's own prose names `urllib` while explaining why."""
-        import ast
-        import inspect
-
-        tree = ast.parse(inspect.getsource(cr))
-        imported = {alias.name for node in ast.walk(tree)
-                    if isinstance(node, ast.Import) for alias in node.names}
-        imported |= {node.module for node in ast.walk(tree)
-                     if isinstance(node, ast.ImportFrom) and node.module}
-        assert not any((m or "").startswith("urllib") for m in imported), \
-            f"a second transport is back: {sorted(imported)}"
-
-    def test_the_deprecated_key_is_read_by_nothing(self):
-        """Parsed, not grepped — the module names it in its own docstring."""
-        import ast
-
-        offenders, surviving = [], 0
-        for path in ("modules/nsot/credential_rotation.py",
-                     "modules/integrations/oxidized.py"):
-            tree = ast.parse(open(path, encoding="utf-8").read())
-            for node in ast.walk(tree):
-                if not (isinstance(node, ast.Call)
-                        and getattr(node.func, "id", "") == "get_setting"):
-                    continue
-                if not (node.args and isinstance(node.args[0], ast.Constant)):
-                    continue
-                key = node.args[0].value
-                if key == "oxidized_rest_url":
-                    offenders.append(f"{path}:{node.lineno}")
-                if key == "oxidized_url":
-                    surviving += 1
-        # THE ANCHOR MOVED WITH THE FIX, and the floor caught it. The chain no
-        # longer calls `get_setting("oxidized_url")` at all — the client does,
-        # and it declares the key rather than calling for it. So the positive
-        # anchor is that declaration; without updating it this scan would have
-        # gone on "finding no offenders" in a file that reads nothing.
-        declares = "url_key = \"oxidized_url\"" in open(
-            "modules/integrations/oxidized.py", encoding="utf-8").read()
-        assert surviving >= 1 or declares, (
-            "no reader of oxidized_url was found — this scan cannot "
-            "distinguish 'collapsed' from 'could not run'")
-        assert offenders == [], f"oxidized_rest_url is still READ at {offenders}"
-
-    def test_the_deprecated_key_is_not_a_GATE(self, monkeypatch):
-        """**A guard gated on a key nothing sets always refuses** — the
-        `clab_host` shape with the setting removed rather than blanked. The
-        legacy key is consulted only to name the move when the surviving key
-        is empty; it gates nothing."""
-        self._settings(monkeypatch, {"oxidized_url": "http://ox:8888",
-                                     "oxidized_rest_url": ""})
-        _client, refusal = cr.oxidized_client()
-        assert refusal is None, "an empty legacy key refused a configured client"
-
-    def test_a_set_legacy_key_names_the_move_and_adopts_nothing(self, monkeypatch):
-        written = []
-        monkeypatch.setattr("modules.config.set_user_setting",
-                            lambda *a, **k: written.append(a))
-        self._settings(monkeypatch, {"oxidized_url": "",
-                                     "oxidized_rest_url": "http://old:8888"})
-        client, refusal = cr.oxidized_client()
-        assert client is None
-        assert "oxidized_url" in refusal["error"]
-        assert "http://old:8888" in refusal["error"]
-        assert written == [], "nothing may be adopted silently"
-
-    def test_both_empty_names_the_surviving_key_only(self, monkeypatch):
-        self._settings(monkeypatch, {"oxidized_url": "", "oxidized_rest_url": ""})
-        _client, refusal = cr.oxidized_client()
-        assert "oxidized_url is not configured" in refusal["error"]
-        assert "oxidized_rest_url" not in refusal["error"]
-
-    def test_an_explicit_argument_still_wins_and_keeps_the_session(
-            self, monkeypatch):
-        """An override that has always existed. It pins one value — it does
-        not become a second transport, so the auth still rides along."""
-        self._settings(monkeypatch, {"oxidized_url": "http://from-settings",
-                                     "oxidized_username": "oxi"})
-        monkeypatch.setattr("modules.integrations.base.get_secret",
-                            lambda _k, _d="": "s")
-        client, refusal = cr.oxidized_client("http://explicit/")
-        assert refusal is None
-        assert client.url == "http://explicit"
-        assert client.session().auth == ("oxi", "s")
-
-    def test_the_refusal_reaches_both_chain_stages(self, monkeypatch):
-        self._settings(monkeypatch, {"oxidized_url": ""})
-        reload_out = cr.reload_oxidized()
-        assert reload_out["ok"] is False
-        assert reload_out["mechanism"] == "rest_reload"
-        assert "oxidized_url" in reload_out["error"]
-        fetch_out = cr.confirm_fetch("192.0.2.1", "2026-01-01T00:00:00Z")
-        assert fetch_out["ok"] is False
-        assert "oxidized_url" in fetch_out["error"]
-
-
 class TestAFailedRecordKeepsTheOnlyCopy:
     """The half-completion survey (2026-09-27): rotate() set "rotated and
     committed" whatever `_commit` answered, then deleted the staging copy. A
@@ -2901,40 +2514,3 @@ class TestAFailedRecordKeepsTheOnlyCopy:
                                           "at": "2026-09-27T23:00:00Z"}])
         assert rows[0]["state"] == "not_recorded"
         assert "not_recorded" not in job_health.OK_STATES
-
-
-
-class TestSudoIsAskedBeforeTheDeviceChanges:
-    """C106 (1b): the persist chain runs the helper through `sudo -n`, and
-    nothing asked first. A refusal failed the chain AFTER the device was
-    rotated and committed, with no reason: a refused `sudo -n` prints nothing
-    on stdout, so the stage parsed `{}`."""
-
-    def _proc(self, rc, out="", err=""):
-        return type("P", (), {"returncode": rc, "stdout": out, "stderr": err})()
-
-    def test_a_passwordless_rule_passes(self):
-        st = cr.helper_sudo_status(run=lambda *a, **k: self._proc(0, cr.HELPER_INSTALLED))
-        assert st["ok"] is True
-
-    def test_no_rule_is_refused_naming_the_exact_entry(self):
-        st = cr.helper_sudo_status(
-            run=lambda *a, **k: self._proc(1, err="sudo: a password is required"))
-        assert st["ok"] is False
-        assert "NOPASSWD: " + cr.HELPER_INSTALLED in st["reason"]
-        assert "refused before anything changes" in st["reason"]
-        assert "a password is required" in st["reason"]
-
-    def test_a_refused_run_is_named_never_an_empty_stage(self, monkeypatch):
-        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
-        monkeypatch.setattr("subprocess.run", lambda *a, **k: self._proc(
-            1, "", "sudo: a password is required"))
-        out = cr.update_oxidized_row("192.0.2.1", "admin", "x" * 12, router_db="/r.db")
-        assert out["ok"] is False and "a password is required" in out["error"]
-        assert "sudoers entry is missing" in out["error"]
-
-    def test_an_answer_without_ok_is_not_success(self, monkeypatch):
-        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
-        monkeypatch.setattr("subprocess.run", lambda *a, **k: self._proc(0, "{}"))
-        out = cr.update_oxidized_row("192.0.2.1", "admin", "x" * 12, router_db="/r.db")
-        assert out["ok"] is False

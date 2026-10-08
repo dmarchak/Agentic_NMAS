@@ -1,8 +1,8 @@
 # History
 
 What happened to the network and its devices, and when: one timeline of everything the tool
-records, the network's baselines, and the Oxidized divergences people authorised, with the
-remote's state at the top.
+records, the network's baselines, and the Oxidized divergences people once authorised, with
+the remote's state at the top.
 
 ## The remote {#remote}
 
@@ -73,4 +73,6 @@ carries it.
 ## Authorisations {#authorisations}
 
 Each divergence between Oxidized's copy of a device and its approved golden that a person
-authorised, with who, why, and when it expires (or that it has).
+authorised, with who, why, and when it expired. These are past records: the freshness gate
+they passed was retired with Oxidized (2026-10-08), so nothing adds to them now, and the tab
+keeps every one readable. A network that never had one shows none.

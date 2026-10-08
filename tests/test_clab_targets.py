@@ -545,8 +545,8 @@ class TestThePlatformIsCarriedNotInferred:
         assert "never reordered" in src
 
     def test_the_helper_reads_five_columns_ignores_a_sixth_and_survives_three(self, ):
-        """Phase 3: the NMAS still serves Oxidized's node as a sixth column until step 3
-        removes it; the helper reads five."""
+        """Phase 3: an NMAS before step 3 served Oxidized's node as a sixth column; the helper
+        reads five, so it reads either."""
         import importlib.util
         import os as _os
         from importlib.machinery import SourceFileLoader
@@ -842,8 +842,6 @@ class TestAnUnknownLabIsRefusedNotDefaulted:
     def test_persist_refuses_before_the_sync_naming_the_lab(self, typo, monkeypatch):
         calls = []
         monkeypatch.setattr(typo, "save_on_device", lambda *a, **k: {"ok": True})
-        for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch"):
-            monkeypatch.setattr(typo, name, lambda *a, **k: {"ok": True})
         monkeypatch.setattr(typo, "run_sync", lambda **k: calls.append(k) or {"ok": True})
         out = typo.persist({"device": "r7", "state": typo.ROTATED_PENDING_PERSIST,
                             "steps": []},

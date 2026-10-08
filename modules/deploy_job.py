@@ -38,7 +38,7 @@ ANNOUNCER = "deploy-job"
 #: Announced as each device finishes: the page's progress moved.
 PROGRESS_KEYS = ("deploy_job",)
 #: Announced at the end: what a deploy changes (`/deploy/apply`'s declaration).
-DONE_KEYS = ("deploy_job", "device_state", "baselines", "drift", "rolled_back", "freshness",
+DONE_KEYS = ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
              "goldens", "remote")
 
 _progress: dict = {}

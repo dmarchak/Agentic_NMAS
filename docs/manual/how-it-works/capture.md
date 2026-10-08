@@ -87,9 +87,7 @@ below.
 5. **Publish.** Sent: the commit to the list's remote by `git push` where a remote is set,
    and to the S3 archive where one is configured. Recorded: the push's outcome. The
    post-commit hooks run in the background and never hold the commit.
-6. **Ask Oxidized to fetch (lab integration).** Sent: where Oxidized is configured, an HTTP
-   request asking it to fetch each changed device now. Recorded: the request, per device.
-7. **Close what the capture answers.** Recorded: an approval item that handed off to this
+6. **Close what the capture answers.** Recorded: an approval item that handed off to this
    capture is closed, only for a device that was recorded or found unchanged; older pending
    drift items for those devices are withdrawn, naming the commit. Then the device locks are
    released, and the result is drawn from the outcome of each device. The commit is the

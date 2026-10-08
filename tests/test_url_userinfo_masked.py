@@ -58,13 +58,6 @@ def _log_record_masked() -> str:
     return rec.getMessage()
 
 
-def _freshness() -> str:
-    from routes.freshness import _redacted
-    out = _redacted({"devices": [{"only_left": [PLANTED], "only_right": [], "reason": PLANTED}],
-                     "errors": [PLANTED]})
-    return repr(out)
-
-
 def _adopt_scrub() -> str:
     from modules.nsot.adopt import _scrub
     return repr(_scrub({"reason": PLANTED, "steps": [{"detail": PLANTED}]}, ["other"]))
@@ -92,7 +85,6 @@ ENTRY_POINTS = {
         "modules.netbox_guard", fromlist=["x"])._redact(PLANTED),
     "modules/netbox_guard.py:_redact_leaves": lambda: repr(__import__(
         "modules.netbox_guard", fromlist=["x"])._redact_leaves({"k": [PLANTED]})),
-    "routes/freshness.py:_redacted": _freshness,
     "modules/nsot/credential_rotation.py:_mask_line": lambda: __import__(
         "modules.nsot.credential_rotation", fromlist=["x"])._mask_line(PLANTED),
     "modules/netbox_client.py:masked_context": lambda: repr(__import__(

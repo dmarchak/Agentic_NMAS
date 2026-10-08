@@ -120,14 +120,6 @@ class TestAnUncommittedEditIsIgnored:
         text = _agent_read(lab["ip"])
         assert HEAD_LINE in text and "HANDEDIT" not in text, text
 
-    def test_the_freshness_gate_reads_the_committed_golden(self, lab):
-        from modules.nsot import freshness
-
-        _hand_edit(lab["golden"])
-        entry = next(e for e in R.list_goldens("lab") if e["hostname"] == "r1")
-        text, _at = freshness._read_golden(entry)
-        assert HEAD_LINE in text and "HANDEDIT" not in text
-
 
 class TestAGoldenNothingCommittedIsRefusedByName:
     """A file on disk that no save committed is not a golden."""

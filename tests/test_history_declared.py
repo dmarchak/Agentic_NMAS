@@ -194,8 +194,15 @@ class TestEachSourceReachesTheTab:
                                             "actor": "alex@example.com", "started": time.time(),
                                             "pid": 4242, "progress": {"step": "push"}},
                                  "found_at": time.time()}) + "\n")
-        freshness.authorise("Lab", "r3", "fp123", actor="alex@example.com",
-                            reason="Oxidized is a day behind")
+        # A record the retired gate wrote (Phase 3 removed its writer): History still reads it.
+        apath = freshness._authorisation_path("Lab")
+        os.makedirs(os.path.dirname(apath), exist_ok=True)
+        with open(apath, "w") as fh:
+            json.dump([{"device": "r3", "list": "Lab", "fingerprint": "fp123",
+                        "actor": "alex@example.com", "reason": "Oxidized is a day behind",
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
+                        "expires_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00",
+                                                    time.gmtime(time.time() + 86400))}], fh)
         qpath = os.path.join(listref.resolve("Lab").data_dir, "approval_queue.json")
         with open(qpath, "w") as fh:
             json.dump([{"id": "q1", "device_hostname": "r3", "action_type": "revert_to_golden",

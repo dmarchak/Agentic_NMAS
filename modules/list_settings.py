@@ -203,7 +203,7 @@ def default_layer(key: str, default=None):
     only, each call site listed in `tests/test_network_settings_read_for_a_list.py`, which
     only shrinks:
     - one output serves every list until P.7 makes it per network (the ZTP fragment and its
-      responder, Oxidized's one router.db and its helper, the Prometheus targets directory);
+      responder, the Prometheus targets directory);
     - the read is paired with an integration client still built for no list, which is the
       Default network's (steps 5 and 8 move the pair together), or it sits below any list on
       the path (the SSH layer's read bound: a device dict carries no list, C462)."""

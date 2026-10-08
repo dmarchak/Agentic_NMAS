@@ -19,7 +19,7 @@ was written for:
 ``approve``
     Records a decision that a later device change acts on: the approval
     queue, template approval, committed intent, goldens, templates, NetBox
-    (which holds intent, NSOT_PLAN 4.1), a freshness authorisation.
+    (which holds intent, NSOT_PLAN 4.1).
 ``configure``
     The tool's own settings, gates, inventory, credentials and local records.
 ``reveal``
@@ -150,7 +150,6 @@ GATES = {
     "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; the same apply as templatize.seed_apply, in the list its card carries)"),
     "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; the same apply as retire.apply, in the list its card carries): removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row against the export log"),
     "templatize.retry_apply": _g(A, "lifts a blocked change (the lines a rollback undid) so it may be sent again"),
-    "freshness.authorise": _g(A, "authorises one divergence past the freshness gate"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
     # the old one-click route is gone, because nothing in it asked whether the
     # state being enshrined was the one intended.
@@ -251,7 +250,6 @@ GATES = {
     "netbox_test_connection": _g(N, "a connection test"),
     "settings_integrations.test_integration": _g(N, "a connection test"),
     "remote.verify": _g(N, "read-only checks against the remote"),
-    "freshness.gate": _g(N, "a comparison; the clab sync calls it unattended"),
     "drift_check_trigger": _g(N, "the schedule does this anyway; it only happens earlier"),
     "drift_check_sync": _g(N, "the schedule does this anyway; it only happens earlier"),
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),

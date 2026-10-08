@@ -244,8 +244,7 @@ class TestItIsWiredIntoTheChain:
 
     def test_the_stage_runs_after_the_presence_check(self, monkeypatch):
         order = []
-        for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch",
-                     "run_sync"):
+        for name in ("run_sync",):
             monkeypatch.setattr(cr, name, lambda *a, **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file",
                             lambda *a, **k: order.append("presence") or {"ok": True})
@@ -264,8 +263,7 @@ class TestItIsWiredIntoTheChain:
 
     def test_a_file_that_will_not_apply_denies_persisted(self, monkeypatch):
         """The state must not claim redeploy survival the boot would refuse."""
-        for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch",
-                     "run_sync", "verify_startup_file"):
+        for name in ("run_sync", "verify_startup_file"):
             monkeypatch.setattr(cr, name, lambda *a, **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_applies",
                             lambda *a, **k: {"ok": False, "error": "WILL NOT APPLY"})
@@ -279,8 +277,7 @@ class TestItIsWiredIntoTheChain:
 
     def test_the_success_wording_claims_applicability_not_presence(self,
                                                                    monkeypatch):
-        for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch",
-                     "run_sync", "verify_startup_file", "verify_startup_applies",
+        for name in ("run_sync", "verify_startup_file", "verify_startup_applies",
                      "verify_startup_carries_current"):
             monkeypatch.setattr(cr, name, lambda *a, **k: {"ok": True})
 

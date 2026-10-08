@@ -113,9 +113,10 @@ class TestAsRootItActsOnlyOnThePinnedFile:
         assert helper.pinned_path(str(db), euid=ME or 1000,
                                   pin=str(tmp_path / "absent")) == str(db)
 
-    def test_the_helper_and_the_app_name_one_pin(self, helper):
-        from modules.nsot import credential_rotation as cr
-        assert helper.PIN == cr.HELPER_PIN == "/etc/nmas/oxidized-cred.conf"
+    def test_the_helper_names_its_pin(self, helper):
+        # The app's own constant for it went with Oxidized (Phase 3); the helper keeps its own
+        # until the operator's host steps remove it.
+        assert helper.PIN == "/etc/nmas/oxidized-cred.conf"
         assert helper.TRUSTED_UID == 0
 
 
@@ -229,109 +230,18 @@ class TestOnlyTheNewestBackupsAreKept:
         assert got["backups_removed"] == 0 and "FileNotFoundError" in got["prune_error"]
 
 
-# ------------------------------------------------------------------ the app reads the pin
+# ------------------------------------------------------------------ the app, with Oxidized retired
 
-class TestTheAppReadsThePin:
-    def _as_root_owned(self, monkeypatch, path):
-        real = os.lstat
+class TestTheAppWithOxidizedRetired:
+    """The app's own reading of the pin (`helper_pin_status`, `helper_status`, `pin_command`)
+    went with Oxidized in Phase 3: nothing in the product runs the helper."""
 
-        def lstat(p, *a, **k):
-            st = real(p, *a, **k)
-            if str(p) != str(path):
-                return st
-            fields = list(st)
-            fields[4] = 0                              # st_uid
-            return os.stat_result(fields)
-        monkeypatch.setattr(os, "lstat", lstat)
-
-    def test_a_pin_naming_the_setting_is_ok(self, monkeypatch, tmp_path, db):
-        from modules.nsot import credential_rotation as cr
-        pin = _pin(tmp_path, str(db))
-        self._as_root_owned(monkeypatch, pin)
-        got = cr.helper_pin_status(path=str(pin), router_db=str(db))
-        assert got["ok"] is True, got
-
-    def test_absent_names_what_it_must_name_and_the_command(self, tmp_path):
-        from modules.nsot import credential_rotation as cr
-        got = cr.helper_pin_status(path=str(tmp_path / "absent"), router_db="/srv/ox/router.db")
-        assert got["ok"] is False and "refuses every write as root until it names " \
-                                      "/srv/ox/router.db" in got["reason"]
-        assert got["command"].startswith("p=/srv/ox/router.db && ")
-        assert "sudo install -o root -g root -m 0644 \"$d/oxidized-cred.conf\" " \
-               "/etc/nmas/oxidized-cred.conf" in got["command"]
-        assert "mktemp -d" in got["command"] and "*" not in got["command"]
-
-    def _run_pin(self, tmp_path, answer):
-        """The command itself, in a shell, `sudo` a stand-in recording its arguments."""
-        from modules.nsot import credential_rotation as cr
-        tmp_path = tmp_path / answer
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir(parents=True)
-        log = tmp_path / "sudo.log"
-        (bin_dir / "sudo").write_text(f'#!/bin/sh\necho "$*" >> {log}\n', encoding="utf-8")
-        os.chmod(bin_dir / "sudo", 0o755)
-        proc = subprocess.run(["bash", "-c", cr.pin_command("/srv/ox/router.db")],
-                              input=answer + "\n", capture_output=True, text=True, timeout=30,
-                              env=dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}",
-                                       TMPDIR=str(tmp_path)))
-        return proc, (log.read_text(encoding="utf-8") if log.exists() else "")
-
-    def test_the_pin_is_shown_and_installed_only_when_the_operator_says_y(self, tmp_path):
-        """C424 (the operator, 2026-10-04): the path comes from the app's own settings, so a pin
-        the operator did not see pins nothing."""
-        proc, sudo = self._run_pin(tmp_path, "n")
-        assert proc.stdout == "Pin the Oxidized helper to /srv/ox/router.db? [y/N] "
-        assert sudo == "", "nothing installed on anything but y"
-        proc, sudo = self._run_pin(tmp_path, "y")
-        assert proc.returncode == 0, proc.stderr
-        assert "install -o root -g root -m 0644" in sudo and "/etc/nmas/oxidized-cred.conf" in sudo
-
-    def test_a_pin_naming_another_file_names_both(self, monkeypatch, tmp_path, db):
-        from modules.nsot import credential_rotation as cr
-        pin = _pin(tmp_path, "/srv/elsewhere/router.db")
-        self._as_root_owned(monkeypatch, pin)
-        got = cr.helper_pin_status(path=str(pin), router_db=str(db))
-        assert got["ok"] is False
-        assert f"names /srv/elsewhere/router.db, and the setting oxidized_router_db is {db}" \
-            in got["reason"]
-
-    def test_a_pin_the_app_user_owns_is_not_trusted(self, tmp_path, db):
-        from modules.nsot import credential_rotation as cr
-        got = cr.helper_pin_status(path=str(_pin(tmp_path, str(db))), router_db=str(db))
-        assert got["ok"] is False and f"owner uid {ME}" in got["reason"]
-
-    def test_the_helpers_status_is_unpinned_until_the_pin_is_right(self, monkeypatch, tmp_path):
-        """This release's copy, root-owned, and no pin: the rotation's preflight refuses."""
-        import shutil
-
-        from modules.nsot import credential_rotation as cr
-        installed = tmp_path / "nmas-oxidized-cred"
-        shutil.copy(HELPER, installed)
-        os.chmod(installed, 0o755)
-        real = os.stat
-
-        def stat(p, *a, **k):
-            st = real(p, *a, **k)
-            if str(p) != str(installed):
-                return st
-            fields = list(st)
-            fields[4] = 0
-            return os.stat_result(fields)
-        monkeypatch.setattr(os, "stat", stat)
-        monkeypatch.setattr(cr, "HELPER_INSTALLED", str(installed))
-        monkeypatch.setattr(cr, "HELPER_PIN", str(tmp_path / "absent.conf"))
-        got = cr.helper_status()
-        assert got["state"] == "unpinned" and got["ok"] is False
-        assert "absent.conf is absent" in got["reason"]
-        assert "oxidized-cred.conf" in got["reinstall"]
-
-    def test_with_oxidized_retired_its_steps_are_done_and_it_has_no_row(self, monkeypatch):
+    def test_with_oxidized_retired_its_steps_are_done_and_it_has_no_row(self):
         """Phase 3 step 2 (2026-10-08): nothing runs the helper, so an unpinned helper owes no
         host step and draws no job-health row (the host steps remove it)."""
         from modules import host_helpers, host_steps
         from modules.nsot import credential_rotation as cr
-        monkeypatch.setattr(cr, "helper_status", lambda: {
-            "ok": False, "state": "unpinned", "reason": "/etc/nmas/oxidized-cred.conf is absent"})
+        assert not hasattr(cr, "helper_status") and not hasattr(cr, "helper_pin_status")
         for check in ("oxidized-cred", "oxidized-pin"):
             got = host_steps.check({"check": check})
             assert got["state"] == "done" and "Oxidized is retired" in got["detail"], got

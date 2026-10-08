@@ -128,7 +128,6 @@ Then, once for the batch:
   `.nsot/staging/restored_intent/`. A device whose restore failed keeps today's intent, because
   device and intent move as one unit, so the next deploy does not offer to undo the restore.
 - **Publish**, as for a deploy: pushed to the remote where one is set.
-- **Ask Oxidized to fetch (lab integration)**, where Oxidized is configured.
 - **Receipts**, one row per device, with the action `restore` and the moment named; an approval
   item that handed off to this restore is closed only for devices that succeeded.
 

@@ -42,12 +42,6 @@ const INTEGRATION_SPEC = {
     {key: 'loki_selector_template', label: 'LogQL selector', type: 'text',
      help: 'Supports {ip} and {hostname} placeholders.'},
     {key: 'loki_verify_tls', label: 'Verify TLS', type: 'switch'}]},
-  oxidized: {icon: '🗄️', fields: [
-    {key: 'oxidized_url', label: 'oxidized-web URL', type: 'url'},
-    {key: 'oxidized_username', label: 'Username', type: 'text'},
-    {key: 'oxidized_password', label: 'Password', type: 'secret'},
-    {key: 'oxidized_node_identity', label: 'Node identity', type: 'select', options: ['hostname', 'ip']},
-    {key: 'oxidized_verify_tls', label: 'Verify TLS', type: 'switch'}]},
   kea: {icon: '🌐', fields: [
     {key: 'kea_url', label: 'Control Agent URL', type: 'url'},
     {key: 'kea_username', label: 'Username', type: 'text'},

@@ -269,9 +269,9 @@ map="$("$TARGETS" --url "$NMAS_URL" --list "$CLAB_LIST")" || {
   exit 2
 }
 
-# Columns are appended by the NMAS and never reordered: the sixth (Oxidized's
-# node name, until Phase 3 removes it from the map) is read into `_rest` and
-# not used.
+# Columns are appended by the NMAS and never reordered: a sixth (Oxidized's
+# node name, served by an NMAS before Phase 3) is read into `_rest` and not
+# used.
 while IFS=$'\t' read -r n cfgdir lab clabhost platform _rest; do
   [ -n "${n:-}" ] || continue
   case "$n" in '#'*) continue ;; esac

@@ -530,10 +530,12 @@ def test_a_scan_that_found_nothing_is_unknown_not_clean():
 
 def test_the_real_scan_covers_the_four_the_erasure_blanked():
     """Floor and anchors on the REAL map: the four found one at a time
-    (clab_host, clab_sync_script, oxidized_url; yang_push_script by hand)."""
+    (clab_host, clab_sync_script, oxidized_url; yang_push_script by hand). oxidized_url left
+    with Oxidized (Phase 3): it gates nothing now."""
     guards = J._guard_settings()
-    assert len(guards) >= 4, guards
-    for key in ("clab_host", "clab_sync_script", "oxidized_url", "yang_push_script"):
+    assert len(guards) >= 3, guards
+    assert "oxidized_url" not in guards
+    for key in ("clab_host", "clab_sync_script", "yang_push_script"):
         assert key in guards, key
 
 
@@ -715,9 +717,3 @@ class TestAGateVerdictIsTheCauseNeverItsAdvice:
         assert s["last_error"].startswith("r7   NOT BUILT - baseline/20261001T235242Z holds no")
         assert not J._NAMES_A_FAILURE.search("it was not built yet")
         assert J._NAMES_A_FAILURE.search("UNPROVEN: Default has no earned baseline")
-
-    def test_the_gate_s_advice_no_longer_reads_as_a_refusal(self):
-        src = open("scripts/nmas-oxidized-freshness", encoding="utf-8").read()
-        advice = src[src.index('print(f"\\nBLOCKED:'):src.index("return EXIT_BLOCKED")]
-        assert "is refused" not in advice
-        assert "Device page (or Save All)" in advice

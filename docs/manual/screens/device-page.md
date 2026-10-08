@@ -26,7 +26,7 @@ still true against intent, and what to do next. **Persist and Rotate run here to
 
 What the tool knows about the device, each fact with where it came from: its last golden, its
 intent state, whether its golden matches its intent, the monitoring profile it inherits, and
-its checks (reachability, Oxidized's copy, alerts).
+its checks (reachability, alerts).
 
 ## Intent {#intent}
 
@@ -57,7 +57,7 @@ filtered to the device. It holds every record the tool keeps about the device:
 | retry | a retry authorised after a rollback, with the reason |
 | onboarding | an onboarding or adopt run, with its result |
 | acknowledged | a Needs attention row acknowledged, with who and why |
-| freshness | a freshness gate authorised for this device, with the reason |
+| freshness | a freshness gate authorised for this device, with the reason (a past record: the gate was retired with Oxidized, 2026-10-08) |
 | approval | a queued action approved or rejected |
 | break-glass | a break-glass record exported that holds this device (the row names how many devices it holds) |
 | cut off | an operation whose process ended mid-run, found when the hold was cleared |

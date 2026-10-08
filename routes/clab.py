@@ -1,7 +1,7 @@
 """Where each device's startup config lives — the one producer of that map.
 
-The containerlab sync harvests configs from Oxidized and writes them into a
-lab's `configs/` directory. It used to write into **one** directory, which
+The containerlab sync builds each device's startup config from the newest earned
+baseline and writes it into a lab's `configs/` directory. It used to write into **one** directory, which
 was correct while there was one lab; r6 was onboarded into its own, and a
 reboot would have brought it back on its bootstrap config.
 
@@ -53,9 +53,10 @@ def sync_targets():
     # clab VM and not on the NMAS. Without it the helper had nothing to ssh
     # to and fell back to a local `os.listdir`, which raised.
     # Columns are APPENDED, never reordered: an older consumer reading the
-    # first three keeps working, and a newer one reads what it needs.
+    # first three keeps working, and a newer one reads what it needs. The last, Oxidized's
+    # node, went in Phase 3: its readers (the targets helper, the sync) read five.
     lines = [f"{r['hostname']}\t{r['configs_dir']}\t{r['lab']}\t{r['host']}"
-             f"\t{r['platform']}\t{r['oxidized_node']}"
+             f"\t{r['platform']}"
              for r in result["targets"] if not r.get("error")]
     body = "\n".join(lines) + ("\n" if lines else "")
     # Deliberately unmapped files (retired devices), with who and why, so the

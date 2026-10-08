@@ -7,7 +7,7 @@ a lab, into the files a redeploy boots. A rotation changes the device and the to
 together; persist makes the device's startup configuration carry it; and every other copy
 has to be brought along, or it becomes the copy that locks someone out.
 
-![Where a device's credential lives: the device's running and startup configuration on the right; the tool's inventory, credential store and git repository on the left; the break-glass record on a person's laptop; and, in a lab, Oxidized's copy and the lab startup file. A rotation moves the running configuration and the tool's record together, persist copies running to startup, and an export renews the break-glass record.](diagrams/credentials-lifecycle.svg)
+![Where a device's credential lives: the device's running and startup configuration on the right; the tool's inventory, credential store and git repository on the left; the break-glass record on a person's laptop; and, in a lab, the lab startup file. A rotation moves the running configuration and the tool's record together, persist copies running to startup, and an export renews the break-glass record.](diagrams/credentials-lifecycle.svg)
 
 ## Where it lives {#where}
 

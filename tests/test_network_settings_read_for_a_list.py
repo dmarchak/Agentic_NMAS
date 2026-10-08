@@ -6,7 +6,7 @@ answer per list. Step 4 gives every read one of two shapes:
 - **for a list it carries:** `list_settings.value(list_name, key)`. A write path carries its
   list (CLAUDE.md), so an empty one is refused with `NoListCarried`, never read as Default's;
 - **the Default network's, said by name:** `list_settings.default_layer(key)`, only where one
-  output serves every list until P.7 (the ZTP fragment, Oxidized's router.db, the Prometheus
+  output serves every list until P.7 (the ZTP fragment, the Prometheus
   targets directory), where the read is paired with an integration client still built for no
   list (steps 5 and 8 move the pair together), or below any list on the path (C462).
 
@@ -32,13 +32,11 @@ INVENTORY = {
     "modules/readers/credential_health.py": (2, "a reader of one global integration (step 5)"),
     "routes/topology_view.py": (2, "paired with the topology client built for no list (step 8)"),
     "modules/netbox_client.py": (1, "the sync that asks carries no list down to here yet"),
-    "modules/oxidized_fetch.py": (1, "one router.db names every list's devices (P.7)"),
-    "modules/nsot/credential_rotation.py": (3, "one router.db and its helper on the host (P.7)"),
     "modules/prometheus_targets.py": (1, "one targets directory serves every list (P.7)"),
     "modules/nsot/ztp.py": (4, "one Kea fragment and responder serve every list (P.7)"),
     "modules/nsot/ztp_responder.py": (1, "one Kea fragment and responder serve every list (P.7)"),
     "modules/attention.py": (1, "a declared expiry beside the Default network's clients (step 5)"),
-    "modules/host_helpers.py": (1, "one Oxidized helper and one topology renderer on the host"),
+    "modules/host_helpers.py": (1, "one topology renderer on the host"),
     "modules/monitoring_coverage.py": (2, "rows() answers every list from one read (step 5)"),
     "routes/settings_integrations.py": (3, "the general Settings form writes the global file, "
                                            "the Default network's layer (step 7)"),
@@ -51,7 +49,6 @@ COMPUTED = {
     "modules/identity.py": (1, "its `_setting` wrapper: cf_access_* and identity keys, host-wide"),
     "modules/integrations/base.py": (2, "a client built for no list reads the global file, the "
                                         "Default network's layer; tests inject through these names"),
-    "modules/nsot/credential_rotation.py": (1, "the deprecated oxidized_rest_url, a dead key"),
     "modules/readers/credential_health.py": (1, "a loop over (`proxmox_url`,): host-wide"),
 }
 
@@ -169,7 +166,7 @@ class TestTheDefaultLayerReadsAreAnExactInventory:
 
     def test_the_scan_finds_something(self):
         """The floor: a parse that found nothing would satisfy an empty inventory."""
-        assert sum(default_layer_calls(_program_files()).values()) >= 25
+        assert sum(default_layer_calls(_program_files()).values()) >= 20   # 22 after Phase 3
 
     def test_the_parse_sees_each_shape_and_ignores_prose(self, tmp_path):
         """The planted case: a call by name, by alias, as an attribute, and a docstring that

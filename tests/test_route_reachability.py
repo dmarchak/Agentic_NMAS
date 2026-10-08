@@ -39,8 +39,6 @@ NON_GUI = {
     "GET /clab/sync_targets": ("scripts/nmas-clab-targets",
                                "the clab host's sync asks for its map; it "
                                "refuses rather than guessing when it cannot"),
-    "POST /freshness/gate": ("scripts/nmas-oxidized-freshness",
-                             "the sanitiser's pre-write gate (exit 0/1/2)"),
     "POST /jobs/finished": ("scripts/nmas-job-finished",
                             "systemd's OnSuccess/OnFailure for each host job: read job "
                             "health now, not at the reader's next run"),
@@ -81,8 +79,6 @@ KNOWN_UNREACHABLE = {
     "POST /templates/revoke/<path:rel_path>": (A, "withdraw an approval with a reason; Source of truth, Templates (7.6)"),
     "POST /templates/bindings": (A, "which template a device uses; Source of truth, Templates (7.6)"),
     "GET /templates/seed_status": (A, "seed status (C6); Source of truth, Templates (7.6)"),
-    "GET /freshness/authorisations": (A, "see Oxidized-divergence authorisations; Source of truth (7.6)"),
-    "POST /freshness/authorise": (A, "authorise one Oxidized divergence (the CLI also can); Source of truth (7.6)"),
     "GET /jobs/health": (A, "job, image and pool health; Needs attention (7.2)"),
     "POST /inventory/source/<path:list_name>": (A, "set a network's inventory source: the panel only READS it; Fleet, Networks (7.4)"),
     "POST /remote/adopt": (A, "connect a remote; Versions (7.5)"),
@@ -136,7 +132,8 @@ KNOWN_UNREACHABLE = {
 # editor's `'/templatize/committed/' + host` matched its stem. A route's
 # words after its converter must now appear near the reference.
 # 49 -> 47 (2026-10-02): /ai/restart and /server/restart removed (CONCURRENCY_AUDIT R5).
-CEILING = 47
+# 47 -> 45 (2026-10-08): /freshness/authorisations and /freshness/authorise removed (Phase 3).
+CEILING = 45
 
 
 @pytest.fixture(scope="module")

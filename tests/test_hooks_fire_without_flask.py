@@ -50,7 +50,7 @@ class TestRegistrationFollowsTheModuleNotTheApp:
         out = subprocess.run([sys.executable, "-c", code], capture_output=True,
                              text=True, timeout=120)
         assert out.returncode == 0, out.stderr
-        assert out.stdout.strip() == ("['baseline-event', 'git-push', 'oxidized-fetch', 'prometheus-targets', "
+        assert out.stdout.strip() == ("['baseline-event', 'git-push', 'prometheus-targets', "
                                       "'publication-check', 's3-archive']"), out.stdout
 
     def test_app_is_no_longer_the_only_registrar(self):

@@ -314,7 +314,7 @@ class TestTheEmptyDefaultGuardListIsDerivedNotRemembered:
         from modules.settings_schema import GUARD_GATING_EMPTY_DEFAULTS
 
         assert "oxidized_rest_url" not in GUARD_GATING_EMPTY_DEFAULTS
-        assert "oxidized_url" in GUARD_GATING_EMPTY_DEFAULTS
+        assert "oxidized_url" not in GUARD_GATING_EMPTY_DEFAULTS   # Oxidized retired (Phase 3)
 
     def test_a_docstring_quoting_the_refusal_is_a_mention(self):
         """A pattern that can appear in English needs an anchor.

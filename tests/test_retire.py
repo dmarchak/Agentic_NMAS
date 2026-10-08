@@ -25,9 +25,6 @@ def world(tmp_path, monkeypatch):
         # A device NetBox holds with an EMPTY stored context: nothing to mask.
         "device": {"id": 9, "name": h, "local_context_data": {}}})
     monkeypatch.setattr("modules.credentials.has_device_override", lambda ip: False)
-    # An installation without Oxidized: its router.db is not the tool's (C398's managed path
-    # is driven by its own tests, with a stand-in helper).
-    monkeypatch.setattr("modules.nsot.credential_rotation.oxidized_managed", lambda: False)
     # One approved template, so the withdrawal branch RUNS: the bound set is
     # still computed for real from the manifest.
     monkeypatch.setattr("modules.nsot.approval.approved_templates",

@@ -1626,8 +1626,8 @@ def device_moved_reason(capture: str, running: str) -> str:
     capture would get a program computed against a stale capture (merge-only can omit a
     line the device has lost; a restore at HEAD sends nothing by construction). The
     running config the pipeline reads before anything is sent (stage 4), or the read of
-    a device with nothing to send, is compared with it by `roundtrip.stored_is_device`,
-    the freshness check's comparison. Both operands are named by the lines that differ,
+    a device with nothing to send, is compared with it by `roundtrip.stored_is_device`.
+    Both operands are named by the lines that differ,
     a few of each, masked: the raw texts' hashes would differ on volatile lines alone."""
     from modules.nsot import roundtrip
     from modules.redact import redact_text

@@ -85,6 +85,18 @@ C332, C512, C499, D9; C329 stays (the drift check is now the read-and-compare, i
      removed with the integration.
 3. Remove the freshness modules, routes and tests, the fetch hook, the integration, the settings
    (with the version bump and its record), the host helper rows and the monitoring tile.
+   **BUILT 2026-10-08 as step 2b, the settings inert (P3-3):**
+   - Removed: the post-commit fetch hook and `oxidized_fetch.py`; the freshness comparison
+     (its four routes, reader, Needs attention source, invalidation key, script and the v1
+     signal partial); the Oxidized integration, its Settings card and monitoring tile; the
+     rotation's Oxidized functions; the sync map's Oxidized node column (the sync reads five);
+     `oxidized_model_for_dialect`.
+   - Kept: `freshness.authorisations` and its file read, so History still draws past
+     authorisations. The keys stay declared, now in scope `retiring` (read by nothing, drawn
+     on no Settings screen, stored values kept for a rollback). The release after removes
+     them by a version bump.
+   - `tests/test_oxidized_settings_inert.py` parses every tracked product file and fails on
+     any read of an Oxidized key outside its declarations.
 4. The operator's host steps (section 5), then the walk: a rotation, an onboarding, a Save All
    earning a baseline (the sync starts at once), a retire, all on v2.
 

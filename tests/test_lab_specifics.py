@@ -71,7 +71,7 @@ INVENTORY = {
     "modules/settings_schema.py": (29, LAB_PLATFORM, OPTIONAL,
                                    "clab_* settings (some default to the lab's paths); "
                                    "netbox_excluded_vrfs defaults to the lab's clab-mgmt"),
-    "modules/nsot/credential_rotation.py": (82, LAB_PLATFORM, OPTIONAL,
+    "modules/nsot/credential_rotation.py": (80, LAB_PLATFORM, OPTIONAL,
                                             "the persistence chain's clab-sync and startup-file stages; "
                                             "vrnetlab's injected user (the save and read-back are generic)"),
     # Found by widening the pattern to any rcn- or rcn_ name (2026-10-03, C374: the break-glass
@@ -98,16 +98,13 @@ INVENTORY = {
     "modules/nsot/persist_op.py": (2, LAB_PLATFORM, GENERIC, "comments naming the clab chain"),
     "modules/nsot/normalize.py": (2, HARDWARE, GENERIC, "vrnetlab's own lines filtered"),
     "modules/nsot/repo.py": (1, LAB_PLATFORM, GENERIC, "a comment"),
-    "modules/nsot/freshness.py": (1, LAB_PLATFORM, GENERIC, "a comment"),
     "modules/nsot/ip_sla_policy.py": (1, LAB_VALUES, GENERIC, "a measured example"),
     "modules/netbox_client.py": (6, LAB_VALUES, GENERIC, "the clab-mgmt VRF exclusion's examples"),
     "modules/breakglass.py": (4, LAB_VALUES, GENERIC, "the lab's name in the record format"),
-    "modules/oxidized_fetch.py": (3, LAB_PLATFORM, GENERIC, "comments naming clab-sync"),
     "modules/panels.py": (2, LAB_VALUES, GENERIC, "the lab's dashboard UID in an example"),
     "modules/pipeline.py": (2, LAB_PLATFORM, GENERIC, "comments: containerlab nodes are ephemeral"),
     "modules/prometheus_targets.py": (1, LAB_VALUES, GENERIC, "a lab address in an example"),
     "modules/readers/reachability.py": (1, LAB_PLATFORM, GENERIC, "a comment"),
-    "modules/route_gates.py": (1, LAB_PLATFORM, OPTIONAL, "the clab route's gate entry"),
     "scripts/nmas-host": (5, ACCESS, MOVE, "the operator's LAN-or-tunnel host helper"),
     "scripts/nmas-breakglass": (2, LAB_VALUES, GENERIC, "the lab's name"),
     "scripts/nmas-check-startup-applies": (3, LAB_PLATFORM, OPTIONAL, "checks a lab startup file"),
@@ -120,7 +117,6 @@ INVENTORY = {
     "scripts/nmas-stage-guard": (1, LAB_VALUES, GENERIC, "a comment naming the lab's key incident"),
     "scripts/nmas-startup-source": (1, LAB_PLATFORM, GENERIC, "names clab-sync as its consumer"),
     "scripts/nmas-test": (1, LAB_PLATFORM, GENERIC, "a comment"),
-    "templates/partials/freshness_signal.html": (1, LAB_PLATFORM, GENERIC, "names a redeploy"),
     "templates/partials/onboard_wizard.html": (3, LAB_PLATFORM, GENERIC, "vrnetlab in help text"),
     "deploy/rsyslog/10-network-devices.conf": (2, LAB_VALUES, MOVE, "the lab's device addresses"),
     "deploy/intent-changes/p1-syslog-block.json": (2, LAB_VALUES, MOVE, "a lab change record"),

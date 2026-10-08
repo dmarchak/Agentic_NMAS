@@ -228,7 +228,7 @@ PENDING = {
 
 #: No page sends these (test_route_reachability.KNOWN_UNREACHABLE).
 NO_GUI = {
-    "freshness.authorise", "templates.revoke_approval", "templates.save_bindings",
+    "templates.revoke_approval", "templates.save_bindings",
     "templatize.bulk_apply",
     "remote.adopt",
 }
@@ -356,7 +356,7 @@ class TestNoGuiIsTheReachabilityFact:
         unreachable_gated = {ep for ep in _population()
                              if by_endpoint.get(ep, set()) & set(KNOWN_UNREACHABLE)}
         assert unreachable_gated == NO_GUI, (sorted(unreachable_gated ^ NO_GUI))
-        assert len(NO_GUI) >= 5
+        assert len(NO_GUI) >= 4   # 5 -> 4: freshness.authorise left in Phase 3
 
 
 class TestColourAndEscaping:

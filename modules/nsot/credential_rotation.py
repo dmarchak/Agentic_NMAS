@@ -15,8 +15,8 @@ never recorded.
 
 **Rotation failure and persistence failure are different events.** Once the
 device has accepted the new password and it has been verified and committed,
-the rotation has *happened*. A later failure to teach Oxidized about it, or to
-get it into a startup file, does not un-happen it — and reverting the device at
+the rotation has *happened*. A later failure to get it into a startup file
+does not un-happen it — and reverting the device at
 that point would be destroying a completed change to fix a bookkeeping problem.
 Only :data:`VERIFY` failing reverts.
 
@@ -142,178 +142,11 @@ class RotationRefused(Exception):
     """Refused before anything reached the device."""
 
 
-#: Where the root-owned helper is installed, and where its source of truth is.
+#: Where the root-owned Oxidized helper is installed, and where its source of truth is. Nothing
+#: runs it since Phase 3; `host_helpers` still names the installed copy until the operator's
+#: host steps remove it (docs/NSOT_PHASE3_RETIRE_OXIDIZED.md, section 5).
 HELPER_INSTALLED = "/usr/local/sbin/nmas-oxidized-cred"
 HELPER_SOURCE_REL = "scripts/nmas-oxidized-cred"
-
-#: Built at CALL time, not at import: baking HELPER_INSTALLED in with `+`
-#: meant the reinstall hint named the original destination even after the path
-#: changed — a message telling the operator to install to the wrong place.
-INSTALL_TEMPLATE = "sudo install -o root -g root -m 0755 {source} {dest}"
-
-
-def install_command(source: str) -> str:
-    return INSTALL_TEMPLATE.format(source=source, dest=HELPER_INSTALLED)
-
-
-def _repo_root() -> str:
-    import os
-    return os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))
-
-
-def helper_status() -> dict:
-    """Is the installed helper the same script this repo ships?
-
-    The installed copy is a **snapshot**. It is root-owned and deliberately
-    outside the repository, so it does not move when the repo does — and the
-    repo is where the helper's tests live. A repo whose tests pass while a
-    different script actually runs as root is a test suite describing something
-    that is not deployed.
-
-    Checked in preflight and refused on mismatch, rather than discovered when
-    the installed version does something the tested one does not.
-    """
-    import hashlib
-    import os
-
-    source = os.path.join(_repo_root(), HELPER_SOURCE_REL)
-    out = {"installed_path": HELPER_INSTALLED, "source_path": source,
-           "reinstall": install_command(source)}
-
-    if not os.path.exists(source):
-        return {**out, "ok": False, "state": "source_missing",
-                "reason": f"{HELPER_SOURCE_REL} is missing from the repository"}
-    if not os.path.exists(HELPER_INSTALLED):
-        return {**out, "ok": False, "state": "not_installed",
-                "reason": (f"{HELPER_INSTALLED} is not installed — "
-                           "router.db cannot be updated")}
-
-    def _sha(path):
-        with open(path, "rb") as fh:
-            return hashlib.sha256(fh.read()).hexdigest()
-
-    installed_sha, source_sha = _sha(HELPER_INSTALLED), _sha(source)
-    out.update({"installed_sha": installed_sha[:12],
-                "source_sha": source_sha[:12]})
-    if installed_sha != source_sha:
-        return {**out, "ok": False, "state": "drifted",
-                "reason": (f"the installed helper differs from "
-                           f"{HELPER_SOURCE_REL}. The tests in this repository "
-                           "describe the repo copy, not the one that would "
-                           "run as root.")}
-
-    st = os.stat(HELPER_INSTALLED)
-    if st.st_uid != 0:
-        return {**out, "ok": False, "state": "not_root_owned",
-                "reason": (f"{HELPER_INSTALLED} is owned by uid {st.st_uid}, "
-                           "not root — a sudoers entry pointing at it would be "
-                           "a root shell for whoever can write it")}
-    if st.st_mode & 0o022:
-        return {**out, "ok": False, "state": "group_or_world_writable",
-                "reason": (f"{HELPER_INSTALLED} is writable by group or other "
-                           f"(mode {oct(st.st_mode & 0o777)})")}
-
-    pin = helper_pin_status()
-    if not pin["ok"]:
-        return {**out, "ok": False, "state": "unpinned", "reason": pin["reason"],
-                "reinstall": pin["command"]}
-    return {**out, "ok": True, "state": "ok"}
-
-
-#: The root-owned file naming the ONE router.db the helper edits as root (C414); the helper's
-#: own constant `PIN` names the same path (tests/test_oxidized_router_db.py holds them equal).
-HELPER_PIN = "/etc/nmas/oxidized-cred.conf"
-
-
-def pin_command(router_db: str) -> str:
-    """Install the pin naming *router_db*: shown, confirmed by the operator, then a fresh
-    folder, installed root-owned by name. The path comes from the app's own settings, which
-    the app can write, so a pin the operator did not see pins nothing (C424, the operator,
-    2026-10-04): the command prints it and installs only on "y"."""
-    import os
-    import shlex
-
-    return ('p=' + shlex.quote(router_db) + ' && printf \'Pin the Oxidized helper to %s? '
-            '[y/N] \' "$p" && read -r ok && [ "$ok" = y ] && d=$(mktemp -d) && '
-            'printf \'%s\\n\' "$p" > "$d/oxidized-cred.conf" && sudo install -d -o root -g root '
-            '-m 0755 ' + os.path.dirname(HELPER_PIN) + ' && sudo install -o root -g root -m 0644 '
-            '"$d/oxidized-cred.conf" ' + HELPER_PIN + ' && rm -r "$d"')
-
-
-def helper_pin_status(path: str = None, router_db: str = None) -> dict:
-    """Does the helper's pin name the router.db this tool is configured with? Read as the
-    app's user (the pin is 0644): root-owned, writable by no one else, one absolute path,
-    the setting's `oxidized_router_db` (compared resolved). ``{"ok", "reason", "command"}``."""
-    import os
-
-    path = path or HELPER_PIN
-    from modules.list_settings import default_layer   # one router.db and one helper on the host
-
-    want = router_db or default_layer("oxidized_router_db", "/opt/oxidized/router.db")
-    out = {"command": pin_command(want)}
-    try:
-        st = os.lstat(path)
-    except FileNotFoundError:
-        return {**out, "ok": False, "reason": f"{path} is absent: the helper refuses every "
-                                              f"write as root until it names {want}"}
-    except OSError as exc:
-        return {**out, "ok": False, "reason": f"{path} could not be read: {exc}"}
-    if st.st_uid != 0 or st.st_mode & 0o022 or not os.path.isfile(path):
-        return {**out, "ok": False, "reason": (f"{path} must be a root-owned file writable by "
-                                               f"no one else (owner uid {st.st_uid}, mode "
-                                               f"{oct(st.st_mode & 0o777)})")}
-    try:
-        with open(path, encoding="utf-8") as fh:
-            named = [l.strip() for l in fh if l.strip() and not l.strip().startswith("#")]
-    except OSError as exc:
-        return {**out, "ok": False, "reason": f"{path} could not be read: {exc}"}
-    if len(named) != 1 or os.path.realpath(named[0]) != os.path.realpath(want):
-        return {**out, "ok": False, "reason": (f"{path} names {', '.join(named) or 'nothing'}, "
-                                               f"and the setting oxidized_router_db is {want}")}
-    return {**out, "ok": True, "reason": f"{path} names {want}"}
-
-
-def helper_sudo_status(run=None) -> dict:
-    """Will sudo run the helper WITHOUT a password, for this user, now?
-
-    Asked in PREFLIGHT, before anything changes the device (register C106).
-    The persist chain's `oxidized_row` stage runs `sudo -n <helper>`, and
-    nothing asked first: a rule removed or changed, or the rotation run as
-    another user, meant the device was rotated and committed and THEN the
-    chain failed at that stage, with no reason (the refused `sudo -n` printed
-    nothing on stdout, so the stage returned `{}`). The fourth way for a
-    rotation to leave a device half-done would have been this one.
-    `sudo -n -l <command>` exits 0 exactly when that command may run with no
-    password (measured on the host, 2026-09-27: the narrow rule for this one
-    helper exists, and the service runs as the user it covers)."""
-    import subprocess
-
-    run = run or subprocess.run
-    try:
-        proc = run(["sudo", "-n", "-l", HELPER_INSTALLED],
-                   capture_output=True, text=True, timeout=10)
-    except Exception as exc:                   # noqa: BLE001
-        return {"ok": False, "reason": f"could not ask sudo: {type(exc).__name__}: {exc}"}
-    if proc.returncode == 0:
-        return {"ok": True, "reason": ""}
-    said = (proc.stderr or proc.stdout or "").strip()[:160]
-    return {"ok": False, "reason": (
-        f"sudo will not run {HELPER_INSTALLED} without a password for this user "
-        f"(sudo -n -l exited {proc.returncode}{': ' + said if said else ''}). The "
-        "rotation would change the device and then fail to record it in Oxidized, "
-        "so it is refused before anything changes. The helper needs exactly this "
-        f"sudoers entry: `{_user()} ALL=(root) NOPASSWD: {HELPER_INSTALLED}` "
-        "(the helper's own header, scripts/nmas-oxidized-cred).")}
-
-
-def _user() -> str:
-    import getpass
-
-    try:
-        return getpass.getuser()
-    except Exception:                          # noqa: BLE001
-        return "<user>"
 
 
 def generate_password(hostname: str = "device", length: int = LENGTH) -> str:
@@ -1360,8 +1193,6 @@ def consumer_report(hostname: str, mgmt_ip: str) -> list:
     rows = [
         {"name": "Mercury", "where": "devices.csv (this device's row)",
          "action": "updated automatically"},
-        {"name": "Oxidized", "where": f"router.db row for {mgmt_ip}",
-         "action": "updated automatically, then a fetch is confirmed"},
     ]
     if "yang_push_script" not in not_applicable():
         rows.append(_yang_push_consumer(mgmt_ip))
@@ -1919,392 +1750,19 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
 # Persistence chain — never reverts the device
 # ---------------------------------------------------------------------------
 
-def update_oxidized_row(mgmt_ip: str, username: str, password: str,
-                        router_db: str = "") -> dict:
-    """One row, through the root-owned helper. The password goes on stdin."""
-    import json
-
-    return _run_helper(["--ip", mgmt_ip],
-                       json.dumps({"username": username, "password": password}), router_db)
-
-
-def add_oxidized_row(mgmt_ip: str, model: str, username: str, password: str,
-                     router_db: str = "") -> dict:
-    """Append ONE row, an onboarded device's (C512), through the root-owned helper's ADD mode.
-    The password goes on stdin; a row already exactly so is ``already_present``, any other row
-    for the address is refused (adding never changes a row)."""
-    import json
-
-    return _run_helper(["--ip", mgmt_ip, "--add", "--model", model],
-                       json.dumps({"username": username, "password": password}), router_db)
-
-
-def remove_oxidized_row(mgmt_ip: str, router_db: str = "") -> dict:
-    """Remove ONE row, a retired device's (C398), through the root-owned helper's REMOVE mode:
-    no credential is read or sent; an absent row is ``already_absent``. The app never reads
-    router.db itself."""
-    return _run_helper(["--ip", mgmt_ip, "--remove"], "", router_db)
-
-
-def oxidized_addresses(router_db: str = "") -> dict:
-    """``{"ok", "addresses"}``: router.db's addresses through the helper, never a credential
-    (C398: job health compares them with the devices the tool manages)."""
-    return _run_helper(["--addresses"], "", router_db)
-
-
-def oxidized_node_names(rest: str = "") -> tuple:
-    """``(names, "")``: the nodes Oxidized itself lists (its REST node list), or ``(None, why)``.
-    What Oxidized loaded from router.db, where the helper's address list is what the file holds:
-    a row whose model Oxidized cannot load is in the file and not in this list."""
-    import json
-
-    client, refusal = oxidized_client(rest)
-    if refusal:
-        return None, refusal.get("error") or "Oxidized is not configured"
-    raw, error = _oxidized_get(client, "nodes.json")
-    if error:
-        return None, f"GET {client.url}/nodes.json failed: {error}"
-    try:
-        return [n.get("name", "") for n in json.loads(raw)], ""
-    except (ValueError, AttributeError, TypeError) as exc:
-        return None, f"Oxidized's node list could not be read: {type(exc).__name__}"
-
-
-def oxidized_managed() -> bool:
-    """Whether this installation keeps Oxidized's router.db rows (its integration configured):
-    without it, retire has no row to remove and job health no list to compare."""
-    try:
-        from modules.integrations import get_integration
-        ox = get_integration("oxidized")
-        return bool(ox is not None and ox.is_configured())
-    except Exception:                          # noqa: BLE001
-        return False
-
-
-def _run_helper(flags: list, stdin: str, router_db: str = "") -> dict:
-    """Run the installed helper with *flags* (and *stdin*), refusing a drifted install; its
-    JSON answer, or why there is none."""
-    import json
-    import subprocess
-
-    from modules.list_settings import default_layer   # one router.db and one helper on the host
-
-    router_db = router_db or default_layer("oxidized_router_db",
-                                           "/opt/oxidized/router.db")
-    status = helper_status()
-    if not status["ok"]:
-        return {"ok": False, "error": status["reason"],
-                "reinstall": status["reinstall"]}
-    try:
-        proc = subprocess.run(
-            ["sudo", "-n", HELPER_INSTALLED, "--file", router_db, *flags],
-            input=stdin, capture_output=True, text=True, timeout=30)
-    except Exception as exc:                   # noqa: BLE001
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
-    if proc.returncode != 0 and not (proc.stdout or "").strip():
-        # A refused `sudo -n` (or a helper that died) prints nothing on stdout,
-        # and "{}" parsed to a stage with no ok and no reason (C106).
-        return {"ok": False, "error": (
-            f"the helper did not run (exit {proc.returncode}): "
-            + ((proc.stderr or "").strip()[:200] or "no output")
-            + ". If sudo asked for a password, the helper's sudoers entry is "
-              "missing for this user.")}
-    try:
-        body = json.loads(proc.stdout or "{}")
-    except ValueError:
-        body = {"ok": False, "error": (proc.stderr or proc.stdout)[:200]}
-    if "ok" not in body:
-        body = {"ok": False, "error": "the helper answered without saying ok or not: "
-                                      + json.dumps(body)[:160]}
-    return body
-
-
-# ---------------------------------------------------------------------------
-# ONE OWNER FOR THE OXIDIZED REST URL
-# ---------------------------------------------------------------------------
-
-#: Read by nothing. Kept because settings keys are never deleted, and named
-#: here so the deprecation is a fact in the code rather than a memory.
-DEPRECATED_REST_KEY = "oxidized_rest_url"
-
-
-class _PinnedOxidized:
-    """An :class:`OxidizedIntegration` whose base URL is given, not read.
-
-    Only for a caller that passes an explicit *rest*, which is an override
-    that has always existed and must keep working. Everything else -- the
-    session, the basic auth, the TLS toggle, the retry policy -- comes from
-    the real client, so this pins one value rather than becoming a second
-    transport.
-    """
-
-    def __init__(self, base: str, timeout: float):
-        from modules.integrations.oxidized import OxidizedIntegration
-
-        self._inner = OxidizedIntegration(timeout=timeout)
-        self._base = (base or "").rstrip("/")
-
-    def __getattr__(self, name):
-        return getattr(self._inner, name)
-
-    @property
-    def url(self) -> str:
-        return self._base
-
-    def is_configured(self) -> bool:
-        return bool(self._base)
-
-
-def oxidized_client(rest: str = "", timeout: float = 15.0) -> tuple:
-    """``(client, refusal)`` — the **one owner** of Oxidized's connection.
-
-    There were two keys for one fact and, underneath that, **two owners of one
-    connection**. `OxidizedIntegration` carries the URL, HTTP basic auth from
-    `oxidized_username` / `oxidized_password`, the TLS-verify toggle and a
-    retry policy; the persistence chain spoke bare `urllib` and sent **none of
-    the auth**. On an Oxidized with auth on, stages 2 and 3 would take a 401
-    and report it as a failed reload -- *a credential error, during a
-    credential rotation, about the wrong credential entirely.*
-
-    Collapsing the keys (`oxidized_rest_url` -> `oxidized_url`) fixed the name.
-    This fixes the thing the name was standing in for.
-
-    The deprecated key is **not** a gate: `oxidized_url` is what is read, and
-    the legacy key is only consulted to name the move when the surviving key
-    is empty. A guard gated on a key nothing sets always refuses, which is the
-    `clab_host` shape with the setting removed rather than blanked; this is not
-    that.
-    """
-    from modules.integrations.oxidized import OxidizedIntegration
-    from modules.settings_schema import get_setting
-
-    if rest:
-        return _PinnedOxidized(rest, timeout), None
-
-    client = OxidizedIntegration(timeout=timeout)
-    if client.is_configured():
-        return client, None
-
-    legacy = (get_setting(DEPRECATED_REST_KEY, "") or "").strip()
-    if legacy:
-        return None, {"ok": False, "error": (
-            f"{DEPRECATED_REST_KEY} is set and is no longer read. There is "
-            "one key for Oxidized's REST URL and it is 'oxidized_url' -- "
-            f"copy the value across ({legacy}) and this will run. Nothing "
-            "was adopted automatically: a settings write nobody asked for "
-            "would have hidden the rename.")}
-    return None, {"ok": False, "error": (
-        "oxidized_url is not configured -- Oxidized's REST URL, set in "
-        "Settings > Integrations. Nothing was asked; this says nothing "
-        "about the device.")}
-
-
-def _oxidized_get(client, path: str) -> tuple:
-    """``(body_text, error)``. Never raises; the client never does either."""
-    result = client._get(path)                 # noqa: SLF001 - the client's API
-    if not result.get("ok"):
-        return None, result.get("error") or "unknown error"
-    try:
-        return result["response"].text, None
-    except Exception as exc:                   # noqa: BLE001
-        return None, f"unreadable response: {exc}"
-
-
-def reload_oxidized(*, rest: str = "", timeout: float = 30.0, sleep=None,
-                    **_ignored) -> dict:
-    """Tell Oxidized to re-read router.db. **GET /reload, and nothing else.**
-
-    Writing the file is not enough on its own: the chain used to do nothing
-    between ``update_oxidized_row`` and ``confirm_fetch``, so a fetch could be
-    queued against a node list Oxidized had not re-read.
-
-    **What this deliberately does NOT do is restart the container.** An
-    earlier version defaulted to ``docker restart oxidized`` on the conclusion
-    that ``/reload`` could not refresh a live node's credential. That
-    conclusion was drawn from a single incident in which a restart was the
-    only thing varied, and it is wrong. Measured directly afterwards, on the
-    same installation:
-
-        wrong password written to r2's row, then GET /reload
-          -> the very next fetch FAILED
-
-    ``/reload`` picked the change up. It refreshes credentials.
-
-    Restarting would also have been the wrong mechanism even if it worked:
-    the app runs as a user in the ``docker`` group, so driving the Docker
-    socket is root-equivalent access exercised by a web process, and a
-    restart interrupts every other device's fetch on every rotation.
-
-    This stage only establishes that Oxidized accepted the reload and is
-    serving its node list again. Whether the credential actually took is not
-    asserted here — :func:`confirm_fetch` requires a SUCCESSFUL fetch
-    afterwards, which is the real check, and it is a check of the outcome
-    rather than of the mechanism.
-    """
-    import time
-
-    client, refusal = oxidized_client(rest)
-    sleep = sleep or time.sleep
-    if refusal:
-        return {"mechanism": "rest_reload", **refusal}
-
-    _body, error = _oxidized_get(client, "reload")
-    if error:
-        return {"ok": False, "mechanism": "rest_reload",
-                "error": f"GET {client.url}/reload failed: {error}"}
-
-    # Serving again? A fetch queued against a reloading Oxidized goes nowhere.
-    deadline = time.time() + timeout
-    while True:
-        _nodes, error = _oxidized_get(client, "nodes.json")
-        if not error:
-            return {"ok": True, "mechanism": "rest_reload"}
-        if time.time() >= deadline:
-            return {"ok": False, "mechanism": "rest_reload",
-                    "error": f"node list not served within {timeout}s "
-                             f"of the reload"}
-        sleep(2)
-
-
-#: Oxidized reports times as ``'2026-09-21 09:12:44 UTC'`` — measured on the
-#: live REST API, not assumed from its docs.
-_OXIDIZED_TIME = "%Y-%m-%d %H:%M:%S"
-
-
 def utc_now():
     """Timezone-AWARE now. Never ``utcnow()``.
 
     ``datetime.utcnow()`` returns a naive datetime that merely happens to hold
     UTC. Comparing one against an aware datetime raises ``TypeError``; comparing
     it against a naive LOCAL time silently compares two different clocks and
-    answers confidently. This chain decides "did a fetch happen after the
-    rotation" by exactly such a comparison, so the failure would look like a
-    fetch that never arrived rather than like a bug. It is also deprecated from
-    Python 3.12.
+    answers confidently. A rotation's start time is compared that way, so the
+    failure would look like a wrong answer rather than like a bug. It is also
+    deprecated from Python 3.12.
     """
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc)
-
-
-def as_utc(value):
-    """Parse anything this chain handles into an AWARE UTC datetime.
-
-    Accepts a datetime (naive is *assumed* UTC, which is what every producer
-    here means) or one of Oxidized's strings, with or without its ``UTC``
-    suffix, with or without ISO ``T``/offset. Returning aware on every path is
-    the point: a mixed comparison must be impossible rather than unlikely.
-    """
-    from datetime import datetime, timezone
-
-    if isinstance(value, datetime):
-        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None \
-            else value.astimezone(timezone.utc)
-
-    text = (value or "").strip()
-    if not text:
-        raise ValueError("empty timestamp")
-    text = text.removesuffix(" UTC").strip()
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        parsed = datetime.strptime(text, _OXIDIZED_TIME)
-    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None \
-        else parsed.astimezone(timezone.utc)
-
-
-def confirm_fetch(mgmt_ip: str, after_iso: str, *, attempts: int = 6,
-                  base_delay: float = 10.0, rest: str = "", sleep=None) -> dict:
-    """Require a SUCCESSFUL fetch timestamped after *after_iso*.
-
-    "Requested" and "succeeded" are different events. If the sync runs on
-    Oxidized's previous copy, the startup-file check fails for a reason that
-    looks nothing like its cause — the file simply lacks the new hash, with no
-    sign the harvest never happened.
-    """
-    import json
-    import time
-
-    client, refusal = oxidized_client(rest)
-    if refusal:
-        return refusal
-    sleep = sleep or time.sleep
-    want = as_utc(after_iso)
-    last = {}
-    for attempt in range(attempts):
-        _oxidized_get(client, f"node/next/{mgmt_ip}")
-        sleep(base_delay * (2 ** attempt) / 2)
-        try:
-            raw, error = _oxidized_get(client, "nodes.json")
-            if error:
-                raise OSError(error)
-            for node in json.loads(raw):
-                if node.get("name") != mgmt_ip:
-                    continue
-                last = node.get("last") or {}
-                end = last.get("end") or ""
-                if last.get("status") == "success" and end:
-                    try:
-                        when = as_utc(end)
-                    except ValueError:
-                        continue
-                    if when >= want:
-                        return {"ok": True, "end": end,
-                                "attempts": attempt + 1}
-        except Exception as exc:               # noqa: BLE001
-            last = {"error": f"{type(exc).__name__}"}
-    # Name the cause when Oxidized knows it. `PromptUndetect` means it
-    # authenticated fine and then failed to match its prompt regexp — a
-    # known intermittent on this fleet, affecting the switches equally and
-    # predating the rotations. It is emphatically NOT a sign that the
-    # rotation went wrong, and an operator who cannot tell those apart will
-    # go looking at the device instead of re-running the persist-only
-    # command, which is all this needs.
-    detail = _fetch_failure_detail(client, mgmt_ip)
-    return {"ok": False, "attempts": attempts, "last": last,
-            "cause": detail.get("cause", ""),
-            "error": detail.get("error", "no successful fetch after the "
-                                         "rotation")}
-
-
-#: Oxidized failure classes worth telling the operator apart. The value is
-#: what to DO, because that is the part they need and the part a class name
-#: does not carry.
-_FETCH_CAUSES = {
-    "PromptUndetect": (
-        "Oxidized authenticated but could not match its prompt "
-        "(Oxidized::PromptUndetect). This is a known intermittent on this "
-        "fleet, unrelated to the credential — the rotation itself succeeded. "
-        "Re-run the persist-only command; do not investigate the device."),
-    "AuthenticationFailed": (
-        "Oxidized could not authenticate. That IS credential-related: check "
-        "the router.db row for this device before re-running."),
-}
-
-
-def _fetch_failure_detail(client, mgmt_ip: str) -> dict:
-    """Ask Oxidized why its last attempt on this device failed."""
-    import json
-
-    generic = {"cause": "", "error": "no successful fetch after the rotation"}
-    if client is None:
-        return generic
-    try:
-        raw, error = _oxidized_get(client, "nodes.json")
-        if error:
-            return generic
-        for node in json.loads(raw):
-            if node.get("name") != mgmt_ip:
-                continue
-            blob = json.dumps(node.get("last") or {})
-            for marker, advice in _FETCH_CAUSES.items():
-                if marker.lower() in blob.lower():
-                    return {"cause": marker,
-                            "error": f"no successful fetch after the "
-                                     f"rotation — {advice}"}
-    except Exception:                          # noqa: BLE001
-        return generic
-    return generic
 
 
 #: The lab a device is in when its manifest says nothing. Every device
@@ -2444,39 +1902,17 @@ def sync_targets(list_name: str) -> dict:
         except Exception as exc:               # noqa: BLE001
             log.debug("clab: no usable platform for %r: %s", name, exc)
 
-        # THE OXIDIZED NODE KEY -- the FIFTH hardcoded list in the
-        # sanitizer, and the one that decides what gets read at all.
-        # `declare -A NODE=(...)` maps a device to the filename Oxidized
-        # stores it under, per `router.db`. r6 is in
-        # neither that array nor the loops, so without this column the map
-        # can say where r6's config goes and still not know where to read
-        # it from.
-        #
-        # `oxidized_node_identity` decides the form: `hostname` or `ip`.
-        # Read here rather than guessed, because the two produce different
-        # filenames and a wrong one is a silent "nothing stored".
-        ox_identity = ""
-        try:
-            from modules.list_settings import default_layer   # one router.db names every list
-
-            ox_identity = (name if default_layer("oxidized_node_identity",
-                                                 "hostname") == "hostname"
-                           else (entry.get("mgmt_ip") or ""))
-        except Exception as exc:               # noqa: BLE001
-            log.debug("clab: no oxidized node key for %r: %s", name, exc)
-
+        # (Oxidized's node key, the map's sixth column, went with Oxidized in Phase 3: the
+        # sync builds from the earned baseline and reads nothing of Oxidized's.)
         row = {"hostname": name, "lab": target["lab"],
                "host": target["host"],
                "platform": platform,
-               "oxidized_node": ox_identity,
                "configs_dir": target["configs_dir"],
                "launch_patch": target["launch_patch"]}
         # A device whose lab is named and undescribed is REPORTED, never
         # defaulted: writing its config into another lab's directory is the
         # failure this whole map exists to prevent.
         gaps = [k for k in ("configs_dir", "launch_patch") if not target[k]]
-        if not ox_identity:
-            gaps.append("oxidized_node")
         if not platform:
             # Reported, never defaulted. A consumer that picks a device kind
             # from a missing value picks the wrong one for exactly the

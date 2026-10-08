@@ -36,10 +36,7 @@ def _the_device_stage_passes(monkeypatch):
 @pytest.fixture
 def chain(monkeypatch):
     """Every stage passing; each test breaks the one it is about."""
-    for name, value in (("update_oxidized_row", {"ok": True}),
-                        ("reload_oxidized", {"ok": True, "mechanism": "rest_reload"}),
-                        ("confirm_fetch", {"ok": True, "end": "x"}),
-                        ("run_sync", {"ok": True}),
+    for name, value in (("run_sync", {"ok": True}),
                         ("verify_startup_file", {"ok": True, "matches": 1}),
                         ("verify_startup_applies", {"ok": True, "applies": True}),
                         ("verify_startup_carries_current", {"ok": True})):

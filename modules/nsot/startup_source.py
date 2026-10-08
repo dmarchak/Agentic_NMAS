@@ -7,8 +7,8 @@ device's unapproved change held every file back (C306, C309). The source is
 now the list's **newest EARNED baseline**: a moment the tool recorded every
 device at its committed intent (7.2's `Baseline: earned`), never a withdrawn
 one (C177), never a deleted tag, never one taken before baselines recorded
-what they earned. Oxidized stays as the cross-check: what the device runs
-now, against what a redeploy would boot.
+what they earned. (Oxidized's copy was the cross-check until Phase 3 retired
+Oxidized; the lab startup check reads each file against the record.)
 
 **Credentials always from the CURRENT state** (C309). A baseline is a record
 of a moment, and moments contain credentials (C75): one older than a rotation

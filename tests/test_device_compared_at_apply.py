@@ -55,17 +55,6 @@ class TestTheComparison:
         assert [x.split(" :: ")[-1] for x in got["only_left"]] == [lost.strip()]
         assert got["only_right"] == []
 
-    def test_freshness_asks_the_same_comparison(self):
-        """One comparison for one question: the freshness check calls it."""
-        import ast
-        import inspect
-
-        from modules.nsot import freshness
-        tree = ast.parse(inspect.getsource(freshness.compare_device))
-        called = {n.func.attr for n in ast.walk(tree)
-                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
-        assert "stored_is_device" in called and "configs_equivalent" not in called
-
 
 class TestTheReason:
     def test_nothing_when_the_device_is_the_capture(self):

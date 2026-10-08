@@ -94,8 +94,8 @@ def fetch(url: str, list_name: str = "", timeout: int = 15,
         if not line.strip():
             continue
         parts = line.split("\t") + ["", "", "", ""]
-        # hostname, configs_dir, lab, host, platform; the NMAS's sixth column (Oxidized's
-        # node, until Phase 3 removes it) is not read. Columns are appended
+        # hostname, configs_dir, lab, host, platform; a sixth column, which an NMAS before
+        # Phase 3 served (Oxidized's node), is not read. Columns are appended
         # by the NMAS and never reordered, so a short row from an older one
         # simply carries blanks in the later fields.
         rows.append(tuple(parts[:5]))

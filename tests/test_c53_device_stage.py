@@ -72,10 +72,7 @@ BASE = dict(mgmt_ip="192.0.2.21", username="admin", password="pw", hostname="s1"
 
 @pytest.fixture
 def chain(monkeypatch):
-    for name, value in (("update_oxidized_row", {"ok": True}),
-                        ("reload_oxidized", {"ok": True, "mechanism": "rest_reload"}),
-                        ("confirm_fetch", {"ok": True, "end": "x"}),
-                        ("run_sync", {"ok": True}),
+    for name, value in (("run_sync", {"ok": True}),
                         ("verify_startup_file", {"ok": True, "matches": 1}),
                         ("verify_startup_applies", {"ok": True, "applies": True}),
                         ("verify_startup_carries_current", {"ok": True})):
@@ -103,7 +100,7 @@ class TestTheChainSavesTheDevice:
         chain.setattr(cr, "save_on_device", lambda *a, **k: {
             "ok": False, "state": "not_persisted",
             "error": "the startup config does not carry username admin privilege 15 secret 9 <value>"})
-        chain.setattr(cr, "update_oxidized_row", lambda *a, **k: later.append(1) or {"ok": True})
+        chain.setattr(cr, "run_sync", lambda *a, **k: later.append(1) or {"ok": True})
         out = _persist()
         assert out["state"] == cr.ROTATED_UNVERIFIED and later == []
         rec = [r for r in cr.rotation_records() if r.get("device") == "s1"][-1]

@@ -224,8 +224,8 @@ class TestTheConvertedReadsRunAtOnce:
     """The READ loops the rule converted (2026-09-29): each through the one
     helper, `modules.fanout.read_each`, and gone from the declared serial set."""
 
-    CONVERTED = [("modules/nsot/freshness.py", "read_each(lambda h: client.fetch_config"),
-                 ("modules/nsot/startup_check.py", "read_each(lambda lr: check(lr[1])"),
+    # modules/nsot/freshness.py's Oxidized read was converted too, and removed in Phase 3.
+    CONVERTED = [("modules/nsot/startup_check.py", "read_each(lambda lr: check(lr[1])"),
                  ("app.py", "read_each(lambda d: with_temp_connection(d, get_hostname)"),
                  ("scripts/nmas-golden-state", "read_each(one, devices"),
                  ("routes/onboard.py", "read_each(_ztp.progress, ztp_rows"),
@@ -238,7 +238,7 @@ class TestTheConvertedReadsRunAtOnce:
 
     def test_none_is_still_declared_serial(self):
         declared = {p for p, _f in set(SCANNED) | set(SURVEYED)}
-        assert not declared & {"modules/nsot/freshness.py", "modules/nsot/startup_check.py",
+        assert not declared & {"modules/nsot/startup_check.py",
                                "scripts/nmas-golden-state", "routes/onboard.py",
                                "scripts/nmas-heartbeat-rules"}
 

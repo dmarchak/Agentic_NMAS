@@ -731,11 +731,18 @@ def interrupted(ctx):
                  for r in rows[:ctx["limit"]]])
 
 
+def past_authorisations(list_name: str) -> list:
+    """Every authorisation the retired freshness gate recorded for *list_name*, newest last,
+    expired ones included: a past record History keeps readable (Phase 3 removed the gate and
+    its writer)."""
+    from modules.nsot import freshness as fr
+    return fr.authorisations(list_name, include_expired=True)
+
+
 def freshness(ctx):
     """Each authorisation to deploy past the freshness gate, with its reason."""
-    from modules.nsot import freshness as fr
     try:
-        rows = [a for a in fr.authorisations(ctx["ref"].name, include_expired=True)
+        rows = [a for a in past_authorisations(ctx["ref"].name)
                 if _mine(ctx, a.get("device", ""))]
     except Exception as exc:                          # noqa: BLE001
         return _out(errors=[f"the freshness authorisations could not be read: {exc}"])

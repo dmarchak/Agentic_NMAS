@@ -77,9 +77,8 @@ finished by running it again:
    device's `host_vars/<device>.yml` and `golden/<device>.cfg`, its identity released from
    the manifest (NetBox kept, said), committed as you with `Retired-Device:`, `Reason:` and
    one `Not-Done:` trailer per thing deliberately kept. Only those paths are staged. Both
-   files stay in history. The post-commit hooks then push the commit to the remote and, the
-   golden having changed, ask Oxidized to fetch the device (lab integration; it asks and
-   never waits). A failed commit puts the tree back.
+   files stay in history. The post-commit hooks then push the commit to the remote. A failed
+   commit puts the tree back.
 5. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
    repository. Sent: nothing. Recorded: the device's legacy file deleted, only when its
    content survives in the repository (the migration's verbatim backup or an equivalent

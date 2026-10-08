@@ -7,8 +7,8 @@ Every fact names its source and its age, so a stale one reads as stale:
 - **intent** and **golden** are the list repository's commits (C104: what is
   COMMITTED, never the working tree);
 - **drift** is the drift checker's last run for this list;
-- (Oxidized freshness was switched off on 2026-10-08, ahead of Phase 3: `reader_job.RETIRED`;
-  drift covers a change made outside Mercury);
+- (Oxidized freshness was switched off on 2026-10-08 and removed in Phase 3; drift covers a
+  change made outside Mercury);
 - **reboot-safe** is the startup check's last run (C53);
 - **alerts** are the Grafana reader's stored instances naming this device.
 

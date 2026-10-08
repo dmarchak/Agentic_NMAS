@@ -113,8 +113,7 @@ the run ends. Its stages, in the order the code declares them:
    the `pre_change/` folder of the list the deploy carries. A device that cannot be read
    reliably here is refused with nothing sent. **The running configuration is then compared
    with the stored capture the program was computed against** (section by section, the
-   golden's header, the device's banner and its self-signed certificate left out; the same
-   comparison the drift check makes of Oxidized's copy). A device that differs was changed
+   golden's header, the device's banner and its self-signed certificate left out). A device that differs was changed
    since its capture: it is skipped as drifted with nothing sent, and its result names how
    many lines are only in the capture and only on the device, the first few of each, masked.
    Capture it, then preview again. A running configuration that cannot be read cannot be
@@ -226,10 +225,7 @@ After the last device, in this order:
    to the S3 archive where one is configured. Recorded: the push's outcome, which the Remote
    card and Needs attention read. The post-commit hooks run in the background and never hold
    the commit; they also regenerate the Prometheus scrape targets from the changed goldens.
-3. **Ask Oxidized to fetch (lab integration).** Sent: where Oxidized is configured, an HTTP
-   request asking it to fetch each changed device now. Recorded: the request, per device. It
-   asks and never waits.
-4. **Write the receipts.** Recorded: one masked row per device, sent, failed or refused, in
+3. **Write the receipts.** Recorded: one masked row per device, sent, failed or refused, in
    `deploy_receipts.jsonl` in the list's data folder: the program, its hash against the
    confirmed one, you, each authorisation's reason, the checks verify ran, the rollback and the
    commit. Each device's row is written the moment that device finishes, marked **commit

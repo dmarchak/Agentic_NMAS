@@ -69,7 +69,7 @@ def sources() -> list:
 
 
 def _setting(key: str) -> str:
-    from modules.list_settings import default_layer   # one helper and one renderer on the host
+    from modules.list_settings import default_layer   # one renderer on the host
     return str(default_layer(key, "") or "").strip()
 
 

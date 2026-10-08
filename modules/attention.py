@@ -85,12 +85,6 @@ ROW_KINDS = {
     ("grafana", "rule"): ("a rule reads no data or cannot evaluate", "read its query in Grafana"),
     ("grafana", "heartbeat-floor"): ("a device has no heartbeat rule Grafana shows",
                                      "regenerate the rules, then check the reader's role"),
-    ("freshness", "not-compared"): ("Oxidized's copies could not be compared",
-                                    "check Oxidized answers; the comparison runs again"),
-    ("freshness", "unapproved"): ("Oxidized holds a change nobody approved",
-                                  "capture it if wanted, or put it back"),
-    ("freshness", "inconclusive"): ("whether Oxidized's copy is approved cannot be told",
-                                    "decide whether its copy is wanted: capture it, or put it back"),
     ("integrations", "down"): ("an integration is down", "check it at its configured URL"),
     ("integrations", "refused"): ("an integration refuses the tool's credential",
                                   "renew it where the service issues it and put it in Settings"),
@@ -190,12 +184,6 @@ CLEARS = {
     ("grafana", "rule"): (("resolves",), "the rule reads data and evaluates again"),
     ("grafana", "heartbeat-floor"): (("resolves",), "Grafana shows a heartbeat rule for the "
                                      "device"),
-    ("freshness", "not-compared"): (("resolves",), "Oxidized's copies are compared again"),
-    ("freshness", "unapproved"): (("resolves", "acknowledge"), "Oxidized's copy matches the "
-                                  "golden again (captured, or put back and fetched), or a person "
-                                  "authorises that one divergence with a reason, for 24 h"),
-    ("freshness", "inconclusive"): (("resolves",), "a later comparison can tell whether the "
-                                    "copy was approved"),
     ("integrations", "down"): (("resolves",), "it answers the next probe (every 60 s)"),
     ("integrations", "refused"): (("resolves",), "the next probe (every 60 s) is accepted"),
     ("credential-health", "expiry"): (("resolves",), "the reader (hourly) reads an expiry more "
@@ -417,8 +405,6 @@ _JOB_STATES = {
                                  "warning"),
     # The Update button's root-owned updater (docs/UPDATE.md).
     "writable": ("is run as root and writable by someone else", "danger"),
-    # Oxidized's router.db still holding a device the tool retired (C398).
-    "orphaned": ("still holds a device the tool retired", "warning"),
     "cannot_run": ("cannot run: a program it needs is missing or not root's", "danger"),
     "path_inactive": ("is not watching for update requests", "danger"),
     "differs": ("differs from this release's copy", "warning"),
@@ -1180,8 +1166,8 @@ def authorisation_source(counts=None) -> dict:
 
 
 #: Every source, in the order a person reads them. Section 1a's other
-#: sources (freshness, Grafana alerts) join HERE through `source_result`,
-#: both through the reader-job pattern.
+#: sources (Grafana alerts) join HERE through `source_result`,
+#: through the reader-job pattern.
 # ---------------------------------------------------------------------------
 # Source: Grafana's alerts, from the grafana-alerts READER's cache (7.2; the
 # reader-job pattern's second instance, and 8.6's constraints on 7.2)
@@ -1495,83 +1481,6 @@ def _drained_devices() -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# Source: Oxidized freshness, from the freshness READER's cache (7.2): a
-# device whose Oxidized copy is not the approved state would come back on it
-# at the next redeploy.
-# ---------------------------------------------------------------------------
-
-def freshness_source(cached=None) -> dict:
-    """UNAPPROVED is a row (a change nobody approved is what a redeploy
-    would bake in); INCONCLUSIVE is a row (the comparison cannot say); a
-    poll race and an authorised divergence are counted, never rows: the
-    first self-corrects at the next poll, the second is a recorded
-    decision."""
-    from modules import reader_job
-    from modules.config import get_current_list_name
-
-    started = time.time()
-    got = reader_job.read_cached("freshness") if cached is None else cached
-    doc = got.get("doc") or {}
-    good = doc.get("last_good") or {}
-    took = int((time.time() - started) * 1000)
-    if got["state"] != "ok" or not good:
-        why = (got.get("why") if got["state"] != "ok" else
-               "the reader has never stored a value; its last attempt: "
-               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
-        return source_result("freshness", "Freshness", read_at=started, took_ms=took,
-                             error=f"not compared yet: {why}")
-    lst = get_current_list_name()
-    report = ((good.get("value") or {}).get("lists") or {}).get(lst)
-    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
-    if report is None:
-        return source_result("freshness", "Freshness", read_at=started, took_ms=took,
-                             error=f"the stored comparison holds no answer for list {lst}")
-    rows = []
-    if not report.get("ok"):
-        rows.append(row(source="freshness", kind="not-compared", key=f"{lst}:not-compared",
-                        level="unknown",
-                        what=f"Freshness could not be compared for {lst}",
-                        cause=(report.get("error") or report.get("defect") or "no reason recorded")
-                              + ". This is not the same as nothing having diverged",
-                        action={"label": "Check Oxidized answers at the URL in Settings > "
-                                         "Integrations; the comparison runs again every 5 "
-                                         "minutes", "known": False}))
-        return source_result("freshness", "Freshness", read_at=started, took_ms=took,
-                             rows=rows, value_at=value_at, stale_after_seconds=promise,
-                             checked=f"list {lst}: not compared")
-    from modules.redact import redact_text
-    for d in report.get("devices") or []:
-        verdict = d.get("verdict")
-        if verdict not in ("unapproved", "inconclusive"):
-            continue
-        extra = [redact_text(l) for l in (d.get("only_right") or [])[:3]]
-        rows.append(row(
-            source="freshness", kind=verdict, key=f"{lst}:{d.get('device')}",
-            what=(f"{d.get('device')}: Oxidized holds a change nobody approved"
-                  if verdict == "unapproved" else
-                  f"{d.get('device')}: whether Oxidized's copy is approved cannot be told"),
-            devices=[d.get("device")], since=_ts(d.get("oxidized_at")),
-            cause=redact_text(d.get("reason") or "no reason recorded")
-                  + (f"; in Oxidized and not the golden: {extra}" if extra else ""),
-            operands={"golden_at": d.get("golden_at"), "oxidized_at": d.get("oxidized_at"),
-                      "fingerprint": (d.get("fingerprint") or "")[:16]},
-            action=({"label": "Capture the device's golden if the change is wanted, or put "
-                              "it back; a redeploy before then boots it"}
-                    if verdict == "unapproved" else
-                    {"label": "Decide whether Oxidized's copy is wanted: capture the device's "
-                              "golden if so, or put the device back", "known": False}),
-            level="warning" if verdict == "unapproved" else "unknown"))
-    c = report.get("counts") or {}
-    return source_result(
-        "freshness", "Freshness", read_at=started, took_ms=took, rows=rows,
-        value_at=value_at, stale_after_seconds=promise, reader="freshness",
-        checked=(f"list {lst}: {report.get('checked', 0)} of {report.get('population', 0)} "
-                 f"compared; {c.get('match', 0)} approved, {c.get('poll_race', 0)} not fetched by "
-                 f"Oxidized since their change, "
-                 f"{c.get('authorised', 0)} authorised"))
-
-
-# ---------------------------------------------------------------------------
 # Source: integration health, from the integration-health READER (7.2): the
 # same stored value the status bar draws, so the two cannot disagree.
 # ---------------------------------------------------------------------------
@@ -1581,7 +1490,7 @@ RENEW_AT = {
     "netbox": "NetBox: Admin > API tokens", "grafana": "Grafana: Administration > Service "
     "accounts", "proxmox": "Proxmox: Datacenter > Permissions > API Tokens",
     "prometheus": "the proxy in front of Prometheus", "loki": "the proxy in front of Loki",
-    "oxidized": "Oxidized's web authentication", "kea": "the Kea control agent's credentials",
+    "kea": "the Kea control agent's credentials",
     "topology_service": "the topology service's own token", "nsot_git": "the git host's tokens",
     "s3": "the S3 provider's access keys",
 }

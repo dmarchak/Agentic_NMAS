@@ -170,10 +170,10 @@ class TestTheTableAgreesWithEveryInRouteGate:
         return found
 
     def test_the_scan_finds_the_in_route_gates(self):
-        # 11 measured: remote x5, onboard x4, freshness, ratify. A grep finds
+        # 10 measured: remote x5, onboard x4, ratify (freshness left in Phase 3). A grep finds
         # 13 lines: one is a docstring naming require(), and one is the golden
         # reveal helper, which GET views call and which is not a view itself.
-        assert len(self._in_route_calls()) >= 11
+        assert len(self._in_route_calls()) >= 10
 
     def test_kinds_and_operations_agree(self):
         from modules.route_gates import GATES

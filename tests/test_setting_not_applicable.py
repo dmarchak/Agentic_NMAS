@@ -95,7 +95,7 @@ class TestTheRotationStopsWarningAboutARetiredConsumer:
         from modules.nsot import credential_rotation as cr
         ss.declare_not_applicable(KEY, "me", "retired")
         names = [c["name"] for c in cr.consumer_report("r1", "192.0.2.1")]
-        assert "yang-push-sub.py" not in names and "Oxidized" in names
+        assert "yang-push-sub.py" not in names and names == ["Mercury"]   # Oxidized retired
 
     def test_an_undeclared_one_still_is(self, store):
         """The floor: forgetting the setting must still warn."""

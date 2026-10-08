@@ -321,7 +321,3 @@ def register_default_hooks() -> None:
     # Phase 3), rather than polling for the newest baseline on a timer.
     from modules.nsot.baseline_event import hook as baseline_event_hook
     register("baseline-event", baseline_event_hook, timeout=10)
-    # A commit that changed a golden asks Oxidized to fetch those devices now,
-    # never at its next hourly poll (C314).
-    from modules.oxidized_fetch import golden_hook as oxidized_fetch_hook
-    register("oxidized-fetch", oxidized_fetch_hook, timeout=30)

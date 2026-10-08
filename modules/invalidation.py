@@ -76,7 +76,6 @@ VOCABULARY = {
     "netbox": "the NetBox objects Mercury shows or counts",
     "settings": "settings and integrations",
     "posture": "the identity gates' recorded posture",
-    "freshness": "Oxidized freshness: the stored comparison and its authorisations",
     "backups": "stored backups of device configs",
     "device_state": "what a device runs: anything read live from it",
     "breakglass": "the break-glass export log, its intact checks and its drills (job health's "
@@ -128,7 +127,7 @@ ANNOUNCERS = {
     # modules/nsot/repo.save_templates: each template-library commit (C516).
     "template-library": ("templates",),
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
-                   "freshness", "goldens", "remote", "intent", "approvals"),
+                   "goldens", "remote", "intent", "approvals"),
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state
@@ -196,8 +195,7 @@ DECLARED = {
     "templates.revoke_approval": ("templates", "remote"),
     "templates.save_bindings": ("templates", "remote"),
     "templates.refresh_capture": ("backups",),
-    "deploy.apply": ("device_state", "baselines", "drift", "rolled_back",
-                     "freshness") + _COMMIT,
+    "deploy.apply": ("device_state", "baselines", "drift", "rolled_back") + _COMMIT,
     # Onboarding. Verify runs phase 2, which PROMOTES: the device list is the
     # first of the three measured cases.
     "onboard.create": ("pending", "intent", "credentials", "remote"),
@@ -237,7 +235,6 @@ DECLARED = {
     "settings_v2.group_switch": ("settings",),
     "settings_v2.mode_switch": ("settings",),
     "identity.ratify_setting": ("posture", "settings"),
-    "freshness.authorise": ("freshness",),
     "monitoring_config": ("monitoring",),
     "monitoring_snmp_poll": ("monitoring",),
     "clear_netflow_flows": ("monitoring",),
@@ -333,7 +330,6 @@ DECLARED = {
     "netbox_safety.preview_removal": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "settings_integrations.test_integration": Nothing("tests an integration's connection and reports"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
-    "freshness.gate": Nothing("the sanitiser's check: per-device verdicts, stored nowhere"),
 }
 
 

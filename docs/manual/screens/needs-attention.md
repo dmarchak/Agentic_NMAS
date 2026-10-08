@@ -35,8 +35,8 @@ stopping is one), integrations, reachability, routing adjacencies,
 baselines, the remote's publication, the lab's startup files, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
 
-Oxidized freshness is switched off (2026-10-08), ahead of Oxidized's retirement: it raises no
-row. A change made on a device outside Mercury is raised by the drift check, which reads each
+Oxidized is retired (2026-10-08), and its freshness check with it: nothing here compares
+Oxidized's copy. A change made on a device outside Mercury is raised by the drift check, which reads each
 device's running configuration against its golden on the interval set for it (four hours
 unless changed).
 

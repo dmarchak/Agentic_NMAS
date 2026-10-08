@@ -12,7 +12,6 @@ from modules.integrations.netbox import NetBoxIntegration
 from modules.integrations.prometheus import PrometheusIntegration
 from modules.integrations.grafana import GrafanaIntegration
 from modules.integrations.loki import LokiIntegration
-from modules.integrations.oxidized import OxidizedIntegration
 from modules.integrations.kea import KeaIntegration
 from modules.integrations.topology_service import TopologyServiceIntegration
 from modules.integrations.nsot_git import NsotGitIntegration
@@ -29,7 +28,6 @@ REGISTRY: dict = {
         PrometheusIntegration,
         GrafanaIntegration,
         LokiIntegration,
-        OxidizedIntegration,
         KeaIntegration,
         TopologyServiceIntegration,
         NsotGitIntegration,
@@ -64,6 +62,6 @@ __all__ = [
     "IntegrationClient", "DEFAULT_TIMEOUT", "REGISTRY",
     "get_integration", "all_statuses",
     "NetBoxIntegration", "PrometheusIntegration", "GrafanaIntegration",
-    "LokiIntegration", "OxidizedIntegration", "KeaIntegration",
+    "LokiIntegration", "KeaIntegration",
     "TopologyServiceIntegration", "NsotGitIntegration", "S3ArchiveIntegration",
 ]

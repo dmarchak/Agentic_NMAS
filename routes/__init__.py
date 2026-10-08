@@ -58,7 +58,6 @@ def register_blueprints(app) -> list:
     from routes.topology_view import bp as topology_view_bp
     from routes.onboard import bp as onboard_bp
     from routes.clab import bp as clab_bp
-    from routes.freshness import bp as freshness_bp
     from routes.jobs import bp as jobs_bp
     from routes.health import bp as health_bp
     from routes.devices_view import bp as devices_view_bp
@@ -81,7 +80,7 @@ def register_blueprints(app) -> list:
     for bp in (integrations_bp, netbox_safety_bp, inventory_bp, golden_bp,
                templatize_bp, templates_bp, deploy_bp, identity_bp,
                remote_bp, monitoring_stack_bp, topology_view_bp,
-               onboard_bp, clab_bp, freshness_bp, jobs_bp, health_bp,
+               onboard_bp, clab_bp, jobs_bp, health_bp,
                devices_view_bp, operations_bp, attention_bp, retire_bp, persist_bp,
                rotate_bp, breakglass_bp, device_v2_bp, v2_bp, update_bp, restarts_bp,
                settings_v2_bp, intent_v2_bp, templates_v2_bp, reads_v2_bp, privileged_v2_bp):

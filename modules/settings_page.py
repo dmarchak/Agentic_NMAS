@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 #: The tabs a network's settings are split across, and the groups on each. Integrations are
 #: the outside services; Network is the deploy tuning and the network's own addresses. Board
 #: A's host-wide tabs (AI, Server, Security posture, Diagnostics) are Installation's (F).
-INTEGRATIONS = ("grafana", "grafana_roles", "prometheus", "loki", "oxidized", "kea",
+INTEGRATIONS = ("grafana", "grafana_roles", "prometheus", "loki", "kea",
                 "topology_service", "monitoring_profile", "s3_archive", "lab")
 TABS = (("integrations", "Integrations"), ("network", "Network"))
 
@@ -36,7 +36,7 @@ STATE_KIND = {"own": "ok", "inherited": "info", "not_configured": "warn",
               "unset_everywhere": "warn", "not_applicable": "muted"}
 
 #: The words a field label is built from: the key without its service's prefix.
-_PREFIXES = ("grafana_", "prometheus_", "loki_", "oxidized_", "kea_", "topology_service_",
+_PREFIXES = ("grafana_", "prometheus_", "loki_", "kea_", "topology_service_",
              "s3_", "syslog_", "nsot_")
 _ACRONYMS = {"url": "URL", "tls": "TLS", "uid": "UID", "db": "DB", "ip": "IP", "vrfs": "VRFs",
              "ntp": "NTP", "snmp": "SNMP", "ztp": "ZTP", "dhcp4": "DHCPv4", "id": "ID"}

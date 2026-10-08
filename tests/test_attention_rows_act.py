@@ -30,7 +30,6 @@ GOOD = dict(source="drift", kind="drifted", key="Lab:drifted:r1", what="r1 has d
 #: Call sites whose kind is computed: the helper's literal first argument (its
 #: key prefix) or the values the expression takes, read from the code.
 DYNAMIC = {"drift": "add", "grafana": "add"}
-FRESHNESS_VERDICTS = ("unapproved", "inconclusive")
 
 
 def _calls(text: str):
@@ -82,8 +81,6 @@ def emitted(text: str) -> tuple:
                 found |= {("drift", k) for k in _helper_kinds(text, "drift_source")}
             elif fn == "grafana_source":
                 found |= {("grafana", k) for k in _helper_kinds(text, "grafana_source")}
-            elif fn == "freshness_source":
-                found |= {("freshness", k) for k in FRESHNESS_VERDICTS}
             else:
                 problems.append(f"{fn}: a computed kind this check cannot read")
         else:

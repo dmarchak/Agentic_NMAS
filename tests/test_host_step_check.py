@@ -157,12 +157,6 @@ class TestAValueFromTheAppsSettingsIsConfirmed:
     def test_a_read_that_does_not_gate_on_y_is_not_a_confirmation(self, hs):
         assert hs.unsafe_step(f"x\n\nHost-Step: {self.READ} && read -r ok; d=$(mktemp -d)") != ""
 
-    def test_the_apps_pin_command_is_itself_a_confirmed_step(self, hs):
-        from modules.nsot import credential_rotation as cr
-        step = (f"x\n\nHost-Step-After: [oxidized-cred] {self.READ} && "
-                + cr.pin_command("/srv/ox/router.db").replace("p=/srv/ox/router.db && ", ""))
-        assert hs.unsafe_step(step) == ""
-
 
 class TestTheCommitBeingMade:
     def test_the_staged_files_and_the_message_are_read(self, repo, tmp_path_factory):

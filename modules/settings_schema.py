@@ -199,6 +199,8 @@ DEFAULTS: dict = {
     "loki_selector_template": '{host="{ip}"}',
 
     # ── Oxidized ────────────────────────────────────────────────────────────
+    # Read by nothing since Phase 3 retired Oxidized (P3-3): kept declared for one
+    # release so a rollback finds them, then removed with a version bump.
     "oxidized_url":           "",
     "oxidized_username":      "",
     "oxidized_password":      "",
@@ -571,13 +573,10 @@ GUARD_GATING_EMPTY_DEFAULTS = (
     "clab_host",          # verify_startup_file, verify_startup_applies
     "clab_sync_script",   # run_sync
     "yang_push_script",   # the rotation's consumer warning
-    # THE FOURTH, AND WHAT MADE THIS A PATTERN RATHER THAN A LIST. It was
-    # `oxidized_rest_url`, read by `reload_oxidized` and `confirm_fetch` and
-    # by nothing else; collapsing the two keys moved the guard onto the
-    # surviving one, which has the same empty default and therefore the same
-    # property. The deprecated key is NOT listed: it gates nothing now, and a
-    # list that keeps ghosts stops meaning what it says.
-    "oxidized_url",       # oxidized_client() -> reload_oxidized, confirm_fetch
+    # THE FOURTH, AND WHAT MADE THIS A PATTERN RATHER THAN A LIST, was
+    # `oxidized_rest_url`, then `oxidized_url` when the two keys collapsed. Both
+    # are gone from here: Oxidized is retired (Phase 3) and its keys gate
+    # nothing, and a list that keeps ghosts stops meaning what it says.
     "syslog_host",        # onboard.syslog_baseline -> build_plan's refusal
     "kea_ztp_fragment",   # ztp.write_reservations, ztp.posture -> a ztp plan
     "snmp_exporter_config",  # profile_propose.exporter_community -> the profile's SNMP

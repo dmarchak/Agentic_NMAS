@@ -2,9 +2,9 @@
 watched, and announced.
 
 Stage 7.2 (NSOT_STAGE7_PLAN.md, "the rest of 7.2"). Grafana's alert state is
-the first reader; Oxidized freshness, the status bar's integration health and
-C92's reader reuse this module. They inherit its rules by REUSE, not by
-reading the plan, so the rules are written here, where the next reader is
+the first reader; the status bar's integration health and C92's reader reuse
+this module (Oxidized freshness did too, until Phase 3 removed it). They
+inherit its rules by REUSE, not by reading the plan, so the rules are written here, where the next reader is
 built (the operator's point, 2026-09-28). Each rule names the finding that
 produced it.
 
@@ -84,15 +84,15 @@ produced it.
 11. **A CHECK stays live; only a REPORT is cached** (the operator, 2026-09-28,
     on the freshness gate). A report describes the world as of some time, and
     a stored value with its time is the right shape for it. A check guards an
-    action at the moment of acting: the sanitiser's freshness gate compares
-    the exact bytes it is about to write, and no stored value can stand for
+    action at the moment of acting: the sanitiser's freshness gate (removed in
+    Phase 3) compared the exact bytes it was about to write, and no stored value can stand for
     those. Cache everything is the tempting wrong answer, so ask of each new
     reader: is anything DECIDING on this value at the moment it acts? If so,
     that decision reads live, and the reader serves only the ones reading.
 
 12. **A reader's promise is about how fast NMAS NOTICES, never about how fast
-    the source notices the world.** The freshness reader re-reads every 300 s,
-    and Oxidized polls each device every 3600 s: two latencies, and a page
+    the source notices the world.** The freshness reader (removed in Phase 3) re-read
+    every 300 s, and Oxidized polled each device every 3600 s: two latencies, and a page
     must never let the first stand for the second. State both where a person
     reads the value.
 
@@ -228,9 +228,8 @@ def readers() -> list:
     for mod in DECLARED_MODULES:
         __import__(mod)
     with _REGISTRY_MU:
-        # A RETIRED reader is out of the population even when something imported its module
-        # (`/freshness/report` imports the freshness reader for its name): never started,
-        # never a job-health row.
+        # A RETIRED reader is out of the population even when something imported its module:
+        # never started, never a job-health row.
         return [_REGISTRY[k] for k in sorted(_REGISTRY)
                 if getattr(_REGISTRY[k].read, "__module__", "") not in RETIRED]
 
@@ -256,15 +255,9 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).
-RETIRED: dict = {
-    # The operator, 2026-10-08, ahead of Phase 3 (C329, C555, C558): freshness raised "s1:
-    # whether Oxidized's copy is approved cannot be told" right after a good deploy, noise from
-    # a system being retired. Mercury's own drift check reads each device's running config
-    # against its golden (every 30 minutes on the host, measured 2026-10-08), so a change made
-    # outside Mercury is still raised, by it, as "a device differs from its golden".
-    "modules.readers.freshness_reader": "Oxidized freshness: switched off ahead of Phase 3; "
-                                        "the drift check covers a change made outside Mercury",
-}
+#: None now: Oxidized freshness, switched off here on 2026-10-08 (C555), was removed with its
+#: reader in Phase 3; the drift check covers a change made outside Mercury.
+RETIRED: dict = {}
 
 
 # ---------------------------------------------------------------------------

@@ -201,9 +201,6 @@ STAGES = {
         "n/a: a deletion; recovery is the tested backup (P.2)",
         "modules.netbox_guard.record_removal"),
     # ---- Decisions and the queue
-    "freshness.authorise": Stages(
-        "freshness.report", "fingerprint", NO_DEVICE, "n/a: an authorisation expires in 24 h",
-        "modules.nsot.freshness.authorise"),
     "ai_approval_approve": Stages(
         "n/a: approving hands off to the restore or capture preview, where the change is previewed",
         "n/a: the handoff's own confirm binds the hash", NO_DEVICE,
@@ -286,7 +283,6 @@ HISTORY = {
     "device_v2.capture_confirm": ("golden", "measured"),
     "ai_approval_approve": ("approvals",),
     "ai_approval_reject": ("approvals",),
-    "freshness.authorise": ("freshness",),
     "onboard.create": ("intent",),
     "refresh_hostnames": ("golden",),
     "templatize.seed_apply": ("intent",),
@@ -381,6 +377,8 @@ WRITTEN_ELSEWHERE = {
                "templates, a policy (every writer, through repo.commit())",
     "decisions": "a Save All's baseline decision, its commit's Baseline: trailer",
     "updates": "the app's updater (deploy/update), not a device",
+    # Phase 3 removed the freshness gate and its writer; what it recorded stays readable.
+    "freshness": "past authorisations past the retired freshness gate: written by nothing now",
     "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
                      "reveal routes that read devices, Ask the device and Show commands",
 }

@@ -11,7 +11,8 @@ Scopes:
 - ``host``: one installation-wide value (identity, the web server, NetBox's connection, the
   platform and role maps, Proxmox, the AI).
 - ``retiring``: read by nothing at run time; decided 2026-10-04 to retire after checking
-  nothing outside the app reads it, each retirement recorded in CUTOVER (P.8 decision 3).
+  nothing outside the app reads it, each retirement recorded in CUTOVER (P.8 decision 3);
+  Oxidized's keys joined them when Oxidized retired (Phase 3, P3-3).
 - ``dead``: already read by nothing and recorded as such (C171, C155, P.4); never split.
 
 `tests/test_settings_scope.py` holds every declared setting to exactly one row here.
@@ -37,8 +38,6 @@ SCOPES: dict = {
              "prometheus_verify_tls", "prometheus_targets_dir"),
     **_group(NETWORK, "loki", "loki_url", "loki_auth_mode", "loki_username", "loki_password",
              "loki_bearer_token", "loki_verify_tls", "loki_selector_template"),
-    **_group(NETWORK, "oxidized", "oxidized_url", "oxidized_username", "oxidized_password",
-             "oxidized_verify_tls", "oxidized_node_identity", "oxidized_router_db"),
     **_group(NETWORK, "kea", "kea_url", "kea_username", "kea_password", "kea_services",
              "kea_verify_tls", "kea_ztp_fragment", "kea_dhcp4_config"),
     **_group(NETWORK, "topology_service", "topology_service_url", "topology_service_type",
@@ -87,6 +86,12 @@ SCOPES: dict = {
              "collector_syslog_enabled", "monitoring_identity_mode",
              "monitoring_identity_field", "monitoring_prom_label", "monitoring_strip_port",
              "promql_device_up", "promql_cpu", "promql_interface_oper"),
+    # Oxidized is retired (Phase 3, the operator's P3-3, 2026-10-08): its keys are read by
+    # nothing and stay declared for one release, so a rollback to the release before finds
+    # them; the release after removes them with a settings version bump. No longer a
+    # network's group, so no Settings screen draws a card for them.
+    **_group(RETIRING, "oxidized", "oxidized_url", "oxidized_username", "oxidized_password",
+             "oxidized_verify_tls", "oxidized_node_identity", "oxidized_router_db"),
     # ── Already dead, recorded (never split) ─────────────────────────────────────────────
     **_group(DEAD, "dead", "jenkins_step_shell", "wf_run_jenkins",
              "netbox_remove_on_list_delete", "oxidized_rest_url", "grafana_embed_mode",
@@ -99,7 +104,7 @@ SCOPES: dict = {
 #: A group of one not named here is called by its key.
 GROUP_LABELS: dict = {
     "grafana": "Grafana", "grafana_roles": "Grafana dashboards", "prometheus": "Prometheus",
-    "loki": "Loki", "oxidized": "Oxidized", "kea": "Kea",
+    "loki": "Loki", "kea": "Kea",
     "topology_service": "Topology service", "lab": "Lab",
     "monitoring_profile": "Monitoring profile", "s3_archive": "S3 archive",
     "verify_settle_windows": "Verify settle windows", "deploy_max_workers": "Deploy workers",
@@ -117,7 +122,7 @@ GROUP_LABELS: dict = {
 #: (NSOT_P8_DESIGN section 8, step 5) rather than failing every interval.
 URL_KEYS: dict = {
     "grafana": "grafana_url", "prometheus": "prometheus_url", "loki": "loki_url",
-    "oxidized": "oxidized_url", "kea": "kea_url", "topology_service": "topology_service_url",
+    "kea": "kea_url", "topology_service": "topology_service_url",
     "s3_archive": "s3_endpoint",
 }
 

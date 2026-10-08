@@ -70,9 +70,6 @@ def _bodies(v):
         "drift_check_trigger": (200, ("json", {}), "schedules a run; returns a message"),
         "drift_check_sync": (200, ("json", {}),
                              "r1 read NOW differs from its golden: the drift carries both"),
-        "freshness.gate": (409, ("json", {"configs": {"r1": _config_body("Oxi")}}),
-                           "a supplied config that differs from the golden: blocked, with "
-                           "the differing lines"),
         "golden.capture_preview": (202, ("json", {"devices": ["r1"]}),
                                    "starts a job reading r1 NOW; FOLLOWED to its result "
                                    "(JOB_RESULTS): the golden diff and the intent departure"),
@@ -178,7 +175,7 @@ def _bodies(v):
 #: Responses that draw stored config: the masked slot must be in them.
 #: `drift_check_sync` is not among them: it answers with counts and queues
 #: the diff as an approval item, which the GET sweep covers.
-REACHES = {"compare_backups_route", "deploy.plan", "device_v2.capture_start", "freshness.gate",
+REACHES = {"compare_backups_route", "deploy.plan", "device_v2.capture_start",
            "golden.capture_preview", "golden.restore_preview", "templates.preview",
            "templatize.preview_committed_edit"}
 # `netbox_safety.preview_import` LEFT this set in 7.1: its response no longer

@@ -2,12 +2,12 @@
 
 A device boots from its startup configuration, not from what it runs now. Persist saves the running configuration to startup on the device and proves it was saved, so a reload brings the device back as it is, with the credential the tool holds. It changes no configuration and writes nothing in the tool except a record of what the device answered.
 
-![Persist from the device page: the preview reads only the tool's own records and sends nothing; the apply holds the device, sends write memory, reads the startup and running configurations back, and records the outcome where job health reads it. The host chain that a rotation runs adds the lab's Oxidized and startup-file stages after the same save.](diagrams/persist.svg)
+![Persist from the device page: the preview reads only the tool's own records and sends nothing; the apply holds the device, sends write memory, reads the startup and running configurations back, and records the outcome where job health reads it. The host chain that a rotation runs adds the lab's startup-file stages after the same save.](diagrams/persist.svg)
 
 There are two paths that persist a device, and they differ in what they touch:
 
 - **Persist on the device's page** (Actions > Persist on the redesigned page, its card in place of the tab; Persist… on today's page), and `nmas-persist-native` on the host: the device's own save and its read-back, and nothing else. The two pages call the same plan and apply (`/v2/device/<name>/persist` and its confirm, `/persist/preview` and `/persist/apply`). This is the page's subject.
-- **The host chain** (`credential_rotation.persist()`): run after every rotation, from the device's page or `nmas-rotate-credential`, and by `nmas-persist-credential` to finish one. It does the same save first, then updates Oxidized and the lab host's startup file. Those stages are a lab integration; see [the host chain](#the-host-chain).
+- **The host chain** (`credential_rotation.persist()`): run after every rotation, from the device's page or `nmas-rotate-credential`, and by `nmas-persist-credential` to finish one. It does the same save first, then updates the lab host's startup file. Those stages are a lab integration; see [the host chain](#the-host-chain).
 
 ## The preview
 

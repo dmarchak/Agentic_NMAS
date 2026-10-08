@@ -224,31 +224,3 @@ CARD = "document.querySelector('#device-op')"
 SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
 
 
-HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                      "scripts", "nmas-oxidized-cred")
-#: router.db before: r4's and r5's rows, and a device no list manages.
-ROUTER_DB = ["192.0.2.14:ios:admin:Pw1", "192.0.2.15:ios:admin:Pw2", "192.0.2.99:ios:admin:Pw3"]
-
-
-@pytest.fixture
-def oxidized(monkeypatch, tmp_path):
-    """Oxidized configured, its router.db a temp file, and THE helper script run on it: only
-    `sudo` and the install check are stood in for (C398)."""
-    import subprocess
-    import sys
-    from modules.nsot import credential_rotation as CR
-
-    db = tmp_path / "router.db"
-    db.write_text("\n".join(ROUTER_DB) + "\n", encoding="utf-8")
-    calls = []
-
-    def run(flags, stdin, router_db=""):
-        calls.append(list(flags))
-        p = subprocess.run([sys.executable, HELPER, "--file", str(db), *flags],
-                           input=stdin, capture_output=True, text=True)
-        return json.loads(p.stdout or "{}")
-    monkeypatch.setattr(CR, "oxidized_managed", lambda: True)
-    monkeypatch.setattr(CR, "_run_helper", run)
-    rows = lambda: [l for l in db.read_text(encoding="utf-8").splitlines() if l.strip()]  # noqa: E731
-    return {"db": db, "rows": rows, "calls": calls}
-

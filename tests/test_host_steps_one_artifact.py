@@ -41,7 +41,6 @@ def world(tmp_path, monkeypatch):
     """A tool with Oxidized configured, its router.db setting, and the helper's pin written
     as a host step writes it (root-owned is stood in for: a test cannot chown)."""
     from modules import config, host_steps
-    from modules.nsot import credential_rotation as cr
 
     monkeypatch.setattr(host_steps, "DONE", str(tmp_path / "done.jsonl"))
     settings = tmp_path / "user_settings.json"
@@ -62,7 +61,6 @@ def world(tmp_path, monkeypatch):
         fields[4] = 0                                   # st_uid: root's
         return os.stat_result(fields)
     monkeypatch.setattr(os, "lstat", lstat)
-    monkeypatch.setattr(cr, "HELPER_PIN", str(pin))
     # A NEW helper release: the installed copy is not this release's.
     monkeypatch.setitem(host_steps.CHECKS, "oxidized-cred",
                         lambda root: {"state": "not_done", "detail": "the installed helper "

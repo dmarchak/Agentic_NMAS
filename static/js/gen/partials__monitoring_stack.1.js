@@ -1,4 +1,4 @@
-const STACK_TOOLS = ['netbox', 'prometheus', 'loki', 'oxidized', 'kea', 'grafana'];
+const STACK_TOOLS = ['netbox', 'prometheus', 'loki', 'kea', 'grafana'];
 
 function _stackEscape(text) {
   const d = document.createElement('div');

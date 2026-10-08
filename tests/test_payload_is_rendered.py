@@ -108,7 +108,7 @@ RENDERS = {
                                            "rollback_source", "deploy_source",
                                            "baseline_source", "authorisation_source",
                                            "grafana_source", "_member", "_onset",
-                                           "_incidents", "freshness_source",
+                                           "_incidents",
                                            "integrations_source", "ci_source",
                                            "reachability_source", "_without_acknowledged")}),
     "GET /onboard/pending": Render(

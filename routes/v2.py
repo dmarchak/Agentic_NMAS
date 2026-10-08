@@ -273,7 +273,7 @@ def _history_timeline(ref, f, members) -> dict:
 def _history_ctx(request) -> dict:
     from modules import history_sources as HS
     from modules import reader_job
-    from modules.nsot import freshness, listref
+    from modules.nsot import listref
 
     ref = listref.active()
     tab = request.args.get("tab", "timeline")
@@ -295,7 +295,7 @@ def _history_ctx(request) -> dict:
         ctx["b_at"] = good.get("value_at")
     else:
         try:
-            rows = freshness.authorisations(ref.name, include_expired=True)
+            rows = HS.past_authorisations(ref.name)
             ctx["auth"] = {"rows": list(reversed(rows)), "error": ""}
         except Exception as exc:                          # noqa: BLE001
             ctx["auth"] = {"rows": [], "error": f"{type(exc).__name__}: {exc}"}
