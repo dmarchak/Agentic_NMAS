@@ -288,3 +288,78 @@ appends them, so a rollback loses nothing. That is why the file stays for a rele
 (a fixture from a real capture, masked); two identical lines kept as two; a differing line
 refused naming both hashes; the check failing on a moved count, a changed line and a merged
 difference (each shown able to fail); `write` on PostgreSQL inserting a batch atomically.
+
+## 8. The app's interpreter, a virtualenv built from the lock (PLANNED right after receipts; DRAFT, 2026-10-09)
+
+**Why, and why now** (the operator, 2026-10-09, moving the boto3 decision's option C from a
+long-term target to here): the app's interpreter imports from three installers. `flask-app`
+runs `/usr/bin/python3` as the operator's user with the user site enabled, so it searches the
+user's pip folder, then a root pip folder in `/usr/local`, then apt's (C606: 42 user-level
+packages, among them anthropic, pydantic, httpx and requests; 10 shadowing an apt copy; 4 root
+pip packages). The host is not really apt-managed for Mercury, and `requirements.lock` already
+names exactly what it runs.
+
+**Measured for it, read only on the host (via LAN):** `flask-app`'s unit is
+`ExecStart=/usr/bin/python3 <checkout>/app.py`, `User=` the operator, no environment; `python3-venv`
+and `ensurepip` are installed; neither the updater nor `nmas-deploy` runs pip; 68 of the lock's
+69 pins equal what the app imports today, and the 69th, cffi 1.16.0, is apt's `_cffi_backend`
+1.16.0 with no cffi metadata.
+
+**Every entry point that runs Mercury's code** (the operator's review, 2026-10-09: `flask-app`
+is not the only one, and a tool on another interpreter than the app's imports other versions,
+the split this item ends). Surveyed read only on the host (via LAN): every systemd unit and
+timer, root's helpers, cron (none) and user units (none); and in the repository, every file
+with a python shebang (app.py and 79 scripts: 57 import Mercury's modules, 3 a locked library
+only (PyYAML or packaging), 19 the standard library only) and every place the code starts
+Python itself.
+
+| Entry point | How it finds its interpreter | Decision |
+|---|---|---|
+| `flask-app.service` (app.py) | names `/usr/bin/python3` in ExecStart | **Switched**: its own drop-in sets ExecStart to the venv's interpreter, and PATH, so anything the app starts that names `python3` finds the venv's too |
+| `nmas-heartbeat-check` (nmas-heartbeat-rules), `nmas-telemetry-check` (nmas-telemetry-rules), `nmas-startup-check`, `nmas-ztp-responder`: Mercury's modules, PyYAML, requests | `#!/usr/bin/env python3`, so the unit's PATH | **Switched**: one drop-in, `nmas-.service.d/mercury-venv.conf`, sets PATH with the venv first. systemd applies a `<prefix>-.service.d/` folder to every unit whose name begins with that prefix (systemd.unit(5)), a template's instances and units installed later included, so no list of units is kept to drift |
+| `nmas-job-finished@`, the NetBox backup and the NetBox restore test: the standard library only | the same | **Switched** by the same drop-in. They import nothing locked today; one rule for every `nmas-` unit keeps a script that later imports a module on the app's interpreter without anyone remembering to move it |
+| `nmas-update.service`: root's `/usr/local/sbin/nmas-update`, loading `/usr/local/lib/nmas-update/nmas-deploy`'s gate (PyYAML, reading ci.yml) | the same, as root | **Switched** by the same drop-in. Considered keeping it on the system interpreter so the updater stays independent of the venv; not kept, because a broken venv is repaired by step 3 (a host step), never by the updater, and kept it would import apt's PyYAML 6.0.1 where the venv imports the lock's (equal today, measured; free to drift once the lock moves). The venv is root-owned, so root runs nothing the service user can write |
+| A script a person runs on the host (`nmas-deploy`, `nmas-tier2-probe`, `nmas-breakglass`, `nmas-persist-native`, `nmas-records-migrate` once it exists, and the rest of `scripts/`), and each `python3 scripts/...` command the app prints (Job health's startup-check and break-glass rows, Retire's break-glass export) | a login shell's PATH | **Switched**: `/etc/profile.d/mercury-venv.sh` puts the venv first in every login shell (an SSH session is one). Measured today: a login shell's `python3` is `/usr/bin/python3`, and no profile file names python. Limit: a non-login interactive shell does not read profile.d; it keeps `/usr/bin/python3` |
+| `scripts/nmas-lock-from-host` | whichever `python3` started it | **Reads the app's interpreter**: it reads `flask-app`'s ExecStart from systemd and re-runs itself under that interpreter when another started it, saying so on stderr (refusing, rather than looping, if the re-run still reports another prefix). Before the switch that is `/usr/bin/python3`, after it the venv. `tests/test_requirements_lock.py` holds the decision against the host's captured ExecStart |
+| `rcn-topology.service` (deploy/topology/rcn-topology.py) | names `/usr/bin/python3` in ExecStart | **Kept on /usr/bin/python3**: lab tooling, not Mercury; it imports no Mercury module, and needs networkx (from the user's pip folder, measured), which the lock does not carry. Neither drop-in nor profile.d reaches it |
+| The host-step scripts' own `/usr/bin/python3 -c` lines (6a's psycopg check, venv-1's comparison) | name `/usr/bin/python3` | **Kept**: they measure the system interpreter on purpose |
+| `clab-sync.service`, the lab sync scripts, the app's `run_sync` | bash; no Python | Not Python |
+| The laptop's tools (the gate, the hooks, `nmas-host`, `nmas-config-read`) | the laptop | Not on the host: the gate runs CI's interpreter |
+
+**The steps, drafted as the operator's host-step scripts, NOT to run until approved:**
+
+1. `scripts/host-steps/venv-1-build.sh` builds `/opt/mercury-venv` (root-owned, readable; never
+   in the live checkout) with `pip install --no-deps -r requirements.lock`, CI's command, and
+   proves it: Python 3.12.3; nothing from outside it (no system or user site); every pin
+   installed at its version; every pinned distribution at the version the app imports TODAY
+   (the system interpreter as the app's user, against the venv's; cffi by its backend's
+   version); psycopg loading its libpq; and every Python program in the table (app.py, every
+   python-shebang script in the checkout, the updater's two root copies) importing in the venv
+   everything it imports under today's interpreter, each import at any depth of its code
+   imported for real, writing no bytecode into the checkout. It refuses while anything step 2
+   installs exists (C607), and changes nothing that runs.
+2. `scripts/host-steps/venv-2-switch.sh` renders the two drop-ins and the profile file into one
+   fresh folder and installs them by name (no unit file edited), then restarts the app and the
+   ZTP responder if it is running. Before: no unit sets its own PATH (the drop-ins' PATH would
+   replace it); systemd's PATH is read, never typed. It proves, for `flask-app` and every
+   `nmas-` service on the host (listed by systemd, not by this document): each takes the venv's
+   PATH; `python3` on each unit's own PATH, read back from systemd, is the venv's; every running
+   unit's process has the venv first on its PATH; the app's process is the venv's interpreter
+   and answers `/health`. It runs the heartbeat and telemetry checks once (the runs their hourly
+   timers make: Loki and Prometheus reads, no device session; measured 13 s and under 1 s) and
+   proves both, and the job-finished notices they start, succeed, each read as started after
+   the script's start. The startup check (SSH to every device), the NetBox backup and the
+   restore test are left to their timers, read in Job health; the updater's first run from the
+   venv is the next Update. Last, a login shell's `python3` is the venv's.
+3. `scripts/host-steps/venv-3-rollback.sh`, only if needed: removes the three files by name and
+   restarts the app (and the ZTP responder if running), proving no unit's environment names the
+   venv, `python3` on systemd's PATH is `/usr/bin`'s again, the app runs and answers from
+   `/usr/bin/python3`, no running unit's process has the venv on its PATH, and a login shell's
+   `python3` is `/usr/bin/python3`. The venv stays, unused.
+
+**After it:** the lock is regenerated on the host from the venv's interpreter (the script finds
+it itself). A release that changes the lock has no safe path yet (C607): step 1 cannot rebuild
+the venv in place under running units (it now refuses), and a new dependency cannot be read
+from a venv that holds only the lock. Both are designed before the first such release. Not
+changed by this item: the user and root pip folders (removing them is a later decision, once
+nothing reads them; rcn-topology still does).

@@ -9,6 +9,14 @@ Run it ON THE DEPLOYMENT HOST, from the checkout, and commit what it prints:
 Read-only: it writes nothing, and prints the lock on stdout and its findings
 on stderr.
 
+The lock is what the APP imports, so it is read by the interpreter flask-app
+runs, whichever `python3` started this: the unit's ExecStart is read from
+systemd, and when it names another interpreter this script re-runs itself
+under that one, saying so on stderr. Before Phase 4 section 8's switch that is
+/usr/bin/python3; after it, Mercury's virtualenv (the operator, 2026-10-09).
+Where the unit cannot be read (a laptop, CI) it reads the interpreter running
+it, and says that too.
+
 The names are the current lock's names, plus every third-party module the
 code imports (an AST scan of app.py, modules/, routes/ and scripts/), mapped
 to distributions through IMPORT_TO_DIST. Then it adds this machine's
@@ -206,7 +214,49 @@ def closure(names):
     return seen, sorted(missing)
 
 
+#: The unit whose interpreter the lock describes.
+APP_UNIT = "flask-app.service"
+#: Set on the re-run: an interpreter still reporting another prefix is refused, never looped.
+REEXEC = "NMAS_LOCK_FROM_APP_INTERPRETER"
+
+
+def app_interpreter(show=None):
+    """(path, why): the program APP_UNIT's ExecStart runs, read from systemd (*show* is
+    `systemctl show -p ExecStart --value`'s output, for tests). path is None when it cannot be
+    read, and why says why."""
+    if show is None:
+        show = _run("systemctl", "show", "-p", "ExecStart", "--value", APP_UNIT)
+    m = re.search(r"\bpath=(\S+)", show)
+    if not m:
+        return None, f"{APP_UNIT}'s ExecStart could not be read on this machine"
+    return m.group(1), ""
+
+
+def interpreter_to_read(path, prefix=None):
+    """The interpreter to re-run under, or None when the running one is it. An interpreter's
+    prefix is the folder above its bin/: /usr for /usr/bin/python3, the venv for
+    <venv>/bin/python."""
+    prefix = sys.prefix if prefix is None else prefix
+    return None if os.path.dirname(os.path.dirname(path)) == prefix else path
+
+
 def main() -> int:
+    path, why = app_interpreter()
+    target = interpreter_to_read(path) if path else None
+    if path is None:
+        print(f"read from the interpreter running this, {sys.executable}: {why}", file=sys.stderr)
+    elif target and os.environ.get(REEXEC):
+        print(f"REFUSED: re-run under {APP_UNIT}'s interpreter {target}, which reports prefix "
+              f"{sys.prefix}, not {os.path.dirname(os.path.dirname(target))}", file=sys.stderr)
+        return 2
+    elif target:
+        print(f"{APP_UNIT} runs {target}, and this is {sys.executable} (prefix {sys.prefix}): "
+              f"re-running under {target}", file=sys.stderr, flush=True)
+        os.execve(target, [target, os.path.abspath(__file__), *sys.argv[1:]],
+                  {**os.environ, REEXEC: "1"})
+    else:
+        print(f"read from {APP_UNIT}'s interpreter, {sys.executable} (prefix {sys.prefix})",
+              file=sys.stderr)
     imported = static_imports()
     unmapped = [n for n in imported if n not in IMPORT_TO_DIST]
     if unmapped:

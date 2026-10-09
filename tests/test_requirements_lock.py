@@ -68,3 +68,32 @@ def test_the_pair_that_dropped_a_message_is_not_what_ci_installs():
     """C35: the lock is the host's pair, never requirements.txt's."""
     pins = _pins()
     assert pins["flask-socketio"] == "5.3.6" and pins["python-socketio"] == "5.7.2"
+
+
+# Captured from `systemctl show -p ExecStart --value flask-app.service` on the host (2026-10-09),
+# the checkout's path replaced; the venv's line is the same unit after Phase 4 section 8's switch.
+SYSTEM_EXECSTART = ("{ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 <checkout>/app.py ; "
+                    "ignore_errors=no ; start_time=[Fri 2026-10-09 04:44:34 UTC] ; "
+                    "stop_time=[n/a] ; pid=255576 ; code=(null) ; status=0/0 }")
+VENV_EXECSTART = SYSTEM_EXECSTART.replace("/usr/bin/python3", "/opt/mercury-venv/bin/python")
+
+
+def test_the_lock_is_read_by_the_interpreter_the_app_runs():
+    """Phase 4 section 8 (the operator, 2026-10-09): after the switch the lock must be read from
+    the venv, so the script re-runs itself under flask-app's interpreter, whichever ran it."""
+    lock = _script()
+    assert lock.app_interpreter(SYSTEM_EXECSTART) == ("/usr/bin/python3", "")
+    assert lock.app_interpreter(VENV_EXECSTART) == ("/opt/mercury-venv/bin/python", "")
+    # Started by a login shell's python3 before the switch, or the venv's after it: no re-run.
+    assert lock.interpreter_to_read("/usr/bin/python3", "/usr") is None
+    assert lock.interpreter_to_read("/opt/mercury-venv/bin/python", "/opt/mercury-venv") is None
+    # Started by /usr/bin/python3 after the switch: re-run under the venv's.
+    assert (lock.interpreter_to_read("/opt/mercury-venv/bin/python", "/usr")
+            == "/opt/mercury-venv/bin/python")
+    # And the reverse, the venv's python3 after a rollback: re-run under the system's.
+    assert lock.interpreter_to_read("/usr/bin/python3", "/opt/mercury-venv") == "/usr/bin/python3"
+
+
+def test_a_machine_without_the_unit_says_which_interpreter_it_read():
+    path, why = _script().app_interpreter("")
+    assert path is None and "flask-app.service" in why
