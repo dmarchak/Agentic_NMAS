@@ -1024,6 +1024,21 @@ select { max-width: 100%; }
   box-sizing: border-box; }
 .set-form-note { grid-column: 1 / -1; margin: 4px 0 0; }
 .set-table td { vertical-align: top; }
+/* F2, the records database card: a label beside a value that is not an input, the Test's
+   checks in order, and Replace's order of steps. */
+.set-label { font-size: 13px; color: var(--ink-2); }
+/* Installation's cards, one column up to board F's 820 px. */
+.set-cards-one { grid-template-columns: minmax(0, 820px); }
+.set-meta { margin: -4px 0 8px; }
+/* A form's foot is a row: `.set-form > div` (each field's column) out-ranked `.set-foot` and
+   stacked Save, its link and Test down the middle (seen 2026-10-09, F2's card and A's). */
+.set-form > .set-foot { flex-direction: row; align-items: center; justify-content: flex-start; }
+.set-form > div:has(> .badge) { flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
+.set-checks { margin-top: 12px; }
+.set-steps, .set-order { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column;
+  gap: 5px; font-size: 13px; }
+.set-steps li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.set-order { list-style: decimal; padding-left: 20px; }
 @media (max-width: 640px) {
   .scope-item { border-right: none; border-bottom: 1px solid var(--line-2); flex: 1 1 100%; }
   .scope-menu { left: 0; right: auto; }

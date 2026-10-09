@@ -70,6 +70,8 @@ PAGES = (
     ("privileged", "Run a privileged command (Tier 2)", H, "how-it-works/privileged.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
      "how-it-works/settings-switch.md"),
+    ("records-database", "The records database: save, test, replace its password", H,
+     "how-it-works/records-database.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
     ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
@@ -141,6 +143,9 @@ OPERATIONS = {
     "monitoring-templates": ("modules.pipeline", "STAGE_NAMES"),
     "update": ("modules.update_op", "STEPS"),
     "settings-switch": ("modules.list_settings", "SWITCH_STEPS"),
+    "records-database": ("modules.installation_settings", "SAVE_STEPS"),
+    "records-database-test": ("modules.records_db", "TEST_STEPS"),
+    "records-database-replace": ("modules.installation_settings", "REPLACE_STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),
@@ -151,7 +156,9 @@ OPERATIONS = {
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
-OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard"}
+OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
+                  "records-database-test": "records-database",
+                  "records-database-replace": "records-database"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

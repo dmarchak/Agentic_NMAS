@@ -1050,6 +1050,35 @@ def settings_switch():
     ])
 
 
+def records_database():
+    return svg(470, (
+        "The records database card. Save checks the host, port, database and role, writes them "
+        "to the installation's settings and appends who, when and which fields to the "
+        "installation's settings record; it never opens the database, so it works with the "
+        "database down. Test asks the database six things in order and names the first that "
+        "fails, and its answer is kept. Replace stores the new password as a secret, records "
+        "it and tests it, after the role's password was changed on the server by the host "
+        "step postgres-rotate.sh. No device is contacted."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE DATABASE"),
+        band(20, 160, "Save · the database is not opened"),
+        person(14, 44, 186, 30, "You save the card"), num(14, 44, 1),
+        store(14, 84, 186, 34, "The installation's settings", "every network"), num(14, 84, 2),
+        repo(14, 128, 186, 40, "Its settings record", "who, when, fields"), num(14, 128, 3),
+        band(188, 112, "Test · six checks"),
+        doc("box", 14, 212, 186, 34, "Signs in, PostgreSQL 18", "owner, not superuser"),
+        doc("box", 14, 254, 186, 34, "Loopback, a temporary row", "rolled back, kept: none"),
+        store(232, 212, 156, 44, "mercury-postgres", "127.0.0.1:5433"),
+        band(308, 150, "Replace · the server first"),
+        person(232, 332, 156, 34, "postgres-rotate.sh"),
+        num(232, 332, 1),
+        store(14, 332, 186, 36, "The secrets store", "the same password"), num(14, 332, 2),
+        _down(107, 370, 388),
+        doc("box", 14, 390, 186, 30, "Recorded, then the Test", "both sides agree"),
+        num(14, 390, 3),
+        nosend(310, 420, ("no device", "is contacted")),
+    ])
+
+
 def publish_remote():
     return svg(500, (
         "Publishing the record to the remote. Every commit hands itself to the push hook, which "
@@ -1206,6 +1235,7 @@ DIAGRAMS = {
     "monitoring-templates": monitoring_templates,
     "update": update,
     "settings-switch": settings_switch,
+    "records-database": records_database,
     "edit-intent": edit_intent,
     "approve-template": approve_template,
     "bring-template": bring_template,

@@ -38,6 +38,85 @@ def index():
     return network(listref.active().name)
 
 
+@bp.route("/installation", methods=["GET"])
+def installation():
+    """Board F: Settings › Installation, the installation's own settings for every network. Its
+    Connections tab holds the Records database card (F2); tabs not yet drawn here say so and
+    link to today's Settings page."""
+    from modules import installation_settings as I
+    from modules import settings_page
+    from modules.nsot import listref
+
+    tab = request.args.get("tab") or "connections"
+    if tab not in dict(I.TABS):
+        tab = "connections"
+    v = {"scope": dict(settings_page.scope_bar(listref.active().name), is_installation=True),
+         "mode_words": ""}
+    return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
+                 v=v, r=I.records_card())
+
+
+def _records(status: int = 200, **ctx):
+    from modules import installation_settings as I
+
+    return _fragment("v2/_records_db_card.html", status, r=I.records_card(), **ctx)
+
+
+@bp.route("/installation/records", methods=["GET"])
+def records_card():
+    """F2's card, drawn again (Cancel, and a page's refresh after a change)."""
+    return _records()
+
+
+@bp.route("/installation/records/save", methods=["POST"])
+def records_save():
+    """F2: save the card's fields as sent, recorded with the verified person and the fields'
+    names. Never opens the database, so it works with the database down or the password
+    wrong (the operator's condition 1)."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    form = {k: request.form.get(k) for k in I.FIELDS}
+    try:
+        saved = I.save(form, identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _records(409, refused=str(exc))
+    return _records(saved=saved)
+
+
+@bp.route("/installation/records/test", methods=["POST"])
+def records_test():
+    """F2: the Test, its six checks named (condition 2); the answer kept and drawn."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    return _records(tested=I.test(identity.request_actor(), _verified()))
+
+
+@bp.route("/installation/records/replace", methods=["GET"])
+def records_replace_form():
+    """F2 state 4: Replace… opens in place of the card, the rotation order first."""
+    from modules import installation_settings as I
+
+    return _fragment("v2/_records_db_replace.html", r=I.records_card())
+
+
+@bp.route("/installation/records/replace", methods=["POST"])
+def records_replace():
+    """F2 state 4: store the new password as a secret, record it, then Test (condition 3: the
+    server was changed first, by postgres-rotate.sh). The value is never drawn back."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    try:
+        out = I.replace_password(request.form.get("records_db_password") or "",
+                                 identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _fragment("v2/_records_db_replace.html", 409, r=I.records_card(),
+                         refused=str(exc))
+    return _records(replaced=out, tested=out["tested"])
+
+
 @bp.route("/network/<list_name>", methods=["GET"])
 def network(list_name):
     from modules import settings_page

@@ -3,7 +3,8 @@ to 9 minutes, 93% of it the tests).
 
 - Every test file runs in exactly one job, found by its name (`tests/test_*.py`), so a new
   file runs the moment it exists; every file that starts a real browser is in the browser job.
-- The jobs share the measured work (tests/shard_weights.json) within 15% of each other, and the
+- The jobs share the measured work (tests/shard_weights.json) within 15% of each other (the
+  browser job heavier only when it holds nothing but its browser files, C614), and the
   weights know most of the files (a stale map is said, not silently unbalanced).
 - The same input gives the same jobs.
 """
@@ -50,8 +51,18 @@ def test_the_jobs_share_the_work_and_the_weights_are_current():
     assert len(known) >= 0.9 * len(files), (
         f"{len(files) - len(known)} test files have no measured weight: measure again "
         "(--durations=0) and rewrite tests/shard_weights.json")
-    loads = {s: sum(w.get(f, 0) for f in fs) for s, fs in m.assign().items()}
-    assert max(loads.values()) <= 1.15 * min(loads.values()), loads
+    got = m.assign()
+    loads = {s: sum(w.get(f, 0) for f in fs) for s, fs in got.items()}
+    # a and b share the rest within 15%. The browser job may weigh more only when it holds its
+    # browser files and nothing else: they cannot be split (the gate runs only that job
+    # unconfined), and since 2026-10-09 they weigh 40% of the suite (C614), so the browser job
+    # is the long pole by construction, not by the assignment.
+    assert max(loads["a"], loads["b"]) <= 1.15 * min(loads["a"], loads["b"]), loads
+    if loads["browser"] > 1.15 * min(loads["a"], loads["b"]):
+        assert all(m.uses_a_browser(f) for f in got["browser"]), (
+            "the browser job is heavier and still takes other files", loads)
+    else:
+        assert max(loads.values()) <= 1.15 * min(loads.values()), loads
 
 
 def test_the_same_input_gives_the_same_jobs():

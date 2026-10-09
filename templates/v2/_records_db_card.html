@@ -1,0 +1,76 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Board F2 (approved 2026-10-09): Settings › Installation › Connections, the records database
+    card. Off (no host: every store on its files), not tested, answering (the last Test passed,
+    each check named) or not answering (the check that failed named, the rest not tried); a
+    Save or Replace after the last Test says so. Save and Test answer with the database down or
+    the password wrong (the operator's condition 1); Replace… opens the rotation order in place
+    of the card (state 4). From modules/installation_settings.records_card. -#}
+{%- set c = r.config -%}
+{%- set WORDS = {'off': ('off: every store on its files', 'neutral'),
+                 'untested': ('not tested yet', 'warn'),
+                 'answering': ('answering', 'ok'),
+                 'failing': ('not answering', 'danger')} -%}
+<section class="card set-card" id="records-db" aria-labelledby="h-records-db">
+  <div class="card-head"><h2 id="h-records-db">Records database</h2>{{ badge(WORDS[r.state][0], WORDS[r.state][1]) }}
+    {%- if r.stale %}{{ badge('changed since that Test: Test again', 'warn') }}{% endif %}</div>
+  {%- if r.state in ('answering', 'failing') %}
+  <p class="muted small set-meta">{% if r.state == 'answering' and r.version %}{{ r.version }} · {% endif %}tested {{ stamp(r.test.at_iso) }} by {{ r.test.actor_label }}</p>
+  {%- endif %}
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not saved:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if saved %}
+  <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
+    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.written | length }} field{{ '' if saved.written | length == 1 else 's' }} ({{ saved.written | join(', ') }}), in the installation's settings for every network. Recorded in the installation's settings record, a file, never in the database it configures.
+    {%- if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</div></div>
+  {%- endif %}
+  {%- if replaced %}
+  <div class="notice notice-{{ 'muted' if replaced.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    <strong>Password replaced</strong> by {{ replaced.actor_label }} {{ stamp(replaced.at_iso) }}: stored in the secrets store, never shown again{% if not replaced.recorded %}, and its record could not be written: {{ replaced.record_error }}{% endif %}. Its Test is below.</div></div>
+  {%- endif %}
+  {%- if tested %}
+  <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>
+    <strong>Test {{ 'passed' if tested.ok else 'failed' }}</strong> {{ stamp(tested.at_iso) }}{% if not tested.ok %}: {{ tested.error }}{% endif %}.
+    {%- if not tested.kept %} <strong>Its answer could not be kept</strong> ({{ tested.keep_error }}): this card shows it now, and not after a reload.{% endif %}</div></div>
+  {%- endif %}
+  {%- if r.state == 'off' %}
+  <p class="muted small">Mercury's records stay on files, as today: nothing moves until a store is switched to this database (receipts first). Set a host, a password with Replace…, then Test.</p>
+  {%- endif %}
+  <form class="set-form" id="form-records-db" method="post" action="{{ url_for('settings_v2.records_save') }}"
+        hx-post="{{ url_for('settings_v2.records_save') }}" hx-target="#records-db" hx-swap="outerHTML">
+    <label for="f-records-host">Host</label>
+    <div><input id="f-records-host" name="records_db_host" class="mono" type="text" value="{{ c.host }}" autocomplete="off" placeholder="empty: off, every store on its files"></div>
+    <label for="f-records-port">Port</label>
+    <div><input id="f-records-port" name="records_db_port" class="mono" type="number" value="{{ c.port }}" autocomplete="off"></div>
+    <label for="f-records-name">Database</label>
+    <div><input id="f-records-name" name="records_db_name" class="mono" type="text" value="{{ c.name }}" autocomplete="off"></div>
+    <label for="f-records-user">Role</label>
+    <div><input id="f-records-user" name="records_db_user" class="mono" type="text" value="{{ c.user }}" autocomplete="off"></div>
+    <span class="set-label">Password</span>
+    <div>{{ badge('set' if c.password_set else 'not set', 'neutral' if c.password_set else 'warn') }}
+      <span class="op-act"><a class="btn btn-small" data-op="records-database" href="{{ url_for('settings_v2.records_replace_form') }}" hx-get="{{ url_for('settings_v2.records_replace_form') }}" hx-target="#records-db" hx-swap="outerHTML" title="Opens the rotation order: nothing is replaced until you enter the password">Replace…</a>{{ how('records-database', 'replace', compact=True, op='replacing the password') }}</span></div>
+    <span class="set-label">Stores on it</span>
+    <div>{% if r.stores %}{{ r.stores | join(', ') }} <span class="muted small">· the rest still on files</span>{% else %}<span class="muted">none yet: every store on its files</span>{% endif %}</div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('records-database', 'save', op='saving the records database') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_test') }}" hx-target="#records-db" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('records-database', 'test', compact=True, op='testing the records database') }}</span>
+      <span class="muted small">Save works with the database down or the password wrong: the change is recorded in the installation's settings record, a file, as you, never in the database it configures.{% if not c.host or not c.password_set %} Test needs a host and a password.{% endif %}</span>
+    </div>
+  </form>
+  {%- if r.steps %}
+  <div class="set-checks">
+    <p class="set-label">Test: what host step 6a made, {{ stamp(r.test.at_iso) }}</p>
+    <ol class="set-steps">
+      {%- for s in r.steps %}
+      <li>{{ badge({'pass': 'pass', 'fail': 'FAILS', 'not_tried': 'not tried'}[s.state], {'pass': 'ok', 'fail': 'danger', 'not_tried': 'neutral'}[s.state]) }} <span>{{ s.words }}{% if s.detail %}: {{ s.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ol>
+  </div>
+  {%- endif %}
+  {%- if r.state == 'failing' and r.stores %}
+  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>{{ r.stores | join(', ') }} {{ 'is' if r.stores | length == 1 else 'are' }} switched to this database, and it does not answer: what they write cannot be written. Needs attention shows it until the Test passes.</span></p>
+  {%- endif %}
+  {%- if r.test_unreadable %}<p class="muted small warn-text">The last Test's answer could not be read ({{ r.test.error }}): Test again.</p>{% endif %}
+  {%- if r.record_unreadable %}<p class="muted small warn-text">The installation's settings record could not be read, so whether a change came after the last Test is not known.</p>{% endif %}
+</section>

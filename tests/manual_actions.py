@@ -72,6 +72,7 @@ NOT_AN_OPERATION = {
     ("_breakglass_check.html", "Close"): "closes the check, opening nothing",
     ("_breakglass_done.html", "Close"): "puts back the record's card, recording nothing",
     ("_breakglass_export.html", "Cancel"): "closes the export, building nothing",
+    ("_records_db_replace.html", "Cancel"): "puts the records database card back, replacing nothing",
     ("_breakglass_export.html", "Preview it again"): "reads the export's preview again: a read",
     ("_coverage.html", "Clear"): "unticks every device in Coverage's selection, recording nothing",
     ("_apply_preview.html", "Earlier"): "moves a device earlier in the rollout order the confirm carries",

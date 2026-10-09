@@ -1,0 +1,27 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- Board F2 state 4 (approved 2026-10-09): Replace… the records database password, in place of
+    the card. The order first (the operator's condition 3): the server, by the host step
+    postgres-rotate.sh, then here, then the Test that proves both sides agree. The value is
+    never drawn back. -#}
+<section class="card set-card" id="records-db" aria-labelledby="h-records-db">
+  <div class="card-head"><h2 id="h-records-db">Replace the records database password</h2>
+    <a class="btn btn-small" href="{{ url_for('settings_v2.installation') }}" hx-get="{{ url_for('settings_v2.records_card') }}" hx-target="#records-db" hx-swap="outerHTML">Cancel</a></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not replaced:</strong> {{ refused }}. The password Mercury holds is unchanged.</div></div>
+  {%- endif %}
+  <p class="set-label">In this order</p>
+  <ol class="set-order">
+    <li><strong>On the server first:</strong> change the role's password with the host step <span class="mono">scripts/host-steps/postgres-rotate.sh</span> (it prompts for the new one, hidden, and proves it signs in). Until then the old password is still the one that works.</li>
+    <li><strong>Then here:</strong> enter the same new password and Replace. Its Test runs at once: passing is the proof both sides agree.</li>
+  </ol>
+  <form class="set-form" method="post" action="{{ url_for('settings_v2.records_replace') }}"
+        hx-post="{{ url_for('settings_v2.records_replace') }}" hx-target="#records-db" hx-swap="outerHTML">
+    <label for="f-records-password">New password</label>
+    <div><input id="f-records-password" name="records_db_password" type="password" value="" autocomplete="new-password" aria-describedby="records-password-rule">
+      <span class="set-origin" id="records-password-rule">{{ r.rule_words }}</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('records-database', 'replace', compact=True, op='replacing the password') }}</span>
+      <span class="muted small">Replaced here first, Mercury would stop reaching its records until the server matched. The secret is stored in the secrets store and never shown again.</span>
+    </div>
+  </form>
+</section>

@@ -101,6 +101,13 @@ SIGNED_OFF = {
                                     "bar and picker (H). Not yet: Installation (F), G's warning "
                                     "on a Default change, board I's creation form (the v1 gap "
                                     "the operator accepted)"),
+    "settings_installation.html": ("2026-10-09", "Settings › Installation: board F (approved "
+                                   "2026-10-05) with board F2, its records database card "
+                                   "(approved 2026-10-09 with the operator's three conditions). "
+                                   "Built: the page, its tabs and the Connections tab's Records "
+                                   "database card (off, tested, down, Replace). Not yet: the "
+                                   "NetBox, Proxmox and Commit author cards and the other five "
+                                   "tabs, each said on the page and linked to today's"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),

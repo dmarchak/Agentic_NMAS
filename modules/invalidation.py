@@ -238,6 +238,10 @@ DECLARED = {
     "settings_v2.group_switch": ("settings",),
     "settings_v2.mode_switch": ("settings",),
     "settings_v2.group_save": ("settings",),
+    "settings_v2.records_save": ("settings",),
+    # The Test keeps its answer, which the card draws for every viewer (board F2).
+    "settings_v2.records_test": ("settings",),
+    "settings_v2.records_replace": ("settings",),
     "identity.ratify_setting": ("posture", "settings"),
     "monitoring_config": ("monitoring",),
     "monitoring_snmp_poll": ("monitoring",),

@@ -19,7 +19,14 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
 
 Default's cards show its values and, on each, who takes them: "inherited by 12 · own Grafana in 4 · not configured in 2 · not applicable in 1", counting only the networks that chose to inherit, with the names one click down. Each card takes its fields in place, with **Save** and **Test**; a secret shows only as set, with **Replace…**. A change to Default changes every network counted there, and the result says so.
 
+## Installation {#installation}
+
+What every network shares, standalone ones included: these are the installation's own, never a network's or Default's, so a change here changes all of them. Its tabs are Connections, Access and identity, Platforms and roles, Server, AI and workflow, and Diagnostics.
+
+- **Records database** (Connections): the database Mercury's records move to, store by store (receipts first). With no host it is **off**: every store stays on its files, as today. Its card says whether it is **answering** (the last Test passed, with the server's version, when and by whom), **not answering** (the check that failed, named), or **not tested yet**, and when a Save or Replace came after the last Test. **Save** writes the host, port, database and role; it never opens the database, so it works with the database down or the password wrong, and the change is recorded in the installation's settings record. **Test** asks the database six things and names the first that fails: it signs in, the server is PostgreSQL 18, the role owns its database, the role is not a superuser, Mercury reaches it on a loopback address, and a temporary row written and read back is rolled back. The password shows only as set; **Replace…** opens the rotation order: change it on the server first, with the host step `scripts/host-steps/postgres-rotate.sh`, then enter the same password here, and its Test runs at once (see [The records database](records-database)).
+- **Not here yet**, each said on the page and linked to today's Settings page: the NetBox connection, Proxmox and Commit author cards, and the Access and identity, Platforms and roles, Server, AI and workflow, and Diagnostics tabs.
+
 ## What is not here yet {#not-yet}
 
-- **Installation** is on today's Settings page: the scope bar's Installation opens it.
+- **Installation's other cards and tabs** are on today's Settings page, each linked from where it will be (above).
 - **Creating a network** is on today's page; a new network starts as inheriting from Default, and its page here offers the switch at once.

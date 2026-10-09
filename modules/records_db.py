@@ -37,6 +37,10 @@ STEP_WORDS = {"connect": "signs in", "version": f"PostgreSQL {MAJOR}",
 CONNECT_TIMEOUT_S = 10
 #: Visible in the server's own activity list, so a connection names whose it is.
 APPLICATION_NAME = "mercury"
+#: The stores switched to this database, in the order they moved (section 3 of the Phase 4
+#: document: receipts first). Empty: every store is on its files, whatever the settings say.
+#: The Settings card draws it ("Stores on it"), and a store's switch adds itself here.
+STORES = ()
 
 
 class Unavailable(RuntimeError):

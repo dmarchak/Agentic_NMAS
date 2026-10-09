@@ -1,0 +1,32 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, info -%}
+{#- Board F (approved 2026-10-05) with board F2 (approved 2026-10-09): Settings › Installation,
+    the installation's own settings for every network, no network selector. Built: the
+    Connections tab's Records database card. The tabs and cards not drawn here yet say so and
+    link to today's Settings page (a subset, said). From routes/settings_v2.installation. -#}
+{% block title %}Settings · Installation · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Settings · Installation {{ info('settings', 'installation') }}</h1>
+    <p class="sub">These settings apply to every network ({{ v.scope.networks }}), standalone ones included. They are the installation's own (who may sign in, the central NetBox, this host, its records database), not values a network inherits. A change here changes all of them. Per-network values are under Default and each network.</p>
+  </div>
+</div>
+{% include "v2/_settings_scope.html" %}
+<nav class="tabs" aria-label="The installation's settings">
+  {%- for key, label in tabs %}
+  <a class="tab{% if tab == key %} on{% endif %}" href="{{ url_for('settings_v2.installation', tab=key) }}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  {%- endfor %}
+</nav>
+<div class="tab-body" id="tab-body">
+{%- if tab == 'connections' %}
+<p class="notice notice-muted">{{ icon('info', 16) }}<span>The <strong>NetBox connection</strong> and <strong>Proxmox</strong> cards are on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until they are built here.</span></p>
+<div class="set-cards set-cards-one">
+{% include "v2/_records_db_card.html" %}
+</div>
+<p class="notice notice-muted">{{ icon('info', 16) }}<span>The <strong>Commit author</strong> card is on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until it is built here.</span></p>
+{%- else %}
+<p class="notice notice-muted">{{ icon('info', 16) }}<span><strong>{{ dict(tabs)[tab] }}</strong> is on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until it is drawn here.</span></p>
+{%- endif %}
+</div>
+{% endblock %}

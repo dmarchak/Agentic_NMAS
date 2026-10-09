@@ -45,6 +45,7 @@ So each setting is in one of three states, visible in the posture panel:
 | `collector_*`, `monitoring_*`, `promql_*` | Settings → Monitoring |
 | `ai_enabled`, **`background_agent_enabled`**, `wf_*` | Settings → AI |
 | `require_identity_for_*`, `require_person_for_*`, `service_allowed_operations`, `cf_access_*` | Settings → Security posture (**read-only**, see below) |
+| `records_db_host`, `records_db_port`, `records_db_name`, `records_db_user`, `records_db_password` | v2: Settings › Installation › Connections, the Records database card (board F2, 2026-10-09). The installation's, never a network's (Phase 4, P4-2). Host empty: every store stays on its files, today's behaviour; the name, role and port default to what host step 6a makes (`mercury`, `mercury`, 5433). The password is a secret (`secrets_store.SECRET_KEYS`), shown only as set and changed by Replace…, after the server's by `scripts/host-steps/postgres-rotate.sh`. Save and Replace are recorded in the installation's `settings_record.jsonl`; the last Test's answer is kept in `records_db_test.json`. |
 
 `grafana_token_expires` and `proxmox_token_expires` are the tokens' DECLARED expiries
 (YYYY-MM-DD, or `never`), because neither token can read its own (P.21, C380). They are on
@@ -85,7 +86,7 @@ installation that wants today's behaviour never needs to.
 
 | Setting | Waits for |
 |---|---|
-| `records_db_host`, `records_db_port`, `records_db_name`, `records_db_user`, `records_db_password` | Mercury's records database (Phase 4, P4-2: the installation's, never a network's). Host empty: every store stays on its files, today's behaviour; the name, role and port default to what host step 6a makes (`mercury`, `mercury`, 5433). The password is a secret (`secrets_store.SECRET_KEYS`). They wait for Settings › Installation (board F, not built on v2), where a Records database card with its Test (`records_db.test_connection`) is to be drawn for sign-off. |
+| (none now) | The records database's settings reached their screen on 2026-10-09 (Settings › Installation, above). |
 
 ## File-only, deliberately
 
