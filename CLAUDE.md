@@ -419,6 +419,7 @@ NSoT config repository), `<account>` (the GitHub account).
 - **Staged runs and probes never run on s3:** it is CPU-starved and carries the management path
   for the fleet (C93). Use s1 for IOS and r2 for IOS-XE. [not mechanised]
 - **The `homelab` Cloudflare tunnel is LOCALLY managed:** its ingress rules live in `/etc/cloudflared/config.yml` on the cloudflared LXC (`<tunnel-host>`), not in the Zero Trust dashboard. A public hostname is added or removed there, together with its CNAME and any Access application in the dashboard, and then cloudflared is restarted. Removed 2026-10-07: `oxidized.<domain>` and `topology.<domain>` (C143, C231). [not mechanised]
+- **Every lab C8000v forwards at most about 10 Mbit/s:** each reports a throughput level of 10000 kbps, the unregistered C8000v default (measured on all five routers, 2026-10-09). A traffic-volume test through a router measures that limit, not the device: keep loads well under it and read any throughput figure against it (docs/NSOT_DRAINED_DESIGN.md section 10). [not mechanised]
 
 **Grafana's dashboard ROLES (the operator, 2026-10-01; they had drifted twice).** Two roles,
 each named by a setting, by UID, never hard-coded and never defaulted in code (both
