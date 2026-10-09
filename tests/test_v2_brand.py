@@ -169,13 +169,20 @@ class TestTheNameLeavesTheScreens:
         with A.app.test_request_context("/"):
             subject = installation().get("subject") or ""
         assert subject, "the subject this exclusion is for is read"
+        # A host step owed (Needs attention, Update) is a commit's `Host-Step-After:` words,
+        # drawn verbatim: the same record of history, never rewritten (CI #540: 44a54ff's step
+        # says "the NMAS host"). Each step in the history those pages read is excused as the
+        # subject is, and nothing else.
+        from modules import host_steps
+        recorded = [s["step"] for s in host_steps.steps_in(
+            host_steps._log(host_steps.ROOT, "HEAD", host_steps.HISTORY))]
         for path in pages:
             r = lab["client"].get(path)
             if not (r.content_type or "").startswith("text/html"):
                 continue
             html = r.get_data(as_text=True)
-            if subject:
-                html = html.replace(str(html_escape(subject)), "").replace(subject, "")
+            for text in [subject] + recorded:
+                html = html.replace(str(html_escape(text)), "").replace(text, "")
             if nmas_shown(html):
                 found[path] = nmas_shown(html)
             title = re.search(r"<title>(.*?)</title>", html, re.S)
