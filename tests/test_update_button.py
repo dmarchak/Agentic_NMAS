@@ -309,10 +309,14 @@ class TestEveryProgramByAbsolutePath:
 
     def test_the_table_is_absolute_and_names_what_the_host_has(self):
         U = _updater()
-        assert set(U.BINARIES) == {"runuser", "git", "systemctl"}
+        # ln, mv, rm and grep move and prune the venv link (Phase 4 section 8.4).
+        assert set(U.BINARIES) == {"runuser", "git", "systemctl", "ln", "mv", "rm", "grep"}
         assert all(os.path.isabs(p) for p in U.BINARIES.values())
-        # Measured on the host (via LAN), 2026-09-30: each root:root 755.
+        # Measured on the host (via LAN), 2026-09-30: each root:root 755; the four venv
+        # programs the same, 2026-10-09, none a link.
         assert U.BINARIES["runuser"] == "/usr/sbin/runuser"
+        assert [U.BINARIES[k] for k in ("ln", "mv", "rm", "grep")] == [
+            "/usr/bin/ln", "/usr/bin/mv", "/usr/bin/rm", "/usr/bin/grep"]
 
     def test_the_gate_is_handed_the_absolute_systemctl(self):
         src = open(UPDATER, encoding="utf-8").read()

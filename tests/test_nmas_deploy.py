@@ -89,8 +89,10 @@ def _fetch_from_real_origin(world):
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
-         wait=False, host_check=None, operations=None, to=None):
+         wait=False, host_check=None, operations=None, to=None, setup=None):
     mod = _script()
+    if setup:
+        setup(mod)              # e.g. the venv's paths in a temporary folder (section 8.4)
     calls = []
 
     def get(path):

@@ -61,8 +61,12 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
    So the most anything that can write the request can achieve is running a
    commit CI already passed.
 5. **Git runs as the service user** (`/usr/sbin/runuser`, with that user's
-   home). Only the restart runs as root. Nothing from the checkout is ever
-   executed as root.
+   home). Only the restart, and moving or pruning the venv link
+   (`/opt/mercury-venv`, Phase 4 section 8.4: when the target's lock names
+   another venv, the link moves just before the restart, a rollback moves it
+   back, and a target whose venv is not built and proved is refused with
+   nothing moved), run as root. Nothing from the checkout is ever executed as
+   root: the target's lock is read as the service user, as bytes.
 
    **Every program the updater runs is named by its absolute path**, from one
    table (`BINARIES`: `/usr/sbin/runuser`, `/usr/bin/git`,

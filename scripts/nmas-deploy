@@ -130,6 +130,127 @@ def git(repo, *args, check=True):
 
 
 # ---------------------------------------------------------------------------
+# Mercury's virtualenv (Phase 4 section 8.4, signed off by the operator 2026-10-09): a release
+# whose venv identity differs from the running venv's moves the link in the SAME restart, and a
+# rollback puts the link back with the commit. A release whose venv is not built and proved is
+# refused before anything moves. Before the first switch there is no link, and nothing is
+# compared. Root's updater loads this file and runs these with its own programs, as root.
+# ---------------------------------------------------------------------------
+
+#: The link every unit's drop-in names, what a rollback points back to, the venvs' prefix, and
+#: the mark a build writes last, only when every check passed (section 8.3).
+VENV_LINK = "/opt/mercury-venv"
+VENV_PREVIOUS = "/opt/mercury-venv.previous"
+VENV_PREFIX = "/opt/mercury-venv-"
+VENV_PROVED = ".mercury-proved"
+#: What a venv is built from, in order: modules.app_interpreter.VENV_INPUTS. Computed here,
+#: from git, because root's updater loads this file and never imports the user-writable
+#: checkout; tests/test_nmas_deploy.py holds the two computations equal.
+VENV_INPUTS = ("requirements.lock", "requirements-test.txt")
+#: The programs a terminal deploy uses (its sudo, authorised before anything moves). The
+#: updater, root already, passes its own absolute paths and no sudo.
+VENV_BINS = {"sudo": ("sudo",), "ln": "ln", "mv": "mv", "rm": "rm", "grep": "grep"}
+
+
+def venv_id_from(read):
+    """The venv identity of a release: the first 12 hex of the sha256 of VENV_INPUTS' bytes, in
+    order. *read(name)* returns a file's EXACT bytes at that release (a text read that strips a
+    trailing newline names another venv)."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for name in VENV_INPUTS:
+        digest.update(read(name))
+    return digest.hexdigest()[:12]
+
+
+def git_show_bytes(repo, sha):
+    """A `read` for venv_id_from: `git show <sha>:<name>`, its bytes untouched."""
+    def read(name):
+        return subprocess.run(["git", "-C", repo, "show", f"{sha}:{name}"], capture_output=True,
+                              check=True).stdout
+    return read
+
+
+def venv_plan(target_id, link=None, prefix=None):
+    """What the deploy does with the venv: ``{"state", "from", "to"}``. *state* is "none" (no
+    link: before the first switch, and the release's files are not read), "same", "swap" (the
+    target's venv is built and proved) or "unbuilt" (refused before anything moves).
+    *target_id* is the identity, or a callable computing it."""
+    link = link or VENV_LINK
+    prefix = prefix or VENV_PREFIX
+    if not os.path.islink(link):
+        return {"state": "none", "from": None, "to": None}
+    target_id = target_id() if callable(target_id) else target_id
+    current = os.path.realpath(link)
+    cur_id = current[len(prefix):] if current.startswith(prefix) else os.path.basename(current)
+    if cur_id == target_id:
+        return {"state": "same", "from": cur_id, "to": target_id}
+    try:
+        with open(os.path.join(prefix + target_id, VENV_PROVED), encoding="utf-8") as fh:
+            proved = fh.readline().strip() == f"id {target_id}"
+    except OSError:
+        proved = False
+    return {"state": "swap" if proved else "unbuilt", "from": cur_id, "to": target_id}
+
+
+def venv_refusal(plan, target, repo):
+    """The refusal for an unbuilt venv: both identities and the step that builds it."""
+    return (f"this release ({target[:10]}) needs the venv {plan['to']} (its requirements.lock "
+            f"or requirements-test.txt differ from the running venv {plan['from']}), and "
+            f"{VENV_PREFIX}{plan['to']} is not built and proved. Build it from a clone of the "
+            f"release, never the live checkout: d=$(mktemp -d) && git clone -q --shared {repo} "
+            f"\"$d/release\" && git -C \"$d/release\" checkout -q {target[:12]} && bash "
+            "\"$d/release/scripts/host-steps/venv-1-build.sh\"")
+
+
+def point_link(link, venv_id, run=subprocess.run, bins=None):
+    """Point *link* at mercury-venv-<venv_id>, relative, by a rename so it is never half there
+    (measured 2026-10-09: through the link the venv reports the link)."""
+    bins = bins or VENV_BINS
+    tmp = link + ".new"
+    run([*bins["sudo"], bins["ln"], "-sfn", f"mercury-venv-{venv_id}", tmp], check=True,
+        capture_output=True)
+    run([*bins["sudo"], bins["mv"], "-T", tmp, link], check=True, capture_output=True)
+
+
+def swap_venv(plan, run=subprocess.run, bins=None, link=None, previous=None):
+    """Record the running venv as the previous one, then point the link at the target's."""
+    point_link(previous or VENV_PREVIOUS, plan["from"], run, bins)
+    point_link(link or VENV_LINK, plan["to"], run, bins)
+
+
+def unswap_venv(plan, run=subprocess.run, bins=None, link=None):
+    """Point the link back at the venv the rolled-back commit ran."""
+    point_link(link or VENV_LINK, plan["from"], run, bins)
+
+
+def prune_venvs(keep, run=subprocess.run, bins=None, prefix=None, maps=None):
+    """Remove PROVED venvs other than *keep* (the current and the previous, the operator's
+    decision) that no running process has loaded. An unproved one may be a build in progress
+    and is left. Returns (removed, kept_because_loaded)."""
+    import glob
+
+    bins = bins or VENV_BINS
+    prefix = prefix or VENV_PREFIX
+    maps = glob.glob("/proc/[0-9]*/maps") if maps is None else maps
+    removed, held = [], []
+    for d in sorted(glob.glob(prefix + "*")):
+        vid = d[len(prefix):]
+        if not re.fullmatch(r"[0-9a-f]{12}", vid) or vid in keep:
+            continue
+        if not os.path.isfile(os.path.join(d, VENV_PROVED)):
+            continue
+        if maps and run([*bins["sudo"], bins["grep"], "-qs", "--", d + "/", *maps],
+                        capture_output=True).returncode == 0:
+            held.append(d)
+            continue
+        run([*bins["sudo"], bins["rm"], "-rf", "--", d], check=True, capture_output=True)
+        removed.append(d)
+    return removed, held
+
+
+# ---------------------------------------------------------------------------
 # Where the repository lives on GitHub
 # ---------------------------------------------------------------------------
 
@@ -776,6 +897,13 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
         print(f"Could not ask the service which operations hold a device ({ops}); "
               "continuing, since a deploy is how a service that cannot answer is repaired.")
 
+    # The venv this release needs (section 8.4), asked before anything moves.
+    venv = venv_plan(lambda: venv_id_from(git_show_bytes(repo, target)))
+    row.update(venv=venv)
+    if venv["state"] == "unbuilt":
+        return finish(LOCAL_REFUSED, "NOT DEPLOYED: " + venv_refusal(venv, target, repo)
+                      + f". The checkout was NOT moved: still at {head[:10]}.")
+
     if head != target:
         git(repo, "merge", "--ff-only", "--quiet", target)
         what = f"deployed {head[:10]} -> {target[:10]}"
@@ -784,6 +912,22 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
     else:
         what = f"already at {target[:10]}"
         print(what)
+
+    # The venv moves just before the restart, so the old process imports from the new venv for
+    # no longer than the gap between the two. A link that cannot move puts the checkout back:
+    # nothing restarts, and no mixed version runs.
+    if venv["state"] == "swap":
+        try:
+            swap_venv(venv)
+        except (subprocess.CalledProcessError, OSError) as exc:
+            git(repo, "reset", "--hard", "--quiet", head)
+            detail = getattr(exc, "stderr", b"") or str(exc)
+            detail = detail.decode(errors="replace") if isinstance(detail, bytes) else detail
+            return finish(LOCAL_REFUSED,
+                          f"NOT DEPLOYED: the venv link could not be moved from {venv['from']} "
+                          f"to {venv['to']} ({detail.strip()}). The checkout was put back at "
+                          f"{head[:10]}, and nothing restarted.")
+        print(f"venv: {VENV_LINK} -> mercury-venv-{venv['to']} (previous: {venv['from']})")
 
     # The restart, and proof by IDENTITY that the RUNNING process is the target.
     before = unit()
@@ -803,10 +947,22 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                running_pid=body.get("pid"), running_commit=body.get("commit"),
                app_started_at=body.get("started_at"))
     if not ok:
+        moved = (f" The venv link names {venv['to']}; scripts/host-steps/venv-rollback.sh points "
+                 f"it back at {venv['from']}." if venv["state"] == "swap" else "")
         return finish(UNHEALTHY, _mixed_headline(health or _health, target)
-                      + f"{what}, restart issued, but NOT confirmed running: {reason}")
+                      + f"{what}, restart issued, but NOT confirmed running: {reason}.{moved}")
+    pruned = ""
+    if venv["state"] == "swap":
+        # Keep the current venv and the previous one (the operator, 2026-10-09).
+        removed, held = prune_venvs({venv["to"], venv["from"]})
+        pruned = (f" venv: running {venv['to']}, previous {venv['from']}"
+                  + (f"; removed {', '.join(os.path.basename(d) for d in removed)}" if removed
+                     else "")
+                  + (f"; kept {', '.join(os.path.basename(d) for d in held)} (a running process "
+                     "has it loaded)" if held else "") + ".")
     return finish(OK, f"{what}, restarted: pid {before['MainPID']} -> {state.get('MainPID')}, "
-                      f"running {target[:10]} since {state.get('start')} (systemd). {message}")
+                      f"running {target[:10]} since {state.get('start')} (systemd). {message}"
+                      + pruned)
 
 
 def _wait_for_ci(repo, target, get, clock, sleep, row):

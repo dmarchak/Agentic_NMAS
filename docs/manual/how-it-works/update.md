@@ -110,17 +110,25 @@ and the Update page draws each step as the updater records it:
 5. **CI, again** (`ci`). Read: GitHub's Actions API, through the updater's OWN root-owned
    copy of `nmas-deploy`'s gate, never the app's answer; and the `Host-Step:` lines of the
    commits between. Sent: nothing. Recorded: CI's sentence. Anything the gate does not pass,
-   or a before-step the request does not say is done, refuses.
+   or a before-step the request does not say is done, refuses. Then the venv: the target's
+   `requirements.lock` and `requirements-test.txt` name the virtualenv it needs. When that is
+   not the one the app runs and it is not built and proved on the host, the update refuses
+   with nothing moved, naming both and the host step that builds it.
 6. **Move** (`move`). Read: nothing. Sent: nothing. Recorded: the checkout fast-forwarded to
    the target (`git merge --ff-only`), as the service user. Git always runs as the service
    user (`runuser`): a repository can name programs in its config, and root never runs them.
 7. **Restart** (`restart`). Read: systemd's MainPID for the app's unit. Sent: nothing.
-   Recorded: the step. `systemctl restart` of the app's unit, the only thing done as root.
+   Recorded: the step. When the target needs another venv, the link `/opt/mercury-venv` is
+   moved to it first (the running one recorded as the previous), and a link that cannot move
+   puts the checkout back with nothing restarted. Then `systemctl restart` of the app's unit.
+   The link and the restart are the only things done as root.
 8. **Wait** (`wait`). Read: systemd's MainPID and `/health` on the host, every 2 seconds for
    up to 120 s. Sent: nothing. Recorded: the step. Success is decided by identity, never by
    time: the MainPID changed, `/health` answers from that pid, and it reports the target
    commit. A version that does not come up within 120 s is rolled back: the checkout is reset
-   to the commit it ran, restarted, and confirmed the same way.
+   to the commit it ran (and the venv link to the venv it ran, when the update moved it),
+   restarted, and confirmed the same way. After a venv moved and the target came up, the venvs
+   older than the previous one that no running process has loaded are removed.
 9. **Running** (`running`). Read: `/health`. Sent: nothing. Recorded: the outcome (updated,
    refused, rolled back, rollback failed, or failed) in `outcome.json` and appended to
    `history.jsonl`. This is the page's end state: the target is running.

@@ -70,6 +70,11 @@ BINARIES = {
     "runuser": "/usr/sbin/runuser",
     "git": "/usr/bin/git",
     "systemctl": "/usr/bin/systemctl",
+    # The venv link (Phase 4 section 8.4): the gate's functions run these, as root.
+    "ln": "/usr/bin/ln",
+    "mv": "/usr/bin/mv",
+    "rm": "/usr/bin/rm",
+    "grep": "/usr/bin/grep",
 }
 #: The steps this updater reports, in order, by KEY: its record names the one
 #: it is on, and the Update page draws its stepper from them
@@ -231,6 +236,48 @@ def user_git_for(repo: str, user: str, run=subprocess.run):
     return git
 
 
+def user_show_bytes_for(repo: str, user: str, sha: str, run=subprocess.run):
+    """A `read(name)` for the gate's venv_id_from: `git show <sha>:<name>` as *user*, its bytes
+    untouched (the text git above strips a trailing newline, which would name another venv)."""
+    home = pwd.getpwnam(user).pw_dir
+    env = {"HOME": home, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0"}
+
+    def read(name):
+        out = run([BINARIES["runuser"], "-u", user, "--", BINARIES["git"], "-C", repo, "show",
+                   f"{sha}:{name}"], capture_output=True, env=env, timeout=120)
+        if out.returncode != 0:
+            raise RuntimeError(f"git show {sha[:10]}:{name}: "
+                               f"{out.stderr.decode(errors='replace').strip()[:300]}")
+        return out.stdout
+    return read
+
+
+class Venv:
+    """The gate's venv steps (section 8.4) as this updater runs them: as root, by absolute path,
+    reading the release's files as the service user."""
+
+    def __init__(self, gate, repo, user):
+        self.gate, self.repo, self.user = gate, repo, user
+        self.bins = {"sudo": (), "ln": BINARIES["ln"], "mv": BINARIES["mv"],
+                     "rm": BINARIES["rm"], "grep": BINARIES["grep"]}
+
+    def plan(self, target):
+        return self.gate.venv_plan(lambda: self.gate.venv_id_from(
+            user_show_bytes_for(self.repo, self.user, target)))
+
+    def refusal(self, plan, target):
+        return self.gate.venv_refusal(plan, target, self.repo)
+
+    def swap(self, plan):
+        self.gate.swap_venv(plan, bins=self.bins)
+
+    def unswap(self, plan):
+        self.gate.unswap_venv(plan, bins=self.bins)
+
+    def prune(self, plan):
+        return self.gate.prune_venvs({plan["to"], plan["from"]}, bins=self.bins)
+
+
 def self_test(binaries: dict = None) -> list:
     """Can this updater run here? Every program it runs, as it will run it: an
     absolute path to a regular file, owned by root, that nobody else can write
@@ -297,9 +344,13 @@ def host_steps(git, repo: str, head: str, target: str) -> list:
 # ---------------------------------------------------------------------------
 
 def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time.time,
-           sleep=time.sleep, report=lambda step: None) -> dict:
+           sleep=time.sleep, report=lambda step: None, venv=None) -> dict:
     """Run one request. Returns the outcome record. Nothing moves before every
-    check has passed; after the checkout moves, any failure rolls back."""
+    check has passed; after the checkout moves, any failure rolls back.
+
+    *venv* (a `Venv`; main() always passes one) moves the venv link with the release when its
+    identity differs (section 8.4): refused before the move when that venv is not built and
+    proved, swapped just before the restart, swapped back by a rollback."""
     target, head_req = req["target"], req["from"]
     rec = {"id": req["id"], "from": head_req, "to": target, "requested_by": req["requested_by"],
            "requested_at": req["requested_at"], "started_at": iso(clock())}
@@ -341,11 +392,24 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
         raise Refused("host step(s) not confirmed as done: "
                       + "; ".join(f"{s['sha'][:10]}: {s['step']}" for s in undone))
     rec["host_steps"] = steps
+    plan = venv.plan(target) if venv else {"state": "none", "from": None, "to": None}
+    rec["venv"] = plan
+    if plan["state"] == "unbuilt":
+        raise Refused(venv.refusal(plan, target) + ". Nothing was moved")
 
     before = unit()
     rec["pid_before"] = before["MainPID"]
     report("move")
     git(repo, "merge", "--ff-only", "--quiet", target)
+    if plan["state"] == "swap":
+        # Just before the restart; a link that cannot move puts the checkout back, unrestarted.
+        try:
+            venv.swap(plan)
+        except Exception as exc:                         # noqa: BLE001
+            git(repo, "reset", "--hard", "--quiet", head)
+            raise Refused(f"the venv link could not be moved from {plan['from']} to "
+                          f"{plan['to']} ({type(exc).__name__}: {exc}). The checkout was put "
+                          f"back at {head[:10]}, and nothing restarted")
     try:
         report("restart")
         restart()
@@ -356,20 +420,34 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
         ok, seen, reason = False, None, f"the restart raised {type(exc).__name__}: {exc}"
     rec["pid_after"] = ((seen or {}).get("unit") or {}).get("MainPID")
     if ok:
-        return dict(rec, outcome="updated", step="wait", ended_at=iso(clock()),
-                    reason=f"running {target[:10]} as pid {rec['pid_after']}")
+        words = f"running {target[:10]} as pid {rec['pid_after']}"
+        if plan["state"] == "swap":
+            # Keep the current venv and the previous one (the operator, 2026-10-09).
+            try:
+                removed, held = venv.prune(plan)
+                words += (f"; venv {plan['to']}, previous {plan['from']}"
+                          + (f", removed {len(removed)} older" if removed else "")
+                          + (f", kept {len(held)} older a running process has loaded"
+                             if held else ""))
+            except Exception as exc:                     # noqa: BLE001
+                words += (f"; venv {plan['to']}, previous {plan['from']}; older venvs were "
+                          f"not removed ({type(exc).__name__}: {exc})")
+        return dict(rec, outcome="updated", step="wait", ended_at=iso(clock()), reason=words)
     return rollback(rec, reason, repo=repo, head=head, gate=gate, git=git, restart=restart,
-                    unit=unit, health=health, clock=clock, sleep=sleep, report=report)
+                    unit=unit, health=health, clock=clock, sleep=sleep, report=report,
+                    venv=venv if plan["state"] == "swap" else None, plan=plan)
 
 
 def rollback(rec: dict, reason: str, *, repo, head, gate, git, restart, unit, health, clock,
-             sleep, report) -> dict:
-    """The new version did not come up: put back the commit it ran, restart,
-    and confirm THAT by identity too."""
+             sleep, report, venv=None, plan=None) -> dict:
+    """The new version did not come up: put back the commit it ran (and the venv link it ran
+    with, when the update moved it), restart, and confirm THAT by identity too."""
     report("wait")
     failed = f"{rec['to'][:10]} did not come up within {UP_BOUND_S} s: {reason}"
     try:
         git(repo, "reset", "--hard", "--quiet", head)
+        if venv:
+            venv.unswap(plan)
         before = unit()
         restart()
         ok, _seen, why = gate.wait_for_running(head, before["MainPID"], health, unit,
@@ -378,7 +456,8 @@ def rollback(rec: dict, reason: str, *, repo, head, gate, git, restart, unit, he
         ok, why = False, f"{type(exc).__name__}: {exc}"
     if ok:
         return dict(rec, outcome="rolled_back", step="wait", ended_at=iso(clock()),
-                    reason=f"{failed}. Rolled back: {head[:10]} runs again")
+                    reason=f"{failed}. Rolled back: {head[:10]} runs again"
+                           + (f", on the venv {plan['from']}" if venv else ""))
     return dict(rec, outcome="rollback_failed", step="wait", ended_at=iso(clock()),
                 reason=f"{failed}. The rollback to {head[:10]} did not come up either: {why}")
 
@@ -471,7 +550,7 @@ def main(env=None) -> int:
         rec = update(req, repo=repo, gate=gate, git=git,
                      restart=lambda: restart_service(service),
                      unit=lambda: gate.unit_state(service, systemctl=BINARIES["systemctl"]),
-                     health=gate._health, report=report)
+                     health=gate._health, report=report, venv=Venv(gate, repo, user))
     except Refused as exc:
         rec = {"id": req["id"], "from": req["from"], "to": req["target"],
                "requested_by": req["requested_by"], "outcome": "refused", "step": last["step"],

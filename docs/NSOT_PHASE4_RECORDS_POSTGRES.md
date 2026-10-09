@@ -479,13 +479,26 @@ compiled module, so `/proc/<pid>/maps` is real): a healthy swap passed 12 of 12,
 previous venv, and removed the older one no process held; a swap whose new venv's `/health`
 failed pointed the link back itself, the app loaded from the old venv again, and the result
 stayed FAIL at that check; a rollback to an unproved previous venv was refused before anything
-moved, and to a proved one passed 10 of 10 with the two venvs exchanged. The walk found nothing
+moved, and to a proved one passed 10 of 10 with the two venvs exchanged; and (the retention
+branch, walked after the switch at the operator's request) a swap with two older venvs, one
+loaded by a running process and one by none, kept the first, named why, removed the second, and
+passed 12 of 12.
+
+**The first switch, run by the operator 2026-10-09:** `venv-1-build.sh` failed on its first run,
+on pypi.org read timeouts, though curl answered in about 0.15 s afterwards over IPv4 and IPv6;
+pip had reported "No matching distribution" (C608: the build now checks that the index answers
+first and names a timeout in those words). The re-run removed its unproved build itself and
+PASSED 14 of 14; `venv-2-switch.sh` PASSED 18 of 18 (`/health` in about 4 s; the heartbeat and
+telemetry checks succeeded from the venv). The operator's v2 walk: the pages load, 9 devices
+heartbeating, Show commands on r1 and s1 normal, a deploy preview normal. Read on the host
+afterwards (via LAN, 16:41 UTC): the link names `mercury-venv-9d27674e53bf`, the app's process
+loads from it, and every `nmas-` unit has the venv first on its PATH. The walk found nothing
 in the scripts; venv-1's pin and `pip check` checks, run against scratch venvs, had found a
 normalisation that rewrote versions, fixed before the commit. `lib.sh` gained `ON_FAIL` (the
 undo a failed step or check runs before the summary), tested with planted scripts and shown
 able to fail.
 
-### 8.4 A release that changes the lock (SIGNED OFF; not built)
+### 8.4 A release that changes the lock (SIGNED OFF; BUILT 2026-10-09, its first host run owed)
 
 A swap without the release, or the release without the swap, runs one release's code on the
 other's packages. So the deploy carries the swap:
@@ -496,11 +509,29 @@ other's packages. So the deploy carries the swap:
   same restart as the checkout moves, and its existing rollback (a release that does not come
   up) puts BOTH back: the commit and the link.
 - After a proved swap, the deploy removes proved venvs older than the previous one (8.3).
-- **Not built yet**, and nothing compares the identities until it is: `nmas-deploy` and the
-  updater are host-installed and change with a host step. C607 stays B on it: it blocks the
-  first release after the switch whose venv identity changes, which is the first ordinary lock
-  change (textfsm 1.1.3, future, pycparser). Before the switch there is no link, and nothing is
-  compared.
+- **Built:** the functions live in `scripts/nmas-deploy` (`venv_id_from`, `venv_plan`,
+  `swap_venv`, `unswap_venv`, `prune_venvs`), because root's updater loads that file's root
+  copy and never imports the user-writable checkout; the identity is computed there from the
+  target's files as `git show` bytes (a text read strips a trailing newline and names another
+  venv), and a test holds it equal to `modules.app_interpreter.venv_id`. `nmas-deploy` (as the
+  operator, through the sudo it authorises before anything moves) and the updater (as root,
+  every program by absolute path: `ln`, `mv`, `rm` and `grep` joined its table, measured on
+  the host root:root 755) both: refuse an unbuilt venv before the move, naming both
+  identities and the build from a clone of the release; move the link just before the
+  restart, so the old process imports from the new venv only in that gap; put the checkout
+  back unrestarted when the link cannot move; and, after the target came up, prune. The
+  updater's rollback moves the link back with the commit; a terminal deploy that does not come
+  up says which venv the link names and how to point it back (it never rolls back code
+  either). `tests/test_venv_deploy.py`: the plan's four states on real links, the swap, the
+  pruning (unproved and loaded venvs kept), the deploy end to end (refused, then moved in the
+  same restart), the updater's order (refuse before the move; swap after it and before the
+  restart; prune on success; swap back on rollback; a link that cannot move). The refusal and
+  the rollback's swap-back were each removed from a copy and their tests failed. Before the
+  switch there is no link, and nothing is compared (the release's files are not even read).
+- **Its first host run** is the first ordinary lock change (textfsm 1.1.3, future,
+  pycparser): build that venv from a clone of the release (the refusal prints the command),
+  then deploy. The updater's two root copies must be re-installed from the release that
+  carries this (docs/UPDATE.md, "Re-install") before the Update button carries a swap.
 - Settings › Installation (F2) can show the running venv's `<h>` beside this release's: a
   release whose lock is not yet built is visible before anyone presses Update. Not in F2's
   signed board; a later board if wanted.

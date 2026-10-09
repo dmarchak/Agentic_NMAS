@@ -41,6 +41,7 @@ plan "run as the operator's own user, not root" \
      "the app's current interpreter and user are read" \
      "the Python programs on this host are listed" \
      "the system interpreter is Python 3.12.3" \
+     "the package index answers (pypi.org and files.pythonhosted.org)" \
      "the venv's interpreter is Python 3.12.3" \
      "the venv takes nothing from outside it (no system or user site)" \
      "every pin in the lock and requirements-test.txt is installed at its version" \
@@ -72,11 +73,41 @@ if [ -e "$DIR" ]; then
     step "remove the unproved earlier build $DIR" \
         '[[ "$DIR" =~ ^/opt/mercury-venv-[0-9a-f]{12}$ ]] && sudo rm -rf -- "$DIR"'
 fi
+# The index first (C608): pip reads pypi.org's pages and downloads from files.pythonhosted.org,
+# and after its reads time out it says "No matching distribution found", naming a version
+# instead of the network. Any HTTP answer is an answer (files.pythonhosted.org/ answers 404 by
+# design); 000 is none. Measured 2026-10-09 from the laptop: 0.10 s and 0.08 s; bounded at 10 s.
+check "the package index answers (pypi.org and files.pythonhosted.org)" eq "" \
+    'for u in https://pypi.org/simple/pip/ https://files.pythonhosted.org/; do \
+       c=$(curl -sS -o /dev/null -m 10 -w "%{http_code}" "$u" 2>/dev/null); [ "${c:-000}" = 000 ] && echo "$u did not answer in 10 s"; done; true'
+
+# pip's own network bounds, named rather than defaulted: a read gives up after 15 s and is
+# retried 5 times (pip's defaults, measured from `pip install --help`, pip 24.0). When the
+# install fails after a read timed out, the step says so in those words, never only pip's
+# "No matching distribution" (the operator's first run, 2026-10-09: the index timed out and
+# answered in 0.15 s afterwards).
+PIP_NET="--timeout 15 --retries 5"
+export PIP_NET
+pip_install() {
+    local log rc
+    log=$(mktemp)
+    sudo "$DIR/bin/python" -m pip install --quiet --disable-pip-version-check $PIP_NET "$@" > "$log" 2>&1
+    rc=$?
+    cat "$log"
+    if [ "$rc" != 0 ] && grep -qiE "timed out|ReadTimeout|ConnectTimeout|Max retries exceeded" "$log"; then
+        echo "THE PACKAGE INDEX TIMED OUT: $(grep -ciE 'timed out|ReadTimeout|ConnectTimeout' "$log") read(s) gave up"
+        echo "  after 15 s each, 5 retries. Any \"No matching distribution\" above is that, not a missing"
+        echo "  version. Re-run when the index answers; this build is left unproved and is rebuilt."
+    fi
+    rm -f "$log"
+    return "$rc"
+}
+export -f pip_install
 step "make the venv beside what runs (root-owned, readable)" 'sudo /usr/bin/python3 -m venv "$DIR"'
 step "install exactly the lock's files (--require-hashes --no-deps, as CI)" \
-    'sudo "$DIR/bin/python" -m pip install --quiet --disable-pip-version-check --require-hashes --no-deps -r "$LOCK"'
+    'pip_install --require-hashes --no-deps -r "$LOCK"'
 step "install the test tools beside it (--no-deps, as CI)" \
-    'sudo "$DIR/bin/python" -m pip install --quiet --disable-pip-version-check --no-deps -r "$TESTS"'
+    'pip_install --no-deps -r "$TESTS"'
 
 check "the venv's interpreter is Python 3.12.3" eq "3.12.3" \
     '"$DIR/bin/python" -c "import platform; print(platform.python_version())"'
