@@ -67,11 +67,34 @@ def _last_check(list_name: str, hostname: str) -> dict:
                        if results else "the hourly check has never run")}
 
 
+def row_checks(list_name: str, hostname: str, row: dict) -> tuple:
+    """``(refused_by, hash)`` for one inventory *row*: the device-side refusals (no driver,
+    no credential) and the plan's hash, the ONE computation `plan` and Save (`save_op`)
+    share, so the two cannot disagree about a device or bind a different hash."""
+    from modules.device import open_stored
+
+    refused = {}
+    if not row.get("device_type"):
+        refused["device_type"] = (f"{hostname} has no device_type in the inventory, and the "
+                                  "driver that saves it is not guessed")
+    # Opened by the one reader that names an unopenable value (C410: it raised, a 500).
+    password, unopened = open_stored(row)
+    if unopened:
+        refused["credential"] = unopened
+    elif not password:
+        refused["credential"] = f"the inventory holds no credential for {hostname}"
+    digest = hashlib.sha256(json.dumps({
+        "list": list_name, "device": hostname, "ip": row.get("ip", ""),
+        "device_type": row.get("device_type", ""),
+        "username": row.get("username", "admin")}, sort_keys=True).encode()).hexdigest()[:16]
+    return refused, digest
+
+
 def plan(list_name: str, hostname: str) -> dict:
     """Everything persist would do, what it will not, and why it would refuse.
     Reads only: the registry, the inventory and the check's record. It never
     contacts the device, so a preview is safe to repeat."""
-    from modules.device import load_saved_devices, open_stored
+    from modules.device import load_saved_devices
     from modules.nsot.listref import UnknownList, resolve
 
     out = {"ok": True, "list_name": list_name, "hostname": hostname, "refusals": [],
@@ -92,16 +115,9 @@ def plan(list_name: str, hostname: str) -> dict:
         refuse("present", f"{hostname!r} is not in list {list_name!r}'s inventory: a device "
                           "the tool does not manage has nothing to persist from here")
     row = row or {}
-    if row and not row.get("device_type"):
-        refuse("device_type", f"{hostname} has no device_type in the inventory, and the "
-                              "driver that saves it is not guessed")
     if row:
-        # Opened by the one reader that names an unopenable value (C410: it raised, a 500).
-        password, unopened = open_stored(row)
-        if unopened:
-            refuse("credential", unopened)
-        elif not password:
-            refuse("credential", f"the inventory holds no credential for {hostname}")
+        for key, text in row_checks(list_name, hostname, row)[0].items():
+            refuse(key, text)
 
     out["ip"] = row.get("ip", "")
     out["device_type"] = row.get("device_type", "")
@@ -125,10 +141,7 @@ def plan(list_name: str, hostname: str) -> dict:
                                   "as you, so the row clears only on a read-back that matched"},
     ]
     out["ok"] = not out["refusals"]
-    out["hash"] = hashlib.sha256(json.dumps({
-        "list": list_name, "device": hostname, "ip": out["ip"],
-        "device_type": out["device_type"], "username": out["username"]},
-        sort_keys=True).encode()).hexdigest()[:16]
+    out["hash"] = row_checks(list_name, hostname, row)[1]
     return out
 
 

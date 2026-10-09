@@ -1,0 +1,104 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Devices › Save's card (C593; board C, approved 2026-10-04), from modules/save_page.py:
+    the plan (what is measured, the groups left out, the confirm); the run, in place, redrawn
+    when the job announces `save` or a device steps (never a timer); the result, led by what
+    to act on, with "Retry the N failed". Groups are collapsed and searchable, for a fleet. -#}
+
+<section class="card save-card" id="save-op" aria-labelledby="save-h"
+  {%- if s.state == 'running' %} aria-busy="true" hx-get="{{ url_for('v2.save_job', job=s.job, list=s.list) }}" hx-trigger="nmas:save from:body, nmas:device_progress from:body" hx-swap="outerHTML" hx-include="find .save-filter"{% endif %}>
+{%- if s.state == 'plan' %}
+  <h2 id="save-h">Before it runs</h2>
+  <p>Each device saves its running config to startup (its own <span class="mono">write memory</span>), the startup is read back, and the running config is recorded as its golden: one commit for the batch. Its running configuration is not changed, so what the tool records and what a reboot brings back are the same.</p>
+  <div class="save-sum">
+    {%- for g in s.groups %}<div class="save-n save-{{ g.kind }}"><strong>{{ g.devices | length }}</strong>{{ g.words }}</div>{% endfor %}
+  </div>
+  {%- if s.save %}
+  <p class="muted">Of the {{ s.save | length }} to save, the hourly startup check last read:
+    {% for key, words, hosts in s.startup %}<strong>{{ hosts | length }}</strong> {{ words }}{{ '; ' if not loop.last else '.' }}{% endfor %}
+    It compares the accounts (<span class="mono">username</span> lines) only; whether the rest of startup differs is not measured, so each one is saved whatever it read.</p>
+  {%- endif %}
+  {%- if s.startup_unreadable %}<div class="notice notice-warn">{{ icon('warn', 16) }}<p>{{ s.startup_unreadable }}: what each device's startup holds is unknown here. Save still saves and reads each one back.</p></div>{% endif %}
+  {%- for g in s.groups %}
+  <details class="sc-grp" data-keep="save-plan-{{ g.key }}"{% if g.key != 'save' and g.devices | length <= 12 %} open{% endif %}>
+    <summary>{{ badge(g.devices | length ~ ' ' ~ g.words, g.kind) }}<span class="muted">{{ g.devices[:8] | map(attribute='host') | join(', ') }}{% if g.devices | length > 8 %} and {{ g.devices | length - 8 }} more{% endif %}</span></summary>
+    <div class="table-wrap"><table class="table save-tbl"><tbody>
+      {%- for d in g.devices %}<tr><th scope="row">{{ d.host }}</th><td>{{ d.why or 'the hourly check: ' ~ (d.startup | replace('_', ' ')) }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </details>
+  {%- endfor %}
+  <p class="muted">Recording without saving is not offered here: the record would say one thing and a reboot bring another. A single device's Capture, on its own page, records a hand change before you decide.</p>
+  <form class="save-ft" method="post" action="{{ url_for('v2.save_confirm') }}" hx-post="{{ url_for('v2.save_confirm') }}" hx-target="#save-op" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ s.list }}">
+    <input type="hidden" name="hash" value="{{ s.hash }}">
+    {%- for g in s.groups %}{% for d in g.devices %}<input type="hidden" name="device" value="{{ d.host }}">{% endfor %}{% endfor %}
+    <a class="btn" href="{{ url_for('v2.devices') }}">Back</a>
+    {%- if s.save and s.may.may %}
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="save" hx-disabled-elt="this"><span class="op-idle">Save {{ s.save | length }} device{{ 's' if s.save | length != 1 }}</span><span class="op-busy">Making the plan again and starting…</span></button>{{ how('save', compact=True, op='Save') }}</span>
+    <span class="muted small">{{ s.may.statement }} Bound to plan {{ s.hash }}: if a device's address, driver, account, hold or reachability moves first, nothing is sent.{% if s.fleet %} Every device of {{ s.list }}: the commit may earn a baseline.{% endif %}</span>
+    {%- elif s.save %}
+    <span class="muted">{{ s.may.statement }}</span>
+    {%- else %}
+    <span class="muted">Nothing in the selection can be saved now; each device is named above with why.</span>
+    {%- endif %}
+  </form>
+{%- elif s.state == 'empty' %}
+  <h2 id="save-h">No device chosen</h2>
+  <p>Tick devices on <a href="{{ url_for('v2.devices') }}">Devices</a> and choose Actions › Save, or Save every device there.</p>
+{%- elif s.state == 'running' %}
+  <h2 id="save-h">Saving {{ s.total }} device{{ 's' if s.total != 1 }} {{ badge('running', 'warn') }}</h2>
+  <p class="muted">A job: this page can close. Each device is held while it saves.</p>
+  <div class="save-sum">
+    {%- for name, words in [('done', 'saved and recorded'), ('running', 'running now'), ('waiting', 'waiting their turn'), ('failed', 'failed')] %}
+    <div class="save-n"><strong>{{ s.counts.get(name, 0) }}</strong>{{ words }}</div>{% endfor %}
+  </div>
+  <form class="sc-tools save-filter" hx-get="{{ url_for('v2.save_job', job=s.job, list=s.list) }}" hx-target="#save-op" hx-swap="outerHTML" hx-trigger="input changed delay:400ms from:input, change from:select, search">
+    <label class="sc-f">Find a device<input type="search" name="q" value="{{ s.q }}"></label>
+  </form>
+  {%- for g in s.groups %}
+  <details class="sc-grp" data-keep="save-run-{{ g.name }}"{% if g.name == 'failed' %} open{% endif %}>
+    <summary>{{ badge(g.name, 'danger' if g.name == 'failed' else 'warn' if g.name == 'running' else 'ok' if g.name == 'done' else 'muted') }}<span>{{ g.count }}</span>{% if s.q %}<span class="muted">· {{ g.devices | length }} match "{{ s.q }}"</span>{% endif %}</summary>
+    <p class="save-hosts mono">{{ g.devices | map(attribute='host') | join(', ') }}</p>
+  </details>
+  {%- endfor %}
+{%- elif s.state == 'result' %}
+  <h2 id="save-h">{{ s.total }} device{{ 's' if s.total != 1 }}: {{ s.good }} saved and recorded{% if s.bad %}, {{ s.bad }} not{% endif %} {{ badge(s.chip, s.level) }}</h2>
+  {%- if s.commit %}
+  <p>Commit <span class="mono">{{ s.commit }}</span> (<span class="mono">Source: save</span>), as the person who confirmed it. {% if s.baseline %}It earned baseline {{ s.baseline }}.{% endif %} <a href="{{ url_for('v2.history_page') }}">History</a></p>
+  {%- elif s.good %}
+  <p>Saved; every golden already matched what each device runs, so nothing new was committed.</p>
+  {%- else %}
+  <p>Nothing was recorded.</p>
+  {%- endif %}
+  {%- if s.record_error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not recorded:</strong> {{ s.record_error }}. Each device was saved to startup and its persist record kept.</p></div>{% endif %}
+  <form class="sc-tools save-filter" hx-get="{{ url_for('v2.save_job', job=s.job, list=s.list) }}" hx-target="#save-op" hx-swap="outerHTML" hx-trigger="input changed delay:400ms from:input, change from:select, search">
+    <label class="sc-f">Find a device<input type="search" name="q" value="{{ s.q }}"></label>
+    <label class="sc-f">Outcome<select name="outcome"><option value="">Every outcome</option>
+      {%- for g in s.groups %}<option value="{{ g.key }}"{% if s.outcome == g.key %} selected{% endif %}>{{ g.words }} ({{ g.count }})</option>{% endfor %}</select></label>
+  </form>
+  {%- for g in s.groups %}
+  <details class="sc-grp" data-keep="save-out-{{ g.key }}"{% if g.open %} open{% endif %}>
+    <summary>{{ badge(g.count ~ ' ' ~ g.words, g.kind) }}{% if s.q or s.outcome %}<span class="muted">· {{ g.devices | length }} shown</span>{% endif %}</summary>
+    {%- if g.kind == 'ok' %}
+    <p class="save-hosts mono">{{ g.devices | map(attribute='host') | join(', ') }}</p>
+    {%- else %}
+    <div class="table-wrap"><table class="table save-tbl"><tbody>
+      {%- for d in g.devices %}<tr><th scope="row"><a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a></th><td>{{ d.detail }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {%- endif %}
+  </details>
+  {%- endfor %}
+  {%- if s.retry %}
+  <p class="save-ft"><a class="btn btn-primary" data-op="save" href="{{ url_for('v2.save', list=s.list, device=s.retry) }}">Retry the {{ s.retry | length }} not saved</a>{{ how('save', compact=True, op='Save') }}<span class="muted small">opens Save for them, planned again</span></p>
+  {%- endif %}
+{%- else %}
+  <h2 id="save-h">Save {{ badge('Nothing was sent' if s.state == 'refused' else 'Not known here', 'warn') }}</h2>
+  {%- if s.state == 'refused' %}
+  <p>Refused: {{ s.error }}</p>
+  {%- if s.devices %}<p><a class="btn" data-op="save" href="{{ url_for('v2.save', list=s.list, device=s.devices) }}">Plan it again</a>{{ how('save', compact=True, op='Save') }}</p>{% endif %}
+  {%- elif s.state == 'failed' %}
+  <p>The Save job raised: {{ s.error }}. Each device's persist record says whether it was saved, and History says whether a commit landed.</p>
+  {%- else %}
+  <p>This server has no record of that Save: it expired, or the server restarted. Each device's persist record says whether it was saved, and History says whether a commit landed.</p>
+  {%- endif %}
+{%- endif %}
+</section>

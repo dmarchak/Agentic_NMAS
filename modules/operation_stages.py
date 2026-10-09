@@ -58,6 +58,12 @@ STAGES = {
         "device_v2.persist", "hash", "modules.nsot.onboard.persist_on_device",
         "n/a: a save cannot be undone; the preview says it carries the running config as it is",
         "modules.nsot.persist_op.apply"),
+    # Devices › Save (C593): persist's save and read-back on each device, then the capture's
+    # record, one commit; a device whose read-back did not match is not recorded.
+    "v2.save_confirm": Stages(
+        "v2.save", "hash", "modules.nsot.onboard.persist_on_device",
+        "n/a: a save cannot be undone; the plan says it carries each running config as it is",
+        "modules.nsot.save_op.run"),
     "rotate.apply": Stages(
         "rotate.preview", "fingerprint", "modules.nsot.credential_rotation.verify_new_credential",
         "modules.nsot.credential_rotation.revert_commands",
@@ -261,6 +267,7 @@ HISTORY = {
     "device_v2.restore_confirm": ("receipts", "golden"),
     "persist.apply": ("rotation",),
     "device_v2.persist_confirm": ("rotation",),
+    "v2.save_confirm": ("rotation", "golden"),
     "rotate.apply": ("rotation", "golden", "intent"),
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
     "onboard.verify": ("onboarding", "golden"),

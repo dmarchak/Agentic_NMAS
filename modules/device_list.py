@@ -162,6 +162,44 @@ def _iso(ts) -> str:
 STATES = ("at_intent", "departs", "no_intent", "no_golden", "pending", "unknown")
 
 
+#: The Startup column (C593, board A: "Startup is the hourly startup check's last reading").
+#: The check compares the `username` lines only, so the words say ACCOUNTS: "saved" would
+#: claim the whole startup config matches running, which nothing measures.
+STARTUP_WORDS = {
+    "persisted": ("accounts saved", "the hourly check found every username line of the running "
+                                    "config in startup; it compares accounts only"),
+    "not_persisted": ("accounts not saved", "the hourly check found a username line of the "
+                                            "running config missing from startup: a reload "
+                                            "would boot without it"),
+    "unknown": ("unknown", "the hourly check could not read it"),
+}
+STARTUP_NEVER = {"state": "never", "words": "not checked",
+                 "why": "the hourly startup check has not recorded this device"}
+
+
+def _startup_states(list_name: str, errors: list) -> dict:
+    """``{hostname: {"state", "words", "why"}}`` from the hourly startup check's ONE stored
+    record; an unreadable record is said in *errors*, never drawn as "not checked"."""
+    from modules.nsot import startup_check
+
+    try:
+        results = startup_check.read_results() or {}
+    except (OSError, ValueError) as exc:
+        errors.append(f"the startup check's record could not be read ({exc}): Startup is "
+                      "unknown")
+        return {}
+    at = results.get("at")
+    out = {}
+    for d in results.get("devices") or []:
+        if d.get("list") != list_name:
+            continue
+        words, why = STARTUP_WORDS.get(d.get("state"), STARTUP_WORDS["unknown"])
+        out[d.get("device")] = {"state": d.get("state", "unknown"), "words": words,
+                                "why": why + (f": {d['detail']}" if d.get("detail") else ""),
+                                "at": _iso(at) if at else ""}
+    return out
+
+
 def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float = None) -> dict:
     """The list as the page draws it, filtered by *q* (a substring of the name
     or address), *state* (one of `STATES`) and *platform*."""
@@ -201,6 +239,8 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         drained_now = {}
         errors.append(f"whether a device is drained could not be measured ({exc})")
 
+    startup = _startup_states(ref.name, errors)
+
     rows = []
     for dev in inventory:
         host = dev.get("hostname", "")
@@ -225,6 +265,7 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         rows.append({"name": host, "pending": False, "status": _status(reach, dev.get("ip", "")),
                      "address": dev.get("ip", ""), "platform": platform_for_device(dev) or "",
                      "role": dev.get("role", ""), "intent": intent,
+                     "startup": startup.get(host) or STARTUP_NEVER,
                      "drained": (_drained.words(drained_now[host]) + "; " + _drained.HOVER
                                  if host in drained_now
                                  else ""),
@@ -240,6 +281,7 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
                          f"awaiting DHCP ({p['reserved_address']})" if p.get("reserved_address")
                          else "no address recorded"),
                      "platform": "", "role": "", "measured": None, "golden_changed": None,
+                     "startup": {"state": "none", "words": "none", "why": "not onboarded yet"},
                      "drained": "", "intent": {"state": "pending", "words": "pending: not reached yet"}})
 
     total = len(rows)
@@ -251,5 +293,6 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
              and (not state or r["intent"]["state"] == state)
              and (not platform or r["platform"] == platform)]
     return {"list": ref.name, "error": "; ".join(errors), "rows": shown, "total": total,
+            "managed": len(inventory),
             "counts": counts, "platforms": platforms, "q": q, "state": state,
             "platform": platform, "bound": LOG_BOUND}

@@ -15,7 +15,13 @@ and that the sign-off happened. It makes the question unavoidable; the answer is
 SIGNED_OFF = {
     "landing.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13: the mockup review of the landing "
                                    "page, the device list and the Device page"),
-    "devices.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the device list)"),
+    "devices.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the device list); its selection "
+                                   "bar, Actions and Startup column from 7.4's board A "
+                                   "(FleetSelect), approved 2026-10-04 (C593)"),
+    "save.html": ("2026-10-04", "7.4's board C (SaveAll, 'one Save does both'), approved "
+                                "2026-10-04 (C593): the plan from stored records, the run in "
+                                "place, the result with Retry the failed. Its first count is "
+                                "what is measured, not the board's 'startup differs'"),
     "device.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page); the spike in "
                                   "option A approved 2026-09-30 (brief 9b). Its ACTIONS on v2 "
                                   "(signed off 2026-10-02, the mockups' 'Device actions on v2' "

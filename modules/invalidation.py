@@ -106,6 +106,7 @@ VOCABULARY = {
     "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
     "device_progress": "an operation the app ran on a held device reached its next step: a running card redraws its stepper (C370)",
+    "save": "a Save run from Devices (C593): finished, its result ready to read by id",
     "deploy_job": "a batch deploy run as a job (the v2 profile Apply): a device finished, or the batch, "
                   "its progress and result ready to read by id",
 }
@@ -117,6 +118,8 @@ ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     "show-commands": ("reads",),               # modules/nsot/reads.py: a run's end
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
+    # modules/nsot/save_op.py (C593): the run's end, its commit and what each device boots.
+    "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/deploy_job.py: each device finishing, and at the end what a
@@ -257,6 +260,7 @@ DECLARED = {
     "v2.credentials_intact": ("breakglass",),
     "breakglass.export": ("breakglass",),
     "v2.profile_apply_confirm": Nothing("starts a job and answers at once; the batch deploys and ANNOUNCES deploy_job as each device finishes, and what a deploy changes at the end (ANNOUNCERS)"),
+    "v2.save_confirm": Nothing("starts a job and answers at once; the Save ANNOUNCES save when it finishes, with the commit and what each device boots (ANNOUNCERS save)"),
     "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "device_v2.restore_confirm": Nothing("starts a job and answers at once; the restore ANNOUNCES deploy_job as it finishes, and what a restore changes (ANNOUNCERS deploy-job)"),
     "device_v2.deploy_confirm": Nothing("starts a job and answers at once; the deploy ANNOUNCES deploy_job as it finishes, and what a deploy changes (ANNOUNCERS)"),

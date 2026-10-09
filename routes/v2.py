@@ -1290,3 +1290,76 @@ def devices_table():
     for row in ctx["d"].get("rows") or []:
         row["checked"] = row.get("name") in ticked
     return _strict(render_template("v2/_devices.html", **ctx))
+
+
+# ---------------------------------------------------------------------------
+# Devices › Save (C593, boards A and C, approved 2026-10-04): the ticked devices, or every
+# device of the network, saved to startup and recorded as golden together
+# (`modules/nsot/save_op.py`). The page is the plan; the confirm starts a job; the card is
+# redrawn when the job announces `save`, and as each device steps.
+# ---------------------------------------------------------------------------
+
+def _save_selection(req, ref) -> list:
+    """The devices a Save names: ``all=1`` for every device of the network, else each
+    ``device`` the Devices page's form ticked, in its order."""
+    from modules.nsot.restore import _devices_of
+
+    if req.values.get("all") == "1":
+        return [d["hostname"] for d in _devices_of(ref.name) if d.get("hostname")]
+    return list(dict.fromkeys(d for d in req.values.getlist("device") if d))
+
+
+@bp.route("/devices/save", methods=["GET"])
+def save():
+    """Devices › Save: what Save would do for the selection, from stored records only, and
+    its confirm."""
+    from modules import save_page
+    from modules.nsot import listref
+    from modules.preview_confirm import confirm_part
+    from routes.list_param import named_list
+
+    # An unknown named list is refused before this runs (routes/list_param.py).
+    ref = listref.resolve(named_list(request) or listref.active().name)
+    s = save_page.plan_card(ref.name, _save_selection(request, ref),
+                            may=confirm_part(request, "confirm"))
+    return _page("v2/save.html", active_nav="devices", s=s, list_name=ref.name)
+
+
+@bp.route("/devices/save/confirm", methods=["POST"])
+def save_confirm():
+    """Start the confirmed Save as a job, as the verified person, bound to the plan's hash: a
+    plan that moved is refused with nothing sent. The card then waits for the job."""
+    from modules import identity, save_page
+    from modules.nsot import capture_job, listref, save_op
+
+    name = (request.form.get("list") or "").strip()
+    if not name or not listref.exists(name):
+        return _strict(render_template("v2/_save.html", s={
+            "state": "refused", "list": name, "error": (
+                f"the confirm names no network this server knows ({name or 'none given'}), "
+                "and a Save records into one network's repository. Nothing was sent.")}), 400)
+    hosts = list(dict.fromkeys(d for d in request.form.getlist("device") if d))
+    confirmed = (request.form.get("hash") or "").strip()
+    if not hosts or not confirmed:
+        return _strict(render_template("v2/_save.html", s={
+            "state": "refused", "list": name, "devices": hosts, "error": (
+                "the confirm carried no devices or no plan to be bound to. Nothing was "
+                "sent.")}), 400)
+    got = save_op.start(name, hosts, identity.request_actor(), confirmed)
+    if "refused" in got:
+        return _strict(render_template("v2/_save.html", s={
+            "state": "refused", "list": name, "devices": hosts, "error": got["refused"]}), 409)
+    s = save_page.job_card(name, got["job"], capture_job.get(got["job"]))
+    return _strict(render_template("v2/_save.html", s=s))
+
+
+@bp.route("/devices/save/job/<job>", methods=["GET"])
+def save_job(job):
+    """The Save card for its job: running, its result, or why there is none. Re-read when the
+    job announces `save` or a device steps; the search and outcome filter ride along."""
+    from modules import save_page
+    from modules.nsot import capture_job
+
+    s = save_page.job_card(request.args.get("list", ""), job, capture_job.get(job),
+                           q=request.args.get("q", ""), outcome=request.args.get("outcome", ""))
+    return _strict(render_template("v2/_save.html", s=s))

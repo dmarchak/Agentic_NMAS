@@ -300,6 +300,7 @@
   function relayPrivileged() { relay('privileged'); }
   function relayDeviceProgress() { relay('device_progress'); }
   function relayTemplates() { relay('templates'); }
+  function relaySave() { relay('save'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -377,6 +378,7 @@
     NMAS.subscribe('privileged', 'v2Privileged', relayPrivileged);
     NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);
     NMAS.subscribe('templates', 'v2Templates', relayTemplates);
+    NMAS.subscribe('save', 'v2Save', relaySave);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

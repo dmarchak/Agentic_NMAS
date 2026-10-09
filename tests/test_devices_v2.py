@@ -269,7 +269,8 @@ class TestThePage:
 
     def test_the_selection_opens_todays_deploy_for_the_ticked_devices(self, inv):
         _r, html = self._get(inv, "/v2/devices")
-        form = re.search(r'<form method="get" action="/" class="dev-form" data-todays-page="deploy_plan">(.*?)</form>', html, re.S)
+        # The deploy is the Actions menu's first row (C593, board A), still on today's page.
+        form = re.search(r'<form method="get" action="/" class="dev-form" data-todays-page="deploy_plan"[^>]*>(.*?)</form>', html, re.S)
         assert form and '<input type="hidden" name="open" value="deploy">' in form.group(1)
         assert 'name="device" value="r6"' in form.group(1)
         assert "(today's page)" in form.group(1)

@@ -25,6 +25,10 @@
  * templates the profile supplies for them, recounted on each change; the header box ticks
  * every device that has one, and Clear unticks them. `coverageWords` is PURE, executed in
  * duktape by tests/test_coverage_grid.py.
+ *
+ * Also `deviceSelect`, the Devices page's selection (C593, board A): the same selection, its
+ * bar naming the devices ticked and its Actions menu counting them ("Save (3)…").
+ * `deviceWords` is PURE, executed in duktape by tests/test_save_v2.py.
  */
 (function (root) {
   'use strict';
@@ -65,7 +69,38 @@
                     (missing === 1 ? '' : 's')};
   }
 
+  /* PURE. The Devices page's selection words: *names* the ticked devices; the menu's count. */
+  function deviceWords(names) {
+    var n = names.length, shown = names.slice(0, 8).join(', ');
+    return {summary: n + ' selected',
+            detail: '· ' + shown + (n > 8 ? ' and ' + (n - 8) + ' more' : ''),
+            count: '(' + n + ')'};
+  }
+
   function register() {
+    root.Alpine.data('deviceSelect', function () {
+      return {
+        names: [],
+        init: function () { this.recount(); },
+        boxes: function () {
+          return Array.prototype.slice.call(this.$root.querySelectorAll('input[name=device]'));
+        },
+        recount: function () {
+          var all = this.boxes(), names = [];
+          for (var i = 0; i < all.length; i++) if (all[i].checked) names.push(all[i].value);
+          this.names = names;
+        },
+        clear: function () {
+          var all = this.boxes();
+          for (var i = 0; i < all.length; i++) all[i].checked = false;
+          this.recount();
+        },
+        get nonePicked() { return !this.names.length; },
+        get summary() { return deviceWords(this.names).summary; },
+        get detail() { return deviceWords(this.names).detail; },
+        get count() { return deviceWords(this.names).count; }
+      };
+    });
     root.Alpine.data('coverageSelect', function () {
       return {
         names: [], missing: 0,
@@ -186,5 +221,6 @@
     root.document.addEventListener('alpine:init', register);
   }
   root.NMAS_APPLY = {confirmOutcome: confirmOutcome, ipslaBody: ipslaBody,
-                     ipslaOutcome: ipslaOutcome, coverageWords: coverageWords};
+                     ipslaOutcome: ipslaOutcome, coverageWords: coverageWords,
+                     deviceWords: deviceWords};
 })(typeof window !== 'undefined' ? window : this);

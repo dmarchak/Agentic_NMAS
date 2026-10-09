@@ -160,9 +160,16 @@ class TestThePreview:
     def test_every_refusal_key_the_plan_makes_is_a_gate(self):
         """By AST: a refusal with no gate would be a reason drawn nowhere."""
         src = open(os.path.join(ROOT, "modules", "nsot", "persist_op.py")).read()
-        keys = {n.args[0].value for n in ast.walk(ast.parse(src))
+        tree = ast.parse(src)
+        keys = {n.args[0].value for n in ast.walk(tree)
                 if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "refuse"
                 and n.args and isinstance(n.args[0], ast.Constant)}
+        # The device-side checks Save shares (`row_checks`, 2026-10-09) name theirs as
+        # `refused["<key>"] = ...`.
+        keys |= {t.slice.value for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                 for t in n.targets if isinstance(t, ast.Subscript)
+                 and getattr(t.value, "id", "") == "refused"
+                 and isinstance(t.slice, ast.Constant)}
         assert keys and keys == {k for k, _t, _d in PO.GATES}, keys
 
 

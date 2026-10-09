@@ -80,6 +80,11 @@ NOT_AN_OPERATION = {
     ("_coverage_deploy_preview.html", "Back"): "returns to Coverage, sending nothing",
     ("_timeline.html", "Show the change"): "reads one commit's masked change",
     ("_actions_menu.html", "Actions"): "opens the actions menu; each row carries its own link",
+    ("_devices.html", "Actions"): "opens the Devices selection's actions menu; each row carries "
+                                  "its own link (C593, board A)",
+    ("_devices.html", "Clear selection"): "unticks every device in the Devices selection, "
+                                          "recording nothing",
+    ("_save.html", "Back"): "returns to Devices, sending nothing",
     ("_sc_pick.html", "Remove"): "redraws the card without that command row; asks no device",
     ("_sc_pick.html", "Add a command"): "redraws the card with one more command row; asks no device",
     ("_sc_pick.html", "Use"): "opens Show commands with the saved set's commands filled in",

@@ -196,6 +196,10 @@ PAGE_RECORD = {
                               ('id="device-op"', "c.record", "r.verify"), "device_v2.history"),
     "device_v2.persist_confirm": ("templates/v2/_persist.html",
                                   ('id="device-op"', "c.outcome", "c.record"), "jobs.jobs_health"),
+    # Devices › Save (C593): a job, its result drawn per device (each outcome and its detail)
+    # with the commit it made; each persist row read back on the device's History.
+    "v2.save_confirm": ("templates/v2/_save.html",
+                        ('id="save-op"', "s.commit", "d.detail"), "device_v2.history"),
     "device_v2.capture_confirm": ("templates/v2/_capture.html",
                                   ('id="device-op"', "c.commit", "c.outcome"), "device_v2.history"),
     "v2.ip_sla_commit": ("templates/v2/_apply_preview.html",

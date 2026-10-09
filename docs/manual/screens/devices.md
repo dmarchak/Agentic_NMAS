@@ -37,7 +37,26 @@ A Save All that changed some goldens before 2026-10-02 named only those devices,
 unchanged device's read in it is not recoverable; its last measurement reads as the save
 before.
 
+## Startup {#startup}
+
+What the hourly startup check last read of each device: **accounts saved** when every
+`username` line of the running configuration was in startup, **accounts not saved** when one
+was missing (a reload would boot without it), **unknown** when the check could not read the
+device, and **not checked** when the check has not recorded it. The check compares the
+accounts only, so the column never says the whole startup matches running; hover a badge for
+what the check found. An unreadable check record is said above the list.
+
 ## Selecting devices {#selection}
 
-Ticking devices opens a deploy for them, on today's page until the redesign's batch deploy
-is built (plan 7.4).
+Tick devices and the bar above the list names them, with **Actions** and **Clear selection**.
+The Actions menu:
+
+- **Plan a deploy for the ticked devices (today's page)…** opens the deploy on today's page,
+  until the redesign's batch deploy is built (plan 7.4).
+- **Save (N)…** opens Devices › Save for the ticked devices: each saves its running
+  configuration to startup, is read back, and is recorded as golden, one commit for the batch.
+  See [Save to startup and as golden](save).
+- **Save every device of the network…** opens the same Save for every device in the inventory;
+  a commit that covers the whole network may earn a baseline.
+
+The rows ticked are kept when the list redraws.

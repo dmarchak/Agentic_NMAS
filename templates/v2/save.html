@@ -1,0 +1,15 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{#- Devices › Save (C593; board C, approved 2026-10-04): the selection's plan from stored
+    records, its confirm, then the run and its result in the same place (_save.html). -#}
+{% block title %}Save · Devices · {{ brand.short }}{% endblock %}
+{% block main %}
+<p class="crumbs muted"><a href="{{ url_for('v2.devices') }}">Devices</a> › Save</p>
+<div class="page-head">
+  <div class="page-title">
+    <h1>Save {{ s.total }} device{{ 's' if s.total != 1 }}: to startup, and as golden {{ info('save') }}</h1>
+    <p class="sub">{{ list_name }}: each device saves its running config to startup, the startup is read back, and the running config is recorded as its golden, one commit for the batch.</p>
+  </div>
+</div>
+{% include "v2/_save.html" %}
+{% endblock %}

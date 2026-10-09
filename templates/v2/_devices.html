@@ -20,9 +20,28 @@
   {%- elif not d.rows %}
   <p class="cov-head">{{ icon('info') }} No device of {{ d.total }} matches{% if d.q %} "{{ d.q }}"{% endif %}{% if d.state %}, state {{ d.state | replace('_', ' ') }}{% endif %}{% if d.platform %}, platform {{ d.platform }}{% endif %}.</p>
   {%- else %}
-  <form method="get" action="{{ url_for('index') }}" class="dev-form" data-todays-page="deploy_plan">
+  <form method="get" action="{{ url_for('index') }}" class="dev-form" data-todays-page="deploy_plan" x-data="deviceSelect" x-on:change="recount">
     <input type="hidden" name="open" value="deploy">
     <input type="hidden" name="list" value="{{ d.list }}">
+    {#- The selection bar (C593, board A): what is ticked, and the Actions on it. Rows start
+        unticked; the redraw carries the ticks (C472). -#}
+    {%- set picked = d.rows | selectattr('checked') | map(attribute='name') | list %}
+    <div class="dev-bar" id="dev-bar">
+      <span><strong x-text="summary">{{ picked | length }} selected</strong>
+        <span class="muted" x-text="detail">{% if picked %}· {{ picked[:8] | join(', ') }}{% if picked | length > 8 %} and {{ picked | length - 8 }} more{% endif %}{% endif %}</span></span>
+      <span class="dev-bar-acts">
+      <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
+        <button type="button" class="btn btn-primary" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
+        <div class="menu" role="menu" x-show="isOpen" x-cloak>
+          <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="deploy" x-bind:disabled="nonePicked">Plan a deploy for the ticked devices (today's page)…</button>{{ how('deploy', compact=True, op='deploy') }}</div>
+          <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="save" formaction="{{ url_for('v2.save') }}" x-bind:disabled="nonePicked"><span>Save <span x-text="count">({{ picked | length }})</span>…</span><span class="menu-sub muted">to startup (write memory) and as golden, together</span></button>{{ how('save', compact=True, op='Save') }}</div>
+          <div class="menu-rule"></div>
+          <div class="menu-row"><a role="menuitem" class="menu-item" data-op="save" href="{{ url_for('v2.save', list=d.list, all=1) }}">Save every device of {{ d.list }} ({{ d.managed }})…</a>{{ how('save', compact=True, op='Save') }}</div>
+        </div>
+      </div>
+      <button type="button" class="btn" x-on:click="clear" x-bind:disabled="nonePicked">Clear selection</button>
+      </span>
+    </div>
     {%- if d.rows | length != d.total %}<p class="muted dev-shown">Showing {{ d.rows | length }} of {{ d.total }}.</p>{% endif %}
     <div class="table-wrap">
       <table class="table dev-table">
@@ -33,6 +52,7 @@
           <th scope="col">Address</th>
           <th scope="col">Platform</th>
           <th scope="col">Intent</th>
+          <th scope="col">Startup</th>
           <th scope="col">Last measured</th>
         </tr></thead>
         <tbody>
@@ -44,14 +64,14 @@
             <td class="mono">{{ r.address }}</td>
             <td>{{ r.platform or '—' }}</td>
             <td data-label="Intent:">{{ badge(r.intent.words, IKIND.get(r.intent.state, 'muted'), title=r.intent.why) }}{% if r.measured %} <span class="muted dev-measured">by {{ r.measured.words }}</span>{% endif %}</td>
+            <td data-label="Startup:">{{ badge(r.startup.words, {'persisted': 'ok', 'not_persisted': 'warn'}.get(r.startup.state, 'muted'), title=r.startup.why) }}{% if r.startup.at %} <span class="muted">{{ stamp(r.startup.at) }}</span>{% endif %}</td>
             <td data-label="Last measured:">{% if r.measured %}{{ stamp(r.measured.iso, note=('the golden changed in this measurement' if r.measured.changed else 'golden last changed ' ~ (r.golden_changed.iso if r.golden_changed else 'before the last ' ~ d.bound ~ ' golden commits') ~ (' (' ~ r.golden_changed.sha ~ ')' if r.golden_changed else '')) ~ '; measurement ' ~ r.measured.sha) }}{% else %}<span class="muted">none</span>{% endif %}</td>
           </tr>
           {%- endfor %}
         </tbody>
       </table>
     </div>
-    <p class="dev-actions"><button type="submit" class="btn btn-primary" data-op="deploy">Plan a deploy for the ticked devices (today's page)…</button>{{ how('deploy') }}
-      <span class="muted">The deploy is planned on today's page until the redesign carries it.</span></p>
+    <p class="dev-actions muted">Startup is the hourly startup check's last reading: it compares the accounts only. A device pending onboarding has no tick. A deploy is planned on today's page until the redesign carries it.</p>
   </form>
   {%- endif %}
 </section>

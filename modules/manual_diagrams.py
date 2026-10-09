@@ -704,6 +704,33 @@ def persist():
     ])
 
 
+def save():
+    return svg(470, (
+        "Save, from Devices. The plan reads only the tool's own records: the inventory, the "
+        "hourly startup check, reachability and the holds; nothing is sent. You confirm its "
+        "hash. Then each device is held, saves its running configuration to startup and reads "
+        "it back; a device whose startup lacks an account line is not recorded. The ones that "
+        "matched are read for their running configuration and recorded as golden in one "
+        "commit, as you; the whole network saved together may earn a baseline."), [
+        lanes(20, 464),
+        band(20, 70, "The plan · stored records only"),
+        t(14, 54, "Inventory, startup check, reachability,", "sm"),
+        t(14, 67, "holds. Nothing is sent.", "sm"),
+        band(96, 66, "Confirm"),
+        person(14, 118, 186, 30, "You confirm its hash"),
+        band(168, 296, "The run · a job, each device held"),
+        device(262, 190, 118, 170, "The device", "eight at once", top=True),
+        *rows([
+            (220, "send", 1, "Save", "running to startup"),
+            (262, "read", 2, "Read startup back", "every account line"),
+            (304, "read", 3, "Read running", "the capture's own read"),
+        ]),
+        store(14, 330, 186, 36, "Persist row each", "where job health reads it"),
+        repo(14, 380, 186, 46, "One commit", "Source: save, as you"), num(14, 386, 4),
+        t(14, 448, "Not matched on read-back: saved, not recorded.", "sm"),
+    ])
+
+
 def seed():
     return svg(330, (
         "Seeding a device's first full intent. The committed golden is parsed into intent, "
@@ -1172,6 +1199,7 @@ DIAGRAMS = {
     "removal": removal,
     "rotate": rotate,
     "persist": persist,
+    "save": save,
     "seed": seed,
     "adopt": adopt,
     "retire": retire,
