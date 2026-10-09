@@ -257,11 +257,15 @@ class TestTheCard:
                               data={"list": "Lab", "key": "clear-counters",
                                     "arg": "GigabitEthernet2", "hash": h, "reason": REASON})
         html = html_mod.unescape(r.get_data(as_text=True))
-        job = re.search(r"job=([0-9a-f]{32})", html).group(1)
-        result = re.search(r"result=([0-9TZ-]+[0-9a-f]{32})", html).group(1)
-        assert capture_job.wait(job, 30)
-        html = self._get(t2, f"/v2/device/r3/privileged?list=Lab&key=clear-counters"
-                             f"&arg=GigabitEthernet2&result={result}")
+        # The job may finish before the card is drawn (it did once under the gate's parallel
+        # browser shard, 2026-10-09): then the card IS the result, drawn done, with no job to
+        # follow, as the preview's own step above allows.
+        job = re.search(r"job=([0-9a-f]{32})", html)
+        if job:
+            result = re.search(r"result=([0-9TZ-]+[0-9a-f]{32})", html).group(1)
+            assert capture_job.wait(job.group(1), 30)
+            html = self._get(t2, f"/v2/device/r3/privileged?list=Lab&key=clear-counters"
+                                 f"&arg=GigabitEthernet2&result={result}")
         assert "done, verified" in html and REASON in html, html[:300]
         assert "cleared 5 s ago" in html
 

@@ -233,3 +233,54 @@ def test_every_browser_test_skips_in_the_words_the_gate_refuses():
             about = [s for s in skips if re.search(r"(?i)browser|firefox|gecko", s)]
             assert about and all(s.startswith(phrase) for s in about), (name, skips)
     assert len(users) >= 7, users
+
+
+class TestCIsInterpreterHoldsWhatCIInstalls:
+    """C594 (CI #537, 2026-10-09): the lock gained boto3, the gate's interpreter never did, and
+    CI went red on what the gate had not run. The gate compares its interpreter's packages
+    with the three files CI installs before the suite, and refuses a difference by name."""
+
+    def _world(self, tmp_path, listed):
+        for name, text in (("requirements.lock", "# a lock\nboto3==1.34.46\nFlask==3.0.2\n"),
+                           ("requirements-ci.txt", "coverage==7.16.1\n"),
+                           ("requirements-test.txt", "pytest-xdist==3.8.0\n")):
+            (tmp_path / name).write_text(text, encoding="utf-8")
+        py = tmp_path / "python"
+        py.write_text("#!/bin/sh\ncat <<'EOF'\n" + "\n".join(listed) + "\nEOF\n", encoding="utf-8")
+        py.chmod(0o755)
+        return str(py), str(tmp_path)
+
+    def test_a_matching_interpreter_has_no_difference(self, tmp_path):
+        gate = _gate_module()
+        py, repo = self._world(tmp_path, ["boto3==1.34.46", "flask==3.0.2", "coverage==7.16.1",
+                                          "pytest_xdist==3.8.0", "pip==24.0"])
+        assert gate.interpreter_differs(py, repo) == []
+
+    def test_a_missing_and_a_moved_package_are_each_named(self, tmp_path):
+        gate = _gate_module()
+        py, repo = self._world(tmp_path, ["flask==3.0.3", "coverage==7.16.1",
+                                          "pytest-xdist==3.8.0"])
+        assert gate.interpreter_differs(py, repo) == [
+            "boto3==1.34.46 is not installed", "Flask is 3.0.3, CI installs 3.0.2"]
+
+    def test_the_gate_refuses_before_the_suite(self, repo, tmp_path):
+        """The refusal runs the real gate against a planted interpreter missing a pin."""
+        (tmp_path / "py").mkdir()
+        py, planted = self._world(tmp_path / "py", ["flask==3.0.2"])
+        for name in ("requirements.lock", "requirements-ci.txt", "requirements-test.txt"):
+            (repo / name).write_text((tmp_path / "py" / name).read_text(encoding="utf-8"),
+                                     encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "CI's three files")
+        (repo / "docs" / "a.md").write_text("three\n")
+        msg = tmp_path / "msg.txt"
+        msg.write_text("Docs: two\n", encoding="utf-8")
+        env = {k: v for k, v in os.environ.items() if k != "NMAS_GATE_SUITE"}
+        r = subprocess.run([sys.executable, GATE, "--message", str(msg), "--expect", "Docs:",
+                            "--repo", repo, "--python", py], capture_output=True, text=True,
+                           env=env, timeout=60)
+        assert r.returncode != 0
+        assert "REFUSED at CI's interpreter" in r.stdout + r.stderr
+        assert "boto3==1.34.46 is not installed" in r.stdout + r.stderr
+        assert "the suite" not in (r.stdout + r.stderr).split("REFUSED")[0].split("3. ")[-1], \
+            "it refuses before any suite runs"

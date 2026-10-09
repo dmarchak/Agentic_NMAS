@@ -150,6 +150,46 @@ def last_line(path):
     return lines[-1] if lines else ""
 
 
+#: What CI installs into its interpreter (`.github/workflows/ci.yml`; `scripts/nmas-ci-env` builds
+#: the gate's from the same three, with --no-deps).
+CI_FILES = ("requirements.lock", "requirements-ci.txt", "requirements-test.txt")
+
+
+def _norm(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def interpreter_differs(py, repo):
+    """``[words]``: each package CI's three files pin that *py* lacks or holds at another
+    version (C594: the lock gained boto3, the gate's interpreter never did, and CI went red on
+    what the gate had not run). Empty when they match; the interpreter's extras are not a
+    difference (pip itself, setuptools)."""
+    pins = {}
+    for f in CI_FILES:
+        with open(os.path.join(repo, f), encoding="utf-8") as fh:
+            for line in fh:
+                m = re.match(r"\s*([A-Za-z0-9_.\-]+)(?:\[[^\]]*\])?==([^;\s]+)", line)
+                if m:
+                    pins[_norm(m.group(1))] = (m.group(1), m.group(2))
+    out = subprocess.run([py, "-m", "pip", "list", "--format=freeze",
+                          "--disable-pip-version-check"], capture_output=True, text=True)
+    if out.returncode != 0:
+        return [f"{py} -m pip list failed: {(out.stderr or out.stdout).strip()[-200:]}"]
+    have = {}
+    for line in out.stdout.splitlines():
+        if "==" in line:
+            n, v = line.split("==", 1)
+            have[_norm(n)] = v.strip()
+    diffs = []
+    for key, (name, want) in sorted(pins.items()):
+        got = have.get(key)
+        if got is None:
+            diffs.append(f"{name}=={want} is not installed")
+        elif got != want:
+            diffs.append(f"{name} is {got}, CI installs {want}")
+    return diffs
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--message", required=True, help="the commit message file")
@@ -186,7 +226,15 @@ def main(argv=None):
         refuse("the stage guard", (guard.stderr or guard.stdout).strip()[-400:])
 
     suite_out = os.path.join(gitdir, "nmas-gate-suite.out")
-    say("3. the suite, CI's three commands in CI's interpreter, at once, the browser tests "
+    if not os.environ.get("NMAS_GATE_SUITE"):       # the gate's own tests stand a suite in
+        say("3. CI's interpreter holds what CI installs")
+        diffs = interpreter_differs(a.python, repo)
+        if diffs:
+            refuse("CI's interpreter", f"{a.python} differs from what CI installs from "
+                   f"{', '.join(CI_FILES)}: " + "; ".join(diffs[:8])
+                   + (f"; and {len(diffs) - 8} more" if len(diffs) > 8 else "")
+                   + ". Rebuild it: scripts/nmas-ci-env <CI's python> (docs/TESTING.md)")
+    say("4. the suite, CI's three commands in CI's interpreter, at once, the browser tests "
         "among them")
     path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
                             os.environ.get("PATH", "")])

@@ -30,6 +30,11 @@ log = logging.getLogger(__name__)
 PROBE = "_probe/mercury-connection-test"
 #: The Test's steps, in order, as the manual and the Settings card name them.
 TEST_STEPS = ("bucket", "put", "get", "stat")
+#: The client library's loggers. At DEBUG botocore logs every request's headers, the
+#: `Authorization` header naming the access key among them (C594: CI #537, when the lock first
+#: installed boto3), so they are held at WARNING whatever the app's level: Mercury masks a
+#: credential on every handler, and a library's debug output is not a place it can.
+QUIET_LOGGERS = ("boto3", "botocore", "s3transfer")
 
 
 class Unavailable(RuntimeError):
@@ -61,6 +66,9 @@ class S3ArchiveIntegration(IntegrationClient):
         if not self.is_configured():
             raise Unavailable("not configured: set its endpoint and bucket in Settings "
                               "(Integrations, S3 archive)")
+        for name in QUIET_LOGGERS:
+            if logging.getLogger(name).getEffectiveLevel() < logging.WARNING:
+                logging.getLogger(name).setLevel(logging.WARNING)
         try:
             import boto3
             from botocore.config import Config
