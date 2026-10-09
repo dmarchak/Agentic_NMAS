@@ -441,6 +441,16 @@ DEFAULTS: dict = {
     "s3_prefix":     "",
     "s3_verify_tls": True,
 
+    # ── Mercury's records database (Phase 4, P4-1, P4-2: the installation's) ──
+    # Host empty: every store stays on files, today's behaviour. The name, role and port are
+    # the ones host step 6a makes (PG-1: 5433 on loopback); the address and the password are
+    # settings because no measurement can find them.
+    "records_db_host":     "",
+    "records_db_port":     5433,
+    "records_db_name":     "mercury",
+    "records_db_user":     "mercury",
+    "records_db_password": "",
+
     # ── Platform map (NetBox platform slug → how NMAS treats the device) ────
     # This map is what makes multi-vendor support a configuration change rather
     # than a code change. Seeded for the two reference platforms; the operator
@@ -800,6 +810,11 @@ SCHEMA: dict = {
         "s3_region": _STR,
         "s3_prefix": _STR,
         "s3_verify_tls": _BOOL,
+
+        "records_db_host": _STR,
+        "records_db_port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "records_db_name": _STR,
+        "records_db_user": _STR,
 
         "platform_map": {
             "type": "object",

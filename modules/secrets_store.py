@@ -55,6 +55,7 @@ SECRET_KEYS = (
     "s3_access_key",
     "s3_secret_key",
     "proxmox_token_secret",
+    "records_db_password",
 )
 
 _fernet: "Fernet | None" = None

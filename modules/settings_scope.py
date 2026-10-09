@@ -73,6 +73,9 @@ SCOPES: dict = {
     **_group(HOST, "workflow", "wf_auto_backup", "wf_read_first", "wf_require_approval",
              "wf_save_golden", "wf_update_vars"),
     **_group(HOST, "git_author", "nsot_git_author_name", "nsot_git_author_email"),
+    # Mercury's records database: one for the installation (P4-2), never a network's.
+    **_group(HOST, "records_db", "records_db_host", "records_db_port", "records_db_name",
+             "records_db_user", "records_db_password"),
     # Lab 2's NETCONF demo script: global, and lab tooling (P.8 decision 4; NSOT_STAGE10_PLAN
     # 6.0b moves it to lab/).
     **_group(HOST, "lab_demo", "yang_push_script"),

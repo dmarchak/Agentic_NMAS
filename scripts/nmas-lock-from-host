@@ -35,7 +35,7 @@ IMPORT_TO_DIST = {
     "anthropic": "anthropic", "cryptography": "cryptography",
     "dotenv": "python-dotenv", "flask": "Flask", "flask_socketio": "Flask-SocketIO",
     "jinja2": "Jinja2", "jsonschema": "jsonschema", "jwt": "PyJWT",
-    "boto3": "boto3", "botocore": "botocore",
+    "boto3": "boto3", "botocore": "botocore", "psycopg": "psycopg",
     "minio": "minio", "ncclient": "ncclient", "netmiko": "netmiko",
     "paramiko": "paramiko", "ping3": "ping3", "psutil": "psutil",
     "pysnmp": "pysnmp", "requests": "requests", "urllib3": "urllib3",
@@ -50,10 +50,13 @@ DEB_TO_PYPI = {"pkg-resources": "setuptools"}
 DEB_VIRTUAL = {"cffi-backend-api-max", "cffi-backend-api-min", "cryptography-egg",
                "importlib-metadata", "importlib-resources"}
 
-#: Imported, and allowed to be absent from the lock. Empty since 2026-10-09: boto3 and
-#: botocore (the S3 archive's client, the operator's decision of 2026-10-08, installed on the
-#: host from apt) are pinned, from the lock regenerated on the host from fda0c4e.
-OPTIONAL: set = set()
+#: Imported, and allowed to be absent from the lock. boto3 and botocore left it on 2026-10-09
+#: (pinned from the lock regenerated on the host from fda0c4e). psycopg, Mercury's records
+#: database driver (Phase 4; the host's apt python3-psycopg 3.1.17, installed by host step 6a),
+#: is here until the operator has decided its licence (LGPL-3.0, recorded in THIRD_PARTY.json)
+#: and the lock is regenerated on the host from the release that first imports it, as boto3
+#: was; then this is empty again.
+OPTIONAL: set = {"psycopg"}
 #: Local packages and paths, not distributions.
 LOCAL = {"modules", "routes", "tests", "app", "telnetlib", "conftest", "fixtures"}
 

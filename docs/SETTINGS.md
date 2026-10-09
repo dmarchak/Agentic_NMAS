@@ -77,6 +77,16 @@ offers *record this decision*, which ratifies and cannot change.
 
 ---
 
+## Waiting for their screen
+
+Declared, read, and not yet on any page: each names the screen it waits for. Until then they are
+set by editing `data/user_settings.json` (the secret through the secrets store), which an
+installation that wants today's behaviour never needs to.
+
+| Setting | Waits for |
+|---|---|
+| `records_db_host`, `records_db_port`, `records_db_name`, `records_db_user`, `records_db_password` | Mercury's records database (Phase 4, P4-2: the installation's, never a network's). Host empty: every store stays on its files, today's behaviour; the name, role and port default to what host step 6a makes (`mercury`, `mercury`, 5433). The password is a secret (`secrets_store.SECRET_KEYS`). They wait for Settings › Installation (board F, not built on v2), where a Records database card with its Test (`records_db.test_connection`) is to be drawn for sign-off. |
+
 ## File-only, deliberately
 
 Each with a reason. These are settable by editing
