@@ -25,6 +25,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 SWITCHES = ["s1", "s2", "s3", "s4"]
 ROUTERS = ["r1", "r2", "r3", "r4", "r5"]
 ALL_DEVICES = ROUTERS + SWITCHES

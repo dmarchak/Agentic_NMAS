@@ -454,7 +454,10 @@ def offline_verdict(repo, target, run=subprocess.run):
             argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
         if parallel_available(tree)[0]:
             argv += ["-n", "auto"]
-        out = run(argv, cwd=tree, capture_output=True, text=True)
+        # nmas-test runs ${PYTHON:-python3}: hand it this interpreter, the app's (section 8.1),
+        # so the suite tests what the app imports, never a shell's python3.
+        out = run(argv, cwd=tree, capture_output=True, text=True,
+                  env={**os.environ, "PYTHON": sys.executable})
     lines = (out.stdout or "").strip().splitlines()
     tail = lines[-1:] or ["(no output)"]
     network = next((ln[len("nmas-test: "):] for ln in lines if ln.startswith("nmas-test: network:")),
@@ -894,4 +897,10 @@ def _health():
 
 
 if __name__ == "__main__":
+    # Phase 4 section 8.1: the interpreter flask-app runs. In this block, not at the top: root's
+    # updater loads a copy of this file as a module from beside no checkout (it imports nothing
+    # outside the standard library at its top, which tests/test_app_interpreter.py holds).
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from modules.app_interpreter import adopt
+    adopt(__name__)
     sys.exit(main())

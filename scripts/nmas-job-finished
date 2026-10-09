@@ -24,6 +24,11 @@ import sys
 import urllib.error
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 #: The app answers on the host's loopback in under 3 ms (`/health`, 8 requests,
 #: measured 2026-10-01), and this route only starts a thread: the reader's 9.8 s
 #: read happens after it answers. The bound is short ON PURPOSE rather than

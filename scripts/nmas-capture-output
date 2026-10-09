@@ -60,6 +60,10 @@ import re  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 
 def slug(command: str) -> str:
     """The fixture file's name for a command (tests read it the same way)."""

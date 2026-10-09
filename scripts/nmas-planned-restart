@@ -32,6 +32,10 @@ import argparse  # noqa: E402
 import getpass  # noqa: E402
 import time  # noqa: E402
 
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])

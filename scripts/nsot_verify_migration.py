@@ -16,6 +16,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 from modules.config import get_list_data_dir                  # noqa: E402
 from modules.nsot import manifest as _m, migrate, normalize     # noqa: E402
 from modules.nsot import repo as _repo                          # noqa: E402

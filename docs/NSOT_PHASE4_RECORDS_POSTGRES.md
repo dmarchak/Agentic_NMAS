@@ -329,10 +329,34 @@ Python itself.
 
 **Approved by the operator, 2026-10-09:** the inventory and the `nmas-` prefix drop-in, with
 two changes before anything runs: no profile.d (done: the drafts no longer install one), and
-C607 designed now. **Drawn below for sign-off, 8.1 to 8.4; no host change until then.** The
-host-step drafts are redrafted to 8.3's shape once it is signed.
+C607 designed now. **8.1 to 8.4 SIGNED OFF the same day, with notes:** 8.1 as ONE shared
+standard-library helper every script calls first, never copied into each, silent where no
+`flask-app` unit exists; 8.2 with a standard compiler (pip-tools' `pip-compile` or
+`uv pip compile --generate-hashes`) considered in place of a custom `nmas-lock`, laptop and CI
+only; the first venv changing WHERE the libraries live, not WHICH versions (textfsm 1.1.2 held
+for it; 1.1.3, future and pycparser afterwards as the first ordinary lock change through 8.3 and
+8.4); 8.3 keeping the current and previous venvs, the deploy removing older proved ones. Then
+the host-step drafts redrafted to 8.3. No host change until the operator runs them.
 
-### 8.1 How a person's script finds the app's interpreter (for sign-off)
+### 8.1 How a person's script finds the app's interpreter (SIGNED OFF; BUILT 2026-10-09)
+
+**Built:** `modules/app_interpreter.py` (standard library only), `adopt(__name__)`, called by 66
+scripts at their top before any import outside the standard library, and by `nmas-deploy` as
+the first statement of its `__main__` block (root's updater loads a copy of it as a module from
+beside no checkout, and it imports nothing outside the standard library at its top).
+`tests/test_app_interpreter.py` parses every python-shebang script under `scripts/` and refuses
+one that does not call it first, with the exemptions below each named with its reason; planted
+scripts show it fails, and so did a real one with its call removed. `nmas-lock-from-host`'s own
+copy is gone. `nmas-deploy` hands its interpreter to `scripts/nmas-test` (a shell script that
+runs `${PYTHON:-python3}`, found in this survey: `nmas-deploy --offline` runs the suite on the
+host). Walked on the laptop with a stand-in `systemctl`: started by `/usr/bin/python3`,
+`nmas-tier2-probe --help` re-ran under the named interpreter and said so; with no unit it ran
+as started and said nothing. Exempt: the laptop's hooks, the gate, `nmas-stage-guard`,
+`nmas-host`, `nmas-ci-log`, `nmas-host-step-check`, `check_removed_definitions.py`;
+`nmas-config-read` (fed on stdin); `nmas-oxidized-cred` (a root-installed copy run
+`/usr/bin/python3 -I`, never importing the checkout, found in this survey).
+
+The comparison the sign-off rested on:
 
 The operator named two shapes: a shebang naming the venv, or a `mercury-python` launcher. Both
 were measured against where the scripts run, and a third is recommended.
@@ -343,48 +367,49 @@ were measured against where the scripts run, and a third is recommended.
 | `#!/usr/bin/env mercury-python`, a launcher installed on the host | Needs the launcher installed on every machine that runs a script (the laptop, CI, a fresh clone), or "env: mercury-python: not found". If the launcher chooses "the venv if it exists", it is wrong after the undo, as above. |
 | **Recommended: the script re-runs itself under the app's interpreter** | Each host script's first statements (standard library only, before any other import) read `flask-app`'s ExecStart from systemd and, when another interpreter started the script, re-run it under that one, saying so on stderr. This is `nmas-lock-from-host`'s mechanism, built and walked on 2026-10-09 (the re-run, the no-re-run, the refusal). It is right in every state: before the switch (`/usr/bin/python3`), after it (the link), after any swap (the link), after the undo (`/usr/bin/python3` again). Where no `flask-app` unit exists (the laptop, CI) it runs as started and says nothing. Cost: about 12 ms per start (a systemd read, measured on the host: 11 to 14 ms), and two lines at the top of each script. |
 
-The recommended shape is built as one standard-library module (`modules/app_interpreter.py`,
-the function `nmas-lock-from-host` already has, moved to its one home), called by every script
-under `scripts/` with a python shebang except the laptop's own (the hooks, the gate,
-`nmas-stage-guard`, `nmas-host`, `nmas-ci-log`, `nmas-host-step-check`: listed once, in the
-test). A test parses every such script and refuses one whose first import after the standard
-library is anything other than that call, so a new script cannot be added without it. Not
-covered, by construction: the root updater (it never imports the user-writable checkout; the
-prefix drop-in's PATH reaches it) and `nmas-config-read`, which the agent feeds to `python3 -`
-on stdin (it imports only `modules.redact`, standard library only: measured).
-
-### 8.2 The lock becomes authored (for sign-off)
+### 8.2 The lock becomes authored (SIGNED OFF; the compiler decided by measurement)
 
 Today the lock is READ from the host (`nmas-lock-from-host`), because CI had to test what apt
 and pip had put there. With a venv the direction reverses: the host is BUILT from the lock, so
 the lock is the authority and is made where it can be tested.
 
-- **`requirements.txt` is the authored input:** one line per distribution the code imports
-  (`IMPORT_TO_DIST`'s set; a test holds the two equal), pinned `==` at the version the host runs
-  today, with its reason where one is known.
-- **`scripts/nmas-lock` resolves it** on Python 3.12.3 (CI's interpreter), in a fresh venv, with
-  pip's own resolver (`pip install --dry-run --ignore-installed --report`, no new tool), using
-  the current lock as constraints (`-c requirements.lock`) so only what must move moves, and a
-  `--move <name>` to let one named distribution move. It writes `requirements.lock`: every
-  distribution `==` its version with `--hash=sha256:` for every file PyPI publishes for that
-  release (the PyPI JSON API), so the host installs byte-for-byte what CI tested whatever wheel
-  its platform picks.
-- **CI installs it as the host will:** `pip install --require-hashes --no-deps -r
-  requirements.lock`, then `pip check` (the set must be consistent by PyPI's own metadata, which
-  the host's apt combination never was), and the suite. A test holds the lock to satisfy every
-  line of `requirements.txt` and to cover every import (the existing coverage test).
-- **The first authored lock, measured 2026-10-09** (pip's resolver on today's 70 pins against
-  PyPI): it resolves when exactly one pin moves, textfsm 1.1.2 to 1.1.3 (netmiko 4.3.0 declares
-  `textfsm>=1.1.3`), and adds two that apt's packages hid: future 1.0.0 (textfsm's) and pycparser
-  3.1 (cffi's). Every other version is the host's. The release carrying it and the first venv
-  (8.3) land together: from that commit until the switch CI tests textfsm 1.1.3 while the host
-  runs apt's 1.1.2, so the two are one sitting.
-- **`nmas-lock-from-host` retires** with that release (and C37's host-reading with it); the
-  host's proof that it runs the lock is 8.3's build checks.
-- **A new dependency** is a line in `requirements.txt` and a run of `scripts/nmas-lock` on the
-  laptop; it reaches the host only through 8.3. That is C607's second half.
+**The compiler: `uv pip compile`, not pip-tools and not pip's own resolver.** Measured
+2026-10-09 on the laptop (uv 0.12.24 and pip-tools 7.6.2, each in its own tool folder, never
+CI's interpreter), on today's 70 pins: the first venv must hold netmiko 4.3.0 WITH textfsm
+1.1.2, and netmiko 4.3.0's PyPI metadata declares `textfsm>=1.1.3`. pip's resolver and
+`pip-compile` (which uses it) both refuse that combination (ResolutionImpossible), and neither
+can override a dependency's declared requirement. uv can (`--override`): with three overrides
+it produced exactly today's 70 `name==version` pins, identical to the host-read lock, with
+1,006 hashes (every file PyPI publishes for each release). So the custom `nmas-lock` is not
+built; uv runs on the laptop only (CI checks the lock it produced, 8.2's last points).
 
-### 8.3 The host builds beside, swaps a link, never rebuilds in place (for sign-off)
+- **`requirements.txt` is the authored input:** one line per distribution the code or the suite
+  imports, pinned `==` at the version the host runs today, with its reason where one is known.
+- **`requirements-overrides.txt` holds each override with its reason and when it goes:**
+  `textfsm==1.1.2` (the host's version; netmiko 4.3.0 asks for `>=1.1.3`); `future` and
+  `pycparser` excluded by a marker that is never true (PyPI's textfsm metadata asks for future,
+  but its code imports `builtins`, Python 3's own module, as `future` only backports it to
+  Python 2: CI has run it without future all along; cffi asks for pycparser, which only its
+  build-time `cdef` parsing needs, and neither CI nor the host has it). All three go in the
+  first ordinary lock change.
+- **The command**, recorded by uv in the lock's own header: `uv pip compile requirements.txt
+  --override requirements-overrides.txt --generate-hashes --python-version 3.12
+  --python-platform x86_64-unknown-linux-gnu -o requirements.lock`. With `-o` naming the
+  existing lock, uv keeps its pins unless something forces a move; `--upgrade-package <name>`
+  moves one named distribution.
+- **CI installs it as the host will:** `pip install --require-hashes --no-deps -r
+  requirements.lock`, then the suite. A test runs `pip check` (offline) and holds its complaints
+  to exactly the overrides' (each override names the one it causes), so a dependency that stops
+  being satisfied for another reason fails; another holds the lock to satisfy every line of
+  `requirements.txt`, and the existing test to cover every import.
+- **`nmas-lock-from-host` retires** with the authored lock (and C37's host-reading with it);
+  the host's proof that it runs the lock is 8.3's build checks.
+- **A new dependency** is a line in `requirements.txt` and the command above on the laptop; it
+  reaches the host only through 8.3 and 8.4. That is C607's second half.
+- `requirements-test.txt` (pytest-xdist, execnet: on the host and in CI) stays as it is,
+  installed `--no-deps` beside the lock; the venv's identity covers it (8.3).
+
+### 8.3 The host builds beside, swaps a link, never rebuilds in place (SIGNED OFF; host steps redrafted 2026-10-09, not run)
 
 Measured on the laptop, 2026-10-09: a venv reached through a linked folder reports the LINK as
 `sys.prefix` and `sys.executable`; a running process's `/proc/<pid>/maps` names the REAL folder
@@ -395,35 +420,48 @@ its test tools); the host has 244 GB free on `/opt`.
 ```
 /opt/mercury-venv              -> mercury-venv-<h>       the link every drop-in names
 /opt/mercury-venv.previous     -> mercury-venv-<h0>      what a rollback points back to
-/opt/mercury-venv-<h>/         <h> = the first 12 hex of requirements.lock's sha256
+/opt/mercury-venv-<h>/         <h> = the venv's identity: the first 12 hex of the sha256 of
+                               requirements.lock then requirements-test.txt, both installed
+                               in it (modules.app_interpreter.venv_id, the one computation)
     .mercury-proved            written last, only when every build check passed:
-                               the lock's full sha256, the commit, the time, the checks
+                               the identity, the commit, the time
 ```
 
-1. **Build** (`venv-build.sh`, run from the checkout of the release to be deployed): computes
-   `<h>` from that checkout's lock. Refuses when `<h>` is the link's target or `.previous`
-   (never rebuilds in place: it names the folder and what points at it). An unproved folder of
-   that name (an earlier build that failed) is removed and rebuilt; a proved one is reported
-   and left. Builds with `pip install --require-hashes --no-deps -r requirements.lock`, then the
-   checks: Python 3.12.3; nothing from outside it; every pin installed at its version; `pip
-   check`; psycopg loading libpq; every Python program on the host importing in the new venv all
-   it imports under the app's CURRENT interpreter (the one the link or ExecStart names now).
-   Only then `.mercury-proved`. Older folders, neither current nor previous and loaded by no
-   process (`/proc/*/maps`, read as root), are removed, each named. Nothing that runs changes.
-2. **First switch** (`venv-2-switch.sh`, redrafted): creates the link to a proved build, then
-   installs the two drop-ins naming the link, and proves what it proves today, plus: the app's
-   process loads from `mercury-venv-<h>` (its maps). **Its undo** (`venv-3-rollback.sh`) removes
-   the drop-ins and leaves the link: the system interpreter again.
-3. **Later lock changes** (`venv-swap.sh <h>`): refuses without `.mercury-proved` for `<h>`;
-   records the link's current target as `.previous`; swaps the link atomically; restarts the
-   app (and the ZTP responder if running); proves the app's process maps `mercury-venv-<h>`,
-   `/health` 200, and runs the heartbeat and telemetry checks once. **On any failed proof it
-   swaps back to `.previous` itself, restarts, and proves the old venv answers**, ending FAIL
-   with what failed: rollback on failure, as every Mercury operation does.
+**Kept: the current venv and the previous one** (the operator, 2026-10-09). Older proved ones
+are removed by the deploy once it carries the swap (8.4); until then by `venv-swap.sh`, after a
+swap it has proved, each loaded by no process (`/proc/*/maps`, read as root) and named as it
+goes. A build removes nothing but an unproved folder of its own identity.
+
+The host steps, redrafted to this shape (`scripts/host-steps/`, each the operator's, none run):
+
+1. **Build** (`venv-1-build.sh`, run from the checkout of the release to be deployed): computes
+   `<h>` from that checkout. Refuses when `<h>` is the link's target or `.previous` (never
+   rebuilds in place: it names the folder and what points at it). A proved folder of that
+   identity is reported and left, PASS; an unproved one (an earlier build that failed) is
+   removed and rebuilt. Builds with `pip install --require-hashes --no-deps -r
+   requirements.lock`, then `requirements-test.txt` with `--no-deps`, and checks: Python
+   3.12.3; nothing from outside it; every pin installed at its version; `pip check`'s
+   complaints exactly the overrides'; psycopg loading libpq; every Python program on the host
+   importing in the new venv all it imports under the app's CURRENT interpreter (whatever
+   `flask-app`'s ExecStart names now). **The first build only** (no link yet) also proves every
+   pinned distribution at the version the app imports today: the first venv changes where the
+   libraries live, not which versions. Only then `.mercury-proved`. Nothing that runs changes.
+2. **First switch** (`venv-2-switch.sh`): creates the link to a proved build, installs the two
+   drop-ins naming the link, and proves what it proved before, plus that the app's process
+   loads from `mercury-venv-<h>` (its maps). **Its undo** (`venv-3-undo.sh`) removes the
+   drop-ins and leaves the link: the system interpreter again.
+3. **Later lock changes** (`venv-swap.sh`, from the release's checkout): refuses without
+   `.mercury-proved` for that checkout's `<h>`; records the link's current target as
+   `.previous`; swaps the link atomically; restarts the app (and the ZTP responder if running);
+   proves the app's process maps `mercury-venv-<h>`, `/health` 200, and runs the heartbeat and
+   telemetry checks once. **On any failed proof it swaps back to `.previous` itself, restarts,
+   and proves the old venv answers**, ending FAIL with what failed: rollback on failure, as
+   every Mercury operation does. After a proved swap it removes older proved venvs (above).
+   Until 8.4 is built, a swap and its release's deploy are run in one sitting by the operator.
 4. **Rollback by hand** (`venv-rollback.sh`): points the link at `.previous` (refusing when it
    is absent or unproved), restarts, and proves as the swap does.
 
-### 8.4 A release that changes the lock (for sign-off)
+### 8.4 A release that changes the lock (SIGNED OFF; not built)
 
 A swap without the release, or the release without the swap, runs one release's code on the
 other's packages. So the deploy carries the swap:
@@ -433,9 +471,12 @@ other's packages. So the deploy carries the swap:
   unless `/opt/mercury-venv-<h>/.mercury-proved` exists; then the deploy swaps the link in the
   same restart as the checkout moves, and its existing rollback (a release that does not come
   up) puts BOTH back: the commit and the link.
-- Until that is built, the deploy refuses any release whose lock differs from the running venv
-  (C607 stays B: it blocks the first release after the switch that changes the lock). Before
-  the switch there is no link, and nothing is compared.
+- After a proved swap, the deploy removes proved venvs older than the previous one (8.3).
+- **Not built yet**, and nothing compares the identities until it is: `nmas-deploy` and the
+  updater are host-installed and change with a host step. C607 stays B on it: it blocks the
+  first release after the switch whose venv identity changes, which is the first ordinary lock
+  change (textfsm 1.1.3, future, pycparser). Before the switch there is no link, and nothing is
+  compared.
 - Settings › Installation (F2) can show the running venv's `<h>` beside this release's: a
   release whose lock is not yet built is visible before anyone presses Update. Not in F2's
   signed board; a later board if wanted.

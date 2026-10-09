@@ -28,6 +28,10 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 #: `curl … -X POST localhost:5000/path` and `curl -s localhost:5000/path`.
 _CURL = re.compile(r"curl[^\n|]*?(?:-X\s+(?P<method>[A-Z]+)\s+)?"
                    r"(?:https?://)?localhost:5000(?P<path>/\S*)")

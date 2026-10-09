@@ -41,6 +41,11 @@ sys.path.insert(0, ROOT)
 # The implementation lives in modules/netbox_context_mask.py, shared with
 # retire (7.3), which masks the device it releases. These names are kept so
 # the command and its tests read as before.
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 from modules.netbox_context_mask import (describe as _describe,  # noqa: E402
                                          plan, read_devices as _read_devices)
 

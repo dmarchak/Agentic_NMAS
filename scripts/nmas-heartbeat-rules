@@ -60,6 +60,10 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
 EXIT_OK, EXIT_STALE, EXIT_UNPROVEN = 0, 1, 2
 
 OUT = os.path.join(ROOT, "deploy", "grafana", "provisioning", "alerting",
