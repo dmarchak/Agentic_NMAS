@@ -22,6 +22,10 @@ log = logging.getLogger(__name__)
 #: The units are rendered from templates with the host's values (scripts/nmas-render-units), so
 #: no release copy is byte-identical to them: the updater's install check reads them.
 RENDERED = ("deploy/systemd/",)
+#: Installed root-owned by their host step, compared with this release by nothing yet: Mercury's
+#: records database's compose file and init script (/opt/mercury-postgres/, P4-1). The database
+#: itself is measured by the records settings' Test, not by a drift row.
+BY_HAND = ("deploy/postgres/",)
 
 
 def registry() -> list:
@@ -63,9 +67,9 @@ def folds() -> dict:
 
 
 def sources() -> list:
-    """Every repository path a root-installed file comes from, the rendered units' folder
-    included."""
-    return sorted({h["source"] for h in registry()} | set(RENDERED))
+    """Every repository path a root-installed file comes from, the rendered units' folder and
+    the folders installed by hand included."""
+    return sorted({h["source"] for h in registry()} | set(RENDERED) | set(BY_HAND))
 
 
 def _setting(key: str) -> str:

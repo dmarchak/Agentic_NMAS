@@ -144,7 +144,29 @@ and `psycopg2` both absent).
   store stays on files, which is today's behaviour. A setting because no measurement can find a
   database's address and password.
 
-**The host step** (values filled from reads made when the commit is written):
+**Step 6a, built (2026-10-09): the container and the driver, as a script the operator runs.**
+`scripts/host-steps/postgres-6a.sh` installs `deploy/postgres/docker-compose.yml` and
+`deploy/postgres/initdb/10-mercury.sh` by name from a fresh `mktemp -d` into
+`/opt/mercury-postgres/`, writes the root-only env file (the superuser's password generated and
+never shown, Mercury's PROMPTED, hidden), starts `mercury-postgres`, and installs the driver as
+the host's apt package, `python3-psycopg` 3.1.17-2 (the boto3 decision's shape: no pip into the
+system interpreter), after a dry run shows it changes no other package. Its checks: healthy,
+PostgreSQL 18, `mercury` owns `mercury` and is not a superuser, 5433 on 127.0.0.1 only, NetBox's
+container not restarted, the interpreter imports psycopg 3.1.17, psycopg signs in as `mercury`
+on 127.0.0.1:5433 with the password entered, and a wrong one is refused. Measured for it, read
+only on the host 2026-10-09 (via LAN): Ubuntu 24.04.4; NetBox's image `postgres:18-alpine` at
+digest `d3e1620b…` (2026-08-13), its data volume at `/var/lib/postgresql` (PostgreSQL 18's
+layout); `python3-psycopg` 3.1.17-2 available, `libpq5` 16.15 installed; nothing on 5433.
+Walked on a throwaway copy of the image, 2026-10-09: the init script makes the role and the
+database (ready in about 4 s); inside the container the image TRUSTS loopback, and through the
+published port it asks for the password (scram-sha-256): the right one signs in, a wrong one is
+refused. The backup and restore-test units and scripts below come with the receipts store,
+when there is a record to dump; the lock is regenerated from the host once psycopg is there.
+
+The run: `bash <checkout>/scripts/host-steps/postgres-6a.sh` on the NMAS host.
+
+**The host step as first drafted** (kept for the backup units' part, which ships with the
+receipts store):
 
 ```bash
 d=$(mktemp -d) && cp <checkout>/deploy/postgres/docker-compose.yml "$d/" \

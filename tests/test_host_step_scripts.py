@@ -24,7 +24,7 @@ SCRIPTS = sorted(os.path.basename(p) for p in tracked("scripts/host-steps", suff
                  if not p.endswith("lib.sh"))
 # The sections the operator named, each a script.
 EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "phase3-step3.sh", "c584-loki-writer.sh",
-            "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh"}
+            "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh", "postgres-6a.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
@@ -118,3 +118,22 @@ def test_the_secret_is_prompted_hidden_never_an_argument_never_printed():
     # It reaches mc on standard input or in the environment, never on a command line.
     assert "printf '%s\\n%s\\n' mercury \"$SECRET\" | mc admin user add lab" in text
     assert not re.search(r"mc [^\n|]*\$\{?SECRET", text)
+
+
+def test_the_records_password_is_prompted_hidden_and_reaches_only_stdin_and_the_environment():
+    """postgres-6a.sh: Mercury's database password is read hidden, masked in what a check
+    prints, and reaches the env file on install's standard input and psycopg through the
+    environment, never a command line; the superuser's is generated and never shown."""
+    text = open(os.path.join(FOLDER, "postgres-6a.sh"), encoding="utf-8").read()
+    assert re.search(r'read -r -s -p "[^"]*" PW', text), "prompted, input hidden"
+    assert not re.search(r"\$[1-9@*]", text), "no argument is read"
+    assert not re.search(r'echo[^\n]*\$\{?PW\b', text), "never echoed"
+    assert "REDACT=$PW" in text, "masked in anything a check prints"
+    assert '| sudo install -m 0600 /dev/stdin "$DIR/postgres.env"' in text
+    assert 'password=os.environ[\\"PW\\"]' in text
+    assert "$(openssl rand -hex 24)" in text and not re.search(r"echo[^\n]*POSTGRES_PASSWORD", text)
+    # The compose file publishes the port on loopback only, and pins the image by digest.
+    compose = open(os.path.join(ROOT, "deploy", "postgres", "docker-compose.yml"),
+                   encoding="utf-8").read()
+    assert '- "127.0.0.1:5433:5432"' in compose
+    assert re.search(r"image: postgres:18-alpine@sha256:[0-9a-f]{64}\n", compose)

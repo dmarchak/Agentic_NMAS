@@ -1,0 +1,35 @@
+# Mercury's records database (Phase 4, docs/NSOT_PHASE4_RECORDS_POSTGRES.md section 6; P4-1):
+# its own container, volume, network and credentials, nothing shared with NetBox's database.
+# Installed by the operator as /opt/mercury-postgres/docker-compose.yml
+# (scripts/host-steps/postgres-6a.sh), with its env file (root-only, generated there) and the
+# init script beside it.
+#
+# The image is NetBox's own, pinned by digest (one PostgreSQL major to patch on the host):
+# postgres:18-alpine, read from the host's image on 2026-10-09.
+name: mercury-postgres
+
+services:
+  mercury-postgres:
+    image: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    container_name: mercury-postgres
+    restart: unless-stopped
+    # POSTGRES_PASSWORD (the superuser's, generated) and MERCURY_DB_PASSWORD (Mercury's role,
+    # the operator's): read by the image's entrypoint on an EMPTY volume only.
+    env_file: /opt/mercury-postgres/postgres.env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - mercury-pgdata:/var/lib/postgresql
+      - /opt/mercury-postgres/initdb:/docker-entrypoint-initdb.d:ro
+    # Loopback only (PG-1, 5433): never the LAN, and a person's psql on 5432 never reaches it.
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "mercury"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  mercury-pgdata:

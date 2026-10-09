@@ -44,6 +44,9 @@ HOST_STEP_PATHS = (
     # The Oxidized credential helper, installed root-owned as /usr/local/sbin/nmas-oxidized-cred
     # (2026-10-03: every root-installed helper; modules/host_helpers.py is the registry).
     "scripts/nmas-oxidized-cred",
+    # Mercury's records database (Phase 4, P4-1): installed by the operator as
+    # /opt/mercury-postgres/ (scripts/host-steps/postgres-6a.sh).
+    "deploy/postgres/",
 )
 
 #: The host-installed paths a check can answer for (modules/host_steps.py CHECKS; the
