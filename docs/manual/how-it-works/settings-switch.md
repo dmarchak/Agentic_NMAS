@@ -16,6 +16,18 @@ You start it on the network's Settings page: **Make *network* standalone…** or
 
 Readers and pages use the new settings at their next read: a standalone network's unconfigured group is not read at all, and its pages say "not configured" for it.
 
+## Save a card {#save}
+
+A card whose values are set here (each of Default's cards, and a network's group that is its own) takes its fields in place, with **Save** and **Test**. Default's values are what every network that inherits the group reads, and the card counts them.
+
+1. `check`: what was sent is checked. Read: the group's settings as they stand. Sent: nothing. Recorded: nothing. A field that is not the card's own group is refused; a group the network inherits or declared not applicable is refused, naming its state, because its values are not saved there (making it the network's own is its switch, previewed above). An empty field keeps what is stored: a secret is never drawn back into the form, and a value holding a credential is not shown, so leaving either empty never wipes it. **Replace…** opens a set secret's field.
+2. `write`: only the fields that changed are written. Read: nothing more. Sent: nothing. Recorded: Default's values in the installation's settings (a secret in the secrets store, encrypted), or a network's in its own settings file (owner-only, a secret encrypted). Each value is checked against its setting's type; a refusal names the setting.
+3. `record`: the save is appended to the network's settings record. Read: nothing. Sent: nothing. Recorded: who, how that was established, when, the group and the names of the fields written, never their values. Saving what is already stored writes nothing and says "Nothing changed".
+
+## Test a connection {#test}
+
+**Test** asks the integration the card configures, with the values saved (save first: it tests what is stored, not what is typed). It changes no setting. The result is drawn in the card, passed or failed with what the service answered. The S3 archive's Test asks four things in order and names the first that fails: its bucket answers, a probe object is written, read back byte for byte, and its size stated. The probe is overwritten each time and never deleted, since Mercury's key cannot delete. The status bar and Needs attention ask the S3 archive only whether its bucket answers, and write nothing.
+
 ## What a switch does not do
 
 - It contacts no device and changes no configuration.

@@ -592,6 +592,69 @@ def _record(list_name: str, entry: dict) -> dict:
     return entry
 
 
+#: Save's steps, in order (boards A and D: a card set here, Default's included, saves its
+#: fields in place): the manual's How it works page names each.
+SAVE_STEPS = ("check", "write", "record")
+
+
+def save_values(list_name: str, group: str, values: dict, actor: str,
+                actor_verified: str = "") -> dict:
+    """Save a group's fields as the card sent them (boards A and D, approved 2026-10-05): the
+    Default network's values (the base layer every inheriting network reads), or a network's
+    own group. A group a network inherits or declared not applicable is refused, naming its
+    state: its values are Default's, and making it the network's own is its switch, previewed.
+
+    Only what changed is written; an empty secret keeps the stored one (a secret is never drawn
+    back into the form). Recorded with the keys, never the values, in the network's settings
+    record. ``{"ok", "label", "written", "unchanged", "recorded", ...}``."""
+    from modules.secrets_store import SECRET_KEYS, set_secret
+    from modules.settings_schema import get_setting
+    from modules.settings_scope import group_keys, group_label
+
+    keys = set(group_keys(group))
+    if not keys:
+        raise SwitchRefused(f"{group!r} is not a settings group")
+    stray = sorted(set(values) - keys)
+    if stray:
+        raise SwitchRefused(f"{', '.join(stray)} {'is' if len(stray) == 1 else 'are'} not "
+                            f"{group_label(group)}'s: a card saves its own group only")
+    default = is_default(list_name)
+    if not default:
+        choice = group_choice(load(list_name), group)
+        if choice != OWN:
+            raise SwitchRefused(
+                f"{group_label(group)} is not {list_name}'s own (it is "
+                f"{CHOICE_WORDS.get(choice, choice)}): its values are not saved here. Make it "
+                f"{list_name}'s own with its switch, which previews what moves")
+
+    def now(k):
+        return get_setting(k) if default else resolve(list_name, k)[0]
+
+    plain = {k: v for k, v in values.items() if k not in SECRET_KEYS and v != now(k)}
+    secrets = {k: v for k, v in values.items() if k in SECRET_KEYS and v}
+    if plain:
+        out = write(list_name, plain, actor=actor)
+        if not out.get("ok"):
+            raise SwitchRefused(f"Not saved: {out.get('error')}")
+    if secrets:
+        if default:
+            for k, v in secrets.items():
+                set_secret(k, v)
+        else:
+            out = write(list_name, secrets, actor=actor)
+            if not out.get("ok"):
+                raise SwitchRefused(f"Not saved: {out.get('error')}")
+    written = sorted(plain) + sorted(secrets)
+    unchanged = sorted(k for k in values if k not in written)
+    if not written:
+        return {"ok": True, "label": group_label(group), "group": group, "written": [],
+                "unchanged": unchanged, "recorded": True, "nothing": True, "at": _now(),
+                "actor_label": ""}
+    entry = _record(list_name, {"kind": "values", "group": group, "written": written,
+                                "actor": actor, "actor_verified": actor_verified})
+    return dict(entry, ok=True, label=group_label(group), unchanged=unchanged)
+
+
 def apply_group(list_name: str, group: str, choice: str, fingerprint: str, actor: str,
                 actor_verified: str = "", values: dict = None, reason: str = "",
                 seen: dict = None) -> dict:

@@ -13,14 +13,13 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
   never delete. The status bar and Needs attention ask only whether its bucket answers, and
   write nothing; its full test writes a probe object, reads it back byte for byte and states its
   size, naming the first step that fails with what the server answered.
-- **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group that is its own has **Configure…**, which takes its values in the card.
+- **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).
 
 ## Default's page {#default}
 
-Default's cards show its values and, on each, who takes them: "inherited by 12 · own Grafana in 4 · not configured in 2 · not applicable in 1", counting only the networks that chose to inherit, with the names one click down. A change to Default changes every network counted there.
+Default's cards show its values and, on each, who takes them: "inherited by 12 · own Grafana in 4 · not configured in 2 · not applicable in 1", counting only the networks that chose to inherit, with the names one click down. Each card takes its fields in place, with **Save** and **Test**; a secret shows only as set, with **Replace…**. A change to Default changes every network counted there, and the result says so.
 
 ## What is not here yet {#not-yet}
 
 - **Installation** is on today's Settings page: the scope bar's Installation opens it.
-- **Saving one field of a group**, and Default's change with its warning naming who inherits it, are on today's Settings page until they reach this page.
 - **Creating a network** is on today's page; a new network starts as inheriting from Default, and its page here offers the switch at once.

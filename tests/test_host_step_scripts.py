@@ -5,8 +5,7 @@ it wanted and got, and ending with a PASS/FAIL summary of every planned check.
 The library runs for real in a temporary folder (no host is touched); each script is parsed for
 its shape: it sources the library, declares a plan, names in it every check it makes, and ends
 with the summary. minio-4c.sh reads its secret hidden, never from an argument, and never prints
-it; minio-4d-4e.sh refuses an interpreter that is not a virtualenv and a dry run that would
-change an installed package.
+it.
 """
 
 import os
@@ -25,7 +24,10 @@ SCRIPTS = sorted(os.path.basename(p) for p in tracked("scripts/host-steps", suff
                  if not p.endswith("lib.sh"))
 # The sections the operator named, each a script.
 EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "phase3-step3.sh", "c584-loki-writer.sh",
-            "minio-4a-4b.sh", "minio-4c.sh", "minio-4d-4e.sh"}
+            "minio-4a-4b.sh", "minio-4c.sh"}
+# minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
+# decided on boto3, the host's apt package, so nothing is installed and the lock is
+# regenerated from the host, read-only, once the release importing it is deployed.
 
 
 def _run_planted(tmp_path, body):
@@ -116,11 +118,3 @@ def test_the_secret_is_prompted_hidden_never_an_argument_never_printed():
     # It reaches mc on standard input or in the environment, never on a command line.
     assert "printf '%s\\n%s\\n' mercury \"$SECRET\" | mc admin user add lab" in text
     assert not re.search(r"mc [^\n|]*\$\{?SECRET", text)
-
-
-def test_4d_refuses_a_non_virtualenv_and_a_changing_dry_run():
-    text = open(os.path.join(FOLDER, "minio-4d-4e.sh"), encoding="utf-8").read()
-    assert 'check "the interpreter is a virtualenv" eq "True"' in text
-    assert "sys.prefix != sys.base_prefix" in text
-    assert 'check "the dry run changes no package already installed" eq ""' in text
-    assert text.index("the dry run changes no package") < text.index('step "install"')

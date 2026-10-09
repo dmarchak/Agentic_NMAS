@@ -200,6 +200,13 @@
    "source": "https://pypi.org/project/blinker/1.7.0/",
    "from": "requirements.lock"
   },
+  "boto3": {
+   "name": "boto3",
+   "version": "1.34.46",
+   "licence": "Apache-2.0",
+   "source": "https://pypi.org/project/boto3/1.34.46/",
+   "from": "requirements.txt"
+  },
   "certifi": {
    "name": "certifi",
    "version": "2023.11.17",
@@ -367,13 +374,6 @@
    "licence": "BSD-3-Clause",
    "source": "https://pypi.org/project/MarkupSafe/2.1.5/",
    "from": "requirements.lock"
-  },
-  "minio": {
-   "name": "minio",
-   "version": ">=7.2.0",
-   "licence": "Apache-2.0",
-   "source": "https://pypi.org/project/minio/",
-   "from": "requirements.txt"
   },
   "ncclient": {
    "name": "ncclient",

@@ -234,6 +234,7 @@ DECLARED = {
     "settings_integrations.save_integration": ("settings",),
     "settings_v2.group_switch": ("settings",),
     "settings_v2.mode_switch": ("settings",),
+    "settings_v2.group_save": ("settings",),
     "identity.ratify_setting": ("posture", "settings"),
     "monitoring_config": ("monitoring",),
     "monitoring_snmp_poll": ("monitoring",),
@@ -329,6 +330,7 @@ DECLARED = {
     "netbox_safety.preview_import_all": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "netbox_safety.preview_removal": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "settings_integrations.test_integration": Nothing("tests an integration's connection and reports"),
+    "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
 }
 

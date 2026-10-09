@@ -29,6 +29,48 @@
   {%- if c.state == 'not_applicable' and not is_default %}
   <p>{% if c.declaration %}Declared by <strong>{{ c.declaration.by }}</strong>{% if c.declaration.at %} {{ stamp(c.declaration.at) }}{% endif %}: "{{ c.declaration.why }}".{% else %}Declared not applicable.{% endif %}</p>
   <p class="muted small">Not Default's either: nothing is read or sent for {{ list_name }}, and pages that use {{ c.label }} say it is not applicable for {{ list_name }}.</p>
+  {%- elif c.editable %}
+  {#- Boards A and D: a card set here (Default's, or a network's own group) takes its fields
+      in place, with Save and Test. An empty field keeps what is stored: a secret is never
+      drawn back, and a value holding a credential is not shown. -#}
+  {%- if saved %}
+  <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
+    {%- else %}<strong>{{ saved.label }} saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at) }}: {{ saved.written | length }} field{{ '' if saved.written | length == 1 else 's' }} ({{ saved.written | join(', ') }}){% if is_default %}; every network that inherits {{ saved.label }} reads the new values{% endif %}.
+    {%- if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</div></div>
+  {%- endif %}
+  {%- if tested %}
+  <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>
+    <strong>Test: {{ 'passed' if tested.ok else 'failed' }}.</strong> {{ tested.message if tested.ok else tested.error }}
+    {%- if tested.steps %}<ol class="set-steps">{% for s in tested.steps %}<li>{{ badge('passed' if s.ok else 'failed', 'ok' if s.ok else 'danger') }} {{ s.name }}: {{ s.detail }}</li>{% endfor %}</ol>{% endif %}</div></div>
+  {%- endif %}
+  <form class="set-form" id="form-{{ g }}" method="post" action="{{ url_for('settings_v2.group_save', list_name=list_name, group=g) }}"
+        hx-post="{{ url_for('settings_v2.group_save', list_name=list_name, group=g) }}" hx-target="#card-{{ g }}" hx-swap="outerHTML">
+    {%- for f in c.inputs %}
+    <label for="f-{{ g }}-{{ f.key }}">{{ f.label }}</label>
+    <div>
+      {%- if f.kind == 'switch' %}
+      <select id="f-{{ g }}-{{ f.key }}" name="{{ f.key }}"><option value="on"{% if f.value == 'on' %} selected{% endif %}>on</option><option value="off"{% if f.value == 'off' %} selected{% endif %}>off</option></select>
+      {%- elif f.kind == 'json' %}
+      <textarea id="f-{{ g }}-{{ f.key }}" name="{{ f.key }}" class="mono" rows="2">{{ f.value }}</textarea>
+      {%- elif f.kind == 'secret' and f.note.startswith('set') %}
+      <details class="set-replace"><summary class="btn btn-small">Replace…</summary>
+        <input id="f-{{ g }}-{{ f.key }}" name="{{ f.key }}" type="password" value="" autocomplete="new-password" aria-label="A new {{ f.label }}"></details>
+      {%- else %}
+      <input id="f-{{ g }}-{{ f.key }}" name="{{ f.key }}" class="{{ 'mono' if f.kind != 'secret' }}" type="{{ 'password' if f.kind == 'secret' else 'number' if f.kind == 'number' else 'text' }}" value="{{ f.value }}" autocomplete="{{ 'new-password' if f.kind == 'secret' else 'off' }}">
+      {%- endif %}
+      {%- if f.note %}<span class="set-origin">{{ f.note }}</span>{% endif %}
+    </div>
+    {%- endfor %}
+    <p class="muted small set-form-note">An empty field keeps what is stored. {% if is_default %}Every network that inherits {{ c.label }} reads what is saved here.{% else %}Saved in {{ list_name }}'s own settings (owner-only, a secret encrypted); Default's are not touched.{% endif %} Recorded with your name, the fields' names and never their values.</p>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings-switch', 'save', compact=True, op='saving a group') }}</span>
+      {%- if c.testable %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="settings-switch" hx-post="{{ url_for('settings_v2.group_test', list_name=list_name, group=g) }}" hx-target="#card-{{ g }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests the saved values, not what is typed: Save first"><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('settings-switch', 'test', compact=True, op='testing a connection') }}</span>
+      {%- endif %}
+    </div>
+  </form>
+  {%- if c.state == 'own' and not is_default %}<p class="muted small">Set here: {{ list_name }}'s own. Default's settings are not read for {{ c.label }}.</p>{% endif %}
   {%- elif c.state == 'not_configured' %}
   <p>Nothing is set here, and nothing comes from Default. <span class="muted">{{ list_name }}'s pages that use {{ c.label }} say "{{ c.label }} is not configured for {{ list_name }}", and nothing of it is read for {{ list_name }}.</span></p>
   {%- else %}
@@ -55,7 +97,7 @@
     {%- endfor %}
   </details>
   {%- endif %}
-  {%- elif c.state in ('own', 'not_configured') %}
+  {%- elif c.state == 'not_configured' %}
   <div class="set-foot"><span class="op-act"><a class="btn btn-small{{ ' btn-primary' if c.state == 'not_configured' }}" data-op="settings-switch" href="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to='own') }}" hx-get="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to='own') }}" hx-target="#card-{{ g }}" hx-swap="outerHTML">Configure {{ c.label }}…</a>{{ how('settings-switch', compact=True, op='configuring a group') }}</span></div>
   {%- endif %}
 </section>

@@ -167,6 +167,8 @@ GATES = {
     "settings_integrations.save_integration": _g(K, "writes an integration's settings and secrets"),
     "settings_v2.group_switch": _g(K, "switches a network's settings group (inherit, its own with its values and secrets, not applicable), bound to its preview and recorded"),
     "settings_v2.mode_switch": _g(K, "switches a network between inheriting from Default and standalone, bound to its preview and recorded"),
+    "settings_v2.group_save": _g(K, "saves a card's fields (Default's, or a network's own group) and their secrets, recorded"),
+    "settings_v2.group_test": _g(K, "tests a card's integration with its saved values, for the person configuring it (the S3 archive's Test writes its probe object)"),
     "identity.ratify_setting": _g(K, "records a decision about a gate", "ratify_setting"),
     "drift_settings_post": _g(K, "switches the drift checker and its interval"),
     "monitoring_config": _g(K, "writes collector settings"),

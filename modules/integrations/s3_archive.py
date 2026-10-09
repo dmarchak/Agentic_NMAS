@@ -8,12 +8,16 @@ installation's own uses to come (the Oxidized bundle, the record dumps). Before 
 places built a client their own way and none passed `s3_verify_tls` (C355).
 
 Mercury's key can list, read and write its bucket and never delete (M-2): nothing here calls a
-delete, and the Test's probe is overwritten in place. The ``minio`` SDK is optional (absent from
-requirements.lock until the host step installs it); an absent SDK, an unset endpoint and an
-unreachable server are three different answers, each named, never a raise into a request.
+delete, and the Test's probe is overwritten in place.
+
+**The library is boto3** (the operator's decision, 2026-10-08): the host runs Ubuntu's system
+Python, externally managed, where Ubuntu ships no minio package and `python3-boto3` 1.34.46 is
+already installed from apt. Pinned at the host's version through the lock: newer boto3 sends
+default checksum headers some MinIO releases reject, and the Test's put and get catch that if
+the version moves. An absent library, an unset endpoint and an unreachable server are three
+different answers, each named, never a raise into a request.
 """
 
-import io
 import logging
 import time
 
@@ -58,22 +62,25 @@ class S3ArchiveIntegration(IntegrationClient):
             raise Unavailable("not configured: set its endpoint and bucket in Settings "
                               "(Integrations, S3 archive)")
         try:
-            from minio import Minio
+            import boto3
+            from botocore.config import Config
         except ImportError:
-            raise Unavailable("the minio SDK is not installed on this host (its host step "
-                              "installs it: docs/NSOT_PHASE4_MINIO.md section 4)") from None
-        endpoint = self.url
-        return Minio(endpoint.split("://", 1)[-1],
-                     access_key=self._secret("s3_access_key"),
-                     secret_key=self._secret("s3_secret_key"),
-                     secure=endpoint.startswith("https://"),
-                     region=self._setting("s3_region", "") or None,
-                     cert_check=self.verify_tls)
+            raise Unavailable("boto3 is not installed on this host (Ubuntu's python3-boto3: "
+                              "docs/NSOT_PHASE4_MINIO.md section 4)") from None
+        return boto3.client(
+            "s3", endpoint_url=self.url,
+            aws_access_key_id=self._secret("s3_access_key"),
+            aws_secret_access_key=self._secret("s3_secret_key"),
+            region_name=self._setting("s3_region", "") or "us-east-1",
+            verify=self.verify_tls,
+            # MinIO serves buckets by path, never as a host name.
+            config=Config(signature_version="s3v4", s3={"addressing_style": "path"}))
 
     def put(self, key: str, data: bytes, metadata: dict = None, client=None) -> None:
-        """Write *data* at *key* (already under the prefix: `key()`). Raises on failure."""
-        (client or self.client()).put_object(self.bucket, key, io.BytesIO(data), len(data),
-                                             metadata=metadata or None)
+        """Write *data* at *key* (already under the prefix: `key()`). *metadata* names its
+        fields without boto3's ``x-amz-meta-`` prefix. Raises on failure."""
+        (client or self.client()).put_object(Bucket=self.bucket, Key=key, Body=data,
+                                             Metadata=dict(metadata or {}))
 
     def status(self) -> dict:
         """The status bar's and the integrations reader's answer, every cycle: whether the
@@ -112,23 +119,31 @@ class S3ArchiveIntegration(IntegrationClient):
             steps.append({"name": name, "ok": ok, "detail": detail if not ok else ok_words})
             return ok
 
-        def _get():
-            r = client.get_object(bucket, key)
+        def _bucket():
             try:
-                got = r.read()
+                client.head_bucket(Bucket=bucket)
+            except Exception as exc:                  # noqa: BLE001 (a missing bucket, said)
+                code = str(((getattr(exc, "response", None) or {}).get("Error") or {})
+                           .get("Code", ""))
+                if code in ("404", "NoSuchBucket", "NotFound"):
+                    return False, f"bucket '{bucket}' does not exist"
+                raise
+            return True, ""
+
+        def _get():
+            body = client.get_object(Bucket=bucket, Key=key)["Body"]
+            try:
+                got = body.read()
             finally:
-                r.close()
-                r.release_conn()
+                body.close()
             return got == data, (f"read back {len(got)} bytes, not the {len(data)} written"
                                  if got != data else "")
 
         def _stat():
-            st = client.stat_object(bucket, key)
-            return st.size == len(data), f"the probe's size is {st.size}, not {len(data)}"
+            size = client.head_object(Bucket=bucket, Key=key)["ContentLength"]
+            return size == len(data), f"the probe's size is {size}, not {len(data)}"
 
-        passed = step("bucket", lambda: (bool(client.bucket_exists(bucket)),
-                                        f"bucket '{bucket}' does not exist"),
-                      f"bucket '{bucket}' answers")
+        passed = step("bucket", _bucket, f"bucket '{bucket}' answers")
         if passed and not write:
             return {"ok": True, "steps": steps,
                     "message": f"Bucket '{bucket}' answers (the full Test is Settings' Test)"}

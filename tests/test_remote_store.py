@@ -172,17 +172,19 @@ class TestOnePublisherPushesWhatItReads:
         assert os.path.dirname(lock.path()) == os.path.dirname(world["local"])
 
 
-class _Minio:
-    """The call the hook makes on minio's client, recording what was uploaded and how the
+class _S3Client:
+    """The call the hook makes on boto3's S3 client, recording what was uploaded and how the
     client was built."""
     uploads: dict = {}
     built: dict = {}
 
-    def __init__(self, *_a, **kw):
-        _Minio.built = dict(kw)
+    @classmethod
+    def client(cls, service, **kw):
+        cls.built = dict(kw, service=service)
+        return cls()
 
-    def put_object(self, bucket, key, data, length, metadata=None):
-        _Minio.uploads[key] = (data.read(), length, dict(metadata or {}))
+    def put_object(self, Bucket, Key, Body, Metadata=None):
+        _S3Client.uploads[Key] = (bytes(Body), len(Body), dict(Metadata or {}))
 
 
 class TestTheArchiveUploadsWhatWasCommitted:
@@ -212,8 +214,11 @@ class TestTheArchiveUploadsWhatWasCommitted:
             asked.append(list_name)
             return values.get(key, default)
 
-        _Minio.uploads = {}
-        monkeypatch.setitem(sys.modules, "minio", types.SimpleNamespace(Minio=_Minio))
+        _S3Client.uploads = {}
+        monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=_S3Client.client))
+        monkeypatch.setitem(sys.modules, "botocore", types.SimpleNamespace())
+        monkeypatch.setitem(sys.modules, "botocore.config",
+                            types.SimpleNamespace(Config=lambda **kw: dict(kw)))
         monkeypatch.setattr("modules.list_settings.value", value)
         monkeypatch.setattr("modules.list_settings.secret", lambda list_name, key: "x")
         out = archive.s3_archive_hook({"repo": repo, "sha": sha, "devices": ["s1"],
@@ -221,9 +226,9 @@ class TestTheArchiveUploadsWhatWasCommitted:
                                        "list_name": "Default"})
         assert out["ok"] is True, out
         assert set(asked) == {"Default"}, "the archive is the commit's own network's"
-        (key, (data, length, meta)), = _Minio.uploads.items()
+        (key, (data, length, meta)), = _S3Client.uploads.items()
         assert data == b"hostname s1\n" and length == len(data)
-        assert meta["x-amz-meta-commit"] == sha
+        assert meta["commit"] == sha, "boto3 adds the x-amz-meta- prefix itself"
         # NSOT_PHASE4_MINIO M-1: goldens under their purpose and network.
         assert key == f"goldens/default/s1/{sha[:12]}.cfg", key
-        assert _Minio.built["cert_check"] is True, "TLS verification as set (C355)"
+        assert _S3Client.built["verify"] is True, "TLS verification as set (C355)"

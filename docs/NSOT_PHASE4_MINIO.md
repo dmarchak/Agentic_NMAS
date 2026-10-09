@@ -76,7 +76,8 @@ by the operator's host step (section 4) and `scripts/nmas-lock-from-host`, so CI
 the host runs.
 
 **BUILT 2026-10-08 (Mercury's side):** `integrations/s3_archive.py` holds the one client
-(`S3ArchiveIntegration.client`, `cert_check` from `s3_verify_tls`: C355), `key()` under the
+(`S3ArchiveIntegration.client`, boto3 since the operator's decision below, `verify` from
+`s3_verify_tls`: C355), `key()` under the
 prefix, `put()`, the four-step `test_connection()` and the read-only `status()`; the golden
 hook and `reads.expire` use it; goldens are written at `goldens/<network>/<device>/<stamp>.cfg`;
 `deploy/minio/mercury-rw.json` is the policy section 4 installs (list, read, write and
@@ -88,7 +89,9 @@ step; the record dumps come with PostgreSQL). Waiting on the host steps below an
 As scripts (the operator's request, 2026-10-08): `scripts/host-steps/c584-loki-writer.sh`
 first, then `minio-4a-4b.sh`, `minio-4c.sh` (prompts for the secret, input hidden) and
 `minio-4d-4e.sh` (refuses a non-virtualenv interpreter or a dry run that changes an installed
-package; writes `/tmp/requirements.lock.new` for the session to commit).
+package; writes `/tmp/requirements.lock.new` for the session to commit). 4d-4e was removed the
+same day when boto3 was chosen (below): nothing is installed, and the lock is regenerated from
+the host, read-only, once the release importing boto3 is deployed.
 
 **Run 2026-10-08 by the operator:** C584 and 4a-4b PASS (the `mercury` bucket, versioned; the
 `mercury-rw` policy, its resources and no delete). 4c stopped at its own check: the secret

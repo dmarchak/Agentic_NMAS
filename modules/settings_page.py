@@ -196,8 +196,14 @@ def form_fields(list_name: str, group: str) -> list:
                 else "text")
         start, note = "", ""
         if kind == "secret":
-            note = ("set: leave empty to keep it" if value and origin == L.SET_HERE else
-                    f"enter {list_name}'s own: Default's is never copied")
+            if L.is_default(list_name):
+                # Default's secrets live in the secrets store, never in its settings file.
+                from modules.secrets_store import is_set
+                note = "set: leave empty to keep it" if is_set(k) else "unset: enter one"
+                origin = L.SET_HERE if is_set(k) else L.UNSET_EVERYWHERE
+            else:
+                note = ("set: leave empty to keep it" if value and origin == L.SET_HERE else
+                        f"enter {list_name}'s own: Default's is never copied")
         elif kind == "switch":
             start = "on" if value else "off"
         elif kind == "number":
@@ -223,11 +229,36 @@ def is_group(group: str) -> bool:
     return group in network_groups()
 
 
-def one_card(list_name: str, group: str) -> dict:
-    """One group's card alone (a card drawn again after Cancel or a switch)."""
+def integration_for(group: str):
+    """The integration a group configures, for its Test: the client whose URL key is the
+    group's (`settings_scope.URL_KEYS`); None for a group with none (the deploy tuning, the
+    monitoring profile)."""
+    from modules.integrations import REGISTRY
+    from modules.settings_scope import URL_KEYS
+
+    url_key = URL_KEYS.get(group)
+    return next((cls for cls in REGISTRY.values() if url_key and cls.url_key == url_key), None)
+
+
+def _editing(list_name: str, group: str, c: dict) -> dict:
+    """Boards A and D (approved 2026-10-05): a card set here, Default's included, takes its
+    fields in place, with Save and Test. ``editable``, ``inputs`` (`form_fields`) and
+    ``testable`` added to the card *c*."""
     from modules import list_settings as L
 
-    return default_card(group) if L.is_default(list_name) else card(list_name, group)
+    editable = L.is_default(list_name) or c.get("state") == "own"
+    c["editable"] = editable
+    c["inputs"] = form_fields(list_name, group) if editable else []
+    c["testable"] = editable and integration_for(group) is not None
+    return c
+
+
+def one_card(list_name: str, group: str) -> dict:
+    """One group's card alone (a card drawn again after Cancel, a switch, a Save or a Test)."""
+    from modules import list_settings as L
+
+    c = default_card(group) if L.is_default(list_name) else card(list_name, group)
+    return _editing(list_name, group, c)
 
 
 def network_view(list_name: str, tab: str = "integrations") -> dict:
@@ -241,7 +272,7 @@ def network_view(list_name: str, tab: str = "integrations") -> dict:
            "is_default": L.is_default(list_name), "cards": [], "error": ""}
     try:
         if out["is_default"]:
-            out["cards"] = [default_card(g) for g in tab_groups(tab)]
+            out["cards"] = [_editing(list_name, g, default_card(g)) for g in tab_groups(tab)]
             return out
         store = L.load(list_name)
     except L.ListSettingsUnreadable as exc:
@@ -250,7 +281,8 @@ def network_view(list_name: str, tab: str = "integrations") -> dict:
     default_keys = frozenset(load_user_settings())
     out.update(mode=store["mode"], mode_words=L.MODE_WORDS[store["mode"]],
                since=mode_since(list_name),
-               cards=[card(list_name, g, store, default_keys) for g in tab_groups(tab)])
+               cards=[_editing(list_name, g, card(list_name, g, store, default_keys))
+                      for g in tab_groups(tab)])
     out["summary"] = _network_summary(list_name, store, tab_groups("integrations"),
                                       default_keys)["parts"]
     return out

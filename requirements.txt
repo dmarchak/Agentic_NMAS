@@ -56,10 +56,11 @@ PyYAML>=6.0
 # onto the existing code without rewriting settings access as typed models.
 jsonschema>=4.20.0
 
-# S3-compatible archive for the NSoT repo (MinIO, AWS S3, ...).
-# Optional at runtime: an absent SDK degrades to "not installed" rather than
-# failing, because the archive never blocks a commit.
-minio>=7.2.0
+# S3-compatible archive (MinIO, AWS S3, ...): boto3, as the host's apt package
+# (python3-boto3 1.34.46), pinned there through requirements.lock; newer boto3
+# sends default checksum headers some MinIO releases reject. An absent client
+# degrades to "not installed", because the archive never blocks a commit.
+boto3==1.34.46
 
 # Socket.IO
 python-socketio==5.10.0

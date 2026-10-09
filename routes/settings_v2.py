@@ -52,7 +52,8 @@ def group_card(list_name, group):
     return _card(list_name, group)
 
 
-def _card(list_name: str, group: str, result: dict = None):
+def _card(list_name: str, group: str, result: dict = None, saved: dict = None,
+          tested: dict = None):
     from modules import list_settings as L
     from modules import settings_page
 
@@ -65,7 +66,8 @@ def _card(list_name: str, group: str, result: dict = None):
         return _fragment("v2/_settings_refused.html", 409, list_name=list_name, group="",
                          why=str(exc))
     return _fragment("v2/_settings_card.html", c=c, list_name=list_name,
-                     is_default=L.is_default(list_name), result=result)
+                     is_default=L.is_default(list_name), result=result, saved=saved,
+                     tested=tested)
 
 
 @bp.route("/network/<list_name>/group/<group>/switch", methods=["GET"])
@@ -123,6 +125,48 @@ def group_switch(list_name, group):
         return _fragment("v2/_settings_refused.html", 409, why=str(exc), list_name=list_name,
                          group=group)
     return _card(list_name, group, result=out)
+
+
+@bp.route("/network/<list_name>/group/<group>/save", methods=["POST"])
+def group_save(list_name, group):
+    """Boards A and D: save a card's fields as sent, for Default or a network's own group,
+    recorded with the verified person and the fields' names. An empty field keeps what is
+    stored; the card is drawn again with the result in place."""
+    from modules import identity
+    from modules import list_settings as L
+    from modules.settings_scope import group_keys
+
+    form = request.form
+    values = {k: form.get(k) for k in group_keys(group) if (form.get(k) or "") != ""}
+    try:
+        out = L.save_values(list_name, group, _typed(values), identity.request_actor(),
+                            _verified())
+    except (L.SwitchRefused, L.ListSettingsUnreadable) as exc:
+        return _fragment("v2/_settings_refused.html", 409, why=str(exc), list_name=list_name,
+                         group=group)
+    return _card(list_name, group, saved=out)
+
+
+@bp.route("/network/<list_name>/group/<group>/test", methods=["POST"])
+def group_test(list_name, group):
+    """Boards A and D: test the integration a card configures, with its saved values, and draw
+    the answer in the card. Changes no setting."""
+    from modules import list_settings as L
+    from modules import settings_page
+
+    cls = settings_page.integration_for(group)
+    if cls is None:
+        return _fragment("v2/_settings_refused.html", 404, list_name=list_name, group=group,
+                         why=f"{group!r} configures no integration to test")
+    client = cls(list_name="" if L.is_default(list_name) else list_name)
+    if not client.is_configured():
+        result = {"ok": False, "error": "not configured: save its values first"}
+    else:
+        try:
+            result = client.test_connection()
+        except Exception as exc:                          # noqa: BLE001 (said in the card)
+            result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return _card(list_name, group, tested=result)
 
 
 @bp.route("/network/<list_name>/mode/banner", methods=["GET"])

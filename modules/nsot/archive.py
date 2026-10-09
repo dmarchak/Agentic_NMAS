@@ -264,9 +264,10 @@ def s3_archive_hook(context: dict) -> dict:
                               f"{stamp}.cfg")
         try:
             integration.put(key, data, client=client, metadata={
-                "x-amz-meta-commit": sha,
-                "x-amz-meta-source": context.get("source", ""),
-                "x-amz-meta-actor":  context.get("actor", ""),
+                # boto3 adds the x-amz-meta- prefix itself.
+                "commit": sha,
+                "source": context.get("source", ""),
+                "actor":  context.get("actor", ""),
             })
             uploaded.append(key)
         except Exception as exc:              # noqa: BLE001

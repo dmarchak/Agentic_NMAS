@@ -91,8 +91,12 @@ class TestThePage:
         assert "inherited from Default" in loki and "http://192.0.2.10:3100" in loki
         assert "A change in Default changes Branch" in loki
         assert "branch-token-xyz" not in html and "default-token-xyz" not in html
-        token_row = re.search(r"<dt>Token</dt><dd>(.*?)</dd>", grafana, re.S).group(1)
-        assert ">set<" in token_row
+        # Branch's own Grafana is set here, so its card takes its fields (board A): the token
+        # is drawn only as set, behind Replace…, never its value.
+        token = re.search(r'<label for="f-grafana-grafana_token">Token</label>\s*<div>(.*?)</div>',
+                          grafana, re.S).group(1)
+        assert "Replace…" in token and "set: leave empty to keep it" in token
+        assert 'type="password" value=""' in token
 
     def test_a_standalone_networks_page_says_so(self, networks):
         _r, html = _get(networks, "/v2/settings/network/Remote")
@@ -202,6 +206,91 @@ class TestTheModeSwitch:
     def test_the_default_network_has_no_mode(self, networks):
         r, html = _get(networks, "/v2/settings/network/Default/mode?to=standalone")
         assert r.status_code == 409 and "base layer" in html
+
+
+def _save(n, list_name, group, data):
+    import html as html_mod
+    r = n["client"].post(f"/v2/settings/network/{list_name}/group/{group}/save", data=data)
+    return r, html_mod.unescape(r.get_data(as_text=True))
+
+
+class TestSaveAndTest:
+    """Boards A and D (approved 2026-10-05): a card set here, Default's included, takes its
+    fields in place, with Save and Test (the operator's decision, 2026-10-08: a cutover gap
+    built before the MinIO walk)."""
+
+    def test_defaults_card_takes_its_fields_with_save_and_test(self, networks):
+        _r, html = _get(networks, "/v2/settings/network/Default")
+        grafana = _card(html, "grafana")
+        assert 'name="grafana_url"' in grafana and 'value="http://192.0.2.10:3000"' in grafana
+        assert ">Save</span>" in grafana and ">Test</span>" in grafana
+        assert "default-token-xyz" not in grafana and "Replace…" in grafana
+        assert "Every network that inherits Grafana reads what is saved here." in grafana
+
+    def test_saving_default_writes_it_records_the_keys_and_never_the_values(self, networks):
+        from modules.settings_schema import get_setting
+        r, html = _save(networks, "Default", "grafana",
+                        {"grafana_url": "http://192.0.2.11:3000", "grafana_token": ""})
+        assert r.status_code == 200
+        assert "Grafana saved" in html and "1 field (grafana_url)" in html
+        assert "every network that inherits Grafana reads the new values" in html
+        assert get_setting("grafana_url") == "http://192.0.2.11:3000"
+        from modules.secrets_store import get_secret
+        assert get_secret("grafana_token") == "default-token-xyz", "an empty secret keeps it"
+        rec = L.changes("Default")["rows"][0]
+        assert rec["kind"] == "values" and rec["written"] == ["grafana_url"]
+        assert "192.0.2.11" not in json.dumps(rec), "the record names keys, never values"
+        assert L.resolve("Lab-3", "grafana_url")[0] == "http://192.0.2.11:3000", "inherited"
+
+    def test_a_new_secret_replaces_the_stored_one_and_is_never_drawn(self, networks):
+        from modules.secrets_store import get_secret
+        _r, html = _save(networks, "Default", "grafana", {"grafana_token": "new-token-abc"})
+        assert get_secret("grafana_token") == "new-token-abc"
+        assert "new-token-abc" not in html and "1 field (grafana_token)" in html
+
+    def test_a_networks_own_group_saves_its_own_and_default_is_untouched(self, networks):
+        from modules.settings_schema import get_setting
+        _r, html = _save(networks, "Branch", "grafana", {"grafana_url": "http://192.0.2.61:3000"})
+        assert "Grafana saved" in html
+        assert L.resolve("Branch", "grafana_url") == ("http://192.0.2.61:3000", L.SET_HERE)
+        assert get_setting("grafana_url") == "http://192.0.2.10:3000"
+
+    def test_an_inherited_group_is_refused_naming_its_state(self, networks):
+        r, html = _save(networks, "Branch", "loki", {"loki_url": "http://192.0.2.62:3100"})
+        assert r.status_code == 409
+        assert "Loki is not Branch's own (it is inherit from Default)" in html
+        assert L.resolve("Branch", "loki_url")[1] == L.INHERITED
+
+    def test_a_field_of_another_group_is_ignored_and_nothing_changed_is_said(self, networks):
+        _r, html = _save(networks, "Default", "grafana",
+                         {"grafana_url": "http://192.0.2.10:3000", "loki_url": "x"})
+        assert "Nothing changed" in html
+        assert L.resolve("Default", "loki_url")[0] == "http://192.0.2.10:3100"
+
+    def test_test_draws_the_integrations_answer_in_the_card(self, networks, monkeypatch):
+        from modules.integrations.grafana import GrafanaIntegration
+        monkeypatch.setattr(GrafanaIntegration, "test_connection",
+                            lambda self: {"ok": False, "error": "HTTP 401 from Grafana"})
+        r = networks["client"].post("/v2/settings/network/Default/group/grafana/test")
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Test: failed." in html and "HTTP 401 from Grafana" in html
+
+    def test_the_s3_archives_test_draws_its_four_steps(self, networks, monkeypatch):
+        from modules.integrations.s3_archive import S3ArchiveIntegration
+        steps = [{"name": n, "ok": True, "detail": n + " ok"}
+                 for n in ("bucket", "put", "get", "stat")]
+        monkeypatch.setattr(S3ArchiveIntegration, "is_configured", lambda self: True)
+        monkeypatch.setattr(S3ArchiveIntegration, "test_connection",
+                            lambda self: {"ok": True, "steps": steps, "message": "reachable"})
+        html = networks["client"].post(
+            "/v2/settings/network/Default/group/s3_archive/test").get_data(as_text=True)
+        assert "Test: passed." in html
+        assert all(f"{n}: {n} ok" in html for n in ("bucket", "put", "get", "stat"))
+
+    def test_a_group_with_no_integration_has_no_test(self, networks):
+        r = networks["client"].post("/v2/settings/network/Default/group/deploy_max_workers/test")
+        assert r.status_code == 404 and "configures no integration to test" in r.get_data(
+            as_text=True)
 
 
 @pytest.fixture(scope="module")
