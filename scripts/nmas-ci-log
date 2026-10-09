@@ -8,6 +8,9 @@ operator's fine-grained Actions-read token (the operator, 2026-10-01).
                                           job's log, its FAILED/ERROR lines and
                                           the assertion lines under them; the
                                           whole log saved with --out DIR
+    nmas-ci-log times [--limit N]         each completed run's jobs and their
+                                          minutes, then each job's slowest run,
+                                          one past TRIGGER_MINUTES said (C614)
 
 The token: ~/.config/nmas/github-actions-read.token (or NMAS_CI_TOKEN_FILE).
 It is read from that file and nowhere else, refused when the file or its
@@ -55,6 +58,9 @@ TOKEN_FILE = os.path.expanduser("~/.config/nmas/github-actions-read.token")
 USER_AGENT = "nmas-automation/1.0"
 WARN_DAYS = 14
 EXIT_TOKEN, EXIT_GITHUB = 1, 2
+#: C614 (the operator, 2026-10-09): CI's job bound is 14 minutes; when the browser job's slowest
+#: run passes 10 (about 70% of it), the browser job is split.
+TRIGGER_MINUTES = 10
 FAILURE_LINE = re.compile(r"(?:^|\s)(FAILED|ERROR) tests/\S+|^E\s{2,}|Error: |##\[error\]")
 
 
@@ -155,6 +161,26 @@ def runs(token, limit=10, opener=None):
     return a, _json(a).get("workflow_runs", [])
 
 
+def job_minutes(job: dict):
+    """A finished job's minutes (started to completed), or None when either time is missing."""
+    try:
+        start, end = (datetime.datetime.strptime(job[k], "%Y-%m-%dT%H:%M:%SZ")
+                      for k in ("started_at", "completed_at"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (end - start).total_seconds() / 60
+
+
+def slowest(rows: list) -> dict:
+    """{job name: (minutes, run number)} the slowest of *rows*, each (run number, name,
+    minutes); a job whose minutes are unknown is left out."""
+    out = {}
+    for number, name, minutes in rows:
+        if minutes is not None and minutes > out.get(name, (-1, 0))[0]:
+            out[name] = (minutes, number)
+    return out
+
+
 def failing_lines(log: str, limit: int = 60) -> list:
     """The lines that say what failed: pytest's FAILED/ERROR lines, assertion
     lines under them, and the runner's error lines, timestamps stripped."""
@@ -174,6 +200,8 @@ def main(argv=None) -> int:
     f = sub.add_parser("failed")
     f.add_argument("run_id", nargs="?")
     f.add_argument("--out", help="a directory to save each failed job's whole log in")
+    t = sub.add_parser("times")
+    t.add_argument("--limit", type=int, default=20)
     args = ap.parse_args(argv)
 
     try:
@@ -191,6 +219,24 @@ def main(argv=None) -> int:
                 print(f"#{run['run_number']} {run['head_sha'][:7]} {run['status']} "
                       f"{run.get('conclusion') or '-'} attempt {run.get('run_attempt', 1)} "
                       f"{run['created_at']} id {run['id']}")
+            return 0
+        if args.cmd == "times":
+            rows = []
+            done = [x for x in items[: args.limit] if x.get("status") == "completed"]
+            for run in done:
+                jobs = _json(get(f"/repos/{REPO}/actions/runs/{run['id']}/jobs", token))["jobs"]
+                words = []
+                for job in jobs:
+                    m = job_minutes(job)
+                    rows.append((run["run_number"], job["name"], m))
+                    words.append(f"{job['name']} {'?' if m is None else f'{m:.1f}'}")
+                print(f"#{run['run_number']} {run['head_sha'][:7]} {run['created_at']}: "
+                      + "; ".join(words))
+            print(f"slowest of {len(done)} completed runs (minutes; the trigger is "
+                  f"{TRIGGER_MINUTES}):")
+            for name, (m, number) in sorted(slowest(rows).items()):
+                past = "  PAST THE TRIGGER" if m > TRIGGER_MINUTES else ""
+                print(f"  {name}: {m:.1f} in #{number}{past}")
             return 0
         run_id = args.run_id or next((str(x["id"]) for x in items
                                       if x.get("conclusion") == "failure"), "")

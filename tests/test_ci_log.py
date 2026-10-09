@@ -153,6 +153,44 @@ class TestTheCommandNeverPrintsIt:
         assert "mode 0640" in err and TOKEN not in err
 
 
+class TestTimes:
+    """`times` (C614, the operator, 2026-10-09): each completed run's job minutes and each job's
+    slowest run, a job past TRIGGER_MINUTES said."""
+
+    @staticmethod
+    def _job(name, start, end):
+        return (f'{{"name": "{name}", "started_at": "2026-10-09T19:{start}Z",'
+                f' "completed_at": "2026-10-09T19:{end}Z"}}')
+
+    def test_minutes_are_completed_less_started_and_unknown_is_none(self):
+        assert CL.job_minutes({"started_at": "2026-10-09T19:00:00Z",
+                               "completed_at": "2026-10-09T19:10:30Z"}) == 10.5
+        assert CL.job_minutes({"started_at": "2026-10-09T19:00:00Z",
+                               "completed_at": None}) is None
+
+    def test_the_slowest_run_of_each_job_and_the_trigger(self, token_file, monkeypatch, capsys):
+        runs = (b'{"workflow_runs": ['
+                b'{"id": 2, "run_number": 562, "head_sha": "aaaaaaa1", "status": "completed",'
+                b' "created_at": "t2"},'
+                b'{"id": 1, "run_number": 561, "head_sha": "bbbbbbb2", "status": "completed",'
+                b' "created_at": "t1"},'
+                b'{"id": 3, "run_number": 563, "head_sha": "ccccccc3", "status": "in_progress",'
+                b' "created_at": "t3"}]}')
+        second = ('{"jobs": [' + self._job("tests (browser)", "00:00", "10:30") + ", "
+                  + self._job("tests (a)", "00:00", "05:00") + "]}").encode()
+        first = ('{"jobs": [' + self._job("tests (browser)", "00:00", "08:00") + ", "
+                 + self._job("tests (a)", "00:00", "06:00") + "]}").encode()
+        op = _Opener(_Resp(runs), _Resp(second), _Resp(first))
+        monkeypatch.setattr(CL, "_opener", lambda: op)
+        assert CL.main(["times"]) == 0
+        out = capsys.readouterr().out
+        assert "#562 aaaaaaa t2: tests (browser) 10.5; tests (a) 5.0" in out
+        assert "slowest of 2 completed runs" in out           # the run in progress left out
+        assert "  tests (browser): 10.5 in #562  PAST THE TRIGGER" in out
+        assert "  tests (a): 6.0 in #561\n" in out
+        assert len(op.seen) == 3
+
+
 def test_the_failing_lines_are_what_a_reader_needs():
     log = ("2026-10-01T02:57:39.2Z ............\n"
            "2026-10-01T02:57:39.2Z E       AssertionError: a different status\n"
