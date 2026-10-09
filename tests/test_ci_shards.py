@@ -1,11 +1,11 @@
-"""The suite's three CI jobs (`scripts/nmas-shards`; the operator, 2026-10-03: a run took 6.5
-to 9 minutes, 93% of it the tests).
+"""The suite's four CI jobs (`scripts/nmas-shards`; the operator, 2026-10-03: a run took 6.5
+to 9 minutes, 93% of it the tests; two of them browser jobs since C614).
 
 - Every test file runs in exactly one job, found by its name (`tests/test_*.py`), so a new
-  file runs the moment it exists; every file that starts a real browser is in the browser job.
-- The jobs share the measured work (tests/shard_weights.json) within 15% of each other (the
-  browser job heavier only when it holds nothing but its browser files, C614), and the
-  weights know most of the files (a stale map is said, not silently unbalanced).
+  file runs the moment it exists; every file that starts a real browser is in a browser job,
+  and both browser jobs hold some.
+- The jobs share the measured work (tests/shard_weights.json) within 15% of each other, and
+  the weights know most of the files (a stale map is said, not silently unbalanced).
 - The same input gives the same jobs.
 """
 
@@ -36,11 +36,13 @@ def test_every_test_file_runs_in_exactly_one_job():
     assert sorted(every) == files, "every file once, none twice, none left out"
 
 
-def test_every_browser_file_is_in_the_browser_job():
+def test_every_browser_file_is_in_a_browser_job_and_both_hold_some():
     m = _shards()
     users = [f for f in m.test_files() if m.uses_a_browser(f)]
     assert len(users) >= 8
-    assert set(users) <= set(m.assign()["browser"])
+    got = m.assign()
+    assert set(users) <= {f for s in m.BROWSER_SHARDS for f in got[s]}
+    assert all(set(users) & set(got[s]) for s in m.BROWSER_SHARDS), "both browser jobs"
 
 
 def test_the_jobs_share_the_work_and_the_weights_are_current():
@@ -53,16 +55,9 @@ def test_the_jobs_share_the_work_and_the_weights_are_current():
         "(--durations=0) and rewrite tests/shard_weights.json")
     got = m.assign()
     loads = {s: sum(w.get(f, 0) for f in fs) for s, fs in got.items()}
-    # a and b share the rest within 15%. The browser job may weigh more only when it holds its
-    # browser files and nothing else: since 2026-10-09 they weigh 40% of the suite (C614), so
-    # one browser job is the long pole by construction, not by the assignment. Splitting them
-    # across two jobs is the operator's trigger (the slowest browser run past 10 minutes).
-    assert max(loads["a"], loads["b"]) <= 1.15 * min(loads["a"], loads["b"]), loads
-    if loads["browser"] > 1.15 * min(loads["a"], loads["b"]):
-        assert all(m.uses_a_browser(f) for f in got["browser"]), (
-            "the browser job is heavier and still takes other files", loads)
-    else:
-        assert max(loads.values()) <= 1.15 * min(loads.values()), loads
+    # Since C614 the browser files (40% of the suite, 2026-10-09) go to two jobs, so all four
+    # can share the work within 15% again.
+    assert max(loads.values()) <= 1.15 * min(loads.values()), loads
 
 
 def test_the_same_input_gives_the_same_jobs():

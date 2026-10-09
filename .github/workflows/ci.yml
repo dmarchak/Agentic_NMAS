@@ -31,15 +31,16 @@ concurrency:
 
 jobs:
   test:
-    # Three jobs at once (the operator, 2026-10-03: a run took 6.5 to 9 minutes, 93% of it the
-    # tests): the browser tests' files and two more shares of the rest, each about a third of
-    # the measured work (scripts/nmas-shards, tests/shard_weights.json). The gate runs the
-    # same three commands (C349). Each job reports its own coverage; none gates on it.
+    # Four jobs at once (the operator, 2026-10-03: a run took 6.5 to 9 minutes, 93% of it the
+    # tests; four since C614: the browser files weighed 40% of the suite): two share the
+    # browser tests' files, then all four share the rest, each about a quarter of the measured
+    # work (scripts/nmas-shards, tests/shard_weights.json). The gate runs the same four
+    # commands (C349). Each job reports its own coverage; none gates on it.
     name: test (${{ matrix.shard }})
     strategy:
       fail-fast: false
       matrix:
-        shard: [browser, a, b]
+        shard: [browser1, browser2, a, b]
     runs-on: ubuntu-24.04
     # From a measurement, not a round number (the operator, 2026-09-28), and
     # RE-DERIVED when it moves (2026-10-01): the tests step grew from 207 s

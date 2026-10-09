@@ -195,7 +195,7 @@ def test_each_job_is_a_gate_command():
     assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed"}
 
 
-def test_the_three_jobs_run_at_once_and_each_is_judged(repo, tmp_path, monkeypatch):
+def test_the_four_jobs_run_at_once_and_each_is_judged(repo, tmp_path, monkeypatch):
     """Each job's result file is its own and is judged alone: one job failing refuses, naming
     it, whatever the others said."""
     gate = _gate_module()
@@ -204,7 +204,8 @@ def test_the_three_jobs_run_at_once_and_each_is_judged(repo, tmp_path, monkeypat
     codes = gate.run_all_to_files(runs, str(repo), dict(os.environ))
     assert set(codes) == set(gate.SHARDS)
     whys = {s: gate.verdict(path, codes[s]) for s, (_c, path) in runs.items()}
-    assert whys["browser"] is None and whys["a"] is None and whys["b"]
+    assert gate.SHARDS == ("browser1", "browser2", "a", "b")
+    assert not any(whys[s] for s in ("browser1", "browser2", "a")) and whys["b"]
 
 
 def test_a_browser_test_skipped_in_the_suite_refuses(repo, tmp_path):

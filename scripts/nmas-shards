@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Which test files a CI job runs: `nmas-shards <browser|a|b>` prints them, space-separated.
+"""Which test files a CI job runs: `nmas-shards <browser1|browser2|a|b>` prints them,
+space-separated.
 
-CI runs the suite as three jobs at once (the operator, 2026-10-03: a run took 6.5 to 9
-minutes, 93% of it the tests): the BROWSER job runs every file that starts a real browser
-(`= browser.available()`, the population tests/test_nmas_gate.py reads), and the rest are
-shared among the three jobs by each file's measured seconds (tests/shard_weights.json), the
-heaviest first, each to the lightest job. A file the weights do not know weighs their median,
-so a new file is placed the moment it exists and the same way every time. The gate runs the
-same three commands (C349: argument for argument).
+CI runs the suite as four jobs at once (the operator, 2026-10-03: a run took 6.5 to 9
+minutes, 93% of it the tests; four since C614, 2026-10-09: the files that start a real
+browser weighed 40% of the suite, so one job holding them all was the long pole). The two
+BROWSER jobs share every file that starts a real browser (`= browser.available()`, the
+population tests/test_nmas_gate.py reads), and then all four share the rest; each by the
+files' measured seconds (tests/shard_weights.json), the heaviest first, each to the lightest
+job. A file the weights do not know weighs their median, so a new file is placed the moment
+it exists and the same way every time. The gate runs the same four commands (C349: argument
+for argument).
 """
 
 import json
@@ -25,7 +28,8 @@ adopt(__name__)
 
 ROOT = os.path.dirname(HERE)
 TESTS = os.path.join(ROOT, "tests")
-SHARDS = ("browser", "a", "b")
+SHARDS = ("browser1", "browser2", "a", "b")
+BROWSER_SHARDS = ("browser1", "browser2")
 _BROWSER = re.compile(r"=\s*browser\.available\(\)")
 
 
@@ -47,18 +51,26 @@ def weights() -> dict:
 def assign() -> dict:
     """``{shard: [file, ...]}``: every test file in exactly one shard."""
     files = test_files()
-    out = {"browser": [f for f in files if uses_a_browser(f)], "a": [], "b": []}
+    out = {s: [] for s in SHARDS}
+    load = {s: 0.0 for s in SHARDS}
     w = weights()
     median = statistics.median(w.values()) if w else 1.0
-    rest = sorted((f for f in files if f not in out["browser"]),
-                  key=lambda f: (-w.get(f, median), f))
-    # The browser shard starts with its browser files and takes its share of the rest, so the
-    # three jobs end near the same time.
-    load = {"browser": sum(w.get(f, median) for f in out["browser"]), "a": 0.0, "b": 0.0}
-    for f in rest:
-        shard = min(SHARDS, key=lambda s: (load[s], SHARDS.index(s)))
+
+    def heaviest_first(fs):
+        return sorted(fs, key=lambda f: (-w.get(f, median), f))
+
+    def place(f, among):
+        shard = min(among, key=lambda s: (load[s], SHARDS.index(s)))
         out[shard].append(f)
         load[shard] += w.get(f, median)
+
+    browser = [f for f in files if uses_a_browser(f)]
+    # The browser jobs share their files first, then all four jobs share the rest, so the
+    # four end near the same time.
+    for f in heaviest_first(browser):
+        place(f, BROWSER_SHARDS)
+    for f in heaviest_first(f for f in files if f not in browser):
+        place(f, SHARDS)
     return {k: sorted(v) for k, v in out.items()}
 
 
