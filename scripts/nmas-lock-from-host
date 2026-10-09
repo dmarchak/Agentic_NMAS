@@ -50,11 +50,10 @@ DEB_TO_PYPI = {"pkg-resources": "setuptools"}
 DEB_VIRTUAL = {"cffi-backend-api-max", "cffi-backend-api-min", "cryptography-egg",
                "importlib-metadata", "importlib-resources"}
 
-#: Imported, and allowed to be absent from the lock. boto3 and botocore (the S3 archive's
-#: client, the operator's decision of 2026-10-08) are installed on the host from apt
-#: (python3-boto3 1.34.46) and come out of OPTIONAL once the lock is regenerated on the host
-#: from a release that imports them; until then CI's tests stand the client in at its import.
-OPTIONAL = {"boto3", "botocore"}
+#: Imported, and allowed to be absent from the lock. Empty since 2026-10-09: boto3 and
+#: botocore (the S3 archive's client, the operator's decision of 2026-10-08, installed on the
+#: host from apt) are pinned, from the lock regenerated on the host from fda0c4e.
+OPTIONAL: set = set()
 #: Local packages and paths, not distributions.
 LOCAL = {"modules", "routes", "tests", "app", "telnetlib", "conftest", "fixtures"}
 
@@ -218,7 +217,8 @@ def main() -> int:
     seen, missing = closure(sorted(wanted))
     needed = {_norm(IMPORT_TO_DIST[n]) for n in imported} - {_norm(IMPORT_TO_DIST[n]) for n in OPTIONAL}
     lacking = sorted(set(missing) & needed)
-    print(HEADER.format(py=sys.version.split()[0], optional=", ".join(sorted(OPTIONAL))), end="")
+    print(HEADER.format(py=sys.version.split()[0],
+                        optional=", ".join(sorted(OPTIONAL)) or "nothing"), end="")
     for _key, (name, version) in sorted(seen.items(), key=lambda kv: kv[1][0].lower()):
         print(f"{name}=={version}")
     print(f"not installed here: {missing}", file=sys.stderr)

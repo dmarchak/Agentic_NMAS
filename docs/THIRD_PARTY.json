@@ -207,6 +207,13 @@
    "source": "https://pypi.org/project/boto3/1.34.46/",
    "from": "requirements.txt"
   },
+  "botocore": {
+   "name": "botocore",
+   "version": "1.34.46",
+   "licence": "Apache-2.0",
+   "source": "https://pypi.org/project/botocore/1.34.46/",
+   "from": "requirements.lock"
+  },
   "certifi": {
    "name": "certifi",
    "version": "2023.11.17",
@@ -352,6 +359,13 @@
    "version": "0.16.0",
    "licence": "MIT",
    "source": "https://pypi.org/project/jiter/0.16.0/",
+   "from": "requirements.lock"
+  },
+  "jmespath": {
+   "name": "jmespath",
+   "version": "1.0.1",
+   "licence": "MIT",
+   "source": "https://pypi.org/project/jmespath/1.0.1/",
    "from": "requirements.lock"
   },
   "jsonschema": {
@@ -543,6 +557,13 @@
    "source": "https://pypi.org/project/pytest-xdist/",
    "from": "requirements-test.txt"
   },
+  "python-dateutil": {
+   "name": "python-dateutil",
+   "version": "2.8.2",
+   "licence": "Apache-2.0 OR BSD-3-Clause",
+   "source": "https://pypi.org/project/python-dateutil/2.8.2/",
+   "from": "requirements.lock"
+  },
   "python-dotenv": {
    "name": "python-dotenv",
    "version": "1.2.3",
@@ -576,6 +597,13 @@
    "version": "2.34.2",
    "licence": "Apache-2.0",
    "source": "https://pypi.org/project/requests/2.34.2/",
+   "from": "requirements.lock"
+  },
+  "s3transfer": {
+   "name": "s3transfer",
+   "version": "0.10.1",
+   "licence": "Apache-2.0",
+   "source": "https://pypi.org/project/s3transfer/0.10.1/",
    "from": "requirements.lock"
   },
   "scp": {

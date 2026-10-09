@@ -84,6 +84,22 @@ hook and `reads.expire` use it; goldens are written at `goldens/<network>/<devic
 multipart; no delete). Not built: the installation's own uses (the Oxidized bundle is a host
 step; the record dumps come with PostgreSQL). Waiting on the host steps below and a walk.
 
+**Walked on v2 by the operator, 2026-10-09 (00:50 to 00:52 UTC), PASS:** Default's S3 archive
+card saved (endpoint, bucket `mercury`, access key `mercury` and its secret, TLS, region; four
+records naming the keys), then Test passed its four steps; `mc ls lab/mercury` shows
+`_probe/mercury-connection-test`, 47 B, 00:51:21 UTC. Measured afterwards, read-only: before
+that save the S3 archive's keys were unset. Every copy of the settings file from 2026-09-24 to
+2026-09-30 holds no `s3_*` key, the settings record has no S3 write before 00:50:56 UTC, and
+the app's journal (since 2026-09-21) holds no save of the S3 card from today's Settings page.
+No network sets its own; the one reader of the keys is this client.
+
+**Lifecycle (M-2, M-4).** Mercury's key cannot delete and the bucket is versioned, so every
+Test leaves another version of the probe. A bucket lifecycle rule expires the noncurrent
+versions under `_probe/` after a day, and the current probe stays, one object
+(`scripts/host-steps/minio-lifecycle-probe.sh`, the operator's to run). MinIO's lifecycle does
+the expiry, never Mercury. The records' rule (M-4: 30 dailies and 12 monthlies under
+`records/`) comes with the PostgreSQL dumps that write there.
+
 ## 4. The operator's host steps (when signed off; on the NMAS host, with the `lab` alias)
 
 As scripts (the operator's request, 2026-10-08): `scripts/host-steps/c584-loki-writer.sh`
@@ -111,7 +127,10 @@ summary was not reported.
 through the lock; no pip into the system Python. Newer boto3 versions add default checksum
 headers some MinIO versions reject: the pin holds the host's version, and the four-step Test
 catches it if it moves. (C) a virtualenv stays the recorded long-term target. So 4d becomes
-the lock regenerated from the host (read-only) once Mercury imports boto3.
+the lock regenerated from the host (read-only) once Mercury imports boto3. **Done
+2026-10-09:** regenerated on the host from fda0c4e, it adds exactly boto3 1.34.46, botocore
+1.34.46, jmespath 1.0.1, python-dateutil 2.8.2 and s3transfer 0.10.1 (each in
+THIRD_PARTY.json); nothing else moved, and nothing is optional any more.
 
 Every value below is filled when the step is written into its commit, from a read made then
 (C434); `<…>` here marks what the commit fills.
