@@ -1,0 +1,19 @@
+# Overrides for `uv pip compile` (Phase 4 section 8.2; the operator, 2026-10-09).
+#
+# Each replaces what a dependency DECLARES, so the first lock holds exactly the versions the
+# deployment host ran: the first virtualenv changes where the libraries live, not which
+# versions. Each causes one `pip check` complaint, and tests/test_requirements_lock.py holds
+# pip check's complaints to exactly these. All three go in the first ordinary lock change
+# (textfsm 1.1.3, with future and pycparser), through section 8.3 and 8.4.
+
+# netmiko 4.3.0 declares textfsm>=1.1.3; the host runs (and CI has tested) 1.1.2.
+textfsm==1.1.2
+
+# textfsm's metadata asks for future, but its code imports `builtins`, Python 3's own module;
+# future only backports it to Python 2. Neither CI nor the host has had it. A marker that is
+# never true removes the requirement.
+future; sys_platform == "never"
+
+# cffi asks for pycparser, which only its build-time `cdef` parsing needs; cryptography loads
+# its compiled bindings. Neither CI nor the host has had it.
+pycparser; sys_platform == "never"

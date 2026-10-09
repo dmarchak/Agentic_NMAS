@@ -73,7 +73,8 @@ answered, cleared by the next good read. The four-step Test is a person's (Setti
 
 **The SDK:** `minio` added to `requirements.lock` at the version Ubuntu or PyPI gives the host,
 by the operator's host step (section 4) and `scripts/nmas-lock-from-host`, so CI installs what
-the host runs.
+the host runs. (That script retired on 2026-10-09: the lock is now authored and compiled,
+docs/NSOT_PHASE4_RECORDS_POSTGRES.md section 8.2.)
 
 **BUILT 2026-10-08 (Mercury's side):** `integrations/s3_archive.py` holds the one client
 (`S3ArchiveIntegration.client`, boto3 since the operator's decision below, `verify` from

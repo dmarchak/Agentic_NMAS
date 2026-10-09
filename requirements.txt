@@ -1,90 +1,82 @@
-# Network Device Manager - Python Dependencies
+# Mercury's dependencies: the AUTHORED input (Phase 4 section 8.2; the operator, 2026-10-09).
 #
-# TESTED VERSIONS ARE IN requirements.lock, generated on the deployment host
-# (scripts/nmas-lock-from-host); CI installs that file. The pins below describe
-# NO machine (register C37): the host runs paramiko 2.12.0, pysnmp 4.4.12,
-# jsonschema 4.10.3 and Flask-SocketIO 5.3.6, and openai and groq are imported
-# by nothing. Kept as the human-readable declaration until it is reconciled.
-# Install with: pip install -r requirements.txt
+# One line per distribution the code or the suite imports, pinned at the version the
+# deployment host runs. requirements.lock is COMPILED from this file and
+# requirements-overrides.txt, on the laptop, never by hand:
 #
-# Note: For Python 3.13+, a telnetlib compatibility shim (telnetlib.py) is included
-# in the project since telnetlib was removed from the standard library.
+#   uv pip compile requirements.txt --override requirements-overrides.txt \
+#     --generate-hashes --python-version 3.12 \
+#     --python-platform x86_64-unknown-linux-gnu -o requirements.lock
+#
+# With -o naming the existing lock, uv keeps its pins unless something forces a move;
+# `--upgrade-package <name>` moves one. CI installs the lock as the host does
+# (--require-hashes --no-deps) and tests it; the host's virtualenv is built from it
+# (section 8.3). A new dependency is a line here and the command above, nothing else.
+#
+# The first lock (2026-10-09) is exactly the 70 versions the host ran from apt and pip:
+# the first venv changes where the libraries live, not which versions. Moving off them
+# (textfsm 1.1.3, the overrides gone, colorama dropped) is the first ordinary lock change.
 
-# AI Integration
-anthropic>=0.40.0
-openai>=1.30.0      # Used for Groq and Ollama (OpenAI-compatible API)
-groq>=0.9.0         # Optional: Groq SDK (or use openai client with GROQ_API_KEY)
-python-dotenv>=1.0.0   # Loads .env at startup; required for ANTHROPIC_API_KEY etc. to survive restarts
+# AI integration (Anthropic API).
+anthropic==1.2.0
+# Loads .env at startup; ANTHROPIC_API_KEY and the like survive restarts.
+python-dotenv==1.2.3
 
-# Web Framework
-Flask==3.0.0
-Flask-SocketIO==5.3.5
+# Web framework and Socket.IO. Flask-SocketIO 5.3.6 with python-socketio 5.7.2 (the
+# lock's): 5.3.5 with 5.10.0 dropped a Socket.IO message in the test client (C35).
+Flask==3.0.2
+Flask-SocketIO==5.3.6
+Jinja2==3.1.2
+Werkzeug==3.0.1
 
-# Network Automation & SSH
+# Network automation and SSH. netmiko 4.3.0 declares textfsm>=1.1.3; the host runs 1.1.2
+# (requirements-overrides.txt).
 netmiko==4.3.0
-paramiko==3.4.0
+ncclient==0.6.15
 
-# Network Utilities
-ping3==4.0.8
-psutil>=5.9.0           # Interface enumeration for OOB collector IP detection
+# Network utilities, SNMP.
+ping3==4.0.4
+# Interface enumeration for the OOB collector's address detection.
+psutil==5.9.8
+pysnmp==4.4.12
 
-# SNMP & NetFlow
-pysnmp>=6.2.0           # SNMP v1/v2c polling (pure Python, async API in v6+)
-
-# Security & Encryption
+# Security. PyJWT validates the access proxy's assertion: PyJWKClient arrived in 2.0 and its
+# key-cache lifespan later, and an identity check that silently loses its verifier is worse
+# than one never added.
 cryptography==41.0.7
-# Cloudflare Access JWT validation (Cf-Access-Jwt-Assertion). Present on the
-# deployment host but previously unpinned, so a rebuild could have produced a
-# version without PyJWKClient — which arrived in PyJWT 2.0 and gained the
-# `lifespan` key-cache TTL later. An identity check that silently loses its
-# verifier is worse than one that was never added.
-PyJWT>=2.7.0,<3
+PyJWT==2.7.0
 
-# HTTP client
-# Already imported at module level by modules/netbox_client.py but was never
-# declared — a clean install per README crashed on every NetBox code path.
-requests>=2.31.0
+# HTTP. Imported at module level by modules/netbox_client.py.
+requests==2.34.2
+urllib3==2.0.7
 
-# Configuration / data formats
-# PyYAML already arrives transitively via netmiko; pinned explicitly because the
-# NSoT work (host_vars / group_vars) makes it load-bearing rather than incidental.
-PyYAML>=6.0
+# Configuration and data formats: host_vars and group_vars make PyYAML load-bearing.
+PyYAML==6.0.1
+# Settings schema validation: settings are plain dicts round-tripped through
+# config.load_user_settings, so a declarative schema layers on without typed models.
+jsonschema==4.10.3
 
-# Settings schema validation.
-# Chosen over pydantic: settings are plain dicts round-tripped through
-# config.load_user_settings/save_user_settings, so a declarative schema layers
-# onto the existing code without rewriting settings access as typed models.
-jsonschema>=4.20.0
-
-# S3-compatible archive (MinIO, AWS S3, ...): boto3, as the host's apt package
-# (python3-boto3 1.34.46), pinned there through requirements.lock; newer boto3
-# sends default checksum headers some MinIO releases reject. An absent client
-# degrades to "not installed", because the archive never blocks a commit.
+# S3-compatible archive: newer boto3 sends default checksum headers some MinIO releases
+# reject. An absent client reads "not installed"; the archive never blocks a commit.
 boto3==1.34.46
+botocore==1.34.46
 
-# Mercury's records database (Phase 4): psycopg 3, as the host's apt package
-# (python3-psycopg 3.1.17, host step 6a), pinned there through requirements.lock;
-# LGPL-3.0, the operator's decision (docs/THIRD_PARTY.json). Off until
-# records_db_host is set; an absent driver reads "not installed".
+# Mercury's records database (Phase 4): psycopg 3, LGPL-3.0, the operator's decision
+# (docs/THIRD_PARTY.json). It loads the host's libpq. Off until records_db_host is set.
 psycopg==3.1.17
 
-# Socket.IO
-python-socketio==5.10.0
-python-engineio==4.8.0
-
-# Additional Dependencies (pulled in automatically but listed for reference)
-# - Jinja2 (templating)
-# - Werkzeug (WSGI utilities)
-# - click (CLI)
-# - MarkupSafe (string escaping)
-
-# Development Dependencies
-pytest==7.4.3
-pytest-cov==4.1.0
-# Runs the templates' inline JavaScript in tests. Structural assertions about
-# JS source are what let a crashing script ship (`write_committed()` called
-# with the wrong arity, every shape test green), so the helpers that decide
-# what a card SAYS are executed rather than inspected. An embedded engine
-# rather than node: node is on neither the development machine nor the
-# deployment host, and a test skipped everywhere protects nothing.
+# The suite, which the host runs too (nmas-deploy --offline). pytest-xdist and execnet are in
+# requirements-test.txt, installed beside the lock with --no-deps.
+pytest==9.1.1
+# Requirement parsing in the lock's own tests.
+packaging==24.0
+# Runs the templates' inline JavaScript in tests: structural assertions about JS source let a
+# crashing script ship, so the helpers that decide what a card SAYS are executed. An embedded
+# engine, since node is on neither the laptop nor the host.
 dukpy==0.6.0
+# Imported by the suite directly; also arrives with Jinja2.
+MarkupSafe==2.1.5
+
+# Held for the first venv only: the host has it from apt, and nothing on Linux needs it
+# (pytest and click ask for it on Windows). Dropped in the first ordinary lock change.
+colorama==0.4.6

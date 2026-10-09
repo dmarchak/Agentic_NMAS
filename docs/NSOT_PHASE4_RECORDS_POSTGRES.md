@@ -367,7 +367,17 @@ were measured against where the scripts run, and a third is recommended.
 | `#!/usr/bin/env mercury-python`, a launcher installed on the host | Needs the launcher installed on every machine that runs a script (the laptop, CI, a fresh clone), or "env: mercury-python: not found". If the launcher chooses "the venv if it exists", it is wrong after the undo, as above. |
 | **Recommended: the script re-runs itself under the app's interpreter** | Each host script's first statements (standard library only, before any other import) read `flask-app`'s ExecStart from systemd and, when another interpreter started the script, re-run it under that one, saying so on stderr. This is `nmas-lock-from-host`'s mechanism, built and walked on 2026-10-09 (the re-run, the no-re-run, the refusal). It is right in every state: before the switch (`/usr/bin/python3`), after it (the link), after any swap (the link), after the undo (`/usr/bin/python3` again). Where no `flask-app` unit exists (the laptop, CI) it runs as started and says nothing. Cost: about 12 ms per start (a systemd read, measured on the host: 11 to 14 ms), and two lines at the top of each script. |
 
-### 8.2 The lock becomes authored (SIGNED OFF; the compiler decided by measurement)
+### 8.2 The lock becomes authored (SIGNED OFF; BUILT 2026-10-09)
+
+**Built:** `requirements.txt` rewritten as the authored input (25 direct distributions at the
+host's versions, colorama held for the first venv only: nothing on Linux needs it, and the host
+had it from apt); `requirements-overrides.txt` (the three below); `requirements.lock` compiled by
+uv 0.12.24: the same 70 `name==version` pins as the host-read lock, now with 1,006 hashes. CI
+and `scripts/nmas-ci-env` install it `--require-hashes --no-deps`. Proved on the laptop: a fresh
+venv on Python 3.12.3 installed it in 8 s (181 MB), and `pip check` named exactly the three
+overrides' complaints. `scripts/nmas-lock-from-host` is retired; its import mapping and scan
+moved into `tests/test_requirements_lock.py`, whose new checks were each shown to fail (an
+extra unsatisfied dependency; a pin with its hashes removed).
 
 Today the lock is READ from the host (`nmas-lock-from-host`), because CI had to test what apt
 and pip had put there. With a venv the direction reverses: the host is BUILT from the lock, so

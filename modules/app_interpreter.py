@@ -10,8 +10,8 @@ swap, `/usr/bin/python3` again after the switch's undo. No shell's PATH decides.
 Where no `flask-app` unit exists (the laptop, CI) the script runs as started, saying nothing.
 A re-run that still reports another prefix is refused, never looped.
 
-STANDARD LIBRARY ONLY: it runs before the interpreter is settled. One home: `nmas-lock-from-host`
-used its own copy until this module (tests/test_app_interpreter.py holds every script to it).
+STANDARD LIBRARY ONLY: it runs before the interpreter is settled. One home: no script carries a
+copy (tests/test_app_interpreter.py holds every script to calling it).
 """
 
 import hashlib

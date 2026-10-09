@@ -299,13 +299,6 @@
    "source": "https://pypi.org/project/Flask-SocketIO/5.3.6/",
    "from": "requirements.lock"
   },
-  "groq": {
-   "name": "groq",
-   "version": ">=0.9.0",
-   "licence": "Apache-2.0",
-   "source": "https://pypi.org/project/groq/",
-   "from": "requirements.txt"
-  },
   "h11": {
    "name": "h11",
    "version": "0.16.0",
@@ -410,13 +403,6 @@
    "licence": "Apache-2.0",
    "source": "https://pypi.org/project/ntc_templates/3.5.0/",
    "from": "requirements.lock"
-  },
-  "openai": {
-   "name": "openai",
-   "version": ">=1.30.0",
-   "licence": "Apache-2.0",
-   "source": "https://pypi.org/project/openai/",
-   "from": "requirements.txt"
   },
   "packaging": {
    "name": "packaging",

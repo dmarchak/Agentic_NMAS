@@ -252,24 +252,13 @@ class TestAgainstARealPostgreSQL:
 
 
 class TestTheLock:
-    def test_psycopg_waits_in_optional_until_the_lock_is_regenerated(self):
-        """boto3's order: mapped and allowed absent until the lock is regenerated on the host
-        from the release that first imports it; then OPTIONAL is empty again."""
-        import importlib.machinery
-        import importlib.util
-        import os
+    def test_psycopg_is_authored_and_pinned_at_the_hosts_version(self):
+        """The host's apt psycopg was 3.1.17 (host step 6a); the authored lock (Phase 4 section
+        8.2) holds that version, so the venv's driver is the one 6a proved."""
+        from tests import test_requirements_lock as L
 
-        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                            "scripts", "nmas-lock-from-host")
-        loader = importlib.machinery.SourceFileLoader("nmas_lock_from_host", path)
-        spec = importlib.util.spec_from_loader("nmas_lock_from_host", loader)
-        lock = importlib.util.module_from_spec(spec)
-        loader.exec_module(lock)
-        assert lock.IMPORT_TO_DIST["psycopg"] == "psycopg"
-        pinned = "psycopg==" in open(os.path.join(os.path.dirname(path), "..",
-                                                  "requirements.lock")).read()
-        assert ("psycopg" in lock.OPTIONAL) is not pinned, (
-            "psycopg is optional exactly while the lock does not pin it")
-        assert "psycopg" in lock.static_imports()
+        assert L.IMPORT_TO_DIST["psycopg"] == "psycopg" and "psycopg" in L.static_imports()
+        assert L._pins()["psycopg"] == "3.1.17"
+        assert "psycopg" in {L._norm(r.name) for r in L._authored("requirements.txt")}
 
 

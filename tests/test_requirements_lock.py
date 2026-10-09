@@ -1,70 +1,174 @@
-"""Register C37: CI installs the versions the HOST runs, and the lock covers
-everything the code imports.
+"""The lock is AUTHORED and compiled (Phase 4 section 8.2; the operator, 2026-10-09), and it
+covers everything the code imports (register C37).
 
-Three environments ran three sets of versions: the laptop's system packages,
-requirements.txt's pins, and the host's Ubuntu packages. A test failing on one
-(C35: the pinned Flask-SocketIO 5.3.5 with python-socketio 5.10.0 drops a
-Socket.IO message in the test client) was invisible until a fourth tried. The
-lock is generated ON THE HOST by scripts/nmas-lock-from-host.
+requirements.txt is the authored input; requirements.lock is compiled from it and
+requirements-overrides.txt by `uv pip compile`, with a hash for every file of every release;
+CI installs it as the host's virtualenv does (--require-hashes --no-deps). Before this the lock
+was READ from the host (scripts/nmas-lock-from-host, retired), because CI had to test what apt
+and pip had put there; three environments had run three sets of versions (C35, C37).
 """
 
-import importlib.machinery
-import importlib.util
+import ast
 import os
 import re
+import subprocess
+import sys
+
+from packaging.requirements import Requirement
+
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+#: Import name -> distribution, for every third-party module the code imports. A new import
+#: not listed here is refused by test_every_third_party_import_is_mapped.
+IMPORT_TO_DIST = {
+    "anthropic": "anthropic", "cryptography": "cryptography",
+    "dotenv": "python-dotenv", "flask": "Flask", "flask_socketio": "Flask-SocketIO",
+    "jinja2": "Jinja2", "jsonschema": "jsonschema", "jwt": "PyJWT",
+    "boto3": "boto3", "botocore": "botocore", "psycopg": "psycopg",
+    "minio": "minio", "ncclient": "ncclient", "netmiko": "netmiko",
+    "paramiko": "paramiko", "ping3": "ping3", "psutil": "psutil",
+    "pysnmp": "pysnmp", "requests": "requests", "urllib3": "urllib3",
+    "werkzeug": "Werkzeug", "yaml": "PyYAML", "packaging": "packaging",
+}
+#: Local packages and paths, not distributions.
+LOCAL = {"modules", "routes", "tests", "app", "telnetlib", "conftest", "fixtures"}
+#: The command uv records in the lock's header: the lock is compiled, never edited.
+COMMAND = ("uv pip compile requirements.txt --override requirements-overrides.txt "
+           "--generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu "
+           "-o requirements.lock")
 
-def _script():
-    path = os.path.join(ROOT, "scripts", "nmas-lock-from-host")
-    loader = importlib.machinery.SourceFileLoader("nmas_lock_from_host", path)
-    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
-    loader.exec_module(mod)
-    return mod
+
+def _norm(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def static_imports(root=ROOT):
+    """Third-party top-level module names the code imports (app.py, modules/, routes/,
+    scripts/: what git tracks), at any depth of its code."""
+    paths = [p for p in tracked("app.py", "modules", "routes", "scripts", root=root)
+             if p.endswith(".py") or ("/scripts/" in p and "." not in os.path.basename(p))]
+    found = set()
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                tree = ast.parse(fh.read())
+        except (SyntaxError, UnicodeDecodeError, OSError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                found.add(node.module.split(".")[0])
+    return sorted(n for n in found if n not in sys.stdlib_module_names and n not in LOCAL)
+
+
+def _lock_text():
+    with open(os.path.join(ROOT, "requirements.lock"), encoding="utf-8") as fh:
+        return fh.read()
 
 
 def _pins():
-    pins = {}
-    with open(os.path.join(ROOT, "requirements.lock"), encoding="utf-8") as fh:
+    """{normalised name: version} from the lock (a pin line, then its hash lines)."""
+    return {_norm(m.group(1)): m.group(2)
+            for m in re.finditer(r"^([A-Za-z0-9_.-]+)==(\S+)", _lock_text(), re.M)}
+
+
+def _authored(name):
+    out = []
+    with open(os.path.join(ROOT, name), encoding="utf-8") as fh:
         for line in fh:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                name, sep, version = line.partition("==")
-                assert sep and version, f"not an exact pin: {line!r}"
-                pins[re.sub(r"[-_.]+", "-", name).lower()] = version
-    return pins
+            line = line.split("#", 1)[0].strip()
+            if line:
+                out.append(Requirement(line))
+    return out
 
 
 def test_the_scan_finds_the_imports():
-    imported = _script().static_imports()
+    imported = static_imports()
     assert len(imported) >= 15, imported
     assert {"flask", "netmiko", "cryptography"} <= set(imported)
 
 
 def test_every_third_party_import_is_mapped():
-    lock = _script()
-    unmapped = [n for n in lock.static_imports() if n not in lock.IMPORT_TO_DIST]
-    assert unmapped == [], f"add to IMPORT_TO_DIST and regenerate the lock: {unmapped}"
+    unmapped = [n for n in static_imports() if n not in IMPORT_TO_DIST]
+    assert unmapped == [], f"add to IMPORT_TO_DIST, requirements.txt, and recompile: {unmapped}"
 
 
-def test_every_required_import_is_pinned_exactly():
-    lock = _script()
+def test_every_import_is_authored_and_pinned_exactly():
     pins = _pins()
     assert len(pins) >= 40, len(pins)
-    missing = sorted(lock.IMPORT_TO_DIST[n] for n in lock.static_imports()
-                     if n not in lock.OPTIONAL
-                     and re.sub(r"[-_.]+", "-", lock.IMPORT_TO_DIST[n]).lower() not in pins)
-    assert missing == [], missing
+    authored = {_norm(r.name) for r in _authored("requirements.txt")}
+    dists = {_norm(IMPORT_TO_DIST[n]) for n in static_imports()}
+    assert sorted(dists - authored) == [], "imported, not a line of requirements.txt"
+    assert sorted(dists - set(pins)) == [], "imported, not in the lock: recompile"
 
 
-def test_the_lock_names_its_producer_and_the_host():
-    with open(os.path.join(ROOT, "requirements.lock"), encoding="utf-8") as fh:
-        head = fh.read(600)
-    assert "Generated by scripts/nmas-lock-from-host on the host" in head
+def test_the_lock_is_compiled_from_the_authored_input_never_edited():
+    head = _lock_text()[:600]
+    assert "autogenerated by uv" in head and COMMAND in head, head
+
+
+def test_the_lock_satisfies_every_authored_line_and_override():
+    pins = _pins()
+    for name in ("requirements.txt", "requirements-overrides.txt"):
+        for req in _authored(name):
+            if req.marker and not req.marker.evaluate():
+                assert _norm(req.name) not in pins, f"{req.name} is excluded by {name}"
+                continue
+            got = pins.get(_norm(req.name))
+            assert got and req.specifier.contains(got, prereleases=True), (name, str(req), got)
+
+
+def test_every_pin_carries_its_hashes():
+    """The host installs with --require-hashes: a pin with no hash refuses the whole build."""
+    blocks = re.split(r"(?m)^(?=[A-Za-z0-9_.-]+==)", _lock_text())[1:]
+    assert len(blocks) == len(_pins())
+    bare = [b.split()[0] for b in blocks if "--hash=sha256:" not in b]
+    assert bare == []
+
+
+def _not_the_locks():
+    """The lock's pins this interpreter does not hold at their versions."""
+    from importlib import metadata
+
+    out = []
+    for name, version in _pins().items():
+        try:
+            have = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            have = None
+        if have != version:
+            out.append(f"{name} {have} (lock {version})")
+    return out
+
+
+def test_pip_check_complains_of_exactly_the_overrides():
+    """Each override replaces what a dependency declares, so each causes one `pip check`
+    complaint; anything else unsatisfied in the installed set is a finding. Offline: pip
+    check reads the installed metadata only. It judges an interpreter installed from the lock
+    (CI's, the gate's): elsewhere it says why it cannot, and in CI it never skips."""
+    import pytest
+
+    differ = _not_the_locks()
+    if differ and not os.environ.get("CI"):
+        pytest.skip(f"this interpreter is not the lock's ({len(differ)} differ, e.g. {differ[0]})")
+    assert differ == [], "CI installs the lock: every pin at its version"
+    out = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True,
+                         timeout=60)
+    complaints = [ln for ln in out.stdout.splitlines() if ln.strip()]
+    overridden = {_norm(r.name) for r in _authored("requirements-overrides.txt")}
+    assert len(overridden) == 3, overridden
+
+    def names(line):
+        return {_norm(w) for w in re.findall(r"[A-Za-z0-9_.-]+", line)} & overridden
+
+    assert [c for c in complaints if not names(c)] == [], "unsatisfied beyond the overrides"
+    assert overridden == set().union(*map(names, complaints)), complaints
 
 
 def test_the_pair_that_dropped_a_message_is_not_what_ci_installs():
-    """C35: the lock is the host's pair, never requirements.txt's."""
+    """C35: Flask-SocketIO 5.3.5 with python-socketio 5.10.0 dropped a Socket.IO message."""
     pins = _pins()
     assert pins["flask-socketio"] == "5.3.6" and pins["python-socketio"] == "5.7.2"

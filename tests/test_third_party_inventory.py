@@ -82,7 +82,10 @@ def _requirements(root=ROOT, files=REQUIREMENT_FILES):
     out = {}
     for name in files:
         for line in (root / name).read_text(encoding="utf-8").splitlines():
-            line = line.split("#", 1)[0].strip()
+            # The compiled lock (section 8.2): a pin ends in a continuation, then hash lines.
+            line = line.split("#", 1)[0].strip().rstrip("\\").strip()
+            if line.startswith("-"):
+                continue
             m = re.match(r"^([A-Za-z0-9_.\-]+)\s*(.*)$", line)
             if m and _norm(m.group(1)) not in out:
                 out[_norm(m.group(1))] = (name, m.group(2).strip())

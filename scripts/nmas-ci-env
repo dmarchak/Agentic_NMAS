@@ -32,7 +32,10 @@ fi
 
 rm -rf "$venv"
 "$py" -m venv "$venv"
-for f in requirements.lock requirements-ci.txt requirements-test.txt; do
+# The lock with its hashes, as CI and the host's venv install it (Phase 4 section 8.2).
+"$venv/bin/python" -m pip install -q --disable-pip-version-check --require-hashes --no-deps \
+  -r "$here/requirements.lock"
+for f in requirements-ci.txt requirements-test.txt; do
   "$venv/bin/python" -m pip install -q --disable-pip-version-check --no-deps -r "$here/$f"
 done
 echo "nmas-ci-env: $venv is Python $have with CI's packages ($("$venv/bin/python" -m pip list \

@@ -67,10 +67,12 @@ pip installs, and no venv. Two facts make a naive rebuild different:
 So the two faithful rebuilds are:
 1. **Ubuntu 24.04 and its apt packages**, the way the host was built. This is
    the only one with Debian's patches.
-2. **A venv with `pip install --no-deps -r requirements.lock`.** These are the
-   host's exact versions without a resolver, which is what CI does.
-   `requirements.lock` is generated ON the host by
-   `scripts/nmas-lock-from-host`, which reads Python metadata AND `dpkg`.
+2. **A venv with `pip install --require-hashes --no-deps -r requirements.lock`.**
+   These are the lock's exact files without a resolver, which is what CI does.
+   `requirements.lock` is compiled on the laptop from `requirements.txt` by
+   `uv pip compile` (its header names the command; docs/NSOT_PHASE4_RECORDS_POSTGRES.md
+   section 8.2). Mercury's own venv, `/opt/mercury-venv`, is built by the host steps in
+   section 8.3 of that document.
 
 The test tools the host runs the suite with (`nmas-deploy --offline`) are
 pinned in `requirements-test.txt`, the same versions CI installs. On the
