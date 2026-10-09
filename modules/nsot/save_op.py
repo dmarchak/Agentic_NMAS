@@ -28,9 +28,10 @@ log = logging.getLogger(__name__)
 #: The steps, in order, as the manual's How it works page names them.
 STEPS = ("plan", "confirm", "hold", "save", "read_back", "read_running", "release", "record")
 #: Devices worked at once, each on its own worker holding it: a session for the save and its
-#: read-back, then the capture's read of the running config. Not measured: half the capture's
-#: `CAPTURE_READ_WORKERS`, since each device here is two sessions, not one.
-WORKERS = 8
+#: read-back, then the capture's read of the running config. 6, Show commands' cap (the
+#: operator, 2026-10-09, C605; it was 8, half the capture's): not measured on the host, where a
+#: timing of a Save every device would set it.
+WORKERS = 6
 #: What a plan says of each device, the page's groups in the order it leads with.
 GROUPS = ("save", "not_answering", "held", "refused")
 #: What a run says of each device; the first two are the good ones.

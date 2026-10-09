@@ -23,7 +23,7 @@ It is built from two operations that already exist, never a third copy of either
 
 The run is a job: the page can close, and the card redraws in place as each device ends and when the run finishes, never on a timer.
 
-Before anything is sent, a device the network's manifest does not know (never onboarded or adopted) is left out, named: its golden would have nothing to attach to. Then each device runs on its own worker, at most eight at once:
+Before anything is sent, a device the network's manifest does not know (never onboarded or adopted) is left out, named: its golden would have nothing to attach to. Then each device runs on its own worker, at most six at once:
 
 1. **Hold** (`hold`). The device is held for `save`, so no other operation runs on it meanwhile. A device another operation took first is left out, named with its holder; the rest go on.
 2. **Save** (`save`). Sent: the device's own save, `write memory`, on a session signed in with the credential the inventory holds.

@@ -719,7 +719,7 @@ def save():
         band(96, 66, "Confirm"),
         person(14, 118, 186, 30, "You confirm its hash"),
         band(168, 296, "The run · a job, each device held"),
-        device(262, 190, 118, 170, "The device", "eight at once", top=True),
+        device(262, 190, 118, 170, "The device", "six at once", top=True),
         *rows([
             (220, "send", 1, "Save", "running to startup"),
             (262, "read", 2, "Read startup back", "every account line"),
