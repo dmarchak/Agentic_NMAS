@@ -165,6 +165,14 @@ when there is a record to dump; the lock is regenerated from the host once psyco
 
 The run: `bash <checkout>/scripts/host-steps/postgres-6a.sh` on the NMAS host.
 
+**The first run failed (C600, 2026-10-09):** the init folder was installed 0750 root-only, the
+image's entrypoint lists it as `postgres` (uid 70) and stopped before `initdb`, and the
+container restarted eleven times with its volume left empty. The walk above had mounted the
+repository's world-readable folder, not the folder as installed. The script now installs it
+0755, has the image's own `postgres` user list it as installed before the start, and recreates
+the container on start (its volume kept). The re-run enters the same password: the env file
+written by the first run is kept.
+
 **The host step as first drafted** (kept for the backup units' part, which ships with the
 receipts store):
 

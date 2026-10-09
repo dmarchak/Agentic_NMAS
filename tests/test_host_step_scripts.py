@@ -132,6 +132,13 @@ def test_the_records_password_is_prompted_hidden_and_reaches_only_stdin_and_the_
     assert '| sudo install -m 0600 /dev/stdin "$DIR/postgres.env"' in text
     assert 'password=os.environ[\\"PW\\"]' in text
     assert "$(openssl rand -hex 24)" in text and not re.search(r"echo[^\n]*POSTGRES_PASSWORD", text)
+    # The init folder is readable by the image's own user (postgres, uid 70): installed 0750
+    # root-only on 2026-10-09, the entrypoint could not list it and the container restarted
+    # eleven times. 6a proves it by that user, in that image, before it starts the container.
+    assert 'sudo install -d -m 0755 "$DIR/initdb"' in text and 'sudo chmod 0755 "$DIR/initdb"' in text
+    assert re.search(r'docker run --rm --entrypoint ls -u postgres -v "\$DIR/initdb:'
+                     r'/docker-entrypoint-initdb.d:ro" "\$IMAGE"', text)
+    assert text.index("reads the init folder as installed\" has") < text.index("up -d --force-recreate")
     # The compose file publishes the port on loopback only, and pins the image by digest.
     compose = open(os.path.join(ROOT, "deploy", "postgres", "docker-compose.yml"),
                    encoding="utf-8").read()

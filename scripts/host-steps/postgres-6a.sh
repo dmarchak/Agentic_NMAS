@@ -20,6 +20,7 @@ plan "run as the operator's own user, not root" \
      "docker answers" \
      "NetBox's database container is running" \
      "the password is letters, digits and . _ ~ - only, 24 characters or more" \
+     "the image's postgres user reads the init folder as installed" \
      "mercury-postgres is healthy" \
      "its server is PostgreSQL 18" \
      "the role mercury owns the database mercury" \
@@ -56,9 +57,19 @@ export CHECKOUT DIR COMPOSE
 step "install the compose file and the init script, by name" \
     'd=$(mktemp -d) && cp "$CHECKOUT/deploy/postgres/docker-compose.yml" "$d/" \
      && cp "$CHECKOUT/deploy/postgres/initdb/10-mercury.sh" "$d/" \
-     && sudo install -d -m 0750 "$DIR" "$DIR/initdb" \
+     && sudo install -d -m 0750 "$DIR" && sudo install -d -m 0755 "$DIR/initdb" \
+     && sudo chmod 0755 "$DIR/initdb" \
      && sudo install -m 0640 "$d/docker-compose.yml" "$COMPOSE" \
      && sudo install -m 0644 "$d/10-mercury.sh" "$DIR/initdb/10-mercury.sh"'
+
+# The image's entrypoint lists the init folder as its own user (postgres, uid 70) and stops
+# before initdb when it cannot (2026-10-09: the folder installed 0750 root-only restarted the
+# container eleven times, the volume left empty). Proved by that user, in that image, on the
+# folder as installed: a copy elsewhere is not the install.
+IMAGE=$(sed -n 's/^ *image: //p' "$CHECKOUT/deploy/postgres/docker-compose.yml")
+export IMAGE
+check "the image's postgres user reads the init folder as installed" has "10-mercury.sh" \
+    'sudo docker run --rm --entrypoint ls -u postgres -v "$DIR/initdb:/docker-entrypoint-initdb.d:ro" "$IMAGE" /docker-entrypoint-initdb.d'
 
 if sudo test -f "$DIR/postgres.env"; then
     echo "== the env file exists already: kept (its passwords took effect when the volume was"
@@ -72,7 +83,7 @@ else
     fi
 fi
 
-step "start mercury-postgres" 'sudo docker compose -f "$COMPOSE" up -d'
+step "start mercury-postgres (recreated; its volume kept)" 'sudo docker compose -f "$COMPOSE" up -d --force-recreate'
 # Not measured: a first start initialises an empty cluster; the health check's own budget is
 # 6 tries 10 s apart, so this waits up to 90 s and says how long it took.
 echo "== waiting for the health check (up to 90 s)"
