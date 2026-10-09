@@ -173,6 +173,25 @@ repository's world-readable folder, not the folder as installed. The script now 
 the container on start (its volume kept). The re-run enters the same password: the env file
 written by the first run is kept.
 
+**Step 6a done (the operator, 2026-10-09, on 875cf27): PASS, 15 of 15.** PostgreSQL 18 healthy
+on 127.0.0.1:5433 only, `mercury` not a superuser, NetBox's database not restarted, psycopg
+3.1.17-2 from apt with `python3-typing-extensions` as its dependency, the operator's password
+signs in and a wrong one is refused. The lock was then regenerated on the host by the deployed
+`scripts/nmas-lock-from-host` (read only): it printed the committed lock exactly (82 lines,
+nothing missing), because no deployed code imports psycopg yet; psycopg and typing-extensions
+enter it after the release that does (boto3's order).
+
+**The host's kernel reboot (2026-10-09, 6.8.0-139 to 6.8.0-142).** Before it, read only: every
+container's restart policy and every unit's state, so what comes back on its own was known
+(the two Oxidized containers stay stopped: `restart=no`, and a stopped `unless-stopped`).
+After it, the operator's `post-reboot-check.sh`: PASS, 14 of 14 (the new kernel, every
+service, timer, socket and container back and healthy, Oxidized stopped, the policies
+unchanged, every health endpoint 200, Mercury's records database answering on 127.0.0.1:5433
+only, no failed unit but `openipmi.service`, which had failed before). The fleet, read only
+after the boot at 03:20:32 UTC: Prometheus up for all 9 devices (5 IOS-XE, 4 IOS) with no
+target down; syslog in Loki from all 9 (r1 to r4, r6, s1 to s4; 23 lines in nine streams by
+03:33). The check script, declared one-off, was removed once run.
+
 **The host step as first drafted** (kept for the backup units' part, which ships with the
 receipts store):
 

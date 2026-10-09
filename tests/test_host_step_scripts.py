@@ -24,8 +24,7 @@ SCRIPTS = sorted(os.path.basename(p) for p in tracked("scripts/host-steps", suff
                  if not p.endswith("lib.sh"))
 # The sections the operator named, each a script.
 EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "phase3-step3.sh", "c584-loki-writer.sh",
-            "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh", "postgres-6a.sh",
-            "post-reboot-check.sh"}
+            "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh", "postgres-6a.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
