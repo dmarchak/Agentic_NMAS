@@ -613,6 +613,14 @@ class TestAReasonForLevelsZeroToThree:
         r = sc["client"].post("/v2/device/r3/ask", data={"list": "Lab", "command": URGENT,
                                                           "reason": REASON},
                               headers={"HX-Request": "true"})
-        job = re.search(r"job=([0-9a-f]{32})", r.get_data(as_text=True))
-        assert job and capture_job.wait(job.group(1), 30)
+        # The card draws the job in whatever state it is in (routes/reads_v2.ask_run): still
+        # running, it carries the job's link; already answered (the stand-in fleet answers at
+        # once), it draws the answer and the reason it was recorded with (C611: this asserted
+        # the link only, and failed whenever the job won the race).
+        body = r.get_data(as_text=True)
+        job = re.search(r"job=([0-9a-f]{32})", body)
+        if job:
+            assert capture_job.wait(job.group(1), 30)
+        else:
+            assert "answered" in body and "Why: prove the critical alert rule" in body, body[-800:]
         assert sc["fleet"].sent == [("r3", URGENT)]

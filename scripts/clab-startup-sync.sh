@@ -103,9 +103,21 @@
 #   call-home,             Cisco's call-home, which reaches out to Cisco (D4)
 #     service call-home
 #   version, boot markers, image and hardware state the device reports, not
-#   license, platform,     configuration it takes from a file
-#     diagnostic bootup,
-#     memory free low-watermark, Building/Current configuration
+#   license udi,           configuration it takes from a file (device-state)
+#     Building/Current configuration
+#   platform console       vrnetlab's serial console (vrnetlab-serial-console):
+#     serial               its C8000v install step writes it "to make sure that
+#                          we get console output on serial, not vga" and saves
+#                          it into the image (tests/fixtures/launch/, read
+#                          2026-10-09), so every boot has it already
+#   memory free low-water- IOS-XE writes these itself (ios-xe-written): no
+#     mark, diagnostic     vrnetlab config holds them (its install and bootstrap
+#     bootup, platform     configs, read 2026-10-09), no startup file ever has,
+#     punt-keepalive,      and every router's golden does
+#     platform qfp
+#   NOT removed: `license boot level` (the operator, 2026-10-09). It is
+#     configuration, the level vrnetlab's install step saved into the image;
+#     until then it was dropped as device-state, and every router ran it anyway.
 #   ip ssh maxstartups,    vrnetlab's own bootstrap lines (vrnetlab-bootstrap):
 #     ip domain name       its C8000v launch.py writes `ip domain name
 #     example.com          example.com` and `ip ssh maxstartups 128` at every
@@ -120,9 +132,18 @@
 #                          recorded, and the fleet booted without its TFTP
 #                          source (C604)
 #   end, blank lines       structure; one `end` is appended
-#   And it ADDS: `no shutdown` (above); on switches `no logging console`
-#   (where the config lacks it; no reason was recorded) and the SSH host
-#   key's generation, which no config holds.
+#   And it ADDS: `no shutdown` (above); on switches `no logging console`,
+#   first, where the config lacks it (every switch golden holds it already);
+#   and the SSH host key's generation, which no config holds.
+#   Why `no logging console` (read 2026-10-09, not assumed): vrnetlab's vIOS
+#   launcher (cisco/vios/docker/launch.py, vrnetlab fd759f1 on the lab host)
+#   TYPES the startup file into the serial console, line by line through
+#   scrapli's send_configs, matching the prompt after each line; console log
+#   messages print into that same stream. The C8000v takes its file on
+#   config.iso and never types it, so routers do not need it. The line came
+#   with the lab's original s1 config (the bootstrap probe mirrored it,
+#   4b020cf); that a log message breaks the prompt match is the mechanism,
+#   not a measurement.
 #
 # WHAT NO CONFIG SOURCE RESTORES (a redeploy makes these anew, whatever the
 # file holds)
@@ -165,6 +186,9 @@ OUT="${OUT:-configs}"
 CLAB_FROM_ENV="${CLAB+yes}"
 CLAB="${CLAB:-}"
 STAGE="${STAGE:-/tmp/clab-startup-staged}"
+# The latest run's full list of lines the sanitiser removed (report_removed): kept across
+# reboots, owner-only (it holds configuration), replaced whole by each run.
+REMOVED_LIST="${REMOVED_LIST:-${XDG_STATE_HOME:-$HOME/.local/state}/clab-startup-sync/removed-last.txt}"
 NMAS_URL="${NMAS_URL:-}"
 # THE NETWORK THIS LAB BOOTS, NAMED, NEVER THE INSTALLATION'S ACTIVE LIST (C482).
 #
@@ -385,10 +409,13 @@ awk -v kind="$1" -v dev="${2:-?}" '
   /^Current configuration/       { drop("device-state"); next }
   /^version /                    { drop("device-state"); next }
   /^boot-(start|end)-marker$/    { drop("device-state"); next }
-  /^license /                    { drop("device-state"); next }
-  /^diagnostic bootup/           { drop("device-state"); next }
-  /^memory free low-watermark/   { drop("device-state"); next }
-  /^platform /                   { drop("device-state"); next }
+  /^license udi /                { drop("device-state"); next }
+  # `license boot level` PASSES (the operator, 2026-10-09): configuration, the same level
+  # the vrnetlab install step saved into the image, so the file matches the golden.
+  /^platform console serial$/    { drop("vrnetlab-serial-console"); next }
+  /^memory free low-watermark/   { drop("ios-xe-written"); next }
+  /^diagnostic bootup/           { drop("ios-xe-written"); next }
+  /^platform (punt-keepalive|qfp) / { drop("ios-xe-written"); next }
   /^service call-home/           { drop("call-home"); next }
   /^ip ssh maxstartups/          { drop("vrnetlab-bootstrap"); next }
   /^ip domain name example.com$/ { drop("vrnetlab-bootstrap"); next }
@@ -487,6 +514,7 @@ echo "Building from $BASE_TAG (${BASE_COMMIT:0:10}); credentials from each devic
 echo "golden"
 echo
 fail=0
+: > "$SRCDIR/removed.txt"
 
 for n in "${DEVICES[@]}"; do
   if ! kind="$(kind_for "${PLATFORM[$n]}")"; then
@@ -506,7 +534,9 @@ for n in "${DEVICES[@]}"; do
     echo "SKIPPED - the baseline's golden for $n holds no hostname"
     fail=1; continue
   fi
-  render_device "$n" "$kind" "$raw" > "$OUT/${n}.cfg"
+  # The sanitiser's REMOVED lines go to this run's list, reported after the loop
+  # (report_removed: a summary, and only the lines the previous run did not remove).
+  render_device "$n" "$kind" "$raw" > "$OUT/${n}.cfg" 2>> "$SRCDIR/removed.txt"
 
   lines=$(wc -l < "$OUT/${n}.cfg")
   ends=$(grep -c '^end$'  "$OUT/${n}.cfg")
@@ -560,6 +590,43 @@ for n in "${DEVICES[@]}"; do [ -n "${NOT_BUILT[$n]:-}" ] || built+=("$n"); done
 NOT_BUILT_LIST="$(IFS=,; echo "${!NOT_BUILT[*]}")"
 DEVICES=("${built[@]}")
 # <<< build
+
+# >>> report_removed
+# What the sanitiser removed, said in proportion (the operator, 2026-10-09): every run removes
+# the same few hundred lines (642 at 16:30 that day, every 30 minutes), so the journal gets
+# one line per rule with its count and devices, and per line only what the previous run did
+# not remove. The full list is kept, replaced whole each run, owner-only, at REMOVED_LIST.
+# Anything else the render wrote to stderr is passed on as it was.
+report_removed() {   # report_removed <this run's stderr from the render> <the kept list>
+  local run="$1" kept="$2" total new
+  grep -v '^REMOVED ' "$run" >&2
+  total=$(grep -c '^REMOVED ' "$run")
+  echo "Removed by the sanitiser: $total line(s) (the full list: $kept)"
+  grep '^REMOVED ' "$run" | awk '
+    { r = $3; sub(/:$/, "", r); n[r]++
+      if (!((r, $2) in seen)) { seen[r, $2] = 1; d[r] = d[r] (d[r] == "" ? "" : " ") $2 } }
+    END { for (r in n) printf "  REMOVED %-28s %4d on %s\n", r ":", n[r], d[r] }' | LC_ALL=C sort
+  if [ -f "$kept" ]; then
+    new="$(grep '^REMOVED ' "$run" | LC_ALL=C sort -u \
+           | LC_ALL=C comm -23 - <(grep '^REMOVED ' "$kept" | LC_ALL=C sort -u))"
+  else
+    echo "  (no earlier list at $kept: every line is new to this run)"
+    new="$(grep '^REMOVED ' "$run")"
+  fi
+  if [ -n "$new" ]; then
+    echo "  Not removed by the previous run:"
+    sed 's/^/  NEW /' <<<"$new"
+  elif [ "$total" -gt 0 ]; then
+    echo "  The previous run removed every one of these too."
+  fi
+  if ! { mkdir -p "$(dirname "$kept")" \
+         && (umask 077 && { grep '^REMOVED ' "$run" || true; } > "$kept.new") \
+         && mv -f "$kept.new" "$kept"; }; then
+    echo "  (the full list could not be kept at $kept; the next run reports every line as new)"
+  fi
+}
+# <<< report_removed
+report_removed "$SRCDIR/removed.txt" "$REMOVED_LIST"
 
 # ---------------------------------------------------------------------------
 # Account for every mapped device BEFORE anything is copied. A device the
