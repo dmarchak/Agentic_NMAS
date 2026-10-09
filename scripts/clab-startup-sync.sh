@@ -84,6 +84,10 @@
 #   that carries an address and does not explicitly say shutdown.
 #
 # WHAT THE SANITISER REMOVES, AND WHY (the rules in sanitise() below)
+#   Every line it removes is REPORTED on stderr, by rule and device, as
+#   `REMOVED <device> <rule>: <line>` (C604: a rule once dropped a line from
+#   every file and said nothing). A golden line that is neither in the file
+#   nor reported is a defect, and tests/test_lab_startup.py holds it so.
 #   "! comment" lines      provenance (a store's header), never configuration
 #   banner blocks          vrnetlab types the file into the console and waits
 #                          for a prompt; the ^C delimiter breaks that match
@@ -102,9 +106,19 @@
 #   license, platform,     configuration it takes from a file
 #     diagnostic bootup,
 #     memory free low-watermark, Building/Current configuration
-#   ip ssh maxstartups,    no reason was recorded when these rules were
-#     ip tftp source-interface,  written (ip domain name example.com is
-#     ip domain name example.com  vrnetlab's default); kept as found
+#   ip ssh maxstartups,    vrnetlab's own bootstrap lines (vrnetlab-bootstrap):
+#     ip domain name       its C8000v launch.py writes `ip domain name
+#     example.com          example.com` and `ip ssh maxstartups 128` at every
+#                          boot (the real script: tests/fixtures/launch/); a
+#                          copy in the file is vrnetlab's line, not intent
+#   ip tftp|ssh            only when it NAMES an interface removed above
+#     source-interface     (source-on-removed-interface): the boot never makes
+#                          that interface, so the line would point at nothing.
+#                          Any other (Loopback0, the management profile's)
+#                          passes. Until 2026-10-09 every `ip tftp
+#                          source-interface` was dropped, with no reason ever
+#                          recorded, and the fleet booted without its TFTP
+#                          source (C604)
 #   end, blank lines       structure; one `end` is appended
 #   And it ADDS: `no shutdown` (above); on switches `no logging console`
 #   (where the config lacks it; no reason was recorded) and the SSH host
@@ -311,8 +325,19 @@ kind_for() {
 
 mkdir -p "$OUT"
 
-sanitise() {   # sanitise router|switch
-awk -v kind="$1" '
+sanitise() {   # sanitise router|switch [device]
+awk -v kind="$1" -v dev="${2:-?}" '
+  # ---- every removed line is REPORTED, by rule and device (C604) -----------
+  # On stderr, one line each: REMOVED <device> <rule>: <the line>. The file
+  # is stdout; a bare "!" and a blank line are structure and are not reported.
+  function drop(rule) {
+      if ($0 !~ /^[ \t]*!?[ \t]*$/) printf "REMOVED %s %s: %s\n", dev, rule, $0 > "/dev/stderr"
+  }
+  # The interfaces this sanitiser removes, ONE set for the block rule and the
+  # source-interface rule below: the router management interface vrnetlab
+  # makes and owns (its bootstrap writes it; a second copy fights it).
+  BEGIN { if (kind == "router") gone["GigabitEthernet1"] = 1 }
+
   # ---- flush a pending "no shutdown" ---------------------------------------
   # Must be the FIRST rule. Any non-indented line ends the current interface
   # block, and several rules below use next, so the flush has to happen
@@ -323,25 +348,25 @@ awk -v kind="$1" '
   !/^[ \t]/ && inif { if (hadaddr && !hadshut) { print " no shutdown"; b=0 } inif=0 }
 
   # ---- a metadata header, and every "! comment" line ----------------------
-  /^![ \t]/ { next }
+  /^![ \t]/ { drop("comment"); next }
 
   # ---- IOSv banner blocks: banner exec ^C ... ^C
   # Multi-line, and the ^C is a literal control character. vrnetlab pushes
   # config line by line and waits for a prompt, so a banner block breaks the
   # expect matching and HANGS THE BOOT. Drop them.
-  /^banner [a-z-]+ / { ban=1; next }
-  ban { if ($0 ~ /\003|\^C/) ban=0; next }
+  /^banner [a-z-]+ / { ban=1; drop("banner"); next }
+  ban { if ($0 ~ /\003|\^C/) ban=0; drop("banner"); next }
 
   # ---- multi-line blocks dropped whole ------------------------------------
-  /^crypto pki (trustpoint|certificate chain)/ { blk=1 }
-  /^vrf definition clab-mgmt$/                 { blk=1 }
-  /^interface GigabitEthernet1$/ && kind=="router" { blk=1 }
-  /^call-home$/ { ch=1; next }
+  /^crypto pki (trustpoint|certificate chain)/ { blk=1; blkrule="certificate" }
+  /^vrf definition clab-mgmt$/                 { blk=1; blkrule="management-vrf" }
+  /^interface / && ($2 in gone)                { blk=1; blkrule="management-interface" }
+  /^call-home$/ { ch=1; drop("call-home"); next }
   ch && /^!$/      { ch=0; next }
   ch && !/^[ \t]/ { ch=0 }
-  ch               { next }
+  ch               { drop("call-home"); next }
   blk && /^!$/ { blk=0; next }
-  blk          { next }
+  blk          { drop(blkrule); next }
 
   # ---- interface blocks ----------------------------------------------------
   # A running-config shows "shutdown" but never "no shutdown", so an
@@ -356,21 +381,23 @@ awk -v kind="$1" '
   }
 
   # ---- single lines --------------------------------------------------------
-  /^Building configuration/      { next }
-  /^Current configuration/       { next }
-  /^version /                    { next }
-  /^boot-(start|end)-marker$/    { next }
-  /^license /                    { next }
-  /^diagnostic bootup/           { next }
-  /^memory free low-watermark/   { next }
-  /^platform /                   { next }
-  /^service call-home/           { next }
-  /^ip ssh maxstartups/          { next }
-  /^ip tftp source-interface/    { next }
-  /^ip route vrf clab-mgmt/      { next }
-  /^ipv6 route vrf clab-mgmt/    { next }
-  /^crypto key/                  { next }
-  /^ip domain name example.com$/ { next }
+  /^Building configuration/      { drop("device-state"); next }
+  /^Current configuration/       { drop("device-state"); next }
+  /^version /                    { drop("device-state"); next }
+  /^boot-(start|end)-marker$/    { drop("device-state"); next }
+  /^license /                    { drop("device-state"); next }
+  /^diagnostic bootup/           { drop("device-state"); next }
+  /^memory free low-watermark/   { drop("device-state"); next }
+  /^platform /                   { drop("device-state"); next }
+  /^service call-home/           { drop("call-home"); next }
+  /^ip ssh maxstartups/          { drop("vrnetlab-bootstrap"); next }
+  /^ip domain name example.com$/ { drop("vrnetlab-bootstrap"); next }
+  # A source-interface naming an interface this sanitiser removes would point
+  # at an interface the boot never makes; any other (Loopback0) passes (C604).
+  /^ip (tftp|ssh) source-interface / && ($4 in gone) { drop("source-on-removed-interface"); next }
+  /^ip route vrf clab-mgmt/      { drop("management-vrf"); next }
+  /^ipv6 route vrf clab-mgmt/    { drop("management-vrf"); next }
+  /^crypto key/                  { drop("crypto-key"); next }
   /^end$/                        { next }
   /^[ \t]*$/                     { next }
 
@@ -401,7 +428,7 @@ render_device() {   # render_device <name> <router|switch> <raw>
   if [ "$kind" = switch ] && ! grep -q '^no logging console$' <<<"$raw"; then
     printf 'no logging console\n!\n'
   fi
-  sanitise "$kind" <<<"$raw"
+  sanitise "$kind" "$n" <<<"$raw"
   # the RSA key is not in running-config; re-issue so SSH works on a fresh boot
   if [ "$kind" = switch ]; then
     printf '!\nip domain-name rcn.lab\ncrypto key generate rsa modulus 2048\nip ssh version 2\n'

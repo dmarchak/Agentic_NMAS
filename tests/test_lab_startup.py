@@ -339,3 +339,74 @@ class TestNeedsAttention:
         assert "lab_startup" in invalidation.VOCABULARY
         from modules.readers import lab_startup as R
         assert R.READER.invalidates == ("lab_startup",)
+
+
+#: The management profile's two lines, as every golden carries them since its deploy (the
+#: operator's C553 walk, 2026-10-09): the edit made to each real fleet config below.
+PROFILE_LINES = ["ip ssh source-interface Loopback0", "ip tftp source-interface Loopback0"]
+ALL = HOSTS + ["r5"]
+STRUCTURE = ("!", "", "end")
+
+
+def _with_profile(h, extra=()):
+    """*h*'s real config with the management profile's lines (and *extra*) where IOS puts
+    global lines: before `line con 0`."""
+    text = _golden(h)
+    i = text.index("\nline con 0") + 1
+    return text[:i] + "".join(f"{l}\n" for l in [*PROFILE_LINES, *extra]) + text[i:]
+
+
+def _render_reporting(h, golden):
+    """``(file, report lines)``: the sync's own render, its stderr kept."""
+    script = (_function("kind_for") + _function("sanitise") + _function("render_device")
+              + f'\nrender_device {h} "$(kind_for {DIALECT[h]})" "$(cat)"\n')
+    out = subprocess.run(["bash", "-c", script], input=golden, capture_output=True, text=True,
+                         check=True)
+    return out.stdout, [l for l in out.stderr.splitlines() if l.strip()]
+
+
+class TestEveryGoldenLineSurvivesOrIsReported:
+    """C604 (the operator's C553 walk, 2026-10-09): the sync dropped `ip tftp
+    source-interface Loopback0` from all nine startup files by a rule with no reason, and said
+    nothing. Every golden line reaches the file unless a NAMED rule removes it, and every
+    removal is reported, by rule and device."""
+
+    @pytest.mark.parametrize("h", ALL)
+    def test_each_line_is_in_the_file_or_reported_by_a_named_rule(self, h):
+        golden = _with_profile(h)
+        text, report = _render_reporting(h, golden)
+        kept = set(text.splitlines())
+        reported = {}
+        for line in report:
+            assert line.startswith(f"REMOVED {h} "), line
+            rule, _sep, removed = line[len(f"REMOVED {h} "):].partition(": ")
+            assert rule and " " not in rule, line
+            reported.setdefault(removed, rule)
+        lost = [l for l in golden.splitlines()
+                if l.strip() not in STRUCTURE and l not in kept and l not in reported]
+        assert lost == [], f"{h}: lines neither in the file nor reported: {lost[:5]}"
+        assert set(reported) <= set(golden.splitlines()), "a report names only golden lines"
+
+    @pytest.mark.parametrize("h", ALL)
+    def test_the_management_profile_s_lines_reach_every_file(self, h):
+        text, report = _render_reporting(h, _with_profile(h))
+        for line in PROFILE_LINES:
+            assert line in text.splitlines(), f"{h}: {line!r} dropped; reported {report}"
+
+    def test_a_source_naming_the_removed_management_interface_is_dropped_and_said(self):
+        """The narrowed rule: the router's management interface is removed, so a source on it
+        would point at nothing at boot; the switch removes no interface, so its line stays."""
+        line = "ip tftp source-interface GigabitEthernet1"
+        text, report = _render_reporting("r2", _with_profile("r2", [line]))
+        assert line not in text.splitlines()
+        assert f"REMOVED r2 source-on-removed-interface: {line}" in report
+        assert "ip tftp source-interface Loopback0" in text.splitlines()
+        sw = "ip tftp source-interface GigabitEthernet0/0"
+        text, report = _render_reporting("s1", _with_profile("s1", [sw]))
+        assert sw in text.splitlines() and not any(sw in r for r in report)
+
+    def test_vrnetlab_s_own_bootstrap_lines_are_removed_by_their_named_rule(self):
+        text, report = _render_reporting(
+            "r2", _with_profile("r2", ["ip domain name example.com", "ip ssh maxstartups 128"]))
+        assert "REMOVED r2 vrnetlab-bootstrap: ip domain name example.com" in report
+        assert "REMOVED r2 vrnetlab-bootstrap: ip ssh maxstartups 128" in report
