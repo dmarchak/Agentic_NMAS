@@ -2,7 +2,7 @@
 # DRAFT, not approved to run (the operator, 2026-10-09). Phase 4 section 8, step 2 of 3: point
 # everything that runs Mercury's code at Mercury's virtualenv (built and proved by
 # venv-1-build.sh), restart what is running, and prove each runs from the venv. No unit file is
-# edited, so venv-3-rollback.sh undoes this by removing three files. The operator's, on the app
+# edited, so venv-3-rollback.sh undoes this by removing two files. The operator's, on the app
 # host:
 #     bash <checkout>/scripts/host-steps/venv-2-switch.sh
 #
@@ -16,9 +16,10 @@
 #                        resolve: heartbeat-check, job-finished@, netbox-backup,
 #                        netbox-restore-test, startup-check, telemetry-check, ztp-responder, and
 #                        update (root, the updater: stdlib and PyYAML, then the venv's).
-#   login shells         /etc/profile.d/mercury-venv.sh puts the venv first, so a script a
-#                        person runs (nmas-deploy, nmas-tier2-probe, nmas-breakglass, ...) and
-#                        every `python3 scripts/...` the app prints find the venv's interpreter.
+#   a person's scripts   NOT through any shell's PATH (the operator, 2026-10-09: no profile.d,
+#                        which would change python3 for every login shell on the host): each
+#                        script selects the app's interpreter itself, and every command the app
+#                        prints names its own interpreter (section 8).
 # Kept on /usr/bin/python3: the lab's topology service (lab tooling, deploy/topology/; it imports
 # no Mercury module, names /usr/bin/python3 itself, and needs networkx, which the lock does not
 # carry), and the host-step scripts' own `/usr/bin/python3 -c` lines (they measure the system
@@ -35,7 +36,6 @@ APP_DROPIN_DIR=/etc/systemd/system/flask-app.service.d
 APP_DROPIN=$APP_DROPIN_DIR/mercury-venv.conf
 UNITS_DROPIN_DIR=/etc/systemd/system/nmas-.service.d
 UNITS_DROPIN=$UNITS_DROPIN_DIR/mercury-venv.conf
-PROFILE=/etc/profile.d/mercury-venv.sh
 APP=$(systemctl show -p ExecStart --value flask-app.service | sed -n 's/.*argv\[\]=[^ ]* \([^ ;]*app\.py\).*/\1/p')
 # systemd's own PATH for its units, measured here (2026-10-09: /usr/local/sbin:/usr/local/bin:
 # /usr/sbin:/usr/bin:/snap/bin), with the venv first. Setting PATH replaces systemd's, so it is
@@ -45,7 +45,7 @@ UNIT_PATH="$VENV/bin:$(systemctl show-environment | sed -n 's/^PATH=//p')"
 # drop-ins (showing an instance loads it; nothing starts).
 UNITS="flask-app.service $(systemctl list-unit-files --no-legend --type=service 'nmas-*' \
     | awk '{print $1}' | sed 's/@\.service$/@venv-check.service/' | tr '\n' ' ')"
-export VENV APP_DROPIN_DIR APP_DROPIN UNITS_DROPIN_DIR UNITS_DROPIN PROFILE APP UNIT_PATH UNITS
+export VENV APP_DROPIN_DIR APP_DROPIN UNITS_DROPIN_DIR UNITS_DROPIN APP UNIT_PATH UNITS
 
 plan "run as the operator's own user, not root" \
      "venv-1-build.sh ran: the venv's interpreter exists" \
@@ -61,8 +61,7 @@ plan "run as the operator's own user, not root" \
      "the app's process is the venv's interpreter" \
      "every running unit's process has the venv first on its PATH" \
      "the heartbeat and telemetry checks run and succeed from the venv" \
-     "the job-finished notices they started succeed from the venv" \
-     "a login shell's python3 is the venv's"
+     "the job-finished notices they started succeed from the venv"
 
 not_root
 check "venv-1-build.sh ran: the venv's interpreter exists" rc0 "" '[ -x "$VENV/bin/python" ]'
@@ -76,15 +75,13 @@ check "no unit sets its own PATH (the drop-ins' PATH would replace it)" eq "" \
 # Rendered into one fresh folder, installed by name.
 RENDER=$(mktemp -d)
 export RENDER
-step "render the two drop-ins and the login-shell PATH" \
+step "render the two drop-ins" \
     'printf "[Service]\nEnvironment=\"PATH=%s\"\nExecStart=\nExecStart=%s %s\n" "$UNIT_PATH" "$VENV/bin/python" "$APP" > "$RENDER/flask-app.conf" \
-     && printf "[Service]\nEnvironment=\"PATH=%s\"\n" "$UNIT_PATH" > "$RENDER/nmas.conf" \
-     && printf "# Mercury: its virtualenv first (Phase 4 section 8; removed by venv-3-rollback.sh).\ncase \":\$PATH:\" in *\":%s:\"*) ;; *) PATH=\"%s:\$PATH\"; export PATH ;; esac\n" "$VENV/bin" "$VENV/bin" > "$RENDER/profile.sh"'
+     && printf "[Service]\nEnvironment=\"PATH=%s\"\n" "$UNIT_PATH" > "$RENDER/nmas.conf"'
 step "install them, by name" \
     'sudo install -d -m 0755 "$APP_DROPIN_DIR" "$UNITS_DROPIN_DIR" \
      && sudo install -m 0644 "$RENDER/flask-app.conf" "$APP_DROPIN" \
-     && sudo install -m 0644 "$RENDER/nmas.conf" "$UNITS_DROPIN" \
-     && sudo install -m 0644 "$RENDER/profile.sh" "$PROFILE"'
+     && sudo install -m 0644 "$RENDER/nmas.conf" "$UNITS_DROPIN"'
 step "reload systemd, restart the app, and the ZTP responder if it is running" \
     'sudo systemctl daemon-reload && sudo systemctl restart flask-app.service \
      && sudo systemctl try-restart nmas-ztp-responder.service'
@@ -134,10 +131,8 @@ done
 check "the job-finished notices they started succeed from the venv" eq "success success" \
     'set -- $BEFORE; for u in $FINISHED; do now=$(systemctl show -p ExecMainStartTimestampMonotonic --value "$u"); \
        if [ "$now" -gt "$1" ]; then printf "%s " "$(systemctl show -p Result --value "$u")"; else printf "%s " "not-started-since($u)"; fi; shift; done | sed "s/ $//"'
-check "a login shell's python3 is the venv's" eq "$VENV/bin/python3" \
-    'env -i HOME="$HOME" bash -lc "command -v python3"'
 echo "Left to their timers, read in Job health after their next runs: the startup check, the"
 echo "NetBox backup and the NetBox restore test. The updater's first run from the venv is the"
 echo "next Update."
-echo "To undo: bash scripts/host-steps/venv-3-rollback.sh (removes the three files, restarts)."
+echo "To undo: bash scripts/host-steps/venv-3-rollback.sh (removes the two drop-ins, restarts)."
 summary

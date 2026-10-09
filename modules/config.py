@@ -40,6 +40,15 @@ DATA_DIR = os.environ.get("NMAS_DATA_DIR") or os.path.join(BASE_DIR, "data")
 # Per-list data directories live under data/lists/{slug}/
 LISTS_DIR = os.path.join(DATA_DIR, "lists")
 
+
+def script_command(script: str, *args: str) -> str:
+    """The command line a person runs, from the checkout on the host, to start one of Mercury's
+    scripts: it names the interpreter THIS process runs, so the script imports what the app
+    imports, whatever a shell's `python3` is (Phase 4 section 8; the operator, 2026-10-09: no
+    shell's PATH decides, and every command the app prints names that path). Through the
+    venv's link it stays `/opt/mercury-venv/bin/python` across a swap (measured 2026-10-09)."""
+    return " ".join([sys.executable, f"scripts/{script}", *args])
+
 # ---------------------------------------------------------------------------
 # File modes — set at CREATION, not by hand afterwards
 # ---------------------------------------------------------------------------

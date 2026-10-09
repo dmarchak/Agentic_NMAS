@@ -16,7 +16,7 @@ VENV=/opt/mercury-venv
 LOCK="$CHECKOUT/requirements.lock"
 # What venv-2-switch.sh installs. While any of them exists something runs on the venv, and
 # `venv --clear` would remove it under the running app and units (C607).
-IN_USE="/etc/systemd/system/flask-app.service.d/mercury-venv.conf /etc/systemd/system/nmas-.service.d/mercury-venv.conf /etc/profile.d/mercury-venv.sh"
+IN_USE="/etc/systemd/system/flask-app.service.d/mercury-venv.conf /etc/systemd/system/nmas-.service.d/mercury-venv.conf"
 # Every Python program that runs Mercury's code on this host (Phase 4 section 8's inventory):
 # app.py, every script in the checkout with a python shebang (the units run some of them, a
 # person the rest), and the updater's root-owned copies.
@@ -108,6 +108,6 @@ check "every Python program on this host imports in the venv what it imports tod
     'cd "$CHECKOUT" && comm -13 \
         <(sudo -u "$APP_USER" env PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -c "$IMPORTS" $PROGRAMS) \
         <(env PYTHONDONTWRITEBYTECODE=1 "$VENV/bin/python" -c "$IMPORTS" $PROGRAMS)'
-echo "Next, when the operator approves: venv-2-switch.sh points flask-app, every nmas- unit and"
-echo "login shells at $VENV."
+echo "Next, when the operator approves: venv-2-switch.sh points flask-app and every nmas- unit"
+echo "at $VENV."
 summary

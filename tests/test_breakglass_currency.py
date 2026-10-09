@@ -13,6 +13,7 @@ message says to export again.
 import json
 import os
 import socket
+import sys
 
 import pytest
 
@@ -136,8 +137,9 @@ class TestJobHealthTracksIt:
         assert "no entry" in by["breakglass:default/r2"]["detail"]
         assert "breakglass:default/r1" not in by, "a current device is not a row"
         assert "breakglass:default/bp-ztp-a" not in by, "a device that left is history"
+        # The interpreter the app runs, never a shell's python3 (Phase 4 section 8).
         assert by["breakglass:default/s1"]["action"]["command"].startswith(
-            "python3 scripts/nmas-breakglass export --list default --out /dev/shm/")
+            f"{sys.executable} scripts/nmas-breakglass export --list default --out /dev/shm/")
 
     def test_all_current_is_one_ok_row_naming_the_count(self):
         (r,) = self._rows(self._export(_now_digests()), {"default": _now_digests()})

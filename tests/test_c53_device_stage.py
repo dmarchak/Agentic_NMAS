@@ -8,6 +8,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import sys
 
 import pytest
 
@@ -253,7 +254,8 @@ class TestAnUnreadableDeviceIsNotTheCriticalFinding:
         later = dict(_0603, at=21600.0 + job_health.UNREAD_PERSISTS_S)
         (row,) = job_health.startup_rows(read=lambda: later, now=later["at"] + 60)
         assert row["state"] == "unread_persisting"
-        assert row["action"]["command"] == "python3 scripts/nmas-startup-check"
+        # The interpreter the app runs, never a shell's python3 (Phase 4 section 8).
+        assert row["action"]["command"] == f"{sys.executable} scripts/nmas-startup-check"
         (drawn,) = A.job_health_source(health=lambda: {"jobs": [row]})["rows"]
         assert drawn["level"] == "warning"
 

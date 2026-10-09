@@ -1075,6 +1075,7 @@ def startup_rows(read=None, now: float = None) -> list:
     NMAS holds, or could not be asked; one summary row when every device
     carries it, naming the count so a zero cannot pose as coverage. Nothing
     when the job has never run: its own unit row says that."""
+    from modules.config import script_command
     from modules.nsot import startup_check
 
     now = time.time() if now is None else now
@@ -1126,7 +1127,7 @@ def startup_rows(read=None, now: float = None) -> list:
             "max_age_minutes": 0,
             "action": ({"label": "Check that each answers SSH from the host (its Device page "
                                  "shows whether it is answering), then run the check by hand",
-                        "command": "python3 scripts/nmas-startup-check"} if persisting else
+                        "command": script_command("nmas-startup-check")} if persisting else
                        {"label": f"Wait for the next run (about {nxt}), which reads them "
                                  "again. If a device stays unreadable, check that it answers "
                                  "(its Device page)"}),
@@ -1175,13 +1176,13 @@ def breakglass_rows(exports=None, current=None, intact=None, drills=None,
     person checks one by hand with `nmas-breakglass verify <record> --against`.
     Nothing when no list holds a device (nothing to recover)."""
     import modules.breakglass as bg
-    from modules.config import DATA_DIR
+    from modules.config import DATA_DIR, script_command
 
     what = "the break-glass record holds each device's current credential (C182)"
     # Written to RAM (/dev/shm, tmpfs on the host), never beside data/key.key:
     # the person copies it off the host and removes it, so one record exists.
-    export_cmd = ("python3 scripts/nmas-breakglass export --list <list> "
-                  "--out /dev/shm/nmas-breakglass.bg")
+    export_cmd = script_command("nmas-breakglass", "export", "--list", "<list>",
+                                "--out", "/dev/shm/nmas-breakglass.bg")
     try:
         current = _current_credential_digests() if current is None else current
         exports = bg.last_exports(DATA_DIR) if exports is None else exports

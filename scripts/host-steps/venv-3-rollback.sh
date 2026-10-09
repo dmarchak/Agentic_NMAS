@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # DRAFT, not approved to run (the operator, 2026-10-09). Phase 4 section 8, step 3 of 3, only if
-# needed: undo venv-2-switch.sh by removing the three files it installed, so flask-app, every
-# nmas- unit and login shells run /usr/bin/python3 again, as before. The venv stays where it is
+# needed: undo venv-2-switch.sh by removing the two drop-ins it installed, so flask-app and every
+# nmas- unit run /usr/bin/python3 again, as before. The venv stays where it is
 # (built, unused) until a person removes it. The operator's, on the app host:
 #     bash <checkout>/scripts/host-steps/venv-3-rollback.sh
 #
@@ -10,22 +10,21 @@
 . "$(dirname "$0")/lib.sh"
 
 VENV=/opt/mercury-venv
-FILES="/etc/systemd/system/flask-app.service.d/mercury-venv.conf /etc/systemd/system/nmas-.service.d/mercury-venv.conf /etc/profile.d/mercury-venv.sh"
+FILES="/etc/systemd/system/flask-app.service.d/mercury-venv.conf /etc/systemd/system/nmas-.service.d/mercury-venv.conf"
 UNITS="flask-app.service $(systemctl list-unit-files --no-legend --type=service 'nmas-*' \
     | awk '{print $1}' | sed 's/@\.service$/@venv-check.service/' | tr '\n' ' ')"
 export VENV FILES UNITS
 
 plan "run as the operator's own user, not root" \
      "the nmas- units on this host are listed" \
-     "the three files venv-2-switch.sh installed are gone" \
+     "the two drop-ins venv-2-switch.sh installed are gone" \
      "no unit's environment names the venv" \
      "python3 on every unit's PATH is /usr/bin's" \
      "flask-app runs /usr/bin/python3 again" \
      "flask-app is active" \
      "the app answers /health" \
      "the app's process is the system interpreter" \
-     "no running unit's process has the venv on its PATH" \
-     "a login shell's python3 is /usr/bin's"
+     "no running unit's process has the venv on its PATH"
 
 not_root
 check "the nmas- units on this host are listed" ge 9 'echo $UNITS | wc -w'
@@ -40,7 +39,7 @@ done
 step "reload systemd, restart the app, and the ZTP responder if it is running" \
     'sudo systemctl daemon-reload && sudo systemctl restart flask-app.service \
      && sudo systemctl try-restart nmas-ztp-responder.service'
-check "the three files venv-2-switch.sh installed are gone" eq "" \
+check "the two drop-ins venv-2-switch.sh installed are gone" eq "" \
     'for f in $FILES; do [ -e "$f" ] && echo "$f"; done; true'
 check "no unit's environment names the venv" eq "" \
     'for u in $UNITS; do systemctl show -p Environment --value "$u" | grep -qF "$VENV" && echo "$u"; done; true'
@@ -63,6 +62,4 @@ check "the app's process is the system interpreter" has "/usr/bin/python3" \
 check "no running unit's process has the venv on its PATH" eq "" \
     'for u in $UNITS; do pid=$(systemctl show -p MainPID --value "$u"); [ "$pid" -gt 0 ] 2>/dev/null || continue; \
        tr "\0" "\n" < /proc/$pid/environ | grep -q "^PATH=.*$VENV" && echo "$u (pid $pid)"; done; true'
-check "a login shell's python3 is /usr/bin's" eq "/usr/bin/python3" \
-    'env -i HOME="$HOME" bash -lc "command -v python3"'
 summary

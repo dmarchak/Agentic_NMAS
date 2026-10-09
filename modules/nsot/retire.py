@@ -603,7 +603,7 @@ def breakglass_logged(list_name: str, row: dict, exports: dict = None) -> dict:
     import time as _t
 
     from modules import breakglass as bg
-    from modules.config import DATA_DIR
+    from modules.config import DATA_DIR, script_command
     from modules.device import open_stored
 
     limit = ("This trusts the export log on this host: it records what an export WROTE, "
@@ -618,8 +618,8 @@ def breakglass_logged(list_name: str, row: dict, exports: dict = None) -> dict:
                 "why": f"the export log could not be read ({exports.get('error')}): "
                        "an unreadable log is not an absent export"}
     newest = (exports.get("by_list") or {}).get(list_name)
-    cmd = (f"python3 scripts/nmas-breakglass export --list {list_name} "
-           "--out /dev/shm/nmas-breakglass.bg")
+    cmd = script_command("nmas-breakglass", "export", "--list", list_name,
+                         "--out", "/dev/shm/nmas-breakglass.bg")
     if not newest:
         return {"ok": False, "export": None, "statement": limit,
                 "why": f"no break-glass export of {list_name} is logged on this host. "
