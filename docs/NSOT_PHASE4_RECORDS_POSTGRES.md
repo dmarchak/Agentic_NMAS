@@ -230,6 +230,18 @@ service container) and a throwaway instance started by the local suite inside it
 namespace, skipped with a named reason when the PostgreSQL binaries are absent; never a
 stand-in database or fakes alone.
 
+**As built (2026-10-09):** a service container is out of reach of the suite, which runs inside
+its own loopback namespace (C46), so CI too runs the throwaway server the suite starts
+(`tests/pg_instance.py`: unpacked binaries, a temporary folder, loopback, the superuser and the
+role `mercury` owning `mercury`, scram-sha-256 over TCP, as 6a makes them). The workflow installs
+`libpq5` and the server's libraries explicitly and unpacks `postgresql-18` from PGDG's
+repository (the host's major; Ubuntu 24.04 ships 16, and the Test's version check is not
+loosened for CI: the operator, 2026-10-09), fails its step if a library is missing, the server is
+not 18 or psycopg cannot load, and sets `NMAS_REQUIRE_PG=1`, which turns the tests' skip into a
+failure (a missing libpq fails the job). The gate sets it too, with the unpacked libpq on the
+suite's library path. Locally the same unpacked PostgreSQL 18 (docs/TESTING.md, "CI's
+interpreter here").
+
 ## 7. The first store: deploy receipts, and its count check (DRAFT, 2026-10-08)
 
 **Measured on the host, 2026-10-08:** one network (`default`), `deploy_receipts.jsonl` 67 lines,

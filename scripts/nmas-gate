@@ -50,11 +50,17 @@ CI_WORKERS = 4
 #: (`scripts/nmas-shards`): the gate runs the SAME three commands, at once, each with CI's
 #: workers, so each job's company in a worker is the one CI's has (C349).
 SHARDS = ("browser", "a", "b")
-SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 "
+SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 NMAS_REQUIRE_PG=1 "
          f"scripts/nmas-test -q -p no:cacheprovider -n {CI_WORKERS} --cov=modules --cov=routes "
          "--cov=app --cov-report= -rEfs $({py} scripts/nmas-shards {shard})")
 BROWSER_DIR = os.environ.get("NMAS_GATE_BROWSER_DIR",
                              os.path.expanduser("~/.local/share/nmas-browser"))
+#: The records tests' PostgreSQL, unpacked without root (docs/TESTING.md, "CI's interpreter
+#: here"): CI installs libpq5, so here its unpacked libpq goes on the suite's library path. The
+#: suite requires them as CI does (NMAS_REQUIRE_PG=1): a laptop without it fails the gate,
+#: naming why, rather than passing by skipping them.
+PG_LIB = os.environ.get("NMAS_GATE_PG_LIB",
+                        os.path.expanduser("~/.local/share/nmas-pg/usr/lib/x86_64-linux-gnu"))
 #: The words tests/browser.py's skip says when no browser can start.
 BROWSER_SKIPPED = "no real browser here"
 BROWSER_TESTS = ("tests/test_update_button.py tests/test_profile_apply_v2.py tests/test_manual.py "
@@ -239,6 +245,9 @@ def main(argv=None):
     path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
                             os.environ.get("PATH", "")])
     env = dict(os.environ, PATH=path)
+    if os.path.isdir(PG_LIB):
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            p for p in (PG_LIB, os.environ.get("LD_LIBRARY_PATH", "")) if p)
     if os.environ.get("NMAS_GATE_SUITE"):           # the gate's own tests: one stand-in run
         runs = {"suite": (os.environ["NMAS_GATE_SUITE"], suite_out)}
     else:

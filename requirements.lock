@@ -6,7 +6,7 @@
 # the machine that runs in production. requirements.txt describes no machine:
 # see docs/OPEN_FINDINGS.md C37 for the measured differences.
 #
-# Absent here by design: nothing. Where Ubuntu ships a package with no
+# Absent here by design: psycopg. Where Ubuntu ships a package with no
 # Python dependency metadata (netmiko, pysnmp, scp, textfsm), its Debian
 # dependencies are followed instead, and a module with no distribution (cffi)
 # carries Debian's version. INSTALL WITH --no-deps: PyPI's metadata refuses
@@ -51,6 +51,7 @@ ping3==4.0.4
 pluggy==1.6.0
 ply==3.11
 psutil==5.9.8
+psycopg==3.1.17
 pyasn1==0.4.8
 pycryptodomex==3.20.0
 pydantic==2.13.5

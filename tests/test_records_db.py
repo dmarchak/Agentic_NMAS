@@ -8,6 +8,7 @@ connection shaped like psycopg's, and the tests against a REAL PostgreSQL (the o
 decision, option a: a service in CI, a throwaway instance locally) come with that lock.
 """
 
+import re
 import sys
 
 import pytest
@@ -117,7 +118,7 @@ class TestOffUntilSet:
         _configure(settings)
         monkeypatch.setitem(sys.modules, "psycopg", None)
         got = RD.test_connection()
-        assert "psycopg is not installed on this host" in got["error"]
+        assert "psycopg could not be loaded on this host (" in got["error"]
 
     def test_the_password_is_never_in_what_it_says(self, settings, monkeypatch):
         _configure(settings)
@@ -140,6 +141,17 @@ class TestTheTest:
         assert "rolled back, nothing kept" in details["write"]
         assert conn.rolled_back == 1 and conn.table is None and conn.closed
         assert any("on commit drop" in s for s in conn.sql)
+
+    def test_another_major_fails_the_version_step_naming_both(self, settings):
+        _configure(settings)
+        conn = FakeConnection()
+        real = conn.execute
+        conn.execute = lambda sql: FakeCursor(("16.4 (Ubuntu 16.4-1)",)) \
+            if sql.startswith("show server_version") else real(sql)
+        got = RD.test_connection(connector=lambda: conn)
+        assert got["ok"] is False and got["steps"][-1]["name"] == "version"
+        assert "the server is PostgreSQL 16.4 (Ubuntu 16.4-1); Mercury's records database runs " \
+               "PostgreSQL 18" in got["error"]
 
     def test_a_reader_s_test_writes_nothing(self, settings):
         _configure(settings)
@@ -174,6 +186,69 @@ class TestTheTest:
         got = RD.test_connection(connector=refused)
         assert got["steps"] == [{"name": "connect", "ok": False, "detail": got["error"][9:]}]
         assert "password authentication failed" in got["error"]
+
+
+@pytest.fixture(scope="module")
+def pg():
+    """A real PostgreSQL shaped as host step 6a makes it (tests/pg_instance.py): skipped with
+    its reason here, a failure where NMAS_REQUIRE_PG=1 (CI)."""
+    from tests import pg_instance
+
+    inst = pg_instance.start()
+    yield inst
+    inst.stop()
+
+
+def _point_at(settings, pg, password=None, user="mercury"):
+    from tests import pg_instance
+
+    settings["values"].update(records_db_host="127.0.0.1", records_db_port=pg.port,
+                              records_db_user=user)
+    settings["secrets"]["records_db_password"] = password or pg_instance.MERCURY_PW
+
+
+class TestAgainstARealPostgreSQL:
+    """The Test over a real server (option a): what host step 6a made, checked as it is."""
+
+    def test_every_step_passes_on_what_6a_makes(self, settings, pg):
+        _point_at(settings, pg)
+        got = RD.test_connection()
+        assert got["ok"] is True, got
+        assert [s["name"] for s in got["steps"]] == list(RD.TEST_STEPS)
+        assert got["steps"][1]["detail"].startswith("PostgreSQL 18."), got["steps"][1]
+
+    def test_the_write_keeps_nothing(self, settings, pg):
+        _point_at(settings, pg)
+        assert RD.test_connection()["ok"]
+        with pg.connect() as c:
+            left = c.execute("select count(*) from pg_class where relname = 'mercury_test'"
+                             ).fetchone()[0]
+        assert left == 0, "the Test's temporary table outlived its transaction"
+
+    def test_a_wrong_password_is_named_by_the_server(self, settings, pg):
+        _point_at(settings, pg, password="not-the-password")
+        got = RD.test_connection()
+        assert got["ok"] is False and got["steps"][-1]["name"] == "connect"
+        assert "password authentication failed" in got["error"], got["error"]
+        assert "not-the-password" not in repr(got)
+
+    def test_a_superuser_role_fails_its_step(self, settings, pg):
+        from tests import pg_instance
+
+        _point_at(settings, pg, password=pg_instance.SUPER_PW, user="postgres")
+        settings["values"]["records_db_name"] = "postgres"
+        got = RD.test_connection()
+        assert got["ok"] is False and got["steps"][-1]["name"] == "role", got
+        assert "postgres is a superuser" in got["error"]
+
+    def test_nothing_listening_is_named(self, settings, pg):
+        from tests import pg_instance
+
+        _point_at(settings, pg)
+        settings["values"]["records_db_port"] = pg_instance._free_port()
+        got = RD.test_connection()
+        assert got["ok"] is False and got["steps"][-1]["name"] == "connect"
+        assert "did not accept the connection" in got["error"]
 
 
 class TestTheLock:

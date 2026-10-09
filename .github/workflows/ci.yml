@@ -103,6 +103,35 @@ jobs:
           dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
           "$HOME/.local/share/nmas-promtool/usr/bin/promtool" --version
 
+      # Phase 4's records tests run against a REAL PostgreSQL (the operator's decision, option
+      # a), started by the suite inside its own network namespace (tests/pg_instance.py): a
+      # service container on the runner's network would be out of the confined suite's reach.
+      # libpq5 is INSTALLED, never assumed from the image (the operator, 2026-10-09: psycopg
+      # loads it, "no pq wrapper available" without it), with the server's own libraries;
+      # the server itself is unpacked, not installed, so no service starts. A missing library
+      # or a psycopg that cannot load FAILS this step, and NMAS_REQUIRE_PG=1 below turns the
+      # tests' skip into a failure: CI never passes by skipping them.
+      # PostgreSQL 18, the host's major (the operator, 2026-10-09: the F2 Test checks 18, and
+      # CI does not loosen it): Ubuntu 24.04 ships 16, so PGDG's repository, added by
+      # postgresql-common's own script with PGDG's signing key.
+      - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq --no-install-recommends libpq5
+          deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
+          sudo apt-get install -y -qq --no-install-recommends $deps
+          d=$(mktemp -d) && cd "$d" && apt-get download postgresql-18
+          mkdir -p "$HOME/.local/share/nmas-pg"
+          dpkg -x ./*.deb "$HOME/.local/share/nmas-pg"
+          bin=$(ls -d "$HOME"/.local/share/nmas-pg/usr/lib/postgresql/18/bin)
+          if ldd "$bin/postgres" "$bin/initdb" | grep "not found"; then
+            echo "::error::the unpacked PostgreSQL lacks a library (above)"; exit 1
+          fi
+          "$bin/postgres" --version | tee /dev/stderr | grep -q " 18\." \
+            || { echo "::error::the unpacked server is not PostgreSQL 18"; exit 1; }
+          python -c "import psycopg; print('psycopg', psycopg.__version__, 'libpq', psycopg.pq.version())"
+
       - name: Allow a network namespace for the suite (this VM only)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
@@ -114,6 +143,7 @@ jobs:
         env:
           COVERAGE_CORE: sysmon
           NMAS_TEST_TIMEOUT: "740"
+          NMAS_REQUIRE_PG: "1"
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto
           --cov=modules --cov=routes --cov=app --cov-report=term

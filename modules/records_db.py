@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 
 #: The Test's steps, in order, as the manual and a Settings card name them.
 TEST_STEPS = ("connect", "version", "role", "write")
+#: The PostgreSQL major the records database runs (host step 6a: NetBox's image, so one major to
+#: patch; board F2: "the server is PostgreSQL 18"). Another major fails the Test, naming both.
+MAJOR = 18
 #: Not measured over a network: the database is on the same host (loopback). The sign-in bound
 #: the host step used, kept until a sign-in is timed on the host.
 CONNECT_TIMEOUT_S = 10
@@ -68,9 +71,14 @@ def connect(timeout: float = CONNECT_TIMEOUT_S):
                           "for)")
     try:
         import psycopg
-    except ImportError:
-        raise Unavailable("psycopg is not installed on this host (Ubuntu's python3-psycopg: "
-                          "docs/NSOT_PHASE4_RECORDS_POSTGRES.md, step 6a)") from None
+    except ImportError as exc:
+        # Absent, or present without the libpq it loads (psycopg's own words say which, measured
+        # 2026-10-09: "no pq wrapper available … libpq library not found"): never "not
+        # installed" for a driver that is.
+        first = (str(exc).strip().splitlines() or ["no reason given"])[0]
+        raise Unavailable(f"psycopg could not be loaded on this host ({first}): Ubuntu's "
+                          "python3-psycopg and its libpq5, docs/NSOT_PHASE4_RECORDS_POSTGRES.md, "
+                          "step 6a") from None
     try:
         return psycopg.connect(host=c["host"], port=c["port"], dbname=c["name"],
                                user=c["user"], password=password, connect_timeout=timeout,
@@ -104,6 +112,10 @@ def test_connection(write: bool = True, connector=None) -> dict:
     try:
         with conn:
             version = conn.execute("show server_version").fetchone()[0]
+            major = str(version).split(".")[0].split()[0]
+            if major != str(MAJOR):
+                return failed("version", f"the server is PostgreSQL {version}; Mercury's records "
+                                         f"database runs PostgreSQL {MAJOR} (host step 6a)")
             steps.append({"name": "version", "ok": True, "detail": f"PostgreSQL {version}"})
             row = conn.execute("select current_user, rolsuper from pg_roles "
                                "where rolname = current_user").fetchone()
