@@ -90,6 +90,26 @@ first, then `minio-4a-4b.sh`, `minio-4c.sh` (prompts for the secret, input hidde
 `minio-4d-4e.sh` (refuses a non-virtualenv interpreter or a dry run that changes an installed
 package; writes `/tmp/requirements.lock.new` for the session to commit).
 
+**Run 2026-10-08 by the operator:** C584 and 4a-4b PASS (the `mercury` bucket, versioned; the
+`mercury-rw` policy, its resources and no delete). 4c stopped at its own check: the secret
+entered was 16 characters, under the script's floor of 20; nothing was changed; it runs again
+with a longer one. 4d stopped at its first guard: the app runs on `/usr/bin/python3`, Ubuntu's
+system Python (no virtualenv, as DEPLOY_LINUX's "Which environment a rebuild produces"
+already records, register C40), which
+is externally managed (PEP 668), and Ubuntu has no `python3-minio`. Measured the same day:
+`python3-boto3` 1.34.46 is already installed from apt on the host.
+
+4c re-run by the operator with a generated secret; read afterwards (read-only, `mc admin user
+info`): the user `mercury` exists, enabled, holding `mercury-rw`, and the probe
+`_probe/mercury-connection-test` is in the bucket (its write step ran). The script's own
+summary was not reported.
+
+**Decided (the operator, 2026-10-08): (A) boto3,** the host's apt package (1.34.46), pinned
+through the lock; no pip into the system Python. Newer boto3 versions add default checksum
+headers some MinIO versions reject: the pin holds the host's version, and the four-step Test
+catches it if it moves. (C) a virtualenv stays the recorded long-term target. So 4d becomes
+the lock regenerated from the host (read-only) once Mercury imports boto3.
+
 Every value below is filled when the step is written into its commit, from a read made then
 (C434); `<…>` here marks what the commit fills.
 

@@ -125,6 +125,14 @@ rewritten; churn is a stated cost (CLAUDE.md).
 **Steps 1 to 3 as scripts the operator runs** (the operator's request, 2026-10-08):
 `scripts/host-steps/phase3-step1.sh`, `phase3-step2.sh`, `phase3-step3.sh`, each running its
 commands then its checks, stopping at the first failure, and ending with a PASS/FAIL summary.
+**DONE 2026-10-08 by the operator, every check PASS:** Oxidized stopped and set not to restart,
+its store (233 commits) read-only and unchanged; the helper, its pin and its sudoers entry gone,
+sudoers parsing; the wrapper calling `clab-startup-sync.sh` (only its last line changed), and
+the sync's run succeeding, every file validated, nothing refused. Walked by the operator the
+same day: a rotation of r2 on v2, successful. Owed: C553's walk (a Save All starting the sync
+within seconds; v2 has no Save All yet, C593, so a Save All from today's page is the
+equivalent walk: the event is the commit's baseline tag, whichever screen saved), step 4 after
+a quiet week, step 5 after the MinIO connection.
 
 **The steps, in order, each checked before the next:**
 
