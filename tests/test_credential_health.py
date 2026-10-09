@@ -282,7 +282,8 @@ class TestTheRows:
         creds = [
             {"id": "a", "label": "NetBox API token", "kind": "expiry", "state": "expired",
              "expires_at": "2026-10-01T00:00:00Z", "renew_at": "NetBox: Admin > API tokens",
-             "put_at": "Settings > Integrations > NetBox"},
+             "put_at": "Settings › Installation › Connections, NetBox connection: Replace… "
+                       "the API token"},
             {"id": "b", "label": "Proxmox API token", "kind": "expiry", "state": "danger",
              "days": 3.0, "expires_at": "x", "renew_at": "r", "put_at": "p"},
             {"id": "c", "label": "Grafana API token", "kind": "expiry", "state": "warning",

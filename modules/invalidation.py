@@ -242,6 +242,9 @@ DECLARED = {
     # The Test keeps its answer, which the card draws for every viewer (board F2).
     "settings_v2.records_test": ("settings",),
     "settings_v2.records_replace": ("settings",),
+    "settings_v2.install_save": ("settings",),
+    "settings_v2.install_replace": ("settings",),
+    "settings_v2.install_writes_off": ("settings",),
     "identity.ratify_setting": ("posture", "settings"),
     "monitoring_config": ("monitoring",),
     "monitoring_snmp_poll": ("monitoring",),
@@ -339,6 +342,7 @@ DECLARED = {
     "netbox_safety.preview_removal": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "settings_integrations.test_integration": Nothing("tests an integration's connection and reports"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
+    "settings_v2.install_test": Nothing("tests an Installation card's service and reports in the card; keeps nothing"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
 }
 

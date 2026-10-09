@@ -78,7 +78,8 @@ def netbox(now: float) -> list:
     from modules.netbox_client import _nb_ready, get_netbox_config
 
     ok, err, session, base = _nb_ready()
-    put = "Settings > Integrations > NetBox, API token"
+    from modules.installation_settings import settings_place
+    put = f"{settings_place('netbox', 'NetBox')}: Replace… the API token"
     renew = "NetBox: Admin > API tokens"
     if not ok:
         return []
@@ -149,13 +150,15 @@ def _declared(cid, label, setting, *, renew, put, now, list_name: str = "") -> l
 def proxmox(now: float) -> list:
     """Proxmox's API token, by its DECLARED expiry: a PVEAuditor token cannot read its own
     record (C380, measured: 403 "Permission check failed"), and it is not widened."""
+    from modules.installation_settings import settings_place
     from modules.integrations.proxmox import ProxmoxIntegration
 
     if not ProxmoxIntegration().is_configured():
         return []
     return _declared("proxmox_token", "Proxmox API token", "proxmox_token_expires",
                      renew="Proxmox: Datacenter > Permissions > API Tokens",
-                     put="Settings > Integrations > Proxmox VE, token secret and its expiry",
+                     put=f"{settings_place('proxmox', 'Proxmox')}: Replace… the token, "
+                         "and its Token expires",
                      now=now)
 
 
@@ -209,13 +212,15 @@ def tls(now: float) -> list:
 def grafana(now: float) -> list:
     """Grafana's token, by the expiry DECLARED when it was entered (the operator's decision:
     a Viewer token cannot read its own)."""
+    from modules.installation_settings import settings_place
     from modules.list_settings import default_layer_secret   # the Default network's Grafana
 
     if not default_layer_secret("grafana_token"):
         return []
     return _declared("grafana_token", "Grafana API token", "grafana_token_expires",
                      renew="Grafana: Administration > Service accounts",
-                     put="Settings > Integrations > Grafana, API token and its expiry", now=now)
+                     put=f"{settings_place('grafana', 'Grafana')}: the API token and its expiry",
+                     now=now)
 
 
 def device_ages(now: float) -> list:

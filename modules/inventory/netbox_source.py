@@ -52,7 +52,8 @@ def map_platform(platform_slug: str) -> tuple:
         )
     return "", (
         f"platform '{platform_slug or '(none)'}' is not in the platform map — "
-        "add it in Settings → Integrations, or set a default netmiko device type"
+        "add it in Settings › Installation › Platforms and roles (on today's Settings page "
+        "until that tab is drawn), or set a default netmiko device type there"
     )
 
 

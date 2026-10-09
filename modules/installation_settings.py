@@ -16,6 +16,11 @@ operator's (2026-10-09):
 
 The card is drawn from :func:`records_card`; the last Test's answer is kept (who, when, each
 check) so it is readable later, and a Save or Replace after it says the Test is out of date.
+
+Board F3 (signed off 2026-10-09) adds the NetBox connection, Proxmox and Commit author cards on
+Connections and the Server card on its own tab, every setting a control: :data:`CARDS`, drawn
+by :func:`card`, saved by :func:`save_card`, tested by :func:`test_card`, their tokens replaced
+by :func:`replace_secret`, and NetBox's master switch turned off by :func:`netbox_writes_off`.
 """
 
 import json
@@ -26,12 +31,12 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: The page's tabs (board F), in order. Connections is built; the rest are on today's Settings
-#: page until drawn here.
+#: The page's tabs (board F), in order. Connections and Server are built (F2, F3); the rest are
+#: on today's Settings page until drawn here.
 TABS = (("connections", "Connections"), ("access", "Access and identity"),
         ("platforms", "Platforms and roles"), ("server", "Server"),
         ("ai", "AI and workflow"), ("diagnostics", "Diagnostics"))
-BUILT_TABS = ("connections",)
+BUILT_TABS = ("connections", "server")
 #: The records database card's fields, in the card's order (the password is a secret, drawn
 #: as set or unset and changed only by Replace…).
 FIELDS = ("records_db_host", "records_db_port", "records_db_name", "records_db_user")
@@ -241,3 +246,287 @@ def test(actor: str, verified: str, tester=None) -> dict:
                   exc)
         kept.update(kept=False, keep_error=f"{type(exc).__name__}: {exc}")
     return kept
+
+
+# ── The other cards (board F3, signed off 2026-10-09) ─────────────────────────────────────────
+#
+# Board F's NetBox connection, Proxmox and Commit author cards on Connections, and the Server
+# card on its own tab, with every setting a control (the operator, 2026-10-09: nothing on
+# Installation sends a person to today's page). The TFTP root is not drawn: it retires with the
+# device file routes at 7.8, its only readers (C616). Each card is declared once here; one set
+# of routes and one template draw them all.
+
+#: A card's field kinds, and what each accepts.
+KINDS = {
+    "url": "an http:// or https:// address",
+    "choice": "one of its choices",
+    "switch": "on or off",
+    "name": "letters, digits and . _ - only",
+    "host": "a host name or address",
+    "port": "a port number, 1 to 65535",
+    "vmids": "VM ids, numbers separated by commas",
+    "date": "a date, YYYY-MM-DD, or empty",
+    "text": "text on one line",
+    "email": "an email address",
+}
+
+
+def _f(key, label, kind, note="", choices=()):
+    return {"key": key, "label": label, "kind": kind, "note": note, "choices": choices}
+
+
+#: The cards, in the page's order. ``secret``: the secret Replace… changes (with ``with_id``,
+#: a plain key replaced together with it: a Proxmox token is its id and secret), drawn before
+#: field ``secret_at`` as board F3 orders it; ``integration``:
+#: the client its Test asks, and whose stored health draws its badge.
+CARDS = {
+    "netbox": {
+        "group": "netbox_connection", "title": "NetBox connection", "tab": "connections",
+        "fields": (_f("netbox_url", "URL", "url"),
+                   _f("netbox_auth_scheme", "Auth scheme", "choice",
+                      "NetBox 4.x tokens: Bearer; older: Token", ("Bearer", "Token")),
+                   _f("netbox_verify_tls", "Verify TLS", "switch")),
+        "secret": ("netbox_token", "API token"), "secret_at": 1, "with_id": None,
+        "integration": "netbox",
+        "note": "Each network's NetBox scope (its region) is per network, under that network.",
+    },
+    "proxmox": {
+        "group": "proxmox", "title": "Proxmox", "tab": "connections",
+        "fields": (_f("proxmox_url", "URL", "url"),
+                   _f("proxmox_node", "Node", "name"),
+                   _f("proxmox_token_expires", "Token expires", "date",
+                      "declared: the token cannot read its own (C380)"),
+                   _f("proxmox_verify_tls", "Verify TLS", "switch"),
+                   _f("proxmox_backup_vmids", "Backup VMs", "vmids"),
+                   _f("proxmox_backup_storage", "Backup storage", "name")),
+        "secret": ("proxmox_token_secret", "Token secret"), "secret_at": 2,
+        "with_id": ("proxmox_token_id", "Token id"),
+        "integration": "proxmox", "note": "",
+    },
+    "author": {
+        "group": "git_author", "title": "Commit author", "tab": "connections",
+        "fields": (_f("nsot_git_author_name", "Name", "text"),
+                   _f("nsot_git_author_email", "Email", "email")),
+        "secret": None, "with_id": None, "integration": None,
+        "note": "The person is recorded in each commit's Actor: trailer; this is the commit's "
+                "author line.",
+    },
+    "server": {
+        "group": "web_server", "title": "Server", "tab": "server",
+        "fields": (_f("flask_host", "Bind", "host"), _f("flask_port", "Port", "port")),
+        "secret": None, "with_id": None, "integration": None,
+        "note": "Bind and port take effect at the next restart, and the result says so.",
+    },
+}
+def settings_place(name: str, label: str) -> str:
+    """Where a person changes integration *name*'s settings on v2 (C617): its Installation card
+    when it is the installation's own (NetBox, Proxmox), else the Default network's card or the
+    network's own. One answer for every text that sends a person there."""
+    card = next((s for s in CARDS.values() if s["integration"] == name), None)
+    if card:
+        return f"Settings › Installation › Connections, {card['title']}"
+    return f"Settings › Default, the {label} card (or the network's own)"
+
+
+#: A card's Save (its steps named on the manual's installation-settings page).
+CARD_SAVE_STEPS = ("check", "write", "record")
+#: A card's Replace…: the new secret checked, stored, recorded, then the card's Test.
+CARD_REPLACE_STEPS = ("check", "store", "record", "test")
+#: NetBox's Turn off: the master switch written off, then recorded. Turning it on is an
+#: authorised NetBox write's confirm (routes/netbox_safety.py), never this card.
+WRITES_OFF_STEPS = ("write", "record")
+#: The fields a restart reads (the result says the change waits for one).
+RESTART_KEYS = ("flask_host", "flask_port")
+#: The record kinds the cards write (the records database's are its own, above).
+CARD_KINDS = ("card_save", "card_replace", "netbox_writes_off")
+
+
+def _health(name: str) -> dict:
+    """The integration's stored health (the integrations reader, every 60 s): ``state`` up,
+    down, refused, not_configured or ``unread``, with its message and the value's time. Never a
+    probe per page: Test is the person asking now."""
+    from modules import reader_job
+
+    got = reader_job.read_cached("integrations")
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    if got.get("state") != "ok" or not good:
+        return {"state": "unread", "message": "the integrations reader has not stored a value",
+                "at_iso": ""}
+    item = next((i for i in (good.get("value") or {}).get("integrations") or []
+                 if i.get("name") == name), None)
+    if item is None:
+        return {"state": "unread", "message": f"the reader's value names no {name}",
+                "at_iso": ""}
+    return {"state": item.get("state") or "down", "message": item.get("message") or "",
+            "at_iso": good.get("value_at") or ""}
+
+
+def _writes_state() -> dict:
+    """NetBox's master switch: on or off, and the last Turn off on record (who, when)."""
+    from modules.settings_schema import get_setting
+
+    on = bool(get_setting("netbox_allow_writes", False))
+    last = (changes(kinds=("netbox_writes_off",))["rows"] or [None])[0]
+    return {"on": on, "last_off": None if on else last}
+
+
+def card(name: str) -> dict:
+    """One card as drawn: its fields with today's values (a secret only as set or not set),
+    its integration's stored health, and NetBox's master switch."""
+    from modules.secrets_store import is_set
+    from modules.settings_schema import DEFAULTS, get_setting
+
+    spec = CARDS[name]
+    fields = []
+    for f in spec["fields"]:
+        value = get_setting(f["key"], DEFAULTS.get(f["key"]))
+        fields.append(dict(f, value=value, kind_words=KINDS[f["kind"]]))
+    out = {"name": name, "spec": spec, "fields": fields, "health": None, "writes": None,
+           "secret_set": bool(spec["secret"]) and is_set(spec["secret"][0]),
+           "id_value": get_setting(spec["with_id"][0], "") if spec["with_id"] else ""}
+    if spec["integration"]:
+        out["health"] = _health(spec["integration"])
+    if name == "netbox":
+        out["writes"] = _writes_state()
+    return out
+
+
+def _value(f: dict, raw):
+    """One field's value as the schema types it, or `Refused` naming the field and the kind."""
+    kind, label = f["kind"], f["label"]
+    if kind == "switch":
+        return raw not in (None, "", "off", "0", "false")
+    text = (raw or "").strip()
+
+    def no():
+        return Refused(f"{label} {text!r} is not {KINDS[kind]}")
+
+    if kind == "url":
+        if text and not re.fullmatch(r"https?://[^\s/]+(/\S*)?", text):
+            raise no()
+        return text
+    if kind == "choice":
+        if text not in f["choices"]:
+            raise no()
+        return text
+    if kind == "name":
+        if text and not re.fullmatch(r"[A-Za-z0-9._-]+", text):
+            raise no()
+        return text
+    if kind == "host":
+        if not re.fullmatch(r"[A-Za-z0-9.:_-]+", text):
+            raise no()
+        return text
+    if kind == "port":
+        if not text.isdigit() or not 1 <= int(text) <= 65535:
+            raise no()
+        return int(text)
+    if kind == "vmids":
+        if not re.fullmatch(r"[0-9, ]*", text):
+            raise no()
+        return ", ".join(t for t in re.split(r"[ ,]+", text) if t)
+    if kind == "date":
+        if text and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            raise no()
+        if text:
+            try:
+                time.strptime(text, "%Y-%m-%d")
+            except ValueError:
+                raise no() from None
+        return text
+    if kind == "email":
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+", text):
+            raise no()
+        return text
+    if "\n" in text or "\r" in text or not text:
+        raise no()
+    return text
+
+
+def save_card(name: str, form: dict, actor: str, verified: str) -> dict:
+    """Save a card's fields (CARD_SAVE_STEPS): check each, write what changed to the
+    installation's settings, record who and which fields (never a value). A switch the form
+    did not send is off. ``{"ok", "written", "nothing", "restart", "recorded", ...}``."""
+    from modules.settings_schema import DEFAULTS, get_setting, write_settings
+
+    spec = CARDS[name]
+    values = {f["key"]: _value(f, form.get(f["key"])) for f in spec["fields"]}      # check
+    changed = {k: v for k, v in values.items() if get_setting(k, DEFAULTS.get(k)) != v}
+    if not changed:
+        return {"ok": True, "nothing": True, "written": [], "recorded": True, "restart": False}
+    out = write_settings(changed, actor=actor)                                       # write
+    if not out["ok"]:
+        raise Refused(out["error"])
+    entry = _record({"kind": "card_save", "card": name, "actor": actor,             # record
+                     "actor_verified": verified, "fields": sorted(changed)})
+    return dict(entry, ok=True, nothing=False, written=sorted(changed),
+                restart=any(k in changed for k in RESTART_KEYS))
+
+
+def test_card(name: str, client=None) -> dict:
+    """The card's Test: its integration asked now, with what is saved; nothing changed. The
+    answer is drawn in the card (the badge stays the reader's, refreshed on its minute)."""
+    from modules.integrations import get_integration
+
+    spec = CARDS[name]
+    if not spec["integration"]:
+        raise Refused(f"{spec['title']} has no Test: it configures no service to ask")
+    c = client or get_integration(spec["integration"])
+    try:
+        got = c.test_connection()
+    except Exception as exc:                                            # noqa: BLE001
+        got = {"ok": False, "error": f"the test raised {type(exc).__name__}: {exc}"}
+    now = _now()
+    return {"ok": bool(got.get("ok")), "message": got.get("message") or "",
+            "error": got.get("error") or "", "at": now, "at_iso": _iso(now)}
+
+
+def replace_secret(name: str, form: dict, actor: str, verified: str, client=None) -> dict:
+    """Replace a card's secret (CARD_REPLACE_STEPS): check, store it as a secret (with its id
+    when the card has one), record the names, then Test. The value is never returned, logged
+    or recorded."""
+    from modules.secrets_store import set_secret
+    from modules.settings_schema import write_settings
+
+    spec = CARDS[name]
+    if not spec["secret"]:
+        raise Refused(f"{spec['title']} holds no secret")
+    key, label = spec["secret"]
+    new = (form.get(key) or "").strip()
+    if not new or not re.fullmatch(r"[\x21-\x7e]+", new):                        # check
+        raise Refused(f"the new {label.lower()} is empty or holds a space or a character a "
+                      "token never has; nothing was replaced")
+    fields = [key]
+    if spec["with_id"]:
+        id_key, id_label = spec["with_id"]
+        new_id = (form.get(id_key) or "").strip()
+        if not re.fullmatch(r"[^\s@!]+@[^\s@!]+![A-Za-z0-9._-]+", new_id):
+            raise Refused(f"{id_label} {new_id!r} is not a Proxmox token id "
+                          "(user@realm!name); nothing was replaced")
+        out = write_settings({id_key: new_id}, actor=actor)                        # store
+        if not out["ok"]:
+            raise Refused(out["error"])
+        fields.insert(0, id_key)
+    if not set_secret(key, new):
+        raise Refused(f"the secrets store refused the new {label.lower()}; "
+                      + ("its id was written, the secret was not" if spec["with_id"]
+                         else "nothing was replaced"))
+    entry = _record({"kind": "card_replace", "card": name, "actor": actor,          # record
+                     "actor_verified": verified, "fields": fields})
+    return dict(entry, ok=True, tested=test_card(name, client))                     # test
+
+
+def netbox_writes_off(actor: str, verified: str) -> dict:
+    """Turn NetBox's master switch off (WRITES_OFF_STEPS) and record who and when. No confirm:
+    turning writes off takes nothing a person must keep. Off already: nothing written."""
+    from modules.settings_schema import get_setting, write_settings
+
+    if not get_setting("netbox_allow_writes", False):
+        return {"ok": True, "nothing": True, "recorded": True}
+    out = write_settings({"netbox_allow_writes": False}, actor=actor)               # write
+    if not out["ok"]:
+        raise Refused(out["error"])
+    entry = _record({"kind": "netbox_writes_off", "card": "netbox", "actor": actor,  # record
+                     "actor_verified": verified, "fields": ["netbox_allow_writes"]})
+    return dict(entry, ok=True, nothing=False)

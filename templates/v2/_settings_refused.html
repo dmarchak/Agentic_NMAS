@@ -3,6 +3,6 @@
     (and, for a moved preview, both values), with the way back. Nothing was saved. -#}
 <section class="op-card op-danger" id="{{ 'card-' ~ group if group else 'settings-mode-op' }}" aria-labelledby="refused-h">
   <div class="op-hd"><h2 id="refused-h">Not saved</h2>
-    <div class="op-hd-actions"><a class="btn" href="{{ url_for('settings_v2.network', list_name=list_name) }}">Read {{ list_name }}'s settings again</a></div></div>
+    <div class="op-hd-actions">{% if list_name %}<a class="btn" href="{{ url_for('settings_v2.network', list_name=list_name) }}">Read {{ list_name }}'s settings again</a>{% else %}<a class="btn" href="{{ url_for('settings_v2.installation') }}">Read the installation's settings again</a>{% endif %}</div></div>
   <div class="op-part"><h3>Why</h3><div><p>{{ icon('warn', 16) }} {{ why }}.</p></div></div>
 </section>

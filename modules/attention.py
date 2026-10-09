@@ -1506,7 +1506,7 @@ def _setting(key: str) -> str:
 def integrations_source(cached=None) -> dict:
     """A configured integration that does not answer is a row; one left
     unconfigured is a state, counted (job health names the guard it gates)."""
-    from modules import reader_job
+    from modules import installation_settings, reader_job
 
     started = time.time()
     got = reader_job.read_cached("integrations") if cached is None else cached
@@ -1534,8 +1534,9 @@ def integrations_source(cached=None) -> dict:
                        + (f"; the expiry declared for it is {declared}" if declared else "")),
                 operands={"probe_ms": i.get("took_ms")},
                 action={"label": f"Renew it at {RENEW_AT.get(name, i.get('label'))} and put the "
-                                 f"new value in Settings > Integrations > {i.get('label')} "
-                                 "(a blank field keeps the old one)"}))
+                                 "new value in "
+                                 f"{installation_settings.settings_place(name, i.get('label'))} "
+                                 "(Replace…; the old one stays until then)"}))
             continue
         if i.get("state") != "down":
             continue
@@ -1543,8 +1544,10 @@ def integrations_source(cached=None) -> dict:
                         what=f"{i.get('label')} is not answering",
                         cause=f"its health probe failed: {i.get('message') or 'no reason recorded'}",
                         operands={"probe_ms": i.get("took_ms")},
-                        action={"label": f"Check {i.get('label')} at the URL set in Settings > "
-                                         "Integrations; its Test button probes it now"}))
+                        action={"label": f"Check {i.get('label')} at the URL set in "
+                                         + installation_settings.settings_place(
+                                             i.get("name", ""), i.get("label"))
+                                         + "; its Test button probes it now"}))
     c = v.get("counts") or {}
     # Named, never only counted: "2 not configured" hid that one of the two
     # was the NSoT repository committing all evening (C171).
@@ -1785,10 +1788,11 @@ def dashboard_roles_source(read=None, current=None) -> dict:
             whose = (f"set in {layer}'s settings"
                      + (f", which {_names([n for n in lists if n != layer])} inherit"
                         if any(n != layer for n in lists) else ""))
-            where = (f"Settings › Integrations › Grafana ({_ROLE_FIELD[setting]})"
+            # C617: the v2 place, the Grafana card of the network that sets it.
+            where = (f"Settings › Default, the Grafana card ({_ROLE_FIELD[setting]})"
                      if layer == "Default" else
-                     f"{layer}'s own settings ({setting}); the per-network Settings page is "
-                     "P.8 step 7's")
+                     f"Settings › {layer}, its own Grafana card "
+                     f"({_ROLE_FIELD.get(setting, setting)})")
             key = f"{c['id']}:{layer}:{setting}:{uid}"
             if state == "absent":
                 rows.append(row(

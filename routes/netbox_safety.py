@@ -103,8 +103,10 @@ def _authorize(data: dict, operation: str, list_name: str, recompute) -> tuple:
     if not writes_allowed() and not permit:
         return False, {
             "ok": False, "blocked": True,
-            "error": "NetBox writes are not permitted for this instance. Turn on "
-                     "'Allow writes to NetBox' in Settings → Integrations.",
+            "error": "NetBox writes are off for every network (Writes allowed, on "
+                     "Settings › Installation › Connections, NetBox connection). Confirm this "
+                     "write with writes permitted to turn them on: they come on only once its "
+                     "token and plan both pass.",
         }, 403
 
     # 2. One-shot token from the preview.

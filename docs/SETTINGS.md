@@ -39,9 +39,14 @@ So each setting is in one of three states, visible in the posture panel:
 
 | Group | Where |
 |---|---|
-| `netbox_*` | Settings → NetBox |
-| `prometheus_*`, `grafana_*`, `loki_*`, `kea_*`, `topology_service_*`, `s3_*`, `nsot_git_*`, `proxmox_*` | Settings → Integrations |
-| `flask_host`, `flask_port`, `auto_open_browser`, `tftp_root`, `tftp_server_ip` | Settings → Server |
+| `netbox_url`, `netbox_token`, `netbox_auth_scheme`, `netbox_verify_tls`, `netbox_allow_writes` | v2: Settings › Installation › Connections, the NetBox connection card (board F3, 2026-10-09). The token is a secret, shown only as set and changed by Replace… (then tested); `netbox_allow_writes` is shown with **Turn off** only: turning it on is an authorised NetBox write's confirm with writes permitted (today's NetBox import and removal; v2 has none yet, C619). Today's Settings → NetBox keeps them until cutover. |
+| `proxmox_*` | v2: Settings › Installation › Connections, the Proxmox card (board F3). `proxmox_token_id` and `proxmox_token_secret` are replaced together by Replace… (a token is the pair), then tested. |
+| `nsot_git_author_name`, `nsot_git_author_email` | v2: Settings › Installation › Connections, the Commit author card (board F3). |
+| `flask_host`, `flask_port` | v2: Settings › Installation › Server, the Server card (board F3): read at start-up, so a Save says the change waits for the next restart. |
+| `auto_open_browser` | Settings → Server (today's page): the desktop app's; not drawn on v2, the host runs headless. |
+| `tftp_root`, `tftp_server_ip` | Settings → Server (today's page) until cutover; read only by today's device file and bulk file routes, they leave with them at 7.8 (C616, the operator, 2026-10-09). |
+| `prometheus_*`, `grafana_*`, `loki_*`, `kea_*`, `topology_service_*`, `s3_*`, `nsot_git_*` (the rest) | v2: Settings › Default and each network's cards; today's Settings → Integrations until cutover |
+| Every v2 Installation card's Save, Replace and Turn off | recorded in the installation's `settings_record.jsonl`: who, when, the card and the names of what changed, never a value |
 | `collector_*`, `monitoring_*`, `promql_*` | Settings → Monitoring |
 | `ai_enabled`, **`background_agent_enabled`**, `wf_*` | Settings → AI |
 | `require_identity_for_*`, `require_person_for_*`, `service_allowed_operations`, `cf_access_*` | Settings → Security posture (**read-only**, see below) |

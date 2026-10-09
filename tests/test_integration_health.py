@@ -141,7 +141,8 @@ class TestTheSource:
         assert row["what"] == "Grafana refuses the tool's credential"
         assert "2026-09-30" in row["cause"]
         assert "Service accounts" in row["action"]["label"]
-        assert "Settings > Integrations > Grafana" in row["action"]["label"]
+        assert "Settings › Default, the Grafana card" in row["action"]["label"], (
+            "C617: the v2 place, never today's Settings > Integrations")
 
     def test_a_401_is_refused_never_down_and_grafana_asks_with_its_token(self, monkeypatch):
         """The probe of the shared client: a 401 or 403 is `refused`; Grafana, holding a

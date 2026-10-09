@@ -136,6 +136,7 @@ PAGES = ["/v2/", "/v2/devices", "/v2/device/r2", "/v2/device/r2?tab=intent",
          "/v2/history?tab=baselines", "/v2/history?tab=authorisations", "/v2/monitoring",
          "/v2/monitoring/coverage", "/v2/help/about", "/v2/update", "/v2/settings",
          "/v2/settings/installation", "/v2/help/records-database",
+         "/v2/settings/installation?tab=server", "/v2/help/installation-settings",
          "/v2/templates", "/v2/templates?bring=_common.j2", "/v2/monitoring/profile",
          "/v2/monitoring/profile?propose=1", "/v2/device/r2?tab=ask",
          "/v2/device/r2?tab=ask&command=show%20ip%20route", "/v2/show-commands"]

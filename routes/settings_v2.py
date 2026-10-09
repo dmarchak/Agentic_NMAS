@@ -41,8 +41,9 @@ def index():
 @bp.route("/installation", methods=["GET"])
 def installation():
     """Board F: Settings › Installation, the installation's own settings for every network. Its
-    Connections tab holds the Records database card (F2); tabs not yet drawn here say so and
-    link to today's Settings page."""
+    Connections tab holds the Records database card (F2) and the NetBox connection, Proxmox and
+    Commit author cards, and its Server tab the Server card (F3); tabs not yet drawn here say so
+    and link to today's Settings page."""
     from modules import installation_settings as I
     from modules import settings_page
     from modules.nsot import listref
@@ -52,8 +53,9 @@ def installation():
         tab = "connections"
     v = {"scope": dict(settings_page.scope_bar(listref.active().name), is_installation=True),
          "mode_words": ""}
+    cards = [I.card(name) for name, spec in I.CARDS.items() if spec["tab"] == tab]
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
-                 v=v, r=I.records_card())
+                 v=v, r=I.records_card() if tab == "connections" else None, cards=cards)
 
 
 def _records(status: int = 200, **ctx):
@@ -115,6 +117,100 @@ def records_replace():
         return _fragment("v2/_records_db_replace.html", 409, r=I.records_card(),
                          refused=str(exc))
     return _records(replaced=out, tested=out["tested"])
+
+
+def _install(name: str, status: int = 200, **ctx):
+    """One F3 card drawn, with an action's answer in place; an unknown card is a 404 saying
+    which cards there are."""
+    from modules import installation_settings as I
+
+    if name not in I.CARDS:
+        return _fragment("v2/_settings_refused.html", 404, list_name="", group="",
+                         why=f"{name!r} is not an Installation card: {', '.join(I.CARDS)}")
+    return _fragment("v2/_install_card.html", status, k=I.card(name), **ctx)
+
+
+@bp.route("/installation/card/<name>", methods=["GET"])
+def install_card(name):
+    """Board F3: one card drawn again (Cancel, and a refresh after a change)."""
+    return _install(name)
+
+
+@bp.route("/installation/card/<name>/save", methods=["POST"])
+def install_save(name):
+    """Board F3: save a card's fields as sent, recorded with the verified person and the
+    fields' names; a switch the form did not send is off."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    if name not in I.CARDS:
+        return _install(name)
+    form = {f["key"]: request.form.get(f["key"]) for f in I.CARDS[name]["fields"]}
+    try:
+        saved = I.save_card(name, form, identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _install(name, 409, refused=str(exc))
+    return _install(name, saved=saved)
+
+
+@bp.route("/installation/card/<name>/test", methods=["POST"])
+def install_test(name):
+    """Board F3: the card's Test, its integration asked now with what is saved."""
+    from modules import installation_settings as I
+
+    if name not in I.CARDS:
+        return _install(name)
+    try:
+        tested = I.test_card(name)
+    except I.Refused as exc:
+        return _install(name, 409, refused=str(exc))
+    return _install(name, tested=tested)
+
+
+@bp.route("/installation/card/<name>/replace", methods=["GET"])
+def install_replace_form(name):
+    """Board F3: Replace… opens in the card."""
+    from modules import installation_settings as I
+
+    if name not in I.CARDS:
+        return _install(name)
+    if not I.CARDS[name]["secret"]:
+        return _install(name, 409, refused=f"{I.CARDS[name]['title']} holds no secret to replace")
+    return _fragment("v2/_install_card_replace.html", k=I.card(name))
+
+
+@bp.route("/installation/card/<name>/replace", methods=["POST"])
+def install_replace(name):
+    """Board F3: store the new secret (with its id for Proxmox), record it, then Test. The
+    value is never drawn back."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    if name not in I.CARDS:
+        return _install(name)
+    spec = I.CARDS[name]
+    keys = [k for k in ((spec["secret"] or (None,))[0], (spec["with_id"] or (None,))[0]) if k]
+    try:
+        out = I.replace_secret(name, {k: request.form.get(k) for k in keys},
+                               identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _fragment("v2/_install_card_replace.html", 409, k=I.card(name),
+                         refused=str(exc))
+    return _install(name, replaced=out, tested=out["tested"])
+
+
+@bp.route("/installation/netbox/writes-off", methods=["POST"])
+def install_writes_off():
+    """Board F3: turn NetBox's master switch off, recorded. Turning it on stays an authorised
+    NetBox write's confirm."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    try:
+        out = I.netbox_writes_off(identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _install("netbox", 409, refused=str(exc))
+    return _install("netbox", writes_off=out)
 
 
 @bp.route("/network/<list_name>", methods=["GET"])

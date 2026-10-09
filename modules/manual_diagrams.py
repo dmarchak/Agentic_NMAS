@@ -1079,6 +1079,32 @@ def records_database():
     ])
 
 
+def installation_settings():
+    return svg(470, (
+        "An Installation card. Save checks each field, writes the ones that changed to the "
+        "installation's settings for every network, and appends who, when and which fields to "
+        "the installation's settings record. Test asks the service now with what is saved. "
+        "Replace stores a new token as a secret, records it and tests it. Turn off writes "
+        "NetBox's master switch off and records it; turning it on is the confirm of an "
+        "authorised NetBox write. No device is contacted."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE SERVICE"),
+        band(20, 160, "Save"),
+        person(14, 44, 186, 30, "You save a card"), num(14, 44, 1),
+        store(14, 84, 186, 34, "The installation's settings", "every network"), num(14, 84, 2),
+        repo(14, 128, 186, 40, "Its settings record", "who, when, fields"), num(14, 128, 3),
+        band(188, 112, "Test · Replace a token"),
+        store(14, 212, 186, 34, "The secrets store", "a replaced token"),
+        doc("box", 14, 254, 186, 34, "Recorded, then the Test", "with what is saved"),
+        store(232, 212, 156, 44, "NetBox · Proxmox", "asked now"),
+        band(308, 150, "Turn off · NetBox writes"),
+        store(14, 332, 186, 36, "Writes allowed: off", "every network"), num(14, 332, 1),
+        _down(107, 370, 388),
+        doc("box", 14, 390, 186, 30, "Recorded", "who and when"), num(14, 390, 2),
+        person(232, 332, 156, 34, "An authorised write's confirm"),
+        nosend(310, 420, ("no device", "is contacted")),
+    ])
+
+
 def publish_remote():
     return svg(500, (
         "Publishing the record to the remote. Every commit hands itself to the push hook, which "
@@ -1236,6 +1262,7 @@ DIAGRAMS = {
     "update": update,
     "settings-switch": settings_switch,
     "records-database": records_database,
+    "installation-settings": installation_settings,
     "edit-intent": edit_intent,
     "approve-template": approve_template,
     "bring-template": bring_template,

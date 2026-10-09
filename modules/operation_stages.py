@@ -377,6 +377,10 @@ HISTORY = {
     "settings_v2.records_save": NOT_A_DEVICE,
     "settings_v2.records_test": NOT_A_DEVICE,
     "settings_v2.records_replace": NOT_A_DEVICE,
+    "settings_v2.install_save": NOT_A_DEVICE,
+    "settings_v2.install_test": NOT_A_DEVICE,
+    "settings_v2.install_replace": NOT_A_DEVICE,
+    "settings_v2.install_writes_off": NOT_A_DEVICE,
 }
 
 #: Sources whose records no gated route above writes: a process that ended holding a device,

@@ -1,9 +1,10 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import icon, info -%}
-{#- Board F (approved 2026-10-05) with board F2 (approved 2026-10-09): Settings › Installation,
-    the installation's own settings for every network, no network selector. Built: the
-    Connections tab's Records database card. The tabs and cards not drawn here yet say so and
-    link to today's Settings page (a subset, said). From routes/settings_v2.installation. -#}
+{#- Board F (approved 2026-10-05) with boards F2 and F3 (signed off 2026-10-09): Settings ›
+    Installation, the installation's own settings for every network, no network selector.
+    Built: Connections (the Records database, NetBox connection, Proxmox and Commit author
+    cards) and Server. The tabs not drawn here yet say so and link to today's Settings page (a
+    subset, said). From routes/settings_v2.installation. -#}
 {% block title %}Settings · Installation · {{ brand.short }}{% endblock %}
 {% block main %}
 <div class="page-head">
@@ -19,12 +20,15 @@
   {%- endfor %}
 </nav>
 <div class="tab-body" id="tab-body">
+{%- if tab in built %}
+<div class="set-cards">
 {%- if tab == 'connections' %}
-<p class="notice notice-muted">{{ icon('info', 16) }}<span>The <strong>NetBox connection</strong> and <strong>Proxmox</strong> cards are on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until they are built here.</span></p>
-<div class="set-cards set-cards-one">
 {% include "v2/_records_db_card.html" %}
+{%- endif %}
+{%- for k in cards %}
+{% include "v2/_install_card.html" %}
+{%- endfor %}
 </div>
-<p class="notice notice-muted">{{ icon('info', 16) }}<span>The <strong>Commit author</strong> card is on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until it is built here.</span></p>
 {%- else %}
 <p class="notice notice-muted">{{ icon('info', 16) }}<span><strong>{{ dict(tabs)[tab] }}</strong> is on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until it is drawn here.</span></p>
 {%- endif %}

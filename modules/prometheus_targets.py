@@ -635,8 +635,8 @@ def start_keeper() -> None:
 # ------------------------------------------------------- the job-health row
 
 _WHAT = "Prometheus scrapes the inventory's devices, each labelled device and role (C232)"
-_SETTINGS_ACTION = {"label": "Name the targets directory in Settings > Integrations > "
-                             "Prometheus (Targets directory), so Mercury regenerates the "
+_SETTINGS_ACTION = {"label": "Name the targets directory in Settings › Default, the "
+                             "Prometheus card (Targets directory), so Mercury regenerates the "
                              "files when the inventory changes",
                     "reference": "docs/PROMETHEUS_TARGETS.md"}
 

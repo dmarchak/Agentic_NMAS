@@ -176,6 +176,11 @@ class TestTheNameLeavesTheScreens:
         from modules import host_steps
         recorded = [s["step"] for s in host_steps.steps_in(
             host_steps._log(host_steps.ROOT, "HEAD", host_steps.HISTORY))]
+        # The Commit author card (board F3) draws the stored author name as its input's value:
+        # the author line of every commit, data like the subject (its default is a KEPT_STRING
+        # below), never the screen naming the product. That one attribute is excused.
+        from modules.settings_schema import get_setting
+        author_value = f'value="{html_escape(get_setting("nsot_git_author_name") or "")}"'
         for path in pages:
             r = lab["client"].get(path)
             if not (r.content_type or "").startswith("text/html"):
@@ -183,6 +188,7 @@ class TestTheNameLeavesTheScreens:
             html = r.get_data(as_text=True)
             for text in [subject] + recorded:
                 html = html.replace(str(html_escape(text)), "").replace(text, "")
+            html = html.replace(author_value, "")
             if nmas_shown(html):
                 found[path] = nmas_shown(html)
             title = re.search(r"<title>(.*?)</title>", html, re.S)

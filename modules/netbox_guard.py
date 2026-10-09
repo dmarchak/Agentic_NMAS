@@ -133,9 +133,10 @@ def assert_writes_allowed(operation: str = "write") -> None:
         return
     if not writes_allowed():
         raise NetBoxWriteBlocked(
-            f"NetBox {operation} blocked: writes are disabled. "
-            "Enable 'Allow writes to NetBox' in Settings → Integrations, or use "
-            "the import preview, which asks for confirmation before writing."
+            f"NetBox {operation} blocked: writes are off for every network (Writes allowed, "
+            "on Settings › Installation › Connections, NetBox connection). Use the import "
+            "preview, which asks for confirmation before writing and can turn writes on with "
+            "it (today's NetBox import: v2 does not offer one yet, C619)."
         )
     # THE CONFIRMATION IS CHECKED WHERE THE WRITE HAPPENS (C155, the operator's
     # decision). The one-shot token was consumed by the NetBox tab's routes

@@ -374,7 +374,7 @@ class TestAMissingDashboardIsARow:
         assert "grafana_fleet_dashboard_uid names rcn-lab-overview (set in Default's settings, " \
                "which Lab-3 inherit), and http://192.0.2.10:3000 answered" in r["cause"]
         assert r["action"]["label"].startswith("Choose Default and Lab-3's fleet dashboard in "
-                                               "Settings › Integrations › Grafana")
+                                               "Settings › Default, the Grafana card")
         assert r["clears"]["ways"] == ["resolves"] and r["level"] == "warning"
         assert "branch" in res["checked"].lower(), "Branch's store unread is said, not a row"
 

@@ -73,6 +73,7 @@ NOT_AN_OPERATION = {
     ("_breakglass_done.html", "Close"): "puts back the record's card, recording nothing",
     ("_breakglass_export.html", "Cancel"): "closes the export, building nothing",
     ("_records_db_replace.html", "Cancel"): "puts the records database card back, replacing nothing",
+    ("_install_card_replace.html", "Cancel"): "puts the Installation card back, replacing nothing",
     ("_breakglass_export.html", "Preview it again"): "reads the export's preview again: a read",
     ("_coverage.html", "Clear"): "unticks every device in Coverage's selection, recording nothing",
     ("_apply_preview.html", "Earlier"): "moves a device earlier in the rollout order the confirm carries",
@@ -121,6 +122,7 @@ NOT_AN_OPERATION = {
     ("_settings_mode.html", "See its settings"): "opens the network's Settings page again, a read",
     ("_settings_switch.html", "Cancel"): "puts back the group's card, saving nothing",
     ("_settings_refused.html", "Read 's settings again"): "opens the network's Settings page again, a read",
+    ("_settings_refused.html", "Read the installation's settings again"): "opens Settings › Installation again, a read",
     ("_intent_edit.html", "Discard the edit"): "puts back the read-only Intent card, writing nothing",
     ("_intent_edit.html", "Back to the intent"): "puts back the read-only Intent card, a read",
     ("_intent_check.html", "Write the ticked lines into the document"): (

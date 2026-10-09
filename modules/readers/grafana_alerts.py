@@ -405,8 +405,8 @@ READER = reader_job.register(reader_job.Reader(
                     "faster read sees nothing new"),
     read=read,
     invalidates=("alerts",),
-    remedy=("Check Grafana's URL and token in Settings > Integrations; the error names "
-            "the endpoint that refused"),
+    remedy=("Check Grafana's URL and token in Settings › Default, the Grafana card (or the "
+            "network's own); the error names the endpoint that refused"),
     window="the state at the read; history is not read here (8.6 reads it uncapped)",
     # P.8 step 5: each network's Grafana (and the Prometheus its bands read), once each.
     per_group=("grafana", "prometheus"),

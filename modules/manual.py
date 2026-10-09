@@ -72,6 +72,9 @@ PAGES = (
      "how-it-works/settings-switch.md"),
     ("records-database", "The records database: save, test, replace its password", H,
      "how-it-works/records-database.md"),
+    ("installation-settings",
+     "The installation's settings: save, test, replace a token, turn NetBox writes off", H,
+     "how-it-works/installation-settings.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
     ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
@@ -146,6 +149,9 @@ OPERATIONS = {
     "records-database": ("modules.installation_settings", "SAVE_STEPS"),
     "records-database-test": ("modules.records_db", "TEST_STEPS"),
     "records-database-replace": ("modules.installation_settings", "REPLACE_STEPS"),
+    "installation-settings": ("modules.installation_settings", "CARD_SAVE_STEPS"),
+    "installation-settings-replace": ("modules.installation_settings", "CARD_REPLACE_STEPS"),
+    "netbox-writes-off": ("modules.installation_settings", "WRITES_OFF_STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),
@@ -158,7 +164,9 @@ OPERATIONS = {
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
 OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "records-database-test": "records-database",
-                  "records-database-replace": "records-database"}
+                  "records-database-replace": "records-database",
+                  "installation-settings-replace": "installation-settings",
+                  "netbox-writes-off": "installation-settings"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

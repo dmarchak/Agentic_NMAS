@@ -358,7 +358,7 @@ class TestPreconditionsAreFoundAtPlanTime:
                             lambda: False)
         plan = _plan(netbox_plan=("dcim/devices/",))
         assert plan.onboardable is False
-        assert any("NetBox writes are disabled" in r
+        assert any("NetBox writes are off for every network" in r
                    for r in plan.blocking_reasons)
 
     def test_it_says_the_wizard_will_not_turn_it_on(self, lab, monkeypatch):
@@ -368,7 +368,7 @@ class TestPreconditionsAreFoundAtPlanTime:
         monkeypatch.setattr("modules.netbox_guard.writes_allowed",
                             lambda: False)
         reasons = _plan(netbox_plan=("dcim/devices/",)).blocking_reasons
-        assert any("will not turn it on for you" in r for r in reasons)
+        assert any("will not turn them on for you" in r for r in reasons)
 
     def test_with_writes_enabled_it_is_not_a_blocker(self, lab, monkeypatch):
         monkeypatch.setattr("modules.netbox_guard.writes_allowed",
@@ -398,7 +398,7 @@ class TestPreconditionsAreFoundAtPlanTime:
         monkeypatch.setattr("modules.netbox_guard.writes_allowed",
                             lambda: False)
         summary = _plan(netbox_plan=("dcim/devices/",)).summary
-        assert any("NetBox writes are disabled" in r
+        assert any("NetBox writes are off for every network" in r
                    for r in summary["blocking_reasons"])
 
 

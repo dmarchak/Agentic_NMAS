@@ -65,11 +65,8 @@ class TestThePage:
                          r'aria-current="page"><b>Installation</b>', html)
         assert "These settings apply to every network" in html
 
-    def test_unbuilt_tabs_and_cards_say_so_and_link_to_today_s_page(self, networks):
-        _r, html = _get(networks, "/v2/settings/installation")
-        assert "NetBox connection</strong> and <strong>Proxmox</strong> cards are on" in html
-        assert "<strong>Commit author</strong> card is on" in html
-        for key in ("access", "platforms", "server", "ai", "diagnostics"):
+    def test_unbuilt_tabs_say_so_and_link_to_today_s_page(self, networks):
+        for key in ("access", "platforms", "ai", "diagnostics"):
             _r, tab = _get(networks, f"/v2/settings/installation?tab={key}")
             assert 'data-todays-page="installation_settings"' in tab and "until it is drawn here" in tab
             assert 'id="records-db"' not in tab
@@ -198,3 +195,232 @@ class TestAgainstARealPostgreSQL:
         set_secret("records_db_password", pg_instance.MERCURY_PW)
         _r, html = _post(networks, "/v2/settings/installation/records/test")
         assert "did not accept the connection" in _card(html)
+
+
+# ── C617: no product text sends a person to today's Settings > Integrations ────────────────
+
+TODAYS_SETTINGS = re.compile(r"Settings\s*(?:>|→|›)\s*Integrations")
+
+
+def _strings_naming_todays_settings(paths):
+    """Every string constant in *paths* (parsed, never grepped) naming today's Settings >
+    Integrations, as (file, text). Docstrings are not screen text and are left out."""
+    import ast
+    out = []
+    for p in paths:
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        docs = {id(n.body[0].value) for n in ast.walk(tree)
+                if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                  ast.AsyncFunctionDef))
+                and n.body and isinstance(n.body[0], ast.Expr)
+                and isinstance(n.body[0].value, ast.Constant)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                    and id(node) not in docs and TODAYS_SETTINGS.search(node.value):
+                out.append((str(p), node.value))
+    return out
+
+
+class TestNoTextSendsAPersonToTodaysSettings:
+    """C617 (2026-10-09): nine texts sent a person to today's Settings > Integrations for
+    NetBox, Proxmox and Grafana; each now names its v2 place (installation_settings.
+    settings_place). The class is held, not the nine: no string in modules/ or routes/ says it.
+    Today's own templates and scripts are not scanned: they leave at cutover."""
+
+    def test_none_in_modules_or_routes(self):
+        from pathlib import Path
+        from tests import source_index
+        paths = [Path(p) for p in source_index.tracked("modules", suffix=".py")
+                 + source_index.tracked("routes", suffix=".py", recursive=False)]
+        assert len(paths) >= 200, "the population shrank"
+        assert _strings_naming_todays_settings(paths) == []
+
+    def test_the_scan_finds_a_planted_one(self, tmp_path):
+        planted = tmp_path / "x.py"
+        planted.write_text('"""Settings > Integrations in a docstring."""\n'
+                           'A = "put it in Settings → Integrations"\nB = "Settings › Default"\n'
+                           'C = "check Settings › Integrations › Grafana"\n')
+        found = [t for _f, t in _strings_naming_todays_settings([planted])]
+        assert found == ["put it in Settings → Integrations",
+                         "check Settings › Integrations › Grafana"], "a docstring is not screen text"
+
+
+# ── Board F3 (signed off 2026-10-09): the other cards, every setting a control ─────────────
+
+
+def _kcard(html, name):
+    m = re.search(rf'<section class="card set-card[^"]*" id="card-{name}".*?</section>', html,
+                  re.S)
+    assert m, f"no {name} card"
+    import html as html_mod
+    return html_mod.unescape(re.sub(r"\s+", " ", m.group(0)))
+
+
+class _Client:
+    """A stand-in integration client: its test_connection's answer, and how often asked."""
+
+    def __init__(self, answer):
+        self.answer, self.asked = answer, 0
+
+    def test_connection(self):
+        self.asked += 1
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+def _fake_integration(monkeypatch, answer):
+    from modules import integrations
+
+    c = _Client(answer)
+    monkeypatch.setattr(integrations, "get_integration", lambda name: c)
+    return c
+
+
+class TestTheCards:
+    def test_every_card_is_on_its_tab_and_nothing_links_to_today_s_page(self, networks):
+        def body(html):
+            m = re.search(r'<div class="tab-body" id="tab-body">(.*)', html, re.S)
+            assert m, "no tab body"
+            return m.group(1)
+
+        _r, conn = _get(networks, "/v2/settings/installation")
+        for name in ("netbox", "proxmox", "author"):
+            _kcard(conn, name)
+        assert 'id="records-db"' in conn and 'id="card-server"' not in conn
+        assert 'data-todays-page' not in body(conn) and "today's" not in body(conn)
+        _r, server = _get(networks, "/v2/settings/installation?tab=server")
+        card = _kcard(server, "server")
+        assert 'name="flask_host"' in card and 'name="flask_port"' in card
+        assert "tftp" not in card.lower(), "the TFTP root retired (C616), not drawn"
+        assert 'data-todays-page' not in body(server)
+
+    def test_each_field_is_a_control_and_a_token_is_never_drawn(self, networks):
+        from modules.secrets_store import set_secret
+        set_secret("netbox_token", "nb-token-SECRET-123456")
+        set_secret("proxmox_token_secret", "px-secret-SECRET-654321")
+        _r, html = _get(networks, "/v2/settings/installation")
+        nb, px = _kcard(html, "netbox"), _kcard(html, "proxmox")
+        for key in ("netbox_url", "netbox_auth_scheme", "netbox_verify_tls"):
+            assert f'name="{key}"' in nb
+        for key in ("proxmox_url", "proxmox_node", "proxmox_token_expires",
+                    "proxmox_verify_tls", "proxmox_backup_vmids", "proxmox_backup_storage"):
+            assert f'name="{key}"' in px
+        assert "SECRET" not in html and "Replace…" in nb and "Replace…" in px
+        assert '<option selected>Bearer</option>' in nb
+        # Board F3's order: the token after NetBox's URL and after Proxmox's node.
+        assert nb.index('name="netbox_url"') < nb.index("API token") \
+            < nb.index('name="netbox_auth_scheme"')
+        assert px.index('name="proxmox_node"') < px.index("Replace…") \
+            < px.index('name="proxmox_token_expires"')
+
+    def test_save_writes_what_changed_records_names_never_values(self, networks):
+        from modules import installation_settings as I
+        from modules.settings_schema import get_setting
+        _r, html = _post(networks, "/v2/settings/installation/card/netbox/save",
+                         {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Token"})
+        card = _kcard(html, "netbox")
+        assert "Saved" in card and "netbox_auth_scheme" in card
+        assert get_setting("netbox_url") == "https://192.0.2.30"
+        assert get_setting("netbox_auth_scheme") == "Token"
+        assert get_setting("netbox_verify_tls") is False, "a switch not sent is off"
+        rec = I.changes(kinds=("card_save",))["rows"][0]
+        assert rec["card"] == "netbox" and "netbox_url" in rec["fields"]
+        assert "192.0.2.30" not in json.dumps(rec), "names, never values"
+        _r, again = _post(networks, "/v2/settings/installation/card/netbox/save",
+                          {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Token"})
+        assert "Nothing changed" in _kcard(again, "netbox")
+
+    def test_a_field_that_is_not_its_kind_is_refused_naming_it(self, networks):
+        from modules.settings_schema import get_setting
+        before = get_setting("proxmox_backup_vmids")
+        for data, words in (({"proxmox_url": "ftp://x", "proxmox_backup_vmids": "100"},
+                             "URL 'ftp://x' is not an http:// or https:// address"),
+                            ({"proxmox_url": "", "proxmox_backup_vmids": "100,abc"},
+                             "Backup VMs '100,abc' is not VM ids"),
+                            ({"proxmox_url": "", "proxmox_token_expires": "2027-02-30"},
+                             "Token expires '2027-02-30' is not a date")):
+            r, html = _post(networks, "/v2/settings/installation/card/proxmox/save", data)
+            assert r.status_code == 409 and words in _kcard(html, "proxmox"), words
+        assert get_setting("proxmox_backup_vmids") == before
+
+    def test_the_server_s_bind_and_port_wait_for_a_restart_and_say_so(self, networks):
+        from modules.settings_schema import get_setting
+        _r, html = _post(networks, "/v2/settings/installation/card/server/save",
+                         {"flask_host": "127.0.0.1", "flask_port": "5001"})
+        card = _kcard(html, "server")
+        assert "take effect at the next restart" in card and get_setting("flask_port") == 5001
+        r, html = _post(networks, "/v2/settings/installation/card/server/save",
+                        {"flask_host": "127.0.0.1", "flask_port": "70000"})
+        assert r.status_code == 409 and "is not a port number" in html
+
+    def test_test_asks_now_and_draws_the_answer_or_the_service_s_words(self, networks,
+                                                                        monkeypatch):
+        c = _fake_integration(monkeypatch, {"ok": True, "message": "NetBox 4.1.2"})
+        _r, html = _post(networks, "/v2/settings/installation/card/netbox/test")
+        assert c.asked == 1 and "Test passed" in html and "NetBox 4.1.2" in html
+        _fake_integration(monkeypatch, {"ok": False, "error": "401: Invalid token"})
+        _r, html = _post(networks, "/v2/settings/installation/card/netbox/test")
+        assert "Test failed" in html and "401: Invalid token" in html
+        _fake_integration(monkeypatch, RuntimeError("boom"))
+        _r, html = _post(networks, "/v2/settings/installation/card/proxmox/test")
+        assert "the test raised RuntimeError: boom" in html
+        r, _html = _post(networks, "/v2/settings/installation/card/author/test")
+        assert r.status_code == 409, "a card with no service has no Test"
+
+    def test_replace_stores_records_and_tests_never_drawing_the_token(self, networks,
+                                                                       monkeypatch):
+        from modules import installation_settings as I
+        from modules.secrets_store import get_secret
+        from modules.settings_schema import get_setting
+        c = _fake_integration(monkeypatch, {"ok": True, "message": "Proxmox VE 8.2"})
+        _r, form = _get(networks, "/v2/settings/installation/card/proxmox/replace")
+        assert 'name="proxmox_token_id"' in form and 'name="proxmox_token_secret"' in form
+        _r, html = _post(networks, "/v2/settings/installation/card/proxmox/replace",
+                         {"proxmox_token_id": "nmas@pve!backup",
+                          "proxmox_token_secret": "uuid-SECRET-0000"})
+        assert "Token secret replaced" in html and "Test passed" in html and c.asked == 1
+        assert "uuid-SECRET-0000" not in html
+        assert get_secret("proxmox_token_secret") == "uuid-SECRET-0000"
+        assert get_setting("proxmox_token_id") == "nmas@pve!backup"
+        rec = I.changes(kinds=("card_replace",))["rows"][0]
+        assert rec["fields"] == ["proxmox_token_id", "proxmox_token_secret"]
+        assert "uuid-SECRET" not in json.dumps(rec)
+        r, html = _post(networks, "/v2/settings/installation/card/proxmox/replace",
+                        {"proxmox_token_id": "nobody", "proxmox_token_secret": "x"})
+        assert r.status_code == 409 and "is not a Proxmox token id" in html
+        assert get_secret("proxmox_token_secret") == "uuid-SECRET-0000", "nothing replaced"
+
+    def test_turn_off_writes_it_off_records_who_and_never_turns_it_on(self, networks):
+        from modules import installation_settings as I
+        from modules.settings_schema import get_setting, write_settings
+        write_settings({"netbox_allow_writes": True}, actor="test")
+        _r, html = _get(networks, "/v2/settings/installation")
+        nb = _kcard(html, "netbox")
+        assert "Turn off" in nb
+        assert "turned on by confirming an authorised NetBox write, never from this card" in nb
+        _r, html = _post(networks, "/v2/settings/installation/netbox/writes-off")
+        nb = _kcard(html, "netbox")
+        assert get_setting("netbox_allow_writes") is False
+        assert "NetBox writes turned off" in nb and "Turn off</span>" not in nb
+        assert I.changes(kinds=("netbox_writes_off",))["rows"][0]["fields"] == [
+            "netbox_allow_writes"]
+        _r, html = _post(networks, "/v2/settings/installation/netbox/writes-off")
+        assert "Already off" in html
+        _r, html = _post(networks, "/v2/settings/installation/card/netbox/save",
+                         {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Bearer",
+                          "netbox_allow_writes": "on"})
+        assert get_setting("netbox_allow_writes") is False, "Save never arms writes"
+
+    def test_settings_place_names_the_v2_card(self):
+        from modules import installation_settings as I
+        assert I.settings_place("netbox", "NetBox") == (
+            "Settings › Installation › Connections, NetBox connection")
+        assert I.settings_place("proxmox", "Proxmox VE") == (
+            "Settings › Installation › Connections, Proxmox")
+        assert I.settings_place("grafana", "Grafana") == (
+            "Settings › Default, the Grafana card (or the network's own)")
+
+    def test_an_unknown_card_is_a_404_naming_the_cards(self, networks):
+        r, html = _get(networks, "/v2/settings/installation/card/tftp")
+        assert r.status_code == 404 and "netbox, proxmox, author, server" in html

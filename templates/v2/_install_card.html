@@ -1,0 +1,79 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Board F3 (signed off 2026-10-09): one of Settings › Installation's cards (NetBox
+    connection, Proxmox, Commit author, Server), every setting a control, in the board's order
+    (the token before field `secret_at`). Its badge is the integrations reader's stored health
+    (never a probe per page); Test asks now. NetBox's master switch is its state with Turn off;
+    turning it on is an authorised NetBox write's confirm, never this card. From
+    modules/installation_settings.card. -#}
+{%- set s = k.spec -%}
+{%- set HEALTH = {'up': ('reachable', 'ok'), 'down': ('not answering', 'danger'),
+                  'refused': ('refused', 'danger'), 'not_configured': ('not configured', 'neutral'),
+                  'unread': ('not read yet', 'neutral')} -%}
+{%- macro secret_row() -%}
+    <span class="set-label">{{ 'Token' if s.with_id else s.secret[1] }}</span>
+    <div>{% if s.with_id and k.id_value %}<span class="mono">{{ k.id_value }}</span> · {% endif %}{{ badge('set' if k.secret_set else 'not set', 'neutral' if k.secret_set else 'warn') }}
+      <span class="op-act"><a class="btn btn-small" data-op="installation-settings" href="{{ url_for('settings_v2.install_replace_form', name=k.name) }}" hx-get="{{ url_for('settings_v2.install_replace_form', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" title="Opens the Replace form in the card: nothing is replaced until you enter the new one">Replace…</a>{{ how('installation-settings', 'replace', compact=True, op='replacing the ' ~ s.secret[1] | lower) }}</span></div>
+{%- endmacro -%}
+<section class="card set-card" id="card-{{ k.name }}" aria-labelledby="h-{{ k.name }}">
+  <div class="card-head"><h2 id="h-{{ k.name }}">{{ s.title }}</h2>{{ badge('this host' if k.name == 'server' else 'every network', 'neutral') }}
+    {%- if k.health %} <span title="{{ k.health.message }}">{{ badge(HEALTH[k.health.state][0], HEALTH[k.health.state][1]) }}</span>{% if k.health.at_iso %} <span class="muted small">{{ stamp(k.health.at_iso) }}</span>{% endif %}{% endif %}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not saved:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if saved %}
+  <div class="notice notice-{{ 'muted' if saved.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    {%- if saved.nothing %}<strong>Nothing changed:</strong> every field already held what was sent.
+    {%- else %}<strong>Saved</strong> by {{ saved.actor_label }} {{ stamp(saved.at_iso) }}: {{ saved.written | length }} field{{ '' if saved.written | length == 1 else 's' }} ({{ saved.written | join(', ') }}), for every network. Recorded in the installation's settings record.
+    {%- if saved.restart %} <strong>Bind and port take effect at the next restart:</strong> Mercury still listens where it did until then.{% endif %}
+    {%- if not saved.recorded %} <strong>Saved, and its record could not be written:</strong> {{ saved.record_error }}.{% endif %}{% endif %}</div></div>
+  {%- endif %}
+  {%- if replaced %}
+  <div class="notice notice-{{ 'muted' if replaced.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    <strong>{{ s.secret[1] }} replaced</strong> by {{ replaced.actor_label }} {{ stamp(replaced.at_iso) }}: stored in the secrets store, never shown again{% if not replaced.recorded %}, and its record could not be written: {{ replaced.record_error }}{% endif %}. Its Test is below.</div></div>
+  {%- endif %}
+  {%- if writes_off %}
+  <div class="notice notice-{{ 'muted' if writes_off.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>
+    {%- if writes_off.nothing %}<strong>Already off:</strong> nothing was written.
+    {%- else %}<strong>NetBox writes turned off</strong> by {{ writes_off.actor_label }} {{ stamp(writes_off.at_iso) }}, for every network{% if not writes_off.recorded %}, and its record could not be written: {{ writes_off.record_error }}{% endif %}.{% endif %}</div></div>
+  {%- endif %}
+  {%- if tested %}
+  <div class="notice notice-{{ 'muted' if tested.ok else 'danger' }} set-result" role="status">{{ icon('tick' if tested.ok else 'warn', 16) }}<div>
+    <strong>Test {{ 'passed' if tested.ok else 'failed' }}</strong> {{ stamp(tested.at_iso) }}: {{ tested.message if tested.ok else tested.error }}.</div></div>
+  {%- endif %}
+  <form class="set-form" id="form-{{ k.name }}" method="post" action="{{ url_for('settings_v2.install_save', name=k.name) }}"
+        hx-post="{{ url_for('settings_v2.install_save', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">
+    {%- for f in k.fields %}
+    {%- if s.secret and loop.index0 == s.secret_at %}{{ secret_row() }}{% endif %}
+    {%- set fid = 'f-' ~ k.name ~ '-' ~ f.key %}
+    {%- if f.kind == 'switch' %}
+    <span class="set-label">{{ f.label }}</span>
+    <div><label class="set-switch"><input id="{{ fid }}" name="{{ f.key }}" type="checkbox" value="on"{% if f.value %} checked{% endif %}> on</label>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    {%- elif f.kind == 'choice' %}
+    <label for="{{ fid }}">{{ f.label }}</label>
+    <div><select id="{{ fid }}" name="{{ f.key }}">{% for c in f.choices %}<option{% if c == f.value %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    {%- else %}
+    <label for="{{ fid }}">{{ f.label }}</label>
+    <div><input id="{{ fid }}" name="{{ f.key }}"{% if f.kind in ('url', 'name', 'host', 'port', 'vmids') %} class="mono"{% endif %} type="{{ 'number' if f.kind == 'port' else ('date' if f.kind == 'date' else ('email' if f.kind == 'email' else 'text')) }}" value="{{ f.value if f.value is not none else '' }}" autocomplete="off" title="{{ f.kind_words }}">{% if f.note %} <span class="set-origin">{{ f.note }}</span>{% endif %}</div>
+    {%- endif %}
+    {%- endfor %}
+    {%- if s.secret and s.secret_at >= k.fields | length %}{{ secret_row() }}{% endif %}
+    {%- if k.writes %}
+    <span class="set-label">Writes allowed</span>
+    <div><span class="set-inline">{%- if k.writes.on %}{{ badge('on', 'ok') }}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_writes_off') }}" hx-target="#card-netbox" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'writes-off', compact=True, op='turning NetBox writes off') }}</span>
+      {%- else %}{{ badge('off', 'neutral') }}{% endif %}</span>
+      {%- if k.writes.on %}
+      <span class="set-origin">the master switch for every network's NetBox writes; turned on by confirming an authorised NetBox write, never from this card</span>
+      {%- else %}
+      <span class="set-origin">{% if k.writes.last_off %}turned off by {{ k.writes.last_off.actor_label }} {{ stamp(k.writes.last_off.at_iso) }}; {% endif %}no NetBox write runs until a person confirms an authorised one with writes permitted, which turns it on</span>
+      {%- endif %}</div>
+    {%- endif %}
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'save', op='saving ' ~ s.title) }}</span>
+      {%- if s.integration %}
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_test', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('installation-settings', 'test', compact=True, op='testing ' ~ s.title) }}</span>
+      {%- endif %}
+      {%- if s.note %}<span class="muted small">{{ s.note }}</span>{% endif %}
+    </div>
+  </form>
+</section>

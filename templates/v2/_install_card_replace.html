@@ -1,0 +1,25 @@
+{%- from "v2/_macros.html" import icon, how -%}
+{#- Board F3 (signed off 2026-10-09): a card's Replace… opens in the card, as the records
+    database password's does (F2): the new value, Replace and Test, Cancel. Proxmox's takes the
+    token's id and secret together (a token is the pair). The value is never drawn back. -#}
+{%- set s = k.spec -%}
+<section class="card set-card" id="card-{{ k.name }}" aria-labelledby="h-{{ k.name }}">
+  <div class="card-head"><h2 id="h-{{ k.name }}">Replace the {{ s.title }} {{ 'token' if s.with_id else s.secret[1] | lower }}</h2>
+    <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab=s.tab) }}" hx-get="{{ url_for('settings_v2.install_card', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">Cancel</a></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not replaced:</strong> {{ refused }}.</div></div>
+  {%- endif %}
+  <form class="set-form" method="post" action="{{ url_for('settings_v2.install_replace', name=k.name) }}"
+        hx-post="{{ url_for('settings_v2.install_replace', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">
+    {%- if s.with_id %}
+    <label for="f-{{ k.name }}-id">{{ s.with_id[1] }}</label>
+    <div><input id="f-{{ k.name }}-id" name="{{ s.with_id[0] }}" class="mono" type="text" value="{{ k.id_value }}" autocomplete="off" placeholder="user@realm!name"></div>
+    {%- endif %}
+    <label for="f-{{ k.name }}-secret">New {{ s.secret[1] | lower }}</label>
+    <div><input id="f-{{ k.name }}-secret" name="{{ s.secret[0] }}" class="mono" type="password" value="" autocomplete="new-password"></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('installation-settings', 'replace', compact=True, op='replacing the ' ~ s.secret[1] | lower) }}</span>
+      <span class="muted small">Replace and Test stores it as a secret, records who and when (never the value), then tests the connection with it.</span>
+    </div>
+  </form>
+</section>

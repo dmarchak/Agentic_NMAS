@@ -1034,6 +1034,11 @@ select { max-width: 100%; }
    stacked Save, its link and Test down the middle (seen 2026-10-09, F2's card and A's). */
 .set-form > .set-foot { flex-direction: row; align-items: center; justify-content: flex-start; }
 .set-form > div:has(> .badge) { flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* F3: a switch is a checkbox with its word, never a full-width input; a field's note sits under
+   it. */
+.set-form .set-switch { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+.set-form .set-switch input { width: auto; padding: 0; margin: 0; }
+.set-inline { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .set-checks { margin-top: 12px; }
 .set-steps, .set-order { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column;
   gap: 5px; font-size: 13px; }

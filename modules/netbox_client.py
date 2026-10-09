@@ -3088,8 +3088,9 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
 
     if not _guard.writes_allowed():
         return {"ok": False, "blocked": True,
-                "error": "NetBox writes are disabled. Review the import preview and "
-                         "confirm, or enable writes in Settings → Integrations."}
+                "error": "NetBox writes are off for every network (Writes allowed, on "
+                         "Settings › Installation › Connections, NetBox connection). Review the "
+                         "import preview and confirm it with writes permitted."}
 
     # One NetBox writer per list at a time, across processes (R21): refused, naming the first.
     try:
@@ -3685,8 +3686,9 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
 
     if not dry_run and not _guard.writes_allowed():
         return {"ok": False, "blocked": True,
-                "error": "NetBox writes are disabled. Review the removal preview and "
-                         "confirm, or enable writes in Settings → Integrations."}
+                "error": "NetBox writes are off for every network (Writes allowed, on "
+                         "Settings › Installation › Connections, NetBox connection). Review the "
+                         "removal preview and confirm it with writes permitted."}
 
     session = _session_from_config(cfg)
     base    = cfg["url"]

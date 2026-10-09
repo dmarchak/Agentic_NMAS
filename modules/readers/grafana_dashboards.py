@@ -266,7 +266,8 @@ READER = reader_job.register(reader_job.Reader(
                     "minutes makes an edit appear soon without re-reading every model each minute"),
     read=read,
     invalidates=("dashboards",),
-    remedy="Check Grafana's URL and token in Settings > Integrations; the error names the endpoint",
+    remedy=("Check Grafana's URL and token in Settings › Default, the Grafana card (or the "
+            "network's own); the error names the endpoint"),
     window="the dashboards as they were at the read",
     announce_if=changed,
     announce_at_least_every=KEEPALIVE_SECONDS,

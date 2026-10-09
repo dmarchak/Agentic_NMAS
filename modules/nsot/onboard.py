@@ -760,12 +760,15 @@ def unmet_preconditions(netbox_plan=()) -> list:
 
             if not writes_allowed():
                 unmet.append(
-                    "NetBox writes are disabled, and this run would create "
-                    f"{len(netbox_plan)} object(s). Enable 'Allow writes to "
-                    "NetBox' in Settings → Integrations first — the wizard "
-                    "will not turn it on for you, because a switch flipped as "
-                    "a side effect of confirming something else is not a "
-                    "decision anybody made.")
+                    "NetBox writes are off for every network (Writes allowed, "
+                    "on Settings › Installation › Connections, NetBox "
+                    f"connection), and this run would create {len(netbox_plan)} "
+                    "object(s). Turn them on first by confirming an authorised "
+                    "NetBox write with writes permitted (today's NetBox import: "
+                    "v2 does not offer one yet, C619). The wizard will not turn "
+                    "them on for you, because a switch flipped as a side effect "
+                    "of confirming something else is not a decision anybody "
+                    "made.")
         except Exception as exc:               # noqa: BLE001
             log.error("onboard: could not read the NetBox write gate: %s", exc)
             unmet.append("could not read the NetBox write gate — a check that "
