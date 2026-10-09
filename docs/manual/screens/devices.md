@@ -57,6 +57,7 @@ The Actions menu:
   configuration to startup, is read back, and is recorded as golden, one commit for the batch.
   See [Save to startup and as golden](save).
 - **Save every device of the network…** opens the same Save for every device in the inventory;
-  a commit that covers the whole network may earn a baseline.
+  it is Save All: it asks for a baseline, earned when every device was saved and recorded at
+  its committed intent, and the result says which, or why not.
 
 The rows ticked are kept when the list redraws.

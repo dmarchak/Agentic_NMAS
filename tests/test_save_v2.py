@@ -106,6 +106,11 @@ def _message(repo, ref="HEAD"):
                           capture_output=True, text=True).stdout
 
 
+def _tags(repo):
+    return subprocess.run(["git", "-C", repo, "tag", "-l", "baseline/*"], capture_output=True,
+                          text=True).stdout.split()
+
+
 def _page(lab, *devices, **args):
     q = "&".join([f"device={d}" for d in devices] + [f"{k}={v}" for k, v in args.items()])
     r = lab["client"].get(f"/v2/devices/save?list=Lab&{q}")
@@ -308,6 +313,42 @@ class TestTheRun:
         assert status == 409 and lab["sent"] == [] and lab["records"] == []
         assert "the selection&#39;s plan changed since you saw it" in html
         assert "Nothing was sent" in html and "Plan it again" in html
+
+    def test_the_whole_network_saved_earns_a_baseline(self, lab):
+        """The operator, 2026-10-09: "v2 save all devices needs to add a new baseline". The
+        whole network saved together is Save All (`Source: save_all`), whose baseline the
+        decision WANTS; with every device at its intent it is earned, even with nothing to
+        commit (an in-sync network is the strongest evidence, `repo.save_golden`)."""
+        lab["rows"][:] = lab["rows"][:1]                     # r2 is the whole network
+        before = _tags(lab["repo"])
+        status, html = _run(lab, form=_form(_page(lab, all=1)))
+        assert status == 200
+        new = sorted(set(_tags(lab["repo"])) - set(before))
+        assert len(new) == 1, new
+        msg = _message(lab["repo"], new[0])
+        assert "Source: save_all" in msg and "Baseline: earned" in msg
+        said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html))
+        assert f"baseline earned {new[0]}: every device of Lab was saved and recorded" in said
+        assert "Source: save_all" in said and "No baseline" not in said
+
+    def test_a_network_off_its_intent_is_saved_and_its_baseline_denied_saying_why(self, lab):
+        lab["rows"][:] = lab["rows"][:1]
+        lab["running"]["r2"] = _broken(lab["captured"])      # r2 departs from its intent
+        before = _tags(lab["repo"])
+        status, html = _run(lab, form=_form(_page(lab, all=1)))
+        assert status == 200 and lab["records"][0]["state"] == "persisted"
+        assert sorted(set(_tags(lab["repo"])) - set(before)) == [], "no baseline tag"
+        said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html))
+        assert "1 device: 1 saved and recorded" in said
+        assert re.search(r"No baseline: [^.]*r2", said), said[said.find("No baseline") - 50:][:300]
+
+    def test_a_selection_asks_for_no_baseline(self, lab):
+        lab["running"]["r2"] = _broken(lab["captured"])
+        before = _tags(lab["repo"])
+        status, html = _run(lab, "r2")
+        assert status == 200 and _tags(lab["repo"]) == before
+        assert "Source: save" in _message(lab["repo"]) and "Source: save_all" not in _message(lab["repo"])
+        assert "baseline" not in re.sub(r"<[^>]+>", "", html).lower()
 
     def test_the_job_makes_the_plan_again_when_its_turn_comes(self, lab):
         """The confirm checks the hash, and the job checks it again when it runs: a device

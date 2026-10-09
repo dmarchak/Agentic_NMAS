@@ -114,5 +114,11 @@ def job_card(list_name: str, job_id: str, got, *, q: str = "", outcome: str = ""
                 bad=len(rows) - good, words=words, groups=groups,
                 chip={"done": "done", "partial": "partial"}.get(payload.get("state"), "failed"),
                 commit=payload.get("commit", ""), baseline=save.get("baseline"),
+                # The whole network's Save asks for a baseline; the result says what the
+                # measurement decided, earned or the reasons it was not.
+                fleet=bool(payload.get("fleet")),
+                baseline_denied=[str(r) for r in save.get("baseline_denied") or []],
+                source=save_op.SOURCE_FLEET if payload.get("fleet") else save_op.SOURCE,
+                decision_only=bool(save.get("decision_only")),
                 record_error=save.get("error", "") if save and not save.get("ok") else "",
                 retry=retry, outcomes=[(k, w) for k, w, _kind in OUTCOME_WORDS])

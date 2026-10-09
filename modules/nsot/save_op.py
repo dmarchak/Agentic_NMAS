@@ -37,6 +37,10 @@ GROUPS = ("save", "not_answering", "held", "refused")
 OUTCOMES = ("saved_recorded", "saved_unchanged", "not_persisted", "unread", "held", "refused",
             "not_answering")
 GOOD = ("saved_recorded", "saved_unchanged")
+#: The commit's `Source:`: a selection's, and the whole network's, which is Save All's (the
+#: baseline decision wants a baseline for it, and Devices and History read it as Save All).
+SOURCE = "save"
+SOURCE_FLEET = "save_all"
 
 _LIVE: dict = {}
 _LIVE_LOCK = threading.Lock()
@@ -241,9 +245,14 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
                                       platform=entry.get("platform", "")))
     commit, save = "", {}
     if items:
+        # The whole network saved together is Save All, and `save_all` is the source the
+        # baseline decision WANTS a baseline for (`repo._baseline_wanted`); `save` would want
+        # one only when two goldens changed, so an in-sync network never got its restore point
+        # (the operator, 2026-10-09: "v2 save all devices needs to add a new baseline"). Earned
+        # or denied by measurement there: coverage of the inventory and every device at intent.
         save = (save_golden or R.save_golden)(
-            list_name, items, source="save", actor=actor, allow_new=False,
-            inventory_size=len(inventory) if p["fleet"] else 0,
+            list_name, items, source=SOURCE_FLEET if p["fleet"] else SOURCE, actor=actor,
+            allow_new=False, inventory_size=len(inventory) if p["fleet"] else 0,
             baseline=None if p["fleet"] else False)
         commit = (save.get("commit") or "")[:12]
         refused_save = {r["device"]: r for r in (save.get("refused") or [])}
@@ -266,8 +275,9 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
     log.info("save: %s saved and recorded %d of %d in %s (commit %s)", actor, good, len(rows),
              list_name, commit or "none")
     return {"ok": ok, "state": "done" if ok else ("partial" if good else "failed"), "plan": p,
-            "outcomes": rows, "commit": commit,
-            "save": {k: save[k] for k in ("ok", "error", "baseline", "tags") if k in save}}
+            "outcomes": rows, "commit": commit, "fleet": p["fleet"],
+            "save": {k: save[k] for k in ("ok", "error", "baseline", "baseline_denied", "tags",
+                                          "decision_only") if k in save}}
 
 
 def start(list_name: str, hostnames: list, actor: str, confirmed_hash: str) -> dict:

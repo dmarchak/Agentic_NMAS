@@ -63,11 +63,18 @@
 {%- elif s.state == 'result' %}
   <h2 id="save-h">{{ s.total }} device{{ 's' if s.total != 1 }}: {{ s.good }} saved and recorded{% if s.bad %}, {{ s.bad }} not{% endif %} {{ badge(s.chip, s.level) }}</h2>
   {%- if s.commit %}
-  <p>Commit <span class="mono">{{ s.commit }}</span> (<span class="mono">Source: save</span>), as the person who confirmed it. {% if s.baseline %}It earned baseline {{ s.baseline }}.{% endif %} <a href="{{ url_for('v2.history_page') }}">History</a></p>
+  <p>Commit <span class="mono">{{ s.commit }}</span> (<span class="mono">Source: {{ s.source }}</span>), as the person who confirmed it.{% if s.decision_only %} No golden changed: the commit records the baseline decision.{% endif %} <a href="{{ url_for('v2.history_page') }}">History</a></p>
   {%- elif s.good %}
   <p>Saved; every golden already matched what each device runs, so nothing new was committed.</p>
   {%- else %}
   <p>Nothing was recorded.</p>
+  {%- endif %}
+  {%- if s.fleet %}
+  {%- if s.baseline %}
+  <p class="save-baseline">{{ badge('baseline earned', 'ok') }} <span class="mono">{{ s.baseline }}</span>: every device of {{ s.list }} was saved and recorded, each at its committed intent.</p>
+  {%- else %}
+  <div class="notice notice-warn save-baseline">{{ icon('warn', 16) }}<p><strong>No baseline:</strong> {{ s.baseline_denied | join('; ') if s.baseline_denied else 'the record was not made' }}.</p></div>
+  {%- endif %}
   {%- endif %}
   {%- if s.record_error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not recorded:</strong> {{ s.record_error }}. Each device was saved to startup and its persist record kept.</p></div>{% endif %}
   <form class="sc-tools save-filter" hx-get="{{ url_for('v2.save_job', job=s.job, list=s.list) }}" hx-target="#save-op" hx-swap="outerHTML" hx-trigger="input changed delay:400ms from:input, change from:select, search">

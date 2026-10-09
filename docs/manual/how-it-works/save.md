@@ -33,11 +33,11 @@ Before anything is sent, a device the network's manifest does not know (never on
 
 When every device has had its turn:
 
-6. **Record** (`record`). Recorded: one commit of every golden that changed, `Source: save`, as you. A device whose golden already matched is "saved; its golden already matched". When every device of the network was saved together, the commit may earn a [baseline](baselines), measured as for any save.
+6. **Record** (`record`). Recorded: one commit of every golden that changed, as you: `Source: save` for a selection, which never asks for a baseline. **Save every device of the network** is Save All, `Source: save_all`, and asks for a [baseline](baselines): it is earned when every device of the inventory was saved and recorded and each is at its committed intent, and denied otherwise, with the reasons. The decision is recorded even when no golden changed (a commit of its own, naming every device read), and an earned baseline is tagged then too: a network already in sync is the strongest evidence there is. A device whose golden already matched is "saved; its golden already matched".
 
 ## The result
 
-The card leads with the count saved and recorded and whatever was not, its colour partial when any device was not. Each outcome is a group, the ones to act on open: not recorded because the read-back did not match, not recorded because the running configuration could not be read, held, not answering, cannot be saved from here. **Retry the N not saved** opens Save for those devices, planned again. The commit is named, and History holds it.
+The card leads with the count saved and recorded and whatever was not, its colour partial when any device was not. For the whole network it then says the baseline's outcome: "baseline earned" with its tag, or "No baseline" with each reason (a device not saved or not recorded, a device departing from its committed intent). Each outcome is a group, the ones to act on open: not recorded because the read-back did not match, not recorded because the running configuration could not be read, held, not answering, cannot be saved from here. **Retry the N not saved** opens Save for those devices, planned again. The commit is named, and History holds it.
 
 ## What Save does not do
 
