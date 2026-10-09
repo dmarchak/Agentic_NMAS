@@ -31,6 +31,9 @@ def controls(text: str) -> list:
         if close < 0:
             continue
         inner = text[m.end():close]
+        # A control busy on itself carries its idle and busy words (`op-idle`, `op-busy`): its
+        # name is the idle one (C602: "Earlier" read "Earlier Moving…").
+        inner = re.sub(r'<span class="op-busy">.*?</span>', " ", inner, flags=re.S)
         label = " ".join(re.sub(r"<[^>]+>", " ", _JINJA.sub(" ", inner)).split())
         classes = _attr(attrs, "class").split()
         member = ("btn" in classes or 'role="menuitem"' in attrs

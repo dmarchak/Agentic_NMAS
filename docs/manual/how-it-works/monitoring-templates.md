@@ -42,7 +42,10 @@ Apply is a deploy scoped to the profile's lines (see [Deploy a change](deploy)):
    intent changes held back (never sent by this action), and each OLD monitoring line the
    profile supersedes, with a box to remove it (Mode B) and a field for its reason. A device
    with nothing to send leaves the order. A preview can be re-planned with a device moved
-   **Earlier** or **Later**, or **Left out**.
+   **Earlier** or **Later**, or **Left out**: the button reads "Moving…" and every control on
+   the preview waits until the new plan is drawn. Once the batch is confirmed it runs in the
+   order you confirmed, so these controls are disabled, saying so, and a note above the order
+   says the batch is running; open the page again to plan another.
 3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet. The confirm carries
    each device's capture and program hashes in the order shown, and the removals with their
    reasons. The server answers at once and starts the batch as a job, as you.
@@ -102,7 +105,8 @@ is removed. It is the deploy above with scope `templates`:
    operands they compared on hover, and each template that is configured but not reporting,
    named with **Diagnose it**. A template not reporting is never part of the deploy: its
    lines are already on the device, and the cause is looked for on the device's page.
-   **Earlier**, **Later** and **Leave out** plan the deploy again.
+   **Earlier**, **Later** and **Leave out** plan the deploy again, busy on the button while it
+   plans; once the deploy is confirmed they are disabled, since it runs in the order confirmed.
 3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet. The confirm is bound
    to the programs on the screen: if a device or a template changed since, that device is
    refused, with nothing sent to it, naming what moved. The server answers at once and starts

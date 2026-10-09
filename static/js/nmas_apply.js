@@ -69,6 +69,27 @@
                     (missing === 1 ? '' : 's')};
   }
 
+  /* Once the confirm has started the batch (C602, the operator's Coverage walk, 2026-10-09):
+     it runs in the order confirmed, so nothing on the preview may plan again. Every control in
+     the preview's form is disabled with the reason on its hover, and the note says so. A move
+     clicked then had re-planned the preview for 3 to 6 s with nothing showing, and could not
+     reach the running batch. Returns how many controls it locked. */
+  function lockPreview(doc) {
+    var form = doc && doc.getElementById ? doc.getElementById('apply-form') : null;
+    if (!form) return 0;
+    var why = 'The batch is running in the order you confirmed: a change here cannot reach it';
+    var all = form.querySelectorAll('button, input, select, textarea'), n = 0;
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].type === 'hidden' || all[i].id === 'apply-confirm') continue;
+      all[i].disabled = true;
+      all[i].setAttribute('title', why);
+      n++;
+    }
+    var note = doc.getElementById('apply-locked');
+    if (note) note.hidden = false;
+    return n;
+  }
+
   /* PURE. The Devices page's selection words: *names* the ticked devices; the menu's count. */
   function deviceWords(names) {
     var n = names.length, shown = names.slice(0, 8).join(', ');
@@ -205,6 +226,7 @@
             self.busy = false;
             self.started = o.started;
             self.error = o.error;
+            if (o.started) lockPreview(root.document);
             if (o.started && root.htmx) {
               root.htmx.ajax('GET', o.url, {target: '#apply-result', swap: 'innerHTML'});
             }

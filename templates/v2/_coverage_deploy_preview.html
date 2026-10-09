@@ -20,6 +20,8 @@
   {%- for name in order %}
   <input type="hidden" name="device" value="{{ name }}">
   {%- endfor %}
+  {#- Shown once the confirm starts the deploy (C602): it runs in the order confirmed. -#}
+  <p class="notice notice-info apply-locked" id="apply-locked" hidden>The deploy is running in the order you confirmed: a change here cannot reach it, so the order and the devices are fixed. Its progress is below; open this page again to plan another.</p>
 
   {%- for r in sending %}
   <section class="card cdep-device" id="apply-{{ r.name }}">
@@ -28,9 +30,10 @@
         <span class="muted">· one program{% if r.templates %}: {{ r.templates | join(', ') }}{% endif %}</span>
         {%- if r.state != 'deployable' %} {{ badge({'blocked': 'blocked: nothing is sent', 'refused': 'refused: nothing is sent', 'not_authorised': 'waits on a stated reason'}.get(r.state, r.state), 'danger' if r.state in ('blocked', 'refused') else 'warn') }}{% endif %}</div>
       <div class="cdep-order">
-        {%- if not loop.first %}<button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_preview', move='up:' ~ r.name) }}" hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" aria-label="Move {{ r.name }} earlier">Earlier</button>{% endif %}
-        {%- if not loop.last %}<button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_preview', move='down:' ~ r.name) }}" hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" aria-label="Move {{ r.name }} later">Later</button>{% endif %}
-        <button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_preview', drop=r.name) }}" hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" aria-label="Leave {{ r.name }} out of this deploy">Leave out</button>
+        {#- Busy on itself while the deploy is planned again (C602), every button waiting with it. -#}
+        {%- if not loop.first %}<button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', move='up:' ~ r.name) }}" hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button" aria-label="Move {{ r.name }} earlier"><span class="op-idle">Earlier</span><span class="op-busy">Moving…</span></button>{% endif %}
+        {%- if not loop.last %}<button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', move='down:' ~ r.name) }}" hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button" aria-label="Move {{ r.name }} later"><span class="op-idle">Later</span><span class="op-busy">Moving…</span></button>{% endif %}
+        <button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', drop=r.name) }}" hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button" aria-label="Leave {{ r.name }} out of this deploy"><span class="op-idle">Leave out</span><span class="op-busy">Leaving out…</span></button>
       </div>
     </div>
     {%- if r.busy %}<div class="notice notice-warn">{{ icon('warn') }}<p>{{ r.busy }}</p></div>{% endif %}

@@ -211,7 +211,7 @@ class TestThePage:
         prog = re.search(r'<pre class="apply-program">(.*?)</pre>', card.group(1), re.S).group(1)
         assert "ip sla 1" in prog.splitlines() and any(l.startswith("snmp-server")
                                                         for l in prog.splitlines())
-        assert ">Leave out</button>" in card.group(1)
+        assert '<span class="op-idle">Leave out</span>' in card.group(1)
         assert ">Earlier</button>" not in card.group(1) and ">Later</button>" not in card.group(1)
         assert "Checks:" in card.group(1)
         # What verify does here, from the rule that decides it (`verify_note`, read_back_all).
@@ -361,5 +361,172 @@ def test_a_real_browser_deploys_from_coverage_s_own_button(lab, monkeypatch, r6_
             assert "1 of 1 device(s) deployed" in text, text
             assert reached == [("r6", "templates")]
         finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
+#: Each page with Earlier and Later: (scope, how r2 is made to send too, the rollout's names).
+ROLLOUT_PAGES = {
+    "templates": (_strip_ip_sla, "return Array.prototype.map.call(document.querySelectorAll("
+                  "'.cdep-device .cdep-hd strong'), function (x) { return x.textContent"
+                  ".replace(/^\\d+\\.\\s*/, ''); })"),
+    # The profile Apply shares the route, the client and the buttons' markup; this lab gives it
+    # one device with a program (r2 reads "has every line" under the profile scope however its
+    # golden is edited), so its lock is clicked in its own test below.
+}
+
+
+@pytest.mark.parametrize("scope", sorted(ROLLOUT_PAGES))
+def test_a_real_browser_pages_earlier_and_later_while_a_job_runs(lab, monkeypatch, scope,
+                                                                r6_probe_unsent, r2_snmp_down):
+    """The operator, 2026-10-09 (the Coverage walk): while a deploy was running, Earlier and
+    Later did nothing. Two devices, the batch confirmed and held running (its first device's
+    step waits), then Earlier and Later clicked on the page as it stands."""
+    import threading
+    import time
+
+    import routes.deploy as rd
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    from modules.nsot import listref
+    from tests.test_coverage_page import R2, R6
+    monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [dict(R2), dict(R6)])
+    monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (r2_snmp_down, "", ""))
+    # r2 sends too: its golden loses what this scope supplies and its intent keeps.
+    from modules.nsot.repo import GoldenItem, save_golden
+    edit, order = ROLLOUT_PAGES[scope]
+    saved = save_golden("Lab", [GoldenItem("r2", edit(lab["captured"]), "203.0.113.12",
+                                           platform="cisco_iosxe")],
+                        source="onboarding", actor="t", baseline=False,
+                        acknowledge_structural_change={"r2": "the test's edit: r2 lacks it"})
+    assert saved.get("ok") and "r2" in (saved.get("changed") or []), saved
+    running, release = threading.Event(), threading.Event()
+
+    def spy(entry, list_name, rows, authorise, **kw):
+        running.set()
+        release.wait(30)
+        return {"device": entry["artifact"].device, "outcome": "deployed", "commands": ["x"]}
+    monkeypatch.setattr(rd, "_deploy_one", spy)
+    monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+    # The host's re-plan took 3 to 6 s while a job planned (C602): slowed here so the wait is
+    # seen, never assumed instant.
+    real_plan = rd.plan_devices
+
+    def slow_plan(*a, **k):
+        time.sleep(1.5)
+        return real_plan(*a, **k)
+    monkeypatch.setattr(rd, "plan_devices", slow_plan)
+    seen = ("window.__seen = []; document.body.addEventListener('htmx:beforeRequest',"
+            "function (e) { window.__seen.push(e.detail.pathInfo.requestPath); }); return 1")
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url(f"/v2/monitoring/apply?list=Lab&scope={scope}&device=r6&device=r2"))
+            b.wait_for("var c=document.querySelector('#apply-confirm');"
+                       "return window.Alpine && c && !c.disabled", 30)
+            before = b.js(order)
+            assert len(before) == 2, (before, b.js(
+                "var n = document.querySelector('#apply-nothing') || "
+                "document.querySelector('#apply-preview');"
+                "return n.textContent.replace(/\\s+/g, ' ').slice(0, 900)"))
+            # Before the confirm: a move is busy on itself, every button waiting with it, and
+            # the new order arrives.
+            b.click(f'button[aria-label="Move {before[0]} later"]')
+            busy = b.wait_for(
+                "var x=document.querySelector('button.htmx-request[data-reorder]');"
+                "var all=document.querySelectorAll('#apply-preview button');"
+                "return x && getComputedStyle(x.querySelector('.op-busy')).display !== 'none' && "
+                "Array.prototype.every.call(all, function (y) { return y.disabled; }) && "
+                "x.textContent", 10)
+            assert "Moving…" in busy, busy
+            b.wait_for("var o=(function () {" + order + "})(); return o.length === 2 && "
+                       f"o[0] === {json.dumps(before[1])}", 15)
+            moved = b.js(order)
+            assert moved == [before[1], before[0]], moved
+            b.wait_for("var c=document.querySelector('#apply-confirm');"
+                       "return window.Alpine && c && !c.disabled", 30)
+            # The confirm starts the batch, held running at its first device.
+            b.click("#apply-confirm")
+            assert running.wait(30), "the batch never reached its first device"
+            b.wait_for("return !!document.querySelector('#apply-job')", 15)
+            # While it runs: the order cannot change it, so every control says so and does
+            # nothing; the note is shown; a click sends no request.
+            locked = b.wait_for(
+                "var n=document.querySelector('#apply-locked'); if (!n || n.hidden) return null;"
+                "var m=document.querySelectorAll('#apply-form button[data-reorder]');"
+                "return Array.prototype.map.call(m, function (y) { return [y.disabled,"
+                " y.getAttribute('title')]; })", 10)
+            assert locked and all(d and t.startswith("The batch is running in the order you "
+                                                     "confirmed") for d, t in locked), locked
+            b.js(seen)
+            for label in (f"Move {moved[1]} earlier", f"Move {moved[0]} later"):
+                b.js(f"document.querySelector('button[aria-label=\"{label}\"]').click(); "
+                     "return 1")
+            time.sleep(2)
+            assert b.js("return window.__seen") == [], "a locked control asked for a re-plan"
+            assert b.js(order) == moved, "the order the batch runs in is still drawn"
+        finally:
+            release.set()
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
+def test_a_real_browser_finds_the_profile_apply_locked_while_its_batch_runs(
+        lab, monkeypatch, r6_probe_unsent, r2_snmp_down):
+    """C602 on the monitoring profile's Apply (the page of the operator's walk): once the batch
+    is confirmed and running, its rollout controls are disabled saying why, the note is shown,
+    and a click sends nothing."""
+    import threading
+    import time
+
+    import routes.deploy as rd
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    from modules.nsot import listref
+    from tests.test_coverage_page import R2, R6
+    monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [dict(R2), dict(R6)])
+    monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (r2_snmp_down, "", ""))
+    running, release = threading.Event(), threading.Event()
+
+    def spy(entry, list_name, rows, authorise, **kw):
+        running.set()
+        release.wait(30)
+        return {"device": entry["artifact"].device, "outcome": "deployed", "commands": ["x"]}
+    monkeypatch.setattr(rd, "_deploy_one", spy)
+    monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url("/v2/monitoring/apply?list=Lab&scope=profile&device=r6"))
+            b.wait_for("var c=document.querySelector('#apply-confirm');"
+                       "return window.Alpine && c && !c.disabled", 30)
+            assert b.js("return document.querySelector('#apply-locked').hidden") is True
+            b.click("#apply-confirm")
+            assert running.wait(30), "the batch never reached its device"
+            locked = b.wait_for(
+                "var n=document.querySelector('#apply-locked'); if (!n || n.hidden) return null;"
+                "var m=document.querySelectorAll('#rollout button[data-reorder]');"
+                "return Array.prototype.map.call(m, function (y) { return [y.textContent.trim(),"
+                " y.disabled, y.getAttribute('title')]; })", 10)
+            assert locked and [x[0] for x in locked] == ["EarlierMoving…", "LaterMoving…",
+                                                         "Leave outLeaving out…"], locked
+            assert all(d and t.startswith("The batch is running in the order you confirmed")
+                       for _w, d, t in locked), locked
+            b.js("window.__seen = []; document.body.addEventListener('htmx:beforeRequest',"
+                 "function (e) { window.__seen.push(e.detail.pathInfo.requestPath); });"
+                 "document.querySelector('button[aria-label=\"Leave r6 out of this batch\"]')"
+                 ".click(); return 1")
+            time.sleep(2)
+            assert b.js("return window.__seen") == [], "a locked control asked for a re-plan"
+        finally:
+            release.set()
             b.go("about:blank")
             browser.close_socketio_sessions()
