@@ -46,10 +46,10 @@ CI_WORKERS = 4
 #: from ca52963 to 64d4377 they ran only in a separate clean process here, and CI was red for
 #: five commits on a failure no local run could meet (a Socket.IO test client earlier in the
 #: same worker, 2026-10-03).
-#: CI runs it as three jobs at once (2026-10-03), each its shard of the files
-#: (`scripts/nmas-shards`): the gate runs the SAME three commands, at once, each with CI's
+#: CI runs it as four jobs at once (2026-10-03; four since C614), each its shard of the files
+#: (`scripts/nmas-shards`): the gate runs the SAME four commands, at once, each with CI's
 #: workers, so each job's company in a worker is the one CI's has (C349).
-SHARDS = ("browser", "a", "b")
+SHARDS = ("browser1", "browser2", "a", "b")
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 NMAS_REQUIRE_PG=1 "
          f"scripts/nmas-test -q -p no:cacheprovider -n {CI_WORKERS} --cov=modules --cov=routes "
          "--cov=app --cov-report= -rEfs $({py} scripts/nmas-shards {shard})")
@@ -240,7 +240,7 @@ def main(argv=None):
                    f"{', '.join(CI_FILES)}: " + "; ".join(diffs[:8])
                    + (f"; and {len(diffs) - 8} more" if len(diffs) > 8 else "")
                    + ". Rebuild it: scripts/nmas-ci-env <CI's python> (docs/TESTING.md)")
-    say("4. the suite, CI's three commands in CI's interpreter, at once, the browser tests "
+    say("4. the suite, CI's four commands in CI's interpreter, at once, the browser tests "
         "among them")
     path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
                             os.environ.get("PATH", "")])

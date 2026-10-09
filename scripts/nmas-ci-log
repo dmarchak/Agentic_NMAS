@@ -58,8 +58,8 @@ TOKEN_FILE = os.path.expanduser("~/.config/nmas/github-actions-read.token")
 USER_AGENT = "nmas-automation/1.0"
 WARN_DAYS = 14
 EXIT_TOKEN, EXIT_GITHUB = 1, 2
-#: C614 (the operator, 2026-10-09): CI's job bound is 14 minutes; when the browser job's slowest
-#: run passes 10 (about 70% of it), the browser job is split.
+#: C614 (the operator, 2026-10-09): CI's job bound is 14 minutes, and a job whose slowest run
+#: passes 10 (about 70% of it) is due a split. The browser job was split at 9.0 (C614, closed).
 TRIGGER_MINUTES = 10
 FAILURE_LINE = re.compile(r"(?:^|\s)(FAILED|ERROR) tests/\S+|^E\s{2,}|Error: |##\[error\]")
 
