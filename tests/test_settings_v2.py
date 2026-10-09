@@ -261,6 +261,32 @@ class TestSaveAndTest:
         assert "Loki is not Branch's own (it is inherit from Default)" in html
         assert L.resolve("Branch", "loki_url")[1] == L.INHERITED
 
+    def test_an_installation_group_sent_to_a_network_route_is_refused_and_records_nothing(
+            self, networks):
+        """C615 (2026-10-09): no card draws an installation group on a network page, so only a
+        hand-made request sends one. Its plain keys were refused by `write`, but an
+        installation SECRET sent alone to Default's route was stored and recorded in Default's
+        record, never the installation's. Refused now, by the group, for Default and a network
+        alike, before anything is written."""
+        from modules.secrets_store import get_secret, is_set
+        from modules.settings_schema import get_setting
+        before = {n: len(L.changes(n)["rows"]) for n in ("Default", "Branch")}
+        token = get_secret("netbox_token")
+        answers = []
+        for list_name in ("Default", "Branch"):
+            for group, data in (("records_db", {"records_db_password": "x" * 24}),
+                                ("netbox_connection", {"netbox_token": "t" * 40}),
+                                ("netbox_connection", {"netbox_url": "https://192.0.2.99"})):
+                r, html = _save(networks, list_name, group, data)
+                answers.append((list_name, group, r.status_code,
+                                "the installation's" in html and "Settings › Installation" in html))
+        # What was written first: before the fix the drawer answered 404 AFTER the secret was
+        # stored and recorded in Default's record.
+        assert not is_set("records_db_password") and get_secret("netbox_token") == token
+        assert get_setting("netbox_url") != "https://192.0.2.99"
+        assert {n: len(L.changes(n)["rows"]) for n in ("Default", "Branch")} == before
+        assert all(code == 409 and said for _l, _g, code, said in answers), answers
+
     def test_a_field_of_another_group_is_ignored_and_nothing_changed_is_said(self, networks):
         _r, html = _save(networks, "Default", "grafana",
                          {"grafana_url": "http://192.0.2.10:3000", "loki_url": "x"})

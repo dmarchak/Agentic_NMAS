@@ -609,11 +609,17 @@ def save_values(list_name: str, group: str, values: dict, actor: str,
     record. ``{"ok", "label", "written", "unchanged", "recorded", ...}``."""
     from modules.secrets_store import SECRET_KEYS, set_secret
     from modules.settings_schema import get_setting
-    from modules.settings_scope import group_keys, group_label
+    from modules.settings_scope import group_keys, group_label, network_groups
 
     keys = set(group_keys(group))
     if not keys:
         raise SwitchRefused(f"{group!r} is not a settings group")
+    if group not in network_groups():
+        # C615: an installation group reaches here only by a hand-made request (no network
+        # card draws one). Its secrets went to the secrets store and the record to this
+        # network's, never the installation's: refused before anything is written.
+        raise SwitchRefused(f"{group_label(group)} is the installation's, not {list_name}'s: "
+                            "it is set once for every network, on Settings › Installation")
     stray = sorted(set(values) - keys)
     if stray:
         raise SwitchRefused(f"{', '.join(stray)} {'is' if len(stray) == 1 else 'are'} not "
