@@ -97,7 +97,10 @@ No network sets its own; the one reader of the keys is this client.
 Test leaves another version of the probe. A bucket lifecycle rule expires the noncurrent
 versions under `_probe/` after a day, and the current probe stays, one object
 (`scripts/host-steps/minio-lifecycle-probe.sh`, the operator's to run). MinIO's lifecycle does
-the expiry, never Mercury. The records' rule (M-4: 30 dailies and 12 monthlies under
+the expiry, never Mercury. **Done 2026-10-09 by the operator, 7 of 7 checks PASS:** rule
+`db44bg51nibb44jf09j0`, prefix `_probe/`, noncurrent versions expire after 1 day, none kept.
+The operator confirms the expiry after a day with `mc ls --versions lab/mercury/_probe/`.
+**Phase 4's MinIO side is done** (the operator, 2026-10-09). The records' rule (M-4: 30 dailies and 12 monthlies under
 `records/`) comes with the PostgreSQL dumps that write there.
 
 ## 4. The operator's host steps (when signed off; on the NMAS host, with the `lab` alias)
