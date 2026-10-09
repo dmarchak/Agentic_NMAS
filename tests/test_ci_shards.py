@@ -54,9 +54,9 @@ def test_the_jobs_share_the_work_and_the_weights_are_current():
     got = m.assign()
     loads = {s: sum(w.get(f, 0) for f in fs) for s, fs in got.items()}
     # a and b share the rest within 15%. The browser job may weigh more only when it holds its
-    # browser files and nothing else: they cannot be split (the gate runs only that job
-    # unconfined), and since 2026-10-09 they weigh 40% of the suite (C614), so the browser job
-    # is the long pole by construction, not by the assignment.
+    # browser files and nothing else: since 2026-10-09 they weigh 40% of the suite (C614), so
+    # one browser job is the long pole by construction, not by the assignment. Splitting them
+    # across two jobs is the operator's trigger (the slowest browser run past 10 minutes).
     assert max(loads["a"], loads["b"]) <= 1.15 * min(loads["a"], loads["b"]), loads
     if loads["browser"] > 1.15 * min(loads["a"], loads["b"]):
         assert all(m.uses_a_browser(f) for f in got["browser"]), (
