@@ -42,9 +42,24 @@ GOOD = ("saved_recorded", "saved_unchanged")
 #: baseline decision wants a baseline for it, and Devices and History read it as Save All).
 SOURCE = "save"
 SOURCE_FLEET = "save_all"
+#: Each device's row on the run's stepper (C605, board approved 2026-10-09), as
+#: `device_actions.stepper` reads them, ``(key, words, waits, names)``, each name noted as its
+#: step BEGINS: "save" by `_save_one`, "read_back" by `onboard.persist_on_device`, the rest
+#: here. "commit_wait" is a device through its turn, never counted as running.
+DEVICE_STEPS = (
+    ("save", "Save to startup", "the device's own write memory", ("save",)),
+    ("read_back", "Read back", "the startup config, and the running config's accounts",
+     ("read_back",)),
+    ("read_running", "Read running", "the running config, to record", ("read_running",)),
+    ("commit_wait", "Waiting for the commit", "every other device's turn", ("commit_wait",)),
+    ("recorded", "Recorded", "", ("recorded",)),
+)
+_STEP_NAMES = {n for s in DEVICE_STEPS for n in s[3]}
 
 _LIVE: dict = {}
 _LIVE_LOCK = threading.Lock()
+#: Runs whose rows are kept, newest last: a run's rows are read until its result is drawn.
+_LIVE_KEPT = 20
 
 
 def _reachability(list_name: str) -> dict:
@@ -118,15 +133,43 @@ def plan(list_name: str, hostnames: list) -> dict:
 
 
 def live(job_id: str) -> dict:
-    """``{host: state}`` of a running Save, for the card that redraws as each device ends."""
+    """``{host: {"state", "trail", "detail"}}`` of a running Save, in the order the devices
+    joined it, for the card that redraws as each device steps. A device holding its hold is
+    read from the hold itself (`device_ops.holder`), its trail live; the trail kept here is
+    what it reached when it let go."""
     with _LIVE_LOCK:
-        return dict(_LIVE.get(job_id) or {})
+        return {h: dict(v, trail=list(v.get("trail") or ()))
+                for h, v in (_LIVE.get(job_id) or {}).items()}
 
 
-def _mark(job_id: str, host: str, state: str) -> None:
-    if job_id:
-        with _LIVE_LOCK:
-            _LIVE.setdefault(job_id, {})[host] = state
+def _mark(job_id: str, host: str, state: str, *, trail=None, step: str = "",
+          detail: str = "") -> None:
+    """*host*'s state in the run; *trail* replaces its kept trail, *step* appends one."""
+    if not job_id:
+        return
+    import time
+
+    with _LIVE_LOCK:
+        if job_id not in _LIVE:
+            _LIVE[job_id] = {}
+            for old in list(_LIVE)[:-_LIVE_KEPT]:
+                _LIVE.pop(old, None)
+        row = _LIVE[job_id].setdefault(host, {"state": state, "trail": [], "detail": ""})
+        row["state"] = state
+        if trail is not None:
+            row["trail"] = [list(t) for t in trail]
+        if step:
+            row["trail"].append([step, time.time()])
+        if detail:
+            row["detail"] = detail
+
+
+def _trail_of(list_name: str, host: str) -> list:
+    """The steps *host*'s hold has noted, Save's own names only (``[[name, at], ...]``)."""
+    from modules.nsot import device_ops
+
+    progress = (device_ops.holder(list_name, host) or {}).get("progress") or {}
+    return [[n, a] for n, a in progress.get("trail") or [] if n in _STEP_NAMES]
 
 
 def _save_one(row: dict, actor: str, persist=None, record=None) -> dict:
@@ -135,7 +178,7 @@ def _save_one(row: dict, actor: str, persist=None, record=None) -> dict:
     from modules.nsot import credential_rotation as cr
     from modules.nsot import device_ops, onboard
 
-    device_ops.note("saving")
+    device_ops.note("save")
     out = (persist or onboard.persist_on_device)(
         row.get("ip", ""), row.get("username", "admin"), decrypt_field(row.get("password", "")),
         cr.enable_secret(row), row.get("device_type", ""))
@@ -194,37 +237,42 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
         by the thread that writes (`device_ops.may_write`), so the job thread cannot hold it
         for the worker. ``(host, outcome or None, (entry, text) or None)``."""
         d = inventory[host]
-        _mark(job_id, host, "saving")
         try:
             with device_ops.hold(list_name, host, "save", actor,
                                  detail="write memory, then the golden", ip=d.get("ip", "")):
+                # Running from here; its steps are read from the hold while it holds, and the
+                # trail it reached is kept when it lets go (C605).
+                _mark(job_id, host, "running")
                 try:
                     got = _save_one(d, actor, persist, record)
                 except Exception as exc:              # noqa: BLE001 (that device's outcome)
                     got = {"ok": False, "state": "unknown",
                            "detail": f"{type(exc).__name__}: {exc}"}
                 if not got.get("ok"):
-                    _mark(job_id, host, "not_persisted")
-                    return host, _outcome(host, "not_persisted",
-                                          got.get("detail") or got.get("state", "")), None
+                    detail = got.get("detail") or got.get("state", "")
+                    _mark(job_id, host, "not_persisted", trail=_trail_of(list_name, host),
+                          detail=detail)
+                    return host, _outcome(host, "not_persisted", detail), None
                 # The running config read while still held: what is recorded is what the
                 # device ran when it saved.
-                device_ops.note("reading the running config")
-                _mark(job_id, host, "saved")
+                device_ops.note("read_running")
                 try:
                     entry, text = (read_one or _capture_entry)(list_name, repo_dir, d)
                 except Exception as exc:              # noqa: BLE001 (that device's outcome)
                     entry, text = {"device": host, "read": False,
                                    "error": f"{type(exc).__name__}: {exc}"}, None
                 entry.pop("read_phases", None)
-                if not entry.get("read") or text is None:
-                    _mark(job_id, host, "unread")
-                    return host, _outcome(host, "unread", (
-                        "saved to startup; its running config could not be read to record: "
-                        + (entry.get("error") or "no reason was recorded"))), None
-                return host, None, (entry, text)
+                trail = _trail_of(list_name, host)
+            if not entry.get("read") or text is None:
+                detail = ("saved to startup; its running config could not be read to record: "
+                          + (entry.get("error") or "no reason was recorded"))
+                _mark(job_id, host, "unread", trail=trail, detail=detail)
+                return host, _outcome(host, "unread", detail), None
+            # Through its turn: released, waiting for the batch's one commit.
+            _mark(job_id, host, "through", trail=trail, step="commit_wait")
+            return host, None, (entry, text)
         except device_ops.DeviceBusy as exc:
-            _mark(job_id, host, "held")
+            _mark(job_id, host, "held", detail=f"{exc}")
             return host, _outcome(host, "held", f"{exc}. Nothing was sent to it"), None
 
     read = {}
@@ -269,7 +317,9 @@ def run(list_name: str, hostnames: list, actor: str, confirmed_hash: str, *, job
                 outcomes[host] = _outcome(host, "saved_recorded"
                                           if host in (save.get("changed") or [])
                                           else "saved_unchanged")
-            _mark(job_id, host, outcomes[host]["outcome"])
+            _mark(job_id, host, outcomes[host]["outcome"],
+                  step="recorded" if outcomes[host]["outcome"] in GOOD else "",
+                  detail=outcomes[host]["detail"])
     rows = [outcomes[d["host"]] for d in p["devices"]]
     good = sum(1 for r in rows if r["outcome"] in GOOD)
     ok = bool(rows) and good == len(rows)

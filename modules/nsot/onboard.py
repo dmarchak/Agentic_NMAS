@@ -2810,8 +2810,13 @@ def persist_on_device(mgmt_ip: str, username: str, password: str, secret: str,
             {"device_type": device_type, "ip": mgmt_ip, "username": username},
             password=password, secret=secret))
         try:
+            from modules.nsot import device_ops
+
             conn.enable()
             conn.save_config()
+            # The read-back begins: a stepper reading the hold's trail (Save's, C605) times the
+            # save and the read-back apart. A thread holding nothing notes nothing.
+            device_ops.note("read_back")
             startup = conn.send_command("show startup-config", read_timeout=_read_timeout())
             running = conn.send_command("show running-config | include ^username",
                                         read_timeout=_read_timeout())

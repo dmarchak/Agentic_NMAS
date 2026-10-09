@@ -21,7 +21,7 @@ It is built from two operations that already exist, never a third copy of either
 
 ## The run, in order
 
-The run is a job: the page can close, and the card redraws in place as each device ends and when the run finishes, never on a timer.
+The run is a job: the page can close, and the card redraws in place as each device takes a step and when the run finishes, never on a timer. It is the batch stepper: a row per device showing the step it is in (save to startup, read back, read running, waiting for the commit, recorded) and the time each took, an overall bar of the devices through their turn, and the commit as its own last row, which waits for every device's turn. A device through its turn waits for the commit and is counted as such, never as running. Under 25 devices every row is drawn; from 25 the rows group (failed, running, waiting, through their turn), the first two open, with Find a device above them.
 
 Before anything is sent, a device the network's manifest does not know (never onboarded or adopted) is left out, named: its golden would have nothing to attach to. Then each device runs on its own worker, at most six at once:
 

@@ -45,21 +45,42 @@
   <h2 id="save-h">No device chosen</h2>
   <p>Tick devices on <a href="{{ url_for('v2.devices') }}">Devices</a> and choose Actions › Save, or Save every device there.</p>
 {%- elif s.state == 'running' %}
-  <h2 id="save-h">Saving {{ s.total }} device{{ 's' if s.total != 1 }} {{ badge('running', 'warn') }}</h2>
-  <p class="muted">A job: this page can close. Each device is held while it saves.</p>
-  <div class="save-sum">
-    {%- for name, words in [('done', 'saved and recorded'), ('running', 'running now'), ('waiting', 'waiting their turn'), ('failed', 'failed')] %}
-    <div class="save-n"><strong>{{ s.counts.get(name, 0) }}</strong>{{ words }}</div>{% endfor %}
-  </div>
-  <form class="sc-tools save-filter" hx-get="{{ url_for('v2.save_job', job=s.job, list=s.list) }}" hx-target="#save-op" hx-swap="outerHTML" hx-trigger="input changed delay:400ms from:input, change from:select, search">
+  {#- The run on the batch stepper (C605, board approved 2026-10-09): a row per device with its
+      current step and the time in each, an overall bar, the commit as its own last row. A
+      device through its turn waits for the commit and says so, never counted as running. -#}
+  <h2 id="save-h">Saving {{ s.total }} device{{ 's' if s.total != 1 }} {{ badge('running · ' ~ s.counts.through ~ ' of ' ~ s.total ~ ' through their turn', 'info') }}</h2>
+  <p class="muted">{% if s.elapsed_s is not none %}{{ s.elapsed_s }} s so far. {% endif %}A job: this page can close. Each device is held while it saves; at most {{ s.cap }} at once.</p>
+  {#- A progress element: the strict policy refuses an inline style width. -#}
+  <progress class="sc-bar save-progress" max="{{ s.total or 1 }}" value="{{ s.counts.through }}" aria-label="{{ s.counts.through }} of {{ s.total }} through their turn, {{ s.counts.running }} running, {{ s.counts.waiting }} waiting, {{ s.counts.failed }} failed"></progress>
+  <p class="muted save-counts"><strong>{{ s.counts.through }}</strong> through their turn, waiting for the commit · <strong>{{ s.counts.running }}</strong> running · <strong>{{ s.counts.waiting }}</strong> waiting their turn · <strong{% if s.counts.failed %} class="save-failed"{% endif %}>{{ s.counts.failed }}</strong> failed</p>
+  {%- macro run_row(r) %}
+  <li class="save-row save-row-{{ r.group }}" data-device="{{ r.host }}">
+    <span class="save-dev"><a href="{{ url_for('device_v2.device', name=r.host) }}">{{ r.host }}</a></span>
+    {%- if r.steps %}
+    <ol class="save-steps" aria-label="{{ r.host }}'s steps">
+      {%- for st in r.steps %}<li class="save-step save-step-{{ st.state }}"{% if st.state == 'running' %} aria-current="step"{% endif %}><span class="save-dot"></span>{{ st.words }}<span class="save-took">{% if st.state in ('done', 'running', 'failed') and st.took_s is defined %}{{ st.took_s }} s{% endif %}</span></li>{% endfor %}
+    </ol>
+    {%- else %}
+    <span class="muted save-wait">{% if r.group == 'failed' %}{{ r.detail }}{% else %}waiting its turn: starts when one of the {{ s.cap }} running finishes{% endif %}</span>
+    {%- endif %}
+    <span class="save-el">{% if r.group == 'failed' and r.steps %}{{ r.detail }}{% elif r.elapsed_s is not none %}{{ 'its turn' if r.group == 'through' else 'running' }} {{ r.elapsed_s }} s{% endif %}</span>
+  </li>
+  {%- endmacro %}
+  {%- if s.grouped %}
+  <form class="sc-tools save-filter" hx-get="{{ url_for('v2.save_job', job=s.job, list=s.list) }}" hx-target="#save-op" hx-swap="outerHTML" hx-trigger="input changed delay:400ms from:input, search">
     <label class="sc-f">Find a device<input type="search" name="q" value="{{ s.q }}"></label>
   </form>
   {%- for g in s.groups %}
-  <details class="sc-grp" data-keep="save-run-{{ g.name }}"{% if g.name == 'failed' %} open{% endif %}>
-    <summary>{{ badge(g.name, 'danger' if g.name == 'failed' else 'warn' if g.name == 'running' else 'ok' if g.name == 'done' else 'muted') }}<span>{{ g.count }}</span>{% if s.q %}<span class="muted">· {{ g.devices | length }} match "{{ s.q }}"</span>{% endif %}</summary>
-    <p class="save-hosts mono">{{ g.devices | map(attribute='host') | join(', ') }}</p>
+  <details class="sc-grp" data-keep="save-run-{{ g.name }}"{% if g.open %} open{% endif %}>
+    <summary>{{ badge(g.words, g.kind) }}<span>{{ g.count }}</span>{% if s.q %}<span class="muted">· {{ g.rows | length }} match "{{ s.q }}"</span>{% endif %}</summary>
+    <ol class="save-run">{% for r in g.rows %}{{ run_row(r) }}{% endfor %}</ol>
   </details>
   {%- endfor %}
+  {%- else %}
+  <ol class="save-run">{% for r in s.rows %}{{ run_row(r) }}{% endfor %}</ol>
+  {%- endif %}
+  <div class="save-commit"><span class="save-dev">Commit</span>
+    <span>{% if s.committing %}<strong>committing now</strong>: one commit for the batch, then the baseline decision when every device was saved{% else %}<strong>waits for every device's turn</strong>, then one commit for the batch{% endif %}</span></div>
 {%- elif s.state == 'result' %}
   <h2 id="save-h">{{ s.total }} device{{ 's' if s.total != 1 }}: {{ s.good }} saved and recorded{% if s.bad %}, {{ s.bad }} not{% endif %} {{ badge(s.chip, s.level) }}</h2>
   {%- if s.commit %}

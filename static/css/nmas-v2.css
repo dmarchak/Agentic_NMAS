@@ -793,6 +793,33 @@ button.menu-item[disabled]:hover { background: none; }
 .save-tbl th { width: 30%; }
 .save-hosts { margin: 0; padding: 8px 12px; font-size: 12.5px; overflow-wrap: anywhere; }
 .save-ft { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* Save's run on the batch stepper (C605): a row per device, its steps across. */
+.save-counts .save-failed { color: var(--danger); }
+.save-run { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line-2); border-radius: var(--r); }
+.save-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 130px; gap: 14px; align-items: center;
+  padding: 9px 12px; border-bottom: 1px solid var(--line-2); }
+.save-row:last-child { border-bottom: 0; }
+.save-row-running { background: var(--surface-2); }
+.save-dev { font-weight: 600; }
+.save-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.save-step { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--ink-3); }
+.save-dot { height: 6px; border-radius: 3px; background: var(--line); }
+.save-step-done { color: var(--ink-2); }
+.save-step-done .save-dot { background: var(--ok); }
+.save-step-running { color: var(--ink); font-weight: 600; }
+.save-step-running .save-dot { background: var(--accent); }
+.save-step-failed { color: var(--danger); font-weight: 600; }
+.save-step-failed .save-dot { background: var(--danger); }
+.save-took { font-size: 11px; font-weight: 400; color: var(--ink-3); min-height: 1em; }
+.save-el, .save-wait { font-size: 12.5px; color: var(--ink-2); }
+.save-el { text-align: right; }
+.save-commit { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; padding: 10px 12px;
+  background: var(--accent-soft); border-radius: var(--r); font-size: 13px; }
+@media (max-width: 700px) {
+  .save-row { grid-template-columns: 1fr; gap: 6px; }
+  .save-el { text-align: left; }
+  .save-commit { grid-template-columns: 1fr; }
+}
 .dev-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 0; font-size: 13px; }
 /* The device page's History (step 4). */
 .timeline { list-style: none; margin: 0; padding: 0; font-size: 13px; }

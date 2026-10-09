@@ -68,6 +68,8 @@ def lab(tmp_path, monkeypatch):
         from modules.nsot import device_ops
 
         sent.append({"ip": ip, "held": device_ops.may_write(ip), "password_ok": password == PW})
+        # As the real one does between its save and its read (C605; held to it below).
+        device_ops.note("read_back")
         return dict(answers.get(ip) or {"ok": True, "state": "persisted",
                                         "detail": "the startup config carries every username "
                                                   "line the running config holds (1)"})
@@ -375,7 +377,8 @@ class TestTheRun:
 
 
 class TestTheRunningCard:
-    def test_it_is_redrawn_by_announcement_with_counts_and_groups(self, lab):
+    def _card(self, job, rows):
+        """The running card for *rows* ``(host, state, trail)``, as the job keeps them."""
         import time
 
         from flask import render_template
@@ -384,19 +387,100 @@ class TestTheRunningCard:
         from modules import save_page
         from modules.nsot import save_op
 
-        job = "f" * 32
-        for host, state in (("r2", "saved_recorded"), ("r3", "saving"), ("r4", "waiting"),
-                            ("s9", "not_persisted")):
-            save_op._mark(job, host, state)
-        s = save_page.job_card("Lab", job, {"state": "running", "elapsed_s": 3,
-                                            "started_at": time.time()})
-        assert s["counts"] == {"failed": 1, "running": 1, "done": 1, "waiting": 1}
+        for host, state, trail in rows:
+            save_op._mark(job, host, state, trail=trail)
+        s = save_page.job_card("Lab", job, {"state": "running", "elapsed_s": 41,
+                                            "started_at": time.time() - 41})
         with A.app.test_request_context():
-            html = render_template("v2/_save.html", s=s)
+            return s, render_template("v2/_save.html", s=s)
+
+    def test_a_row_per_device_on_the_stepper_and_the_commit_its_own_row(self, lab):
+        """Board C605 (approved 2026-10-09): a device through its turn waits for the commit
+        and is never counted as running (the host's "9 running" was 8 and r1 waiting)."""
+        import time
+
+        t = time.time() - 30
+        s, html = self._card("a" * 32, [
+            ("r1", "through", [["save", t], ["read_back", t + 4], ["read_running", t + 10],
+                               ["commit_wait", t + 22]]),
+            ("s1", "running", [["save", t], ["read_back", t + 9]]),
+            ("r6", "waiting", []),
+            ("s9", "not_persisted", [["save", t], ["read_back", t + 5]])])
+        assert s["counts"] == {"failed": 1, "running": 1, "waiting": 1, "through": 1}
+        assert s["grouped"] is False, "under 25 devices, every row is drawn"
+        r1 = next(r for r in s["rows"] if r["host"] == "r1")
+        assert [(x["key"], x["state"]) for x in r1["steps"]] == [
+            ("save", "done"), ("read_back", "done"), ("read_running", "done"),
+            ("commit_wait", "running"), ("recorded", "waiting")]
+        assert [x["took_s"] for x in r1["steps"][:3]] == [4, 6, 12]
+        s9 = next(r for r in s["rows"] if r["host"] == "s9")
+        assert [x["state"] for x in s9["steps"]][:2] == ["done", "failed"]
         assert 'hx-trigger="nmas:save from:body, nmas:device_progress from:body"' in html
-        assert f'hx-get="/v2/devices/save/job/{job}?list=Lab"' in html
-        assert "Saving 4 devices" in html and "this page can close" in html
-        assert 'data-keep="save-run-failed" open' in html
+        assert "Saving 4 devices" in html and "1 of 4 through their turn" in html
+        assert "at most 6 at once" in html
+        assert 'class="save-step save-step-running" aria-current="step"' in html
+        assert "waiting its turn: starts when one of the 6 running finishes" in html
+        assert "<strong>waits for every device&#39;s turn</strong>" in html or \
+            "<strong>waits for every device's turn</strong>" in html
+        assert 'name="q"' not in html, "no search under 25 devices"
+
+    def test_from_25_devices_the_rows_group_with_a_search(self, lab):
+        import time
+
+        t = time.time() - 5
+        rows = [(f"d{i:02}", "waiting", []) for i in range(24)] + [("s9", "running",
+                                                                   [["save", t]])]
+        s, html = self._card("b" * 32, rows)
+        assert s["grouped"] is True and 'name="q"' in html
+        assert 'data-keep="save-run-running" open' in html
+        assert 'data-keep="save-run-waiting">' in html, "waiting collapsed"
+
+    def test_a_real_run_keeps_each_device_s_steps_in_order(self, lab):
+        """The run notes each step as it begins, on the device's hold (save, then the
+        read-back persist notes, then the running read), keeps the trail when it lets go, and
+        adds the wait for the commit and the record."""
+        from modules.nsot import capture_job, save_op
+
+        lab["running"]["r2"] = _broken(lab["captured"])
+        r = lab["client"].post("/v2/devices/save/confirm", data=_form(_page(lab, "r2")))
+        job = re.search(r"/v2/devices/save/job/([0-9a-f]+)", r.get_data(as_text=True)).group(1)
+        assert capture_job.wait(job, 60)
+        row = save_op.live(job)["r2"]
+        assert row["state"] == "saved_recorded"
+        names = [n for n, _at in row["trail"]]
+        assert names == ["save", "read_back", "read_running", "commit_wait", "recorded"], names
+        ats = [a for _n, a in row["trail"]]
+        assert ats == sorted(ats)
+
+    def test_persist_notes_its_read_back_between_the_save_and_the_read(self):
+        """The real `persist_on_device`, its session faked: the hold's trail has `read_back`
+        after the save was sent and before `show startup-config`."""
+        from modules.nsot import device_ops, onboard
+
+        seen = []
+
+        class Conn:
+            def enable(self):
+                pass
+
+            def save_config(self):
+                seen.append("save_config")
+
+            def send_command(self, cmd, read_timeout=None):
+                trail = [n for n, _a in (device_ops.holder("Lab", "r9") or {})
+                         .get("progress", {}).get("trail", [])]
+                seen.append((cmd, "read_back" in trail))
+                return "username admin secret 9 x\n" if "startup" in cmd or "username" in cmd \
+                    else ""
+
+            def disconnect(self):
+                pass
+
+        with device_ops.hold("Lab", "r9", "save", "t@example.com", ip="192.0.2.99"):
+            onboard.persist_on_device("192.0.2.99", "admin", "pw", "", "cisco_xe",
+                                      connect=lambda **k: Conn())
+        assert seen[0] == "save_config"
+        assert seen[1] == ("show startup-config", True), seen
 
     def test_the_job_announces_what_its_announcer_declares(self, lab):
         from modules import invalidation
@@ -517,6 +601,43 @@ class TestInARealBrowser:
         assert b.js("return window.__notReloaded") == 1
         assert len(lab["sent"]) == 1 and _head(lab["repo"]) != before
         assert "Source: save" in _message(lab["repo"])
+
+    def test_the_running_card_draws_each_device_s_step_then_the_result(self, served,
+                                                                       monkeypatch):
+        """C605 in a real browser: the run held at r2's read-back, its row shows the step it
+        is in and the commit waits; released, the result arrives by announcement."""
+        import threading
+
+        from modules.nsot import device_ops
+
+        b, lab = served["b"], served["lab"]
+        lab["running"]["r2"] = _broken(lab["captured"])
+        reached, release = threading.Event(), threading.Event()
+
+        def slow(ip, username, password, secret, device_type):
+            device_ops.note("read_back")
+            reached.set()
+            release.wait(30)
+            return {"ok": True, "state": "persisted", "detail": "carried"}
+        monkeypatch.setattr("modules.nsot.onboard.persist_on_device", slow)
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+        try:
+            b.go(served["srv"].url("/v2/devices/save?list=Lab&device=r2"))
+            b.wait_for(f"return {CARD} && {CARD}.querySelector('.op-confirm') && {SETTLED}", 15)
+            b.click("#save-op .op-confirm")
+            assert reached.wait(20), "the run never reached r2's read-back"
+            # The card redraws on the device's own step (device_progress), never a timer.
+            got = b.wait_for(
+                "var r=document.querySelector('.save-row-running[data-device=r2]');"
+                "var c=r && r.querySelector('.save-step-running');"
+                "var m=document.querySelector('.save-commit');"
+                "return c && m && [c.textContent.trim(), m.textContent.replace(/\\s+/g,' ')]", 15)
+            assert got[0].startswith("Read back"), got
+            assert "waits for every device's turn" in got[1], got
+            assert b.js("return !!document.querySelector('#save-op input[name=q]')") is False
+        finally:
+            release.set()
+        b.wait_for(f"return {CARD} && {CARD}.textContent.indexOf('1 saved and recorded') >= 0", 20)
 
     @pytest.mark.parametrize("path", ["/v2/devices", "/v2/devices/save?list=Lab&device=r2&device=r4&device=s9"])
     def test_at_phone_width_nothing_runs_past_the_screen(self, served, monkeypatch, path):

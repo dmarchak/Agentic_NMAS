@@ -38,7 +38,41 @@ OUTCOME_WORDS = (
 )
 #: What a running device is doing, as the card groups it.
 LIVE_GROUPS = (("not_persisted", "failed"), ("unread", "failed"), ("held", "failed"),
-               ("saving", "running"), ("saved", "running"), ("waiting", "waiting"))
+               ("running", "running"), ("waiting", "waiting"), ("through", "through"),
+               ("saved_recorded", "through"), ("saved_unchanged", "through"))
+#: The run's groups, in the order the card leads with: what to act on, then what moves.
+LIVE_ORDER = (("failed", "failed", "danger"), ("running", "running", "info"),
+              ("waiting", "waiting their turn", "muted"),
+              ("through", "through their turn, waiting for the commit", "ok"))
+#: From this many devices the run's rows group and collapse, with Find a device above them;
+#: fewer read at a glance, every row on its stepper (board C605, approved 2026-10-09).
+SEARCH_FROM = 25
+
+
+def _run_row(list_name: str, host: str, row: dict, now: float) -> dict:
+    """One device's row on the run's stepper (`device_actions.stepper` over
+    `save_op.DEVICE_STEPS`): read from its hold while it holds one, else from the trail it
+    reached. A device that failed shows the step it stopped in as failed."""
+    from modules import device_actions
+    from modules.nsot import device_ops, save_op
+
+    state, trail = row["state"], row.get("trail") or []
+    if state == "running":
+        held = ((device_ops.holder(list_name, host) or {}).get("progress") or {}).get("trail")
+        trail = [[n, a] for n, a in held or [] if n in save_op._STEP_NAMES] or trail
+    group = dict(LIVE_GROUPS).get(state, "running")
+    steps = []
+    if trail or state == "running":
+        steps = device_actions.stepper(save_op.DEVICE_STEPS, {"trail": trail} if trail else None,
+                                       now=now, starts=True)
+    if state in save_op.GOOD:
+        steps = [dict(s, state="done") for s in steps]
+    elif group == "failed":
+        steps = [dict(s, state="failed") if s["state"] == "running" else s for s in steps]
+    started = trail[0][1] if trail else None
+    return {"host": host, "state": state, "group": group, "steps": steps,
+            "detail": row.get("detail", ""),
+            "elapsed_s": round(max(0.0, now - started)) if started else None}
 #: Outcomes a retry may help: the device answered nothing it should have, or was busy.
 RETRYABLE = ("not_persisted", "unread", "held", "not_answering")
 
@@ -78,20 +112,22 @@ def job_card(list_name: str, job_id: str, got, *, q: str = "", outcome: str = ""
     if got is None:
         return dict(card, state="unknown")
     if got["state"] == "running":
-        live = save_op.live(job_id)
-        rows = [{"host": h, "outcome": s} for h, s in live.items()]
-        groups = []
-        for name in ("failed", "running", "done", "waiting"):
-            keys = {k for k, g in LIVE_GROUPS if g == name}
-            if name == "done":
-                keys = set(save_op.GOOD)
-            members = [r for r in rows if r["outcome"] in keys]
-            groups.append({"name": name, "count": len(members),
-                           "devices": _filtered(members, q, outcome)})
+        import time
+
+        now = time.time()
+        rows = [_run_row(list_name, h, r, now) for h, r in save_op.live(job_id).items()]
+        counts = {name: sum(1 for r in rows if r["group"] == name) for name, _w, _k in LIVE_ORDER}
+        total = len(rows)
+        shown = [r for r in rows if not q or q.strip().lower() in r["host"].lower()]
+        groups = [{"name": name, "words": words, "kind": kind, "count": counts[name],
+                   "rows": [r for r in shown if r["group"] == name],
+                   "open": name in ("failed", "running")}
+                  for name, words, kind in LIVE_ORDER if counts[name]]
         return dict(card, state="running", elapsed_s=got.get("elapsed_s"),
-                    started_at=got.get("started_at"), total=len(rows),
-                    counts={g["name"]: g["count"] for g in groups},
-                    groups=[g for g in groups if g["count"]])
+                    started_at=got.get("started_at"), total=total, counts=counts, rows=rows,
+                    groups=groups, grouped=total >= SEARCH_FROM, cap=save_op.WORKERS,
+                    # The commit is the run's own last row: it waits for every device's turn.
+                    committing=total > 0 and not counts["running"] and not counts["waiting"])
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
     payload = got.get("payload") or {}
