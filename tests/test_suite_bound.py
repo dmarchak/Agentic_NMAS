@@ -96,4 +96,14 @@ def test_a_probe_does_not_import_the_whole_program(tmp_path):
                             "def test_ok():\n"
                             "    assert 'app' not in sys.modules, 'the probe imported the app'\n"
                             "    assert 'modules.ai_assistant' not in sys.modules\n")
-    assert out.returncode == 0, (out.returncode, (out.stdout + out.stderr)[-800:])
+    assert out.returncode == 0, (out.returncode, _innermost(out.stdout + out.stderr))
+
+
+def _innermost(text, frames=25):
+    """The frames a fired bound's dump puts FIRST (most recent call first): where the probe was
+    waiting. The tail alone showed only pytest's outer frames (C567, fired twice in the gate
+    on 2026-10-09, each time with the waiting frame cut off)."""
+    at = text.find("most recent call first")
+    if at < 0:
+        return text[-800:]
+    return "\n".join(text[at:].splitlines()[:frames + 1])

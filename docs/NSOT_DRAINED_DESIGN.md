@@ -289,12 +289,12 @@ whatever P.16 decides. It comes before Stage 8's agent drafts runbooks.
 2. **vIOS:** does any MIB answer per-entry ACL hits? If none, the time `show ip access-lists
    <name>` takes on s1 (never s3).
 3. **The ACL's cost:** forwarding before and after a 50-entry ACL inbound on one interface of
-   each platform, under the same load. **Constraint (the operator's r6 proof, 2026-10-09):**
-   r6 reports a throughput level of 10000 kbps, the unregistered C8000v's default; every lab
-   C8000v is the same image, unregistered, with no throughput line in its golden, so each is
-   presumed capped the same until `show platform hardware throughput level` on r1 to r4 says
-   otherwise (allowlisted; the operator's reads). A C8000v forwards at most about 10 Mbit/s in
-   total, so a load at or above that measures the licence's shaper, not the ACL: keep this
+   each platform, under the same load. **Constraint (measured on all five routers by the
+   operator, 2026-10-09):** `show platform hardware throughput level` answered "The current
+   throughput level is 10000 kb/s" on r1, r2, r3, r4 and r6 (Show commands, recorded in
+   History: 5 answered, 0 failed), the unregistered C8000v's default; no golden carries a
+   throughput line, since a default is not written into the config. A C8000v forwards at
+   most about 10 Mbit/s in total, so a load at or above that measures the licence's shaper, not the ACL: keep this
    measurement's load well under 10 Mbit/s on the routers (or measure the cost in CPU and
    latency at a fixed, low rate), and read any C8000v throughput figure against the cap
    before calling it the device's. The same holds for any traffic-volume test through a lab

@@ -9,6 +9,7 @@ templates all run for real.
 import html as html_mod
 import os
 import re
+import threading
 
 import pytest
 
@@ -30,12 +31,18 @@ class Device:
         self.answers = {"show running-config": _text("configs", "fleet", "r2.cfg"),
                         "show ip interface": _text("operational", "r3__show_ip_interface.txt")}
         self.sent = []
+        # Open unless a test holds the answer back: a test of the card's RUNNING state holds it
+        # until it has read the started card (C613: answering at once, the job sometimes
+        # finished before the card was drawn, and the card drew the answer instead).
+        self.release = threading.Event()
+        self.release.set()
 
     def __call__(self, dev, fn):
         return fn(self)
 
     def answer(self, command):
         self.sent.append(command)
+        assert self.release.wait(30), "the test never released the device's answer"
         return self.answers.get(command, f"% no capture for {command}")
 
 
@@ -53,12 +60,18 @@ def _get(lab, url):  # noqa: F811
     return r, html_mod.unescape(r.get_data(as_text=True))
 
 
-def _run(lab, command):  # noqa: F811
+def _run(lab, command, hold=False):  # noqa: F811
     """Run as the card does (htmx), wait for the job, and read the card as its announcement
-    makes the page read it."""
+    makes the page read it. *hold*: the device answers only after the started card is read,
+    so that card is the running one, every time."""
     from modules.nsot import capture_job
-    r = lab["client"].post("/v2/device/r3/ask", data={"list": "Lab", "command": command},
-                           headers={"HX-Request": "true"})
+    if hold:
+        lab["device"].release.clear()
+    try:
+        r = lab["client"].post("/v2/device/r3/ask", data={"list": "Lab", "command": command},
+                               headers={"HX-Request": "true"})
+    finally:
+        lab["device"].release.set()
     body = r.get_data(as_text=True)
     assert r.status_code == 200, body[:300]
     job = re.search(r"job=([0-9a-f]{32})", body)
@@ -109,7 +122,7 @@ class TestCheckedAsTyped:
 
 class TestRun:
     def test_the_answer_in_place_masked_and_recorded(self, ask):
-        html, started = _run(ask, "show running-config")
+        html, started = _run(ask, "show running-config", hold=True)
         assert 'hx-trigger="nmas:reads from:body"' in started and 'aria-busy="true"' in started
         assert "username admin privilege 15" in html                 # the answer, in place
         assert "password 0 admin" not in html and "community public" not in html   # masked
