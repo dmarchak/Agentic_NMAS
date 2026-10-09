@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# DRAFT, not approved to run (the operator, 2026-10-09). Phase 4 section 8, step 2 of 3: point
-# everything that runs Mercury's code at Mercury's virtualenv (built and proved by
-# venv-1-build.sh), restart what is running, and prove each runs from the venv. No unit file is
-# edited, so venv-3-rollback.sh undoes this by removing two files. The operator's, on the app
-# host:
+# DRAFT, not approved to run (Phase 4 section 8.3, signed off by the operator 2026-10-09). The
+# FIRST switch, once: create the link /opt/mercury-venv to the release's proved venv
+# (venv-1-build.sh), point everything that runs Mercury's code at the link, restart what is
+# running, and prove each runs from it. Later lock changes move the link with venv-swap.sh; the
+# drop-ins name the link, so they never change. No unit file is edited, so venv-3-undo.sh
+# undoes this by removing two files. The operator's, on the app host, from the deployed
+# checkout:
 #     bash <checkout>/scripts/host-steps/venv-2-switch.sh
 #
 # What it covers (section 8's inventory, the operator's request 2026-10-09):
@@ -32,6 +34,8 @@
 . "$(dirname "$0")/lib.sh"
 
 VENV=/opt/mercury-venv
+ID=$(cd "$CHECKOUT" && /usr/bin/python3 -m modules.app_interpreter venv-id "$CHECKOUT" 2>&1)
+DIR="/opt/mercury-venv-$ID"
 APP_DROPIN_DIR=/etc/systemd/system/flask-app.service.d
 APP_DROPIN=$APP_DROPIN_DIR/mercury-venv.conf
 UNITS_DROPIN_DIR=/etc/systemd/system/nmas-.service.d
@@ -45,32 +49,43 @@ UNIT_PATH="$VENV/bin:$(systemctl show-environment | sed -n 's/^PATH=//p')"
 # drop-ins (showing an instance loads it; nothing starts).
 UNITS="flask-app.service $(systemctl list-unit-files --no-legend --type=service 'nmas-*' \
     | awk '{print $1}' | sed 's/@\.service$/@venv-check.service/' | tr '\n' ' ')"
-export VENV APP_DROPIN_DIR APP_DROPIN UNITS_DROPIN_DIR UNITS_DROPIN APP UNIT_PATH UNITS
+export VENV ID DIR APP_DROPIN_DIR APP_DROPIN UNITS_DROPIN_DIR UNITS_DROPIN APP UNIT_PATH UNITS
 
 plan "run as the operator's own user, not root" \
-     "venv-1-build.sh ran: the venv's interpreter exists" \
+     "this is the first switch (no link yet)" \
+     "the release's venv is built and proved" \
      "flask-app runs app.py today, and its path is read" \
      "systemd's PATH for units is read" \
      "the nmas- units on this host are listed" \
      "no unit sets its own PATH (the drop-ins' PATH would replace it)" \
+     "the link points at the release's venv" \
      "flask-app runs from the venv" \
      "every unit takes the venv's drop-in" \
      "python3 on every unit's PATH is the venv's" \
      "flask-app is active" \
      "the app answers /health" \
      "the app's process is the venv's interpreter" \
+     "the app's process loads from the release's venv" \
      "every running unit's process has the venv first on its PATH" \
      "the heartbeat and telemetry checks run and succeed from the venv" \
      "the job-finished notices they started succeed from the venv"
 
 not_root
-check "venv-1-build.sh ran: the venv's interpreter exists" rc0 "" '[ -x "$VENV/bin/python" ]'
+check "this is the first switch (no link yet)" eq "" \
+    '[ -L "$VENV" ] && echo "$VENV exists ($(readlink "$VENV")): a later venv is swapped with venv-swap.sh"; true'
+check "the release's venv is built and proved" has "id $ID" 'cat "$DIR/.mercury-proved"'
 check "flask-app runs app.py today, and its path is read" re '/app\.py$' 'echo "$APP"'
 check "systemd's PATH for units is read" re '/usr/bin' 'echo "$UNIT_PATH"'
 # Measured 2026-10-09: flask-app and 8 nmas- services.
 check "the nmas- units on this host are listed" ge 9 'echo $UNITS | wc -w'
 check "no unit sets its own PATH (the drop-ins' PATH would replace it)" eq "" \
     'for u in $UNITS; do case " $(systemctl show -p Environment --value "$u")" in *" PATH="*) echo "$u";; esac; done'
+
+# The link first, relative, made by a rename so it is never half there (measured 2026-10-09:
+# through it the venv reports the link as its prefix and executable).
+step "create the link $VENV -> mercury-venv-$ID" \
+    'sudo ln -s "mercury-venv-$ID" "$VENV.new" && sudo mv -T "$VENV.new" "$VENV"'
+check "the link points at the release's venv" eq "$DIR" 'readlink -f "$VENV"'
 
 # Rendered into one fresh folder, installed by name.
 RENDER=$(mktemp -d)
@@ -106,6 +121,9 @@ check "the app answers /health" eq "200" \
     'curl -s -o /dev/null -m 5 -w "%{http_code}" http://127.0.0.1:5000/health'
 check "the app's process is the venv's interpreter" has "$VENV/bin/python" \
     'tr "\0" " " < /proc/$(systemctl show -p MainPID --value flask-app.service)/cmdline'
+# Its maps name the REAL folder its extension modules came from: exactly the release's venv.
+check "the app's process loads from the release's venv" eq "$DIR/" \
+    'grep -o "/opt/mercury-venv-[0-9a-f]*/" /proc/$(systemctl show -p MainPID --value flask-app.service)/maps | sort -u'
 # Every unit running now (flask-app; the ZTP responder when a request started it): its process's
 # own environment, which the operator's user can read (the units run as that user).
 check "every running unit's process has the venv first on its PATH" eq "" \
@@ -134,5 +152,5 @@ check "the job-finished notices they started succeed from the venv" eq "success 
 echo "Left to their timers, read in Job health after their next runs: the startup check, the"
 echo "NetBox backup and the NetBox restore test. The updater's first run from the venv is the"
 echo "next Update."
-echo "To undo: bash scripts/host-steps/venv-3-rollback.sh (removes the two drop-ins, restarts)."
+echo "To undo: bash scripts/host-steps/venv-3-undo.sh (removes the two drop-ins, restarts; the link stays)."
 summary

@@ -25,7 +25,8 @@ SCRIPTS = sorted(os.path.basename(p) for p in tracked("scripts/host-steps", suff
 # The sections the operator named, each a script.
 EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "phase3-step3.sh", "c584-loki-writer.sh",
             "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh", "postgres-6a.sh",
-            "venv-1-build.sh", "venv-2-switch.sh", "venv-3-rollback.sh"}
+            "venv-1-build.sh", "venv-2-switch.sh", "venv-3-undo.sh", "venv-swap.sh",
+            "venv-rollback.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
@@ -79,6 +80,32 @@ check "two" lacks "secret" 'echo fine'
 summary
 """)
     assert got.returncode == 0 and "== RESULT: PASS (2 of 2 checks)" in got.stdout
+
+
+def test_on_fail_undoes_before_the_summary_and_the_result_stays_fail(tmp_path):
+    """Section 8.3: the venv swap points its link back when a proof fails."""
+    got = _run_planted(tmp_path, """
+plan "one" "two"
+ON_FAIL='echo UNDONE'
+ON_FAIL_WHAT="point the link back"
+check "one" eq "a" 'echo a'
+check "two" eq "b" 'echo nope'
+summary
+""")
+    out = got.stdout
+    assert got.returncode == 1
+    assert "== ON FAILURE: point the link back" in out and "UNDONE" in out
+    assert out.index("UNDONE") < out.index("== SUMMARY") and "== RESULT: FAIL at: two" in out
+
+
+def test_on_fail_never_runs_when_everything_passes(tmp_path):
+    got = _run_planted(tmp_path, """
+plan "one"
+ON_FAIL='echo UNDONE'
+check "one" eq "a" 'echo a'
+summary
+""")
+    assert got.returncode == 0 and "UNDONE" not in got.stdout
 
 
 def test_a_held_secret_is_masked_in_what_is_printed(tmp_path):

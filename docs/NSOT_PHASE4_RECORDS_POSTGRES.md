@@ -469,7 +469,21 @@ The host steps, redrafted to this shape (`scripts/host-steps/`, each the operato
    every Mercury operation does. After a proved swap it removes older proved venvs (above).
    Until 8.4 is built, a swap and its release's deploy are run in one sitting by the operator.
 4. **Rollback by hand** (`venv-rollback.sh`): points the link at `.previous` (refusing when it
-   is absent or unproved), restarts, and proves as the swap does.
+   is absent or unproved), records the venv left as the new previous, restarts, and proves as
+   the swap does. It never swaps back on its own; `venv-3-undo.sh` is the way to the system
+   interpreter.
+
+**Walked on the laptop, 2026-10-09, in a sandbox** (the scripts copied with `/opt` moved into a
+scratch folder; stand-ins for `sudo`, `systemctl`, `curl` and `sleep`; real venvs with PyYAML's
+compiled module, so `/proc/<pid>/maps` is real): a healthy swap passed 12 of 12, recorded the
+previous venv, and removed the older one no process held; a swap whose new venv's `/health`
+failed pointed the link back itself, the app loaded from the old venv again, and the result
+stayed FAIL at that check; a rollback to an unproved previous venv was refused before anything
+moved, and to a proved one passed 10 of 10 with the two venvs exchanged. The walk found nothing
+in the scripts; venv-1's pin and `pip check` checks, run against scratch venvs, had found a
+normalisation that rewrote versions, fixed before the commit. `lib.sh` gained `ON_FAIL` (the
+undo a failed step or check runs before the summary), tested with planted scripts and shown
+able to fail.
 
 ### 8.4 A release that changes the lock (SIGNED OFF; not built)
 

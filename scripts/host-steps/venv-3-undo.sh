@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# DRAFT, not approved to run (the operator, 2026-10-09). Phase 4 section 8, step 3 of 3, only if
-# needed: undo venv-2-switch.sh by removing the two drop-ins it installed, so flask-app and every
-# nmas- unit run /usr/bin/python3 again, as before. The venv stays where it is
-# (built, unused) until a person removes it. The operator's, on the app host:
-#     bash <checkout>/scripts/host-steps/venv-3-rollback.sh
+# DRAFT, not approved to run (Phase 4 section 8.3, signed off by the operator 2026-10-09). Only
+# if needed: undo the first switch (venv-2-switch.sh) by removing the two drop-ins it installed,
+# so flask-app and every nmas- unit run /usr/bin/python3 again, as before. The link and the
+# venvs stay where they are, unused, until a person removes them; the scripts follow, since each
+# takes the interpreter flask-app runs (section 8.1). Going back to the PREVIOUS venv is
+# venv-rollback.sh, not this. The operator's, on the app host:
+#     bash <checkout>/scripts/host-steps/venv-3-undo.sh
 #
 # It restarts the app, and the ZTP responder if it is running; the units their timers start
 # take the system interpreter at their next run. No device is touched.

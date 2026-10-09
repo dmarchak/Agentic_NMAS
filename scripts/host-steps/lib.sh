@@ -58,6 +58,14 @@ summary() {
 
 _stop() {
     _FAILED=$1
+    # ON_FAIL: a script's undo, run when a step or check fails and before the summary (the
+    # venv swap points the link back: section 8.3's rollback on failure). It prints its own
+    # proof; the result stays FAIL, naming what failed.
+    if [ -n "${ON_FAIL:-}" ]; then
+        echo "== ON FAILURE: ${ON_FAIL_WHAT:-undo}"
+        echo "   $ $(_mask "$ON_FAIL")"
+        bash -o pipefail -c "$ON_FAIL" || echo "ON FAILURE: the undo itself failed (exit $?)"
+    fi
     summary
     exit 1
 }
