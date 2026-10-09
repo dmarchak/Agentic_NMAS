@@ -242,6 +242,23 @@ failure (a missing libpq fails the job). The gate sets it too, with the unpacked
 suite's library path. Locally the same unpacked PostgreSQL 18 (docs/TESTING.md, "CI's
 interpreter here").
 
+**The Test checks what 6a made, six checks** (board F2, the operator's condition, 2026-10-09):
+signs in; the server is PostgreSQL 18; the role owns its database; the role is not a
+superuser; Mercury reaches it on a loopback address (every address the host names); a temporary
+row written and read back, rolled back. The first that fails is named with what the server
+said; the rest are "not tried" (`records_db.TEST_STEPS`, `STEP_WORDS`).
+
+**Rotating the role's password: the server first, then Mercury** (board F2). `scripts/host-steps/
+postgres-rotate.sh` prompts for the new password (hidden, 6a's rules), sends the server a
+SCRAM-SHA-256 verifier computed on the host, never the password (so it is in no statement log
+and on no command line), replaces the env file's copy so the kept credential is the current one,
+and proves the new password signs in and a wrong one is refused, with the interpreter the app
+runs. Proved on the laptop against PostgreSQL 18 (2026-10-09): the server stored the verifier as
+sent, the new password signed in, a wrong one and the old one were refused; a test recomputes
+the verifier by RFC 7677's arithmetic. Then Mercury's half: Settings › Installation › Records
+database › Replace…, the same password, and Test. Between the two, Mercury holds the old password
+and cannot reach its records.
+
 ## 7. The first store: deploy receipts, and its count check (DRAFT, 2026-10-08)
 
 **Measured on the host, 2026-10-08:** one network (`default`), `deploy_receipts.jsonl` 67 lines,

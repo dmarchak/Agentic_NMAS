@@ -44,8 +44,8 @@ class FakeConnection:
     ``close``, and a context manager. A temporary table holds what is inserted until the
     rollback."""
 
-    def __init__(self, superuser=False, fail_on=""):
-        self.superuser, self.fail_on = superuser, fail_on
+    def __init__(self, superuser=False, fail_on="", owner="mercury"):
+        self.superuser, self.fail_on, self.owner = superuser, fail_on, owner
         self.sql, self.table, self.rolled_back, self.closed = [], None, 0, False
 
     def execute(self, sql):
@@ -54,6 +54,8 @@ class FakeConnection:
             raise RuntimeError(f"ERROR:  permission denied ({self.fail_on})\nDETAIL: more")
         if sql.startswith("show server_version"):
             return FakeCursor(("18.6",))
+        if "from pg_catalog.pg_database" in sql:
+            return FakeCursor((self.owner, "mercury"))
         if "from pg_roles" in sql:
             return FakeCursor(("mercury", self.superuser))
         if sql.startswith("create temporary table"):
@@ -137,7 +139,9 @@ class TestTheTest:
         details = {s["name"]: s["detail"] for s in got["steps"]}
         assert details["connect"] == "signed in as mercury at 127.0.0.1:5433/mercury"
         assert details["version"] == "PostgreSQL 18.6"
+        assert details["owner"] == "mercury owns the database mercury"
         assert details["role"] == "mercury is not a superuser"
+        assert details["loopback"].startswith("Mercury reaches it on loopback (127.0.0.1)")
         assert "rolled back, nothing kept" in details["write"]
         assert conn.rolled_back == 1 and conn.table is None and conn.closed
         assert any("on commit drop" in s for s in conn.sql)
@@ -157,8 +161,33 @@ class TestTheTest:
         _configure(settings)
         conn = FakeConnection()
         got = RD.test_connection(write=False, connector=lambda: conn)
-        assert got["ok"] and [s["name"] for s in got["steps"]] == ["connect", "version", "role"]
+        assert got["ok"] and [s["name"] for s in got["steps"]] == [
+            "connect", "version", "owner", "role", "loopback"]
         assert not any("insert" in s or "create" in s for s in conn.sql)
+
+    def test_a_database_another_role_owns_fails_the_owner_step(self, settings):
+        """Board F2: the Test checks what host step 6a made, naming the check that failed."""
+        _configure(settings)
+        conn = FakeConnection(owner="postgres")
+        got = RD.test_connection(connector=lambda: conn)
+        assert got["ok"] is False and got["steps"][-1]["name"] == "owner"
+        assert "owned by postgres, not mercury" in got["error"]
+        assert not any("insert" in s for s in conn.sql)
+
+    def test_an_address_beyond_loopback_fails_the_loopback_step(self, settings):
+        _configure(settings)
+        settings["values"]["records_db_host"] = "db.example.invalid"
+        conn = FakeConnection()
+        lan = lambda host, port: [(2, 1, 6, "", ("192.0.2.40", 0))]    # noqa: E731
+        got = RD.test_connection(connector=lambda: conn, resolve=lan)
+        assert got["ok"] is False and got["steps"][-1]["name"] == "loopback"
+        assert "db.example.invalid (192.0.2.40), not a loopback address" in got["error"]
+
+    @pytest.mark.parametrize("addrs, ok", [(["127.0.0.1"], True), (["::1"], True),
+                                           (["127.0.0.1", "192.0.2.40"], False)])
+    def test_loopback_means_every_address_the_host_names(self, addrs, ok):
+        infos = [(2, 1, 6, "", (a, 0)) for a in addrs]
+        assert RD.loopback("h", lambda host, port: infos)[0] is ok
 
     def test_a_superuser_role_fails_and_the_write_is_not_tried(self, settings):
         _configure(settings)

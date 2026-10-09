@@ -26,7 +26,7 @@ SCRIPTS = sorted(os.path.basename(p) for p in tracked("scripts/host-steps", suff
 EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "phase3-step3.sh", "c584-loki-writer.sh",
             "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh", "postgres-6a.sh",
             "venv-1-build.sh", "venv-2-switch.sh", "venv-3-undo.sh", "venv-swap.sh",
-            "venv-rollback.sh"}
+            "venv-rollback.sh", "postgres-rotate.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
@@ -146,6 +146,40 @@ def test_the_secret_is_prompted_hidden_never_an_argument_never_printed():
     # It reaches mc on standard input or in the environment, never on a command line.
     assert "printf '%s\\n%s\\n' mercury \"$SECRET\" | mc admin user add lab" in text
     assert not re.search(r"mc [^\n|]*\$\{?SECRET", text)
+
+
+def test_the_rotation_sends_the_server_a_verifier_never_the_password():
+    """postgres-rotate.sh (board F2's rotation order, the server first): the new password is
+    read hidden, masked, never an argument or echoed; the server is sent a SCRAM-SHA-256
+    verifier on psql's standard input, so the password is in no statement log; the env file's
+    copy is replaced on install's standard input."""
+    text = open(os.path.join(FOLDER, "postgres-rotate.sh"), encoding="utf-8").read()
+    assert re.search(r'read -r -s -p "[^"]*" PW', text), "prompted, input hidden"
+    assert not re.search(r"\$[1-9@*]", text), "no argument is read"
+    assert not re.search(r'echo[^\n]*\$\{?PW\b', text), "never echoed"
+    assert "REDACT=$PW" in text
+    assert "VERIFIER=$(printf '%s' \"$PW\" | python3 -c \"$SCRAM\")" in text
+    assert "| docker exec -i mercury-postgres psql" in text and "\"$VERIFIER\"" in text
+    assert not re.search(r"ALTER ROLE[^\n]*\$PW", text), "the password never reaches SQL"
+    assert '| sudo install -m 0600 /dev/stdin "$ENV_FILE"' in text
+    # The verifier verifies the password by RFC 7677's own arithmetic (an independent path:
+    # recomputed here from the password and the verifier's salt, not by the script's code).
+    import base64
+    import hashlib
+    import hmac
+
+    scram = re.search(r"^SCRAM='(.*?)'$", text, re.S | re.M).group(1)
+    pw = "rotated-Password_123.abcdefghij"
+    out = subprocess.run(["python3", "-c", scram], input=pw, capture_output=True, text=True,
+                         check=True).stdout.strip()
+    m = re.fullmatch(r"SCRAM-SHA-256\$(\d+):([^$]+)\$([^:]+):(.+)", out)
+    assert m, out
+    it, salt = int(m.group(1)), base64.b64decode(m.group(2))
+    salted = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, it)
+    stored = hashlib.sha256(hmac.new(salted, b"Client Key", hashlib.sha256).digest()).digest()
+    server = hmac.new(salted, b"Server Key", hashlib.sha256).digest()
+    assert (base64.b64decode(m.group(3)), base64.b64decode(m.group(4))) == (stored, server)
+    assert it == 4096 and len(salt) == 16
 
 
 def test_the_records_password_is_prompted_hidden_and_reaches_only_stdin_and_the_environment():

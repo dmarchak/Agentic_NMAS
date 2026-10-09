@@ -10,21 +10,28 @@ not answer are four different answers, each named, never a raise into a request.
 the host's: no pip into the system interpreter), pinned through the lock once a release that
 imports it is deployed.
 
-The Test (`test_connection`) is a person's: it signs in, reads the server's version, checks
-Mercury's role is not a superuser (P4-1: it owns its database and nothing more), and, with
-*write*, writes a row to a temporary table and reads it back inside a transaction it rolls
-back, so nothing persists.
+The Test (`test_connection`) is a person's, and checks what host step 6a made (board F2, the
+operator's condition, 2026-10-09): it signs in, reads the server's version, checks Mercury's
+role owns its database and is not a superuser (P4-1: its database and nothing more), that
+Mercury reaches it on a loopback address, and, with *write*, writes a row to a temporary table
+and reads it back inside a transaction it rolls back, so nothing persists.
 """
 
+import ipaddress
 import logging
+import socket
 
 log = logging.getLogger(__name__)
 
-#: The Test's steps, in order, as the manual and a Settings card name them.
-TEST_STEPS = ("connect", "version", "role", "write")
+#: The Test's steps, in order, as the manual and the Settings card name them.
+TEST_STEPS = ("connect", "version", "owner", "role", "loopback", "write")
 #: The PostgreSQL major the records database runs (host step 6a: NetBox's image, so one major to
 #: patch; board F2: "the server is PostgreSQL 18"). Another major fails the Test, naming both.
 MAJOR = 18
+#: Each step in the card's words: the check it makes (board F2), for a step not tried too.
+STEP_WORDS = {"connect": "signs in", "version": f"PostgreSQL {MAJOR}",
+              "owner": "owns the database", "role": "not a superuser",
+              "loopback": "loopback", "write": "a temporary row"}
 #: Not measured over a network: the database is on the same host (loopback). The sign-in bound
 #: the host step used, kept until a sign-in is timed on the host.
 CONNECT_TIMEOUT_S = 10
@@ -91,11 +98,25 @@ def connect(timeout: float = CONNECT_TIMEOUT_S):
                           f"the connection: {first}") from None
 
 
-def test_connection(write: bool = True, connector=None) -> dict:
+def loopback(host: str, resolve=None) -> tuple:
+    """``(ok, addresses)``: whether every address *host* names is a loopback one, and those
+    addresses, for the card. *resolve* is `socket.getaddrinfo`, for tests."""
+    try:
+        infos = (resolve or socket.getaddrinfo)(host, None)
+    except OSError as exc:
+        return False, f"{host} did not resolve: {exc}"
+    addresses = sorted({info[4][0] for info in infos})
+    if not addresses:
+        return False, f"{host} named no address"
+    ok = all(ipaddress.ip_address(a.split("%")[0]).is_loopback for a in addresses)
+    return ok, ", ".join(addresses)
+
+
+def test_connection(write: bool = True, connector=None, resolve=None) -> dict:
     """The Test, in `TEST_STEPS` order: ``{"ok", "steps": [{"name", "ok", "detail"}],
     "error"}``. The first step that fails is named with what the server said, and the rest are
-    not tried. With *write* false, everything but the write (a reader's, which writes
-    nothing)."""
+    not tried (the card names them "not tried"). With *write* false, everything but the write
+    (a reader's, which writes nothing). *resolve* is `socket.getaddrinfo`, for tests."""
     steps = []
 
     def failed(name, detail):
@@ -117,6 +138,15 @@ def test_connection(write: bool = True, connector=None) -> dict:
                 return failed("version", f"the server is PostgreSQL {version}; Mercury's records "
                                          f"database runs PostgreSQL {MAJOR} (host step 6a)")
             steps.append({"name": "version", "ok": True, "detail": f"PostgreSQL {version}"})
+            owner = conn.execute("select pg_catalog.pg_get_userbyid(datdba), current_user "
+                                 "from pg_catalog.pg_database "
+                                 "where datname = current_database()").fetchone()
+            if owner is None or owner[0] != owner[1]:
+                return failed("owner", f"the database {c['name']} is owned by "
+                                       f"{owner[0] if owner else 'nobody readable'}, not "
+                                       f"{c['user']} (host step 6a makes {c['user']} its owner)")
+            steps.append({"name": "owner", "ok": True,
+                          "detail": f"{owner[1]} owns the database {c['name']}"})
             row = conn.execute("select current_user, rolsuper from pg_roles "
                                "where rolname = current_user").fetchone()
             if row is None:
@@ -126,6 +156,15 @@ def test_connection(write: bool = True, connector=None) -> dict:
                                       "database and nothing more (P4-1)")
             steps.append({"name": "role", "ok": True,
                           "detail": f"{row[0]} is not a superuser"})
+            ok, addresses = loopback(c["host"], resolve)
+            if not ok:
+                return failed("loopback", f"Mercury reaches it at {c['host']} ({addresses}), "
+                                          "not a loopback address: host step 6a publishes it "
+                                          "on loopback only, so this is another server or "
+                                          "the port is offered beyond this host")
+            steps.append({"name": "loopback", "ok": True,
+                          "detail": f"Mercury reaches it on loopback ({addresses}), the only "
+                                    "address host step 6a publishes it on"})
             if write:
                 conn.execute("create temporary table mercury_test (probe text) "
                              "on commit drop")
