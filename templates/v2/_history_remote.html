@@ -10,10 +10,11 @@
   <div class="hist-remote-row">
     <p class="hist-remote-words">{{ badge(lv[0], lv[1]) }}
       {%- if remote.dirty is none %} The working tree could not be read.
-      {%- elif remote.dirty %} {{ remote.dirty }} path(s) are not committed (see today's Git tab).
+      {%- elif remote.dirty %} {{ remote.dirty }} path(s) are not committed: <span class="mono small">{{ remote.dirty_paths | join(', ') }}</span>{% if remote.dirty > remote.dirty_paths | length %} and {{ remote.dirty - remote.dirty_paths | length }} more{% endif %}.
       {%- else %} Everything is committed{% endif %} · {{ remote.d.clause }}
       {%- if remote.value_at %} <span class="muted small" title="{{ remote.d.detail }}">(checked {{ stamp(remote.value_at) }})</span>{% endif %}
-      {{ info('history', 'remote', 'About the remote') }}</p>
+      {{ info('history', 'remote', 'About the remote') }}
+      <a class="btn btn-small" href="{{ url_for('remote_v2.card', list=remote.list) }}" hx-get="{{ url_for('remote_v2.card', list=remote.list) }}" hx-target="#remote-setup" hx-swap="outerHTML">{{ 'Remote set-up…' if remote.configured or remote.record_unreadable else 'Set up the remote…' }}</a></p>
     {%- if remote.d.state not in ('no_remote', 'not_read') %}
     <div class="hist-remote-actions">
       <span x-data="remotePost" data-kind="verify" data-url="{{ url_for('remote.verify') }}" data-label="Verify the remote" data-busy="Verifying…">

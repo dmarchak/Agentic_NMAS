@@ -76,6 +76,9 @@ NOT_AN_OPERATION = {
     ("_install_card_replace.html", "Cancel"): "puts the Installation card back, replacing nothing",
     ("_install_platforms_preview.html", "Cancel"): "puts the map cards back, saving nothing",
     ("_records_stores.html", "Cancel"): "puts the record stores back, moving nothing",
+    ("_remote_setup.html", "Close"): "closes the remote set-up card, recording nothing",
+    ("_history_remote.html", "btn btn-small"): "Set up the remote… / Remote set-up…: opens the "
+                                               "set-up card, a read; each act in it carries its link",
     ("_records_stores.html", "Close"): "puts the record stores back after a move's result, a read",
     ("_diag_drift.html", "Check now"): "starts the drift check the schedule runs anyway, earlier: device reads only, its how-it-works the card's (#drift)",
     ("_breakglass_export.html", "Preview it again"): "reads the export's preview again: a read",

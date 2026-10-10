@@ -13,6 +13,7 @@
   </div>
 </div>
 {% include "v2/_history_remote.html" %}
+<div id="remote-setup"></div>
 <nav class="tabs" aria-label="History">
   {%- for key, label in tabs %}
   <a class="tab{% if key == tab %} on{% endif %}" href="{{ url_for('v2.history_page', tab=key) }}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}</a>

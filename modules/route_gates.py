@@ -229,6 +229,10 @@ GATES = {
     "remote.adopt": _g(P, "binds the list to a remote"),
     "remote.acknowledge": _g(P, "acknowledges the history scan before first publication"),
     "remote.verify_write": _g(P, "writes a probe to the remote"),
+    "remote_v2.connect": _g(P, "binds the network to its existing remote, from History's set-up card (C631)"),
+    "remote_v2.write_probe": _g(P, "writes a probe to the remote, from History's set-up card (C631)"),
+    "remote_v2.acknowledge": _g(P, "acknowledges the history scan before first publication, from History's set-up card (C631)"),
+    "remote_v2.auto_push": _g(P, "switches automatic publishing on, from History's set-up card (C631)"),
 
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
     "deploy.plan": _g(N, "computes a program; sends nothing"),
@@ -269,6 +273,7 @@ GATES = {
     "netbox_test_connection": _g(N, "a connection test"),
     "settings_integrations.test_integration": _g(N, "a connection test"),
     "remote.verify": _g(N, "read-only checks against the remote"),
+    "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),
     "drift_check_trigger": _g(N, "the schedule does this anyway; it only happens earlier"),
     "drift_check_sync": _g(N, "the schedule does this anyway; it only happens earlier"),
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),

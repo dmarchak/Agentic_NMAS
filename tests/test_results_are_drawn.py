@@ -204,6 +204,17 @@ PAGE_RECORD = {
                                   ('id="device-op"', "c.commit", "c.outcome"), "device_v2.history"),
     "v2.ip_sla_commit": ("templates/v2/_apply_preview.html",
                          ('id="apply-preview"', "r.program"), "device_v2.intent"),
+    # History › Remote set-up (C631): each act's answer drawn in place on the card, and its
+    # record (the network's remote.json) read back by the card; the write probe's by
+    # History's header, which draws the last Verify.
+    "remote_v2.connect": ("templates/v2/_remote_setup.html", ("Connected:", "r.owner_repo"),
+                          "remote_v2.card"),
+    "remote_v2.write_probe": ("templates/v2/_remote_setup.html",
+                              ("The write probe", "c.name", "c.detail"), "v2.history_remote"),
+    "remote_v2.acknowledge": ("templates/v2/_remote_setup.html",
+                              ("Acknowledged:", "s.acknowledged.by"), "remote_v2.card"),
+    "remote_v2.auto_push": ("templates/v2/_remote_setup.html",
+                            ("Automatic pushing is on", "r.auto_push"), "remote_v2.card"),
 }
 
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.

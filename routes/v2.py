@@ -234,6 +234,9 @@ def _history_remote(ref) -> dict:
     # An unreadable record is drawn as itself (C172): read as nothing, the card lost the last
     # failure and said nothing of why pushes stopped.
     rec, out["record_unreadable"] = NR.config_or_refusal(ref.name)
+    # Whether a remote is RECORDED, for the set-up link's words: the reader's state cannot say
+    # it before its first read ("not read" is not "no remote").
+    out["configured"] = bool(rec)
     rec = rec or {}
     failure = rec.get("last_push_failure") or None
     if failure:
@@ -244,7 +247,10 @@ def _history_remote(ref) -> dict:
                                       for f in verify.get("failed") or []])
     out.update(push_failure=failure, last_verify=verify)
     rc, text, _err = R.git(ref.repo_dir, "status", "--porcelain")
-    out["dirty"] = len([l for l in (text or "").splitlines() if l.strip()]) if rc == 0 else None
+    paths = [l[3:].strip() for l in (text or "").splitlines() if l.strip()]
+    out["dirty"] = len(paths) if rc == 0 else None
+    # Named here, never "see today's Git tab" (C637): the first five, and how many more.
+    out["dirty_paths"] = paths[:5] if rc == 0 else []
     return out
 
 

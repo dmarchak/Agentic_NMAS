@@ -1,0 +1,114 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- C631 (2026-10-10; the agent's board under the Phase 7 operating mode,
+    docs/STANDING_APPROVAL_LOG.md): History › Remote set-up, opened from History's header in
+    place of the empty slot below it. No remote: the Connect form, each field's shape said.
+    Connected: what is recorded, the write probe, what a first push would publish with its typed
+    acknowledgement, and automatic pushing (after a successful push only). Every act is a
+    verified person's (publish_remote), except the read of what a push would publish. From
+    modules/remote_setup.view. -#}
+<section class="card" id="remote-setup" aria-labelledby="h-remote-setup">
+  <div class="card-head"><h2 id="h-remote-setup">Remote set-up</h2>{{ badge(s.list, 'neutral') }}
+    <button type="button" class="btn btn-small" hx-get="{{ url_for('remote_v2.closed') }}" hx-target="#remote-setup" hx-swap="outerHTML">Close</button></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if connected %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Connected:</strong> {{ s.remote.owner_repo }} is recorded as this network's remote. Nothing is pushed until the write probe passes and a person pushes.</div></div>
+  {%- endif %}
+  {%- if acknowledged %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Acknowledged:</strong> {{ s.acknowledged.kinds | join(', ') }}, recorded as {{ s.acknowledged.by }} {{ stamp(s.acknowledged.at) }} with the commit it was measured at.</div></div>
+  {%- endif %}
+  {%- if auto %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Automatic pushing is on:</strong> each commit pushes itself, unless it would publish a secret nobody acknowledged, which holds it for a person.</div></div>
+  {%- endif %}
+  {%- if s.unreadable %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>This network's remote record cannot be read: {{ s.unreadable }}. Nothing here changes it.</span></p>
+  {%- elif not s.configured %}
+  <p class="muted small">This network has no remote. Make its deploy key and SSH alias on this host first; Connect records them and never edits the host's SSH configuration.</p>
+  <form class="set-form" method="post" action="{{ url_for('remote_v2.connect') }}"
+        hx-post="{{ url_for('remote_v2.connect') }}" hx-target="#remote-setup" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ s.list }}">
+    <label for="f-rs-alias">SSH alias</label>
+    <div><input id="f-rs-alias" name="ssh_alias" class="mono" type="text" autocomplete="off" required><span class="set-origin">{{ s.shapes.ssh_alias }}</span></div>
+    <label for="f-rs-owner">Owner</label>
+    <div><input id="f-rs-owner" name="owner" class="mono" type="text" autocomplete="off" required><span class="set-origin">{{ s.shapes.owner }}</span></div>
+    <label for="f-rs-repo">Repository</label>
+    <div><input id="f-rs-repo" name="repo" class="mono" type="text" autocomplete="off" required><span class="set-origin">{{ s.shapes.repo }}</span></div>
+    <label for="f-rs-branch">Branch</label>
+    <div><input id="f-rs-branch" name="branch" class="mono" type="text" value="main" autocomplete="off"><span class="set-origin">{{ s.shapes.branch }}</span></div>
+    <label for="f-rs-key">Key path</label>
+    <div><input id="f-rs-key" name="key_path" class="mono" type="text" autocomplete="off"><span class="set-origin">{{ s.shapes.key_path }}</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="publish-remote" hx-disabled-elt="this"><span class="op-idle">Connect</span><span class="op-busy">Connecting…</span></button>{{ how('publish-remote', 'connect', op='connecting a remote') }}</span>
+    </div>
+  </form>
+  {%- else %}
+  {%- set r = s.remote %}
+  <dl class="set-facts">
+    <dt>Repository</dt><dd class="mono">{{ r.owner_repo }} · {{ r.branch }}</dd>
+    <dt>SSH alias</dt><dd class="mono">{{ r.ssh_alias }}{% if r.key_path %} <span class="muted small">({{ r.key_path }})</span>{% endif %}</dd>
+    <dt>Recorded</dt><dd>{{ 'set up by Mercury' if r.managed else 'adopted' }}{% if r.adopted_at %} {{ stamp(r.adopted_at) }}{% endif %}{% if r.adopted_by %} by {{ r.adopted_by }}{% endif %}</dd>
+    <dt>Write probe</dt><dd>{% if r.verified_at %}passed {{ stamp(r.verified_at) }}{% else %}{{ badge('never passed', 'warn') }} Push refuses until it has{% endif %}</dd>
+    <dt>Acknowledged</dt><dd>{% if s.acknowledged %}{{ s.acknowledged.kinds | join(', ') or 'nothing gated' }} by {{ s.acknowledged.by }} {{ stamp(s.acknowledged.at) }}{% else %}nothing yet{% endif %}</dd>
+    <dt>Automatic pushing</dt><dd>{% if r.auto_push %}on{% elif r.last_push %}off{% else %}off: offered after a successful push{% endif %}</dd>
+    <dt>Last push</dt><dd>{% if r.last_push %}{{ stamp(r.last_push.at) }}{% if r.last_push.by %} by {{ r.last_push.by }}{% endif %}{% else %}none yet{% endif %}</dd>
+  </dl>
+  <div class="set-foot">
+    <form method="post" action="{{ url_for('remote_v2.write_probe') }}" hx-post="{{ url_for('remote_v2.write_probe') }}" hx-target="#remote-setup" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ s.list }}">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="publish-remote" hx-disabled-elt="this" title="Every read-only check, then an empty commit to a scratch ref on the remote, removed again"><span class="op-idle">Run the write probe</span><span class="op-busy">Probing…</span></button>{{ how('publish-remote', 'write-probe', op='the write probe') }}</span>
+    </form>
+    <form method="post" action="{{ url_for('remote_v2.publication') }}" hx-post="{{ url_for('remote_v2.publication') }}" hx-target="#remote-setup" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ s.list }}">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="publish-remote" hx-disabled-elt="this" title="Reads the whole history: counts, kinds and fingerprints, never a value"><span class="op-idle">What a first push publishes</span><span class="op-busy">Reading the history…</span></button>{{ how('publish-remote', 'gate', compact=True, op='what a push publishes') }}</span>
+    </form>
+    {%- if r.last_push and not r.auto_push %}
+    <form method="post" action="{{ url_for('remote_v2.auto_push') }}" hx-post="{{ url_for('remote_v2.auto_push') }}" hx-target="#remote-setup" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ s.list }}">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="publish-remote" hx-disabled-elt="this"><span class="op-idle">Turn on automatic pushing</span><span class="op-busy">Turning on…</span></button>{{ how('publish-remote', 'auto-push', compact=True, op='automatic pushing') }}</span>
+    </form>
+    {%- endif %}
+  </div>
+  {%- if probed %}
+  <div class="set-checks">
+    <p class="set-label">The write probe {{ 'passed' if probed.ok else 'FAILED' }}</p>
+    <ol class="set-steps">
+      {%- for c in probed.checks %}
+      <li>{{ badge('pass' if c.ok else 'FAILS', 'ok' if c.ok else 'danger') }} <span><code>{{ c.name }}</code>{% if c.detail %}: {{ c.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ol>
+  </div>
+  {%- endif %}
+  {%- if pub %}
+  <div class="set-checks">
+    <p class="set-label">A first push to {{ pub.owner_repo }} ({{ pub.branch }}) would publish</p>
+    <p class="small">{{ pub.commits }} commit{{ '' if pub.commits == 1 else 's' }} ({{ pub.commits_touching_golden }} touching a golden), {{ pub.tags }} tag{{ '' if pub.tags == 1 else 's' }}{% if pub.tags_by_prefix %} ({% for p, n in pub.tags_by_prefix.items() %}{{ p }} {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}, {{ pub.notes }} note ref{{ '' if pub.notes == 1 else 's' }}.</p>
+    {%- if pub.gated.kinds %}
+    <div class="table-wrap">
+    <table class="table set-table">
+      <thead><tr><th>Gated secret</th><th>Fingerprint</th><th>Devices</th><th>In a current golden</th></tr></thead>
+      <tbody>
+      {%- for fp, v in pub.gated['values'].items() %}
+      <tr><td>{{ v.kind }}</td><td class="mono">{{ fp }}</td><td>{{ v.devices | join(', ') }}</td><td>{{ v.at_head | join(', ') or '—' }}</td></tr>
+      {%- endfor %}
+      </tbody>
+    </table>
+    </div>
+    <form class="set-form" method="post" action="{{ url_for('remote_v2.acknowledge') }}" hx-post="{{ url_for('remote_v2.acknowledge') }}" hx-target="#remote-setup" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ s.list }}">
+      {%- for fp in pub.gated['values'] %}<input type="hidden" name="shown" value="{{ fp }}">{% endfor %}
+      <label for="f-rs-typed">To publish them, type</label>
+      <div><input id="f-rs-typed" name="typed" class="mono" type="text" autocomplete="off" placeholder="{{ pub.expected }}" required><span class="set-origin">exactly: {{ pub.expected }}</span></div>
+      <div class="set-foot set-form-note">
+        <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="publish-remote" hx-disabled-elt="this"><span class="op-idle">Acknowledge</span><span class="op-busy">Acknowledging…</span></button>{{ how('publish-remote', 'gate', op='acknowledging publication') }}</span>
+        <span class="muted small">Recorded with who, when, the commit and each fingerprint above; a value committed after this card was drawn is refused, never covered.</span>
+      </div>
+    </form>
+    {%- else %}
+    <p class="small">No live secret that can be read back is in the history: nothing needs an acknowledgement.</p>
+    {%- endif %}
+    {%- if pub.reported %}<p class="muted small">Counted and never gated (dead values and hashes): {% for k, n in pub.reported.items() %}{{ k }} {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+  </div>
+  {%- endif %}
+  {%- endif %}
+</section>

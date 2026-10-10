@@ -71,6 +71,9 @@ def _bodies(v):
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "
                                          "refused naming the networks; it starts nothing"),
+        "remote_v2.publication": (409, ("form", {"list": LIST}),
+                                  "the planted list has no remote: refused naming it, reading "
+                                  "no history"),
         "settings_v2.records_store_preview": (404, ("form", {}),
                                               "the direction filled in ('zz') is neither move "
                                               "nor back: refused naming both, counting nothing"),

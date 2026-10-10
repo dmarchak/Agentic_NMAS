@@ -46,8 +46,8 @@ and built.
 | Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | PARTLY BUILT, History | The History tab and `/v2/history/commit/<sha>` (walked). Missing: revealing a version, which stays in the GUI (decided 2026-10-05: a person, recorded); no board yet |
 | Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT, walked | History › Commits: the log, its filters and each commit's masked change |
 | Remote | `/remote/push`, `/remote/verify`, `/remote/status` | BUILT | History's header (Push now, Verify; no real run yet) and `/v2/history/remote` |
-| Remote, auto-push | `/remote/auto-push` | PLANNED, 7.5 | History's remote section (brief 3.4, signed off 2026-10-02) |
-| Remote, connect and the rest | `/remote/verify-write`, `/preview`, `/acknowledge`, `/adopt` | STAYS, set-up acts with no screen (decided 2026-10-05) | Connecting a remote, acknowledging publication and the write probe are done once. The command this row named, `scripts/nmas-remote`, never existed (C631): until it does, they are requests made by hand |
+| Remote, auto-push | `/remote/auto-push` | BUILT (C631, 2026-10-10; not run on the host) | History › Remote set-up…: Turn on automatic pushing, offered after a successful push |
+| Remote, connect and the rest | `/remote/verify-write`, `/preview`, `/acknowledge`, `/adopt` | BUILT (C631, 2026-10-10; not run on the host) | History › Remote set-up…: Connect, Run the write probe, What a first push publishes and its typed Acknowledge, each a verified person's (`routes/remote_v2.py`). They were to stay CLI-only through a command that never existed; a host command cannot carry the verified person they need |
 | Renames | `/golden/renames`, `/golden/renames/sync` | REMOVE, 7.8 (decided 2026-10-05) | Refresh Hostnames is cut: C465 removed its NetBox write, and a device's hostname comes from its captures |
 | Legacy golden store, migration | `/golden/legacy_store`, `/golden/migrate/plan`, `/golden/migrate/apply` | REMOVE, 7.8 | Its retirement condition (`legacy_only_goldens()` empty) has held on the host since 2026-09-28 |
 | Persist, rotate, retire | `/persist/*` (2), `/rotate/*` (3), `/retire/*` (2) | BUILT, walked | The device page's Actions: Persist (C359), Rotate (C370), Retire (r5); the routes go with today's pages |
@@ -129,8 +129,9 @@ library, transfer and upgrade); reload stays as a gated device-page operation
    screen (the operator, 2026-10-06, C548): fleet-wide reads from the same allowlist, the
    evidence engine of Stage 8's agent. (Built as Show commands, 2026-10-08.)
 8. Revealing a golden version stays in the GUI (a person, recorded); the remote's connect,
-   acknowledge and write probe are set-up acts with no screen (C631: the command named for
-   them does not exist).
+   acknowledge and write probe were set-up acts with no screen. (Revised 2026-10-10, C631,
+   under the Phase 7 mode: the command named for them never existed and could not carry a
+   verified person, so they are History's Remote set-up card.)
 9. Reload (P.14) gets a board, its planned-restart declaration built in.
 10. Refresh Hostnames is cut (C465 removed its write; hostnames come from captures).
 

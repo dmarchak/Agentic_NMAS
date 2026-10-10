@@ -170,6 +170,10 @@ DECLARED = {
     "remote.push": ("remote",),
     "remote.verify": ("remote",),
     "remote.verify_write": ("remote",),
+    "remote_v2.connect": ("remote",),
+    "remote_v2.write_probe": ("remote",),
+    "remote_v2.acknowledge": ("remote",),
+    "remote_v2.auto_push": ("remote",),
     # Intent, templates and deploys.
     "retire.apply": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
     "templatize.seed_apply": ("intent", "remote"),
@@ -357,6 +361,7 @@ DECLARED = {
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "settings_v2.install_test": Nothing("tests an Installation card's service and reports in the card; keeps nothing"),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),
+    "remote_v2.publication": Nothing("reads what a first push would publish; writes nothing"),
     "settings_v2.records_store_preview": Nothing("counts the receipts lines in the files and the table for a move's preview; writes nothing"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
 }

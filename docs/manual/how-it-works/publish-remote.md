@@ -10,18 +10,38 @@ what the host holds. Publishing sends nothing to a device, and the tool never fo
 
 ## Before the first push {#setup}
 
-These steps are on today's app, on the Remote card (the Devices tab, below the device list):
+On **History**, the header's **Set up the remote…** (or **Remote set-up…** once there is one)
+opens the set-up card below it. Each act is a verified person's, except reading what a push
+would publish, and each is recorded.
 
-- **Adopt the remote**: the SSH alias, the owner, the repository and the branch. The tool
-  records them for this list and never edits the host's SSH configuration.
-- **Verify, with the write probe**: the read-only checks (below) and one more, which pushes
-  an empty commit holding no files to a scratch ref and removes the ref. It publishes no
-  content, but it is a write, so it needs a person. **Push refuses until this has passed
-  once.**
-- **Preview** what a first push would publish: the commits, the tags, and every secret found
-  in the history, counted, never shown.
-- **Acknowledge** it (next section), then **Push**. Automatic pushing is offered only after a
-  push has succeeded.
+### Connect {#connect}
+
+**Connect** records the network's existing remote: the SSH alias, the owner, the repository,
+the branch and, optionally, the key's path. Make the deploy key and the SSH alias on the host
+first; Mercury never edits the host's SSH configuration. Each field must be one token of its
+shape, said beside it (an alias starts with a letter or digit, an owner and a repository follow
+GitHub's rules), because each reaches `ssh` or git as one argument: a field that is not is
+refused by name and nothing is recorded. A network that already has a remote is refused.
+
+### The write probe {#write-probe}
+
+**Run the write probe** runs the read-only checks (below) and one more, which pushes an empty
+commit holding no files to a scratch ref and removes the ref. It publishes no content, but it
+is a write, so it needs a person. Each check is drawn with its answer. **Push refuses until
+this has passed once.**
+
+### What a first push publishes, and acknowledging it
+
+**What a first push publishes** reads the whole history: the commits, the tags by kind, the
+note refs, every gated secret by kind, salted fingerprint and device (never its value), and the
+dead values and hashes counted. If anything is gated, the card asks you to type the gated kinds
+to **Acknowledge** (next section); then **Push now**, in the header.
+
+### Automatic pushing {#auto-push}
+
+**Turn on automatic pushing** is offered only after a push has succeeded. From then on each
+commit pushes itself (below), unless it would publish a secret nobody acknowledged, which holds
+it for a person.
 
 ## The publication gate {#gate}
 
