@@ -178,6 +178,12 @@ def routing_links(intents: dict, hosts: list, results: dict, up: dict) -> dict:
         for p in view["protocols"]:
             for r in p["rows"]:
                 peer = r.get("peer") or ""
+                external = ""
+                if not peer:
+                    # A peer outside management (an eBGP neighbour, C648): a node named by its
+                    # address, never dropped.
+                    external = r.get("address") or ""
+                    peer = external
                 if not peer or r["state"] == "unknown":
                     continue
                 a, b = sorted((host, peer))
@@ -190,7 +196,8 @@ def routing_links(intents: dict, hosts: list, results: dict, up: dict) -> dict:
                 if cur is None or rank.get(state, 0) > rank.get(cur["state"], 0):
                     out[p["proto"]][key] = {"a": a, "b": b, "state": state,
                                             "words": r.get("words", ""),
-                                            "intended": r["state"] != "unexpected"}
+                                            "intended": r["state"] != "unexpected",
+                                            "external": external}
     return {layer: sorted(v.values(), key=lambda l: (l["a"], l["b"]))
             for layer, v in out.items()}
 
@@ -249,9 +256,18 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
                     "lldp_read": False}
     layers = {"physical": phys}
     layers.update(routing_links(intents, hosts, results, up))
+    for layer in ("ospf", "ospfv3", "bgp"):
+        for l in layers[layer]:
+            if l.get("external") and l["external"] not in nodes:
+                nodes[l["external"]] = {"managed": False, "role": "", "polled": False,
+                                        "answering": False, "lldp_read": False,
+                                        "external": True}
     analysis = {}
     for layer, links in layers.items():
-        names = sorted(nodes) if layer == "physical" else sorted(managed)
+        # A routing layer's population is the devices taking part in it (C648): a switch that
+        # runs no OSPF is not an island of the OSPF layer.
+        names = sorted(nodes) if layer == "physical" else \
+            sorted({e for l in links for e in (l["a"], l["b"])})
         a = analyse(names, links)
         a["island_why"] = {}
         for island in a["islands"]:

@@ -166,6 +166,27 @@ class TestTheAnalyses:
 
 
 class TestTheRoutingLayers:
+    def test_a_peer_outside_management_is_a_node_named_by_its_address(self):
+        """C648: the lab's eBGP sessions are to r5, which is not managed; the first host run
+        dropped them and drew an empty BGP layer. r5 has no committed intent on the host (it is
+        retired), so its address names no device, as there."""
+        res, up = _capture()
+        intents = {h: hv for h, hv in _intents().items() if h != "r5"}
+        g = T.network_graph(MANAGED, {}, intents, res, up)
+        bgp = g["layers"]["bgp"]
+        assert bgp and all(l["external"] for l in bgp)
+        for l in bgp:
+            assert g["nodes"][l["external"]] == dict(g["nodes"][l["external"]], managed=False,
+                                                     external=True)
+
+    def test_a_layer_s_islands_are_among_the_devices_taking_part(self):
+        """C648: a switch that runs no OSPF is not an island of the OSPF layer."""
+        g = _graph()
+        ospf_devices = {e for l in g["layers"]["ospf"] for e in (l["a"], l["b"])}
+        assert ospf_devices and not {"s1", "s2"} & ospf_devices
+        islands = {d for i in g["analysis"]["ospf"]["islands"] for d in i}
+        assert islands <= ospf_devices
+
     def test_each_adjacency_is_the_neighbours_comparison(self):
         g = _graph()
         ospf = g["layers"]["ospf"]
