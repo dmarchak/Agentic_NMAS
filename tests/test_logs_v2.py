@@ -107,8 +107,8 @@ class TestTheReader:
         v = _read(loki=loki)
         counts = [p["query"] for path, p in loki.asked if path.endswith("/query")]
         assert counts and all("!~ `%HA_EM-" in q for q in counts)
-        unparsed = sum(int(float(r["value"][1])) for r in DAYS["2026-10-07"]["answer"]["data"]["result"]
-                       if not r["metric"])
+        rows = DAYS["2026-10-07"]["answer"]["data"]["result"]
+        unparsed = sum(int(float(r["value"][1])) for r in rows if not r["metric"])
         assert unparsed and v["unparsed"]["2026-10-07"] == unparsed
 
     def test_the_store_s_first_day_is_found_walking_back_and_asked_once(self):
@@ -137,12 +137,18 @@ class TestTheReader:
         assert sorted(v["days"]) == sorted(set(v["days"]))
         assert len(v["days"]) == 3 and v["days_missing"] == 0
 
-    def test_each_device_s_newest_line(self):
+    def test_each_device_s_newest_line_per_severity(self):
+        """The view's Newest follows the severity asked (walked on the host 2026-10-10: a
+        notice-level line was drawn as the newest of a table of errors)."""
         v = _read()
-        newest_r4 = max(int(t) for s in _fx("lines_r4.json")["answer"]["data"]["result"]
-                        for t, _l in s["values"])
-        assert v["newest"]["r4"] == time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                  time.gmtime(newest_r4 / 1e9))
+        by_sev = {}
+        for s in _fx("lines_r4.json")["answer"]["data"]["result"]:
+            for t, line in s["values"]:
+                sev = re.search(r"%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-([0-7])-[A-Z0-9_]+", line)
+                if sev:
+                    by_sev[sev.group(1)] = max(by_sev.get(sev.group(1), 0), int(t))
+        assert v["newest"]["r4"] == {s: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t / 1e9))
+                                     for s, t in by_sev.items()}
         assert "s3" in v["newest"]
 
     def test_loki_unanswered_fails_the_read(self):

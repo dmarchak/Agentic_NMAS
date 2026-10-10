@@ -8,8 +8,9 @@ page fed by the logs reader's value built from the real captures of the lab's Lo
 
 Boards: `AskLogs.dc.html` (History › Query board C, "Syslog by device", 1440 wide), signed off with History › Query A and B on canvas v31 (NSOT_STAGE7_PLAN 15.5 to 15.9). The board has no phone variant.
 Shots: desktop 1440 (120 days, every severity, r4 opened); phone 390 (the page held to a 390 px column, and its first screen). Compared 2026-10-10.
+Compared again 2026-10-10 after the host walk: Newest follows the severity asked (the exact time when seen, else the last day counted, the board's "09:41 today" and "2 Oct"); no region's verdict changed.
 Templates compared: templates/v2/logs.html, templates/v2/_logs_view.html
-Templates sha256: `795c78d36405050061d51471a5621efbede0506837398f94bef7518086102198`
+Templates sha256: `2799ce937936d0bcfa9f613d4f41e27d14b7c94e747f4251b534987bd4427b50`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

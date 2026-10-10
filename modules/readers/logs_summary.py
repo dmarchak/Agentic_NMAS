@@ -12,7 +12,8 @@ page sums what is kept. A device's own lines are one bounded query when a person
   heartbeats left out (by their exact line form, as the device page's Logs tab leaves them);
 - ``last_24h``: the same for the 24 hours before the read;
 - ``unparsed``: lines the fields do not match (no device name or mnemonic), per day;
-- ``newest``: each device's newest line seen, from the lines since the last read;
+- ``newest``: each device's newest line seen at each severity, from the lines since the last
+  read;
 - ``first_day``: the store's first line, found once, so the page can say a range reaches past
   what was ever kept.
 
@@ -129,13 +130,16 @@ def _job() -> str:
 _LINE_DEVICE = None
 
 
-def _device_of(line: str) -> str:
+def _fields_of(line: str) -> tuple:
     global _LINE_DEVICE                               # noqa: PLW0603 (compiled once)
     if _LINE_DEVICE is None:
         from modules import device_logs
         _LINE_DEVICE = re.compile(device_logs.LOGQL_FIELDS)
     m = _LINE_DEVICE.search(line)
-    return m.group("dev") if m else ""
+    if not m:
+        return "", None
+    from modules.device_logs import mnemonic_severity
+    return m.group("dev"), mnemonic_severity(m.group("mn"))
 
 
 def read(list_name: str = "", loki=None, clock=time.time, previous=None,
@@ -173,15 +177,17 @@ def read(list_name: str = "", loki=None, clock=time.time, previous=None,
     for start in missing[:BACKFILL_PER_READ]:
         days[_day(start)], unparsed[_day(start)] = day_counts(start + 86400, 86400)
     last_24h, unparsed_24h = day_counts(now, 86400)
-    newest = dict(previous.get("newest") or {})
+    # Each device's newest line PER SEVERITY, so the view's Newest follows the severity asked.
+    newest = {d: dict(v) for d, v in (previous.get("newest") or {}).items() if isinstance(v, dict)}
     since = (previous.get("read_at_ts") or (now - 86400))
     lines = loki.ask("loki/api/v1/query_range", query=selector(), limit=NEWEST_LIMIT,
                      start=str(int(since * 1e9)), end=str(int(now * 1e9)), direction="backward")
     for stream in lines:
         for ts, line in stream.get("values") or []:
-            dev = _device_of(line)
-            if dev and int(ts) / 1e9 > _ts(newest.get(dev)):
-                newest[dev] = _iso(int(ts) / 1e9)
+            dev, sev = _fields_of(line)
+            if dev and sev is not None and \
+                    int(ts) / 1e9 > _ts(newest.get(dev, {}).get(str(sev))):
+                newest.setdefault(dev, {})[str(sev)] = _iso(int(ts) / 1e9)
     return {"configured": True, "first_day": first_day, "retention_days": retention_days,
             "today": today, "days": dict(sorted(days.items())), "unparsed": unparsed,
             "last_24h": last_24h, "unparsed_24h": unparsed_24h, "newest": newest,

@@ -29,9 +29,16 @@ devices, r6 apart on purpose (the operator marked it) and reached directly. C650
 step is in place (tests/test_board_fidelity.py; 32 signed-off screens still to compare, the
 list only shrinks). Then shared recorded positions (step 3), then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
-in the records database); then Logs, the queryable logs the sidebar should open (C652, the
-operator 2026-10-10; History › Query board C, AskLogs), with its fidelity record; then DHCP
-(C529) with its fidelity record, boards L and M, C641,
+in the records database); Logs (C652, the operator 2026-10-10): the sidebar's Logs opens
+the queryable logs, History › Query board C's "Syslog by device" (e9d4fbe, e112246 and the
+Newest fix after them), counted per day by the `logs-summary` reader; compared with AskLogs in
+docs/fidelity/logs.md; walked on the host (its first reads: 71 s, then 7.7 s after the first-line
+search was fixed, the history filling 7 days a read; the lab's Logs retention set to 730 days,
+from 90, through the settings write path, as NSOT_STAGE7_PLAN 14.15 said). Next: DHCP (C529)
+with its fidelity record (a draft Kea reader from 2026-10-10 was set aside uncommitted when the
+Topology fidelity work came first; the read-only page is built from boards DhcpNetwork,
+DhcpSubnets, DhcpReserve and DhcpExclusions, Kea measured through its control sockets), boards L and
+M, C641,
 7.5 to 7.7, the 7.8 removals and the walk. Since 2026-10-10 each change is deployed and walked
 on the host as it lands (Phase 7 mode); the walk at the end runs everything again.
 

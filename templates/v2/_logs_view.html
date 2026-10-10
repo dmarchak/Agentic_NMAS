@@ -58,7 +58,7 @@
     <tr class="{{ 'open' if opened }}">
       <th scope="row">{{ go(g, {'d': '' if opened else r.device, 'mn': '', 'text': '', 'from': '', 'to': '', 'before': ''}, r.device ~ (' ▾' if opened else ' ▸'), 'btn btn-small mono lg-dev', none, ('Close ' if opened else 'Open ') ~ r.device ~ "'s lines") }}</th>
       <td>{{ r.lines }}<span class="lg-unit"> lines</span></td>
-      <td>{% if r.newest %}{{ stamp(r.newest) }}{% else %}<span class="muted" title="no line from it since the reader began watching; its lines are counted in the days above">—</span>{% endif %}</td>
+      <td>{% if r.newest %}{{ stamp(r.newest) }}{% elif r.newest_day %}<span title="the last day its lines at this severity were counted; the time is known for lines seen since the reader began watching">{{ r.newest_day }}</span>{% else %}<span class="muted" title="no line at this severity seen since the reader began watching; its lines are counted in the last 24 h">—</span>{% endif %}</td>
       <td><span class="mono">{{ r.top }}</span> ({{ r.top_n }})</td>
     </tr>
     {%- if opened and g.open %}{% set o = g.open %}

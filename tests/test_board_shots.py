@@ -109,6 +109,23 @@ def test_logs(tmp_path, monkeypatch):
             return lines
     monkeypatch.setattr("modules.integrations.loki.LokiIntegration._get",
                         lambda self, path, **p: {"ok": True, "response": _R()})
+    walked = os.environ.get("NMAS_BOARD_LOGS_DOC", "")
+    if walked:
+        # A walk: the logs reader's stored document as the host holds it (names and counts),
+        # drawn as of now for the network's devices it names.
+        from modules import reader_job
+        with open(walked, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        os.makedirs(os.path.dirname(reader_job.store_path("logs-summary")), exist_ok=True)
+        with open(reader_job.store_path("logs-summary"), "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+        monkeypatch.setattr("modules.logs_page.time.time", lambda: doc["last_good"]["value"]
+                            ["read_at_ts"])
+        import app as A
+        with browser.Served(A.app) as served:
+            _shoot("logs-walk", "", lambda w: "/v2/logs?list=Lab&range=30d", served,
+                   widths=((1440, 1.0),))
+        return
     T._store(T._read(previous=T._read()))
     import app as A
     with browser.Served(A.app) as served:

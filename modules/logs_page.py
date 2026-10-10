@@ -131,7 +131,16 @@ def view(list_name: str, values, now: float = None) -> dict:
     rows = []
     for dev, row in table.items():
         top = max(row["mn"].items(), key=lambda kv: (kv[1], kv[0]))
-        row.update(top=top[0], top_n=top[1], newest=(v.get("newest") or {}).get(dev, ""))
+        # Newest at the severity asked: the exact time when the reader saw it, else the last day
+        # the counts hold a line at it (the board's "2 Oct"), never a line of another severity.
+        seen = [iso for sev, iso in ((v.get("newest") or {}).get(dev) or {}).items()
+                if isinstance(iso, str) and sev.isdigit() and int(sev) <= limit]
+        last_day = max(row["days"]) if row["days"] else ""
+        row.update(top=top[0], top_n=top[1], newest=max(seen) if seen else "",
+                   newest_day=time.strftime("%-d %b", time.gmtime(_ts(last_day)))
+                   if last_day else "")
+        if row["newest"] and last_day and row["newest"][:10] < last_day:
+            row["newest"] = ""          # the counts know a later day than the lines seen
         rows.append(row)
     rows.sort(key=lambda r: (-r["lines"], r["device"]))
     out.update(rows=rows, total=sum(r["lines"] for r in rows), others=others,
