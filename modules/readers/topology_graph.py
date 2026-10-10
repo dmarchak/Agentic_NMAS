@@ -239,9 +239,13 @@ def analyse(nodes: list, links: list) -> dict:
             "critical": [{"device": n, "betweenness": v} for v, n in ranked[:CRITICAL_TOP]]}
 
 
-def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: dict) -> dict:
+def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: dict,
+                  expected: dict = None, previous: dict = None, now: str = "") -> dict:
     """One network's graph, every layer and its analysis. *hosts* is the inventory (the
-    population: a managed device the graph lacks is still a node, drawn apart with why)."""
+    population: a managed device the graph lacks is still a node, drawn apart with why).
+    *expected* is the network's declared islands (``{device: {reason, by, at}}``); *previous*
+    is each layer's islands at the last good read (``{layer: {device: {since}}}``, None on the
+    first read), so a device that becomes an island is told apart from one that was."""
     managed = set(hosts)
     polled = {h for h in hosts if (up.get(h) or {}).get("lldp") == 1}
     answering = {h for h in hosts if any(v == 1 for v in (up.get(h) or {}).values())}
@@ -256,12 +260,33 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
                     "lldp_read": False}
     layers = {"physical": phys}
     layers.update(routing_links(intents, hosts, results, up))
+    # An OUTSIDE PEER (the operator, 2026-10-10: r5, decommissioned, still r4's eBGP neighbour)
+    # is a device the fleet peers with and does not manage: never a fleet node, never an island.
+    # LLDP names it; a routing peer known only by its address is named through the LLDP
+    # neighbour on the interface whose subnet holds that address.
+    for o in others:
+        nodes[o]["outside"] = True
+        nodes[o]["seen_by"] = sorted({l["a"] if l["b"] == o else l["b"] for l in phys
+                                      if o in (l["a"], l["b"])})
     for layer in ("ospf", "ospfv3", "bgp"):
         for l in layers[layer]:
-            if l.get("external") and l["external"] not in nodes:
+            if not l.get("external"):
+                continue
+            mine = l["a"] if l["b"] == l["external"] else l["b"]
+            named = _peer_by_lldp(intents.get(mine) or {}, mine, l["external"], phys)
+            address = l["external"]
+            if named:
+                l["a"], l["b"] = sorted((mine, named))
+                l["external"], l["address"] = named, address
+            if l["external"] not in nodes:
                 nodes[l["external"]] = {"managed": False, "role": "", "polled": False,
                                         "answering": False, "lldp_read": False,
-                                        "external": True}
+                                        "outside": True, "external": not named,
+                                        "seen_by": []}
+            if mine not in nodes[l["external"]]["seen_by"]:
+                nodes[l["external"]]["seen_by"] = sorted(nodes[l["external"]]["seen_by"] +
+                                                         [mine])
+    expected = expected or {}
     analysis = {}
     for layer, links in layers.items():
         # A routing layer's population is the devices taking part in it (C648): a switch that
@@ -271,12 +296,59 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
         names = sorted(n for n, v in nodes.items() if not v.get("external")) \
             if layer == "physical" else sorted({e for l in links for e in (l["a"], l["b"])})
         a = analyse(names, links)
-        a["island_why"] = {}
+        # An island is of the FLEET: an outside peer cut off is not one of ours.
+        a["islands"] = [m for m in ([d for d in i if (nodes.get(d) or {}).get("managed")]
+                                    for i in a["islands"]) if m]
+        before = (previous or {}).get(layer) or {}
+        a["island_why"], a["island_state"] = {}, {}
         for island in a["islands"]:
             for d in island:
                 a["island_why"][d] = _why_apart(d, nodes.get(d) or {}, layer, len(island) == 1)
+                declared = expected.get(d) if layer == "physical" else None
+                was = before.get(d) or {}
+                a["island_state"][d] = {
+                    # Declared apart by a person, with why: drawn as expected, never a warning.
+                    "expected": declared or None,
+                    # Since when it has been an island, carried from the last good read; a
+                    # device that BECOMES one is new this read and warned.
+                    "since": was.get("since") or now,
+                    "became": not was and previous is not None,
+                    "warn": not declared}
         analysis[layer] = a
     return {"nodes": nodes, "layers": layers, "analysis": analysis}
+
+
+def _peer_by_lldp(hv: dict, host: str, address: str, phys: list) -> str:
+    """The LLDP neighbour on *host*'s interface whose subnet holds *address*, or ``""``."""
+    import ipaddress
+
+    from modules.nsot.ifnames import same_interface
+
+    try:
+        addr = ipaddress.ip_address(address)
+    except ValueError:
+        return ""
+    for iface in hv.get("interfaces") or []:
+        nets = []
+        v4 = (iface.get("ipv4") or "").split()
+        if len(v4) == 2:
+            try:
+                nets.append(ipaddress.ip_interface(f"{v4[0]}/{v4[1]}").network)
+            except ValueError:
+                pass
+        for v6 in iface.get("ipv6") or []:
+            try:
+                nets.append(ipaddress.ip_interface(v6).network)
+            except ValueError:
+                pass
+        if not any(addr.version == n.version and addr in n for n in nets):
+            continue
+        for l in phys:
+            if l["a"] == host and same_interface(l["port_a"], iface.get("name", "")):
+                return l["b"]
+            if l["b"] == host and same_interface(l["port_b"], iface.get("name", "")):
+                return l["a"]
+    return ""
 
 
 def _why_apart(device: str, node: dict, layer: str, alone: bool) -> str:
@@ -295,7 +367,7 @@ def _why_apart(device: str, node: dict, layer: str, alone: bool) -> str:
 
 # ---------------------------------------------------------------------------- the reader
 
-def read(source=None, population=None, clock=time.time) -> dict:
+def read(source=None, population=None, clock=time.time, previous=None, expected=None) -> dict:
     from modules import integration_groups as IG
     from modules.neighbours import committed_intents
     from modules.readers.adjacencies import lists
@@ -304,6 +376,11 @@ def read(source=None, population=None, clock=time.time) -> dict:
                                                             prometheus_series)))()
     if not configured:
         return {"configured": False, "networks": {}, "errors": []}
+    if previous is None:
+        got = reader_job.read_cached(READER_NAME)
+        last = (got.get("doc") or {}).get("last_good")
+        previous = (last or {}).get("value") if last else None
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))
     networks, errors = {}, []
     for list_name, ref, hosts in (population or lists)():
         intents, err = committed_intents(ref.repo_dir)
@@ -314,13 +391,32 @@ def read(source=None, population=None, clock=time.time) -> dict:
             for metric in ("lldpRemEntry", "ifOperStatus"):
                 for row in (results.get(h) or {}).get(metric) or []:
                     roles.setdefault(h, (row.get("metric") or {}).get("role", ""))
-        networks[list_name] = network_graph(hosts, roles, intents, results, up)
-    return {"configured": True, "networks": networks, "errors": errors,
-            "read_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clock()))}
+        declared = (expected or _expected)(list_name)
+        if declared.get("state") == "unreadable":
+            errors.append(f"{list_name}: {declared['error']}")
+        before = None
+        if previous is not None:
+            net = ((previous.get("networks") or {}).get(list_name) or {}).get("analysis") or {}
+            before = {layer: a.get("island_state") or {} for layer, a in net.items()}
+        networks[list_name] = network_graph(hosts, roles, intents, results, up,
+                                            expected=declared.get("islands") or {},
+                                            previous=before, now=now)
+    return {"configured": True, "networks": networks, "errors": errors, "read_at": now}
+
+
+READER_NAME = "topology-graph"
+
+
+def _expected(list_name: str) -> dict:
+    from modules import topology_expected
+    try:
+        return topology_expected.read(list_name)
+    except Exception as exc:                         # noqa: BLE001 (said as the read's error)
+        return {"state": "unreadable", "islands": {}, "error": str(exc)}
 
 
 READER = reader_job.register(reader_job.Reader(
-    name="topology-graph",
+    name=READER_NAME,
     what="how each network is connected, layer by layer, and where it is weak (P.11)",
     endpoints=("Prometheus: GET /api/v1/query for lldpRemEntry, lldpRemPortId, ifOperStatus, "
                "ifHighSpeed, ospfNbrState, ospfv3NbrState, cbgpPeer2State and up "

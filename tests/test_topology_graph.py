@@ -76,6 +76,13 @@ def _graph(results=None, up=None, hosts=MANAGED):
     return T.network_graph(hosts, {}, _intents(), results or res, up or u)
 
 
+def _r5_retired(**kw):
+    """The graph as the host reads it: r5 has no committed intent there (it is retired)."""
+    res, up = _capture()
+    intents = {h: hv for h, hv in _intents().items() if h != "r5"}
+    return T.network_graph(MANAGED, {}, intents, res, up, **kw)
+
+
 def _link(g, a, b):
     return [l for l in g["layers"]["physical"] if {l["a"], l["b"]} == {a, b}]
 
@@ -135,6 +142,37 @@ class TestThePhysicalLayer:
         assert a["islands"] == [["r6"]]
         assert a["island_why"]["r6"] == "no LLDP neighbour among the managed devices"
         assert "r5" in a["main"]
+        assert a["island_state"]["r6"] == {"expected": None, "since": "", "became": False,
+                                           "warn": True}
+
+
+class TestIslandsExpectedAndBecoming:
+    """The operator, 2026-10-10: r6 is an island by design (its own containerlab lab); mark an
+    expected island with its reason, and keep the warning for a device that BECOMES one."""
+
+    DECL = {"reason": "its own containerlab lab, cabled apart", "by": "p@example.invalid",
+            "at": "2026-10-10T19:00:00Z"}
+
+    def test_a_declared_island_is_expected_with_its_reason_and_warns_nothing(self):
+        a = _r5_retired(expected={"r6": self.DECL}, now="T1")["analysis"]["physical"]
+        assert a["island_state"]["r6"]["expected"] == self.DECL
+        assert a["island_state"]["r6"]["warn"] is False
+
+    def test_a_device_that_becomes_an_island_is_new_and_warned(self):
+        a = _r5_retired(previous={"physical": {}}, now="T1")["analysis"]["physical"]
+        assert a["island_state"]["r6"] == {"expected": None, "since": "T1", "became": True,
+                                           "warn": True}
+
+    def test_one_that_was_already_an_island_carries_its_since(self):
+        a = _r5_retired(previous={"physical": {"r6": {"since": "T0"}}},
+                        now="T1")["analysis"]["physical"]
+        assert a["island_state"]["r6"]["since"] == "T0"
+        assert a["island_state"]["r6"]["became"] is False
+
+    def test_the_declaration_is_the_physical_layer_s_only(self):
+        g = _r5_retired(expected={"s1": self.DECL})
+        assert all(st["expected"] is None for layer, a in g["analysis"].items()
+                   if layer != "physical" for st in a["island_state"].values())
 
     def test_device_names_are_shortened_never_trusted_whole(self):
         assert T.short("s3.example.invalid") == "s3" and T.short("") == ""
@@ -170,18 +208,26 @@ class TestTheRoutingLayers:
         """C648: the lab's eBGP sessions are to r5, which is not managed; the first host run
         dropped them and drew an empty BGP layer. r5 has no committed intent on the host (it is
         retired), so its address names no device, as there."""
-        res, up = _capture()
-        intents = {h: hv for h, hv in _intents().items() if h != "r5"}
-        g = T.network_graph(MANAGED, {}, intents, res, up)
+        g = _r5_retired()
         bgp = g["layers"]["bgp"]
-        assert bgp and all(l["external"] for l in bgp)
-        for l in bgp:
-            assert g["nodes"][l["external"]] == dict(g["nodes"][l["external"]], managed=False,
-                                                     external=True)
+        assert bgp
+        # ... named through the LLDP neighbour on the interface whose subnet holds the address
+        # (the operator, 2026-10-10: r5 drawn as an outside peer), its address kept.
+        assert {l["external"] for l in bgp} == {"r5"}
+        assert all(l["address"] and "r5" in (l["a"], l["b"]) for l in bgp)
+        assert {l["a"] if l["b"] == "r5" else l["b"] for l in bgp} == {"r3", "r4"}
         # ... and never a node of the physical layer (the fix's first host run put them there).
         phys = g["analysis"]["physical"]
         assert phys["islands"] == [["r6"]]
-        assert not {l["external"] for l in bgp} & set(phys["main"])
+        assert not any(":" in n or n[0].isdigit() for n in g["nodes"])
+
+    def test_an_outside_peer_is_one_node_never_a_fleet_node_or_an_island(self):
+        g = _r5_retired()
+        r5 = g["nodes"]["r5"]
+        assert r5["managed"] is False and r5["outside"] is True
+        assert r5["seen_by"] == ["r3", "r4"]
+        for layer, a in g["analysis"].items():
+            assert not any("r5" in i for i in a["islands"]), layer
 
     def test_a_layer_s_islands_are_among_the_devices_taking_part(self):
         """C648: a switch that runs no OSPF is not an island of the OSPF layer."""
@@ -210,7 +256,8 @@ class TestTheRead:
         res, up = _capture()
         ref = SimpleNamespace(repo_dir=os.path.join(ROOT, "no-such-repo"))
         got = T.read(source=lambda: (True, res, up),
-                     population=lambda: [("Lab", ref, MANAGED)], clock=lambda: 0)
+                     population=lambda: [("Lab", ref, MANAGED)], clock=lambda: 0,
+                     expected=lambda name: {"state": "absent", "islands": {}, "error": ""})
         assert got["configured"] and set(got["networks"]) == {"Lab"}
         assert got["read_at"] == "1970-01-01T00:00:00Z"
         assert got["networks"]["Lab"]["nodes"]["r1"]["role"] == "router"
