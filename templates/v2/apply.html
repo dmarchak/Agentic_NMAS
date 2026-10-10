@@ -1,14 +1,23 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import info -%}
-{% block title %}{{ words.title }} · Monitoring · {{ brand.short }}{% endblock %}
+{#- The batch Apply (P.9 d2) and, with scope `intent`, Devices › Plan a deploy for the ticked
+    devices (7.4's board B; cutover nice-to-have, 2026-10-10): one preview in a rollout order,
+    then one confirm, the run a job drawn in place. -#}
+{%- set on_devices = scope == 'intent' -%}
+{% block title %}{{ words.title }} · {{ 'Devices' if on_devices else 'Monitoring' }} · {{ brand.short }}{% endblock %}
 {% block main %}
+{%- if on_devices %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices', list=list_name) }}">Devices</a><span aria-hidden="true">/</span><span>Plan a deploy</span></nav>
+{%- endif %}
 <div class="page-head">
   <div class="page-title">
-    <h1>{{ words.title }} {{ info('monitoring-templates', 'what-apply-does') }}</h1>
+    <h1>{{ words.title }} {{ info('deploy') if on_devices else info('monitoring-templates', 'what-apply-does') }}</h1>
     <p class="sub">{{ words.sub }}</p>
   </div>
 </div>
+{%- if not on_devices %}
 {% include "v2/_monitoring_tabs.html" %}
+{%- endif %}
 <div class="tab-body">
 {% include "v2/_apply_preview.html" %}
 <div id="apply-result"></div>

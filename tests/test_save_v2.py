@@ -504,8 +504,9 @@ class TestTheDevicesPage:
         assert 'x-bind:disabled="nonePicked"' in bar
         assert 'href="/v2/devices/save?list=Lab&amp;all=1"' in bar
         assert "Save every device of Lab (4)" in bar
-        assert "Plan a deploy for the ticked devices (today&#39;s page)" in bar or \
-            "Plan a deploy for the ticked devices (today's page)" in bar
+        # The deploy is on v2 since 2026-10-10 (board B): the bar's form opens it.
+        assert "Plan a deploy for the ticked devices…" in bar and "today" not in bar
+        assert 'action="/v2/devices/deploy"' in html
 
     def test_the_startup_column_says_what_the_check_compares(self, lab, monkeypatch):
         from modules.nsot import listref

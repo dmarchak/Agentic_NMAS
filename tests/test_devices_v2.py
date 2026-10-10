@@ -267,16 +267,44 @@ class TestThePage:
         for k in keys:
             assert k in invalidation.VOCABULARY and f"NMAS.subscribe('{k}'" in src
 
-    def test_the_selection_opens_todays_deploy_for_the_ticked_devices(self, inv):
+    def test_the_selection_opens_v2_s_deploy_for_the_ticked_devices(self, inv):
+        """The deploy is the Actions menu's first row (C593, board A), on v2 since 2026-10-10
+        (board B): the bar's form sends the ticked devices to Devices › Plan a deploy."""
         _r, html = self._get(inv, "/v2/devices")
-        # The deploy is the Actions menu's first row (C593, board A), still on today's page.
-        form = re.search(r'<form method="get" action="/" class="dev-form" data-todays-page="deploy_plan"[^>]*>(.*?)</form>', html, re.S)
-        assert form and '<input type="hidden" name="open" value="deploy">' in form.group(1)
-        assert 'name="device" value="r6"' in form.group(1)
-        assert "(today's page)" in form.group(1)
-        src = open(os.path.join(ROOT, "static", "js", "gen", "partials__deploy_wizard.1.js"),
-                   encoding="utf-8").read()
-        assert "q.get('open') === 'deploy'" in src and "openDeployPlan(q.getAll('device')" in src
+        form = re.search(r'<form method="get" action="/v2/devices/deploy" class="dev-form"[^>]*>'
+                         r'(.*?)</form>', html, re.S)
+        assert form and 'name="device" value="r6"' in form.group(1)
+        assert "data-todays-page" not in form.group(0) and "(today's page)" not in form.group(1)
+        assert "Plan a deploy for the ticked devices…" in form.group(1)
+
+    def test_the_deploy_page_plans_the_ticked_devices_whole_intent(self, inv, monkeypatch):
+        """The batch Apply's page with scope `intent`: the plan's empty scope (the whole
+        committed intent), a Devices crumb, and the confirm body carrying `intent`."""
+        seen = {}
+
+        def plan(list_name, order, remove=None, authorise=None, scope="x"):
+            seen["scope"], seen["order"] = scope, list(order)
+            return [{"device": d, "deployable": False, "blocking_reasons": ["planted"],
+                     "to_add": [], "removal_warnings": []} for d in order]
+        monkeypatch.setattr("routes.deploy.plan_devices", plan)
+        r, html = self._get(inv, "/v2/devices/deploy?device=r6&device=r7")
+        assert r.status_code == 200, html[:300]
+        assert seen == {"scope": "", "order": ["r6", "r7"]}
+        assert "Deploy committed intent" in html and '<a href="/v2/devices' in html
+        assert '<input type="hidden" name="scope" value="intent">' in html
+
+    def test_the_confirm_runs_the_batch_on_the_whole_intent(self, inv, monkeypatch):
+        """The confirm body says `intent`; the job is started with the plan's empty scope,
+        never the profile's."""
+        from modules import deploy_job
+        got = {}
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda n: True)
+        monkeypatch.setattr(deploy_job, "start", lambda *a, **k: got.update(k) or "job1")
+        r = inv["client"].post("/v2/monitoring/apply/confirm", json={
+            "list": "Lab", "scope": "intent", "order": ["r6"],
+            "confirmations": {"r6": "c"}, "command_hashes": {"r6": "h"}})
+        assert r.status_code == 202, r.get_data(as_text=True)
+        assert got["scope"] == ""
 
 
 class TestAPendingDevicesPage:

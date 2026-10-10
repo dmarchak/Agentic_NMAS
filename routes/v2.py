@@ -801,6 +801,17 @@ SCOPE_WORDS = {
                "none_can": "No device here can receive its probes now: each says why above.",
                "all_nothing": ("Nothing to send: every device chosen already runs every probe its "
                                "intent declares.")},
+    # Devices › Plan a deploy for the ticked devices (7.4's board B, signed off 2026-10-04;
+    # built 2026-10-10): each device's WHOLE committed intent, merge-only, in a rollout order.
+    "intent": {"title": "Deploy committed intent",
+               "sub": ("To the devices ticked on Devices, one at a time in the order below. Each "
+                       "receives exactly the program shown: what its committed intent renders "
+                       "that it lacks, verified and rolled back alone if it fails."),
+               "has_all": "it already holds everything its committed intent renders",
+               "only": "Merge-only: nothing on a device is removed.",
+               "none_can": "No device here can be deployed to now: each says why above.",
+               "all_nothing": ("Nothing to deploy: every device chosen already holds everything "
+                               "its committed intent renders.")},
     # Coverage's combined deploy (artboard A2, signed off 2026-10-02): its own page.
     "templates": {"title": "Deploy missing templates",
                   "sub": ("Each device gets ONE program: every template it is missing, in the order "
@@ -818,6 +829,15 @@ SCOPE_WORDS = {
 
 class UnknownScope(ValueError):
     """A scope this page does not apply; nothing is planned or sent."""
+
+
+#: The page's scope -> the deploy plan's (`routes.deploy.SCOPES`): `intent` is the whole
+#: committed intent, the plan's empty scope, named here so it is never a default.
+PLAN_SCOPE = {"intent": ""}
+
+
+def plan_scope(scope: str) -> str:
+    return PLAN_SCOPE.get(scope, scope)
 
 
 def _scope(req=None) -> str:
@@ -909,7 +929,7 @@ def _coverage_words(list_name: str, rows: list) -> None:
                               for k in (cov or {}).get("not_reporting") or []]
 
 
-def _apply_ctx(req) -> dict:
+def _apply_ctx(req, scope: str = None) -> dict:
     """The batch preview: every device's profile-scoped plan, as
     `/deploy/plan` with scope `profile` computes it, masked on the way out
     AFTER every hash is computed, and the confirm body built from those
@@ -920,13 +940,13 @@ def _apply_ctx(req) -> dict:
     from routes.deploy import plan_devices
 
     args = _apply_args(req)
-    scope = _scope(req)
+    scope = scope or _scope(req)
     list_name = args["list"] or listref.active().name
     ctx = {"list_name": list_name, "order": args["order"], "rows": [], "preview": None,
            "confirm_body": None, "ready": [], "scope": scope, "words": SCOPE_WORDS[scope]}
     if not args["order"]:
         return ctx
-    devices = plan_devices(list_name, args["order"], remove=args["picked"], scope=scope)
+    devices = plan_devices(list_name, args["order"], remove=args["picked"], scope=plan_scope(scope))
     # Each ticked removal needs its stated reason in the confirm hash (Mode B,
     # C140): the keys are known only once the removal is planned, so a ticked
     # line with a reason is planned again carrying it.
@@ -939,8 +959,8 @@ def _apply_ctx(req) -> dict:
             authorise[d["device"]] = [a for a in auth if a["reason"]]
     if authorise:
         devices = plan_devices(list_name, args["order"], remove=args["picked"],
-                               authorise=authorise, scope=scope)
-    preview = deploy_preview(devices, req, scope=scope)
+                               authorise=authorise, scope=plan_scope(scope))
+    preview = deploy_preview(devices, req, scope=plan_scope(scope))
     out = mask_payload({"devices": devices, "preview": preview})
     # The six parts keep a target's state and selectability under "what", and
     # its program, operands and gates under "targets": one row of both.
@@ -1069,7 +1089,7 @@ def profile_apply_confirm():
     job = deploy_job.start(
         list_name, order, confirmations, hashes,
         authorise=data.get("authorise") or {}, remove=data.get("remove") or {},
-        scope=scope, actor=identity.request_actor(),
+        scope=plan_scope(scope), actor=identity.request_actor(),
         actor_kind=getattr(identity.identify(request), "kind", ""),
         ident=identity.verified_identity())
     from flask import url_for
@@ -1313,6 +1333,16 @@ def _save_selection(req, ref) -> list:
     if req.values.get("all") == "1":
         return [d["hostname"] for d in _devices_of(ref.name) if d.get("hostname")]
     return list(dict.fromkeys(d for d in req.values.getlist("device") if d))
+
+
+@bp.route("/devices/deploy", methods=["GET"])
+def devices_deploy():
+    """Devices › Plan a deploy for the ticked devices (7.4's board B): each device's whole
+    committed intent, one preview in a rollout order, then one confirm whose run is a job,
+    drawn in place (the batch Apply's page, preview, confirm and job, with scope `intent`)."""
+    from flask import request
+    ctx = _apply_ctx(request, scope="intent")
+    return _page("v2/apply.html", active_nav="devices", **ctx)
 
 
 @bp.route("/devices/save", methods=["GET"])

@@ -51,8 +51,12 @@ what the check found. An unreadable check record is said above the list.
 Tick devices and the bar above the list names them, with **Actions** and **Clear selection**.
 The Actions menu:
 
-- **Plan a deploy for the ticked devices (today's page)…** opens the deploy on today's page,
-  until the redesign's batch deploy is built (plan 7.4).
+- **Plan a deploy for the ticked devices…** opens Devices › Plan a deploy: each device's whole
+  committed intent planned at once, the devices in a rollout order you can change (Earlier,
+  Later, Leave out), each device's exact program and what it holds back, then one confirm. The
+  batch runs as a job, one device at a time in that order, each verified and rolled back alone,
+  and stops after repeated failures. Merge-only: lines a device holds that its intent lacks
+  stay; Remove lines (Mode B) is on each device's page. See [Deploy](deploy).
 - **Save (N)…** opens Devices › Save for the ticked devices: each saves its running
   configuration to startup, is read back, and is recorded as golden, one commit for the batch.
   See [Save to startup and as golden](save).

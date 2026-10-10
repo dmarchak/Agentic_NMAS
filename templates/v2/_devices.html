@@ -20,8 +20,7 @@
   {%- elif not d.rows %}
   <p class="cov-head">{{ icon('info') }} No device of {{ d.total }} matches{% if d.q %} "{{ d.q }}"{% endif %}{% if d.state %}, state {{ d.state | replace('_', ' ') }}{% endif %}{% if d.platform %}, platform {{ d.platform }}{% endif %}.</p>
   {%- else %}
-  <form method="get" action="{{ url_for('index') }}" class="dev-form" data-todays-page="deploy_plan" x-data="deviceSelect" x-on:change="recount">
-    <input type="hidden" name="open" value="deploy">
+  <form method="get" action="{{ url_for('v2.devices_deploy') }}" class="dev-form" x-data="deviceSelect" x-on:change="recount">
     <input type="hidden" name="list" value="{{ d.list }}">
     {#- The selection bar (C593, board A): what is ticked, and the Actions on it. Rows start
         unticked; the redraw carries the ticks (C472). -#}
@@ -33,7 +32,7 @@
       <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
         <button type="button" class="btn btn-primary" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
         <div class="menu" role="menu" x-show="isOpen" x-cloak>
-          <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="deploy" x-bind:disabled="nonePicked">Plan a deploy for the ticked devices (today's page)…</button>{{ how('deploy', compact=True, op='deploy') }}</div>
+          <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="deploy" x-bind:disabled="nonePicked">Plan a deploy for the ticked devices…</button>{{ how('deploy', compact=True, op='deploy') }}</div>
           <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="save" formaction="{{ url_for('v2.save') }}" x-bind:disabled="nonePicked"><span>Save <span x-text="count">({{ picked | length }})</span>…</span><span class="menu-sub muted">to startup (write memory) and as golden, together</span></button>{{ how('save', compact=True, op='Save') }}</div>
           <div class="menu-rule"></div>
           <div class="menu-row"><a role="menuitem" class="menu-item" data-op="save" href="{{ url_for('v2.save', list=d.list, all=1) }}">Save every device of {{ d.list }} ({{ d.managed }})…</a>{{ how('save', compact=True, op='Save') }}</div>

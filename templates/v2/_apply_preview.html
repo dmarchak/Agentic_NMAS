@@ -16,7 +16,7 @@
                 'at_apply': 'checked again at apply', 'not_reached': 'not reached'} -%}
 <section class="card apply" id="apply-preview">
 {%- if not order %}
-  <p class="cov-head">{{ icon('info') }} No device was chosen. Tick devices on <a href="{{ url_for('v2.coverage') }}">Coverage</a> and preview from there.</p>
+  <p class="cov-head">{{ icon('info') }} No device was chosen. Tick devices on {% if scope == 'intent' %}<a href="{{ url_for('v2.devices', list=list_name) }}">Devices</a>{% else %}<a href="{{ url_for('v2.coverage') }}">Coverage</a>{% endif %} and preview from there.</p>
 {%- else %}
 <form id="apply-form" class="apply-form" hx-get="{{ url_for('v2.profile_apply_preview') }}"
       hx-trigger="change" hx-target="#apply-preview" hx-swap="outerHTML">
@@ -129,11 +129,12 @@
 
   <div class="confirm" x-data="applyConfirm" data-url="{{ url_for('v2.profile_apply_confirm') }}"
        data-body='{{ confirm_body | tojson if confirm_body else "" }}'
-       data-label="Apply to {{ ready | length }} device(s) in this order">
+       data-label="{{ 'Deploy to' if scope == 'intent' else 'Apply to' }} {{ ready | length }} device(s) in this order">
     <p>{{ preview.confirm.statement }}</p>
     {%- if confirm_body and preview.confirm.may %}
-    <button type="button" class="btn btn-primary" id="apply-confirm" data-op="monitoring-templates" x-on:click="confirm"
-            x-bind:disabled="locked" x-text="label">Apply to {{ ready | length }} device(s) in this order</button>{{ how('monitoring-templates') }}
+    {%- set op = 'deploy' if scope == 'intent' else 'monitoring-templates' %}
+    <button type="button" class="btn btn-primary" id="apply-confirm" data-op="{{ op }}" x-on:click="confirm"
+            x-bind:disabled="locked" x-text="label">{{ 'Deploy to' if scope == 'intent' else 'Apply to' }} {{ ready | length }} device(s) in this order</button>{{ how(op) }}
     <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
     {%- elif all_nothing %}
     <p class="muted">{{ words.all_nothing }}</p>
