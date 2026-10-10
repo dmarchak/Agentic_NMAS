@@ -199,11 +199,35 @@ def certs_url(team_domain: str = "") -> str:
     return f"https://{team}/cdn-cgi/access/certs" if team else ""
 
 
+#: The key cache's bounds, seconds (C621, the operator, 2026-10-10): never "keep for ever".
+#: Cloudflare rotates its signing keys; PyJWT fetches a key it has not seen (measured in
+#: PyJWT 2.7's `get_signing_key`: an unknown kid refreshes the set once), but a key Cloudflare
+#: RETIRES stays trusted here until the cache is read again. 300 s is the lifespan floor this
+#: module already gave PyJWKClient; a day bounds how long a retired key is trusted.
+JWKS_TTL_MIN, JWKS_TTL_MAX, JWKS_TTL_DEFAULT = 300, 86400, 3600
+
+
+def jwks_ttl() -> tuple:
+    """``(seconds, problem)``: the key cache's lifetime, and why the stored value was not used
+    ("" when it was). Outside JWKS_TTL_MIN..JWKS_TTL_MAX (0 included), or not a number, the
+    default is used and the problem says so: the schema refuses such a value on write, so it
+    reached the file by hand."""
+    raw = _setting("cf_access_jwks_ttl", JWKS_TTL_DEFAULT)
+    try:
+        ttl = int(raw)
+    except (TypeError, ValueError):
+        return JWKS_TTL_DEFAULT, f"cf_access_jwks_ttl {raw!r} is not a number of seconds"
+    if not JWKS_TTL_MIN <= ttl <= JWKS_TTL_MAX:
+        return JWKS_TTL_DEFAULT, (f"cf_access_jwks_ttl {ttl} is outside {JWKS_TTL_MIN} to "
+                                  f"{JWKS_TTL_MAX} seconds")
+    return ttl, ""
+
+
 def _get_jwks_client():
     """A cached ``PyJWKClient``, rebuilt when the team domain changes.
 
-    The cache has a TTL rather than being permanent, so a key rotation is
-    picked up — and it is generous, so a brief outage of the certs endpoint
+    The cache has a TTL rather than being permanent, so a key Cloudflare retires stops being
+    trusted (C621) — and it is generous, so a brief outage of the certs endpoint
     does not lock an operator out of a tool that is otherwise entirely local.
     """
     global _jwks_client, _jwks_for
@@ -211,12 +235,14 @@ def _get_jwks_client():
     url = certs_url()
     if not url:
         return None
-    ttl = int(_setting("cf_access_jwks_ttl", 3600) or 3600)
+    ttl, problem = jwks_ttl()
+    if problem:
+        log.error("identity: %s; using %d s", problem, ttl)
 
     with _jwks_lock:
         cached_url, built_at = _jwks_for
         if _jwks_client is not None and cached_url == url and (
-                ttl <= 0 or time.time() - built_at < ttl):
+                time.time() - built_at < ttl):
             return _jwks_client
         try:
             from jwt import PyJWKClient

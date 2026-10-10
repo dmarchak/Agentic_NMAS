@@ -953,3 +953,38 @@ class TestTheDiagnosticReportsCapabilityNotConfiguration:
 
         assert "ident_mod.may(" in inspect.getsource(route_mod.status)
         assert "may(ident, action, operation)" in inspect.getsource(identity.require)
+
+
+class TestTheKeyCacheIsBounded:
+    """C621 (the operator, 2026-10-10): the JWKS cache is never "keep for ever". A key Cloudflare
+    retires must stop being trusted, so 0 is refused on write, a stored value outside 300 s to a
+    day is not used (the default is, and the reason is said), and the cache is rebuilt once its
+    lifetime has passed."""
+
+    @pytest.mark.parametrize("stored, ttl, said", [
+        (3600, 3600, ""), (300, 300, ""), (86400, 86400, ""),
+        (0, 3600, "outside 300 to 86400"), (86401, 3600, "outside 300 to 86400"),
+        ("soon", 3600, "is not a number")])
+    def test_the_lifetime_read_and_why_a_stored_value_was_not_used(self, monkeypatch, stored,
+                                                                   ttl, said):
+        monkeypatch.setattr(identity, "_setting",
+                            lambda key, default=None: stored if key == "cf_access_jwks_ttl"
+                            else default)
+        got, problem = identity.jwks_ttl()
+        assert got == ttl and said in problem and (problem == "") == (said == "")
+
+    def test_a_stored_0_rebuilds_the_client_after_its_default_lifetime(self, monkeypatch):
+        """0 once meant never rebuilding: the client built an hour ago would be returned."""
+        values = {"cf_access_team_domain": "team.example.com", "cf_access_jwks_ttl": 0}
+        monkeypatch.setattr(identity, "_setting", lambda key, default=None: values.get(key, default))
+        old = object()
+        monkeypatch.setattr(identity, "_jwks_client", old)
+        monkeypatch.setattr(identity, "_jwks_for",
+                            (identity.certs_url(), time.time() - identity.JWKS_TTL_DEFAULT - 1))
+        assert identity._get_jwks_client() is not old
+
+    def test_the_schema_refuses_0_and_more_than_a_day(self):
+        from modules.settings_schema import DEFAULTS, validate
+        for bad in (0, 299, 86401):
+            assert not validate(dict(DEFAULTS, cf_access_jwks_ttl=bad))[0], bad
+        assert validate(dict(DEFAULTS, cf_access_jwks_ttl=3600))[0]

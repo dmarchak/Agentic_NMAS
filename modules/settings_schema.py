@@ -759,7 +759,9 @@ SCHEMA: dict = {
         "cf_access_team_domain": _STR,
         "cf_access_aud": _STR,
         "cf_access_trusted_peers": _STR,
-        "cf_access_jwks_ttl": {"type": "integer", "minimum": 0},
+        # C621: 300 s to a day, never 0 ("keep for ever"): a key Cloudflare retires must stop
+        # being trusted (identity.JWKS_TTL_MIN and JWKS_TTL_MAX, the reason beside them).
+        "cf_access_jwks_ttl": {"type": "integer", "minimum": 300, "maximum": 86400},
         "cf_access_service_labels": {"type": "object"},
         "require_identity_for_reveal": _BOOL,
         "require_identity_for_approve": _BOOL,
