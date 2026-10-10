@@ -157,9 +157,15 @@ def test_pip_check_complains_of_exactly_the_overrides():
     assert differ == [], "CI installs the lock: every pin at its version"
     out = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True,
                          timeout=60)
-    complaints = [ln for ln in out.stdout.splitlines() if ln.strip()]
+    # A clean pip check exits 0 and still prints "No broken requirements found.": the exit code
+    # decides, never the line count.
+    complaints = ([] if out.returncode == 0 else
+                  [ln for ln in out.stdout.splitlines() if ln.strip()])
     overridden = {_norm(r.name) for r in _authored("requirements-overrides.txt")}
-    assert len(overridden) == 3, overridden
+    # None since 2026-10-10 (the three came off in their own lock change): pip check is clean.
+    if not overridden:
+        assert out.returncode == 0 and complaints == [], out.stdout
+        return
 
     def names(line):
         return {_norm(w) for w in re.findall(r"[A-Za-z0-9_.-]+", line)} & overridden

@@ -126,8 +126,9 @@ from packaging.requirements import Requirement
 norm = lambda n: re.sub(r"[-_.]+", "-", n).lower()
 over = {norm(Requirement(l.split("#")[0].strip()).name) for l in open(sys.argv[1])
         if l.split("#")[0].strip()}
-out = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True).stdout
-lines = [l for l in out.splitlines() if l.strip()]
+r = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True)
+# A clean pip check exits 0 and prints "No broken requirements found.": the exit code decides.
+lines = [] if r.returncode == 0 else [l for l in r.stdout.splitlines() if l.strip()]
 named = lambda l: {norm(w) for w in re.findall(r"[A-Za-z0-9_.-]+", l)} & over
 for l in lines:
     if not named(l): print("unexplained:", l)
