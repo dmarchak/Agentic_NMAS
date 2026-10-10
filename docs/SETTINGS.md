@@ -48,7 +48,9 @@ So each setting is in one of three states, visible in the posture panel:
 | `prometheus_*`, `grafana_*`, `loki_*`, `kea_*`, `topology_service_*`, `s3_*`, `nsot_git_*` (the rest) | v2: Settings › Default and each network's cards; today's Settings → Integrations until cutover |
 | Every v2 Installation card's Save, Replace and Turn off | recorded in the installation's `settings_record.jsonl`: who, when, the card and the names of what changed, never a value |
 | `collector_*`, `monitoring_*`, `promql_*` | Settings → Monitoring |
-| `ai_enabled`, **`background_agent_enabled`**, `wf_*` | Settings → AI |
+| `ai_enabled` | v2: Settings › Installation › AI and workflow, the assistant card (board F4, 2026-10-10), saved and recorded like every Installation card. |
+| **`background_agent_enabled`** | v2: the same tab draws its STATE only, off until Stage 8 (F4 decision D); set on in the file, the card says so and that it starts only at a restart (C623). Today's Settings → AI keeps its switch until cutover. |
+| `wf_*` | Today's Settings → AI only, until cutover: not drawn on v2 (F4 decision C), they change only the assistant's prompt text and retire with its rewrite (C30, Stage 8.5). |
 | `require_identity_for_*`, `require_person_for_*`, `service_allowed_operations`, `cf_access_*` | Settings → Security posture (**read-only**, see below) |
 | `records_db_host`, `records_db_port`, `records_db_name`, `records_db_user`, `records_db_password` | v2: Settings › Installation › Connections, the Records database card (board F2, 2026-10-09). The installation's, never a network's (Phase 4, P4-2). Host empty: every store stays on its files, today's behaviour; the name, role and port default to what host step 6a makes (`mercury`, `mercury`, 5433). The password is a secret (`secrets_store.SECRET_KEYS`), shown only as set and changed by Replace…, after the server's by `scripts/host-steps/postgres-rotate.sh`. Save and Replace are recorded in the installation's `settings_record.jsonl`; the last Test's answer is kept in `records_db_test.json`. |
 

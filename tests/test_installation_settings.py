@@ -66,7 +66,7 @@ class TestThePage:
         assert "These settings apply to every network" in html
 
     def test_unbuilt_tabs_say_so_and_link_to_today_s_page(self, networks):
-        for key in ("access", "platforms", "ai", "diagnostics"):
+        for key in ("access", "platforms", "diagnostics"):
             _r, tab = _get(networks, f"/v2/settings/installation?tab={key}")
             assert 'data-todays-page="installation_settings"' in tab and "until it is drawn here" in tab
             assert 'id="records-db"' not in tab
@@ -415,6 +415,28 @@ class TestTheCards:
                          {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Bearer",
                           "netbox_allow_writes": "on"})
         assert get_setting("netbox_allow_writes") is False, "Save never arms writes"
+
+    def test_the_ai_tab_draws_the_assistant_switch_and_the_agent_s_state_only(self, networks):
+        """Board F4, decisions C and D: the assistant's switch, saved and recorded like every
+        card; no workflow switch; the background agent its state, never a control."""
+        from modules import installation_settings as I
+        from modules.settings_schema import get_setting
+        _r, html = _get(networks, "/v2/settings/installation?tab=ai")
+        card, agent = _kcard(html, "assistant"), _kcard(html, "agent")
+        assert 'name="ai_enabled"' in card and "read-only allowlist" in card
+        assert "wf_" not in html, "decision C: the workflow switches are not drawn"
+        assert "off until Stage 8" in agent and "<button" not in agent and "<input" not in agent
+        assert 'data-todays-page' not in html.split('id="tab-body"')[1]
+        _r, html = _post(networks, "/v2/settings/installation/card/assistant/save", {})
+        assert get_setting("ai_enabled") is False and "Saved" in _kcard(html, "assistant")
+        assert I.changes(kinds=("card_save",))["rows"][0]["fields"] == ["ai_enabled"]
+
+    def test_an_agent_set_on_in_the_file_is_said_with_its_restart(self, networks):
+        from modules.settings_schema import write_settings
+        write_settings({"background_agent_enabled": True}, actor="test")
+        _r, html = _get(networks, "/v2/settings/installation?tab=ai")
+        agent = _kcard(html, "agent")
+        assert "set on in the settings file" in agent and "starts only when Mercury restarts" in agent
 
     def test_settings_place_names_the_v2_card(self):
         from modules import installation_settings as I

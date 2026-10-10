@@ -1,0 +1,13 @@
+{%- from "v2/_macros.html" import badge -%}
+{#- Board F4, decision D (signed off 2026-10-10): the background agent is its STATE, never a
+    switch: off until Stage 8 (MERCURY_CHARTER: it proposes changes for a person to confirm,
+    never confirms). Set on in the settings file it is said as such, with C623's fact. From
+    modules/installation_settings.agent_state. -#}
+<section class="card set-card" id="card-agent" aria-labelledby="h-agent">
+  <div class="card-head"><h2 id="h-agent">Background agent</h2>{{ badge('every network', 'neutral') }}
+    {{ badge('set on in the settings file' if a.on else 'off until Stage 8', 'warn' if a.on else 'neutral') }}</div>
+  <p class="muted small">Stage 8 makes it a responder that proposes changes for a person to confirm, never one that confirms. Until then it does not run, and nothing here turns it on.</p>
+  {%- if a.on %}
+  <p class="notice notice-warn" role="status">It is set on in the installation's settings file. It starts only when Mercury restarts (C623), and its tasks take none of the workflow switches.</p>
+  {%- endif %}
+</section>

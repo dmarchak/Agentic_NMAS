@@ -27,9 +27,11 @@ What every network shares, standalone ones included: these are the installation'
 - **NetBox connection** (Connections): the central NetBox every network reads, its address, auth scheme (Bearer for NetBox 4.x tokens, Token for older) and whether its certificate is verified. Its badge is NetBox's health as last read (reachable, not answering, refused, not configured), and **Test** asks it now. The API token shows only as set; **Replace…** takes a new one and tests it. **Writes allowed** is the master switch for every network's NetBox writes: on, it offers **Turn off**; off, it says who turned it off and when. Turning it on is never this card's: it is the confirm of an authorised NetBox write. Each network's NetBox scope (its region) is under that network.
 - **Proxmox** (Connections): the hypervisor's address, node, whether its certificate is verified, the backup VMs and the backup storage, and the token's declared expiry (the token cannot read its own). The token shows as its id and set; **Replace…** takes the id and the secret together and tests them.
 - **Commit author** (Connections): the name and email on the author line of Mercury's commits; the person who acted is in each commit's `Actor:` trailer.
+- **The assistant** (AI and workflow): the AI switch. Off, the chat answers that AI is off and makes no call to the model. On devices it is read-only: every command it sends is on the read-only allowlist. The workflow switches of today's page are not here: they change only the assistant's prompt text and leave with its rewrite.
+- **Background agent** (AI and workflow): its state, never a switch: off until Stage 8, when it becomes a responder that proposes changes for a person to confirm. Set on in the installation's settings file, the card says so, and that it starts only when Mercury restarts.
 - **Server** (Server): the address and port Mercury listens on. They are read when Mercury starts, so a Save says the change waits for the next restart.
 - Every **Save**, **Replace** and **Turn off** is recorded in the installation's settings record with who, when and the names of what changed, never the values (see [The installation's settings](installation-settings)).
-- **Not here yet**, each said on the page and linked to today's Settings page: the Access and identity, Platforms and roles, AI and workflow, and Diagnostics tabs.
+- **Not here yet**, each said on the page and linked to today's Settings page: the Access and identity, Platforms and roles, and Diagnostics tabs.
 
 ## What is not here yet {#not-yet}
 

@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 TABS = (("connections", "Connections"), ("access", "Access and identity"),
         ("platforms", "Platforms and roles"), ("server", "Server"),
         ("ai", "AI and workflow"), ("diagnostics", "Diagnostics"))
-BUILT_TABS = ("connections", "server")
+BUILT_TABS = ("connections", "server", "ai")
 #: The records database card's fields, in the card's order (the password is a secret, drawn
 #: as set or unset and changed only by Replace…).
 FIELDS = ("records_db_host", "records_db_port", "records_db_name", "records_db_user")
@@ -317,7 +317,29 @@ CARDS = {
         "secret": None, "with_id": None, "integration": None,
         "note": "Bind and port take effect at the next restart, and the result says so.",
     },
+    # Board F4, decision C (2026-10-10): the five workflow switches are not drawn (they change
+    # only the assistant's prompt text and retire with its rewrite, C30); the background agent
+    # is its state (decision D), drawn by agent_state().
+    "assistant": {
+        "group": "ai", "title": "The assistant", "tab": "ai",
+        "fields": (_f("ai_enabled", "AI", "switch",
+                      "off: the chat answers that AI is off and makes no call to the model"),),
+        "secret": None, "with_id": None, "integration": None,
+        "note": "On devices it is read-only: every command it sends is on the read-only "
+                "allowlist, and it changes nothing.",
+    },
 }
+
+
+def agent_state() -> dict:
+    """The background agent, as board F4 draws it (decision D): its state, never a switch. Off
+    until Stage 8 (MERCURY_CHARTER: it proposes, never confirms). Set on in the settings file,
+    it is said as such, with C623's fact: it starts only at the next restart."""
+    from modules.settings_schema import get_setting
+
+    return {"on": bool(get_setting("background_agent_enabled", False))}
+
+
 def settings_place(name: str, label: str) -> str:
     """Where a person changes integration *name*'s settings on v2 (C617): its Installation card
     when it is the installation's own (NetBox, Proxmox), else the Default network's card or the

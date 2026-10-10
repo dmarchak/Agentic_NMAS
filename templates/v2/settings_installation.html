@@ -28,6 +28,9 @@
 {%- for k in cards %}
 {% include "v2/_install_card.html" %}
 {%- endfor %}
+{%- if tab == 'ai' %}
+{% include "v2/_install_agent.html" %}
+{%- endif %}
 </div>
 {%- else %}
 <p class="notice notice-muted">{{ icon('info', 16) }}<span><strong>{{ dict(tabs)[tab] }}</strong> is on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until it is drawn here.</span></p>

@@ -55,7 +55,8 @@ def installation():
          "mode_words": ""}
     cards = [I.card(name) for name, spec in I.CARDS.items() if spec["tab"] == tab]
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
-                 v=v, r=I.records_card() if tab == "connections" else None, cards=cards)
+                 v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
+                 a=I.agent_state() if tab == "ai" else None)
 
 
 def _records(status: int = 200, **ctx):
