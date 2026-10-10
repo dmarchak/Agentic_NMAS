@@ -1015,6 +1015,10 @@ yet migrated. This host already holds the marker, so the migration half does not
 neither the switch nor a token (routes/netbox_safety.py:391-394), so a click from a stale
 page forgets whatever is recorded now. Onboarding Create rebuilds its plan from the form at
 confirm and compares no hash with the reviewed plan (routes/onboard.py:526-536).
+v2's Create (2026-10-10, cutover blocker 3) is bound: the plan rebuilt under the hostname's
+hold is compared with the reviewed one's fingerprint and refused naming what moved
+(`routes.onboard.create_run`, `modules.nsot.onboard.plan_moved`); v2's Abandon is bound to its
+dry run (`abandon_onboarding(confirmed=)`). Today's unbound Create leaves at 7.8.
 
 **R37. Per-process caches and helpers** (stores-12, stores-15, live-16 to live-19, live-21,
 locks-12, locks-22). The redaction value table is cached 30 s per process and invalidated

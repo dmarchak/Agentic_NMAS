@@ -207,8 +207,20 @@ PAGE_RECORD = {
     # History › Remote set-up (C631): each act's answer drawn in place on the card, and its
     # record (the network's remote.json) read back by the card; the write probe's by
     # History's header, which draws the last Verify.
-    "netbox_v2.confirm": ("templates/v2/_netbox_job.html", ("r.happened.summary", "job.removal"),
+    # The result component's parts are one macro (templates/v2/_preview_parts.html) every
+    # card that confirms a 7.1 preview draws its result through.
+    "netbox_v2.confirm": ("templates/v2/_netbox_job.html", ("result_parts(r)", "job.removal"),
                           "netbox_v2.job"),
+    # Onboarding on v2 (cutover blocker 3): Create's result in place, the device's pending
+    # page its record read again; Verify's and Abandon's results in place on the pending
+    # page, each run's row read back on the network's History.
+    "onboard_v2.create": ("templates/v2/_onboard_add.html", ("result_parts(done.result)",
+                                                             "Open {{ f.hostname }}"),
+                          "device_v2.device"),
+    "onboard_v2.verify": ("templates/v2/_onboard_pending.html",
+                          ("result_parts(done.result)", "record_error"), "v2.history_page"),
+    "onboard_v2.abandon": ("templates/v2/_onboard_pending.html",
+                           ("result_parts(done.result)", "Back to Devices"), "v2.history_page"),
     "remote_v2.connect": ("templates/v2/_remote_setup.html", ("Connected:", "r.owner_repo"),
                           "remote_v2.card"),
     "remote_v2.write_probe": ("templates/v2/_remote_setup.html",

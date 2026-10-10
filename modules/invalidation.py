@@ -217,6 +217,11 @@ DECLARED = {
     "onboard.verify": ("pending", "inventory", "credentials", "netbox",
                        "device_state", "baselines") + _COMMIT,
     "onboard.abandon": ("pending", "intent", "credentials", "remote"),
+    # Onboarding on v2 (cutover blocker 3): the same cores, so the same keys.
+    "onboard_v2.create": ("pending", "intent", "credentials", "remote"),
+    "onboard_v2.verify": ("pending", "inventory", "credentials", "netbox",
+                          "device_state", "baselines") + _COMMIT,
+    "onboard_v2.abandon": ("pending", "intent", "credentials", "remote"),
     # Drift. The badge after a run is the third measured case.
     "drift_check_sync": ("drift",),
     "drift_check_trigger": ("drift",),
@@ -333,6 +338,14 @@ DECLARED = {
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
                                       "it writes nothing"),
+    "onboard_v2.preview": Nothing("builds Add device's plan and review; creates nothing (the "
+                                  "same core as onboard.plan)"),
+    "onboard_v2.verify_preview": Nothing("reads one pending device and computes what Verify "
+                                         "would send; it writes nothing"),
+    "onboard_v2.abandon_preview": Nothing("Abandon's dry run: names what it would remove and "
+                                          "removes nothing"),
+    "onboard_v2.bootstrap": Nothing("reveals the bootstrap config in place and records the "
+                                    "reveal; no screen draws the reveal record"),
     "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
     "golden.migrate_plan": Nothing("the migration's dry run; it writes nothing by design"),
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),

@@ -1,0 +1,72 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
+{#- Board E (Devices › Add device…, drawn under the Phase 7 mode, docs/STANDING_APPROVAL_LOG.md):
+    the fields, then the plan's review with Create bound to it, then the result, which says the
+    device is PENDING and opens its page. Opened in place above the list; from routes/onboard_v2. -#}
+{%- set f = f or {} -%}
+<section class="card set-card set-card-wide" id="onboard-add" aria-labelledby="h-onboard-add">
+  <div class="card-head"><h2 id="h-onboard-add">Add device{% if f.list_name %} to {{ f.list_name }}{% endif %}</h2>
+    <a class="btn btn-small" href="{{ url_for('v2.devices', list=f.list_name) }}">Close</a></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not created:</strong> {{ refused }}{{ '' if refused.endswith('.') else '.' }} Nothing was created.</div></div>
+  {%- endif %}
+  {%- if done %}
+  {{ result_parts(done.result) }}
+  <div class="set-foot">{% if done.ok %}<a class="btn btn-primary btn-small" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name) }}">Open {{ f.hostname }}'s page</a> {% endif %}<a class="btn btn-small" href="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-get="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-target="#onboard-add" hx-swap="outerHTML">Add another</a></div>
+  {%- elif pv %}
+  {{ preview_parts(pv.preview) }}
+  <form class="set-form" method="post" action="{{ url_for('onboard_v2.create') }}"
+        hx-post="{{ url_for('onboard_v2.create') }}" hx-target="#onboard-add" hx-swap="outerHTML">
+    {%- for k, v in f.items() if k != 'source_kind' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="shown" value="{{ pv.shown }}"><input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
+    <div class="set-foot set-form-note">
+      {%- if pv.preview.confirm.may and (pv.preview.targets[0].selectable if pv.preview.targets else false) %}
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Create {{ f.hostname }}</span><span class="op-busy">Creating…</span></button>{{ how('onboard', 'phase-one-create-nothing-is-sent-to-any-device', op='Create') }}</span>
+      {%- endif %}
+      <button type="submit" class="btn btn-small" name="edit" value="1" formaction="{{ url_for('onboard_v2.preview') }}" hx-post="{{ url_for('onboard_v2.preview') }}" hx-target="#onboard-add" hx-swap="outerHTML">Change the fields</button>
+      <span class="muted small">{{ pv.preview.confirm.statement }} Create rebuilds the plan and refuses, naming what moved, if it is not this one.</span>
+    </div>
+  </form>
+  {%- else %}
+  <form class="set-form ob-form" method="post" action="{{ url_for('onboard_v2.preview') }}"
+        hx-post="{{ url_for('onboard_v2.preview') }}" hx-target="#onboard-add" hx-swap="outerHTML">
+    <input type="hidden" name="list_name" value="{{ f.list_name }}">
+    <span class="set-label">Network</span>
+    <div><span>{{ f.list_name }}</span><span class="set-origin">the network this page shows; the top bar's picker changes it</span></div>
+    <label for="f-ob-hostname">Name</label>
+    <div><input id="f-ob-hostname" name="hostname" type="text" value="{{ f.hostname }}" autocomplete="off" required><span class="set-origin">its hostname, unique in this network and in NetBox</span></div>
+    <label for="f-ob-platform">Platform</label>
+    <div><select id="f-ob-platform" name="platform" required>
+      <option value="">Choose…</option>
+      {%- for p in platforms %}<option value="{{ p.platform }}"{% if p.blocked %} disabled{% endif %}{% if p.platform == f.platform %} selected{% endif %}>{{ p.platform }}{% if p.blocked %} (not yet: {{ p.reason }}){% endif %}</option>{% endfor %}
+    </select>{% if not platforms %}<span class="set-origin">no platform is mapped: Settings › Platforms and roles maps them</span>{% endif %}</div>
+    <label for="f-ob-role">Role</label>
+    <div><select id="f-ob-role" name="role" required>
+      <option value="">Choose…</option>
+      {%- for r in ('router', 'switch', 'firewall') %}<option value="{{ r }}"{% if r == f.role %} selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select><span class="set-origin">asked, never guessed from the platform: it becomes the monitoring role label, the topology icon and the NetBox role</span></div>
+    <label for="f-ob-source">Address from</label>
+    <div><select id="f-ob-source" name="address_source">
+      {%- for v, words in (('static', 'Static (in the config)'), ('dhcp', 'DHCP (a Kea reservation someone made)'), ('ztp', 'ZTP (the tool reserves it and serves the config)')) %}<option value="{{ v }}"{% if v == (f.address_source or 'static') %} selected{% endif %}>{{ words }}</option>{% endfor %}
+    </select></div>
+    <label class="ob-addr" for="f-ob-ip">Management address</label>
+    <div class="ob-addr"><input id="f-ob-ip" name="mgmt_ip" type="text" value="{{ f.mgmt_ip }}" autocomplete="off" placeholder="192.0.2.10"><span class="set-origin">for ZTP, the address the tool reserves</span></div>
+    <label class="ob-addr" for="f-ob-mask">Mask</label>
+    <div class="ob-addr"><input id="f-ob-mask" name="mgmt_mask" type="text" value="{{ f.mgmt_mask }}" autocomplete="off" placeholder="255.255.255.0"></div>
+    <label class="ob-mac" for="f-ob-mac">MAC address</label>
+    <div class="ob-mac"><input id="f-ob-mac" name="mgmt_mac" type="text" value="{{ f.mgmt_mac }}" autocomplete="off" placeholder="aa:bb:cc:00:02:40"><span class="set-origin">DHCP: must match a host reservation in Kea (a dynamic lease is refused). ZTP: the tool writes the reservation for it, so it must be known before the device first boots</span></div>
+    <label for="f-ob-intf">Management interface</label>
+    <div><input id="f-ob-intf" name="manager_interface" type="text" value="{{ f.manager_interface }}" autocomplete="off" placeholder="GigabitEthernet2"><span class="set-origin">where the address goes; spelling is checked, the port is not (the device does not exist yet)</span></div>
+    <label for="f-ob-gw">Gateway</label>
+    <div><input id="f-ob-gw" name="manager_gateway" type="text" value="{{ f.manager_gateway }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">blank when this host is on the device's subnet</span></div>
+    <label for="f-ob-oob">Platform management port</label>
+    <div><input id="f-ob-oob" name="mgmt_interface" type="text" value="{{ f.mgmt_interface }}" autocomplete="off" placeholder="(optional)"><span class="set-origin">a separate port the platform manages itself on, apart from the address above; blank when there is none</span></div>
+    <label for="f-ob-domain">Domain</label>
+    <div><input id="f-ob-domain" name="domain" type="text" value="{{ f.domain }}" autocomplete="off" required placeholder="example.net"><span class="set-origin">the DNS domain its config names (SSH keys need one)</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Review the plan</span><span class="op-busy">Planning…</span></button>{{ how('onboard', compact=True, op='onboarding') }}</span>
+      <span class="muted small">A review creates nothing.</span>
+    </div>
+  </form>
+  {%- endif %}
+</section>

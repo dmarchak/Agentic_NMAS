@@ -80,6 +80,15 @@ NOT_AN_OPERATION = {
     ("_netbox_job.html", "Close"): "returns to the NetBox page, a read; a job runs on",
     ("_netbox_removals.html", "Close"): "returns to the NetBox page, a read",
     ("_network_create.html", "Change the name"): "puts the name's form back, creating nothing",
+    ("_onboard_add.html", "Close"): "returns to Devices, a read; nothing was created",
+    ("_onboard_add.html", "Open 's page"): "opens the new device's pending page, a read",
+    ("_onboard_add.html", "Add another"): "puts an empty Add device form back, creating nothing",
+    ("_onboard_add.html", "Change the fields"): "puts the fields back with their values, "
+                                                 "creating nothing",
+    ("_onboard_pending.html", "btn btn-small"): "Cancel or Close: puts the pending device's "
+                                                "actions back at rest, a read",
+    ("_onboard_pending.html", "btn btn-small btn-primary"): "opens the verified device's page or "
+                                                            "Devices, a read",
     ("_network_create.html", "Open 's settings"): "opens the new network's Settings page, a read",
     ("_network_create.html", "Its devices"): "opens the new network's Devices, a read",
     ("_network_delete.html", "Cancel"): "puts the Delete card back, deleting nothing",

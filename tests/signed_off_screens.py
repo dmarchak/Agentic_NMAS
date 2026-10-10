@@ -137,6 +137,13 @@ SIGNED_OFF = {
     "tab:ask": ("2026-10-08", "C547, board A (canvas page 'reads'), signed off 2026-10-08 with "
                               "the design NSOT_READS.md and R1 to R5; the tab's name approved "
                               "2026-09-30 (NSOT_STAGE7_PLAN 1g)"),
+    "pending.html": ("2026-10-10", "board E's pending page (cutover blocker 3), drawn under the "
+                                   "Phase 7 mode and so signed off by the operator's standing "
+                                   "approval (docs/STANDING_APPROVAL_LOG.md): the onboarding "
+                                   "state, then Verify… (preview, confirm by fingerprint), Get "
+                                   "the bootstrap config… (a recorded reveal) and Abandon… (its "
+                                   "dry run, confirm by fingerprint), each in place. Built "
+                                   "2026-10-01 (C291) with no mockup"),
     "retired.html": ("2026-10-03", "the device-actions canvas, board 12 (Retire), its last card: "
                                    "a retired device's address shows its retired record (C185); "
                                    "NSOT_STAGE7_PLAN, the boards 8 to 12 sign-off"),
@@ -148,9 +155,7 @@ UNSIGNED = {
                        "removed: replaced by the monitoring templates (C322, NSOT_GUI_BRIEF 14)"),
     "ip_sla.html": ("built 2026-10-01 (P.9 d4) with no mockup",
                     "removed: replaced by the monitoring templates (C322)"),
-    "pending.html": ("a pending onboarding's page (C291, 2026-10-01), built so every Devices "
-                     "link answers", "a mockup with 7.4's onboarding on v2"),
     "not_found.html": ("the 404 page, no mockup", "kept: a page with nothing to sign off"),
 }
 
-UNSIGNED_CEILING = 4
+UNSIGNED_CEILING = 3

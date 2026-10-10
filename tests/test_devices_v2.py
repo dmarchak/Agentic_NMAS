@@ -309,8 +309,12 @@ class TestAPendingDevicesPage:
         assert not re.search(r"\sstyle=|\son[a-z]+=", html)
         assert "Pending onboarding: pending" in html
         assert "awaiting DHCP (Kea reservation → 203.0.113.17)" in html
-        assert "Verify, Abandon or get the bootstrap config (today&#39;s page)" in html \
-            or "Verify, Abandon or get the bootstrap config (today's page)" in html
+        # Its three actions on v2 (cutover blocker 3), each a form carrying the network.
+        for words, route in (("Verify…", "/v2/onboard/r7/verify/preview"),
+                             ("Get the bootstrap config…", "/v2/onboard/r7/bootstrap"),
+                             ("Abandon…", "/v2/onboard/r7/abandon/preview")):
+            assert words in html and f'hx-post="{route}"' in html, words
+        assert 'data-todays-page="onboard"' not in html
         assert '<a href="/v2/devices">Devices</a>' in html
 
     def test_a_credential_that_cannot_be_found_says_re_create(self, inv, monkeypatch):

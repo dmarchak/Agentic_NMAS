@@ -82,6 +82,10 @@ GATES = {
                          "onboard_verify"),
     "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
                           "onboard_abandon"),
+    "onboard_v2.verify": _g(C, "reaches the pending device and rotates its credential, from its "
+                               "v2 page (the same core as onboard.verify)", "onboard_verify"),
+    "onboard_v2.abandon": _g(C, "deletes the pending device's records from NetBox and the "
+                                "repository, from its v2 page", "onboard_abandon"),
     "run_command": _g(C, "runs a READ a person typed on one device; anything the read-only "
                          "allowlist refuses is refused before any device (C570; B16: it was "
                          "an ungated GET)"),
@@ -158,6 +162,8 @@ GATES = {
     "device_v2.capture_confirm": _g(A, "commits a device's confirmed capture as its golden, from the v2 device page (7.3; the same apply as golden.capture_apply)"),
     "refresh_hostnames": _g(A, "renames devices and records a pending golden rename"),
     "onboard.create": _g(A, "commits a new device's identity and intent", "onboard_device"),
+    "onboard_v2.create": _g(A, "commits a new device's identity and intent, from v2's Add device",
+                            "onboard_device"),
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),
     "netbox_safety.apply_import_all": _g(A, "writes to NetBox"),
     "netbox_safety.apply_removal": _g(A, "deletes from NetBox"),
@@ -231,6 +237,8 @@ GATES = {
     "bulk_download_config": _g(R, "copies running or startup config to a TFTP server the form names"),
     "download_device_file": _g(R, "copies a file off a device to a TFTP server the form names"),
     "breakglass.export": _g(R, "every device's credential and the application key, sealed and sent to the browser"),
+    "onboard_v2.bootstrap": _g(R, "a pending device's bootstrap config, its one-time credential in "
+                                  "the clear, drawn on its v2 page", "onboard_bootstrap"),
 
     # ---- publish_remote --------------------------------------------------
     "remote.push": _g(P, "publishes the repository"),
@@ -252,6 +260,10 @@ GATES = {
                                     "capture preview; records nothing"),
     "golden.migrate_plan": _g(N, "a dry run"),
     "onboard.plan": _g(N, "builds a plan; creates nothing"),
+    "onboard_v2.preview": _g(N, "builds Add device's plan and review; creates nothing"),
+    "onboard_v2.verify_preview": _g(N, "reads the pending device and computes what Verify would "
+                                       "send; sends nothing"),
+    "onboard_v2.abandon_preview": _g(N, "Abandon's dry run; removes nothing"),
     "onboard.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                     "send (P.9 step c); sends nothing"),
     "templatize.bulk_preview": _g(N, "computes a preview; writes nothing"),

@@ -1,0 +1,66 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
+{#- A pending device's actions (cutover blocker 3, drawn under the Phase 7 mode,
+    docs/STANDING_APPROVAL_LOG.md): Verify… (its preview, then the confirm bound to it), Get the
+    bootstrap config… (a reveal in place), Abandon… (its dry run, then the confirm bound to it),
+    and each one's result in place. From routes/onboard_v2, each action the core today's banner
+    calls. -#}
+{%- set base = {'name': name} -%}
+<section class="card" id="pending-actions" aria-labelledby="h-pending-actions">
+  <div class="card-head"><h2 id="h-pending-actions">{{ {'verify': 'Verify', 'verified': 'Verify', 'abandon': 'Abandon', 'abandoned': 'Abandon', 'bootstrap': 'Bootstrap config'}.get(mode, 'Onboarding') }}</h2>
+    {%- if mode %}<a class="btn btn-small" href="{{ url_for('device_v2.device', name=name, list=list_name) }}" hx-get="{{ url_for('onboard_v2.actions', name=name, list_name=list_name) }}" hx-target="#pending-actions" hx-swap="outerHTML">{{ 'Close' if mode in ('verified', 'abandoned', 'bootstrap') else 'Cancel' }}</a>{% endif %}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>{{ {'bootstrap': 'Not revealed', 'abandon': 'Not abandoned'}.get(mode, 'Not verified') }}:</strong> {{ refused }}
+    {%- if causes %}<p class="small">The likely causes, the most worth checking first:</p><ol class="small">{% for c in causes %}<li>{{ c.text if c.text is defined else c }}</li>{% endfor %}</ol>{% endif %}</div></div>
+  {%- endif %}
+
+  {%- if mode == 'verify' and pv %}
+  {{ preview_parts(pv) }}
+  <form class="set-foot set-form-note" method="post" action="{{ url_for('onboard_v2.verify', name=name) }}"
+        hx-post="{{ url_for('onboard_v2.verify', name=name) }}" hx-target="#pending-actions" hx-swap="outerHTML">
+    <input type="hidden" name="list_name" value="{{ list_name }}"><input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+    {%- if pv.confirm.may %}
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Verify {{ name }}</span><span class="op-busy">Verifying…</span></button>{{ how('onboard', 'phase-two-verify', op='Verify') }}</span>
+    {%- endif %}
+    <span class="muted small">{{ pv.confirm.statement }} Phase 2 reads the device again and sends nothing if it, or the profile, moved.</span>
+  </form>
+
+  {%- elif mode == 'abandon' and dry %}
+  <p><strong>Abandon {{ name }}: remove what its onboarding created, in this order, and free its name.</strong> Nothing has reached the device, so nothing on it is undone.</p>
+  <ol class="set-steps">{% for s in dry.steps %}<li>{{ badge('will run' if s.ok else 'would fail', 'neutral' if s.ok else 'danger') }} <span>{{ s.step }}: {{ s.detail }}</span></li>{% endfor %}</ol>
+  {%- if not dry.ok %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>It would not finish: {{ dry.error or 'a step above would fail' }}. Abandon still removes what it can and names what remains.</span></p>{% endif %}
+  <form class="set-foot set-form-note" method="post" action="{{ url_for('onboard_v2.abandon', name=name) }}"
+        hx-post="{{ url_for('onboard_v2.abandon', name=name) }}" hx-target="#pending-actions" hx-swap="outerHTML">
+    <input type="hidden" name="list_name" value="{{ list_name }}"><input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+    {%- if may.may %}
+    <span class="op-act"><button type="submit" class="btn btn-danger btn-small" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Abandon {{ name }}</span><span class="op-busy">Abandoning…</span></button>{{ how('onboard', 'between-the-phases-the-device-boots', op='Abandon') }}</span>
+    {%- endif %}
+    <span class="muted small">{{ may.statement }} Abandon takes this list again holding the device, and removes nothing if it moved.</span>
+  </form>
+
+  {%- elif mode in ('verified', 'abandoned') and done %}
+  {{ result_parts(done.result) }}
+  {%- if done.result.record_error is defined and done.result.record_error %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>{{ done.result.record_error }}</span></p>{% endif %}
+  <div class="set-foot"><a class="btn btn-small btn-primary" href="{{ url_for('device_v2.device', name=name, list=list_name) if mode == 'verified' else url_for('v2.devices', list=list_name) }}">{{ 'Open ' ~ name ~ "'s page" if mode == 'verified' else 'Back to Devices' }}</a></div>
+
+  {%- elif mode == 'bootstrap' and config %}
+  <p>The startup config {{ name }} boots with, its one-time credential in the clear. Revealed to {{ revealed_by }} and recorded; it signs in only until Verify rotates the credential.</p>
+  <pre class="mono small set-config">{{ config }}</pre>
+
+  {%- elif not refused %}
+  <div class="dev-actions">
+    <form class="inline-form" method="post" action="{{ url_for('onboard_v2.verify_preview', name=name) }}" hx-post="{{ url_for('onboard_v2.verify_preview', name=name) }}" hx-target="#pending-actions" hx-swap="outerHTML">
+      <input type="hidden" name="list_name" value="{{ list_name }}">
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="onboard" hx-disabled-elt="this" title="Its preview reaches the device and sends nothing"><span class="op-idle">Verify…</span><span class="op-busy">Reaching it…</span></button>{{ how('onboard', 'phase-two-verify', compact=True, op='Verify') }}</span>
+    </form>
+    <form class="inline-form" method="post" action="{{ url_for('onboard_v2.bootstrap', name=name) }}" hx-post="{{ url_for('onboard_v2.bootstrap', name=name) }}" hx-target="#pending-actions" hx-swap="outerHTML">
+      <input type="hidden" name="list_name" value="{{ list_name }}">
+      <span class="op-act"><button type="submit" class="btn" data-op="onboard" hx-disabled-elt="this" title="A reveal: a person, recorded"><span class="op-idle">Get the bootstrap config…</span><span class="op-busy">Rendering…</span></button>{{ how('onboard', 'static-a-person-applies-it', compact=True, op='the bootstrap config') }}</span>
+    </form>
+    <form class="inline-form" method="post" action="{{ url_for('onboard_v2.abandon_preview', name=name) }}" hx-post="{{ url_for('onboard_v2.abandon_preview', name=name) }}" hx-target="#pending-actions" hx-swap="outerHTML">
+      <input type="hidden" name="list_name" value="{{ list_name }}">
+      <span class="op-act"><button type="submit" class="btn" data-op="onboard" hx-disabled-elt="this" title="Its preview removes nothing"><span class="op-idle">Abandon…</span><span class="op-busy">Checking…</span></button>{{ how('onboard', 'between-the-phases-the-device-boots', compact=True, op='Abandon') }}</span>
+    </form>
+  </div>
+  {%- endif %}
+</section>

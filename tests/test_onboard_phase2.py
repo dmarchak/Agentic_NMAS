@@ -632,10 +632,12 @@ class TestARefusalNamesTheCallersOperation:
                         f"{node.name} calls _target_list without naming its "
                         f"operation, so it would use the onboarding message")
                     seen[node.name] = inner.args[1].value
-        assert seen == {"bootstrap": "bootstrap", "verify": "verify",
-                        "verify_preview": "verify",
-                        "abandon": "abandon", "plan": "plan",
-                        "create": "create"}, seen
+        # The routes' cores, which today's routes and v2's onboarding share (cutover
+        # blocker 3, 2026-10-10), each carrying its route's name.
+        assert seen == {"bootstrap_reveal": "bootstrap", "verify_run": "verify",
+                        "verify_preview_of": "verify",
+                        "abandon_run": "abandon", "plan_of": "plan",
+                        "create_run": "create"}, seen
 
 
 class TestTheArtefactSurvivesTheRun:
@@ -742,8 +744,8 @@ class TestTheArtefactSurvivesTheRun:
 
         import routes.onboard as mod
 
-        src = inspect.getsource(mod.bootstrap)
-        tree = ast.parse(inspect.cleandoc(src).replace("@bp.route", "#"))
+        src = inspect.getsource(mod.bootstrap_reveal)   # the core today's and v2's reveal share
+        tree = ast.parse(src)          # a module-level function, so no dedent and no decorator
         names = {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
         assert "require" in names, "not gated"
         assert "record" in names, "a reveal that is not audited"

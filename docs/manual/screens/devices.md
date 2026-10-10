@@ -61,3 +61,34 @@ The Actions menu:
   its committed intent, and the result says which, or why not.
 
 The rows ticked are kept when the list redraws.
+
+## Add device {#add-device}
+
+**Add device…** opens a card above the list for a NEW device in this network (the top bar's
+network picker chooses which). Fill in its name, platform and role, how it gets its address
+(static, a DHCP reservation, or ZTP, where the tool reserves the address and serves the
+configuration), the address, mask and MAC that source needs, the interface the address goes
+on, a gateway when this host is not on the device's subnet, and the DNS domain. A platform not
+yet onboardable is listed and disabled, with its reason.
+
+**Review the plan** creates nothing. It shows every reason the device cannot be onboarded at
+once, and otherwise the startup configuration it will boot (with a placeholder for the
+one-time password, which is generated at Create and never sent to the browser), what Create
+will make, and what it does not do. **Create** builds the plan again holding the device's
+name, and refuses, naming each value that moved, if it is not the plan you reviewed; it needs
+a verified person. The result says the device is PENDING (created, never reached), and
+**Open its page** goes to its pending page, where Verify, the bootstrap configuration and
+Abandon are. See [Onboard a device](onboard).
+
+## A pending device's page {#pending}
+
+A device created and not yet reached has no tabs: its page shows its onboarding state, its
+address and how it gets it, and three actions, each answered in place:
+
+- **Verify…** reaches the device and reads it (sending nothing), then shows what Verify will
+  send; **Verify** confirms that preview. See [Onboard a device](onboard#phase-two-verify).
+- **Get the bootstrap config…** shows the configuration the device boots with, its one-time
+  password in the clear. It is a reveal: it needs a verified person and is recorded.
+- **Abandon…** shows what abandoning would remove, step by step, removing nothing; **Abandon**
+  confirms it, and is refused, removing nothing, if what it would remove moved since you
+  looked.

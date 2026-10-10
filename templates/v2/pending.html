@@ -4,7 +4,8 @@
 {#- A pending device's page (NSOT_GUI_BRIEF 3.3): onboarded (phase 1: its
     commit and its staged credential) and not yet reached, so it is in no
     inventory and has none of a device's tabs. Its onboarding state, what to
-    expect, and its three actions, which are built on today's page. -#}
+    expect, and its three actions (Verify…, Get the bootstrap config…, Abandon…), each drawn in
+    place (cutover blocker 3, 2026-10-10). -#}
 {%- set STATE = {'in_flight': ('pending', 'info'), 'overdue': ('overdue', 'warn'), 'stale': ('stale', 'danger')} -%}
 {%- set s = STATE.get(p.state, (p.state, 'muted')) -%}
 {% block title %}{{ p.name }} (pending) · {{ brand.short }}{% endblock %}
@@ -27,9 +28,17 @@
   <dl class="facts">
     <div><dt>Address</dt><dd class="mono">{% if p.mgmt_ip %}{{ p.mgmt_ip }}{% elif p.address_source == 'dhcp' or p.address_source == 'ztp' %}awaiting {{ 'ZTP' if p.address_source == 'ztp' else 'DHCP' }}{% if p.reserved_address %} (Kea reservation → {{ p.reserved_address }}){% endif %}{% else %}no address recorded{% endif %}</dd></div>
     <div><dt>Address source</dt><dd>{{ p.address_source }}{% if p.mgmt_mac %} <span class="muted mono">· {{ p.mgmt_mac }}</span>{% endif %}</dd></div>
+    {%- if ztp %}
+    <div><dt>ZTP</dt><dd>{{ badge(ztp.stage | replace('_', ' '), 'warn' if ztp.stage in ('reservation_missing', 'asked_not_served', 'unknown') else 'info') }} {{ ztp.summary }}</dd></div>
+    {%- endif %}
+    {%- if last_run %}
+    <div><dt>Last {{ last_run.kind }}</dt><dd>{{ stamp(last_run.at) }} by {{ last_run.by or 'nobody recorded' }}: {{ last_run.result.happened.summary }}</dd></div>
+    {%- elif runs_error %}
+    <div><dt>Last run</dt><dd>its record could not be read: {{ runs_error }}</dd></div>
+    {%- endif %}
     <div><dt>Next</dt><dd>Boot it with its bootstrap config, then Verify: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
   </dl>
-  <p class="dev-actions"><a class="btn btn-primary" data-op="onboard" data-todays-page="onboard" href="{{ url_for('index') }}">Verify, Abandon or get the bootstrap config (today's page)…</a>{{ how('onboard', 'phase-two-verify') }}
-    <span class="muted">The pending banner on today's page carries all three until the redesign does.</span></p>
 </section>
+{%- set name = p.name %}
+{% include "v2/_onboard_pending.html" %}
 {% endblock %}

@@ -145,6 +145,12 @@ def platforms():
     omitted: an absent option teaches the operator the tool does not support
     their device, which is a different and wrong lesson.
     """
+    return jsonify({"ok": True, "platforms": platform_choices()})
+
+
+def platform_choices() -> list:
+    """Each platform a device can be onboarded as, blocked ones listed with their reason;
+    today's wizard and v2's Add device draw this one list."""
     from modules.nsot.onboard import BLOCKED_PENDING_MEASUREMENT
     from modules.nsot.platform import platform_for_device
     from modules.settings_schema import get_setting
@@ -164,7 +170,7 @@ def platforms():
         blocked = BLOCKED_PENDING_MEASUREMENT.get(dialect, "")
         out.append({"platform": slug, "dialect": dialect,
                     "blocked": bool(blocked), "reason": blocked})
-    return jsonify({"ok": True, "platforms": out})
+    return out
 
 
 def _driver_for(list_name: str, hostname: str, data) -> str:
@@ -269,31 +275,38 @@ def bootstrap(hostname):
     Re-rendered rather than stored. See `bootstrap_artifact()` for why the
     config and the credential must share a lifetime.
     """
+    out, status = bootstrap_reveal(hostname, request.args, request)
+    return jsonify(out), status
+
+
+def bootstrap_reveal(hostname: str, data, req) -> tuple:
+    """``(answer, status)``: the bootstrap config, revealed to a person and recorded; the one
+    code path today's banner and v2's pending page share."""
     from modules import identity as ident_mod, reveal_audit
 
     try:
-        list_name = _target_list(request.args, "bootstrap")
+        list_name = _target_list(data, "bootstrap")
     except NoTargetList as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}, 400
 
-    ident, refusal = ident_mod.require(request, action="reveal",
+    ident, refusal = ident_mod.require(req, action="reveal",
                                        operation="onboard_bootstrap")
     if refusal is not None:
         # A refused reveal returns no config at all — there is no masked
         # form worth returning, since a masked bootstrap config is the one
         # thing this artefact must never be.
-        return jsonify({**refusal, "config": ""}), 403
+        return {**refusal, "config": ""}, 403
 
     from modules.nsot.onboard import bootstrap_artifact
 
     out = bootstrap_artifact(_repo_for(list_name), hostname)
     if not out.get("ok"):
-        return jsonify(out), 404
+        return out, 404
 
     reveal_audit.record(actor=ident.actor, kind=ident.kind,
                         what="bootstrap_config", target=hostname,
                         detail=f"list={list_name}", peer=ident.peer)
-    return jsonify({**out, "revealed_by": ident.actor})
+    return {**out, "revealed_by": ident.actor}, 200
 
 
 @bp.route("/verify/<hostname>", methods=["POST"])
@@ -310,19 +323,25 @@ def verify(hostname):
     if refusal is not None:
         return refusal
 
-    data = request.get_json(silent=True) or {}
+    out, status = verify_run(hostname, request.get_json(silent=True) or {}, ident)
+    return jsonify(out), status
+
+
+def verify_run(hostname: str, data, ident) -> tuple:
+    """``(answer, status)``: Verify (phase 2) for a verified person, as previewed. The one code
+    path today's route and v2's pending page share."""
     try:
         list_name = _target_list(data, "verify")
     except NoTargetList as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}, 400
     # Verify is a preview and a confirm (P.9 step c): phase 2 sends a program
     # (the RW removal and the monitoring profile), and a program nobody was
     # shown is what the confirm exists to prevent.
     fingerprint = (data.get("fingerprint") or "").strip()
     if not fingerprint:
-        return jsonify({"ok": False, "error": (
+        return {"ok": False, "error": (
             "Verify confirms what its preview showed, and no preview fingerprint was "
-            "sent: open Verify's preview first")}), 400
+            "sent: open Verify's preview first")}, 400
 
     from modules.nsot.onboard import run_phase_two
 
@@ -333,8 +352,8 @@ def verify(hostname):
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: verify failed for %r", hostname)
         out = {"ok": False, "reason": f"phase 2 raised: {exc}", "steps": []}
-    return jsonify(_recorded_run(repo, "verify", list_name, hostname, ident.actor, out)), \
-        (200 if out.get("ok") else 409)
+    return (_recorded_run(repo, "verify", list_name, hostname, ident.actor, out),
+            200 if out.get("ok") else 409)
 
 
 @bp.route("/verify/<hostname>/preview", methods=["POST"])
@@ -342,23 +361,28 @@ def verify_preview(hostname):
     """Verify's preview (P.9 step c): reach the device, read it, and show what
     phase 2 will send (the RW removal and the network's monitoring profile,
     masked) with the fingerprint Verify's confirm sends back. Sends nothing."""
-    data = request.get_json(silent=True) or {}
+    out, status = verify_preview_of(hostname, request.get_json(silent=True) or {}, request)
+    return jsonify(out), status
+
+
+def verify_preview_of(hostname: str, data, req) -> tuple:
+    """``(answer, status)``: Verify's preview, masked; the one code path both pages share."""
     try:
         list_name = _target_list(data, "verify")
     except NoTargetList as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}, 400
     from modules import outbound, preview_confirm
     from modules.nsot.onboard import phase_two_plan
 
     plan = phase_two_plan(_repo_for(list_name), hostname, list_name)
     if not plan.get("ok"):
         seen = plan.get("verify") or {}
-        return jsonify(outbound.mask_payload({
+        return outbound.mask_payload({
             "ok": False, "error": plan.get("reason") or "the preview could not be made",
-            "state": seen.get("state", ""), "causes": seen.get("causes") or []})), 409
-    return jsonify(outbound.mask_payload({
+            "state": seen.get("state", ""), "causes": seen.get("causes") or []}), 409
+    return outbound.mask_payload({
         "ok": True, "preview": preview_confirm.onboard_verify_preview(
-            plan, preview_confirm.confirm_part(request))}))
+            plan, preview_confirm.confirm_part(req))}), 200
 
 
 @bp.route("/abandon/<hostname>", methods=["POST"])
@@ -371,25 +395,31 @@ def abandon(hostname):
     if refusal is not None:
         return refusal
 
-    data = request.get_json(silent=True) or {}
+    out, status = abandon_run(hostname, request.get_json(silent=True) or {}, ident.actor)
+    return jsonify(out), status
+
+
+def abandon_run(hostname: str, data, actor: str, confirmed: str = "") -> tuple:
+    """``(answer, status)``: Abandon, or its dry run (``dry_run``); the one code path today's
+    route and v2's pending page share. *confirmed* binds it to the dry run shown (v2)."""
     try:
         list_name = _target_list(data, "abandon")
     except NoTargetList as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}, 400
 
     from modules.nsot.onboard import abandon_onboarding
 
     repo = _repo_for(list_name)
     dry_run = bool(data.get("dry_run"))
     try:
-        out = abandon_onboarding(repo, hostname, list_name, actor=ident.actor,
-                                 dry_run=dry_run)
+        out = abandon_onboarding(repo, hostname, list_name, actor=actor, dry_run=dry_run,
+                                 **({"confirmed": confirmed} if confirmed else {}))
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: abandon failed for %r", hostname)
         out = {"ok": False, "error": f"abandon raised: {exc}", "steps": []}
-    if not dry_run:                            # a dry run removes nothing: no record
-        out = _recorded_run(repo, "abandon", list_name, hostname, ident.actor, out)
-    return jsonify(out), (200 if out.get("ok") else 409)
+    if not dry_run and not out.get("moved"):   # a dry run or a refusal removes nothing: no record
+        out = _recorded_run(repo, "abandon", list_name, hostname, actor, out)
+    return out, (200 if out.get("ok") else 409)
 
 
 def _recorded_run(repo: str, kind: str, list_name: str, hostname: str, actor: str,
@@ -460,13 +490,20 @@ def plan():
     from what the operator has entered rather than a stale one — the same
     reason the deploy plan recomputes at apply.
     """
-    from modules.nsot.onboard import build_plan
+    out, status = plan_of(request.get_json(silent=True) or {})
+    return jsonify(out), status
 
-    data = request.get_json(silent=True) or {}
+
+def plan_of(data, *, bound: bool = False) -> tuple:
+    """``(answer, status)``: the plan and its review for the request's fields; the one code
+    path today's wizard and v2's Add device share. *bound* (v2) adds ``shown`` and
+    ``fingerprint``, what its Create sends back (today's wizard sends neither)."""
+    from modules.nsot.onboard import build_plan, plan_fingerprint, plan_shown
+
     try:
         list_name = _target_list(data, "plan")
     except NoTargetList as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}, 400
     try:
         # A placeholder secret so the render is exercised. The real one-time
         # credential is minted at create time and never round-trips through
@@ -475,9 +512,10 @@ def plan():
             data, list_name, secret="PLACEHOLDER-not-the-real-credential"))
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: plan failed")
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return {"ok": False, "error": str(exc)}, 500
 
-    return jsonify({
+    shown = plan_shown(built) if bound else ""
+    return {
         "ok": True,
         "plan": built.summary,
         "host_vars": built.host_vars,
@@ -487,7 +525,8 @@ def plan():
         # separate `bootstrap_config` key went with the old review). It
         # carries only the placeholder secret, by construction.
         "preview": _onboard_preview(built.summary, built.bootstrap_config),
-    })
+        **({"shown": shown, "fingerprint": plan_fingerprint(shown)} if bound else {}),
+    }, 200
 
 
 def _onboard_preview(summary: dict, bootstrap_config: str) -> dict:
@@ -510,16 +549,24 @@ def create():
     if refusal:
         return jsonify(refusal), 403
 
+    out, status = create_run(request.get_json(silent=True) or {}, ident.actor)
+    return jsonify(out), status
+
+
+def create_run(data, actor: str, *, bound: bool = False) -> tuple:
+    """``(answer, status)``: Create (phase 1) for a verified person; the one code path today's
+    wizard and v2's Add device share. *bound* (v2) refuses unless the plan rebuilt under the
+    hold is the one previewed: the request's ``shown`` and ``fingerprint`` (7.1's binding;
+    today's wizard rebuilds without one, CONCURRENCY_AUDIT R36)."""
     import os
 
     from modules.config import get_list_data_dir
-    from modules.nsot.onboard import build_plan, real_steps, run_onboarding
+    from modules.nsot.onboard import build_plan, plan_moved, real_steps, run_onboarding
 
-    data = request.get_json(silent=True) or {}
     try:
         list_name = _target_list(data, "create")
     except NoTargetList as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return {"ok": False, "error": str(exc)}, 400
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
 
     from modules.nsot import device_ops
@@ -529,24 +576,27 @@ def create():
     # nothing between the name check and the mint, two Creates for one name could leave two
     # identities, and a Create beside an Abandon could rebuild on what the Abandon removed.
     try:
-        with device_ops.hold(list_name, args.get("hostname", ""), "onboard (create)",
-                             ident.actor):
+        with device_ops.hold(list_name, args.get("hostname", ""), "onboard (create)", actor):
             # REBUILT HERE, not carried from the review. The stores can change
             # between the screen and the confirm -- the same reason the deploy path
             # recomputes its program at apply rather than trusting what was shown.
             # secret="" -- the real one is minted by the credentials step.
             plan = build_plan(**args)
+            if bound:
+                moved = plan_moved(data.get("shown") or "", data.get("fingerprint") or "", plan)
+                if moved:
+                    return {"ok": False, "moved": True,
+                            "error": f"Not created: {moved}. Nothing was changed."}, 409
             if not plan.onboardable:
-                return jsonify({"ok": False, "error": "; ".join(plan.blocking_reasons),
-                                "blocking_reasons": plan.blocking_reasons}), 409
+                return {"ok": False, "error": "; ".join(plan.blocking_reasons),
+                        "blocking_reasons": plan.blocking_reasons}, 409
 
-            result = run_onboarding(plan, repo=repo,
-                                    **real_steps(repo, actor=ident.actor))
+            result = run_onboarding(plan, repo=repo, **real_steps(repo, actor=actor))
     except device_ops.DeviceBusy as exc:
-        return jsonify({"ok": False, "error": f"Not created: {exc}. Nothing was changed."}), 409
+        return {"ok": False, "error": f"Not created: {exc}. Nothing was changed."}, 409
     # What happened, drawn by the result component (7.1, C86): Create is
     # phase 1 and leaves the device PENDING, which the toast it replaces
     # called "Device onboarded.".
     from modules.preview_confirm import onboard_create_result
     result["result"] = onboard_create_result(result, plan)
-    return jsonify(result), (200 if result.get("ok") else 500)
+    return result, (200 if result.get("ok") else 500)

@@ -165,7 +165,7 @@ class TestTheBoundaryRefusesTheWrongNamespace:
         from routes import onboard
 
         assert calls_in(onboard._dialect, "platform_for_device") == 1
-        assert calls_in(onboard.platforms, "platform_for_device") == 1
+        assert calls_in(onboard.platform_choices, "platform_for_device") == 1   # both pages
 
     def test_there_is_one_translation_table(self):
         """A second copy is how the two come to disagree about what

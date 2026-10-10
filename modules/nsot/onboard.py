@@ -565,6 +565,49 @@ def _ztp_check(mac: str, address: str, kea, check=None) -> dict:
                 "server": "", "subnet_id": None, "dns": {}}
 
 
+def plan_shown(plan: OnboardPlan) -> str:
+    """What a Create's preview showed, canonically: the plan's summary and its intent (the
+    secret reaches neither, so the placeholder preview and the real build agree)."""
+    import json
+
+    return json.dumps({"summary": plan.summary, "host_vars": plan.host_vars},
+                      sort_keys=True, default=str)
+
+
+def plan_fingerprint(shown: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(shown.encode()).hexdigest()
+
+
+def plan_moved(previewed: str, fingerprint: str, plan: OnboardPlan) -> str:
+    """Why a Create bound to *fingerprint* may not run on *plan*, rebuilt now, or ``""``.
+
+    The preview's canonical text rides back beside its fingerprint so a refusal can NAME what
+    moved; the fingerprint is the binding, so text that does not hash to it is refused."""
+    import json
+
+    if not fingerprint:
+        return ("Create confirms what its preview showed, and no preview fingerprint was "
+                "sent: preview first")
+    if plan_fingerprint(previewed or "") != fingerprint:
+        return (f"the preview sent back does not hash to its fingerprint ({fingerprint[:12]}): "
+                f"preview again")
+    now = plan_shown(plan)
+    if now == previewed:
+        return ""
+    was, got = json.loads(previewed), json.loads(now)
+    moved = []
+    for part in ("summary", "host_vars"):
+        a, b = was.get(part) or {}, got.get(part) or {}
+        for k in sorted(set(a) | set(b)):
+            if a.get(k) != b.get(k):
+                moved.append(f"{part}.{k}: previewed {a.get(k)!r}, now {b.get(k)!r}"
+                             if part == "summary" else f"intent {k}")
+    return ("the plan moved since your preview (previewed " + fingerprint[:12] + ", now "
+            + plan_fingerprint(now)[:12] + "): " + "; ".join(moved) + ". Preview again")
+
+
 def build_plan(hostname: str, platform: str, list_name: str, *,
                mgmt_ip: str = "", source_kind: str = "local",
                secret: str = "", domain: str = "rcn.lab",
@@ -1675,16 +1718,33 @@ def read_runs(repo: str) -> dict:
     return {"state": "ok", "rows": list(reversed(rows)), "error": ""}
 
 
+def abandon_fingerprint(dry: dict) -> str:
+    """What an Abandon's preview showed, as the one value its confirm sends back: each step of
+    the dry run in order with its words, and whether it would finish."""
+    import hashlib
+    import json
+
+    shown = [[s.get("step", ""), bool(s.get("ok")), s.get("detail", "")]
+             for s in dry.get("steps") or []]
+    return hashlib.sha256(json.dumps([shown, bool(dry.get("ok")), dry.get("error", "")])
+                          .encode()).hexdigest()
+
+
 def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                        actor: str = "", dry_run: bool = False,
-                       remove_netbox=None, remove_reservation=None) -> dict:
+                       remove_netbox=None, remove_reservation=None,
+                       confirmed: str = "") -> dict:
     """Undo an onboarding, holding the device for the whole run (CONCURRENCY_AUDIT R23).
 
     Abandon took no hold and refused only when `verified_at` was set, which phase two sets
     LAST, so an Abandon during phase two removed the manifest entry, the staged credential,
     NetBox objects and the reservation under a running onboarding. Now another operation's
     hold (phase two holds the device) refuses it by name and nothing is removed. A dry run
-    reads only and takes no hold. The steps are :func:`_abandon_onboarding`'s."""
+    reads only and takes no hold. The steps are :func:`_abandon_onboarding`'s.
+
+    *confirmed* binds the run to the dry run a person was shown (v2's Abandon, cutover blocker
+    3): under the hold the dry run is taken again, and a different one (the reservation gone,
+    NetBox moved, the intent already removed) is refused naming both, with nothing removed."""
     kwargs = dict(actor=actor, dry_run=dry_run, remove_netbox=remove_netbox,
                   remove_reservation=remove_reservation)
     if dry_run:
@@ -1693,6 +1753,19 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
 
     try:
         with device_ops.hold(list_name, hostname, "abandon", actor or "unknown"):
+            if confirmed:
+                now = _abandon_onboarding(repo, hostname, list_name,
+                                          **dict(kwargs, dry_run=True))
+                got = abandon_fingerprint(now)
+                if got != confirmed:
+                    steps = "; ".join(f"{s['step']}: {s['detail']}" for s in now["steps"])
+                    return {"ok": False, "device": hostname, "list": list_name,
+                            "dry_run": False, "steps": [], "remaining": [], "released": "",
+                            "moved": True,
+                            "error": (f"Not abandoned: what Abandon would do moved since your "
+                                      f"preview (previewed {confirmed[:12]}, now {got[:12]}). "
+                                      f"Now it would: {steps or now.get('error') or 'nothing'}. "
+                                      f"Preview again. Nothing was removed.")}
             return _abandon_onboarding(repo, hostname, list_name, **kwargs)
     except device_ops.DeviceBusy as exc:
         return {"ok": False, "device": hostname, "list": list_name, "dry_run": False,

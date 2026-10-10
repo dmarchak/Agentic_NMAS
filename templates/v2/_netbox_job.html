@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
 {#- A NetBox job's card (modules/netbox_jobs): previewing (the dry run running), previewed (the
     preview component's parts, and the confirm bound to its one-shot token, which may turn writes
     on), refused, importing, and its result. While it runs it redraws when the job announces
@@ -21,20 +22,7 @@
   <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>This job is not known here{% if job.error %} ({{ job.error }}){% endif %}: preview again.</span></p>
   {%- elif job.state == 'previewed' %}
   {%- set pv = job.preview %}
-  <p><strong>{{ pv.what.summary }}</strong></p>
-  {%- for t in pv.targets %}
-  <h3 class="set-label">{{ (pv.titles or {}).get('program', 'What will be written to NetBox') }}</h3>
-  {%- if t.program.lines %}
-  <ol class="set-steps mono small">{% for l in t.program.lines %}<li>{{ l }}</li>{% endfor %}</ol>
-  {%- else %}<p class="muted small">{{ t.program.none }}</p>{% endif %}
-  <dl class="set-facts">{% for o in t.operands %}<dt>{{ o.name }}</dt><dd>{{ o.value }}</dd>{% endfor %}</dl>
-  <h3 class="set-label">Checked now, and at your confirm</h3>
-  <ol class="set-steps">{% for g in t.gates %}<li>{{ badge({'pass': 'passed', 'at_apply': 'at confirm', 'fail': 'FAILS'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger'}.get(g.state, 'neutral')) }} <span>{{ g.name }}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>{% endfor %}</ol>
-  {%- endfor %}
-  {%- if pv.what_not['items'] %}
-  <h3 class="set-label">What it does not do</h3>
-  <ul class="small">{% for w in pv.what_not['items'] %}<li>{{ w.text }}</li>{% endfor %}</ul>
-  {%- endif %}
+  {{ preview_parts(pv, 'What will be written to NetBox') }}
   <form class="set-form" method="post" action="{{ url_for('netbox_v2.confirm', job_id=job.id) }}"
         hx-post="{{ url_for('netbox_v2.confirm', job_id=job.id) }}" hx-target="#netbox-job" hx-swap="outerHTML">
     {%- if not job.writes_allowed %}
@@ -53,9 +41,6 @@
   {%- else %}
   {%- set results = [job.removal] if job.removal else (job.results or {}).values() | list %}
   {%- if job.outcome == 'failed' and not results %}<p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The import failed before it recorded a result: the app's log names why.</span></p>{% endif %}
-  {%- for r in results if r %}
-  <div class="notice notice-{{ {'success': 'muted', 'nothing': 'muted', 'partial': 'warn'}.get(r.level, 'danger') }} set-result" role="status">{{ icon('tick' if r.level in ('success', 'nothing') else 'warn', 16) }}<div><strong>{{ r.happened.summary }}</strong>
-    {%- if r.did_not['items'] %}<ul class="small">{% for d in r.did_not['items'] %}<li>{{ d.text if d.text is defined else d }}</li>{% endfor %}</ul>{% endif %}</div></div>
-  {%- endfor %}
+  {%- for r in results if r %}{{ result_parts(r) }}{% endfor %}
   {%- endif %}
 </section>

@@ -58,7 +58,7 @@ and built.
 | Template coverage | `/templatize/report` | PLANNED, 7.6 | Templates; no board, no caller |
 | Templates: list, approve, revoke | `/templates`, `/templates/approval/<path>`, `/templates/approve/<path>`, `/templates/revoke/<path>` | BUILT (boards A to C, `/v2/templates`; not run on the host) | Source of truth › Templates |
 | Templates: edit and the rest | `/templates/*` (7) | PLANNED, 7.6 | The editor (file read and write), validate, preview, refresh-capture, bindings and seed status: the editor reuses the intent editor H (decided 2026-10-05), no board drawn. Preview and refresh-capture read the backup store, so they go before it (C632) |
-| Onboard | `/onboard/*` (9) | PLANNED, 7.4 (boards E, L, M and F signed off 2026-10-04, not built) | Devices › Onboard; the v2 pending page links to today's for the actions (gap `onboard`), and is itself not signed off |
+| Onboard | `/onboard/*` (9) | BUILT, 7.4 (board E and the pending page's actions, 2026-10-10; not run on the host). Boards L (the discovery list) and M (serial pre-provisioning) are new capabilities, not v1 parity: nice-to-haves | Devices › Add device… (static, DHCP, ZTP by MAC; Create bound to its review) and a pending device's page: Verify… (preview, confirm), Get the bootstrap config… (a recorded reveal), Abandon… (its dry run, confirm bound to it); a retired device's Onboard it again…. The same cores as today's routes (`routes/onboard.py`) |
 | Adopt | (no route; `modules/nsot/adopt.py`) | PLANNED, 7.4 | Devices › Adopt |
 | NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | BUILT, 7.6 (2026-10-10; not run on the host) | Source of truth › NetBox (`/v2/netbox`): every network's Import into NetBox… and Remove from NetBox…, Import every network…, each a preview job and a confirm that may turn writes on (C619), its result and recorded removals; the same core as today's routes (`modules/netbox_ops.py`) |
 | NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
@@ -148,7 +148,8 @@ shrinks, its ceiling equal to its count (C629); `tests/test_v2_links_stay_on_v2.
 v2 template and every rendered v2 page to it. On 2026-10-10 there were seven: Capture's
 acknowledgement reason (C486), Plan a deploy for several ticked devices, History's Re-apply,
 onboarding (Add, Verify, Abandon, the bootstrap config, onboard again), and the sidebar's Logs,
-DHCP and NetBox (the Logs and DHCP links name screens today's page does not have: C633). A v2
+DHCP and NetBox (the Logs and DHCP links name screens today's page does not have: C633).
+NetBox and onboarding closed the same day (cutover blockers 2 and 3), leaving five. A v2
 request that fails says "Couldn't load" in place and never redirects to today's index; a
 designed v2 error page is a further gap, pending a mockup.
 

@@ -1262,3 +1262,12 @@ select { max-width: 100%; }
   .sc-part { grid-template-columns: 1fr; gap: 6px; }
   .sc-two { grid-template-columns: 1fr; }
 }
+
+/* Onboarding on v2 (board E; the pending page's actions). The address fields follow the
+   source chosen, with no script: DHCP's address comes from a reservation somebody else made,
+   and a MAC is read only for DHCP and ZTP. */
+.ob-form:has(#f-ob-source option[value="dhcp"]:checked) .ob-addr { display: none; }
+.ob-form:has(#f-ob-source option[value="static"]:checked) .ob-mac { display: none; }
+.inline-form { display: inline-flex; margin: 0; }
+.set-config { margin: 6px 0 0; white-space: pre; background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--r); padding: 10px 12px; line-height: 1.5; }

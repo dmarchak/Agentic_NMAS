@@ -331,8 +331,8 @@ class TestTheRoutes:
 
         from routes import onboard
 
-        assert calls_in(onboard.create, "run_onboarding") == 1
-        assert calls_in(onboard.create, "real_steps") == 1
+        assert calls_in(onboard.create_run, "run_onboarding") == 1   # the core both pages call
+        assert calls_in(onboard.create_run, "real_steps") == 1
 
 
 # ---------------------------------------------------------------------------

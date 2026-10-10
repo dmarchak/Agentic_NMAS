@@ -529,7 +529,7 @@ class TestTheREALStepsSatisfyTheContract:
         from modules.nsot import onboard
         from routes import onboard as route
 
-        assert calls_in(route.create, "real_steps") == 1
+        assert calls_in(route.create_run, "real_steps") == 1   # today's and v2's one core
         for name in ("bind_credentials_step", "commit_step", "render_step"):
             assert hasattr(onboard, name)
         # And the one that moved: it exists, and phase 1 does not use it.

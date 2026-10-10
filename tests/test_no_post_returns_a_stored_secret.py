@@ -73,6 +73,13 @@ def _bodies(v):
                                          "refused naming the networks; it starts nothing"),
         "netbox_v2.preview": (404, ("form", {}), "no operation named: refused naming the three, "
                               "nothing started"),
+        "onboard_v2.preview": (400, ("form", {"hostname": "r9"}),
+                               "no network named: refused saying why the list is carried, "
+                               "nothing planned"),
+        "onboard_v2.verify_preview": (400, ("form", {}),
+                                      "no network named: refused before any device is read"),
+        "onboard_v2.abandon_preview": (400, ("form", {}),
+                                       "no network named: refused before the dry run reads"),
         "remote_v2.publication": (409, ("form", {"list": LIST}),
                                   "the planted list has no remote: refused naming it, reading "
                                   "no history"),

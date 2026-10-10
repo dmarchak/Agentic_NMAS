@@ -197,6 +197,28 @@ def _retired(name):
     return (ref, rec) if rec else None
 
 
+def _pending_facts(ref, p) -> dict:
+    """What today's pending banner drew beside a pending device, read the same way: a ZTP
+    device's stage (Kea's running configuration, its lease table, the responder's rows) and
+    its last Verify or Abandon, drawn from its recorded row. A failure to read either is said,
+    never drawn as nothing to report."""
+    from routes.onboard import _run_history
+
+    out = {"ztp": None, "last_run": None, "runs_error": ""}
+    if p.get("address_source") == "ztp":
+        try:
+            from modules.nsot import ztp as _ztp
+
+            out["ztp"] = _ztp.progress(p)
+        except Exception as exc:                      # noqa: BLE001 (said on the page)
+            out["ztp"] = {"stage": "unknown", "summary": f"its progress could not be read: {exc}"}
+    runs = _run_history(ref.repo_dir, {p.get("name", "")})
+    out["last_run"] = runs["last"].get(p.get("name", ""))
+    if runs["state"] == "unreadable":
+        out["runs_error"] = runs["error"] or "unreadable"
+    return out
+
+
 @bp.route("/device/<name>", methods=["GET"])
 def device(name):
     """The whole page, opened on the tab the URL names. A device onboarded
@@ -211,7 +233,8 @@ def device(name):
             pending = None
         if pending:
             ref, p = pending
-            return _strict(render_template("v2/pending.html", p=p, list_name=ref.name, who=_who()))
+            return _strict(render_template("v2/pending.html", p=p, list_name=ref.name, who=_who(),
+                                           **_pending_facts(ref, p)))
         # A device that LEFT shows its retired record (C185; board 12), never a bare 404.
         retired = _retired(name)
         if retired:

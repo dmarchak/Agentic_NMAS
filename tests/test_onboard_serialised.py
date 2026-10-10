@@ -67,7 +67,7 @@ def test_create_holds_the_hostname_from_its_plan_to_its_last_step():
 
     from routes import onboard
 
-    src = textwrap.dedent(inspect.getsource(onboard.create))
+    src = textwrap.dedent(inspect.getsource(onboard.create_run))   # today's and v2's core
     holds = [w for w in ast.walk(ast.parse(src)) if isinstance(w, ast.With)
              and any("device_ops.hold" in ast.unparse(i.context_expr) for i in w.items)]
     body = "\n".join(ast.unparse(s) for w in holds for s in w.body)

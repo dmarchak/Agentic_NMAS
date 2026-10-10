@@ -75,7 +75,8 @@ STAGES = {
         "modules.nsot.credential_rotation.revert_commands",
         "modules.nsot.credential_rotation.record_outcome"),
     "onboard.verify": Stages(
-        "onboard.verify_preview", "fingerprint", "modules.nsot.onboard.verify_device",
+        "onboard.verify_preview", "fingerprint in routes.onboard.verify_run",
+        "modules.nsot.onboard.verify_device",
         "n/a: a failed step stops the phase with the device pending and nothing promoted; the "
         "rotation reverts on its held session", "modules.nsot.onboard.record_run"),
     "onboard.create": Stages(
@@ -89,6 +90,19 @@ STAGES = {
         "preview", "MISSING: no hash binds the abandon to what was shown",
         "n/a: nothing reached the device", "n/a: abandon is itself the undo of Create",
         "modules.nsot.onboard.record_run"),
+    # Onboarding on v2 (cutover blocker 3): today's cores, each confirm bound to its preview.
+    "onboard_v2.verify": Stages(
+        "onboard_v2.verify_preview", "fingerprint in routes.onboard.verify_run",
+        "modules.nsot.onboard.verify_device",
+        "n/a: a failed step stops the phase with the device pending and nothing promoted; the "
+        "rotation reverts on its held session", "modules.nsot.onboard.record_run"),
+    "onboard_v2.create": Stages(
+        "onboard_v2.preview", "fingerprint in routes.onboard.create_run",
+        "n/a: phase 1 reaches no device", "modules.nsot.onboard.abandon_onboarding",
+        "MISSING: Create's run is read back from the pending row, never recorded as a run"),
+    "onboard_v2.abandon": Stages(
+        "onboard_v2.abandon_preview", "fingerprint", "n/a: nothing reached the device",
+        "n/a: abandon is itself the undo of Create", "modules.nsot.onboard.record_run"),
     "retire.apply": Stages(
         "retire.preview", "hash",
         "n/a: retirement changes no device; the NetBox mask is read back inside the apply",
@@ -247,7 +261,10 @@ STAGES = {
 #: The gaps, counted: the test pins this number, so it can only go down.
 # +1 2026-10-10: v2's NetBox confirm shares today's import's missing read-back (C8); today's three
 # NetBox entries leave at 7.8 and take theirs with them.
-MISSING_CEILING = 45
+# +1 2026-10-10: v2's Create shares today's Create's missing run record (one core); v2's
+# Create and Abandon bind their confirms, so today's two hash gaps and Abandon's preview gap
+# leave with today's routes at 7.8.
+MISSING_CEILING = 46
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +297,8 @@ HISTORY = {
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
     "onboard.verify": ("onboarding", "golden"),
     "onboard.abandon": ("onboarding",),
+    "onboard_v2.verify": ("onboarding", "golden"),
+    "onboard_v2.abandon": ("onboarding",),
     "bulk_reload": ("restart_windows", "restarts"),
     "update.apply": NOT_A_DEVICE,
     "update.step_done": NOT_A_DEVICE,
@@ -299,6 +318,7 @@ HISTORY = {
     "ai_approval_approve": ("approvals",),
     "ai_approval_reject": ("approvals",),
     "onboard.create": ("intent",),
+    "onboard_v2.create": ("intent",),
     "refresh_hostnames": ("golden",),
     "templatize.seed_apply": ("intent",),
     "templatize.edit_committed": ("intent",),
