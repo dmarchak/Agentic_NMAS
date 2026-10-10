@@ -251,7 +251,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.restarts",
                            "modules.readers.credential_health",
                            "modules.readers.coverage_reporting",
-                           "modules.readers.platform_facts")
+                           "modules.readers.platform_facts",
+                           "modules.readers.records_check")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).

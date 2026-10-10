@@ -65,6 +65,9 @@ def installation():
         from modules import installation_diagnostics as D
         diag = {"red": D.redaction(), "dr": D.drift(), "fl": D.in_flight(),
                 "lg": D.app_log(None)}
+    if tab == "connections":
+        from modules import records_migrate as RM
+        diag = {"st": RM.view()}
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
                  v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
                  a=I.agent_state() if tab == "ai" else None, **diag)
@@ -129,6 +132,54 @@ def records_replace():
         return _fragment("v2/_records_db_replace.html", 409, r=I.records_card(),
                          refused=str(exc))
     return _records(replaced=out, tested=out["tested"])
+
+
+# ── Phase 4: the record stores, moved to the records database and back ────────────────────
+
+DIRECTIONS = ("move", "back")
+
+
+def _stores(status: int = 200, **ctx):
+    from modules import records_migrate as RM
+
+    return _fragment("v2/_records_stores.html", status, st=RM.view(), **ctx)
+
+
+@bp.route("/installation/records/stores", methods=["GET"])
+def records_stores():
+    """Each record store: where it is, its last check; drawn again when the records-check
+    reader announces, and by Cancel."""
+    return _stores()
+
+
+@bp.route("/installation/records/stores/<direction>/preview", methods=["POST"])
+def records_store_preview(direction):
+    """What moving the receipts (or moving them back) would do, every network's counts read
+    now; writes nothing."""
+    from modules import records_migrate as RM
+
+    if direction not in DIRECTIONS:
+        return _stores(404, refused=f"no such operation {direction!r}: move or back")
+    return _stores(pv=dict(RM.plan(), direction=direction,
+                           steps=[(s, RM.STEP_WORDS[s]) for s in
+                                  (RM.MOVE_STEPS if direction == "move" else RM.BACK_STEPS)]))
+
+
+@bp.route("/installation/records/stores/<direction>", methods=["POST"])
+def records_store_apply(direction):
+    """The confirm, bound to the preview's fingerprint: the move (copy, switch, copy again,
+    check, read-only) or the move back (export, switch, check), recorded as the person."""
+    from modules import identity
+    from modules import records_migrate as RM
+
+    if direction not in DIRECTIONS:
+        return _stores(404, refused=f"no such operation {direction!r}: move or back")
+    run = RM.move if direction == "move" else RM.move_back
+    try:
+        out = run(request.form.get("fingerprint", ""), identity.request_actor(), _verified())
+    except RM.Refused as exc:
+        return _stores(409, refused=str(exc))
+    return _stores(done=dict(out, direction=direction))
 
 
 def _install(name: str, status: int = 200, **ctx):

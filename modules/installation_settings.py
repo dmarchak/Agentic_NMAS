@@ -156,7 +156,7 @@ def records_card() -> dict:
     # Off: no Test is drawn, an old one included (its checks would read as today's).
     return {"state": state, "stale": stale, "config": c, "test": answer,
             "steps": _steps_drawn(answer) if answer["state"] == "ok" and state != "off" else [],
-            "version": version, "stores": list(RD.STORES),
+            "version": version, "stores": [RD.STORE_WORDS[s] for s in RD.stores()],
             "test_unreadable": answer["state"] == "unreadable",
             "record_unreadable": saved["state"] == "unreadable",
             "rule_words": PASSWORD_WORDS}

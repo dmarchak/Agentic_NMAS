@@ -96,6 +96,9 @@ VOCABULARY = {
     "reachability": "whether each device answers, as the reachability reader last stored it",
     "integration_health": "whether each integration answers, as the integration-health reader last stored it",
     "credential_health": "each credential's expiry or age, as the credential-health reader last stored it (P.21)",
+    "records": "where each of Mercury's record stores is (files or the records database) and "
+               "whether the moved ones still match their files, as the records-check reader "
+               "last stored it (Phase 4)",
     "coverage_reporting": "when each device's monitoring data last arrived, as the coverage-reporting reader last stored it (Coverage's not-reporting cells)",
     "ci_verdict": "the running commit's CI verdict, as the ci-verdict reader last stored it",
     "app_version": "whether the running commit is what is pushed (origin/main), as the "
@@ -245,6 +248,7 @@ DECLARED = {
     # The Test keeps its answer, which the card draws for every viewer (board F2).
     "settings_v2.records_test": ("settings",),
     "settings_v2.records_replace": ("settings",),
+    "settings_v2.records_store_apply": ("settings", "records"),
     "settings_v2.install_save": ("settings",),
     "settings_v2.install_replace": ("settings",),
     "settings_v2.install_writes_off": ("settings",),
@@ -353,6 +357,7 @@ DECLARED = {
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "settings_v2.install_test": Nothing("tests an Installation card's service and reports in the card; keeps nothing"),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),
+    "settings_v2.records_store_preview": Nothing("counts the receipts lines in the files and the table for a move's preview; writes nothing"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
 }
 

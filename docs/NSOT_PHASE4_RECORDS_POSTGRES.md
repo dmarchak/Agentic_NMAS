@@ -259,7 +259,31 @@ the verifier by RFC 7677's arithmetic. Then Mercury's half: Settings › Install
 database › Replace…, the same password, and Test. Between the two, Mercury holds the old password
 and cannot reach its records.
 
-## 7. The first store: deploy receipts, and its count check (DRAFT, 2026-10-08)
+## 7. The first store: deploy receipts, and its count check (BUILT 2026-10-10; DRAFT 2026-10-08)
+
+**As built** (under the Phase 7 operating mode; docs/STANDING_APPROVAL_LOG.md), where it differs
+from the draft below:
+
+- **The migration is a person's operation on v2, not a CLI.** Settings › Installation ›
+  Connections gained **Record stores**: each store, where it is and its last check, with **Move
+  to the database…** and **Move back to files…**, each a preview and a confirm bound to it
+  (`modules/records_migrate.py`, `MOVE_STEPS` and `BACK_STEPS`; the manual's records-database
+  page, #move and #back). Steps 2 to 6 below run as one operation, so the window between the
+  copy and the switch is the operation's own, and the step-3 settings write is recorded as the
+  person. `nmas-records-migrate` was not written: a host command would be a second home for the
+  same action, and the operator's rule is no terminal steps.
+- **A failed check after the switch switches back at once**, exporting any line written to the
+  table in between, so the store is never left half-moved (rollback on failure).
+- **The move back is `--export` and the switch together**: lines written since the move are
+  appended to their files and only then removed from the table, in one transaction per network,
+  and the merged receipts from the files must equal the table's.
+- **Network** is the list's folder name (`config.list_slug`), and the population is every
+  `deploy_receipts.jsonl` that exists (`receipts.files()`), registered list or not.
+  `source_line` counts the file's non-empty lines from 1.
+- **The check each cycle is the `records-check` reader** (every 300 s, and woken by a deploy or
+  a move); a mismatch or a database that does not answer is a Needs attention row
+  (`attention.records_source`, kinds `mismatch` and `unreachable`).
+- Deleting the files (step 7) is still the host step for the release after.
 
 **Measured on the host, 2026-10-08:** one network (`default`), `deploy_receipts.jsonl` 67 lines,
 of which 26 are completions (a line filling in a pending row's commit) and 41 rows, 65,013

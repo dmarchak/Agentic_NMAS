@@ -71,6 +71,9 @@ def _bodies(v):
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "
                                          "refused naming the networks; it starts nothing"),
+        "settings_v2.records_store_preview": (404, ("form", {}),
+                                              "the direction filled in ('zz') is neither move "
+                                              "nor back: refused naming both, counting nothing"),
         "drift_check_sync": (200, ("json", {}),
                              "r1 read NOW differs from its golden: the drift carries both"),
         "golden.capture_preview": (202, ("json", {"devices": ["r1"]}),

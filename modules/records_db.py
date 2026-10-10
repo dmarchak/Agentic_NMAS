@@ -37,14 +37,31 @@ STEP_WORDS = {"connect": "signs in", "version": f"PostgreSQL {MAJOR}",
 CONNECT_TIMEOUT_S = 10
 #: Visible in the server's own activity list, so a connection names whose it is.
 APPLICATION_NAME = "mercury"
-#: The stores switched to this database, in the order they moved (section 3 of the Phase 4
-#: document: receipts first). Empty: every store is on its files, whatever the settings say.
-#: The Settings card draws it ("Stores on it"), and a store's switch adds itself here.
-STORES = ()
+#: The stores that can move to this database, in the order they move (section 3 of the Phase 4
+#: document: receipts first), each with its words and its switch, `records_store_<name>`
+#: ("file", today's, or "postgres"). A store moves only through records_migrate, which copies,
+#: switches and checks; the Settings card draws each ("Stores on it").
+STORES = ("receipts",)
+STORE_WORDS = {"receipts": "Deploy receipts"}
+FILE, POSTGRES = "file", "postgres"
 
 
 class Unavailable(RuntimeError):
     """No connection could be opened; the message names which of the reasons."""
+
+
+def backend(store: str) -> str:
+    """Where *store* keeps its records now: ``file`` or ``postgres``, read at each call so
+    every process follows a switch together. Anything else stored reads as ``file``."""
+    from modules.settings_schema import get_setting
+
+    got = get_setting(f"records_store_{store}", FILE)
+    return POSTGRES if got == POSTGRES else FILE
+
+
+def stores() -> list:
+    """The stores on this database now, in `STORES` order."""
+    return [s for s in STORES if backend(s) == POSTGRES]
 
 
 def config() -> dict:

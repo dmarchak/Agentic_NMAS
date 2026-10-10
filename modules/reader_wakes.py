@@ -55,6 +55,10 @@ WOKEN_BY = {
     "netbox-secrets": ("netbox", "settings"),
     # the planned-restart windows a person declares; Prometheus by settings.
     "restarts": ("restarts", "settings"),
+    # each network's receipts file and the records database's table: a deploy or restore
+    # writes a receipt (v2 announces deploy_job; today's routes declare device_state); a move
+    # or move back switches the store (a settings write). A capture writes none.
+    "records-check": ("deploy_job", "device_state", "settings"),
     # HEAD against the remote: also re-read by its own post-commit hook.
     "remote-publication": ("goldens", "intent", "templates", "remote"),
 }

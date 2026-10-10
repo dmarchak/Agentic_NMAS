@@ -57,6 +57,8 @@ COMPUTED = {
                                             "web_server and ai; and the Access and identity "
                                             "tab's ACCESS_CARD_KEYS and SERVICE_CARD_KEYS, the "
                                             "identity group's: every one host-wide"),
+    "modules/records_db.py": (1, "`backend(store)`: records_store_<store> for each of STORES "
+                                 "(receipts), the records_db group's: host-wide"),
 }
 
 

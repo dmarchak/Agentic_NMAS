@@ -1300,6 +1300,48 @@ The wizard could onboard a device whose address comes from a Kea reservation, an
 - 4C test counts before f4a8489 as real pytest results: 4C.8's counts were declared harness-only.
 - r6 phase 1 (40fcb8e to 53a1bef), between 4C and the branch site, has its own entry above.
 
+### Phase 4 (Mercury's records) — deploy receipts on the records database (open: the walk on the host)
+
+*Written at the build's close, 2026-10-10 (UTC), under the Phase 7 operating mode. The walk on
+the host comes at Phase 7's end, in the operator's order, and is added here then.*
+
+1. **What it was.** The charter's "Mercury's own records" consolidates the audit trail into one
+   PostgreSQL database. Receipts move first: they are the store with the R32 shape (several rows
+   per handle, no lock) and the one History reads most [NSOT_PHASE4_RECORDS_POSTGRES.md section
+   7]. The foundation (the container, host step 6a; the connection and its Test, board F2) was
+   already built.
+2. **How it was implemented.** `audit.receipt_lines` keeps the file's shape, one row per line
+   with its hash and its place in the file, so `receipts._merged` runs unchanged on either
+   backend. `receipts.write` and `read` switch on `records_store_receipts`, read at each call.
+   `modules/records_migrate.py` is the one owner of the table. Its move is a person's operation
+   on the Records database card, preview and bound confirm: copy, switch, copy again, check,
+   read-only, switching back at once if the check fails. Its move back exports what was written
+   since, then switches. The `records-check` reader runs the check every 300 s, and Needs
+   attention draws a mismatch or a database that does not answer.
+3. **Issues encountered.**
+   - The suite's autouse fixture sends `receipts.path_for` to each test's own folder, while the
+     first draft enumerated the files by a glob of its own: two owners of where receipts live.
+   - The tests' first counts confused lines with receipts (6 lines merge to 5).
+   - The card had claimed a Needs attention row that did not exist (C634).
+   - The secret-storage check scans only the files (C635).
+   - The first wake key for the reader, `goldens`, was a capture's too, which writes no receipt.
+4. **How they were resolved.**
+   - `receipts.files()` enumerates beside `path_for`, and the tests take `real_receipts_path`.
+   - The counts were corrected.
+   - The row was built (C634 closed); C635 is registered B.
+   - The reader wakes on `deploy_job`, `device_state` and `settings`.
+5. **Numbers.**
+   - One commit [git: this commit].
+   - 29 tests in `tests/test_records_receipts.py` against a real PostgreSQL 18, and seven
+     controls, each failing its aimed tests.
+   - The suite's population checks asked for nine declarations the build owed: a key in the
+     vocabulary and the client's relays, a reader in the wakes table, a computed settings key, a
+     POST body, the group's keys, a setting in SETTINGS.md, a words help link.
+   - **Estimate versus actual:** no forecast was made. It is the first store moved, so it is the
+     basis for the other stores' forecasts.
+6. **Where it left the product.** Receipts can move to the records database and back from the
+   card, with nothing lost either way. Nothing has moved on the host yet: that is the walk.
+
 ## Part I. Before Stage 7: the P-items
 
 ### P.1 — Switch syslog, and a heartbeat that makes silence a signal

@@ -662,7 +662,9 @@ class TestTheShippedScripts:
         # -1 2026-10-08: freshness (switched off, reader_job.RETIRED: nothing announces it).
         # +1 2026-10-08: reads (Show commands runs, Ask the device listens for its run's end).
         # +1 2026-10-08: privileged (Tier 2's card listens for its run's end).
-        assert len(keys) == 32
+        # +1 2026-10-10: records (the records-check reader; the Record stores section and
+        # Needs attention's records source).
+        assert len(keys) == 33
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

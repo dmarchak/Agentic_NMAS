@@ -107,6 +107,13 @@ ROW_KINDS = {
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
     ("netbox-secrets", "held"): ("NetBox holds a credential in a device's context",
                                  "mask it, remove it by hand, or repair the record first"),
+    ("records", "mismatch"): ("a record store moved to the records database no longer matches "
+                              "its files", "read the first differing line, then move it back "
+                              "to its files or find the writer"),
+    ("records", "unreachable"): ("a record store is on the records database and it does not "
+                                 "answer, so what it records cannot be written",
+                                 "make the database answer (its Test names why), or move the "
+                                 "store back to its files"),
     ("pushed", "release"): ("the host runs a release that is wrong to keep running",
                             "update, or find where the running commit came from"),
     ("pushed", "ci_failed"): ("CI failed (or was cancelled) for the newest pushed commit, so the "
@@ -205,6 +212,10 @@ CLEARS = {
                                         "(every 5 s)"),
     ("netbox-secrets", "held"): (("resolves",), "NetBox no longer holds the credential (masked "
                                  "or removed), at the next hourly read"),
+    ("records", "mismatch"): (("resolves",), "the files and the table match again, or the store "
+                              "is moved back to its files, at the next check (every 5 minutes)"),
+    ("records", "unreachable"): (("resolves",), "the records database answers the next check "
+                                 "(every 5 minutes), or the store is moved back to its files"),
     ("pushed", "release"): (("resolves",), "the host runs the commit the remote holds"),
     ("pushed", "ci_failed"): (("resolves",), "a newer commit is pushed (its update is offered "
                               "once CI passes it), or the host runs this one"),
@@ -1931,6 +1942,61 @@ def netbox_secrets_source(cached=None) -> dict:
                 f"{len(v.get('devices') or [])} holding a credential")
 
 
+def records_source(cached=None) -> dict:
+    """Mercury's record stores moved to the records database (Phase 4): a store that no longer
+    matches its files, naming the network, both counts and the first differing line; and a
+    store on a database that does not answer, since what it records cannot be written. From
+    the records-check reader's stored check, never the database per request. Nothing on the
+    database: nothing to judge, and it says so."""
+    from modules import reader_job, records_db
+
+    started = time.time()
+    got = reader_job.read_cached("records-check") if cached is None else cached
+    doc = got.get("doc") or {}
+    good, attempt = doc.get("last_good") or {}, doc.get("last_attempt") or {}
+    took = int((time.time() - started) * 1000)
+    label = "Records database stores"
+    moved = records_db.stores()
+    if not moved:
+        return source_result("records", label, read_at=started, took_ms=took,
+                             checked="every record store is on its files: nothing to compare")
+    if got["state"] != "ok" or (not good and attempt.get("ok") is not False):
+        why = got.get("why") if got["state"] != "ok" else "the reader has not run yet"
+        return source_result("records", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    rows = []
+    if attempt.get("ok") is False:
+        rows.append(row(source="records", kind="unreachable", key="database", level="danger",
+                        what=f"{', '.join(moved)} cannot be written: the records database does "
+                             "not answer",
+                        cause=f"{', '.join(moved)} {'is' if len(moved) == 1 else 'are'} on the "
+                              f"records database, and its last check could not ask it: "
+                              f"{attempt.get('error') or 'no error recorded'}",
+                        since=_ts(attempt.get("at")),
+                        action={"label": "Test the records database on Settings › Installation "
+                                         "› Connections: its failing check names why"}))
+    check = (good.get("value") or {}).get("check") or {}
+    for n in check.get("networks") or []:
+        if n.get("ok"):
+            continue
+        rows.append(row(source="records", kind="mismatch", key=f"receipts:{n.get('network')}",
+                        level="danger",
+                        what=f"Deploy receipts in {n.get('network')} no longer match their file",
+                        cause=f"{n.get('network')}: file {n.get('file')} lines, table "
+                              f"{n.get('table')}: {n.get('differs')}",
+                        read_at=value_at,
+                        operands={"network": n.get("network"), "file": n.get("file"),
+                                  "table": n.get("table")},
+                        action={"label": "Read the differing line; if a writer is still on "
+                                         "files, move the receipts back to their files on "
+                                         "Settings › Installation › Connections"}))
+    return source_result("records", label, read_at=started, took_ms=took, rows=rows,
+                         value_at=value_at, stale_after_seconds=promise,
+                         reader="records-check",
+                         checked=check.get("words") or "checked")
+
+
 # ---------------------------------------------------------------------------
 # Source: history committed and not on its remote (C223)
 # ---------------------------------------------------------------------------
@@ -2717,7 +2783,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
            host_steps_source, adjacency_source, lab_startup_source, restart_source,
-           interrupted_source, dashboard_roles_source, template_behind_source)
+           interrupted_source, dashboard_roles_source, template_behind_source,
+           records_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -2756,6 +2823,8 @@ SOURCE_KEYS = {
     "dashboard_roles_source": ("dashboards", "settings"),
     # A template brought in, or a profile committed (C566).
     "template_behind_source": ("templates", "intent"),
+    # The reader's stored check, and a move or move back (which changes the settings).
+    "records_source": ("records", "settings"),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

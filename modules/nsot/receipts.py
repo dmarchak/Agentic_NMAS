@@ -31,6 +31,12 @@ with the hash the operator confirmed.
 the follow-up window (did anything complain for N minutes after) and the
 second reading (8.8). A row saying `not_run` is truthful; an absent key
 reads as "nothing to say".
+
+**Where the lines live** (Phase 4, section 7): the file above, or, once a person moved the
+store on the Records database card (`records_migrate.move`), the records database's
+`audit.receipt_lines`, one INSERT per line in one transaction. The setting
+`records_store_receipts` is read at each call. Either way the lines are the same JSON and
+`_merged` runs unchanged on both, so a reader cannot tell them apart.
 """
 
 import json
@@ -301,6 +307,39 @@ def _merged(lines: list) -> list:
     return rows
 
 
+def on_database() -> bool:
+    """Whether the receipts are in the records database now (read at each call)."""
+    from modules import records_db
+
+    return records_db.backend("receipts") == records_db.POSTGRES
+
+
+def encode(row: dict) -> str:
+    """A line as the file holds it, and as the table's hash is taken of."""
+    return json.dumps(row, sort_keys=True)
+
+
+def files() -> dict:
+    """``{network: path}`` for every receipts file that exists, the network being the list's
+    folder name: the population a move copies, registered list or not."""
+    import glob
+
+    from modules.config import LISTS_DIR
+
+    return {os.path.basename(os.path.dirname(p)): p
+            for p in sorted(glob.glob(os.path.join(LISTS_DIR, "*", FILENAME)))}
+
+
+def file_lines(list_name: str) -> list:
+    """The file's non-empty lines, as text, in order; ``[]`` when there is no file. Raises
+    when it cannot be read."""
+    path = path_for(list_name)
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        return [line.rstrip("\n") for line in fh if line.strip()]
+
+
 def write(list_name: str, rows: list) -> dict:
     """Append *rows*. ``{"ok", "written", "error"}``; never raises, because
     the deploy has already happened and a failed receipt must not read as a
@@ -309,6 +348,18 @@ def write(list_name: str, rows: list) -> dict:
 
     if not rows:
         return {"ok": True, "written": 0, "error": ""}
+    if on_database():
+        from modules import records_migrate
+
+        try:
+            records_migrate.append_lines(list_name, [encode(r) for r in rows])
+        except Exception as exc:               # noqa: BLE001
+            log.error("receipts: could not write %d receipt(s) for %s to the records "
+                      "database: %s", len(rows), list_name, exc)
+            return {"ok": False, "written": 0,
+                    "error": "the deploy happened and its receipt could not be written to the "
+                             f"records database: {exc}"}
+        return {"ok": True, "written": len(rows), "error": ""}
     path = path_for(list_name)
     try:
         with open_secure(path, "a", encoding="utf-8") as fh:
@@ -329,14 +380,22 @@ def read(list_name: str, device: str = "", limit: int = 50) -> dict:
     record that exists and cannot be read. A line that will not parse makes
     the whole read ``unreadable`` rather than being skipped, because a
     receipt quietly missing from an audit is the thing this file exists to
-    prevent.
+    prevent. On the records database, a database that does not answer is
+    ``unreadable`` naming why, and a network with no line there is ``absent``.
     """
-    path = path_for(list_name)
-    if not os.path.exists(path):
-        return {"state": "absent", "rows": []}
     try:
-        with open(path, encoding="utf-8") as fh:
-            rows = _merged([json.loads(line) for line in fh if line.strip()])
+        if on_database():
+            from modules import records_migrate
+
+            lines = records_migrate.table_lines(list_name)
+            if not lines:
+                return {"state": "absent", "rows": []}
+            rows = _merged(lines)
+        else:
+            path = path_for(list_name)
+            if not os.path.exists(path):
+                return {"state": "absent", "rows": []}
+            rows = _merged([json.loads(line) for line in file_lines(list_name)])
     except Exception as exc:                   # noqa: BLE001
         return {"state": "unreadable", "rows": [], "error": str(exc)}
     if device:

@@ -1,0 +1,94 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Phase 4, section 7 (the agent's board under the Phase 7 operating mode, 2026-10-10,
+    docs/STANDING_APPROVAL_LOG.md): Settings › Installation › Connections, Record stores. Each
+    store, where it is now and its last check (the records-check reader's stored value, never the
+    database per page view). Move to the database… and Move back to files… open their preview
+    in place; the confirm is bound to it. At rest it redraws when the reader announces; a preview
+    or a result stays until Cancel or Close. From routes/settings_v2.records_stores and
+    modules/records_migrate. -#}
+{%- set live = not pv and not done -%}
+<section class="card set-card set-card-wide" id="records-stores" aria-labelledby="h-records-stores"
+  {%- if live %} hx-get="{{ url_for('settings_v2.records_stores') }}" hx-trigger="nmas:records from:body, nmas:settings from:body" hx-swap="outerHTML"{% endif %}>
+  {%- set on_db = st | selectattr('backend', 'equalto', 'postgres') | list %}
+  <div class="card-head"><h2 id="h-records-stores">Record stores</h2>{{ badge(on_db | length ~ ' of ' ~ st | length ~ ' on the database', 'neutral') }}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not moved:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if done %}
+  {%- set back = done.direction == 'back' %}
+  <div class="notice notice-{{ 'muted' if done.ok else 'danger' }} set-result" role="status">{{ icon('tick' if done.ok else 'warn', 16) }}<div>
+    {%- if done.ok %}<strong>{{ 'Moved back' if back else 'Moved' }}:</strong> deploy receipts now read and write {{ 'their files' if back else 'the records database' }}, recorded in the installation's settings record.
+    {%- elif done.switched_back %}<strong>Not moved:</strong> the check after the switch failed, so the receipts were switched straight back to their files{% if done.switched_back.exported %} ({% for n, c in done.switched_back.exported.items() %}{{ n }}: {{ c }} line(s) written in between appended to its file{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}. Nothing is lost.
+    {%- else %}<strong>Moved back, and the files read differently:</strong> see the check below.{% endif %}
+    {%- if not done.recorded %} Its record could not be written.{% endif %}</div></div>
+  <ol class="set-steps">
+    {%- for s in done.steps %}
+    <li>{{ badge('pass' if s.ok else 'FAILS', 'ok' if s.ok else 'danger') }} <span><code>{{ s.name }}</code>: {{ s.detail }}</span></li>
+    {%- endfor %}
+  </ol>
+  <div class="set-foot"><a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='connections') }}" hx-get="{{ url_for('settings_v2.records_stores') }}" hx-target="#records-stores" hx-swap="outerHTML">Close</a></div>
+  {%- elif pv %}
+  {%- set back = pv.direction == 'back' %}
+  {%- set total = pv.networks | sum(attribute='lines') %}
+  {%- set unparsable = pv.networks | selectattr('unparsable') | list %}
+  {%- set wrong = (pv.backend != 'postgres') if back else (pv.backend != 'file') %}
+  <h3 class="set-label">{{ 'Move deploy receipts back to their files' if back else 'Move deploy receipts to the records database' }}</h3>
+  {%- if not pv.db.ok %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The records database does not answer ({{ pv.db.error }}). Nothing can move until it does: Test it above.</span></p>
+  {%- endif %}
+  {%- if wrong %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>Deploy receipts are on {{ 'their files' if pv.backend == 'file' else 'the records database' }} now: there is nothing to {{ 'move back' if back else 'move' }}.</span></p>{% endif %}
+  {%- for n in unparsable %}<p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>{{ n.network }}: {{ n.unparsable }}. A line that is not JSON cannot be moved.</span></p>{% endfor %}
+  <div class="table-wrap">
+  <table class="table set-table">
+    <thead><tr><th>Network</th><th>File lines</th><th>Receipts</th><th>Completions</th><th>In the table</th><th>Written since the move</th></tr></thead>
+    <tbody>
+    {%- for n in pv.networks %}
+    <tr><td class="mono">{{ n.network }}</td><td>{{ n.lines }}</td><td>{{ n.rows }}</td><td>{{ n.completions }}</td><td>{{ '—' if n.copied is none else n.copied }}</td><td>{{ '—' if n.since is none else n.since }}</td></tr>
+    {%- else %}
+    <tr><td colspan="6" class="muted">No network has a receipts file yet: {{ 'nothing to export' if back else 'the move switches the store and copies nothing' }}.</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  </div>
+  <ol class="set-steps">
+    {%- for key, words in pv.steps %}
+    <li><span><code>{{ key }}</code>: {{ words }}</span></li>
+    {%- endfor %}
+  </ol>
+  <form class="set-foot set-form-note" method="post" action="{{ url_for('settings_v2.records_store_apply', direction=pv.direction) }}"
+        hx-post="{{ url_for('settings_v2.records_store_apply', direction=pv.direction) }}" hx-target="#records-stores" hx-swap="outerHTML">
+    <input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
+    {%- if pv.db.ok and not wrong and not unparsable %}
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"><span class="op-idle">{% if back %}Move back{% elif total %}Move {{ total }} line{{ '' if total == 1 else 's' }}{% else %}Switch to the database (no lines to copy){% endif %}</span><span class="op-busy">{{ 'Moving back…' if back else 'Moving…' }}</span></button>{{ how('records-database', 'back' if back else 'move', op='moving back' if back else 'moving a store') }}</span>
+    {%- endif %}
+    <button type="button" class="btn btn-small" hx-get="{{ url_for('settings_v2.records_stores') }}" hx-target="#records-stores" hx-swap="outerHTML">Cancel</button>
+    <span class="muted small">Bound to these counts: if a deploy finishes before you confirm, it is refused and you preview again. The files are kept{{ '' if back else ', read-only, for a release' }}.</span>
+  </form>
+  {%- else %}
+  <div class="table-wrap">
+  <table class="table set-table">
+    <thead><tr><th>Store</th><th>Where</th><th>Last check</th><th></th></tr></thead>
+    <tbody>
+    {%- for s in st %}
+    <tr>
+      <td>{{ s.words }}</td>
+      <td>{{ badge('the records database', 'ok') if s.backend == 'postgres' else badge('its files', 'neutral') }}
+        {%- if s.files %}<br><span class="muted small">{% for n, c in s.files.items() %}{{ n }}: {{ c }} line{{ '' if c == 1 else 's' }}{% if not loop.last %}, {% endif %}{% endfor %} in the files</span>{% endif %}</td>
+      <td>
+        {%- if s.backend != 'postgres' %}<span class="muted small">on its files: nothing to compare</span>
+        {%- elif s.check_error %}{{ badge('does not answer', 'danger') }} <span class="small">{{ s.check_error }}</span>
+        {%- elif s.check %}{{ badge('matches' if s.check.ok else 'DOES NOT MATCH', 'ok' if s.check.ok else 'danger') }} <span class="small">{{ s.check.words }}</span> <span class="muted small">{{ stamp(s.check_at) }}</span>
+        {%- else %}<span class="muted small">not checked yet: the check runs every 5 minutes</span>{% endif %}</td>
+      <td>
+        {%- if s.backend == 'postgres' %}
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_store_preview', direction='back') }}" hx-target="#records-stores" hx-swap="outerHTML" hx-disabled-elt="this">Move back to files…</button>{{ how('records-database', 'back', op='moving a store back') }}</span>
+        {%- else %}
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_store_preview', direction='move') }}" hx-target="#records-stores" hx-swap="outerHTML" hx-disabled-elt="this">Move to the database…</button>{{ how('records-database', 'move', op='moving a store') }}</span>
+        {%- endif %}</td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  </div>
+  {%- endif %}
+</section>

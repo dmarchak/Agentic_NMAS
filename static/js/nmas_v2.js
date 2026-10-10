@@ -34,6 +34,9 @@
               // An operation the app ran released a device: a card refused because it was
               // held reads again (modules/nsot/device_ops.py); and a rotation's job finished.
               'device_holds', 'rotation', 'credential_health',
+              // Where each record store is and whether a moved one still matches its files
+              // (the records-check reader): the Records database card's stores.
+              'records',
               // A Tier 2 run finished (modules/nsot/privileged.py): its card reads its record.
               'privileged',
               // Coverage's not-reporting cells: when each device's data last arrived.
@@ -268,6 +271,7 @@
   function relayReachability() { relay('reachability'); }
   function relayIntegrationHealth() { relay('integration_health'); }
   function relayCredentialHealth() { relay('credential_health'); }
+  function relayRecords() { relay('records'); }
   function relayCoverageReporting() { relay('coverage_reporting'); }
   function relayAlerts() { relay('alerts'); }
   function relayDrift() { relay('drift'); }
@@ -348,6 +352,7 @@
     NMAS.subscribe('reachability', 'v2Reachability', relayReachability);
     NMAS.subscribe('integration_health', 'v2IntegrationHealth', relayIntegrationHealth);
     NMAS.subscribe('credential_health', 'v2CredentialHealth', relayCredentialHealth);
+    NMAS.subscribe('records', 'v2Records', relayRecords);
     NMAS.subscribe('coverage_reporting', 'v2CoverageReporting', relayCoverageReporting);
     NMAS.subscribe('alerts', 'v2Alerts', relayAlerts);
     NMAS.subscribe('drift', 'v2Drift', relayDrift);
