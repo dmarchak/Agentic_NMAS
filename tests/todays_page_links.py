@@ -15,7 +15,6 @@ GAPS = {
     "reapply": "History's Re-apply of an authorisation (today's page); Stage 7, CUTOVER",
     "onboard": "onboarding: Add device, Verify, Abandon, the bootstrap config, onboard again "
                "(today's page); Stage 7, CUTOVER",
-    "installation_settings": "the installation's settings, board F (today's page); Stage 7",
     "logs": "the fleet's Logs screen (today's page); Stage 7, CUTOVER",
     "dhcp": "the DHCP screen (today's page); Stage 7, CUTOVER",
     "netbox": "the NetBox screen (today's page); Stage 7, CUTOVER",

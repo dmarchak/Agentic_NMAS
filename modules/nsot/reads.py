@@ -295,12 +295,14 @@ def new_id(now: float = None) -> str:
 
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
         purpose: str = "", progress=None, session=None, run_id: str = "",
-        reason: str = "") -> dict:
+        reason: str = "", drivers: dict = None) -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
 
     *by* is ``person`` or ``agent`` (*actor* is then the person it acts for). *progress* is
     called with each device's outcome as it lands. *session* (tests) replaces
-    ``connection.with_temp_connection``. Raises `Refused` with nothing asked; the refusal
+    ``connection.with_temp_connection``. *drivers* (``{host: netmiko driver}``) opens those
+    hosts' sessions with that driver instead of the inventory's, recorded in the run (board
+    F4's platform map Test). Raises `Refused` with nothing asked; the refusal
     is recorded first."""
     from modules import fanout
     from modules.nsot import device_ops
@@ -314,6 +316,7 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
               "reason": (reason or "").strip(),
               "started_at": started, "finished_at": None, "state": "running",
               "commands": commands, "devices": hosts, "results": {}, "refused": "",
+              "drivers": dict(drivers or {}),
               "retention": {"days": retention_days(list_name), "archived": None}}
     why = (refusal(commands, len(hosts), by, reason)
            or ("" if hosts else "Refused: no device to ask."))
@@ -348,6 +351,8 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
 
     def one(host):
         dev = inventory.get(host)
+        if dev is not None and drivers and host in drivers:
+            dev = dict(dev, device_type=drivers[host])
         if dev is None:
             out = {"state": UNKNOWN, "why": f"{host} is not a device of {list_name}"}
         else:
@@ -478,7 +483,7 @@ ANNOUNCER = "show-commands"
 
 
 def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
-          purpose: str = "", reason: str = "") -> dict:
+          purpose: str = "", reason: str = "", drivers: dict = None) -> dict:
     """Refuse now, or start the run as a job: {"refused": why} (recorded, nothing asked)
     or {"job": id, "run": id}. A run of one device is a job too: one device's read is
     bounded by the read timeout (120 s), past the edge proxy's 100 s limit on a request."""
@@ -501,7 +506,8 @@ def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = 
     job = capture_job.start(list_name, label, actor,
                             lambda job_id: {"run": run(list_name, hosts, commands, actor,
                                                         by=by, purpose=purpose,
-                                                        run_id=run_id, reason=reason)["id"]},
+                                                        run_id=run_id, reason=reason,
+                                                        drivers=drivers)["id"]},
                             kind="show commands", announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER)
     return {"job": job, "run": run_id}

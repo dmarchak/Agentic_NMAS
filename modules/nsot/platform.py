@@ -211,9 +211,8 @@ def netmiko_type_for_dialect(dialect: str) -> str:
             if driver:
                 return driver
     raise ValueError(
-        f"no Netmiko driver is mapped for dialect '{wanted}'. The platform map has no "
-        f"screen yet (Settings › Installation › Platforms and roles, being drawn: C622); "
-        f"its platform_map entry needs a netmiko_device_type.")
+        f"no Netmiko driver is mapped for dialect '{wanted}': give its platform a driver on "
+        f"Settings › Installation › Platforms and roles.")
 
 
 def netmiko_type_for_device(device: dict) -> str:

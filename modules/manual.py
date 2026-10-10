@@ -154,6 +154,7 @@ OPERATIONS = {
     "netbox-writes-off": ("modules.installation_settings", "WRITES_OFF_STEPS"),
     "drift-schedule": ("modules.installation_diagnostics", "DRIFT_STEPS"),
     "record-decision": ("modules.installation_settings", "RATIFY_STEPS"),
+    "platform-map": ("modules.platform_maps", "SAVE_STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),
@@ -170,7 +171,8 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "installation-settings-replace": "installation-settings",
                   "netbox-writes-off": "installation-settings",
                   "drift-schedule": "installation-settings",
-                  "record-decision": "installation-settings"}
+                  "record-decision": "installation-settings",
+                  "platform-map": "installation-settings"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

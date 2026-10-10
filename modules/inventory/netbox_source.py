@@ -52,9 +52,7 @@ def map_platform(platform_slug: str) -> tuple:
         )
     return "", (
         f"platform '{platform_slug or '(none)'}' is not in the platform map — "
-        "it needs a platform_map entry or a default netmiko device type, and the platform "
-        "map has no screen yet (Settings › Installation › Platforms and roles, being drawn: "
-        "C622)"
+        "add it, or a default driver, on Settings › Installation › Platforms and roles"
     )
 
 
@@ -165,6 +163,9 @@ def adapt_devices(raw_devices: list, credential_list: str = "") -> tuple:
             "_netbox_id":   nb_id,
             "_cred_source": creds["source"],
             "_platform":    platform_slug,
+            # The NetBox role slug, so a role map change can say which devices it moves
+            # (board F4, Platforms and roles); like _platform, never sent to a device.
+            "_role_slug":   role_slug,
             "_site":        site_slug,
         })
 

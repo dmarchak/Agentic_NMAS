@@ -65,11 +65,14 @@ class TestThePage:
                          r'aria-current="page"><b>Installation</b>', html)
         assert "These settings apply to every network" in html
 
-    def test_unbuilt_tabs_say_so_and_link_to_today_s_page(self, networks):
-        for key in ("platforms",):
+    def test_no_tab_links_to_today_s_page(self, networks):
+        """Boards F to F4: every tab drawn (2026-10-10), so none sends a person to today's
+        Settings page; the installation_settings cutover gap is closed."""
+        from modules import installation_settings as I
+        assert set(I.BUILT_TABS) == {key for key, _label in I.TABS}
+        for key, _label in I.TABS:
             _r, tab = _get(networks, f"/v2/settings/installation?tab={key}")
-            assert 'data-todays-page="installation_settings"' in tab and "until it is drawn here" in tab
-            assert 'id="records-db"' not in tab
+            assert 'data-todays-page' not in tab.split('id="tab-body"')[1], key
 
     def test_a_network_s_page_links_installation_here_now(self, networks):
         _r, html = _get(networks, "/v2/settings/network/Branch")
@@ -390,6 +393,125 @@ class TestAccessAndIdentity:
                             lambda: (3600, "cf_access_jwks_ttl 0 is outside 300 to 86400 seconds"))
         card = _section(_get(networks, "/v2/settings/installation?tab=access")[1], "card-access")
         assert "the stored value is not used" in card and "0 is outside 300 to 86400" in card
+
+
+NB_CACHE = {"devices": [
+    {"hostname": "nb1", "device_type": "cisco_xe", "ip": "192.0.2.31", "role": "router",
+     "_platform": "cisco-ios-xe", "_role_slug": "router"},
+    {"hostname": "nb2", "device_type": "cisco_ios", "ip": "192.0.2.32", "role": "switch",
+     "_platform": "cisco-ios", "_role_slug": "access-switch"}],
+    "skipped": [{"name": "nb3", "field": "platform",
+                 "reason": "platform 'nexus' is not in the platform map — skipped"}]}
+
+
+@pytest.fixture
+def netbox_branch(networks, monkeypatch):
+    """Branch takes its devices from NetBox, its last inventory NB_CACHE: read through the
+    module's own seams, so nothing asks NetBox or refreshes."""
+    from modules import platform_maps as P
+    from modules.inventory import source_config
+    monkeypatch.setattr(source_config, "is_netbox_sourced", lambda name: name == "Branch")
+    monkeypatch.setattr(P, "_cached", lambda name: json.loads(json.dumps(NB_CACHE)))
+    refreshed = []
+    import modules.inventory as inv
+    monkeypatch.setattr(inv, "invalidate", lambda name="": None)
+    monkeypatch.setattr(inv, "refresh_async", lambda name: refreshed.append(name))
+    return refreshed
+
+
+def _platform_form(**over):
+    """The platform card's form as the page sends it: both rows as drawn, then *over*."""
+    form = {"kind": "platforms", "slug": ["cisco-ios", "cisco-ios-xe"],
+            "driver": ["cisco_ios", "cisco_xe"], "dialect": ["cisco_ios", "cisco_iosxe"],
+            "transport": ["ssh", "ssh"], "netconf": ["cisco-ios-xe"], "default_driver": ""}
+    form.update(over)
+    return form
+
+
+class TestPlatformsAndRoles:
+    """Board F4, decision B with the operator's validation (2026-10-10): drivers chosen, never
+    typed; Preview changes names every device moved; a Test of one read-only session; the
+    confirm bound to the preview."""
+
+    def test_the_tab_offers_only_supported_drivers_and_known_dialects(self, networks):
+        from modules import platform_maps as P
+        _r, html = _get(networks, "/v2/settings/installation?tab=platforms")
+        card = _section(html, "card-platform-map")
+        assert not re.search(r'<input[^>]*name="(new_)?driver"', card), "a driver is never typed"
+        for d in P.supported_drivers():
+            assert f"<option>{d}</option>" in card or f"<option selected>{d}</option>" in card
+        assert "cisco_iosxe" in card and "cisco_ios_xe" not in card, "dialects, not folders"
+        _section(html, "card-role-map")
+
+    def test_a_driver_change_previews_each_device_it_moves(self, networks, netbox_branch):
+        _r, html = _post(networks, "/v2/settings/installation/platforms/preview",
+                         _platform_form(driver=["cisco_ios", "cisco_ios"]))
+        pv = re.sub(r"<[^>]+>", "", _section(html, "card-platforms-preview"))
+        assert "1 device changes" in pv and "nb1" in pv and "cisco_xe → cisco_ios" in pv
+        assert "nb2" not in pv.split("The devices")[1].split("</table>")[0]
+        assert "keep the driver their list names" in pv and "Default" in pv
+        assert "Test with" in pv and 'value="Branch|nb1|cisco_ios"' in html
+
+    def test_adding_a_platform_loads_what_was_skipped(self, networks, netbox_branch):
+        _r, html = _post(networks, "/v2/settings/installation/platforms/preview",
+                         _platform_form(new_slug="nexus", new_driver="cisco_ios",
+                                        new_dialect="cisco_ios", new_transport="ssh"))
+        assert "loaded after this: 1" in _section(html, "card-platforms-preview")
+
+    def test_removing_a_platform_in_use_and_an_unsupported_driver_are_refused(
+            self, networks, netbox_branch):
+        r, html = _post(networks, "/v2/settings/installation/platforms/preview",
+                        _platform_form(remove="cisco-ios"))
+        assert r.status_code == 409 and "cisco-ios is used by nb2 (Branch)" in html
+        r, html = _post(networks, "/v2/settings/installation/platforms/preview",
+                        _platform_form(driver=["cisco_ios", "linux"]))
+        import html as html_mod
+        assert r.status_code == 409 and "'linux' is not one Mercury supports" in html_mod.unescape(html)
+
+    def test_a_role_change_previews_each_device_it_moves(self, networks, netbox_branch):
+        _r, html = _post(networks, "/v2/settings/installation/platforms/preview",
+                         {"kind": "roles", "slug": ["access-switch", "router"],
+                          "role": ["router", "router"]})
+        pv = re.sub(r"<[^>]+>", "", _section(html, "card-platforms-preview"))
+        assert "1 device changes" in pv and "nb2" in pv and "switch → router" in pv
+
+    def test_the_confirm_is_bound_writes_records_and_refreshes(self, networks, netbox_branch):
+        from modules import installation_settings as I
+        from modules.settings_schema import get_setting
+        _r, html = _post(networks, "/v2/settings/installation/platforms/preview",
+                         _platform_form(driver=["cisco_ios", "cisco_ios"]))
+        proposal = re.search(r'name="proposal" value="([^"]*)"', html).group(1)
+        fp = re.search(r'name="fingerprint" value="([^"]*)"', html).group(1)
+        import html as html_mod
+        proposal = html_mod.unescape(proposal)
+        r, out = _post(networks, "/v2/settings/installation/platforms/apply",
+                       {"proposal": proposal, "fingerprint": "0" * 16})
+        assert r.status_code == 409 and "moved since the preview" in html_mod.unescape(out)
+        assert get_setting("platform_map")["cisco-ios-xe"]["netmiko_device_type"] == "cisco_xe"
+        _r, out = _post(networks, "/v2/settings/installation/platforms/apply",
+                        {"proposal": proposal, "fingerprint": fp})
+        assert get_setting("platform_map")["cisco-ios-xe"]["netmiko_device_type"] == "cisco_ios"
+        assert netbox_branch == ["Branch"] and "Refreshing Branch" in out
+        rec = I.changes(kinds=("platforms_map",))["rows"][0]
+        assert rec["devices_changed"] == 1 and "platform_map" in rec["fields"]
+
+    def test_the_test_reads_one_device_with_the_new_driver(self, networks, monkeypatch):
+        from modules.nsot import reads
+        asked = []
+        monkeypatch.setattr(reads, "start", lambda net, hosts, cmds, actor, **kw: (
+            asked.append((net, hosts, cmds, kw.get("drivers"))) or {"job": "j1", "run": "r1"}))
+        _r, html = _post(networks, "/v2/settings/installation/platforms/test",
+                         {"target": "Branch|nb1|cisco_ios"})
+        assert asked == [("Branch", ["nb1"], ["show version"], {"nb1": "cisco_ios"})]
+        assert "testing" in html and "nmas:reads" in html
+        monkeypatch.setattr(reads, "get", lambda net, run_id: {
+            "state": "done", "devices": ["nb1"], "drivers": {"nb1": "cisco_ios"},
+            "results": {"nb1": {"state": "answered", "took_s": 2.1, "answers": [
+                {"command": "show version", "state": "answered",
+                 "answer": "Cisco IOS XE Software, Version 17.9\nline 2"}]}}})
+        _r, html = _get(networks, "/v2/settings/installation/platforms/test/Branch/r1")
+        assert "passed" in html and "through <span class=\"mono\">cisco_ios</span>" in html
+        assert "Version 17.9" in html
 
 
 class TestNoTextSendsAPersonToTodaysSettings:

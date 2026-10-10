@@ -249,6 +249,8 @@ DECLARED = {
     "settings_v2.install_replace": ("settings",),
     "settings_v2.install_writes_off": ("settings",),
     "settings_v2.install_ratify": ("posture", "settings"),
+    "settings_v2.platforms_test": ("reads",),
+    "settings_v2.platforms_apply": ("settings", "inventory"),
     "settings_v2.diag_drift_interval": ("drift",),
     "settings_v2.diag_drift_switch": ("drift",),
     "settings_v2.diag_drift_check": ("drift",),
@@ -350,6 +352,7 @@ DECLARED = {
     "settings_integrations.test_integration": Nothing("tests an integration's connection and reports"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "settings_v2.install_test": Nothing("tests an Installation card's service and reports in the card; keeps nothing"),
+    "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
 }
 

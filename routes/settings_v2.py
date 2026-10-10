@@ -55,6 +55,9 @@ def installation():
          "mode_words": ""}
     cards = [I.card(name) for name, spec in I.CARDS.items() if spec["tab"] == tab]
     diag = {}
+    if tab == "platforms":
+        from modules import platform_maps as P
+        diag = {"pm": P.view()}
     if tab == "access":
         from modules import identity
         diag = {"acc": I.access_view(identity.identify(request))}
@@ -220,6 +223,87 @@ def install_writes_off():
     except I.Refused as exc:
         return _install("netbox", 409, refused=str(exc))
     return _install("netbox", writes_off=out)
+
+
+# ── Board F4, Platforms and roles: preview, Test, bound confirm ─────────────────────────────
+
+def _platforms(status: int = 200, **ctx):
+    from modules import platform_maps as P
+
+    return _fragment("v2/_install_platforms.html", status, pm=P.view(), **ctx)
+
+
+@bp.route("/installation/platforms", methods=["GET"])
+def platforms_card():
+    """The two map cards drawn again (Cancel, and after a change)."""
+    return _platforms()
+
+
+@bp.route("/installation/platforms/preview", methods=["POST"])
+def platforms_preview():
+    """Preview changes (Remove and Add too): every device whose driver or role the change
+    moves, from each NetBox list's last inventory; nothing is written."""
+    from modules import platform_maps as P
+
+    try:
+        pv = P.preview(request.form.get("kind", ""), request.form)
+    except P.Refused as exc:
+        return _platforms(409, refused=str(exc))
+    return _platforms(pv=pv)
+
+
+@bp.route("/installation/platforms/test", methods=["POST"])
+def platforms_test():
+    """The Test: one read-only session to one affected device with the new driver, as a reads
+    job; answered in place when the job announces."""
+    from modules import identity
+    from modules import platform_maps as P
+
+    network, _, rest = (request.form.get("target") or "").partition("|")
+    device, _, driver = rest.partition("|")
+    try:
+        got = P.test(network, device, driver, identity.request_actor())
+    except P.Refused as exc:
+        got = {"refused": str(exc)}
+    t = {"network": network, "device": device, "driver": driver, "run": got.get("run", "")}
+    if got.get("refused"):
+        return _fragment("v2/_install_platforms_test.html", 409,
+                         t=dict(t, state="refused", why=got["refused"]))
+    return _fragment("v2/_install_platforms_test.html", t=dict(t, state="started"))
+
+
+@bp.route("/installation/platforms/test/<network>/<run_id>", methods=["GET"])
+def platforms_test_status(network, run_id):
+    """The Test's answer, read from its run's record: a read."""
+    from modules.nsot import reads
+
+    record = reads.get(network, run_id) or {}
+    device = (record.get("devices") or [""])[0]
+    driver = (record.get("drivers") or {}).get(device, "")
+    t = {"network": network, "device": device, "driver": driver, "run": run_id}
+    out = (record.get("results") or {}).get(device)
+    if not record or record.get("state") == "running" or out is None:
+        return _fragment("v2/_install_platforms_test.html", t=dict(t, state="running"))
+    answers = out.get("answers") or []
+    first = "\n".join(((answers[0].get("answer") or "") if answers else "").splitlines()[:6])
+    return _fragment("v2/_install_platforms_test.html",
+                     t=dict(t, state=out.get("state"), why=out.get("why", ""),
+                            took_s=out.get("took_s"), first=first))
+
+
+@bp.route("/installation/platforms/apply", methods=["POST"])
+def platforms_apply():
+    """The confirm, bound to the preview's fingerprint: written, recorded, each NetBox list
+    refreshed so its devices take the change."""
+    from modules import identity
+    from modules import platform_maps as P
+
+    try:
+        out = P.apply(request.form.get("proposal", ""), request.form.get("fingerprint", ""),
+                      identity.request_actor(), _verified())
+    except P.Refused as exc:
+        return _platforms(409, refused=str(exc))
+    return _platforms(applied=out)
 
 
 # ── Board F4, Access and identity: read-only; Record this decision the one control ─────────

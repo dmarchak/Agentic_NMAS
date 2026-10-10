@@ -74,6 +74,7 @@ NOT_AN_OPERATION = {
     ("_breakglass_export.html", "Cancel"): "closes the export, building nothing",
     ("_records_db_replace.html", "Cancel"): "puts the records database card back, replacing nothing",
     ("_install_card_replace.html", "Cancel"): "puts the Installation card back, replacing nothing",
+    ("_install_platforms_preview.html", "Cancel"): "puts the map cards back, saving nothing",
     ("_diag_drift.html", "Check now"): "starts the drift check the schedule runs anyway, earlier: device reads only, its how-it-works the card's (#drift)",
     ("_breakglass_export.html", "Preview it again"): "reads the export's preview again: a read",
     ("_coverage.html", "Clear"): "unticks every device in Coverage's selection, recording nothing",

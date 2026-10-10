@@ -1,0 +1,17 @@
+{%- from "v2/_macros.html" import badge, stamp -%}
+{#- Board F4, decision B: the platform map Test, one read-only session to one device with the new
+    driver (the reads engine, `show version`), its answer masked. Redrawn when the reads job
+    announces, until it is answered. From routes/settings_v2.platforms_test_status. -#}
+<div id="platforms-test" class="set-result"
+     {%- if t.state in ('running', 'started') %} hx-get="{{ url_for('settings_v2.platforms_test_status', network=t.network, run_id=t.run) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
+  {%- if t.state == 'refused' %}
+  <p>{{ badge('refused', 'danger') }} {{ t.why }}</p>
+  {%- elif t.state in ('running', 'started') %}
+  <p>{{ badge('testing', 'acc') }} {{ t.device }} through <span class="mono">{{ t.driver }}</span>: one read-only session, asking <span class="mono">show version</span>…</p>
+  {%- elif t.state == 'answered' %}
+  <p>{{ badge('passed', 'ok') }} {{ t.device }} answered <span class="mono">show version</span> through <span class="mono">{{ t.driver }}</span>{% if t.took_s %} in {{ t.took_s }} s{% endif %}: one read-only session, nothing sent but the read.</p>
+  {%- if t.first %}<pre class="set-log">{{ t.first }}</pre>{% endif %}
+  {%- else %}
+  <p>{{ badge('FAILED', 'danger') }} {{ t.device }} through <span class="mono">{{ t.driver }}</span>: {{ t.why or 'no answer' }}. Saving would leave this device unreachable by this driver.</p>
+  {%- endif %}
+</div>

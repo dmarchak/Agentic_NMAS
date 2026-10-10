@@ -1,0 +1,49 @@
+{%- from "v2/_macros.html" import badge, how -%}
+{#- Board F4, decision B: the preview of a platform or role map change, every device whose
+    driver or role it moves (from each NetBox list's last inventory), a Test of one read-only
+    session to one affected device with the new driver, and the confirm bound to the preview's
+    fingerprint. Large fleets: counts first, the devices folded past twenty. -#}
+{%- set e = pv.effect -%}
+<section class="card set-card set-card-wide op-card" id="card-platforms-preview" aria-labelledby="h-platforms-preview">
+  <div class="card-head"><h2 id="h-platforms-preview">Change the {{ 'platform' if pv.proposal.kind == 'platforms' else 'role' }} map: what it changes</h2>
+    <a class="btn btn-small" href="{{ url_for('settings_v2.installation', tab='platforms') }}" hx-get="{{ url_for('settings_v2.platforms_card') }}" hx-target="#install-platforms" hx-swap="outerHTML">Cancel</a></div>
+  <p><strong>{{ e.changes | length }} device{{ '' if e.changes | length == 1 else 's' }} change{{ 's' if e.changes | length == 1 else '' }}</strong>{% if e.changes %} driver or role, at each list's next NetBox refresh (this Save refreshes them){% endif %}.{% if pv.proposal.removed %} Removed: <span class="mono">{{ pv.proposal.removed }}</span>.{% endif %}</p>
+  {%- if e.changes %}
+  <details class="set-details" data-keep="platforms-preview-devices"{% if e.changes | length <= 20 %} open{% endif %}>
+    <summary>The devices ({{ e.changes | length }})</summary>
+    <div class="table-wrap">
+    <table class="table set-table">
+      <thead><tr><th>Device</th><th>Network</th><th>Driver</th><th>Role</th></tr></thead>
+      <tbody>
+      {%- for c in e.changes %}
+      <tr><td>{{ c.device }}</td><td>{{ c.network }}</td>
+        <td>{% if c.driver_from != c.driver_to %}<span class="mono">{{ c.driver_from }}</span> → <span class="mono">{{ c.driver_to }}</span>{% else %}<span class="muted">unchanged</span>{% endif %}</td>
+        <td>{% if c.role_from != c.role_to %}{{ c.role_from or 'guessed' }} → {{ c.role_to or 'guessed' }}{% else %}<span class="muted">unchanged</span>{% endif %}</td></tr>
+      {%- endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {%- endif %}
+  <p class="muted small">
+    {%- if e.local %}Not changed: networks whose devices come from a local list keep the driver their list names ({% for n, c in e.local %}{{ n }}: {{ c }} device{{ '' if c == 1 else 's' }}{% if not loop.last %}, {% endif %}{% endfor %}). {% endif %}
+    {%- if e.now_loaded %}Skipped today for an unmapped platform and loaded after this: {{ e.now_loaded }}. {% endif %}
+    {%- if e.role_unknown %}{{ e.role_unknown }} device{{ '' if e.role_unknown == 1 else 's' }} have no role slug read since the last refresh: their role is said after it, not guessed now. {% endif %}
+    {%- for n, why in e.unread %}{{ n }} could not be read: {{ why }}. {% endfor %}</p>
+  {%- if pv.testable %}
+  <form class="set-inline" method="post" action="{{ url_for('settings_v2.platforms_test') }}"
+        hx-post="{{ url_for('settings_v2.platforms_test') }}" hx-target="#platforms-test" hx-swap="outerHTML">
+    <label for="f-platforms-test" class="muted small">Test with</label>
+    <select id="f-platforms-test" name="target">{% for c in pv.testable %}<option value="{{ c.network }}|{{ c.device }}|{{ c.driver_to }}">{{ c.device }} ({{ c.network }}) through {{ c.driver_to }}</option>{% endfor %}</select>
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Test</span><span class="op-busy">Starting…</span></button>{{ how('installation-settings', 'platforms', compact=True, op='testing the new driver') }}</span>
+  </form>
+  {%- endif %}
+  <div id="platforms-test"></div>
+  <form class="set-foot" method="post" action="{{ url_for('settings_v2.platforms_apply') }}"
+        hx-post="{{ url_for('settings_v2.platforms_apply') }}" hx-target="#install-platforms" hx-swap="outerHTML">
+    <input type="hidden" name="proposal" value="{{ pv.proposal_json }}">
+    <input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Save{% if e.changes %} and refresh the NetBox lists{% endif %}</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'platforms', compact=True, op='saving the map') }}</span>
+    <span class="muted small">Bound to this preview: if the map or a device moved since, nothing is saved and this says what moved. Recorded in the installation's settings record.</span>
+  </form>
+</section>

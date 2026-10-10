@@ -79,6 +79,36 @@ There is no confirm step: turning writes off takes nothing away a person must ke
 operation that needs NetBox writes afterwards asks for its own confirm, which turns the switch
 back on.
 
+## Change the platform or role map {#platforms}
+
+A device that comes from NetBox becomes something Mercury can open a session to through the
+**platform map** (its NetBox platform → the netmiko driver, the config dialect Mercury renders
+from, how it delivers and whether it supports NETCONF, with a default driver for a platform
+the map lacks) and is drawn and checked as a router, switch or firewall through the **role
+map** (its NetBox role → that role, or a guess from its hostname). Devices from a local list
+keep the driver their list names. A driver is chosen from the drivers Mercury supports, a
+dialect from the dialects it knows: neither is typed.
+
+A change is never saved blind. **Remove**, **Add** and **Preview changes** each show what it
+would do first:
+
+1. `check`: every row is checked: a supported driver, a known dialect, ssh or netconf, a NetBox
+   slug; a new slug not already in the map. Removing a platform or role a device uses is
+   refused, naming the devices.
+2. `preview`: from each NetBox network's last inventory (never a refresh, so the preview
+   writes nothing), every device whose driver or role the change moves, network by network;
+   devices skipped today for an unmapped platform that would now load; devices whose role
+   cannot be judged until their list is next refreshed. **Test** opens one read-only session
+   to one of the devices with its new driver and asks `show version`, through the same reads
+   as Show commands (recorded there), so a driver that cannot reach the device is seen before
+   it is saved.
+3. `write`: **Save** writes the map, bound to the preview: if the map or any device moved
+   since, nothing is saved and the card says to preview again.
+4. `record`: who, when and how many devices changed are appended to the installation's
+   settings record.
+5. `refresh`: each NetBox network refreshes its inventory from NetBox, so its devices take the
+   new driver and role.
+
 ## Record a decision about access {#record}
 
 The **Access and identity** tab is read-only by design: a session must never lower the gate it

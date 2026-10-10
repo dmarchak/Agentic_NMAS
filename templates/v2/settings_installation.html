@@ -1,10 +1,10 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import icon, info -%}
-{#- Board F (approved 2026-10-05) with boards F2 and F3 (signed off 2026-10-09): Settings ›
-    Installation, the installation's own settings for every network, no network selector.
-    Built: Connections (the Records database, NetBox connection, Proxmox and Commit author
-    cards) and Server. The tabs not drawn here yet say so and link to today's Settings page (a
-    subset, said). From routes/settings_v2.installation. -#}
+{#- Board F (approved 2026-10-05) with boards F2 and F3 (signed off 2026-10-09) and F4 (signed
+    off 2026-10-10): Settings › Installation, the installation's own settings for every
+    network, no network selector. Every tab drawn: Connections, Access and identity, Platforms
+    and roles, Server, AI and workflow, Diagnostics; nothing here links to today's page. From
+    routes/settings_v2.installation. -#}
 {% block title %}Settings · Installation · {{ brand.short }}{% endblock %}
 {% block main %}
 <div class="page-head">
@@ -22,7 +22,9 @@
 <div class="tab-body" id="tab-body">
 {%- if tab == 'access' %}
 {% include "v2/_install_access.html" %}
-{%- elif tab in built %}
+{%- elif tab == 'platforms' %}
+{% include "v2/_install_platforms.html" %}
+{%- else %}
 <div class="set-cards">
 {%- if tab == 'connections' %}
 {% include "v2/_records_db_card.html" %}
@@ -40,8 +42,6 @@
 {% include "v2/_diag_log.html" %}
 {%- endif %}
 </div>
-{%- else %}
-<p class="notice notice-muted">{{ icon('info', 16) }}<span><strong>{{ dict(tabs)[tab] }}</strong> is on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until it is drawn here.</span></p>
 {%- endif %}
 </div>
 {% endblock %}

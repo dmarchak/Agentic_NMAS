@@ -111,9 +111,9 @@ SIGNED_OFF = {
                                    "connection, Proxmox and Commit author cards), Server, AI "
                                    "and workflow (the assistant's switch, the agent's state) and "
                                    "Diagnostics (redaction, drift checks, in flight, the app's "
-                                   "log) and Access and identity (read-only; Record this "
-                                   "decision). Not yet: the Platforms and roles tab, said on the "
-                                   "page and linked to today's"),
+                                   "log), Access and identity (read-only; Record this decision) "
+                                   "and Platforms and roles (preview, Test, bound confirm). "
+                                   "Every tab is drawn"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),

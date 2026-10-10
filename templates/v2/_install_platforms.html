@@ -1,0 +1,91 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board F4, decision B (signed off 2026-10-10 with the operator's validation): Settings ›
+    Installation › Platforms and roles. The platform and role maps, editable (C622). The driver
+    is chosen from the drivers Mercury supports; a config dialect from the dialects it knows
+    (C628). Remove, Add and Preview changes all send the card to the preview, which names every
+    device whose driver or role changes: nothing is saved until its bound confirm. From
+    modules/platform_maps.view. -#}
+<div id="install-platforms" class="set-cards">
+  {%- if refused %}
+  <div class="notice notice-danger set-result set-card-wide" role="alert">{{ icon('warn', 16) }}<div><strong>Not previewed:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if applied %}
+  <div class="notice notice-{{ 'muted' if applied.recorded else 'warn' }} set-result set-card-wide" role="status">{{ icon('tick', 16) }}<div>
+    <strong>Saved</strong> by {{ applied.actor_label }}: the {{ 'platform' if applied.kind == 'platforms' else 'role' }} map, {{ applied.changes | length }} device{{ '' if applied.changes | length == 1 else 's' }} changing, recorded in the installation's settings record.
+    {%- if applied.refreshed %} Refreshing {{ applied.refreshed | join(', ') }} from NetBox now, so the devices take it.{% else %} No network takes its devices from NetBox, so no device changes now.{% endif %}
+    {%- if not applied.recorded %} Its record could not be written: {{ applied.record_error }}.{% endif %}</div></div>
+  {%- endif %}
+  <section class="card set-card set-card-wide" id="card-platform-map" aria-labelledby="h-platform-map">
+    <div class="card-head"><h2 id="h-platform-map">Platform map</h2>{{ badge('every network', 'neutral') }}</div>
+    <p class="muted small">A NetBox platform (its slug) → the driver Mercury opens a session with, the config dialect it renders from, and how it delivers. An unmapped platform is skipped with its reason, or takes the default driver below. Devices from a local list keep the driver their list names.</p>
+    <form method="post" action="{{ url_for('settings_v2.platforms_preview') }}"
+          hx-post="{{ url_for('settings_v2.platforms_preview') }}" hx-target="#install-platforms" hx-swap="outerHTML">
+      <input type="hidden" name="kind" value="platforms">
+      <div class="table-wrap">
+      <table class="table set-table set-maps">
+        <thead><tr><th>NetBox platform</th><th>Driver</th><th>Config dialect</th><th>Delivers by</th><th>NETCONF</th><th></th></tr></thead>
+        <tbody>
+        {%- for r in pm.rows %}
+        <tr>
+          <td><span class="mono">{{ r.slug }}</span><input type="hidden" name="slug" value="{{ r.slug }}">{% for p in r.problems %}<br><span class="small warn-text">{{ p }}</span>{% endfor %}</td>
+          <td><select name="driver" aria-label="Driver for {{ r.slug }}">{% if r.driver not in pm.drivers %}<option value="{{ r.driver }}" selected>{{ r.driver or '(none)' }}: not supported</option>{% endif %}{% for d in pm.drivers %}<option{% if d == r.driver %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></td>
+          <td><select name="dialect" aria-label="Config dialect for {{ r.slug }}">{% if not r.dialect %}<option value="" selected>none Mercury knows</option>{% endif %}{% for d in pm.dialects %}<option{% if d == r.dialect %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></td>
+          <td><select name="transport" aria-label="Delivers by, {{ r.slug }}">{% for t in pm.transports %}<option{% if t == r.transport %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></td>
+          <td><label class="set-switch"><input type="checkbox" name="netconf" value="{{ r.slug }}"{% if r.netconf %} checked{% endif %}> supported</label></td>
+          <td><button type="submit" class="btn btn-small" name="remove" value="{{ r.slug }}" data-op="installation-settings" hx-disabled-elt="this">Remove</button>{{ how('installation-settings', 'platforms', compact=True, op='removing a platform') }}</td>
+        </tr>
+        {%- endfor %}
+        <tr>
+          <td><input name="new_slug" class="mono" type="text" placeholder="new platform slug" aria-label="New platform slug" autocomplete="off"></td>
+          <td><select name="new_driver" aria-label="New platform driver">{% for d in pm.drivers %}<option>{{ d }}</option>{% endfor %}</select></td>
+          <td><select name="new_dialect" aria-label="New platform config dialect">{% for d in pm.dialects %}<option>{{ d }}</option>{% endfor %}</select></td>
+          <td><select name="new_transport" aria-label="New platform delivers by">{% for t in pm.transports %}<option>{{ t }}</option>{% endfor %}</select></td>
+          <td><label class="set-switch"><input type="checkbox" name="new_netconf" value="on"> supported</label></td>
+          <td><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this">Add</button>{{ how('installation-settings', 'platforms', compact=True, op='adding a platform') }}</td>
+        </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="set-form">
+        <label for="f-default-driver">Default driver</label>
+        <div><select id="f-default-driver" name="default_driver"><option value=""{% if not pm.default_driver %} selected{% endif %}>none: skip an unmapped platform</option>{% for d in pm.drivers %}<option{% if d == pm.default_driver %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
+          <span class="set-origin">set, it trades a skip for a guess</span></div>
+        <div class="set-foot set-form-note">
+          <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Preview changes</span><span class="op-busy">Previewing…</span></button>{{ how('installation-settings', 'platforms', op='changing the platform map') }}</span>
+          <span class="muted small">"Delivers by netconf" also needs NETCONF on for the installation: every delivery is SSH today.</span>
+        </div>
+      </div>
+    </form>
+  </section>
+  <section class="card set-card set-card-wide" id="card-role-map" aria-labelledby="h-role-map">
+    <div class="card-head"><h2 id="h-role-map">Role map</h2>{{ badge('every network', 'neutral') }}</div>
+    <p class="muted small">A NetBox role (its slug) → the role Mercury draws and checks by. An unmapped role is guessed from the hostname.</p>
+    <form method="post" action="{{ url_for('settings_v2.platforms_preview') }}"
+          hx-post="{{ url_for('settings_v2.platforms_preview') }}" hx-target="#install-platforms" hx-swap="outerHTML">
+      <input type="hidden" name="kind" value="roles">
+      <div class="table-wrap">
+      <table class="table set-table set-maps">
+        <thead><tr><th>NetBox role</th><th>Mercury role</th><th></th></tr></thead>
+        <tbody>
+        {%- for r in pm.roles %}
+        <tr>
+          <td><span class="mono">{{ r.slug }}</span><input type="hidden" name="slug" value="{{ r.slug }}"></td>
+          <td><select name="role" aria-label="Role for {{ r.slug }}">{% for value, words in pm.role_choices %}<option value="{{ value }}"{% if value == r.role %} selected{% endif %}>{{ words }}</option>{% endfor %}</select></td>
+          <td><button type="submit" class="btn btn-small" name="remove" value="{{ r.slug }}" data-op="installation-settings" hx-disabled-elt="this">Remove</button>{{ how('installation-settings', 'platforms', compact=True, op='removing a role') }}</td>
+        </tr>
+        {%- endfor %}
+        <tr>
+          <td><input name="new_slug" class="mono" type="text" placeholder="new role slug" aria-label="New role slug" autocomplete="off"></td>
+          <td><select name="new_role" aria-label="New role">{% for value, words in pm.role_choices %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select></td>
+          <td><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this">Add</button>{{ how('installation-settings', 'platforms', compact=True, op='adding a role') }}</td>
+        </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="set-foot set-form-note">
+        <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Preview changes</span><span class="op-busy">Previewing…</span></button>{{ how('installation-settings', 'platforms', op='changing the role map') }}</span>
+      </div>
+    </form>
+  </section>
+  {%- if pv %}{% include "v2/_install_platforms_preview.html" %}{% endif %}
+</div>

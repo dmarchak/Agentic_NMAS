@@ -1042,6 +1042,15 @@ select { max-width: 100%; }
 /* F4, Diagnostics: a card across the grid, a network's row controls, the folded list of what
    finished, and the app's log in a scrolling dark block that never widens the page. */
 .set-card-wide { grid-column: 1 / -1; }
+/* F4, Platforms and roles: a map row of controls stacks into a two-column grid on a narrow
+   screen, so no select or button runs past its card. */
+@media (max-width: 720px) {
+  .set-maps thead { display: none; }
+  .set-maps tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--line-2); }
+  .set-maps td { border: none; padding: 0; min-width: 0; }
+  .set-maps select, .set-maps input[type=text] { width: 100%; box-sizing: border-box; }
+}
 .set-row-acts { white-space: nowrap; }
 .set-row-acts .op-act + .op-act { margin-left: 6px; }
 .set-details { margin-top: 8px; font-size: 13px; }
