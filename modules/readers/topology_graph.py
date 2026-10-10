@@ -386,58 +386,6 @@ def _in_range(vlan: str, spec: str) -> bool:
     return False
 
 
-def segments(layers: dict) -> list:
-    """Multi-access segments (C654, the operator: "draw a multi-access segment (VLAN 100) as ONE
-    segment node with its devices attached"): every OSPF or OSPFv3 subnet whose adjacencies join
-    more than two devices, IPv4 and IPv6 merged where they leave by the same interfaces. Each
-    is ``{id, name, vlan, networks, members: [[device, port]], adj: {layer: [i]}}``; each of its
-    adjacencies is marked ``segment`` (it is drawn on the segment, never on a member's cable)."""
-    from modules.nsot.ifnames import abbreviate, canonical
-
-    groups = []
-    for layer in ("ospf", "ospfv3"):
-        by_net = {}
-        for i, adj in enumerate(layers.get(layer) or []):
-            if adj.get("network"):
-                by_net.setdefault(adj["network"], []).append(i)
-        for net, idx in by_net.items():
-            members = {(d, canonical(p)) for i in idx
-                       for d, p in (layers[layer][i].get("ports") or {}).items()}
-            devices = {d for i in idx for d in (layers[layer][i]["a"], layers[layer][i]["b"])}
-            if len(devices) > 2:
-                groups.append({"networks": {net}, "members": members, "adj": {layer: idx}})
-    merged = []
-    for g in groups:
-        home = next((m for m in merged if m["members"] & g["members"]), None)
-        if home is None:
-            merged.append(g)
-            continue
-        home["networks"] |= g["networks"]
-        home["members"] |= g["members"]
-        for layer, idx in g["adj"].items():
-            home["adj"].setdefault(layer, []).extend(idx)
-    out = []
-    for g in merged:
-        vlans = {_vlan_of_svi(p) for _d, p in g["members"]} - {""}
-        nets = sorted(g["networks"])
-        name = f"VLAN {sorted(vlans)[0]}" if len(vlans) == 1 else nets[0]
-        sid = "seg:" + nets[0]
-        for layer, idx in g["adj"].items():
-            for i in idx:
-                layers[layer][i]["segment"] = sid
-        out.append({"id": sid, "name": name, "vlan": sorted(vlans)[0] if len(vlans) == 1 else "",
-                    "networks": nets,
-                    "members": sorted([d, abbreviate(p)] for d, p in g["members"]),
-                    "adj": {k: sorted(v) for k, v in g["adj"].items()}})
-    return sorted(out, key=lambda s: s["id"])
-
-
-def member_links(segs: list) -> list:
-    """Each segment member's attachment, as a link from the device to its segment node."""
-    return [{"a": d, "port_a": p, "b": s["id"], "port_b": "", "kind": "member",
-             "segment": s["id"], "state": "up"} for s in segs for d, p in s["members"]]
-
-
 def attach(phys: list, layers: dict, intents: dict) -> None:
     """Each routing adjacency onto the physical links it runs over, in place: a link carries an
     adjacency at an end whose port the adjacency leaves on, or, for a switch's VLAN interface
@@ -451,8 +399,6 @@ def attach(phys: list, layers: dict, intents: dict) -> None:
     for layer in ("ospf", "ospfv3", "bgp"):
         for i, adj in enumerate(layers.get(layer) or []):
             adj["on_link"] = False
-            if adj.get("segment"):
-                continue            # drawn on its segment, never on a member's cable (C654)
             for l in phys:
                 at = []
                 for end, port, far in (("a", l["port_a"], l["b"]), ("b", l["port_b"], l["a"])):
@@ -565,8 +511,7 @@ def mercury_reach(phys: list, nodes: dict) -> dict:
     mgr = [l for l in phys if l.get("manager") and l.get("state") in ("up", "unknown")]
     attached = sorted({l["b"] for l in mgr})
     g = nx.MultiGraph()
-    g.add_nodes_from(n for n, v in nodes.items()
-                     if not v.get("external") and not v.get("segment") and n != MANAGER)
+    g.add_nodes_from(n for n, v in nodes.items() if not v.get("external") and n != MANAGER)
     for l in phys:
         if not l.get("manager") and l.get("state") in ("up", "unknown"):
             g.add_edge(l["a"], l["b"])
@@ -679,11 +624,6 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
         nodes[MANAGER] = {"managed": False, "role": "", "polled": False, "answering": True,
                           "lldp_read": False, "manager": True}
         phys.extend(mgr)
-    # Multi-access segments: one node each, its adjacencies on it (C654).
-    segs = segments(layers)
-    for s in segs:
-        nodes[s["id"]] = {"managed": False, "segment": True, "name": s["name"], "role": "",
-                          "polled": False, "answering": True, "lldp_read": False}
     attach(phys, layers, intents)
     unread_protocols(phys, intents)
     from modules.nsot.ifnames import abbreviate
@@ -702,8 +642,7 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
         # runs no OSPF is not an island of the OSPF layer.
         # The physical layer's: the inventory and LLDP's own neighbours, never a routing peer
         # known only by its address.
-        names = sorted(n for n, v in nodes.items()
-                       if not v.get("external") and not v.get("segment")) \
+        names = sorted(n for n, v in nodes.items() if not v.get("external")) \
             if layer == "physical" else sorted({e for l in links for e in (l["a"], l["b"])})
         if layer == "physical":
             # Mercury's host forwards nothing between devices: the analyses are the devices'
@@ -740,12 +679,11 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
     # (modules/topology_layout.py).
     from modules import topology_layout
     try:
-        laid = topology_layout.layout(nodes, phys + member_links(segs))
+        laid = topology_layout.layout(nodes, phys)
     except Exception as exc:                         # noqa: BLE001 (the page lays out instead)
         log.warning("topology: the map could not be laid out (%s); the page lays it out", exc)
         laid = None
-    return {"nodes": nodes, "layers": layers, "analysis": analysis, "layout": laid,
-            "segments": segs}
+    return {"nodes": nodes, "layers": layers, "analysis": analysis, "layout": laid}
 
 
 def _peer_by_lldp(hv: dict, host: str, address: str, phys: list) -> str:

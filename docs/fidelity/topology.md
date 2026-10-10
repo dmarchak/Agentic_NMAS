@@ -8,9 +8,9 @@ headless Firefox, the page fed by the reader's value built from the real capture
 Boards: `TopoDesktop.dc.html` (1440 wide) and `TopoPhone.dc.html` (390 wide), on the mockups canvas (the operator's Design artifact), signed off 2026-10-04 (NSOT_STAGE7_PLAN 15.8 and 15.9). `TopoWall.dc.html` is a later step.
 Shots: desktop 1440 and 1280; phone 390 (Firefox's narrowest window is 488 CSS px, so the page is held to a 390 px column; below 700 px the phone's rules apply to both). Compared 2026-10-10.
 Compared again 2026-10-10 after the host walk (Mercury's host never a path between devices; the what-if names whom Mercury loses): the what-if panel's words changed, no region's verdict.
-Compared again 2026-10-10 for C654 and C655 (the operator: too busy; arrangeable): ports and chips on hover, one chip per adjacency, VLAN 100 one segment node, no label for a protocol not read, no band drawn, Arrange built; the regions' verdicts below are updated, each deviation in the approval log.
+Compared again 2026-10-10 after C654 and C655 were withdrawn (the operator: back to the approved board): the map as 65503e6 drew it, shot again at 1280 and 390 px and the same size as that commit's shots, region for region; the one template change is the empty slot above the map where a write's result is drawn (C656), which takes no room until a result is drawn in it. No region's verdict changed.
 Templates compared: templates/v2/topology.html, templates/v2/_topology_map.html
-Templates sha256: `8bb70227d8b3d2a5e9eef0746137534019d9f78d503b844ad6b2ccd157c73a56`
+Templates sha256: `ccfa95b4bc0b46ccf8c2971755ba6cab9ee3a25323d442a01be401c9fcdc14ff`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -23,12 +23,12 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Wall view | a button | not drawn | **later** P.11's wall step; its kiosk identity is the operator's |
 | Protocol toggles | OSPF, OSPFv3, BGP, RIP/RIPng, EIGRP, IS-IS | OSPF, OSPFv3, BGP, RIPng (not read); "Not read: EIGRP, IS-IS" | **deviation** (log: Topology's protocol toggles) |
 | Ports, Labels, zoom, Weak points | Ports on; Labels Auto, On, Off; −, 100%, +; Weak points | the same; 100% is labelled Fit | **same** |
-| Arrange | a button | Arrange: drag a device or segment (or move it with the arrow keys), Save the layout for everyone, Cancel, Reset to the generated layout | **same** |
+| Arrange | a button | not drawn | **later** step 3, saved and shared positions |
 | Path…, Take out a device (what-if)… | buttons | each opens its question; its answer drawn in the side panel and on the map | **same** |
-| Bands | CORE, EDGE, ACCESS, MANAGEMENT | not drawn: the generated layout places routers above switches as a starting point, and people arrange the rest | **deviation** (log: Topology's bands are a starting layout) |
+| Bands | CORE, EDGE, ACCESS, MANAGEMENT | the same four, measured from each device's class and outside peering | **deviation** (log: Topology's bands and L3 badge) |
 | Device icons | router, switch (NMAS's own), Tabler for the rest; L3 badge | router and switch NMAS's own; server, cloud and dashed circle also NMAS's own; L3 badge | **deviation** (log: Topology's own icons) |
-| Ports on links | the port at each end of every link | the port at each end, on hover or selection, every one at 150% and closer (Labels Auto) | **deviation** (log: Topology's labels on hover) |
-| State chips | "OSPF FULL", "BGP Estab", "OSPF 2WAY", "BGP Idle", "down", "RIP ?" | one chip per adjacency with its key fact, both ends merged, both named when they disagree; a multi-access segment one node with its summary; nothing for a protocol not read; on hover, selection or zoomed in | **deviation** (log: Topology's chips carry area and AS) |
+| Ports on links | the port at each end of every link | the port at each end of every link, placed clear of each other | **same** |
+| State chips | "OSPF FULL", "BGP Estab", "OSPF 2WAY", "BGP Idle", "down", "RIP ?" | the same states with each protocol's key fact: "OSPF area 0: FULL", "eBGP AS 65002: Estab×2", a shared segment's counts, "down", "RIPng ?" | **deviation** (log: Topology's chips carry area and AS) |
 | Line styles | green solid, orange dashed, thick red, grey dotted | the same four, the same meanings | **same** |
 | What "not as intended" is | an OSPF 2WAY where FULL was intended | a link only one polled end reports, or a neighbour intent does not name; 2WAY is up | **deviation** (log: Topology counts 2WAY as up) |
 | Outside peer | "r5 · ISP", a dashed cloud | "r5 · AS 65002", a dashed cloud | **deviation** (log: Topology names an outside peer by its AS) |
@@ -37,7 +37,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Island tag | an island tag and a red border | the same | **same** |
 | Hover card | title; Link with since; each protocol's state against intent; none on this link; read … from both · Neighbours | the same rows; since is the reader's own observation | **deviation** (log: Topology's since is observed) |
 | Selected link | a blue glow | a blue glow, its card held open, its entry marked | **same** |
-| Legend | 4 line styles and 9 device classes, over the map's foot | 4 line styles, the segment member line, 6 classes and the segment, below the map inside its box, saying when labels show | **deviation** (log: Topology's own icons) |
+| Legend | 4 line styles and 9 device classes, over the map's foot | 4 line styles and 6 classes, below the map inside its box | **deviation** (log: Topology's own icons) |
 | Needs attention on the map | count; All, down, not as intended, not read, weak points; filter; groups; entries with since | the same | **same** |
 | Entry times | "since 21:02 UTC" | the product's time stamp: age, the exact time on hover; "at least since" when the state was so at the first read | **deviation** (log: Topology's since is observed) |
 | Weak points | s3 SPOF with its words | s3 SPOF with its words, r6 island with Mark as expected…, the betweenness line | **deviation** (log: Topology keeps what the boards left out) |

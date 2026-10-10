@@ -178,8 +178,3 @@ def test_topology(tmp_path, monkeypatch):
                widths=((390, 2.0),))
         _shoot("topology-phone-map", "", lambda w: "/v2/topology?list=Lab&tab=map", served,
                widths=((390, 2.0),))
-        # C654 and C655: every label zoomed in (150%), and the map arranging.
-        _shoot("topology-desktop-z150", "", lambda w: "/v2/topology?list=Lab&z=150", served,
-               widths=((1280, 1.0),))
-        _shoot("topology-desktop-arrange", "", lambda w: "/v2/topology?list=Lab&arrange=1",
-               served, widths=((1280, 1.0),))

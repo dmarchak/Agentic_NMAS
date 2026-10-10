@@ -219,8 +219,7 @@ class TestTheRoutingLayers:
         # ... and never a node of the physical layer (the fix's first host run put them there).
         phys = g["analysis"]["physical"]
         assert phys["islands"] == [["r6"]]
-        assert not any(":" in n or n[0].isdigit() for n, v in g["nodes"].items()
-                       if not v.get("segment"))
+        assert not any(":" in n or n[0].isdigit() for n in g["nodes"])
 
     def test_an_outside_peer_is_one_node_never_a_fleet_node_or_an_island(self):
         g = _r5_retired()
@@ -278,38 +277,22 @@ class TestWhatEachLinkCarries:
         assert sorted((x["layer"], x["area"], x["words"], tuple(x["at"])) for x in adj) == [
             ("ospf", "0", "full", ("r3", "r4")), ("ospfv3", "0", "full", ("r3", "r4"))]
 
-    def test_a_multi_access_segment_is_one_with_its_members_and_adjacencies(self):
-        """C654 (the operator: "draw a multi-access segment (VLAN 100) as ONE segment node with
-        its devices attached"): VLAN 100's OSPF subnet and OSPFv3 prefix are one segment, by
-        the interfaces they share; its adjacencies are on it, never on a member's cable."""
-        g = _labelled()
-        assert [s["name"] for s in g["segments"]] == ["VLAN 100"]
-        seg = g["segments"][0]
-        assert len(seg["networks"]) == 2
-        assert seg["members"] == [["r1", "Gi2"], ["r2", "Gi2"], ["r3", "Gi3"], ["r4", "Gi3"],
-                                  ["s3", "Vl100"], ["s4", "Vl100"]]
-        assert len(seg["adj"]["ospf"]) == 15 and len(seg["adj"]["ospfv3"]) == 6
-        assert g["nodes"][seg["id"]]["segment"] and not g["nodes"][seg["id"]]["managed"]
-        assert self._adj(g, "r1", "s3") == [] and self._adj(g, "s3", "s4") == []
-        # The point-to-point r3 Gi4 to r4 Gi4 is no segment: on its link.
-        assert len(self._adj(g, "r3", "r4")) == 2
+    def test_a_shared_segment_s_port_carries_every_adjacency_leaving_it(self):
+        """r1 Gi2 is on VLAN 100 with r2, r3, r4, s3 and s4: its link to s3 carries all five
+        OSPF and three OSPFv3 neighbourships, and s3's own (through its Vlan100 interface, on a
+        port carrying VLAN 100 to r1)."""
+        adj = self._adj(_labelled(), "r1", "s3")
+        ospf = {(x["a"], x["b"]) for x in adj if x["layer"] == "ospf"}
+        assert ospf == {("r1", p) for p in ("r2", "r3", "r4", "s3", "s4")}
+        assert {x["words"] for x in adj if x["layer"] == "ospf"} == {"full", "2-way"}
+        assert len([x for x in adj if x["layer"] == "ospfv3"]) == 3
+        assert next(x for x in adj if x["b"] == "s3" and x["layer"] == "ospf")["at"] == \
+            ["r1", "s3"]
 
     def test_an_svi_adjacency_rides_the_trunk_to_its_peer(self):
-        """Off a segment (two switches' VLAN interfaces alone on a subnet), an adjacency from a
-        VLAN interface is put on the port carrying that VLAN to its peer."""
-        res, up = _capture()
-        intents = {h: hv for h, hv in _intents().items() if h != "r5"}
-        phys = T.physical_links({h: res.get(h, {}) for h in MANAGED}, set(MANAGED), set(MANAGED))
-        layers = {"ospf": [{"a": "s3", "b": "s4", "ports": {"s3": "Vlan100", "s4": "Vlan100"}}],
-                  "ospfv3": [], "bgp": []}
-        T.attach(phys, layers, intents)
-        trunk = _link({"layers": {"physical": phys}}, "s3", "s4")[0]
-        assert trunk["adj"] == [{"layer": "ospf", "i": 0, "at": ["s3", "s4"]}]
-
-    def test_every_adjacency_of_the_lab_is_on_a_link_or_its_segment(self):
-        g = _labelled()
-        assert all(a["on_link"] or a.get("segment") for layer in ("ospf", "ospfv3", "bgp")
-                   for a in g["layers"][layer])
+        adj = self._adj(_labelled(), "s3", "s4")
+        assert [(x["layer"], x["words"], x["at"]) for x in adj] == [("ospf", "2-way",
+                                                                     ["s3", "s4"])]
 
     def test_ebgp_to_the_outside_peer_names_both_ases_on_its_link(self):
         adj = self._adj(_labelled(), "r3", "r5")
@@ -317,6 +300,10 @@ class TestWhatEachLinkCarries:
         for x in adj:
             assert x["asn"]["r5"] != x["asn"]["r3"] and x["state"] == "up"
 
+    def test_every_adjacency_of_the_lab_is_on_a_link(self):
+        g = _labelled()
+        assert all(a["on_link"] for layer in ("ospf", "ospfv3", "bgp")
+                   for a in g["layers"][layer])
 
     def test_ripng_configured_is_said_not_read(self):
         assert _link(_labelled(), "r1", "s1")[0]["unread"] == {"r1": ["RIPng"], "s1": ["RIPng"]}
@@ -417,29 +404,6 @@ class TestSinceAndLayout:
         assert pos == _labelled()["layout"]["positions"]        # the same graph, the same map
         # Bands by class: routers above switches, Mercury's host at the bottom.
         assert pos["r1"][1] < pos["s3"][1] < pos[T.MANAGER][1]
-
-    def test_the_lab_s_generated_map_crosses_few_cables_inside_its_frame(self):
-        """C654: the operator found the map too busy. With the edge band between the core and
-        the switches, its r3-r4 cable crossed every core-to-switch cable (12 crossings,
-        measured 2026-10-10); with the edge on top, 3; with the segment's member lines
-        counted as cables (the filter keyed on a field they do not carry), 4. Counted here by
-        its own geometry, not the layout's cost; and the outside peer raised above the top
-        band stays inside the frame."""
-        from modules.topology_layout import HALF
-        g = _labelled()
-        pos, height = g["layout"]["positions"], g["layout"]["height"]
-        assert all(HALF <= y <= height - HALF for _, y in pos.values()), pos
-
-        def crosses(p, q, r, s):
-            def turn(a, b, c):
-                return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) > 0
-            return turn(p, q, r) != turn(p, q, s) and turn(r, s, p) != turn(r, s, q)
-
-        cables = [(l["a"], l["b"]) for l in g["layers"]["physical"]]
-        assert len(cables) == 12
-        crossings = [(a, b, c, d) for i, (a, b) in enumerate(cables) for c, d in cables[i + 1:]
-                     if not {a, b} & {c, d} and crosses(pos[a], pos[b], pos[c], pos[d])]
-        assert len(crossings) <= 3, crossings
 
 
 class TestTheRead:

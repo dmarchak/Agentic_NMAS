@@ -1293,6 +1293,8 @@ select { max-width: 100%; }
    it compares with intent, never colour alone: as intended solid, not as intended dashed, down
    or a neighbour missing thick, not read dotted; a chip on it says the state in words. */
 .topo { display: flex; flex-direction: column; gap: 12px; }
+/* A write's result slot (C656) takes no room until a result is drawn in it. */
+#topo-result:empty { display: none; }
 .topo-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .topo-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .topo-head h1 { margin: 0; font-size: 22px; font-weight: 600; }
@@ -1352,29 +1354,6 @@ select { max-width: 100%; }
 .topo-st-t.topo-st-unread { fill: var(--ink-2); }
 /* Ports: on at the desktop by default, off at phone width (the operator, 2026-10-04). */
 .topo-ports-off .topo-port { display: none; }
-/* Labels (C654): Auto shows a link's ports and states on hover or selection, every one zoomed in
-   (the svg is topo-lbl-all at 150% and closer, or On); Off, never. */
-.topo-lbl-hover .topo-lbl, .topo-lbl-off .topo-lbl { display: none; }
-.topo-lbl-hover .topo-l:hover .topo-lbl, .topo-lbl-hover .topo-l:focus-within .topo-lbl,
-.topo-lbl-hover .topo-l.topo-sel .topo-lbl { display: inline; }
-/* A multi-access segment, one node (C654); its members joined by thin lines. */
-.topo-line.topo-member { stroke-width: 1.5; }
-.topo-line.topo-bad.topo-member { stroke-width: 3; }
-.topo-segbox { fill: var(--surface); stroke: var(--ok); stroke-width: 2; }
-.topo-seg-warn .topo-segbox { stroke: var(--warn); stroke-dasharray: 6 4; }
-.topo-seg-bad .topo-segbox { stroke: var(--danger); stroke-width: 4; }
-.topo-seg-unread .topo-segbox { stroke: var(--ink-3); stroke-dasharray: .5 5; stroke-linecap: round; }
-.topo-segname { font-family: var(--mono); font-size: 12px; font-weight: 600; fill: var(--ink); text-anchor: middle; }
-/* Arrange (C655): drag a device or segment; labels and cards stand aside while arranging. */
-.topo-arrange { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; padding: 8px 12px;
-  border-bottom: 1px solid var(--line-2); background: var(--accent-soft); margin: 0; }
-.topo-arranging [data-node] { cursor: grab; touch-action: none; }
-.topo-arranging .topo-dragging { cursor: grabbing; }
-.topo-arranging .topo-lbl, .topo-arranging .topo-card, .topo-arranging .topo-glow { display: none; }
-.topo-arranging .topo-hit { pointer-events: none; }
-.topo-arranging [data-node]:focus { outline: none; }
-.topo-arranging [data-node]:focus .topo-ic, .topo-arranging [data-node]:focus .topo-segbox { stroke: var(--accent); stroke-width: 3; }
-.topo-arranged { margin: -4px 0 0; }
 .topo-ic { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
 .topo-n use { color: var(--ink-2); }
 .topo-n a { cursor: pointer; }

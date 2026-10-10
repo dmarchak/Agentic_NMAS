@@ -9,61 +9,46 @@ and the page redraws by itself when the reader reads something new.
 
 ## The map {#map}
 
-One physical map: each device as its class's icon (a switch that runs a routing protocol is
-badged **L3**), each peer outside management as a cloud with its AS, and Mercury's own host
-where it attaches. Each device opens its page. The map first draws a generated layout, routers
-above switches; **Arrange** lets you put every device where you want it, for everyone (below).
+One physical map. Each device is drawn as its class's icon, in bands from top to bottom: **core**
+(routers), **edge** (routers with a peer outside management, and those peers, drawn as a cloud
+with their AS), **access** (switches; a switch that runs a routing protocol is badged **L3**),
+and **management**, where Mercury's own host is drawn where it attaches. Each device opens its
+page. A refresh moves nothing: the reader lays the map out when it reads.
 
-At Fit the map shows devices, links and their state, by line style and colour, with the legend:
+Every link is labelled:
+
+- **the port at each end** (r1 Gi2 ↔ s3 Gi1/0), LLDP's own names;
+- **a chip for each routing protocol it carries**, with its key fact and state: OSPF and OSPFv3
+  with their **area** (`OSPF area 0: FULL`), BGP with the **peer's AS** and whether it is eBGP or
+  iBGP (`eBGP AS 65002: Estab×2`, two sessions, IPv4 and IPv6). A port on a shared segment
+  carries several neighbourships; its chip counts them by state (`OSPF area 0: 2WAY×3 FULL×2`).
+  2WAY is the normal state between two routers that are neither DR nor BDR.
+- a protocol committed intent configures and Mercury does not read (RIPng) is chipped `RIPng ?`:
+  not read, never drawn as up.
+
+A neighbourship is put on the link it leaves by: the port it leaves from, or, for a switch's
+VLAN interface, the port carrying that VLAN towards the neighbour. One no link carries (between
+loopbacks) is drawn thin, straight between the two devices.
+
+The line says how the link compares with intent, never by colour alone:
 
 - **green, solid**: as intended;
-- **orange, dashed**: up, not as intended: only one end reports it while both are polled, a
-  neighbour committed intent does not name, or the two ends of a neighbourship disagree;
+- **orange, dashed**: up, not as intended: only one end reports it while both are polled, or a
+  neighbour committed intent does not name;
 - **red, thick**: down, or a neighbour intent names that nothing reports;
 - **grey, dotted**: not read.
 
-**Labels**: with Labels **Auto**, a link's labels show when you hover on it, tab to it or select
-it, and every link's labels show at 150% and closer; **On**, always; **Off**, never. A link's
-labels are:
-
-- **the port at each end** (r1 Gi2 ↔ s3 Gi1/0), LLDP's own names;
-- **one chip per neighbourship**, with its key fact and state: OSPF and OSPFv3 with their
-  **area** (`OSPF area 0: FULL`), BGP with the **peer's AS** and whether it is eBGP or iBGP
-  (`eBGP AS 65002: Estab (IPv4, IPv6)`, two sessions in the same state). Both ends' reports are
-  one chip; when they disagree, both are named and the chip is flagged
-  (`OSPF area 0: r3 FULL / r4 2WAY (ends disagree)`).
-
-A protocol Mercury does not read (RIPng, EIGRP, IS-IS) adds no label: a link's card says where
-committed intent configures it.
-
-## Multi-access segments {#segments}
-
-A subnet where OSPF or OSPFv3 joins more than two devices (a VLAN shared by routers and L3
-switches) is drawn as **one segment node**, named by its VLAN, with each member joined to it by
-a thin line. Its OSPF and OSPFv3 summary is on the segment, once: how many devices, and which
-are the **DR and BDR** (the devices FULL with the most others; a DROther is FULL with the DR and
-BDR only). **2WAY between two DROthers is how OSPF works, never a fault.** What is flagged: an
-adjacency down or missing, a 2WAY with the DR or BDR (expected FULL), the two ends disagreeing,
-and no device standing out as DR and BDR. Hover on the segment for every member's neighbours.
-
 **Hover** on a link (or tab to it) for its card: both ends, the link's state and since when, each
-neighbourship with its state, and links to each end's Neighbours tab. **Click** a link or a
-segment to select it: it glows, its labels and card stay shown, and its entry in Needs attention
-is marked.
+protocol's neighbours with their states, and links to each end's Neighbours tab. **Click** a link
+to select it: it glows, its card stays open, and its entry in Needs attention is marked.
 
-The toolbar: **Protocols** chooses which protocols' labels and states are drawn; **Ports** shows
-or hides the port names (on at the desktop, off at phone width); **Labels** as above; **−, Fit,
-+** zoom; **Weak points** tags single points of failure and islands; **Arrange** (below).
-**Find** rings a device whose name, role, address or port matches; it never hides anything.
+The toolbar: **Protocols** chooses which protocols' chips and states are drawn (EIGRP and IS-IS
+are not read, and the toolbar says so); **Ports** shows or hides the port names (on at the
+desktop, off at phone width); **Labels** Auto shows ports and chips at Fit and closer and hides
+them zoomed out, On always, Off never; **−, Fit, +** zoom; **Weak points** tags single points of
+failure and islands on the map. **Find** rings a device whose name, role, address or port
+matches; it never hides anything.
 
-## Arrange {#arrange}
-
-**Arrange** lets you design the map: drag a device or a segment where you want it (or tab to it
-and use the arrow keys: 10 at a time, 50 with Shift), then **Save the layout**. The layout is the
-network's, the same for everyone, and recorded on History (Topology layouts) with your name. A
-device added later takes its generated place until you arrange it. **Cancel** drops what you
-moved; **Reset to the generated layout** withdraws the saved one for everyone. While you
-arrange, the map holds still: a change the reader brings waits until you save or cancel.
 ## Needs attention on the map {#attention}
 
 Every link that is not as intended, grouped by its line style (down or a neighbour missing; up,

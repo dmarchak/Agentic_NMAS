@@ -828,25 +828,6 @@ def topology_expected(ctx):
                  if _mine(ctx, r.get("device", "")) and _recent(ctx, r.get("at"))])
 
 
-def topology_layout(ctx):
-    """Each arranged Topology layout saved, or reset to the generated one (C655): who, how many
-    places. A layout belongs to the network, never to one device, so a device's History does
-    not list it."""
-    from modules import topology_positions as TP
-    if ctx.get("device"):
-        return _out()
-    got = TP.history(getattr(ctx["ref"], "data_dir", ""))
-    if got["error"]:
-        return _out(errors=[f"the Topology layout record could not be read: {got['error']}"])
-    return _out([_event(r.get("at"), "layout",
-                        f"Topology arranged: {r.get('places', 0)} places saved, for everyone"
-                        if r.get("action") == "arranged"
-                        else "Topology's arranged layout withdrawn: the generated one drawn",
-                        [], who=r.get("actor", ""),
-                        record=[("Action", r.get("action")), ("Places", r.get("places"))])
-                 for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
-
-
 def show_commands(ctx):
     """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
     commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
@@ -946,7 +927,7 @@ SOURCES = {
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
-    "topology_expected": topology_expected, "topology_layout": topology_layout,
+    "topology_expected": topology_expected,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -969,7 +950,6 @@ KIND_GROUPS = (
                                ("breakglass", "Break-glass exports", ("breakglass",)),
                                ("credentials", "Credential profiles", ("credential",)),
                                ("expected", "Expected islands", ("expected",)),
-                               ("layout", "Topology layouts", ("layout",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),

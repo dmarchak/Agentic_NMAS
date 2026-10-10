@@ -6,8 +6,4 @@
 <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is an expected island</strong>, recorded with your reason{% if not op.recorded %} (NOT recorded on History: {{ op.record_error }}){% endif %}. The map draws it as expected once the reader reads again (it was woken).</p></div>
 {%- elif op.state == 'withdrawn' %}
 <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is no longer declared expected</strong>: if it is an island, it warns again once the reader reads.</p></div>
-{%- elif op.state == 'arranged' %}
-<div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>The layout is saved</strong> ({{ op.places }} places): this network's map, for everyone{% if not op.recorded %} (NOT recorded: {{ op.record_error }}){% endif %}.</p></div>
-{%- elif op.state == 'reset' %}
-<div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>The saved layout is withdrawn</strong>: the generated one is drawn for everyone{% if not op.recorded %} (NOT recorded: {{ op.record_error }}){% endif %}.</p></div>
 {%- endif %}

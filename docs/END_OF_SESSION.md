@@ -27,7 +27,12 @@ found Mercury drawn attached through containerlab's shared address and as a path
 devices (C653, fixed 57883db); walked again on 57883db: s3 Mercury's only way into seven
 devices, r6 apart on purpose (the operator marked it) and reached directly. C650's fidelity
 step is in place (tests/test_board_fidelity.py; 32 signed-off screens still to compare, the
-list only shrinks). Then shared recorded positions (step 3), then time travel
+list only shrinks). The operator then found the map too busy (C654) and asked for it to be
+arranged by people (C655); both were built (a597479, b8f3f0f) and, shown the after shots, the
+operator sent Topology back to the approved board v34, Arrange out too (both WITHDRAWN, in the
+register's Closed). The page is the board as d720434 built it; C656's rule (a refusal declares
+no change) and the result slot above the map stay. Drag-and-drop comes back only on a board of
+its own. Then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
 in the records database); Logs (C652, the operator 2026-10-10): the sidebar's Logs opens
 the queryable logs, History › Query board C's "Syslog by device" (e9d4fbe, e112246 and the

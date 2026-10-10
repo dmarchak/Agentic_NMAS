@@ -417,8 +417,6 @@ HISTORY = {
                                             "record of who or when"),
     "topology_v2.expected_declare": ("topology_expected",),
     "topology_v2.expected_withdraw": ("topology_expected",),
-    "topology_v2.positions_save": ("topology_layout",),
-    "topology_v2.positions_reset": ("topology_layout",),
     "credential_profiles_v2.save": ("credential_profiles",),
     "credential_profiles_v2.delete": ("credential_profiles",),
     "v2.credentials_intact": ("breakglass",),

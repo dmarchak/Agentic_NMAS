@@ -232,10 +232,6 @@ GATES = {
     "inventory.credential_profiles": _g(K, "writes credential profiles"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),
-    "topology_v2.positions_save": _g(K, "saves the network's arranged Topology layout, for "
-                                       "everyone, recorded (C655)"),
-    "topology_v2.positions_reset": _g(K, "withdraws the arranged Topology layout, recorded "
-                                        "(C655)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "
                                            "recorded (P.11)"),
     "credential_profiles_v2.save": _g(K,"saves a credential profile from Credentials › "

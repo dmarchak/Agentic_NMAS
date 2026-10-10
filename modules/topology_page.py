@@ -37,13 +37,13 @@ from modules.topology_layout import BANDS, HALF, W, _band, _near, layout, node_c
 
 log = logging.getLogger(__name__)
 
-#: The protocols a link's states can show, in the toolbar's order: the ones Mercury reads. A
-#: protocol it does not read (RIPng, configured by intent) adds no label (C654).
-PROTOS = ("ospf", "ospfv3", "bgp")
+#: The protocols a link's states can show, in the toolbar's order. RIPng is configured by intent
+#: and read by nothing: shown as "not read", never as up.
+PROTOS = ("ospf", "ospfv3", "bgp", "ripng")
 PROTO_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "ripng": "RIPng"}
 #: Protocols neither read nor modelled: said beside the toggles, never a toggle that changes
 #: nothing (docs/STANDING_APPROVAL_LOG.md, 2026-10-10).
-NOT_READ = "RIPng, EIGRP, IS-IS"
+NOT_READ = "EIGRP, IS-IS"
 #: The zoom steps; 100 fits the map to its box (the board's "100%" is labelled Fit).
 ZOOMS = (50, 75, 100, 150, 200)
 #: Above this many fleet devices the map is not drawn; the attention list still names every
@@ -58,7 +58,7 @@ SHORT = {"full": "FULL", "2-way": "2WAY", "init": "INIT", "attempt": "ATTEMPT",
 #: A device's class from its role and what it runs, and the words the legend gives it.
 CLASSES = {"router": "router", "switch": "L2 switch", "l3switch": "L3 switch",
            "server": "Mercury's host", "external": "outside management",
-           "unknown": "class unknown", "segment": "multi-access segment"}
+           "unknown": "class unknown"}
 LINE_WORDS = {"ok": "as intended", "warn": "not as intended",
               "bad": "down, or a neighbour missing", "unread": "not read"}
 GROUP_WORDS = {"bad": "Down, or an intended neighbour missing",
@@ -99,8 +99,7 @@ ASKS = {"p": None,          # the protocols toggled on, comma-separated; absent:
         "q": "",            # find on the map
         "f": "",            # filter the attention list
         "show": "all",      # the attention list's group: all, bad, warn, unread, weak
-        "tab": "att",       # the phone's tab: att, dev, map
-        "arrange": ""}      # "1": arranging the map (C655)
+        "tab": "att"}       # the phone's tab: att, dev, map
 
 
 def ask(values) -> dict:
@@ -119,7 +118,6 @@ def ask(values) -> dict:
     s["weak"] = "0" if s["weak"] == "0" else "1"
     s["show"] = s["show"] if s["show"] in ("all", "bad", "warn", "unread", "weak") else "all"
     s["tab"] = s["tab"] if s["tab"] in ("att", "dev", "map") else "att"
-    s["arrange"] = "1" if s["arrange"] == "1" else ""
     return s
 
 
@@ -153,33 +151,18 @@ def link_id(l: dict) -> str:
     return f"{l['a']}:{l.get('port_a') or ''}~{l['b']}:{l.get('port_b') or ''}"
 
 
-def _short(words: str) -> str:
-    return SHORT.get(words or "", (words or "?").upper())
-
-
 def _state_short(adj: dict) -> str:
     if adj.get("state") == "not_seen":
         return "missing"
     if adj.get("state") == "unknown":
         return "?"
-    return _short(adj.get("words"))
-
-
-def _ends(adj: dict) -> dict:
-    """Each end's own report of the adjacency, ``{device: short state}``."""
-    return {d: _short(w) for d, w in sorted((adj.get("words_by") or {}).items())}
-
-
-def _disagree(adj: dict) -> bool:
-    """Both ends report it and say different things (C654: shown, and flagged)."""
-    ends = _ends(adj)
-    return len(ends) == 2 and len(set(ends.values())) == 2
+    return SHORT.get(adj.get("words") or "", (adj.get("words") or "?").upper())
 
 
 def _adj_cls(adj: dict) -> str:
     if adj.get("state") in ("down", "not_seen"):
         return "bad"
-    if not adj.get("intended") or _disagree(adj):
+    if not adj.get("intended"):
         return "warn"
     if adj.get("state") == "unknown":
         return "unread"
@@ -203,70 +186,37 @@ def _fact(layer: str, adjs: list) -> str:
     return f"AS {', '.join(peers)}" if peers else "AS not in intent"
 
 
+def _chip_states(adjs: list) -> str:
+    counts = {}
+    for a in adjs:
+        s = _state_short(a)
+        counts[s] = counts.get(s, 0) + 1
+    if len(adjs) == 1:
+        return next(iter(counts))
+    return " ".join(f"{s}×{n}" for s, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
 def _bgp_kind(adj: dict) -> str:
     asn = set((adj.get("asn") or {}).values())
     return "eBGP" if len(asn) > 1 else "iBGP" if len(asn) == 1 else "BGP"
 
 
-def _word(layer: str, adj: dict) -> str:
-    return _bgp_kind(adj) if layer == "bgp" else PROTO_WORDS[layer]
-
-
-def _state_words(adj: dict) -> str:
-    """The adjacency's state, once: both ends' reports merged; both named only when they
-    disagree (C654)."""
-    if _disagree(adj):
-        return " / ".join(f"{label(d)} {s}" for d, s in _ends(adj).items()) + " (ends disagree)"
-    return _state_short(adj)
-
-
-def _family(adj: dict) -> str:
-    return {"ipv4": "IPv4", "ipv6": "IPv6"}.get(adj.get("network", ""), "")
-
-
-def _adj_chips(layer: str, adjs: list) -> list:
-    """One chip per adjacency (C654), the same chip once for sessions that differ only by
-    address family (BGP's IPv4 and IPv6 to one peer: "eBGP AS 65002: Estab (IPv4, IPv6)")."""
-    chips = {}
-    for x in adjs:
-        text = f"{_word(layer, x)} {_fact(layer, [x])}: {_state_words(x)}"
-        c = chips.setdefault(text, {"text": text, "cls": _adj_cls(x), "families": []})
-        if _family(x):
-            c["families"].append(_family(x))
-    out = []
-    for c in chips.values():
-        if len(c["families"]) > 1:
-            c["text"] += f" ({', '.join(sorted(c['families']))})"
-        out.append({"text": c["text"], "cls": c["cls"]})
-    return out
-
-
 def _neighbour_words(adj: dict, from_dev: str) -> str:
     other = adj["b"] if adj["a"] == from_dev else adj["a"]
-    words = f"{label(other)} {_state_words(adj)}"
+    words = f"{label(other)} {_state_short(adj)}"
     if adj.get("state") == "not_seen":
         words += " (intended, not reported)"
     elif adj.get("state") == "unknown":
         words += " (not measured)"
     elif not adj.get("intended"):
         words += " (not in committed intent)"
-    if _family(adj):
-        words += f" ({_family(adj)})"
+    if adj.get("address"):
+        words += f" at {adj['address']}"
     return words
 
 
-def _fault_words(layer: str, x: dict, c: str) -> str:
-    why = {"bad": f"intended {'Established' if layer == 'bgp' else 'up'}",
-           "warn": "the two ends disagree" if _disagree(x) else "not in committed intent",
-           "unread": "not measured"}[c]
-    return (f"{_word(layer, x)} {_fact(layer, [x])} {label(x['a'])} to {label(x['b'])}: "
-            f"{_state_words(x)}, {why}")
-
-
 def _link(l: dict, layers: dict, on: list, nodes: dict) -> dict:
-    """One physical link as drawn: its class, chips (one per adjacency), hover rows and
-    attention words. A protocol Mercury does not read adds no chip and no class (C654); the
-    hover card says it is configured."""
+    """One physical link as drawn: its class, chips, hover rows and attention words."""
     a, b = l["a"], l["b"]
     pa, pb = l.get("port_a") or "?", l.get("port_b") or "?"
     by_layer = {}
@@ -294,25 +244,40 @@ def _link(l: dict, layers: dict, on: list, nodes: dict) -> dict:
                               "is polled and does not", l.get("since"), l.get("since_seen")))
     for layer in [p for p in PROTOS if p in by_layer]:
         adjs = by_layer[layer]
+        word = _bgp_kind(adjs[0]) if layer == "bgp" else PROTO_WORDS[layer]
         cls = _worst(_adj_cls(x) for x in adjs)
         classes.append(cls)
-        chips.extend(_adj_chips(layer, adjs))
-        rows.append({"dt": f"{_word(layer, adjs[0])} {_fact(layer, adjs)}", "cls": cls,
-                     "chip": "; ".join(_state_words(x) for x in adjs),
-                     "lines": [f"{label(x['a'])} to {_neighbour_words(x, x['a'])}"
-                               for x in adjs]})
+        chips.append({"text": f"{word} {_fact(layer, adjs)}: {_chip_states(adjs)}", "cls": cls})
+        lines = []
+        for dev in sorted({d for x in adjs for d in x["_at"]}):
+            port = pa if dev == a else pb
+            mine = [x for x in adjs if dev in x["_at"]]
+            lines.append(f"{label(dev)} {port} to " +
+                         ", ".join(_neighbour_words(x, dev) for x in mine))
+        rows.append({"dt": f"{word} {_fact(layer, adjs)}", "cls": cls,
+                     "chip": _chip_states(adjs), "lines": lines})
         for x in adjs:
             c = _adj_cls(x)
-            if c != "ok":
-                whats.append((c, _fault_words(layer, x, c), x.get("since"), x.get("since_seen")))
+            if c == "ok":
+                continue
+            intended = {"bad": f"intended {'Established' if layer == 'bgp' else 'up'}",
+                        "warn": "not in committed intent",
+                        "unread": "not measured"}[c]
+            whats.append((c, f"{word} {_fact(layer, [x])} {label(x['a'])} to {label(x['b'])}: "
+                             f"{_state_short(x)}, {intended}", x.get("since"),
+                          x.get("since_seen")))
     unread = sorted({p for ps in (l.get("unread") or {}).values() for p in ps})
-    if unread:
+    if "ripng" in on and unread:
+        chips.append({"text": f"{', '.join(unread)} ?", "cls": "unread"})
+        classes.append("unread")
         ends = " and ".join(f"{label(d)} {pa if d == a else pb}"
                             for d in sorted(l.get("unread") or {}))
         rows.append({"dt": ", ".join(unread), "cls": "unread", "chip": "not read",
                      "lines": [f"configured on {ends} by committed intent; Mercury does not "
-                               "read it, so the map says nothing of it"]})
-    none = [PROTO_WORDS[p] for p in on if p not in by_layer]
+                               "read it"]})
+        whats.append(("unread", f"{', '.join(unread)} configured on {ends}, not read by Mercury",
+                      "", False))
+    none = [PROTO_WORDS[p] for p in on if p not in by_layer and not (p == "ripng" and unread)]
     cls = _worst(classes)
     if l.get("manager"):
         how = f"measured: {label(b)} {l.get('via')}'s subnet holds this host's address"
@@ -341,134 +306,43 @@ def _link(l: dict, layers: dict, on: list, nodes: dict) -> dict:
             "manager": bool(l.get("manager")), "kind": l.get("kind", "")}
 
 
-def _segment(seg: dict, layers: dict, on: list, nodes: dict) -> tuple:
-    """A multi-access segment as ONE node (C654): its OSPF and OSPFv3 summary once, DR and BDR
-    shown neutrally, 2WAY between DROthers normal. The DR and BDR are the devices FULL with
-    every other on the segment (the states say who they are; no election is guessed). A fault:
-    an adjacency down or missing, a 2WAY with the DR or BDR, the two ends disagreeing, or no
-    device FULL with every other. Returns ``(the segment's item, its member links)``."""
-    sid = seg["id"]
-    chips, rows, whats, classes, member_cls, member_lines = [], [], [], [], {}, {}
-    for layer in ("ospf", "ospfv3"):
-        if layer not in on or not (seg.get("adj") or {}).get(layer):
-            continue
-        adjs = [dict(layers[layer][i], _mine=()) for i in seg["adj"][layer]]
-        devs = sorted({d for x in adjs for d in (x["a"], x["b"])})
-        full = {d: {(x["b"] if x["a"] == d else x["a"]) for x in adjs
-                    if d in (x["a"], x["b"]) and x.get("state") == "up"
-                    and x.get("words") == "full" and not _disagree(x)} for d in devs}
-        # The DR and BDR: FULL with more devices than a DROther can be (a DROther is FULL with
-        # the DR and BDR alone), so one broken adjacency of the DR does not hide it (measured
-        # 2026-10-10: requiring FULL with every device let a 2WAY with the DR pass as normal).
-        need = min(max(len(devs) - 2, 3), len(devs) - 1)
-        dr = sorted((d for d in devs if len(full[d]) >= need),
-                    key=lambda d: (-len(full[d]), d))
-        every = len(dr) > 2              # three or fewer devices: each FULL with every other
-        dr = [] if every else dr
-        word, fact = PROTO_WORDS[layer], _fact(layer, adjs)
-        faults = []
-        for x in adjs:
-            c = _adj_cls(x)
-            if c == "ok" and x.get("words") == "2-way" and ({x["a"], x["b"]} & set(dr)):
-                c = "warn"
-                faults.append((c, f"{word} {fact} {label(x['a'])} to {label(x['b'])}: 2WAY with "
-                                  "the DR or BDR, expected FULL", x.get("since"),
-                               x.get("since_seen")))
-            elif c != "ok":
-                faults.append((c, _fault_words(layer, x, c), x.get("since"), x.get("since_seen")))
-            for d in (x["a"], x["b"]):
-                member_cls[d] = _worst([member_cls.get(d, "ok"), c])
-        if not dr and not every and len(devs) > 2:
-            faults.append(("warn", f"{word} {fact} on {seg['name']}: no device is FULL with "
-                                   "more than a DROther could be, so no DR and BDR stand out",
-                           "", False))
-        cls = _worst([f[0] for f in faults])
-        classes.append(cls)
-        if every:
-            roles = "each FULL with every other"
-        else:
-            roles = f"DR/BDR {', '.join(label(d) for d in dr)}" if dr else "no DR/BDR"
-        chips.append({"text": f"{word} {fact}: {len(devs)} devices, {roles}"
-                      + (f", {len(faults)} not as expected" if faults else ""), "cls": cls})
-        others = [d for d in devs if d not in dr] if not every else []
-        lines = []
-        if dr:
-            lines.append(f"DR and BDR: {', '.join(label(d) for d in dr)} (the devices FULL with "
-                         "the most others)")
-        if others:
-            lines.append(f"The others: {', '.join(label(d) for d in others)} (FULL with the DR "
-                         "and BDR; 2WAY with each other, as OSPF intends)")
-        lines += [f[1] for f in faults]
-        rows.append({"dt": f"{word} {fact}", "cls": cls,
-                     "chip": "as expected" if not faults else f"{len(faults)} not as expected",
-                     "lines": lines})
-        whats.extend(faults)
-        for d in devs:
-            mine = [x for x in adjs if d in (x["a"], x["b"])]
-            states = {}
-            for x in mine:
-                states.setdefault(_state_words(x), []).append(
-                    label(x["b"] if x["a"] == d else x["a"]))
-            member_lines.setdefault(d, []).append(
-                f"{word}: " + "; ".join(f"{s} with {', '.join(p)}" for s, p in states.items()))
-    cls = _worst(classes)
-    title = seg["name"] + (f" ({', '.join(seg['networks'])})" if seg.get("vlan") else "")
-    item = {"id": sid, "a": sid, "b": sid, "segment": True, "title": title, "la": seg["name"],
-            "lb": "", "port_a": "", "port_b": "", "cls": cls, "chips": chips,
-            "state": "up", "how": f"a multi-access segment: {len(seg['members'])} interfaces on "
-                                  f"{', '.join(seg['networks'])}",
-            "since": "", "since_seen": False, "rows": rows, "none": [],
-            "readers": sorted({d for d, _p in seg["members"]
-                               if (nodes.get(d) or {}).get("managed")}),
-            "whats": sorted(whats, key=lambda w: -RANK[w[0]]), "manager": False,
-            "kind": "segment"}
-    members = []
-    for d, p in seg["members"]:
-        c = member_cls.get(d, "ok")
-        members.append({"id": f"{d}:{p}~{sid}:", "a": d, "b": sid, "port_a": p, "port_b": "",
-                        "la": label(d), "lb": seg["name"], "member": True,
-                        "title": f"{label(d)} {p} on {seg['name']}", "cls": c, "chips": [],
-                        "state": "up", "how": f"{label(d)} {p} is on {seg['name']}",
-                        "since": "", "since_seen": False,
-                        "rows": [{"dt": "Neighbours here", "cls": c, "chip": "",
-                                  "lines": member_lines.get(d, ["none on this segment"])}],
-                        "none": [], "readers": [d] if (nodes.get(d) or {}).get("managed") else [],
-                        "whats": [], "manager": False, "kind": "member"})
-    return item, members
-
-
 def _routing_only(layers: dict, on: list, nodes: dict) -> list:
-    """Neighbourships no physical link or segment carries (a peering between loopbacks, an
-    adjacency over a link LLDP does not see): drawn straight between the two devices."""
+    """Neighbourships no physical link carries (a peering between loopbacks, an adjacency over
+    a link LLDP does not see): drawn straight between the two devices, labelled the same."""
     out = []
     for layer in ("ospf", "ospfv3", "bgp"):
         if layer not in on:
             continue
         for adj in layers.get(layer) or []:
-            if adj.get("on_link", True) or adj.get("segment") or adj["a"] not in nodes \
-                    or adj["b"] not in nodes:
+            if adj.get("on_link", True) or adj["a"] not in nodes or adj["b"] not in nodes:
                 continue
+            word = _bgp_kind(adj) if layer == "bgp" else PROTO_WORDS[layer]
             x = dict(adj, _mine=tuple((adj.get("ports") or {}).keys()))
             cls = _adj_cls(x)
             out.append({"id": f"{layer}:{adj['a']}~{adj['b']}:{adj.get('network', '')}",
                         "a": adj["a"], "b": adj["b"], "port_a": "", "port_b": "",
                         "la": label(adj["a"]), "lb": label(adj["b"]),
-                        "title": f"{label(adj['a'])} ↔ {label(adj['b'])}, {_word(layer, adj)}",
-                        "cls": cls, "routing_only": True, "chips": _adj_chips(layer, [x]),
+                        "title": f"{label(adj['a'])} ↔ {label(adj['b'])}, {word}",
+                        "cls": cls, "routing_only": True,
+                        "chips": [{"text": f"{word} {_fact(layer, [x])}: {_state_short(x)}",
+                                   "cls": cls}],
                         "state": "", "how": "no physical link carries it (between loopbacks, "
                                             "or over a link LLDP does not see)",
                         "since": adj.get("since", ""), "since_seen": adj.get("since_seen"),
-                        "rows": [{"dt": f"{_word(layer, adj)} {_fact(layer, [x])}", "cls": cls,
-                                  "chip": _state_words(x),
+                        "rows": [{"dt": f"{word} {_fact(layer, [x])}", "cls": cls,
+                                  "chip": _state_short(x),
                                   "lines": [f"{label(adj['a'])} to "
                                             f"{_neighbour_words(x, adj['a'])}"]}],
                         "none": [], "readers": [d for d in (adj["a"], adj["b"])
                                                 if (nodes.get(d) or {}).get("managed")],
-                        "whats": [] if cls == "ok" else [(cls, _fault_words(layer, x, cls),
+                        "whats": [] if cls == "ok" else [(cls, f"{word} {label(adj['a'])} to "
+                                                               f"{label(adj['b'])}: "
+                                                               f"{_state_short(x)}",
                                                           adj.get("since"),
                                                           adj.get("since_seen"))],
                         "manager": False, "kind": "routing"})
     return out
+
 
 # ---------------------------------------------------------------------------- weak points
 
@@ -530,8 +404,7 @@ def what_if(phys: list, nodes: dict, out: str) -> dict:
     def reached(skip):
         g = nx.MultiGraph()
         g.add_nodes_from(n for n, v in nodes.items()
-                         if not v.get("external") and not v.get("segment")
-                         and n not in (skip, MANAGER))
+                         if not v.get("external") and n not in (skip, MANAGER))
         for l in phys:
             if not l.get("manager") and l.get("state") in ("up", "unknown") and \
                     skip not in (l["a"], l["b"]):
@@ -578,30 +451,23 @@ def view(list_name: str, values) -> dict:
     nodes, layers = net["nodes"], net["layers"]
     an = (net.get("analysis") or {}).get("physical") or {}
     phys = layers.get("physical") or []
-    present = [p for p in PROTOS if layers.get(p)]
+    present = [p for p in PROTOS if (p == "ripng" and any(l.get("unread") for l in phys)) or
+               any(ref["layer"] == p for l in phys for ref in l.get("adj") or []) or
+               (p != "ripng" and layers.get(p))]
     on = present if s["p"] is None else [p for p in s["p"] if p in present]
     links = [_link(l, layers, on, nodes) for l in phys] + _routing_only(layers, on, nodes)
-    segs = []
-    for seg in net.get("segments") or []:
-        item, members = _segment(seg, layers, on, nodes)
-        segs.append(item)
-        links += members
     weak = _weak(an, phys)
-    from modules import topology_positions
-    arranged = topology_positions.read(list_name)
     out.update(state="ok", errors=value.get("errors") or [], present=present, on=on,
-               layout=net.get("layout"), segments=segs, arranged=arranged,
+               layout=net.get("layout"),
                nodes=nodes,
                icon_of={name: _ICON[node_class(name, n)] for name, n in nodes.items()})
     fleet = sorted(n for n, v in nodes.items() if v.get("managed"))
     out["collapsed"] = len(fleet) > COLLAPSE_ABOVE
-    drawn = [l for l in links if not l.get("member")] + segs
     out["summary"] = {"devices": len(fleet),
                       "links": sum(1 for l in phys),
                       "outside": sum(1 for v in nodes.values() if v.get("outside")),
-                      "segments": len(segs),
-                      "ok": sum(1 for l in drawn if l["cls"] == "ok")}
-    out["attention"] = _attention(drawn, weak, s)
+                      "ok": sum(1 for l in links if l["cls"] == "ok")}
+    out["attention"] = _attention(links, weak, s)
     out["weak"] = weak
     out["critical"] = an.get("critical") or []
     out["list_groups"] = _list_groups(nodes, phys)
@@ -615,9 +481,9 @@ def view(list_name: str, values) -> dict:
     if s["out"]:
         out["what_if"] = what_if(phys, nodes, s["out"])
     out["matches"] = _search(nodes, phys, s["q"]) if s["q"] else []
-    out["selected"] = next((l for l in links + segs if l["id"] == s["sel"]), None)
+    out["selected"] = next((l for l in links if l["id"] == s["sel"]), None)
     if not out["collapsed"]:
-        out["svg"] = _svg(nodes, phys, links, weak, s, out, layers.get("bgp") or [], segs)
+        out["svg"] = _svg(nodes, phys, links, weak, s, out, layers.get("bgp") or [])
     return out
 
 
@@ -696,7 +562,7 @@ def _list_groups(nodes: dict, phys: list) -> list:
     edge = {l["a"] if l["b"] in outside else l["b"] for l in phys
             if (l["a"] in outside) != (l["b"] in outside)}
     groups = {}
-    for name in sorted(n for n, v in nodes.items() if not v.get("segment")):
+    for name in sorted(nodes):
         n = nodes.get(name) or {}
         mine = [l for l in phys if name in (l["a"], l["b"])]
         groups.setdefault(_band(name, n, edge), []).append({
@@ -714,7 +580,7 @@ def _search(nodes: dict, phys: list, q: str) -> list:
     "Find a device, address or interface"; the brief, Q19: it rings, never filters away)."""
     q = q.strip().lower()
     hits = set()
-    for name, n in ((k, v) for k, v in nodes.items() if not v.get("segment")):
+    for name, n in nodes.items():
         if q in name.lower() or q in (n.get("role") or "").lower() or \
                 any(q == addr.lower() or q in port.lower()
                     for port, addr in n.get("addresses") or []):
@@ -750,7 +616,7 @@ def _card_h(l: dict) -> int:
     return 60 + lines * 17 + (17 if l["none"] else 0)
 
 
-def _svg(nodes, phys, links, weak, s, view_, bgp=(), segs=()) -> dict:
+def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
     """The map's elements, positioned in its own coordinates: ``{"width", "height", "bands",
     "links", "nodes", "labels"}``; the template draws them and escapes every name."""
     from modules.readers.topology_graph import MANAGER
@@ -760,22 +626,11 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=(), segs=()) -> dict:
     geo = view_.get("layout") or layout(nodes, phys)
     geo = dict(geo, positions={k: tuple(v) for k, v in geo["positions"].items()})
     pos, height = geo["positions"], geo["height"]
-    # A layout people arranged and saved (C655) places every node it holds; the generated one
-    # places the rest.
-    saved = ((view_.get("arranged") or {}).get("positions") or {})
-    for name, xy in saved.items():
-        if name in pos:
-            pos[name] = (round(float(xy[0])), round(float(xy[1])))
-    width = max([W] + [x + 70 for x, _y in pos.values()])
-    height = max([height] + [y + 80 for _x, y in pos.values()])
     trace = view_.get("trace") or {}
     on_path = {tuple(e) for e in trace.get("edges") or []} if trace.get("ok") else set()
     wi = view_.get("what_if") or {}
     gone, lost = wi.get("device"), set(wi.get("lost") or [])
-    # Labels Auto (C654): ports and chips on hover or selection, every one zoomed in (150%
-    # and closer); On, always; Off, never. They are placed unless Off, for the hover.
-    labels = s["labels"] == "on" or (s["labels"] == "auto" and int(s["z"]) >= 150)
-    placed = s["labels"] != "off"
+    labels = s["labels"] == "on" or (s["labels"] == "auto" and int(s["z"]) >= 100)
     pairs = {}
     for l in links:
         pairs.setdefault(tuple(sorted((l["a"], l["b"]))), []).append(l["id"])
@@ -808,7 +663,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=(), segs=()) -> dict:
     # from the middle outward, that covers nothing placed: the worst links choose first.
     port_at = {}
     for l in links:
-        if l["id"] not in shapes or not placed or l.get("routing_only") or l.get("member"):
+        if l["id"] not in shapes or not labels or l.get("routing_only"):
             continue
         length = shapes[l["id"]][6]
         for end, port in (("a", l["port_a"]), ("b", l["port_b"])):
@@ -839,7 +694,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=(), segs=()) -> dict:
                 ax, ay = _bez(shapes[l["id"]], t)
                 mx, my = ax + dx, ay + dy
                 box = (mx - w / 2, my - h / 2 - 1, mx + w / 2, my + h / 2 + 1)
-                if box[0] < 0 or box[2] > width or box[1] < 0 or box[3] > height:
+                if box[0] < 0 or box[2] > W or box[1] < 0 or box[3] > height:
                     continue
                 hits = sum(1 for b in taken if _overlap(box, b))
                 if best is None or hits < best[0]:
@@ -871,7 +726,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=(), segs=()) -> dict:
         (hx1, hy1), (hx2, hy2) = _bez(shapes[l["id"]], 0.2), _bez(shapes[l["id"]], 0.8)
         hcx, hcy = _bez(shapes[l["id"]], 0.5)
         card_h = _card_h(l)
-        cx = min(max(mx + 14, 8), width - 328)
+        cx = min(max(mx + 14, 8), W - 328)
         cy = min(max(my + 14, 8), max(height - card_h - 4, 8))
         drawn.append(dict(l, d=f"M{x1:.0f} {y1:.0f}Q{cx_:.0f} {cy_:.0f} {x2:.0f} {y2:.0f}",
                           hit=f"M{hx1:.0f} {hy1:.0f}Q{hcx:.0f} {hcy:.0f} {hx2:.0f} {hy2:.0f}",
@@ -921,31 +776,11 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=(), segs=()) -> dict:
                           "island": any(t["cls"] == "isl" for t in tags.get(name, [])),
                           "spof": any(t["cls"] == "spof" for t in tags.get(name, [])),
                           "role": n.get("role") or "", "manager": name == MANAGER})
-    # Each segment: its node, its summary chips under it, its card (C654).
-    seg_out = []
-    for sg in segs:
-        if sg["id"] not in pos:
-            continue
-        x, y = pos[sg["id"]]
-        chips = []
-        for i, c in enumerate(sg["chips"]):
-            w = _chip_w(c["text"])
-            chips.append(dict(c, x=round(x - w / 2), y=round(y + 26 + i * 18), w=w,
-                              tx=round(x), ty=round(y + 38 + i * 18)))
-        card_h = _card_h(sg)
-        seg_out.append(dict(sg, x=round(x), y=round(y), chip_list=chips,
-                            w=max(len(sg["la"]) * 8 + 28, 80),
-                            card_x=round(min(max(x + 14, 8), width - 328)),
-                            card_y=round(min(max(y + 20, 8), max(height - card_h - 4, 8))),
-                            card_h=card_h, sel=sg["id"] == s["sel"]))
-    return {"width": round(width), "height": round(height), "links": drawn,
-            "nodes": [n for n in out_nodes if n["cls"] != "segment"], "segments": seg_out,
-            "labels": labels, "placed": placed, "z": s["z"],
-            "arranging": s.get("arrange") == "1"}
+    return {"width": W, "height": height, "bands": geo["bands"], "links": drawn,
+            "nodes": out_nodes, "labels": labels, "z": s["z"]}
 
 
 _ICON = {"router": "router", "switch": "switch", "l3switch": "switch", "server": "server",
-         "segment": "unknown",
          "external": "cloud", "unknown": "unknown"}
 
 
