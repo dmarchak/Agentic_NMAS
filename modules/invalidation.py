@@ -253,6 +253,7 @@ DECLARED = {
     "settings_v2.records_test": ("settings",),
     "settings_v2.records_replace": ("settings",),
     "settings_v2.records_store_apply": ("settings", "records"),
+    "network_v2.choose": ("active_list",),
     "settings_v2.install_save": ("settings",),
     "settings_v2.install_replace": ("settings",),
     "settings_v2.install_writes_off": ("settings",),

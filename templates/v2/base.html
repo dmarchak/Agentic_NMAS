@@ -65,7 +65,11 @@
     <button type="button" class="icon-btn menu-btn" aria-label="Open the menu" x-on:click="open">{{ icon('menu', 22) }}</button>
     {#- At phone width, where the sidebar is a drawer: the 32 px mark and the short name. -#}
     <span class="topbar-brand">{{ mercury_mark(brand.short, small=True) }}<span class="topbar-name">{{ brand.short }}</span></span>
-    <span class="net"><span class="net-label">Network</span> <strong>{{ list_name }}</strong></span>
+    {#- Board N: the network picker. Its list is read when it opens (routes/network_v2). -#}
+    <details class="net net-pick menu-wrap" data-keep="net-pick">
+      <summary title="Choose the network these pages show" hx-get="{{ url_for('network_v2.picker', next=request.path) }}" hx-trigger="click once" hx-target="#net-pick-list" hx-swap="innerHTML"><span class="net-label">Network</span> <strong>{{ list_name }}</strong></summary>
+      <div class="menu net-menu" id="net-pick-list"><p class="menu-note">Reading the networks…</p></div>
+    </details>
     <form class="jump" action="{{ url_for('device_v2.device', name='r') }}" method="get" data-base="{{ url_for('device_v2.device', name='r')[:-1] }}" x-on:submit.prevent="jump">
       {{ icon('search', 15) }}<input type="text" name="name" aria-label="Go to device" placeholder="Go to device by name" autocomplete="off" x-ref="jumpbox"><kbd>/</kbd>
     </form>

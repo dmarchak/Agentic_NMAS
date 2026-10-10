@@ -378,6 +378,7 @@ HISTORY = {
     "settings_v2.records_test": NOT_A_DEVICE,
     "settings_v2.records_replace": NOT_A_DEVICE,
     "settings_v2.records_store_apply": NOT_A_DEVICE,
+    "network_v2.choose": NOT_A_DEVICE,
     "settings_v2.install_save": NOT_A_DEVICE,
     "settings_v2.install_test": NOT_A_DEVICE,
     "settings_v2.install_replace": NOT_A_DEVICE,

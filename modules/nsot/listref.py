@@ -187,10 +187,43 @@ def active() -> ListRef:
     three defects above all looked like ordinary calls; `ListRef.active()`
     reads as a deliberate act, and a function that already holds a `ListRef`
     calling it is obviously wrong.
+
+    **On a v2 request it is the page's network** (board N, 2026-10-05): the
+    network its address names (``?list=``, refused before any view when there
+    is none), else the verified person's own choice (`network_choice`), else
+    the installation's current list. Anywhere else (a background job, today's
+    pages) it is the installation's current list, as before.
     """
     from modules.config import get_current_list_name
 
-    return resolve(get_current_list_name())
+    return resolve(_request_choice() or get_current_list_name())
+
+
+def active_name() -> str:
+    """`active()`'s NAME, building nothing: for a page that only draws it (the top bar), since
+    resolving a ref makes the list's folder (C638's first fix created one on every page)."""
+    from modules.config import get_current_list_name
+
+    return _request_choice() or get_current_list_name()
+
+
+def _request_choice() -> str:
+    """The network a v2 request is about, or "": read once per request."""
+    try:
+        from flask import g, has_request_context, request
+    except ImportError:
+        return ""
+    if not has_request_context() or not request.path.startswith("/v2/"):
+        return ""
+    if "network_choice" in g:
+        return g.network_choice
+    name = (request.args.get("list") or "").strip()
+    if not name:
+        from modules import network_choice
+
+        name = network_choice.for_request()
+    g.network_choice = name if name and exists(name) else ""
+    return g.network_choice
 
 
 def coerce(value) -> ListRef:

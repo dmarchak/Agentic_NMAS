@@ -1,0 +1,12 @@
+{#- Board N: the picker's list, recent networks first, each with its mode. Choosing one opens
+    the same kind of page for it (routes/network_v2.choose). -#}
+<ul class="net-pick-items" id="net-pick-items">
+  {%- for r in rows %}
+  <li><form method="post" action="{{ url_for('network_v2.choose') }}" hx-post="{{ url_for('network_v2.choose') }}">
+    <input type="hidden" name="name" value="{{ r.name }}"><input type="hidden" name="next" value="{{ next }}">
+    <button type="submit" class="net-row{% if r.name == current %} on{% endif %}"{% if r.name == current %} aria-current="true"{% endif %}><span class="grow">{{ r.name }}</span><span class="muted small">{% if r.recent %}recent · {% endif %}{{ r.mode }}</span></button>
+  </form></li>
+  {%- else %}
+  <li class="menu-note">No network's name holds that.</li>
+  {%- endfor %}
+</ul>

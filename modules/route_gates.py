@@ -174,6 +174,7 @@ GATES = {
     "settings_v2.records_test": _g(K, "tests the records database (six checks, a temporary row rolled back) and keeps its answer"),
     "settings_v2.records_replace": _g(K, "replaces Mercury's copy of the records database password (a secret), recorded, then tests it"),
     "settings_v2.records_store_apply": _g(K, "moves a record store to the records database or back (copy, switch, check), bound to its preview, recorded (Phase 4)"),
+    "network_v2.choose": _g(K, "records the verified person's own network choice (board N): what their pages show, never anyone else's"),
     "settings_v2.install_save": _g(K, "saves an Installation card's settings (NetBox connection, Proxmox, Commit author, Server) for every network, recorded (board F3)"),
     "settings_v2.install_test": _g(K, "tests an Installation card's service (NetBox, Proxmox) with its saved settings; changes nothing"),
     "settings_v2.install_replace": _g(K, "replaces an Installation card's token (a secret; Proxmox's with its id), recorded, then tests it"),

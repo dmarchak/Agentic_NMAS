@@ -1,0 +1,9 @@
+{#- Board N (approved 2026-10-05): the network picker's body, read when it is opened. A search
+    box and the list; the list alone is redrawn as the box is typed in. From
+    routes/network_v2.picker. -#}
+<div class="net-pick-body">
+  <input type="search" name="q" class="net-pick-search" aria-label="Find a network" placeholder="Find a network" autocomplete="off"
+         hx-get="{{ url_for('network_v2.picker_items', next=next) }}" hx-trigger="input changed delay:200ms, search" hx-target="#net-pick-items" hx-swap="outerHTML">
+  {% include "v2/_network_picker_items.html" %}
+  <p class="menu-note">Your choice is yours alone: it changes no one else's pages.</p>
+</div>

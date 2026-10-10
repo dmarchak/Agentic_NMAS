@@ -156,6 +156,27 @@ a { color: var(--accent); }
   gap: 16px; padding: 0 24px; position: sticky; top: 0; z-index: 10; }
 .net { font-size: 13px; white-space: nowrap; }
 .net-label { color: var(--ink-2); }
+/* Board N: the picker. A <details>, so it opens and closes with no script. */
+.net-pick > summary { cursor: pointer; list-style: none; }
+.net-pick > summary::-webkit-details-marker { display: none; }
+.net-pick > summary::after { content: " ▾"; color: var(--ink-2); }
+.net-pick:not([open]) .net-menu { display: none; }
+.net-menu { left: 0; right: auto; width: 320px; max-width: calc(100vw - 32px); white-space: normal; }
+.net-pick-search { width: 100%; margin-bottom: 4px; }
+.net-pick-items { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.net-row { display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 7px 8px; border: 0;
+  border-radius: var(--r); background: none; color: var(--ink); font: inherit; font-size: 13px; text-align: left;
+  cursor: pointer; }
+.net-row:hover, .net-row:focus-visible { background: var(--hover); }
+.net-row.on { background: var(--accent-soft); }
+/* At phone width the name is cut, never the list: the menu is the page's width (board N). */
+@media (max-width: 640px) {
+  .net.net-pick { overflow: visible; max-width: none; }
+  .net-pick > summary { display: inline-block; max-width: 28vw; overflow: hidden; text-overflow: ellipsis;
+    vertical-align: middle; }
+  .net-pick > summary::after { content: none; }   /* the bar's width is the screen's: the name is the cue */
+  .net-menu { position: fixed; top: 52px; left: 16px; right: 16px; width: auto; max-width: none; }
+}
 .jump { display: flex; align-items: center; gap: 8px; width: 300px; border: 1px solid var(--line); border-radius: var(--r);
   padding: 6px 10px; background: var(--surface-2); color: var(--ink-2); }
 .jump input { border: none; background: transparent; font: inherit; font-size: 13px; flex-grow: 1; min-width: 0; outline: none; color: var(--ink); }

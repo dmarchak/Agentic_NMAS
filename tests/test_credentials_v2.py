@@ -29,6 +29,11 @@ from tests.test_breakglass_export import DEVICES, LIST, PASS, VALUES, _export, l
 @pytest.fixture
 def page(lab, monkeypatch):  # noqa: F811
     monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == LIST)
+    # Lab exists as a registered network does, with its folder: a page naming it reads its
+    # ref (board N: the page's network is the one its address names), which never makes one.
+    folder = lab["dir"] / "lists" / "lab"
+    folder.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(folder))
     return lab
 
 

@@ -13,8 +13,9 @@ setting.
 
 Monitoring shows one network at a time, named in the page's title, and the address carries it
 (`/v2/monitoring?list=Branch`), so a copied link shows the same network to whoever opens it.
-With no network in the address, the page shows the active list. The Network menu lists every
-network. Choosing one opens that network's Monitoring.
+With no network in the address, the page shows the one you chose in the top bar's Network
+picker (the installation's current one until you choose). Choosing another there opens that
+network's Monitoring.
 
 Everything on the Dashboards tab is that network's:
 - its fleet dashboard (Fleet dashboard UID, in its settings);

@@ -23,6 +23,18 @@ Three operations connect them, and each moves exactly one record:
 - **Seed** moves intent from the golden, once, for a device that has no intent yet (see
   [Seed intent](seed)).
 
+## Which network you are looking at {#network}
+
+The top bar names the network every page shows: **Network** and its name. Opening it lists every
+network, your recent ones first, each with its mode (Default the base; standalone; inheriting;
+differing from Default), and a box to find one by name. Choosing one opens the same kind of page
+for that network, its address carrying `?list=`, so a copied link shows the same network to
+whoever opens it; from a device's page it opens that network's Devices.
+
+The choice is yours alone. It is remembered for you, as the verified person you signed in as,
+and never moves anyone else's pages: two people can look at two networks at once. A page whose
+address names a network shows that one, whatever you chose.
+
 ## Everything is read from what is committed
 
 Every reader takes intent and goldens as COMMITTED in git, never a file edited on the host's
