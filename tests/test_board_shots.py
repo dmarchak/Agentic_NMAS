@@ -12,6 +12,7 @@ refuses a board-built screen whose templates changed since their record.
 """
 
 import base64
+import json
 import functools
 import http.server
 import os
@@ -86,8 +87,25 @@ def test_topology(tmp_path, monkeypatch):
     if not browser.available()[0]:
         pytest.skip(browser.available()[1])
     (tmp_path / "lab").mkdir()
-    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    walked = os.environ.get("NMAS_BOARD_TOPOLOGY_DOC", "")
+    if walked:
+        # A walk: the reader's stored document as the host holds it (addresses taken out
+        # before it left the host), drawn for the network it names.
+        from modules import reader_job
+        with open(walked, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        name = next(iter(doc["last_good"]["value"]["networks"]))
+        os.makedirs(os.path.dirname(reader_job.store_path("topology-graph")), exist_ok=True)
+        with open(reader_job.store_path("topology-graph"), "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda n: n == name)
+        import app as A
+        with browser.Served(A.app) as served:
+            _shoot("topology-walk", "", lambda w: f"/v2/topology?list={name}", served,
+                   widths=((1440, 1.0), (390, 2.0)))
+        return
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     _store(_value())
     import app as A
     with browser.Served(A.app) as served:

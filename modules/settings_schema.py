@@ -197,6 +197,10 @@ DEFAULTS: dict = {
     "loki_bearer_token":     "",
     "loki_verify_tls":       True,
     "loki_selector_template": '{host="{ip}"}',
+    #: How long this network's Loki keeps logs, in days: what the Logs view says its range can
+    #: hold (C652; NSOT_STAGE7_PLAN 14.15). 90 is Loki's value before 14.15's host step; a store
+    #: kept longer is said here. It describes the store, so it changes when the store does.
+    "logs_retention_days": 90,
 
     # ── Oxidized ────────────────────────────────────────────────────────────
     # Read by nothing since Phase 3 retired Oxidized (P3-3): kept declared for one
@@ -731,6 +735,7 @@ SCHEMA: dict = {
         "loki_auth_mode": {"enum": ["none", "basic", "bearer"]},
         "loki_verify_tls": _BOOL,
         "loki_selector_template": _STR,
+        "logs_retention_days": {"type": "integer", "minimum": 1},
 
         "oxidized_url": _STR,
         "oxidized_node_identity": {"enum": ["hostname", "ip"]},

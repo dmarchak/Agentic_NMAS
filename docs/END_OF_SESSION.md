@@ -17,15 +17,23 @@ Templates › Coverage (8250677), Credentials › Profiles. No v2 page sends a p
 pages any more. CUTOVER's rows still PLANNED: the topology service, P.11, in steps: step 1, its reader, is built and walked on the
 host (629c7a8, C648 3f21f83 and 9571439; the host runs 9571439: physical 11 links as cabled,
 OSPF 16, OSPFv3 7, BGP 4, r6 the one island); r5 drawn as one outside peer and islands
-expected by declaration (30f8c1b); step 2, the page (layers, islands, single points of failure,
-path trace, the phone list), built and walked on the host (b79e335: 9 managed, r5 one outside
-peer, 11 links, r6 the one island to look at; BGP 4 sessions up to r5). For the operator, on the
-page (a verified person's act): Topology › Islands › r6 › Mark as expected…, with its reason.
-Then shared recorded positions (step 3), then time travel
+expected by declaration (30f8c1b); step 2, the page, first built from the
+boards' written description (b79e335), did not match the signed-off boards (C649, the operator,
+2026-10-10); REBUILT to TopoDesktop and TopoPhone (d720434): every link's ports and a chip per
+protocol with its area or peer AS and state, line styles against intent, icons in measured
+bands, Mercury's measured place, Needs attention on the map, the phone's tabs and sheet;
+compared region by region in docs/fidelity/topology.md, 11 deviations logged. The host walk
+found Mercury drawn attached through containerlab's shared address and as a path between
+devices (C653, fixed 57883db); walked again on 57883db: s3 Mercury's only way into seven
+devices, r6 apart on purpose (the operator marked it) and reached directly. C650's fidelity
+step is in place (tests/test_board_fidelity.py; 32 signed-off screens still to compare, the
+list only shrinks). Then shared recorded positions (step 3), then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
-in the records database); then DHCP (C529), boards L and M, C641,
-7.5 to 7.7, the 7.8 removals and the walk. Nothing deployed since the mode began: the walk at
-the end deploys and runs each.
+in the records database); then Logs, the queryable logs the sidebar should open (C652, the
+operator 2026-10-10; History › Query board C, AskLogs), with its fidelity record; then DHCP
+(C529) with its fidelity record, boards L and M, C641,
+7.5 to 7.7, the 7.8 removals and the walk. Since 2026-10-10 each change is deployed and walked
+on the host as it lands (Phase 7 mode); the walk at the end runs everything again.
 
 **Next, in order** (the operator's, 2026-10-09): receipts (Phase 4, Mercury's records in
 PostgreSQL); C630 (CUTOVER.md re-measured); C631 (the remote's set-up); the six cutover
