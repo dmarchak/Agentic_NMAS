@@ -221,6 +221,8 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn-primary:hover { background: var(--accent-ink); }
 .btn-outline { border-color: var(--accent); color: var(--accent); }
+/* A control that removes: its colour says so (it had no style, and drew as any button). */
+.btn-danger { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
 .btn-small { padding: 5px 10px; font-size: 13px; }
 .btn-select { padding: 6px 10px; font-size: 13px; font-weight: 400; }
 

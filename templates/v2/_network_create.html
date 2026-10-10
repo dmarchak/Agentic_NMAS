@@ -1,0 +1,33 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board I's pattern (networks live in Settings, decided 2026-10-05; drawn under the Phase 7 mode,
+    docs/STANDING_APPROVAL_LOG.md): New network…, opened from the scope bar's network menu in
+    place of the tab's body. The name, then a preview naming the folder it derives and what the
+    network starts with, then Create, bound to that preview. From modules/network_admin. -#}
+<section class="card set-card set-card-wide" id="network-create" aria-labelledby="h-network-create">
+  <div class="card-head"><h2 id="h-network-create">New network</h2></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not created:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if done %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Created {{ done.name }}</strong> ({{ done.folder }}), recorded in the installation's settings record. It inherits every group from Default and has no devices yet.</div></div>
+  <div class="set-foot"><a class="btn btn-primary btn-small" href="{{ url_for('settings_v2.network', list_name=done.name) }}">Open {{ done.name }}'s settings</a> <a class="btn btn-small" href="{{ url_for('v2.devices', list=done.name) }}">Its devices</a></div>
+  {%- elif pv and not pv.refused %}
+  <p>Create <strong>{{ pv.name }}</strong>: its records live in <span class="mono">{{ pv.folder }}</span> on this host. It starts with no devices, inherits every group of settings from Default, and its own Settings page offers the rest.</p>
+  <form class="set-foot set-form-note" method="post" action="{{ url_for('settings_v2.network_create') }}"
+        hx-post="{{ url_for('settings_v2.network_create') }}" hx-target="#network-create" hx-swap="outerHTML">
+    <input type="hidden" name="name" value="{{ pv.name }}"><input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Create {{ pv.name }}</span><span class="op-busy">Creating…</span></button>{{ how('settings-switch', 'create', op='creating a network') }}</span>
+    <a class="btn btn-small" href="{{ url_for('settings_v2.network_new') }}" hx-get="{{ url_for('settings_v2.network_new') }}" hx-target="#network-create" hx-swap="outerHTML">Change the name</a>
+  </form>
+  {%- else %}
+  {%- if pv and pv.refused %}<p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>{{ pv.refused }}.</span></p>{% endif %}
+  <form class="set-form" method="post" action="{{ url_for('settings_v2.network_create_preview') }}"
+        hx-post="{{ url_for('settings_v2.network_create_preview') }}" hx-target="#network-create" hx-swap="outerHTML">
+    <label for="f-net-name">Name</label>
+    <div><input id="f-net-name" name="name" type="text" value="{{ pv.name if pv else '' }}" autocomplete="off" required maxlength="50"><span class="set-origin">letters, digits, spaces, hyphens and underscores; 50 at most</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Preview</span><span class="op-busy">Checking…</span></button>{{ how('settings-switch', 'create', compact=True, op='creating a network') }}</span>
+    </div>
+  </form>
+  {%- endif %}
+</section>

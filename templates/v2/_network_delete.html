@@ -1,0 +1,36 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board I's pattern (decided 2026-10-05; drawn under the Phase 7 mode,
+    docs/STANDING_APPROVAL_LOG.md): Delete this network…, on a network's own Settings page (never
+    Default's). The preview counts what the network holds and says where its data goes (moved
+    aside, never erased); the confirm takes the name typed and the preview's fingerprint. From
+    modules/network_admin. -#}
+<section class="card set-card set-card-wide" id="network-delete" aria-labelledby="h-network-delete">
+  <div class="card-head"><h2 id="h-network-delete">Delete {{ name }}</h2></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not deleted:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if done %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>{{ done.name }} is deleted:</strong> {{ done.said }}. It has left every page; the deletion is recorded in the installation's settings record.</div></div>
+  <div class="set-foot"><a class="btn btn-small" href="{{ url_for('settings_v2.network', list_name='Default') }}">Default's settings</a></div>
+  {%- elif pv and pv.refused %}
+  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>{{ pv.refused }}.</span></p>
+  {%- elif pv %}
+  <p>Deleting <strong>{{ pv.name }}</strong> removes it from every page and every scheduled job. It holds {{ pv.devices }} device{{ '' if pv.devices == 1 else 's' }}, {{ pv.goldens }} committed golden{{ '' if pv.goldens == 1 else 's' }} and {{ pv.commits }} commit{{ '' if pv.commits == 1 else 's' }}{% if pv.remote %}, published to {{ pv.remote }} (the remote keeps its copy){% endif %}.</p>
+  <p><strong>Its data survives:</strong> its folder is moved to <span class="mono">{{ pv.goes_to }}</span> on this host, never erased. No device is contacted, and NetBox is not touched.</p>
+  <form class="set-form" method="post" action="{{ url_for('settings_v2.network_delete', list_name=pv.name) }}"
+        hx-post="{{ url_for('settings_v2.network_delete', list_name=pv.name) }}" hx-target="#network-delete" hx-swap="outerHTML">
+    <input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
+    <label for="f-net-typed">To delete it, type its name</label>
+    <div><input id="f-net-typed" name="typed" type="text" autocomplete="off" required placeholder="{{ pv.name }}"></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-danger btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Delete {{ pv.name }}</span><span class="op-busy">Deleting…</span></button>{{ how('settings-switch', 'delete', op='deleting a network') }}</span>
+    </div>
+  </form>
+  <div class="set-foot"><a class="btn btn-small" href="{{ url_for('settings_v2.network', list_name=pv.name, tab='network') }}" hx-get="{{ url_for('settings_v2.network_delete_card', list_name=pv.name) }}" hx-target="#network-delete" hx-swap="outerHTML">Cancel</a></div>
+  {%- else %}
+  <p class="muted small">Removes {{ name }} from every page; its data is moved aside on this host, never erased. A preview comes first.</p>
+  <div class="set-foot">
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="settings-switch" hx-post="{{ url_for('settings_v2.network_delete_preview', list_name=name) }}" hx-target="#network-delete" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Delete this network…</span><span class="op-busy">Counting…</span></button>{{ how('settings-switch', 'delete', op='deleting a network') }}</span>
+  </div>
+  {%- endif %}
+</section>

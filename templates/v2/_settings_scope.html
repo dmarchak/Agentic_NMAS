@@ -38,6 +38,7 @@
         <p class="scope-h">Settings unreadable · {{ s.unreadable | length }}</p>
         {%- for n in s.unreadable %}<a class="scope-row" href="{{ url_for('settings_v2.network', list_name=n) }}"><span>{{ n }}</span><small>its settings file could not be read</small></a>{% endfor %}
         {%- endif %}
+        <a class="scope-row" href="{{ url_for('settings_v2.network_new') }}" hx-get="{{ url_for('settings_v2.network_new') }}" hx-target="#tab-body" hx-swap="innerHTML"><span>New network…</span><small>a name, a preview, then Create</small></a>
       </div>
     </details>
   </div>

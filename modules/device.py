@@ -553,36 +553,68 @@ def set_current_device_list(list_name: str) -> bool:
     return True
 
 
+REMOVED_DIR = "lists_removed"
+
+
+def _lists_dir() -> str:
+    """The lists folder as configured NOW (read at the call, as every reader of a list's folder
+    reads it), never the value bound when this module was imported."""
+    from modules import config
+
+    return config.LISTS_DIR
+
+
+def removed_path(slug: str, now: float = None) -> str:
+    """Where a deleted network's folder is moved: beside the lists, dated in UTC, so nothing is
+    erased and two deletes of one name never collide."""
+    import time
+
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now if now is not None else time.time()))
+    base = os.path.join(os.path.dirname(_lists_dir()), REMOVED_DIR, f"{slug}-{stamp}")
+    path, n = base, 1
+    while os.path.exists(path):                       # two deletes in one second
+        n += 1
+        path = f"{base}-{n}"
+    return path
+
+
+def list_name_refusal(list_name: str, lists: dict = None) -> str:
+    """Why *list_name* cannot be a new network, or "". Its folder is DERIVED from its name
+    (`list_slug`), as every reader derives it, so a name whose folder another network has or
+    that already exists on disk is refused, naming it (C639: create used to append "_1", and
+    every reader then read the other folder)."""
+    name = (list_name or "").strip()
+    if not name:
+        return "List name cannot be empty"
+    if not re.match(r'^[\w\s\-]+$', name):
+        return "List name can only contain letters, numbers, spaces, hyphens, and underscores"
+    if len(name) > 50:
+        return "List name must be 50 characters or less"
+    lists = _load_device_lists_config().get("lists", {}) if lists is None else lists
+    for existing, slug in lists.items():
+        if existing.lower() == name.lower():
+            return f"A list named '{existing}' already exists"
+        if slug == list_slug(name) or list_slug(existing) == list_slug(name):
+            return (f"'{name}' would use the folder lists/{list_slug(name)}, which '{existing}' "
+                    "already uses: choose a name that differs in its letters or digits")
+    if os.path.exists(os.path.join(_lists_dir(), list_slug(name))):
+        return (f"the folder lists/{list_slug(name)} already exists and no network is registered "
+                "for it: it may hold a network's data, so it is not reused; move it aside first")
+    return ""
+
+
 @_holding_lists_lock
 def create_device_list(list_name: str) -> tuple[bool, str]:
-    """Create a new device list. Returns (success, message)."""
-    if not list_name or not list_name.strip():
-        return False, "List name cannot be empty"
-
-    list_name = list_name.strip()
-
-    if not re.match(r'^[\w\s\-]+$', list_name):
-        return False, "List name can only contain letters, numbers, spaces, hyphens, and underscores"
-
-    if len(list_name) > 50:
-        return False, "List name must be 50 characters or less"
-
+    """Create a new device list, its folder derived from its name. Returns (success, message)."""
     config = _load_device_lists_config()
     lists  = config.get("lists", {})
-
-    for existing in lists:
-        if existing.lower() == list_name.lower():
-            return False, f"A list named '{existing}' already exists"
-
-    # Ensure the slug is unique as a folder name
+    why = list_name_refusal(list_name, lists)
+    if why:
+        return False, why
+    list_name = list_name.strip()
     slug = list_slug(list_name)
-    counter = 1
-    base_slug = slug
-    while os.path.exists(os.path.join(LISTS_DIR, slug)):
-        slug = f"{base_slug}_{counter}"
-        counter += 1
 
-    list_dir = os.path.join(LISTS_DIR, slug)
+    list_dir = os.path.join(_lists_dir(), slug)
     os.makedirs(list_dir, exist_ok=True)
     _ensure_devices_csv(list_dir)
 
@@ -632,7 +664,7 @@ def delete_device_list(list_name: str) -> tuple[bool, str]:
         return False, "Cannot delete the last device list"
 
     slug     = lists[list_name]
-    list_dir = os.path.join(LISTS_DIR, slug)
+    list_dir = os.path.join(_lists_dir(), slug)
     # Never under a running operation (CONCURRENCY_AUDIT R38): refused, naming each, while a
     # device of the list is held or its drift run is in progress, by any process; checked
     # again under the list's repository lock, which every commit on the list takes, and the
@@ -640,23 +672,20 @@ def delete_device_list(list_name: str) -> tuple[bool, str]:
     busy = _list_busy(list_name)
     if busy:
         return False, busy
+    archive = ""
     if os.path.exists(list_dir):
-        import stat
-
         from modules.nsot.repo import repo_lock
-
-        def _force_remove(func, path, _exc):
-            # Windows marks some files read-only (e.g. golden config .cfg files);
-            # clear the attribute and retry the failed delete operation.
-            os.chmod(path, stat.S_IWRITE)
-            func(path)
 
         with repo_lock(os.path.join(list_dir, "config_repo")):
             busy = _list_busy(list_name)
             if busy:
                 return False, busy
-            shutil.rmtree(list_dir, onerror=_force_remove)
-        logger.info("Deleted list folder: %s", list_dir)
+            # Moved aside, never erased (the Phase 7 mode's choice, 2026-10-10): the network
+            # leaves every page and its data survives, dated, under lists_removed/.
+            archive = removed_path(slug)
+            os.makedirs(os.path.dirname(archive), mode=0o700, exist_ok=True)
+            shutil.move(list_dir, archive)
+        logger.info("Removed list folder %s to %s", list_dir, archive)
 
     del lists[list_name]
     config["lists"] = lists
@@ -666,50 +695,8 @@ def delete_device_list(list_name: str) -> tuple[bool, str]:
         logger.info("Switched current list to: %s", config["current_list"])
 
     _save_device_lists_config(config)
-    return True, f"Device list '{list_name}' deleted successfully"
+    if archive:
+        return True, (f"Device list '{list_name}' deleted; its data survives at "
+                      f"{os.path.relpath(archive, os.path.dirname(_lists_dir()))}")
+    return True, f"Device list '{list_name}' deleted; it had no folder"
 
-
-@_holding_lists_lock
-def rename_device_list(old_name: str, new_name: str) -> tuple[bool, str]:
-    """Rename a device list.
-
-    Returns a tuple of (success, message).
-    """
-    if not old_name or not new_name:
-        return False, "Both old and new names are required"
-
-    new_name = new_name.strip()
-
-    # Validate new name format
-    if not re.match(r'^[\w\s\-]+$', new_name):
-        return False, "List name can only contain letters, numbers, spaces, hyphens, and underscores"
-
-    if len(new_name) > 50:
-        return False, "List name must be 50 characters or less"
-
-    config = _load_device_lists_config()
-    lists = config.get("lists", {})
-    current = config.get("current_list", "Default")
-
-    if old_name not in lists:
-        return False, f"List '{old_name}' not found"
-
-    # Check if new name already exists (case-insensitive, excluding current)
-    for existing_name in lists.keys():
-        if existing_name.lower() == new_name.lower() and existing_name != old_name:
-            return False, f"A list named '{existing_name}' already exists"
-
-    # Keep the same folder slug — only the display name changes
-    slug = lists[old_name]
-    del lists[old_name]
-    lists[new_name] = slug
-    config["lists"] = lists
-
-    # Update current if needed
-    if current == old_name:
-        config["current_list"] = new_name
-
-    _save_device_lists_config(config)
-
-    logger.info(f"Renamed device list: {old_name} -> {new_name}")
-    return True, f"Device list renamed to '{new_name}'"

@@ -126,5 +126,7 @@ def test_the_folder_is_removed_inside_the_lists_repository_lock():
               if isinstance(n, ast.FunctionDef) and n.name == "delete_device_list")
     withs = [w for w in ast.walk(fn) if isinstance(w, ast.With)
              and any("repo_lock" in ast.unparse(i.context_expr) for i in w.items)]
-    assert any("rmtree" in ast.unparse(s) for w in withs for s in w.body), \
-        "rmtree is not inside the list's repository lock"
+    # The folder leaves inside the lock: moved aside to lists_removed/ since 2026-10-10 (the
+    # data survives), erased before that.
+    assert any("shutil.move(list_dir" in ast.unparse(s) for w in withs for s in w.body), \
+        "the folder is not moved aside inside the list's repository lock"

@@ -77,6 +77,11 @@ NOT_AN_OPERATION = {
     ("_install_platforms_preview.html", "Cancel"): "puts the map cards back, saving nothing",
     ("_records_stores.html", "Cancel"): "puts the record stores back, moving nothing",
     ("_remote_setup.html", "Close"): "closes the remote set-up card, recording nothing",
+    ("_network_create.html", "Change the name"): "puts the name's form back, creating nothing",
+    ("_network_create.html", "Open 's settings"): "opens the new network's Settings page, a read",
+    ("_network_create.html", "Its devices"): "opens the new network's Devices, a read",
+    ("_network_delete.html", "Cancel"): "puts the Delete card back, deleting nothing",
+    ("_network_delete.html", "Default's settings"): "opens Default's Settings page, a read",
     ("_history_remote.html", "btn btn-small"): "Set up the remote… / Remote set-up…: opens the "
                                                "set-up card, a read; each act in it carries its link",
     ("_records_stores.html", "Close"): "puts the record stores back after a move's result, a read",

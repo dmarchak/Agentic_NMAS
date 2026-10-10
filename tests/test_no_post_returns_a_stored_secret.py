@@ -74,6 +74,12 @@ def _bodies(v):
         "remote_v2.publication": (409, ("form", {"list": LIST}),
                                   "the planted list has no remote: refused naming it, reading "
                                   "no history"),
+        "settings_v2.network_create_preview": (200, ("form", {"name": "Swept Net"}),
+                                               "a new network's preview: its folder named, "
+                                               "nothing created"),
+        "settings_v2.network_delete_preview": (200, ("form", {}),
+                                               "the planted network's delete preview: its "
+                                               "counts and where its data would go, nothing moved"),
         "settings_v2.records_store_preview": (404, ("form", {}),
                                               "the direction filled in ('zz') is neither move "
                                               "nor back: refused naming both, counting nothing"),

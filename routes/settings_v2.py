@@ -134,6 +134,74 @@ def records_replace():
     return _records(replaced=out, tested=out["tested"])
 
 
+# ── Networks: create and delete (board I's pattern; networks live in Settings) ─────────────
+
+def _net_card(template: str, code: int = 200, **ctx):
+    return _fragment(template, code, **ctx)
+
+
+@bp.route("/networks/new", methods=["GET"])
+def network_new():
+    """New network…: the name's form, in place of the tab's body."""
+    return _net_card("v2/_network_create.html")
+
+
+@bp.route("/networks/new/preview", methods=["POST"])
+def network_create_preview():
+    """What Create would make: the folder its name derives, or why it cannot; writes nothing."""
+    from modules import network_admin as NA
+
+    return _net_card("v2/_network_create.html", pv=NA.create_preview(request.form.get("name", "")))
+
+
+@bp.route("/networks/new", methods=["POST"])
+def network_create():
+    """Create the network as previewed, recorded as the verified person."""
+    from modules import identity
+    from modules import network_admin as NA
+
+    try:
+        done = NA.create(request.form.get("name", ""), request.form.get("fingerprint", ""),
+                         identity.request_actor(), _verified())
+    except NA.Refused as exc:
+        return _net_card("v2/_network_create.html", 409, refused=str(exc),
+                         pv=NA.create_preview(request.form.get("name", "")))
+    return _net_card("v2/_network_create.html", done=done)
+
+
+@bp.route("/network/<list_name>/delete", methods=["GET"])
+def network_delete_card(list_name):
+    """The network's Delete card at rest (Cancel)."""
+    return _net_card("v2/_network_delete.html", name=list_name)
+
+
+@bp.route("/network/<list_name>/delete/preview", methods=["POST"])
+def network_delete_preview(list_name):
+    """What deleting the network removes, and where its data goes; writes nothing."""
+    from modules import network_admin as NA
+
+    try:
+        pv = NA.delete_preview(list_name)
+    except NA.Refused as exc:
+        return _net_card("v2/_network_delete.html", 404, name=list_name, refused=str(exc))
+    return _net_card("v2/_network_delete.html", name=list_name, pv=pv)
+
+
+@bp.route("/network/<list_name>/delete", methods=["POST"])
+def network_delete(list_name):
+    """Delete the network as previewed: its name typed, the preview's fingerprint."""
+    from modules import identity
+    from modules import network_admin as NA
+
+    try:
+        done = NA.delete(list_name, request.form.get("typed", ""),
+                         request.form.get("fingerprint", ""), identity.request_actor(),
+                         _verified())
+    except NA.Refused as exc:
+        return _net_card("v2/_network_delete.html", 409, name=list_name, refused=str(exc))
+    return _net_card("v2/_network_delete.html", name=list_name, done=done)
+
+
 # ── Phase 4: the record stores, moved to the records database and back ────────────────────
 
 DIRECTIONS = ("move", "back")

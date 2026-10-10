@@ -28,6 +28,44 @@ A card whose values are set here (each of Default's cards, and a network's group
 
 **Test** asks the integration the card configures, with the values saved (save first: it tests what is stored, not what is typed). It changes no setting. The result is drawn in the card, passed or failed with what the service answered. The S3 archive's Test asks four things in order and names the first that fails: its bucket answers, a probe object is written, read back byte for byte, and its size stated. The probe is overwritten each time and never deleted, since Mercury's key cannot delete. The status bar and Needs attention ask the S3 archive only whether its bucket answers, and write nothing.
 
+## Create a network {#create}
+
+**New network…**, at the foot of the scope bar's network menu, opens in place of the page's tabs:
+a name, a preview, then **Create**.
+
+1. `check`: the name is checked as the folder it derives (`lists/<name in lower case>`). Read:
+   the networks registered and the folders on this host. Sent: nothing. Recorded: nothing. A
+   name another network has, a name whose folder another network uses ("Lab 3" and "Lab-3"
+   share `lab_3`), or a folder that already exists with no network registered for it is
+   refused, naming it: every page finds a network's records by that folder, so a second name
+   for it would read another network's data.
+2. `create`: the network is registered with an empty inventory on this host. It inherits every
+   group of settings from Default; its Settings page offers the rest. Sent: nothing to any
+   device or service.
+3. `record`: who, how that was established, when and the name, in the installation's settings
+   record.
+
+## Delete a network {#delete}
+
+**Delete this network…**, on a network's own Settings page (Network tab; never Default's, the
+base layer), opens a preview: the devices, committed goldens and commits it holds, its remote if
+it has one, and where its data goes. To delete it, type its name.
+
+1. `check`: the preview is read again and compared. Read: the network's inventory, its
+   repository and its remote record, and whether any of its devices is held or its drift run is
+   in progress. Sent: nothing. A name typed differently, a preview out of date, or an operation
+   running on the network refuses, naming it, and nothing changes.
+2. `move`: its folder is moved to `lists_removed/<folder>-<UTC time>` beside the networks,
+   inside its repository's lock. **Nothing is erased:** its goldens, intent, receipts and
+   history survive there, and its remote, if it has one, keeps its copy.
+3. `unregister`: the network leaves every page and every scheduled job. A person who had chosen
+   it in the Network picker sees the installation's network instead.
+4. `record`: who, how that was established, when and the name, in the installation's settings
+   record. No device is contacted, and NetBox is not touched.
+
+Renaming a network is not offered: every page finds a network's records by the folder its name
+derives, so a rename must move the folder and every record that names the network (C639).
+
 ## What a switch does not do
 
 - It contacts no device and changes no configuration.
