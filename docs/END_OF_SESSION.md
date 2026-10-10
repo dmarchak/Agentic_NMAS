@@ -18,7 +18,10 @@ pages any more. CUTOVER's rows still PLANNED: the topology service, P.11, in ste
 host (629c7a8, C648 3f21f83 and 9571439; the host runs 9571439: physical 11 links as cabled,
 OSPF 16, OSPFv3 7, BGP 4, r6 the one island); r5 drawn as one outside peer and islands
 expected by declaration (30f8c1b); step 2, the page (layers, islands, single points of failure,
-path trace, the phone list), built; then shared recorded positions, then time travel
+path trace, the phone list), built and walked on the host (b79e335: 9 managed, r5 one outside
+peer, 11 links, r6 the one island to look at; BGP 4 sessions up to r5). For the operator, on the
+page (a verified person's act): Topology › Islands › r6 › Mark as expected…, with its reason.
+Then shared recorded positions (step 3), then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
 in the records database); then DHCP (C529), boards L and M, C641,
 7.5 to 7.7, the 7.8 removals and the walk. Nothing deployed since the mode began: the walk at
