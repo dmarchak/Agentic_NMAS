@@ -27,6 +27,6 @@ OTHER_GAPS = {
                      "signed off (C569)",
 }
 
-#: The count when this list was written (2026-10-08; Capture's Edit intent and Remove lines
-#: moved to v2 the same day); it may only fall.
-CEILING = 8
+#: The list's count; it may only fall, and it falls with the gap that closes (C629: closing
+#: installation_settings left it at 8 over 7, room for one gap to come back unseen).
+CEILING = 7

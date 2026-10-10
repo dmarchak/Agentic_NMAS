@@ -96,6 +96,8 @@ class TestEveryV2Template:
             used |= set(GAP.findall(open(f, encoding="utf-8").read()))
         assert used == set(T.GAPS), (sorted(set(T.GAPS) - used), sorted(used - set(T.GAPS)))
         assert len(T.GAPS) <= T.CEILING
+        # Tight, never slack: a closed gap lowers the ceiling in the same change (C629).
+        assert len(T.GAPS) == T.CEILING, f"a gap closed: lower CEILING to {len(T.GAPS)}"
 
     def test_the_scan_names_each_planted_case(self):
         """The control: an unlabelled v1 link, a label naming no gap, a labelled link whose

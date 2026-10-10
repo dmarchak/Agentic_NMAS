@@ -3185,6 +3185,39 @@ The landing page drew every section 1a source from stored or cached values, each
 5. **Numbers.** Seven commits, f1863ba (03:59 local, UTC-6) to f66e8ee (04:42), then 61a914a (C291) and a924db5 (C292) by 05:04, about 45 minutes of commits after the Devices list's build began in the session before it. Every new check carries a control that fails only the test aimed at it (twelve controls across the seven). The fixtures are real answers captured read-only from the host (Prometheus, Loki, NetBox), the host's own addresses replaced. **No forecast was made for step 4**, so there is nothing to check; the page-per-tab rate here (one tab in 6 to 10 minutes of commit time, on a pattern the spike established) is the measurement the next forecast should start from. Not recoverable: when the Devices list's build began (the session was summarised before its first commit).
 6. **Where it left the product.** The v2 device page draws every tab but Ask the device, which sends commands to a device and waits for a session with the operator awake. Needs attention names a down adjacency. None of it is deployed yet.
 
+#### 7.D — Settings › Installation (boards F2 to F4)
+
+*Written at close, 2026-10-10 (UTC), the turn its last tab was committed.*
+
+1. **What it was.** The installation's own settings, the ones that hold for every network, lived only on today's Settings modal. Board F (P.8) gave them a v2 page of six tabs. F2 (the Records database card), F3 (the NetBox connection, Proxmox, Commit author and Server cards; the TFTP root retired, C616) and F4 (AI and workflow, Diagnostics, Access and identity, Platforms and roles) were each signed off before their build. F4's Platforms and roles carries the operator's validation: a driver is chosen from the drivers Mercury supports, Save previews the devices it moves, and Test opens one read-only session to one of them through the new driver.
+2. **How it was implemented.** One page, `settings_installation.html`, with a tab per board section, each a fragment under the strict policy.
+   - **The cards** (`modules/installation_settings.py`): Save writes what changed and records the field names, never values. Test draws the service's own answer. Replace stores a secret without drawing or recording it and tests at once. Turn off is NetBox writes' only control here.
+   - **Diagnostics** (`modules/installation_diagnostics.py`): redaction measured by a canary through every log handler; one drift schedule, Check now, and the run's announcement; what is in flight across every network (`modules/in_flight.py`, now also the operations route's reader); the app's own log tail (`modules/app_log.py`, now also `/logs/server`'s).
+   - **Access and identity** is read-only. Its one control, Record this decision, writes the value in force into the installation's settings record (C625).
+   - **Platforms and roles** (`modules/platform_maps.py`): a preview from each NetBox network's last inventory, never a refresh; a Test through `reads.start` with a per-device driver override; a confirm bound to the preview's fingerprint.
+3. **Issues encountered.**
+   - A network card's save stored an installation secret sent to the Default network, then answered 404 (C615).
+   - Nine texts sent a person to today's Settings > Integrations (C617). One of them was this build's own, claiming an editor that never existed.
+   - `cf_access_jwks_ttl` 0 was read as 3600, while meaning "keep for ever" (C621).
+   - The platform and role maps had no screen anywhere (C622). A new platform's dialect was stored as a template folder (C628).
+   - Redaction's health was measured and drawn nowhere (C624). Ratifying a gate was only an app-log line (C625).
+   - Mid-build, the laptop's /tmp ran out of inodes from the suite's leftover folders. Unrelated tests failed "No space left" (C627).
+   - The revert's one-shot TFTP and the ZTP responder cannot share udp/69 (C618). Binding one address does not separate them, as measured in a network namespace.
+4. **How they were resolved.**
+   - C615 is refused before anything is written.
+   - C617 is closed by a parsed scan of `modules/` and `routes/` with a planted case.
+   - C621 is bounded to 300 s to a day, the reason on the field.
+   - C622, C624, C625 and C628 were closed by the tabs that draw them.
+   - C618's design 2 is signed off and waits for its build. C627 is registered UNKNOWN, to be measured for a week.
+   - C619 (v2 cannot turn NetBox writes on), C620, C623 and C626 stay open, each placed in the register.
+5. **Numbers.**
+   - Seven build commits, 6dcd8c3 (12:58 UTC−6, 2026-10-09) to 441f977 (19:43), with three register commits among them. The C614 CI split and C615's fix also landed in that span, so its 6 h 45 min of commit time is not this page's alone.
+   - 47 tests in `tests/test_installation_settings.py` (Condition 2 against a real PostgreSQL 18), and the six tabs in the browser layout test.
+   - Eleven controls from F2 part 2 to F4, each failing its aimed test.
+   - Findings: C615, C617, C621, C622, C624, C625 and C628 closed; C616, C618, C619, C620, C623, C626 and C627 open or waiting.
+   - **Estimate versus actual:** no forecast was made. Measured here: F4's four tabs took 8, 42, 9 and 17 minutes of commit time after its sign-off commit (6a09233, 18:27), the longest the one with a new module and a Needs attention source. That rate is the basis for a forecast of the next settings-kind screen.
+6. **Where it left the product.** Every installation setting is on v2: drawn, or read-only with its reason. `installation_settings` has left the cutover's gap list (`tests/todays_page_links.py`). None of it is deployed yet.
+
 ## Part III. Side campaigns
 
 Threads that ran across stages rather than inside one: each started from one finding and followed its class. Their commits interleave with the stages', so each entry states the rule that selected them.
