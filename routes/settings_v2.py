@@ -202,6 +202,58 @@ def network_delete(list_name):
     return _net_card("v2/_network_delete.html", name=list_name, done=done)
 
 
+# ── A network's inventory source ────────────────────────────────────────────────────────────
+
+def _source(list_name: str, code: int = 200, **ctx):
+    from modules import network_source as NS
+
+    return _fragment("v2/_network_source.html", code, src=NS.view(list_name), **ctx)
+
+
+@bp.route("/network/<list_name>/source", methods=["GET"])
+def network_source(list_name):
+    """The Inventory source card at rest (Cancel)."""
+    return _source(list_name)
+
+
+@bp.route("/network/<list_name>/source/preview", methods=["POST"])
+def network_source_preview(list_name):
+    """What changing the source does, NetBox read once with the new filters; writes nothing."""
+    from modules import network_source as NS
+
+    try:
+        pv = NS.preview(list_name, request.form)
+    except NS.Refused as exc:
+        return _source(list_name, 409, refused=str(exc))
+    return _source(list_name, pv=pv)
+
+
+@bp.route("/network/<list_name>/source", methods=["POST"])
+def network_source_apply(list_name):
+    """The change as previewed: written, the inventory refreshed, recorded."""
+    from modules import identity
+    from modules import network_source as NS
+
+    try:
+        done = NS.apply(list_name, request.form, request.form.get("fingerprint", ""),
+                        identity.request_actor(), _verified())
+    except NS.Refused as exc:
+        return _source(list_name, 409, refused=str(exc))
+    return _source(list_name, done=done)
+
+
+@bp.route("/network/<list_name>/source/refresh", methods=["POST"])
+def network_source_refresh(list_name):
+    """Refresh now: NetBox read for this network now, as the schedule does anyway."""
+    from modules import network_source as NS
+
+    try:
+        got = NS.refresh(list_name)
+    except NS.Refused as exc:
+        return _source(list_name, 409, refused=str(exc))
+    return _source(list_name, refreshed=got)
+
+
 # ── Phase 4: the record stores, moved to the records database and back ────────────────────
 
 DIRECTIONS = ("move", "back")
@@ -540,7 +592,11 @@ def network(list_name):
     from modules import settings_page
 
     v = settings_page.network_view(list_name, request.args.get("tab") or "integrations")
-    return _page("v2/settings.html", v=v, list_name=list_name)
+    src = None
+    if v.get("tab") == "network" and not v.get("error"):
+        from modules import network_source as NS
+        src = NS.view(list_name)
+    return _page("v2/settings.html", v=v, list_name=list_name, src=src)
 
 
 @bp.route("/network/<list_name>/group/<group>", methods=["GET"])

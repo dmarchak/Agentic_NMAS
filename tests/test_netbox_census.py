@@ -39,6 +39,17 @@ def census():
     return mod
 
 
+@pytest.fixture(autouse=True)
+def records(tmp_path, monkeypatch):
+    """Each test's own NetBox provenance records (tests/test_device_netbox's pattern): the
+    census reports what NMAS modified from `netbox_modified.json`, and the suite's shared data
+    folder holds whatever an earlier test's NetBox sync wrote there (2026-10-10: six tests
+    failed on another test's entry once the shards were rebalanced)."""
+    from modules import netbox_guard
+    for name in ("_CREATED_IDS_FILE", "_MODIFIED_FILE", "_ADOPTED_FILE"):
+        monkeypatch.setattr(netbox_guard, name, str(tmp_path / f"{name.strip('_').lower()}.json"))
+
+
 def _snapshot(**types):
     """``{name: (objects, tagged_objects)}`` → a census-shaped dict."""
     return {"tag": "nmas-managed",

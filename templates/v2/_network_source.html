@@ -1,0 +1,68 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- A network's inventory source (CUTOVER: the network's Settings page; drawn under the Phase 7
+    mode, docs/STANDING_APPROVAL_LOG.md): where its devices come from and how fresh they are; a
+    change previewed (NetBox read once with the new filters: how many devices, how many skipped
+    and why) and confirmed against that preview; Refresh now for a NetBox network. From
+    modules/network_source. -#}
+{%- set s = src -%}
+<section class="card set-card set-card-wide" id="network-source" aria-labelledby="h-network-source">
+  <div class="card-head"><h2 id="h-network-source">Inventory source</h2>{{ badge('NetBox' if s.source == 'netbox' else 'its own list', 'neutral') }}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not changed:</strong> {{ refused }}. Nothing was changed.</div></div>
+  {%- endif %}
+  {%- if done %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Saved:</strong> {{ s.network }}'s devices now come from {{ 'NetBox' if done.to.source == 'netbox' else 'its own list on this host' }}{% if done.to.source == 'netbox' %}, being read now{% endif %}; recorded in the installation's settings record.</div></div>
+  {%- endif %}
+  {%- if refreshed %}
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>Read from NetBox now:</strong> {{ refreshed.count }} device{{ '' if refreshed.count == 1 else 's' }}, {{ refreshed.skipped }} skipped, {{ refreshed.warnings }} warning{{ '' if refreshed.warnings == 1 else 's' }}.</div></div>
+  {%- endif %}
+  {%- if pv %}
+  {%- set to = pv.to %}
+  <p>From <strong>{{ 'NetBox' if pv.now.source == 'netbox' else 'its own list' }}</strong> to <strong>{{ 'NetBox' if to.source == 'netbox' else 'its own list' }}</strong>{% if to.source == 'netbox' %}, filtered by {% for k, v in to.filters.items() if v %}{{ k }} <span class="mono">{{ v }}</span>{% if not loop.last %}, {% endif %}{% endfor %}, read every {{ to.refresh_interval }} s{% if to.credential_list %}, credentials from {{ to.credential_list }}{% else %}, credentials from profiles only{% endif %}{% endif %}.</p>
+  {%- if to.source == 'netbox' and pv.would %}
+  {%- if pv.would.error %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>NetBox could not be read with these filters: {{ pv.would.error }}. Saving would leave {{ s.network }} with no devices until it answers.</span></p>
+  {%- else %}
+  <p>NetBox holds <strong>{{ pv.would.count }}</strong> device{{ '' if pv.would.count == 1 else 's' }} for these filters{% if pv.would.names %} ({{ pv.would.names | join(', ') }}{% if pv.would.count > pv.would.names | length %} and {{ pv.would.count - pv.would.names | length }} more{% endif %}){% endif %}{% if pv.would.skipped_count %}, and {{ pv.would.skipped_count }} would be skipped: {% for k in pv.would.skipped %}{{ k.name }} ({{ k.why }}){% if not loop.last %}; {% endif %}{% endfor %}{% endif %}.</p>
+  {%- endif %}
+  {%- elif to.source == 'local' %}
+  <p>Its own list on this host holds {{ pv.now.local_count }} device{{ '' if pv.now.local_count == 1 else 's' }}{% if pv.now.source == 'netbox' %}; NetBox's inventory for it is no longer read{% endif %}.</p>
+  {%- endif %}
+  <form class="set-foot set-form-note" method="post" action="{{ url_for('settings_v2.network_source_apply', list_name=s.network) }}"
+        hx-post="{{ url_for('settings_v2.network_source_apply', list_name=s.network) }}" hx-target="#network-source" hx-swap="outerHTML">
+    <input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}"><input type="hidden" name="source" value="{{ to.source }}">
+    {%- for k, v in to.filters.items() %}<input type="hidden" name="filter_{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="credential_list" value="{{ to.credential_list }}"><input type="hidden" name="refresh_interval" value="{{ to.refresh_interval }}">
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Save the source</span><span class="op-busy">Saving…</span></button>{{ how('settings-switch', 'source', op='changing the inventory source') }}</span>
+  </form>
+  <div class="set-foot"><a class="btn btn-small" href="{{ url_for('settings_v2.network', list_name=s.network, tab='network') }}" hx-get="{{ url_for('settings_v2.network_source', list_name=s.network) }}" hx-target="#network-source" hx-swap="outerHTML">Cancel</a></div>
+  {%- else %}
+  {%- if s.source == 'netbox' %}
+  <p>Its devices come from NetBox, filtered by {% for k, v in s.filters.items() if v %}{{ k }} <span class="mono">{{ v }}</span>{% if not loop.last %}, {% endif %}{% else %}nothing{% endfor %}; read every {{ s.refresh_interval }} s; credentials {% if s.credential_list %}from {{ s.credential_list }}{% else %}from profiles only{% endif %}.</p>
+  {%- if s.status %}<p class="small">{% if s.status.error %}{{ badge('stale', 'warn') }} {{ s.status.error }}. {% endif %}{{ s.status.count }} device{{ '' if s.status.count == 1 else 's' }}, {{ s.status.skipped }} skipped{% if s.status.fetched_at %}, read {{ stamp(s.status.fetched_at) }}{% else %}, not read yet{% endif %}.</p>{% endif %}
+  {%- else %}
+  <p>Its devices are its own list on this host: {{ s.local_count }} device{{ '' if s.local_count == 1 else 's' }}.</p>
+  {%- endif %}
+  <form class="set-form" method="post" action="{{ url_for('settings_v2.network_source_preview', list_name=s.network) }}"
+        hx-post="{{ url_for('settings_v2.network_source_preview', list_name=s.network) }}" hx-target="#network-source" hx-swap="outerHTML">
+    <label for="f-src">Devices come from</label>
+    <div><select id="f-src" name="source"><option value="local"{% if s.source == 'local' %} selected{% endif %}>its own list on this host</option><option value="netbox"{% if s.source == 'netbox' %} selected{% endif %}>NetBox, filtered</option></select></div>
+    {%- for k in ('site', 'role', 'tag', 'status') %}
+    <label for="f-src-{{ k }}">NetBox {{ k }}</label>
+    <div><input id="f-src-{{ k }}" name="filter_{{ k }}" class="mono" type="text" value="{{ s.filters.get(k, '') }}" autocomplete="off"><span class="set-origin">a slug, or empty for no filter</span></div>
+    {%- endfor %}
+    <label for="f-src-cred">Credentials from</label>
+    <div><select id="f-src-cred" name="credential_list"><option value="">profiles only</option>{% for n in s.credential_choices %}<option{% if n == s.credential_list %} selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
+    <label for="f-src-every">Read NetBox every</label>
+    <div><input id="f-src-every" name="refresh_interval" type="number" min="{{ s.bounds[0] }}" max="{{ s.bounds[1] }}" value="{{ s.refresh_interval }}"><span class="set-origin">seconds, {{ s.bounds[0] }} to {{ s.bounds[1] }}</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Preview the change</span><span class="op-busy">Reading NetBox…</span></button>{{ how('settings-switch', 'source', op='changing the inventory source') }}</span>
+    </div>
+  </form>
+  {%- if s.source == 'netbox' %}
+  <div class="set-foot">
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="settings-switch" hx-post="{{ url_for('settings_v2.network_source_refresh', list_name=s.network) }}" hx-target="#network-source" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Refresh now</span><span class="op-busy">Reading NetBox…</span></button>{{ how('settings-switch', 'source', compact=True, op='reading NetBox now') }}</span>
+  </div>
+  {%- endif %}
+  {%- endif %}
+</section>

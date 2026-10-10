@@ -81,6 +81,7 @@ NOT_AN_OPERATION = {
     ("_network_create.html", "Open 's settings"): "opens the new network's Settings page, a read",
     ("_network_create.html", "Its devices"): "opens the new network's Devices, a read",
     ("_network_delete.html", "Cancel"): "puts the Delete card back, deleting nothing",
+    ("_network_source.html", "Cancel"): "puts the Inventory source card back, changing nothing",
     ("_network_delete.html", "Default's settings"): "opens Default's Settings page, a read",
     ("_history_remote.html", "btn btn-small"): "Set up the remote… / Remote set-up…: opens the "
                                                "set-up card, a read; each act in it carries its link",

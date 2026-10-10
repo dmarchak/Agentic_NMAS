@@ -63,6 +63,29 @@ it has one, and where its data goes. To delete it, type its name.
 4. `record`: who, how that was established, when and the name, in the installation's settings
    record. No device is contacted, and NetBox is not touched.
 
+## Where a network's devices come from {#source}
+
+**Inventory source**, on every network's Network tab, says where its devices come from: its own
+list on this host, or NetBox, through filters (site, role, tag, status), with the network whose
+list its NetBox devices take credentials from, and how often NetBox is read again (60 s to a
+day). **Preview the change**, then **Save the source**; **Refresh now** reads NetBox for a
+NetBox network at once, as the schedule does anyway.
+
+1. `check`: the change is checked and previewed. Read: the source as configured and, for NetBox,
+   NetBox itself once with the new filters, through the inventory's own fetch: how many devices
+   it holds for them, and which would be skipped and why (no address, no platform Mercury
+   knows). Sent: nothing anywhere. A filter that is not a NetBox slug, a credential network
+   that is not one with its own list, an interval out of bounds, or NetBox with no filter at
+   all (every device NetBox holds) is refused, naming it. The confirm carries the preview's
+   fingerprint and is refused, naming both, if the source changed since.
+2. `write`: the network's source file is written.
+3. `refresh`: its cached inventory is dropped, and for NetBox read again now, so every page
+   shows the new devices.
+4. `record`: who, how that was established, when, the network and its new source, in the
+   installation's settings record. Nothing is written to NetBox; no device is contacted. A
+   network's own list on this host is kept when it moves to NetBox, and read again if it moves
+   back.
+
 Renaming a network is not offered: every page finds a network's records by the folder its name
 derives, so a rename must move the folder and every record that names the network (C639).
 
