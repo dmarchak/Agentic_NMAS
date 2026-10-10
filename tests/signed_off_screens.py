@@ -98,7 +98,8 @@ SIGNED_OFF = {
                                     "with each group's three-way choice and its previewed "
                                     "switch (A, B, C, I, J2), the mode and its switch (J1), "
                                     "Default's cards counting who inherits (D, G), the scope "
-                                    "bar and picker (H). Not yet: Installation (F), G's warning "
+                                    "bar and picker (H). Installation (F) is its own page "
+                                    "(settings_installation.html, below). Not yet: G's warning "
                                     "on a Default change, board I's creation form (the v1 gap "
                                     "the operator accepted)"),
     "settings_installation.html": ("2026-10-09", "Settings › Installation: board F (approved "

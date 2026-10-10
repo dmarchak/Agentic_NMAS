@@ -48,6 +48,26 @@ class TestAdoptRecordsWhatIsAlreadyThere:
         assert saved["owner"] == "acct"
         assert saved["repo"] == "nsot-config"
 
+    @pytest.mark.parametrize("field,value", [
+        ("ssh_alias", "-oProxyCommand=touch /tmp/x"),     # read by ssh as an option (C636)
+        ("ssh_alias", "github nsot"),
+        ("owner", "acct/other"),
+        ("repo", "nsot config"),
+        ("branch", "--upload-pack=x"),
+        ("key_path", "relative/key"),
+    ])
+    def test_a_field_that_is_not_one_token_of_its_shape_records_nothing(self, lab, field,
+                                                                        value):
+        """C636: each field reaches ssh or git as one argument, so each is one token of its
+        shape, refused naming the field, and nothing is written."""
+        fields = {"ssh_alias": "github-nsot", "owner": "acct", "repo": "nsot-config",
+                  "branch": "main", "key_path": "~/.ssh/nsot_deploy"}
+        fields[field] = value
+        out = R.adopt("default", **fields)
+        assert out["ok"] is False and out["error"].startswith("Not recorded:")
+        assert field.replace("_", " ") in out["error"]
+        assert not (lab / "default" / "remote.json").exists()
+
     def test_an_adopted_setup_is_not_managed_by_nmas(self, lab):
         """NMAS verifies and pushes; it never rewrites a human's key or stanza."""
         R.adopt("default", ssh_alias="github-nsot", owner="o", repo="r")

@@ -1,11 +1,15 @@
 # Cutover: every legacy route and action, and where it goes
 
 The checklist for retiring today's interface (`/`, `/device/<ip>`), and the list of screens
-the manual must cover (the operator, 2026-10-02). Measured from `app.url_map` on
-2026-10-02: **265 routes**, of which **43 are the redesign's** (`/v2/...`, `/update/...`)
-or are read by it. Every other route is listed below, by family, with one status:
+the manual must cover (the operator, 2026-10-02). **Every route outside the redesign
+(`/v2/...`, `/update/...`) is named by a row below, and every path a row names is a route:
+`tests/test_cutover_rows.py` holds both against `app.url_map`, and each family's count**
+(C630, 2026-10-10: this page had said 265 routes and named four removed ones). Each row has one
+status:
 
-- **BUILT**: a v2 screen does this today (named).
+- **BUILT**: a v2 screen does this today (named). **Walked** says it was run on the host; a
+  BUILT row without it has not been.
+- **PARTLY BUILT**: a v2 screen does part of it; the row names the part still missing.
 - **PLANNED**: a v2 home is decided, with the plan item that builds it
   ([NSOT_STAGE7_PLAN.md](NSOT_STAGE7_PLAN.md) section 8, [NSOT_GUI_BRIEF.md](NSOT_GUI_BRIEF.md)).
 - **REMOVE**: decided to go, with the item that removes it (7.8 is last, so nothing goes
@@ -13,14 +17,14 @@ or are read by it. Every other route is listed below, by family, with one status
 - **STAYS**: no screen by design; a named non-GUI consumer calls it.
 - **UNDECIDED**: no recorded decision. Each is a question for the operator.
 
-A row moves when its status changes; the legacy pages retire when no row reads PLANNED or
-UNDECIDED.
+A row moves when its status changes; the legacy pages retire when no row reads PLANNED,
+PARTLY BUILT or UNDECIDED.
 
-## The redesign's own routes (43)
+## The redesign's own routes
 
-`/v2/` and every `/v2/...` route, `/update/...`, `/health`. Their screens: Needs attention,
-Devices, the device page (Overview, Intent read-only, History, Monitoring, Logs, NetBox,
-Neighbours), Monitoring (Dashboards, Coverage, the batch Apply), Help > About, Update.
+`/v2/` and every `/v2/...` route, and `/update/...`. Their screens: Needs attention, Devices,
+the device page and its tabs, History, Monitoring (Dashboards, Coverage, the profile), Show
+commands, Templates, Credentials, Settings (each network, Installation), Help, Update.
 **To be removed from them:** `/v2/monitoring/heartbeat` (and its apply) and
 `/v2/monitoring/ip-sla` (and its policy and commit), replaced by the monitoring templates
 (the operator's mockup review, 2026-10-02; C322), once the templates design is signed off
@@ -30,74 +34,76 @@ and built.
 
 | Family | Routes | Status | Home or reason |
 |---|---|---|---|
-| Today's pages | `/` (index), `/device/<ip>` | REMOVE, 7.8 | Replaced by `/v2/` and `/v2/device/<name>`; they go when this table has no PLANNED row left |
-| Needs attention data | `/attention`, `/jobs/health`, `/templatize/rolled-back`, `/freshness/report` | BUILT | Needs attention draws each (7.2) |
-| Job wake-up | `/jobs/finished` | STAYS | `scripts/nmas-job-finished`, from each job's systemd unit |
-| Clab map, freshness gate | `/clab/sync_targets`, `/freshness/gate` | STAYS | The clab host's sync and `nmas-oxidized-freshness` |
-| Deploy | `/deploy/plan`, `/deploy/apply` | PLANNED, 7.3 and 7.4 | A device's deploy (Device, "Plan a deploy…") and a batch (Devices selection); the v2 batch Apply already uses the same apply |
-| Deploy receipts | `/deploy/receipts` | BUILT | The device page's History tab |
-| Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | BUILT on v2 (Capture 7.3; Save 7.4, 2026-10-09) | The device page's Actions > Capture is built (2026-10-02, the same job and apply, through `/v2/device/<name>/capture/*`); Devices' Actions > Save (N)… and Save every device… replace Save All (C593, `/v2/devices/save`): they save to startup and record together, so a record without a save is offered only by the device page's Capture. Today's routes go at cutover with the page |
-| Restore, baselines | `/golden/restore/preview`, `/apply`, `/golden/restore_points/<host>`, `/golden/baselines` | PLANNED, History (signed off 2026-10-02) and 7.3 | History > Baselines (re-apply); Device Actions "Restore from…" |
-| Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | PLANNED, History | History's commit rows and the device page's History tab; revealing a version stays in the GUI (decided 2026-10-05): a person, recorded |
-| Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT | History > Commits (2026-10-02): the log, its filters and each commit's masked change |
-| Remote | `/remote/push`, `/remote/verify` | BUILT | History's header (2026-10-02): the remote's sentence, Push now and Verify |
-| Remote, auto-push | `/remote/status`, `/auto-push` | PLANNED, History | History's remote section: the status sentence and auto-push (brief 3.4, signed off 2026-10-02) |
-| Remote, connect and the rest | `/remote/verify-write`, `/preview`, `/acknowledge`, `/adopt` | STAYS, CLI only (decided 2026-10-05) | Connecting a remote, acknowledging publication and the write probe are set-up acts a person does once from the host (`scripts/nmas-remote`, curl); no screen |
+| Today's pages | `/` (index), `/device/<ip>` | REMOVE, 7.8 | Replaced by `/v2/` and `/v2/device/<name>` (walked); they go when this table has no PLANNED or PARTLY BUILT row left. v2 links into them only through the labelled gaps in `tests/todays_page_links.py` |
+| Needs attention data | `/attention`, `/jobs/health`, `/templatize/rolled-back` | BUILT, walked | Needs attention (`/v2/attention`) draws each (7.2); `/jobs/health` and `/templatize/rolled-back` have no page caller |
+| Acknowledge a row | `/attention/acknowledge` | BUILT | v2's Needs attention posts to it (`_attention.html`) |
+| Infrastructure | `/health`, `/health/operations`, `/static/<path:filename>`, `/favicon.ico` | STAYS | `/health`: the Update page and the root updater; `/health/operations`: `scripts/nmas-deploy`; the static files; browsers ask for the icon |
+| Job wake-up, planned restarts, clab map | `/jobs/finished`, `/restarts/planned`, `/clab/sync_targets` | STAYS | `nmas-job-finished@` from each job's systemd unit; `scripts/nmas-planned-restart`; `scripts/nmas-clab-targets` |
+| Deploy | `/deploy/plan`, `/deploy/apply` | PARTLY BUILT, 7.4 | One device: the device page's Deploy (walked, C428). Several ticked devices: boards A, B and K signed off, not built (gap `deploy_plan`) |
+| Deploy receipts | `/deploy/receipts` | BUILT, walked | The device page's History tab; the receipts can move to the records database (Phase 4) |
+| Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | PARTLY BUILT | Device Actions › Capture (walked) and Devices › Save (C593). Missing: the reason for recording a structural shrink (C486, C310; gap `acknowledge`) |
+| Restore, baselines | `/golden/restore/preview`, `/apply`, `/golden/restore_points/<host>`, `/golden/baselines` | PARTLY BUILT, History | Device Actions › Restore from… (walked) offers the baselines; History › Baselines is built. Missing: a network's Re-apply (gap `reapply`) |
+| Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | PARTLY BUILT, History | The History tab and `/v2/history/commit/<sha>` (walked). Missing: revealing a version, which stays in the GUI (decided 2026-10-05: a person, recorded); no board yet |
+| Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT, walked | History › Commits: the log, its filters and each commit's masked change |
+| Remote | `/remote/push`, `/remote/verify`, `/remote/status` | BUILT | History's header (Push now, Verify; no real run yet) and `/v2/history/remote` |
+| Remote, auto-push | `/remote/auto-push` | PLANNED, 7.5 | History's remote section (brief 3.4, signed off 2026-10-02) |
+| Remote, connect and the rest | `/remote/verify-write`, `/preview`, `/acknowledge`, `/adopt` | STAYS, set-up acts with no screen (decided 2026-10-05) | Connecting a remote, acknowledging publication and the write probe are done once. The command this row named, `scripts/nmas-remote`, never existed (C631): until it does, they are requests made by hand |
 | Renames | `/golden/renames`, `/golden/renames/sync` | REMOVE, 7.8 (decided 2026-10-05) | Refresh Hostnames is cut: C465 removed its NetBox write, and a device's hostname comes from its captures |
-| Legacy golden store, migration | `/golden/legacy_store`, `/golden/migrate/plan`, `/golden/migrate/apply` | REMOVE, 7.8 | Its retirement condition (`legacy_only_goldens()` empty) has held on the host since 2026-09-28 (plan 7.8) |
-| Persist, rotate, retire | `/persist/*`, `/rotate/*`, `/retire/*` | PLANNED, 7.3 (persist and rotate BUILT on v2, 2026-10-03) | The device page's Actions > Persist and Rotate run on v2 (the same plans, confirms and jobs, through `/v2/device/<name>/persist` and `/rotate`); retire still links to today's page, so the routes stay until it is built |
-| Seed, revert, retry | `/templatize/seed/*`, `/templatize/revert/*`, `/templatize/retry/*`, `/templatize/rolled-back/retries` | PLANNED, 7.3 | Device Actions, and History for revert |
-| Intent editing | `/templatize/committed/<host>` (read, edit, preview), `/templatize/committed` | BUILT, 7.3 (board H's Document mode, 2026-10-05; not yet run on the host; Fields mode, board J, not built) | The Intent tab's Edit (`/v2/device/<name>/intent/*`), with acknowledging an unmodelled line (C481); one code path with today's routes (`modules/nsot/intent_edit.py`); the one editor the template editor reuses |
-| Bulk intent | `/templatize/bulk/preview`, `/apply` | PLANNED, 7.4 | Devices selection |
-| Monitoring profile | `/templatize/profile`, `/templatize/profile/propose/*` | PLANNED, the monitoring templates (board B, signed off) | Monitoring templates |
-| Template coverage | `/templatize/report` | PLANNED, 7.6 | Templates |
-| Templates | `/templates/*` (11: list, file, approve, revoke, approval, bindings, preview, refresh-capture, seed_status, validate) | PARTLY BUILT, 7.6 (approve and revoke: boards A to C, signed off and built 2026-10-05, `/v2/templates`, not yet run on the host; the rest PLANNED) | Source of truth > Templates; the template EDITOR reuses the intent editor H (decided 2026-10-05), bindings and coverage on their own boards |
-| Onboard | `/onboard/*` (9) | PLANNED, 7.4 | Devices > Onboard; the v2 pending page shows a pending device today, its actions on today's page |
-| Adopt | (no route; `modules/nsot/adopt.py`) | PLANNED, 7.4 | Devices > Adopt |
-| NetBox import and remove | `/netbox/safety/*` (7), `/netbox/status`, `/netbox/test_connection` | PLANNED, 7.6 (a board to draw, decided 2026-10-05) | Source of truth > NetBox: import and remove as preview, confirm and result; bulk onboarding builds on it |
-| NetBox queries | `/netbox/query/*` (6) | REMOVE, 7.8 | No page calls them (measured 2026-10-02); the device page's NetBox tab reads NetBox itself |
-| Credentials | `/inventory/credentials/*` (3), `/inventory/dependents/<list>` | PLANNED, 7.6 | Source of truth > Credentials |
-| Inventory source | `/inventory/source/<list>` (GET, POST), `/inventory/refresh/<list>` | PLANNED, P.8 (decided 2026-10-05) | Settings, the network's page (board I's pattern): networks live in Settings |
+| Legacy golden store, migration | `/golden/legacy_store`, `/golden/migrate/plan`, `/golden/migrate/apply` | REMOVE, 7.8 | Its retirement condition (`legacy_only_goldens()` empty) has held on the host since 2026-09-28 |
+| Persist, rotate, retire | `/persist/*` (2), `/rotate/*` (3), `/retire/*` (2) | BUILT, walked | The device page's Actions: Persist (C359), Rotate (C370), Retire (r5); the routes go with today's pages |
+| Seed, revert, retry | `/templatize/seed/*` (2), `/templatize/revert/*` (2), `/templatize/retry/*` (2), `/templatize/rolled-back/retries` | BUILT | Device Actions; seed walked, revert and retry not yet run |
+| Intent editing | `/templatize/committed/<host>`, `/templatize/committed/<host>/preview`, `/templatize/committed` | BUILT (board H's Document mode; not run on the host, C444) | The Intent tab's Edit (`/v2/device/<name>/intent/*`), one code path with today's routes (`modules/nsot/intent_edit.py`); Fields mode (board J) is not built |
+| Bulk intent | `/templatize/bulk/*` (2) | PLANNED, 7.4 (board D signed off) | Devices selection; no v1 control calls it (`scripts/nmas-bulk-intent` calls the module) |
+| Monitoring profile | `/templatize/profile`, `/templatize/profile/propose/*` (2) | BUILT, walked (C566) | `/v2/monitoring/profile` |
+| Template coverage | `/templatize/report` | PLANNED, 7.6 | Templates; no board, no caller |
+| Templates: list, approve, revoke | `/templates`, `/templates/approval/<path>`, `/templates/approve/<path>`, `/templates/revoke/<path>` | BUILT (boards A to C, `/v2/templates`; not run on the host) | Source of truth › Templates |
+| Templates: edit and the rest | `/templates/*` (7) | PLANNED, 7.6 | The editor (file read and write), validate, preview, refresh-capture, bindings and seed status: the editor reuses the intent editor H (decided 2026-10-05), no board drawn. Preview and refresh-capture read the backup store, so they go before it (C632) |
+| Onboard | `/onboard/*` (9) | PLANNED, 7.4 (boards E, L, M and F signed off 2026-10-04, not built) | Devices › Onboard; the v2 pending page links to today's for the actions (gap `onboard`), and is itself not signed off |
+| Adopt | (no route; `modules/nsot/adopt.py`) | PLANNED, 7.4 | Devices › Adopt |
+| NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | PLANNED, 7.6 (a board to draw, decided 2026-10-05) | Source of truth › NetBox: import and remove as preview, confirm and result; turning NetBox writes on is part of it (C619) |
+| NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
+| NetBox queries | `/netbox/query/*` (6) | REMOVE, 7.8 | No page calls them; the device page's NetBox tab reads NetBox itself |
+| Credential profiles | `/inventory/credentials/*` (3), `/inventory/dependents/<list>` | PLANNED, 7.6 | Source of truth › Credentials; no board, and no v1 control calls them |
+| Inventory source | `/inventory/source/<list>`, `/inventory/refresh/<list>` | PLANNED, P.8 (decided 2026-10-05) | The network's Settings page (board I's pattern): networks live in Settings |
 | Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
-| Device lists | `/device_lists` (3), `/select_device_list` | PLANNED, P.8 (decided 2026-10-05) | Creating, renaming and deleting a network: Settings (P.8, board I's pattern, a board to draw). Choosing one: the top-bar network picker (board N, signed off 2026-10-05), which only switches |
+| Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | PLANNED, P.8 (decided 2026-10-05) | Create: board I, signed off, not built. Rename and delete: Settings, a board to draw. Choosing one: the top-bar picker (board N, signed off), which only switches |
 | List data | `/list/golden_configs`, `/list/drift_status`, `/list/change_log` | REMOVE, 7.8 | Superseded by Devices, Needs attention and History |
-| List variables, compliance policy | `/list/variables` (4), `/list/compliance_policy` (2) | REMOVE, 7.8 | Superseded by intent, drift, group intent and the monitoring templates (the operator, 2026-10-02); Stage 8 re-establishes how the agent works |
-| Refresh hostnames | `/refresh_hostnames` | REMOVE, 7.8 (cut 2026-10-05) | Cut: C465 removed its NetBox write (a direct PATCH that bypassed the write switch, the authority and the record), and a device's hostname comes from its captures. The NetBox sync carries a rename (it matches by serial before name) |
-| Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` (2) | PLANNED, 7.7 | Results are Needs attention rows (built); the schedule and "Check now" go to Settings, the one Installation/Diagnostics board (decided 2026-10-05, a board to draw) |
-| Freshness authorisations | `/freshness/authorisations` | BUILT | History > Authorisations (2026-10-02) |
-| Authorise a divergence | `/freshness/authorise` | PLANNED, 7.6 | Source of truth, beside the divergence it authorises |
-| Break-glass export | `/breakglass/preview`, `/export` | STAYS (2026-10-03, board 7) | Credentials › The break-glass record draws the export and posts to `/breakglass/export`, the one export; `/breakglass/preview` and today's modal (`static/js/nmas_breakglass.js`'s `openBreakglassExport`) REMOVE at 7.8: every opener, today's included, already goes to Credentials |
-| Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | PLANNED, 7.7 | Settings, the Installation/Diagnostics board (decided 2026-10-05, a board to draw) |
-| Settings | `/settings` (2), `/settings/integrations/*` (5), `/save_tftp_server` | PLANNED, P.8 (step 7a BUILT 2026-10-05: a network's groups, their switches and the mode) | Settings per network (`/v2/settings/network/<list>`, boards A to J); a card's Save and Test (boards A and D, Default's cards counting who inherits, G) BUILT 2026-10-08; Installation (F) still to build |
-| Server and session | `/server/restart`, `/session/pending-restart` | `/server/restart` REMOVED 2026-10-02 (with `/ai/restart`, CONCURRENCY_AUDIT R5: each ended the process with no check of held devices); `/session/pending-restart` REMOVE, 7.8 | No caller (measured 2026-09-27); the Update button restarts, gated on held devices |
-| App log | `/logs/server` | PLANNED, 7.7 | Settings, the Installation/Diagnostics board (decided 2026-10-05, a board to draw) |
-| In-flight operations | `/operations/in_flight` | PLANNED, 7.7 | Settings, the Installation/Diagnostics board (decided 2026-10-05, a board to draw); today's pages draw it, v2's pending page only |
+| List variables, compliance policy | `/list/variables`, `/list/variables/*` (2), `/list/compliance_policy` | REMOVE, 7.8 | Superseded by intent, drift, group intent and the monitoring templates (the operator, 2026-10-02) |
+| Refresh hostnames | `/refresh_hostnames` | REMOVE, 7.8 (cut 2026-10-05) | C465 removed its NetBox write; a device's hostname comes from its captures |
+| Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` | BUILT, 7.7 (board F4, 2026-10-10) | Results are Needs attention rows; the schedule and Check now are Settings › Installation › Diagnostics |
+| Break-glass export | `/breakglass/preview`, `/export` | `/breakglass/export` STAYS; `/breakglass/preview` REMOVE, 7.8 (board 7) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
+| Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
+| Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | PARTLY BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4). Missing: turning NetBox writes on (C619) |
+| TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | Its only readers are the device file routes below, and it points at nothing on this installation |
+| Pending restart | `/session/pending-restart` | REMOVE, 7.8 | No caller; the Update button restarts, gated on held devices (`/server/restart` was removed 2026-10-02) |
+| App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
+| In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
+| Version | `/health/version` | BUILT | Help › About |
 | Reachability | `/status/<ip>`, `/connection_status/<ip>` | REMOVE, 7.8 | The reachability reader (C92) is what v2 draws |
-| Device regions | `/devices/regions` | REMOVE, 7.8 | Today's device list; `/v2/devices` replaces it |
-| Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8 | The backup store retires after section 6a's prerequisite (no render reads a backup) |
-| Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02). Replaced by purpose-built operations: ZTP delivery in onboarding, and software image management (NSOT_PLAN P.13). **Before removing**: check what ZTP serves today (the lab's configs folder holds a TFTP-written file) and keep that path working. **Checked 2026-10-09 (C616):** ZTP is served by Mercury's own responder (`nmas-ztp-responder.socket`, the config rendered in memory), its address derived from the host's interfaces; the lab's configs folder is the lab host's own `tftpd-hpa` (the lab sync's, lab tooling), which none of these routes reads or writes. **The settings `tftp_root` and `tftp_server_ip` leave with these routes and the bulk file routes below** (the operator, 2026-10-09): they are their only readers, and both point at nothing on this installation |
-| Bulk operations | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | REPLACED by a v2 screen (decided 2026-10-06, C548; a board to draw after the current order) | Fleet-wide read-only commands come back as a v2 screen: devices by name, role or network, commands from the same allowlist, results summarised, grouped and collapsed, compared side by side or as differences, saved command sets; the evidence engine of Stage 8's agent (NSOT_PLAN 8.16). Was: cut 2026-10-05. The writes stay cut. Bulk read-only commands were cut; fleet-wide read questions were to be revisited with Stage 8's agent or History › Query |
+| Device regions | `/devices/regions` | REMOVE, 7.8 | `/v2/devices` replaces today's device list |
+| Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8, after today's template editor | Section 6a's prerequisite (no render reads a backup) does not hold yet: Templates' preview and refresh-capture read the backup store (C632) |
+| Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02): ZTP delivery in onboarding and image management (P.13) replace them. ZTP is served by Mercury's own responder, which none of these routes touches (C616, checked 2026-10-09); `tftp_root` and `tftp_server_ip` leave with them |
+| Bulk read-only commands | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | BUILT (C548; not yet walked on the host) | Show commands (`/v2/show-commands`): devices by name, role or network, commands from the allowlist, results grouped and compared |
 | Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
-| Reload | `/bulk_reload` | REMOVE, 7.8; replaced by P.14 (a board to draw, decided 2026-10-05) | Reload becomes a gated device-page operation (NSOT_PLAN P.14: unsaved changes, drift, the boot credential and image, no holder, the blast radius), its planned-restart window declared before it acts, built in |
-| Ask the device | `/run_command/<ip>` | PLANNED, 7.3; its tab is signed off as a name only and drawn disabled, a board of its content to draw (C547, 2026-10-06) | The device page's "Ask the device" tab (allowlisted) |
+| Reload | `/bulk_reload` | PLANNED, P.14 (a board to draw, decided 2026-10-05); the route REMOVE at 7.8 | A gated device-page operation (unsaved changes, drift, the boot credential and image, no holder, the blast radius), its planned-restart window declared before it acts. The terminal is gone, so until it is built nothing on v2 restarts a device |
+| Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
-| Configure | `/configure/*` (6) | REMOVE, 7.8 (decided 2026-10-05) | The Configure forms and the Ansible tab do not block cutover: the intent editor and deploy replace them (they already send nothing) |
-| Legacy collectors | `/monitoring/config`, `/interfaces`, `/netflow` (2), `/snmp/poll`, `/snmp/traps` (2) | REMOVE, 7.8 | The in-app collector and SNMP Quick Poll are removed (the mockup review, 2026-09-29) |
+| Configure | `/configure/*` (5) | REMOVE, 7.8 (decided 2026-10-05) | The intent editor and deploy replace them (they already send nothing) |
+| Legacy collectors | `/monitoring/config`, `/monitoring/interfaces`, `/monitoring/netflow`, `/monitoring/netflow/clear`, `/monitoring/snmp/poll`, `/monitoring/snmp/traps`, `/monitoring/snmp/traps/clear` | REMOVE, 7.8 | The in-app collector and SNMP Quick Poll are removed (the mockup review, 2026-09-29) |
 | Monitoring stack panel | `/monitoring/stack/`, `/monitoring/stack/<name>` | REMOVE, 7.8 | The status bar and integration health replace it |
-| Topology | `/topology/*` (11), `/topology_data` | REMOVE, 7.8 | Neighbours carries discovery per device (C126); the fleet map is P.11's Topology item |
-| Topology service | `/topology/service/status`, `/svg` | PLANNED, P.11 | The Topology sidebar item |
-| AI agent | `/ai/*` (27: chat, history, events, approvals, agent run/pause/resume/timers, providers, playbooks, reports, debug) | REMOVE, 7.8 (decided 2026-10-05) | They do not block cutover: Stage 8 redesigns the agent as an on-call responder, its approvals folded into Needs attention (drift items already are); the chat, agent, approvals, Ansible and usage screens go with today's pages |
-| Favicon | `/favicon.ico` | STAYS | Browsers ask for it |
+| Topology | `/topology/*` (9), `/topology_data` | REMOVE, 7.8 | Neighbours carries discovery per device (C126); the fleet map is P.11's Topology item |
+| Topology service | `/topology/service/status`, `/svg` | PLANNED, P.11 (boards A to C signed off 2026-10-04, not built) | The Topology sidebar item |
+| AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages |
 
 ## Legacy actions that are not routes
 
 | Action | Status | Home or reason |
 |---|---|---|
-| The terminal (socket events) | **REMOVED 2026-10-05** (R39, brought forward from 7.8 on the operator's decision, after the console drill proved the emergency path: docs/CONSOLE_DRILL.md) | NSOT_FEATURE_AUDIT 3b: the Device page's allowlisted command box is the one way to ask a device. Gone: the three socket events and their gates, `modules/terminal.py`, `modules/terminal_audit.py` (its data file stays on the host, readable by hand), the v1 device page's Terminal tab, and the vendored xterm. Kept: the `break_glass` gate kind and its two settings, until they retire |
-| Today's Git tab, Remote card, Baselines panel | PLANNED, History | History (signed off) |
+| The terminal (socket events) | **REMOVED 2026-10-05** (R39, brought forward from 7.8 on the operator's decision, after the console drill proved the emergency path: docs/CONSOLE_DRILL.md) | The Device page's allowlisted Ask tab is the one way to ask a device. Kept: the `break_glass` gate kind and its two settings, until they retire |
+| Today's Git tab, Remote card, Baselines panel | BUILT | History: Commits, the remote's sentence, Baselines |
 | The AI chat panel (every page) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns it |
-| Bulk restore at HEAD (`bulkRestoreGoldenConfig`) | REMOVE, 7.8 (cut 2026-10-05) | A device's Restore from… and History's baseline re-apply remain |
-| Settings modal | PLANNED, P.8 and 7.7 | Settings per network (built), Installation (F) and the Installation/Diagnostics board |
+| Bulk restore at HEAD (`bulkRestoreGoldenConfig`) | REMOVE, 7.8 (cut 2026-10-05) | A device's Restore from… and History's baselines remain |
+| Settings modal | PARTLY BUILT | Settings per network and every Installation tab are built; turning NetBox writes on is not (C619) |
 
 ## Decided 2026-10-02
 
@@ -118,29 +124,32 @@ library, transfer and upgrade); reload stays as a gated device-page operation
 5. NetBox import and remove get a v2 board (Source of truth › NetBox): preview, confirm,
    result; bulk onboarding builds on it.
 6. One Installation/Diagnostics board: the drift schedule and "Check now", the server log, the
-   in-flight panel, the posture.
+   in-flight panel, the posture. (Built as board F4, 2026-10-10.)
 7. Bulk restore is cut. Bulk read-only commands were cut on 2026-10-05 and come back as a v2
    screen (the operator, 2026-10-06, C548): fleet-wide reads from the same allowlist, the
-   evidence engine of Stage 8's agent.
+   evidence engine of Stage 8's agent. (Built as Show commands, 2026-10-08.)
 8. Revealing a golden version stays in the GUI (a person, recorded); the remote's connect,
-   acknowledge and write probe are CLI only.
+   acknowledge and write probe are set-up acts with no screen (C631: the command named for
+   them does not exist).
 9. Reload (P.14) gets a board, its planned-restart declaration built in.
 10. Refresh Hostnames is cut (C465 removed its write; hostnames come from captures).
 
-The boards for 3, 5, 6 and 9 are drawn after the intent editor and Templates A to C are built,
-so they do not delay the throwaway session. The status of every v1 capability, counted, is
-[TRANSITION_STATUS.md](TRANSITION_STATUS.md).
+"Authorise a divergence", once PLANNED for 7.6, is moot: the freshness gate and its routes
+were removed with Oxidized (ba28d2b, 2026-10-08). The status of every v1 capability, counted,
+was [TRANSITION_STATUS.md](TRANSITION_STATUS.md) (last measured 2026-10-07; this table is the
+current one).
 
 ## Where v2 still sends a person to today's pages (the operator, 2026-10-08, C569)
 
 No v2 page or result links to a v1 route unless the link says "today's" and names its gap
 (`data-todays-page`). The gaps are listed in `tests/todays_page_links.py`, a list that only
-shrinks; `tests/test_v2_links_stay_on_v2.py` holds every v2 template and every rendered v2 page
-to it. On 2026-10-08 there were eight: Capture's acknowledgement reason (C486), Plan a deploy
-for several ticked devices, History's Re-apply, onboarding (Add, Verify, Abandon, the bootstrap
-config, onboard again), the installation's settings (board F), and the sidebar's Logs, DHCP and
-NetBox. A v2 request that fails says "Couldn't load" in place and never redirects to today's
-index; a designed v2 error page is a further gap, pending a mockup.
+shrinks, its ceiling equal to its count (C629); `tests/test_v2_links_stay_on_v2.py` holds every
+v2 template and every rendered v2 page to it. On 2026-10-10 there were seven: Capture's
+acknowledgement reason (C486), Plan a deploy for several ticked devices, History's Re-apply,
+onboarding (Add, Verify, Abandon, the bootstrap config, onboard again), and the sidebar's Logs,
+DHCP and NetBox (the Logs and DHCP links name screens today's page does not have: C633). A v2
+request that fails says "Couldn't load" in place and never redirects to today's index; a
+designed v2 error page is a further gap, pending a mockup.
 
 ## What the manual must cover
 

@@ -157,18 +157,49 @@ def publish_lock(repo_dir: str):
     return PathLock(os.path.abspath(repo_dir).rstrip(os.sep) + ".publish")
 
 
+#: Each set-up field as ONE token of its shape (C636): the alias reaches `ssh -T <alias>` and
+#: git's remote URL, so an alias starting with "-" was read as an ssh option. GitHub's own
+#: rules for an owner (39 characters, letters, digits and hyphens) and a repository name.
+SETUP_SHAPES = {
+    "ssh_alias": (re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}"),
+                  "letters, digits, '.', '_' and '-', starting with a letter or digit"),
+    "owner": (re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"),
+              "a GitHub owner: letters, digits and '-', at most 39"),
+    "repo": (re.compile(r"[A-Za-z0-9._-]{1,100}"),
+             "a GitHub repository name: letters, digits, '.', '_' and '-'"),
+    "branch": (re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}"),
+               "a branch name starting with a letter or digit"),
+    "key_path": (re.compile(r"(|[~/][A-Za-z0-9._/~-]{0,200})"),
+                 "empty, or a path starting with '/' or '~' with no spaces"),
+}
+
+
+def setup_refusal(**fields) -> str:
+    """Why the set-up fields cannot be recorded, naming the field and its shape, or ""."""
+    for name, value in fields.items():
+        shape, words = SETUP_SHAPES[name]
+        if not shape.fullmatch(value or ""):
+            return f"{name.replace('_', ' ')} {value!r} is not {words}"
+    return ""
+
+
 def adopt(list_name: str, *, ssh_alias: str, owner: str, repo: str,
           branch: str = "main", key_path: str = "", actor: str = "operator") -> dict:
     """Record an EXISTING setup as this list's remote.
 
     ``managed_by_nmas`` is false for an adopted setup: NMAS verifies and
     pushes, and never rewrites the key or the SSH stanza. ``auto_push`` starts
-    false always — it is turned on after a successful push, never before.
+    false always — it is turned on after a successful push, never before. Each
+    field must be one token of its shape (`SETUP_SHAPES`), or nothing is recorded.
     """
     from datetime import datetime, timezone
 
     from modules.filestore import PathLock
 
+    why = setup_refusal(ssh_alias=ssh_alias, owner=owner, repo=repo, branch=branch,
+                        key_path=key_path)
+    if why:
+        return {"ok": False, "error": f"Not recorded: {why}"}
     with PathLock(lambda: remote_path(list_name)):
         return _adopt_locked(list_name, ssh_alias=ssh_alias, owner=owner, repo=repo,
                              branch=branch, key_path=key_path, actor=actor,
