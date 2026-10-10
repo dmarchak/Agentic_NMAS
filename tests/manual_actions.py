@@ -88,6 +88,8 @@ NOT_AN_OPERATION = {
     ("_reload.html", "btn"): "Cancel or Close: puts back the tab the card replaced, a read",
     ("_reload.html", "Its break-glass record"): "opens Credentials, where the record is, a read",
     ("_template_bindings.html", "btn"): "Cancel or Close: puts the Templates table back, a read",
+    ("_topology_map.html", "Show"): "redraws the map with the layer, path or search asked, "
+                                    "a read",
     ("_credential_profiles.html", "Cancel"): "puts the profiles table back, writing nothing",
     ("_bulk_intent.html", "Back to Devices"):"returns to Devices, a read",
     ("_bulk_intent.html", "Change the settings"): "puts the change's form back with what was "

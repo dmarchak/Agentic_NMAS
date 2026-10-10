@@ -47,6 +47,7 @@
   <a class="nav-item{% if active_nav == 'history' %} active{% endif %}" href="{{ url_for('v2.history_page') }}"{% if active_nav == 'history' %} aria-current="page"{% endif %}>{{ icon('history') }}<span>History</span></a>
   <div class="nav-head">OBSERVE</div>
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
+  <a class="nav-item{% if active_nav == 'topology' %} active{% endif %}" href="{{ url_for('topology_v2.page') }}"{% if active_nav == 'topology' %} aria-current="page"{% endif %}>{{ icon('topology') }}<span>Topology</span></a>
   <a class="nav-item{% if active_nav == 'show_commands' %} active{% endif %}" href="{{ url_for('reads_v2.show_commands') }}"{% if active_nav == 'show_commands' %} aria-current="page"{% endif %}>{{ icon('show') }}<span>Show commands</span></a>
   {#- C633: each says what is there. Today's page had neither screen: its Logs was the app's own
       log (Diagnostics draws it), and DHCP has no screen anywhere yet (C529). -#}

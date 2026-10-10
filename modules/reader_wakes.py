@@ -60,8 +60,9 @@ WOKEN_BY = {
     # or move back switches the store (a settings write). A capture writes none.
     "records-check": ("deploy_job", "device_state", "settings"),
     # P.11's graph: committed host_vars at HEAD for the routing layers' intended adjacencies, the
-    # inventory for its nodes; Prometheus by settings.
-    "topology-graph": ("intent", "inventory", "settings"),
+    # inventory for its nodes; Prometheus by settings; a network's expected islands (Topology's
+    # declare and withdraw invalidate `topology`).
+    "topology-graph": ("intent", "inventory", "settings", "topology"),
     # HEAD against the remote: also re-read by its own post-commit hook.
     "remote-publication": ("goldens", "intent", "templates", "remote"),
 }

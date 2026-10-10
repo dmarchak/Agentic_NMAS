@@ -1,0 +1,15 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{#- OBSERVE › Topology (P.11 step 2; NSOT_TOPOLOGY_BRIEF, boards A to C signed off 2026-10-04):
+    how each network is connected, layer by layer, and where it is weak, from the topology
+    reader's stored value. The map region is _topology_map.html. -#}
+{% block title %}Topology · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Topology · {{ list_name }} {{ info('topology') }}</h1>
+    <p class="sub">How it is connected, what depends on what, where it is weak: from what Prometheus reads (LLDP's neighbour tables and the routing tables), never from a device per request.</p>
+  </div>
+</div>
+{% include "v2/_topology_map.html" %}
+{% endblock %}

@@ -1,0 +1,156 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Topology's region (P.11 step 2): the question (layer, path trace, search), the counts, the
+    legend, the map (server SVG: every name escaped), the list form (the default below 700 px),
+    the islands with why (expected, with its reason; or warned, and since when), the single points
+    of failure and what each cuts off, criticality, and what LLDP cannot see. Redrawn when the
+    reader announces `topology`; the question rides along. -#}
+{%- set op = op or {} -%}
+<div id="topo" class="topo" hx-get="{{ url_for('topology_v2.region') }}" hx-trigger="nmas:topology from:body" hx-include="#topo-q" hx-swap="outerHTML">
+{%- if op.state == 'declared' %}
+<div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is an expected island</strong>, recorded with your reason{% if not op.recorded %} (NOT recorded on History: {{ op.record_error }}){% endif %}. The map draws it as expected once the reader reads again (it was woken).</p></div>
+{%- elif op.state == 'withdrawn' %}
+<div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is no longer declared expected</strong>: if it is an island, it warns again once the reader reads.</p></div>
+{%- elif op.state == 'refused' %}
+<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not changed:</strong> {{ op.refused }}.</p></div>
+{%- endif %}
+{%- if t.state == 'never' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The topology reader has not read yet{% if t.failed %}: its last attempt failed, {{ t.failed }}{% endif %}. It reads Prometheus every minute; this region redraws when it has.</p></div>
+{%- elif t.state == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The topology reader's store cannot be read: {{ t.failed }}. Nothing is drawn rather than a map that may be wrong.</p></div>
+{%- elif t.state == 'not_configured' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>Prometheus is not configured, so there is nothing to draw: Topology is built from what Prometheus scrapes (Settings › Prometheus).</p></div>
+{%- elif t.state == 'not_read' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ t.list }} was not in the reader's last read (read {{ stamp(t.value_at) }}): a network created since is read within a minute.</p></div>
+{%- else %}
+{%- if t.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ t.failed }}); this is its last good read, {{ stamp(t.value_at) }}.</p></div>{% endif %}
+{%- for e in t.errors %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ e }}</p></div>{% endfor %}
+
+<form id="topo-q" class="topo-q" method="get" action="{{ url_for('topology_v2.page') }}" hx-get="{{ url_for('topology_v2.region') }}" hx-target="#topo" hx-swap="outerHTML">
+  <input type="hidden" name="list" value="{{ t.list }}">
+  <fieldset class="topo-layers"><legend>Layer</legend>
+    {%- for key, words in t.layers.items() %}<label><input type="radio" name="layer" value="{{ key }}"{% if key == t.layer %} checked{% endif %}> {{ words }}</label>{% endfor %}
+  </fieldset>
+  <div class="topo-trace">
+    <label for="topo-a">Path from</label>
+    <select id="topo-a" name="a"><option value="">a device…</option>{% for g in t.list_groups %}{% for d in g.devices if d.managed %}<option{% if d.name == t.a %} selected{% endif %}>{{ d.name }}</option>{% endfor %}{% endfor %}</select>
+    <label for="topo-b">to</label>
+    <select id="topo-b" name="b"><option value="">a device…</option>{% for g in t.list_groups %}{% for d in g.devices if d.managed %}<option{% if d.name == t.b %} selected{% endif %}>{{ d.name }}</option>{% endfor %}{% endfor %}</select>
+  </div>
+  <div class="topo-search"><label for="topo-search" class="sr">Find a device, role or port</label><input id="topo-search" type="search" name="q" value="{{ t.q }}" placeholder="Find a device, role or port"></div>
+  <span class="op-act"><button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Show</span><span class="op-busy">Drawing…</span></button></span>
+  <span class="muted small">Read {{ stamp(t.value_at) }}</span>
+</form>
+
+<div class="save-sum">
+  <div class="save-n"><strong>{{ t.summary.devices }}</strong>devices managed</div>
+  {%- if t.summary.outside %}<div class="save-n"><strong>{{ t.summary.outside }}</strong>outside peers</div>{% endif %}
+  <div class="save-n"><strong>{{ t.summary.links }}</strong>{{ 'links' if t.layer == 'physical' else 'adjacencies' }}</div>
+  {%- for s, n in t.summary.states | dictsort %}<div class="save-n{{ ' save-danger' if s == 'down' else ' save-warn' if s in ('not_seen', 'one_silent') else '' }}"><strong>{{ n }}</strong>{{ {'both': 'reported by both ends', 'one_silent': 'one end silent', 'far_not_polled': 'far end not polled', 'up': 'up', 'down': 'down', 'not_seen': 'intended, not reported', 'unknown': 'state not read'}.get(s, s) }}</div>{% endfor %}
+  <div class="save-n{{ ' save-danger' if t.summary.islands_warned }}"><strong>{{ t.summary.islands_warned }}</strong>islands to look at</div>
+  {%- if t.summary.islands_expected %}<div class="save-n"><strong>{{ t.summary.islands_expected }}</strong>expected islands</div>{% endif %}
+  <div class="save-n{{ ' save-warn' if t.summary.spof }}"><strong>{{ t.summary.spof }}</strong>single points of failure</div>
+</div>
+
+{%- if t.trace %}
+<section class="card topo-panel" aria-labelledby="topo-trace-h">
+  <h2 id="topo-trace-h">Path from {{ t.a }} to {{ t.b }}, {{ t.layers[t.layer] }}</h2>
+  {%- if t.trace.ok %}
+  <p class="small">Every shortest path in the {{ t.layers[t.layer] }} graph, by hop count: {{ t.trace.paths | length }} of {{ t.trace.hops }} hop{{ 's' if t.trace.hops != 1 }}. A claim about the graph, never about forwarding: what a packet takes is the routing table's.</p>
+  <ol class="small">{% for hops in t.trace.hop_words %}<li>{{ hops | join(' · ') }}</li>{% endfor %}</ol>
+  {%- else %}<p class="small">{{ t.trace.why }}.</p>{% endif %}
+</section>
+{%- endif %}
+{%- if t.q %}<p class="small">{% if t.matches %}Found, ringed on the map: {{ t.matches | join(', ') }}.{% else %}Nothing matches {{ t.q }}: the map is unchanged.{% endif %}</p>{% endif %}
+
+{%- if t.collapsed %}
+<div class="notice notice-info" role="status">{{ icon('info', 16) }}<p>{{ t.summary.devices }} devices: above 150, the map draws each band as one group (the list below). Search, a path trace or a device page shows one part.</p></div>
+{%- else %}
+<input type="checkbox" id="topo-show-map" class="topo-toggle sr">
+<label for="topo-show-map" class="btn btn-small topo-show-map">Show the map</label>
+<figure class="topo-mapwrap" aria-label="The {{ t.layers[t.layer] }} map">
+  <svg class="topo-map" viewBox="0 0 {{ t.svg.width }} {{ t.svg.height }}" role="img" aria-labelledby="topo-map-title">
+    <title id="topo-map-title">{{ t.list }}, {{ t.layers[t.layer] }}: {{ t.summary.devices }} devices</title>
+    {%- for y, words in t.svg.bands %}<text class="topo-band" x="8" y="{{ y - 30 }}">{{ words }}</text>{% endfor %}
+    {%- for e in t.svg.under %}<line class="topo-edge topo-under" x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}"><title>{{ e.title }}</title></line>{% endfor %}
+    {%- for e in t.svg.edges %}
+    <g class="topo-e topo-{{ e.style }}{{ ' topo-onpath' if e.path }}{{ ' topo-bridge' if e.bridge }}"><title>{{ e.title }}</title>
+      <line class="topo-edge" x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}"></line>
+      {%- if e.style == 'down' %}<path class="topo-x" d="M{{ e.mx - 6 }} {{ e.my - 6 }}l12 12M{{ e.mx + 6 }} {{ e.my - 6 }}l-12 12"></path>{% endif %}
+    </g>
+    {%- endfor %}
+    {%- for n in t.svg.nodes %}
+    <g class="topo-n{{ ' topo-outside' if n.outside }}{{ ' topo-island' if n.island and not n.expected }}{{ ' topo-expected' if n.expected }}{{ ' topo-onpath' if n.path }}{{ ' topo-match' if n.match }}">
+      {%- if n.managed %}<a href="{{ url_for('device_v2.device', name=n.name, list=t.list) }}">{% endif %}
+      <title>{{ n.name }}{% if n.outside %}: outside management{% elif n.role %}, {{ n.role }}{% endif %}{% if n.spof %}: a single point of failure{% endif %}</title>
+      <circle cx="{{ n.x }}" cy="{{ n.y }}" r="{{ t.svg.r }}"></circle>
+      {%- if not n.answering %}<path class="topo-x" d="M{{ n.x - 11 }} {{ n.y - 11 }}l22 22M{{ n.x + 11 }} {{ n.y - 11 }}l-22 22"></path>{% endif %}
+      {%- if n.spof %}<circle class="topo-spof" cx="{{ n.x }}" cy="{{ n.y }}" r="{{ t.svg.r + 6 }}"></circle><text class="topo-tag" x="{{ n.x }}" y="{{ n.y - t.svg.r - 10 }}">SPOF</text>{% endif %}
+      <text class="topo-label" x="{{ n.x }}" y="{{ n.y + t.svg.r + 16 }}">{{ n.name }}</text>
+      {%- if n.managed %}</a>{% endif %}
+    </g>
+    {%- endfor %}
+  </svg>
+  <figcaption class="topo-legend small">
+    <span><svg width="28" height="8" aria-hidden="true"><line class="topo-edge" x1="0" y1="4" x2="28" y2="4"></line></svg>up</span>
+    <span class="topo-down"><svg width="28" height="10" aria-hidden="true"><line class="topo-edge" x1="0" y1="5" x2="28" y2="5"></line><path class="topo-x" d="M10 1l8 8M18 1l-8 8"></path></svg>down (dashed, crossed)</span>
+    <span class="topo-one"><svg width="28" height="8" aria-hidden="true"><line class="topo-edge" x1="0" y1="4" x2="28" y2="4"></line></svg>one end reports it (dotted)</span>
+    <span class="topo-ghost"><svg width="28" height="8" aria-hidden="true"><line class="topo-edge" x1="0" y1="4" x2="28" y2="4"></line></svg>intended, not reported</span>
+    <span>ringed: a single point of failure · grey dashed circle: outside management · crossed circle: not answering</span>
+    {%- if t.layer != 'physical' %}<span>faint: the physical links underneath</span>{% endif %}
+  </figcaption>
+</figure>
+{%- endif %}
+
+<section class="card topo-panel" aria-labelledby="topo-list-h">
+  <h2 id="topo-list-h">By band</h2>
+  {%- for g in t.list_groups %}
+  <details class="sc-grp" data-keep="topo-band-{{ g.words }}"{% if g.devices | length <= 12 and not t.collapsed %} open{% endif %}>
+    <summary>{{ badge(g.devices | length ~ ' ' ~ g.words, 'neutral') }}</summary>
+    <ul class="small topo-list">{% for d in g.devices %}<li>{% if d.managed %}<a href="{{ url_for('device_v2.device', name=d.name, list=t.list) }}">{{ d.name }}</a>{% else %}{{ d.name }} <span class="muted">(outside management)</span>{% endif %}:
+      {% for l in d.links %}<span class="topo-li-{{ l.state }}">{{ l.port or '' }} to {{ l.to }} {{ l.state }}{% if l.kind in ('one_silent', 'far_not_polled') %} (one end){% endif %}</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">no {{ 'LLDP link' if t.layer == 'physical' else 'adjacency' }}</span>{% endfor %}</li>{% endfor %}</ul>
+  </details>
+  {%- endfor %}
+</section>
+
+<section class="card topo-panel" aria-labelledby="topo-islands-h">
+  <h2 id="topo-islands-h">Islands</h2>
+  {%- if not t.islands %}<p class="small">None: every device {{ 'with a link' if t.layer == 'physical' else 'running ' ~ t.layers[t.layer] }} reaches the rest.</p>{% endif %}
+  <ul class="small">
+  {%- for i in t.islands %}
+    <li>{% if i.expected %}{{ badge('expected', 'neutral') }}{% else %}{{ badge('look at it', 'danger') }}{% endif %} <strong>{{ i.device }}</strong>: {{ i.why }}.
+      {%- if i.expected %} Declared apart on purpose: {{ i.expected.reason }} ({{ i.expected.by }}, {{ stamp(i.expected.at) }}).
+        {%- if t.layer == 'physical' %} <form class="topo-inline" method="post" action="{{ url_for('topology_v2.expected_withdraw') }}" hx-post="{{ url_for('topology_v2.expected_withdraw') }}" hx-target="#topo" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ i.device }}"><span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"><span class="op-idle">Withdraw</span><span class="op-busy">Withdrawing…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span></form>{% endif %}
+      {%- else %} {% if i.became %}Became an island {{ stamp(i.since) }}.{% elif i.since %}An island since {{ stamp(i.since) }}.{% endif %}
+        {%- if t.layer == 'physical' %} <a class="btn btn-small" data-op="topology" href="{{ url_for('topology_v2.expected_form', list=t.list, device=i.device) }}" hx-get="{{ url_for('topology_v2.expected_form', list=t.list, device=i.device) }}" hx-target="#topo" hx-swap="outerHTML">Mark as expected…</a>{{ how('topology', 'islands', compact=True, op='an expected island') }}{% endif %}
+      {%- endif %}
+      {%- if op.state == 'form' and op.device == i.device %}
+      <form class="set-form topo-expect" method="post" action="{{ url_for('topology_v2.expected_declare') }}" hx-post="{{ url_for('topology_v2.expected_declare') }}" hx-target="#topo" hx-swap="outerHTML" autocomplete="off">
+        <input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ i.device }}">
+        {%- if op.refused %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not declared:</strong> {{ op.refused }}.</p></div>{% endif %}
+        <label for="topo-reason">Why it is apart on purpose</label>
+        <div><input id="topo-reason" name="reason" type="text" value="{{ op.reason }}" required placeholder="its own lab, cabled apart"><span class="set-origin">drawn instead of the warning; recorded with your name</span></div>
+        <div class="set-foot set-form-note">
+          {%- if may.may %}<span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="topology" hx-disabled-elt="this"><span class="op-idle">Mark {{ i.device }} as expected</span><span class="op-busy">Recording…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span>
+          <span class="muted small">{{ may.statement }}</span>
+          {%- else %}<span class="muted small">{{ may.statement }} Nothing can be declared from here.</span>{% endif %}
+        </div>
+      </form>
+      {%- endif %}
+    </li>
+  {%- endfor %}
+  </ul>
+</section>
+
+<section class="card topo-panel" aria-labelledby="topo-spof-h">
+  <h2 id="topo-spof-h">Single points of failure</h2>
+  {%- if not t.spof and not t.bridges %}<p class="small">None in the {{ t.layers[t.layer] }} graph: no one device or link, lost, splits it.</p>{% endif %}
+  <ul class="small">
+    {%- for s in t.spof %}<li><strong>{{ s.device }}</strong> down: {{ s.cuts_off | join(', ') }} lose{{ 's' if s.cuts_off | length == 1 }} the rest.</li>{% endfor %}
+    {%- for b in t.bridges %}<li>The link <strong>{{ b.a }} to {{ b.b }}</strong> down: {{ b.cuts_off | join(', ') }} lose{{ 's' if b.cuts_off | length == 1 }} the rest.</li>{% endfor %}
+  </ul>
+  {%- if t.critical %}<p class="small">Most passes through (betweenness): {% for c in t.critical %}{{ c.device }} ({{ c.betweenness }}){{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+</section>
+
+<p class="small muted">What this cannot see: a link with no LLDP (a device with LLDP off, or through a bridge that drops it), shared conduits and power, and anything outside management. A routing layer is the Neighbours tab's comparison: what each device reports against what its committed intent implies.</p>
+{%- endif %}
+</div>

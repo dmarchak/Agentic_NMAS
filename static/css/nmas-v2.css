@@ -1288,3 +1288,47 @@ select { max-width: 100%; }
 .inline-form { display: inline-flex; margin: 0; }
 .set-config { margin: 6px 0 0; white-space: pre; background: var(--surface-2); border: 1px solid var(--line-2);
   border-radius: var(--r); padding: 10px 12px; line-height: 1.5; }
+/* P.11 Topology: the question, the map (server SVG), its legend, the list form. Down is never
+   colour alone (the brief, Q7): dashed and crossed; one end only dotted; a ghost faint. */
+.topo-q { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 0 0 12px; }
+.topo-layers { display: flex; gap: 10px; border: 0; padding: 0; margin: 0; flex-wrap: wrap; }
+.topo-layers legend { font-size: 13px; color: var(--ink-2); float: left; margin-right: 6px; }
+.topo-layers label, .topo-trace { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.topo-trace select, .topo-search input { font: inherit; font-size: 13px; padding: 5px 8px;
+  border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); color: var(--ink); }
+.topo-mapwrap { margin: 12px 0; overflow-x: auto; }
+.topo-map { width: 100%; min-width: 640px; height: auto; background: var(--surface); border: 1px solid var(--line-2);
+  border-radius: var(--r); }
+.topo-edge { stroke: var(--ink-3); stroke-width: 2.5; fill: none; }
+.topo-under { stroke-opacity: .3; stroke-width: 1.5; }
+.topo-down .topo-edge { stroke: var(--danger); stroke-dasharray: 8 5; }
+.topo-x { stroke: var(--danger); stroke-width: 2.5; fill: none; }
+.topo-one .topo-edge { stroke-dasharray: 2 4; }
+.topo-ghost .topo-edge { stroke-opacity: .45; stroke-dasharray: 10 6; }
+.topo-onpath .topo-edge { stroke: var(--accent); stroke-width: 4.5; }
+.topo-bridge .topo-edge { stroke: var(--warn-mark); }
+.topo-n circle { fill: var(--surface-2); stroke: var(--ink-2); stroke-width: 2; }
+.topo-n a { cursor: pointer; }
+.topo-outside circle { stroke-dasharray: 4 3; fill: var(--surface); stroke: var(--ink-3); }
+.topo-island circle { stroke: var(--danger); stroke-width: 3; }
+.topo-expected circle { stroke: var(--ink-3); stroke-dasharray: 2 2; }
+.topo-onpath circle { stroke: var(--accent); stroke-width: 3.5; }
+.topo-match circle { fill: var(--accent-soft); }
+circle.topo-spof { fill: none; stroke: var(--warn-mark); stroke-width: 2; }
+.topo-label { fill: var(--ink); font-size: 13px; text-anchor: middle; }
+.topo-tag { fill: var(--warn); font-size: 10px; font-weight: 600; text-anchor: middle; }
+.topo-band { fill: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.topo-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; color: var(--ink-2); }
+.topo-legend span { display: inline-flex; gap: 6px; align-items: center; }
+.topo-panel { margin: 12px 0; }
+.topo-inline { display: inline; margin: 0; }
+.topo-expect { margin: 8px 0; }
+.topo-list li { margin: 3px 0; }
+.topo-li-down { color: var(--danger); }
+.topo-show-map { display: none; }
+@media (max-width: 700px) {
+  /* The phone's default is the list (the brief, section 7); the map is one tap away. */
+  .topo-show-map { display: inline-flex; margin: 8px 0; }
+  .topo-mapwrap { display: none; }
+  .topo-toggle:checked ~ .topo-mapwrap { display: block; }
+}

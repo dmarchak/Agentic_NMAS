@@ -18,6 +18,10 @@ SIGNED_OFF = {
     "devices.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the device list); its selection "
                                    "bar, Actions and Startup column from 7.4's board A "
                                    "(FleetSelect), approved 2026-10-04 (C593)"),
+    "topology.html": ("2026-10-04", "P.11 Topology, boards A (the desktop map: OSPF over physical, "
+                                    "an island, a SPOF and a path trace), B (phone, list first) "
+                                    "and C (the wall), signed off 2026-10-04 (NSOT_TOPOLOGY_BRIEF); "
+                                    "step 2 builds A and B, server SVG; the wall is a later step"),
     "bulk_intent.html": ("2026-10-04", "7.4's board D (BulkIntent, 'change a setting on N "
                                        "devices', not an editor), approved 2026-10-04 on canvas "
                                        "v32: each device's diff and program grouped and "

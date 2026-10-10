@@ -163,6 +163,8 @@ DECLARED = {
     "inventory.copy_inherited": ("credentials",),
     "inventory.credential_profiles": ("credentials",),
     "inventory.delete_credential_profile": ("credentials",),
+    "topology_v2.expected_declare": ("topology",),
+    "topology_v2.expected_withdraw": ("topology",),
     "credential_profiles_v2.save": ("credentials",),
     "credential_profiles_v2.delete": ("credentials",),
     # Goldens, the repository and the remote.

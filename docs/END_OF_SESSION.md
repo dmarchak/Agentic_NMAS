@@ -16,8 +16,9 @@ Devices (board G, f09ac7c, finished as the board ends it in 83fbb5a), bulk inten
 Templates › Coverage (8250677), Credentials › Profiles. No v2 page sends a person to today's
 pages any more. CUTOVER's rows still PLANNED: the topology service, P.11, in steps: step 1, its reader, is built and walked on the
 host (629c7a8, C648 3f21f83 and 9571439; the host runs 9571439: physical 11 links as cabled,
-OSPF 16, OSPFv3 7, BGP 4, r6 the one island); step 2 is the page (layers, islands, single
-points of failure, path trace, the phone list), then shared recorded positions, then time travel
+OSPF 16, OSPFv3 7, BGP 4, r6 the one island); r5 drawn as one outside peer and islands
+expected by declaration (30f8c1b); step 2, the page (layers, islands, single points of failure,
+path trace, the phone list), built; then shared recorded positions, then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
 in the records database); then DHCP (C529), boards L and M, C641,
 7.5 to 7.7, the 7.8 removals and the walk. Nothing deployed since the mode began: the walk at

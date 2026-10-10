@@ -645,7 +645,8 @@ class TestTheShippedScripts:
                                                     "/v2/device/r3/privileged?job=x&result="
                                                     "20261008T000000000000Z-" + "0" * 32,
                                                     "/v2/templates?list=Lab",
-                                                    "/v2/credentials/profiles?list=Lab"))
+                                                    "/v2/credentials/profiles?list=Lab",
+                                                    "/v2/topology?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -669,7 +670,8 @@ class TestTheShippedScripts:
         # Needs attention's records source).
         # +1 2026-10-10: reload (Reload's card listens for its preview's and its run's end).
         # +1 2026-10-10: credentials (Credentials › Profiles re-reads a profile saved elsewhere).
-        assert len(keys) == 35
+        # +1 2026-10-10: topology (P.11's map redraws on the reader's announcement).
+        assert len(keys) == 36
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

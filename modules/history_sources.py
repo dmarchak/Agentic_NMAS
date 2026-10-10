@@ -811,6 +811,23 @@ def credential_profiles(ctx):
                  for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
 
 
+def topology_expected(ctx):
+    """Each island declared expected on Topology, or withdrawn: who, which device, why."""
+    from modules import topology_expected as TE
+    got = TE.history(getattr(ctx["ref"], "data_dir", ""))
+    if got["error"]:
+        return _out(errors=[f"the expected-island record could not be read: {got['error']}"])
+    return _out([_event(r.get("at"), "expected",
+                        f"{r.get('device', '?')} "
+                        + ("declared an expected island: " + r.get("reason", "")
+                           if r.get("action") == "declared" else "no longer an expected island"),
+                        [r.get("device", "")], who=r.get("actor", ""),
+                        record=[("Device", r.get("device")), ("Action", r.get("action")),
+                                ("Reason", r.get("reason"))])
+                 for r in reversed(got["rows"])
+                 if _mine(ctx, r.get("device", "")) and _recent(ctx, r.get("at"))])
+
+
 def show_commands(ctx):
     """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
     commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
@@ -910,6 +927,7 @@ SOURCES = {
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
+    "topology_expected": topology_expected,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -931,6 +949,7 @@ KIND_GROUPS = (
                                ("freshness", "Freshness authorised", ("freshness",)),
                                ("breakglass", "Break-glass exports", ("breakglass",)),
                                ("credentials", "Credential profiles", ("credential",)),
+                               ("expected", "Expected islands", ("expected",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),

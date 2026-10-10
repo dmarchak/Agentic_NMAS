@@ -14,7 +14,8 @@
                  'interrupted': ('cut off', 'danger'), 'freshness': ('freshness', 'warn'),
                  'approval': ('approval', 'muted'), 'decision': ('decision', 'info'),
                  'update': ('update', 'muted'), 'reload': ('reload', 'warn'),
-                 'credential': ('credential profile', 'muted')} -%}
+                 'credential': ('credential profile', 'muted'),
+                 'expected': ('expected island', 'muted')} -%}
 {%- macro timeline_rows(h, here='') -%}
   {%- for e in h.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>

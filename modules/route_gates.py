@@ -230,7 +230,11 @@ GATES = {
     "inventory.set_source": _g(K, "changes where a list's inventory comes from"),
     "inventory.set_order": _g(K, "reorders a list"),
     "inventory.credential_profiles": _g(K, "writes credential profiles"),
-    "credential_profiles_v2.save": _g(K, "saves a credential profile from Credentials › "
+    "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
+                                          "network, with a reason, recorded (P.11)"),
+    "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "
+                                           "recorded (P.11)"),
+    "credential_profiles_v2.save": _g(K,"saves a credential profile from Credentials › "
                                          "Profiles, recorded (who, which, the fields set)"),
     "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "
                                            "Profiles, recorded"),
