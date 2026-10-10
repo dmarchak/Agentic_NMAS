@@ -107,7 +107,7 @@ GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
 #: Held to that by tests/test_manual.py: no page here has a v2 control (`data-op="<slug>"`).
 #: (C644, 2026-10-10: twelve operations built on v2 and the NetBox screen were still marked.)
 ON_TODAYS_APP = frozenset((
-    "bulk-intent", "drift-check", "approvals", "logs", "dhcp", "approvals-screen", "backups",
+    "drift-check", "approvals", "logs", "dhcp", "approvals-screen", "backups",
 ))
 
 #: Every sidebar destination (its label in ``templates/v2/base.html``) and the
@@ -171,6 +171,7 @@ OPERATIONS = {
     "logging-path": ("modules.nsot.logging_path", "STEPS"),
     "privileged": ("modules.nsot.privileged", "STEPS"),
     "save": ("modules.nsot.save_op", "STEPS"),
+    "template-coverage": ("modules.nsot.template_coverage", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
@@ -187,7 +188,8 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "drift-schedule": "installation-settings",
                   "record-decision": "installation-settings",
                   "platform-map": "installation-settings",
-                  "template-bindings": "edit-template"}
+                  "template-bindings": "edit-template",
+                  "template-coverage": "templates"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

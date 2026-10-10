@@ -10,9 +10,21 @@ change when you deploy.
 
 ## Where it is {#where}
 
-Today bulk intent has no screen. It runs on the host as `scripts/nmas-bulk-intent`, which
-uses the same code as the routes behind it; the routes accept a confirm only from a verified
-person. A selection on the Devices list is planned to reach it.
+On **Devices**, tick the devices, open **Actions** and choose **Change a setting on (N)…**.
+The page names the devices and asks for a one-line summary (it becomes the commit's subject)
+and each setting: its path, the value it holds now, and the value it becomes, written as in
+the intent file (`514`, `true`, `[a, b]`, `{level: informational}`), or `(absent)` for a
+setting not there, or to remove one. **Add a setting** adds a row. **Preview the change** runs
+[the preview](#the-preview) below and draws it in place: the counts first, the refused devices
+with each reason (and, where the before-state differs, the value expected and the value held),
+then the accepted devices grouped by what changes in their configuration, each group collapsed,
+with what a deploy would send, what is no longer rendered, and each device's intent diff.
+**Commit the change to N devices' intent** needs a verified person and is bound to that
+preview; the result names the commit and offers **Plan a deploy for these N…**, for exactly
+the devices it changed.
+
+The same code runs on the host as `scripts/nmas-bulk-intent`, and behind its two JSON routes,
+which also accept a confirm only from a verified person.
 
 ```
 nmas-bulk-intent --list <list> --devices <a>,<b>,<c> --change <change.json>
@@ -29,7 +41,7 @@ keyed by that name (an interface by its name). Use `{"__absent__": true}` as `be
 setting that is not there yet, or as `after` to remove one. A setting the change does not
 name is never touched.
 
-## The preview
+## The preview {#the-preview}
 
 1. **Check the change itself**. Read: the change file. Sent: nothing. Recorded: nothing. A
    path the intent schema does not know refuses the whole change before any device is

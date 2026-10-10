@@ -273,7 +273,8 @@ def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
         key = _norm(delta)
         groups.setdefault(key, {"delta": delta, "devices": []})["devices"].append(host)
         report["accepted"].append({
-            "device": host, "blob": _blob(text), "text": new_text,
+            # `was` and `text`: the intent before and after, for a screen that draws its diff.
+            "device": host, "blob": _blob(text), "was": text, "text": new_text,
             "deployable": deployable, "blocking_reasons": list(reasons),
             "render_delta": delta})
 

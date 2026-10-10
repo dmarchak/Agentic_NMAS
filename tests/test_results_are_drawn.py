@@ -230,6 +230,10 @@ PAGE_RECORD = {
     "templates_v2.bindings_apply": ("templates/v2/_template_op.html",
                                     ("op.state == 'bound'", "r.moves", "r.commit"),
                                     "templates_v2.page"),
+    # Devices › Change a setting (board D): the commit in place, its devices and the refused;
+    # read again on the network's History (an intent commit).
+    "bulk_intent_v2.apply": ("templates/v2/_bulk_intent.html",
+                             ("c.commit", "c.refused", "c.error"), "v2.history_page"),
     # Adopt (board G): the result in place, each step and why it stopped; the run read again on
     # the network's History (Onboarding and adopt).
     "adopt_v2.confirm": ("templates/v2/_adopt.html", ("r.steps", "r.reason", "r.remaining"),

@@ -406,7 +406,7 @@ class TestTheIndexListsEverything:
         html = _client().get("/v2/help/onboard").get_data(as_text=True)
         nav = html.split('class="helpnav"', 1)[1].split("</nav>", 1)[0]
         assert nav.count("helpnav-mark") == len(manual.ON_TODAYS_APP)
-        assert re.search(r"Edit intent in bulk</span><span class=\"helpnav-mark\"", nav)
+        assert re.search(r"Check drift</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Onboard a device</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Update the app</span><span class=\"helpnav-mark\"", nav)
 

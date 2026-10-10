@@ -1065,6 +1065,13 @@ select { max-width: 100%; }
 .set-form .set-switch { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
 .set-form .set-switch input { width: auto; padding: 0; margin: 0; }
 .set-inline { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 7.4's board D, Change a setting: one setting per row across the form (path, now, becomes),
+   stacked at phone width. */
+.set-form > .bi-row { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 10px; margin: 0; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r); }
+.bi-row > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bi-dev { margin: 4px 0; }
+@media (max-width: 640px) { .set-form > .bi-row { grid-template-columns: minmax(0, 1fr); } }
 /* F4, Diagnostics: a card across the grid, a network's row controls, the folded list of what
    finished, and the app's log in a scrolling dark block that never widens the page. */
 .set-card-wide { grid-column: 1 / -1; }

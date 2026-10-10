@@ -82,3 +82,25 @@ since the preview. See [Edit a template](edit-template#bindings).
 Offered only while the network has no committed template: it lists the shipped files it adds
 and commits them as you, overwriting nothing. Each template then needs Approve…. See
 [Edit a template](edit-template#seed).
+
+## Coverage {#coverage}
+
+The **Coverage** tab answers how much of each device's golden its template reproduces, across
+the network: the question an approval does not answer. It shows the last measurement, when it
+was taken, for whom, and at which commit; when the repository has moved since (a golden or a
+template changed), it says so, because the answer may no longer hold.
+
+**Check coverage now** measures again, as a job; the card fills in when it ends. For every
+device with a committed golden it runs four steps, and reaches no device:
+
+1. `golden`: read its committed golden (the manifest's, at HEAD; never a file on disk).
+2. `render`: parse it into intent and render that through the template the device is bound to.
+3. `compare`: line by line, as seed and Approve do: reproduced, in the golden but not rendered,
+   rendered but not in the golden.
+4. `keep`: the answer is kept, masked and dated with the commit it measured, for this tab.
+
+The counts come first: could not be checked, not fully reproduced, reproduced exactly. Then
+**What to model next**: the lines the parsers keep as `unmodeled:`, ranked by how many devices
+carry them. Then the devices, grouped by outcome and collapsed, each with how much is
+reproduced and modelled, the template it rendered through, and its differing lines one level
+down; each name opens the device's Intent tab, where its own lines are acknowledged or edited.

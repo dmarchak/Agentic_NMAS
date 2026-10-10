@@ -127,6 +127,8 @@ ANNOUNCERS = {
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
+    # modules/nsot/template_coverage.py: a coverage check's end (Templates › Coverage).
+    "template-coverage": ("templates",),
     # routes/adopt_v2.py: an adoption's end (the inventory row, its first golden, NetBox).
     "adopt": ("inventory", "goldens", "netbox", "remote"),
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
@@ -207,6 +209,7 @@ DECLARED = {
     "v2.profile_propose_commit": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
+    "bulk_intent_v2.apply": ("intent", "remote"),
     "templatize.retry_apply": ("rolled_back",),
     "device_v2.revert_confirm": ("intent", "remote", "rolled_back"),
     "device_v2.retry_confirm": ("rolled_back",),
@@ -361,6 +364,10 @@ DECLARED = {
                                             "devices a change would move; writes nothing"),
     "templates_v2.edit_check": Nothing("renders the edit in a temporary copy of the library, "
                                        "removed after; the repository is not written"),
+    "templates_v2.coverage_check": Nothing("starts the coverage check as a job and answers at "
+                                           "once; the job keeps its answer and ANNOUNCES "
+                                           "templates when it ends (ANNOUNCERS "
+                                           "template-coverage)"),
     "adopt_v2.preview": Nothing("reads the device over the supplied login and computes the "
                                 "adoption's plan; it sends nothing and writes nothing"),
     "adopt_v2.confirm": Nothing("starts the adoption as a job and answers at once; the job "
@@ -402,6 +409,8 @@ DECLARED = {
     "templatize.profile_propose_preview": Nothing("computes the network's monitoring profile "
                                                   "from committed intent; writes nothing"),
     "templatize.bulk_preview": Nothing("previews a bulk intent change; the apply commits"),
+    "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
+                                      "commits"),
     "templatize.report": Nothing("round-trip coverage computed from goldens; writes nothing"),
     "netbox_safety.preview_import": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "netbox_safety.preview_import_all": Nothing("a NetBox dry run: reads, and issues a one-shot token"),

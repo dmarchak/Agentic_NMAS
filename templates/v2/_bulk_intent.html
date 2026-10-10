@@ -1,0 +1,112 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Devices › Change a setting's card (7.4's board D, approved 2026-10-04 on canvas v32), from
+    routes/bulk_intent_v2.py over THE bulk intent core: the change (each setting's path, the
+    value it holds now, the value it becomes), the preview (counts first; the refused devices,
+    each reason; the accepted ones grouped by what changes in their rendered configuration,
+    collapsed, each device's intent diff one level down), one confirm, and the commit in place.
+    Nothing is sent to a device. -#}
+{%- macro carried() -%}
+<input type="hidden" name="list" value="{{ f.list }}">
+{%- for d in f.devices %}<input type="hidden" name="device" value="{{ d }}">{% endfor %}
+{%- endmacro -%}
+{%- macro change_rows(editable) -%}
+{%- for r in f.rows %}
+{%- if editable %}
+<fieldset class="bi-row">
+  <legend class="sr">Setting {{ loop.index }}</legend>
+  <div><label for="bi-path-{{ loop.index }}">Path</label>
+  <input id="bi-path-{{ loop.index }}" name="path" type="text" class="mono" value="{{ r.path }}" placeholder="logging.console" autocomplete="off"></div>
+  <div><label for="bi-before-{{ loop.index }}">Holds now</label>
+  <input id="bi-before-{{ loop.index }}" name="before" type="text" class="mono" value="{{ r.before }}" placeholder="{{ f.absent }}" autocomplete="off"></div>
+  <div><label for="bi-after-{{ loop.index }}">Becomes</label>
+  <input id="bi-after-{{ loop.index }}" name="after" type="text" class="mono" value="{{ r.after }}" placeholder="informational" autocomplete="off"></div>
+</fieldset>
+{%- else %}
+<input type="hidden" name="path" value="{{ r.path }}"><input type="hidden" name="before" value="{{ r.before }}"><input type="hidden" name="after" value="{{ r.after }}">
+{%- endif %}
+{%- endfor %}
+{%- endmacro -%}
+<section class="card set-card set-card-wide" id="bulk-card" aria-labelledby="bi-h">
+{%- if c.state == 'done' and c.ok %}
+  <h2 id="bi-h">Committed</h2>
+  <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<div><strong>{{ c.devices | length }} device{{ 's' if c.devices | length != 1 }}' intent changed, in one commit, as {{ c.actor }}</strong> (<span class="mono" title="{{ c.commit }}">{{ (c.commit or '')[:12] }}</span>; {{ c.headline }}).
+    {%- if c.refused %}<p class="small">Not changed, refused at the preview: {{ c.refused | join(', ') }}.</p>{% endif %}
+    <p class="small">Nothing was sent: each device runs what it ran until it is deployed.</p></div></div>
+  <div class="set-foot"><a class="btn btn-primary btn-small" data-op="deploy" href="{{ url_for('v2.devices_deploy', list=f.list, device=c.devices) }}">Plan a deploy for these {{ c.devices | length }}…</a>{{ how('deploy', compact=True, op='deploy') }}
+    <a class="btn btn-small" href="{{ url_for('v2.devices', list=f.list) }}">Back to Devices</a></div>
+{%- elif c.state == 'done' %}
+  <h2 id="bi-h">Not committed</h2>
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Nothing was committed:</strong> {{ c.error }}
+    {%- if c.left_uncommitted %}<p class="small">Left uncommitted: {{ c.left_uncommitted | join(', ') }}.</p>{% endif %}</div></div>
+  <form class="set-form" method="post" action="{{ url_for('bulk_intent_v2.preview') }}" hx-post="{{ url_for('bulk_intent_v2.preview') }}" hx-target="#bulk-card" hx-swap="outerHTML">
+    {{ carried() }}<input type="hidden" name="summary" value="{{ f.summary }}">{{ change_rows(False) }}
+    <div class="set-foot"><span class="op-act"><button type="submit" class="btn btn-small" data-op="bulk-intent" hx-disabled-elt="this"><span class="op-idle">Preview it again</span><span class="op-busy">Checking each device…</span></button>{{ how('bulk-intent', compact=True, op='a bulk change') }}</span></div>
+  </form>
+{%- elif c.state == 'preview' %}
+  <h2 id="bi-h">{{ c.headline }}</h2>
+  <div class="save-sum">
+    <div class="save-n save-ok"><strong>{{ c.accepted }}</strong>change, in {{ c.groups | length }} group{{ 's' if c.groups | length != 1 }} by what changes</div>
+    {%- if c.refused %}<div class="save-n save-danger"><strong>{{ c.refused | length }}</strong>refused, unchanged</div>{% endif %}
+  </div>
+  {%- if c.refused %}
+  <details class="sc-grp" data-keep="bi-refused"{% if c.refused | length <= 12 %} open{% endif %}>
+    <summary>{{ badge(c.refused | length ~ ' refused', 'danger') }}<span class="muted">{{ c.refused[:8] | map(attribute='device') | join(', ') }}{% if c.refused | length > 8 %} and {{ c.refused | length - 8 }} more{% endif %}</span></summary>
+    <div class="table-wrap"><table class="table"><tbody>
+      {%- for r in c.refused %}<tr><th scope="row">{{ r.device }}</th><td>{{ r.reason }}
+        {%- if r.mismatched %}<ul class="small">{% for m in r.mismatched %}<li><span class="mono">{{ m.path }}</span>: the change expects <span class="mono">{{ m.expected | tojson }}</span>, it holds <span class="mono">{{ m.has | tojson }}</span></li>{% endfor %}</ul>{% endif %}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </details>
+  {%- endif %}
+  {%- for g in c.groups %}
+  <details class="sc-grp" data-keep="bi-group-{{ g.n }}">
+    <summary>{{ badge(g.devices | length ~ ' device' ~ ('s' if g.devices | length != 1 else ''), 'ok') }}<span>group {{ g.n }}: {{ g.added | length }} rendered line(s) added, {{ g.removed | length }} removed{% if g.blocked %}; {{ g.blocked }} not deployable yet{% endif %}</span> <span class="muted">{{ g.devices[:8] | map(attribute='host') | join(', ') }}{% if g.devices | length > 8 %} and {{ g.devices | length - 8 }} more{% endif %}</span></summary>
+    {%- if g.added %}<h3 class="set-label">A deploy would send (masked)</h3><pre class="op-diff">{% for l in g.added %}<span class="op-add">{{ l }}</span>
+{% endfor %}</pre>{% endif %}
+    {%- if g.removed %}<h3 class="set-label">No longer rendered</h3><p class="small">A deploy is merge-only: these stay on each device until a removal (Mode B) takes them off.</p><pre class="op-diff">{% for l in g.removed %}<span class="op-del">{{ l }}</span>
+{% endfor %}</pre>{% endif %}
+    {%- if not g.added and not g.removed %}<p class="small">Their rendered configuration does not change: the intent changes, and a deploy would send nothing for it.</p>{% endif %}
+    <h3 class="set-label">Each device's intent</h3>
+    {%- for d in g.devices %}
+    <details class="bi-dev"><summary><span class="mono">{{ d.host }}</span>{% if not d.deployable %} {{ badge('not deployable yet', 'warn') }}{% endif %}</summary>
+      {%- if d.blocking %}<ul class="small">{% for b in d.blocking %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+      <pre class="op-diff">{% for l in d.diff %}<span class="{{ 'op-add' if l.startswith('+') else 'op-del' if l.startswith('-') else '' }}">{{ l }}</span>
+{% endfor %}</pre></details>
+    {%- endfor %}
+  </details>
+  {%- endfor %}
+  <form class="set-form" method="post" action="{{ url_for('bulk_intent_v2.apply') }}" hx-post="{{ url_for('bulk_intent_v2.apply') }}" hx-target="#bulk-card" hx-swap="outerHTML">
+    {{ carried() }}<input type="hidden" name="summary" value="{{ f.summary }}"><input type="hidden" name="hash" value="{{ c.hash }}">{{ change_rows(False) }}
+    <div class="set-foot set-form-note">
+      {%- if c.accepted and c.may.may %}
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="bulk-intent" hx-disabled-elt="this"><span class="op-idle">Commit the change to {{ c.accepted }} device{{ 's' if c.accepted != 1 }}' intent</span><span class="op-busy">Committing…</span></button>{{ how('bulk-intent', compact=True, op='a bulk change') }}</span>
+      <span class="muted small">{{ c.may.statement }} One commit, "{{ f.summary }}". Bound to this preview ({{ c.hash }}): it is computed again and nothing is committed if it moved. Nothing is sent to a device.</span>
+      {%- elif c.accepted %}<span class="muted small">{{ c.may.statement }} Nothing can be committed from here.</span>
+      {%- else %}<span class="muted small">No device can take this change, so there is nothing to commit.</span>{% endif %}
+    </div>
+  </form>
+  <form method="get" action="{{ url_for('bulk_intent_v2.page') }}" hx-get="{{ url_for('bulk_intent_v2.page') }}" hx-target="#bulk-card" hx-swap="outerHTML">
+    {{ carried() }}<input type="hidden" name="summary" value="{{ f.summary }}">{{ change_rows(False) }}
+    <button type="submit" class="btn btn-small">Change the settings</button>
+  </form>
+{%- else %}
+  <h2 id="bi-h">The change</h2>
+  {%- if c.state == 'refused' %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not previewed:</strong> {{ c.error }}</div></div>
+  {%- endif %}
+  <p class="small">Each setting is a path into the intent document (dots between keys; a list item by its name, as <span class="mono">interfaces.GigabitEthernet2.description</span>), the value it must hold NOW on every device, and the value it becomes. Values are written as in the intent file (<span class="mono">514</span>, <span class="mono">true</span>, <span class="mono">{level: informational}</span>); type <span class="mono">{{ f.absent }}</span> for a setting not there, or to remove one. A device holding anything else is refused and named, never changed blindly.</p>
+  <p class="muted small">{{ f.devices | length }} device{{ 's' if f.devices | length != 1 }}: {{ f.devices[:8] | join(', ') }}{% if f.devices | length > 8 %} and {{ f.devices | length - 8 }} more{% endif %}.</p>
+  <form class="set-form" method="post" action="{{ url_for('bulk_intent_v2.preview') }}" hx-post="{{ url_for('bulk_intent_v2.preview') }}" hx-target="#bulk-card" hx-swap="outerHTML" autocomplete="off">
+    {{ carried() }}
+    <label for="bi-summary">Summary</label>
+    <div><input id="bi-summary" name="summary" type="text" value="{{ f.summary }}" required placeholder="console logging at informational"><span class="set-origin">one line; it becomes the commit's subject</span></div>
+    {{ change_rows(True) }}
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="bulk-intent" hx-disabled-elt="this"><span class="op-idle">Preview the change</span><span class="op-busy">Checking each device…</span></button>{{ how('bulk-intent', compact=True, op='a bulk change') }}</span>
+      {%- if f.rows | length < f.max_rows %}
+      <button type="button" class="btn btn-small" hx-get="{{ url_for('bulk_intent_v2.page', more=1) }}" hx-include="closest form" hx-target="#bulk-card" hx-swap="outerHTML">Add a setting</button>
+      {%- endif %}
+      <span class="muted small">The preview reads each device's committed intent and writes nothing.</span>
+    </div>
+  </form>
+{%- endif %}
+</section>

@@ -604,37 +604,50 @@ def _bulk_render_and_eligible(list_name: str, repo: str):
     return render, eligible
 
 
-@bp.route("/bulk/preview", methods=["POST"])
-def bulk_preview():
-    """Preview one change against N devices' intent. Writes nothing."""
+def bulk_plan_of(data: dict) -> tuple:
+    """THE bulk intent preview, for this JSON route and v2's Devices › Change a setting:
+    ``(report, status)``; the report keeps each accepted device's new text (``text``) for a
+    caller that draws the intent's diff, and names its list."""
     from modules.nsot import bulk_intent
 
-    data = request.get_json(silent=True) or {}
     list_name, repo, devices, steps, error = _bulk_inputs(data)
     if error:
-        return jsonify({"ok": False, "error": error}), 400
+        return {"ok": False, "error": error}, 400
     render, eligible = _bulk_render_and_eligible(list_name, repo)
     report = bulk_intent.plan(repo, devices, steps, render=render,
                               eligible=eligible,
                               summary=data.get("summary", ""))
+    return {**report, "list_name": list_name, "repo": repo}, (200 if report["ok"] else 400)
+
+
+def bulk_apply_of(data: dict, actor: str) -> tuple:
+    """THE bulk intent apply, for both entry points: ``(result, status)``."""
+    from modules.nsot import bulk_intent
+
+    list_name, repo, devices, steps, error = _bulk_inputs(data)
+    if error:
+        return {"ok": False, "error": error}, 400
+    render, eligible = _bulk_render_and_eligible(list_name, repo)
+    result = bulk_intent.apply(list_name, repo, devices, steps,
+                               str(data.get("confirmed_hash") or ""),
+                               render=render, eligible=eligible,
+                               summary=data.get("summary", ""), actor=actor)
+    return result, (200 if result.get("ok") else 409)
+
+
+@bp.route("/bulk/preview", methods=["POST"])
+def bulk_preview():
+    """Preview one change against N devices' intent. Writes nothing."""
+    report, status = bulk_plan_of(request.get_json(silent=True) or {})
+    report.pop("repo", None)
     for entry in report.get("accepted", []):
         entry.pop("text", None)      # the preview shows effects, not files
-    return jsonify({**report, "list_name": list_name}), (200 if report["ok"] else 400)
+        entry.pop("was", None)
+    return jsonify(report), status
 
 
 @bp.route("/bulk/apply", methods=["POST"])
 def bulk_apply():
     """Recompute the preview; refuse unless it is what was confirmed; commit once."""
-    from modules.nsot import bulk_intent
-
-    data = request.get_json(silent=True) or {}
-    list_name, repo, devices, steps, error = _bulk_inputs(data)
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
-    render, eligible = _bulk_render_and_eligible(list_name, repo)
-    result = bulk_intent.apply(list_name, repo, devices, steps,
-                               str(data.get("confirmed_hash") or ""),
-                               render=render, eligible=eligible,
-                               summary=data.get("summary", ""),
-                               actor=request_actor())
-    return jsonify(result), (200 if result.get("ok") else 409)
+    result, status = bulk_apply_of(request.get_json(silent=True) or {}, request_actor())
+    return jsonify(result), status

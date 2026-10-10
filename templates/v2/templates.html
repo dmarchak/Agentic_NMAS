@@ -17,12 +17,16 @@
   </div>
   {%- endif %}
 </div>
+{%- set tab = tab or 'library' %}
 <nav class="tabs" aria-label="Templates">
-  <a class="tab on" href="{{ url_for('templates_v2.page', list=list_name) }}" aria-current="page">Configuration templates</a>
+  <a class="tab{{ ' on' if tab == 'library' }}" href="{{ url_for('templates_v2.page', list=list_name) }}"{% if tab == 'library' %} aria-current="page"{% endif %}>Configuration templates</a>
+  <a class="tab{{ ' on' if tab == 'coverage' }}" href="{{ url_for('templates_v2.coverage', list=list_name) }}"{% if tab == 'coverage' %} aria-current="page"{% endif %}>Coverage</a>
 </nav>
 <div class="tab-body">
 {%- if not known %}
 <div class="notice notice-warn">{{ icon('warn') }}<p>No network is named {{ list_name }}: there are no templates to show. Nothing was read and nothing was created.</p></div>
+{%- elif tab == 'coverage' %}
+{% include "v2/_template_coverage.html" %}
 {%- else %}
 {% include "v2/_templates_lib.html" %}
 {%- endif %}

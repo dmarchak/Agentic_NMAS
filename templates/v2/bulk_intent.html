@@ -1,0 +1,16 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{#- Devices › Change a setting on the ticked devices (7.4's board D, approved 2026-10-04 on
+    canvas v32): one change to their committed intent, its preview grouped by what changes, one
+    commit (_bulk_intent.html). -#}
+{% block title %}Change a setting · Devices · {{ brand.short }}{% endblock %}
+{% block main %}
+<p class="crumbs muted"><a href="{{ url_for('v2.devices', list=f.list) }}">Devices</a> › Change a setting</p>
+<div class="page-head">
+  <div class="page-title">
+    <h1>Change a setting on {{ f.devices | length }} device{{ 's' if f.devices | length != 1 }} {{ info('bulk-intent') }}</h1>
+    <p class="sub">{{ f.list }}: one change to their committed intent, checked against what each holds now, committed once. Nothing is sent to a device; they change when you deploy them.</p>
+  </div>
+</div>
+{% include "v2/_bulk_intent.html" %}
+{% endblock %}

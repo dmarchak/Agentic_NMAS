@@ -379,3 +379,71 @@ def revoke():
         op = {"state": "revoke", "list": name, "path": path, "may": _may(),
               "refused": got.get("error", "not revoked"), "reason": reason, "status": {}}
     return _region(name, op, got.get("status", 200))
+
+
+# ---- Coverage (CUTOVER's "Template coverage", the board drawn 2026-10-10 under the Phase 7
+# mode): how much of each device's golden its template reproduces, measured as a job a person
+# starts (modules/nsot/template_coverage.py), its last answer kept and dated.
+
+def _coverage_ctx(name: str, job: str = "") -> dict:
+    """The tab's card: a running job, else the last measurement kept (judged against HEAD),
+    else why there is none. The JOB is read before the record (C642)."""
+    from modules.nsot import capture_job, listref, template_coverage
+    from modules.nsot.repo import git
+
+    got = capture_job.get(job) if job else None
+    if got and got["state"] == "running":
+        return {"list_name": name, "cov": {"state": "running", "job": job}}
+    failed = got.get("error", "") if got and got["state"] == "failed" else ""
+    last = template_coverage.latest(name)
+    _rc, head, _err = git(listref.resolve(name).repo_dir, "rev-parse", "HEAD")
+    return {"list_name": name, "cov": {
+        "state": "unreadable" if last and last.get("unreadable") else
+                 "measured" if last else "never",
+        "last": last or {}, "failed": failed, "head": (head or "").strip()}}
+
+
+def _coverage_card(name: str, job: str = "", code: int = 200):
+    return _strict(render_template("v2/_template_coverage.html", may=_may(),
+                                   **_coverage_ctx(name, job)), code)
+
+
+@bp.route("/coverage", methods=["GET"])
+def coverage():
+    """The Coverage tab: the last measurement, or why there is none. Writes nothing."""
+    from routes.v2 import _page
+
+    name = _list_name()
+    if not _known(name):
+        return _page("v2/templates.html", active_nav="templates", list_name=name,
+                     known=False, tab="coverage")
+    return _page("v2/templates.html", active_nav="templates", known=True, tab="coverage",
+                 may=_may(), **_coverage_ctx(name))
+
+
+@bp.route("/coverage/card", methods=["GET"])
+def coverage_card():
+    """The card alone, re-read when `templates` is announced (a measurement ending, or a
+    template commit that dates the last one). Writes nothing."""
+    name = _list_name()
+    if not _known(name):
+        return _strict(f'<div class="notice notice-danger" role="alert"><p>Couldn\'t load: no '
+                       f'network is named {escape(name)}, so nothing was read.</p></div>'), 404
+    return _coverage_card(name, (request.args.get("job") or "").strip())
+
+
+@bp.route("/coverage", methods=["POST"])
+def coverage_check():
+    """Check coverage now: the measurement as a job, the card waiting on it."""
+    from modules import identity
+    from modules.nsot import template_coverage
+
+    name = _list_name()
+    if not _known(name):
+        return _strict(f'<div class="notice notice-danger" role="alert"><p>Couldn\'t load: no '
+                       f'network is named {escape(name)}, so nothing was measured.</p></div>'), 404
+    # A read's gate verifies nobody (route_gates: not_device), so who asked is the viewer as
+    # identified, said only when identified.
+    ident = identity.identify(request)
+    job = template_coverage.start(name, ident.actor if ident.is_identified else "")
+    return _coverage_card(name, job)

@@ -88,7 +88,12 @@ NOT_AN_OPERATION = {
     ("_reload.html", "btn"): "Cancel or Close: puts back the tab the card replaced, a read",
     ("_reload.html", "Its break-glass record"): "opens Credentials, where the record is, a read",
     ("_template_bindings.html", "btn"): "Cancel or Close: puts the Templates table back, a read",
-    ("_adopt.html", "Close"): "returns to Devices, a read; nothing was sent",
+    ("_bulk_intent.html", "Back to Devices"): "returns to Devices, a read",
+    ("_bulk_intent.html", "Change the settings"): "puts the change's form back with what was "
+                                                  "typed, computing nothing",
+    ("_bulk_intent.html", "Add a setting"): "redraws the form with one more row, computing "
+                                            "nothing",
+    ("_adopt.html", "Close"):"returns to Devices, a read; nothing was sent",
     ("_adopt.html", "Open 's page"): "opens the adopted device's page, a read",
     ("_onboard_add.html", "Close"): "returns to Devices, a read; nothing was created",
     ("_onboard_add.html", "Open 's page"): "opens the new device's pending page, a read",

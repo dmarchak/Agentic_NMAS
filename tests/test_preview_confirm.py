@@ -237,11 +237,9 @@ RETROFITTED = {"deploy": "partials__deploy_wizard.1.js",
                "onboarding": "partials__onboard_wizard.1.js",
                "netbox import/remove": "partials__netbox_safety_modal.1.js"}
 RETROFIT_PENDING = {
-    # No screen: the routes (/templatize/bulk/preview, /apply) are reached by
-    # curl today, measured 2026-09-27. DEFERRED to Fleet (7.4) by the
-    # operator: a fleet-shaped operation, and a button now would be the same
-    # action in two places once 7.4 builds it. Its CLI is the path in use.
-    "bulk intent": None,
+    # Bulk intent left 2026-10-10: deferred to Fleet (7.4) by the operator, its screen was
+    # built there, on v2 (Devices › Change a setting, routes/bulk_intent_v2.py), never on
+    # today's component; its JSON routes keep no screen.
 }
 
 

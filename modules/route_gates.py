@@ -157,6 +157,8 @@ GATES = {
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),
     "templatize.revert_apply": _g(A, "commits the inverse of one intent commit's change"),
     "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),
+    "bulk_intent_v2.apply": _g(A, "commits one change to the ticked devices' intent, from "
+                                  "Devices (board D; the same core as templatize.bulk_apply)"),
     "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; the same apply as templatize.revert_apply, in the list its card carries)"),
     "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; the same apply as templatize.retry_apply, in the list its card carries)"),
     "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; the same apply as templatize.seed_apply, in the list its card carries)"),
@@ -268,7 +270,10 @@ GATES = {
                                     "capture preview; records nothing"),
     "golden.migrate_plan": _g(N, "a dry run"),
     "onboard.plan": _g(N, "builds a plan; creates nothing"),
-    "adopt_v2.preview": _g(N, "reads the device over the supplied login; sends and writes "
+    "templates_v2.coverage_check": _g(N, "measures how much of each device's golden its "
+                                         "template reproduces, as a job; reads git, keeps the "
+                                         "answer, reaches no device"),
+    "adopt_v2.preview": _g(N,"reads the device over the supplied login; sends and writes "
                               "nothing"),
     "onboard_v2.preview": _g(N,"builds Add device's plan and review; creates nothing"),
     "onboard_v2.verify_preview": _g(N, "reads the pending device and computes what Verify would "
@@ -284,6 +289,8 @@ GATES = {
     "onboard.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                     "send (P.9 step c); sends nothing"),
     "templatize.bulk_preview": _g(N, "computes a preview; writes nothing"),
+    "bulk_intent_v2.preview": _g(N, "computes the change's preview for the ticked devices; "
+                                    "writes nothing"),
     "templatize.preview_committed_edit": _g(N, "renders an edit; writes nothing"),
     "intent_v2.check": _g(N, "checks and renders an edit as it is typed; writes nothing"),
     "intent_v2.acknowledge": _g(N, "rewrites the document in the editor (its unmodeled_ack block); writes nothing"),

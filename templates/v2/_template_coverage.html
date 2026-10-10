@@ -1,0 +1,62 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Templates › Coverage (CUTOVER's "Template coverage"; the board drawn 2026-10-10 under the
+    Phase 7 mode): how much of each device's golden its template reproduces. The last
+    measurement, dated and judged against the repository now; Check coverage now as a job, busy
+    on itself; the counts by outcome first, what to model next ranked, the devices grouped and
+    collapsed, each one's lines one level down. routes/templates_v2.py over
+    modules/nsot/template_coverage.py. Reaches no device. -#}
+{%- set last = cov.last or {} -%}
+<section class="card" id="tpl-coverage" aria-labelledby="cov-h"
+  {%- if cov.state == 'running' %} aria-busy="true" hx-get="{{ url_for('templates_v2.coverage_card', list=list_name, job=cov.job) }}" hx-trigger="nmas:templates from:body"{% else %} hx-get="{{ url_for('templates_v2.coverage_card', list=list_name) }}" hx-trigger="nmas:templates from:body, nmas:goldens from:body"{% endif %} hx-swap="outerHTML">
+  <div class="card-head"><h2 id="cov-h">How much of each device's golden its template reproduces</h2>
+    {%- if cov.state != 'running' %}
+    <form method="post" action="{{ url_for('templates_v2.coverage_check') }}" hx-post="{{ url_for('templates_v2.coverage_check') }}" hx-target="#tpl-coverage" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ list_name }}">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="templates" hx-disabled-elt="this"><span class="op-idle">Check coverage now</span><span class="op-busy">Starting…</span></button>{{ how('templates', 'coverage', compact=True, op='the coverage check') }}</span>
+    </form>
+    {%- endif %}</div>
+  {%- if cov.state == 'running' %}
+  <p class="op-wait">Rendering each device's golden through its template and comparing; this card fills in when it ends. Nothing reaches a device.</p>
+  {%- else %}
+  {%- if cov.failed %}<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>The check stopped:</strong> {{ cov.failed }}. What is drawn below is the last measurement kept, if any.</p></div>{% endif %}
+  {%- if cov.state == 'never' %}
+  <p>Not measured for {{ list_name }} yet. <strong>Check coverage now</strong> renders every device's committed golden through its own template and compares, line by line; it reads the repository only.</p>
+  {%- elif cov.state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The last measurement is unreadable: {{ last.unreadable }}. Check coverage now measures again.</p></div>
+  {%- else %}
+  <p class="small">Measured {{ stamp(last.measured_at) }}{% if last.asked_by %} for {{ last.asked_by }}{% endif %}, at commit <span class="mono" title="{{ last.commit }}">{{ (last.commit or '')[:12] }}</span>.
+    {%- if cov.head and last.commit != cov.head %} <strong>The repository has moved since</strong> (now <span class="mono" title="{{ cov.head }}">{{ cov.head[:12] }}</span>): a golden or a template changed, so this may no longer hold. Check again.{% endif %}</p>
+  {%- if not last.total %}
+  <p>No device of {{ list_name }} had a committed golden to check.</p>
+  {%- else %}
+  <div class="save-sum">
+    {%- for g in last.groups %}<div class="save-n save-{{ g.level }}"><strong>{{ g.devices | length }}</strong>{{ g.words }}</div>{% endfor %}
+  </div>
+  {%- if last.next %}
+  <h3 class="set-label">What to model next</h3>
+  <p class="small">Lines the parsers keep as <span class="mono">unmodeled:</span>, by how many devices carry them (first two words).</p>
+  <div class="table-wrap"><table class="table"><thead><tr><th scope="col">Construct</th><th scope="col">Devices</th><th scope="col">Lines</th></tr></thead><tbody>
+    {%- for n in last.next[:10] %}<tr><th scope="row" class="mono">{{ n.construct }}</th><td>{{ n.device_count }} <span class="muted small">{{ n.devices[:6] | join(', ') }}{% if n.devices | length > 6 %} and {{ n.devices | length - 6 }} more{% endif %}</span></td><td>{{ n.occurrences }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {%- if last.next | length > 10 %}<details class="sc-grp" data-keep="cov-next-more"><summary>{{ last.next | length - 10 }} more construct(s)</summary><ul class="small mono">{% for n in last.next[10:] %}<li>{{ n.construct }}: {{ n.device_count }} device(s)</li>{% endfor %}</ul></details>{% endif %}
+  {%- else %}<p class="small">Nothing is kept as <span class="mono">unmodeled:</span> on any device checked.</p>{% endif %}
+  {%- for g in last.groups %}
+  <details class="sc-grp" data-keep="cov-{{ g.key }}"{% if g.key != 'reproduced' and g.devices | length <= 12 %} open{% endif %}>
+    <summary>{{ badge(g.devices | length ~ ' ' ~ g.words, g.level) }}<span class="muted">{{ g.devices[:8] | map(attribute='host') | join(', ') }}{% if g.devices | length > 8 %} and {{ g.devices | length - 8 }} more{% endif %}</span></summary>
+    <div class="table-wrap"><table class="table"><tbody>
+    {%- for d in g.devices %}<tr><th scope="row"><a href="{{ url_for('device_v2.device', name=d.host, list=list_name, tab='intent') }}">{{ d.host }}</a></th>
+      {%- if d.outcome == 'unreadable' %}<td colspan="2">{{ d.why }}</td>
+      {%- else %}<td>{{ d.fidelity }}% reproduced · {{ d.coverage }}% modelled{% if d.unmodeled %} · {{ d.unmodeled }} unmodelled line(s){% endif %} <span class="muted small">({{ d.template }})</span></td>
+      <td>{%- if d.missing or d.extra %}<details class="bi-dev" data-keep="cov-lines-{{ d.host }}"><summary>the lines</summary>
+        {%- if d.missing %}<p class="small">In the golden, not rendered:</p><pre class="op-diff">{% for l in d.missing %}<span class="op-del">{{ l }}</span>
+{% endfor %}{% if d.missing_more %}<span class="muted">… {{ d.missing_more }} more</span>{% endif %}</pre>{% endif %}
+        {%- if d.extra %}<p class="small">Rendered, not in the golden:</p><pre class="op-diff">{% for l in d.extra %}<span class="op-add">{{ l }}</span>
+{% endfor %}{% if d.extra_more %}<span class="muted">… {{ d.extra_more }} more</span>{% endif %}</pre>{% endif %}
+      </details>{% endif %}</td>{% endif %}</tr>{% endfor %}
+    </tbody></table></div>
+  </details>
+  {%- endfor %}
+  {%- endif %}
+  {%- endif %}
+  {%- endif %}
+</section>

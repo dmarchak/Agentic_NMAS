@@ -34,6 +34,7 @@
         <div class="menu" role="menu" x-show="isOpen" x-cloak>
           <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="deploy" x-bind:disabled="nonePicked">Plan a deploy for the ticked devices…</button>{{ how('deploy', compact=True, op='deploy') }}</div>
           <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="save" formaction="{{ url_for('v2.save') }}" x-bind:disabled="nonePicked"><span>Save <span x-text="count">({{ picked | length }})</span>…</span><span class="menu-sub muted">to startup (write memory) and as golden, together</span></button>{{ how('save', compact=True, op='Save') }}</div>
+          <div class="menu-row"><button type="submit" role="menuitem" class="menu-item" data-op="bulk-intent" formaction="{{ url_for('bulk_intent_v2.page') }}" x-bind:disabled="nonePicked"><span>Change a setting on <span x-text="count">({{ picked | length }})</span>…</span><span class="menu-sub muted">one change to their committed intent, one commit; nothing is sent</span></button>{{ how('bulk-intent', compact=True, op='a bulk change') }}</div>
           <div class="menu-rule"></div>
           <div class="menu-row"><a role="menuitem" class="menu-item" data-op="save" href="{{ url_for('v2.save', list=d.list, all=1) }}">Save every device of {{ d.list }} ({{ d.managed }})…</a>{{ how('save', compact=True, op='Save') }}</div>
         </div>

@@ -83,7 +83,12 @@ def _bodies(v):
                                                    "text": "hostname {{ hostname }}\n"}),
                                     "the edit checked against every governed device's golden, "
                                     "masked on the way out"),
-        "adopt_v2.preview": (400, ("form", {"hostname": "r9"}),
+        "templates_v2.coverage_check": (404, ("form", {"list": "no-such-network"}),
+                                        "a network that does not exist: refused, nothing "
+                                        "measured"),
+        "bulk_intent_v2.preview": (400,("form", {"device": "r1"}),
+                                   "no network named: refused before any intent is read"),
+        "adopt_v2.preview": (400,("form", {"hostname": "r9"}),
                              "no network named: refused before the device is read"),
         "onboard_v2.preview": (400, ("form", {"hostname": "r9"}),
                                "no network named: refused saying why the list is carried, "

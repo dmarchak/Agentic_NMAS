@@ -151,7 +151,12 @@ STAGES = {
         "n/a: a failed commit puts the file back; a seeded intent is corrected forward",
         "modules.nsot.seed.apply"),
     "templatize.bulk_apply": Stages(
-        "templatize.bulk_preview", "confirmed_hash", NO_DEVICE,
+        "templatize.bulk_preview", "confirmed_hash in routes.templatize.bulk_apply_of",
+        NO_DEVICE, "n/a: a failed commit puts every file back; one device reverts alone",
+        "modules.nsot.bulk_intent.apply"),
+    # Devices › Change a setting on the ticked devices (7.4's board D): the same core.
+    "bulk_intent_v2.apply": Stages(
+        "bulk_intent_v2.preview", "hash", NO_DEVICE,
         "n/a: a failed commit puts every file back; one device reverts alone",
         "modules.nsot.bulk_intent.apply"),
     "templatize.edit_committed": Stages(
@@ -363,6 +368,7 @@ HISTORY = {
     "templatize.edit_committed": ("intent",),
     "intent_v2.commit": ("intent",),
     "templatize.bulk_apply": ("intent",),
+    "bulk_intent_v2.apply": ("intent",),
     "templatize.revert_apply": ("intent",),
     "templatize.retry_apply": ("retries",),
     "device_v2.revert_confirm": ("intent",),

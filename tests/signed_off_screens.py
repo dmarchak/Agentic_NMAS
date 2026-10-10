@@ -18,7 +18,11 @@ SIGNED_OFF = {
     "devices.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the device list); its selection "
                                    "bar, Actions and Startup column from 7.4's board A "
                                    "(FleetSelect), approved 2026-10-04 (C593)"),
-    "save.html": ("2026-10-04", "7.4's board C (SaveAll, 'one Save does both'), approved "
+    "bulk_intent.html": ("2026-10-04", "7.4's board D (BulkIntent, 'change a setting on N "
+                                       "devices', not an editor), approved 2026-10-04 on canvas "
+                                       "v32: each device's diff and program grouped and "
+                                       "collapsible, a refused group drawn; built 2026-10-10"),
+    "save.html": ("2026-10-04","7.4's board C (SaveAll, 'one Save does both'), approved "
                                 "2026-10-04 (C593): the plan from stored records, the run in "
                                 "place, the result with Retry the failed. Its first count is "
                                 "what is measured, not the board's 'startup differs'"),
@@ -57,7 +61,10 @@ SIGNED_OFF = {
                                      "(A); Approve…, the check device by device naming every "
                                      "failing line and where to acknowledge it (B); the result "
                                      "in place and Revoke… with its reason (C). Editing and "
-                                     "bindings stay on today's page until their own boards"),
+                                     "bindings stay on today's page until their own boards. "
+                                     "Its Coverage tab: the board drawn 2026-10-10 under the "
+                                     "Phase 7 mode (docs/STANDING_APPROVAL_LOG.md), counted as "
+                                     "signed off"),
     "apply.html": ("2026-10-02", "the stepper mockup (\"Applying to 3 devices... in the order you "
                                  "set\"), signed off 2026-10-02, with the rollout order decided "
                                  "at the 2026-09-29 review. 7.4's selection may change it; then "
