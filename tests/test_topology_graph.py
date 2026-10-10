@@ -318,11 +318,51 @@ class TestWhereMercuryAttaches:
             == [(T.MANAGER, "eth1", "s3", "Gi1/1", "Vl99", "99")]
         assert g["nodes"][T.MANAGER]["manager"] and not g["nodes"][T.MANAGER]["managed"]
 
-    def test_its_only_way_in_is_a_single_point_of_failure(self):
-        """The board's s3 SPOF, now measured; and C651: the island r6 is not cut off by s3, which
-        it never joined."""
-        spof = _labelled()["analysis"]["physical"]["spof"]
-        assert spof == [{"device": "s3", "cuts_off": [T.MANAGER]}]
+    def test_its_only_way_in_is_said_and_mercury_is_no_device_s_path(self):
+        """The board's s3 SPOF, now measured: Mercury reaches every device but the island r6
+        through s3 alone. The host forwards nothing, so it is never a weak point itself."""
+        a = _labelled()["analysis"]["physical"]
+        assert a["attached"] == ["s3"]
+        assert a["only_way_in"] == [{"device": "s3", "port": "Gi1/1", "vlan": "99",
+                                     "reaches": ["r1", "r2", "r3", "r4", "s1", "s2", "s4"]}]
+        assert a["spof"] == [] and a["bridges"] == []
+
+    def test_an_address_two_devices_hold_attaches_nothing(self):
+        """Measured on the host, 2026-10-10: every containerlab router holds the same
+        management-VRF address, in a subnet overlapping the host's LAN; each had been drawn
+        attached to Mercury."""
+        import ipaddress
+        res, up = _capture()
+        intents = {h: hv for h, hv in _intents().items() if h != "r5"}
+        gi1 = next(i for i in intents["r1"]["interfaces"] if i["name"] == "GigabitEthernet1")
+        assert any(i.get("ipv4") == gi1["ipv4"] for i in intents["r4"]["interfaces"])
+        net = ipaddress.ip_interface("/".join(gi1["ipv4"].split())).network
+        g = T.network_graph(MANAGED, {}, intents, res, up,
+                            at_here=[("eth0", f"{net.network_address + 250}/{net.prefixlen}")])
+        assert T.MANAGER not in g["nodes"]
+
+    def test_a_device_mercury_reaches_directly_stays_an_island_and_says_so(self):
+        """r6 on the host: its own lab, its Gi2 on Mercury's management segment, no LLDP link
+        to the fleet. Attached directly, it is still the devices' island, never joined to s3
+        through Mercury, and Mercury's way into the rest is still s3 alone."""
+        import ipaddress
+        res, up = _capture()
+        intents = {h: hv for h, hv in _intents().items() if h != "r5"}
+        here = _here(intents)
+        net = ipaddress.ip_interface(here[0][1]).network
+        intents["r6"] = {"interfaces": [{"name": "GigabitEthernet2",
+                                         "ipv4": f"{net.network_address + 6} {net.netmask}"}]}
+        roles = {h: "router" if h.startswith("r") else "switch" for h in MANAGED}
+        g = T.network_graph(MANAGED, roles, intents, res, up, at_here=here)
+        a = g["analysis"]["physical"]
+        assert a["attached"] == ["r6", "s3"] and a["islands"] == [["r6"]]
+        assert "reaches it directly" in a["island_why"]["r6"]
+        assert [o["device"] for o in a["only_way_in"]] == ["s3"] and a["spof"] == []
+
+    def test_c651_a_cut_names_only_its_own_component(self):
+        links = [{"a": "a", "b": "b", "state": "up"}, {"a": "b", "b": "c", "state": "up"}]
+        got = T.analyse(["a", "b", "c", "island"], links)
+        assert got["spof"] == [{"device": "b", "cuts_off": ["a"]}]
 
     def test_an_address_in_no_device_s_subnet_draws_nothing(self):
         res, up = _capture()

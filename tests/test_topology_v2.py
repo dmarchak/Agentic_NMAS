@@ -154,8 +154,9 @@ def test_needs_attention_names_what_is_wrong_and_the_weak_points(web):
     assert "Up, not as intended (2)" in att
     assert "r1 Gi3 ↔ s1 Gi0/2" in att and "only r1 reports it: s1 is polled and does not" in att
     assert "Weak points (2)" in att
-    assert ("the only path between Mercury and the network (Mercury reaches the network only "
-            "through s3 Gi1/1, VLAN 99)") in att
+    assert ("the only path between Mercury and r1, r2, r3, r4, s1, s2, s4 (Mercury reaches them "
+            "only through s3 Gi1/1, VLAN 99). If s3 or that port fails, Mercury loses 7 "
+            "devices") in att
     assert "r6" in att and "island" in att and "Mark as expected…" in att
     assert "10 as intended" in att and "r5" not in att
 

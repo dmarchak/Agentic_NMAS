@@ -348,30 +348,31 @@ def _routing_only(layers: dict, on: list, nodes: dict) -> list:
 
 def _weak(an: dict, phys: list) -> list:
     """Single points of failure, bridges and islands to look at, each in words a person acts on
-    (the board's hover: "the only path between the NMAS and the network")."""
+    (the board's hover: "the only path between the NMAS and the network"). A device that is
+    Mercury's only way into part of the network and one whose loss splits the devices are one
+    entry, saying both."""
     from modules.readers.topology_graph import MANAGER
 
     out = []
-    mgr = {l["b"]: l for l in phys if l.get("manager")}
-    spof = {s["device"] for s in an.get("spof") or []}
-    for s in an.get("spof") or []:
-        d = s["device"]
-        rest = [label(x) for x in s["cuts_off"] if x != MANAGER]
-        if MANAGER in s["cuts_off"]:
-            l = mgr.get(d) or {}
-            via = f" ({label(MANAGER)} reaches the network only through {d}" + \
-                  (f" {l['port_b']}" if l.get("port_b") else "") + \
-                  (f", VLAN {l['vlan']}" if l.get("vlan") else "") + ")"
-            words = (f"Single point of failure: the only path between {label(MANAGER)} and the "
-                     f"network{via}. If {d} or that port fails, {label(MANAGER)} loses every "
-                     "device" + (f"; {', '.join(rest)} also lose the rest" if rest else "") + ".")
-        else:
-            words = (f"Single point of failure: if {d} fails, {', '.join(rest)} "
-                     f"lose{'s' if len(rest) == 1 else ''} the rest.")
-        out.append({"kind": "spof", "device": d, "title": d, "words": words})
+    m = label(MANAGER)
+    ways = {o["device"]: o for o in an.get("only_way_in") or []}
+    splits = {s["device"]: s["cuts_off"] for s in an.get("spof") or []}
+    for d in sorted(set(ways) | set(splits)):
+        parts = []
+        if d in ways:
+            o = ways[d]
+            port = f" {o['port']}" if o.get("port") else ""
+            vlan = f", VLAN {o['vlan']}" if o.get("vlan") else ""
+            parts.append(f"the only path between {m} and {', '.join(o['reaches'])} ({m} reaches "
+                         f"them only through {d}{port}{vlan}). If {d} or that port fails, {m} "
+                         f"loses {len(o['reaches'])} device{'s' if len(o['reaches']) != 1 else ''}")
+        if d in splits:
+            rest = [label(x) for x in splits[d]]
+            parts.append(f"if {d} fails, {', '.join(rest)} lose{'s' if len(rest) == 1 else ''} "
+                         "the rest")
+        out.append({"kind": "spof", "device": d, "title": d,
+                    "words": "Single point of failure: " + "; and ".join(parts) + "."})
     for b in an.get("bridges") or []:
-        if set(b["cuts_off"]) == {MANAGER} and ({b["a"], b["b"]} - {MANAGER}) <= spof:
-            continue        # said by the device's own entry above
         cut = [label(x) for x in b["cuts_off"]]
         out.append({"kind": "bridge", "device": "", "a": b["a"], "b": b["b"],
                     "title": f"{label(b['a'])} ↔ {label(b['b'])}",
@@ -388,36 +389,40 @@ def _weak(an: dict, phys: list) -> list:
 
 
 def what_if(phys: list, nodes: dict, out: str) -> dict:
-    """Take *out* away from the physical graph (its up links): who loses the rest. The rest is
-    Mercury's own side when Mercury's host is drawn, else the largest part; a device already
-    apart is not counted as lost."""
+    """Take *out* away from the physical graph (its up links): who loses the rest. With
+    Mercury's host drawn, "the rest" is what Mercury reaches: every part joined to a device it
+    attaches to (the host forwards nothing between them); without it, the largest part. A
+    device already apart is not counted as lost."""
     import networkx as nx
 
     from modules.readers.topology_graph import MANAGER
 
     if out not in nodes:
         return {"ok": False, "why": f"{out} is not on this map"}
+    attached = {l["b"] for l in phys if l.get("manager") and l.get("state") in ("up", "unknown")}
 
-    def parts(skip):
+    def reached(skip):
         g = nx.MultiGraph()
-        g.add_nodes_from(n for n, v in nodes.items() if not v.get("external") and n != skip)
+        g.add_nodes_from(n for n, v in nodes.items()
+                         if not v.get("external") and n not in (skip, MANAGER))
         for l in phys:
-            if l.get("state") in ("up", "unknown") and skip not in (l["a"], l["b"]):
+            if not l.get("manager") and l.get("state") in ("up", "unknown") and \
+                    skip not in (l["a"], l["b"]):
                 g.add_edge(l["a"], l["b"])
-        comps = sorted((set(c) for c in nx.connected_components(g)), key=lambda c: (-len(c),
-                                                                                    sorted(c)))
-        main = next((c for c in comps if MANAGER in c), comps[0] if comps else set())
-        return main, set(g.nodes)
-
-    before, _ = parts(None)
-    after, _present = parts(out)
+        comps = sorted((set(c) for c in nx.connected_components(g)),
+                       key=lambda c: (-len(c), sorted(c)))
+        if attached:
+            return set().union(*[c for c in comps if c & (attached - {skip})])
+        return comps[0] if comps else set()
 
     def managed(n):
-        return n not in (out, MANAGER) and (nodes.get(n) or {}).get("managed")
-    # Mercury's side keeps no managed device: Mercury loses every device it reached.
-    cut_mgr = MANAGER in before and not any(managed(n) for n in after)
+        return n != out and (nodes.get(n) or {}).get("managed")
+    before, after = reached(None), reached(out)
     lost = sorted(n for n in before - after if managed(n))
-    return {"ok": True, "device": out, "lost": lost, "manager_lost": cut_mgr}
+    # Mercury reaches no managed device at all without it.
+    cut_mgr = bool(attached) and not any(managed(n) for n in after)
+    return {"ok": True, "device": out, "lost": lost, "manager_lost": cut_mgr,
+            "with_manager": bool(attached)}
 
 
 # ---------------------------------------------------------------------------- the view

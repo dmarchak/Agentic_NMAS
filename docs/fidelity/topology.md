@@ -7,8 +7,9 @@ headless Firefox, the page fed by the reader's value built from the real capture
 
 Boards: `TopoDesktop.dc.html` (1440 wide) and `TopoPhone.dc.html` (390 wide), on the mockups canvas (the operator's Design artifact), signed off 2026-10-04 (NSOT_STAGE7_PLAN 15.8 and 15.9). `TopoWall.dc.html` is a later step.
 Shots: desktop 1440 and 1280; phone 390 (Firefox's narrowest window is 488 CSS px, so the page is held to a 390 px column; below 700 px the phone's rules apply to both). Compared 2026-10-10.
+Compared again 2026-10-10 after the host walk (Mercury's host never a path between devices; the what-if names whom Mercury loses): the what-if panel's words changed, no region's verdict.
 Templates compared: templates/v2/topology.html, templates/v2/_topology_map.html
-Templates sha256: `f7620f143f3249ab8cec6211de01e241d5fd0cf1f9cccd46fab3373c7887b3e6`
+Templates sha256: `aa8ef5b2bfbf05bd12280dc9dfe34d921c9200ff7d05942622a330d6efb3e329`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

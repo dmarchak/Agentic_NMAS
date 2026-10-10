@@ -444,10 +444,18 @@ def manager_links(intents: dict, phys: list, ifs: dict, at_here: list) -> list:
             mine.append((name, ipaddress.ip_interface(iface)))
         except ValueError:
             continue
+    # An address two devices hold is not where a host attaches: one subnet cannot reach both
+    # (a lab tool can give every node the same management-VRF address, in a subnet that can
+    # overlap the host's own LAN; measured on the host 2026-10-10, five false attachments).
+    held = {}
+    for dev in intents:
+        for iface in (intents.get(dev) or {}).get("interfaces") or []:
+            for d in _iface_networks(iface):
+                held.setdefault(d.ip, set()).add(dev)
     out = []
     for dev in sorted(intents):
         for iface in (intents.get(dev) or {}).get("interfaces") or []:
-            nets = _iface_networks(iface)
+            nets = [d for d in _iface_networks(iface) if len(held.get(d.ip, ())) == 1]
             hit = next(((n, m) for n, m in mine for d in nets
                         if m.version == d.version and m.ip in d.network and m.ip != d.ip
                         and d.network.prefixlen < d.max_prefixlen), None)
@@ -491,6 +499,31 @@ def carry_since(layers: dict, before: dict, now: str) -> None:
                 l["since"], l["since_seen"] = was.get("since") or now, bool(was.get("since_seen"))
             else:
                 l["since"], l["since_seen"] = now, was is not None
+
+
+def mercury_reach(phys: list, nodes: dict) -> dict:
+    """Where Mercury's host gets in: ``{"attached": [devices], "only_way_in": [{device, port,
+    vlan, reaches}]}``. Each part of the network the host reaches through exactly one device
+    has that device as its only way in (the board's s3); a device attached alone is reached
+    directly, and is no one's way in."""
+    import networkx as nx
+
+    mgr = [l for l in phys if l.get("manager") and l.get("state") in ("up", "unknown")]
+    attached = sorted({l["b"] for l in mgr})
+    g = nx.MultiGraph()
+    g.add_nodes_from(n for n, v in nodes.items() if not v.get("external") and n != MANAGER)
+    for l in phys:
+        if not l.get("manager") and l.get("state") in ("up", "unknown"):
+            g.add_edge(l["a"], l["b"])
+    only = []
+    for comp in nx.connected_components(g):
+        ways = [d for d in attached if d in comp]
+        reaches = sorted(d for d in comp - set(ways) if (nodes.get(d) or {}).get("managed"))
+        if len(ways) == 1 and reaches:
+            link = next(l for l in mgr if l["b"] == ways[0])
+            only.append({"device": ways[0], "port": link.get("port_b", ""),
+                         "vlan": link.get("vlan", ""), "reaches": reaches})
+    return {"attached": attached, "only_way_in": sorted(only, key=lambda o: o["device"])}
 
 
 def analyse(nodes: list, links: list) -> dict:
@@ -611,7 +644,15 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
         # known only by its address.
         names = sorted(n for n, v in nodes.items() if not v.get("external")) \
             if layer == "physical" else sorted({e for l in links for e in (l["a"], l["b"])})
-        a = analyse(names, links)
+        if layer == "physical":
+            # Mercury's host forwards nothing between devices: the analyses are the devices'
+            # own, and its reach is said apart (measured 2026-10-10: attached to s3 and r6, the
+            # host had joined them, hiding r6's island and naming itself a weak point).
+            a = analyse([n for n in names if n != MANAGER],
+                        [l for l in links if not l.get("manager")])
+            a.update(mercury_reach(links, nodes))
+        else:
+            a = analyse(names, links)
         # An island is of the FLEET: an outside peer cut off is not one of ours.
         a["islands"] = [m for m in ([d for d in i if (nodes.get(d) or {}).get("managed")]
                                     for i in a["islands"]) if m]
@@ -620,6 +661,9 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
         for island in a["islands"]:
             for d in island:
                 a["island_why"][d] = _why_apart(d, nodes.get(d) or {}, layer, len(island) == 1)
+                if d in (a.get("attached") or ()):
+                    a["island_why"][d] += (f"; {_product()} reaches it directly, on its own "
+                                           f"port to {_product()}'s segment")
                 declared = expected.get(d) if layer == "physical" else None
                 was = before.get(d) or {}
                 a["island_state"][d] = {
@@ -673,6 +717,11 @@ def _peer_by_lldp(hv: dict, host: str, address: str, phys: list) -> str:
             if l["b"] == host and same_interface(l["port_b"], iface.get("name", "")):
                 return l["a"]
     return ""
+
+
+def _product() -> str:
+    from modules import brand
+    return brand.PRODUCT_SHORT
 
 
 def _why_apart(device: str, node: dict, layer: str, alone: bool) -> str:

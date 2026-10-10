@@ -192,6 +192,7 @@
   <h2 id="topo-wi-h">Taking out {{ t.s.out }}</h2>
   {%- if not t.what_if.ok %}<p class="small">{{ t.what_if.why }}.</p>
   {%- elif t.what_if.manager_lost %}<p class="small"><strong>{{ t.label(t.manager) }} loses every device</strong>: {{ t.s.out }} is its only way in. Marked "cut off" on the map.</p>
+  {%- elif t.what_if.lost and t.what_if.with_manager %}<p class="small"><strong>{{ t.label(t.manager) }} loses {{ t.what_if.lost | join(', ') }}</strong>: it reaches them only through {{ t.s.out }}. Marked "cut off" on the map.</p>
   {%- elif t.what_if.lost %}<p class="small"><strong>{{ t.what_if.lost | join(', ') }}</strong> lose{{ 's' if t.what_if.lost | length == 1 }} the rest: marked "cut off" on the map.</p>
   {%- else %}<p class="small">Nothing is cut off: every other device still reaches the rest over the links that are up.</p>{% endif %}
   <p class="small topo-faint">Worked out on the map's links as last read; nothing was sent to a device.</p>
