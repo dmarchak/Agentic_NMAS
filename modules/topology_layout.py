@@ -10,8 +10,8 @@ Core, Edge, etc placements. Let the user design the diagram after initial genera
 person arranges the map on the page and saves it for everyone (modules/topology_positions.py);
 the bands below only place what has no saved place, and are never drawn.
 
-Bands by class, top to bottom (the board's CORE, EDGE, ACCESS, MANAGEMENT, with multi-access
-segments between the routers and the switches); each band ordered by
+Bands by class, top to bottom (EDGE, CORE, ACCESS, MANAGEMENT, with multi-access segments
+between the routers and the switches; the board had CORE above EDGE); each band ordered by
 where its neighbours sit, then, on a small map, untangled: neighbours in a band swapped (every
 order of a small band tried) while it lowers crossings and links drawn through a device they do
 not join.
@@ -26,9 +26,11 @@ log = logging.getLogger(__name__)
 #: The map's coordinate space: 880 wide fits the board's map box at 1440 at about its own size,
 #: so a label drawn at 11 is read at about 11.
 W, BAND, TOP, SIDE, HALF = 880, 175, 64, 60, 17
-#: Bands, top to bottom (the board): routers inside, routers with an outside peer and the peers
-#: themselves, switches, a device of no known class, Mercury's own host.
-BANDS = ("core", "edge", "segments", "access", "no class", "management")
+#: Bands, top to bottom: routers with an outside peer and the peers themselves, routers inside,
+#: multi-access segments, switches, a device of no known class, Mercury's own host. The edge
+#: is on top, not the board's core (C654): between the core and the switches its own links
+#: cross every core-to-switch cable (the lab, measured 2026-10-10: 12 crossings, 3 this way).
+BANDS = ("edge", "core", "segments", "access", "no class", "management")
 
 
 def node_class(name: str, n: dict) -> str:
@@ -95,7 +97,9 @@ def layout(nodes: dict, phys: list) -> dict:
                 return (sum(others) / len(others) if others else x[name], name)
             rows[band] = sorted(rows[band], key=centre)
             spread(band)
-    ys = {band: TOP + BAND * i for i, band in enumerate(order)}
+    # An outside peer sits above the top band: the map starts that much lower.
+    lift = round(BAND * 0.45) if outside & set(rows[order[0]]) else 0
+    ys = {band: TOP + lift + BAND * i for i, band in enumerate(order)}
 
     def place():
         # An outside peer sits above its band (the board's r5), so the band's own links do not
@@ -107,7 +111,7 @@ def layout(nodes: dict, phys: list) -> dict:
         # The cost: two links crossing count 1, a link drawn through a device that is not its
         # end counts 10 (it reads as connected). Counted on the cabling only: a segment's member
         # lines pull it towards its devices (above) and never decide where the devices go.
-        cabling = [l for l in phys if not l.get("member")]
+        cabling = [l for l in phys if l.get("kind") != "member"]
         combos = 1
         for band in order:
             combos *= math.factorial(len(rows[band]))
@@ -157,7 +161,8 @@ def layout(nodes: dict, phys: list) -> dict:
     positions = {name: (round(px), round(py)) for name, (px, py) in place().items()}
     labels = [(ys[band] - HALF - 26 - (BAND * 0.45 if band == "edge" and outside else 0), band)
               for band in order]
-    return {"positions": positions, "bands": labels, "height": TOP + BAND * (len(order) - 1) + 80}
+    return {"positions": positions, "bands": labels,
+            "height": TOP + lift + BAND * (len(order) - 1) + 80}
 
 
 #: Above this many devices the layout keeps its barycentre order: the untangling pass grows

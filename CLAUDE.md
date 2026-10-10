@@ -206,6 +206,12 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   tests/test_page_requests_resolve.py] [why](docs/LESSONS.md#every-carried-field-is-drawn)
 - **Enterprise scale: no per-device work per request;** a per-device question is a job.
   [tests/test_scale.py; the fixed-read test in tests/test_devices_v2.py] [why](docs/LESSONS.md#enterprise-scale)
+- **A board-built screen is compared with its board before it is called done:** the board
+  and the page shot side by side (tests/test_board_shots.py) at the board's width, 1280
+  and phone width, compared region by region in docs/fidelity/<screen>.md, every deviation
+  a line in STANDING_APPROVAL_LOG.md. [tests/test_board_fidelity.py: a record per
+  signed-off screen or the shrinking UNCHECKED list; a changed template refused until
+  compared again]
 
 ### Operations and safety
 

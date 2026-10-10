@@ -418,6 +418,29 @@ class TestSinceAndLayout:
         # Bands by class: routers above switches, Mercury's host at the bottom.
         assert pos["r1"][1] < pos["s3"][1] < pos[T.MANAGER][1]
 
+    def test_the_lab_s_generated_map_crosses_few_cables_inside_its_frame(self):
+        """C654: the operator found the map too busy. With the edge band between the core and
+        the switches, its r3-r4 cable crossed every core-to-switch cable (12 crossings,
+        measured 2026-10-10); with the edge on top, 3; with the segment's member lines
+        counted as cables (the filter keyed on a field they do not carry), 4. Counted here by
+        its own geometry, not the layout's cost; and the outside peer raised above the top
+        band stays inside the frame."""
+        from modules.topology_layout import HALF
+        g = _labelled()
+        pos, height = g["layout"]["positions"], g["layout"]["height"]
+        assert all(HALF <= y <= height - HALF for _, y in pos.values()), pos
+
+        def crosses(p, q, r, s):
+            def turn(a, b, c):
+                return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) > 0
+            return turn(p, q, r) != turn(p, q, s) and turn(r, s, p) != turn(r, s, q)
+
+        cables = [(l["a"], l["b"]) for l in g["layers"]["physical"]]
+        assert len(cables) == 12
+        crossings = [(a, b, c, d) for i, (a, b) in enumerate(cables) for c, d in cables[i + 1:]
+                     if not {a, b} & {c, d} and crosses(pos[a], pos[b], pos[c], pos[d])]
+        assert len(crossings) <= 3, crossings
+
 
 class TestTheRead:
     def test_not_configured_says_so(self):

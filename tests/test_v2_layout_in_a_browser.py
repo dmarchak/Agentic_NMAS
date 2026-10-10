@@ -19,6 +19,7 @@ why elsewhere). The operator, 2026-10-02, after 4fe12ea was deployed:
    changes nothing about the layout.
 """
 
+import os
 import urllib.error
 
 import pytest
@@ -489,6 +490,24 @@ class TestEveryHelpLinkSitsBesideItsControl:
             links += n
         assert not problems, "\n".join(problems)
         assert links >= 5, links
+
+    def test_an_empty_library_s_seed_link_follows_the_rule(self, served, monkeypatch, tmp_path):
+        """C657: Templates on a network with no committed template draws Seed the library… in a
+        notice, outside any card, so its help link is in words. PAGES above draw the ACTIVE
+        list, which exists only when an earlier test in the process made its folder; here it
+        is made, in a lists folder of this test's own."""
+        from modules import config
+        srv, b = served
+        monkeypatch.setattr(config, "LISTS_DIR", str(tmp_path / "lists"))
+        os.makedirs(config.list_data_path(config.get_current_list_name()))
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1366, "height": 1000})
+        b.go(srv.url("/v2/templates"))
+        b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
+        assert "has no committed configuration template" in b.js(
+            "return document.querySelector('main').textContent")
+        problems, links = measure_help_links(b, "/v2/templates (empty)")
+        assert not problems, "\n".join(problems)
+        assert links >= 1, links
 
 
 def measure_layout(b, page_label):
