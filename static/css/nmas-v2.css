@@ -132,6 +132,7 @@ a { color: var(--accent); }
 .nav-item:hover { background: var(--side-on); color: #FFF; }
 .nav-item.active { background: var(--side-on); color: #FFF; font-weight: 500; }
 .nav-todays { margin-left: auto; font-size: 11px; color: var(--side-ink-2); white-space: nowrap; }  /* C569: a sidebar item that opens today's page says so */
+.nav-off { opacity: .6; cursor: default; }  /* C633: a screen not built yet says so, and goes nowhere */
 .v2-failure { max-width: 720px; margin: 48px auto; padding: 0 16px; }
 .nav-head { padding: 18px 10px 6px; font-size: 11px; letter-spacing: 0.08em; color: var(--side-ink-2); font-weight: 600; }
 .nav-rule { height: 1px; background: var(--side-rule); margin: 8px 6px; }

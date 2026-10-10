@@ -99,23 +99,41 @@ class TestEveryV2Template:
         # Tight, never slack: a closed gap lowers the ceiling in the same change (C629).
         assert len(T.GAPS) == T.CEILING, f"a gap closed: lower CEILING to {len(T.GAPS)}"
 
-    def test_the_scan_names_each_planted_case(self):
+    def test_the_scan_names_each_planted_case(self, monkeypatch):
         """The control: an unlabelled v1 link, a label naming no gap, a labelled link whose
-        words do not say so, and a form to a v1 route; a v2 link and a static file pass."""
+        words do not say so, and a form to a v1 route; a v2 link and a static file pass. The
+        list is empty now, so the listed gap is planted too."""
+        monkeypatch.setitem(T.GAPS, "planted", "a planted gap")
         rules = _rules()
         planted = ("<a href=\"{{ url_for('index') }}\">Logs</a>\n"
                    "<a data-todays-page=\"nope\" href=\"/\">x today's</a>\n"
-                   "<a data-todays-page=\"logs\" href=\"{{ url_for('index') }}\">Logs</a>\n"
+                   "<a data-todays-page=\"planted\" href=\"{{ url_for('index') }}\">Logs</a>\n"
                    "<form method=\"get\" action=\"{{ url_for('index') }}\">"
                    "<button type=\"submit\">Go</button></form>\n"
                    "<a href=\"{{ url_for('v2.coverage') }}\">Coverage</a>\n"
                    "<a href=\"/static/x.css\">x</a>\n"
-                   "<a data-todays-page=\"logs\" href=\"{{ url_for('index') }}\">Logs "
+                   "<a data-todays-page=\"planted\" href=\"{{ url_for('index') }}\">Logs "
                    "<small>today's page</small></a>\n")
         got = [(n, why) for _p, n, why in scan(planted, rules)]
         assert [n for n, _w in got] == [1, 2, 3, 4], got
         assert "no data-todays-page" in got[0][1] and "is no listed gap" in got[1][1]
         assert "does not say" in got[2][1] and "<form>" in got[3][1]
+
+
+def test_the_sidebar_s_logs_and_dhcp_say_what_is_there():
+    """C633: today's page had neither screen. Logs opens Diagnostics' app log, saying so; DHCP
+    is not built and says so, going nowhere."""
+    import app as A
+    html = A.app.test_client().get("/v2/monitoring").get_data(as_text=True)
+    side = html[html.index('<nav class="sidebar"'):html.index("</nav>", html.index("sidebar"))]
+    logs = re.search(r'<a class="nav-item" href="([^"]+)"[^>]*>(?:(?!</a>).)*<span>Logs</span>'
+                     r'<small class="nav-todays">([^<]+)</small></a>', side, re.S)
+    assert logs and logs.group(1).startswith("/v2/settings/installation?tab=diagnostics")
+    assert logs.group(1).endswith("#diag-log") and logs.group(2) == "the app's own"
+    dhcp = re.search(r'<span class="nav-item nav-off" aria-disabled="true"[^>]*>.*?<span>DHCP'
+                     r'</span><small class="nav-todays">not built yet</small></span>', side, re.S)
+    assert dhcp, "DHCP is drawn as a link, or without saying it is not built"
+    assert "today's page" not in side and "today&#39;s page" not in side
 
 
 class TestAFailedV2RequestStaysOnV2:
@@ -196,8 +214,9 @@ def test_every_rendered_v2_page_in_a_real_browser(served):  # noqa: F811
                 problems.append(f"{page}: {line}")
     assert not problems, "\n".join(problems)
     assert gaps <= set(T.GAPS), gaps - set(T.GAPS)
-    assert {"logs", "dhcp"} <= gaps, gaps    # the sidebar is on every page (NetBox on v2, 2026-10-10)
-    assert "netbox" not in gaps, gaps
+    # No page links to today's pages at all since C633 (2026-10-10): the sidebar's Logs and
+    # DHCP, on every page, say what is there.
+    assert not gaps, gaps
     # The planted case, on a real page: an unlabelled link to today's index is named.
     b.js("var a=document.createElement('a'); a.href='/'; a.textContent='Planted';"
          "document.body.appendChild(a); return 1")

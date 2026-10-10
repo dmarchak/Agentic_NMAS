@@ -149,8 +149,9 @@ v2 template and every rendered v2 page to it. On 2026-10-10 there were seven: Ca
 acknowledgement reason (C486), Plan a deploy for several ticked devices, History's Re-apply,
 onboarding (Add, Verify, Abandon, the bootstrap config, onboard again), and the sidebar's Logs,
 DHCP and NetBox (the Logs and DHCP links name screens today's page does not have: C633).
-NetBox, onboarding and Capture's reason closed the same day (cutover blockers 2 to 4),
-leaving four. A v2
+NetBox, onboarding and Capture's reason closed the same day (cutover blockers 2 to 4), then
+the batch deploy and Re-apply, and the sidebar's Logs and DHCP now say what is there (C633):
+**the list is empty**, so no v2 page sends a person to today's pages. A v2
 request that fails says "Couldn't load" in place and never redirects to today's index; a
 designed v2 error page is a further gap, pending a mockup.
 

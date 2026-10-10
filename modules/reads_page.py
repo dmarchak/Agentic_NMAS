@@ -448,6 +448,10 @@ def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: 
     command's groups, filtered; a side-by-side of two devices; only the differences against the
     reference a person chose (C577: never a default one)."""
     from modules.nsot import capture_job
+    # The JOB first, then the record (C642): read the other way round, a run that ended between
+    # the two reads drew its part-written record as the finished result. Seen ended, the job's
+    # record read after it is final.
+    j = capture_job.get(job) if job else None
     record = reads.get(list_name, run_id)
     c = {"list": list_name, "run": run_id, "job": job, "find": find, "text": text,
          "show": show if show in ("grouped", "differences", "failed") else "grouped",
@@ -455,7 +459,6 @@ def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: 
          "differences": None, "answered_devices": []}
     if record is None:
         return c
-    j = capture_job.get(job) if job else None
     running = record.get("state") == "running" and (j is None or j["state"] == "running")
     if record.get("state") == "running" and job and j is None:
         running = False                                # the job is gone: a restart

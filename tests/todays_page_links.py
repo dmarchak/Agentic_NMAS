@@ -9,10 +9,10 @@ draws the screen and its links point there.
 """
 
 #: key -> what v2 lacks, and where the work is recorded.
+#: Empty since 2026-10-10: the last two (the sidebar's Logs and DHCP) named screens today's page
+#: did not have (C633); each now says what is there. Nothing on v2 sends a person to today's
+#: pages, and a gap added here must name a screen today's page really has.
 GAPS = {
-    "logs": "the fleet's Logs screen (today's page); Stage 7, CUTOVER",
-    "dhcp": "the DHCP screen (today's page); Stage 7, CUTOVER",
-
 }
 
 #: Not a link: a v2 request that fails draws a minimal "Couldn't load" state (routes/
@@ -24,4 +24,4 @@ OTHER_GAPS = {
 
 #: The list's count; it may only fall, and it falls with the gap that closes (C629: closing
 #: installation_settings left it at 8 over 7, room for one gap to come back unseen).
-CEILING = 2
+CEILING = 0

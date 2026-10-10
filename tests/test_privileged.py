@@ -230,6 +230,30 @@ class TestTheCard:
         assert "Loopback0 carries the address Mercury reaches it on, and is never offered" in html
         assert re.search(r'value="clear-bgp-soft" disabled', html)
 
+    def test_a_job_that_ends_between_the_card_s_two_reads_is_drawn_done(self, t2, monkeypatch):
+        """C642: the card read the run's record, then the job. A job that finished between the
+        two drew its run as a result still "running", in red, listening for nothing (twice
+        under the gate's parallel shard). The job is read first now: seen ended, the record
+        read after it is final. Here the job ends exactly when it is read."""
+        from modules.nsot import capture_job, privileged as P2
+        ended = {"yes": False}
+
+        def job(job_id):
+            ended["yes"] = True
+            return {"state": "done", "elapsed_s": 1}
+
+        def record(list_name, run_id):
+            return {"id": run_id, "device": "r3", "command": "clear counters GigabitEthernet2",
+                    "reason": REASON, "actor": "a@b",
+                    "state": "done" if ended["yes"] else "running",
+                    "verify": {"words": "cleared"}}
+        monkeypatch.setattr(capture_job, "get", job)
+        monkeypatch.setattr(P2, "get", record)
+        html = self._get(t2, "/v2/device/r3/privileged?list=Lab&key=clear-counters"
+                             "&arg=GigabitEthernet2&result=20261010T000000000000Z-" + "0" * 32
+                             + "&job=" + "1" * 32)
+        assert "done, verified" in html and ">running<" not in html, html[:400]
+
     def test_preview_then_confirm_then_the_result(self, t2):
         from modules.nsot import capture_job
         s = t2["session"]

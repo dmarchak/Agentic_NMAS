@@ -143,6 +143,30 @@ class TestARun:
         assert "Not run: the devices these filters match changed" in html
         assert "0000000000000000 then" in html and sc["fleet"].sent == []
 
+    def test_a_run_that_ends_between_the_two_reads_is_drawn_whole(self, monkeypatch):
+        """C642: the run's page read the record, then the job. A run that ended between the two
+        drew its part-written record as the finished result. The job is read first now; here
+        it ends exactly when it is read, and the record read after it is the whole one."""
+        from modules import reads_page
+        from modules.nsot import capture_job, reads as R
+        ended = {"yes": False}
+
+        def job(job_id):
+            ended["yes"] = True
+            return {"state": "done", "elapsed_s": 1}
+
+        def record(list_name, run_id):
+            whole = ended["yes"]
+            return {"id": run_id, "state": "done" if whole else "running", "devices": ["r1"],
+                    "commands": ["show clock"], "started_at": 1.0,
+                    "finished_at": 2.0 if whole else None,
+                    "results": {"r1": {}} if whole else {}}
+        monkeypatch.setattr(capture_job, "get", job)
+        monkeypatch.setattr(R, "get", record)
+        monkeypatch.setattr(R, "summarise", lambda rec: {})
+        c = reads_page.result("Lab", "run1", job="j1")
+        assert c["state"] == "done" and c["record"]["done"] == 1, c["record"]
+
     def test_the_run_is_a_history_row(self, sc):
         _run(sc, ["show clock"])
         from modules.history_sources import show_commands

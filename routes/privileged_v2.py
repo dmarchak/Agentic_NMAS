@@ -35,8 +35,11 @@ def card(ref, dev, args, back="overview") -> dict:
          "job": args.get("job", ""), "error": args.get("error", ""), "state": "choose"}
     c["plan"] = privileged.plan(ref.name, host, key, arg)
     if args.get("result"):
-        rec = privileged.get(ref.name, args["result"])
+        # The JOB first, then the record (C642): read the other way round, a job that finished
+        # between the two reads drew its run as a result still "running", in red, listening for
+        # nothing. A job seen ended means its record is final.
         j = capture_job.get(c["job"]) if c["job"] else None
+        rec = privileged.get(ref.name, args["result"])
         if rec is None or (rec.get("state") == "running" and j and j["state"] == "running"):
             c.update(state="running", run=args["result"])
         else:
