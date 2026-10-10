@@ -90,6 +90,11 @@ STAGES = {
         "preview", "MISSING: no hash binds the abandon to what was shown",
         "n/a: nothing reached the device", "n/a: abandon is itself the undo of Create",
         "modules.nsot.onboard.record_run"),
+    # History › Baselines › Re-apply (2026-10-10): THE restore plan and job, every device a
+    # baseline holds, as one batch.
+    "v2.history_reapply_confirm": Stages(
+        "v2.history_reapply", "command_hashes", "modules.pipeline._stage_verify",
+        "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
     # Reload (P.14, cutover blocker 6): the preview reads the device and judges six gates; the
     # run reads again and compares the fingerprint, declares the window, reloads, waits, and
     # verifies that it runs what it ran. A reload cannot be undone.
@@ -323,6 +328,7 @@ HISTORY = {
     "onboard.abandon": ("onboarding",),
     "onboard_v2.verify": ("onboarding", "golden"),
     "device_v2.reload_confirm": ("reloads", "restart_windows", "restarts"),
+    "v2.history_reapply_confirm": ("receipts", "golden"),
     "onboard_v2.abandon": ("onboarding",),
     "bulk_reload": ("restart_windows", "restarts"),
     "update.apply": NOT_A_DEVICE,

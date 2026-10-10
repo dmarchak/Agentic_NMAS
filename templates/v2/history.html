@@ -81,7 +81,7 @@
           {%- if r.withdrawn %}<span class="muted">no: withdrawn</span>
           {%- elif r.usable %}{{ badge('yes', 'ok') }}
           {%- else %}{{ badge('no', 'warn') }}{% endif %}</span><span class="nowrap">
-          {%- if not r.withdrawn %}<a data-op="restore" data-todays-page="reapply" href="{{ url_for('index') }}">Re-apply (today's page)…</a>{{ how('restore', compact=True, op='re-apply') }}{% endif %}</span></span></summary>
+          {%- if not r.withdrawn %}<a data-op="restore" href="{{ url_for('v2.history_reapply', list=ref.name, tag=r.tag) }}">Re-apply…</a>{{ how('restore', compact=True, op='re-apply') }}{% endif %}</span></span></summary>
       <div class="hist-detail">
         {%- if r.withdrawn %}<p>Withdrawn: {{ r.withdrawn_why }}</p>
         {%- elif r.decision == 'earned' %}<p>Earned: its commit recorded <code>Baseline: earned</code>.</p>

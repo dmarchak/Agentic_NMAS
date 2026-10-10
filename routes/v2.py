@@ -308,6 +308,119 @@ def _history_ctx(request) -> dict:
     return ctx
 
 
+# ---------------------------------------------------------------------------
+# History › Baselines › Re-apply… (a nice-to-have after the cutover blockers, 2026-10-10; drawn
+# under the Phase 7 mode): every device a baseline holds, restored to it as ONE batch, through
+# THE restore plan (`routes.golden.restore_plan`) and the restore job a device's own Restore
+# runs (`deploy_job.start_restore`). The page is the preview; the confirm starts the job.
+# ---------------------------------------------------------------------------
+
+#: A device's row on the re-apply page: why it is, or is not, part of the batch.
+REAPPLY_STATES = {"ready": ("will be restored", "ok"),
+                  "needs_reason": ("needs a stated reason: restore it on its own page", "warn"),
+                  "blocked": ("blocked: nothing is sent", "danger"),
+                  "nothing": ("already as the baseline holds it", "muted")}
+
+
+def _reapply_ctx(req) -> dict:
+    """The baseline's re-apply, planned: every device's program and checks (masked on the way
+    out, after every hash is computed), the counts by state first, and the confirm body built
+    HERE from the hashes drawn, for the devices that can go as they are."""
+    from modules.nsot import listref
+    from modules.nsot.restore import WithdrawnBaseline
+    from modules.outbound import mask_payload
+    from routes.golden import restore_plan
+    from routes.list_param import named_list
+
+    name = named_list(req) or listref.active().name
+    tag = (req.args.get("tag") or "").strip()
+    ctx = {"list_name": name, "tag": tag, "rows": [], "counts": {}, "error": "",
+           "confirm_body": None, "states": REAPPLY_STATES, "skipped": []}
+    if not tag.startswith("baseline/"):
+        ctx["error"] = f"{tag or 'nothing'} is not a baseline: a re-apply names a baseline tag"
+        return ctx
+    try:
+        plan = restore_plan(name, tag, None, req=req)
+    except WithdrawnBaseline as exc:
+        ctx["error"] = str(exc)
+        return ctx
+    shown = mask_payload(plan)
+    rows, ready = [], []
+    for raw, d in zip(plan.get("devices") or [], shown.get("devices") or []):
+        intent = d.get("intent") or {}
+        if d.get("error") or not d.get("deployable") or d.get("busy"):
+            state = "blocked"
+        elif d.get("authorisation_ok") is False:
+            state = "needs_reason"
+        elif not d.get("commands") and intent.get("action") != "restore":
+            state = "nothing"
+        else:
+            state = "ready"
+            ready.append(raw)
+        rows.append({"name": d.get("device", ""), "state": state,
+                     "program": d.get("commands") or [], "error": d.get("error", ""),
+                     "blocking": list(d.get("blocking_reasons") or [])
+                     + ([d["busy"]] if d.get("busy") else []),
+                     "checks": d.get("checks") or [], "intent": intent,
+                     "residue": len(d.get("residue") or []),
+                     "excluded": d.get("excluded_unrenderable") or []})
+    ctx["rows"] = sorted(rows, key=lambda r: (list(REAPPLY_STATES).index(r["state"]),
+                                              r["name"]))
+    ctx["counts"] = {s: sum(1 for r in rows if r["state"] == s) for s in REAPPLY_STATES}
+    ctx["skipped"] = [{"name": s.get("hostname", ""),
+                       "why": s.get("reason") or ("the baseline predates it"
+                                                  if s.get("not_at_ref") else "")}
+                      for s in (plan.get("skipped") or [])]
+    if ready:
+        ctx["confirm_body"] = {"list": name, "tag": tag,
+                               "confirmations": {d["device"]: d.get("capture_hash", "")
+                                                 for d in ready},
+                               "command_hashes": {d["device"]: d.get("command_hash", "")
+                                                  for d in ready}}
+    from modules.preview_confirm import confirm_part
+    ctx["may"] = confirm_part(req, "confirm")
+    return ctx
+
+
+@bp.route("/history/reapply", methods=["GET"])
+def history_reapply():
+    """Re-apply a baseline: the preview of every device it holds, restored to it as one batch.
+    A READ: the plan reads captured configs only."""
+    from flask import request
+    return _page("v2/reapply.html", active_nav="history", **_reapply_ctx(request))
+
+
+@bp.route("/history/reapply/confirm", methods=["POST"])
+def history_reapply_confirm():
+    """Start the confirmed re-apply as a job, as the verified person: each device's program is
+    computed again and a different hash refuses that device alone, with nothing sent to it
+    (`deploy_job.start_restore`, a device's own Restore's job). 202 with the job's id."""
+    from flask import jsonify, request, url_for
+
+    from modules import deploy_job, identity
+    from modules.nsot import listref
+
+    data = request.get_json(silent=True) or {}
+    list_name, tag = (data.get("list") or "").strip(), (data.get("tag") or "").strip()
+    if not list_name or not listref.exists(list_name) or not tag.startswith("baseline/"):
+        return jsonify({"ok": False, "error": (
+            "Nothing was sent: the confirm names no known network and baseline "
+            f"({list_name or 'no network'}, {tag or 'no baseline'}).")}), 400
+    confirmations = data.get("confirmations") or {}
+    hashes = data.get("command_hashes") or {}
+    if not confirmations or any(not hashes.get(d) for d in confirmations):
+        return jsonify({"ok": False, "error": (
+            "Nothing was sent: every device needs the capture and command hashes its preview "
+            "showed.")}), 400
+    job = deploy_job.start_restore(
+        list_name, tag, confirmations, hashes, authorise={}, un_onboard=None,
+        actor=identity.request_actor(),
+        actor_kind=getattr(identity.identify(request), "kind", ""),
+        ident=identity.verified_identity())
+    return jsonify({"ok": True, "job": job,
+                    "url": url_for("v2.profile_apply_job", job=job)}), 202
+
+
 @bp.route("/history", methods=["GET"])
 def history_page():
     """History: one timeline of everything that happened to the network and its devices,

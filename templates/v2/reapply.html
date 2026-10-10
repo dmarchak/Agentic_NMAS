@@ -1,0 +1,63 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, how, info -%}
+{#- History › Baselines › Re-apply… (2026-10-10, drawn under the Phase 7 mode,
+    docs/STANDING_APPROVAL_LOG.md): every device a baseline holds, restored to it as one batch.
+    The counts by state first; each device's program and checks one level down, collapsed; a
+    device needing a stated reason is restored on its own page, never here; then one confirm,
+    whose run is drawn below in place. routes/v2.py over routes.golden.restore_plan and
+    deploy_job.start_restore, the code a device's own Restore runs. -#}
+{% block title %}Re-apply {{ tag }} · History · {{ brand.short }}{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.history_page', list=list_name, tab='baselines') }}">History › Baselines</a><span aria-hidden="true">/</span><span class="mono">{{ tag }}</span></nav>
+<div class="page-head">
+  <div class="page-title">
+    <h1>Re-apply <span class="mono">{{ tag }}</span> {{ info('restore') }}</h1>
+    <p class="sub">Every device {{ list_name }}'s baseline holds, restored to it: its configuration and its intent from the baseline, one device at a time, each verified and rolled back alone. Merge-only: lines a device holds that the baseline lacks stay.</p>
+  </div>
+</div>
+<div class="tab-body">
+<section class="card apply" id="apply-preview">
+{%- if error %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not offered:</strong> {{ error }}. Nothing was planned or sent.</p></div>
+{%- else %}
+  <p class="tpl-counts">{% for s, n in counts.items() if n %}<span>{{ states[s][0] }} <strong>{{ n }}</strong></span>{{ ' · ' if not loop.last }}{% endfor %}{% if skipped %} · <span>left as they are <strong>{{ skipped | length }}</strong></span>{% endif %}</p>
+  {%- if skipped %}
+  <details class="apply-dev" data-keep="reapply-skipped"><summary>{{ skipped | length }} device{{ '' if skipped | length == 1 else 's' }} left exactly as they are</summary>
+    <ul class="small">{% for s in skipped %}<li><strong>{{ s.name }}</strong>{% if s.why %}: {{ s.why }}{% endif %}</li>{% endfor %}</ul></details>
+  {%- endif %}
+  {%- for s, (words, level) in states.items() %}
+  {%- set group = rows | selectattr('state', 'equalto', s) | list %}
+  {%- if group %}
+  <h2 class="apply-h">{{ badge(words, level) }} {{ group | length }} device{{ '' if group | length == 1 else 's' }}</h2>
+  {%- for r in group %}
+  <details class="apply-dev" data-keep="reapply-{{ r.name }}" id="apply-{{ r.name }}">
+    <summary><strong>{{ r.name }}</strong>{% if r.program %} <span class="muted">· {{ r.program | length }} line(s) sent</span>{% endif %}{% if r.intent.action == 'restore' %} <span class="muted">· its intent set back</span>{% endif %}</summary>
+    {%- if r.error or r.blocking %}<p class="apply-refused">{{ (r.blocking + ([r.error] if r.error else [])) | join('; ') }}</p>{% endif %}
+    {%- if s == 'needs_reason' %}<p><a data-op="restore" href="{{ url_for('device_v2.device', name=r.name, op='restore', moment=tag, list=list_name) }}">Restore {{ r.name }} to {{ tag }} on its own page…</a>{{ how('restore', compact=True, op='restore') }} <span class="muted">where each line needing a reason is given one</span></p>{% endif %}
+    {%- if r.program %}<pre class="op-diff">{% for l in r.program %}{{ l }}
+{% endfor %}</pre>{% endif %}
+    {%- if r.residue %}<p class="muted small">{{ r.residue }} line(s) on {{ r.name }} that the baseline lacks stay as they are.</p>{% endif %}
+    {%- if r.excluded %}<p class="muted small">Not re-applied (a device's own blocks): {{ r.excluded | join(', ') }}.</p>{% endif %}
+    {%- if r.checks %}<ul class="op-gates">{% for g in r.checks %}<li>{{ badge(g.state, {'pass': 'ok', 'fail': 'danger'}.get(g.state, 'muted')) }}<span>{{ g.name }}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>{% endfor %}</ul>{% endif %}
+  </details>
+  {%- endfor %}
+  {%- endif %}
+  {%- endfor %}
+  <div class="confirm" x-data="applyConfirm" data-url="{{ url_for('v2.history_reapply_confirm') }}"
+       data-body='{{ confirm_body | tojson if confirm_body else "" }}'
+       data-label="Re-apply to {{ counts.ready }} device(s)">
+    <p>{{ may.statement }}</p>
+    {%- if confirm_body and may.may %}
+    <button type="button" class="btn btn-primary" id="apply-confirm" data-op="restore" x-on:click="confirm"
+            x-bind:disabled="locked" x-text="label">Re-apply to {{ counts.ready }} device(s)</button>{{ how('restore') }}
+    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+    <p class="muted small">Bound to each device's program as shown: one that moved is refused alone, with nothing sent to it.</p>
+    {%- elif not confirm_body %}
+    <p class="muted">Nothing to re-apply: no device here can be restored to it as it is.</p>
+    {%- endif %}
+  </div>
+{%- endif %}
+</section>
+<div id="apply-result"></div>
+</div>
+{% endblock %}

@@ -82,6 +82,7 @@ GATES = {
                          "onboard_verify"),
     "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
                           "onboard_abandon"),
+    "v2.history_reapply_confirm": _g(C, "re-applies a baseline to every device it holds, as one batch job (History › Baselines)"),
     "device_v2.reload_confirm": _g(C, "reloads the device, its planned-restart window declared first (P.14, cutover blocker 6)", "reload"),
     "onboard_v2.verify": _g(C, "reaches the pending device and rotates its credential, from its "
                                "v2 page (the same core as onboard.verify)", "onboard_verify"),

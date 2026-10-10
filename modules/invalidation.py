@@ -343,6 +343,10 @@ DECLARED = {
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
                                       "it writes nothing"),
+    "v2.history_reapply_confirm": Nothing("starts the re-apply as a job and answers at once; "
+                                          "the batch ANNOUNCES deploy_job as each device "
+                                          "finishes, and what a restore changes at the end "
+                                          "(ANNOUNCERS deploy-job)"),
     "device_v2.reload_start": Nothing("starts the preview's read as a job; the job ANNOUNCES "
                                       "reload when it finishes (ANNOUNCERS reload)"),
     "device_v2.reload_confirm": Nothing("starts the reload as a job and answers at once; the "

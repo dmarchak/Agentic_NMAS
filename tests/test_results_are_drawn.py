@@ -216,6 +216,10 @@ PAGE_RECORD = {
     "templates_v2.edit_commit": ("templates/v2/_template_op.html",
                                  ("op.state == 'edited'", "r.revoked", "r.commit"),
                                  "templates_v2.page"),
+    # History's Re-apply (2026-10-10): the batch drawn in place by the Apply's job view, from
+    # the receipts; each device's receipt read again on its History.
+    "v2.history_reapply_confirm": ("templates/v2/_apply_job.html", ("j.steps", "s.words"),
+                                   "device_v2.history"),
     # Reload (P.14, cutover blocker 6): the result in place, each step's outcome; the run read
     # again on the device's History (the reloads source, with its window and its restart).
     "device_v2.reload_confirm": ("templates/v2/_reload.html",

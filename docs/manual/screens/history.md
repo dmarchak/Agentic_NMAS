@@ -66,9 +66,16 @@ commit whose record is known to be wrong says so in its row.
 Every baseline: when it was taken, what its commit recorded it earned, and whether it can be
 re-applied without changing a credential a device holds now (a baseline older than a
 rotation cannot). A withdrawn baseline is drawn with why. The judgement is made in the
-background whenever a commit or a tag moves. Re-applying is explained in
-[Restore and re-apply a baseline](restore); it opens on today's page until the redesign
-carries it.
+background whenever a commit or a tag moves.
+
+**Re-apply…** on a baseline's row opens its re-apply: every device the baseline holds, with
+the counts first (will be restored, needs a stated reason, blocked, already as the baseline
+holds it, and the devices it predates, left as they are), each device's program and checks
+one level down. A device whose program needs a stated reason (a dangerous line, a secret
+added back) is not part of the batch: its link opens its own Restore at that baseline, where
+each line is given its reason. One confirm restores the rest, one device at a time, each
+verified and rolled back alone, its configuration and its intent from the baseline; the batch
+is drawn below as it runs. See [Restore and re-apply a baseline](restore).
 
 ## Authorisations {#authorisations}
 

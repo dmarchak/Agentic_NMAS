@@ -144,6 +144,12 @@ SIGNED_OFF = {
                                    "the bootstrap config… (a recorded reveal) and Abandon… (its "
                                    "dry run, confirm by fingerprint), each in place. Built "
                                    "2026-10-01 (C291) with no mockup"),
+    "reapply.html": ("2026-10-10", "History › Baselines › Re-apply…, drawn under the Phase 7 "
+                                   "mode and so signed off by the operator's standing approval "
+                                   "(docs/STANDING_APPROVAL_LOG.md): the counts by state, each "
+                                   "device collapsed with its program and checks, a device "
+                                   "needing a reason sent to its own Restore, one confirm whose "
+                                   "batch is drawn in place (the batch Apply's job view)"),
     "retired.html": ("2026-10-03", "the device-actions canvas, board 12 (Retire), its last card: "
                                    "a retired device's address shows its retired record (C185); "
                                    "NSOT_STAGE7_PLAN, the boards 8 to 12 sign-off"),
