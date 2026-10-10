@@ -253,7 +253,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.coverage_reporting",
                            "modules.readers.platform_facts",
                            "modules.readers.records_check",
-                           "modules.readers.topology_graph")
+                           "modules.readers.topology_graph",
+                           "modules.readers.logs_summary")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).
@@ -369,6 +370,9 @@ CHANGE_ONLY = {
                        "announcement, drawing the value's age only on hover: the brief "
                        "(NSOT_TOPOLOGY_BRIEF 1) announces only a change, so an unchanged "
                        "network redraws nothing (its 600 s keepalive proves it alive)"),
+    "logs-summary": ("it reads every 300 s and Logs redraws its device table on its "
+                     "announcement; the read's time is drawn only on hover: unchanged counts "
+                     "redraw nothing (its 1800 s keepalive proves it alive)"),
 }
 
 

@@ -229,7 +229,7 @@ class TestTheLanding:
         text = _text(html)
         assert "Critical" in text and "s3 is not answering" in text and "Three probes" in text
         assert 'href="/v2/device/s3"' in html and "Open s3" in text
-        assert 'x-data="copy" data-copy="nmas-host clab -- uptime"' in html
+        assert 'x-data="copy" data-label="Copy" data-copy="nmas-host clab -- uptime"' in html
         assert 'class="att att-danger"' in html
 
     def test_an_action_with_no_known_remedy_is_drawn_as_such(self, landing):

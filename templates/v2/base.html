@@ -49,9 +49,9 @@
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
   <a class="nav-item{% if active_nav == 'topology' %} active{% endif %}" href="{{ url_for('topology_v2.page') }}"{% if active_nav == 'topology' %} aria-current="page"{% endif %}>{{ icon('topology') }}<span>Topology</span></a>
   <a class="nav-item{% if active_nav == 'show_commands' %} active{% endif %}" href="{{ url_for('reads_v2.show_commands') }}"{% if active_nav == 'show_commands' %} aria-current="page"{% endif %}>{{ icon('show') }}<span>Show commands</span></a>
-  {#- C633: each says what is there. Today's page had neither screen: its Logs was the app's own
-      log (Diagnostics draws it), and DHCP has no screen anywhere yet (C529). -#}
-  <a class="nav-item" href="{{ url_for('settings_v2.installation', tab='diagnostics') }}#diag-log" title="Mercury's own log, in Settings › Installation › Diagnostics. A device's logs are its page's Logs tab; a fleet-wide Logs screen is not built yet.">{{ icon('logs') }}<span>Logs</span><small class="nav-todays">the app's own</small></a>
+  {#- C652: Logs opens the queryable logs, the network's syslog by device (History › Query
+      board C); Mercury's own log stays in Settings › Installation › Diagnostics. -#}
+  <a class="nav-item{% if active_nav == 'logs' %} active{% endif %}" href="{{ url_for('logs_v2.page') }}"{% if active_nav == 'logs' %} aria-current="page"{% endif %}>{{ icon('logs') }}<span>Logs</span></a>
   <span class="nav-item nav-off" aria-disabled="true" title="DHCP (Kea) has no screen yet (C529): Kea serves today, and its reservations are written by onboarding's ZTP or by hand on the host.">{{ icon('dhcp') }}<span>DHCP</span><small class="nav-todays">not built yet</small></span>
   <div class="nav-head">SOURCE OF TRUTH</div>
   <a class="nav-item{% if active_nav == 'templates' %} active{% endif %}" href="{{ url_for('templates_v2.page') }}"{% if active_nav == 'templates' %} aria-current="page"{% endif %}>{{ icon('templates') }}<span>Templates</span></a>

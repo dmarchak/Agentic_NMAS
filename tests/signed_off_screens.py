@@ -62,6 +62,9 @@ SIGNED_OFF = {
                                        "Phase 7 mode (docs/STANDING_APPROVAL_LOG.md), counted as "
                                        "signed off"),
     "help.html": ("2026-10-02", "NSOT_GUI_BRIEF 10b, the manual's mockup"),
+    "logs.html": ("2026-10-04", "History › Query board C (AskLogs, 'Syslog by device'), signed "
+                                "off with A and B on canvas v31 (NSOT_STAGE7_PLAN 15.5 to 15.9); "
+                                "built 2026-10-10 as the sidebar's Logs (C652, the operator)"),
     "templates.html": ("2026-10-05", "7.6's Templates, boards A to C (canvas v47, page '7.6 "
                                      "Source of truth, Templates'), signed off 2026-10-05: the "
                                      "network's configuration templates with their approvals "

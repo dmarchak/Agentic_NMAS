@@ -76,6 +76,45 @@ def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.
                     b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
                          f"document.body.style.maxWidth = '{width}px'; return 1")
                 _full(b, os.path.join(OUT, f"{name}-page-{width}.png"))
+                if width < 480:
+                    # The phone's first screen as well: what a person sees before scrolling.
+                    png = b._call("GET", f"/session/{b.session}/screenshot")
+                    with open(os.path.join(OUT, f"{name}-page-{width}-first.png"), "wb") as fh:
+                        fh.write(base64.b64decode(png))
+
+
+def test_logs(tmp_path, monkeypatch):
+    """C652's board C (AskLogs, 1440) beside the Logs view, fed by the logs reader's value built
+    from the real captures (tests/test_logs_v2's fixtures), 120 days, r4 opened to its lines."""
+    from types import SimpleNamespace
+
+    from tests import browser
+    from tests import test_logs_v2 as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.readers.adjacencies.lists",
+                        lambda: [("Lab", SimpleNamespace(repo_dir=str(tmp_path)), T.MANAGED)])
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    monkeypatch.setattr("modules.logs_page.time.time", lambda: T.NOW)
+    lines = T._fx("lines_r4.json")["answer"]
+
+    class _R:
+        def json(self):
+            return lines
+    monkeypatch.setattr("modules.integrations.loki.LokiIntegration._get",
+                        lambda self, path, **p: {"ok": True, "response": _R()})
+    T._store(T._read(previous=T._read()))
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("logs", "AskLogs.dc.html",
+               lambda w: "/v2/logs?list=Lab&range=120d&sev=all&d=r4", served,
+               widths=((1440, 1.0), (390, 2.0)))
 
 
 def test_topology(tmp_path, monkeypatch):

@@ -1,0 +1,114 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{#- The Logs view (C652), drawn to AskLogs: the question (range, severity), what the range can
+    hold, the devices by line count, a device opened to its filters, its trend by mnemonic and its
+    lines. Counts from the logs reader's stored days; a device's lines from Loki when opened. -#}
+{%- macro go(g, over, words, cls='', pressed=none, label='') -%}
+<a class="{{ cls }}" href="{{ url_for('logs_v2.page') }}{{ g.qs(over) }}" hx-get="{{ url_for('logs_v2.region') }}{{ g.qs(over) }}" hx-target="#logs" hx-swap="outerHTML" hx-push-url="{{ url_for('logs_v2.page') }}{{ g.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+{%- endmacro -%}
+<div id="logs" class="lg" hx-get="{{ url_for('logs_v2.region') }}{{ g.qs() }}" hx-trigger="nmas:logs from:body" hx-swap="outerHTML">
+<div class="lg-crumb">Logs › Syslog by device · {{ g.list }}</div>
+<div class="lg-head">
+  <h1>Syslog by device {{ info('logs') }}</h1>
+  {%- if g.state == 'ok' %}
+  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ url_for('logs_v2.page') }}{{ g.qs() }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
+  {%- endif %}
+</div>
+
+{%- if g.state == 'never' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The logs reader has not counted yet{% if g.failed %}: its last attempt failed, {{ g.failed }}{% endif %}. It reads Loki every 5 minutes; this view redraws when it has.</p></div>
+{%- elif g.state == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The logs reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than counts that may be wrong.</p></div>
+{%- elif g.state in ('not_configured', 'not_applicable') %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
+{%- else %}
+{%- if g.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ g.failed }}); these are its last good counts, {{ stamp(g.value_at) }}.</p></div>{% endif %}
+{%- set c = g.coverage %}
+<div class="lg-q">
+  <div class="seg" role="group" aria-label="Time range">
+    {%- for key, rv in g.ranges.items() %}{{ go(g, {'range': key, 'd': g.s.d, 'before': ''}, rv[0], 'seg-btn' ~ (' on' if g.s.range == key), g.s.range == key) }}{% endfor %}
+  </div>
+  <form class="lg-sev" method="get" action="{{ url_for('logs_v2.page') }}" hx-get="{{ url_for('logs_v2.region') }}" hx-target="#logs" hx-swap="outerHTML" hx-trigger="change">
+    <input type="hidden" name="list" value="{{ g.list }}">
+    {%- for k in ('range', 'd', 'mn', 'text', 'from', 'to') if g.s[k] %}<input type="hidden" name="{{ k }}" value="{{ g.s[k] }}">{% endfor %}
+    <label for="lg-sev">Severity</label>
+    <select id="lg-sev" name="sev">{% for k, sv in g.severities.items() %}<option value="{{ k }}"{% if g.s.sev == k %} selected{% endif %}>{{ sv[0] }}</option>{% endfor %}</select>
+  </form>
+  <span class="muted small">counted {{ stamp(g.value_at) }}</span>
+</div>
+
+{%- if not c.whole or c.older_than_setting %}
+<div class="notice notice-warn lg-cov" role="note">{{ icon('info', 16) }}<p>
+  {%- if c.before_store %}<strong>Part of this range holds nothing yet:</strong> this network keeps logs {{ c.retention }} days (its Logs retention setting, <a href="{{ url_for('settings_v2.network', list_name=g.list) }}">Settings</a>), but its log store began on {{ c.first }}, so the first {{ c.before_store }} day{{ 's' if c.before_store != 1 }} of this {{ c.days }}-day range {{ 'were' if c.before_store != 1 else 'was' }} never kept; nothing to show is not nothing happened.{% endif %}
+  {%- if c.past_retention %} <strong>{{ c.past_retention }} day{{ 's' if c.past_retention != 1 }} of this range {{ 'are' if c.past_retention != 1 else 'is' }} past the {{ c.retention }}-day retention:</strong> deleted, so nothing there is shown.{% endif %}
+  {%- if c.counting %} <strong>{{ c.counting }} day{{ 's' if c.counting != 1 }} of this range {{ 'are' if c.counting != 1 else 'is' }} still being counted</strong>: the reader adds up to 7 past days each read, every 5 minutes.{% endif %}
+  {%- if c.older_than_setting %} <strong>Loki holds lines from {{ c.first }}, older than this network's Logs retention ({{ c.retention }} days) says:</strong> the setting may be lower than what Loki keeps (<a href="{{ url_for('settings_v2.network', list_name=g.list) }}">Settings</a>).{% endif %}
+</p></div>
+{%- endif %}
+<p class="faint small lg-prov">Counted per day by Mercury's logs reader from Loki, the newest day to the read; a device's lines are asked from Loki when it is opened, at most 30 days at a time (one log query spans at most 30 days 1 hour).</p>
+
+<section class="card lg-answer" aria-label="The answer">
+  <div class="lg-sum"><strong>{{ g.total }} line{{ 's' if g.total != 1 }} at {{ g.sev_words.split(' (')[0] }}, {{ g.rows | length }} device{{ 's' if g.rows | length != 1 }}</strong><span class="muted">{{ 'a row opens its lines' if g.rows else '' }}</span></div>
+  {%- if not g.rows %}<p class="small">No device of {{ g.list }} sent a line at {{ g.sev_words.split(' (')[0] }} in the last {{ g.range_words }}.</p>{% endif %}
+  {%- if g.rows %}
+  <div class="table-wrap"><table class="table lg-table">
+    <thead><tr><th scope="col">Device</th><th scope="col">Lines</th><th scope="col">Newest</th><th scope="col">Most frequent</th></tr></thead>
+    <tbody>
+    {%- for r in g.rows %}
+    {%- set opened = g.s.d == r.device %}
+    <tr class="{{ 'open' if opened }}">
+      <th scope="row">{{ go(g, {'d': '' if opened else r.device, 'mn': '', 'text': '', 'from': '', 'to': '', 'before': ''}, r.device ~ (' ▾' if opened else ' ▸'), 'btn btn-small mono lg-dev', none, ('Close ' if opened else 'Open ') ~ r.device ~ "'s lines") }}</th>
+      <td>{{ r.lines }}<span class="lg-unit"> lines</span></td>
+      <td>{% if r.newest %}{{ stamp(r.newest) }}{% else %}<span class="muted" title="no line from it since the reader began watching; its lines are counted in the days above">—</span>{% endif %}</td>
+      <td><span class="mono">{{ r.top }}</span> ({{ r.top_n }})</td>
+    </tr>
+    {%- if opened and g.open %}{% set o = g.open %}
+    <tr class="lg-open"><td colspan="4">
+      <form class="lg-filters" method="get" action="{{ url_for('logs_v2.page') }}" hx-get="{{ url_for('logs_v2.region') }}" hx-target="#logs" hx-swap="outerHTML" aria-label="Filter {{ r.device }}'s lines">
+        <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="d" value="{{ r.device }}"><input type="hidden" name="range" value="{{ g.s.range }}">
+        <label>Severity<select name="sev">{% for k, sv in g.severities.items() %}<option value="{{ k }}"{% if g.s.sev == k %} selected{% endif %}>{{ sv[0] }}</option>{% endfor %}</select></label>
+        <label>Mnemonic<select name="mn"><option value="">every mnemonic ({{ o.mnemonics | length }})</option>{% for mn, n in o.mnemonics %}<option value="{{ mn }}"{% if g.s.mn == mn %} selected{% endif %}>{{ mn }} ({{ n }})</option>{% endfor %}</select></label>
+        <label>From<input type="text" name="from" value="{{ g.s['from'] }}" placeholder="{{ o.window[0] if o.window else 'range start' }}"></label>
+        <label>To<input type="text" name="to" value="{{ g.s.to }}" placeholder="now"></label>
+        <label>Text contains<input type="text" name="text" value="{{ g.s.text }}" maxlength="120"></label>
+        <span class="op-act"><button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Show</span><span class="op-busy">Asking Loki…</span></button></span>
+      </form>
+      {%- for e in o.errors %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ e }}.</p></div>{% endfor %}
+      {%- if o.trend %}{% set t = o.trend %}
+      <div class="lg-trend"><strong class="small">Trend by mnemonic, lines per day</strong>
+        <div class="lg-chartbox" role="img" aria-label="Lines per day by mnemonic for {{ r.device }}, {{ t['from'] }} to {{ t.to }}">
+          <div class="lg-ycol" aria-hidden="true"><span>{{ t.ymax }}</span><span>{{ t.ymid }}</span><span>0</span></div>
+          <div class="lg-plot">
+            <svg class="lg-chart" viewBox="0 0 1000 130" preserveAspectRatio="none" aria-hidden="true">
+              <line class="lg-grid" x1="0" y1="65" x2="1000" y2="65"></line>
+              {%- for sr in t.series %}<polyline class="lg-line lg-s{{ sr.series }}" points="{{ sr.points }}"></polyline>{% endfor %}
+            </svg>
+            <div class="lg-xticks" aria-hidden="true">{% for day in t.xticks %}<span>{{ day }}</span>{% endfor %}</div>
+          </div>
+        </div>
+        <div class="muted small lg-key">{% for sr in t.series %}<span><span class="lg-sw lg-s{{ sr.series }}" aria-hidden="true"></span><span class="mono">{{ sr.mnemonic }}</span> ({{ sr.total }})</span>{% endfor %} · y: lines per day · x: date (UTC)</div>
+      </div>
+      {%- endif %}
+      {%- if not o.errors %}
+      {%- if o.lines %}
+      <div class="table-wrap"><table class="table lg-lines" aria-label="{{ r.device }}'s lines, newest first">
+        <thead><tr><th scope="col">Received (UTC)</th><th scope="col">Severity</th><th scope="col">Mnemonic</th><th scope="col">Message</th></tr></thead>
+        <tbody>{% for l in o.lines %}<tr><td class="mono">{{ l.at }}</td><td>{% if l.sev_word %}{{ badge(l.sev ~ ' ' ~ l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mnemonic or '—' }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {%- else %}<p class="small">No line of {{ r.device }} matches, {{ o.window[0] }} to {{ o.window[1] }} UTC.</p>{% endif %}
+      <p class="muted small">Showing {{ o.lines | length }}{% if o.matching is defined %} of {{ o.matching }} matching line{{ 's' if o.matching != 1 }}{% else %} matching line{{ 's' if o.lines | length != 1 }}{% endif %}{% if o.cut_window %}, from the newest 30 days of this range (Loki answers at most 30 days at a time){% endif %}
+        {%- if o.more %} · {{ go(g, {'before': o.next_before}, 'the next 50') }}{% endif %}
+        · <a href="{{ url_for('device_v2.device', name=r.device, list=g.list, tab='logs') }}">Open {{ r.device }}'s Logs tab</a></p>
+      {%- endif %}
+    </td></tr>
+    {%- endif %}
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- endif %}
+  {%- if g.open and not g.open.row %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{% if g.open.errors %}{{ g.open.errors | join('; ') }}{% else %}{{ g.s.d }} sent nothing at {{ g.sev_words.split(' (')[0] }} in the last {{ g.range_words }}{% endif %}.</p></div>{% endif %}
+  {%- if g.quiet %}<p class="faint small">Nothing at {{ g.sev_words.split(' (')[0] }} from {{ g.quiet | join(', ') }}.</p>{% endif %}
+  {%- if g.others %}<p class="faint small">{{ g.others }} line{{ 's' if g.others != 1 }} from names that are not devices of {{ g.list }} (another network sharing this Loki, or a name a device announces differently).</p>{% endif %}
+  <p class="faint small">A line's time is when the collector received it, never the device's clock. The heartbeat lines are left out.</p>
+</section>
+{%- endif %}
+</div>

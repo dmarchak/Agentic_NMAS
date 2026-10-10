@@ -1,0 +1,411 @@
+{
+ "answer": {
+  "data": {
+   "result": [
+    {
+     "stream": {
+      "job": "network_syslog"
+     },
+     "values": [
+      [
+       "1791667158825455956",
+       "Oct 10 21:19:18 r4 4290: r4: Oct 10 21:19:17.371 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [229:0] create:exec:notif:now [793055597:793058729:793063029:793063029] eproc [569] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791667155566839996",
+       "Oct 10 21:19:15 r4 4289: r4: Oct 10 21:19:13.881 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [20:0] create:exec:notif:now [793048843:793048843:793059465:793059465] eproc [537] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791666839463508744",
+       "Oct 10 21:13:59 r4 4287: r4: Oct 10 21:13:57.870 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [182:0] create:exec:notif:now [792737052:792737504:792743528:792743528] eproc [579] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791663756846887166",
+       "Oct 10 20:22:36 r4 4273: r4: Oct 10 20:22:35.318 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [106:0] create:exec:notif:now [789654682:789655174:789660976:789660976] eproc [660] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791663141435250375",
+       "Oct 10 20:12:21 r4 4270: r4: Oct 10 20:12:19.868 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [85:0] create:exec:notif:now [789039193:789039258:789045528:789045528] eproc [606] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791655763222487383",
+       "Oct 10 18:09:23 r4 4238: r4: Oct 10 18:09:21.578 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [117:0] create:exec:notif:now [781662016:781662084:781667233:781667233] eproc [594] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791653922363917336",
+       "Oct 10 17:38:42 r4 4229: r4: Oct 10 17:38:40.652 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [225:0] create:exec:notif:now [779820805:779821900:779826311:779826311] eproc [615] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791652979584891722",
+       "Oct 10 17:22:59 r4 4225: r4: Oct 10 17:22:58.449 UTC: %SMART_LIC-3-COMM_FAILED: Communications failure with the Cisco Smart License Utility (CSLU) : Unable to resolve server hostname/domain name "
+      ],
+      [
+       "1791651768311345715",
+       "Oct 10 17:02:48 r4 4218: r4: Oct 10 17:02:46.871 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [138:0] create:exec:notif:now [777664329:777664687:777672526:777672526] eproc [808] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791650532025140902",
+       "Oct 10 16:42:11 r4 4212: r4: Oct 10 16:42:10.313 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [94:0] create:exec:notif:now [776421911:776421925:776435971:776435971] eproc [1030] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791650523751529490",
+       "Oct 10 16:42:03 r4 4211: r4: Oct 10 16:42:01.873 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [241:0] create:exec:notif:now [776416355:776416355:776427523:776427523] eproc [593] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791650209669730384",
+       "Oct 10 16:36:49 r4 4209: r4: Oct 10 16:36:48.095 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [191:0] create:exec:notif:now [776107324:776107397:776113754:776113754] eproc [611] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791649900109902866",
+       "Oct 10 16:31:39 r4 4207: r4: Oct 10 16:31:38.545 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [42:0] create:exec:notif:now [775796334:775797436:775804204:775804204] eproc [693] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791649578504392118",
+       "Oct 10 16:26:18 r4 4205: r4: Oct 10 16:26:16.800 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [144:0] create:exec:notif:now [775476912:775476912:775482452:775482452] eproc [304] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791648947572634826",
+       "Oct 10 16:15:47 r4 4201: r4: Oct 10 16:15:46.181 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [123:0] create:exec:notif:now [774844885:774844885:774851836:774851836] eproc [541] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791644341008024062",
+       "Oct 10 14:59:00 r4 4180: r4: Oct 10 14:58:59.555 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [216:0] create:exec:notif:now [770239096:770239120:770245214:770245214] eproc [736] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791640051140655761",
+       "Oct 10 13:47:31 r4 4162: r4: Oct 10 13:47:29.732 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [225:0] create:exec:notif:now [765950041:765950049:765955392:765955392] eproc [566] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791635734910607107",
+       "Oct 10 12:35:34 r4 4143: r4: Oct 10 12:35:33.528 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [84:0] create:exec:notif:now [761633978:761633978:761639188:761639188] eproc [304] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791635113984017506",
+       "Oct 10 12:25:13 r4 4139: r4: Oct 10 12:25:12.487 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [168:0] create:exec:notif:now [761002974:761003704:761018130:761018130] eproc [793] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791634795362250434",
+       "Oct 10 12:19:55 r4 4137: r4: Oct 10 12:19:53.602 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [31:0] create:exec:notif:now [760691293:760691565:760699257:760699257] eproc [574] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791634478771685517",
+       "Oct 10 12:14:38 r4 4135: r4: Oct 10 12:14:36.913 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [74:0] create:exec:notif:now [760376866:760376957:760382567:760382567] eproc [551] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791633553532822414",
+       "Oct 10 11:59:13 r4 4129: r4: Oct 10 11:59:11.830 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [156:0] create:exec:notif:now [759448927:759448940:759457490:759457490] eproc [770] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791628034576018832",
+       "Oct 10 10:27:14 r4 4106: r4: Oct 10 10:27:13.144 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [184:0] create:exec:notif:now [753932759:753933075:753938804:753938804] eproc [617] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791625879982396638",
+       "Oct 10 09:51:19 r4 4096: r4: Oct 10 09:51:18.240 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [151:0] create:exec:notif:now [751778532:751778532:751783900:751783900] eproc [786] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791620071691522555",
+       "Oct 10 08:14:31 r4 4071: r4: Oct 10 08:14:30.182 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [234:0] create:exec:notif:now [745967771:745967771:745975842:745975842] eproc [564] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791611162990833402",
+       "Oct 10 05:46:02 r4 4033: r4: Oct 10 05:46:01.387 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [246:0] create:exec:notif:now [737060260:737061920:737067047:737067047] eproc [592] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791611158726649081",
+       "Oct 10 05:45:58 r4 4032: r4: Oct 10 05:45:56.888 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [186:0] create:exec:notif:now [737056924:737056924:737062536:737062536] eproc [283] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791610542581558646",
+       "Oct 10 05:35:42 r4 4029: r4: Oct 10 05:35:41.232 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [92:0] create:exec:notif:now [736441339:736441397:736446892:736446892] eproc [529] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791604093842623423",
+       "Oct 10 03:48:13 r4 4000: r4: Oct 10 03:48:12.429 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [172:0] create:exec:notif:now [729992481:729992867:729998088:729998088] eproc [632] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791603935423652599",
+       "Oct 10 03:45:35 r4 3999: r4: Oct 10 03:45:33.896 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [61:0] create:exec:notif:now [729830487:729830709:729839555:729839555] eproc [803] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791602867818382957",
+       "Oct 10 03:27:47 r4 3993: r4: Oct 10 03:27:46.454 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [16:0] create:exec:notif:now [728766009:728766009:728772108:728772108] eproc [629] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791602558475833880",
+       "Oct 10 03:22:38 r4 3991: r4: Oct 10 03:22:36.817 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [46:0] create:exec:notif:now [728451144:728451516:728462465:728462465] eproc [880] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791601926015881152",
+       "Oct 10 03:12:05 r4 3988: r4: Oct 10 03:12:04.486 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [189:0] create:exec:notif:now [727822955:727823041:727830143:727830143] eproc [688] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791600372360613964",
+       "Oct 10 02:46:12 r4 3980: r4: Oct 10 02:46:10.823 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [62:0] create:exec:notif:now [726270965:726270965:726276482:726276482] eproc [380] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791599122560129075",
+       "Oct 10 02:25:22 r4 3973: r4: Oct 10 02:25:21.093 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [130:0] create:exec:notif:now [725021688:725021688:725026739:725026739] eproc [280] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791595151126568391",
+       "Oct 10 01:19:11 r4 3956: r4: Oct 10 01:19:09.695 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [188:0] create:exec:notif:now [721048508:721048508:721055331:721055331] eproc [509] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791590822425034934",
+       "Oct 10 00:07:02 r4 3938: r4: Oct 10 00:07:00.762 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [113:0] create:exec:notif:now [716720220:716720229:716726397:716726397] eproc [624] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791589484403211102",
+       "Oct  9 23:44:44 r4 3930: r4: Oct  9 23:44:43.001 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [163:0] create:exec:notif:now [715380677:715380730:715388660:715388660] eproc [676] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791588370871029505",
+       "Oct  9 23:26:10 r4 3926: r4: Oct  9 23:26:09.228 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [198:0] create:exec:notif:now [714268803:714268837:714274887:714274887] eproc [531] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791586528003045365",
+       "Oct  9 22:55:27 r4 3916: r4: Oct  9 22:55:26.546 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [135:0] create:exec:notif:now [712423312:712423550:712432206:712432206] eproc [779] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791586214669022748",
+       "Oct  9 22:50:14 r4 3913: r4: Oct  9 22:50:13.168 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [84:0] create:exec:notif:now [712110171:712110231:712118827:712118827] eproc [682] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791585902069557633",
+       "Oct  9 22:45:01 r4 3911: r4: Oct  9 22:45:00.313 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [242:0] create:exec:notif:now [711795136:711795425:711805970:711805970] eproc [893] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791584978174311997",
+       "Oct  9 22:29:38 r4 3907: r4: Oct  9 22:29:36.618 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [175:0] create:exec:notif:now [710877163:710877381:710882277:710882277] eproc [546] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791581906555725257",
+       "Oct  9 21:38:26 r4 3893: r4: Oct  9 21:38:25.194 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [194:0] create:exec:notif:now [707803937:707804075:707810853:707810853] eproc [588] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791577008466332650",
+       "Oct  9 20:16:48 r4 3872: r4: Oct  9 20:16:46.861 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [228:0] create:exec:notif:now [702904956:702905107:702912521:702912521] eproc [679] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791575151781912673",
+       "Oct  9 19:45:51 r4 3863: r4: Oct  9 19:45:50.183 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [247:0] create:exec:notif:now [701049967:701050065:701055843:701055843] eproc [570] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791575030973015122",
+       "Oct  9 19:43:50 r4 3861: r4: Oct  9 19:43:49.555 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [234:0] create:exec:notif:now [700928942:700929149:700935206:700935206] eproc [596] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791571174010230380",
+       "Oct  9 18:39:33 r4 3844: r4: Oct  9 18:39:32.378 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [223:0] create:exec:notif:now [697072693:697072694:697078010:697078010] eproc [456] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791567496335913470",
+       "Oct  9 17:38:16 r4 3827: r4: Oct  9 17:38:14.915 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [192:0] create:exec:notif:now [693395108:693395122:693400568:693400568] eproc [350] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791566875163312301",
+       "Oct  9 17:27:55 r4 3824: r4: Oct  9 17:27:53.624 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [51:0] create:exec:notif:now [692769553:692769553:692779284:692779284] eproc [801] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791566563048996034",
+       "Oct  9 17:22:43 r4 3822: r4: Oct  9 17:22:41.637 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [5:0] create:exec:notif:now [692461082:692461090:692467295:692467295] eproc [448] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791566478324596898",
+       "Oct  9 17:21:18 r4 3821: r4: Oct  9 17:21:17.056 UTC: %SMART_LIC-3-COMM_FAILED: Communications failure with the Cisco Smart License Utility (CSLU) : Unable to resolve server hostname/domain name "
+      ],
+      [
+       "1791566242432008565",
+       "Oct  9 17:17:22 r4 3819: r4: Oct  9 17:17:20.983 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [237:0] create:exec:notif:now [692137537:692138785:692146636:692146636] eproc [709] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791565924877040393",
+       "Oct  9 17:12:04 r4 3816: r4: Oct  9 17:12:03.276 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [201:0] create:exec:notif:now [691820109:691820207:691828924:691828924] eproc [689] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791565601741953560",
+       "Oct  9 17:06:41 r4 3814: r4: Oct  9 17:06:39.736 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [53:0] create:exec:notif:now [691499108:691499118:691505373:691505373] eproc [366] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791565594471323447",
+       "Oct  9 17:06:34 r4 3813: r4: Oct  9 17:06:32.878 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [184:0] create:exec:notif:now [691492916:691492924:691498529:691498529] eproc [352] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791565481689552906",
+       "Oct  9 17:04:41 r4 3811: r4: Oct  9 17:04:40.302 UTC: %SMART_LIC-3-COMM_FAILED: Communications failure with the Cisco Smart License Utility (CSLU) : Communications failure "
+      ],
+      [
+       "1791565282895535666",
+       "Oct  9 17:01:22 r4 3810: r4: Oct  9 17:01:21.488 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [152:0] create:exec:notif:now [691176648:691176923:691187148:691187148] eproc [789] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791564660423422080",
+       "Oct  9 16:51:00 r4 3806: r4: Oct  9 16:50:58.913 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [246:0] create:exec:notif:now [690557784:690559152:690564573:690564573] eproc [597] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1791564656160261746",
+       "Oct  9 16:50:56 r4 3805: r4: Oct  9 16:50:54.000 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [105:0] create:exec:notif:now [690553956:690553956:690559660:690559660] eproc [368] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ]
+     ]
+    }
+   ],
+   "resultType": "streams",
+   "stats": {
+    "cache": {
+     "chunk": {
+      "bytesReceived": 1654208,
+      "bytesSent": 0,
+      "downloadTime": 7379574,
+      "entriesFound": 2851,
+      "entriesRequested": 2851,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 248
+     },
+     "index": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "instantMetricResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "labelResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "result": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "seriesResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "statsResult": {
+      "bytesReceived": 9087,
+      "bytesSent": 0,
+      "downloadTime": 666950,
+      "entriesFound": 30,
+      "entriesRequested": 30,
+      "entriesStored": 0,
+      "queryLengthServed": 105269000000000,
+      "requests": 30
+     },
+     "volumeResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     }
+    },
+    "index": {
+     "postFilterChunks": 0,
+     "shardsDuration": 0,
+     "totalChunks": 0,
+     "usedBloomFilters": false
+    },
+    "ingester": {
+     "store": {
+      "chunk": {
+       "compressedBytes": 14250,
+       "decompressedBytes": 18505,
+       "decompressedLines": 107,
+       "decompressedStructuredMetadataBytes": 3210,
+       "headChunkBytes": 103,
+       "headChunkLines": 1,
+       "headChunkStructuredMetadataBytes": 8,
+       "postFilterLines": 3,
+       "totalDuplicates": 0
+      },
+      "chunkRefsFetchTime": 1889904,
+      "chunksDownloadTime": 3911283,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0,
+      "queryReferencedStructuredMetadata": false,
+      "totalChunksDownloaded": 80,
+      "totalChunksRef": 80
+     },
+     "totalBatches": 3,
+     "totalChunksMatched": 1,
+     "totalLinesSent": 3,
+     "totalReached": 2
+    },
+    "querier": {
+     "store": {
+      "chunk": {
+       "compressedBytes": 492696,
+       "decompressedBytes": 639765,
+       "decompressedLines": 3743,
+       "decompressedStructuredMetadataBytes": 112290,
+       "headChunkBytes": 0,
+       "headChunkLines": 0,
+       "headChunkStructuredMetadataBytes": 0,
+       "postFilterLines": 63,
+       "totalDuplicates": 0
+      },
+      "chunkRefsFetchTime": 44321068,
+      "chunksDownloadTime": 289318237,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0,
+      "queryReferencedStructuredMetadata": false,
+      "totalChunksDownloaded": 2851,
+      "totalChunksRef": 2851
+     }
+    },
+    "summary": {
+     "bytesProcessedPerSecond": 2541542,
+     "execTime": 0.259045,
+     "linesProcessedPerSecond": 14866,
+     "queueTime": 2.495453,
+     "shards": 30,
+     "splits": 30,
+     "subqueries": 0,
+     "totalBytesProcessed": 658373,
+     "totalEntriesReturned": 60,
+     "totalLinesProcessed": 3851,
+     "totalPostFilterLines": 66,
+     "totalStructuredMetadataBytesProcessed": 115508
+    }
+   }
+  },
+  "status": "success"
+ },
+ "captured_at": "2026-10-10T21:28:59Z",
+ "device": "r4"
+}

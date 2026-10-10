@@ -1,0 +1,8 @@
+{%- extends "v2/base.html" -%}
+{#- OBSERVE › Logs (C652): the network's syslog by device, drawn to History › Query board C
+    (AskLogs, signed off 2026-10-04); compared region by region in docs/fidelity/logs.md. The
+    view is one region, _logs_view.html, redrawn when the logs reader announces. -#}
+{% block title %}Logs · {{ brand.short }}{% endblock %}
+{% block main %}
+{% include "v2/_logs_view.html" %}
+{% endblock %}

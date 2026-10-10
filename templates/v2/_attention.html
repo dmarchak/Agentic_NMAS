@@ -45,7 +45,7 @@
         {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d) }}">Open {{ d }}</a>{% endfor %}
         <span class="att-label{% if r.action.known == false %} muted{% endif %}">{{ r.action.label }}</span>
         {%- if r.action.command %}
-        <span class="cmd"><code>{{ r.action.command }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ r.action.command }}" x-on:click="copy" x-text="label">Copy</button></span>
+        <span class="cmd"><code>{{ r.action.command }}</code><button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ r.action.command }}" x-on:click="copy" x-text="label">Copy</button></span>
         {%- endif %}
         {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
         {#- Each `open` an action can carry has its own control, and each control lands on what

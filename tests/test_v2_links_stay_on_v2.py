@@ -121,15 +121,16 @@ class TestEveryV2Template:
 
 
 def test_the_sidebar_s_logs_and_dhcp_say_what_is_there():
-    """C633: today's page had neither screen. Logs opens Diagnostics' app log, saying so; DHCP
-    is not built and says so, going nowhere."""
+    """C633: today's page had neither screen. C652 (the operator, 2026-10-10): Logs opens the
+    queryable logs, the network's syslog by device, never Mercury's own log (that stays in
+    Settings › Installation › Diagnostics); DHCP is not built and says so, going nowhere."""
     import app as A
     html = A.app.test_client().get("/v2/monitoring").get_data(as_text=True)
     side = html[html.index('<nav class="sidebar"'):html.index("</nav>", html.index("sidebar"))]
     logs = re.search(r'<a class="nav-item" href="([^"]+)"[^>]*>(?:(?!</a>).)*<span>Logs</span>'
-                     r'<small class="nav-todays">([^<]+)</small></a>', side, re.S)
-    assert logs and logs.group(1).startswith("/v2/settings/installation?tab=diagnostics")
-    assert logs.group(1).endswith("#diag-log") and logs.group(2) == "the app's own"
+                     r'</a>', side, re.S)
+    assert logs and logs.group(1) == "/v2/logs"
+    assert "diag-log" not in side and "the app&#39;s own" not in side
     dhcp = re.search(r'<span class="nav-item nav-off" aria-disabled="true"[^>]*>.*?<span>DHCP'
                      r'</span><small class="nav-todays">not built yet</small></span>', side, re.S)
     assert dhcp, "DHCP is drawn as a link, or without saying it is not built"

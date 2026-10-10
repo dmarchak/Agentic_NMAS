@@ -18,7 +18,7 @@
 {%- if host_step %}
 <section class="card" id="hb-pending">
   <div class="notice notice-warn">{{ icon('warn') }}<p>Re-measured windows are written{% if last.actor %} (by {{ last.actor }}, {{ last.at }}){% endif %} and NOT YET INSTALLED: Grafana still alerts on the old ones. Install them on the host (the installed file is root's, and the app's Grafana account cannot reload provisioning):</p></div>
-  <p class="cmd"><code>{{ host_step }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ host_step }}" x-on:click="copy" x-text="label">Copy</button></p>
+  <p class="cmd"><code>{{ host_step }}</code><button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ host_step }}" x-on:click="copy" x-text="label">Copy</button></p>
   <p class="muted">This page says installed once the file Grafana loads is the one written here.</p>
 </section>
 {%- endif %}

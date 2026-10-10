@@ -38,6 +38,18 @@ _MESSAGE = re.compile(
     r"(?P<mnemonic>%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-(?P<sev>[0-7])-[A-Z0-9_]+):?\s*(?P<text>.*)$")
 SEVERITY = {0: "emergency", 1: "alert", 2: "critical", 3: "error", 4: "warning",
             5: "notice", 6: "informational", 7: "debug"}
+#: The same fields as a LogQL `regexp` stage, for counting the whole fleet in one query (the
+#: Logs view, C652): the device's own name before its timestamp (`dev`), and the mnemonic
+#: (`mn`, its severity the digit inside it). A line it does not match has neither label.
+LOGQL_FIELDS = (r"\s(?P<dev>[A-Za-z][A-Za-z0-9._-]*):\s+\*?\.?[A-Z][a-z]{2}\s+\d+\s+[\d:.]+"
+                r"(?:\s+[A-Z]{3,4})?:\s+(?P<mn>%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+)")
+_MN_SEV = re.compile(r"-([0-7])-[A-Z0-9_]+$")
+
+
+def mnemonic_severity(mnemonic: str):
+    """The severity a mnemonic carries (``%LINK-3-UPDOWN`` is 3), or None."""
+    m = _MN_SEV.search(mnemonic or "")
+    return int(m.group(1)) if m else None
 
 
 def host_pattern(hostname: str) -> str:

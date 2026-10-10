@@ -63,6 +63,9 @@ WOKEN_BY = {
     # inventory for its nodes; Prometheus by settings; a network's expected islands (Topology's
     # declare and withdraw invalidate `topology`).
     "topology-graph": ("intent", "inventory", "settings", "topology"),
+    # The fleet's syslog per day from each network's Loki; a network's Logs retention and Loki
+    # by settings. Nothing Mercury does writes Loki's lines.
+    "logs-summary": ("settings",),
     # HEAD against the remote: also re-read by its own post-commit hook.
     "remote-publication": ("goldens", "intent", "templates", "remote"),
 }

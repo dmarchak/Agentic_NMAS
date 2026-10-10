@@ -88,6 +88,7 @@ VOCABULARY = {
     "quick_actions": "quick actions",
     "monitoring": "the SNMP and NetFlow collectors",
     "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
+    "logs": "the fleet's syslog counted per day (the Logs view's reader, C652)",
     "variables": "the CSV-era variable store and compliance policy",
     "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",

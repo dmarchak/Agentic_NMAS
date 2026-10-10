@@ -52,7 +52,9 @@
               // A credential profile saved or deleted: Credentials › Profiles re-reads.
               'credentials',
               // The topology reader's graph moved, or an island was declared (P.11).
-              'topology'];
+              'topology',
+              // The fleet's syslog counts moved (the Logs view, C652).
+              'logs'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -315,6 +317,7 @@
   function relaySave() { relay('save'); }
   function relayCredentials() { relay('credentials'); }
   function relayTopology() { relay('topology'); }
+  function relayLogs() { relay('logs'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -397,6 +400,7 @@
     NMAS.subscribe('save', 'v2Save', relaySave);
     NMAS.subscribe('credentials', 'v2Credentials', relayCredentials);
     NMAS.subscribe('topology', 'v2Topology', relayTopology);
+    NMAS.subscribe('logs', 'v2Logs', relayLogs);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
@@ -450,7 +454,8 @@
     A.data('copy', function () {
       return {
         copied: false,
-        get label() { return this.copied ? 'Copied' : 'Copy'; },
+        // A button that names what it copies keeps its words (data-label), Logs' "Copy the link".
+        get label() { return this.copied ? 'Copied' : (this.$el.getAttribute('data-label') || 'Copy'); },
         copy: function () {
           var self = this, text = this.$el.getAttribute('data-copy') || '';
           var done = function () { self.copied = true; root.setTimeout(function () { self.copied = false; }, 1500); };

@@ -88,6 +88,9 @@ NOT_AN_OPERATION = {
     ("_reload.html", "btn"): "Cancel or Close: puts back the tab the card replaced, a read",
     ("_reload.html", "Its break-glass record"): "opens Credentials, where the record is, a read",
     ("_template_bindings.html", "btn"): "Cancel or Close: puts the Templates table back, a read",
+    ("_logs_view.html", "Copy the link"): "copies this view's address (the question it carries), "
+                                          "a read",
+    ("_logs_view.html", "Show"): "redraws the opened device's lines with the filters asked, a read",
     ("_topology_map.html", "'s Neighbours"): "opens that end's Neighbours tab on its device "
                                              "page, a read",
     ("_credential_profiles.html", "Cancel"): "puts the profiles table back, writing nothing",

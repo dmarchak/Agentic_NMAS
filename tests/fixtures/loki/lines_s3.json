@@ -1,0 +1,239 @@
+{
+ "answer": {
+  "data": {
+   "result": [
+    {
+     "stream": {
+      "job": "network_syslog"
+     },
+     "values": [
+      [
+       "1791659046657022973",
+       "Oct 10 19:04:06 s3 1530: s3: *Oct  6 18:17:38.347 UTC: %SSH-4-SSH2_UNEXPECTED_MSG: Unexpected message type has arrived. Terminating the connection from 192.0.2.1"
+      ],
+      [
+       "1791521235200571482",
+       "Oct  9 04:47:14 s3 1278: s3: *Oct  5 21:18:08.566 UTC: %GRUB-5-CONFIG_WRITTEN: GRUB configuration was written to disk successfully."
+      ],
+      [
+       "1791521232694907260",
+       "Oct  9 04:47:12 s3 1277: s3: *Oct  5 21:18:07.206 UTC: %GRUB-5-CONFIG_WRITING: GRUB configuration is being updated on disk. Please wait..."
+      ],
+      [
+       "1791519314700258963",
+       "Oct  9 04:15:14 s3 1272: s3: *Oct  5 20:59:55.467 UTC: %GRUB-5-CONFIG_WRITTEN: GRUB configuration was written to disk successfully."
+      ],
+      [
+       "1791519309937503590",
+       "Oct  9 04:15:09 s3 1271: s3: *Oct  5 20:59:54.198 UTC: %GRUB-5-CONFIG_WRITING: GRUB configuration is being updated on disk. Please wait..."
+      ],
+      [
+       "1791518922183635475",
+       "Oct  9 04:08:41 s3 1269: s3: *Oct  5 20:56:38.522 UTC: %GRUB-5-CONFIG_WRITTEN: GRUB configuration was written to disk successfully."
+      ],
+      [
+       "1791518918423108327",
+       "Oct  9 04:08:38 s3 1268: s3: *Oct  5 20:56:37.016 UTC: %GRUB-5-CONFIG_WRITING: GRUB configuration is being updated on disk. Please wait..."
+      ],
+      [
+       "1791518836233068582",
+       "Oct  9 04:07:16 s3 1267: s3: *Oct  5 20:55:50.935 UTC: %SYS-5-CONFIG_I: Configured from console by <user> on vty0 (192.0.2.1)"
+      ],
+      [
+       "1791518333151853920",
+       "Oct  9 03:58:52 s3 1265: s3: *Oct  5 20:51:24.572 UTC: %GRUB-5-CONFIG_WRITTEN: GRUB configuration was written to disk successfully."
+      ],
+      [
+       "1791518328638939069",
+       "Oct  9 03:58:48 s3 1264: s3: *Oct  5 20:51:22.605 UTC: %GRUB-5-CONFIG_WRITING: GRUB configuration is being updated on disk. Please wait..."
+      ],
+      [
+       "1791516833339316512",
+       "Oct  9 03:33:53 s3 1260: s3: *Oct  5 20:37:11.014 UTC: %GRUB-5-CONFIG_WRITTEN: GRUB configuration was written to disk successfully."
+      ],
+      [
+       "1791516830584250923",
+       "Oct  9 03:33:50 s3 1259: s3: *Oct  5 20:37:09.673 UTC: %GRUB-5-CONFIG_WRITING: GRUB configuration is being updated on disk. Please wait..."
+      ],
+      [
+       "1791234323910056718",
+       "Oct  5 21:05:23 s3 736: s3: *Oct  4 01:05:26.444 UTC: %SSH-4-SSH2_UNEXPECTED_MSG: Unexpected message type has arrived. Terminating the connection from 192.0.2.1"
+      ],
+      [
+       "1791184385680263166",
+       "Oct  5 07:13:05 s3 643: s3: *Oct  3 17:23:00.488 UTC: %SSH-4-SSH2_UNEXPECTED_MSG: Unexpected message type has arrived. Terminating the connection from 192.0.2.1"
+      ],
+      [
+       "1791147009428347482",
+       "Oct  4 20:50:09 s3 572: s3: *Oct  3 11:33:42.069 UTC: %GRUB-5-CONFIG_WRITTEN: GRUB configuration was written to disk successfully."
+      ],
+      [
+       "1791147006922330310",
+       "Oct  4 20:50:06 s3 571: s3: *Oct  3 11:33:40.825 UTC: %GRUB-5-CONFIG_WRITING: GRUB configuration is being updated on disk. Please wait..."
+      ],
+      [
+       "1791146990377944555",
+       "Oct  4 20:49:50 s3 570: s3: *Oct  3 11:33:29.424 UTC: %SYS-5-CONFIG_I: Configured from console by <user> on vty2 (192.0.2.1)"
+      ]
+     ]
+    }
+   ],
+   "resultType": "streams",
+   "stats": {
+    "cache": {
+     "chunk": {
+      "bytesReceived": 9798652,
+      "bytesSent": 0,
+      "downloadTime": 16217885,
+      "entriesFound": 16733,
+      "entriesRequested": 16733,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 1492
+     },
+     "index": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "instantMetricResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "labelResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "result": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "seriesResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     },
+     "statsResult": {
+      "bytesReceived": 185199,
+      "bytesSent": 0,
+      "downloadTime": 2566918,
+      "entriesFound": 175,
+      "entriesRequested": 175,
+      "entriesStored": 93,
+      "queryLengthServed": 357835000000000,
+      "requests": 268
+     },
+     "volumeResult": {
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "downloadTime": 0,
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "queryLengthServed": 0,
+      "requests": 0
+     }
+    },
+    "index": {
+     "postFilterChunks": 0,
+     "shardsDuration": 0,
+     "totalChunks": 0,
+     "usedBloomFilters": false
+    },
+    "ingester": {
+     "store": {
+      "chunk": {
+       "compressedBytes": 14250,
+       "decompressedBytes": 18505,
+       "decompressedLines": 107,
+       "decompressedStructuredMetadataBytes": 3210,
+       "headChunkBytes": 103,
+       "headChunkLines": 1,
+       "headChunkStructuredMetadataBytes": 8,
+       "postFilterLines": 0,
+       "totalDuplicates": 0
+      },
+      "chunkRefsFetchTime": 1066034,
+      "chunksDownloadTime": 2024573,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0,
+      "queryReferencedStructuredMetadata": false,
+      "totalChunksDownloaded": 80,
+      "totalChunksRef": 80
+     },
+     "totalBatches": 2,
+     "totalChunksMatched": 1,
+     "totalLinesSent": 0,
+     "totalReached": 2
+    },
+    "querier": {
+     "store": {
+      "chunk": {
+       "compressedBytes": 2981437,
+       "decompressedBytes": 4036941,
+       "decompressedLines": 23264,
+       "decompressedStructuredMetadataBytes": 697920,
+       "headChunkBytes": 0,
+       "headChunkLines": 0,
+       "headChunkStructuredMetadataBytes": 0,
+       "postFilterLines": 17,
+       "totalDuplicates": 0
+      },
+      "chunkRefsFetchTime": 65046725,
+      "chunksDownloadTime": 682315113,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0,
+      "queryReferencedStructuredMetadata": false,
+      "totalChunksDownloaded": 16733,
+      "totalChunksRef": 16733
+     }
+    },
+    "summary": {
+     "bytesProcessedPerSecond": 11034977,
+     "execTime": 0.367518,
+     "linesProcessedPerSecond": 63594,
+     "queueTime": 14.740399,
+     "shards": 169,
+     "splits": 169,
+     "subqueries": 0,
+     "totalBytesProcessed": 4055549,
+     "totalEntriesReturned": 17,
+     "totalLinesProcessed": 23372,
+     "totalPostFilterLines": 17,
+     "totalStructuredMetadataBytesProcessed": 701138
+    }
+   }
+  },
+  "status": "success"
+ },
+ "captured_at": "2026-10-10T21:28:58Z",
+ "device": "s3"
+}

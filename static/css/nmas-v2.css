@@ -1452,3 +1452,56 @@ a.topo-ent:hover { background: var(--hover); }
   .topo-sheet-acts > * { flex: 1; justify-content: center; min-height: 44px; }
   .topo-sheet dl { font-size: 13.5px; }
 }
+/* Logs (C652), drawn to History › Query board C (AskLogs; docs/fidelity/logs.md). */
+.lg { display: flex; flex-direction: column; gap: 12px; max-width: 1140px; }
+.lg-crumb { font-size: 13px; color: var(--ink-3); }
+.lg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.lg-head h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.lg-acts { display: flex; gap: 8px; align-items: center; }
+.lg-q { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.lg-sev { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-size: 13px; color: var(--ink-2); }
+.lg-sev select, .lg-filters select, .lg-filters input { font: inherit; font-size: 13px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); }
+.lg-cov p { margin: 0; }
+.lg-prov { margin: -4px 0 0; }
+.lg-answer { display: flex; flex-direction: column; gap: 10px; }
+.lg-sum { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.lg-table tr.open th, .lg-table tr.open td { background: var(--accent-soft); }
+.lg-dev { font-family: var(--mono); }
+.lg-open > td { background: var(--surface-2); padding: 12px 10px; }
+.lg-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin: 0 0 10px; }
+.lg-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-2); }
+.lg-filters input[name="from"], .lg-filters input[name="to"] { width: 130px; }
+.lg-trend { margin: 6px 0 10px; }
+.lg-chartbox { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px; margin-top: 8px; }
+.lg-ycol { display: flex; flex-direction: column; justify-content: space-between; height: 130px;
+  text-align: right; font-size: 11px; color: var(--ink-2); line-height: 1; }
+.lg-plot { min-width: 0; }
+.lg-chart { width: 100%; height: 130px; display: block; border-left: 1px solid var(--ink-3); border-bottom: 1px solid var(--ink-3); }
+.lg-xticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-2); margin-top: 4px; }
+.lg-grid { stroke: var(--line-2); stroke-width: 1; }
+.lg-line { fill: none; stroke-width: 3; vector-effect: non-scaling-stroke; }
+.lg-s0 { stroke: var(--series-0); background: var(--series-0); }
+.lg-s1 { stroke: var(--series-1); background: var(--series-1); }
+.lg-s2 { stroke: var(--series-2); background: var(--series-2); }
+.lg-key { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; }
+.lg-key > span { display: inline-flex; gap: 6px; align-items: center; }
+.lg-sw { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.lg-lines td { font-size: 12.5px; }
+.lg-msg { overflow-wrap: anywhere; }
+.lg-unit { display: none; }
+@media (max-width: 700px) {
+  /* Logs at phone width: a device per wrapped row, a line as its time and severity over its
+     message (no phone board; the v2 rule that a screen reads at phone width). */
+  .lg-table thead, .lg-lines thead { display: none; }
+  .lg-table tr { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 8px 0;
+    border-bottom: 1px solid var(--line-2); }
+  .lg-table th, .lg-table td { display: block; border: 0; padding: 0; }
+  .lg-table tr.lg-open > td { flex: 1 1 100%; padding: 10px 8px; }
+  .lg-lines tr { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; padding: 6px 0;
+    border-bottom: 1px solid var(--line-2); }
+  .lg-lines td { display: block; padding: 0; border: 0; }
+  .lg-lines td.lg-msg { grid-column: 1 / -1; }
+  .lg-unit { display: inline; }
+  .lg-filters label, .lg-filters input, .lg-filters select { width: 100%; }
+}

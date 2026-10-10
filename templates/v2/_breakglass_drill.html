@@ -20,7 +20,7 @@
     {%- else %}<p>Never: nothing has shown the record opens without the tool. {{ d.due.full | capitalize }}: 90 days after the first export.</p>{% endif %}</div></div>
   <div class="op-part"><h3>To do it</h3><div>
     <p>On the machine that keeps the file, with nothing of the tool running, give it the .bg file you kept:</p>
-    <p class="bg-cmd"><code class="mono">nmas-breakglass drill &lt;the .bg file you kept&gt;</code><button type="button" class="btn btn-small" x-data="copy" data-copy="nmas-breakglass drill" x-on:click="copy" x-text="label">Copy</button></p>
+    <p class="bg-cmd"><code class="mono">nmas-breakglass drill &lt;the .bg file you kept&gt;</code><button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="nmas-breakglass drill" x-on:click="copy" x-text="label">Copy</button></p>
     {#- C387: the host never sees what the file is called where it is kept; what it knows is
         labelled as what it is, never printed as the file to open. -#}
     {%- if d.newest and d.newest.how == 'downloaded' %}<p class="muted small">The newest export, {{ stamp(d.newest.at) }}, was named <span class="mono">{{ d.newest.name }}</span> when it was downloaded; it may have been renamed or moved since.</p>

@@ -1,0 +1,1521 @@
+{
+ "captured_at": "2026-10-10T21:28:58Z",
+ "days": {
+  "2026-10-07": {
+   "answer": {
+    "data": {
+     "result": [
+      {
+       "metric": {},
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791417600,
+        "81"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%OSPF-5-ADJCHG"
+       },
+       "value": [
+        1791417600,
+        "13"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791417600,
+        "101"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791417600,
+        "145"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DMI-5-SYNC_COMPLETE"
+       },
+       "value": [
+        1791417600,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DMI-5-SYNC_NEEDED"
+       },
+       "value": [
+        1791417600,
+        "4"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DMI-5-SYNC_START"
+       },
+       "value": [
+        1791417600,
+        "4"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%LINEPROTO-5-UPDOWN"
+       },
+       "value": [
+        1791417600,
+        "10"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%LINK-3-UPDOWN"
+       },
+       "value": [
+        1791417600,
+        "4"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%LINK-5-CHANGED"
+       },
+       "value": [
+        1791417600,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791417600,
+        "107"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791417600,
+        "54"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791417600,
+        "59"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791417600,
+        "100"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791417600,
+        "66"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791417600,
+        "100"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791417600,
+        "32"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791417600,
+        "100"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%LINEPROTO-5-UPDOWN"
+       },
+       "value": [
+        1791417600,
+        "16"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%LINK-2-INTVULN"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%LINK-3-UPDOWN"
+       },
+       "value": [
+        1791417600,
+        "7"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%LINK-5-CHANGED"
+       },
+       "value": [
+        1791417600,
+        "8"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%SSH-3-IDLE_TIMEOUT"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791417600,
+        "78"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s2",
+        "mn": "%GRUB-5-CONFIG_WRITING"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s2",
+        "mn": "%GRUB-5-CONFIG_WRITTEN"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s2",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791417600,
+        "1"
+       ]
+      }
+     ],
+     "resultType": "vector",
+     "stats": {
+      "cache": {
+       "chunk": {
+        "bytesReceived": 1424104,
+        "bytesSent": 0,
+        "downloadTime": 20444677,
+        "entriesFound": 2417,
+        "entriesRequested": 2417,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 224
+       },
+       "index": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "instantMetricResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "labelResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "result": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "seriesResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "statsResult": {
+        "bytesReceived": 19080,
+        "bytesSent": 0,
+        "downloadTime": 195046,
+        "entriesFound": 24,
+        "entriesRequested": 24,
+        "entriesStored": 17,
+        "queryLengthServed": 32430000000000,
+        "requests": 41
+       },
+       "volumeResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       }
+      },
+      "index": {
+       "postFilterChunks": 0,
+       "shardsDuration": 0,
+       "totalChunks": 0,
+       "usedBloomFilters": false
+      },
+      "ingester": {
+       "store": {
+        "chunk": {
+         "compressedBytes": 0,
+         "decompressedBytes": 0,
+         "decompressedLines": 0,
+         "decompressedStructuredMetadataBytes": 0,
+         "headChunkBytes": 0,
+         "headChunkLines": 0,
+         "headChunkStructuredMetadataBytes": 0,
+         "postFilterLines": 0,
+         "totalDuplicates": 0
+        },
+        "chunkRefsFetchTime": 0,
+        "chunksDownloadTime": 0,
+        "congestionControlLatency": 0,
+        "pipelineWrapperFilteredLines": 0,
+        "queryReferencedStructuredMetadata": false,
+        "totalChunksDownloaded": 0,
+        "totalChunksRef": 0
+       },
+       "totalBatches": 0,
+       "totalChunksMatched": 0,
+       "totalLinesSent": 0,
+       "totalReached": 0
+      },
+      "querier": {
+       "store": {
+        "chunk": {
+         "compressedBytes": 439324,
+         "decompressedBytes": 624557,
+         "decompressedLines": 3576,
+         "decompressedStructuredMetadataBytes": 107280,
+         "headChunkBytes": 0,
+         "headChunkLines": 0,
+         "headChunkStructuredMetadataBytes": 0,
+         "postFilterLines": 1195,
+         "totalDuplicates": 0
+        },
+        "chunkRefsFetchTime": 18059706,
+        "chunksDownloadTime": 188007694,
+        "congestionControlLatency": 0,
+        "pipelineWrapperFilteredLines": 0,
+        "queryReferencedStructuredMetadata": false,
+        "totalChunksDownloaded": 2417,
+        "totalChunksRef": 2417
+       }
+      },
+      "summary": {
+       "bytesProcessedPerSecond": 5455141,
+       "execTime": 0.114489603,
+       "linesProcessedPerSecond": 31234,
+       "queueTime": 1.09340635,
+       "shards": 24,
+       "splits": 24,
+       "subqueries": 0,
+       "totalBytesProcessed": 624557,
+       "totalEntriesReturned": 33,
+       "totalLinesProcessed": 3576,
+       "totalPostFilterLines": 1195,
+       "totalStructuredMetadataBytesProcessed": 107280
+      }
+     }
+    },
+    "status": "success"
+   },
+   "time": 1791417600
+  },
+  "2026-10-08": {
+   "answer": {
+    "data": {
+     "result": [
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791504000,
+        "80"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%OSPF-5-ADJCHG"
+       },
+       "value": [
+        1791504000,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791504000,
+        "102"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SYS-5-USERLOG_NOTICE"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%CLEAR-5-COUNTERS"
+       },
+       "value": [
+        1791504000,
+        "2"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791504000,
+        "95"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791504000,
+        "104"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791504000,
+        "83"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791504000,
+        "96"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791504000,
+        "57"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791504000,
+        "94"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791504000,
+        "27"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791504000,
+        "97"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%CLEAR-5-COUNTERS"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%GRUB-5-CONFIG_WRITING"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%GRUB-5-CONFIG_WRITTEN"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791504000,
+        "1"
+       ]
+      }
+     ],
+     "resultType": "vector",
+     "stats": {
+      "cache": {
+       "chunk": {
+        "bytesReceived": 1405533,
+        "bytesSent": 0,
+        "downloadTime": 2094052,
+        "entriesFound": 2405,
+        "entriesRequested": 2405,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 216
+       },
+       "index": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "instantMetricResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "labelResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "result": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "seriesResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "statsResult": {
+        "bytesReceived": 36480,
+        "bytesSent": 0,
+        "downloadTime": 5836677,
+        "entriesFound": 24,
+        "entriesRequested": 24,
+        "entriesStored": 17,
+        "queryLengthServed": 39753000000000,
+        "requests": 41
+       },
+       "volumeResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       }
+      },
+      "index": {
+       "postFilterChunks": 0,
+       "shardsDuration": 0,
+       "totalChunks": 0,
+       "usedBloomFilters": false
+      },
+      "ingester": {
+       "store": {
+        "chunk": {
+         "compressedBytes": 0,
+         "decompressedBytes": 0,
+         "decompressedLines": 0,
+         "decompressedStructuredMetadataBytes": 0,
+         "headChunkBytes": 0,
+         "headChunkLines": 0,
+         "headChunkStructuredMetadataBytes": 0,
+         "postFilterLines": 0,
+         "totalDuplicates": 0
+        },
+        "chunkRefsFetchTime": 0,
+        "chunksDownloadTime": 0,
+        "congestionControlLatency": 0,
+        "pipelineWrapperFilteredLines": 0,
+        "queryReferencedStructuredMetadata": false,
+        "totalChunksDownloaded": 0,
+        "totalChunksRef": 0
+       },
+       "totalBatches": 0,
+       "totalChunksMatched": 0,
+       "totalLinesSent": 0,
+       "totalReached": 0
+      },
+      "querier": {
+       "store": {
+        "chunk": {
+         "compressedBytes": 425731,
+         "decompressedBytes": 562962,
+         "decompressedLines": 3265,
+         "decompressedStructuredMetadataBytes": 97950,
+         "headChunkBytes": 0,
+         "headChunkLines": 0,
+         "headChunkStructuredMetadataBytes": 0,
+         "postFilterLines": 894,
+         "totalDuplicates": 0
+        },
+        "chunkRefsFetchTime": 9431776,
+        "chunksDownloadTime": 91852928,
+        "congestionControlLatency": 0,
+        "pipelineWrapperFilteredLines": 0,
+        "queryReferencedStructuredMetadata": false,
+        "totalChunksDownloaded": 2405,
+        "totalChunksRef": 2405
+       }
+      },
+      "summary": {
+       "bytesProcessedPerSecond": 7653383,
+       "execTime": 0.073557266,
+       "linesProcessedPerSecond": 44387,
+       "queueTime": 0.466735817,
+       "shards": 24,
+       "splits": 24,
+       "subqueries": 0,
+       "totalBytesProcessed": 562962,
+       "totalEntriesReturned": 23,
+       "totalLinesProcessed": 3265,
+       "totalPostFilterLines": 894,
+       "totalStructuredMetadataBytesProcessed": 97950
+      }
+     }
+    },
+    "status": "success"
+   },
+   "time": 1791504000
+  },
+  "2026-10-09": {
+   "answer": {
+    "data": {
+     "result": [
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791590400,
+        "90"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%OSPF-5-ADJCHG"
+       },
+       "value": [
+        1791590400,
+        "15"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791590400,
+        "83"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791590400,
+        "2"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r1",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791590400,
+        "122"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DMI-5-SYNC_COMPLETE"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DMI-5-SYNC_NEEDED"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%DMI-5-SYNC_START"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791590400,
+        "86"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791590400,
+        "2"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r2",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791590400,
+        "99"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791590400,
+        "82"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r3",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791590400,
+        "67"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791590400,
+        "82"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791590400,
+        "2"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r4",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%CRYPTO_ENGINE-5-KEY_ADDITION"
+       },
+       "value": [
+        1791590400,
+        "2"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%CVAC-4-CONFIG_DONE"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%DBAL-4-DELAYED_BATCH"
+       },
+       "value": [
+        1791590400,
+        "32"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%DMI-5-NACM_INIT"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%DMI-5-SYNC_COMPLETE"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%DMI-5-SYNC_NEEDED"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%DMI-5-SYNC_START"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%LINEPROTO-5-UPDOWN"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%LINK-3-UPDOWN"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%NDBMAN-5-ACTIVE"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%PKI-4-NOCONFIGAUTOSAVE"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SEC_LOGIN-5-LOGIN_SUCCESS"
+       },
+       "value": [
+        1791590400,
+        "85"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SMART_LIC-3-COMM_FAILED"
+       },
+       "value": [
+        1791590400,
+        "3"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%SYS-5-CONFIG_P"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "r6",
+        "mn": "%WSMAN-3-INVALID_TRUSTPOINT"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%GRUB-5-CONFIG_WRITING"
+       },
+       "value": [
+        1791590400,
+        "4"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s1",
+        "mn": "%GRUB-5-CONFIG_WRITTEN"
+       },
+       "value": [
+        1791590400,
+        "4"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s2",
+        "mn": "%GRUB-5-CONFIG_WRITING"
+       },
+       "value": [
+        1791590400,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s2",
+        "mn": "%GRUB-5-CONFIG_WRITTEN"
+       },
+       "value": [
+        1791590400,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s2",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s3",
+        "mn": "%GRUB-5-CONFIG_WRITING"
+       },
+       "value": [
+        1791590400,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s3",
+        "mn": "%GRUB-5-CONFIG_WRITTEN"
+       },
+       "value": [
+        1791590400,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s3",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s4",
+        "mn": "%GRUB-5-CONFIG_WRITING"
+       },
+       "value": [
+        1791590400,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s4",
+        "mn": "%GRUB-5-CONFIG_WRITTEN"
+       },
+       "value": [
+        1791590400,
+        "5"
+       ]
+      },
+      {
+       "metric": {
+        "dev": "s4",
+        "mn": "%SYS-5-CONFIG_I"
+       },
+       "value": [
+        1791590400,
+        "1"
+       ]
+      }
+     ],
+     "resultType": "vector",
+     "stats": {
+      "cache": {
+       "chunk": {
+        "bytesReceived": 1404088,
+        "bytesSent": 0,
+        "downloadTime": 2973114,
+        "entriesFound": 2398,
+        "entriesRequested": 2398,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 208
+       },
+       "index": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "instantMetricResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "labelResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "result": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "seriesResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       },
+       "statsResult": {
+        "bytesReceived": 10344,
+        "bytesSent": 0,
+        "downloadTime": 311069,
+        "entriesFound": 24,
+        "entriesRequested": 24,
+        "entriesStored": 6,
+        "queryLengthServed": 64830000000000,
+        "requests": 30
+       },
+       "volumeResult": {
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "downloadTime": 0,
+        "entriesFound": 0,
+        "entriesRequested": 0,
+        "entriesStored": 0,
+        "queryLengthServed": 0,
+        "requests": 0
+       }
+      },
+      "index": {
+       "postFilterChunks": 0,
+       "shardsDuration": 0,
+       "totalChunks": 0,
+       "usedBloomFilters": false
+      },
+      "ingester": {
+       "store": {
+        "chunk": {
+         "compressedBytes": 0,
+         "decompressedBytes": 0,
+         "decompressedLines": 0,
+         "decompressedStructuredMetadataBytes": 0,
+         "headChunkBytes": 0,
+         "headChunkLines": 0,
+         "headChunkStructuredMetadataBytes": 0,
+         "postFilterLines": 0,
+         "totalDuplicates": 0
+        },
+        "chunkRefsFetchTime": 0,
+        "chunksDownloadTime": 0,
+        "congestionControlLatency": 0,
+        "pipelineWrapperFilteredLines": 0,
+        "queryReferencedStructuredMetadata": false,
+        "totalChunksDownloaded": 0,
+        "totalChunksRef": 0
+       },
+       "totalBatches": 0,
+       "totalChunksMatched": 0,
+       "totalLinesSent": 0,
+       "totalReached": 0
+      },
+      "querier": {
+       "store": {
+        "chunk": {
+         "compressedBytes": 427190,
+         "decompressedBytes": 572053,
+         "decompressedLines": 3298,
+         "decompressedStructuredMetadataBytes": 98940,
+         "headChunkBytes": 0,
+         "headChunkLines": 0,
+         "headChunkStructuredMetadataBytes": 0,
+         "postFilterLines": 942,
+         "totalDuplicates": 0
+        },
+        "chunkRefsFetchTime": 14049496,
+        "chunksDownloadTime": 113374627,
+        "congestionControlLatency": 0,
+        "pipelineWrapperFilteredLines": 0,
+        "queryReferencedStructuredMetadata": false,
+        "totalChunksDownloaded": 2398,
+        "totalChunksRef": 2398
+       }
+      },
+      "summary": {
+       "bytesProcessedPerSecond": 6895931,
+       "execTime": 0.08295515,
+       "linesProcessedPerSecond": 39756,
+       "queueTime": 0.612620563,
+       "shards": 24,
+       "splits": 24,
+       "subqueries": 0,
+       "totalBytesProcessed": 572053,
+       "totalEntriesReturned": 47,
+       "totalLinesProcessed": 3298,
+       "totalPostFilterLines": 942,
+       "totalStructuredMetadataBytesProcessed": 98940
+      }
+     }
+    },
+    "status": "success"
+   },
+   "time": 1791590400
+  }
+ }
+}
