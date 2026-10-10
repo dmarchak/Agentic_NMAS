@@ -166,6 +166,8 @@ DECLARED = {
     "inventory.delete_credential_profile": ("credentials",),
     "topology_v2.expected_declare": ("topology",),
     "topology_v2.expected_withdraw": ("topology",),
+    "topology_v2.positions_save": ("topology",),
+    "topology_v2.positions_reset": ("topology",),
     "credential_profiles_v2.save": ("credentials",),
     "credential_profiles_v2.delete": ("credentials",),
     # Goldens, the repository and the remote.
@@ -558,16 +560,17 @@ def install(app) -> None:
         # nothing can have changed, and a refusal announcing an invalidation
         # is a claim about a write that did not happen (found by the payload
         # check, whose fixture was refused and carried `invalidates`).
-        if response.status_code in (401, 403):
+        # C656: nor does any other refusal (4xx, 5xx): it wrote nothing, and its keys made the
+        # page redraw the region that was showing the refusal's reason, wiping it.
+        if response.status_code >= 400:
             return response
         keys = keys_for(request.endpoint or "")
         if not keys:
             return response
         response.headers[HEADER] = ",".join(keys)
         # C539: the readers whose answer this route's write changes are read again at once.
-        if response.status_code < 400:
-            from modules import reader_wakes
-            reader_wakes.wake(keys, request.endpoint or "")
+        from modules import reader_wakes
+        reader_wakes.wake(keys, request.endpoint or "")
         if response.mimetype == "application/json" and not response.direct_passthrough:
             try:
                 body = json.loads(response.get_data(as_text=True))

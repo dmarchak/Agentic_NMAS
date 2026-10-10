@@ -39,6 +39,15 @@ def _region(code: int = 200, **extra):
     return _strict(render_template("v2/_topology_map.html", **_ctx(**extra)), code)
 
 
+def _result(op: dict):
+    """A write's result (C656): the map region redrawn as it now is (out of Arrange), and the
+    result in the slot above it, out of band. The page then redraws the region by the key the
+    write declares; a result drawn inside the region was wiped by that redraw."""
+    note = render_template("v2/_topology_result.html", op=op)
+    return _strict(render_template("v2/_topology_map.html", **_ctx())
+                   + f'\n<div id="topo-result" aria-live="polite" hx-swap-oob="true">{note}</div>')
+
+
 @bp.route("", methods=["GET"])
 def page():
     """The page. A read: the reader's stored value, drawn."""
@@ -72,7 +81,37 @@ def expected_declare():
     if not got["ok"]:
         return _region(400, op={"state": "form", "device": device, "refused": got["error"],
                                 "reason": request.form.get("reason", "")})
-    return _region(op=dict(got, state="declared", device=device))
+    return _result(dict(got, state="declared", device=device))
+
+
+@bp.route("/positions", methods=["POST"])
+def positions_save():
+    """Arrange (C655): save where people put each device and segment, the network's layout for
+    everyone, as the verified person; recorded. Every place must be a node the map draws."""
+    from modules import identity, topology_page, topology_positions
+
+    list_name = _list_name()
+    st = topology_page.stored()
+    net = ((st.get("value") or {}).get("networks") or {}).get(list_name) or {}
+    places, error = topology_positions.parse(request.form.get("positions", ""),
+                                             set((net.get("nodes") or {})))
+    if error:
+        return _region(400, op={"state": "refused", "refused": f"the layout was not saved: {error}"})
+    got = topology_positions.save(list_name, places, identity.request_actor())
+    if not got["ok"]:
+        return _region(409, op={"state": "refused", "refused": got["error"]})
+    return _result(dict(got, state="arranged", places=len(places)))
+
+
+@bp.route("/positions/reset", methods=["POST"])
+def positions_reset():
+    """Withdraw the saved layout, as the verified person: the generated one is drawn; recorded."""
+    from modules import identity, topology_positions
+
+    got = topology_positions.reset(_list_name(), identity.request_actor())
+    if not got["ok"]:
+        return _region(409, op={"state": "refused", "refused": got["error"]})
+    return _result(dict(got, state="reset"))
 
 
 @bp.route("/expected/withdraw", methods=["POST"])
@@ -84,4 +123,4 @@ def expected_withdraw():
     got = topology_expected.withdraw(_list_name(), device, identity.request_actor())
     if not got["ok"]:
         return _region(409, op={"state": "refused", "device": device, "refused": got["error"]})
-    return _region(op=dict(got, state="withdrawn", device=device))
+    return _result(dict(got, state="withdrawn", device=device))

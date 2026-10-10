@@ -3,10 +3,15 @@ TopoDesktop and TopoPhone, signed off 2026-10-04).
 
 Laid out ONCE per read, by the topology reader, and stored with the graph: a page draws stored
 positions and never lays out per request (CLAUDE.md, enterprise scale). Deterministic: the same
-graph lays out the same map, so a refresh moves nothing. Saved positions a person moves
-(Arrange) are step 3.
+graph lays out the same map, so a refresh moves nothing.
 
-Bands by class, top to bottom (the board's CORE, EDGE, ACCESS, MANAGEMENT); each band ordered by
+**The generated layout is a starting point** (C655, the operator, 2026-10-10: "Don't enforce
+Core, Edge, etc placements. Let the user design the diagram after initial generation"): a
+person arranges the map on the page and saves it for everyone (modules/topology_positions.py);
+the bands below only place what has no saved place, and are never drawn.
+
+Bands by class, top to bottom (the board's CORE, EDGE, ACCESS, MANAGEMENT, with multi-access
+segments between the routers and the switches); each band ordered by
 where its neighbours sit, then, on a small map, untangled: neighbours in a band swapped (every
 order of a small band tried) while it lowers crossings and links drawn through a device they do
 not join.
@@ -23,12 +28,14 @@ log = logging.getLogger(__name__)
 W, BAND, TOP, SIDE, HALF = 880, 175, 64, 60, 17
 #: Bands, top to bottom (the board): routers inside, routers with an outside peer and the peers
 #: themselves, switches, a device of no known class, Mercury's own host.
-BANDS = ("core", "edge", "access", "no class", "management")
+BANDS = ("core", "edge", "segments", "access", "no class", "management")
 
 
 def node_class(name: str, n: dict) -> str:
     from modules.readers.topology_graph import MANAGER
     role = (n.get("role") or "").lower()
+    if n.get("segment"):
+        return "segment"
     if name == MANAGER:
         return "server"
     if n.get("outside"):
@@ -42,6 +49,8 @@ def node_class(name: str, n: dict) -> str:
 
 def _band(name: str, n: dict, edge: set) -> str:
     cls = node_class(name, n)
+    if cls == "segment":
+        return "segments"
     if cls == "server":
         return "management"
     if cls == "external" or name in edge:
@@ -95,12 +104,30 @@ def layout(nodes: dict, phys: list) -> dict:
                 for band in order for name in rows[band]}
 
     if len(nodes) <= UNTANGLE_UP_TO:
-        # Swap neighbours in a band while it lowers the cost: two links crossing count 1, a
-        # link drawn through a device that is not its end counts 10 (it reads as connected).
-
-
-        best = _tangle(place(), phys)
-        moved = True
+        # The cost: two links crossing count 1, a link drawn through a device that is not its
+        # end counts 10 (it reads as connected). Counted on the cabling only: a segment's member
+        # lines pull it towards its devices (above) and never decide where the devices go.
+        cabling = [l for l in phys if not l.get("member")]
+        combos = 1
+        for band in order:
+            combos *= math.factorial(len(rows[band]))
+        moved = combos > EXHAUSTIVE_UP_TO
+        best = _tangle(place(), cabling)
+        if not moved:
+            # A small map: every order of every band at once (one band at a time can stop in a
+            # local minimum: the lab's r1 and r2 sat across from their switches).
+            choices = [list(itertools.permutations(sorted(rows[b]))) for b in order]
+            best, keep = None, None
+            for choice in itertools.product(*choices):
+                for band, perm in zip(order, choice):
+                    rows[band] = list(perm)
+                    spread(band)
+                cost = _tangle(place(), cabling)
+                if best is None or cost < best:
+                    best, keep = cost, choice
+            for band, perm in zip(order, keep):
+                rows[band] = list(perm)
+                spread(band)
         while moved:
             moved = False
             for band in order:
@@ -111,7 +138,7 @@ def layout(nodes: dict, phys: list) -> dict:
                         was = rows[band]
                         rows[band] = list(perm)
                         spread(band)
-                        cost = _tangle(place(), phys)
+                        cost = _tangle(place(), cabling)
                         if cost < best:
                             best, moved = cost, True
                         else:
@@ -121,7 +148,7 @@ def layout(nodes: dict, phys: list) -> dict:
                 for i in range(len(rows[band]) - 1):
                     rows[band][i], rows[band][i + 1] = rows[band][i + 1], rows[band][i]
                     spread(band)
-                    cost = _tangle(place(), phys)
+                    cost = _tangle(place(), cabling)
                     if cost < best:
                         best, moved = cost, True
                     else:
@@ -138,6 +165,9 @@ def layout(nodes: dict, phys: list) -> dict:
 #: device: 30 ms at 20 devices, 141 ms at 30, 651 ms at 40, 2,480 ms at 60. The reader lays
 #: out once a minute, so 40 keeps it under a second.
 UNTANGLE_UP_TO = 40
+#: Up to this many orders in all, every order of every band is tried at once (the lab: 3! x 3!
+#: x 4! = 864, about 0.1 s); above it, one band at a time.
+EXHAUSTIVE_UP_TO = 5000
 #: A band this small is tried in every order (6! = 720 layouts per pass).
 PERMUTE_UP_TO = 6
 
