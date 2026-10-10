@@ -61,6 +61,14 @@ address, so a view is a link you can share. A long list shows the newest and say
 are, with **Show more**. A record store that could not be read is said above the list. A
 commit whose record is known to be wrong says so in its row.
 
+## Reveal a version {#reveal}
+
+A golden row (on a device's History tab, or on History when the commit is one device's) offers
+**Reveal <device>'s version…**: the device's golden at that commit, unmasked, drawn under the
+row. **Show the change** is masked, like every screen; a reveal is the one place secrets are
+drawn in the clear. It needs a verified person, and it is recorded in the reveal record (who,
+when, which device and which commit) before the text is drawn; a refusal draws nothing.
+
 ## Baselines {#baselines}
 
 Every baseline: when it was taken, what its commit recorded it earned, and whether it can be

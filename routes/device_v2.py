@@ -791,6 +791,43 @@ def rotate_job_card(name, job):
 
 
 # ---------------------------------------------------------------------------
+# Reveal one golden version (decided 2026-10-05: it stays in the GUI, a person, recorded; built
+# 2026-10-10): the version in place under its History row, unmasked, the reveal recorded first.
+# ---------------------------------------------------------------------------
+
+@bp.route("/device/<name>/golden/reveal", methods=["POST"])
+def golden_reveal(name):
+    """Reveal *name*'s golden at the commit the row names (``ref``), in place, to a verified
+    person; the reveal is recorded in the reveal record before the text is drawn."""
+    import re as _re
+
+    from modules import identity, reveal_audit
+    from modules.nsot.repo import golden_at
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    host, sha = dev.get("hostname", ""), (request.form.get("ref") or "").strip()
+    c = {"host": host, "sha": sha}
+    if not _re.fullmatch(r"[0-9a-f]{7,40}", sha):
+        return _strict(render_template("v2/_golden_reveal.html", c=dict(
+            c, refused=f"{sha or 'nothing'} is not a commit")), 400)
+    text = golden_at(ref.repo_dir, host, sha)
+    if text is None:
+        return _strict(render_template("v2/_golden_reveal.html", c=dict(
+            c, refused=f"{host} has no golden at {sha[:10]}")), 404)
+    ident, refused = identity.require(request, "reveal", operation="golden_config")
+    if refused is not None:
+        return _strict(render_template("v2/_golden_reveal.html", c=dict(
+            c, refused=refused.get("error", "a verified person reveals"))), 403)
+    reveal_audit.record(actor=ident.actor, kind=ident.kind, what="golden_config", target=host,
+                        detail=sha, peer=ident.peer)
+    return _strict(render_template("v2/_golden_reveal.html", c=dict(
+        c, text=text, by=ident.actor)))
+
+
+# ---------------------------------------------------------------------------
 # Reload (P.14, cutover blocker 6): a preview job that reads the device and judges the six
 # gates, then a confirm with a reason that starts the run as a job (modules/nsot/reload_op.py).
 # ---------------------------------------------------------------------------

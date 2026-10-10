@@ -242,6 +242,7 @@ GATES = {
     "bulk_download_config": _g(R, "copies running or startup config to a TFTP server the form names"),
     "download_device_file": _g(R, "copies a file off a device to a TFTP server the form names"),
     "breakglass.export": _g(R, "every device's credential and the application key, sealed and sent to the browser"),
+    "device_v2.golden_reveal": _g(R, "one golden version of a device, unmasked, drawn in place on History (decided 2026-10-05: a person, recorded)", "golden_config"),
     "onboard_v2.bootstrap": _g(R, "a pending device's bootstrap config, its one-time credential in "
                                   "the clear, drawn on its v2 page", "onboard_bootstrap"),
 

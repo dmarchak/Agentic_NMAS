@@ -1,0 +1,12 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- One golden version revealed in place under its History row (decided 2026-10-05: revealing
+    stays in the GUI, a person, recorded; built 2026-10-10): the text unmasked, who it was
+    revealed to and that it was recorded; or why not, with nothing shown. -#}
+<div class="golden-reveal" id="reveal-{{ c.sha[:12] }}">
+{%- if c.refused %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>Not revealed: {{ c.refused }}. Nothing was shown.</span></p>
+{%- else %}
+  <p class="small">{{ c.host }}'s golden at <code>{{ c.sha[:10] }}</code>, unmasked: revealed to {{ c.by }} and recorded in the reveal record. Its secrets are in the clear below.</p>
+  <pre class="mono small set-config">{{ c.text }}</pre>
+{%- endif %}
+</div>

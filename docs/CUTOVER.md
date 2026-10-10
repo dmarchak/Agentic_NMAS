@@ -43,7 +43,7 @@ and built.
 | Deploy receipts | `/deploy/receipts` | BUILT, walked | The device page's History tab; the receipts can move to the records database (Phase 4) |
 | Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | BUILT (the reason for a shrink 2026-10-10, not run on the host) | Device Actions › Capture (walked) and Devices › Save (C593); the card takes the reason for recording a structural shrink (C486, C310; the `acknowledge` gap closed), and its What next follows the departure's direction |
 | Restore, baselines | `/golden/restore/preview`, `/apply`, `/golden/restore_points/<host>`, `/golden/baselines` | BUILT, History (a network's Re-apply 2026-10-10, not run on the host) | Device Actions › Restore from… (walked) offers the baselines; History › Baselines › Re-apply… restores every device a baseline holds as one batch, through THE restore plan and a device Restore's job (the `reapply` gap closed) |
-| Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | PARTLY BUILT, History | The History tab and `/v2/history/commit/<sha>` (walked). Missing: revealing a version, which stays in the GUI (decided 2026-10-05: a person, recorded); no board yet |
+| Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | BUILT, History (the reveal 2026-10-10, not run on the host) | The History tab and `/v2/history/commit/<sha>` (walked); a golden row's Reveal <device>'s version… draws it unmasked in place, a person, recorded first (decided 2026-10-05) |
 | Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT, walked | History › Commits: the log, its filters and each commit's masked change |
 | Remote | `/remote/push`, `/remote/verify`, `/remote/status` | BUILT | History's header (Push now, Verify; no real run yet) and `/v2/history/remote` |
 | Remote, auto-push | `/remote/auto-push` | BUILT (C631, 2026-10-10; not run on the host) | History › Remote set-up…: Turn on automatic pushing, offered after a successful push |
@@ -73,7 +73,7 @@ and built.
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` | BUILT, 7.7 (board F4, 2026-10-10) | Results are Needs attention rows; the schedule and Check now are Settings › Installation › Diagnostics |
 | Break-glass export | `/breakglass/preview`, `/export` | `/breakglass/export` STAYS; `/breakglass/preview` REMOVE, 7.8 (board 7) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
-| Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | PARTLY BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4). Missing: turning NetBox writes on (C619) |
+| Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
 | TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | Its only readers are the device file routes below, and it points at nothing on this installation |
 | Pending restart | `/session/pending-restart` | REMOVE, 7.8 | No caller; the Update button restarts, gated on held devices (`/server/restart` was removed 2026-10-02) |
 | App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
@@ -103,7 +103,7 @@ and built.
 | Today's Git tab, Remote card, Baselines panel | BUILT | History: Commits, the remote's sentence, Baselines |
 | The AI chat panel (every page) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns it |
 | Bulk restore at HEAD (`bulkRestoreGoldenConfig`) | REMOVE, 7.8 (cut 2026-10-05) | A device's Restore from… and History's baselines remain |
-| Settings modal | PARTLY BUILT | Settings per network and every Installation tab are built; turning NetBox writes on is not (C619) |
+| Settings modal | BUILT | Settings per network and every Installation tab are built; NetBox writes come on by an authorised confirm on the NetBox page (C619, closed 2026-10-10) |
 
 ## Decided 2026-10-02
 
