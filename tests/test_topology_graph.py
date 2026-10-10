@@ -246,6 +246,126 @@ class TestTheRoutingLayers:
         assert any(l["state"] == "up" and l["intended"] for l in ospf)
 
 
+def _here(intents):
+    """Mercury's host on s3 Vlan99's subnet, as on the lab's, derived from the captured config."""
+    import ipaddress
+    svi = next(i for i in intents["s3"]["interfaces"] if i["name"] == "Vlan99")
+    net = ipaddress.ip_interface("/".join(svi["ipv4"].split())).network
+    return [("eth1", f"{net.network_address + 250}/{net.prefixlen}")]
+
+
+def _labelled(**kw):
+    """The graph as the host reads it, with Mercury's host where the lab's attaches."""
+    res, up = _capture()
+    intents = {h: hv for h, hv in _intents().items() if h != "r5"}
+    roles = {h: "router" if h.startswith("r") else "switch" for h in MANAGED}
+    return T.network_graph(MANAGED, roles, intents, res, up, now="2026-10-10T19:00:00Z",
+                           at_here=_here(intents), **kw)
+
+
+class TestWhatEachLinkCarries:
+    """The operator, 2026-10-10: each link labelled with its ports and each neighbourship's
+    state and key facts (OSPF and OSPFv3 area, BGP peer AS)."""
+
+    def _adj(self, g, a, b):
+        link = _link(g, a, b)[0]
+        return [dict(g["layers"][r["layer"]][r["i"]], layer=r["layer"], at=r["at"])
+                for r in link["adj"]]
+
+    def test_a_point_to_point_link_carries_its_adjacency_from_both_ends(self):
+        adj = self._adj(_labelled(), "r3", "r4")
+        assert sorted((x["layer"], x["area"], x["words"], tuple(x["at"])) for x in adj) == [
+            ("ospf", "0", "full", ("r3", "r4")), ("ospfv3", "0", "full", ("r3", "r4"))]
+
+    def test_a_shared_segment_s_port_carries_every_adjacency_leaving_it(self):
+        """r1 Gi2 is on VLAN 100 with r2, r3, r4, s3 and s4: its link to s3 carries all five
+        OSPF and three OSPFv3 neighbourships, and s3's own (through its Vlan100 interface, on a
+        port carrying VLAN 100 to r1)."""
+        adj = self._adj(_labelled(), "r1", "s3")
+        ospf = {(x["a"], x["b"]) for x in adj if x["layer"] == "ospf"}
+        assert ospf == {("r1", p) for p in ("r2", "r3", "r4", "s3", "s4")}
+        assert {x["words"] for x in adj if x["layer"] == "ospf"} == {"full", "2-way"}
+        assert len([x for x in adj if x["layer"] == "ospfv3"]) == 3
+        assert next(x for x in adj if x["b"] == "s3" and x["layer"] == "ospf")["at"] == \
+            ["r1", "s3"]
+
+    def test_an_svi_adjacency_rides_the_trunk_to_its_peer(self):
+        adj = self._adj(_labelled(), "s3", "s4")
+        assert [(x["layer"], x["words"], x["at"]) for x in adj] == [("ospf", "2-way",
+                                                                     ["s3", "s4"])]
+
+    def test_ebgp_to_the_outside_peer_names_both_ases_on_its_link(self):
+        adj = self._adj(_labelled(), "r3", "r5")
+        assert {x["layer"] for x in adj} == {"bgp"} and len(adj) == 2      # IPv4 and IPv6
+        for x in adj:
+            assert x["asn"]["r5"] != x["asn"]["r3"] and x["state"] == "up"
+
+    def test_every_adjacency_of_the_lab_is_on_a_link(self):
+        g = _labelled()
+        assert all(a["on_link"] for layer in ("ospf", "ospfv3", "bgp")
+                   for a in g["layers"][layer])
+
+    def test_ripng_configured_is_said_not_read(self):
+        assert _link(_labelled(), "r1", "s1")[0]["unread"] == {"r1": ["RIPng"], "s1": ["RIPng"]}
+        assert _link(_labelled(), "r3", "r4")[0]["unread"] == {}
+
+
+class TestWhereMercuryAttaches:
+    def test_measured_by_address_to_the_one_port_carrying_its_vlan(self):
+        g = _labelled()
+        mgr = [l for l in g["layers"]["physical"] if l.get("manager")]
+        assert [(l["a"], l["port_a"], l["b"], l["port_b"], l["via"], l["vlan"]) for l in mgr] \
+            == [(T.MANAGER, "eth1", "s3", "Gi1/1", "Vl99", "99")]
+        assert g["nodes"][T.MANAGER]["manager"] and not g["nodes"][T.MANAGER]["managed"]
+
+    def test_its_only_way_in_is_a_single_point_of_failure(self):
+        """The board's s3 SPOF, now measured; and C651: the island r6 is not cut off by s3, which
+        it never joined."""
+        spof = _labelled()["analysis"]["physical"]["spof"]
+        assert spof == [{"device": "s3", "cuts_off": [T.MANAGER]}]
+
+    def test_an_address_in_no_device_s_subnet_draws_nothing(self):
+        res, up = _capture()
+        g = T.network_graph(MANAGED, {}, _intents(), res, up, at_here=[("eth0", "192.0.2.9/24")])
+        assert T.MANAGER not in g["nodes"]
+
+    def test_here_reads_this_host_s_own_addresses_without_loopback(self):
+        import ipaddress
+        for name, iface in T.here():
+            ip = ipaddress.ip_interface(iface).ip
+            assert name and not ip.is_loopback and not ip.is_link_local
+
+
+class TestSinceAndLayout:
+    def test_a_state_held_carries_its_since_and_a_change_is_seen(self):
+        g1 = _labelled()
+        link = _link(g1, "r3", "r4")[0]
+        assert link["since"] == "2026-10-10T19:00:00Z" and link["since_seen"] is False
+        before = {layer: {T._link_key(layer, l): {"state": l["state"], "since": l["since"],
+                                                  "since_seen": l["since_seen"]}
+                          for l in links} for layer, links in g1["layers"].items()}
+        res, up = _capture()
+        for row in res["r3"]["ifOperStatus"]:
+            if row["metric"]["ifName"] == "Gi4":
+                row["value"] = [row["value"][0], "2"]
+        intents = {h: hv for h, hv in _intents().items() if h != "r5"}
+        g2 = T.network_graph(MANAGED, {}, intents, res, up, now="2026-10-10T19:05:00Z",
+                             at_here=_here(intents), before_links=before)
+        down = _link(g2, "r3", "r4")[0]
+        assert down["state"] == "down" and down["since"] == "2026-10-10T19:05:00Z"
+        assert down["since_seen"] is True
+        held = _link(g2, "r1", "s3")[0]
+        assert held["since"] == "2026-10-10T19:00:00Z"
+
+    def test_the_map_is_laid_out_once_with_the_graph(self):
+        g = _labelled()
+        pos = g["layout"]["positions"]
+        assert set(pos) == set(g["nodes"])
+        assert pos == _labelled()["layout"]["positions"]        # the same graph, the same map
+        # Bands by class: routers above switches, Mercury's host at the bottom.
+        assert pos["r1"][1] < pos["s3"][1] < pos[T.MANAGER][1]
+
+
 class TestTheRead:
     def test_not_configured_says_so(self):
         got = T.read(source=lambda: (False, {}, {}), population=lambda: [])
@@ -257,7 +377,8 @@ class TestTheRead:
         ref = SimpleNamespace(repo_dir=os.path.join(ROOT, "no-such-repo"))
         got = T.read(source=lambda: (True, res, up),
                      population=lambda: [("Lab", ref, MANAGED)], clock=lambda: 0,
-                     expected=lambda name: {"state": "absent", "islands": {}, "error": ""})
+                     expected=lambda name: {"state": "absent", "islands": {}, "error": ""},
+                     at_here=[])
         assert got["configured"] and set(got["networks"]) == {"Lab"}
         assert got["read_at"] == "1970-01-01T00:00:00Z"
         assert got["networks"]["Lab"]["nodes"]["r1"]["role"] == "router"

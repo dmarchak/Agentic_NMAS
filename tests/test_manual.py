@@ -198,12 +198,18 @@ class TestEveryInfoLinkResolves:
             ("no-such-page", "", "no such page")]
 
     def test_every_v2_page_carries_one(self):
-        pages = {f: t for f, t in _templates().items() if 'extends "v2/base.html"' in t}
+        texts = _templates()
+        pages = {f: t for f, t in texts.items() if 'extends "v2/base.html"' in t}
         assert len(pages) >= 12
         for f, text in pages.items():
             if f in NO_INFO:
                 continue
-            assert _info_calls(text), f"{f} has no info link (a v2 screen is not done without one)"
+            # A page whose header is part of a live region it includes (Topology's, so its
+            # counts redraw) carries its link there: one level of include is read.
+            whole = text + "".join(texts.get(i, "") for i in
+                                   re.findall(r'{%-?\s*include\s+"v2/([^"]+)"', text))
+            assert _info_calls(whole), \
+                f"{f} has no info link (a v2 screen is not done without one)"
         assert set(NO_INFO) <= set(pages), "an exemption names a page that does not exist"
 
     def test_every_device_tab_fragment_links_its_section(self):

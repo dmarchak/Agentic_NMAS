@@ -31,10 +31,7 @@ def _ctx(**extra) -> dict:
     from modules import topology_page
     from modules.preview_confirm import confirm_part
 
-    v = topology_page.view(_list_name(), (request.values.get("layer") or "physical").strip(),
-                           (request.values.get("a") or "").strip(),
-                           (request.values.get("b") or "").strip(),
-                           (request.values.get("q") or "").strip())
+    v = topology_page.view(_list_name(), request.args)
     return dict({"t": v, "may": confirm_part(request, "configure")}, **extra)
 
 
@@ -52,8 +49,9 @@ def page():
 
 @bp.route("/map", methods=["GET"])
 def region():
-    """The map region alone: re-read when `topology` is announced, and asked again with a
-    layer, a path trace or a search. Writes nothing."""
+    """The map region alone: re-read when `topology` is announced, and asked again with its
+    question (protocols, ports, labels, zoom, a selected link, a path, a what-if, a search, the
+    attention list's filter). Writes nothing."""
     return _region()
 
 

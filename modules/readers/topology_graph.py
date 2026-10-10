@@ -166,16 +166,101 @@ def physical_links(results: dict, managed: set, polled: set) -> list:
     return sorted(out, key=lambda l: (l["a"], l["b"], l["port_a"], l["port_b"]))
 
 
+def _iface_networks(iface: dict) -> list:
+    """The networks an intent interface's addresses sit in, IPv4 and IPv6."""
+    import ipaddress
+
+    nets = []
+    v4 = (iface.get("ipv4") or "").split()
+    if len(v4) == 2:
+        try:
+            nets.append(ipaddress.ip_interface(f"{v4[0]}/{v4[1]}"))
+        except ValueError:
+            pass
+    for v6 in iface.get("ipv6") or []:
+        try:
+            nets.append(ipaddress.ip_interface(v6))
+        except ValueError:
+            pass
+    return nets
+
+
+def _iface_holding(hv: dict, address: str) -> dict:
+    """The intent interface of *hv* whose subnet holds *address*, or ``{}``."""
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(address)
+    except ValueError:
+        return {}
+    for iface in (hv or {}).get("interfaces") or []:
+        if any(addr.version == n.version and addr in n.network and n.network.prefixlen <
+               n.max_prefixlen for n in _iface_networks(iface)):
+            return iface
+    return {}
+
+
+def _iface(hv: dict, name: str) -> dict:
+    from modules.nsot.ifnames import same_interface
+    return next((i for i in (hv or {}).get("interfaces") or []
+                 if same_interface(i.get("name", ""), name)), {})
+
+
+def _area(hv: dict, proto: str, port: str) -> str:
+    """The OSPF area *port* is in by committed intent: OSPF's from the network statement that
+    covers its address, OSPFv3's from the interface's own ``ipv6 ospf <p> area <a>``."""
+    import re
+
+    from modules.neighbours import _covered, _v4
+
+    iface = _iface(hv, port)
+    if proto == "ospfv3":
+        for line in iface.get("ospfv3") or []:
+            m = re.search(r"\barea (\S+)", line)
+            if m:
+                return m.group(1)
+        return ""
+    ip = _v4(iface.get("ipv4", ""))
+    if ip is None:
+        return ""
+    for proc in ((hv or {}).get("routing") or {}).get("ospf") or []:
+        for line in proc.get("networks") or []:
+            m = re.search(r"\barea (\S+)", line)
+            if m and _covered(ip.ip, line):
+                return m.group(1)
+    return ""
+
+
+def _local_port(hv: dict, proto: str, row: dict) -> str:
+    """The interface *row*'s adjacency leaves this device on: an OSPF row's own (`via`), else
+    the interface whose subnet holds the neighbour's address (a BGP peer, an unexpected OSPF
+    neighbour); ``""`` when none does (a peering between loopbacks)."""
+    if proto in ("ospf", "ospfv3") and row.get("via"):
+        return row["via"]
+    return _iface_holding(hv, row.get("address") or "").get("name", "")
+
+
+def _own_as(hv: dict) -> str:
+    return str((((hv or {}).get("routing") or {}).get("bgp") or {}).get("asn") or "")
+
+
 def routing_links(intents: dict, hosts: list, results: dict, up: dict) -> dict:
-    """``{layer: [{a, b, state, words, intended}]}`` for OSPF, OSPFv3 and BGP, through the
-    Neighbours tab's comparison: one row per adjacency, ``state`` up, down or not_seen (intent
-    implies it, nothing reports it: drawn as a ghost)."""
+    """``{layer: [{a, b, state, words, intended, ports, area, asn, network}]}`` for OSPF,
+    OSPFv3 and BGP, through the Neighbours tab's comparison: one row per adjacency, ``state`` up,
+    down or not_seen (intent implies it, nothing reports it: drawn as a ghost).
+
+    The facts the map labels each neighbourship with (the operator, 2026-10-10): ``ports``, each
+    end's interface it leaves on; ``area``, OSPF's and OSPFv3's by committed intent; ``asn``,
+    each end's AS (its own from intent, the peer's from the neighbour statement)."""
     from modules.neighbours import compare
 
     out = {"ospf": {}, "ospfv3": {}, "bgp": {}}
+    rank = {"down": 3, "not_seen": 2, "up": 1}
     for host in hosts:
+        hv = intents.get(host) or {}
         view = compare(intents, host, results.get(host, {}), up.get(host, {}))
         for p in view["protocols"]:
+            proto = p["proto"]
             for r in p["rows"]:
                 peer = r.get("peer") or ""
                 external = ""
@@ -184,22 +269,228 @@ def routing_links(intents: dict, hosts: list, results: dict, up: dict) -> dict:
                     # address, never dropped.
                     external = r.get("address") or ""
                     peer = external
-                if not peer or r["state"] == "unknown":
+                if not peer:
                     continue
                 a, b = sorted((host, peer))
-                key = (a, b, r.get("network", "") or r.get("address", ""))
+                port = _local_port(hv, proto, r)
+                network = r.get("network", "")
+                if not network:
+                    # An unexpected neighbour: keyed by its subnet (or address family), so both
+                    # ends' reports of it are one adjacency.
+                    held = _iface_holding(hv, r.get("address") or "")
+                    nets = _iface_networks(held)
+                    network = str(nets[0].network) if nets and proto == "ospf" else \
+                        (f"ipv{6 if ':' in (r.get('address') or '') else 4}"
+                         if proto == "bgp" else r.get("address", ""))
+                key = (a, b, network)
                 state = r["state"]
                 if state == "unexpected":
                     state = "up" if r.get("up") else "down"
-                cur = out[p["proto"]].get(key)
-                rank = {"down": 3, "not_seen": 2, "up": 1}
-                if cur is None or rank.get(state, 0) > rank.get(cur["state"], 0):
-                    out[p["proto"]][key] = {"a": a, "b": b, "state": state,
-                                            "words": r.get("words", ""),
-                                            "intended": r["state"] != "unexpected",
-                                            "external": external}
-    return {layer: sorted(v.values(), key=lambda l: (l["a"], l["b"]))
+                cur = out[proto].setdefault(key, {
+                    "a": a, "b": b, "state": "", "words": "", "intended": False,
+                    "external": external, "network": network, "ports": {}, "area": "",
+                    "asn": {}, "words_by": {}})
+                if rank.get(state, 0) > rank.get(cur["state"], 0):
+                    cur.update(state=state, words=r.get("words", ""))
+                cur["intended"] = cur["intended"] or r["state"] != "unexpected"
+                cur["words_by"][host] = r.get("words", "")
+                if port:
+                    cur["ports"][host] = port
+                    if proto in ("ospf", "ospfv3") and not cur["area"]:
+                        cur["area"] = _area(hv, proto, port)
+                if proto == "bgp":
+                    if _own_as(hv):
+                        cur["asn"][host] = _own_as(hv)
+                    via = r.get("via") or ""
+                    if via.startswith("AS "):
+                        cur["asn"].setdefault(peer, via[3:])
+    return {layer: sorted(v.values(), key=lambda l: (l["a"], l["b"], l["network"]))
             for layer, v in out.items()}
+
+
+#: The node Mercury's own host is drawn as: never a device name (a hostname cannot start "@").
+MANAGER = "@mercury"
+
+
+def here() -> list:
+    """This host's own interface addresses, ``[(ifname, "address/prefix")]``, loopback and
+    link-local left out: IPv4 by `SIOCGIFADDR` and `SIOCGIFNETMASK` (each interface's primary
+    address), IPv6 from `/proc/net/if_inet6`. Linux; elsewhere, or unreadable, ``[]``. A local
+    read: no packet leaves the host."""
+    import fcntl
+    import ipaddress
+    import socket
+    import struct
+
+    out = []
+    try:
+        names = [n for _i, n in socket.if_nameindex()]
+    except OSError:
+        names = []
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        for name in names:
+            req = struct.pack("256s", name.encode()[:15])
+            try:
+                addr = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, req)[20:24])
+                mask = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x891B, req)[20:24])
+            except OSError:
+                continue
+            out.append((name, str(ipaddress.ip_interface(f"{addr}/{mask}"))))
+    finally:
+        s.close()
+    try:
+        with open("/proc/net/if_inet6", encoding="ascii") as fh:
+            for line in fh:
+                f = line.split()
+                if len(f) < 6:
+                    continue
+                addr = ":".join(f[0][i:i + 4] for i in range(0, 32, 4))
+                out.append((f[5], str(ipaddress.ip_interface(f"{addr}/{int(f[2], 16)}"))))
+    except OSError:
+        pass
+    keep = []
+    for name, iface in out:
+        ip = ipaddress.ip_interface(iface)
+        if not (ip.ip.is_loopback or ip.ip.is_link_local):
+            keep.append((name, iface))
+    return keep
+
+
+def _vlan_of_svi(name: str) -> str:
+    import re
+    m = re.match(r"(?i)^vlan\s*(\d+)$", name or "")
+    return m.group(1) if m else ""
+
+
+def _carries(iface: dict, vlan: str) -> bool:
+    """Whether a switchport carries *vlan*: its access VLAN, or on a trunk's allowed list."""
+    if not vlan or not iface:
+        return False
+    if iface.get("switchport_mode") == "access" or iface.get("switchport_access_vlan"):
+        return str(iface.get("switchport_access_vlan") or "1") == vlan
+    if iface.get("switchport_mode") == "trunk":
+        allowed = iface.get("switchport_trunk_vlans") or []
+        return not allowed or any(_in_range(vlan, v) for v in allowed)
+    return False
+
+
+def _in_range(vlan: str, spec: str) -> bool:
+    for part in str(spec).split(","):
+        lo, _, hi = part.strip().partition("-")
+        try:
+            if int(lo) <= int(vlan) <= int(hi or lo):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def attach(phys: list, layers: dict, intents: dict) -> None:
+    """Each routing adjacency onto the physical links it runs over, in place: a link carries an
+    adjacency at an end whose port the adjacency leaves on, or, for a switch's VLAN interface
+    (`VlanN`), at a port carrying that VLAN whose LLDP neighbour is the adjacency's peer. Each
+    link gains ``adj`` (``[{layer, i, at}]``, *i* the adjacency's index in its layer, *at* the
+    ends it was seen leaving from); each adjacency ``on_link`` (whether any link carries it)."""
+    from modules.nsot.ifnames import same_interface
+
+    for l in phys:
+        l["adj"] = []
+    for layer in ("ospf", "ospfv3", "bgp"):
+        for i, adj in enumerate(layers.get(layer) or []):
+            adj["on_link"] = False
+            for l in phys:
+                at = []
+                for end, port, far in (("a", l["port_a"], l["b"]), ("b", l["port_b"], l["a"])):
+                    dev = l[end]
+                    mine = (adj.get("ports") or {}).get(dev)
+                    if dev not in (adj["a"], adj["b"]) or not mine:
+                        continue
+                    other = adj["b"] if dev == adj["a"] else adj["a"]
+                    vlan = _vlan_of_svi(mine)
+                    if same_interface(port, mine) or (
+                            vlan and far == other and
+                            _carries(_iface(intents.get(dev), port), vlan)):
+                        at.append(dev)
+                if at:
+                    l["adj"].append({"layer": layer, "i": i, "at": at})
+                    adj["on_link"] = True
+
+
+def unread_protocols(phys: list, intents: dict) -> None:
+    """Each link end's routing protocol committed intent configures that no reader reads (RIPng:
+    `ipv6 rip <name> enable`), in place, as ``unread`` (``{device: ["RIPng"]}``): drawn as not
+    read, never as up."""
+    for l in phys:
+        l["unread"] = {}
+        for end, port in (("a", l["port_a"]), ("b", l["port_b"])):
+            iface = _iface(intents.get(l[end]), port)
+            if any(" enable" in f" {x}" for x in iface.get("ripng") or []):
+                l["unread"].setdefault(l[end], []).append("RIPng")
+
+
+def manager_links(intents: dict, phys: list, ifs: dict, at_here: list) -> list:
+    """Where Mercury's own host attaches, MEASURED (the board's manager node, 2026-10-04): a
+    managed device's interface whose subnet holds one of this host's own addresses. A routed
+    port is the link's far end; a VLAN interface's is the port carrying that VLAN with no LLDP
+    neighbour among the devices (the one facing the host), named when exactly one does."""
+    import ipaddress
+
+    from modules.nsot.ifnames import abbreviate, same_interface
+
+    mine = []
+    for name, iface in at_here or []:
+        try:
+            mine.append((name, ipaddress.ip_interface(iface)))
+        except ValueError:
+            continue
+    out = []
+    for dev in sorted(intents):
+        for iface in (intents.get(dev) or {}).get("interfaces") or []:
+            nets = _iface_networks(iface)
+            hit = next(((n, m) for n, m in mine for d in nets
+                        if m.version == d.version and m.ip in d.network and m.ip != d.ip
+                        and d.network.prefixlen < d.max_prefixlen), None)
+            if not hit:
+                continue
+            port, vlan = abbreviate(iface.get("name", "")), _vlan_of_svi(iface.get("name", ""))
+            if vlan:
+                used = {l["port_a"] for l in phys if l["a"] == dev} | \
+                       {l["port_b"] for l in phys if l["b"] == dev}
+                facing = [abbreviate(i.get("name", ""))
+                          for i in (intents.get(dev) or {}).get("interfaces") or []
+                          if _carries(i, vlan) and not any(same_interface(u, i.get("name", ""))
+                                                           for u in used)]
+                port = facing[0] if len(facing) == 1 else ""
+            state = _end_state(ifs, dev, port) if port else "unknown"
+            out.append({"a": MANAGER, "port_a": hit[0], "b": dev, "port_b": port,
+                        "via": abbreviate(iface.get("name", "")), "vlan": vlan,
+                        "reported_by": [], "kind": "address", "manager": True,
+                        "state": "down" if state == "down" else
+                        ("up" if state == "up" else "unknown"),
+                        "down_at": [dev] if state == "down" else [], "speed": None,
+                        "ends": {dev: state}, "adj": [], "unread": {}})
+    return out
+
+
+def _link_key(layer: str, l: dict) -> str:
+    if layer == "physical":
+        return f"{l['a']}|{l['port_a']}|{l['b']}|{l['port_b']}"
+    return f"{l['a']}|{l['b']}|{l.get('network', '')}"
+
+
+def carry_since(layers: dict, before: dict, now: str) -> None:
+    """Each link's and adjacency's ``since``, in place: carried from the last good read while
+    its state holds; *now* when it changed (``since_seen``: the change happened under watch),
+    or on the first read, when it is only "at least since"."""
+    for layer, links in layers.items():
+        was_layer = (before or {}).get(layer) or {}
+        for l in links:
+            was = was_layer.get(_link_key(layer, l))
+            if was and was.get("state") == l.get("state"):
+                l["since"], l["since_seen"] = was.get("since") or now, bool(was.get("since_seen"))
+            else:
+                l["since"], l["since_seen"] = now, was is not None
 
 
 def analyse(nodes: list, links: list) -> dict:
@@ -227,7 +518,8 @@ def analyse(nodes: list, links: list) -> dict:
         bridges.append({"a": pair[0], "b": pair[1], "cuts_off": lost})
     spof = []
     for node in sorted(nx.articulation_points(simple)):
-        cut = simple.copy()
+        # Within its own component (C651): an island it never joined is not cut off by it.
+        cut = simple.subgraph(nx.node_connected_component(simple, node)).copy()
         cut.remove_node(node)
         parts = sorted((sorted(c) for c in nx.connected_components(cut)), key=len)
         spof.append({"device": node, "cuts_off": sorted(d for c in parts[:-1] for d in c)})
@@ -240,12 +532,15 @@ def analyse(nodes: list, links: list) -> dict:
 
 
 def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: dict,
-                  expected: dict = None, previous: dict = None, now: str = "") -> dict:
+                  expected: dict = None, previous: dict = None, now: str = "",
+                  at_here: list = None, before_links: dict = None) -> dict:
     """One network's graph, every layer and its analysis. *hosts* is the inventory (the
     population: a managed device the graph lacks is still a node, drawn apart with why).
     *expected* is the network's declared islands (``{device: {reason, by, at}}``); *previous*
     is each layer's islands at the last good read (``{layer: {device: {since}}}``, None on the
-    first read), so a device that becomes an island is told apart from one that was."""
+    first read), so a device that becomes an island is told apart from one that was.
+    *at_here* is this host's own addresses (`here()`), for where Mercury attaches;
+    *before_links* each layer's link states at the last good read, for each one's since."""
     managed = set(hosts)
     polled = {h for h in hosts if (up.get(h) or {}).get("lldp") == 1}
     answering = {h for h in hosts if any(v == 1 for v in (up.get(h) or {}).values())}
@@ -278,6 +573,8 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
             if named:
                 l["a"], l["b"] = sorted((mine, named))
                 l["external"], l["address"] = named, address
+                if address in (l.get("asn") or {}):
+                    l["asn"][named] = l["asn"].pop(address)
             if l["external"] not in nodes:
                 nodes[l["external"]] = {"managed": False, "role": "", "polled": False,
                                         "answering": False, "lldp_read": False,
@@ -286,6 +583,25 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
             if mine not in nodes[l["external"]]["seen_by"]:
                 nodes[l["external"]]["seen_by"] = sorted(nodes[l["external"]]["seen_by"] +
                                                          [mine])
+    # Mercury's own host, where it attaches by measurement: a node of the physical layer, so a
+    # device that is its only way in is a single point of failure (the board's s3).
+    mgr = manager_links({h: intents.get(h) for h in hosts if intents.get(h)}, phys,
+                        _if_index({h: results.get(h, {}) for h in hosts}), at_here)
+    if mgr:
+        nodes[MANAGER] = {"managed": False, "role": "", "polled": False, "answering": True,
+                          "lldp_read": False, "manager": True}
+        phys.extend(mgr)
+    attach(phys, layers, intents)
+    unread_protocols(phys, intents)
+    from modules.nsot.ifnames import abbreviate
+    taking_part = {e for layer in ("ospf", "ospfv3", "bgp") for l in layers[layer]
+                   for e in (l["a"], l["b"])}
+    for h in hosts:
+        nodes[h]["l3"] = h in taking_part
+        nodes[h]["addresses"] = [[abbreviate(i.get("name", "")), str(n.ip)]
+                                 for i in (intents.get(h) or {}).get("interfaces") or []
+                                 for n in _iface_networks(i)]
+    carry_since(layers, before_links, now)
     expected = expected or {}
     analysis = {}
     for layer, links in layers.items():
@@ -315,7 +631,15 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
                     "became": not was and previous is not None,
                     "warn": not declared}
         analysis[layer] = a
-    return {"nodes": nodes, "layers": layers, "analysis": analysis}
+    # Where each device sits on the map, laid out once here so a page view never does
+    # (modules/topology_layout.py).
+    from modules import topology_layout
+    try:
+        laid = topology_layout.layout(nodes, phys)
+    except Exception as exc:                         # noqa: BLE001 (the page lays out instead)
+        log.warning("topology: the map could not be laid out (%s); the page lays it out", exc)
+        laid = None
+    return {"nodes": nodes, "layers": layers, "analysis": analysis, "layout": laid}
 
 
 def _peer_by_lldp(hv: dict, host: str, address: str, phys: list) -> str:
@@ -367,7 +691,8 @@ def _why_apart(device: str, node: dict, layer: str, alone: bool) -> str:
 
 # ---------------------------------------------------------------------------- the reader
 
-def read(source=None, population=None, clock=time.time, previous=None, expected=None) -> dict:
+def read(source=None, population=None, clock=time.time, previous=None, expected=None,
+         at_here=None) -> dict:
     from modules import integration_groups as IG
     from modules.neighbours import committed_intents
     from modules.readers.adjacencies import lists
@@ -394,13 +719,20 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
         declared = (expected or _expected)(list_name)
         if declared.get("state") == "unreadable":
             errors.append(f"{list_name}: {declared['error']}")
-        before = None
+        before, before_links = None, None
         if previous is not None:
-            net = ((previous.get("networks") or {}).get(list_name) or {}).get("analysis") or {}
-            before = {layer: a.get("island_state") or {} for layer, a in net.items()}
+            was = (previous.get("networks") or {}).get(list_name) or {}
+            before = {layer: a.get("island_state") or {}
+                      for layer, a in (was.get("analysis") or {}).items()}
+            before_links = {layer: {_link_key(layer, l): {k: l.get(k) for k in
+                                                          ("state", "since", "since_seen")}
+                                    for l in links}
+                            for layer, links in (was.get("layers") or {}).items()}
         networks[list_name] = network_graph(hosts, roles, intents, results, up,
                                             expected=declared.get("islands") or {},
-                                            previous=before, now=now)
+                                            previous=before, now=now,
+                                            at_here=here() if at_here is None else at_here,
+                                            before_links=before_links)
     return {"configured": True, "networks": networks, "errors": errors, "read_at": now}
 
 
