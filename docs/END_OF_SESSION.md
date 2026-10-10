@@ -29,7 +29,9 @@ removals; then a walk of everything on the host.
 at 3.6.1 (f829171), recorded in docs/THIRD_PARTY.json, and carried through Phase 4 section 8.4 on
 the host the same day: the venv `f21256e61a35` built and proved beside the running one (15 of
 15), the deploy swapped the link, `.previous` names `9d27674e53bf`, both kept, `/health` 200.
-The host now runs f829171. The three uv
+The overrides then came off in their own lock change (f9dc11e), carried the same way: the host
+now runs f9dc11e on `mercury-venv-53a6aabdd2c2` (previous `f21256e61a35`), `pip check` clean,
+the updater's root copies re-installed from this release. The three uv
 overrides come off in the NEXT lock change, on their own, with `pip check` clean after it. Under
 the mode only the four stops wait on the operator: a secret value, anything outside the lab, a new third-party
 package licence, and deleting or rotating backups or snapshots.

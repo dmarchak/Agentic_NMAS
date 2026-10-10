@@ -551,6 +551,15 @@ the same restart. Read afterwards: the link names `f21256e61a35`, `.previous` na
 `9d27674e53bf`, both venvs kept, the app's process maps only the new venv, `/health` 200, the
 checkout clean at f829171.
 
+**The second, the same evening (about 18:00 UTC):** release f9dc11e, the three overrides off on
+their own (textfsm 1.1.3, future 1.0.0 and pycparser 3.11 joined). Built the same way, 15 of 15,
+`/opt/mercury-venv-53a6aabdd2c2`; `nmas-deploy --wait` deployed it and swapped the link. Read
+afterwards: the link names `53a6aabdd2c2`, `.previous` names `f21256e61a35`, the first venv
+`9d27674e53bf` pruned (older than the previous one, 8.3), the app's process maps only the new
+venv, `/health` 200, and `pip check` in the running venv: "No broken requirements found." The
+updater's root copies were then re-installed from this release (docs/UPDATE.md, "Re-install";
+`nmas-update-check` all ok), and the operator's `~/bin/nmas-deploy` link runs again (C646).
+
 A swap without the release, or the release without the swap, runs one release's code on the
 other's packages. So the deploy carries the swap:
 
