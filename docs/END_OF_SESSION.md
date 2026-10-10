@@ -26,8 +26,10 @@ acknowledgement reason, the template editor, Reload); the nice-to-haves; 7.5 to 
 removals; then a walk of everything on the host.
 
 **Waiting on the operator:** nothing. Stop 3 (NetworkX) was answered YES on 2026-10-10: pinned
-at 3.6.1, recorded in docs/THIRD_PARTY.json, carried through Phase 4 section 8.4 (the venv built
-and proved on the host beside the running one, then the deploy swaps the link). The three uv
+at 3.6.1 (f829171), recorded in docs/THIRD_PARTY.json, and carried through Phase 4 section 8.4 on
+the host the same day: the venv `f21256e61a35` built and proved beside the running one (15 of
+15), the deploy swapped the link, `.previous` names `9d27674e53bf`, both kept, `/health` 200.
+The host now runs f829171. The three uv
 overrides come off in the NEXT lock change, on their own, with `pip check` clean after it. Under
 the mode only the four stops wait on the operator: a secret value, anything outside the lab, a new third-party
 package licence, and deleting or rotating backups or snapshots.

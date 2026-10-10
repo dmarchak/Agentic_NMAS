@@ -539,7 +539,17 @@ normalisation that rewrote versions, fixed before the commit. `lib.sh` gained `O
 undo a failed step or check runs before the summary), tested with planted scripts and shown
 able to fail.
 
-### 8.4 A release that changes the lock (SIGNED OFF; BUILT 2026-10-09, its first host run owed)
+### 8.4 A release that changes the lock (SIGNED OFF; BUILT 2026-10-09; first host run 2026-10-10)
+
+**Its first host run, 2026-10-10 (via LAN, about 17:35 to 17:40 UTC):** release f829171 (networkx
+3.6.1 added, nothing else moved). `venv-1-build.sh`, from a copy of a laptop clone of the release
+in a fresh `/tmp` folder (the agent's hook refuses a `git clone` on a host, the step the
+refusal prints), PASSED 15 of 15 and proved `/opt/mercury-venv-f21256e61a35` beside the running
+`9d27674e53bf`; networkx imports there at 3.6.1. `nmas-deploy --wait` (the checkout's copy: the
+`~/bin` link crashed, C646) waited out CI, deployed 3c43614 to f829171 and swapped the link in
+the same restart. Read afterwards: the link names `f21256e61a35`, `.previous` names
+`9d27674e53bf`, both venvs kept, the app's process maps only the new venv, `/health` 200, the
+checkout clean at f829171.
 
 A swap without the release, or the release without the swap, runs one release's code on the
 other's packages. So the deploy carries the swap:
