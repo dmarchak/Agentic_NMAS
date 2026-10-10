@@ -52,9 +52,11 @@ COMPUTED = {
     "modules/integrations/base.py": (2, "a client built for no list reads the global file, the "
                                         "Default network's layer; tests inject through these names"),
     "modules/readers/credential_health.py": (1, "a loop over (`proxmox_url`,): host-wide"),
-    "modules/installation_settings.py": (3, "the Installation cards' field keys (`CARDS`, board "
-                                            "F3): netbox_connection, proxmox, git_author and "
-                                            "web_server, every one host-wide"),
+    "modules/installation_settings.py": (4, "the Installation cards' field keys (`CARDS`, boards "
+                                            "F3 and F4): netbox_connection, proxmox, git_author, "
+                                            "web_server and ai; and the Access and identity "
+                                            "tab's ACCESS_CARD_KEYS and SERVICE_CARD_KEYS, the "
+                                            "identity group's: every one host-wide"),
 }
 
 

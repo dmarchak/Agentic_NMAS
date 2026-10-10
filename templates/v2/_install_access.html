@@ -1,0 +1,80 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board F4, decision A (signed off 2026-10-10): Settings › Installation › Access and identity,
+    READ-ONLY by design: a session must never lower the gate it is using. The one control is
+    Record this decision (ratify): it writes the value already in force, so it changes nothing,
+    and it is recorded in the installation's settings record (C625). From
+    modules/installation_settings.access_view. -#}
+{%- macro record(keys, label) -%}
+  {%- if keys %}
+  <form class="set-inline" method="post" action="{{ url_for('settings_v2.install_ratify') }}"
+        hx-post="{{ url_for('settings_v2.install_ratify') }}" hx-target="#install-access" hx-swap="outerHTML">
+    {%- for k in keys %}<input type="hidden" name="keys" value="{{ k }}">{% endfor %}
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this" title="Writes the value already in force for {{ keys | join(', ') }}: it changes nothing"><span class="op-idle">Record this decision</span><span class="op-busy">Recording…</span></button>{{ how('installation-settings', 'record', op='recording ' ~ label) }}</span>
+  </form>
+  {%- endif %}
+{%- endmacro -%}
+<div id="install-access" class="set-cards">
+  {%- if refused %}
+  <div class="notice notice-danger set-result set-card-wide" role="alert">{{ icon('warn', 16) }}<div><strong>Not recorded:</strong> {{ refused }}. Nothing was written.</div></div>
+  {%- endif %}
+  {%- if done %}
+  <div class="notice notice-{{ 'muted' if done.recorded else 'warn' }} set-result set-card-wide" role="status">{{ icon('tick', 16) }}<div>
+    {%- if done.nothing %}<strong>Nothing to record:</strong> each was already in the settings file.
+    {%- else %}<strong>Recorded</strong> by {{ done.actor_label }}: {{ done.written | join(', ') }}, each the value already in force{% if not done.recorded %}, and its record could not be written: {{ done.record_error }}{% endif %}.{% endif %}</div></div>
+  {%- endif %}
+  {%- if not acc.readable %}
+  <p class="notice notice-danger set-card-wide" role="alert">{{ icon('warn', 16) }}<span>The settings file could not be read: every gate below is its default, and nothing on this tab may be assumed. {{ acc.read_failure.error or '' }}</span></p>
+  {%- endif %}
+  <section class="card set-card set-card-wide" id="card-gates" aria-labelledby="h-gates">
+    <div class="card-head"><h2 id="h-gates">The gates</h2>{{ badge('every network', 'neutral') }}
+      {{ badge((acc.off ~ ' gate' ~ ('' if acc.off == 1 else 's') ~ ' off') if acc.off else (acc.total ~ ' of ' ~ acc.total ~ ' on'), 'danger' if acc.off else 'ok') }}</div>
+    <p class="muted small">Each action a person or a service may take: whether it needs a verified identity, and whether it needs a person (a service token is refused). Origin: defaulted (nobody decided), recorded (agreed, equal to the default) or chosen (differs from it).</p>
+    <div class="table-wrap">
+    <table class="table set-table">
+      <thead><tr><th>Action</th><th>Means</th><th>Verified identity</th><th>A person</th><th>Origin</th><th></th></tr></thead>
+      <tbody>
+      {%- for g in acc.gates %}
+      <tr>
+        <td>{{ g.name }}</td><td>{{ g.means }}</td>
+        {%- for c in g.cells %}<td>{{ badge('on' if c.value else 'OFF', 'ok' if c.value else 'danger') }}</td>{% endfor %}
+        <td class="small">{% set w = g.cells | map(attribute='origin_words') | map(attribute='words') | unique | list %}{{ w | join('; ') }}</td>
+        <td>{{ record(g.defaulted, 'the ' ~ g.name ~ ' gate') }}</td>
+      </tr>
+      {%- endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted small">Why read-only: changing a gate from a browser would let a compromised session lower its own gate. The operator changes them in the installation's settings file on the host.</p>
+  </section>
+  <section class="card set-card" id="card-access" aria-labelledby="h-access">
+    <div class="card-head"><h2 id="h-access">Cloudflare Access</h2>{{ badge('every network', 'neutral') }}
+      {{ badge('configured' if acc.access_configured else 'NOT configured', 'ok' if acc.access_configured else 'danger') }}</div>
+    <dl class="facts">
+      <div><dt>Team domain</dt><dd>{% if acc.access %}<span class="mono">{{ acc.access.team_domain or 'not set' }}</span>{% else %}{{ 'set' if acc.access_set.cf_access_team_domain else 'not set' }}{% endif %}</dd></div>
+      <div><dt>Audience (AUD)</dt><dd>{% if acc.access %}<span class="mono">{{ acc.access.aud_preview or 'not set' }}</span>{% else %}{{ 'set' if acc.access_set.cf_access_aud else 'not set' }}{% endif %}</dd></div>
+      <div><dt>Trusted peers</dt><dd>{% if acc.access %}{{ acc.access.trusted_peer_count }} address{{ '' if acc.access.trusted_peer_count == 1 else 'es' }}{% else %}{{ 'set' if acc.access_set.cf_access_trusted_peers else 'not set' }}{% endif %} <span class="set-origin">a valid assertion from any other peer is refused</span></dd></div>
+      <div><dt>Key cache</dt><dd>{{ acc.ttl }} s{% if acc.ttl_problem %} {{ badge('the stored value is not used', 'warn') }} <span class="set-origin">{{ acc.ttl_problem }}</span>{% endif %} <span class="set-origin">{{ acc.ttl_bounds[0] }} s to a day: Cloudflare rotates its signing keys, and a key it retires stays trusted here until the cache is read again; a new key is fetched when first seen (C621)</span></dd></div>
+    </dl>
+    {%- if not acc.person %}<p class="muted small">The domain, audience and peers are shown to a verified person only.</p>{% endif %}
+    {%- set dk = acc.access_origins.items() | selectattr('1.state', 'equalto', 'defaulted') | map(attribute='0') | list %}
+    {{ record(dk, 'the Cloudflare Access values') }}
+  </section>
+  <section class="card set-card" id="card-services" aria-labelledby="h-services">
+    <div class="card-head"><h2 id="h-services">Service tokens</h2>{{ badge('every network', 'neutral') }}</div>
+    <dl class="facts">
+      <div><dt>May run</dt><dd>{% if acc.service_ops %}{% for o in acc.service_ops %}{{ badge(o, 'neutral') }} {% endfor %}{% else %}nothing: no operation is allowed to a service{% endif %} <span class="set-origin">{{ acc.service_origins.service_allowed_operations.words }}</span></dd></div>
+      <div><dt>Labels</dt><dd>{% if acc.labels %}{% for l in acc.labels %}<span class="mono">{{ l.id }}</span> → {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}none{% endif %} <span class="set-origin">a name in the audit, never a grant</span></dd></div>
+    </dl>
+    {%- set ds = acc.service_origins.items() | selectattr('1.state', 'equalto', 'defaulted') | map(attribute='0') | list %}
+    {{ record(ds, 'the service token settings') }}
+  </section>
+  <section class="card set-card" id="card-you" aria-labelledby="h-you">
+    <div class="card-head"><h2 id="h-you">You</h2>{{ badge('this request', 'neutral') }}
+      {{ badge('verified ' ~ (acc.you.kind or 'nobody') if acc.you.verified else 'not verified', 'ok' if acc.you.verified else 'warn') }}</div>
+    <dl class="facts">
+      <div><dt>Signed in as</dt><dd>{{ acc.you.actor or 'nobody verified' }}</dd></div>
+      <div><dt>From</dt><dd>{{ 'a trusted peer' if acc.you.peer_trusted else 'a peer that is not trusted' }}</dd></div>
+      <div><dt>You may</dt><dd>{% set allowed = acc.you.may | selectattr('1') | map(attribute='0') | list %}{{ (allowed | join(', ') | lower) if allowed else 'none of the gated actions' }}</dd></div>
+    </dl>
+  </section>
+</div>

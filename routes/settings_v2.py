@@ -55,6 +55,9 @@ def installation():
          "mode_words": ""}
     cards = [I.card(name) for name, spec in I.CARDS.items() if spec["tab"] == tab]
     diag = {}
+    if tab == "access":
+        from modules import identity
+        diag = {"acc": I.access_view(identity.identify(request))}
     if tab == "diagnostics":
         from modules import installation_diagnostics as D
         diag = {"red": D.redaction(), "dr": D.drift(), "fl": D.in_flight(),
@@ -217,6 +220,25 @@ def install_writes_off():
     except I.Refused as exc:
         return _install("netbox", 409, refused=str(exc))
     return _install("netbox", writes_off=out)
+
+
+# ── Board F4, Access and identity: read-only; Record this decision the one control ─────────
+
+@bp.route("/installation/access/record", methods=["POST"])
+def install_ratify():
+    """Record this decision: each named access or identity setting that is defaulted gets the
+    value already in force written, so nothing changes; recorded in the installation's settings
+    record (C625). A person, as today's ratify (`ratify_setting`)."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    ident = identity.identify(request)
+    try:
+        out = I.ratify_keys(request.form.getlist("keys"), identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _fragment("v2/_install_access.html", 409, acc=I.access_view(ident),
+                         refused=str(exc))
+    return _fragment("v2/_install_access.html", acc=I.access_view(ident), done=out)
 
 
 # ── Board F4, Diagnostics: four cards; the drift card's controls are the only writes ────────

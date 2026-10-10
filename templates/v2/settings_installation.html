@@ -20,7 +20,9 @@
   {%- endfor %}
 </nav>
 <div class="tab-body" id="tab-body">
-{%- if tab in built %}
+{%- if tab == 'access' %}
+{% include "v2/_install_access.html" %}
+{%- elif tab in built %}
 <div class="set-cards">
 {%- if tab == 'connections' %}
 {% include "v2/_records_db_card.html" %}

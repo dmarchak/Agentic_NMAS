@@ -66,7 +66,7 @@ class TestThePage:
         assert "These settings apply to every network" in html
 
     def test_unbuilt_tabs_say_so_and_link_to_today_s_page(self, networks):
-        for key in ("access", "platforms"):
+        for key in ("platforms",):
             _r, tab = _get(networks, f"/v2/settings/installation?tab={key}")
             assert 'data-todays-page="installation_settings"' in tab and "until it is drawn here" in tab
             assert 'id="records-db"' not in tab
@@ -340,6 +340,56 @@ class TestDiagnostics:
                         "diag-inflight")
         assert "1 running" in card and "r2" in card and "Branch" in card and "2 min 5 s" in card
         assert "could not be read" not in card, "a network with no receipts yet is not unread"
+
+
+class TestAccessAndIdentity:
+    """Board F4, decision A (signed off 2026-10-10): read-only by design; Record this decision
+    (ratify) the one control, writing the value in force and recorded (C625)."""
+
+    def test_the_tab_draws_the_twelve_gates_and_nothing_to_change_them(self, networks):
+        _r, html = _get(networks, "/v2/settings/installation?tab=access")
+        gates = _section(html, "card-gates")
+        assert "12 of 12 on" in gates and gates.count(">on<") == 12
+        for sid in ("card-access", "card-services", "card-you"):
+            _section(html, sid)
+        body = html.split('id="tab-body"')[1]
+        assert 'data-todays-page' not in body
+        inputs = re.findall(r"<input[^>]*>", body)
+        assert inputs and all('type="hidden"' in i for i in inputs), "read-only: hidden keys only"
+        assert "Record this decision" in gates and "defaulted, nobody decided" in gates
+
+    def test_record_this_decision_writes_the_value_in_force_and_records_who(self, networks):
+        from modules import installation_settings as I
+        from modules.settings_schema import get_setting, origin_of
+        assert origin_of("require_identity_for_reveal") != "file"
+        _r, html = _post(networks, "/v2/settings/installation/access/record",
+                         {"keys": ["require_identity_for_reveal", "require_person_for_reveal"]})
+        assert origin_of("require_identity_for_reveal") == "file"
+        assert get_setting("require_identity_for_reveal") is True, "the value in force, unchanged"
+        rec = I.changes(kinds=("ratify",))["rows"][0]
+        assert rec["fields"] == ["require_identity_for_reveal", "require_person_for_reveal"]
+        assert "Recorded" in html and "recorded by" in _section(html, "card-gates")
+
+    def test_a_setting_that_is_not_access_or_identity_is_refused(self, networks):
+        from modules.settings_schema import origin_of
+        r, html = _post(networks, "/v2/settings/installation/access/record",
+                        {"keys": ["netbox_url"]})
+        from modules import installation_settings as I
+        assert r.status_code == 409 and "is not an access or identity setting" in html
+        assert origin_of("netbox_url") == "default" and I.changes(kinds=("ratify",))["rows"] == []
+
+    def test_a_gate_turned_off_is_said_and_chosen(self, networks):
+        from modules.settings_schema import write_settings
+        write_settings({"require_person_for_configure": False}, actor="test")
+        gates = _section(_get(networks, "/v2/settings/installation?tab=access")[1], "card-gates")
+        assert "1 gate off" in gates and ">OFF<" in gates and "chosen: differs" in gates
+
+    def test_a_key_cache_outside_its_bounds_is_said(self, networks, monkeypatch):
+        from modules import identity
+        monkeypatch.setattr(identity, "jwks_ttl",
+                            lambda: (3600, "cf_access_jwks_ttl 0 is outside 300 to 86400 seconds"))
+        card = _section(_get(networks, "/v2/settings/installation?tab=access")[1], "card-access")
+        assert "the stored value is not used" in card and "0 is outside 300 to 86400" in card
 
 
 class TestNoTextSendsAPersonToTodaysSettings:

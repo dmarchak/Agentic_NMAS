@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 TABS = (("connections", "Connections"), ("access", "Access and identity"),
         ("platforms", "Platforms and roles"), ("server", "Server"),
         ("ai", "AI and workflow"), ("diagnostics", "Diagnostics"))
-BUILT_TABS = ("connections", "server", "ai", "diagnostics")
+BUILT_TABS = ("connections", "access", "server", "ai", "diagnostics")
 #: The records database card's fields, in the card's order (the password is a secret, drawn
 #: as set or unset and changed only by Replace…).
 FIELDS = ("records_db_host", "records_db_port", "records_db_name", "records_db_user")
@@ -552,3 +552,135 @@ def netbox_writes_off(actor: str, verified: str) -> dict:
     entry = _record({"kind": "netbox_writes_off", "card": "netbox", "actor": actor,  # record
                      "actor_verified": verified, "fields": ["netbox_allow_writes"]})
     return dict(entry, ok=True, nothing=False)
+
+
+# ── Access and identity (board F4, decision A, signed off 2026-10-10) ─────────────────────────
+#
+# Read-only by design (docs/SETTINGS.md): a session must never lower the gate it is using, and a
+# wrong team domain or audience locks everyone out or lets everyone in, silently. The one control
+# is Record this decision, ratify: it writes the value ALREADY in force, so it cannot change
+# behaviour, and it is recorded in the installation's settings record (C625).
+
+#: Record this decision's steps, named on the manual's page.
+RATIFY_STEPS = ("check", "write", "record")
+#: What each gated action is, in a person's words (identity.GATED_ACTIONS' order).
+ACTION_WORDS = {
+    "reveal": ("Reveal", "show a stored secret"),
+    "approve": ("Approve", "approve a template or a queued change"),
+    "confirm": ("Confirm", "confirm a previewed device change"),
+    "publish_remote": ("Publish", "push the record to its remote"),
+    "configure": ("Configure", "change Mercury's own settings, gates and records"),
+    "break_glass": ("Break-glass", "export or check the break-glass record"),
+}
+#: The Cloudflare Access card's keys and the service tokens card's.
+ACCESS_CARD_KEYS = ("cf_access_team_domain", "cf_access_aud", "cf_access_trusted_peers",
+                    "cf_access_jwks_ttl")
+SERVICE_CARD_KEYS = ("service_allowed_operations", "cf_access_service_labels")
+
+
+def _identity_keys() -> tuple:
+    from modules.settings_scope import group_keys
+
+    return group_keys("identity")
+
+
+def _ratified() -> dict:
+    """``{key: entry}``: the newest Record this decision of each key, from the record."""
+    out = {}
+    for row in reversed(changes(kinds=("ratify",))["rows"]):
+        for key in row.get("fields") or []:
+            out[key] = row
+    return out
+
+
+def _origin(key: str, origin: str, value, default, ratified: dict) -> dict:
+    """A key's origin in a person's words: defaulted (nobody decided), recorded (in the file,
+    equal to the default; by whom and when when the record holds it) or chosen (differs)."""
+    if origin == "default":
+        return {"state": "defaulted", "words": "defaulted, nobody decided"}
+    if origin != "file":
+        return {"state": "unknown", "words": "origin unknown: the settings file was not read"}
+    if value != default:
+        return {"state": "chosen", "words": "chosen: differs from the default"}
+    row = ratified.get(key)
+    if row:
+        return {"state": "recorded",
+                "words": f"recorded by {row.get('actor_label')}, {row.get('at_iso', '')[:10]}"}
+    return {"state": "recorded", "words": "recorded in the file (who and when not recorded here)"}
+
+
+def access_view(ident) -> dict:
+    """Board F4's Access and identity tab: the twelve gates paired per action, the Cloudflare
+    Access values (shown to a verified person only), the service tokens, and the viewer."""
+    from modules import identity
+    from modules.settings_schema import DEFAULTS, get_setting, origin_of
+
+    person = bool(getattr(ident, "verified", False)) and getattr(ident, "kind", "") == "person"
+    p = identity.posture(reveal_config=person)
+    ratified = _ratified()
+    by_key = {g["key"]: g for g in p["gates"]}
+    gates, off = [], 0
+    for action in identity.GATED_ACTIONS:
+        cells = []
+        for prefix in ("require_identity_for", "require_person_for"):
+            g = by_key[f"{prefix}_{action}"]
+            off += 0 if g["value"] else 1
+            cells.append(dict(g, origin_words=_origin(g["key"], g["origin"], g["value"],
+                                                      g["default"], ratified)))
+        name, means = ACTION_WORDS.get(action, (action, ""))
+        gates.append({"action": action, "name": name, "means": means, "cells": cells,
+                      "defaulted": [c["key"] for c in cells
+                                    if c["origin_words"]["state"] == "defaulted"]})
+
+    def card_origins(keys):
+        return {k: _origin(k, origin_of(k), get_setting(k, DEFAULTS.get(k)), DEFAULTS.get(k),
+                           ratified) for k in keys}
+
+    ttl, ttl_problem = identity.jwks_ttl()
+    labels = get_setting("cf_access_service_labels", {}) or {}
+    return {
+        "readable": p["settings_readable"], "read_failure": p["settings_read_failure"],
+        "gates": gates, "off": off, "total": 2 * len(identity.GATED_ACTIONS),
+        "access_configured": p["access_configured"], "access_set": p["access_values_set"],
+        "access": p.get("access"), "person": person,
+        "ttl": ttl, "ttl_problem": ttl_problem,
+        "ttl_bounds": (identity.JWKS_TTL_MIN, identity.JWKS_TTL_MAX),
+        "access_origins": card_origins(ACCESS_CARD_KEYS),
+        "service_ops": p["service_allowed_operations"],
+        "labels": [{"id": (f"{cid[:4]}…{cid[-2:]}" if len(cid) > 8 else "…"), "name": name}
+                   for cid, name in sorted(labels.items(), key=lambda kv: kv[1])],
+        "service_origins": card_origins(SERVICE_CARD_KEYS),
+        "you": {"actor": getattr(ident, "actor", ""), "kind": getattr(ident, "kind", ""),
+                "verified": bool(getattr(ident, "verified", False)),
+                "peer_trusted": bool(getattr(ident, "peer_trusted", False)),
+                "may": [(ACTION_WORDS.get(a, (a,))[0], identity.may(ident, a)[0])
+                        for a in identity.GATED_ACTIONS]},
+    }
+
+
+def ratify_keys(keys, actor: str, verified: str) -> dict:
+    """Record this decision (RATIFY_STEPS) for *keys*: each must be one of the identity group's
+    and defaulted; `settings_schema.ratify` writes the value already in force (never a change);
+    the decision is appended to the installation's settings record (C625)."""
+    from modules.settings_schema import origin_of, ratify
+
+    allowed = set(_identity_keys())
+    keys = [k for k in dict.fromkeys(keys or []) if k]
+    stray = sorted(set(keys) - allowed)                                          # check
+    if not keys or stray:
+        raise Refused(("nothing was named to record" if not keys else
+                       f"{', '.join(stray)} {'is' if len(stray) == 1 else 'are'} not an "
+                       "access or identity setting"))
+    todo = [k for k in keys if origin_of(k) != "file"]
+    if not todo:
+        return {"ok": True, "nothing": True, "recorded": True, "written": []}
+    written = []
+    for key in todo:                                                             # write
+        out = ratify(key, actor=actor)
+        if not out.get("ok"):
+            raise Refused(f"{key}: {out.get('error')}"
+                          + (f" ({', '.join(written)} were recorded)" if written else ""))
+        written.append(key)
+    entry = _record({"kind": "ratify", "card": "access", "actor": actor,         # record
+                     "actor_verified": verified, "fields": written})
+    return dict(entry, ok=True, nothing=False, written=written)

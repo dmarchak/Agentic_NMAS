@@ -248,6 +248,7 @@ DECLARED = {
     "settings_v2.install_save": ("settings",),
     "settings_v2.install_replace": ("settings",),
     "settings_v2.install_writes_off": ("settings",),
+    "settings_v2.install_ratify": ("posture", "settings"),
     "settings_v2.diag_drift_interval": ("drift",),
     "settings_v2.diag_drift_switch": ("drift",),
     "settings_v2.diag_drift_check": ("drift",),

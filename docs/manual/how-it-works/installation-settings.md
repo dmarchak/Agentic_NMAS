@@ -79,6 +79,25 @@ There is no confirm step: turning writes off takes nothing away a person must ke
 operation that needs NetBox writes afterwards asks for its own confirm, which turns the switch
 back on.
 
+## Record a decision about access {#record}
+
+The **Access and identity** tab is read-only by design: a session must never lower the gate it
+is using, and a wrong team domain or audience locks everyone out, or lets everyone in, without
+saying so. It shows each of the twelve gates (for each action, whether it needs a verified
+identity and whether it needs a person), the Cloudflare Access values (to a verified person
+only), the service tokens and who you are. The operator changes a value in the installation's
+settings file on the host.
+
+Each value is **defaulted** (nobody decided), **recorded** (agreed, equal to the default) or
+**chosen** (differs from it). **Record this decision** turns defaulted into recorded:
+
+1. `check`: each setting named must be an access or identity setting. Read: nothing. A
+   refusal names the setting, and nothing is written.
+2. `write`: the value already in force is written to the settings file, so nothing changes;
+   one already in the file is left as it is.
+3. `record`: who, when and the names of the settings are appended to the installation's
+   settings record; the gate then reads "recorded by" that person, on that day.
+
 ## Diagnostics: redaction {#redaction}
 
 Every line Mercury logs is masked as it is written, by a filter on every log handler. The
