@@ -103,11 +103,14 @@ SIGNED_OFF = {
                                     "the operator accepted)"),
     "settings_installation.html": ("2026-10-09", "Settings › Installation: board F (approved "
                                    "2026-10-05) with board F2, its records database card "
-                                   "(approved 2026-10-09 with the operator's three conditions). "
-                                   "Built: the page, its tabs and the Connections tab's Records "
-                                   "database card (off, tested, down, Replace). Not yet: the "
-                                   "NetBox, Proxmox and Commit author cards and the other five "
-                                   "tabs, each said on the page and linked to today's"),
+                                   "(approved 2026-10-09 with the operator's three conditions) "
+                                   "and board F3, its other cards with every setting a control "
+                                   "(signed off 2026-10-09, the TFTP root retired). Built: the "
+                                   "page, its tabs, Connections (the Records database, NetBox "
+                                   "connection, Proxmox and Commit author cards) and Server. Not "
+                                   "yet: the Access and identity, Platforms and roles, AI and "
+                                   "workflow and Diagnostics tabs, each said on the page and "
+                                   "linked to today's"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),

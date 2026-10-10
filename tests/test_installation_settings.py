@@ -199,7 +199,9 @@ class TestAgainstARealPostgreSQL:
 
 # ── C617: no product text sends a person to today's Settings > Integrations ────────────────
 
-TODAYS_SETTINGS = re.compile(r"Settings\s*(?:>|→|›)\s*Integrations")
+#: Every separator a text has used for it: ">", "→", "›", and "->" (C622: the first scan
+#: missed `nsot/platform.py`'s "Settings -> Integrations").
+TODAYS_SETTINGS = re.compile(r"Settings\s*(?:->|>|→|›)\s*Integrations")
 
 
 def _strings_naming_todays_settings(paths):
@@ -239,10 +241,12 @@ class TestNoTextSendsAPersonToTodaysSettings:
         planted = tmp_path / "x.py"
         planted.write_text('"""Settings > Integrations in a docstring."""\n'
                            'A = "put it in Settings → Integrations"\nB = "Settings › Default"\n'
-                           'C = "check Settings › Integrations › Grafana"\n')
+                           'C = "check Settings › Integrations › Grafana"\n'
+                           'D = "add it in Settings -> Integrations"\n')
         found = [t for _f, t in _strings_naming_todays_settings([planted])]
         assert found == ["put it in Settings → Integrations",
-                         "check Settings › Integrations › Grafana"], "a docstring is not screen text"
+                         "check Settings › Integrations › Grafana",
+                         "add it in Settings -> Integrations"], "a docstring is not screen text"
 
 
 # ── Board F3 (signed off 2026-10-09): the other cards, every setting a control ─────────────

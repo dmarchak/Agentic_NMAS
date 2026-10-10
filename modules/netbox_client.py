@@ -3550,8 +3550,9 @@ def remove_device_from_netbox(list_name: str, hostname: str,
         return {"ok": False, "error": "NetBox URL and API token are not configured"}
     if not dry_run and not _guard.writes_allowed():
         return {"ok": False, "blocked": True,
-                "error": "NetBox writes are disabled. Enable them in "
-                         "Settings -> Integrations, or run the preview."}
+                "error": "NetBox writes are off for every network (Writes allowed, on "
+                         "Settings › Installation › Connections, NetBox connection). Run the "
+                         "preview and confirm it with writes permitted."}
 
     session = _session_from_config(cfg)
     base = cfg["url"]
