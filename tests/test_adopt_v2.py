@@ -148,6 +148,18 @@ def test_the_confirm_runs_the_apply_as_the_person_and_draws_the_result(lab, monk
     assert kw["reason"] == "brought in from the old team"
     assert "r9 is adopted" in card and "Open r9's page" in card
     assert card.count("done") >= len(adopt.APPLY_STEPS)
+    # Board G (v32) ends there: the seed with its fidelity and one commit, then the export.
+    seed = card.index('href="/v2/device/r9?list=Lab&amp;op=seed">Seed r9\'s intent…</a>')
+    export = re.search(r'href="(/v2/credentials[^"]*)">Export the break-glass record…', card)
+    assert export, "no export offered"
+    assert "list=Lab" in export.group(1) and "open=export" in export.group(1), export.group(1)
+    assert seed < export.start(), "the seed comes first, then the export"
+
+
+def test_a_stop_offers_neither_the_seed_nor_the_export(lab, monkeypatch):  # noqa: F811
+    _seen, card = _run(lab, monkeypatch, {"ok": False, "steps": [], "remaining": [],
+                                          "reason": "the device moved"})
+    assert "op=seed" not in card and "open=export" not in card
 
 
 def test_a_stop_names_its_reason_and_what_remains(lab, monkeypatch):  # noqa: F811

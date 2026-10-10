@@ -104,11 +104,10 @@ GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
 #: yet). Help's index marks each, so a person knows where to go (the operator, 2026-10-02:
 #: onboarding's page existed and nothing said its action lived on today's app). A page
 #: leaves this set in the commit that builds its screen in v2.
+#: Held to that by tests/test_manual.py: no page here has a v2 control (`data-op="<slug>"`).
+#: (C644, 2026-10-10: twelve operations built on v2 and the NetBox screen were still marked.)
 ON_TODAYS_APP = frozenset((
-    "deploy", "capture", "restore", "removal", "revert-retry", "rotate", "persist", "seed",
-    "bulk-intent", "onboard", "adopt", "retire", "drift-check", "approvals", "netbox-import",
-    "logs", "dhcp", "netbox",
-    "approvals-screen", "backups",
+    "bulk-intent", "drift-check", "approvals", "logs", "dhcp", "approvals-screen", "backups",
 ))
 
 #: Every sidebar destination (its label in ``templates/v2/base.html``) and the

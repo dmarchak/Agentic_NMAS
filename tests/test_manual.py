@@ -406,5 +406,17 @@ class TestTheIndexListsEverything:
         html = _client().get("/v2/help/onboard").get_data(as_text=True)
         nav = html.split('class="helpnav"', 1)[1].split("</nav>", 1)[0]
         assert nav.count("helpnav-mark") == len(manual.ON_TODAYS_APP)
-        assert re.search(r"Onboard a device</span><span class=\"helpnav-mark\"", nav)
+        assert re.search(r"Edit intent in bulk</span><span class=\"helpnav-mark\"", nav)
+        assert not re.search(r"Onboard a device</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Update the app</span><span class=\"helpnav-mark\"", nav)
+
+    def test_no_page_marked_as_today_s_app_has_a_v2_control(self):
+        """C644: a page leaves ON_TODAYS_APP in the commit that builds its v2 control; twelve
+        stayed marked after their screens were built. The property is the control itself."""
+        folder = os.path.join(ROOT, "templates", "v2")
+        text = "".join(open(os.path.join(folder, n), encoding="utf-8").read()
+                       for n in sorted(os.listdir(folder)) if n.endswith(".html"))
+        ops = set(re.findall(r'data-op="([a-z0-9-]+)"', text))
+        assert len(ops) >= 20, sorted(ops)      # the floor: the scan reads the controls
+        assert {"onboard", "adopt", "deploy"} <= ops
+        assert not manual.ON_TODAYS_APP & ops, sorted(manual.ON_TODAYS_APP & ops)

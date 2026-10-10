@@ -626,7 +626,8 @@ NOT_DOING = (
     "where the network has a monitoring profile, the profile's lines the device lacks, each "
     "listed in the program. A value the device sets differently is kept (it overrides the "
     "profile), and nothing is removed.",
-    "No intent is committed: seed it from the golden afterwards, on the Device page.",
+    "No intent is committed: the result offers the seed next, its fidelity and one commit "
+    "as the device's intent, a person's decision.",
     "No NetBox object that exists now is made deletable: each is recorded as adopted, and "
     "Remove deletes only what the tool created.",
 )

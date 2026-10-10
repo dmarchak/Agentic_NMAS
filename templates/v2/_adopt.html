@@ -20,7 +20,14 @@
   <div class="notice notice-{{ 'muted' if r.ok else 'danger' }} set-result" role="status">{{ icon('tick' if r.ok else 'warn', 16) }}<div><strong>{% if r.ok %}{{ f.hostname }} is adopted: in the inventory, with its first golden and its NetBox record, and the tool signs in with its own account.{% else %}{{ f.hostname }} is NOT adopted{% if r.reason %}: {{ r.reason }}{% endif %}.{% endif %}</strong>
     <ol class="set-steps">{% for s in r.steps or [] %}<li>{{ badge('done' if s.ok else 'stopped', 'ok' if s.ok else 'danger') }} <span>{{ s.step }}{% if s.detail %}: {{ s.detail }}{% endif %}</span></li>{% endfor %}</ol>
     {%- if r.remaining %}<p class="small">Still to finish:</p><ul class="small">{% for x in r.remaining %}<li>{{ x.step }}: {{ x.why or x.detail }}</li>{% endfor %}</ul>{% endif %}</div></div>
-  <div class="set-foot">{% if r.ok %}<a class="btn btn-primary btn-small" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name) }}">Open {{ f.hostname }}'s page</a>{% else %}<span class="muted small">Run it again from the start: it resumes where it stopped and never adds the account twice.</span>{% endif %}</div>
+  {%- if r.ok %}
+  <h3 class="set-label">To finish, in order</h3>
+  <ol class="set-steps">
+    <li><span class="op-act"><a class="btn btn-primary btn-small" data-op="seed" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name, op='seed') }}">Seed {{ f.hostname }}'s intent…</a>{{ how('seed', compact=True, op='seeding') }}</span> <span class="muted small">its intent parsed from the golden just recorded: how much the template reproduces, each unmodelled line, and one commit as its intent</span></li>
+    <li><span class="op-act"><a class="btn btn-small" data-op="breakglass-export" href="{{ url_for('v2.credentials', list=f.list_name, open='export') }}">Export the break-glass record…</a>{{ how('breakglass-export', compact=True, op='the export') }}</span> <span class="muted small">a record exported before now lacks the account the tool signs in to {{ f.hostname }} with</span></li>
+  </ol>
+  {%- endif %}
+  <div class="set-foot">{% if r.ok %}<a class="btn btn-small" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name) }}">Open {{ f.hostname }}'s page</a>{% else %}<span class="muted small">Run it again from the start: it resumes where it stopped and never adds the account twice.</span>{% endif %}</div>
   {%- elif p %}
   {%- if p.blocking %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>{{ p.blocking | length }} reason{{ '' if p.blocking | length == 1 else 's' }} it cannot be adopted, all of them:</strong><ul class="small">{% for b in p.blocking %}<li>{{ b }}</li>{% endfor %}</ul></div></div>

@@ -93,8 +93,9 @@ shows every check by name (each reason it cannot be adopted, all at once), the l
 send (masked), what a save makes permanent, and what it does not do. The password is never
 drawn back, so **Adopt** asks for it again, with why; it needs a verified person, reads the
 device again and stops, sending nothing, if it moved since the preview. The card follows the
-run's steps and then draws each one's outcome, and **Open its page** goes to the adopted
-device. See [Adopt a device](adopt).
+run's steps and then draws each one's outcome. An adopted device's result names what finishes
+it, in order: **Seed its intent…** (the fidelity and one commit as its intent), then **Export
+the break-glass record…**. See [Adopt a device](adopt).
 
 ## A pending device's page {#pending}
 

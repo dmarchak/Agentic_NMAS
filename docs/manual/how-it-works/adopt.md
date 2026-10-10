@@ -16,7 +16,11 @@ needs one); **Read it and preview** draws [the preview](#preview)
 below in the same card. When nothing blocks, the card asks for the supplied password again
 (no page ever holds it, so the confirm cannot carry it from the preview) and for why;
 **Adopt <device>** starts the apply as a job, and the card follows its steps until it ends,
-then draws each step's outcome. Adopting needs a verified person. A run that stops is run
+then draws each step's outcome. When the device is adopted, the card names the two steps that
+finish it, in order: **Seed <device>'s intent…** (its intent parsed from the golden just
+recorded, how much the template reproduces, each unmodelled line, and one commit as its
+intent; see [Seed intent](seed)), then **Export the break-glass record…**, because a record
+exported before lacks the account the tool now signs in with. Adopting needs a verified person. A run that stops is run
 again from the same card and resumes; its recovery has a host command as well,
 `nmas-adopt-recover <device> --list <list>` (see [When a run stops](#stops)).
 
@@ -154,5 +158,5 @@ and only then cleared; refused, the file is kept and the result says what to che
   it there, and on this device something real may use it.
 - Nothing else in the configuration is changed: only the tool's account and the profile's
   missing lines are sent, and nothing is removed.
-- No intent is committed: seed it from the golden afterwards.
+- No intent is committed: the result offers the seed next, and committing it is your decision.
 - No NetBox object that exists now is made deletable.
