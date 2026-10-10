@@ -54,9 +54,14 @@ def installation():
     v = {"scope": dict(settings_page.scope_bar(listref.active().name), is_installation=True),
          "mode_words": ""}
     cards = [I.card(name) for name, spec in I.CARDS.items() if spec["tab"] == tab]
+    diag = {}
+    if tab == "diagnostics":
+        from modules import installation_diagnostics as D
+        diag = {"red": D.redaction(), "dr": D.drift(), "fl": D.in_flight(),
+                "lg": D.app_log(None)}
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
                  v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
-                 a=I.agent_state() if tab == "ai" else None)
+                 a=I.agent_state() if tab == "ai" else None, **diag)
 
 
 def _records(status: int = 200, **ctx):
@@ -212,6 +217,97 @@ def install_writes_off():
     except I.Refused as exc:
         return _install("netbox", 409, refused=str(exc))
     return _install("netbox", writes_off=out)
+
+
+# ── Board F4, Diagnostics: four cards; the drift card's controls are the only writes ────────
+
+@bp.route("/installation/diagnostics/redaction", methods=["GET"])
+def diag_redaction():
+    """Log redaction, measured now (C624): a read that writes nothing."""
+    from modules import installation_diagnostics as D
+
+    return _fragment("v2/_diag_redaction.html", red=D.redaction())
+
+
+def _drift(status: int = 200, **ctx):
+    from modules import installation_diagnostics as D
+
+    return _fragment("v2/_diag_drift.html", status, dr=D.drift(), **ctx)
+
+
+@bp.route("/installation/diagnostics/drift", methods=["GET"])
+def diag_drift():
+    """The drift card drawn again (a drift run recorded announces `drift`)."""
+    return _drift()
+
+
+@bp.route("/installation/diagnostics/drift/interval", methods=["POST"])
+def diag_drift_interval():
+    """The drift schedule, one for every network, saved and recorded."""
+    from modules import identity
+    from modules import installation_diagnostics as D
+    from modules import installation_settings as I
+
+    try:
+        out = D.save_drift_interval(request.form.get("interval_s"), identity.request_actor(),
+                                    _verified())
+    except I.Refused as exc:
+        return _drift(409, refused=str(exc))
+    words = ("Nothing changed: the schedule already was that." if out.get("nothing") else
+             f"Saved by {out.get('actor_label')}: every network is checked on the new "
+             "schedule, recorded in the installation's settings record.")
+    return _drift(done=dict(out, words=words))
+
+
+@bp.route("/installation/diagnostics/drift/<network>/<to>", methods=["POST"])
+def diag_drift_switch(network, to):
+    """A network's drift checks turned off or on, with who and when, recorded."""
+    from modules import identity
+    from modules import installation_diagnostics as D
+    from modules import installation_settings as I
+
+    if to not in ("off", "on"):
+        return _drift(404, refused=f"{to!r} is neither off nor on")
+    try:
+        out = D.set_drift_off(network, to == "off", identity.request_actor(), _verified())
+    except I.Refused as exc:
+        return _drift(409, refused=str(exc))
+    words = (f"{network}'s drift checks already were {to}." if out.get("nothing") else
+             f"{network}'s drift checks turned {to} by {out.get('actor_label')}, recorded.")
+    return _drift(done=dict(out, words=words))
+
+
+@bp.route("/installation/diagnostics/drift/<network>/check", methods=["POST"])
+def diag_drift_check(network):
+    """Check now: a network's drift check started in the background (the schedule does it
+    anyway, only later); the card redraws when it is recorded."""
+    from modules import installation_diagnostics as D
+    from modules import installation_settings as I
+
+    try:
+        out = D.check_now(network)
+    except I.Refused as exc:
+        return _drift(409, refused=str(exc))
+    return _drift(done=dict(out, recorded=True,
+                            words=f"A drift check of {network} started: this card redraws "
+                                  "when it finishes, and what it finds is on Needs attention."))
+
+
+@bp.route("/installation/diagnostics/inflight", methods=["GET"])
+def diag_inflight():
+    """Every network's running operations and recent receipts: a read."""
+    from modules import installation_diagnostics as D
+
+    return _fragment("v2/_diag_inflight.html", fl=D.in_flight())
+
+
+@bp.route("/installation/diagnostics/log", methods=["GET"])
+def diag_log():
+    """The app's log, its last lines filtered: a read."""
+    from modules import installation_diagnostics as D
+
+    return _fragment("v2/_diag_log.html", lg=D.app_log(request.args.get("lines"),
+                                                       request.args.get("contains", "")))
 
 
 @bp.route("/network/<list_name>", methods=["GET"])

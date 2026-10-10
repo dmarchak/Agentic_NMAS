@@ -104,6 +104,12 @@ ENTRY_POINTS = {
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
 NOT_FREE_TEXT = {
+    "modules/attention.py:redaction_source": "reports redact.health()'s counts as a Needs "
+        "attention row; it masks nothing (C624)",
+    "modules/installation_diagnostics.py:redaction": "returns redact.health()'s measurement "
+        "for the Diagnostics card; it masks nothing",
+    "routes/settings_v2.py:diag_redaction": "draws the Diagnostics card's redaction "
+        "measurement; it masks nothing",
     "modules/secrets_store.py:mask": "draws dots for a set field; it is given a setting's key",
     "modules/nsot/credential_rotation.py:masked_commands": "builds the masked rotation "
         "commands from a username and a privilege",

@@ -72,7 +72,7 @@ class TestTheRoute:
     def client(self, monkeypatch, tmp_path):
         import app as A
 
-        monkeypatch.setattr("routes.operations.time.time", lambda: 2_000_000_000.0)
+        monkeypatch.setattr("modules.in_flight.time.time", lambda: 2_000_000_000.0)
         monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
         monkeypatch.setattr("modules.nsot.receipts.path_for",
                             lambda ln: str(tmp_path / "receipts.jsonl"))

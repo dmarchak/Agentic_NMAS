@@ -1,0 +1,25 @@
+{%- from "v2/_macros.html" import badge, how, stamp -%}
+{#- Board F4 (signed off 2026-10-10), Diagnostics: the app's own log, its last lines, filtered,
+    read on request and never polled. Every line was masked as it was written (the redaction
+    card above). Absent and unreadable are different states. From
+    modules/installation_diagnostics.app_log (modules/app_log). -#}
+<section class="card set-card set-card-wide" id="diag-log" aria-labelledby="h-diag-log">
+  <div class="card-head"><h2 id="h-diag-log">The app's log</h2>{{ badge('this host', 'neutral') }} <span class="muted small">read {{ stamp(lg.at_iso) }}</span></div>
+  <form class="set-inline" method="get" action="{{ url_for('settings_v2.diag_log') }}"
+        hx-get="{{ url_for('settings_v2.diag_log') }}" hx-target="#diag-log" hx-swap="outerHTML">
+    <label for="f-log-lines" class="muted small">Last</label>
+    <select id="f-log-lines" name="lines">{% for n in lg.choices %}<option{% if n == lg.lines_asked %} selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+    <label for="f-log-contains" class="muted small">lines, containing</label>
+    <input id="f-log-contains" name="contains" type="text" value="{{ lg.contains }}" placeholder="filter" autocomplete="off">
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Read again</span><span class="op-busy">Reading…</span></button>{{ how('installation-settings', 'log', op="the app's log") }}</span>
+  </form>
+  {%- if lg.state == 'absent' %}
+  <p class="muted">The log file does not exist yet: nothing has been logged since this installation started.</p>
+  {%- elif lg.state == 'unreadable' %}
+  <p class="notice notice-warn" role="status">The log could not be read: {{ lg.error }}.</p>
+  {%- else %}
+  <p class="muted small">{{ lg.lines | length }} of the last {{ lg.read }} lines{% if lg.contains %} contain "{{ lg.contains }}"{% endif %}.</p>
+  <pre class="set-log">{% for line in lg.lines %}{{ line }}
+{% endfor %}</pre>
+  {%- endif %}
+</section>

@@ -4073,21 +4073,15 @@ def server_log():
     diagnostics -- this is the file every "check server logs" error message
     refers to. Captures app.py plus every modules/*.py logger (see the root
     logger handler set up above)."""
-    log_path = os.path.join(BASE_DIR, "logs", "device_manager.log")
-    lines_param = request.args.get("lines", "500")
-    try:
-        n = min(max(int(lines_param), 1), 5000)
-    except ValueError:
-        n = 500
-    try:
-        with open(log_path, encoding="utf-8", errors="replace") as fh:
-            all_lines = fh.readlines()
-        tail = "".join(all_lines[-n:])
-        return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
-    except FileNotFoundError:
-        return "logs/device_manager.log not yet created.\n", 404, {
-            "Content-Type": "text/plain; charset=utf-8"
-        }
+    from modules import app_log
+
+    got = app_log.tail(app_log.lines_asked(request.args.get("lines", "500")))
+    text = {"Content-Type": "text/plain; charset=utf-8"}
+    if got["state"] == "absent":
+        return "logs/device_manager.log not yet created.\n", 404, text
+    if got["state"] != "ok":
+        return f"logs/device_manager.log could not be read: {got['error']}\n", 500, text
+    return "".join(line + "\n" for line in got["lines"]), 200, text
 
 
 # ---------------------------------------------------------------------------

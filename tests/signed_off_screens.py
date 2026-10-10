@@ -108,11 +108,11 @@ SIGNED_OFF = {
                                    "(signed off 2026-10-09, the TFTP root retired), and board F4, "
                                    "the four remaining tabs (signed off 2026-10-10). Built: the "
                                    "page, its tabs, Connections (the Records database, NetBox "
-                                   "connection, Proxmox and Commit author cards), Server, and AI "
-                                   "and workflow (the assistant's switch, the agent's state). Not "
-                                   "yet: the Access and identity, Platforms and roles and "
-                                   "Diagnostics tabs, each said on the page and linked to "
-                                   "today's"),
+                                   "connection, Proxmox and Commit author cards), Server, AI "
+                                   "and workflow (the assistant's switch, the agent's state) and "
+                                   "Diagnostics (redaction, drift checks, in flight, the app's "
+                                   "log). Not yet: the Access and identity and Platforms and "
+                                   "roles tabs, each said on the page and linked to today's"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),

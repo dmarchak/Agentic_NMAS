@@ -1,0 +1,20 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Board F4 (signed off 2026-10-10), Diagnostics: log redaction, measured now (C624). The
+    canary is built and filtered through every log handler, never emitted, so this read writes
+    nothing. Unhealthy, it is also a Needs attention row. From
+    modules/installation_diagnostics.redaction. -#}
+<section class="card set-card" id="diag-redaction" aria-labelledby="h-diag-redaction">
+  <div class="card-head"><h2 id="h-diag-redaction">Redaction</h2>{{ badge('this host', 'neutral') }}
+    {{ badge('healthy' if red.healthy else 'NOT healthy', 'ok' if red.healthy else 'danger') }} <span class="muted small">read {{ stamp(red.at_iso) }}</span></div>
+  <dl class="facts">
+    <div><dt>Log handlers</dt><dd>{{ red.log_handlers_total - red.log_handlers_unprotected }} of {{ red.log_handlers_total }} protected{% if red.log_handlers_unprotected %}: without a filter, {{ red.unprotected_handler_types | join(', ') }}{% endif %}</dd></div>
+    <div><dt>Canary</dt><dd>{% if red.canary_leaking %}got through {{ red.canary_leaking }} of {{ red.canary_handlers_checked }} handlers: {% for d in red.canary_leaking_detail %}{{ d.handler }} ({{ (d.leaked_shapes or [d.error]) | join(', ') }}){% if not loop.last %}, {% endif %}{% endfor %}{% else %}passed all {{ red.canary_handlers_checked }} handlers: no secret-shaped line got through{% endif %}</dd></div>
+    <div><dt>Failures</dt><dd>{% if red.redaction_failures %}{{ red.redaction_failures }} since start-up, the last {{ red.last_failure_at }}: {{ red.last_error }}{% else %}none since start-up{% endif %}</dd></div>
+  </dl>
+  {%- if not red.healthy %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>A secret could reach a log. Every handler gains its filter when Mercury starts: restart it, then read this again. Needs attention shows this until it reads healthy.</span></p>
+  {%- endif %}
+  <div class="set-foot">
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-get="{{ url_for('settings_v2.diag_redaction') }}" hx-target="#diag-redaction" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Check again</span><span class="op-busy">Checking…</span></button>{{ how('installation-settings', 'redaction', op='the redaction check') }}</span>
+  </div>
+</section>

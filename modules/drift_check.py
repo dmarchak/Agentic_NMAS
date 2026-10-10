@@ -746,6 +746,14 @@ class DriftChecker:
         now = time.time()
         self._next[list_name] = now + _get_interval()
         _save_state({"last_check_ts": now, "last_result": result}, list_name)
+        # Every open page hears that a run was recorded (board F4: the Diagnostics card redraws
+        # when a Check now finishes; no polling). An announcement that cannot be made (no
+        # socket in this process) is logged: the record stands.
+        try:
+            from modules import invalidation
+            invalidation.announce(invalidation.ANNOUNCERS["drift-check"], by="drift-check")
+        except Exception as exc:                      # noqa: BLE001
+            log.info("drift_check: %s's run recorded, not announced: %s", list_name, exc)
 
     def status(self, list_name: str = "") -> dict:
         """What the scheduler will do next for *list_name* (else the active list).

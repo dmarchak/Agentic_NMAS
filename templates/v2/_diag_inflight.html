@@ -1,0 +1,44 @@
+{%- from "v2/_macros.html" import badge, how, stamp -%}
+{#- Board F4 (signed off 2026-10-10), Diagnostics: in flight, every network. The held devices
+    and running operations (each with who, its step and how long), then what finished in the
+    last half hour, folded. Redrawn when a hold or a step moves (device_holds,
+    device_progress) and when a deploy reports. From modules/installation_diagnostics.in_flight
+    (modules/in_flight, the one read every screen shares). -#}
+<section class="card set-card" id="diag-inflight" aria-labelledby="h-diag-inflight"
+         hx-get="{{ url_for('settings_v2.diag_inflight') }}" hx-trigger="nmas:device_holds from:body, nmas:device_progress from:body, nmas:deploy_job from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2 id="h-diag-inflight">In flight</h2>{{ badge('every network', 'neutral') }}
+    {{ badge((fl.running | length) ~ ' running', 'acc' if fl.running else 'neutral') }} <span class="muted small">read {{ stamp(fl.at_iso) }}</span></div>
+  {%- if fl.running %}
+  <div class="table-wrap">
+  <table class="table set-table">
+    <thead><tr><th>Device</th><th>Network</th><th>Operation</th><th>By</th><th>Step</th><th>Held for</th></tr></thead>
+    <tbody>
+    {%- for r in fl.running %}
+    <tr><td>{{ r.device or '—' }}</td><td>{{ r.list or '' }}</td><td>{{ r.words or r.operation }}</td><td>{{ r.actor }}</td>
+      <td>{{ r.step_words or r.step or '' }}{% if r.stalled %} {{ badge('stalled', 'warn') }}{% endif %}</td>
+      <td>{% if r.held_for_s is not none %}{{ (r.held_for_s // 60) | int }} min {{ (r.held_for_s % 60) | int }} s{% endif %}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  </div>
+  {%- else %}
+  <p class="muted small">Nothing is running on any network's devices.</p>
+  {%- endif %}
+  <details class="set-details" data-keep="diag-inflight-recent">
+    <summary>Finished in the last {{ (fl.window_s // 60) | int }} minutes: {{ fl.recent | length }}</summary>
+    {%- if fl.recent %}
+    <ul class="set-list">
+      {%- for r in fl.recent %}
+      <li>{{ stamp(r.at) }} {{ r.device }} ({{ r.list }}): {{ r.action }}, {{ badge(r.outcome or '?', 'ok' if r.outcome in ('ok', 'success', 'succeeded') else 'warn') }}{% if r.actor %} by {{ r.actor }}{% endif %}</li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <p class="muted small">{{ fl.not_recorded }}</p>
+  </details>
+  {%- for name, why in fl.unread %}
+  <p class="muted small warn-text">{{ name }} could not be read: {{ why }}.</p>
+  {%- endfor %}
+  <div class="set-foot">
+    <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-get="{{ url_for('settings_v2.diag_inflight') }}" hx-target="#diag-inflight" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Read again</span><span class="op-busy">Reading…</span></button>{{ how('installation-settings', 'in-flight', op='the in-flight list') }}</span>
+  </div>
+</section>

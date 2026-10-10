@@ -129,6 +129,9 @@ ANNOUNCERS = {
     "arrival-watch": ("deploy_job",),
     # modules/nsot/repo.save_templates: each template-library commit (C516).
     "template-library": ("templates",),
+    # modules/drift_check.DriftChecker.record: each run recorded, scheduled or asked for
+    # (board F4's Diagnostics card redraws when a Check now finishes).
+    "drift-check": ("drift",),
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
                    "goldens", "remote", "intent", "approvals"),
 }
@@ -245,6 +248,9 @@ DECLARED = {
     "settings_v2.install_save": ("settings",),
     "settings_v2.install_replace": ("settings",),
     "settings_v2.install_writes_off": ("settings",),
+    "settings_v2.diag_drift_interval": ("drift",),
+    "settings_v2.diag_drift_switch": ("drift",),
+    "settings_v2.diag_drift_check": ("drift",),
     "identity.ratify_setting": ("posture", "settings"),
     "monitoring_config": ("monitoring",),
     "monitoring_snmp_poll": ("monitoring",),

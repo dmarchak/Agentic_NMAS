@@ -1039,6 +1039,17 @@ select { max-width: 100%; }
 .set-form .set-switch { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
 .set-form .set-switch input { width: auto; padding: 0; margin: 0; }
 .set-inline { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* F4, Diagnostics: a card across the grid, a network's row controls, the folded list of what
+   finished, and the app's log in a scrolling dark block that never widens the page. */
+.set-card-wide { grid-column: 1 / -1; }
+.set-row-acts { white-space: nowrap; }
+.set-row-acts .op-act + .op-act { margin-left: 6px; }
+.set-details { margin-top: 8px; font-size: 13px; }
+.set-details summary { cursor: pointer; color: var(--ink-2); }
+.set-list { margin: 6px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.set-log { margin: 6px 0 0; padding: 10px 12px; background: var(--ink); color: var(--surface);
+  border-radius: var(--r); font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
 .set-checks { margin-top: 12px; }
 .set-steps, .set-order { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column;
   gap: 5px; font-size: 13px; }

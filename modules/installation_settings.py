@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 TABS = (("connections", "Connections"), ("access", "Access and identity"),
         ("platforms", "Platforms and roles"), ("server", "Server"),
         ("ai", "AI and workflow"), ("diagnostics", "Diagnostics"))
-BUILT_TABS = ("connections", "server", "ai")
+BUILT_TABS = ("connections", "server", "ai", "diagnostics")
 #: The records database card's fields, in the card's order (the password is a secret, drawn
 #: as set or unset and changed only by Replace…).
 FIELDS = ("records_db_host", "records_db_port", "records_db_name", "records_db_user")

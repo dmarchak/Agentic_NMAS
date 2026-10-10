@@ -78,3 +78,43 @@ pass; never this card's.
 There is no confirm step: turning writes off takes nothing away a person must keep. An
 operation that needs NetBox writes afterwards asks for its own confirm, which turns the switch
 back on.
+
+## Diagnostics: redaction {#redaction}
+
+Every line Mercury logs is masked as it is written, by a filter on every log handler. The
+**Redaction** card asks whether that works now: it builds a test record holding secret-shaped
+lines (a canary) and runs it through each handler's filters without writing it anywhere, and
+counts the handlers with no filter and the redactions that failed since start-up. **Check
+again** asks again; it writes nothing. Not healthy, it is also a row on Needs attention naming
+the handler and what got through: every handler gains its filter when Mercury starts, so a
+restart is the remedy, then a read here to see it healthy.
+
+## Diagnostics: drift checks {#drift}
+
+Mercury compares each device's running configuration with its golden on a schedule, one for
+every network; what it finds is on Needs attention. The **Drift checks** card sets the schedule
+and shows each network's state, its last run and its next.
+
+1. `check`: the schedule must be one of the seven offered (30 minutes to 24 hours); a network
+   turned off or on must exist. A refusal names what was sent and what is allowed.
+2. `write`: the schedule is written to the agent's timers and the checker re-arms; a network's
+   switch is written to its drift state with who and when.
+3. `record`: who, when and what changed are appended to the installation's settings record.
+
+**Check now** starts a network's check in the background (the schedule would run it anyway,
+only later) and is refused while one runs; the card redraws when the check records its
+result, and what it found is on Needs attention.
+
+## Diagnostics: in flight {#in-flight}
+
+The **In flight** card lists every network's held devices and running operations, each with
+who, its current step and how long it has held the device (a step quiet for too long reads
+stalled), and, folded, what finished in the last half hour, from the receipts. It redraws when
+a hold or a step moves. It is a read; **Read again** reads it now.
+
+## Diagnostics: the app's log {#log}
+
+The **app's log** card shows the last 200, 500 or 2000 lines of Mercury's own log, filtered by
+what a line contains, read when asked and never polled. Every line was masked as it was written
+(the redaction above); nothing here unmasks one. A log not written yet and one that cannot be
+read are said differently.

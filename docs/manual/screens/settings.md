@@ -29,9 +29,10 @@ What every network shares, standalone ones included: these are the installation'
 - **Commit author** (Connections): the name and email on the author line of Mercury's commits; the person who acted is in each commit's `Actor:` trailer.
 - **The assistant** (AI and workflow): the AI switch. Off, the chat answers that AI is off and makes no call to the model. On devices it is read-only: every command it sends is on the read-only allowlist. The workflow switches of today's page are not here: they change only the assistant's prompt text and leave with its rewrite.
 - **Background agent** (AI and workflow): its state, never a switch: off until Stage 8, when it becomes a responder that proposes changes for a person to confirm. Set on in the installation's settings file, the card says so, and that it starts only when Mercury restarts.
+- **Diagnostics**: is Mercury itself healthy, and what is it doing. **Redaction**: whether every log handler masks secrets, measured now (not healthy, it is also a Needs attention row). **Drift checks**: one schedule for every network, and each network's on or off, last and next run, with **Check now**. **In flight**: every network's running operations and what finished in the last half hour. **The app's log**: its last lines, filtered, read when asked (see [The installation's settings](installation-settings)).
 - **Server** (Server): the address and port Mercury listens on. They are read when Mercury starts, so a Save says the change waits for the next restart.
 - Every **Save**, **Replace** and **Turn off** is recorded in the installation's settings record with who, when and the names of what changed, never the values (see [The installation's settings](installation-settings)).
-- **Not here yet**, each said on the page and linked to today's Settings page: the Access and identity, Platforms and roles, and Diagnostics tabs.
+- **Not here yet**, each said on the page and linked to today's Settings page: the Access and identity, and Platforms and roles tabs.
 
 ## What is not here yet {#not-yet}
 

@@ -1,0 +1,53 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Board F4 (signed off 2026-10-10), Diagnostics: drift checks. One schedule for every network,
+    and each network's on or off, last and next run, with Check now; results stay Needs
+    attention rows. The card redraws when any drift run is recorded (the checker announces
+    `drift`): Check now runs in the background and the card says when it finished. From
+    modules/installation_diagnostics.drift. -#}
+{%- set STATE = {'idle': ('on', 'ok'), 'running': ('checking now', 'acc'), 'disabled': ('off', 'neutral'),
+                 'unreadable': ('unreadable', 'danger')} -%}
+<section class="card set-card" id="diag-drift" aria-labelledby="h-diag-drift"
+         hx-get="{{ url_for('settings_v2.diag_drift') }}" hx-trigger="nmas:drift from:body" hx-swap="outerHTML">
+  <div class="card-head"><h2 id="h-diag-drift">Drift checks</h2>{{ badge('every network', 'neutral') }}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ refused }}.</div></div>
+  {%- endif %}
+  {%- if done %}
+  <div class="notice notice-{{ 'muted' if done.recorded else 'warn' }} set-result" role="status">{{ icon('tick', 16) }}<div>{{ done.words }}{% if not done.recorded %} Its record could not be written: {{ done.record_error }}.{% endif %}</div></div>
+  {%- endif %}
+  <form class="set-form" method="post" action="{{ url_for('settings_v2.diag_drift_interval') }}"
+        hx-post="{{ url_for('settings_v2.diag_drift_interval') }}" hx-target="#diag-drift" hx-swap="outerHTML">
+    <label for="f-drift-interval">Every</label>
+    <div><select id="f-drift-interval" name="interval_s">{% for s, words in dr.choices %}<option value="{{ s }}"{% if s == dr.interval_s %} selected{% endif %}>{{ words }}</option>{% endfor %}</select>
+      <span class="set-origin">one schedule for every network</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'drift', op='the drift schedule') }}</span>
+    </div>
+  </form>
+  <div class="table-wrap">
+  <table class="table set-table">
+    <thead><tr><th>Network</th><th>State</th><th>Last</th><th>Next</th><th></th></tr></thead>
+    <tbody>
+    {%- for n in dr.rows %}
+    <tr>
+      <td>{{ n.name }}</td>
+      <td>{{ badge(STATE[n.state][0], STATE[n.state][1]) }}{% if n.state == 'disabled' and n.disabled_by %} <span class="muted small">by {{ n.disabled_by }}{% if n.disabled_at %} {{ n.disabled_at }}{% endif %}</span>{% endif %}{% if n.why %} <span class="muted small">{{ n.why }}</span>{% endif %}</td>
+      <td>{% if n.last_iso %}{{ stamp(n.last_iso) }}{% if n.last_words %} <span class="muted small{% if not n.last_ok %} warn-text{% endif %}">{{ n.last_words }}</span>{% endif %}{% else %}<span class="muted">never</span>{% endif %}</td>
+      <td>{% if n.next_iso %}{{ stamp(n.next_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="set-row-acts">
+        {%- if n.state in ('idle', 'disabled') %}
+        <span class="op-act"><button type="button" class="btn btn-small" hx-post="{{ url_for('settings_v2.diag_drift_check', network=n.name) }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Check now</span><span class="op-busy">Starting…</span></button></span>
+        {%- endif %}
+        {%- if n.state == 'disabled' %}
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='on') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Turn on</span><span class="op-busy">Turning on…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks on') }}</span>
+        {%- elif n.state in ('idle', 'running') %}
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='off') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks off') }}</span>
+        {%- endif %}
+      </td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small">Results are Needs attention rows. Check now runs in the background; this card redraws when it finishes.</p>
+</section>

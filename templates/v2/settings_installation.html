@@ -31,6 +31,12 @@
 {%- if tab == 'ai' %}
 {% include "v2/_install_agent.html" %}
 {%- endif %}
+{%- if tab == 'diagnostics' %}
+{% include "v2/_diag_redaction.html" %}
+{% include "v2/_diag_drift.html" %}
+{% include "v2/_diag_inflight.html" %}
+{% include "v2/_diag_log.html" %}
+{%- endif %}
 </div>
 {%- else %}
 <p class="notice notice-muted">{{ icon('info', 16) }}<span><strong>{{ dict(tabs)[tab] }}</strong> is on <a data-todays-page="installation_settings" href="{{ url_for('index') }}">today's Settings page</a> until it is drawn here.</span></p>

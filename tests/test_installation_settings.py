@@ -66,7 +66,7 @@ class TestThePage:
         assert "These settings apply to every network" in html
 
     def test_unbuilt_tabs_say_so_and_link_to_today_s_page(self, networks):
-        for key in ("access", "platforms", "diagnostics"):
+        for key in ("access", "platforms"):
             _r, tab = _get(networks, f"/v2/settings/installation?tab={key}")
             assert 'data-todays-page="installation_settings"' in tab and "until it is drawn here" in tab
             assert 'id="records-db"' not in tab
@@ -221,6 +221,125 @@ def _strings_naming_todays_settings(paths):
                     and id(node) not in docs and TODAYS_SETTINGS.search(node.value):
                 out.append((str(p), node.value))
     return out
+
+
+def _section(html, sid):
+    m = re.search(rf'<section class="card set-card[^"]*" id="{sid}".*?</section>', html, re.S)
+    assert m, f"no {sid} card"
+    import html as html_mod
+    return html_mod.unescape(re.sub(r"\s+", " ", m.group(0)))
+
+
+UNHEALTHY = {"healthy": False, "canary_handlers_checked": 3, "canary_leaking": 1,
+             "canary_leaking_detail": [{"handler": "StreamHandler",
+                                        "leaked_shapes": ["password"], "ok": False}],
+             "redaction_failures": 0, "first_failure_at": "", "last_failure_at": "",
+             "last_error": "", "log_handlers_total": 3, "log_handlers_unprotected": 1,
+             "unprotected_handler_types": ["StreamHandler"]}
+
+
+class TestDiagnostics:
+    """Board F4 (signed off 2026-10-10), Diagnostics: redaction (C624), drift checks, in flight
+    and the app's log, nothing on the tab sending a person to today's page."""
+
+    def test_the_tab_draws_its_four_cards_and_no_link_to_today_s_page(self, networks):
+        _r, html = _get(networks, "/v2/settings/installation?tab=diagnostics")
+        for sid in ("diag-redaction", "diag-drift", "diag-inflight", "diag-log"):
+            _section(html, sid)
+        assert 'data-todays-page' not in html.split('id="tab-body"')[1]
+
+    def test_redaction_healthy_and_not_and_its_needs_attention_row(self, networks, monkeypatch):
+        from modules import attention, redact
+        card = _section(_get(networks, "/v2/settings/installation/diagnostics/redaction")[1],
+                        "diag-redaction")
+        assert "healthy" in card and "NOT healthy" not in card
+        assert attention.redaction_source()["rows"] == [], "healthy: a state, never a row"
+        monkeypatch.setattr(redact, "health", lambda: dict(UNHEALTHY))
+        card = _section(_get(networks, "/v2/settings/installation/diagnostics/redaction")[1],
+                        "diag-redaction")
+        assert "NOT healthy" in card and "StreamHandler (password)" in card
+        (row,) = attention.redaction_source()["rows"]
+        assert row["level"] == "danger" and "StreamHandler" in row["cause"]
+        assert row["action"]["href"] == "/v2/settings/installation?tab=diagnostics"
+        assert attention.CLEARS[("redaction", "unhealthy")][0] == ("resolves",)
+
+    def test_the_drift_schedule_saves_one_of_its_choices_and_records_it(self, networks):
+        from modules import installation_settings as I
+        from modules.drift_check import _get_interval
+        _r, html = _post(networks, "/v2/settings/installation/diagnostics/drift/interval",
+                         {"interval_s": "7200"})
+        assert int(_get_interval()) == 7200 and "Saved by" in _section(html, "diag-drift")
+        assert I.changes(kinds=("drift_interval",))["rows"][0]["fields"] == [
+            "drift_check_interval"]
+        r, html = _post(networks, "/v2/settings/installation/diagnostics/drift/interval",
+                        {"interval_s": "60"})
+        assert r.status_code == 409 and ("is not one of the drift schedule's choices"
+                                         in _section(html, "diag-drift"))
+        assert int(_get_interval()) == 7200
+
+    def test_a_network_turned_off_and_on_says_who_and_is_recorded(self, networks):
+        from modules import installation_settings as I
+        from modules.drift_check import _is_disabled
+        _r, html = _post(networks, "/v2/settings/installation/diagnostics/drift/Branch/off")
+        assert _is_disabled("Branch") and "turned off by" in _section(html, "diag-drift")
+        assert I.changes(kinds=("drift_off",))["rows"][0]["network"] == "Branch"
+        _r, html = _post(networks, "/v2/settings/installation/diagnostics/drift/Branch/on")
+        assert not _is_disabled("Branch")
+        r, html = _post(networks, "/v2/settings/installation/diagnostics/drift/Nowhere/off")
+        assert r.status_code == 409 and "'Nowhere' is not a network" in _section(html, "diag-drift")
+
+    def test_check_now_starts_one_in_the_background_and_refuses_a_second(self, networks,
+                                                                         monkeypatch):
+        from modules.drift_check import get_checker
+        started = []
+        monkeypatch.setattr(get_checker(), "trigger", lambda name="": started.append(name))
+        _r, html = _post(networks, "/v2/settings/installation/diagnostics/drift/Default/check")
+        assert started == ["Default"] and "redraws when it finishes" in html
+        monkeypatch.setattr(get_checker(), "is_running", lambda name="": True)
+        r, html = _post(networks, "/v2/settings/installation/diagnostics/drift/Default/check")
+        assert r.status_code == 409 and "already running" in html and started == ["Default"]
+
+    def test_a_recorded_drift_run_is_announced(self, networks, monkeypatch):
+        from modules import invalidation
+        from modules.drift_check import get_checker
+        heard = []
+        monkeypatch.setattr(invalidation, "announce", lambda keys, by, ok=True: heard.append(
+            (tuple(keys), by)))
+        get_checker().record("Default", {"ok": True, "summary": "0 drifted"})
+        assert heard == [(("drift",), "drift-check")]
+
+    def test_the_app_log_reads_its_tail_filtered_and_says_absent_and_unreadable(
+            self, networks, monkeypatch, tmp_path):
+        from modules import app_log
+        log = tmp_path / "device_manager.log"
+        monkeypatch.setattr(app_log, "path", lambda: str(log))
+        card = _section(_get(networks, "/v2/settings/installation/diagnostics/log")[1],
+                        "diag-log")
+        assert "does not exist yet" in card
+        log.write_text("".join(f"line {i} {'WARNING' if i % 2 else 'INFO'}\n"
+                               for i in range(600)))
+        card = _section(_get(networks, "/v2/settings/installation/diagnostics/log?lines=200"
+                                       "&contains=warning")[1], "diag-log")
+        assert "100 of the last 200 lines contain \"warning\"" in card
+        assert "line 599 WARNING" in card and "line 598 INFO" not in card
+        log.chmod(0)
+        try:
+            card = _section(_get(networks, "/v2/settings/installation/diagnostics/log")[1],
+                            "diag-log")
+            assert "could not be read" in card
+        finally:
+            log.chmod(0o600)
+
+    def test_in_flight_reads_every_network(self, networks, monkeypatch):
+        from modules.nsot import device_ops
+        monkeypatch.setattr(device_ops, "in_flight", lambda name, now: [
+            {"device": "r2", "operation": "deploy", "words": "deploy", "actor": "op@x",
+             "step_words": "verify", "held_for_s": 125, "stalled": False}]
+            if name == "Branch" else [])
+        card = _section(_get(networks, "/v2/settings/installation/diagnostics/inflight")[1],
+                        "diag-inflight")
+        assert "1 running" in card and "r2" in card and "Branch" in card and "2 min 5 s" in card
+        assert "could not be read" not in card, "a network with no receipts yet is not unread"
 
 
 class TestNoTextSendsAPersonToTodaysSettings:

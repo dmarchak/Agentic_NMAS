@@ -100,6 +100,8 @@ ROW_KINDS = {
                                    "rotate it"),
     ("credential-health", "unread"): ("a credential's expiry cannot be read",
                                       "read it where the service shows it"),
+    ("redaction", "unhealthy"): ("log redaction is not working: a secret could reach a log",
+                                 "read which handler and what got through, then restart Mercury"),
     ("ci", "verdict"): ("the running commit has no CI pass",
                         "update to a release CI passed, or find why CI could not be asked"),
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
@@ -197,6 +199,8 @@ CLEARS = {
                                    "180 days"),
     ("credential-health", "unread"): (("resolves",), "the reader (hourly) reads its expiry"),
     ("ci", "verdict"): (("resolves",), "the host runs a commit CI passed"),
+    ("redaction", "unhealthy"): (("resolves",), "every log handler masks the canary and no "
+                                 "redaction has failed: read again at each read of this page"),
     ("reachability", "not-answering"): (("resolves",), "every device answers its probe again "
                                         "(every 5 s)"),
     ("netbox-secrets", "held"): (("resolves",), "NetBox no longer holds the credential (masked "
@@ -1574,6 +1578,48 @@ _CI_ROWS = {"failed": ("its CI run failed", "danger"),
             "could_not_ask": ("whether it passed CI could not be asked", "unknown")}
 
 
+def redaction_source(health=None) -> dict:
+    """C624: log redaction not working is a row. `redact.health()` runs the canary through every
+    log handler's filters (built and filtered, never emitted: the read writes nothing) and
+    counts the redactions that failed; nothing drew it before. Healthy is a state, said under
+    What was checked."""
+    from modules import redact
+
+    started = time.time()
+    try:
+        h = redact.health() if health is None else health
+    except Exception as exc:                          # noqa: BLE001
+        return source_result("redaction", "Log redaction", read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"could not be measured: {type(exc).__name__}: {exc}")
+    took = int((time.time() - started) * 1000)
+    checked = (f"{h.get('canary_handlers_checked', 0)} log handlers, "
+               f"{h.get('log_handlers_unprotected', 0)} unprotected, "
+               f"{h.get('redaction_failures', 0)} redactions failed")
+    if h.get("healthy"):
+        return source_result("redaction", "Log redaction", read_at=started, took_ms=took,
+                             checked=checked + ": healthy")
+    leaks = [f"{d.get('handler')} ({', '.join(d.get('leaked_shapes') or [])})"
+             for d in h.get("canary_leaking_detail") or []]
+    cause = "; ".join(filter(None, [
+        f"the canary got through {len(leaks)} handler(s): {', '.join(leaks)}" if leaks else "",
+        (f"{h.get('log_handlers_unprotected')} handler(s) have no redacting filter: "
+         f"{', '.join(h.get('unprotected_handler_types') or [])}")
+        if h.get("log_handlers_unprotected") else "",
+        (f"{h.get('redaction_failures')} redaction(s) failed, the last at "
+         f"{h.get('last_failure_at')}: {h.get('last_error')}")
+        if h.get("redaction_failures") else ""])) or "redact.health() reports unhealthy"
+    rows = [row(source="redaction", kind="unhealthy", key="log", level="danger",
+                what="Log redaction is not working: a secret could reach a log",
+                cause=cause,
+                action={"label": "Read which handler and what got through on Settings › "
+                                 "Installation › Diagnostics, then restart Mercury: every "
+                                 "handler gains its filter at start-up",
+                         "href": "/v2/settings/installation?tab=diagnostics"})]
+    return source_result("redaction", "Log redaction", read_at=started, took_ms=took,
+                         rows=rows, checked=checked)
+
+
 def ci_source(cached=None) -> dict:
     """A running commit CI did not pass is a row; a verified one is not."""
     from modules import reader_job
@@ -2667,7 +2713,7 @@ def unowned_words(u: dict) -> str:
 
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
-           grafana_source, integrations_source, ci_source,
+           grafana_source, integrations_source, ci_source, redaction_source,
            reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
            host_steps_source, adjacency_source, lab_startup_source, restart_source,
@@ -2691,6 +2737,9 @@ SOURCE_KEYS = {
     "grafana_source": ("alerts", "inventory"),   # inventory: a device marked drained
     "integrations_source": ("integration_health",),
     "ci_source": ("ci_verdict",),
+    # Redaction changes only inside this process (a handler added unfiltered); it is measured
+    # at each read of the page, and a settings change is the nearest a change announces.
+    "redaction_source": ("settings",),
     "reachability_source": ("reachability",),
     "netbox_secrets_source": ("netbox",),
     "credential_health_source": ("credential_health",),
