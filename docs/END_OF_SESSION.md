@@ -13,8 +13,8 @@ Bindings… and Seed the library… (2e89ffc); blocker 6, Reload (P.14's plain f
 declared first, 4cf33e0). All six cutover blockers are built. Nice-to-haves done: batch deploy
 (d8651d0), Re-apply (ec1f11b), C633 with C642 (a42d8df), the golden reveal (74b50a3), Adopt on
 Devices (board G, f09ac7c, finished as the board ends it in 83fbb5a), bulk intent (board D),
-Templates › Coverage. No v2 page sends a person to today's pages any more. CUTOVER's rows still
-PLANNED: credential profiles, the topology service; then DHCP (C529), boards L and M, C635, C641,
+Templates › Coverage (8250677), Credentials › Profiles. No v2 page sends a person to today's
+pages any more. CUTOVER's rows still PLANNED: the topology service; then DHCP (C529), boards L and M, C635, C641,
 7.5 to 7.7, the 7.8 removals and the walk. Nothing deployed since the mode began: the walk at
 the end deploys and runs each.
 

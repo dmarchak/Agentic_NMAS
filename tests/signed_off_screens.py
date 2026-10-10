@@ -53,7 +53,10 @@ SIGNED_OFF = {
                                        "Credentials (its placement signed off 2026-10-03, the card "
                                        "the same night's revision): the record's state, the export "
                                        "(A), checked intact by the browser (B), Check a break-glass "
-                                       "file (C) and the offline drill (D), every section built"),
+                                       "file (C) and the offline drill (D), every section built. "
+                                       "Its Profiles tab: the board drawn 2026-10-10 under the "
+                                       "Phase 7 mode (docs/STANDING_APPROVAL_LOG.md), counted as "
+                                       "signed off"),
     "help.html": ("2026-10-02", "NSOT_GUI_BRIEF 10b, the manual's mockup"),
     "templates.html": ("2026-10-05", "7.6's Templates, boards A to C (canvas v47, page '7.6 "
                                      "Source of truth, Templates'), signed off 2026-10-05: the "

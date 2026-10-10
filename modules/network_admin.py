@@ -102,10 +102,15 @@ def delete_preview(name: str) -> dict:
     remote = (f"{config.get('owner')}/{config.get('repo')}" if config else
               ("its remote record cannot be read" if unreadable else ""))
     busy = device._list_busy(name)
+    # C645: a NetBox network whose devices take their logins from this one loses them with it
+    # (today's delete warned through /inventory/dependents; v2's said nothing).
+    from modules.inventory.source_config import lists_depending_on
+    dependents = lists_depending_on(name)
     out = {"name": name, "devices": devices, "goldens": goldens, "commits": commits,
-           "remote": remote, "busy": busy, "refused": busy,
+           "remote": remote, "busy": busy, "refused": busy, "dependents": dependents,
            "goes_to": f"lists_removed/{os.path.basename(folder)}-<the time of the delete>"}
-    out["fingerprint"] = _fp(["delete", name, devices, goldens, commits, remote, bool(busy)])
+    out["fingerprint"] = _fp(["delete", name, devices, goldens, commits, remote, bool(busy),
+                              dependents])
     return out
 
 

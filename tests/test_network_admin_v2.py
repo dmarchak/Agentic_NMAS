@@ -99,6 +99,17 @@ class TestDelete:
         assert "It holds 2 devices, 0 committed goldens and 0 commits" in html
         assert "Its data survives" in html and "lists_removed/branch-" in html
 
+    def test_networks_taking_their_logins_from_it_are_named(self, networks):
+        """C645: a NetBox network inheriting this one's credential list loses its devices'
+        logins with it; the preview names it, and a change to that set moves the fingerprint."""
+        _r, before = _post(networks, "/v2/settings/network/Branch/delete/preview")
+        assert "take" not in before.split("Its data survives")[0].split("It holds")[1]
+        (networks["dir"] / "lists" / "lab_3" / "source.json").write_text(json.dumps(
+            {"source": "netbox", "credential_list": "Branch"}))
+        _r, html = _post(networks, "/v2/settings/network/Branch/delete/preview")
+        assert "1 other network takes its devices' logins from Branch:</strong> Lab-3" in html
+        assert _fp(html) != _fp(before), "the confirm is bound to who depends on it"
+
     def test_the_wrong_name_typed_deletes_nothing(self, networks):
         _r, pv = _post(networks, "/v2/settings/network/Branch/delete/preview")
         r, html = _post(networks, "/v2/settings/network/Branch/delete",

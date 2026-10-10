@@ -48,7 +48,9 @@
               // stepper (C370).
               'device_progress',
               // A template approved or revoked anywhere: the Templates table re-reads (C516).
-              'templates'];
+              'templates',
+              // A credential profile saved or deleted: Credentials › Profiles re-reads.
+              'credentials'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -309,6 +311,7 @@
   function relayDeviceProgress() { relay('device_progress'); }
   function relayTemplates() { relay('templates'); }
   function relaySave() { relay('save'); }
+  function relayCredentials() { relay('credentials'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -389,6 +392,7 @@
     NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);
     NMAS.subscribe('templates', 'v2Templates', relayTemplates);
     NMAS.subscribe('save', 'v2Save', relaySave);
+    NMAS.subscribe('credentials', 'v2Credentials', relayCredentials);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

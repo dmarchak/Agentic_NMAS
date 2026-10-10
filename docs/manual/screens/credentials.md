@@ -46,3 +46,21 @@ overdue.
 A device's credential is found in this order, first match wins: its own override, the list's
 designated credential list, a role profile, a site profile, the default profile. Every device
 shows where its credential came from. Values are write-only: none is ever shown back.
+
+## Profiles {#profiles}
+
+The **Profiles** tab lists the credential profiles, which apply to every network on this
+installation. A device a NetBox inventory brings in carries no login of its own, so it is
+given one in the order above; a local inventory's devices carry theirs in it and never read
+a profile. Each row says which devices it gives its login to: `role:<role>` every device with
+that role, `site:<site>` every device at that site, `default` every device nothing before it
+covers. A profile under any other name is stored and read by nothing, and its row says so.
+The password and enable secret are shown only as set or not set.
+
+**Add a profile…** asks what it covers (a role, a site, or every device), the username, the
+password and, if its devices need one, the enable secret; a new profile needs the username and
+the password. **Edit…** keeps any field you leave empty. **Delete…** says what the profile
+covered and that those devices then take their login from the next source; one no source
+covers is skipped by its next NetBox import, which says so. Each needs a verified person, and
+each is recorded on History (Credential profiles): who, which profile, and the fields set,
+never a value.

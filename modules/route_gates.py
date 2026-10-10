@@ -230,6 +230,10 @@ GATES = {
     "inventory.set_source": _g(K, "changes where a list's inventory comes from"),
     "inventory.set_order": _g(K, "reorders a list"),
     "inventory.credential_profiles": _g(K, "writes credential profiles"),
+    "credential_profiles_v2.save": _g(K, "saves a credential profile from Credentials › "
+                                         "Profiles, recorded (who, which, the fields set)"),
+    "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "
+                                           "Profiles, recorded"),
     "inventory.delete_credential_profile": _g(K, "deletes a credential profile"),
     "inventory.copy_inherited": _g(K, "copies inherited credentials into device overrides"),
     "list_variables_set": _g(K, "writes list variables"),

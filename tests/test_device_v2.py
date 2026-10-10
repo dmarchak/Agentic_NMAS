@@ -644,7 +644,8 @@ class TestTheShippedScripts:
                                                     # Tier 2's card while its command runs.
                                                     "/v2/device/r3/privileged?job=x&result="
                                                     "20261008T000000000000Z-" + "0" * 32,
-                                                    "/v2/templates?list=Lab"))
+                                                    "/v2/templates?list=Lab",
+                                                    "/v2/credentials/profiles?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -667,7 +668,8 @@ class TestTheShippedScripts:
         # +1 2026-10-10: records (the records-check reader; the Record stores section and
         # Needs attention's records source).
         # +1 2026-10-10: reload (Reload's card listens for its preview's and its run's end).
-        assert len(keys) == 34
+        # +1 2026-10-10: credentials (Credentials › Profiles re-reads a profile saved elsewhere).
+        assert len(keys) == 35
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

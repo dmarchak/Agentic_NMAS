@@ -16,6 +16,9 @@
   <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>{{ pv.refused }}.</span></p>
   {%- elif pv %}
   <p>Deleting <strong>{{ pv.name }}</strong> removes it from every page and every scheduled job. It holds {{ pv.devices }} device{{ '' if pv.devices == 1 else 's' }}, {{ pv.goldens }} committed golden{{ '' if pv.goldens == 1 else 's' }} and {{ pv.commits }} commit{{ '' if pv.commits == 1 else 's' }}{% if pv.remote %}, published to {{ pv.remote }} (the remote keeps its copy){% endif %}.</p>
+  {%- if pv.dependents %}
+  <div class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<p><strong>{{ pv.dependents | length }} other network{{ 's take' if pv.dependents | length != 1 else ' takes' }} its devices' logins from {{ pv.name }}:</strong> {{ pv.dependents | join(', ') }}. Deleted, their devices are given the next login in the order (a profile for their role or site, then the default), and any with none is skipped by its next NetBox import. Set those networks' credential list, or a profile on Credentials › Profiles, first.</p></div>
+  {%- endif %}
   <p><strong>Its data survives:</strong> its folder is moved to <span class="mono">{{ pv.goes_to }}</span> on this host, never erased. No device is contacted, and NetBox is not touched.</p>
   <form class="set-form" method="post" action="{{ url_for('settings_v2.network_delete', list_name=pv.name) }}"
         hx-post="{{ url_for('settings_v2.network_delete', list_name=pv.name) }}" hx-target="#network-delete" hx-swap="outerHTML">

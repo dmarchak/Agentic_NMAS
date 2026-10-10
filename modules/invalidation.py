@@ -163,6 +163,8 @@ DECLARED = {
     "inventory.copy_inherited": ("credentials",),
     "inventory.credential_profiles": ("credentials",),
     "inventory.delete_credential_profile": ("credentials",),
+    "credential_profiles_v2.save": ("credentials",),
+    "credential_profiles_v2.delete": ("credentials",),
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items

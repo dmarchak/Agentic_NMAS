@@ -791,6 +791,26 @@ def updates(ctx):
                  for o in got.get("rows") or []])
 
 
+def credential_profiles(ctx):
+    """Each change to a credential profile from Credentials › Profiles: who, which profile, and
+    the fields set, never a value. Installation-wide, so the fleet's, never one device's."""
+    from modules import credential_changes
+    if ctx["device"]:
+        return _out()
+    got = credential_changes.entries()
+    if got["error"]:
+        return _out(errors=[f"the credential profile record could not be read: {got['error']}"])
+    return _out([_event(r.get("at"), "credential",
+                        f"Credential profile {r.get('profile', '?')} "
+                        f"{'deleted' if r.get('action') == 'deleted' else 'saved'}"
+                        + (f": {', '.join(r.get('fields') or [])} set"
+                           if r.get("fields") else ""), [],
+                        who=_who(r.get("actor", ""), r.get("verified", "")),
+                        record=[("Profile", r.get("profile")), ("Action", r.get("action")),
+                                ("Fields set", ", ".join(r.get("fields") or []))])
+                 for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
+
+
 def show_commands(ctx):
     """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
     commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
@@ -889,7 +909,7 @@ SOURCES = {
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
-    "reloads": reloads,
+    "reloads": reloads, "credential_profiles": credential_profiles,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -910,6 +930,7 @@ KIND_GROUPS = (
                                ("acknowledged", "Acknowledgements", ("acknowledged",)),
                                ("freshness", "Freshness authorised", ("freshness",)),
                                ("breakglass", "Break-glass exports", ("breakglass",)),
+                               ("credentials", "Credential profiles", ("credential",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),
