@@ -85,6 +85,8 @@ NOT_AN_OPERATION = {
     ("_template_edit.html", "Open it again"): "opens the template again on what is committed "
                                               "now, a read",
     ("_template_edit.html", "Close"): "puts the Templates table back, a read",
+    ("_reload.html", "btn"): "Cancel or Close: puts back the tab the card replaced, a read",
+    ("_reload.html", "Its break-glass record"): "opens Credentials, where the record is, a read",
     ("_template_bindings.html", "btn"): "Cancel or Close: puts the Templates table back, a read",
     ("_onboard_add.html", "Close"): "returns to Devices, a read; nothing was created",
     ("_onboard_add.html", "Open 's page"): "opens the new device's pending page, a read",

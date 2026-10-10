@@ -39,6 +39,9 @@
               'records',
               // A Tier 2 run finished (modules/nsot/privileged.py): its card reads its record.
               'privileged',
+              // A Reload's preview or run finished (modules/nsot/reload_op.py): its card
+              // reads it by id (P.14, cutover blocker 6).
+              'reload',
               // Coverage's not-reporting cells: when each device's data last arrived.
               'coverage_reporting',
               // A held device's operation reached its next step: a running card redraws its
@@ -302,6 +305,7 @@
   function relayDeviceHolds() { relay('device_holds'); }
   function relayRotation() { relay('rotation'); }
   function relayPrivileged() { relay('privileged'); }
+  function relayReload() { relay('reload'); }
   function relayDeviceProgress() { relay('device_progress'); }
   function relayTemplates() { relay('templates'); }
   function relaySave() { relay('save'); }
@@ -381,6 +385,7 @@
     NMAS.subscribe('device_holds', 'v2DeviceHolds', relayDeviceHolds);
     NMAS.subscribe('rotation', 'v2Rotation', relayRotation);
     NMAS.subscribe('privileged', 'v2Privileged', relayPrivileged);
+    NMAS.subscribe('reload', 'v2Reload', relayReload);
     NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);
     NMAS.subscribe('templates', 'v2Templates', relayTemplates);
     NMAS.subscribe('save', 'v2Save', relaySave);

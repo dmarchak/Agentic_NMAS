@@ -273,7 +273,9 @@ def device(name):
                       _retry_card(ref, dev, tab, request.args) if op == "retry" else
                       _seed_card(ref, dev, tab) if op == "seed" else
                       _retire_card(ref, dev, tab, request.args) if op == "retire" else
-                      _privileged_card(ref, dev, tab, request.args) if op == "privileged" else None)
+                      _privileged_card(ref, dev, tab, request.args) if op == "privileged" else
+                      {"state": "starting", "op": "reload", "host": dev.get("hostname", ""),
+                       "list": ref.name, "back": tab} if op == "reload" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -786,6 +788,84 @@ def rotate_job_card(name, job):
     c = device_actions.rotate_job_card(ref, dev.get("hostname", ""), job, capture_job.get(job))
     c.update(back=_back(request.args), ip=dev.get("ip", ""))
     return _strict(render_template("v2/_rotate.html", c=c))
+
+
+# ---------------------------------------------------------------------------
+# Reload (P.14, cutover blocker 6): a preview job that reads the device and judges the six
+# gates, then a confirm with a reason that starts the run as a job (modules/nsot/reload_op.py).
+# ---------------------------------------------------------------------------
+
+def _reload_card(c: dict, code: int = 200):
+    return _strict(render_template("v2/_reload.html", c=c), code)
+
+
+@bp.route("/device/<name>/reload", methods=["GET"])
+def reload_card(name):
+    """Reload…: the card, which starts its own read of the device (a POST on load)."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _reload_card({"state": "starting", "host": dev.get("hostname", ""),
+                         "list": ref.name, "back": _back(request.args)})
+
+
+@bp.route("/device/<name>/reload/start", methods=["POST"])
+def reload_start(name):
+    """Start the preview's read of the device as a job; the card waits for its announcement.
+    Reads only."""
+    from modules import identity
+    from modules.nsot import reload_op
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_reload.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    job = reload_op.preview_start(ref.name, host, identity.identify(request).actor or "")
+    return _reload_card({"state": "reading", "host": host, "list": ref.name, "job": job,
+                         "back": _back(request.form)})
+
+
+@bp.route("/device/<name>/reload/job/<job>", methods=["GET"])
+def reload_job_card(name, job):
+    """The card for its job: the preview, the run with its stepper, its result, or why there
+    is none. Re-read when the job announces `reload` (and each step, `device_progress`)."""
+    from modules import device_actions
+    from modules.nsot import capture_job
+    from modules.preview_confirm import confirm_part
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    c = device_actions.reload_job_card(ref, dev.get("hostname", ""), job, capture_job.get(job),
+                                       may=confirm_part(request, "confirm"))
+    c.update(back=_back(request.args))
+    return _reload_card(c)
+
+
+@bp.route("/device/<name>/reload/confirm", methods=["POST"])
+def reload_confirm(name):
+    """Start the confirmed reload as a job, as the verified person, with the stated reason,
+    bound to the preview's fingerprint; the run re-reads the device and refuses one that
+    moved."""
+    from modules import device_actions, identity
+    from modules.nsot import reload_op
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_reload.html")
+    if refusal is not None:
+        return refusal
+    host, back = dev.get("hostname", ""), _back(request.form)
+    got = reload_op.confirm_and_start(ref.name, host, (request.form.get("fingerprint") or "")
+                                      .strip(), request.form.get("reason", ""),
+                                      actor=identity.identify(request).actor or "",
+                                      ident=identity.verified_identity())
+    if "error" in got:
+        return _reload_card({"state": "refused", "host": host, "list": ref.name, "back": back,
+                             "error": got["error"]}, got["status"])
+    return _reload_card({"state": "reloading", "host": host, "list": ref.name, "back": back,
+                         "job": got["job"],
+                         "steps": device_actions.job_steps("reload", ref.name, host)})
 
 
 @bp.route("/device/<name>/when-free", methods=["GET"])

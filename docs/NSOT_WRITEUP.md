@@ -3260,6 +3260,37 @@ The landing page drew every section 1a source from stored or cached values, each
    - **Estimate versus actual:** no forecast was made. Measured here: F4's four tabs took 8, 42, 9 and 17 minutes of commit time after its sign-off commit (6a09233, 18:27), the longest the one with a new module and a Needs attention source. That rate is the basis for a forecast of the next settings-kind screen.
 6. **Where it left the product.** Every installation setting is on v2: drawn, or read-only with its reason. `installation_settings` has left the cutover's gap list (`tests/todays_page_links.py`). None of it is deployed yet.
 
+#### 7.D — The six cutover blockers (networks, NetBox, onboarding, Capture's reason, templates, Reload)
+
+*Written at close, 2026-10-10 (UTC), the turn the sixth was committed. The six were one sub-task in the operator's order ("the six cutover blockers in dependency order"), so they have one entry.*
+
+1. **What it was.** CUTOVER.md, re-measured against the route map (C630), named six things only today's pages could do. Each was built on v2 under the Phase 7 operating mode, its board drawn by the agent and counted as signed off, each decision logged in docs/STANDING_APPROVAL_LOG.md:
+   - **Networks:** the top bar's picker, each verified person's own choice; create and delete (a deleted network's data moved aside, never erased); a network's inventory source.
+   - **NetBox:** import and remove as preview jobs, the confirm bound to the preview's token and able to turn writes on (C619).
+   - **Onboarding:** Add device (static, DHCP, ZTP by MAC), and a pending device's Verify, bootstrap config and Abandon.
+   - **Capture's reason** for a shrink, and its What next by direction (C486).
+   - **Templates:** Edit…, Bindings…, and Seed the library….
+   - **Reload** (P.14's plain form).
+2. **How it was implemented.**
+   - **One core for today's routes and v2's.** Today's onboarding, NetBox and template code was taken out of its routes into functions both call (`routes/onboard.py`'s cores, `modules/netbox_ops.py`, `template_write.commit`), so v2 adds screens, not second implementations.
+   - **Confirms bound to previews where today's were unbound.** Onboarding's Create, compared field by field with the reviewed plan (CONCURRENCY_AUDIT R36). Abandon's dry run, taken again under the device's hold. The template editor's base blob. Bindings' file and change. Seeding's library signature. Reload's read of the device.
+   - **Reload's blast radius from records, not a probe.** Committed intent's subnets, and this host's own addresses.
+3. **Issues encountered.**
+   - A read that created a folder: the reload record's path resolved through `get_list_data_dir`, caught by the store-isolation teardown.
+   - A preview race: NetBox's "importing" was written after its thread finished.
+   - IOS-XE's `bootflash:x,12;` boot variable was parsed as a file name.
+   - Reload's run refused itself, its busy check seeing its own hold.
+   - A test that skipped whenever it ran (no banner block in the shipped template), rewritten to test.
+   - Twice a gate run caught what the targeted runs had not: a 500 px overflow from a second row control, and a pinned signature.
+   - Measured and not a finding: Approve…'s check does not leak a golden's secret, because the comparison masks it.
+4. **How they were resolved.** Each defect was fixed in the commit that found it. A control for every new check, each failing its aimed test, with two tests rewritten when their controls passed: the VLAN rule's planted case lacked a device on the switch's own subnet, and the missing-image test also failed on the boot variable. C486, C619, C638, C639 and C640 were closed; C641 and C635 were registered.
+5. **Numbers.**
+   - **Commits:** ten build commits, from eda63ea (21:51 UTC−6, 2026-10-09) to Reload's, about 3 h of commit time across the six.
+   - **Tests:** 126 new test functions in eleven files, three walking a real browser.
+   - **Today's-page links:** the gaps fell from seven to four (`tests/todays_page_links.py`).
+   - **Estimate versus actual:** the forecast was 2 to 3 h a blocker, from the F boards' rate. Measured: about 1 h each for networks, NetBox, onboarding and templates, 15 minutes for Capture's reason, and about 1 h 40 min for Reload, the only one with a new device-changing run. That is the basis for forecasting the nice-to-haves, which are screens of the same kind.
+6. **Where it left the product.** Everything today's pages did that v2 must do before cutover is on v2. The four remaining today's-page links (Plan a deploy for several devices, Re-apply, Logs, DHCP) are nice-to-haves or C633. None of it is deployed yet, and none has run against a device or the real NetBox: the walk at the end of Phase 7 does that.
+
 ## Part III. Side campaigns
 
 Threads that ran across stages rather than inside one: each started from one finding and followed its class. Their commits interleave with the stages', so each entry states the rule that selected them.

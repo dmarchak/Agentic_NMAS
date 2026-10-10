@@ -967,6 +967,34 @@ def edit_template():
     ])
 
 
+def reload():
+    return svg(470, (
+        "Reloading a device. The preview reads it (running and startup configurations, its "
+        "image and boot variable) and judges six gates: it boots what it runs, its golden and "
+        "intent, startup carries Mercury's credential, the image exists, nothing holds it, and "
+        "what else Mercury loses reach to. You confirm with a reason. The run reads it again "
+        "and sends nothing if it moved, declares the planned-restart window before anything "
+        "is sent, reloads, waits for SSH within the bound, verifies it runs what it ran, and "
+        "records the run. A reload cannot be undone."), [
+        lanes(20, 464),
+        doc("box", 14, 40, 186, 40, "The preview reads it", "six gates, by name"), num(14, 40, 1),
+        person(14, 96, 186, 30, "You confirm, with a reason"), num(14, 96, 2),
+        _down(107, 128, 148),
+        band(150, 300, "The run · a job, the device held"),
+        device(262, 172, 118, 150, "The device", "restarts", top=True),
+        *rows([
+            (174, "read", 3, "Read again", "moved: nothing sent"),
+            (210, None, 4, "Window declared", "before anything is sent"),
+            (246, "send", 5, "Reload", "the session drops"),
+            (282, "read", 6, "Back, verified", "runs what it ran"),
+        ]),
+        repo(14, 330, 186, 40, "The reload's record", "and its restart, in History"),
+        num(14, 330, 7),
+        t(14, 400, "Not back within the bound:", "sm"),
+        t(14, 413, "its break-glass record, the console.", "sm"),
+    ])
+
+
 def show_commands():
     return svg(470, (
         "Show commands, and Ask the device its one-device form. Every command is checked "
@@ -1290,6 +1318,7 @@ DIAGRAMS = {
     "approve-template": approve_template,
     "bring-template": bring_template,
     "edit-template": edit_template,
+    "reload": reload,
     "show-commands": show_commands,
     "logging-path": logging_path,
     "privileged": privileged,

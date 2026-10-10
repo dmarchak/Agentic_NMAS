@@ -216,6 +216,10 @@ PAGE_RECORD = {
     "templates_v2.edit_commit": ("templates/v2/_template_op.html",
                                  ("op.state == 'edited'", "r.revoked", "r.commit"),
                                  "templates_v2.page"),
+    # Reload (P.14, cutover blocker 6): the result in place, each step's outcome; the run read
+    # again on the device's History (the reloads source, with its window and its restart).
+    "device_v2.reload_confirm": ("templates/v2/_reload.html",
+                                 ('id="device-op"', "r.steps", "r.reason"), "device_v2.history"),
     "templates_v2.seed": ("templates/v2/_template_op.html",
                           ("op.state == 'seeded'", "op.added", "op.commit"),
                           "templates_v2.page"),

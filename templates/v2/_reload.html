@@ -1,0 +1,110 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how, job_stepper -%}
+{#- The device page's Reload (P.14; cutover blocker 6, drawn under the Phase 7 mode,
+    docs/STANDING_APPROVAL_LOG.md): the card in place of the tab. It starts its own read of the
+    device (a POST on load) and waits for the job's announcement; the preview draws P.14's six
+    gates by name with what each found, the blast radius above the confirm, the outage's bound,
+    and a stated reason; the confirm starts the run as a job, drawn on the one stepper; then the
+    result, green only when it came back running what it ran. modules/nsot/reload_op.py. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- if c.state == 'starting' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-post="{{ url_for('device_v2.reload_start', name=c.host) }}" hx-trigger="load" hx-swap="outerHTML"
+         hx-vals='{{ {"list": c.list, "back": c.back} | tojson }}'>
+  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }}</h2></div>
+  <div class="op-part"><h3>What</h3><div><p class="op-wait">Starting the read of {{ c.host }}…</p></div></div>
+</section>
+{%- elif c.state == 'reading' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-get="{{ url_for('device_v2.reload_job_card', name=c.host, job=c.job, back=c.back) }}"
+         hx-trigger="nmas:reload from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Cancel') }}</div></div>
+  <div class="op-part"><h3>What</h3><div><p class="op-wait">Reading {{ c.host }}'s running and startup configurations, its image and its boot variable now. Nothing is sent until you confirm.</p></div></div>
+</section>
+{%- elif c.state == 'preview' %}
+{%- set p = c.p %}
+<section class="op-card{{ ' op-warn' if p.failing }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Cancel') }}</div></div>
+  <div class="op-part op-focus"><h3>What else goes down</h3><div>
+    {%- if p.radius.state == 'known' and p.radius.cut %}
+    <p class="op-focus-note">While {{ c.host }} restarts, Mercury loses reach to {{ p.radius.cut | length }} other device{{ '' if p.radius.cut | length == 1 else 's' }}: {% for d in p.radius.cut %}<a href="{{ url_for('device_v2.device', name=d) }}">{{ d }}</a>{{ ', ' if not loop.last }}{% endfor %}.</p>
+    {%- elif p.radius.state == 'known' %}
+    <p class="op-focus-note">No other device's path from Mercury crosses {{ c.host }}.</p>
+    {%- else %}
+    <p class="op-focus-note">Not known: {{ p.radius.why }}.</p>
+    {%- endif %}
+    {%- if p.radius.state == 'known' %}<p class="faint small">Worked out {{ p.radius.why }}.</p>{% endif %}
+    <p>{{ c.host }} is unreachable until it has booted: the run waits up to {{ (p.bound_s / 60) | round(0, 'ceil') | int }} minutes for it ({{ p.bound_words }}). Every adjacency and session through it drops meanwhile.</p></div></div>
+  <div class="op-part"><h3>What will not happen</h3><div>
+    <p>No configuration is sent: it boots the startup configuration it holds, which must be what it runs.</p>
+    <p>There is no rollback: a reload cannot be undone. If it does not come back, its break-glass record and the console are the way in.</p></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in p.gates %}
+      <li>{{ badge({'pass': 'pass', 'fail': 'fail', 'at_apply': 'at confirm', 'ack': 'needs your reason'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger', 'at_apply': 'info', 'ack': 'warn'}.get(g.state, 'muted')) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}: {{ g.detail }}{% if g.key == 'unsaved' and g.state == 'fail' %} <a data-op="persist" data-next-acts="persist" href="{{ url_for('device_v2.device', name=c.host, op='persist', list=c.list) }}">Persist…</a>{{ how('persist', compact=True, op='persist') }}{% endif %}</span></li>
+      {%- endfor %}
+      <li>{{ badge('pass' if c.may.may else 'fail', 'ok' if c.may.may else 'danger') }}<span>a verified person confirms: {{ c.may.statement }}</span></li>
+    </ul></div></div>
+  <form class="op-ft" method="post" action="{{ url_for('device_v2.reload_confirm', name=c.host) }}"
+        hx-post="{{ url_for('device_v2.reload_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
+    {%- if c.can %}
+    <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}"><input type="hidden" name="fingerprint" value="{{ p.fingerprint }}">
+    <label class="op-reason">Why reload {{ c.host }}? (recorded with the reload{% if p.departs %}, and as acknowledging that it departs from its golden or intent{% endif %})
+      <input type="text" name="reason" autocomplete="off" required maxlength="200"></label>
+    <p class="op-note">Bound to this read ({{ p.fingerprint }}): the run reads {{ c.host }} again and sends nothing if it moved. The planned-restart window is declared before anything is sent.</p>
+    <span class="op-act"><button type="submit" class="btn btn-danger op-confirm" data-op="reload" hx-disabled-elt="this"><span class="op-idle">Reload {{ c.host }} (up to {{ (p.bound_s / 60) | round(0, 'ceil') | int }} minutes out)</span><span class="op-busy">Starting the reload…</span></button>{{ how('reload', compact=True, op='reload') }}</span>
+    {%- else %}
+    <p class="op-note">Not available: {% for g in p.failing %}{{ g.name }} ({{ g.detail }}){{ '; ' if not loop.last }}{% else %}{{ c.may.statement }}{% endfor %}. Nothing is sent.</p>
+    <span class="op-act"><button type="button" class="btn" data-op="reload" hx-get="{{ url_for('device_v2.reload_card', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Read it again</button>{{ how('reload', compact=True, op='reload') }}</span>
+    {%- endif %}
+  </form>
+</section>
+{%- elif c.state == 'reloading' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-get="{{ url_for('device_v2.reload_job_card', name=c.host, job=c.job, back=c.back) }}"
+         hx-trigger="nmas:reload from:body, nmas:device_progress from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="op-title">Reloading {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('reload') }}</div></div>
+  <div class="op-part"><h3>Where it is</h3><div>
+    {{ job_stepper(c.steps, 'Reload progress') }}
+    <p class="op-wait">It holds {{ c.host }} until it ends. This page can close; the result is kept in the reload's record and the restart in History.</p></div></div>
+</section>
+{%- elif c.state == 'result' %}
+{%- set r = c.r %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }} {{ badge(c.chip, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <ol class="set-steps">{% for s in r.steps %}<li>{{ badge('done' if s.ok else 'stopped', 'ok' if s.ok else 'danger') }} <span>{{ s.step }}: {{ s.detail }}</span></li>{% endfor %}</ol>
+    {%- if r.error %}<p>{{ r.error }}</p>{% endif %}
+    <p>By {{ r.by or 'nobody recorded' }}, {% if r.at %}{{ stamp(r.at) }}, {% endif %}because &ldquo;{{ r.reason }}&rdquo;.{% if r.window %} The planned-restart window ran from {{ stamp(r.window['from']) }} to {{ stamp(r.window['until']) }}.{% endif %}</p>
+    {%- if r.record and not r.record.ok %}<p class="notice notice-warn">{{ icon('warn', 16) }} The reload's record was not written ({{ r.record.error }}): the restart is still in History.</p>{% endif %}</div></div>
+  {%- if r.outcome == 'not_back' %}
+  <div class="op-part"><h3>What next</h3><div class="op-next">
+    <div><a class="btn" data-next-acts="breakglass_export" href="{{ url_for('v2.credentials') }}">Its break-glass record</a><span class="muted">the credential to sign in at its console; the planned window stays declared until it ends</span></div></div></div>
+  {%- endif %}
+</section>
+{%- elif c.state == 'refused' %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }} {{ badge('Not reloaded', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Why</h3><div><p>{{ c.error }}</p>
+    <p><button type="button" class="btn" data-op="reload" hx-get="{{ url_for('device_v2.reload_card', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Read it again</button>{{ how('reload', compact=True, op='reload') }}</p></div></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Reload {{ c.host }} {{ badge('Not reloaded', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'unknown' %}This server has no record of that job: it finished more than 30 minutes ago, or the server restarted. Nothing was sent by this card.
+  {%- elif c.state == 'refused_list' %}Refused: the card names no network this server knows ({{ c.list or 'none given' }}). Nothing was sent.
+  {%- else %}Nothing was sent: {{ c.error }}.{% endif %}</p>
+  {%- if c.state != 'refused_list' %}
+  <p><button type="button" class="btn" data-op="reload" hx-get="{{ url_for('device_v2.reload_card', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Read it again</button>{{ how('reload', compact=True, op='reload') }}</p>
+  {%- endif %}</div></div>
+</section>
+{%- endif %}

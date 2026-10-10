@@ -107,6 +107,7 @@ VOCABULARY = {
     "reads": "a Show commands run (Ask the device, Show commands): finished, its answers ready by id",
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
     "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
+    "reload": "a Reload's preview or run from the Device page (P.14): finished, ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
     "device_progress": "an operation the app ran on a held device reached its next step: a running card redraws its stepper (C370)",
     "save": "a Save run from Devices (C593): finished, its result ready to read by id",
@@ -125,6 +126,7 @@ ANNOUNCERS = {
     # modules/nsot/save_op.py (C593): the run's end, its commit and what each device boots.
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
+    "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
@@ -341,6 +343,12 @@ DECLARED = {
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
                                       "it writes nothing"),
+    "device_v2.reload_start": Nothing("starts the preview's read as a job; the job ANNOUNCES "
+                                      "reload when it finishes (ANNOUNCERS reload)"),
+    "device_v2.reload_confirm": Nothing("starts the reload as a job and answers at once; the "
+                                        "run ANNOUNCES reload, restarts and device_state when "
+                                        "it ends, and device_progress at each step "
+                                        "(ANNOUNCERS reload, device-ops)"),
     "templates_v2.bindings_preview": Nothing("reads the bindings and the manifest and names the "
                                             "devices a change would move; writes nothing"),
     "templates_v2.edit_check": Nothing("renders the edit in a temporary copy of the library, "

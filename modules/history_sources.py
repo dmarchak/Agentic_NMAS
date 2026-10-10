@@ -854,6 +854,32 @@ def privileged(ctx):
     return _out(events, errors)
 
 
+def reloads(ctx):
+    """Each Reload run from the device page (P.14, modules/nsot/reload_op.py): who, why, and
+    how it ended, each step's outcome in the record. The restart and its window are their own
+    sources."""
+    from modules.nsot import reload_op
+    got = reload_op.read_records(ctx["ref"].repo_dir)
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the reload record could not be read: {got.get('error', '')}"])
+    events = []
+    for r in got["rows"]:
+        host = r.get("device", "")
+        if not _mine(ctx, host) or not _recent(ctx, r.get("at")):
+            continue
+        events.append(_event(r.get("at", ""), "reload",
+                             f"Reload: {'back, verified' if r.get('ok') else r.get('outcome', '')}",
+                             [host], who=r.get("by", ""), detail=r.get("reason", ""),
+                             outcome="ok" if r.get("ok") else "failed",
+                             marks=[] if r.get("ok") else ["stopped"],
+                             record=[("Reason", r.get("reason")), ("Outcome", r.get("outcome")),
+                                     ("Steps", "; ".join(f"{s.get('step')}: {s.get('detail')}"
+                                                         for s in r.get("steps") or []))]))
+        if len(events) >= ctx["limit"]:
+            break
+    return _out(events)
+
+
 #: Every store History reads, in the order it asks them. A source absent here is read nowhere;
 #: `operation_stages.HISTORY` names one per operation, `WRITTEN_ELSEWHERE` the rest.
 SOURCES = {
@@ -863,6 +889,7 @@ SOURCES = {
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
+    "reloads": reloads,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -873,6 +900,7 @@ KIND_GROUPS = (
                               ("rotations", "Rotations", ("rotation",)),
                               ("persists", "Persists", ("persist",)),
                               ("privileged", "Privileged commands (Tier 2)", ("privileged",)),
+                              ("reloads", "Reloads", ("reload",)),
                               ("onboarding", "Onboarding and adopt", ("onboarding",)),
                               ("interrupted", "Cut off mid-run", ("interrupted",)),
                               ("retries", "Retries authorised", ("retry",)))),

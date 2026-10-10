@@ -9,8 +9,12 @@ inventory source (6e73ac6); blocker 2, NetBox import and remove with turning wri
 65f87c3); blocker 3, onboarding on v2 (Add device, and the pending page's Verify, bootstrap
 config and Abandon, each bound to its preview, 5f0c36c); blocker 4, Capture's reason for a
 shrink and What next by direction (C486, b883fb6); blocker 5, Templates' Edit… (7e6efea),
-Bindings… and Seed the library…. Next: blocker 6, Reload (P.14) with its planned-restart
-window. Nothing deployed since the mode began: the walk at the end deploys and runs each.
+Bindings… and Seed the library… (2e89ffc); blocker 6, Reload (P.14's plain form, its window
+declared first). All six cutover blockers are built. Next: the nice-to-haves (batch deploy,
+re-apply, reveal, bulk intent, the coverage report, credential profiles, the topology service,
+DHCP, C633's sidebar Logs and DHCP, boards L and M, C635, C641), then 7.5 to 7.7, the 7.8
+removals and the walk. Nothing deployed since the mode began: the walk at the end deploys and
+runs each.
 
 **Next, in order** (the operator's, 2026-10-09): receipts (Phase 4, Mercury's records in
 PostgreSQL); C630 (CUTOVER.md re-measured); C631 (the remote's set-up); the six cutover

@@ -32,6 +32,8 @@
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
       {% endfor %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="privileged" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='privileged') }}" hx-get="{{ url_for('privileged_v2.privileged', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Run a privileged command…</a>{{ how('privileged', compact=True, op='privileged command') }}</div>
+      {#- Reload (P.14, cutover blocker 6): its card reads the device and judges six gates. -#}
+      <div class="menu-row"><a role="menuitem" class="menu-item" data-op="reload" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='reload') }}" hx-get="{{ url_for('device_v2.reload_card', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Reload…</a>{{ how('reload', compact=True, op='reload') }}</div>
       <div class="menu-rule"></div>
       <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
     </div>

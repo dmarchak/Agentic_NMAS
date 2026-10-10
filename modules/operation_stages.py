@@ -90,6 +90,14 @@ STAGES = {
         "preview", "MISSING: no hash binds the abandon to what was shown",
         "n/a: nothing reached the device", "n/a: abandon is itself the undo of Create",
         "modules.nsot.onboard.record_run"),
+    # Reload (P.14, cutover blocker 6): the preview reads the device and judges six gates; the
+    # run reads again and compares the fingerprint, declares the window, reloads, waits, and
+    # verifies that it runs what it ran. A reload cannot be undone.
+    "device_v2.reload_confirm": Stages(
+        "device_v2.reload_start", "fingerprint", "modules.nsot.reload_op.run",
+        "n/a: a reload cannot be undone; the preview says so and names the break-glass record "
+        "and the console as the way in if it does not come back",
+        "modules.nsot.reload_op.record"),
     # Onboarding on v2 (cutover blocker 3): today's cores, each confirm bound to its preview.
     "onboard_v2.verify": Stages(
         "onboard_v2.verify_preview", "fingerprint in routes.onboard.verify_run",
@@ -314,6 +322,7 @@ HISTORY = {
     "onboard.verify": ("onboarding", "golden"),
     "onboard.abandon": ("onboarding",),
     "onboard_v2.verify": ("onboarding", "golden"),
+    "device_v2.reload_confirm": ("reloads", "restart_windows", "restarts"),
     "onboard_v2.abandon": ("onboarding",),
     "bulk_reload": ("restart_windows", "restarts"),
     "update.apply": NOT_A_DEVICE,

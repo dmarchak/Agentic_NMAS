@@ -73,6 +73,8 @@ def _bodies(v):
                                          "refused naming the networks; it starts nothing"),
         "netbox_v2.preview": (404, ("form", {}), "no operation named: refused naming the three, "
                               "nothing started"),
+        "device_v2.reload_start": (400, ("form", {}),
+                                   "no network named: refused before any job starts"),
         "templates_v2.bindings_preview": (400, ("form", {"list": LIST, "add_device": "zz",
                                                          "add_template": "cisco_iosxe/base.j2"}),
                                          "a device the network does not have: refused naming "

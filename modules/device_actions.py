@@ -259,7 +259,44 @@ JOB_STEPPERS = {
     "restore": ("modules.pipeline", "STEPS", None, "starts"),
     "capture": ("one step: the preview's read of the device, which holds nothing and so notes "
                 "no progress; its card names what it reads"),
+    # Reload (P.14): each step noted once done.
+    "reload": ("modules.nsot.reload_op", "STEPS", None),
 }
+
+#: A reload's outcome -> (its heading chip, its level). Only `reloaded` is green.
+RELOAD_WORDS = {"reloaded": ("Reloaded and verified", "ok"),
+                "differs": ("Back, running something else", "danger"),
+                "unverified": ("Back, not verified", "warn"),
+                "not_back": ("Not back", "danger"),
+                "moved": ("Not reloaded: it moved", "warn"),
+                "refused": ("Not reloaded: a gate fails", "warn"),
+                "unread": ("Not reloaded: unread", "warn"),
+                "no_window": ("Not reloaded: no window", "warn"),
+                "busy": ("Not reloaded: held", "warn")}
+
+
+def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
+    """The Reload card for its job (`capture_job.get`, or None): the preview's read running,
+    the preview with its six gates and its confirm, the run with its stepper, or the result."""
+    card = {"op": "reload", "host": host, "list": ref.name, "job": job_id}
+    if got is None:
+        return dict(card, state="unknown")
+    run = got.get("kind") == "reload"
+    if got["state"] == "running":
+        return dict(card, state="reloading", steps=job_steps("reload", ref.name, host)) \
+            if run else dict(card, state="reading")
+    if got["state"] == "failed":
+        return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
+    p = got.get("payload") or {}
+    if not run:
+        if not p.get("ok"):
+            return dict(card, state="failed", error=p.get("error") or "not read")
+        may = may or {"may": False, "statement": "nobody is identified"}
+        return dict(card, state="preview", p=p, may=may,
+                    can=bool(may.get("may")) and not p.get("failing"))
+    chip, level = RELOAD_WORDS.get(p.get("outcome", ""),
+                                   (f"Not reloaded: {p.get('outcome') or 'no outcome'}", "warn"))
+    return dict(card, state="result", r=p, chip=chip, level=level)
 
 
 def _iso(epoch: float) -> str:

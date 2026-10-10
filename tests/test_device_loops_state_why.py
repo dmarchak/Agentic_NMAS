@@ -49,6 +49,9 @@ SCANNED = {
     # the reads engine, concurrent across devices by `fanout.read_each`; C548, R5.)
     ("modules/bulk_ops.py", "_run_single_enable_command"): (
         "one_device", "answers one device's interactive prompts"),
+    ("modules/nsot/reload_op.py", "read_device.read"): (
+        "one_device", "the image files ONE device's `show version` and `show boot` name, each "
+                      "a `dir` on that device's one session (Reload's preview, P.14)"),
     ("modules/bulk_ops.py", "BulkOperationManager._execute_worker.worker"): (
         "one_device", "a worker draining the bulk queue; several run at once, so the "
                       "operation IS concurrent (5 or 3 workers)"),

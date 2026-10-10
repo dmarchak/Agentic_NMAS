@@ -4374,7 +4374,16 @@ Software images are this item.
   its boot image is declared per platform, measured on the lab's platforms first; a platform
   that declares none is refused, naming it.
 
-### P.14 — Reload, as a gated device-page operation (DECIDED 2026-10-02, the operator; NOT BUILT; one of 7.3's device actions)
+### P.14 — Reload, as a gated device-page operation (DECIDED 2026-10-02, the operator; BUILT 2026-10-10 in its plain form, cutover blocker 6, not yet run on a device; one of 7.3's device actions)
+
+> **2026-10-10:** built as the plain form (`modules/nsot/reload_op.py`, Device Actions ›
+> Reload…): the device boots the startup it holds, gate 1 requiring it to be what it runs, so
+> no file is sent. The six gates, the reason, the window declared first, the bounded wait and
+> the verify are as below; gate 6's blast radius is worked out from committed intent's subnets
+> and this host's addresses (`modules/nsot/blast_radius.py`). The wait's bound is measured for
+> IOS-XE (onboarding's 6.5 minutes, times 2.5) and a named placeholder for IOS until a reload's
+> record measures it. Adjacencies after the restart are not checked yet (the Neighbours tab
+> reads them). Revert by reload's boot file remains the charter's Phase 2.
 
 > **2026-10-07:** built by the charter's Phase 2, revert by reload
 > ([NSOT_REVERT_BY_RELOAD](NSOT_REVERT_BY_RELOAD.md), for sign-off): a plain Reload is that
