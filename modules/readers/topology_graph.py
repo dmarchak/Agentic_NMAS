@@ -266,8 +266,10 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
     for layer, links in layers.items():
         # A routing layer's population is the devices taking part in it (C648): a switch that
         # runs no OSPF is not an island of the OSPF layer.
-        names = sorted(nodes) if layer == "physical" else \
-            sorted({e for l in links for e in (l["a"], l["b"])})
+        # The physical layer's: the inventory and LLDP's own neighbours, never a routing peer
+        # known only by its address.
+        names = sorted(n for n, v in nodes.items() if not v.get("external")) \
+            if layer == "physical" else sorted({e for l in links for e in (l["a"], l["b"])})
         a = analyse(names, links)
         a["island_why"] = {}
         for island in a["islands"]:

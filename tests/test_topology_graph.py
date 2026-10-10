@@ -178,6 +178,10 @@ class TestTheRoutingLayers:
         for l in bgp:
             assert g["nodes"][l["external"]] == dict(g["nodes"][l["external"]], managed=False,
                                                      external=True)
+        # ... and never a node of the physical layer (the fix's first host run put them there).
+        phys = g["analysis"]["physical"]
+        assert phys["islands"] == [["r6"]]
+        assert not {l["external"] for l in bgp} & set(phys["main"])
 
     def test_a_layer_s_islands_are_among_the_devices_taking_part(self):
         """C648: a switch that runs no OSPF is not an island of the OSPF layer."""
