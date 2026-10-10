@@ -14,7 +14,8 @@ declared first, 4cf33e0). All six cutover blockers are built. Nice-to-haves done
 (d8651d0), Re-apply (ec1f11b), C633 with C642 (a42d8df), the golden reveal (74b50a3), Adopt on
 Devices (board G, f09ac7c, finished as the board ends it in 83fbb5a), bulk intent (board D),
 Templates › Coverage (8250677), Credentials › Profiles. No v2 page sends a person to today's
-pages any more. CUTOVER's rows still PLANNED: the topology service; then DHCP (C529), boards L and M, C635, C641,
+pages any more. CUTOVER's rows still PLANNED: the topology service (waiting on stop 3, below); C635 closed (the checker reads receipts
+in the records database); then DHCP (C529), boards L and M, C641,
 7.5 to 7.7, the 7.8 removals and the walk. Nothing deployed since the mode began: the walk at
 the end deploys and runs each.
 
@@ -24,9 +25,15 @@ blockers in dependency order (networks, NetBox import and writes on, onboarding,
 acknowledgement reason, the template editor, Reload); the nice-to-haves; 7.5 to 7.7; the 7.8
 removals; then a walk of everything on the host.
 
-**Waiting on the operator:** nothing. Under the mode only the four stops wait on the operator:
-a secret value, anything outside the lab, a new third-party package licence, and deleting or
-rotating backups or snapshots.
+**Waiting on the operator (stop 3, a new third-party package licence, 2026-10-10):** P.11
+Topology (CUTOVER's last PLANNED row) computes its analyses with **NetworkX**, which the operator
+required (NSOT_PLAN P.11, 2026-09-30) and which is not in `requirements.txt` or
+`requirements.lock` today (the host's topology service uses the apt package 3.6.1). Adding it to
+the app is a new package licence: NetworkX is BSD-3-Clause, pure Python, no compiled
+dependencies. Say yes and it goes into `requirements.txt`, compiled into the lock with uv; say no
+and the analyses are written without it. Everything else continues meanwhile. Under the mode only
+the four stops wait on the operator: a secret value, anything outside the lab, a new third-party
+package licence, and deleting or rotating backups or snapshots.
 
 **To resume:** read CLAUDE.md, then this file, then docs/OPEN_FINDINGS.md's Count, and
 docs/STANDING_APPROVAL_LOG.md for what was decided under the mode.
