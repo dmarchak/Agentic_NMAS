@@ -60,8 +60,11 @@ You tick the devices to record and press the confirm button. The browser posts e
 capture hash, as the preview showed it, to `/golden/capture/apply`. On the device page's card,
 **Record <device>'s golden** posts that one device's hash and its list, and stays busy on
 itself until the result replaces the card; the steps below are the same. A structure that
-shrank without committed intent explaining it needs your reason, which today's device page
-takes; the card names that check and offers no confirm. The apply needs a verified person
+shrank without committed intent explaining it needs your reason: the card names that check
+and asks for the reason beside its confirm, which carries it. A reason that is not the shape
+of one (a few words, not a copy of the change) is refused before anything is read; with none,
+the save refuses the device and records nothing. The reason is recorded on the commit's
+`Structural-Change:` line as yours, and the result says so. The apply needs a verified person
 (the request's Cloudflare Access assertion, from a trusted peer), who is the actor recorded
 below.
 

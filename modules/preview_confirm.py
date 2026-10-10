@@ -1889,13 +1889,18 @@ def _intent_words(i: dict) -> str:
     return words(i) if i else "not compared"
 
 
+#: The shrink guard's gate, by name: a card that takes the person's reason knows this one
+#: failing gate is answered by the reason (C486).
+STRUCTURE_GATE = "structure: no section lost that intent does not explain"
+
+
 def _structure_gate(structure: dict) -> dict:
     """The shrink guard drawn as a gate (C310): passed when committed intent
     renders the smaller structure, waiting on the person's reason when not."""
     if structure.get("explained"):
-        return gate("structure: no section lost that intent does not explain", "pass",
+        return gate(STRUCTURE_GATE, "pass",
                     f"{structure['lost']}, which is what committed intent renders")
-    return gate("structure: no section lost that intent does not explain", "fail",
+    return gate(STRUCTURE_GATE, "fail",
                 f"{structure['lost']}, not explained by committed intent: recorded only "
                 "with your reason below")
 

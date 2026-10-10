@@ -1283,6 +1283,9 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             "unchanged": unchanged, "tags": tags, "baseline": baseline_tag,
             "tag_failures": tag_failures,
             "baseline_denied": denied, "intent": intent,
+            # The commit's `Structural-Change:` lines, so a result can say what it recorded
+            # (C486: a reason is drawn as recorded only where the commit carries it).
+            "structural": list(structural),
             "renamed": rename_result["renamed"], "error": ""}
 
 

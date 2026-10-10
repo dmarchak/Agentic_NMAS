@@ -10,7 +10,6 @@ draws the screen and its links point there.
 
 #: key -> what v2 lacks, and where the work is recorded.
 GAPS = {
-    "acknowledge": "Capture's acknowledgement reason field (today's device page); C486",
     "deploy_plan": "Plan a deploy for several ticked devices (today's page); Stage 7, CUTOVER",
     "reapply": "History's Re-apply of an authorisation (today's page); Stage 7, CUTOVER",
     "logs": "the fleet's Logs screen (today's page); Stage 7, CUTOVER",
@@ -27,4 +26,4 @@ OTHER_GAPS = {
 
 #: The list's count; it may only fall, and it falls with the gap that closes (C629: closing
 #: installation_settings left it at 8 over 7, room for one gap to come back unseen).
-CEILING = 5
+CEILING = 4

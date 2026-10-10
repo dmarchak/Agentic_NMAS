@@ -41,7 +41,7 @@ and built.
 | Job wake-up, planned restarts, clab map | `/jobs/finished`, `/restarts/planned`, `/clab/sync_targets` | STAYS | `nmas-job-finished@` from each job's systemd unit; `scripts/nmas-planned-restart`; `scripts/nmas-clab-targets` |
 | Deploy | `/deploy/plan`, `/deploy/apply` | PARTLY BUILT, 7.4 | One device: the device page's Deploy (walked, C428). Several ticked devices: boards A, B and K signed off, not built (gap `deploy_plan`) |
 | Deploy receipts | `/deploy/receipts` | BUILT, walked | The device page's History tab; the receipts can move to the records database (Phase 4) |
-| Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | PARTLY BUILT | Device Actions › Capture (walked) and Devices › Save (C593). Missing: the reason for recording a structural shrink (C486, C310; gap `acknowledge`) |
+| Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | BUILT (the reason for a shrink 2026-10-10, not run on the host) | Device Actions › Capture (walked) and Devices › Save (C593); the card takes the reason for recording a structural shrink (C486, C310; the `acknowledge` gap closed), and its What next follows the departure's direction |
 | Restore, baselines | `/golden/restore/preview`, `/apply`, `/golden/restore_points/<host>`, `/golden/baselines` | PARTLY BUILT, History | Device Actions › Restore from… (walked) offers the baselines; History › Baselines is built. Missing: a network's Re-apply (gap `reapply`) |
 | Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | PARTLY BUILT, History | The History tab and `/v2/history/commit/<sha>` (walked). Missing: revealing a version, which stays in the GUI (decided 2026-10-05: a person, recorded); no board yet |
 | Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT, walked | History › Commits: the log, its filters and each commit's masked change |
@@ -149,7 +149,8 @@ v2 template and every rendered v2 page to it. On 2026-10-10 there were seven: Ca
 acknowledgement reason (C486), Plan a deploy for several ticked devices, History's Re-apply,
 onboarding (Add, Verify, Abandon, the bootstrap config, onboard again), and the sidebar's Logs,
 DHCP and NetBox (the Logs and DHCP links name screens today's page does not have: C633).
-NetBox and onboarding closed the same day (cutover blockers 2 and 3), leaving five. A v2
+NetBox, onboarding and Capture's reason closed the same day (cutover blockers 2 to 4),
+leaving four. A v2
 request that fails says "Couldn't load" in place and never redirects to today's index; a
 designed v2 error page is a further gap, pending a mockup.
 

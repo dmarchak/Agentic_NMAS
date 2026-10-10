@@ -7,9 +7,10 @@ re-measured and held to the route map) and C636 (b2b49cb); C631, the remote's se
 (3cbd74a); cutover blocker 1, networks: the picker (eda63ea), create and delete (b3cee34), the
 inventory source (6e73ac6); blocker 2, NetBox import and remove with turning writes on (C619,
 65f87c3); blocker 3, onboarding on v2 (Add device, and the pending page's Verify, bootstrap
-config and Abandon, each bound to its preview). Next: blocker 4, Capture's acknowledgement
-reason (C486). Nothing deployed since the mode began: the walk at the end deploys and runs
-each.
+config and Abandon, each bound to its preview, 5f0c36c); blocker 4, Capture's reason for a
+shrink and What next by direction (C486). Next: blocker 5, the template editor (validate,
+preview, refresh-capture, bindings; C632 the backup store first). Nothing deployed since the
+mode began: the walk at the end deploys and runs each.
 
 **Next, in order** (the operator's, 2026-10-09): receipts (Phase 4, Mercury's records in
 PostgreSQL); C630 (CUTOVER.md re-measured); C631 (the remote's set-up); the six cutover

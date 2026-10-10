@@ -619,16 +619,9 @@ def capture_apply():
 
     data = request.get_json(silent=True) or {}
     confirmations = {k: v for k, v in (data.get("confirmations") or {}).items() if k}
-    # A person's reason per device for a shrink intent does not explain
-    # (C310), in the shape of a reason, recorded on the commit as theirs.
-    from modules.nsot.authorisation import reason_problem
-    acknowledged = {}
-    for host, reason in (data.get("acknowledge") or {}).items():
-        problem = reason_problem({"reason": str(reason or "").strip(),
-                                  "line": f"{host}'s structural change"})
-        if problem:
-            return jsonify({"ok": False, "error": f"{host}: {problem}"}), 400
-        acknowledged[host] = str(reason).strip()
+    acknowledged, problem = acknowledged_reasons(data.get("acknowledge") or {})
+    if problem:
+        return jsonify({"ok": False, "error": problem}), 400
     if not confirmations:
         return jsonify({"ok": False, "error": "Nothing confirmed: nothing recorded"}), 400
     list_name = _active_list(data)
@@ -637,6 +630,22 @@ def capture_apply():
                          approvals=data.get("approvals") or {}, mode=data.get("mode") or "")
     return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
                                  "result": got["result"], "approvals": got["approvals"]}))
+
+
+def acknowledged_reasons(given: dict) -> tuple:
+    """``(acknowledged, problem)``: a person's reason per device for a shrink intent does not
+    explain (C310), each in the shape of a reason, recorded on the commit as theirs. The one
+    check today's capture and v2's Capture card (C486) share; *problem* names the device."""
+    from modules.nsot.authorisation import reason_problem
+
+    acknowledged = {}
+    for host, reason in (given or {}).items():
+        problem = reason_problem({"reason": str(reason or "").strip(),
+                                  "line": f"{host}'s structural change"})
+        if problem:
+            return {}, f"{host}: {problem}"
+        acknowledged[host] = str(reason).strip()
+    return acknowledged, ""
 
 
 def apply_captures(list_name: str, confirmations: dict, *, fleet: bool, acknowledged: dict,

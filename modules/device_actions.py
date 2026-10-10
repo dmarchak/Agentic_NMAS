@@ -87,7 +87,12 @@ def capture_card(ref, host: str, job_id: str, got, viewer: dict = None) -> dict:
                   # The person by name when they may (the mockup); else why not.
                   "detail": (viewer.get("actor") if viewer.get("may") and viewer.get("actor")
                              else viewer.get("statement", ""))})
-    failing = [g for g in gates if g.get("state") == "fail"]
+    # A shrink committed intent does not explain is answered by the person's reason, taken on
+    # this card (C486): its gate fails until then, and it alone does not withhold the confirm.
+    acknowledge = (target.get("acknowledge") or {}).get("prompt", "")
+    from modules.preview_confirm import STRUCTURE_GATE
+    failing = [g for g in gates if g.get("state") == "fail"
+               and not (acknowledge and g.get("name") == STRUCTURE_GATE)]
     changed = chosen.get("state") == "capturable"
     finished = got.get("finished_at") or time.time()
     card.update(
@@ -102,9 +107,8 @@ def capture_card(ref, host: str, job_id: str, got, viewer: dict = None) -> dict:
                 "lines": list((departs or {}).get("lines") or [])},
         golden=_golden_now(ref.repo_dir, host), intent_commit=_intent_commit(ref.repo_dir, host),
         gates=gates, failing=failing, held=held(gates),
-        # A shrink committed intent does not explain needs a person's reason, given where
-        # it is built (today's device page); this card draws the failing check.
-        acknowledge=(target.get("acknowledge") or {}).get("prompt", ""),
+        # The prompt for the reason, which the confirm carries and the save records (C486).
+        acknowledge=acknowledge,
         may=bool(read and changed and not failing))
     return card
 
@@ -117,8 +121,9 @@ RESULT_WORDS = {"captured": ("Recorded", "ok"),
 
 
 def capture_result_card(ref, host: str, got: dict, confirmed: str, actor: str,
-                        actor_kind: str) -> dict:
-    """The result card for *host* from `routes.golden.apply_captures`' answer *got*."""
+                        actor_kind: str, reason: str = "") -> dict:
+    """The result card for *host* from `routes.golden.apply_captures`' answer *got*; *reason*
+    is the person's reason for a shrink intent does not explain, when one was given."""
     outcome = next((o for o in got.get("outcomes") or [] if o.get("device") == host),
                    {"device": host, "outcome": "unread",
                     "reason": "the apply returned no outcome for this device"})
@@ -138,10 +143,23 @@ def capture_result_card(ref, host: str, got: dict, confirmed: str, actor: str,
             "read_in": (f"connect {phases.get('connect_s')} s, show running-config "
                         + ("not reached" if phases.get("read_s") is None
                            else f"{phases.get('read_s')} s")) if phases else "not timed",
+            # Drawn as recorded only where the commit carries it: a reason sent for a capture
+            # that lost nothing is not on the commit, and the card must not say it is.
+            "reason_given": reason if any(
+                s.startswith(f"Structural-Change: {host} ") and "acknowledged:" in s
+                for s in save.get("structural") or []) else "",
             "intent": {"departs": intent.get("state") == "differs",
                        "unknown": intent.get("state") not in ("match", "differs"),
                        "sentence": explain(intent) if intent else "not compared",
-                       "lines": list(intent.get("lines") or [])}}
+                       "lines": list(intent.get("lines") or []),
+                       # Which way it departs decides what next (C486): a `-` line is on the
+                       # device and not in intent (Mode B takes it off), a `+` line is in
+                       # intent and not on the device (a deploy sends it, a restore puts back
+                       # an earlier state). `intent_match.explain` reads them the same way.
+                       "device_has_extra": any(l.startswith("- ")
+                                               for l in intent.get("lines") or []),
+                       "device_lacks": any(l.startswith("+ ")
+                                           for l in intent.get("lines") or [])}}
 
 
 def _one_target(preview: dict, host: str, viewer: dict) -> dict:

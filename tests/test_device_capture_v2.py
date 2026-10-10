@@ -216,6 +216,94 @@ class TestTheConfirm:
         assert "This server has no record of that read" in out and "Preview it again" in out
 
 
+def _shrunk(text):
+    """r2 with its last interface section gone: a shrink committed intent does not explain."""
+    lines = text.splitlines()
+    starts = [i for i, l in enumerate(lines) if l.startswith("interface ")]
+    assert len(starts) >= 2, "the fixture has too few interfaces to lose one"
+    i = starts[-1]
+    j = next((k for k in range(i + 1, len(lines)) if not lines[k].startswith(" ")), len(lines))
+    return "\n".join(lines[:i] + lines[j:]) + "\n"
+
+
+class TestTheReasonForAShrink:
+    """C486, cutover blocker 4: a shrink committed intent does not explain is recorded only
+    with the person's reason, taken on v2's card (today's device page held the only field)."""
+
+    def test_the_card_takes_the_reason_beside_its_confirm(self, lab):
+        lab["running"]["r2"] = _shrunk(lab["captured"])
+        html = _preview_card(lab)
+        assert '<input id="capture-reason" name="reason"' in html
+        assert 'hx-include="#capture-reason"' in html, "the confirm does not carry the reason"
+        assert "not explained by committed intent" in html and "op-confirm" in html
+        assert "today&#39;s device page" not in html and 'data-todays-page' not in html
+
+    def test_without_a_reason_the_save_refuses_and_nothing_is_committed(self, lab):
+        lab["running"]["r2"] = _shrunk(lab["captured"])
+        html = _preview_card(lab)
+        before = _head(lab["repo"])
+        out = _confirm(lab, html).get_data(as_text=True)
+        assert _head(lab["repo"]) == before
+        assert "Not recorded" in out and "the save refused it" in out
+
+    def test_a_reason_not_shaped_as_one_is_refused_naming_why(self, lab):
+        lab["running"]["r2"] = _shrunk(lab["captured"])
+        html = _preview_card(lab)
+        before = _head(lab["repo"])
+        r = _confirm(lab, html, reason="ok")
+        out = r.get_data(as_text=True)
+        assert r.status_code == 400 and _head(lab["repo"]) == before
+        assert "Refused: the reason was not taken" in out and "too short to be a reason" in out
+
+    def test_with_a_reason_it_is_recorded_on_the_commit_as_the_person_s(self, lab):
+        lab["running"]["r2"] = _shrunk(lab["captured"])
+        html = _preview_card(lab)
+        why = "the interface was removed with its circuit last week"
+        r = _confirm(lab, html, reason=why)
+        out = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Captured" in out, out[:600]
+        msg = subprocess.run(["git", "-C", lab["repo"], "log", "-1", "--format=%B"],
+                             capture_output=True, text=True).stdout
+        assert f"acknowledged: {why}" in msg and "Structural-Change: r2" in msg
+        assert "your reason is recorded on the commit" in out and why in out
+
+
+class TestWhatNextFollowsTheDirection:
+    """C486: lines the device lacks are sent by a deploy or put back by a restore; lines the
+    device holds and intent does not are taken off by Mode B. Edit intent fits either way."""
+
+    def _next(self, lab, running):
+        lab["running"]["r2"] = running
+        html = _preview_card(lab)
+        out = _confirm(lab, html, reason="the interface was removed with its circuit").get_data(
+            as_text=True)
+        assert "What next" in out, out[:600]
+        return out[out.index("What next"):]
+
+    def test_a_device_lacking_intent_s_lines_is_offered_deploy_and_restore(self, lab):
+        nxt = self._next(lab, _shrunk(lab["captured"]))
+        assert "Deploy intent…" in nxt and "Restore from…" in nxt and "Edit intent…" in nxt
+        assert "Remove lines (Mode B)…" not in nxt
+        assert 'href="/v2/device/r2?tab=overview&amp;op=restore&amp;list=Lab"' in nxt
+
+    def test_a_device_holding_extra_lines_is_offered_mode_b(self, lab):
+        extra = lab["captured"].replace("\ninterface ", "\nip domain lookup source-interface "
+                                        "Loopback99\ninterface ", 1)
+        nxt = self._next(lab, extra)
+        assert "Remove lines (Mode B)…" in nxt and "Edit intent…" in nxt
+        assert "Deploy intent…" not in nxt and "Restore from…" not in nxt
+
+    def test_a_reason_the_commit_does_not_carry_is_not_drawn_as_recorded(self, lab):
+        """Nothing shrank here, so the reason sent is not on the commit: the card says
+        nothing of it (a reason drawn as recorded where it is not is a wrong thing that
+        looks right)."""
+        lab["running"]["r2"] = _broken(lab["captured"])
+        html = _preview_card(lab)
+        out = _confirm(lab, html, reason="the interface was removed with its circuit")
+        out = out.get_data(as_text=True)
+        assert "Captured" in out and "your reason is recorded" not in out
+
+
 # ------------------------------------------------ clicking what ships, where Firefox runs
 
 @pytest.fixture(scope="module")

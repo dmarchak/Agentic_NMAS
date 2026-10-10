@@ -607,7 +607,7 @@ def capture_confirm(name):
     showed (`hash`): the apply reads it again and refuses one that moved. The result is
     drawn in place of the preview."""
     from modules import device_actions, identity
-    from routes.golden import apply_captures
+    from routes.golden import acknowledged_reasons, apply_captures
 
     ref, dev, refusal = _named_device(name, request.form.get("list", ""))
     if refusal is not None:
@@ -617,13 +617,21 @@ def capture_confirm(name):
     if not confirmed:
         return _strict(render_template("v2/_capture.html", c={
             "state": "refused_hash", "host": host, "list": ref.name}), 400)
-    got = apply_captures(ref.name, {host: confirmed}, fleet=False, acknowledged={},
+    # The person's reason for a shrink committed intent does not explain, taken on the card
+    # (C486), checked as today's capture checks it; the save refuses a shrink without one.
+    reason = (request.form.get("reason") or "").strip()
+    acknowledged, problem = acknowledged_reasons({host: reason} if reason else {})
+    if problem:
+        return _strict(render_template("v2/_capture.html", c={
+            "state": "refused_reason", "host": host, "list": ref.name, "error": problem,
+            "back": _back(request.form)}), 400)
+    got = apply_captures(ref.name, {host: confirmed}, fleet=False, acknowledged=acknowledged,
                          approvals={})
     # Who is drawn as having recorded it: the identity the gate verified (the commit's
     # `Actor:` is written by the apply itself).
     ident = identity.identify(request)
     c = device_actions.capture_result_card(ref, host, got, confirmed, ident.actor or "",
-                                           ident.kind or "")
+                                           ident.kind or "", reason=reason)
     from modules.outbound import mask_payload
     c = mask_payload(c)
     c.update(back=_back(request.form), ip=dev.get("ip", ""))
