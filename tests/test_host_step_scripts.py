@@ -26,7 +26,9 @@ SCRIPTS = sorted(os.path.basename(p) for p in tracked("scripts/host-steps", suff
 EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "phase3-step3.sh", "c584-loki-writer.sh",
             "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh", "postgres-6a.sh",
             "venv-1-build.sh", "venv-2-switch.sh", "venv-3-undo.sh", "venv-swap.sh",
-            "venv-rollback.sh", "postgres-rotate.sh"}
+            "venv-rollback.sh", "postgres-rotate.sh",
+            # The Phase 7 operating mode, run on the laptop (the operator, 2026-10-09).
+            "phase7-mode-on.sh", "phase7-mode-off.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

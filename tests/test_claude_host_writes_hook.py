@@ -22,10 +22,16 @@ HOOK = os.path.join(ROOT, "scripts", "hooks", "claude-no-host-writes")
 SETTINGS = os.path.join(ROOT, ".claude", "settings.json")
 
 
-def run(command, raw=None):
+#: The Phase 7 mode's flag for these runs: never the checkout's own, which the operator may have
+#: set on this laptop (an absent path is the mode off).
+NO_FLAG = os.path.join(ROOT, ".claude", "phase7-mode.never-in-a-test")
+
+
+def run(command, raw=None, flag=NO_FLAG):
     payload = raw if raw is not None else json.dumps(
         {"tool_name": "Bash", "tool_input": {"command": command}})
-    return subprocess.run([sys.executable, HOOK], input=payload, capture_output=True, text=True)
+    return subprocess.run([sys.executable, HOOK], input=payload, capture_output=True, text=True,
+                          env={**os.environ, "NMAS_PHASE7_FLAG": str(flag)})
 
 
 REFUSED = [
@@ -66,6 +72,38 @@ class TestTheHook:
     def test_an_unreadable_input_is_a_visible_hook_error(self):
         r = run("", raw="not json")
         assert r.returncode == 1 and "could not read the tool call" in r.stderr
+
+
+class TestThePhase7Mode:
+    """The operator's Phase 7 mode (2026-10-09): its flag lets nmas-deploy on a host through;
+    a git write in a host's checkout stays refused; a link is not the flag."""
+
+    def test_the_flag_lets_a_deploy_through(self, tmp_path):
+        flag = tmp_path / "phase7-mode"
+        flag.write_text("on\n")
+        for command in ("scripts/nmas-host nmas -- nmas-deploy --wait", "ssh host ~/bin/nmas-deploy"):
+            r = run(command, flag=flag)
+            assert r.returncode == 0, (command, r.stderr)
+
+    @pytest.mark.parametrize("command,what", [c for c in REFUSED if c[1] != "nmas-deploy"])
+    def test_a_git_write_on_a_host_stays_refused_in_the_mode(self, tmp_path, command, what):
+        flag = tmp_path / "phase7-mode"
+        flag.write_text("on\n")
+        r = run(command, flag=flag)
+        assert r.returncode == 2, (command, r.stderr)
+        assert f"runs {what} on a lab host" in r.stderr and "Phase 7 operating mode" in r.stderr
+
+    def test_a_link_is_not_the_flag(self, tmp_path):
+        real = tmp_path / "elsewhere"
+        real.write_text("on\n")
+        flag = tmp_path / "phase7-mode"
+        flag.symlink_to(real)
+        r = run("scripts/nmas-host nmas -- nmas-deploy --wait", flag=flag)
+        assert r.returncode == 2 and "Deploys are the operator's" in r.stderr
+
+    def test_without_the_flag_a_deploy_is_refused(self, tmp_path):
+        r = run("scripts/nmas-host nmas -- nmas-deploy --wait", flag=tmp_path / "absent")
+        assert r.returncode == 2 and "Deploys are the operator's" in r.stderr
 
 
 class TestTheSettings:

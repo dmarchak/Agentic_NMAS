@@ -23,6 +23,11 @@ and commits after the operator has.
 **Allowed:** reading it (`cat`, `grep`, `sed -n`, `head`, `git diff`, `git show`, `git log`,
 `git add` and `git commit` of the operator's own edit).
 
+**The Phase 7 mode's flag** (`phase7-mode`, in the checkout's `.claude/` folder; the operator,
+2026-10-09) is protected the same way, and `touch` too: while it exists claude-no-host-writes
+lets `nmas-deploy` on a host through, so only the operator sets and removes it, with
+`scripts/host-steps/phase7-mode-on.sh` and `-off.sh`.
+
 An input the hook cannot read exits 1, which Claude Code shows as a hook error, rather than
 passing silently.
 """
@@ -34,22 +39,34 @@ import shlex
 import sys
 
 NAME = "CLAUDE.md"
+FLAG = "phase7-mode"
+PROTECTED = (NAME, FLAG)
+#: The script that writes the flag: the operator's to run, never the agent's (the one that
+#: removes it, phase7-mode-off.sh, only takes the mode away, and is allowed).
+ON_SCRIPT = "phase7-mode-on.sh"
+SHELLS = {"bash", "sh", "dash", "zsh", "source", "."}
 FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 MESSAGE = (
     "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-claude-md-edits): "
     "CLAUDE.md is the operator's to change ({why}). Stop, give the operator the exact lines "
     "to paste, and commit after they have (the operator, 2026-10-05).")
+MESSAGE_FLAG = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-claude-md-edits): "
+    "the Phase 7 mode's flag is the operator's to set and remove ({why}), with "
+    "scripts/host-steps/phase7-mode-on.sh and -off.sh (the operator, 2026-10-09).")
 
 INTERPRETER = re.compile(r"^(python[0-9.]*|pypy[0-9.]*|node(js)?|perl[0-9.]*|ruby[0-9.]*|php[0-9.]*)$")
 WRITE_IN_CODE = re.compile(r"\.write|write_text|write_bytes|open\([^)]*['\"][wax+]|"
-                           r"\breplace\(|os\.(remove|rename|replace|unlink)|shutil\.")
-ALWAYS_WRITES = {"mv", "rm", "truncate", "shred", "unlink"}
+                           r"\breplace\(|os\.(remove|rename|replace|unlink)|shutil\.|"
+                           r"\.touch\(|symlink")
+ALWAYS_WRITES = {"mv", "rm", "truncate", "shred", "unlink", "touch"}
 DESTINATION_LAST = {"cp", "install", "rsync", "ln", "scp"}
 GIT_WRITES = {"checkout", "restore", "rm", "mv", "apply", "reset", "stash", "am", "cherry-pick"}
 
 
 def _is_claude(word: str) -> bool:
-    return os.path.basename(word.strip("'\"")) == NAME
+    """The word names a protected file: CLAUDE.md or the Phase 7 mode's flag."""
+    return os.path.basename(word.strip("'\"")) in PROTECTED
 
 
 def _segments(command: str) -> list:
@@ -74,8 +91,8 @@ def _segments(command: str) -> list:
 
 
 def bash_writes(command: str) -> str:
-    """Why *command* would change a CLAUDE.md, or "" when it would not."""
-    if NAME not in command:
+    """Why *command* would change a CLAUDE.md or the mode's flag, or "" when it would not."""
+    if not any(name in command for name in PROTECTED):
         return ""
     for seg in _segments(command):
         words = [w for w in seg]
@@ -92,6 +109,9 @@ def bash_writes(command: str) -> str:
             words = words[1:]
             prog = os.path.basename(words[0])
         args = words[1:]
+        if prog == ON_SCRIPT or (prog in SHELLS and any(
+                os.path.basename(a.strip("'\"")) == ON_SCRIPT for a in args)):
+            return f"running {ON_SCRIPT}, which writes it"
         named = any(_is_claude(a) for a in args)
         if prog == "sed" and named and any(a == "-i" or a.startswith("-i") or a.startswith("--in-place")
                                             or (a.startswith("-") and not a.startswith("--") and "i" in a[1:])
@@ -113,7 +133,7 @@ def bash_writes(command: str) -> str:
             code = " ".join(args)
             if named:
                 return f"{prog} given it as an argument"
-            if NAME in code and WRITE_IN_CODE.search(code):
+            if any(name in code for name in PROTECTED) and WRITE_IN_CODE.search(code):
                 return f"{prog} writing it from inline code"
     return ""
 
@@ -124,10 +144,15 @@ def verdict(payload: dict) -> str:
     inp = payload.get("tool_input") or {}
     if tool in FILE_TOOLS:
         target = inp.get("file_path") or inp.get("notebook_path") or ""
-        return f"{tool} on {target}" if os.path.basename(target) == NAME else ""
+        return f"{tool} on {target}" if os.path.basename(target) in PROTECTED else ""
     if tool == "Bash":
         return bash_writes(inp.get("command") or "")
     return ""
+
+
+def _names_flag(payload: dict) -> bool:
+    inp = payload.get("tool_input") or {}
+    return FLAG in " ".join(str(inp.get(k) or "") for k in ("file_path", "notebook_path", "command"))
 
 
 def main() -> int:
@@ -138,7 +163,7 @@ def main() -> int:
         return 1
     why = verdict(payload)
     if why:
-        print(MESSAGE.format(why=why), file=sys.stderr)
+        print((MESSAGE_FLAG if _names_flag(payload) else MESSAGE).format(why=why), file=sys.stderr)
         return 2
     return 0
 

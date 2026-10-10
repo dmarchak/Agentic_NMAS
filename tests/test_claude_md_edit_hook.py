@@ -92,6 +92,51 @@ def test_unreadable_input_is_a_visible_hook_error():
     assert run(None, raw="not json").returncode == 1
 
 
+# The Phase 7 mode's flag (the operator, 2026-10-09): only the operator sets and removes it.
+FLAG_FILE = [
+    ("Write", {"file_path": f"{ROOT}/.claude/phase7-mode", "content": "on"}),
+    ("Edit", {"file_path": f"{ROOT}/.claude/phase7-mode", "old_string": "a", "new_string": "b"}),
+]
+FLAG_BASH = [
+    "touch .claude/phase7-mode",
+    "echo on > .claude/phase7-mode",
+    "rm -f .claude/phase7-mode",
+    "cp /tmp/x .claude/phase7-mode",
+    "ln -s /tmp/x .claude/phase7-mode",
+    "python3 -c \"import pathlib; pathlib.Path('.claude/phase7-mode').touch()\"",
+    "echo y | scripts/host-steps/phase7-mode-on.sh",
+    "bash scripts/host-steps/phase7-mode-on.sh < /tmp/y",
+    "cd /repo && sudo ./scripts/host-steps/phase7-mode-on.sh",
+]
+FLAG_ALLOWED = [
+    "cat .claude/phase7-mode",
+    "ls -l .claude/phase7-mode",
+    "sed -n 1,40p scripts/host-steps/phase7-mode-on.sh",
+    "echo y | scripts/host-steps/phase7-mode-off.sh",
+    "scripts/nmas-test tests/test_phase7_mode.py",
+]
+
+
+@pytest.mark.parametrize("tool, tool_input", FLAG_FILE)
+def test_a_file_tool_on_the_mode_s_flag_is_refused(tool, tool_input):
+    out = run(tool, tool_input)
+    assert out.returncode == 2, (tool, out.stderr)
+    assert "the Phase 7 mode's flag is the operator's to set and remove" in out.stderr
+
+
+@pytest.mark.parametrize("command", FLAG_BASH)
+def test_writing_the_flag_or_running_the_on_script_is_refused(command):
+    out = run("Bash", {"command": command})
+    assert out.returncode == 2, (command, out.stderr)
+    assert "the Phase 7 mode's flag" in out.stderr
+
+
+@pytest.mark.parametrize("command", FLAG_ALLOWED)
+def test_reading_the_flag_and_running_the_off_script_are_allowed(command):
+    out = run("Bash", {"command": command})
+    assert out.returncode == 0, (command, out.stderr)
+
+
 def test_the_settings_wire_it_to_the_file_tools_and_bash():
     with open(os.path.join(ROOT, ".claude", "settings.json"), encoding="utf-8") as fh:
         hooks = json.load(fh)["hooks"]["PreToolUse"]

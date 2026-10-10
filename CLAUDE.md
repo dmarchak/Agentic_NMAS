@@ -4,6 +4,30 @@
 open queue (docs/OPEN_FINDINGS.md's Count and open sections, and the plan item in progress)
 before acting.**
 
+<!-- phase7-mode: begin -->
+## Phase 7 operating mode (in force)
+
+**The operator's decision, 2026-10-09, for the rest of Phase 7** (the lab's Proxmox snapshots
+and backups taken). Where a rule below makes something the operator's, this section governs. It
+ends when the operator runs `scripts/host-steps/phase7-mode-off.sh`.
+
+- **The agent runs deploys** (`nmas-deploy --wait`, CI green), host steps and host commands,
+  sudo included, on the NMAS host and the lab host. A git write in a host's checkout stays
+  refused (`scripts/hooks/claude-no-host-writes`, which reads the mode's flag). Proxmox stays
+  read-only.
+- **The agent runs device operations and walks through Mercury** (deploys, saves, restarts,
+  redeploys), keeping the standing facts: nothing staged on s3, nothing in 08:30 to 09:10 UTC,
+  a planned-restart window declared before a restart.
+- **Boards the agent draws count as signed off by the operator, and the agent takes its
+  recommended option on a decision;** each is one line in `docs/STANDING_APPROVAL_LOG.md`.
+- Every commit still goes through the gate and is pushed, with CI green before the next.
+- **Still the operator's; the agent stops and asks:** (1) any secret value: the operator types
+  secrets, and the agent never prints, stores or reads one; (2) anything outside the lab:
+  Cloudflare, DNS, GitHub visibility, anything public; (3) a new third-party package licence;
+  (4) deleting or rotating backups or snapshots.
+- Status to resume from, and anything waiting on the operator: `docs/END_OF_SESSION.md`.
+<!-- phase7-mode: end -->
+
 ## Project
 
 A Flask application that manages, automates and monitors Cisco IOS and IOS-XE devices, built by

@@ -107,3 +107,15 @@ check() {
 not_root() {
     check "run as the operator's own user, not root" eq "no" '[ "$(id -u)" = 0 ] && echo yes || echo no'
 }
+
+# strip_marked FILE BEGIN END: FILE printed without its marked block, the whole lines BEGIN to
+# END and the one blank line after END (phase7-mode-on.sh inserts the block with one).
+# Exported, so a step's or a check's command can use it.
+strip_marked() {
+    awk -v b="$2" -v e="$3" '
+        skip { if ($0 == e) { skip = 0; drop = 1 }; next }
+        $0 == b { skip = 1; next }
+        drop && $0 == "" { drop = 0; next }
+        { drop = 0; print }' "$1"
+}
+export -f strip_marked

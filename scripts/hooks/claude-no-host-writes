@@ -17,12 +17,23 @@ fetch, checkout, switch, reset, commit, merge, rebase, stash, clean, am, apply,
 cherry-pick, revert, restore, rm, mv, add, tag, branch, init, clone, gc, worktree).
 **What is not:** reading on the host (`git log`, `git status`, `git show`, `nmas-deploy` is
 never a read), and git on the laptop's own checkout (pushing from here is the agent's job).
+
+**The Phase 7 operating mode** (the operator's decision, 2026-10-09): while the mode's flag
+exists (`phase7-mode` in this checkout's `.claude/` folder, written and removed only by the
+operator's `scripts/host-steps/phase7-mode-on.sh` and `-off.sh`; claude-no-claude-md-edits
+refuses the agent's tools on it), `nmas-deploy` on a host is the agent's to run too. A git
+write in a host's checkout stays refused in the mode: a stray file there aborts the deploy's
+pull. `NMAS_PHASE7_FLAG` names another flag path (the tests' own).
 """
 
 import json
+import os
 import re
 import shlex
 import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FLAG = os.environ.get("NMAS_PHASE7_FLAG") or os.path.join(ROOT, ".claude", "phase7-mode")
 
 WRITE_VERBS = {"pull", "push", "fetch", "checkout", "switch", "reset", "commit", "merge",
                "rebase", "stash", "clean", "am", "apply", "cherry-pick", "revert", "restore",
@@ -36,6 +47,16 @@ MESSAGE = (
     "and the agent never pulls, pushes or writes in the host's checkout (CLAUDE.md, \"Deploys "
     "are the operator's\"). Read on the host, push from the laptop, and name the sha for the "
     "operator to deploy.")
+MESSAGE_IN_MODE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-host-writes): this "
+    "command runs {what} on a lab host. In the Phase 7 operating mode deploys are the agent's "
+    "too, through `nmas-deploy --wait`, but never a git write in a host's checkout: a stray "
+    "file there aborts the deploy's pull.")
+
+
+def phase7_mode():
+    """The operator's Phase 7 mode is on: its flag is a regular file (never a link)."""
+    return os.path.isfile(FLAG) and not os.path.islink(FLAG)
 
 
 def _tokens(command):
@@ -73,7 +94,7 @@ def _flatten(tokens):
     return out
 
 
-def offence(command):
+def offence(command, in_mode=False):
     remote = _remote_part(_tokens(command))
     if remote is None:
         return None
@@ -81,6 +102,8 @@ def offence(command):
     for i, tok in enumerate(words):
         base = tok.rsplit("/", 1)[-1]
         if base == "nmas-deploy":
+            if in_mode:
+                continue
             return "nmas-deploy"
         if base == "git":
             j = i + 1
@@ -98,9 +121,10 @@ def main():
     except (ValueError, AttributeError) as exc:
         print(f"claude-no-host-writes: could not read the tool call: {exc}", file=sys.stderr)
         return 1
-    what = offence(command)
+    in_mode = phase7_mode()
+    what = offence(command, in_mode)
     if what:
-        print(MESSAGE.format(what=what), file=sys.stderr)
+        print((MESSAGE_IN_MODE if in_mode else MESSAGE).format(what=what), file=sys.stderr)
         return 2
     return 0
 

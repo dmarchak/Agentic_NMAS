@@ -77,6 +77,8 @@ deploy/grafana/provisioning/alerting/nmas-telemetry.yaml
 
 # Local Claude Code permissions: "local" means not published (2026-09-29).
 .claude/settings.local.json
+# The Phase 7 operating mode's flag: the operator's, local to the checkout whose hooks read it.
+.claude/phase7-mode
 
 # Coverage data from a local run of the CI command (pytest-cov)
 .coverage
