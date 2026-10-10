@@ -84,6 +84,18 @@ a verified person. The result says the device is PENDING (created, never reached
 **Open its page** goes to its pending page, where Verify, the bootstrap configuration and
 Abandon are. See [Onboard a device](onboard).
 
+## Adopt a device {#adopt}
+
+**Adopt a device…** opens a card for a device the tool did NOT build: one already running,
+with a working login somebody gives. Fill in its name, management address, platform and role,
+and that login. **Read it and preview** reads the device over the login and sends nothing: it
+shows every check by name (each reason it cannot be adopted, all at once), the lines it will
+send (masked), what a save makes permanent, and what it does not do. The password is never
+drawn back, so **Adopt** asks for it again, with why; it needs a verified person, reads the
+device again and stops, sending nothing, if it moved since the preview. The card follows the
+run's steps and then draws each one's outcome, and **Open its page** goes to the adopted
+device. See [Adopt a device](adopt).
+
 ## A pending device's page {#pending}
 
 A device created and not yet reached has no tabs: its page shows its onboarding state, its

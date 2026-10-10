@@ -597,6 +597,24 @@ def is_adoption_staged(repo: str, hostname: str) -> bool:
 APPLY_STEPS = ("confirm", "account", "owner_account", "profile", "persist", "golden", "netbox",
                "promote")
 
+#: The apply's steps for the one stepper (`device_actions.stepper`, v2's Adopt card,
+#: 2026-10-10): ``(key, words, waits, names)``, each noted by `_step` as it ends.
+STEPPER = (
+    ("confirm", "Confirm", "everything the preview read, read again over the supplied login",
+     ("confirm",)),
+    ("account", "Add the tool's account",
+     "the tool's account added over a held session and proven on a fresh login", ("account",)),
+    ("owner_account", "The supplied account",
+     "left as it is, or stored as a hash where you chose it", ("owner_account",)),
+    ("profile", "The monitoring profile", "the profile's lines the device lacks, sent once",
+     ("profile",)),
+    ("persist", "Save", "write memory, and startup read back", ("persist",)),
+    ("golden", "The first golden", "the running configuration read and committed",
+     ("golden",)),
+    ("netbox", "NetBox", "the device recorded in NetBox", ("netbox",)),
+    ("promote", "Into the inventory", "the device's inventory row, last", ("promote",)),
+)
+
 #: What adopt does NOT do, stated at the confirm (a commit records its
 #: non-actions; so does a preview).
 NOT_DOING = (

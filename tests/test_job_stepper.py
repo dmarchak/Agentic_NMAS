@@ -176,12 +176,14 @@ class TestTheStepper:
 
 
 def _job_cards() -> dict:
-    """{op: template text} for every card waiting on a `<op>_job_card` route."""
+    """{op: template text} for every card waiting on a job-card route: the device page's
+    `device_v2.<op>_job_card`, or an operation blueprint's own `<op>_v2.job_card` (Adopt's)."""
     out = {}
     for name in os.listdir(TEMPLATES):
         text = open(os.path.join(TEMPLATES, name), encoding="utf-8").read()
-        for op in re.findall(r"url_for\('device_v2\.(\w+)_job_card'", text):
-            out[op] = text
+        for dev, own in re.findall(r"url_for\('(?:device_v2\.(\w+)_job_card|(\w+)_v2\.job_card)'",
+                                   text):
+            out[dev or own] = text
     return out
 
 

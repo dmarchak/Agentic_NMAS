@@ -1,0 +1,82 @@
+{%- from "v2/_macros.html" import icon, badge, how, job_stepper -%}
+{#- Devices › Adopt a device… (7.4's board G, signed off 2026-10-04; built 2026-10-10): the
+    form (the supplied login typed, never drawn back), the preview (every gate by name, the
+    program masked, what a save makes permanent, NetBox, what it does not do), the confirm
+    (the login typed again), the run on the one stepper, and its result. routes/adopt_v2.py
+    over modules/nsot/adopt.py. -#}
+{%- set f = f or {} -%}
+{%- set q = {'list_name': f.list_name, 'hostname': f.hostname, 'mgmt_ip': f.mgmt_ip, 'platform': f.platform, 'role': f.role, 'supplied_username': f.supplied_username, 'convert_supplied': f.convert_supplied} -%}
+<section class="card set-card set-card-wide" id="adopt-card" aria-labelledby="h-adopt"
+  {%- if running %} aria-busy="true" hx-get="{{ url_for('adopt_v2.job_card', job=job, **q) }}" hx-trigger="nmas:inventory from:body, nmas:device_progress from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="card-head"><h2 id="h-adopt">Adopt {{ f.hostname or 'a device' }}{% if f.list_name %} into {{ f.list_name }}{% endif %}</h2>
+    {%- if not running %}<a class="btn btn-small" href="{{ url_for('v2.devices', list=f.list_name) }}">Close</a>{% endif %}</div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not adopted:</strong> {{ refused }}{{ '' if refused.endswith('.') else '.' }}</div></div>
+  {%- endif %}
+  {%- if running %}
+  {{ job_stepper(steps, 'Adoption progress') }}
+  <p class="op-wait">It holds {{ f.hostname }} until it ends. This page can close; a run that stops can be run again and resumes.</p>
+  {%- elif r %}
+  <div class="notice notice-{{ 'muted' if r.ok else 'danger' }} set-result" role="status">{{ icon('tick' if r.ok else 'warn', 16) }}<div><strong>{% if r.ok %}{{ f.hostname }} is adopted: in the inventory, with its first golden and its NetBox record, and the tool signs in with its own account.{% else %}{{ f.hostname }} is NOT adopted{% if r.reason %}: {{ r.reason }}{% endif %}.{% endif %}</strong>
+    <ol class="set-steps">{% for s in r.steps or [] %}<li>{{ badge('done' if s.ok else 'stopped', 'ok' if s.ok else 'danger') }} <span>{{ s.step }}{% if s.detail %}: {{ s.detail }}{% endif %}</span></li>{% endfor %}</ol>
+    {%- if r.remaining %}<p class="small">Still to finish:</p><ul class="small">{% for x in r.remaining %}<li>{{ x.step }}: {{ x.why or x.detail }}</li>{% endfor %}</ul>{% endif %}</div></div>
+  <div class="set-foot">{% if r.ok %}<a class="btn btn-primary btn-small" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name) }}">Open {{ f.hostname }}'s page</a>{% else %}<span class="muted small">Run it again from the start: it resumes where it stopped and never adds the account twice.</span>{% endif %}</div>
+  {%- elif p %}
+  {%- if p.blocking %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<div><strong>{{ p.blocking | length }} reason{{ '' if p.blocking | length == 1 else 's' }} it cannot be adopted, all of them:</strong><ul class="small">{% for b in p.blocking %}<li>{{ b }}</li>{% endfor %}</ul></div></div>
+  {%- endif %}
+  <h3 class="set-label">Checked, by name</h3>
+  <ol class="set-steps">{% for g in p.gates %}<li>{{ badge({'pass': 'passed', 'fail': 'FAILS'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger'}.get(g.state, 'neutral')) }} <span>{{ g.name }}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>{% endfor %}</ol>
+  {%- if p.resume %}<p class="notice notice-info">{{ icon('info', 16) }} An earlier adoption of {{ f.hostname }} stopped: this one resumes it, proving the account it added rather than adding it twice.</p>{% endif %}
+  {%- if p.program %}
+  <h3 class="set-label">What will be sent (masked)</h3>
+  <ol class="set-steps mono small">{% for l in p.program %}<li>{{ l }}</li>{% endfor %}</ol>
+  {%- endif %}
+  {%- if p.persist.sentence %}<h3 class="set-label">What a save makes permanent</h3><p class="small">{{ p.persist.sentence }}</p>{% endif %}
+  {%- if p.rw_kept %}<p class="small">Read-write SNMP communities it keeps (adopt removes none): {{ p.rw_kept | join('; ') }}</p>{% endif %}
+  <h3 class="set-label">What it does not do</h3>
+  <ul class="small">{% for n in p.not_doing %}<li>{{ n }}</li>{% endfor %}</ul>
+  {%- if p.fingerprint %}
+  <form class="set-form" method="post" action="{{ url_for('adopt_v2.confirm') }}" hx-post="{{ url_for('adopt_v2.confirm') }}" hx-target="#adopt-card" hx-swap="outerHTML" autocomplete="off">
+    {%- for k, v in q.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="fingerprint" value="{{ p.fingerprint }}">
+    <label for="f-ad-pw2">{{ f.supplied_username }}'s password, again</label>
+    <div><input id="f-ad-pw2" name="supplied_password" type="password" autocomplete="off" required><span class="set-origin">it is never carried from the preview: no page holds it</span></div>
+    <label for="f-ad-en2">Enable secret, again</label>
+    <div><input id="f-ad-en2" name="supplied_enable" type="password" autocomplete="off"><span class="set-origin">only if the preview used one</span></div>
+    <label for="f-ad-why">Why</label>
+    <div><input id="f-ad-why" name="reason" type="text" autocomplete="off"><span class="set-origin">recorded with the adoption</span></div>
+    <div class="set-foot set-form-note">
+      {%- if may.may %}
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="adopt" hx-disabled-elt="this"><span class="op-idle">Adopt {{ f.hostname }}</span><span class="op-busy">Starting the adoption…</span></button>{{ how('adopt', compact=True, op='adopt') }}</span>
+      <span class="muted small">{{ may.statement }} Bound to this read ({{ p.fingerprint[:12] }}): the apply reads it again and stops if it moved.</span>
+      {%- else %}<span class="muted small">{{ may.statement }} Nothing can be adopted from here.</span>{% endif %}
+    </div>
+  </form>
+  {%- endif %}
+  {%- else %}
+  <form class="set-form" method="post" action="{{ url_for('adopt_v2.preview') }}" hx-post="{{ url_for('adopt_v2.preview') }}" hx-target="#adopt-card" hx-swap="outerHTML" autocomplete="off">
+    <input type="hidden" name="list_name" value="{{ f.list_name }}">
+    <label for="f-ad-host">Name</label>
+    <div><input id="f-ad-host" name="hostname" type="text" value="{{ f.hostname }}" required autocomplete="off"><span class="set-origin">the name the device calls itself</span></div>
+    <label for="f-ad-ip">Management address</label>
+    <div><input id="f-ad-ip" name="mgmt_ip" type="text" value="{{ f.mgmt_ip }}" required autocomplete="off" placeholder="192.0.2.20"></div>
+    <label for="f-ad-pf">Platform</label>
+    <div><select id="f-ad-pf" name="platform" required><option value="">Choose…</option>{% for pl in platforms %}<option value="{{ pl.platform }}"{% if pl.platform == f.platform %} selected{% endif %}>{{ pl.platform }}</option>{% endfor %}</select></div>
+    <label for="f-ad-role">Role</label>
+    <div><select id="f-ad-role" name="role" required><option value="">Choose…</option>{% for ro in ('router', 'switch', 'firewall') %}<option value="{{ ro }}"{% if ro == f.role %} selected{% endif %}>{{ ro }}</option>{% endfor %}</select></div>
+    <label for="f-ad-user">Its login</label>
+    <div><input id="f-ad-user" name="supplied_username" type="text" value="{{ f.supplied_username }}" required autocomplete="off"><span class="set-origin">a working account on the device; used once, then by nothing</span></div>
+    <label for="f-ad-pw">Its password</label>
+    <div><input id="f-ad-pw" name="supplied_password" type="password" required autocomplete="off"><span class="set-origin">held in memory for the read only, never written</span></div>
+    <label for="f-ad-en">Enable secret</label>
+    <div><input id="f-ad-en" name="supplied_enable" type="password" autocomplete="off"><span class="set-origin">only if the account needs one</span></div>
+    <span class="set-label">Its account</span>
+    <div><label class="set-switch"><input type="checkbox" name="convert_supplied"{% if f.convert_supplied == 'on' %} checked{% endif %}> store it as a hash (same password)</label><span class="set-origin">off: adopt changes no account it did not add</span></div>
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="adopt" hx-disabled-elt="this"><span class="op-idle">Read it and preview</span><span class="op-busy">Reading it…</span></button>{{ how('adopt', compact=True, op='adopt') }}</span>
+      <span class="muted small">The preview reads the device with that login and sends nothing.</span>
+    </div>
+  </form>
+  {%- endif %}
+</section>

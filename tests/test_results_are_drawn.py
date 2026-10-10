@@ -230,6 +230,10 @@ PAGE_RECORD = {
     "templates_v2.bindings_apply": ("templates/v2/_template_op.html",
                                     ("op.state == 'bound'", "r.moves", "r.commit"),
                                     "templates_v2.page"),
+    # Adopt (board G): the result in place, each step and why it stopped; the run read again on
+    # the network's History (Onboarding and adopt).
+    "adopt_v2.confirm": ("templates/v2/_adopt.html", ("r.steps", "r.reason", "r.remaining"),
+                         "v2.history_page"),
     # Onboarding on v2 (cutover blocker 3): Create's result in place, the device's pending
     # page its record read again; Verify's and Abandon's results in place on the pending
     # page, each run's row read back on the network's History.

@@ -83,7 +83,9 @@ GATES = {
     "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
                           "onboard_abandon"),
     "v2.history_reapply_confirm": _g(C, "re-applies a baseline to every device it holds, as one batch job (History › Baselines)"),
-    "device_v2.reload_confirm": _g(C, "reloads the device, its planned-restart window declared first (P.14, cutover blocker 6)", "reload"),
+    "adopt_v2.confirm": _g(C, "adds the tool's account to a device the tool did not build and "
+                              "brings it under management (board G)", "adopt"),
+    "device_v2.reload_confirm": _g(C,"reloads the device, its planned-restart window declared first (P.14, cutover blocker 6)", "reload"),
     "onboard_v2.verify": _g(C, "reaches the pending device and rotates its credential, from its "
                                "v2 page (the same core as onboard.verify)", "onboard_verify"),
     "onboard_v2.abandon": _g(C, "deletes the pending device's records from NetBox and the "
@@ -266,7 +268,9 @@ GATES = {
                                     "capture preview; records nothing"),
     "golden.migrate_plan": _g(N, "a dry run"),
     "onboard.plan": _g(N, "builds a plan; creates nothing"),
-    "onboard_v2.preview": _g(N, "builds Add device's plan and review; creates nothing"),
+    "adopt_v2.preview": _g(N, "reads the device over the supplied login; sends and writes "
+                              "nothing"),
+    "onboard_v2.preview": _g(N,"builds Add device's plan and review; creates nothing"),
     "onboard_v2.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                        "send; sends nothing"),
     "onboard_v2.abandon_preview": _g(N, "Abandon's dry run; removes nothing"),

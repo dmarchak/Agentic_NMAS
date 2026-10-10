@@ -127,6 +127,8 @@ ANNOUNCERS = {
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
+    # routes/adopt_v2.py: an adoption's end (the inventory row, its first golden, NetBox).
+    "adopt": ("inventory", "goldens", "netbox", "remote"),
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
@@ -359,6 +361,12 @@ DECLARED = {
                                             "devices a change would move; writes nothing"),
     "templates_v2.edit_check": Nothing("renders the edit in a temporary copy of the library, "
                                        "removed after; the repository is not written"),
+    "adopt_v2.preview": Nothing("reads the device over the supplied login and computes the "
+                                "adoption's plan; it sends nothing and writes nothing"),
+    "adopt_v2.confirm": Nothing("starts the adoption as a job and answers at once; the job "
+                                "ANNOUNCES inventory, goldens, netbox and remote when it ends, "
+                                "and device_progress at each step (ANNOUNCERS adopt, "
+                                "device-ops)"),
     "onboard_v2.preview": Nothing("builds Add device's plan and review; creates nothing (the "
                                   "same core as onboard.plan)"),
     "onboard_v2.verify_preview": Nothing("reads one pending device and computes what Verify "

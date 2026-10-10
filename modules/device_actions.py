@@ -261,6 +261,8 @@ JOB_STEPPERS = {
                 "no progress; its card names what it reads"),
     # Reload (P.14): each step noted once done.
     "reload": ("modules.nsot.reload_op", "STEPS", None),
+    # Adopt (board G): each step noted once it ends.
+    "adopt": ("modules.nsot.adopt", "STEPPER", None),
 }
 
 #: A reload's outcome -> (its heading chip, its level). Only `reloaded` is green.

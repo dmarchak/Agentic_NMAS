@@ -103,6 +103,13 @@ STAGES = {
         "n/a: a reload cannot be undone; the preview says so and names the break-glass record "
         "and the console as the way in if it does not come back",
         "modules.nsot.reload_op.record"),
+    # Adopt (board G): the preview reads the device over the supplied login and sends nothing;
+    # the apply reads again and compares the fingerprint, adds the tool's account and proves it
+    # on a fresh login, and removes it again (read back gone) when the proof fails.
+    "adopt_v2.confirm": Stages(
+        "adopt_v2.preview", "fingerprint",
+        "modules.nsot.adopt._add_tool_account", "modules.nsot.adopt._remove_added",
+        "modules.nsot.onboard.record_run"),
     # Onboarding on v2 (cutover blocker 3): today's cores, each confirm bound to its preview.
     "onboard_v2.verify": Stages(
         "onboard_v2.verify_preview", "fingerprint in routes.onboard.verify_run",
@@ -327,6 +334,7 @@ HISTORY = {
     "onboard.verify": ("onboarding", "golden"),
     "onboard.abandon": ("onboarding",),
     "onboard_v2.verify": ("onboarding", "golden"),
+    "adopt_v2.confirm": ("onboarding", "golden"),
     "device_v2.reload_confirm": ("reloads", "restart_windows", "restarts"),
     "v2.history_reapply_confirm": ("receipts", "golden"),
     "onboard_v2.abandon": ("onboarding",),

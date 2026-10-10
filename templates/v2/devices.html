@@ -9,9 +9,11 @@
   </div>
   <div class="page-actions">
     <a class="btn" data-op="onboard" href="{{ url_for('onboard_v2.new', list=list_name) }}" hx-get="{{ url_for('onboard_v2.new', list=list_name) }}" hx-target="#onboard-add" hx-swap="outerHTML">Add device…</a>{{ how('onboard') }}
+    <a class="btn" data-op="adopt" href="{{ url_for('adopt_v2.new', list=list_name) }}" hx-get="{{ url_for('adopt_v2.new', list=list_name) }}" hx-target="#adopt-card" hx-swap="outerHTML">Adopt a device…</a>{{ how('adopt') }}
   </div>
 </div>
 <div id="onboard-add"></div>
+<div id="adopt-card"></div>
 <form class="dev-filters" hx-get="{{ url_for('v2.devices_table') }}" hx-target="#devices" hx-swap="outerHTML"
       hx-trigger="input changed delay:300ms from:#dev-q, change">
   <label class="sr" for="dev-q">Search by name or address</label>

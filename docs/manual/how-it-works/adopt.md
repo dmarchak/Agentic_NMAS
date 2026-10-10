@@ -10,12 +10,15 @@ hash.
 
 ## How you start it {#start}
 
-No screen or command starts an adoption yet. The operation is built in the tool's code
-(the preview and the apply below), and no route, page or host command calls it: its screen
-is planned as Devices > Adopt. Only its recovery has a command today:
-`nmas-adopt-recover <device> --list <list>`, run on the host (see
-[When a run stops](#stops)). Until the screen exists, a device the tool did not build is
-brought in by [onboarding](onboard) it instead.
+On **Devices**, press **Adopt a device…**. Its card asks for the device's name, management
+address, platform and role, and the supplied login (and an enable secret, if the account
+needs one); **Read it and preview** draws [the preview](#preview)
+below in the same card. When nothing blocks, the card asks for the supplied password again
+(no page ever holds it, so the confirm cannot carry it from the preview) and for why;
+**Adopt <device>** starts the apply as a job, and the card follows its steps until it ends,
+then draws each step's outcome. Adopting needs a verified person. A run that stops is run
+again from the same card and resumes; its recovery has a host command as well,
+`nmas-adopt-recover <device> --list <list>` (see [When a run stops](#stops)).
 
 ## The supplied credential is never written
 
@@ -25,7 +28,7 @@ length. If adoption fails, its owner still has it, unchanged. The password the t
 generates for its OWN account is different: that one is staged (encrypted) before it is
 sent, because losing it would lock the tool out.
 
-## The preview (it reads, and sends nothing)
+## The preview (it reads, and sends nothing) {#preview}
 
 You give the list, the device's name, its management address, its platform, its role and
 the supplied login. Every reason to refuse is drawn at once, each by name.

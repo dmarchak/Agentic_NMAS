@@ -83,6 +83,8 @@ def _bodies(v):
                                                    "text": "hostname {{ hostname }}\n"}),
                                     "the edit checked against every governed device's golden, "
                                     "masked on the way out"),
+        "adopt_v2.preview": (400, ("form", {"hostname": "r9"}),
+                             "no network named: refused before the device is read"),
         "onboard_v2.preview": (400, ("form", {"hostname": "r9"}),
                                "no network named: refused saying why the list is carried, "
                                "nothing planned"),
