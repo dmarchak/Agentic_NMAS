@@ -211,6 +211,11 @@ PAGE_RECORD = {
     # card that confirms a 7.1 preview draws its result through.
     "netbox_v2.confirm": ("templates/v2/_netbox_job.html", ("result_parts(r)", "job.removal"),
                           "netbox_v2.job"),
+    # The template editor (cutover blocker 5): the commit and what it revoked, in place, with
+    # Approve… for each; the commit read again on the template's row and in History.
+    "templates_v2.edit_commit": ("templates/v2/_template_op.html",
+                                 ("op.state == 'edited'", "r.revoked", "r.commit"),
+                                 "templates_v2.page"),
     # Onboarding on v2 (cutover blocker 3): Create's result in place, the device's pending
     # page its record read again; Verify's and Abandon's results in place on the pending
     # page, each run's row read back on the network's History.

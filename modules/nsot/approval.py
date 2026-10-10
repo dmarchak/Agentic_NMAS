@@ -344,7 +344,7 @@ def committed_acknowledgement(repo: str, hostname: str) -> dict:
             "commit": hostvars.last_intent_commit(repo, hostname), "error": ""}
 
 
-def validate_template(repo: str, rel_path: str, devices: list) -> dict:
+def validate_template(repo: str, rel_path: str, devices: list, template_root: str = "") -> dict:
     """Round-trip *rel_path* against every bound device. No device contact.
 
     *devices* is a list of ``{"device", "running_config", "platform"}`` built
@@ -358,13 +358,16 @@ def validate_template(repo: str, rel_path: str, devices: list) -> dict:
     sections it reorders, the unmodelled lines not acknowledged and the acknowledged ones the
     capture no longer has (the set must match exactly, as at deploy), and the device's own
     lines, which never count.
+
+    *template_root* renders from another copy of the library (the template editor's check, an
+    edit in progress written outside the repository); the repository's own by default.
     """
     from modules.nsot import normalize, roundtrip, templates_repo
     from modules.nsot.parsers import get_parser
     from modules.nsot.render_artifact import acknowledgement_gap, unmodeled_lines
 
     results, host_vars_by_device = [], {}
-    root = templates_repo.templates_dir(repo)
+    root = template_root or templates_repo.templates_dir(repo)
     platform_dir = os.path.dirname(rel_path)
     template_name = os.path.basename(rel_path)
 

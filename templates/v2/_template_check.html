@@ -1,0 +1,27 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_template_result.html" import tpl_device_result -%}
+{#- The template editor's check, as typed (`template_edit.check`): the syntax, then the edit
+    rendered for every device it governs against its committed golden, each failing line named
+    (board B's drawing). A device with no golden yet is named with Capture… to record one. -#}
+{%- if k.error %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ k.error }}.</p></div>
+{%- elif k.syntax %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Does not parse:</strong> {{ k.syntax }}. The commit waits until it does.</p></div>
+{%- else %}
+<p>{{ badge('parses', 'ok') }} {% if k.devices %}{{ badge(k.passed ~ ' of ' ~ k.devices ~ ' reproduce', 'ok' if k.passed == k.devices else 'warn') }}{% endif %}{% if not k.changed %} <span class="muted small">unchanged from what is committed</span>{% endif %}</p>
+{%- for t in k.templates %}
+<h3 class="ie-k">Through <span class="mono">{{ t.template }}</span></h3>
+{%- for r in t.results %}
+<details class="tpl-dev" data-keep="te-{{ t.template }}-{{ r.device }}"{% if not r.ok %} open{% endif %}><summary>{{ r.device }} {{ badge('reproduces', 'ok') if r.ok else badge('differs', 'danger') }}</summary>
+  {{ tpl_device_result(r) }}
+</details>
+{%- endfor %}
+{%- for n in t.not_validated %}
+<p class="small"><a href="{{ url_for('device_v2.device', name=n.device) }}">{{ n.device }}</a>: {{ n.reason }}, so it is not checked. <a data-op="capture" href="{{ url_for('device_v2.device', name=n.device, op='capture') }}">Capture {{ n.device }}…</a>{{ how('capture', compact=True, op='capture') }}</p>
+{%- endfor %}
+{%- if not t.results and not t.not_validated %}<p class="muted small">No device is bound to it.</p>{% endif %}
+{%- else %}
+<p class="muted small">It renders no device: no template that a device is bound to uses it.</p>
+{%- endfor %}
+<p class="faint small">Approval is not part of the commit: a committed edit revokes the approvals over it, and Approve… checks the committed template again.</p>
+{%- endif %}

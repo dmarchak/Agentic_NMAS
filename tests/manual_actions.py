@@ -80,6 +80,11 @@ NOT_AN_OPERATION = {
     ("_netbox_job.html", "Close"): "returns to the NetBox page, a read; a job runs on",
     ("_netbox_removals.html", "Close"): "returns to the NetBox page, a read",
     ("_network_create.html", "Change the name"): "puts the name's form back, creating nothing",
+    ("_template_edit.html", "Discard the edit"): "puts the Templates table back, a read; "
+                                                 "nothing was written",
+    ("_template_edit.html", "Open it again"): "opens the template again on what is committed "
+                                              "now, a read",
+    ("_template_edit.html", "Close"): "puts the Templates table back, a read",
     ("_onboard_add.html", "Close"): "returns to Devices, a read; nothing was created",
     ("_onboard_add.html", "Open 's page"): "opens the new device's pending page, a read",
     ("_onboard_add.html", "Add another"): "puts an empty Add device form back, creating nothing",

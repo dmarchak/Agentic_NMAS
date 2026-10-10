@@ -73,6 +73,10 @@ def _bodies(v):
                                          "refused naming the networks; it starts nothing"),
         "netbox_v2.preview": (404, ("form", {}), "no operation named: refused naming the three, "
                               "nothing started"),
+        "templates_v2.edit_check": (200, ("form", {"list": LIST, "path": "cisco_iosxe/base.j2",
+                                                   "text": "hostname {{ hostname }}\n"}),
+                                    "the edit checked against every governed device's golden, "
+                                    "masked on the way out"),
         "onboard_v2.preview": (400, ("form", {"hostname": "r9"}),
                                "no network named: refused saying why the list is carried, "
                                "nothing planned"),

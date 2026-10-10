@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{%- from "v2/_template_result.html" import tpl_device_result -%}
 {#- Boards B and C (signed off 2026-10-05): Approve…'s check, device by device, with every line
     that failed and where to clear it; the approval's result; Revoke…'s reason and its result.
     In #tpl-op, below the table; a confirm redraws the whole region so the row says the new
@@ -19,50 +20,7 @@
     <p>For each bound device: its captured configuration (its golden at HEAD), parsed into intent and rendered back through this template, compared line by line with the capture. Approval needs AT LEAST ONE device that reproduces exactly, with every line the parser does not model acknowledged in that device's committed intent. Lines the device generates for itself (certificates, the licence UDI, its self-signed trustpoint, AutoInstall's DHCP client-id) are the device's own and never count.</p></div></div>
   {%- for r in c.results %}
   <div class="op-part tpl-dev"><h3>{{ r.device }}</h3><div>
-    {%- if r.error %}
-    <p>{{ badge('fail', 'danger') }} {{ r.error }}</p>
-    {%- else %}
-    <p class="tpl-chips">{{ badge(r.missing ~ ' missing', 'danger' if r.missing else 'ok') }} {{ badge(r.extra ~ ' extra', 'danger' if r.extra else 'ok') }} {{ badge(r.reordered ~ ' reordered', 'danger' if r.reordered else 'ok') }}
-      {%- if r.unacknowledged %} {{ badge(r.unacknowledged | length ~ ' unmodelled, not acknowledged', 'danger') }}{% endif %}
-      {%- if r.acknowledged %} {{ badge(r.acknowledged | length ~ ' unmodelled, acknowledged', 'ok') }}{% endif %}
-      {%- if r.stale_acknowledgements %} {{ badge(r.stale_acknowledgements | length ~ ' acknowledged, no longer in the capture', 'danger') }}{% endif %}</p>
-    {%- if r.missing_lines %}
-    <p class="tpl-k">Not reproduced by the render:</p>
-    <pre class="op-diff tpl-lines">{% for m in r.missing_lines %}{% if m.section and m.section != m.line %}{{ m.section }}
- {% endif %}{{ m.line }}
-{% endfor %}</pre>
-    {%- endif %}
-    {%- if r.extra_lines %}
-    <p class="tpl-k">Invented by the render, not in the capture:</p>
-    <pre class="op-diff tpl-lines">{% for m in r.extra_lines %}{% if m.section and m.section != m.line %}{{ m.section }}
- {% endif %}{{ m.line }}
-{% endfor %}</pre>
-    {%- endif %}
-    {%- if r.reordered_lines %}
-    <p class="tpl-k">Sections rendered in another order (a behaviour change where order matters):</p>
-    <pre class="op-diff tpl-lines">{% for s in r.reordered_lines %}{{ s }}
-{% endfor %}</pre>
-    {%- endif %}
-    {%- if r.unacknowledged %}
-    <p class="tpl-k">Not modelled, and not acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %} (committed {{ r.intent.commit.commit }}){% elif r.intent.state == 'none' %} ({{ r.device }} has no committed intent){% endif %}:</p>
-    <pre class="op-diff tpl-lines">{% for l in r.unacknowledged %}{{ l }}
-{% endfor %}</pre>
-    <p class="muted"><a href="{{ url_for('device_v2.device', name=r.device, tab='intent', edit=1) }}">Acknowledge it on {{ r.device }}'s Intent tab</a> (its editor lists each unmodelled line to tick), or model it in the parser.</p>
-    {%- endif %}
-    {%- if r.stale_acknowledgements %}
-    <p class="tpl-k">Acknowledged in {{ r.device }}'s intent, and no longer in its capture (the set must match exactly, as at deploy):</p>
-    <pre class="op-diff tpl-lines">{% for l in r.stale_acknowledgements %}{{ l }}
-{% endfor %}</pre>
-    <p class="muted"><a href="{{ url_for('device_v2.device', name=r.device, tab='intent', edit=1) }}">Untick it on {{ r.device }}'s Intent tab</a>.</p>
-    {%- endif %}
-    {%- if r.intent.error %}<p class="notice notice-warn">{{ icon('warn', 16) }} {{ r.intent.error }}: its acknowledgements could not be read, so none is counted.</p>{% endif %}
-    {%- if r.acknowledged and not r.unacknowledged %}
-    <p class="faint">Acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %}, commit {{ r.intent.commit.commit }}{% if r.intent.commit.by %} by {{ r.intent.commit.by }}{% endif %}: "{{ r.intent.commit.subject }}"{% endif %}: <span class="mono">{{ r.acknowledged | join('; ') }}</span></p>
-    {%- endif %}
-    {%- if r.device_owned %}
-    <p class="faint">Device-owned, not counted: {% for h in r.device_owned %}<span class="mono">{{ h }}</span>{{ ', ' if not loop.last }}{% endfor %}</p>
-    {%- endif %}
-    {%- endif %}</div></div>
+    {{ tpl_device_result(r) }}</div></div>
   {%- endfor %}
   {%- if c.not_validated %}
   <div class="op-part"><h3>Not validated</h3><div>
@@ -204,6 +162,28 @@
   <div class="op-part"><h3>Next</h3><div>
     <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span>, as {{ op.actor }}.{% if r.revoked %} Approval revoked over {% for t in r.revoked %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %}: approve each again with Approve… on its row before a deploy renders through it.{% endif %}</p>
     <p class="muted">Then Coverage shows what each device lacks: <a href="{{ url_for('v2.coverage', list=op.list) }}">Open Coverage</a>. Nothing was sent to any device.</p></div></div>
+</section>
+{%- elif op.state == 'edited' %}
+{#- The template editor's commit (cutover blocker 5): what was committed, what it revoked, and
+    Approve… next, the row redrawn with the region. -#}
+{%- set r = op.r %}
+<section class="op-card {{ 'op-ok' if r.changed else 'op-muted' }}" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h"><span class="mono">{{ op.path }}</span> {{ badge('committed', 'ok') if r.changed else badge('unchanged', 'muted') }}</h2>
+    <div class="op-hd-actions">{{ how('edit-template') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    {%- if r.changed %}
+    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span> "template: {{ op.path }} {{ op.summary }}", as {{ op.actor }}. Nothing was sent to any device.</p>
+    {%- if r.revoked %}<p>Approval revoked over {% for t in r.revoked %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %}, in the same commit: a deploy renders through {{ 'it' if r.revoked | length == 1 else 'them' }} only once approved again.</p>{% endif %}
+    {%- if r.not_revoked %}<p class="notice notice-warn">{{ icon('warn', 16) }} Not revoked: {{ r.not_revoked | join(', ') }}. The deploy gate counts an edited template as unapproved whatever its record says.</p>{% endif %}
+    {%- else %}
+    <p>The text is what is committed already: nothing was committed.</p>
+    {%- endif %}</div></div>
+  {%- if r.revoked %}
+  <div class="op-part"><h3>Next</h3><div class="op-next">
+    {%- for t in r.revoked %}
+    <div><a class="btn" data-op="approve-template" data-next-acts="template_approve" href="{{ url_for('templates_v2.page', list=op.list, approve=t) }}" hx-get="{{ url_for('templates_v2.check', list=op.list, path=t) }}" hx-target="#tpl-op" hx-swap="innerHTML">Approve {{ t }}…</a>{{ how('approve-template', compact=True, op='approving a template') }}<span class="muted">checks it on every bound device's golden before a deploy renders through it</span></div>
+    {%- endfor %}</div></div>
+  {%- endif %}
 </section>
 {%- else %}
 <section class="op-card op-danger" id="tpl-card" aria-labelledby="tpl-h">

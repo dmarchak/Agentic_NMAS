@@ -1,0 +1,50 @@
+{%- from "v2/_macros.html" import icon, badge -%}
+{#- One device's round trip through a template (`approval.validate_template`'s result): the
+    counts, then every line that failed and where to clear it. Board B's drawing, shared by
+    Approve…'s check and the template editor's check as typed. -#}
+{%- macro tpl_device_result(r) -%}
+    {%- if r.error %}
+    <p>{{ badge('fail', 'danger') }} {{ r.error }}</p>
+    {%- else %}
+    <p class="tpl-chips">{{ badge(r.missing ~ ' missing', 'danger' if r.missing else 'ok') }} {{ badge(r.extra ~ ' extra', 'danger' if r.extra else 'ok') }} {{ badge(r.reordered ~ ' reordered', 'danger' if r.reordered else 'ok') }}
+      {%- if r.unacknowledged %} {{ badge(r.unacknowledged | length ~ ' unmodelled, not acknowledged', 'danger') }}{% endif %}
+      {%- if r.acknowledged %} {{ badge(r.acknowledged | length ~ ' unmodelled, acknowledged', 'ok') }}{% endif %}
+      {%- if r.stale_acknowledgements %} {{ badge(r.stale_acknowledgements | length ~ ' acknowledged, no longer in the capture', 'danger') }}{% endif %}</p>
+    {%- if r.missing_lines %}
+    <p class="tpl-k">Not reproduced by the render:</p>
+    <pre class="op-diff tpl-lines">{% for m in r.missing_lines %}{% if m.section and m.section != m.line %}{{ m.section }}
+ {% endif %}{{ m.line }}
+{% endfor %}</pre>
+    {%- endif %}
+    {%- if r.extra_lines %}
+    <p class="tpl-k">Invented by the render, not in the capture:</p>
+    <pre class="op-diff tpl-lines">{% for m in r.extra_lines %}{% if m.section and m.section != m.line %}{{ m.section }}
+ {% endif %}{{ m.line }}
+{% endfor %}</pre>
+    {%- endif %}
+    {%- if r.reordered_lines %}
+    <p class="tpl-k">Sections rendered in another order (a behaviour change where order matters):</p>
+    <pre class="op-diff tpl-lines">{% for s in r.reordered_lines %}{{ s }}
+{% endfor %}</pre>
+    {%- endif %}
+    {%- if r.unacknowledged %}
+    <p class="tpl-k">Not modelled, and not acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %} (committed {{ r.intent.commit.commit }}){% elif r.intent.state == 'none' %} ({{ r.device }} has no committed intent){% endif %}:</p>
+    <pre class="op-diff tpl-lines">{% for l in r.unacknowledged %}{{ l }}
+{% endfor %}</pre>
+    <p class="muted"><a href="{{ url_for('device_v2.device', name=r.device, tab='intent', edit=1) }}">Acknowledge it on {{ r.device }}'s Intent tab</a> (its editor lists each unmodelled line to tick), or model it in the parser.</p>
+    {%- endif %}
+    {%- if r.stale_acknowledgements %}
+    <p class="tpl-k">Acknowledged in {{ r.device }}'s intent, and no longer in its capture (the set must match exactly, as at deploy):</p>
+    <pre class="op-diff tpl-lines">{% for l in r.stale_acknowledgements %}{{ l }}
+{% endfor %}</pre>
+    <p class="muted"><a href="{{ url_for('device_v2.device', name=r.device, tab='intent', edit=1) }}">Untick it on {{ r.device }}'s Intent tab</a>.</p>
+    {%- endif %}
+    {%- if r.intent.error %}<p class="notice notice-warn">{{ icon('warn', 16) }} {{ r.intent.error }}: its acknowledgements could not be read, so none is counted.</p>{% endif %}
+    {%- if r.acknowledged and not r.unacknowledged %}
+    <p class="faint">Acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %}, commit {{ r.intent.commit.commit }}{% if r.intent.commit.by %} by {{ r.intent.commit.by }}{% endif %}: "{{ r.intent.commit.subject }}"{% endif %}: <span class="mono">{{ r.acknowledged | join('; ') }}</span></p>
+    {%- endif %}
+    {%- if r.device_owned %}
+    <p class="faint">Device-owned, not counted: {% for h in r.device_owned %}<span class="mono">{{ h }}</span>{{ ', ' if not loop.last }}{% endfor %}</p>
+    {%- endif %}
+    {%- endif %}
+{%- endmacro -%}

@@ -944,6 +944,29 @@ def bring_template():
     ])
 
 
+def edit_template():
+    return svg(440, (
+        "Editing a template. The editor opens the template committed at HEAD and the blob it was "
+        "read from. As you type it is checked: its syntax, then your edit rendered for every "
+        "device it governs, in a copy of the library outside the repository, against that "
+        "device's committed golden, each failing line named. You commit with a reason, as you; "
+        "a template moved since you opened it is refused naming both versions. The commit "
+        "revokes every approval over the template, said before you commit. No device is "
+        "contacted."), [
+        lanes(20, 434),
+        repo(14, 40, 186, 40, "The committed template", "and its blob"), num(14, 40, 1),
+        _down(107, 82, 102),
+        doc("box", 14, 104, 186, 40, "Your edit, checked", "each device's golden"), num(14, 104, 2),
+        person(14, 160, 186, 30, "You commit, as you"), num(14, 160, 3),
+        _down(107, 192, 212),
+        repo(14, 214, 186, 40, "One commit", "the template, approvals revoked"), num(14, 214, 4),
+        t(14, 284, "Moved since you opened it:", "sm"),
+        t(14, 297, "refused, both versions named.", "sm"),
+        device(240, 60, 140, 44, "The devices", "not contacted", off=True),
+        nosend(310, 200, ("nothing is sent", "a deploy does that")),
+    ])
+
+
 def show_commands():
     return svg(470, (
         "Show commands, and Ask the device its one-device form. Every command is checked "
@@ -1266,6 +1289,7 @@ DIAGRAMS = {
     "edit-intent": edit_intent,
     "approve-template": approve_template,
     "bring-template": bring_template,
+    "edit-template": edit_template,
     "show-commands": show_commands,
     "logging-path": logging_path,
     "privileged": privileged,

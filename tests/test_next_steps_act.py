@@ -52,6 +52,10 @@ OPENERS = {
     # The v2 device page's deploy card (a revert whose block still stands offers it).
     "deploy_card": ("document.querySelector('#device-op h2') && /Deploy committed intent to r2/"
                     ".test(document.querySelector('#device-op h2').textContent)"),
+    # Templates' Approve… card (the template editor's result offers it for each approval its
+    # commit revoked, cutover blocker 5).
+    "template_approve": ("document.querySelector('#tpl-card h2') && /^Approve /"
+                         ".test(document.querySelector('#tpl-card h2').textContent)"),
     # The v2 device page's restore card (C486: Capture's "Restore from…" when the device
     # lacks lines intent holds).
     "restore_card": ("document.querySelector('#device-op h2') && /Restore r2 from/"
@@ -168,6 +172,8 @@ class TestEachOpenerActsInARealBrowser:
         # Capture's Deploy intent… and Restore from… (C486), as their links load them.
         ("deploy_card", "/v2/device/r2?tab=overview&op=deploy&list=Lab"),
         ("restore_card", "/v2/device/r2?tab=overview&op=restore&list=Lab"),
+        # The template editor's Approve… (cutover blocker 5), as its link loads it.
+        ("template_approve", "/v2/templates?list=Lab&approve=cisco_iosxe/base.j2"),
         ("persist", "/v2/device/r2?op=persist"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):

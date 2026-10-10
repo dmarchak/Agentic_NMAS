@@ -1,0 +1,60 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- The template editor (cutover blocker 5; intent editor H's pattern, drawn under the Phase 7
+    mode, docs/STANDING_APPROVAL_LOG.md), in #tpl-op below the Templates table: the template in
+    a text area, checked as typed against every device it governs (its committed golden, never
+    a backup), what a commit revokes said beside the commit; then one commit with its reason,
+    bound to the version opened; or the refusal when it moved since. The card replaces itself
+    and never refreshes on its own, so an edit in progress is never redrawn away.
+    modules/nsot/template_edit.py, through routes/templates_v2.py. -#}
+{%- set close_url = url_for('templates_v2.table', list=c.list) -%}
+{%- if c.state == 'editing' %}
+<section class="card intent intent-edit{{ ' intent-bad' if c.refused }}" id="tpl-card" aria-labelledby="te-h">
+  <form id="te-form" class="ie-form" method="post" action="{{ url_for('templates_v2.edit_commit') }}"
+        hx-post="{{ url_for('templates_v2.edit_commit') }}" hx-target="#tpl-op" hx-swap="innerHTML">
+  <input type="hidden" name="base" value="{{ c.base }}"><input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="path" value="{{ c.path }}">
+  <div class="ie-hd">
+    <div><h2 id="te-h">Editing <span class="mono">{{ c.path }}</span></h2>
+      <p class="muted small">{{ c.list }}'s library, opened at <span class="mono">{{ (c.base or '')[:7] or 'a version not yet committed' }}</span>{% if c.last.commit %} ({{ c.last.subject }}{% if c.last.at %}, {{ stamp(c.last.at) }}{% endif %}){% endif %}. It renders {% for t, devs in c.governs %}{{ devs | length }} device{{ '' if devs | length == 1 else 's' }} through <span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% else %}no device{% endfor %}. Nothing is written until you commit.</p></div>
+    <div class="ie-hd-actions"><button type="button" class="btn" hx-get="{{ close_url }}" hx-target="#templates" hx-swap="outerHTML">Discard the edit</button></div>
+  </div>
+  {%- if c.refused %}
+  <div class="notice notice-danger ie-refused" role="alert">{{ icon('warn', 16) }}<div><strong>Not committed:</strong> {{ c.refused }}. Nothing was written.</div></div>
+  {%- endif %}
+  <div class="ie-split">
+    <div class="ie-doc">
+      <label class="ie-label" for="te-text">The committed template, edited in place: what you see is what is committed, byte for byte</label>
+      <textarea id="te-text" name="text" class="mono ie-text" spellcheck="false" rows="{{ [c.text.count('\n') + 2, 40] | min }}"
+                hx-post="{{ url_for('templates_v2.edit_check') }}" hx-trigger="load, input changed delay:800ms"
+                hx-target="#te-check" hx-swap="innerHTML" hx-include="#te-form">{{ c.text }}</textarea>
+      <p class="faint small">A syntax error is named with its line as you type. The check renders your edit for every device it governs from that device's committed golden; nothing is read from a device.</p>
+    </div>
+    <div class="ie-check" id="te-check" aria-live="polite"><p class="muted">Checking the template…</p></div>
+  </div>
+  <div class="ie-ft">
+    <label class="ie-why">Why, in one line (the commit's subject; the change itself is the diff)
+      <input type="text" name="summary" value="{{ c.summary }}" autocomplete="off" required></label>
+    {%- if c.confirm.may %}
+    <span class="op-act"><span class="muted small">{% if c.revokes %}Commits it as you, and revokes the approval of {% for t in c.revokes %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %} in the same commit.{% else %}Commits it as you; no approval stands over it.{% endif %} Nothing is sent to any device.</span>
+      <button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"><span class="op-idle">Commit {{ c.path }}</span><span class="op-busy">Committing…</span></button>{{ how('edit-template', compact=True, op='editing a template') }}</span>
+    {%- else %}
+    <p class="op-note">{{ c.confirm.statement }} Nothing can be committed from here.</p>
+    {%- endif %}
+  </div>
+  </form>
+</section>
+{%- elif c.state == 'moved' %}
+{%- set m = c.m -%}
+<section class="card intent intent-edit intent-moved" id="tpl-card" aria-labelledby="tm-h">
+  <div class="ie-hd"><h2 id="tm-h">Editing <span class="mono">{{ c.path }}</span>: not saved</h2>
+    <div class="ie-hd-actions"><button type="button" class="btn" hx-get="{{ close_url }}" hx-target="#templates" hx-swap="outerHTML">Discard the edit</button></div></div>
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div>You opened <span class="mono">{{ (m.base or '')[:7] or 'a version not yet committed' }}</span>; it is now <span class="mono">{{ (m.current or '')[:7] or 'nothing' }}</span>{% if m.last_commit %}, committed by {{ m.last_commit.by or 'someone' }} {% if m.last_commit.at %}{{ stamp(m.last_commit.at) }}{% endif %}: "{{ m.last_commit.subject }}"{% endif %}. Nothing was written.</div></div>
+  <div class="ie-split"><div><h3 class="ie-k">Your edit, kept</h3><pre class="op-diff">{{ c.text }}</pre></div>
+    <div><p>Open the template again to make your edit on their version; copy yours from here first.</p>
+      <p><a class="btn" href="{{ url_for('templates_v2.page', list=c.list) }}" hx-get="{{ url_for('templates_v2.edit_form', list=c.list, path=c.path) }}" hx-target="#tpl-op" hx-swap="innerHTML">Open it again</a></p></div></div>
+</section>
+{%- else %}
+<section class="op-card op-danger" id="tpl-card" aria-labelledby="tr-h">
+  <div class="op-hd"><h2 id="tr-h">Not opened</h2><div class="op-hd-actions"><button type="button" class="btn" hx-get="{{ close_url }}" hx-target="#templates" hx-swap="outerHTML">Close</button></div></div>
+  <div class="op-part"><h3>Why</h3><div><p>{{ c.why }}</p></div></div>
+</section>
+{%- endif %}

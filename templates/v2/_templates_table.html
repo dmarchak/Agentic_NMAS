@@ -23,6 +23,8 @@
         {%- elif r.state == 'revoked' %}{{ badge('revoked', 'danger') }} <span class="muted small">{{ (st.reason or '')[9:] if (st.reason or '').startswith('REVOKED: ') else st.reason }}{% if st.actor %} ({{ st.actor }}){% endif %}</span>
         {%- else %}{{ badge('not approved', 'warn' if r.bound else 'muted') }} <span class="muted small">{% if not r.bound %}nothing bound to validate it{% else %}{{ st.reason }}{% endif %}</span>{% endif %}</td>
     <td class="tpl-act">
+      {#- Edit… on every row (cutover blocker 5): the editor opens below, checked as typed. -#}
+      <a class="btn btn-small" data-op="edit-template" href="{{ url_for('templates_v2.page', list=list_name, edit=r.path) }}" hx-get="{{ url_for('templates_v2.edit_form', list=list_name, path=r.path) }}" hx-target="#tpl-op" hx-swap="innerHTML"><span class="op-idle">Edit…</span><span class="op-busy">Opening…</span></a>{{ how('edit-template', compact=True, op='editing a template') }}
       {%- if r.shipped.state == 'stale' %}
       {#- C566, board B: an older shipped version, unedited, is brought in as one action;
           nothing local is lost. Its approvals are then revoked, and Approve… comes back. -#}

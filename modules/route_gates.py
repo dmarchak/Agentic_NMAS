@@ -129,6 +129,7 @@ GATES = {
     "templatize.edit_committed": _g(A, "commits an edit to intent"),
     "templates_v2.approve": _g(A, "approves a template (7.6, board B), bound to the fingerprint and the check shown"),
     "templates_v2.revoke": _g(A, "withdraws a template approval with the person's reason (7.6, board C)"),
+    "templates_v2.edit_commit": _g(A, "commits a template edit bound to the version opened, revoking every approval over it (cutover blocker 5)"),
     "v2.profile_propose_commit": _g(A, "commits the network's profile proposed from the connectors on v2 (C566, board A), bound to the proposal shown"),
     "templates_v2.bring": _g(A, "commits the shipped template over the network's stale copy and revokes every approval over it (C566, board B)"),
     "reads_v2.ask_run": _g(R, "reads a device through the reads engine (C547): allowlisted "
@@ -264,6 +265,8 @@ GATES = {
     "onboard_v2.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                        "send; sends nothing"),
     "onboard_v2.abandon_preview": _g(N, "Abandon's dry run; removes nothing"),
+    "templates_v2.edit_check": _g(N, "renders a template edit for its devices in a copy of the "
+                                     "library outside the repository; writes nothing"),
     "onboard.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                     "send (P.9 step c); sends nothing"),
     "templatize.bulk_preview": _g(N, "computes a preview; writes nothing"),

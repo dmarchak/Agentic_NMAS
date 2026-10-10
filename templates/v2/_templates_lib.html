@@ -6,5 +6,5 @@
 <div id="tpl-table" hx-get="{{ url_for('templates_v2.rows', list=list_name) }}" hx-trigger="nmas:templates from:body" hx-swap="innerHTML">
 {% include "v2/_templates_table.html" %}
 </div>
-<div id="tpl-op" aria-live="polite">{% if op %}{% include "v2/_template_op.html" %}{% endif %}</div>
+<div id="tpl-op" aria-live="polite">{% if op and op.editor %}{% set c = op %}{% include "v2/_template_edit.html" %}{% elif op %}{% include "v2/_template_op.html" %}{% endif %}</div>
 </div>

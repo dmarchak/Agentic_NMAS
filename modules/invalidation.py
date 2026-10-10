@@ -197,6 +197,7 @@ DECLARED = {
     "templates_v2.approve": ("templates", "remote"),
     "templates_v2.revoke": ("templates", "remote"),
     "templates_v2.bring": ("templates", "remote"),
+    "templates_v2.edit_commit": ("templates", "remote"),
     "v2.profile_propose_commit": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
@@ -338,6 +339,8 @@ DECLARED = {
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
                                       "it writes nothing"),
+    "templates_v2.edit_check": Nothing("renders the edit in a temporary copy of the library, "
+                                       "removed after; the repository is not written"),
     "onboard_v2.preview": Nothing("builds Add device's plan and review; creates nothing (the "
                                   "same core as onboard.plan)"),
     "onboard_v2.verify_preview": Nothing("reads one pending device and computes what Verify "

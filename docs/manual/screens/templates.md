@@ -1,9 +1,9 @@
 # Templates
 
 The network's configuration templates, one per platform, each with its approval, the devices
-bound to it, and the one action it needs: **Approve…** or **Revoke…**. The page names its
-network (`/v2/templates?list=<network>`). Editing a template and changing which template a
-device renders through stay on today's Templates tab until the redesign builds them.
+bound to it, and the one action it needs: **Approve…** or **Revoke…**, with **Edit…** on every
+row. The page names its network (`/v2/templates?list=<network>`). Changing which template a
+device renders through stays on today's Templates tab until the redesign builds it.
 
 ## What an approval covers {#what-it-is-for}
 
@@ -56,3 +56,14 @@ the row says approved.
 
 Asks why. The reason is recorded with the revocation, committed, and shown on the row. Every
 deploy through the template is refused until it is approved again.
+
+## Edit… {#edit}
+
+Opens the template below the table, as committed, in an editor. As you type it is checked: a
+syntax error is named with its line, and otherwise your edit is rendered for every device it
+governs, from each device's committed golden, with every line it would no longer reproduce
+named as Approve… names them (a shared macro file is checked through each template importing
+it). A device with no golden yet is named with **Capture…**. Beside the commit: which
+approvals the commit revokes. **Commit** records it as you with your one-line reason, refused
+naming both versions if someone committed the template after you opened it; the result offers
+**Approve…** for each template whose approval it revoked. See [Edit a template](edit-template).

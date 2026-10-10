@@ -1158,7 +1158,10 @@ select { max-width: 100%; }
 .prof-commit { margin: 0 0 8px; }
 .prof-lib { display: flex; flex-direction: column; gap: 12px; }
 .tpl-table td { vertical-align: top; }
-.tpl-table .tpl-act { white-space: nowrap; text-align: right; }
+/* Two controls a row since Edit… (cutover blocker 5): each holds together, and the cell wraps
+   between them at a narrow width rather than running past the card. */
+.tpl-table .tpl-act { text-align: right; }
+.tpl-table .tpl-act > a, .tpl-table .tpl-act > button, .tpl-table .tpl-act > .how-link { white-space: nowrap; }
 .tpl-bound summary { cursor: pointer; color: var(--accent); }
 .tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .tpl-k { margin: 8px 0 4px; font-size: 12.5px; color: var(--ink-2); font-weight: 500; }

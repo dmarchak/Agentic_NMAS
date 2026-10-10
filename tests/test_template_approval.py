@@ -288,7 +288,9 @@ class TestValidationUsesCapturedConfigs:
         """It cannot fetch from a device: configs are passed in."""
         import inspect
         params = inspect.signature(approval.validate_template).parameters
-        assert set(params) == {"repo", "rel_path", "devices"}
+        # `template_root` (cutover blocker 5): another copy of the library to render from, the
+        # editor's edit in progress; still a folder of files, never a device.
+        assert set(params) == {"repo", "rel_path", "devices", "template_root"}
 
     def test_unacknowledged_unmodelled_fails_validation(self, repo):
         devices = _devices(["s1"])

@@ -197,6 +197,12 @@ STAGES = {
     "templates_v2.bring": Stages(
         "templates_v2.bring_form", "copy_blob",
         NO_DEVICE, FORWARD, "modules.nsot.template_write.commit"),
+    # The template editor on v2 (cutover blocker 5): the check as typed is the preview (each
+    # governed device's render against its golden, and what the commit revokes); the commit
+    # is bound to the blob opened.
+    "templates_v2.edit_commit": Stages(
+        "templates_v2.edit_form", "base", NO_DEVICE, FORWARD,
+        "modules.nsot.template_write.commit"),
     "templates.save_bindings": Stages(
         "MISSING: bindings are saved with no preview", "MISSING: no hash is bound", NO_DEVICE, FORWARD,
         "modules.nsot.repo.save_templates"),
@@ -348,6 +354,7 @@ HISTORY = {
     "templates_v2.approve": TEMPLATE,
     "templates_v2.revoke": TEMPLATE,
     "templates_v2.bring": TEMPLATE,
+    "templates_v2.edit_commit": TEMPLATE,
     "v2.profile_propose_commit": PROFILE,
     "templates.save_bindings": TEMPLATE,
     "templates.write_template": TEMPLATE,

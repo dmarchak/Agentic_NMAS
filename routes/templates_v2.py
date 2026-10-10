@@ -8,8 +8,10 @@ unmodelled line not acknowledged in the device's committed intent links to its I
 editor); the confirm is bound to the template's fingerprint and to the check's outcome as
 read. C: the result in place, the row redrawn; Revoke… asks why. Every step is
 `modules/nsot/approve_op.py`'s, the code today's `/templates/approve` and `/templates/revoke`
-run too. The network is named on every call (a write path carries its list). Editing and
-bindings stay on today's page until their own boards. Nothing here contacts a device.
+run too. The network is named on every call (a write path carries its list). Edit… (cutover
+blocker 5, intent editor H's pattern) is `modules/nsot/template_edit.py`'s: checked as typed
+against each governed device's committed golden, committed bound to the version opened.
+Nothing here contacts a device.
 """
 
 import logging
@@ -120,9 +122,11 @@ def page():
     approve_path = (request.args.get("approve") or "").strip()
     revoke_path = (request.args.get("revoke") or "").strip()
     bring_path = (request.args.get("bring") or "").strip()
+    edit_path = (request.args.get("edit") or "").strip()
     op = _check_op(name, approve_path) if approve_path else \
         _revoke_op(name, revoke_path) if revoke_path else \
-        _bring_op(name, bring_path) if bring_path else None
+        _bring_op(name, bring_path) if bring_path else \
+        dict(_editor(name, edit_path), editor=True) if edit_path else None
     return _page("v2/templates.html", active_nav="templates", known=True,
                  **_lib_ctx(name, op))
 
@@ -179,6 +183,77 @@ def approve():
         op = {"state": "refused", "list": name, "path": path,
               "why": got.get("error", "not approved")}
     return _region(name, op, got.get("status", 200))
+
+
+def _edit_card(ctx: dict, code: int = 200):
+    return _strict(render_template("v2/_template_edit.html", c=ctx), code)
+
+
+def _editor(name: str, path: str, text: str = None, base: str = None, summary: str = "",
+            refused: str = "") -> dict:
+    """What the editing card draws: the template (the committed text unless *text* carries an
+    edit in progress), the blob it was opened at, what it governs and what a commit revokes."""
+    from modules.nsot import template_edit
+
+    opened = template_edit.open_doc(name, path)
+    if not opened.get("ok"):
+        return {"state": "refused", "list": name, "path": path, "why": opened.get("error")}
+    if text is None:
+        text, base = opened["text"], opened["base"]
+    return {"state": "editing", "list": name, "path": path, "text": text, "base": base or "",
+            "last": opened["last"], "governs": opened["governs"], "revokes": opened["revokes"],
+            "summary": summary, "refused": refused, "confirm": _may()}
+
+
+@bp.route("/edit", methods=["GET"])
+def edit_form():
+    """Edit…: the template in an editor in place, checked as typed. Writes nothing."""
+    name, path = _list_name(), (request.args.get("path") or "").strip()
+    if not path:
+        return _edit_card({"state": "refused", "list": name, "path": "",
+                           "why": "No template was named, so there is nothing to edit."}, 400)
+    ctx = _editor(name, path)
+    return _edit_card(ctx, 404 if ctx["state"] == "refused" else 200)
+
+
+@bp.route("/edit/check", methods=["POST"])
+def edit_check():
+    """The edit, checked as typed: its syntax, and its render for every device it governs
+    against that device's committed golden (`template_edit.check`). Writes nothing."""
+    from modules.nsot import template_edit
+    from modules.outbound import mask_payload
+
+    name, path = _list_name(), (request.form.get("path") or "").strip()
+    # Masked on the way out: a line the render misses is a golden's line, verbatim (C77).
+    return _strict(render_template("v2/_template_check.html", list_name=name,
+                                   k=mask_payload(template_edit.check(
+                                       name, path, request.form.get("text", "")))))
+
+
+@bp.route("/edit", methods=["POST"])
+def edit_commit():
+    """Commit the edit as the verified person, bound to the version opened (``base``): the
+    result in place (what it revoked, Approve… next), the refusal when it moved, or the editor
+    again with its error."""
+    from modules import identity
+    from modules.nsot import template_edit
+
+    name, path = _list_name(), (request.form.get("path") or "").strip()
+    text, base = request.form.get("text", ""), request.form.get("base", "")
+    summary = request.form.get("summary", "")
+    actor = identity.request_actor()
+    got = template_edit.commit(name, path, text, summary, base, actor)
+    if got.get("stage") == "moved":
+        return _edit_card({"state": "moved", "list": name, "path": path, "m": got,
+                           "text": text, "summary": summary}, 409)
+    if not got.get("ok"):
+        return _edit_card(_editor(name, path, text=text, base=base, summary=summary,
+                                  refused=got.get("error", "not committed")),
+                          got.get("status", 400))
+    return _strict(render_template(
+        "v2/_templates_lib.html", **_lib_ctx(name, {"state": "edited", "list": name,
+                                                    "path": path, "r": got, "actor": actor,
+                                                    "summary": summary})))
 
 
 @bp.route("/revoke", methods=["GET"])
