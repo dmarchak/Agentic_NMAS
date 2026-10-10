@@ -29,8 +29,8 @@ def client(monkeypatch):
                                                            "token": "t"})
     monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
     devices = [{"hostname": "r9", "ip": "192.0.2.9"}]
-    monkeypatch.setattr(ns, "_load_list_devices", lambda name: ("Default", devices))
-    monkeypatch.setattr(ns, "_all_lists_with_devices", lambda: [("Default", devices)])
+    monkeypatch.setattr("modules.netbox_ops.list_devices", lambda name: ("Default", devices))
+    monkeypatch.setattr("modules.netbox_ops.all_lists_with_devices", lambda: [("Default", devices)])
     ran = []
     monkeypatch.setattr(nbc, "sync_list_to_netbox",
                         lambda name, devs, dry_run=False, **k: (ran.append(dry_run), {"plan": PLAN})[1])

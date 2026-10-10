@@ -52,7 +52,7 @@
   <a class="nav-item" data-todays-page="dhcp" href="{{ url_for('index') }}">{{ icon('dhcp') }}<span>DHCP</span><small class="nav-todays">today's page</small></a>
   <div class="nav-head">SOURCE OF TRUTH</div>
   <a class="nav-item{% if active_nav == 'templates' %} active{% endif %}" href="{{ url_for('templates_v2.page') }}"{% if active_nav == 'templates' %} aria-current="page"{% endif %}>{{ icon('templates') }}<span>Templates</span></a>
-  <a class="nav-item" data-todays-page="netbox" href="{{ url_for('index') }}">{{ icon('netbox') }}<span>NetBox</span><small class="nav-todays">today's page</small></a>
+  <a class="nav-item{% if active_nav == 'netbox' %} active{% endif %}" href="{{ url_for('netbox_v2.page') }}"{% if active_nav == 'netbox' %} aria-current="page"{% endif %}>{{ icon('netbox') }}<span>NetBox</span></a>
   <a class="nav-item{% if active_nav == 'credentials' %} active{% endif %}" href="{{ url_for('v2.credentials') }}"{% if active_nav == 'credentials' %} aria-current="page"{% endif %}>{{ icon('credentials') }}<span>Credentials</span></a>
   <div class="grow"></div>
   <p class="spike-note">The redesign so far: Needs attention, Devices and the device page, History, Monitoring, Show commands, Templates (approval), Credentials (the break-glass record), Settings per network and Help. Other items open today's screens.</p>

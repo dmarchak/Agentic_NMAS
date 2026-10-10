@@ -121,6 +121,7 @@ ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     "show-commands": ("reads",),               # modules/nsot/reads.py: a run's end
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
+    "netbox-job": ("netbox",),                 # modules/netbox_jobs.py: a preview or import landed
     # modules/nsot/save_op.py (C593): the run's end, its commit and what each device boots.
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
@@ -171,6 +172,7 @@ DECLARED = {
     "remote.verify": ("remote",),
     "remote.verify_write": ("remote",),
     "remote_v2.connect": ("remote",),
+    "netbox_v2.confirm": ("netbox", "settings"),
     "remote_v2.write_probe": ("remote",),
     "remote_v2.acknowledge": ("remote",),
     "remote_v2.auto_push": ("remote",),
@@ -369,6 +371,7 @@ DECLARED = {
     "settings_v2.network_source_preview": Nothing("reads NetBox with proposed filters for the preview; writes nothing"),
     "settings_v2.network_create_preview": Nothing("checks a new network's name and the folder it derives; writes nothing"),
     "settings_v2.network_delete_preview": Nothing("counts what a network holds and where its data would go; writes nothing"),
+    "netbox_v2.preview": Nothing("starts a dry run on a thread; the job announces netbox when it lands (ANNOUNCERS netbox-job)"),
     "remote_v2.publication": Nothing("reads what a first push would publish; writes nothing"),
     "settings_v2.records_store_preview": Nothing("counts the receipts lines in the files and the table for a move's preview; writes nothing"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),

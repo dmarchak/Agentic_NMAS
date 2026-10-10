@@ -21,7 +21,6 @@ effect of confirming, and both it and a valid token are required.
 """
 
 import logging
-import os
 
 from flask import Blueprint, jsonify, request
 
@@ -43,103 +42,30 @@ _ALL_LISTS = "__all_lists__"
 
 
 def _authorization_for(operation: str, list_name: str, plan: dict) -> dict:
-    """Fields every preview returns: the master-switch state and a one-shot token.
+    """Fields every preview returns: the master-switch state and a one-shot token bound to a
+    hash of *this* plan (`netbox_ops.authorization_for`, the one code path v2 shares)."""
+    from modules import netbox_ops
 
-    The token is bound to a hash of *this* plan. Confirming authorizes only this
-    operation; it does not open NetBox for writes generally.
-    """
-    from modules.netbox_authz import compute_plan_hash, issue_token
-    from modules.netbox_guard import writes_allowed
-
-    plan_hash = compute_plan_hash(plan)
-    issued = issue_token(operation, list_name, plan_hash)
-    return {
-        "writes_allowed": writes_allowed(),
-        "token":          issued["token"],
-        "expires_in":     issued["expires_in"],
-        "plan_hash":      plan_hash,
-    }
+    return netbox_ops.authorization_for(operation, list_name, plan)
 
 
 def _load_list_devices(list_name: str):
-    """Resolve a device list name to ``(name, devices)``.
+    """Resolve a device list name to ``(name, devices)`` (`netbox_ops.list_devices`)."""
+    from modules import netbox_ops
 
-    Mirrors the lookup in ``app.netbox_sync`` so both paths agree on which CSV
-    a list name maps to.
-    """
-    from modules.config import LISTS_DIR
-    from modules.device import (
-        get_device_lists, get_current_device_list, load_saved_devices,
-    )
-
-    if list_name:
-        match = next((l for l in get_device_lists() if l["name"] == list_name), None)
-        if not match:
-            return None, None
-        csv_path = os.path.join(LISTS_DIR, match["filename"], "devices.csv")
-        return list_name, load_saved_devices(csv_path)
-
-    name, csv_path = get_current_device_list()
-    return name, load_saved_devices(csv_path)
-
+    return netbox_ops.list_devices(list_name)
 
 
 def _authorize(data: dict, operation: str, list_name: str, recompute) -> tuple:
-    """Check the master switch, consume the token, and re-verify the plan.
+    """The master switch, the one-shot token and the recomputed plan (`netbox_ops.authorize`,
+    C330's order: the switch comes on only after both pass). ``(True, None, 0)`` or
+    ``(False, error_payload, http_status)``."""
+    from modules import netbox_ops
 
-    Returns ``(True, None, 0)`` when the write may proceed, otherwise
-    ``(False, error_payload, http_status)``.
-    """
-    from modules.netbox_authz import consume_token, verify_plan_unchanged
-    from modules.netbox_guard import writes_allowed
-
-    # 1. Master switch — a persistent operator decision, checked first so an
-    #    unauthorized instance cannot burn a token. A person may ask to turn it on
-    #    with this confirm (`permit_writes`), and it is turned on only AFTER the
-    #    token and the plan below both pass (C330, 2026-10-02: it was turned on
-    #    first, so an expired token or a moved plan still left the switch on,
-    #    written with no actor).
-    permit = bool(data.get("permit_writes")) and not writes_allowed()
-    if not writes_allowed() and not permit:
-        return False, {
-            "ok": False, "blocked": True,
-            "error": "NetBox writes are off for every network (Writes allowed, on "
-                     "Settings › Installation › Connections, NetBox connection). Confirm this "
-                     "write with writes permitted to turn them on: they come on only once its "
-                     "token and plan both pass.",
-        }, 403
-
-    # 2. One-shot token from the preview.
-    token = (data.get("token") or "").strip()
-    if not token:
-        return False, {"ok": False, "stale": True,
-                       "error": "Missing confirmation. Run the preview again."}, 400
-
-    ok, err, approved_hash = consume_token(token, operation, list_name)
-    if not ok:
-        return False, {"ok": False, "stale": True, "error": err}, 409
-
-    # 3. Recompute the plan and compare — NetBox may have changed since preview.
     try:
-        current_plan = recompute()
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("netbox_safety: could not recompute the plan for '%s'", list_name)
-        return False, {"ok": False, "error": f"Could not re-verify the plan: {exc}"}, 500
-
-    unchanged, err = verify_plan_unchanged(approved_hash, current_plan)
-    if not unchanged:
-        log.warning("netbox_safety: plan hash mismatch for %s on '%s' — aborted",
-                    operation, list_name)
-        return False, {"ok": False, "stale": True, "error": err}, 409
-
-    if permit:
-        from modules.settings_schema import write_settings
-        written = write_settings({"netbox_allow_writes": True}, actor=_actor())
-        if not written.get("ok", True):
-            return False, {"ok": False, "error": "the master switch could not be turned on: "
-                           + str(written.get("error") or written)}, 500
-        log.info("netbox_safety: %s turned on the NetBox master write switch with a "
-                 "confirmed %s", _actor(), operation)
+        netbox_ops.authorize(data, operation, list_name, recompute, actor=_actor())
+    except netbox_ops.Refused as exc:
+        return False, exc.payload, exc.status
     return True, None, 0
 
 
@@ -190,9 +116,7 @@ def apply_import():
     Requires the single-use token from ``/import/preview`` and re-verifies that
     NetBox still matches the previewed plan.
     """
-    import threading
-
-    from modules.netbox_client import get_netbox_config, set_sync_running, sync_list_to_netbox
+    from modules.netbox_client import get_netbox_config
 
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
@@ -205,68 +129,23 @@ def apply_import():
     if not devices:
         return jsonify({"ok": False, "error": f"List '{list_name}' has no devices"}), 400
 
-    from modules import op_progress
+    from modules import netbox_ops
 
     pid = _progress_start(data, "re-checked, then imported", list_name)
-    # Captured HERE: the import runs on a thread after the response, where
-    # there is no request to ask (C149).
-    actor = _actor()
-    authorized, err, status = _authorize(
-        data, "import", list_name,
-        recompute=lambda: sync_list_to_netbox(list_name, devices, dry_run=True,
-                                              progress_id=pid,
-                                              actor=actor).get("plan", {}),
-    )
-    if not authorized:
-        op_progress.finish(pid, "refused")
-        return jsonify(err), status
-    # Another writer of this list's NetBox objects, by any process (R21): refused here, naming
-    # it, rather than on a thread after an answer that said "started".
-    from modules import netbox_guard as _nbg
-
-    busy = _nbg.list_writer_now(list_name)
-    if busy is not None:
-        op_progress.finish(pid, "refused")
-        return jsonify({"ok": False, "busy": True, "error": (
-            f"Not imported: {_nbg.NetBoxBusy(list_name, busy)}. Nothing was written; "
-            "import again once it finishes.")}), 409
-
-    def _run(name=list_name, devs=devices):
-        # The import runs on after the response: it keeps reporting under the
-        # same id, so the in-flight panel shows it until it ends.
-        outcome = "done"
-        try:
-            set_sync_running(name, True)
-            op_progress.update(pid, phase="importing", devices_done=0)
-            sync_list_to_netbox(name, devs, progress_id=pid, actor=actor,
-                                authority=f"the NetBox tab's one-time confirmation "
-                                          f"of this import, by {actor}")
-        except Exception as exc:              # noqa: BLE001
-            outcome = "failed"
-            log.error("netbox_safety: import thread failed: %s", exc, exc_info=True)
-        finally:
-            set_sync_running(name, False)
-            op_progress.finish(pid, outcome)
-
-    threading.Thread(target=_run, daemon=True, name=f"netbox-import-{list_name}").start()
-    set_sync_running(list_name, True)
-    return jsonify({"ok": True, "status": "started", "list": list_name,
-                    "device_count": len(devices)})
+    # The actor is captured in the request: the import runs on a thread after the response,
+    # where there is no request to ask (C149). The busy check (R21) is the core's too.
+    try:
+        return jsonify(netbox_ops.start_import("import", list_name, data, _actor(),
+                                               progress_id=pid))
+    except netbox_ops.Refused as exc:
+        return jsonify(exc.payload), exc.status
 
 
 def _all_lists_with_devices():
-    """Every device list paired with its devices, for the all-lists import."""
-    import os as _os
-    from modules.config import LISTS_DIR
-    from modules.device import get_device_lists, load_saved_devices
+    """Every device list paired with its devices (`netbox_ops.all_lists_with_devices`)."""
+    from modules import netbox_ops
 
-    out = []
-    for entry in get_device_lists():
-        csv_path = _os.path.join(LISTS_DIR, entry["filename"], "devices.csv")
-        devices = load_saved_devices(csv_path)
-        if devices:
-            out.append((entry["name"], devices))
-    return out
+    return netbox_ops.all_lists_with_devices()
 
 
 @bp.route("/import_all/preview", methods=["POST"])
@@ -308,11 +187,8 @@ def preview_import_all():
 @bp.route("/import_all/apply", methods=["POST"])
 def apply_import_all():
     """Import every device list, optionally enabling writes as the consent."""
-    import threading
+    from modules.netbox_client import get_netbox_config
 
-    from modules.netbox_client import (
-        get_netbox_config, set_sync_running, sync_all_lists_to_netbox,
-    )
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
         return jsonify({"ok": False, "error": "NetBox is not configured"}), 400
@@ -322,42 +198,14 @@ def apply_import_all():
     if not payload:
         return jsonify({"ok": False, "error": "No device lists have any devices"}), 400
 
-    from modules import op_progress
+    from modules import netbox_ops
 
     pid = _progress_start(data, "re-checked, then imported", "every list")
-    actor = _actor()   # the import runs on a thread after the response (C149)
-    authorized, err, status = _authorize(
-        data, "import_all", _ALL_LISTS,
-        recompute=lambda: sync_all_lists_to_netbox(payload, dry_run=True,
-                                                   progress_id=pid,
-                                                   actor=actor).get("plan", {}),
-    )
-    if not authorized:
-        op_progress.finish(pid, "refused")
-        return jsonify(err), status
-
-    def _run(items=payload):
-        names = [n for n, _ in items]
-        outcome = "done"
-        try:
-            for n in names:
-                set_sync_running(n, True)
-            op_progress.update(pid, phase="importing", devices_done=0)
-            sync_all_lists_to_netbox(items, progress_id=pid, actor=actor,
-                                     authority=f"the NetBox tab's one-time confirmation "
-                                               f"of this import-all, by {actor}")
-        except Exception as exc:              # noqa: BLE001
-            outcome = "failed"
-            log.error("netbox_safety: import-all thread failed: %s", exc, exc_info=True)
-        finally:
-            for n in names:
-                set_sync_running(n, False)
-            op_progress.finish(pid, outcome)
-
-    threading.Thread(target=_run, daemon=True, name="netbox-import-all").start()
-    return jsonify({"ok": True, "status": "started",
-                    "list": f"{len(payload)} list(s)",
-                    "device_count": sum(len(d) for _, d in payload)})
+    try:
+        return jsonify(netbox_ops.start_import("import_all", _ALL_LISTS, data, _actor(),
+                                               progress_id=pid))
+    except netbox_ops.Refused as exc:
+        return jsonify(exc.payload), exc.status
 
 
 @bp.route("/remove/preview", methods=["POST"])
@@ -389,34 +237,20 @@ def preview_removal():
 @bp.route("/remove/apply", methods=["POST"])
 def apply_removal():
     """Remove NMAS-created objects, or just drop NMAS's record of them."""
-    from modules.netbox_client import remove_list_from_netbox
-
     data = request.get_json(silent=True) or {}
     list_name = (data.get("list_name") or "").strip()
     if not list_name:
         return jsonify({"ok": False, "error": "list_name is required"}), 400
 
+    from modules import netbox_ops
+
     # "Forget" needs neither the switch nor a token — it deletes nothing.
-    if data.get("forget_only"):
-        return jsonify(_recorded_removal(list_name, remove_list_from_netbox(
-            list_name, forget_only=True, actor=_actor()), forget_only=True))
-
-    def _recompute():
-        preview = remove_list_from_netbox(list_name, dry_run=True, actor=_actor())
-        return {"deletes": [{"endpoint": o["endpoint"], "name": o.get("name", ""),
-                             "id": o.get("id")} for o in preview.get("deleted", [])]}
-
-    authorized, err, status = _authorize(data, "remove", list_name, recompute=_recompute)
-    if not authorized:
-        return jsonify(err), status
-
     try:
-        result = remove_list_from_netbox(
-            list_name, actor=_actor(),
-            authority=f"the NetBox tab's one-time confirmation of this Remove, by {_actor()}")
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("netbox_safety: removal failed for '%s'", list_name)
-        result = {"ok": False, "error": str(exc)}
+        result = netbox_ops.remove(list_name, data, _actor())
+    except netbox_ops.Refused as exc:
+        return jsonify(exc.payload), exc.status
+    if data.get("forget_only"):
+        return jsonify(_recorded_removal(list_name, result, forget_only=True))
     out = _recorded_removal(list_name, result)
     return jsonify(out), (200 if result.get("ok") else 500)
 

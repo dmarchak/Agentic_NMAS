@@ -23,7 +23,7 @@ def client(monkeypatch):
     monkeypatch.setattr(nbc, "get_netbox_config", lambda: {"url": "http://127.0.0.1:9",
                                                            "token": "t"})
     devices = [{"hostname": "r9", "ip": "192.0.2.9"}]
-    monkeypatch.setattr(ns, "_load_list_devices", lambda name: ("Default", devices))
+    monkeypatch.setattr("modules.netbox_ops.list_devices", lambda name: ("Default", devices))
     plan = {"value": PLAN}
     monkeypatch.setattr(nbc, "sync_list_to_netbox",
                         lambda name, devs, dry_run=False, **k: {"plan": plan["value"]})

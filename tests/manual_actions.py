@@ -77,6 +77,8 @@ NOT_AN_OPERATION = {
     ("_install_platforms_preview.html", "Cancel"): "puts the map cards back, saving nothing",
     ("_records_stores.html", "Cancel"): "puts the record stores back, moving nothing",
     ("_remote_setup.html", "Close"): "closes the remote set-up card, recording nothing",
+    ("_netbox_job.html", "Close"): "returns to the NetBox page, a read; a job runs on",
+    ("_netbox_removals.html", "Close"): "returns to the NetBox page, a read",
     ("_network_create.html", "Change the name"): "puts the name's form back, creating nothing",
     ("_network_create.html", "Open 's settings"): "opens the new network's Settings page, a read",
     ("_network_create.html", "Its devices"): "opens the new network's Devices, a read",

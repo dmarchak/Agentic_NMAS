@@ -37,7 +37,7 @@ def client(monkeypatch, tmp_path):
     from modules import netbox_guard
 
     monkeypatch.setattr(netbox_guard, "_REMOVALS_FILE", str(tmp_path / "netbox_removals.jsonl"))
-    monkeypatch.setattr(ns, "_authorize", lambda data, kind, ln, recompute=None: (True, None, 200))
+    monkeypatch.setattr("modules.netbox_ops.authorize", lambda *a, **k: None)
     monkeypatch.setattr("modules.identity.request_actor", lambda: "ops@example.com")
     state = {}
 

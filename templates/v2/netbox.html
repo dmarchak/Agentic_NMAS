@@ -1,0 +1,60 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, how, info -%}
+{#- Source of truth › NetBox (cutover blocker 2, 2026-10-10; the board drawn under the Phase 7
+    mode, docs/STANDING_APPROVAL_LOG.md): NetBox's connection and the master switch, then every
+    network with its devices and its last import's result, each with Import into NetBox… and
+    Remove from NetBox…, and Import every network…. Each opens its preview job's card in the
+    slot below the table (`_netbox_job.html`), which redraws when the job announces. From
+    routes/netbox_v2. -#}
+{% block title %}NetBox · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>NetBox {{ info('netbox') }}</h1>
+    <p class="sub">Import a network's devices into NetBox from their committed golden configs, or remove what {{ brand.short }} created there. Each is previewed against the real NetBox and confirmed once; nothing is sent to a device.</p>
+  </div>
+</div>
+<section class="card" id="netbox-state" aria-labelledby="h-netbox-state">
+  <div class="card-head"><h2 id="h-netbox-state">Connection</h2>
+    {%- set h = v.health %}{{ badge({'up': 'answering', 'down': 'not answering', 'refused': 'refused', 'not_configured': 'not configured'}.get(h.state, 'not read yet'), {'up': 'ok', 'down': 'danger', 'refused': 'danger'}.get(h.state, 'neutral')) }}</div>
+  {%- if not v.configured %}
+  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>NetBox is not configured: set its address and token on <a href="{{ url_for('settings_v2.installation') }}">Settings › Installation › Connections</a>. Nothing here can run until it is.</span></p>
+  {%- endif %}
+  <p class="small">{% if h.message %}{{ h.message }}. {% endif %}Writes are <strong>{{ 'on' if v.writes else 'off' }}</strong> for every network{% if not v.writes %}: a confirm below can turn them on, with your permission, only once its token and plan both pass{% else %}; they are turned off on Settings › Installation's NetBox card{% endif %}.</p>
+</section>
+<section class="card" id="netbox-networks" aria-labelledby="h-netbox-networks">
+  <div class="card-head"><h2 id="h-netbox-networks">Networks</h2>{{ badge(v.networks | length ~ ' network' ~ ('' if v.networks | length == 1 else 's'), 'neutral') }}
+    <form method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+      <input type="hidden" name="operation" value="import_all">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured %} disabled title="NetBox is not configured"{% endif %}><span class="op-idle">Import every network…</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'preview', op='importing every network') }}</span>
+    </form></div>
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Network</th><th>Devices</th><th>Last import</th><th>Removals</th><th></th></tr></thead>
+    <tbody>
+    {%- for n in v.networks %}
+    <tr>
+      <td>{{ n.name }}</td>
+      <td>{{ n.devices }}</td>
+      <td>{% if n.last %}{{ badge({'success': 'complete', 'partial': 'PARTIAL', 'failed': 'FAILED', 'nothing': 'nothing to do'}.get(n.last.level, n.last.level), {'success': 'ok', 'partial': 'warn', 'failed': 'danger'}.get(n.last.level, 'neutral')) }} <span class="small">{{ n.last.happened.summary }}</span>{% if n.last_at %} <span class="muted small">{{ n.last_at }}</span>{% endif %}{% else %}<span class="muted small">never imported</span>{% endif %}</td>
+      <td>{% if n.removals_unreadable %}{{ badge('record unreadable', 'warn') }}{% elif n.removals %}<a href="{{ url_for('netbox_v2.removals', list=n.name) }}" hx-get="{{ url_for('netbox_v2.removals', list=n.name) }}" hx-target="#netbox-job" hx-swap="outerHTML">{{ n.removals }} recorded</a>{% else %}<span class="muted small">none</span>{% endif %}</td>
+      <td class="nowrap">
+        <form class="inline" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+          <input type="hidden" name="operation" value="import"><input type="hidden" name="list" value="{{ n.name }}">
+          <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured or not n.devices %} disabled title="{{ 'NetBox is not configured' if not v.configured else 'no devices to import' }}"{% endif %}><span class="op-idle">Import into NetBox…</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'preview', compact=True, op='importing a network') }}</span>
+        </form>
+        <form class="inline" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+          <input type="hidden" name="operation" value="remove"><input type="hidden" name="list" value="{{ n.name }}">
+          <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured %} disabled title="NetBox is not configured"{% endif %}><span class="op-idle">Remove from NetBox…</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'remove-preview', compact=True, op='removing from NetBox') }}</span>
+        </form>
+      </td>
+    </tr>
+    {%- else %}
+    <tr><td colspan="5" class="muted">No network yet.</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+<div id="netbox-job"></div>
+{% endblock %}

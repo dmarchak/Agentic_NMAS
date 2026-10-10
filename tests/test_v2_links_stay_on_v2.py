@@ -196,7 +196,8 @@ def test_every_rendered_v2_page_in_a_real_browser(served):  # noqa: F811
                 problems.append(f"{page}: {line}")
     assert not problems, "\n".join(problems)
     assert gaps <= set(T.GAPS), gaps - set(T.GAPS)
-    assert {"logs", "dhcp", "netbox"} <= gaps, gaps    # the sidebar is on every page
+    assert {"logs", "dhcp"} <= gaps, gaps    # the sidebar is on every page (NetBox on v2, 2026-10-10)
+    assert "netbox" not in gaps, gaps
     # The planted case, on a real page: an unlabelled link to today's index is named.
     b.js("var a=document.createElement('a'); a.href='/'; a.textContent='Planted';"
          "document.body.appendChild(a); return 1")

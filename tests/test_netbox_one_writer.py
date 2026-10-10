@@ -69,12 +69,11 @@ def test_the_import_is_refused_and_writes_nothing(held_elsewhere, monkeypatch):
 
 def test_the_import_confirm_refuses_before_starting_its_thread(held_elsewhere, monkeypatch):
     import app as nmas
-    from routes import netbox_safety as S
 
     monkeypatch.setattr("modules.netbox_client.get_netbox_config",
                         lambda: {"url": "http://192.0.2.8", "token": "t"})
-    monkeypatch.setattr(S, "_load_list_devices", lambda name: ("Lab", [{"hostname": "r1"}]))
-    monkeypatch.setattr(S, "_authorize", lambda *a, **k: (True, None, None))
+    monkeypatch.setattr("modules.netbox_ops.list_devices", lambda name: ("Lab", [{"hostname": "r1"}]))
+    monkeypatch.setattr("modules.netbox_ops.authorize", lambda *a, **k: None)
     monkeypatch.setattr(threading, "Thread",
                         lambda *a, **k: pytest.fail("an import thread started"))
     r = nmas.app.test_client().post("/netbox/safety/import/apply", json={"list_name": "Lab"})

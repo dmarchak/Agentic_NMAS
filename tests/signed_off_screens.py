@@ -115,6 +115,13 @@ SIGNED_OFF = {
                                    "log), Access and identity (read-only; Record this decision) "
                                    "and Platforms and roles (preview, Test, bound confirm). "
                                    "Every tab is drawn"),
+    "netbox.html": ("2026-10-10", "Source of truth › NetBox (cutover blocker 2; the operator's "
+                                  "decision 5 of 2026-10-05, a v2 board): drawn under the Phase "
+                                  "7 operating mode and counted as signed off (docs/STANDING_"
+                                  "APPROVAL_LOG.md). The connection and the master switch; every "
+                                  "network with its devices, last import and removals; Import "
+                                  "into NetBox…, Remove from NetBox… and Import every network…, "
+                                  "each a preview job and a confirm that may turn writes on"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),

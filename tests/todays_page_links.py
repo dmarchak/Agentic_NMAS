@@ -17,7 +17,7 @@ GAPS = {
                "(today's page); Stage 7, CUTOVER",
     "logs": "the fleet's Logs screen (today's page); Stage 7, CUTOVER",
     "dhcp": "the DHCP screen (today's page); Stage 7, CUTOVER",
-    "netbox": "the NetBox screen (today's page); Stage 7, CUTOVER",
+
 }
 
 #: Not a link: a v2 request that fails draws a minimal "Couldn't load" state (routes/
@@ -29,4 +29,4 @@ OTHER_GAPS = {
 
 #: The list's count; it may only fall, and it falls with the gap that closes (C629: closing
 #: installation_settings left it at 8 over 7, room for one gap to come back unseen).
-CEILING = 7
+CEILING = 6

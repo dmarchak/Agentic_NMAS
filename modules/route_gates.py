@@ -161,6 +161,7 @@ GATES = {
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),
     "netbox_safety.apply_import_all": _g(A, "writes to NetBox"),
     "netbox_safety.apply_removal": _g(A, "deletes from NetBox"),
+    "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, from v2's NetBox page"),
 
     # ---- configure: the tool's own settings, gates, inventory, records ---
     "save_settings": _g(K, "writes settings, secrets included"),
@@ -278,6 +279,7 @@ GATES = {
     "netbox_safety.preview_import": _g(N, "a dry run"),
     "netbox_safety.preview_import_all": _g(N, "a dry run"),
     "netbox_safety.preview_removal": _g(N, "a dry run"),
+    "netbox_v2.preview": _g(N, "starts a dry run of an import or removal on a thread; writes nothing"),
     "netbox_test_connection": _g(N, "a connection test"),
     "settings_integrations.test_integration": _g(N, "a connection test"),
     "remote.verify": _g(N, "read-only checks against the remote"),

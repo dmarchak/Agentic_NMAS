@@ -192,20 +192,26 @@ STAGES = {
         NO_DEVICE, FORWARD, "modules.nsot.repo.save_templates"),
     # ---- NetBox
     "netbox_safety.apply_import": Stages(
-        "netbox_safety.preview_import", "token in routes.netbox_safety._authorize",
+        "netbox_safety.preview_import", "token in modules.netbox_ops.authorize",
         "MISSING: NetBox is not read back after an import; write failures are counted (C8)",
         "n/a: NetBox writes are not transactional; recovery is the tested backup (P.2)",
         "modules.netbox_guard.record_modified"),
     "netbox_safety.apply_import_all": Stages(
-        "netbox_safety.preview_import_all", "token in routes.netbox_safety._authorize",
+        "netbox_safety.preview_import_all", "token in modules.netbox_ops.authorize",
         "MISSING: NetBox is not read back after an import; write failures are counted (C8)",
         "n/a: NetBox writes are not transactional; recovery is the tested backup (P.2)",
         "modules.netbox_guard.record_modified"),
     "netbox_safety.apply_removal": Stages(
-        "netbox_safety.preview_removal", "token in routes.netbox_safety._authorize",
+        "netbox_safety.preview_removal", "token in modules.netbox_ops.authorize",
         "MISSING: deletions are counted, and the cascade is not re-read after (C150)",
         "n/a: a deletion; recovery is the tested backup (P.2)",
         "modules.netbox_guard.record_removal"),
+    # v2's NetBox page (cutover blocker 2): the same core as today's routes, its preview a job.
+    "netbox_v2.confirm": Stages(
+        "netbox_v2.preview", "token in modules.netbox_ops.authorize",
+        "MISSING: NetBox is not read back after an import; write failures are counted (C8)",
+        "n/a: NetBox writes are not transactional; recovery is the tested backup (P.2)",
+        "modules.netbox_guard.record_modified"),
     # ---- Decisions and the queue
     "ai_approval_approve": Stages(
         "n/a: approving hands off to the restore or capture preview, where the change is previewed",
@@ -239,7 +245,9 @@ STAGES = {
 }
 
 #: The gaps, counted: the test pins this number, so it can only go down.
-MISSING_CEILING = 44
+# +1 2026-10-10: v2's NetBox confirm shares today's import's missing read-back (C8); today's three
+# NetBox entries leave at 7.8 and take theirs with them.
+MISSING_CEILING = 45
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +319,8 @@ HISTORY = {
                                        "their provenance, drawn on each device's NetBox tab"),
     "netbox_safety.apply_removal": ("n/a: removes NetBox objects; the removal record is per "
                                     "object, drawn on the NetBox tab"),
+    "netbox_v2.confirm": ("n/a: NetBox objects' records, kept per object with their provenance, "
+                          "drawn on each device's NetBox tab and, for a removal, on the NetBox page"),
     "templatize.profile_propose_apply": PROFILE,
     "v2.ip_sla_policy_set": PROFILE,
     "templates.approve": TEMPLATE,

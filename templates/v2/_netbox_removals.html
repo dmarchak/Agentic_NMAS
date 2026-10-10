@@ -1,0 +1,16 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- A network's recorded NetBox removals, newest first, each drawn as it was at its apply
+    (netbox_guard.read_removals, preview_confirm.netbox_removal_result). A read. -#}
+<section class="card" id="netbox-job" aria-labelledby="h-netbox-removals">
+  <div class="card-head"><h2 id="h-netbox-removals">Removals recorded for {{ name }}</h2>
+    <a class="btn btn-small" href="{{ url_for('netbox_v2.page') }}">Close</a></div>
+  {%- if state == 'unreadable' %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The removal record cannot be read: {{ error }}.</span></p>
+  {%- else %}
+  {%- for r in rows %}
+  <div class="notice notice-{{ {'success': 'muted', 'nothing': 'muted', 'partial': 'warn'}.get(r.result.level, 'danger') }} set-result">{{ icon('tick' if r.result.level in ('success', 'nothing') else 'warn', 16) }}<div><strong>{{ r.result.happened.summary }}</strong> <span class="muted small">{{ stamp(r.at) }}{% if r.by %} by {{ r.by }}{% endif %}</span></div></div>
+  {%- else %}
+  <p class="muted">None recorded.</p>
+  {%- endfor %}
+  {%- endif %}
+</section>

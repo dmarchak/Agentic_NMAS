@@ -60,7 +60,7 @@ and built.
 | Templates: edit and the rest | `/templates/*` (7) | PLANNED, 7.6 | The editor (file read and write), validate, preview, refresh-capture, bindings and seed status: the editor reuses the intent editor H (decided 2026-10-05), no board drawn. Preview and refresh-capture read the backup store, so they go before it (C632) |
 | Onboard | `/onboard/*` (9) | PLANNED, 7.4 (boards E, L, M and F signed off 2026-10-04, not built) | Devices › Onboard; the v2 pending page links to today's for the actions (gap `onboard`), and is itself not signed off |
 | Adopt | (no route; `modules/nsot/adopt.py`) | PLANNED, 7.4 | Devices › Adopt |
-| NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | PLANNED, 7.6 (a board to draw, decided 2026-10-05) | Source of truth › NetBox: import and remove as preview, confirm and result; turning NetBox writes on is part of it (C619) |
+| NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | BUILT, 7.6 (2026-10-10; not run on the host) | Source of truth › NetBox (`/v2/netbox`): every network's Import into NetBox… and Remove from NetBox…, Import every network…, each a preview job and a confirm that may turn writes on (C619), its result and recorded removals; the same core as today's routes (`modules/netbox_ops.py`) |
 | NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
 | NetBox queries | `/netbox/query/*` (6) | REMOVE, 7.8 | No page calls them; the device page's NetBox tab reads NetBox itself |
 | Credential profiles | `/inventory/credentials/*` (3), `/inventory/dependents/<list>` | PLANNED, 7.6 | Source of truth › Credentials; no board, and no v1 control calls them |

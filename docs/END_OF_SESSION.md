@@ -3,9 +3,11 @@
 **Status, 2026-10-10 (UTC).** The Phase 7 operating mode is ON: the operator ran
 `scripts/host-steps/phase7-mode-on.sh` (about 02:23 UTC), and CLAUDE.md carries its section.
 Done: receipts on the records database (d79ba34, not yet moved on the host); C630 (CUTOVER.md
-re-measured and held to the route map) and C636 (b2b49cb). In progress: C631, the remote's
-set-up as a v2 card on History. Nothing deployed since the mode began: the walk at the end
-deploys and runs each.
+re-measured and held to the route map) and C636 (b2b49cb); C631, the remote's set-up on History
+(3cbd74a); cutover blocker 1, networks: the picker (eda63ea), create and delete (b3cee34), the
+inventory source (6e73ac6). Next: blocker 2, NetBox import and remove with turning writes on
+(C619), a board to draw. Nothing deployed since the mode began: the walk at the end deploys and
+runs each.
 
 **Next, in order** (the operator's, 2026-10-09): receipts (Phase 4, Mercury's records in
 PostgreSQL); C630 (CUTOVER.md re-measured); C631 (the remote's set-up); the six cutover

@@ -71,6 +71,8 @@ def _bodies(v):
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "
                                          "refused naming the networks; it starts nothing"),
+        "netbox_v2.preview": (404, ("form", {}), "no operation named: refused naming the three, "
+                              "nothing started"),
         "remote_v2.publication": (409, ("form", {"list": LIST}),
                                   "the planted list has no remote: refused naming it, reading "
                                   "no history"),

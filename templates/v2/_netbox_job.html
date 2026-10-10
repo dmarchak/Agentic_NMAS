@@ -1,0 +1,61 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- A NetBox job's card (modules/netbox_jobs): previewing (the dry run running), previewed (the
+    preview component's parts, and the confirm bound to its one-shot token, which may turn writes
+    on), refused, importing, and its result. While it runs it redraws when the job announces
+    `netbox`; once it holds an answer it stays until closed. -#}
+{%- set op = job.operation or '' %}
+{%- set label = 'every network' if op == 'import_all' else (job.list or '') %}
+{%- set live = job.state in ('previewing', 'importing') %}
+<section class="card" id="netbox-job" aria-labelledby="h-netbox-job"
+  {%- if live %} hx-get="{{ url_for('netbox_v2.job', job_id=job.id) }}" hx-trigger="nmas:netbox from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="card-head"><h2 id="h-netbox-job">{{ 'Remove from NetBox' if op == 'remove' else 'Import into NetBox' }}{% if label %}: {{ label }}{% endif %}</h2>
+    <a class="btn btn-small" href="{{ url_for('netbox_v2.page') }}">Close</a></div>
+  {%- if refused %}
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ refused }}. Nothing was written to NetBox.</div></div>
+  {%- endif %}
+  {%- if job.state == 'previewing' %}
+  <p>{{ badge('previewing', 'neutral') }} A dry run of the real {{ 'removal' if op == 'remove' else 'import' }} against the real NetBox, writing nothing{% if progress %}: {{ progress.phase }}{% if progress.devices_total %}, {{ progress.devices_done }} of {{ progress.devices_total }} devices{% endif %}, {{ progress.requests }} request{{ '' if progress.requests == 1 else 's' }} to NetBox{% endif %}. This card fills in when it is ready.</p>
+  {%- elif job.state == 'refused' %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>{{ job.error or 'Not previewed' }}.</span></p>
+  {%- elif job.state == 'unknown' %}
+  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>This job is not known here{% if job.error %} ({{ job.error }}){% endif %}: preview again.</span></p>
+  {%- elif job.state == 'previewed' %}
+  {%- set pv = job.preview %}
+  <p><strong>{{ pv.what.summary }}</strong></p>
+  {%- for t in pv.targets %}
+  <h3 class="set-label">{{ (pv.titles or {}).get('program', 'What will be written to NetBox') }}</h3>
+  {%- if t.program.lines %}
+  <ol class="set-steps mono small">{% for l in t.program.lines %}<li>{{ l }}</li>{% endfor %}</ol>
+  {%- else %}<p class="muted small">{{ t.program.none }}</p>{% endif %}
+  <dl class="set-facts">{% for o in t.operands %}<dt>{{ o.name }}</dt><dd>{{ o.value }}</dd>{% endfor %}</dl>
+  <h3 class="set-label">Checked now, and at your confirm</h3>
+  <ol class="set-steps">{% for g in t.gates %}<li>{{ badge({'pass': 'passed', 'at_apply': 'at confirm', 'fail': 'FAILS'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger'}.get(g.state, 'neutral')) }} <span>{{ g.name }}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>{% endfor %}</ol>
+  {%- endfor %}
+  {%- if pv.what_not['items'] %}
+  <h3 class="set-label">What it does not do</h3>
+  <ul class="small">{% for w in pv.what_not['items'] %}<li>{{ w.text }}</li>{% endfor %}</ul>
+  {%- endif %}
+  <form class="set-form" method="post" action="{{ url_for('netbox_v2.confirm', job_id=job.id) }}"
+        hx-post="{{ url_for('netbox_v2.confirm', job_id=job.id) }}" hx-target="#netbox-job" hx-swap="outerHTML">
+    {%- if not job.writes_allowed %}
+    <span class="set-label">Writes</span>
+    <div><label class="set-switch"><input type="checkbox" name="permit_writes"> turn NetBox writes on with this confirm</label><span class="set-origin">they are off for every network; without this the confirm is refused, and with it they come on only once the token and the plan both pass</span></div>
+    {%- endif %}
+    <div class="set-foot set-form-note">
+      {%- if pv.confirm.may %}
+      <span class="op-act"><button type="submit" class="btn {{ 'btn-danger' if op == 'remove' else 'btn-primary' }} btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">{{ 'Remove' if op == 'remove' else 'Import' }}</span><span class="op-busy">{{ 'Removing…' if op == 'remove' else 'Starting the import…' }}</span></button>{{ how('netbox-import', 'remove-apply' if op == 'remove' else 'apply', op='confirming') }}</span>
+      {%- endif %}
+      <span class="muted small">{{ pv.confirm.statement }} The plan is recomputed at your confirm; if NetBox moved, nothing is written.</span>
+    </div>
+  </form>
+  {%- elif job.state == 'importing' %}
+  <p>{{ badge('importing', 'neutral') }} Writing to NetBox{% if progress %}: {{ progress.phase }}{% if progress.devices_total %}, {{ progress.devices_done }} of {{ progress.devices_total }} devices{% endif %}{% endif %}. This card fills in when it ends.</p>
+  {%- else %}
+  {%- set results = [job.removal] if job.removal else (job.results or {}).values() | list %}
+  {%- if job.outcome == 'failed' and not results %}<p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The import failed before it recorded a result: the app's log names why.</span></p>{% endif %}
+  {%- for r in results if r %}
+  <div class="notice notice-{{ {'success': 'muted', 'nothing': 'muted', 'partial': 'warn'}.get(r.level, 'danger') }} set-result" role="status">{{ icon('tick' if r.level in ('success', 'nothing') else 'warn', 16) }}<div><strong>{{ r.happened.summary }}</strong>
+    {%- if r.did_not['items'] %}<ul class="small">{% for d in r.did_not['items'] %}<li>{{ d.text if d.text is defined else d }}</li>{% endfor %}</ul>{% endif %}</div></div>
+  {%- endfor %}
+  {%- endif %}
+</section>

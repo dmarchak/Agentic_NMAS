@@ -207,6 +207,8 @@ PAGE_RECORD = {
     # History › Remote set-up (C631): each act's answer drawn in place on the card, and its
     # record (the network's remote.json) read back by the card; the write probe's by
     # History's header, which draws the last Verify.
+    "netbox_v2.confirm": ("templates/v2/_netbox_job.html", ("r.happened.summary", "job.removal"),
+                          "netbox_v2.job"),
     "remote_v2.connect": ("templates/v2/_remote_setup.html", ("Connected:", "r.owner_repo"),
                           "remote_v2.card"),
     "remote_v2.write_probe": ("templates/v2/_remote_setup.html",
