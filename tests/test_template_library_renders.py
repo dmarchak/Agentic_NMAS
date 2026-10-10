@@ -120,7 +120,7 @@ def test_the_listing_route_marks_shared_files(tmp_path, monkeypatch):
     # (register C51). Patching the accessor alone left `lab` nowhere.
     monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
     monkeypatch.setattr("routes.templates._seed_and_commit",
-                        lambda n, r: None)
+                        lambda n, r, actor="nmas": None)   # today's call names its actor
     _repo.init_repo(repo_dir)
     templates_repo.seed_templates(repo_dir)
     body = nmas.app.test_client().get(

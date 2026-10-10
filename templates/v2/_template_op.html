@@ -185,6 +185,49 @@
     {%- endfor %}</div></div>
   {%- endif %}
 </section>
+{%- elif op.state == 'seed' %}
+{#- Seed the library… (cutover blocker 5): the shipped files the network gains, as one commit. -#}
+<section class="op-card" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">Seed {{ op.list }}'s library from the shipped one</h2>
+    <div class="op-hd-actions">{{ how('edit-template', 'seed') }}{{ close_button('Cancel') }}</div></div>
+  {%- if op.refused %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not seeded:</strong> {{ op.refused }}. Nothing was written.</p></div>{% endif %}
+  <div class="op-part"><h3>What it adds</h3><div>
+    {%- if op.adds %}
+    <p>{{ op.adds | length }} file{{ '' if op.adds | length == 1 else 's' }}, as shipped, in one commit as you: {% for f in op.adds %}<span class="mono">{{ f }}</span>{{ ', ' if not loop.last }}{% endfor %}.</p>
+    <p class="muted">No file the network has is overwritten. Nothing is approved: each template needs Approve… before a deploy renders through it. Nothing is sent to any device.</p>
+    {%- else %}
+    <p>Nothing: the network has every shipped file committed.</p>
+    {%- endif %}</div></div>
+  {%- if op.adds %}
+  <form class="op-ft" method="post" action="{{ url_for('templates_v2.seed') }}" hx-post="{{ url_for('templates_v2.seed') }}" hx-target="#templates" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ op.list }}"><input type="hidden" name="signature" value="{{ op.signature }}">
+    {%- if op.may.may %}
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"><span class="op-idle">Seed the library</span><span class="op-busy">Seeding…</span></button>{{ how('edit-template', 'seed', compact=True, op='seeding') }}</span>
+    <p class="op-note">{{ op.may.statement }}</p>
+    {%- else %}<p class="op-note">{{ op.may.statement }} Nothing can be seeded from here.</p>{% endif %}
+  </form>
+  {%- endif %}
+</section>
+{%- elif op.state == 'seeded' %}
+<section class="op-card op-ok" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">{{ op.list }}'s library {{ badge('seeded', 'ok') if op.added else badge('unchanged', 'muted') }}</h2>
+    <div class="op-hd-actions">{{ how('edit-template', 'seed') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    {%- if op.added %}<p>Commit <span class="mono">{{ (op.commit or '')[:10] }}</span> "template: seed library ({{ op.added | length }} file(s))", as {{ op.actor }}: {% for f in op.added %}<span class="mono">{{ f }}</span>{{ ', ' if not loop.last }}{% endfor %}. Approve each template on its row before a deploy renders through it.</p>
+    {%- else %}<p>Nothing was added: the network had every shipped file.</p>{% endif %}
+    {%- if op.left %}<p class="notice notice-warn">{{ icon('warn', 16) }} Left for their own commit (edited, not committed): {{ op.left | join(', ') }}.</p>{% endif %}</div></div>
+</section>
+{%- elif op.state == 'bound' %}
+{#- Bindings… committed (cutover blocker 5): the commit and the devices that moved. -#}
+{%- set r = op.r %}
+<section class="op-card op-ok" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">Bindings {{ badge('committed', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('edit-template', 'bindings') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span> "template: bindings {{ op.summary }}", as {{ op.actor }}. Nothing was sent to any device.</p>
+    {%- if r.moves %}<p>{{ r.moves | length }} device{{ '' if r.moves | length == 1 else 's' }} now render{{ 's' if r.moves | length == 1 else '' }} through another template: {% for m in r.moves %}<a href="{{ url_for('device_v2.device', name=m.device) }}">{{ m.device }}</a> (<span class="mono">{{ m.after }}</span>{% if not m.approved %}, not approved{% endif %}){{ ', ' if not loop.last }}{% endfor %}. Each is checked against it at its own deploy.</p>
+    {%- else %}<p>No device changed template.</p>{% endif %}</div></div>
+</section>
 {%- else %}
 <section class="op-card op-danger" id="tpl-card" aria-labelledby="tpl-h">
   <div class="op-hd"><h2 id="tpl-h">Not done</h2><div class="op-hd-actions">{{ close_button('Close') }}</div></div>

@@ -213,7 +213,7 @@ def _untracked_templates(repo: str) -> tuple:
     return untracked, modified
 
 
-def _seed_and_commit(list_name: str, repo: str) -> dict:
+def _seed_and_commit(list_name: str, repo: str, actor: str = "nmas") -> dict:
     """Seed the library, and commit whatever the repo is still missing.
 
     Seeding copies files in; it never committed them. The first thing that ran
@@ -234,6 +234,9 @@ def _seed_and_commit(list_name: str, repo: str) -> dict:
     someone's in-progress edit — seeding never overwrites, so it cannot be
     seeding's doing — and sweeping it into a commit labelled "seed library"
     would mislabel it exactly the way this function exists to prevent.
+
+    *actor*: who seeds: ``nmas`` when today's page seeds on its read, the verified person on
+    v2's Seed the library… (cutover blocker 5).
     """
     from modules.nsot import repo as repo_service, templates_repo
 
@@ -258,7 +261,7 @@ def _seed_and_commit(list_name: str, repo: str) -> dict:
         return result
 
     commit = repo_service.save_templates(
-        list_name, untracked, actor="nmas",
+        list_name, untracked, actor=actor,
         message=f"template: seed library ({len(untracked)} file(s))",
         paths=untracked)
     result["commit"] = commit.get("commit", "")
@@ -273,7 +276,7 @@ def list_templates():
 
     list_name = _active_list()
     repo = _repo_for(list_name)
-    _seed_and_commit(list_name, repo)
+    _seed_and_commit(list_name, repo, actor="nmas")
     from modules.nsot import approval
 
     entries = []

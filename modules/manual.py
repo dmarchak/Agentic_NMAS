@@ -165,6 +165,7 @@ OPERATIONS = {
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),
     "edit-template": ("modules.nsot.template_edit", "STEPS"),
+    "template-bindings": ("modules.nsot.template_bindings", "STEPS"),
     "show-commands": ("modules.nsot.reads", "STEPS"),
     "logging-path": ("modules.nsot.logging_path", "STEPS"),
     "privileged": ("modules.nsot.privileged", "STEPS"),
@@ -184,7 +185,8 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
                   "netbox-writes-off": "installation-settings",
                   "drift-schedule": "installation-settings",
                   "record-decision": "installation-settings",
-                  "platform-map": "installation-settings"}
+                  "platform-map": "installation-settings",
+                  "template-bindings": "edit-template"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",

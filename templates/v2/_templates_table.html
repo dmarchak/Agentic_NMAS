@@ -5,7 +5,8 @@
 {%- if not lib.ok %}
 <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Couldn't load the templates:</strong> {{ lib.error }}. Nothing was read past it.</p></div>
 {%- elif not lib.rows %}
-<div class="notice notice-warn">{{ icon('warn', 16) }}<p>{{ list_name }} has no committed configuration template. The library is seeded into the network's repository when its first template is opened on today's Templates page; a file nobody committed is never drawn here.</p></div>
+<div class="notice notice-warn">{{ icon('warn', 16) }}<p>{{ list_name }} has no committed configuration template, so nothing can render its devices' intent. A file nobody committed is never drawn here.</p>
+  <p><a class="btn btn-primary" data-op="edit-template" href="{{ url_for('templates_v2.page', list=list_name, seed=1) }}" hx-get="{{ url_for('templates_v2.seed_form', list=list_name) }}" hx-target="#tpl-op" hx-swap="innerHTML"><span class="op-idle">Seed the library…</span><span class="op-busy">Opening…</span></a>{{ how('edit-template', 'seed', compact=True, op='seeding') }}</p></div>
 {%- else %}
 <p class="tpl-counts">{% for s, n in lib.counts.items() %}<span>{{ s }} <strong>{{ n }}</strong></span>{{ ' · ' if not loop.last }}{% endfor %}{% if lib.shared %} <span class="faint">({{ lib.shared }} shared macro file{{ '' if lib.shared == 1 else 's' }}, counted in each template's imports)</span>{% endif %}{% if lib.behind %} · <strong class="tpl-behind">{{ lib.behind }} behind the shipped version</strong>{% endif %}</p>
 <div class="card tpl-card"><table class="table tpl-table">

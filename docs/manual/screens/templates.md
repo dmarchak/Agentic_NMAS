@@ -2,8 +2,9 @@
 
 The network's configuration templates, one per platform, each with its approval, the devices
 bound to it, and the one action it needs: **Approve…** or **Revoke…**, with **Edit…** on every
-row. The page names its network (`/v2/templates?list=<network>`). Changing which template a
-device renders through stays on today's Templates tab until the redesign builds it.
+row, and **Bindings…** above it for which template renders which device. The page names its
+network (`/v2/templates?list=<network>`). A network with no committed template says so and
+offers **Seed the library…**.
 
 ## What an approval covers {#what-it-is-for}
 
@@ -67,3 +68,17 @@ it). A device with no golden yet is named with **Capture…**. Beside the commit
 approvals the commit revokes. **Commit** records it as you with your one-line reason, refused
 naming both versions if someone committed the template after you opened it; the result offers
 **Approve…** for each template whose approval it revoked. See [Edit a template](edit-template).
+
+## Bindings… {#bindings}
+
+Each platform's template, and the devices with a template of their own, each a choice among
+the committed templates of that platform. **Preview the change** lists every device that will
+render through another template, from and to, and whether the template it moves to is
+approved; **Commit the bindings** records it with your reason, refused if the bindings changed
+since the preview. See [Edit a template](edit-template#bindings).
+
+## Seed the library… {#seed}
+
+Offered only while the network has no committed template: it lists the shipped files it adds
+and commits them as you, overwriting nothing. Each template then needs Approve…. See
+[Edit a template](edit-template#seed).

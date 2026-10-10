@@ -216,6 +216,12 @@ PAGE_RECORD = {
     "templates_v2.edit_commit": ("templates/v2/_template_op.html",
                                  ("op.state == 'edited'", "r.revoked", "r.commit"),
                                  "templates_v2.page"),
+    "templates_v2.seed": ("templates/v2/_template_op.html",
+                          ("op.state == 'seeded'", "op.added", "op.commit"),
+                          "templates_v2.page"),
+    "templates_v2.bindings_apply": ("templates/v2/_template_op.html",
+                                    ("op.state == 'bound'", "r.moves", "r.commit"),
+                                    "templates_v2.page"),
     # Onboarding on v2 (cutover blocker 3): Create's result in place, the device's pending
     # page its record read again; Verify's and Abandon's results in place on the pending
     # page, each run's row read back on the network's History.

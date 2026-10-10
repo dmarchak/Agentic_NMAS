@@ -203,6 +203,16 @@ STAGES = {
     "templates_v2.edit_commit": Stages(
         "templates_v2.edit_form", "base", NO_DEVICE, FORWARD,
         "modules.nsot.template_write.commit"),
+    # Bindings on v2 (cutover blocker 5): the devices a change moves are the preview; the
+    # commit is bound to the file committed then and to the change previewed.
+    "templates_v2.bindings_apply": Stages(
+        "templates_v2.bindings_preview", "fingerprint", NO_DEVICE, FORWARD,
+        "modules.nsot.repo.save_templates"),
+    # Seed the library on v2 (cutover blocker 5): the shipped files it adds are the preview,
+    # the commit bound to the shipped library's signature; it never overwrites a file.
+    "templates_v2.seed": Stages(
+        "templates_v2.seed_form", "signature", NO_DEVICE, FORWARD,
+        "modules.nsot.repo.save_templates"),
     "templates.save_bindings": Stages(
         "MISSING: bindings are saved with no preview", "MISSING: no hash is bound", NO_DEVICE, FORWARD,
         "modules.nsot.repo.save_templates"),
@@ -355,6 +365,8 @@ HISTORY = {
     "templates_v2.revoke": TEMPLATE,
     "templates_v2.bring": TEMPLATE,
     "templates_v2.edit_commit": TEMPLATE,
+    "templates_v2.bindings_apply": TEMPLATE,
+    "templates_v2.seed": TEMPLATE,
     "v2.profile_propose_commit": PROFILE,
     "templates.save_bindings": TEMPLATE,
     "templates.write_template": TEMPLATE,

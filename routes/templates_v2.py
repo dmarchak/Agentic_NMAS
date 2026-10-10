@@ -123,6 +123,9 @@ def page():
     revoke_path = (request.args.get("revoke") or "").strip()
     bring_path = (request.args.get("bring") or "").strip()
     edit_path = (request.args.get("edit") or "").strip()
+    if request.args.get("seed"):
+        return _page("v2/templates.html", active_nav="templates", known=True,
+                     **_lib_ctx(name, _seed_view(name)))
     op = _check_op(name, approve_path) if approve_path else \
         _revoke_op(name, revoke_path) if revoke_path else \
         _bring_op(name, bring_path) if bring_path else \
@@ -254,6 +257,101 @@ def edit_commit():
         "v2/_templates_lib.html", **_lib_ctx(name, {"state": "edited", "list": name,
                                                     "path": path, "r": got, "actor": actor,
                                                     "summary": summary})))
+
+
+def _seed_view(name: str) -> dict:
+    """What Seed the library… adds: each shipped file the network has not committed, and the
+    shipped library's signature the confirm is bound to."""
+    from modules.nsot import approve_op, templates_repo
+
+    repo = approve_op.repo_for(name)
+    have = set(approve_op.committed_templates(repo))
+    if templates_repo.committed_blob(repo, templates_repo.BINDINGS_FILE):
+        have.add(templates_repo.BINDINGS_FILE)
+    return {"state": "seed", "list": name, "may": _may(),
+            "adds": sorted(templates_repo.seed_paths() - have),
+            "signature": templates_repo.library_signature()}
+
+
+@bp.route("/seed", methods=["GET"])
+def seed_form():
+    """Seed the library…: the shipped files the network would gain. Writes nothing."""
+    return _card(_seed_view(_list_name()))
+
+
+@bp.route("/seed", methods=["POST"])
+def seed():
+    """Seed the network's library from the shipped one as the verified person, bound to the
+    shipped library previewed; never overwriting a file; the result in place."""
+    from modules import identity
+    from modules.nsot import approve_op, templates_repo
+    from routes.templates import _seed_and_commit
+
+    name = _list_name()
+    shown = (request.form.get("signature") or "").strip()
+    now = templates_repo.library_signature()
+    if shown != now:
+        return _card(dict(_seed_view(name), refused=(
+            f"the shipped library changed since your preview (previewed {shown or 'none'}, "
+            f"now {now or 'unreadable'}): look again")), 409)
+    actor = identity.request_actor()
+    got = _seed_and_commit(name, approve_op.repo_for(name), actor=actor)
+    return _region(name, {"state": "seeded", "list": name, "actor": actor,
+                          "added": got.get("untracked") or [], "commit": got.get("commit", ""),
+                          "left": got.get("uncommitted_edits") or []})
+
+
+def _bindings_card(ctx: dict, code: int = 200):
+    return _strict(render_template("v2/_template_bindings.html", b=ctx), code)
+
+
+def _bindings_view(name: str, **extra) -> dict:
+    from modules.nsot import template_bindings
+    return dict(template_bindings.view(name), list=name, may=_may(), **extra)
+
+
+@bp.route("/bindings", methods=["GET"])
+def bindings_form():
+    """Bindings…: which template renders which device, the form in place. Writes nothing."""
+    return _bindings_card(dict(_bindings_view(_list_name()), state="form"))
+
+
+@bp.route("/bindings/preview", methods=["POST"])
+def bindings_preview():
+    """The change previewed: every device whose template moves, and whether each one it moves
+    to is approved. Writes nothing."""
+    from modules.nsot import template_bindings
+
+    name = _list_name()
+    pv = template_bindings.preview(name, request.form)
+    if not pv["ok"]:
+        return _bindings_card(dict(_bindings_view(name), state="form", refused=pv["refused"]),
+                              400)
+    return _bindings_card(dict(_bindings_view(name), state="preview", pv=pv,
+                               form=list(request.form.items(multi=True))))
+
+
+@bp.route("/bindings", methods=["POST"])
+def bindings_apply():
+    """Commit the bindings previewed as the verified person, bound to the file committed at the
+    preview and to the change previewed; the result in place, the table redrawn."""
+    from modules import identity
+    from modules.nsot import template_bindings
+
+    name = _list_name()
+    actor = identity.request_actor()
+    got = template_bindings.apply(name, request.form, request.form.get("base", ""),
+                                  request.form.get("fingerprint", ""),
+                                  request.form.get("summary", ""), actor)
+    if not got.get("ok"):
+        return _bindings_card(dict(_bindings_view(name), state="form",
+                                   refused=got.get("error", "not committed")),
+                              got.get("status", 400))
+    return _strict(render_template(
+        "v2/_templates_lib.html", **_lib_ctx(name, {"state": "bound", "list": name, "r": got,
+                                                    "actor": actor,
+                                                    "summary": request.form.get("summary",
+                                                                                "")})))
 
 
 @bp.route("/revoke", methods=["GET"])

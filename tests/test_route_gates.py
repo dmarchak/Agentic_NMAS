@@ -347,11 +347,12 @@ def _actor_sites(src: str) -> list:
 #: Named, with the reason, and capped. Growing this list is the scan being
 #: switched off one site at a time.
 ACTOR_EXEMPTIONS = {
-    ("routes/templates.py", "_seed_and_commit"): (
+    ("routes/templates.py", "list_templates"): (
         "seeds the shipped template library on the first READ of it, from a "
         "GET no gate covers: nobody decided it, so a person's name would be a "
         "claim. 'nmas' is not one of ACTOR_CONVENTION's three kinds either "
-        "(recorded under B12)."),
+        "(recorded under B12). The literal moved here from _seed_and_commit on "
+        "2026-10-10, when v2's Seed the library… began passing the verified person."),
 }
 
 

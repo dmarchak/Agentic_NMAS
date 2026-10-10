@@ -1,0 +1,82 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Templates › Bindings… (cutover blocker 5, drawn under the Phase 7 mode,
+    docs/STANDING_APPROVAL_LOG.md), in #tpl-op below the table: each platform's template and
+    the per-device overrides, each a choice among the committed templates of that platform;
+    then the preview (every device whose template moves, before and after, and whether the
+    template it moves to is approved) and the commit with its reason, bound to the file and
+    the change previewed. modules/nsot/template_bindings.py. -#}
+{%- set close_url = url_for('templates_v2.table', list=b.list) -%}
+<section class="op-card{{ ' op-danger' if not b.ok }}" id="tpl-card" aria-labelledby="tb-h">
+  <div class="op-hd"><h2 id="tb-h">Bindings: which template renders which device in {{ b.list }}</h2>
+    <div class="op-hd-actions">{{ how('edit-template', 'bindings') }}<button type="button" class="btn" hx-get="{{ close_url }}" hx-target="#templates" hx-swap="outerHTML">{{ 'Cancel' if b.state == 'preview' else 'Close' }}</button></div></div>
+  {%- if not b.ok %}
+  <div class="op-part"><h3>Why</h3><div><p>{{ b.error }}</p></div></div>
+  {%- else %}
+  {%- if b.refused %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not done:</strong> {{ b.refused }}. Nothing was written.</p></div>
+  {%- endif %}
+  {%- if b.state == 'preview' %}
+  {%- set pv = b.pv %}
+  <div class="op-part"><h3>What changes</h3><div>
+    {%- if pv.moves %}
+    <p>{{ pv.moves | length }} device{{ '' if pv.moves | length == 1 else 's' }} will render through another template:</p>
+    <details class="tpl-bound" data-keep="tb-moves"{% if pv.moves | length <= 10 %} open{% endif %}><summary>{{ pv.moves | length }} device{{ '' if pv.moves | length == 1 else 's' }}</summary>
+    <table class="table"><thead><tr><th scope="col">Device</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Approved</th></tr></thead><tbody>
+    {%- for m in pv.moves %}<tr><td><a href="{{ url_for('device_v2.device', name=m.device) }}">{{ m.device }}</a></td><td class="mono">{{ m.before }}</td><td class="mono">{{ m.after }}</td><td>{{ badge('approved', 'ok') if m.approved else badge('not approved', 'warn') }}</td></tr>{% endfor %}
+    </tbody></table></details>
+    {%- if pv.unapproved %}<p class="notice notice-warn">{{ icon('warn', 16) }} A deploy renders only through an approved template: {% for t in pv.unapproved %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %} {{ 'is' if pv.unapproved | length == 1 else 'are' }} not, so a deploy to {{ 'that device' if pv.moves | length == 1 else 'those devices' }} is refused until approved.</p>{% endif %}
+    {%- else %}
+    <p>No device changes template: the bindings change, and every device renders through the template it does now.</p>
+    {%- endif %}
+    <p class="muted">Nothing is sent to any device. Each device is checked against its new template at its own deploy.</p></div></div>
+  <form class="op-ft" method="post" action="{{ url_for('templates_v2.bindings_apply') }}" hx-post="{{ url_for('templates_v2.bindings_apply') }}" hx-target="#templates" hx-swap="outerHTML">
+    {%- for k, v in b.form %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="base" value="{{ pv.base }}"><input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
+    <label class="ie-why">Why, in one line (the commit's subject)
+      <input type="text" name="summary" autocomplete="off" required></label>
+    {%- if b.may.may %}
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"><span class="op-idle">Commit the bindings</span><span class="op-busy">Committing…</span></button>{{ how('edit-template', 'bindings', compact=True, op='bindings') }}</span>
+    <p class="op-note">{{ b.may.statement }} Bound to the bindings as previewed: if they change before you confirm, nothing is written.</p>
+    {%- else %}
+    <p class="op-note">{{ b.may.statement }} Nothing can be committed from here.</p>
+    {%- endif %}
+  </form>
+  {%- else %}
+  <form method="post" action="{{ url_for('templates_v2.bindings_preview') }}" hx-post="{{ url_for('templates_v2.bindings_preview') }}" hx-target="#tpl-op" hx-swap="innerHTML">
+    <input type="hidden" name="list" value="{{ b.list }}">
+    <div class="op-part"><h3>Each platform's template</h3><div>
+      <table class="table"><thead><tr><th scope="col">Platform</th><th scope="col">Template</th></tr></thead><tbody>
+      {%- for p in b.platforms %}
+      <tr><td><label for="tb-p-{{ loop.index }}">{{ p.platform or '(none)' }}</label></td>
+        <td><select id="tb-p-{{ loop.index }}" name="platform::{{ p.platform }}">
+          {%- if not p.template %}<option value="">its default ({{ p.platform }}/base.j2)</option>{% endif %}
+          {%- for t in p.choices %}<option value="{{ t }}"{% if t == p.template %} selected{% endif %}>{{ t }}</option>{% endfor %}
+          {%- if p.template and p.template not in p.choices %}<option value="{{ p.template }}" selected>{{ p.template }} (not committed)</option>{% endif %}
+        </select></td></tr>
+      {%- endfor %}
+      </tbody></table></div></div>
+    <div class="op-part"><h3>Devices with their own template</h3><div>
+      {%- if b.overrides %}
+      <table class="table"><thead><tr><th scope="col">Device</th><th scope="col">Template</th></tr></thead><tbody>
+      {%- for o in b.overrides %}
+      <tr><td><label for="tb-o-{{ loop.index }}">{{ o.device }}</label></td>
+        <td><select id="tb-o-{{ loop.index }}" name="override::{{ o.device }}">
+          <option value="">its platform's (remove this override)</option>
+          {%- for t in o.choices %}<option value="{{ t }}"{% if t == o.template %} selected{% endif %}>{{ t }}</option>{% endfor %}
+          {%- if o.template not in o.choices %}<option value="{{ o.template }}" selected>{{ o.template }} (not committed)</option>{% endif %}
+        </select></td></tr>
+      {%- endfor %}
+      </tbody></table>
+      {%- else %}<p class="muted">None: every device renders through its platform's template.</p>{% endif %}
+      <p class="tpl-k">Give a device its own template</p>
+      <div class="tb-add"><label class="sr" for="tb-add-d">Device</label><input id="tb-add-d" name="add_device" list="tb-devices" placeholder="device name" autocomplete="off">
+        <datalist id="tb-devices">{% for d in b.devices %}<option value="{{ d }}">{% endfor %}</datalist>
+        <label class="sr" for="tb-add-t">Template</label><select id="tb-add-t" name="add_template"><option value="">template…</option>{% for p in b.platforms %}{% for t in p.choices %}<option value="{{ t }}">{{ t }}</option>{% endfor %}{% endfor %}</select></div></div></div>
+    <div class="op-ft">
+      <span class="op-act"><button type="submit" class="btn" data-op="edit-template" hx-disabled-elt="this"><span class="op-idle">Preview the change</span><span class="op-busy">Checking…</span></button>{{ how('edit-template', 'bindings', compact=True, op='bindings') }}</span>
+      <p class="op-note">A preview writes nothing.</p>
+    </div>
+  </form>
+  {%- endif %}
+  {%- endif %}
+</section>
