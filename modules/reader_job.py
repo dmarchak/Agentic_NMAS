@@ -252,7 +252,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.credential_health",
                            "modules.readers.coverage_reporting",
                            "modules.readers.platform_facts",
-                           "modules.readers.records_check")
+                           "modules.readers.records_check",
+                           "modules.readers.topology_graph")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).
@@ -364,6 +365,10 @@ CHANGE_ONLY = {
                        "the device page draws the model and where it came from, never this "
                        "read's time, so announcing device_state every 10 min would redraw an "
                        "open page's history for nothing (its hourly keepalive proves it alive)"),
+    "topology-graph": ("it reads every 60 s and Topology redraws the whole map on its "
+                       "announcement, drawing the value's age only on hover: the brief "
+                       "(NSOT_TOPOLOGY_BRIEF 1) announces only a change, so an unchanged "
+                       "network redraws nothing (its 600 s keepalive proves it alive)"),
 }
 
 

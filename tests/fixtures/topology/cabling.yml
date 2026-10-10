@@ -1,0 +1,23 @@
+# The lab's real cabling between network devices: the INDEPENDENT expectation P.11's accuracy
+# test compares the reader's physical layer against (NSOT_TOPOLOGY_BRIEF section 1, Q5).
+#
+# Hand-kept, never derived from LLDP (NetBox's cables here are, so they cannot check it). Read
+# 2026-10-10 from the lab's containerlab definitions on the lab host (`links` of
+# labs/lab/rcn-lab1.clab.yml and labs/r6/r6.clab.yml). Edit it when the lab is re-cabled.
+#
+# Pairs only: containerlab names a node's ports in its own numbering (a vIOS switch's clab Gi1 is
+# not the device's Gi1), so ports are not comparable across the two sources; the device pairs are.
+# Links to hosts (h1 to h4, web) and to the management bridge (s3's and r6's) are not between
+# network devices and are left out. r5 is cabled and not managed.
+links:
+  - [r1, s1]
+  - [r1, s3]
+  - [r2, s2]
+  - [r2, s4]
+  - [r3, r4]
+  - [r3, r5]
+  - [r3, s3]
+  - [r4, r5]
+  - [r4, s4]
+  - [s1, s2]
+  - [s3, s4]

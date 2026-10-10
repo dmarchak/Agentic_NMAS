@@ -31,6 +31,7 @@ IMPORT_TO_DIST = {
     "paramiko": "paramiko", "ping3": "ping3", "psutil": "psutil",
     "pysnmp": "pysnmp", "requests": "requests", "urllib3": "urllib3",
     "werkzeug": "Werkzeug", "yaml": "PyYAML", "packaging": "packaging",
+    "networkx": "networkx",
 }
 #: Local packages and paths, not distributions.
 LOCAL = {"modules", "routes", "tests", "app", "telnetlib", "conftest", "fixtures"}

@@ -87,7 +87,7 @@ VOCABULARY = {
     "playbooks": "AI playbooks",
     "quick_actions": "quick actions",
     "monitoring": "the SNMP and NetFlow collectors",
-    "topology": "the topology layout",
+    "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
     "variables": "the CSV-era variable store and compliance policy",
     "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",
