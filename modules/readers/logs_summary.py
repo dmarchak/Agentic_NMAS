@@ -101,19 +101,24 @@ class _Loki:
 
 
 def _first_day(loki, now: float) -> str:
-    """The day of the store's first line: 30-day windows forward from the furthest look-back,
-    the first window that holds a line answering."""
-    start = now - FIRST_LOOKBACK_DAYS * 86400
-    while start < now:
-        end = min(start + WINDOW_DAYS * 86400, now)
+    """The day of the store's first line. Lines are kept from the first one onward, so the
+    search walks back from now a 30-day window at a time, each window answering its own first
+    line, until a window holds none: the last first line found is the store's. An empty window
+    costs the lab's Loki about 1.6 s (walking forward from 760 days back took 38.8 s, measured
+    2026-10-10 on the host); walking back asks the empty windows only once, past the start."""
+    floor = now - FIRST_LOOKBACK_DAYS * 86400
+    end, first = now, None
+    while end > floor:
+        start = max(end - WINDOW_DAYS * 86400, floor)
         got = loki.ask("loki/api/v1/query_range", query=f'{{job="{_job()}"}}', limit=1,
                        start=str(int(start * 1e9)), end=str(int(end * 1e9)),
                        direction="forward")
         stamps = [int(v[0]) for s in got for v in s.get("values") or []]
-        if stamps:
-            return _day(min(stamps) / 1e9)
-        start = end
-    return ""
+        if not stamps:
+            break
+        first = min(stamps)
+        end = start
+    return _day(first / 1e9) if first else ""
 
 
 def _job() -> str:

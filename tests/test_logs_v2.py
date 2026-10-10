@@ -68,7 +68,11 @@ class FakeLoki:
             newest = max(DAYS.values(), key=lambda v: v["time"])
             return newest["answer"]["data"]["result"]
         if params.get("direction") == "forward":
-            return [{"stream": {}, "values": [[FIRST_NS, "first"]]}]
+            # A window's first line: none before the store's first, as a real store answers.
+            if int(params["end"]) <= int(FIRST_NS):
+                return []
+            return [{"stream": {}, "values": [[str(max(int(params["start"]), int(FIRST_NS))),
+                                              "first"]]}]
         return [s for f in ("lines_r4.json", "lines_s3.json")
                 for s in _fx(f)["answer"]["data"]["result"]]
 
@@ -106,6 +110,19 @@ class TestTheReader:
         unparsed = sum(int(float(r["value"][1])) for r in DAYS["2026-10-07"]["answer"]["data"]["result"]
                        if not r["metric"])
         assert unparsed and v["unparsed"]["2026-10-07"] == unparsed
+
+    def test_the_store_s_first_day_is_found_walking_back_and_asked_once(self):
+        """Measured 2026-10-10: walking forward from 760 days back cost 38.8 s on the host, an
+        empty 30-day window about 1.6 s. Walking back asks one empty window, past the start;
+        a value that knows its first day asks none."""
+        loki = FakeLoki()
+        v = _read(loki=loki)
+        windows = [p for path, p in loki.asked if p.get("direction") == "forward"]
+        assert v["first_day"] == time.strftime("%Y-%m-%d", time.gmtime(int(FIRST_NS) / 1e9))
+        assert len(windows) == 3          # 33 days of lines: two windows with lines, one empty
+        again = FakeLoki()
+        _read(previous=v, loki=again)
+        assert not [p for path, p in again.asked if p.get("direction") == "forward"]
 
     def test_the_past_is_filled_seven_days_a_read_and_carried(self):
         v1 = _read()
