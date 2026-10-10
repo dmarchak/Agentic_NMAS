@@ -569,9 +569,11 @@ other's packages. So the deploy carries the swap:
   restart; prune on success; swap back on rollback; a link that cannot move). The refusal and
   the rollback's swap-back were each removed from a copy and their tests failed. Before the
   switch there is no link, and nothing is compared (the release's files are not even read).
-- **Its first host run** is the first ordinary lock change (textfsm 1.1.3, future,
-  pycparser): build that venv from a clone of the release (the refusal prints the command),
-  then deploy. The updater's two root copies must be re-installed from the release that
+- **Its first host run** is the first ordinary lock change: networkx 3.6.1 added for P.11,
+  nothing else moved (the operator, 2026-10-10, who amended the earlier plan: the three
+  overrides, textfsm 1.1.3, future and pycparser, come off in the NEXT lock change, on their
+  own, and `pip check` must then come back clean). Build that venv from a clone of the release
+  (the refusal prints the command), then deploy. The updater's two root copies must be re-installed from the release that
   carries this (docs/UPDATE.md, "Re-install") before the Update button carries a swap.
 - Settings › Installation (F2) can show the running venv's `<h>` beside this release's: a
   release whose lock is not yet built is visible before anyone presses Update. Not in F2's

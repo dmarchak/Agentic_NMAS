@@ -14,8 +14,11 @@
 # (section 8.3). A new dependency is a line here and the command above, nothing else.
 #
 # The first lock (2026-10-09) is exactly the 70 versions the host ran from apt and pip:
-# the first venv changes where the libraries live, not which versions. Moving off them
-# (textfsm 1.1.3, the overrides gone, colorama dropped) is the first ordinary lock change.
+# the first venv changes where the libraries live, not which versions. The first ordinary lock
+# change ADDS networkx and moves nothing else (2026-10-10). The next takes the three overrides
+# off (textfsm 1.1.3, future, pycparser), on their own, one variable at a time, and pip check
+# must come back clean after it (the operator, 2026-10-10). colorama is dropped in a change of
+# its own.
 
 # AI integration (Anthropic API).
 anthropic==1.2.0
@@ -64,6 +67,12 @@ botocore==1.34.46
 # Mercury's records database (Phase 4): psycopg 3, LGPL-3.0, the operator's decision
 # (docs/THIRD_PARTY.json). It loads the host's libpq. Off until records_db_host is set.
 psycopg==3.1.17
+
+# Topology (P.11): the graph's analyses (islands, single points of failure, path trace,
+# criticality), computed on the server; the page draws. BSD-3-Clause, pure Python, no
+# dependencies of its own; the operator's decision, 2026-10-10 (stop 3). 3.6.1 is the version
+# the host's topology service already runs.
+networkx==3.6.1
 
 # The suite, which the host runs too (nmas-deploy --offline). pytest-xdist and execnet are in
 # requirements-test.txt, installed beside the lock with --no-deps.

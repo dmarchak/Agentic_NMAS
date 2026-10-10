@@ -3,8 +3,9 @@
 # Each replaces what a dependency DECLARES, so the first lock holds exactly the versions the
 # deployment host ran: the first virtualenv changes where the libraries live, not which
 # versions. Each causes one `pip check` complaint, and tests/test_requirements_lock.py holds
-# pip check's complaints to exactly these. All three go in the first ordinary lock change
-# (textfsm 1.1.3, with future and pycparser), through section 8.3 and 8.4.
+# pip check's complaints to exactly these. All three go together in the lock change AFTER
+# networkx's (the operator, 2026-10-10: on their own, not bundled with networkx; one variable
+# at a time), through section 8.3 and 8.4, and pip check must then come back clean.
 
 # netmiko 4.3.0 declares textfsm>=1.1.3; the host runs (and CI has tested) 1.1.2.
 textfsm==1.1.2

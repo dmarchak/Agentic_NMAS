@@ -771,6 +771,10 @@ netmiko==4.3.0 \
     --hash=sha256:a873b186e0b61be4a2100eda51e996d917ceddce195b734346b686757e61d324 \
     --hash=sha256:da90f6efdf33b4140eb6cd7f2272773c2ce144fa74ac34d5ecac1b4d4607f1fb
     # via -r requirements.txt
+networkx==3.6.1 \
+    --hash=sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509 \
+    --hash=sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762
+    # via -r requirements.txt
 ntc-templates==3.5.0 \
     --hash=sha256:86d75c077eb1ceb97f4f8c69c9e3c7a32b08210ceb8228e5fa4e87e080746fd4 \
     --hash=sha256:ee0dab4440dab1b3286549f8c08695b30037c1f36f55763c5a39005525f722c7

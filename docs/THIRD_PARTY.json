@@ -397,6 +397,13 @@
    "source": "https://pypi.org/project/netmiko/4.3.0/",
    "from": "requirements.lock"
   },
+  "networkx": {
+   "name": "networkx",
+   "version": "3.6.1",
+   "licence": "BSD-3-Clause",
+   "source": "https://pypi.org/project/networkx/3.6.1/",
+   "from": "requirements.txt"
+  },
   "ntc-templates": {
    "name": "ntc_templates",
    "version": "3.5.0",

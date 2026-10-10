@@ -25,14 +25,11 @@ blockers in dependency order (networks, NetBox import and writes on, onboarding,
 acknowledgement reason, the template editor, Reload); the nice-to-haves; 7.5 to 7.7; the 7.8
 removals; then a walk of everything on the host.
 
-**Waiting on the operator (stop 3, a new third-party package licence, 2026-10-10):** P.11
-Topology (CUTOVER's last PLANNED row) computes its analyses with **NetworkX**, which the operator
-required (NSOT_PLAN P.11, 2026-09-30) and which is not in `requirements.txt` or
-`requirements.lock` today (the host's topology service uses the apt package 3.6.1). Adding it to
-the app is a new package licence: NetworkX is BSD-3-Clause, pure Python, no compiled
-dependencies. Say yes and it goes into `requirements.txt`, compiled into the lock with uv; say no
-and the analyses are written without it. Everything else continues meanwhile. Under the mode only
-the four stops wait on the operator: a secret value, anything outside the lab, a new third-party
+**Waiting on the operator:** nothing. Stop 3 (NetworkX) was answered YES on 2026-10-10: pinned
+at 3.6.1, recorded in docs/THIRD_PARTY.json, carried through Phase 4 section 8.4 (the venv built
+and proved on the host beside the running one, then the deploy swaps the link). The three uv
+overrides come off in the NEXT lock change, on their own, with `pip check` clean after it. Under
+the mode only the four stops wait on the operator: a secret value, anything outside the lab, a new third-party
 package licence, and deleting or rotating backups or snapshots.
 
 **To resume:** read CLAUDE.md, then this file, then docs/OPEN_FINDINGS.md's Count, and
