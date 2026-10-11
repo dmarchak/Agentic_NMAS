@@ -4113,37 +4113,6 @@ def netbox_get_interfaces(name_or_ip: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
-def netbox_get_ip(address: str) -> dict:
-    """
-    Look up an IP address in NetBox IPAM.
-    Returns which device/interface it is assigned to, its VRF, and description.
-    """
-    ok, err, session, base = _nb_ready()
-    if not ok:
-        return {"ok": False, "error": err}
-    try:
-        hits = _nb_get(session, base, "ipam/ip-addresses/", address=address)
-        if not hits:
-            # Try prefix search (e.g. caller passed just the host portion)
-            hits = _nb_get(session, base, "ipam/ip-addresses/", q=address)
-        results = []
-        for ip in hits:
-            obj  = ip.get("assigned_object") or {}
-            dev  = (ip.get("assigned_object_type") or "").replace("dcim.", "")
-            results.append({
-                "address":     ip.get("address"),
-                "status":      (ip.get("status") or {}).get("value"),
-                "vrf":         (ip.get("vrf") or {}).get("name"),
-                "description": ip.get("description") or "",
-                "dns_name":    ip.get("dns_name") or "",
-                "assigned_to": obj.get("name") or obj.get("display") or "",
-                "object_type": dev,
-            })
-        return {"ok": True, "results": results}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
 def netbox_get_prefixes(vrf: str = "", prefix: str = "") -> dict:
     """
     List IPAM prefixes (static routes are synced here).

@@ -62,7 +62,6 @@ and built.
 | Adopt | (no route; `modules/nsot/adopt.py`) | BUILT (board G, 2026-10-10; not run on the host) | Devices › Adopt a device… (`routes/adopt_v2.py`): the preview reads over the supplied login and sends nothing, the confirm (a verified person, the password typed again, bound to the preview's fingerprint) runs `adopt.apply` as a job on the stepper |
 | NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | BUILT, 7.6 (2026-10-10; not run on the host) | Source of truth › NetBox (`/v2/netbox`): every network's Import into NetBox… and Remove from NetBox…, Import every network…, each a preview job and a confirm that may turn writes on (C619), its result and recorded removals; the same core as today's routes (`modules/netbox_ops.py`) |
 | NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
-| NetBox queries | `/netbox/query/*` (6) | REMOVE, 7.8 | No page calls them; the device page's NetBox tab reads NetBox itself |
 | Credential profiles | `/inventory/credentials/*` (3), `/inventory/dependents/<list>` | BUILT (2026-10-10, the board drawn under the Phase 7 mode; not run on the host); the JSON routes REMOVE at 7.8 | Source of truth › Credentials › Profiles (`routes/credential_profiles_v2.py`): each profile with what it covers in the resolver's order (one under a name the resolver never reads says so), set or not set, never a value; Add a profile…, Edit… (empty keeps), Delete…, each a verified person's and recorded (`credential_changes`, History's Credential profiles). `dependents`' warning moved into v2's Delete network preview (C645). `copy-inherited` (freezing a network's inherited logins into per-device overrides) has no v2 home: no v1 control called it, and Delete network now names what would break instead |
 | Inventory source | `/inventory/source/<list>`, `/inventory/refresh/<list>` | BUILT (2026-10-10; not run on the host) | Every network's Settings › Network tab, Inventory source: its own list or NetBox through filters, a preview reading NetBox once with the new filters (how many devices, which skipped and why), a confirm bound to it, recorded; Refresh now for a NetBox network |
 | Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
@@ -94,6 +93,15 @@ and built.
 | Topology | `/topology/*` (9), `/topology_data` | REMOVE, 7.8 | Neighbours carries discovery per device (C126); the fleet map is P.11's Topology item |
 | Topology service | `/topology/service/status`, `/svg` | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the two routes and the service REMOVE at 7.8 | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
 | AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages |
+
+## Removed at 7.8
+
+Each family leaves the table above in the commit that removes it, named here with that commit's
+date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest change first).
+
+- **NetBox queries** (the six /netbox/query routes), 2026-10-11: no page called them, and the
+  device page's NetBox tab reads NetBox itself. Their one helper only they used,
+  `netbox_client.netbox_get_ip`, went with them.
 
 ## Legacy actions that are not routes
 

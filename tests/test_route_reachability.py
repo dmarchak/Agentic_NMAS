@@ -114,12 +114,6 @@ KNOWN_UNREACHABLE = {
     # The six the GUI doc called "the AI agent's NetBox reads, need no UI".
     # Measured: nothing in the repository calls them, the agent included (it
     # calls netbox_client directly). A claimed consumer, checked and absent.
-    "GET /netbox/query/device": (D, "claimed as the AI agent's, and nothing calls it (measured); removed in 7.8"),
-    "GET /netbox/query/devices": (D, "claimed as the AI agent's, and nothing calls it (measured); removed in 7.8"),
-    "GET /netbox/query/interfaces": (D, "claimed as the AI agent's, and nothing calls it (measured); removed in 7.8"),
-    "GET /netbox/query/ip": (D, "claimed as the AI agent's, and nothing calls it (measured); removed in 7.8"),
-    "GET /netbox/query/prefixes": (D, "claimed as the AI agent's, and nothing calls it (measured); removed in 7.8"),
-    "GET /netbox/query/tunnels": (D, "claimed as the AI agent's, and nothing calls it (measured); removed in 7.8"),
 }
 
 #: The allowlist's size, pinned. It may only go DOWN: lower it in the same
@@ -133,7 +127,8 @@ KNOWN_UNREACHABLE = {
 # words after its converter must now appear near the reference.
 # 49 -> 47 (2026-10-02): /ai/restart and /server/restart removed (CONCURRENCY_AUDIT R5).
 # 47 -> 45 (2026-10-08): /freshness/authorisations and /freshness/authorise removed (Phase 3).
-CEILING = 45
+# 45 -> 39 (2026-10-11): the six /netbox/query routes removed (7.8, the first family).
+CEILING = 39
 
 
 @pytest.fixture(scope="module")
