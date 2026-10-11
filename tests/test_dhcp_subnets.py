@@ -147,3 +147,172 @@ def test_the_update_page_s_check_reads_done_only_when_both_families_moved(tmp_pa
         p = S.move_plan(files[family].read_text(), str(files[family]), family)
         files[family].write_text(p["candidate"])
     assert host_steps.check_kea_subnet_files()["state"] == "done"
+
+
+# --- board C: a subnet changed (C529 step 3) -------------------------------------------------
+
+class SubnetKea:
+    """Kea as captured, its subnets read from Mercury's subnet file at `config-reload` (and at
+    start), each subnet's reservations from the file it includes."""
+
+    def __init__(self, files, reloads=True):
+        def load(name):
+            with open(os.path.join(KEA, name), encoding="utf-8") as fh:
+                return json.load(fh)
+        self.base = {"dhcp4": load("dhcp4-config-get.json"),
+                     "dhcp6": load("dhcp6-config-get.json")}
+        self.leases = {"dhcp4": load("dhcp4-lease4-get-all.json"),
+                       "dhcp6": load("dhcp6-lease6-get-all.json")}
+        self.files, self.reloads, self.sent = files, reloads, []
+        self.loaded = {svc: self._read(svc) for svc in self.base}
+
+    def is_configured(self):
+        return True
+
+    def _read(self, svc):
+        with open(self.files[svc], encoding="utf-8") as fh:
+            subs = S.load(fh.read())
+        for s in subs:
+            r = s.get("reservations")
+            if isinstance(r, str) and r.startswith("@@kea-include:"):
+                with open(r[len("@@kea-include:"):-2], encoding="utf-8") as fh:
+                    s["reservations"] = json.load(fh)
+        return subs
+
+    def command(self, cmd, service=None):
+        svc = service if isinstance(service, str) else (service or ["dhcp4"])[0]
+        self.sent.append((cmd, svc))
+        if cmd == "config-get":
+            doc = json.loads(json.dumps(self.base[svc]))
+            root = doc[0]["arguments"]["Dhcp4" if svc == "dhcp4" else "Dhcp6"]
+            root["subnet4" if svc == "dhcp4" else "subnet6"] = json.loads(
+                json.dumps(self.loaded[svc]))
+            return {"ok": True, "result": doc}
+        if cmd.endswith("-get-all"):
+            return {"ok": True, "result": self.leases[svc]}
+        if cmd == "config-reload":
+            if self.reloads:
+                self.loaded[svc] = self._read(svc)
+            return {"ok": True, "result": [{"result": 0}]}
+        return {"ok": False, "error": f"unexpected {cmd}"}
+
+
+@pytest.fixture
+def moved(tmp_path, monkeypatch):
+    """Kea's folder after the subnet move: the captured main files, their subnets in Mercury's
+    files (reservation includes pointed at empty files beside them), the main files including
+    them."""
+    from modules import dhcp_reservations as D
+    (tmp_path / "nmas").mkdir()
+    mains, files = {}, {}
+    for family, svc, name in (("IPv4", "dhcp4", "kea-dhcp4.conf"),
+                              ("IPv6", "dhcp6", "kea-dhcp6.conf")):
+        main = str(tmp_path / name)
+        text = _main(name).replace("/etc/kea/nmas/", str(tmp_path / "nmas") + "/")
+        for path in re.findall(r'<\?include "([^"]+)"\?>', text):
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("[]\n")
+        p = S.move_plan(text, main, family)
+        with open(p["file"], "w", encoding="utf-8") as fh:
+            fh.write(p["subnets_text"])
+        with open(main, "w", encoding="utf-8") as fh:
+            fh.write(p["candidate"])
+        mains[family], files[svc] = main, p["file"]
+    monkeypatch.setattr(D, "main_config", lambda list_name, family: mains[family])
+    monkeypatch.setattr("modules.readers.dhcp._ztp_ids", lambda config: [255])
+    return {"mains": mains, "files": files, "kea": SubnetKea(files)}
+
+
+def _intent():
+    import yaml
+    from modules.readers.dhcp import facts_from
+    with open(os.path.join(os.path.dirname(KEA), "committed", "s1.yml"), encoding="utf-8") as fh:
+        return facts_from({"s1": yaml.safe_load(fh)})
+
+
+EDIT = {"op": "edit", "family": "IPv4", "id": "10", "pool": "10.10.10.101 - 10.10.10.149"}
+
+
+class TestTheSubnetPlan:
+    def test_a_pool_change_names_the_lease_it_strands_and_how_long_it_keeps_it(self, moved):
+        p = S.plan_edit("Lab", EDIT, kea=moved["kea"], intent=_intent())
+        assert p["ok"], p["refused"]
+        assert ("+", 'pools: [{"pool": "10.10.10.101 - 10.10.10.149"}]') in p["change"]
+        stranded = [n for n in p["leases"] if n.startswith("10.10.10.100 ")]
+        assert stranded and "keeps it until its lease ends 2027-10-" in stranded[0]
+        assert "Kea answers its renewals with silence: measured on Kea 2.4.1" in stranded[0]
+        assert not any(n.startswith("10.10.10.102") for n in p["leases"]), "inside the pool"
+        assert ("pass", "the gateway equals intent's VRRP address (10.10.10.1)") in p["checks"]
+
+    def test_a_lifetime_sets_both_timers_and_says_who_it_applies_to(self, moved):
+        p = S.plan_edit("Lab", dict(EDIT, pool="", valid="1 d"), kea=moved["kea"])
+        assert ("+", "valid-lifetime: 86400") in p["change"]
+        assert ("+", "renew-timer: 43200") in p["change"] and ("+", "rebind-timer: 75600") in \
+            p["change"]
+        assert any("applies to leases granted or renewed after" in n for n in p["leases"])
+
+    def test_a_gateway_other_than_intent_s_is_said(self, moved):
+        p = S.plan_edit("Lab", dict(EDIT, pool="", gateway="10.10.10.254"), kea=moved["kea"],
+                        intent=_intent())
+        assert ("warn", "the gateway 10.10.10.254 is not intent's VRRP address (10.10.10.1)") \
+            in p["checks"]
+
+    @pytest.mark.parametrize("values, words", [
+        (dict(EDIT, pool="10.10.20.1 - 10.10.20.9"), "does not lie inside 10.10.10.0/24"),
+        (dict(EDIT, pool="10.10.10.9 - 10.10.10.1"), "ends before it starts"),
+        (dict(EDIT, id="255"), "subnet 255 is ZTP's"),
+        (dict(EDIT, pool="", gateway="10.10.20.1"), "is not in 10.10.10.0/24"),
+        (dict(EDIT, pool="", dns="dns.example"), "is not an address"),
+        (dict(EDIT, pool="10.10.10.100 - 10.10.10.200"), "nothing would change"),
+        (dict(EDIT, pool="", valid="soon"), "is not a time"),
+    ], ids=["outside", "backwards", "ztp", "gateway-outside", "dns-name", "no-change", "time"])
+    def test_what_it_cannot_do_is_refused_by_name(self, moved, values, words):
+        p = S.plan_edit("Lab", values, kea=moved["kea"])
+        assert not p["ok"] and words in p["refused"], p["refused"]
+
+    def test_before_the_move_it_is_refused_naming_the_step(self, moved):
+        os.remove(moved["files"]["dhcp4"])
+        p = S.plan_edit("Lab", EDIT, kea=moved["kea"])
+        assert not p["ok"] and "c529-step5-subnet-files.sh" in p["refused"]
+
+
+def _ok_test(path):
+    return True, "ok"
+
+
+class TestTheSubnetApply:
+    def _apply(self, moved, h=None, **kw):
+        p = S.plan_edit("Lab", EDIT, kea=moved["kea"])
+        recorded = []
+        got = S.apply_edit("Lab", EDIT, h or p["hash"], actor="p@example.invalid",
+                           reason="narrow the pool", kea=moved["kea"], run_test=_ok_test,
+                           record=lambda l, plan, **k: recorded.append(plan) or
+                           {"ok": True, "commit": "abc1234"}, **kw)
+        return got, recorded
+
+    def test_it_writes_reloads_reads_back_and_records(self, moved):
+        got, recorded = self._apply(moved)
+        assert got["ok"], got["error"]
+        assert "holds subnet 10 as written" in got["read_back"] and recorded
+        text = open(moved["files"]["dhcp4"], encoding="utf-8").read()
+        assert "10.10.10.101 - 10.10.10.149" in text
+        assert text.count("<?include") == 3, "every subnet's reservation file still included"
+        assert ("config-reload", "dhcp4") in moved["kea"].sent
+
+    def test_a_moved_preview_writes_nothing(self, moved):
+        before = open(moved["files"]["dhcp4"], encoding="utf-8").read()
+        got, recorded = self._apply(moved, h="0" * 64)
+        assert not got["ok"] and "Preview again" in got["error"] and not recorded
+        assert open(moved["files"]["dhcp4"], encoding="utf-8").read() == before
+
+    def test_a_read_back_that_disagrees_puts_the_file_back(self, moved):
+        before = open(moved["files"]["dhcp4"], encoding="utf-8").read()
+        moved["kea"].reloads = False
+        got, recorded = self._apply(moved)
+        assert not got["ok"] and "subnet 10 did not change" in got["error"]
+        assert "previous subnet file restored" in got["rolled_back"] and not recorded
+        assert open(moved["files"]["dhcp4"], encoding="utf-8").read() == before
+
+    def test_a_change_needs_a_reason(self, moved):
+        got = S.apply_edit("Lab", EDIT, "x", actor="p", reason=" ", kea=moved["kea"])
+        assert not got["ok"] and "a reason is recorded" in got["error"]

@@ -47,8 +47,9 @@
 {%- if g.s.tab == 'sub' %}
 <section class="card dh-sec" aria-labelledby="dh-sub-h">
   <h2 id="dh-sub-h">Subnets</h2>
+  {%- if sop is defined and sop %}{% include "v2/_dhcp_subnet.html" %}{% endif %}
   <div class="dh-scroll"><table class="table">
-    <thead><tr><th scope="col">Subnet</th><th scope="col">Pools <span class="faint">as set</span></th><th scope="col">Gateway (3)</th><th scope="col">DNS (6 / 23)</th><th scope="col">Lease time <span class="faint">valid · preferred · renew · rebind</span></th><th scope="col">Leases now</th><th scope="col">Held by</th></tr></thead>
+    <thead><tr><th scope="col">Subnet</th><th scope="col">Pools <span class="faint">as set</span></th><th scope="col">Gateway (3)</th><th scope="col">DNS (6 / 23)</th><th scope="col">Lease time <span class="faint">valid · preferred · renew · rebind</span></th><th scope="col">Leases now</th><th scope="col">Held by</th><th scope="col"><span class="sr-only">Change</span></th></tr></thead>
     <tbody>
     {%- for x in g.subnets %}
     <tr>
@@ -61,8 +62,9 @@
       <td>{{ g.duration(x.times.valid) }} · {{ g.duration(x.times.preferred) }} · {{ g.duration(x.times.renew) }} · {{ g.duration(x.times.rebind) }}{% if x.same_as_global %} <span class="faint">the same as Kea's global</span>{% endif %}</td>
       <td>{% if x.ztp %}{{ x.used }} asking{% elif x.size %}{{ x.used }} of {{ x.size }}{% else %}{{ x.used }}{% endif %}</td>
       <td class="small">{% if x.held %}{{ g.held_words[x.held] }}{% else %}<span class="faint">not known: Kea's file is not on this host</span>{% endif %}</td>
+      <td>{% if x.held == 'mercury' %}<a class="btn btn-small" href="{{ url_for('dhcp_v2.subnet_preview', list=g.list, family=x.family, id=x.id) }}" hx-get="{{ url_for('dhcp_v2.subnet_preview', list=g.list, family=x.family, id=x.id) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-subnet" aria-label="Edit {{ x.prefix }}">Edit…</a>{{ how('dhcp-subnet', compact=True, op='a subnet') }}{% endif %}</td>
     </tr>
-    {%- else %}<tr><td colspan="7" class="faint">Kea serves no subnet that was read.</td></tr>{% endfor %}
+    {%- else %}<tr><td colspan="8" class="faint">Kea serves no subnet that was read.</td></tr>{% endfor %}
     </tbody>
   </table></div>
   {%- if g.subnets and g.subnets | selectattr('held', 'equalto', 'kea-file') | list %}

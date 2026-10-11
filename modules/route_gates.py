@@ -92,6 +92,9 @@ GATES = {
     "adopt_v2.confirm": _g(C, "adds the tool's account to a device the tool did not build and "
                               "brings it under management (board G)", "adopt"),
     "device_v2.reload_confirm": _g(C,"reloads the device, its planned-restart window declared first (P.14, cutover blocker 6)", "reload"),
+    "dhcp_v2.subnet_confirm": _g(C, "changes a Kea subnet's pool, options or lease times: writes "
+                                    "Mercury's subnet file, reloads Kea and reads it back, as a "
+                                    "verified person with a reason (C529 step 3, board C)"),
     "dhcp_v2.reservation_confirm": _g(C, "adds, changes or removes a Kea reservation: writes "
                                          "Mercury's file for the subnet and reloads Kea, which "
                                          "clients then receive (C529 step 2, board B)",

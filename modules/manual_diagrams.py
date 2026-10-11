@@ -1012,6 +1012,36 @@ def dhcp_reservation():
     ])
 
 
+def dhcp_subnet():
+    return svg(470, (
+        "Changing a subnet. The preview reads Mercury's subnet file and asks Kea for its "
+        "configuration and leases, and checks the pool lies inside the subnet and overlaps no "
+        "other subnet's pool, the gateway against intent's first-hop address, and which leases "
+        "held now the change affects. You confirm with a reason. The apply plans again and "
+        "writes nothing if anything moved, tests the candidate file with Kea's own check, "
+        "writes it, reloads Kea through its API, and reads Kea's configuration back: exactly "
+        "this subnet changed, or the previous file is put back. Then the change is committed "
+        "with your reason."), [
+        lanes(20, 464, right="KEA"),
+        doc("box", 14, 40, 186, 40, "The preview asks Kea", "leases affected, the checks"),
+        num(14, 40, 1),
+        person(14, 96, 186, 30, "You confirm, with a reason"), num(14, 96, 2),
+        _down(107, 128, 148),
+        band(150, 300, "The apply · the subnet file held"),
+        store(262, 172, 118, 150, "Kea", "Mercury's subnet file"),
+        *rows([
+            (174, "read", 3, "Plan again", "moved: nothing written"),
+            (210, None, 4, "Kea's own check", "on a candidate copy"),
+            (246, "send", 5, "Write, reload", "a failure: file put back"),
+            (282, "read", 6, "Read back", "only this subnet moved"),
+        ]),
+        repo(14, 330, 186, 40, "One commit", "dhcp/subnets.yml, your reason"),
+        num(14, 330, 7),
+        t(14, 400, "A client left outside the pool keeps", "sm"),
+        t(14, 413, "its address until its lease ends.", "sm"),
+    ])
+
+
 def show_commands():
     return svg(470, (
         "Show commands, and Ask the device its one-device form. Every command is checked "
@@ -1337,6 +1367,7 @@ DIAGRAMS = {
     "edit-template": edit_template,
     "reload": reload,
     "dhcp-reservation": dhcp_reservation,
+    "dhcp-subnet": dhcp_subnet,
     "show-commands": show_commands,
     "logging-path": logging_path,
     "privileged": privileged,

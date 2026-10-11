@@ -94,6 +94,63 @@ def reservation_confirm():
                        "actor": actor, "subnets": _op_subnets()})
 
 
+# ---------------------------------------------------------------------------------- board C
+
+def _sop_region(sop: dict, code: int = 200):
+    """The Subnets tab with board C's card in place (region for htmx, the page otherwise)."""
+    from modules.preview_confirm import confirm_part
+
+    ctx = _ctx()
+    ctx["g"]["s"] = dict(ctx["g"]["s"], tab="sub")
+    sub = next((x for x in ctx["g"].get("subnets") or []
+                if x.get("family") == sop["ask"]["family"]
+                and str(x.get("id")) == sop["ask"]["id"]), None)
+    extra = dict(sop=dict(sop, subnet=sub), may=confirm_part(request, "confirm"))
+    if not request.headers.get("HX-Request"):
+        from routes.v2 import _page
+        return _page("v2/dhcp.html", active_nav="dhcp", list_name=_list_name(), **extra,
+                     **ctx), code
+    return _strict(render_template("v2/_dhcp_view.html", **extra, **ctx), code)
+
+
+def _intent() -> dict:
+    from modules import dhcp_page
+    return (dhcp_page.stored(_list_name()).get("value") or {}).get("intent") or {}
+
+
+@bp.route("/subnet", methods=["GET"])
+def subnet_preview():
+    """Board C's card in place of the Subnets tab: the form, and once a value is changed the
+    preview (the change, the leases it affects, its checks, its hash). A read: Kea is asked and
+    Mercury's subnet file read; nothing is written."""
+    from modules import dhcp_subnets as S
+
+    s = S.ask(request.args)
+    filled = any(s[k] for k in ("pool", "gateway", "dns", "domain", "valid", "preferred"))
+    p = S.plan_edit(_list_name(), request.args, intent=_intent()) if filled else None
+    return _sop_region({"state": "preview" if filled else "form", "ask": s, "plan": p})
+
+
+@bp.route("/subnet", methods=["POST"])
+def subnet_confirm():
+    """Apply the previewed subnet change as the verified person, bound to the preview's hash:
+    Kea's own check on the candidate, Mercury's subnet file written, Kea reloaded and read back,
+    recorded; the result in place."""
+    from modules import dhcp_subnets as S
+    from modules import identity
+
+    actor = identity.request_actor()
+    got = S.apply_edit(_list_name(), request.form, request.form.get("hash", ""), actor=actor,
+                       reason=request.form.get("reason", ""), intent=_intent())
+    s = S.ask(request.form)
+    if not got["ok"]:
+        return _sop_region({"state": "refused", "ask": s, "plan": got.get("plan"),
+                            "result": got, "reason": request.form.get("reason", "")},
+                           409 if not got.get("rolled_back") else 502)
+    return _sop_region({"state": "done", "ask": s, "plan": got["plan"], "result": got,
+                        "actor": actor})
+
+
 def _op_subnets() -> list:
     """The subnets a reservation can be made in, from the DHCP reader's stored value: every
     subnet of both families but ZTP's (onboarding's)."""

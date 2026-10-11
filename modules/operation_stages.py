@@ -135,6 +135,12 @@ STAGES = {
         "dhcp_v2.reservation_preview", "hash",
         "modules.dhcp_reservations.every_reservation", "modules.nsot.ztp._replace",
         "modules.dhcp_reservations.record_commit"),
+    # DHCP › Subnets (C529 step 3, board C): the same shape over Mercury's subnet file; the
+    # read-back is refused unless exactly the changed subnet moved.
+    "dhcp_v2.subnet_confirm": Stages(
+        "dhcp_v2.subnet_preview", "hash",
+        "modules.dhcp_subnets._moved", "modules.nsot.ztp._replace",
+        "modules.dhcp_subnets.record_commit"),
     "update.apply": Stages(
         "v2.update", "hash",
         "n/a: the root-owned updater (deploy/update/nmas-update) confirms the new version by identity",
@@ -355,6 +361,8 @@ HISTORY = {
     "update.apply": NOT_A_DEVICE,
     "dhcp_v2.reservation_confirm": ("n/a: changes a Kea reservation, never one device's record; "
                                     "the network's repository keeps it (dhcp/reservations.yml)"),
+    "dhcp_v2.subnet_confirm": ("n/a: changes a Kea subnet, never one device's record; the "
+                               "network's repository keeps it (dhcp/subnets.yml)"),
     "update.step_done": NOT_A_DEVICE,
     "run_command": NO_RECORD,
     "bulk_execute": NO_RECORD,

@@ -1,0 +1,72 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board C (DhcpSubnets, approved 2026-10-06), sections 2 and 3: a subnet's pool, options and
+    lease times changed, in place of the Subnets tab. The form, then the preview: the change, its
+    effect on the leases held now, its checks; the confirm, bound to the preview's hash, as a
+    verified person with a reason; the result in place, read back from Kea and recorded
+    (modules/dhcp_subnets.py). -#}
+{%- set s = sop.ask -%}
+{%- set p = sop.plan -%}
+{%- set sub = sop.subnet or {} -%}
+{%- set back = url_for('dhcp_v2.region') ~ g.qs({'tab': 'sub'}) -%}
+{%- set v6 = s.family == 'IPv6' -%}
+{%- if sop.state == 'done' %}
+{%- set r = sop.result %}
+<section class="op-card op-ok" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{{ p.prefix }} changed {{ badge('done', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-subnet') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>Written to Mercury's subnet file (<span class="mono">{{ p.path }}</span>), tested by Kea's own check first, Kea reloaded through its API, and read back: {{ r.read_back }}.</p>
+    {%- for n in p.leases %}<p class="muted">{{ n }}</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ sop.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/subnets.yml</span>. In History.</p></div></div>
+</section>
+{%- else %}
+<section class="op-card{{ ' op-danger' if sop.state == 'refused' or (p and not p.ok) }}" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% else %}Edit {{ sub.prefix or 'a subnet' }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-subnet') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
+  {%- if sop.state == 'refused' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing was changed{% if sop.result.rolled_back %} in the end: {{ sop.result.rolled_back }}{% endif %}.</strong> {{ sop.result.error }}</p></div>
+  {%- endif %}
+  <form hx-get="{{ url_for('dhcp_v2.subnet_preview') }}" hx-target="#dhcp" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="op" value="edit"><input type="hidden" name="family" value="{{ s.family }}"><input type="hidden" name="id" value="{{ s.id }}">
+    <div class="op-part"><h3>Settings</h3><div class="dh-fields">
+      <label class="dh-f">Pool<input type="text" name="pool" value="{{ s.pool }}" class="mono" autocomplete="off" spellcheck="false" placeholder="{{ (sub.pools or [''])[0] }}"><span class="dh-msg">was {{ (sub.pools or ['none']) | join(', ') }}; first - last</span></label>
+      {%- if not v6 %}
+      <label class="dh-f">Gateway (3)<input type="text" name="gateway" value="{{ s.gateway }}" class="mono" autocomplete="off" spellcheck="false"><span class="dh-msg">{% if sub.gateway and sub.gateway.intent %}intent: VRRP {{ sub.gateway.intent | join(', ') }} on {{ sub.gateway.where | join(', ') }}{% else %}intent names no first-hop address here{% endif %}</span></label>
+      {%- endif %}
+      <label class="dh-f">DNS servers ({{ 23 if v6 else 6 }})<input type="text" name="dns" value="{{ s.dns }}" class="mono" autocomplete="off" spellcheck="false"><span class="dh-msg">addresses, separated by commas</span></label>
+      <label class="dh-f">{{ 'Domain search (24)' if v6 else 'Domain (15)' }}<input type="text" name="domain" value="{{ s.domain }}" autocomplete="off" spellcheck="false"><span class="dh-msg">empty keeps it</span></label>
+      <label class="dh-f">Valid lifetime<input type="text" name="valid" value="{{ s.valid }}" autocomplete="off" spellcheck="false" placeholder="{{ g.duration(sub.times.valid) if sub.times else '' }}"><span class="dh-msg">empty keeps it; renew (T1) half of it, rebind (T2) 7/8</span></label>
+      {%- if v6 %}
+      <label class="dh-f">Preferred lifetime<input type="text" name="preferred" value="{{ s.preferred }}" autocomplete="off" spellcheck="false"><span class="dh-msg">empty keeps it</span></label>
+      {%- endif %}
+      <div class="dh-f dh-go"><button type="submit" class="btn" data-op="dhcp-subnet" hx-disabled-elt="this"><span class="op-idle">{{ 'Preview again' if p else 'Preview' }}</span><span class="op-busy">Asking Kea…</span></button>{{ how('dhcp-subnet', compact=True, op='a subnet') }}</div>
+    </div></div>
+  </form>
+  {%- if v6 and sub.gateway %}
+  <div class="op-part"><h3>The routers' RAs</h3><div>
+    <p class="muted">DHCPv6 has no gateway option: a host's default route comes from the routers' advertisements. For a host to take an address here, the routers advertising on the link must set M (<span class="mono">ipv6 nd managed-config-flag</span>); for the DNS and domain options alone, O (<span class="mono">ipv6 nd other-config-flag</span>). Read from intent:</p>
+    <ul class="op-gates">{% for e in sub.gateway.ra %}<li>{{ badge('M set' if e.managed else 'M not set', 'ok' if e.managed else 'warn') }}<span>{{ e.device }} {{ e.iface }}{% if not e.managed %}: a host that hears only this router's RA may not ask DHCPv6. <a href="{{ url_for('device_v2.device', name=e.device, list=g.list, tab='intent') }}">Open {{ e.device }}'s intent</a> to set it there and deploy it; this page never changes a device{% endif %}</span></li>{% else %}<li><span class="muted">No router in intent advertises on this prefix.</span></li>{% endfor %}</ul></div></div>
+  {%- endif %}
+  {%- if p and not p.ok %}
+  <div class="op-part"><h3>Not changed</h3><div class="dh-refuse" role="alert"><p>{{ p.refused }}</p></div></div>
+  {%- elif p %}
+  <div class="op-part dh-cont"><h3></h3><div>
+    <pre class="op-diff">{% for sign, line in p.change %}<span class="{{ 'op-add' if sign == '+' else ('op-del' if sign == '-' else 'muted') }}">{{ sign }} {{ line }}</span>{% if not loop.last %}
+{% endif %}{% endfor %}</pre></div></div>
+  <div class="op-part"><h3>Leases now</h3><div>
+    {%- for n in p.leases %}<p>{{ n }}</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">{% for state, text in p.checks %}<li>{{ badge({'pass': 'pass', 'pending': 'at confirm', 'note': 'note', 'warn': 'differs', 'fail': 'fail'}[state], {'pass': 'ok', 'pending': '', 'note': '', 'warn': 'warn', 'fail': 'danger'}[state]) }}<span>{{ text }}</span></li>{% endfor %}</ul></div></div>
+  <form class="op-ft" method="post" action="{{ url_for('dhcp_v2.subnet_confirm', list=g.list) }}" hx-post="{{ url_for('dhcp_v2.subnet_confirm', list=g.list) }}" hx-target="#dhcp" hx-swap="outerHTML">
+    {%- for k in ('op', 'family', 'id', 'pool', 'gateway', 'dns', 'domain', 'valid', 'preferred') %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="hash" value="{{ p.hash }}">
+    <label class="op-reason">Why (recorded with the change, in its commit)<input type="text" name="reason" value="{{ sop.reason or '' }}" autocomplete="off" required maxlength="200"></label>
+    <p class="op-note">Applied with <span class="mono">config-reload</span>, read back with <span class="mono">config-get</span> (refused unless exactly this subnet changed), recorded as a commit in <span class="mono">dhcp/subnets.yml</span> with your reason. {{ may.statement }} Bound to this preview: if Kea or Mercury's subnet file moves before you confirm, nothing is written.</p>
+    {%- if may.may %}
+    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-subnet" hx-disabled-elt="this"><span class="op-idle">Change {{ p.prefix }}</span><span class="op-busy">Testing, writing, reloading Kea, reading back…</span></button>{{ how('dhcp-subnet', compact=True, op='a subnet') }}</span>
+    {%- endif %}
+  </form>
+  {%- endif %}
+</section>
+{%- endif %}
