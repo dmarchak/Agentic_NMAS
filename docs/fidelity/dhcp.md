@@ -7,6 +7,7 @@ the DHCP reader's value built from the lab's Kea 2.4.1 answers (`tests/fixtures/
 
 Boards: `DhcpNetwork.dc.html` (board A, 1440 wide) on the mockups canvas, page "Item 5, DHCP on v2", approved 2026-10-06 with boards B to D and the sidebar move (canvas v59; register C529). Re-read from the canvas 2026-10-11 before building. Board A draws its three tabs one under another; the page shows one at a time. It has no phone variant: at 390 the page keeps each table whole and scrolls it in its box. Boards B (a reservation's operations), C (subnets and options) and D (exclusions) are later steps.
 Shots: desktop 1440 and 1280 (Subnets), 1440 (Leases, Reservations, Exclusions); phone 390 (each tab, and its first screen). Compared 2026-10-11.
+Walked on the host 2026-10-11 (4f9a699, deployed 02:19 UTC): the DHCP reader's first read landed a second after the restart, both families answered (Kea 2.4.1), its store `data/readers/dhcp.json`; the page drawn from that stored document at 1440 and 390 shows what the capture showed: 6 subnets (3 IPv4 with ZTP's 255, 3 IPv6), 9 leases with IPv6 subnet 10 open on its three addresses for one DUID, 0 reservations. At 390 the tab strip scrolls sideways, as every v2 page's tabs do.
 Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html
 Templates sha256: `fc3d6a1dc7df7a03fe5f4d897253df4cbeb8753d19241d492a8e115e94f65201`
 

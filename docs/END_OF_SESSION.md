@@ -38,7 +38,8 @@ docs/fidelity/topology.md), deployed and walked on the host's own read 2026-10-1
 walk: C659, fixed and walked 2026-10-11 (222054b: no link drawn across a device, name or tag
 it does not join, checked in a real browser). Wall view and Arrange stay later steps. DHCP
 (C529) step 1 built 2026-10-11: the DHCP reader and the read-only page to board A, the sidebar's
-DHCP under SOURCE OF TRUTH, docs/fidelity/dhcp.md; next, step 2 (board B, with the one host step
+DHCP under SOURCE OF TRUTH, docs/fidelity/dhcp.md; deployed and walked on the host the same
+day (4f9a699: both families read, the capture's counts); next, step 2 (board B, with the one host step
 that moves Kea's subnets into Mercury's files). Then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
 in the records database); Logs (C652, the operator 2026-10-10): the sidebar's Logs opens
