@@ -41,8 +41,9 @@ LAYER_WORDS = {"physical": "Physical (LLDP)", "ospf": "OSPF", "ospfv3": "OSPFv3"
 #: How many devices a criticality ranking names.
 CRITICAL_TOP = 5
 #: The most map nodes laid out: the page draws a map of up to 150 managed devices
-#: (`topology_page.COLLAPSE_ABOVE`), plus outside peers and Mercury's host. The spring layout
-#: took 554 ms at 150 devices on the laptop (2026-10-11) and grows with their square.
+#: (`topology_page.COLLAPSE_ABOVE`), plus outside peers and Mercury's host. The spring layout's
+#: grid variant (C670) took 0.17 s at 150 devices and 2.47 s at 900 on the laptop (2026-10-11),
+#: so raising the page's cap is the operator's decision, not the layout's cost.
 LAYOUT_UP_TO = 200
 #: The announcement's keepalive: an unchanged graph is announced at least this often (rule 9),
 #: ten reads, so a page that missed one hears the next within ten minutes.

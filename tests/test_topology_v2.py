@@ -425,6 +425,23 @@ def test_the_layout_is_the_same_every_time_and_keeps_devices_apart():
         assert d >= 100, (p, q, d)          # a name under each icon: about 100 units
 
 
+def test_the_grid_finds_exactly_the_near_pairs():
+    """C670: the spring layout's grid variant repels only devices within REPEL_WITHIN
+    spacings, found through a grid of cells; it must find exactly the pairs closer than the
+    radius, each once, never a far one. Planted: 300 random places, against every pair."""
+    import random
+
+    from modules import topology_layout as L
+    rng = random.Random(5)
+    pos = {f"d{i}": (rng.uniform(-900, 2900), rng.uniform(-400, 2400)) for i in range(300)}
+    names = sorted(pos)
+    radius = 340.0
+    got = list(L._near_pairs(pos, names, radius))
+    want = {(a, b) for i, a in enumerate(names) for b in names[i + 1:]
+            if (pos[a][0] - pos[b][0]) ** 2 + (pos[a][1] - pos[b][1]) ** 2 < radius ** 2}
+    assert len(got) == len(set(got)) and set(got) == want and len(want) > 100
+
+
 @pytest.mark.parametrize("positions,moved,words", [
     ({"r9": [10, 10]}, "r9", "'r9' is not on this network's map"),
     ({"r1": [10]}, "r1", "r1's place is not two numbers"),

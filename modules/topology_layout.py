@@ -67,12 +67,42 @@ def _edges(nodes: dict, phys: list) -> list:
                    if l["a"] in nodes and l["b"] in nodes and l["a"] != l["b"]})
 
 
+#: Fruchterman and Reingold's grid variant (C670): two devices repel only within this many
+#: spacings, found through a grid of cells that size, so a round costs about the devices
+#: times their near neighbours, never every pair. Measured 2026-10-11 against every pair: the
+#: lab's layout keeps its shape, and 900 devices fall from 32.8 s (see C670's row).
+REPEL_WITHIN = 2.0
+
+
+def _near_pairs(pos: dict, names: list, radius: float):
+    """Every pair of *names* closer than *radius*, each once, in a fixed order: a grid of cells
+    *radius* wide, each device checked against its own cell and the eight around it."""
+    cells = {}
+    for n in names:
+        x, y = pos[n]
+        cells.setdefault((math.floor(x / radius), math.floor(y / radius)), []).append(n)
+    order = {n: i for i, n in enumerate(names)}
+    r2 = radius * radius
+    for (cx, cy), members in sorted(cells.items()):
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                others = cells.get((cx + dx, cy + dy))
+                if not others:
+                    continue
+                for a in members:
+                    for b in others:
+                        if order[a] < order[b]:
+                            ex, ey = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
+                            if ex * ex + ey * ey < r2:
+                                yield a, b
+
+
 def spring(names: list, edges: list, start: dict, fixed=frozenset(), rounds: int = ROUNDS,
            k: float = SPACING) -> dict:
-    """Fruchterman and Reingold's spring layout: each round every pair of devices repels by
-    k²/d, each link attracts its ends by d²/k, and each free device moves along its sum, no
-    further than the round's temperature, which cools linearly to nothing. *fixed* never move.
-    Deterministic for a given *start*."""
+    """Fruchterman and Reingold's spring layout, their grid variant: each round every pair of
+    devices within ``REPEL_WITHIN`` spacings repels by k²/d, each link attracts its ends by
+    d²/k, and each free device moves along its sum, no further than the round's temperature,
+    which cools linearly to nothing. *fixed* never move. Deterministic for a given *start*."""
     pos = {n: list(start[n]) for n in names}
     free = [n for n in names if n not in fixed]
     if not free:
@@ -81,17 +111,16 @@ def spring(names: list, edges: list, start: dict, fixed=frozenset(), rounds: int
     for r in range(rounds):
         temp = span * 0.1 * (1 - r / rounds)
         disp = {n: [0.0, 0.0] for n in free}
-        for i, a in enumerate(names):
-            for b in names[i + 1:]:
-                dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
-                d = math.hypot(dx, dy) or 0.01
-                f = k * k / d
-                if a in disp:
-                    disp[a][0] += dx / d * f
-                    disp[a][1] += dy / d * f
-                if b in disp:
-                    disp[b][0] -= dx / d * f
-                    disp[b][1] -= dy / d * f
+        for a, b in _near_pairs(pos, names, k * REPEL_WITHIN):
+            dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
+            d = math.hypot(dx, dy) or 0.01
+            f = k * k / d
+            if a in disp:
+                disp[a][0] += dx / d * f
+                disp[a][1] += dy / d * f
+            if b in disp:
+                disp[b][0] -= dx / d * f
+                disp[b][1] -= dy / d * f
         for a, b in edges:
             dx, dy = pos[a][0] - pos[b][0], pos[a][1] - pos[b][1]
             d = math.hypot(dx, dy) or 0.01
@@ -119,23 +148,22 @@ def _apart(pos: dict, fixed=frozenset(), gap: float = MIN_GAP, passes: int = 30)
     names = sorted(pos)
     for _ in range(passes):
         moved = False
-        for i, a in enumerate(names):
-            for b in names[i + 1:]:
-                dx, dy = pos[b][0] - pos[a][0], pos[b][1] - pos[a][1]
-                d = math.hypot(dx, dy)
-                if d >= gap:
-                    continue
-                if not d:
-                    dx, dy, d = 1.0, 0.0, 1.0
-                push = gap - d
-                share = [n for n in (a, b) if n not in fixed]
-                if not share:
-                    continue
-                for n in share:
-                    sign = -1 if n == a else 1
-                    pos[n][0] += sign * dx / d * push / len(share)
-                    pos[n][1] += sign * dy / d * push / len(share)
-                moved = True
+        for a, b in list(_near_pairs(pos, names, gap)):
+            dx, dy = pos[b][0] - pos[a][0], pos[b][1] - pos[a][1]
+            d = math.hypot(dx, dy)
+            if d >= gap:
+                continue
+            if not d:
+                dx, dy, d = 1.0, 0.0, 1.0
+            push = gap - d
+            share = [n for n in (a, b) if n not in fixed]
+            if not share:
+                continue
+            for n in share:
+                sign = -1 if n == a else 1
+                pos[n][0] += sign * dx / d * push / len(share)
+                pos[n][1] += sign * dy / d * push / len(share)
+            moved = True
         if not moved:
             break
     return {n: tuple(p) for n, p in pos.items()}
