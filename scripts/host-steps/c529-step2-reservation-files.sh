@@ -32,8 +32,9 @@ plan "run as the operator's own user, not root" \
      "Kea's configuration hash is unchanged, both families"
 
 not_root
-check "Kea answers, both families" re '^dhcp4 [0-9a-f]+
-dhcp6 [0-9a-f]+$' "$TOOL hash | tee '$WORK/hash-before'"
+# Kea's hash is upper-case hex (measured on the host, 2026-10-11): both families' lines counted.
+check "Kea answers, both families" eq 2 \
+    "$TOOL hash | tee '$WORK/hash-before' | grep -cE '^dhcp[46] [0-9A-Fa-f]{64}$'"
 
 step "a dated copy of Kea's configuration and lease files (root's, mode 700)" \
     "sudo install -d -m 700 '$COPY' '$COPY/etc-kea' '$COPY/var-lib-kea' && \

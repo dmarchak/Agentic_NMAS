@@ -20,12 +20,14 @@
     <select name="d"><option value="">Every device</option>
       {%- for d in m.devices %}<option value="{{ d }}"{% if d == s.d %} selected{% endif %}>{{ d }}</option>{% endfor %}
     </select></label>
+  {%- if m.q.names %}
   <label><span class="muted small">Interface</span>
     <select name="i"{% if not s.d %} disabled{% endif %}><option value="">Every interface</option>
       {%- for i in m.interfaces %}<option value="{{ i }}"{% if i == s.i %} selected{% endif %}>{{ i }}</option>{% endfor %}
     </select></label>
+  {%- endif %}
   <button type="submit" class="btn">Show</button>
-  {%- if not s.d %}<span class="muted small">choose a device to ask by interface</span>{% elif m.interfaces_why %}<span class="muted small">its interfaces could not be listed: {{ m.interfaces_why }}</span>{% endif %}
+  {%- if not m.q.names %}{% elif not s.d %}<span class="muted small">choose a device to ask by interface</span>{% elif m.interfaces_why %}<span class="muted small">its interfaces could not be listed: {{ m.interfaces_why }}</span>{% endif %}
 </form>
 <div class="seg" role="group" aria-label="Time range">
   {%- for key, rv in m.ranges.items() %}<a class="seg-btn{% if s.range == key %} on{% endif %}" href="{{ here }}{{ q({'range': key}) }}" aria-pressed="{{ 'true' if s.range == key else 'false' }}">{{ rv[0] }}</a>{% endfor %}
@@ -35,7 +37,7 @@
 {%- else %}
 <div class="panels">
 <section class="panel gx-0 gw-24" data-panel-h="9" data-panel-src="{{ url_for('v2.history_query_metric_data', key=m.key) }}{{ q({}) }}" data-panel-type="timeseries" data-panel-unit="{{ m.q.unit }}">
-  <div class="panel-head"><h3>{{ s.d or 'Every device' }}: {{ m.q.y }}{% if s.d %}, by interface{% else %}, by device{% endif %}</h3></div>
+  <div class="panel-head"><h3>{{ s.d or 'Every device' }}: {{ m.q.y }}{% if not m.q.names %}{% elif s.d %}, by interface{% else %}, by device{% endif %}</h3></div>
   <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
 </section>
 </div>
@@ -45,6 +47,7 @@
   {%- else %} full detail, from the live store (it keeps {{ m.live_days }} days).{% endif %}</p>
 {%- endif %}
 <p class="small muted"><strong>Source:</strong> {{ m.q.source }}.</p>
+{%- if m.q.covers %}<p class="small muted"><strong>Covers:</strong> {{ m.q.covers }}.</p>{% endif %}
 <details class="hq-expr" data-keep="hq-expr">
   <summary>The query (PromQL)</summary>
   <pre class="mono">{{ m.expr }}</pre>

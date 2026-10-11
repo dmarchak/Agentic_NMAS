@@ -31,7 +31,8 @@ QUESTIONS = (
 )
 #: The questions built, by the route that answers each (and its arguments).
 ANSWERS = {"syslog": ("v2.history_query_syslog", {}),
-           "errors": ("v2.history_query_metric", {"key": "errors"})}
+           "errors": ("v2.history_query_metric", {"key": "errors"}),
+           "cpu": ("v2.history_query_metric", {"key": "cpu"})}
 
 # ---------------------------------------------------------------------------
 # A metrics answer (board B, AskMetric): one question's PromQL for a device (or every device)
@@ -59,6 +60,32 @@ METRICS = {
                          'rate(ifOutDiscards{{{sel}}}[$__rate_interval]))'),
         "names": 'count by (ifName) (ifInDiscards{{device="{d}"}})',
     },
+    # Board A's "CPU and memory trend", drawn in board B's layout with a device and no
+    # interface. Measured on the host 2026-10-11 (series and labels, read-only): the routers
+    # carry CISCO-PROCESS-MIB's cpmCPUTotal5minRev and the memory pools (ciscoMemoryPoolUsed and
+    # Free, pool "Processor"); the switches carry only OLD-CISCO's cpuAvgBusy5, no memory pool.
+    "cpu": {
+        "title": "CPU and memory trend",
+        "y": "percent busy and percent of memory used", "unit": "percent",
+        "source": ("SNMP every 60 s, read from Prometheus through Grafana: CPU, the 5-minute "
+                   "busy (cpmCPUTotal5minRev where a device has it, else cpuAvgBusy5); memory, "
+                   "the Processor pool's used share (ciscoMemoryPoolUsed and Free)"),
+        "covers": ("CPU on every device that answers either CPU object; memory only where the "
+                   "device's scrape carries a memory pool: a device whose scrape carries none "
+                   "draws CPU alone"),
+        "series": (
+            ("max by (device) (cpmCPUTotal5minRev or cpuAvgBusy5)",
+             'max(cpmCPUTotal5minRev{{device="{d}"}} or cpuAvgBusy5{{device="{d}"}})',
+             "{{device}} CPU", "CPU"),
+            ('100 * sum by (device) (ciscoMemoryPoolUsed{ciscoMemoryPoolName="Processor"}) / '
+             '(sum by (device) (ciscoMemoryPoolUsed{ciscoMemoryPoolName="Processor"}) + '
+             'sum by (device) (ciscoMemoryPoolFree{ciscoMemoryPoolName="Processor"}))',
+             '100 * sum(ciscoMemoryPoolUsed{{device="{d}",ciscoMemoryPoolName="Processor"}}) / '
+             '(sum(ciscoMemoryPoolUsed{{device="{d}",ciscoMemoryPoolName="Processor"}}) + '
+             'sum(ciscoMemoryPoolFree{{device="{d}",ciscoMemoryPoolName="Processor"}}))',
+             "{{device}} memory", "memory (Processor pool)"),
+        ),
+    },
 }
 
 
@@ -66,11 +93,14 @@ class AskRefused(ValueError):
     """A question asked with a value it cannot carry, named."""
 
 
-def metric_ask(values) -> dict:
+def metric_ask(values, key: str = "errors") -> dict:
     """The question's values from the address: device, interface, range. A name that is not
-    one is refused by name, never passed into the expression."""
+    one is refused by name, never passed into the expression; an interface is refused for a
+    question asked per device."""
     s = {"d": (values.get("d") or "").strip(), "i": (values.get("i") or "").strip(),
          "range": (values.get("range") or "30d").strip()}
+    if s["i"] and "series" in METRICS.get(key, {}):
+        raise AskRefused(f"{METRICS[key]['title']} is asked per device, not per interface")
     if s["range"] not in METRIC_RANGES:
         raise AskRefused(f"{s['range']!r} is not one of the ranges: "
                          + ", ".join(METRIC_RANGES))
@@ -82,22 +112,31 @@ def metric_ask(values) -> dict:
     return s
 
 
-def metric_expr(key: str, s: dict) -> str:
-    """The question's PromQL for these values."""
+def metric_exprs(key: str, s: dict) -> list:
+    """``[(PromQL, legend)]``: the question's series for these values."""
     q = METRICS[key]
+    if "series" in q:
+        return [(every, legend_every) if not s["d"] else
+                (one.format(d=s["d"]), legend_one)
+                for every, one, legend_every, legend_one in q["series"]]
     if not s["d"]:
-        return q["by_device"]
+        return [(q["by_device"], "{{device}}")]
     sel = f'device="{s["d"]}"' + (f',ifName="{s["i"]}"' if s["i"] else "")
-    return q["by_interface"].format(sel=sel)
+    return [(q["by_interface"].format(sel=sel), "{{ifName}}")]
+
+
+def metric_expr(key: str, s: dict) -> str:
+    """The question's PromQL for these values, each series' on its own line."""
+    return "\n".join(e for e, _l in metric_exprs(key, s))
 
 
 def metric_panel(key: str, s: dict) -> dict:
-    """The question as a panel the chart draws: its PromQL, its unit and its legend."""
+    """The question as a panel the chart draws: its PromQL, its unit and its legends."""
     q = METRICS[key]
-    legend = "{{device}}" if not s["d"] else "{{ifName}}"
     return {"id": 0, "type": "timeseries", "title": q["title"],
             "fieldConfig": {"defaults": {"unit": q["unit"]}},
-            "targets": [{"refId": "A", "expr": metric_expr(key, s), "legendFormat": legend}]}
+            "targets": [{"refId": "ABCDEFGH"[n], "expr": e, "legendFormat": legend}
+                        for n, (e, legend) in enumerate(metric_exprs(key, s))]}
 
 
 def _grafana(list_name: str) -> tuple:
@@ -117,7 +156,7 @@ def metric_data(key: str, list_name: str, values) -> tuple:
     if key not in METRICS:
         return {"ok": False, "error": f"{key!r} is not a question"}, 404
     try:
-        s = metric_ask(values)
+        s = metric_ask(values, key)
     except AskRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
     client, datasources, err = _grafana(list_name)
@@ -137,7 +176,7 @@ def metric_data(key: str, list_name: str, values) -> tuple:
     payload = panels.render_payload(panel, got["body"], seconds)
     payload["errors"] = panels.answer_errors(got["body"])
     payload["store"] = panels.store_words(seconds, panel, {}, {}, default_ds, st)
-    payload["asked"] = [metric_expr(key, s)]
+    payload["asked"] = [e for e, _l in metric_exprs(key, s)]
     return payload, 200
 
 
@@ -150,7 +189,7 @@ def metric_view(key: str, list_name: str, values) -> dict:
     out = {"key": key, "q": q, "list": list_name, "ranges": METRIC_RANGES, "error": "",
            "devices": logs_page._devices(list_name), "interfaces": [], "interfaces_why": ""}
     try:
-        s = metric_ask(values)
+        s = metric_ask(values, key)
     except AskRefused as exc:
         s = {"d": "", "i": "", "range": "30d"}
         out["error"] = str(exc)
@@ -163,7 +202,7 @@ def metric_view(key: str, list_name: str, values) -> dict:
     out["history_store"] = (st.history or {}).get("name", "") if st else ""
     out["past_live"] = bool(st and seconds > st.live)
     out["grafana_error"] = err
-    if s["d"] and not err:
+    if s["d"] and not err and "names" in q:
         probe = {"type": "table", "targets": [{"refId": "N", "expr": q["names"].format(d=s["d"]),
                                                "instant": True}]}
         try:

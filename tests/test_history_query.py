@@ -29,8 +29,9 @@ def test_the_six_questions_in_the_board_s_order_and_only_the_built_one_links(web
                       "Telemetry rates"]
     links = re.findall(r'<a class="hq-q" href="([^"]+)"><strong>([^<]+)', html)
     assert links == [("/v2/history/query/metric/errors", "Interface errors and discards over time"),
+                     ("/v2/history/query/metric/cpu", "CPU and memory trend"),
                      ("/v2/history/query/syslog", "Syslog by device")]
-    assert html.count("not built yet") == 4
+    assert html.count("not built yet") == 3
 
 
 def test_what_the_history_holds_comes_from_the_settings_and_the_reader(web, monkeypatch):  # noqa: F811
@@ -140,3 +141,39 @@ class TestTheMetricQuestion:
 
     def test_an_unknown_question_is_not_found(self, web):  # noqa: F811
         assert web.get("/v2/history/query/metric/nope").status_code == 404
+
+
+class TestTheCpuQuestion:
+    """Board A's "CPU and memory trend" in board B's layout: per device, two series (CPU from
+    either object a device answers, memory from its Processor pool), no interface, and what
+    it covers said (the switches carry no memory pool, measured on the host 2026-10-11)."""
+
+    def test_two_series_per_device_each_with_its_legend(self):
+        from modules import history_query as H
+        every = H.metric_exprs("cpu", {"d": "", "i": "", "range": "30d"})
+        assert [l for _e, l in every] == ["{{device}} CPU", "{{device}} memory"]
+        assert every[0][0] == "max by (device) (cpmCPUTotal5minRev or cpuAvgBusy5)"
+        one = H.metric_exprs("cpu", {"d": "s3", "i": "", "range": "30d"})
+        assert one[0][0] == 'max(cpmCPUTotal5minRev{device="s3"} or cpuAvgBusy5{device="s3"})'
+        assert 'ciscoMemoryPoolUsed{device="s3",ciscoMemoryPoolName="Processor"}' in one[1][0]
+        panel = H.metric_panel("cpu", {"d": "s3", "i": "", "range": "30d"})
+        assert [t["refId"] for t in panel["targets"]] == ["A", "B"]
+
+    def test_an_interface_is_refused(self):
+        from modules import history_query as H
+        with pytest.raises(H.AskRefused) as err:
+            H.metric_ask({"d": "r1", "i": "Gi1"}, "cpu")
+        assert "asked per device, not per interface" in str(err.value)
+
+    def test_the_page_offers_no_interface_and_says_what_it_covers(self, web, grafana):  # noqa: F811
+        html = web.get("/v2/history/query/metric/cpu?d=r1&range=7d").get_data(as_text=True)
+        assert ">Query</a> › CPU and memory trend" in html
+        assert 'name="i"' not in html and "choose a device to ask by interface" not in html
+        assert "<strong>Covers:</strong> CPU on every device" in html
+        assert "r1: percent busy and percent of memory used</h3>" in html
+
+    def test_the_data_route_asks_both_series(self, web, grafana):  # noqa: F811
+        r = web.get("/v2/history/query/metric/cpu/data?d=r1&range=24h")
+        assert r.status_code == 200, r.get_json()
+        exprs = [q["expr"] for q in grafana.asked[-1]["queries"]]
+        assert len(exprs) == 2 and exprs[0].startswith("max(cpmCPUTotal5minRev")

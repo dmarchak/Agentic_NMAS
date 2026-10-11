@@ -25,3 +25,12 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Coverage | where the range starts, the history's first day, which store answers which part | which store answers (the live store's days; past them the long-term store, or a refusal naming the setting when none is set) | **deviation** (log: no first sample is read yet) |
 | Source | the counters, every 60 s, Prometheus and Thanos | the counters, every 60 s, read from Prometheus through Grafana | **same** |
 | The query | "The query (PromQL), editable" | the question's PromQL for the device and interface chosen, shown; editing is the next step | **later** |
+
+## Board A's "CPU and memory trend", in board B's layout (2026-10-11)
+
+No board draws this answer; board A lists the question and board B draws a metrics answer, so
+it takes board B's layout with what differs: per device, no interface select; two series per
+device (CPU, and memory's Processor pool share) on one percent axis; a **Covers** line saying
+memory is drawn only where a device's scrape carries a memory pool (measured on the host: the
+routers carry one, the switches none). Shot at 1440 and 390 (`history-metric-cpu`, the same
+Grafana capture standing in for the answer). **deviation** (log: CPU and memory in board B's layout).

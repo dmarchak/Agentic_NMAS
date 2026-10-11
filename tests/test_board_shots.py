@@ -297,6 +297,10 @@ def test_history_metric(tmp_path, monkeypatch):
                lambda w: "/v2/history/query/metric/errors?range=30d", served,
                settled="!document.querySelector('.panel-wait')",
                widths=((1440, 1.0), (390, 2.0)))
+        # Board A's CPU and memory question in board B's layout: per device, no interface.
+        _shoot("history-metric-cpu", "", lambda w: "/v2/history/query/metric/cpu?d=r1&range=7d",
+               served, settled="!document.querySelector('.panel-wait')",
+               widths=((1440, 1.0), (390, 2.0)))
 
 
 def test_topology(tmp_path, monkeypatch):

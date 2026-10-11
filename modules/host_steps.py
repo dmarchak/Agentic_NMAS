@@ -136,8 +136,39 @@ def check_oxidized_pin(root: str = ROOT) -> dict:
     return {"state": "done", "detail": OXIDIZED_RETIRED}
 
 
+def check_kea_reservation_files(root: str = ROOT, kea=None) -> dict:
+    """C529 step 2's host step: done when every subnet Kea runs, in both families, takes its
+    reservations from Mercury's file (`dhcp_reservations.subnet_files` finds none to add in
+    Kea's configuration files). Kea is asked for its subnets; its files are read."""
+    from modules import dhcp_reservations as D
+    from modules.list_settings import DEFAULT_LIST
+
+    if kea is None:
+        from modules.integrations.kea import KeaIntegration
+        kea = KeaIntegration()
+    left = []
+    for family in D.FAMILY:
+        try:
+            config = D.kea_config(kea, family)
+            main = D.main_config(DEFAULT_LIST, family)
+            with open(main, encoding="utf-8") as fh:
+                text = fh.read()
+        except (D.Refused, OSError) as exc:
+            return {"state": "unknown", "detail": f"{family}: {exc}"}
+        ids = [s.get("id") for s, _n in D._subnets(config, family)]     # noqa: SLF001
+        plan = D.subnet_files(text, main, family, ids)
+        if plan["refused"]:
+            return {"state": "not_done", "detail": f"{family}: {plan['refused']}"}
+        left += [f"{family} subnet {sid}" for sid in plan["add"]]
+    if left:
+        return {"state": "not_done", "detail": "still without Mercury's file: " + ", ".join(left)}
+    return {"state": "done", "detail": "every subnet Kea runs takes its reservations from "
+                                       "Mercury's file"}
+
+
 CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater,
-          "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin}
+          "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin,
+          "kea-reservation-files": check_kea_reservation_files}
 
 
 def check(step: dict, root: str = ROOT) -> dict:

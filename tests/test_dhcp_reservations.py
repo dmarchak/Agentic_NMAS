@@ -351,6 +351,22 @@ class TestTheHostStepsPlan:
         assert "subnet 30's" in got["refused"] and "found 0 times" in got["refused"]
 
 
+def test_the_host_step_s_check_reads_done_only_when_every_subnet_has_its_file(kea_dir):
+    """The Update page's check for `[kea-reservation-files]` (modules/host_steps.py)."""
+    from modules import host_steps
+    kea = FakeKea(kea_dir["files"])
+    got = host_steps.check_kea_reservation_files(kea=kea)
+    assert got["state"] == "done", got
+    main = kea_dir["main"]["IPv6"]
+    text = open(main, encoding="utf-8").read()
+    with open(main, "w", encoding="utf-8") as fh:
+        fh.write(text.replace('"reservations": ' + D.directive(kea_dir["files"][("dhcp6", 30)])
+                              + ",", ""))
+    got = host_steps.check_kea_reservation_files(kea=kea)
+    assert got == {"state": "not_done",
+                   "detail": "still without Mercury's file: IPv6 subnet 30"}
+
+
 def test_the_record_holds_mercury_s_reservations_but_not_ztp_s(kea_dir):
     _with(kea_dir, "IPv4", 20, [TestEditAndRemove.H2])
     _with(kea_dir, "IPv4", 255, [{"hw-address": "aa:aa:aa:aa:aa:aa", "ip-address": "10.255.0.9"}])

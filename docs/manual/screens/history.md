@@ -81,8 +81,11 @@ device or, choosing one, by its interfaces, over 24 hours to a year. It is asked
 network's Grafana the way a Monitoring panel is, from the store that keeps the range: a range
 past the days the live store keeps is refused, naming the setting, unless a long-term store is
 set. Its own query is shown under the chart; the device, the interface and the range are in
-the address, so Copy the link carries the question. The others (CPU and memory, routing
-neighbour changes, restarts, telemetry rates) are drawn as not built yet and open nothing. Saving a view, and asking your own PromQL or LogQL,
+the address, so Copy the link carries the question. **CPU and memory trend** is asked the same
+way, per device: each device's CPU (its 5-minute busy) and its memory (the Processor pool's
+used share) as two lines on one percent axis; memory is drawn only where the device's scrape
+carries a memory pool, and the page says so under the chart. The others (routing neighbour
+changes, restarts, telemetry rates) are drawn as not built yet and open nothing. Saving a view, and asking your own PromQL or LogQL,
 come next. The sidebar's Logs opens the same Syslog by device page.
 
 ## Baselines {#baselines}
