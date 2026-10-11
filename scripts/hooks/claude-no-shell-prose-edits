@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: refuse a Bash command that edits prose in place from the shell.
+
+Wired in `.claude/settings.json` (matcher `Bash`), beside claude-no-heredoc-interpreter. Claude
+Code passes the tool call as JSON on stdin; exit 2 refuses it with the message on stderr; exit 0
+lets it run.
+
+**Why it exists** (the operator, 2026-10-11, after the overnight run: "the prose slips keep
+recurring"). The rule is that prose goes through the Edit and Write tools. The heredoc hook
+closed one shape; the agent then edited docs/CONSOLE_DRILL.md and docs/TESTING.md with
+`sed -i` the same night. Memory was not the fix twice, so the shape is refused.
+
+**What is refused:**
+- `sed -i` (any spelling: `-i`, `-i.bak`, `-Ei`, `--in-place`) or `perl -i` whose FILE
+  arguments include a path under `docs/` or ending `.md`. The sed script itself is never read
+  as a file, so `sed -i 's/README.md/x/' code.py` runs;
+- `python -c` (any version, any flags before it, `-I` included) whose code names a `docs/` or
+  `.md` path AND writes (`open(` with a write mode, `write_text`, `write_bytes`, `.write(`,
+  `os.replace`, `shutil.`).
+**What is not:** reading prose (`sed -n`, `grep`, `python -c` that only reads), an in-place
+edit of code, and an interpreter running a script FILE (what it writes cannot be seen here;
+the rule still holds).
+
+An input the hook cannot read exits 1 (a hook error Claude Code shows), never silently allowed.
+"""
+
+import json
+import re
+import shlex
+import sys
+
+PROSE = re.compile(r"(^|[\s/'\"=(])docs/|\.md\b")
+PYTHON = re.compile(r"^python[0-9.]*$")
+WRITES = re.compile(r"open\([^)]*['\"][wax]\+?b?['\"]|write_text|write_bytes|\.write\(|"
+                    r"os\.replace|os\.rename|shutil\.")
+SEPARATORS = {";", "&&", "||", "&", "|", ";;", "(", ")"}
+
+MESSAGE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-shell-prose-edits): "
+    "{what}. Prose goes through the Edit and Write tools, never an in-place shell edit "
+    "(CLAUDE.md; the operator, 2026-10-11).")
+
+
+def _segments(command: str) -> list:
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()")
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:                       # an unclosed quote: split crudely
+        tokens = re.findall(r"&&|\|\||[;&|()]|[^\s;&|()]+", command)
+    segs, cur = [], []
+    for t in tokens:
+        if t in SEPARATORS:
+            segs.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    segs.append(cur)
+    return [s for s in segs if s]
+
+
+def _program(seg: list) -> tuple:
+    """``(name, args)``: the segment's program past `sudo`, `env` and assignments."""
+    i = 0
+    while i < len(seg):
+        word = seg[i].rsplit("/", 1)[-1]
+        if word in ("sudo", "env", "nice", "timeout", "command", "exec") or \
+                re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", seg[i]) or \
+                (i and seg[i - 1].rsplit("/", 1)[-1] == "timeout" and seg[i][:1].isdigit()):
+            i += 1
+            continue
+        if seg[i].startswith("-") and i and seg[i - 1].rsplit("/", 1)[-1] in ("sudo", "env"):
+            i += 1
+            continue
+        return word, seg[i + 1:]
+    return "", []
+
+
+def _sed_files(args: list) -> tuple:
+    """``(in_place, files)`` for sed's arguments."""
+    in_place, scripts_given, files, rest = False, False, [], list(args)
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        if a == "--":
+            files += rest[i + 1:]
+            break
+        if a.startswith("--in-place") or re.match(r"^-[A-Za-z]*i", a):
+            in_place = True
+        if a in ("-e", "--expression", "-f", "--file"):
+            scripts_given = True
+            i += 2
+            continue
+        if a.startswith("--expression=") or a.startswith("--file="):
+            scripts_given = True
+        elif re.match(r"^-[A-Za-z]*[ef]$", a):
+            scripts_given = True
+            i += 2
+            continue
+        elif not a.startswith("-"):
+            if not scripts_given:
+                scripts_given = True          # the first operand is the script
+            else:
+                files.append(a)
+        i += 1
+    return in_place, files
+
+
+def refusal(command: str) -> str:
+    for seg in _segments(command):
+        name, args = _program(seg)
+        if name == "sed":
+            in_place, files = _sed_files(args)
+            hit = [f for f in files if PROSE.search(f)]
+            if in_place and hit:
+                return f"`sed -i` edits {', '.join(hit)} in place"
+        elif name == "perl":
+            if any(re.match(r"^-[A-Za-z]*i", a) for a in args if a.startswith("-")):
+                hit = [a for a in args if not a.startswith("-") and PROSE.search(a)
+                       and not a.startswith(("s/", "s|", "s#", "y/"))]
+                if hit:
+                    return f"`perl -i` edits {', '.join(hit)} in place"
+        elif PYTHON.match(name):
+            for n, a in enumerate(args):
+                if a == "-c" or (a.startswith("-") and not a.startswith("--") and a.endswith("c")):
+                    code = args[n + 1] if n + 1 < len(args) else ""
+                    if PROSE.search(code) and WRITES.search(code):
+                        return f"`{name} -c` writes to a docs/ or .md file"
+                    break
+                if not a.startswith("-"):
+                    break
+    return ""
+
+
+def main() -> int:
+    try:
+        call = json.load(sys.stdin)
+        tool = call.get("tool_name")
+        command = (call.get("tool_input") or {}).get("command", "")
+    except (ValueError, AttributeError) as exc:
+        print(f"claude-no-shell-prose-edits: could not read the hook input ({exc}); the "
+              "command was NOT checked", file=sys.stderr)
+        return 1
+    if tool != "Bash" or not isinstance(command, str):
+        return 0
+    why = refusal(command)
+    if why:
+        print(MESSAGE.format(what=why), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

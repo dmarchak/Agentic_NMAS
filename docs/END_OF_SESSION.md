@@ -56,28 +56,116 @@ is a configuration change, yours. Nothing ran on s3 or in 08:30 to 09:10 UTC.
 against "prose edits with the Edit tool"; two pointless heredoc calls, both refused by the hook.
 Nothing was lost; the edits were the intended text.
 
-**THE WALK LIST** (one list; each needs you, a verified person, or is your decision):
-1. Update page: confirm C663 step 1's host step (fbdc686) as done. C529 step 2's needs no
-   confirm: the app's own check reads it done (run 10:58 UTC).
-2. A real Save All: a baseline earned, and the lab sync started within seconds (C553, C663).
-3. NetBox: set `mercury_kind` on the device roles (router: router; switch: switch), which
-   Mercury's token may not do; or give the token role edit.
-4. DHCP: one real reservation through board B (e.g. Edit… on an unmatched host, or Add for a
-   lab host), and check its read-back and the commit of `dhcp/reservations.yml`.
-5. CLAUDE.md: paste the three lines under "Logged blockers" below; then `scripts/nmas-host`
-   moves to `lab/` in one commit.
-6. The screens built 2026-10-10 and never run on the host, each confirm yours: deploy to several
-   devices; Capture's reason for a shrink; History's Re-apply; the golden reveal; the remote's
-   connect and auto-push; Intent's Edit; bulk intent; Templates' Edit…, Bindings…, Seed, Approve…;
-   onboarding (Add device, Verify, Abandon); Adopt; NetBox import and remove; Credentials ›
-   Profiles; the inventory source; Networks (create, delete, the picker); Reload; Show commands
-   across devices; Ask the device.
-7. Your calls: CDP on r1 and r2 (a second witness by CDP); C673 (s1's RIP on its management
-   port: `passive-interface GigabitEthernet0/0`, or leave it).
+**THE WALK LIST** (updated 2026-10-11 evening after your answers):
+1. **CLAUDE.md:** run `python3 lab/claude-md-c663-nmas-host.py` on the laptop. It changes five
+   lines: the three naming `lab/nmas-host`, and the prose rule's two lines, which now name the
+   new hook (`claude-no-shell-prose-edits`) beside the heredoc one. It shows the diff, and
+   refuses a duplicate or a moved anchor. Tell the agent to commit: `scripts/nmas-host` moves to
+   `lab/` in that commit (until it does, the suite's CLAUDE.md citation check fails, by design).
+2. **`l3-switch`:** Mercury has no such kind (router, switch, firewall; NetBox's field refuses
+   anything else). Proposed: core-switch and distribution-switch → `switch`; Topology already
+   badges a switch L3 when it routes. Say yes, or name another mapping, before sitting 2 step 2.
+3. **Everything else, in the ordered sittings below:** the Update page's host step, the NetBox
+   role kinds, C673's deploy, the C525 reservation, Save All, and every screen built
+   2026-10-10 and never run on the host.
 
-**Questions for you:** what should the sidebar's Logs be (board C implies a live tail; no board
-draws one)? Onboarding refuses a name NetBox already holds, so a new device's environment
-(C663 3a) is always none: create in NetBox first, or let onboarding read an existing record?
+## THE WALK, IN ORDERED SITTINGS (the operator's, 2026-10-11)
+
+Each step: what to click, what you should see, and how to undo it. Stop a sitting at the first
+step that does not show what it says, and tell the agent the step's number. Times are UTC
+(UTC−6 beside). Never inside 08:30 to 09:10 UTC (02:30 to 03:10).
+
+### Sitting 1: read-only screens (nothing is written; nothing to undo)
+
+1. **Needs attention** (`/v2/`): rows each name something wrong and an action. Expect C663 step
+   1's host step owed, and no Topology row.
+2. **Devices**: nine devices with counts by state at the top; search narrows; a device opens.
+3. **A device, r1**: every tab opens; Neighbours shows OSPF and BGP; Monitoring draws the
+   device dashboard; Intent shows the committed document; History lists its commits.
+4. **Topology** (`/v2/topology`): chips `RIP up` and `RIPng up` on r1–s1 and r2–s2 (and RIPng
+   on s1–s2); both links drawn solid. Hover r1–s1: an **LLDP** row "one end", "s1 Gi0/2 reports
+   no neighbour, polled", "confirmed by RIP, RIPng heard both ways". Needs attention on the map
+   lists nothing "not as intended".
+5. **History › Query**: Syslog by device draws lines by severity; "Interface errors and
+   discards over time" draws a chart and its query; "CPU and memory trend" for r1 draws two
+   lines (CPU, memory), for s1 one (CPU), with the Covers line under it.
+6. **History › Timeline and Baselines**: commits with who and how verified; baselines listed
+   with whether each can be re-applied.
+7. **DHCP** (SOURCE OF TRUTH › DHCP): Subnets 6 (3 IPv4 with ZTP's, 3 IPv6); Leases grouped;
+   Reservations empty but for what onboarding wrote. Press **Add a reservation…**, fill any
+   free address, **Preview**: the change, the checks (each "pass" or "at confirm") and the
+   confirm button appear. Press **Cancel**: nothing is written.
+8. **Show commands**: run `show version` on s1 and s2 (never s3): each answers; the run is
+   recorded. **Ask the device** on r1's page: `show ip route summary` answers.
+9. **Templates, Coverage, NetBox, Credentials › Profiles, Settings (Installation and Default)**:
+   each opens and reads; nothing pressed.
+
+### Sitting 2: single-device and single-record writes (each previewed; you confirm)
+
+1. **Update page**: C663 step 1's host step (from fbdc686) → **It is done**. Expect it to move to
+   done with your name. Undo: none needed (a record that you said so).
+2. **NetBox role kinds**: first answer the agent's question on `l3-switch` (below). Then on the
+   NMAS host: `bash ~/python/Agentic_NMAS/scripts/host-steps/netbox-role-kinds.sh`; paste the
+   admin token at the hidden prompt; read the PLAN table; type `yes`. Expect each listed role's
+   before, wanted and after, roles not listed "unchanged", `RESULT: PASS`. Undo: in NetBox,
+   clear `mercury_kind` on a role (Mercury then calls it "not classified").
+3. **C673, s1's RIP passive on Gi0/0**: s1 › Intent › **Edit**; under `routing.rip.settings`, after
+   `- passive-interface Vlan20`, add `- passive-interface GigabitEthernet0/0`; **Preview**: one
+   line added against intent and against the device. **Commit** with a reason ("C673"). Then
+   s1 › Actions › **Deploy…**: the program is one line under `router rip`; confirm. Expect
+   verify passed, a receipt, and on s1 `show ip protocols` (Show commands) listing Gi0/0 under
+   Passive Interface(s). Undo: Intent › Edit to remove the line, commit, Deploy (merge-only
+   cannot remove it: the deploy preview offers it as a Mode B removal with your reason).
+4. **One real DHCP reservation, C525 (h1)**: DHCP › Leases: note h1's IPv4 address and MAC
+   (subnet 10.10.10.0/24). Reservations › **Add a reservation…**: subnet 10.10.10.0/24, MAC
+   h1's, address the one h1 holds now (so nothing moves), hostname `h1`; **Preview**: "leased
+   only to this client now"; reason "C525: h1's reservation back"; confirm. Expect the result
+   card "h1's reservation added", read back, a commit of `dhcp/reservations.yml`; the row reads
+   "in use by it" at the next read (5 min). **Known limit (C525):** the lab's hosts' MACs are not
+   pinned, so this reservation holds until h1's next redeploy. Undo: **Remove…** on its row
+   (what survives: h1 keeps its lease until it ends).
+5. **Capture with a reason** (s2 › Capture…): if it shows a shrink, give the reason; expect a
+   golden commit with the reason. Undo: none needed (a new golden; the previous stays in
+   History).
+6. **The golden reveal** (s2 › History › a golden › Reveal): you, verified; the masked lines
+   unmask in place; the reveal is recorded. Undo: none (a read, recorded).
+7. **Templates**: open one template, **Edit…** a comment line, commit; **Approve…** it (it
+   checks each bound device). Undo: Edit… back, commit, Approve… again.
+8. **Credentials › Profiles**: **Add a profile…** for a role nothing uses (e.g. firewall), save;
+   **Delete…** it. Expect each recorded; nothing else changes.
+9. **Networks** (top bar): **Create** a network `Walk`; switch to it (empty); switch back;
+   **Delete** `Walk`. Expect each recorded and Default untouched.
+10. **NetBox import and remove**: import one device (r6) and remove it again, each previewed.
+    Expect NetBox to show r6's record created, then gone (only what Mercury created is deleted).
+11. **The remote** (History's remote line): **Set up the remote…** with the existing private config
+    repository; then a commit pushes on its own (auto-push). Undo: disconnect from the same card.
+
+### Sitting 3: fleet-wide writes (each previewed; you confirm)
+
+1. **Save All** (Devices › Save…): every device saved and read back, then one capture commit.
+   Expect a baseline earned and, within seconds, the lab sync starting (the clab VM's sync log
+   or the labs' repositories at the new baseline). Undo: none (saving running to startup).
+2. **Deploy to several devices** (Devices › select r1 and r2 › Deploy…): with nothing pending the
+   preview says it changes nothing; confirm to prove the batch path. Undo: none needed.
+3. **Bulk intent** (Devices › select s1, s2, s4 › Change a setting…): choose a setting and set
+   each device to the value it already has (the preview says nothing changes), or a harmless
+   one you will set back. Undo: the same screen, the old value.
+4. **History › Baselines › Re-apply** the newest baseline: the preview should say it changes
+   nothing on any device (it is what they run). Confirm only if it does. Undo: none needed.
+
+### Sitting 4: Reload, r6 only
+
+Outside 08:30 to 09:10 UTC; nothing on s3. r6 › Actions › **Reload…**: the six gates pass (running
+equals startup; startup carries Mercury's credential; the image exists). Give a reason; confirm.
+Expect, in order: the planned-restart window declared FIRST (History › Restarts shows it before
+the restart), the session dropping, SSH answering again within the bound (about 6.5 minutes for
+an emulated IOS-XE), verify "runs what it ran", and the run recorded. Undo: none (a reload cannot
+be undone); if r6 does not come back, its console and break-glass record.
+
+**Answered (the operator, 2026-10-11 evening):** CDP no (RIP and RIPng are the witness; C671 kept
+as an observation); C673 yes (surveyed: only s1's Gi0/0 sends, s2 already passive; the deploy is
+sitting 2 step 3); the sidebar's Logs a live tail (C675); onboarding reads a Planned NetBox
+record (C676).
 
 **Phase 7, re-estimated** (from tonight's measured pace: a board-built step with its tests,
 record, manual, gate, deploy and host check took 40 to 90 minutes): C529 steps 3 to 5, about

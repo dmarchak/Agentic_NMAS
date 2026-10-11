@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Set `mercury_kind` on NetBox's Device Roles with an ADMIN's token (C665; the operator,
+2026-10-11: Mercury's own token may not edit roles and is not widened). Run by
+`scripts/host-steps/netbox-role-kinds.sh`, which prompts for the token and passes it here on
+STDIN: it is never an argument, never in the environment, never printed and never stored.
+
+    printf '%s' "$TOKEN" | nmas-netbox-role-kinds-admin [--plan]
+
+Writes only the roles `role_kind.ADMIN_MAP` lists; a role NetBox holds that the map does not
+list is left alone and said. Prints each role's before, wanted and after, then reads every role
+back and ends `RESULT: PASS` or `RESULT: FAIL`. NetBox's address, TLS check and auth scheme are
+Mercury's settings. Exit 0 PASS, 1 FAIL or refused, 2 NetBox could not be read.
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None, stdin=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--plan", action="store_true", help="write nothing; show what would change")
+    args = ap.parse_args(argv)
+
+    from modules.inventory import role_kind as RK
+    from modules.netbox_client import _build_session, get_user_setting
+
+    token = (stdin or sys.stdin).read().strip()
+    if not token:
+        print("REFUSED: no token on stdin")
+        return 1
+    base = (get_user_setting("netbox_url", "") or "").rstrip("/")
+    if not base:
+        print("REFUSED: NetBox is not configured in Mercury (netbox_url is empty)")
+        return 1
+    base = base[:-4] if base.endswith("/api") else base
+    session = _build_session(token, bool(get_user_setting("netbox_verify_tls", True)),
+                             get_user_setting("netbox_auth_scheme", "Bearer") or "Bearer")
+    del token
+
+    def write(role_id: int, kind: str) -> int:
+        """The operator's write, with their token: one Device Role's kind."""
+        r = session.patch(f"{base}/api/dcim/device-roles/{role_id}/",
+                          json={"custom_fields": {RK.FIELD: kind}}, timeout=30)
+        return r.status_code
+
+    try:
+        got = RK.admin_apply(session, base, RK.ADMIN_MAP, write=None if args.plan else write)
+    except RK.KindUnreadable as exc:
+        print(f"NetBox could not be read: {exc}")
+        return 2
+    if got.get("error"):
+        print(f"REFUSED: {got['error']}")
+        return 1
+    width = max(len(r["slug"]) for r in got["rows"]) if got["rows"] else 4
+    print(f"{'role':<{width}}  {'before':<9} {'wanted':<9} {'after':<9} outcome")
+    for r in got["rows"]:
+        print(f"{r['slug']:<{width}}  {r['before'] or '-':<9} {r['wanted'] or '-':<9} "
+              f"{r['after'] or '-':<9} {r['outcome']}")
+    if args.plan:
+        print("PLAN ONLY: nothing was written")
+        return 0
+    print(f"RESULT: {'PASS' if got['ok'] else 'FAIL'}")
+    return 0 if got["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -107,3 +107,76 @@ class TestApplying:
                             nb.get(url))
         got = RK.apply(p, nb, BASE, "tester")
         assert got["ok"] is False and "NOT there: router, switch" in got["lines"][-1]
+
+
+def _writer(nb):
+    """The script's write, on the fake: one role's kind by PATCH (looked up at call time, so a
+    test can replace the fake's patch)."""
+    return lambda role_id, kind: nb.patch(f"{BASE}/api/dcim/device-roles/{role_id}/",
+                                          json={"custom_fields": {RK.FIELD: kind}}).status_code
+
+
+class TestTheAdminPath:
+    """The operator's host step (scripts/host-steps/netbox-role-kinds.sh) with an admin's token:
+    only the roles the map lists are written; the rest are left alone and said; every role is
+    read back; a map naming a kind Mercury has not is refused before anything is sent."""
+
+    def _nb(self):
+        nb = _nb(True, {"router": "switch"})
+        nb.seed("dcim/device-roles", {"slug": "core-switch", "name": "core-switch",
+                                      "custom_fields": {}})
+        return nb
+
+    def test_only_listed_roles_are_written_and_each_is_read_back(self):
+        nb = self._nb()
+        got = RK.admin_apply(nb, BASE, RK.ADMIN_MAP, write=_writer(nb))
+        assert got["ok"] is True, got
+        rows = {r["slug"]: r for r in got["rows"]}
+        assert rows["router"] == {"slug": "router", "before": "switch", "wanted": "router",
+                                  "after": "router", "outcome": "set"}
+        assert rows["core-switch"]["after"] == "switch"
+        assert rows["network-device"]["outcome"] == "not listed: unchanged"
+        assert rows["edge-router"]["outcome"] == "listed, but NetBox holds no such role"
+        assert {p[1] for p in nb.patches} == {nb.store["dcim/device-roles"][i]["id"]
+                                              for i in (1, 2, 3)}
+
+    def test_the_plan_writes_nothing(self):
+        nb = self._nb()
+        got = RK.admin_apply(nb, BASE, RK.ADMIN_MAP, write=None)
+        assert nb.patches == [] and {r["outcome"] for r in got["rows"]} >= {"would set"}
+
+    def test_a_kind_mercury_has_not_is_refused_before_anything_is_sent(self):
+        nb = self._nb()
+        got = RK.admin_apply(nb, BASE, dict(RK.ADMIN_MAP, **{"core-switch": "l3-switch"}), write=_writer(nb))
+        assert got["ok"] is False and "l3-switch" in got["error"] and nb.patches == []
+
+    def test_a_write_that_does_not_land_is_a_fail(self, monkeypatch):
+        nb = self._nb()
+        monkeypatch.setattr(nb, "patch", lambda url, json=None, timeout=None: nb.get(url))
+        got = RK.admin_apply(nb, BASE, RK.ADMIN_MAP, write=_writer(nb))
+        assert got["ok"] is False
+
+
+def test_the_script_takes_the_token_on_stdin_and_never_prints_it(monkeypatch, capsys):
+    import importlib.machinery
+    import importlib.util
+    import io
+    import os
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts",
+                        "nmas-netbox-role-kinds-admin")
+    loader = importlib.machinery.SourceFileLoader("role_kinds_admin", path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    nb = _nb(True)
+    monkeypatch.setattr("modules.netbox_client.get_user_setting",
+                        lambda k, d=None: {"netbox_url": BASE + "/api"}.get(k, d))
+    seen = {}
+
+    def session(token, verify, scheme):
+        seen["token"] = token
+        return nb
+    monkeypatch.setattr("modules.netbox_client._build_session", session)
+    rc = mod.main(["--plan"], stdin=io.StringIO("s3cr3t-admin-token\n"))
+    out = capsys.readouterr().out
+    assert rc == 0 and seen["token"] == "s3cr3t-admin-token"
+    assert "s3cr3t" not in out and "PLAN ONLY" in out and "router" in out

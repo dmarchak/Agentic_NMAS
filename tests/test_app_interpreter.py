@@ -31,6 +31,7 @@ EXEMPT = {
     "scripts/hooks/claude-no-heredoc-interpreter": "a laptop hook",
     "scripts/hooks/claude-no-host-writes": "a laptop hook",
     "scripts/hooks/claude-no-raw-config-reads": "a laptop hook",
+    "scripts/hooks/claude-no-shell-prose-edits": "a laptop hook",
     "scripts/check_removed_definitions.py": "the pre-commit hook's and CI's",
     "scripts/nmas-gate": "the laptop's gate",
     "scripts/nmas-stage-guard": "the laptop's gate",

@@ -40,6 +40,66 @@ FORMER_DEFAULT = {"router": "router", "core-router": "router", "edge-router": "r
                   "firewall": "firewall"}
 
 
+#: The operator's map for setting each Device Role's kind with THEIR admin token (2026-10-11:
+#: Mercury's token may not edit roles, and is not widened). The operator asked for core-switch
+#: and distribution-switch as "l3-switch"; Mercury has no such kind (KINDS, and the field's
+#: validation, refuse it): Topology badges a switch L3 when it routes, measured, never by role.
+#: PROPOSED, to the operator before the script is run: both as "switch".
+ADMIN_MAP = {"router": "router", "core-router": "router", "edge-router": "router",
+             "core-switch": "switch", "distribution-switch": "switch",
+             "switch": "switch", "access-switch": "switch",
+             "firewall": "firewall"}
+
+
+def admin_apply(session, base: str, mapping: dict, write=None) -> dict:
+    """Set each LISTED role's kind with an admin's session, then read every role back.
+    ``{"ok", "rows": [{"slug", "before", "wanted", "after", "outcome"}]}``. A role NetBox holds
+    that *mapping* does not list is never written ("not listed: unchanged"); a listed role
+    NetBox does not hold is said. Refuses outright a map naming a kind Mercury does not have.
+    This is the OPERATOR's write with their own token (the host step), not Mercury's: it is not
+    under Mercury's NetBox write gate and not in Mercury's modification record, and the write
+    itself is the caller's: *write* is ``write(role_id, kind) -> HTTP status``, or None for a
+    plan that writes nothing (Mercury's program writes NetBox only through netbox_client's
+    chokepoints, tests/test_netbox_update_provenance.py)."""
+    bad = sorted({k for k in mapping.values() if k not in KINDS})
+    if bad:
+        return {"ok": False, "rows": [], "error": f"not kinds Mercury has: {', '.join(bad)} "
+                                                  f"(it has {', '.join(KINDS)})"}
+    now = read(session, base)
+    if not now["field"]:
+        return {"ok": False, "rows": [], "error": f"NetBox has no custom field {FIELD} on device "
+                                                  "roles: Mercury's migration creates it"}
+    held = {r["slug"]: r for r in now["roles"]}
+    rows = []
+    for slug in sorted(set(held) | set(mapping)):
+        row = {"slug": slug, "before": held.get(slug, {}).get("kind", ""),
+               "wanted": mapping.get(slug, ""), "after": "", "outcome": ""}
+        if slug not in held:
+            row["outcome"] = "listed, but NetBox holds no such role"
+        elif slug not in mapping:
+            row["outcome"] = "not listed: unchanged"
+        elif row["before"] == row["wanted"]:
+            row["outcome"] = "already so"
+        elif write:
+            # The write is the CALLER's (scripts/nmas-netbox-role-kinds-admin, the operator's
+            # own token): Mercury's program writes NetBox only through netbox_client's
+            # chokepoints, and this is not Mercury's write. `write(role_id, kind) -> status`.
+            status = write(held[slug]["id"], row["wanted"])
+            row["outcome"] = "set" if status < 300 else f"REFUSED by NetBox: HTTP {status}"
+        else:
+            row["outcome"] = "would set"
+        rows.append(row)
+    back = read(session, base)["kinds"] if write else {}
+    ok = True
+    for row in rows:
+        row["after"] = back.get(row["slug"], "") if write else row["before"]
+        if write and row["wanted"] and row["slug"] in held and row["after"] != row["wanted"]:
+            ok = False
+        if write and not row["wanted"] and row["after"] != row["before"]:
+            ok = False                     # a role not listed moved: never ours, said
+    return {"ok": ok, "rows": rows, "error": ""}
+
+
 class KindUnreadable(Exception):
     """NetBox could not be asked for its roles or the field."""
 
