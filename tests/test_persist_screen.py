@@ -97,7 +97,7 @@ class TestThePreview:
         assert any(l.startswith("record the outcome") for l in note["lines"])
         said = " ".join(i["text"] for i in p["what_not"]["items"])
         for claim in ("running configuration is not changed", "no credential is rotated",
-                      "containerlab startup file and Oxidized's router.db are not written",
+                      "no boot file is written anywhere but the device",
                       "no golden is committed"):
             assert claim in said, claim
         assert p["what"]["targets"][0]["selectable"] is True

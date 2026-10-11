@@ -240,7 +240,7 @@ class TestPersistenceFailureIsNotRotationFailure:
         summary = cr.summarise(result)
         assert "ROTATED and committed" in summary
         assert "not reverted" in summary.lower()
-        assert "redeploy would boot the OLD password" in summary
+        assert "reload would boot the OLD password" in summary
 
     def test_a_verify_failure_reports_the_device_unchanged(self):
         summary = cr.summarise({"state": cr.REVERTED, "device": "r2"})
@@ -1442,15 +1442,13 @@ class TestTheChainAsksNoOxidized:
         assert not hasattr(cr, "oxidized_client")
         assert not hasattr(cr, "helper_status")
         assert not hasattr(cr, "helper_sudo_status")
-        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
-        monkeypatch.setattr(cr, "verify_startup_file", lambda *a, **k: {"ok": True, "matches": 1})
-        monkeypatch.setattr(cr, "verify_startup_carries_current", lambda *a, **k: {"ok": True})
         out = cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []},
                          mgmt_ip="203.0.113.12", username="admin", password="pw",
                          hostname="r2", new_hash="9 $9$salt$hash", after_iso=cr.utc_now(),
                          platform="cisco_ios", list_name="Default")
         names = [s["name"] for s in out["persistence"]]
-        assert names[:2] == ["device_startup_config", "clab_sync"], names
+        # C663: the device's own save and read-back is the whole chain.
+        assert names == ["device_startup_config"], names
         assert not {"oxidized_row", "oxidized_reload", "fetch_confirmed"} & set(names)
         from modules.nsot import rotate_op
         persist = next(s for s in rotate_op.STEPS if s[0] == "persist")
@@ -1473,15 +1471,10 @@ class TestEveryPersistStageIsIdempotent:
 
     @pytest.fixture
     def world(self, monkeypatch):
-        calls = {"sync": 0, "startup": 0}
-        monkeypatch.setattr(cr, "run_sync",
-                            lambda **k: calls.__setitem__("sync", calls["sync"] + 1)
-                            or {"ok": True, "rc": 0})
-        monkeypatch.setattr(cr, "verify_startup_file",
-                            lambda *a, **k: calls.__setitem__("startup", calls["startup"] + 1)
-                            or {"ok": True, "matches": 1})
-        monkeypatch.setattr(cr, "verify_startup_carries_current",
-                            lambda *a, **k: {"ok": True})
+        calls = {"save": 0}
+        monkeypatch.setattr(cr, "save_on_device",
+                            lambda *a, **k: calls.__setitem__("save", calls["save"] + 1)
+                            or {"ok": True, "state": "persisted"})
         return {"calls": calls}
 
     def _run(self):
@@ -1502,7 +1495,7 @@ class TestEveryPersistStageIsIdempotent:
         """Idempotent is not 'skipped'. The outcome is re-established."""
         self._run()
         self._run()
-        assert world["calls"] == {"sync": 2, "startup": 2}
+        assert world["calls"] == {"save": 2}
 
 
 class TestTimestampsAreTimezoneAware:
@@ -1561,11 +1554,6 @@ class TestNoFailureWordingDuringASuccessfulRun:
                 assert word not in summary, f"{word!r} in {summary!r}"
 
     def test_a_successful_persist_prints_no_failure_wording(self, monkeypatch):
-        for name, value in (("run_sync", {"ok": True}),
-                            ("verify_startup_file", {"ok": True, "matches": 1}),
-                            ("verify_startup_carries_current", {"ok": True})):
-            monkeypatch.setattr(cr, name, (lambda v: (lambda *a, **k: v))(value))
-
         out = cr.persist({"device": "r2", "state": cr.ROTATED_PENDING_PERSIST,
                           "steps": []},
                          mgmt_ip="203.0.113.12", username="admin",
@@ -1580,7 +1568,8 @@ class TestNoFailureWordingDuringASuccessfulRun:
 
     def test_failure_wording_appears_only_after_persistence_actually_failed(
             self, monkeypatch):
-        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": False, "error": "exit 2"})
+        monkeypatch.setattr(cr, "save_on_device",
+                            lambda *a, **k: {"ok": False, "error": "the read-back did not match"})
         out = cr.persist({"device": "r2", "state": cr.ROTATED_PENDING_PERSIST,
                           "steps": []},
                          mgmt_ip="203.0.113.12", username="admin",
@@ -1592,7 +1581,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
         summary = cr.summarise(out)
         assert "FAILED" in summary
         assert "Nothing is retrying" in summary
-        assert "clab_sync" in summary, "it must name the stage"
+        assert "device_startup_config" in summary, "it must name the stage"
 
     def test_entering_persist_is_what_makes_attempted_true(self, monkeypatch):
         """Not reaching a stage: crossing the threshold."""
@@ -1606,7 +1595,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
             seen["state_on_entry"] = result["state"]
             return {"ok": False, "error": "exit 2"}
 
-        monkeypatch.setattr(cr, "run_sync", lambda **k: _first_stage())
+        monkeypatch.setattr(cr, "save_on_device", lambda *a, **k: _first_stage())
         cr.persist(result, mgmt_ip="203.0.113.12", username="admin",
                    password="pw", hostname="r2", new_hash="9 $9$s$h",
                    after_iso=cr.utc_now(), platform="cisco_ios", list_name="Default")
@@ -2054,21 +2043,15 @@ class TestPersistenceNeverReverts:
     def _result(self):
         return {"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []}
 
-    def test_a_startup_file_miss_leaves_the_device_rotated(self, monkeypatch):
-        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
-        monkeypatch.setattr(cr, "verify_startup_file",
-                            lambda *a, **k: {"ok": False, "matches": 0})
+    def test_a_save_that_does_not_read_back_leaves_the_device_rotated(self, monkeypatch):
+        monkeypatch.setattr(cr, "save_on_device",
+                            lambda *a, **k: {"ok": False, "error": "not in the read-back"})
         out = cr.persist(self._result(), **self.BASE)
 
         assert out["state"] == cr.ROTATED_UNVERIFIED
-        assert "redeploy would boot the OLD password" in cr.summarise(out)
+        assert "reload would boot the OLD password" in cr.summarise(out)
 
     def test_the_full_chain_reaches_persisted(self, monkeypatch):
-        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
-        monkeypatch.setattr(cr, "verify_startup_file",
-                            lambda *a, **k: {"ok": True, "matches": 1})
-        monkeypatch.setattr(cr, "verify_startup_carries_current",
-                            lambda *a, **k: {"ok": True})
         out = cr.persist(self._result(), **self.BASE)
 
         assert out["state"] == cr.ROTATED_PERSISTED
@@ -2374,102 +2357,6 @@ class TestSelfConfirmationAtItsOwnSite:
         assert ":" in cr.SELF_CONFIRMED
         assert cr.SELF_CONFIRMED != cr.fingerprint_for(
             {"capture": "", "device_row": {}, "entry_kind": "x"})
-
-
-class TestThePersistenceChainFailsClosedOnAHalfDeploy:
-    """**The window between the NMAS half and the sync half.**
-
-    r6 lives in its own containerlab lab, so its startup config is at
-    `labs/r6/configs/r6.cfg` while clab-sync writes to
-    `labs/lab/configs/`. Fixing that needs a change in this repository (a
-    device -> lab map) and a change in the sync script, and the two will not
-    deploy in the same instant.
-
-    **Measured, so it is known before starting rather than discovered
-    between two commits:**
-
-    * *NMAS half first.* The resolver points the checks at
-      `labs/r6/configs/r6.cfg`, which **exists** — the operator wrote the
-      bootstrap artefact there in phase 1 — and holds `password 0`, not the
-      rotated `secret 9`. `verify_startup_file()` greps for the new hash,
-      does not find it, and the chain stops. **Fails closed.**
-    * *Sync half first.* The sync writes the right file, the checks still
-      read `labs/lab/configs/r6.cfg`, which is absent, and the chain stops.
-      A false negative — safe, and it would send somebody chasing a
-      non-problem.
-
-    **The first case is only safe because of the ORDERING**, and the
-    ordering was written for a different reason. `verify_startup_applies()`
-    on that same bootstrap file returns **`ok: True, applies: True`** — a
-    `password` form *does* apply behind vrnetlab's injected line, and the
-    device really does end up holding it. The function answers its own
-    question truthfully; the question is not *"is this device reboot-safe
-    with the credential NMAS holds"*. Presence runs first and returns early,
-    so applicability is never reached — and that is a safety property this
-    project inherited rather than designed, which is the third shape of that
-    kind found in one night.
-
-    So: pinned. Reorder these two stages, or call `startup_applies` alone,
-    and the window stops failing closed.
-    """
-
-    def _stage_order(self):
-        import inspect
-
-        import modules.nsot.credential_rotation as cr
-
-        src = inspect.getsource(cr._persist)
-        return src
-
-    def test_presence_is_checked_before_applicability(self):
-        src = self._stage_order()
-        assert src.index('"startup_file"') < src.index('"startup_applies"'), (
-            "applicability now runs first — a bootstrap file reports "
-            "`applies: True` and the half-deploy window stops failing closed")
-
-    def test_a_failed_stage_returns_rather_than_continuing(self):
-        """`if not _stage(...): return result` — the short-circuit is what
-        stops `startup_applies` being reached on a stale file."""
-        src = self._stage_order()
-        window = src[src.index('"startup_file"'):src.index('"startup_applies"')]
-        assert "return result" in window
-
-    def test_applies_says_yes_to_a_bootstrap_file(self, monkeypatch):
-        """**The reason the ordering matters**, asserted rather than
-        described: the guard passes a file carrying the credential the
-        rotation replaced."""
-        import modules.nsot.credential_rotation as cr
-        from modules.nsot.bootstrap_config import VRNETLAB_INJECTS_USER
-
-        platform = sorted(VRNETLAB_INJECTS_USER)[0]
-        monkeypatch.setattr(cr, "_ssh_read", lambda clab, cmd, **k: {
-            "ok": True,
-            "text": "hostname r6\nusername admin privilege 15 password 0 boot\n"})
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: "clabhost" if k == "clab_host" else (d or "x"))
-
-        out = cr.verify_startup_applies("r6", list_name="Default", platform=platform,
-                                        username="admin")
-        assert out["ok"] is True and out["applies"] is True
-        assert out["kind"] == "password"
-
-    def test_and_the_presence_check_says_no_to_the_same_file(self,
-                                                             monkeypatch):
-        """The stage that actually closes the window."""
-        import modules.nsot.credential_rotation as cr
-
-        class _P:
-            returncode = 0
-            stdout = "0\n"
-            stderr = ""
-
-        monkeypatch.setattr("subprocess.run", lambda *a, **k: _P())
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: "clabhost" if k == "clab_host" else (d or "x"))
-
-        out = cr.verify_startup_file("r6", "secret 9 $9$rotated", list_name="Default")
-        assert out["ok"] is False
-        assert out["matches"] == 0
 
 
 class TestAFailedRecordKeepsTheOnlyCopy:

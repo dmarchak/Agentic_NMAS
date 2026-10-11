@@ -176,10 +176,12 @@ class TestEveryStateIsNamedWithItsAction:
         assert nxt["text"] and "The state above is what is known" not in nxt["text"], state
         # C219: the next step has its own slot, never "What did not happen".
         assert not [i for i in result["did_not"]["items"] if "Next" in i["text"]]
-        # C541: persistence not attempted opens PERSIST (the words' first action, the device
-        # unsafe to reload until then); persisted opens the export; nothing else opens.
+        # C541: persistence not attempted or failed opens PERSIST (the words' first action, the
+        # device unsafe to reload until then; since C663 the device's own save is the whole
+        # persistence); persisted opens the export; nothing else opens.
         expected = {cr.ROTATED_PERSISTED: "breakglass_export",
-                    cr.ROTATED_PENDING_PERSIST: "persist"}.get(state, "")
+                    cr.ROTATED_PENDING_PERSIST: "persist",
+                    cr.ROTATED_UNVERIFIED: "persist"}.get(state, "")
         assert nxt["open"] == expected, state
         assert nxt["args"] == {"list": "Lab", "devices": ["r2"]}
         assert result["happened"]["summary"] == cr.summarise(

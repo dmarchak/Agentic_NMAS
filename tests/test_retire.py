@@ -30,16 +30,12 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.nsot.approval.approved_templates",
                         lambda repo: ["cisco_iosxe/base.j2"])
     settings = {"nsot_git_author_name": "NMAS",
-                "nsot_git_author_email": "n@l", "nsot_device_tag_retention": 50,
-                "clab_declared_unmapped": {}}
+                "nsot_git_author_email": "n@l", "nsot_device_tag_retention": 50}
     import modules.settings_schema as ss
     monkeypatch.setattr(ss, "get_setting",
                         lambda k, d=None: settings.get(k, ss.DEFAULTS.get(k, d)))
     monkeypatch.setattr(ss, "write_settings", lambda updates, actor="": (
         settings.update(updates) or {"ok": True}))
-    monkeypatch.setattr("modules.nsot.credential_rotation.clab_target_for",
-                        lambda l, h: {"lab": "default", "configs_dir": "labs/lab/configs",
-                                      "launch_patch": "p", "host": "u@c"})
     list_dir = tmp_path / "lists" / "lab"
     list_dir.mkdir(parents=True)
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(list_dir))
@@ -80,14 +76,13 @@ def test_the_plan_names_every_step_and_everything_it_will_not_do(world):
     p = RT.plan("Lab", "r5", "ISP PE, outside our boundary")
     assert p["ok"], p["refusals"]
     keys = [s["key"] for s in p["steps"] if not s["done"]]
-    assert keys == ["declare", "commit", "row"], keys
+    assert keys == ["commit", "row"], keys
     joined = " ".join(p["not_doing"])
     # Scheme 3 (P.5): releasing a device withdraws no approval, and the plan
     # says so instead of asking for a re-approval nobody needs.
     assert ("the approval of cisco_iosxe/base.j2 is not withdrawn" in joined
             and "names r5, as history" in joined), joined
     for claim in ("NetBox device 9 is KEPT", "Remove cannot touch it",
-                  "freezes at its last sync",
                   "running configuration is not changed"):
         assert claim in joined, claim
     assert any("NMAS-HEARTBEAT" in a for a in p["advisories"])
@@ -133,9 +128,9 @@ def test_retire_does_the_whole_exit_in_one_commit(world):
                         templates_repo.devices_for_template(repo, "cisco_iosxe/base.j2")]
     # the row went LAST, and only r5's
     assert [d["hostname"] for d in load_saved_devices(world["csv"])] == ["r4"]
-    # declared, with who and why
-    d = world["settings"]["clab_declared_unmapped"]["Lab"]["r5"]
-    assert d["by"] == "op@example.com" and "ISP PE" in d["reason"]
+    # C663: no lab file is declared; the lab's own map is the lab's to edit
+    assert set(world["settings"]) == {"nsot_git_author_name", "nsot_git_author_email",
+                                      "nsot_device_tag_retention"}
     # and now there is nothing left to do
     again = RT.plan("Lab", "r5", "ISP PE, outside our boundary")
     assert any("nothing to retire" in r for r in again["refusals"]), \

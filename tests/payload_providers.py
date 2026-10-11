@@ -458,7 +458,7 @@ def needs_attention(mp, tmp):
 
     def health():
         return J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
-                        rotations=rot, owner=[], ztp=[], responder=[], startup=[],
+                        rotations=rot, ztp=[], responder=[], startup=[],
                         sessions=[], version=[])
 
     def unreadable():

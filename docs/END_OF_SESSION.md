@@ -10,7 +10,7 @@ s3, nothing 08:30 to 09:10 UTC.
 |---|---|---|
 | 1 | C671: measure r1–s1, r2–s2 as a possible real fault | **done** 06:45: no routing fault, traffic both ways; LLDP alone fails (s1/s2 Gi0/2 receive no LLDP); CDP off on r1/r2, so no second witness tonight (enabling it is a config change, the operator's). Raw captures: `~/Documents/nmas-reports/2026-10-11-c671-captures.txt` on the laptop |
 | 2 | C670: the layout's grid version, timed | **done**: 0.17 / 0.45 / 1.34 / 2.47 s at 150 / 300 / 600 / 900 devices (was 0.48 / 1.90 / 7.82 / 32.82); deploy and host check with the commit |
-| 3 | C663 steps 2 and 3: the lab out of the product | in progress |
+| 3 | C663 steps 2 and 3: the lab out of the product | in progress. **Step 2 built** (suite green, 9906 passed): Mercury's lab settings, `/clab/sync_targets`, the lab-startup check, reader and rows, job health's clab-sync rows, the rotation's boot-file stages (persistence is the device's save, read back), retire's startup step, the startup-applies checker; `netbox_excluded_vrfs` empty by default, ratified on the host first. Next: commit, the host step, deploy, prove the sync unchanged; then step 3 |
 | 4 | C665: roles and platforms from NetBox | to do |
 | 5 | C667: History › Query, boards A to C | to do |
 | 6 | C662: RIP and RIPng read into Topology | to do |

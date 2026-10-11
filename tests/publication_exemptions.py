@@ -71,8 +71,6 @@ EXEMPT = {
     ('modules/netbox_client.py', '87f6e9899581'): ('VRNETLAB', ('address',)),
     ('modules/netbox_client.py', 'b7806a81965b'): ('EXAMPLE', ('address',)),
     ('modules/netbox_client.py', '576e67ac5e4c'): ('EXAMPLE', ('address',)),
-    # modules/settings_schema.py
-    ('modules/settings_schema.py', 'ebaf09b7354d'): ('VRNETLAB', ('address',)),
     # modules/topology.py
     ('modules/topology.py', '51693aea93bf'): ('EXAMPLE', ('address',)),
     ('modules/topology.py', '3214ceaba330'): ('EXAMPLE', ('address',)),
@@ -427,16 +425,8 @@ EXEMPT = {
     ('tests/test_removal_probe.py', '1ea856da7516'): ('INVENTED', ('address',)),
     # tests/test_reveal_and_log_redaction.py
     ('tests/test_reveal_and_log_redaction.py', '8ffe31f17bf5'): ('INVENTED_PATH', ('home',)),
-    # tests/test_rotation_reports_the_boot_file.py
-    ('tests/test_rotation_reports_the_boot_file.py', '94b6b00bab18'): ('INVENTED_PATH', ('home',)),
-    ('tests/test_rotation_reports_the_boot_file.py', '56d53765a934'): ('INVENTED_PATH', ('home',)),
-    ('tests/test_rotation_reports_the_boot_file.py', '69a0f99171dc'): ('INVENTED_PATH', ('home',)),
-    ('tests/test_rotation_reports_the_boot_file.py', 'ee8d50161eed'): ('INVENTED_PATH', ('home',)),
     # tests/test_setting_not_applicable.py
     ('tests/test_setting_not_applicable.py', '9930f78bd903'): ('INVENTED_PATH', ('home',)),
-    # tests/test_startup_safety_composite.py
-    ('tests/test_startup_safety_composite.py', 'd58133d1a62c'): ('INVENTED', ('address',)),
-    ('tests/test_startup_safety_composite.py', '0b0681f03363'): ('INVENTED', ('address',)),
     # tests/test_store_integrity_c158_c160.py
     ('tests/test_store_integrity_c158_c160.py', '089c13fc0ba1'): ('INVENTED', ('address',)),
     ('tests/test_store_integrity_c158_c160.py', '7b0cdff27a72'): ('INVENTED', ('address',)),

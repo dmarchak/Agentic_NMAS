@@ -124,7 +124,7 @@ class TestInJobHealthAndNeedsAttention:
         monkeypatch.setattr(HH, "helper_rows", lambda: [{"unit": "helper:x", "state": "differs",
                                                          "max_age_minutes": 0, "what": "w",
                                                          "detail": "d"}])
-        got = job_health.health(images=[], settings=[], rotations=[], owner=[], ztp=[],
+        got = job_health.health(images=[], settings=[], rotations=[], ztp=[],
                                 responder=[], startup=[], sessions=[], version=[], readers=[],
                                 breakglass=[], prometheus=[], monitoring=[], updater=[])
         assert "helper:x" in got["not_ok"]

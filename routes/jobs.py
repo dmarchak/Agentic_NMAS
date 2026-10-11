@@ -59,8 +59,8 @@ def job_finished():
     log.info("jobs: %s finished; job health %s (run %s)", unit,
              "read now" if got["started"] else "already being read", got["run"])
     # The readers whose source this job WRITES are read now too (the operator,
-    # 2026-10-01: the lab-startup reader read two minutes before clab-sync
-    # rewrote the files, and its rows stood for another ten).
+    # 2026-10-01: a reader read two minutes before a job rewrote its source,
+    # and its rows stood for another ten).
     woke = []
     for name in WAKES.get(unit, ()):
         reader = next((r for r in reader_job.readers() if r.name == name), None)
@@ -72,5 +72,6 @@ def job_finished():
                     "woke": woke}), (202 if got["started"] else 200)
 
 
-#: A job -> the readers whose source it writes, read when it finishes.
-WAKES = {"clab-sync": ("lab-startup",)}
+#: A job -> the readers whose source it writes, read when it finishes. None today: the one
+#: entry was the lab's sync waking the lab-startup reader, and both left the product (C663).
+WAKES: dict = {}

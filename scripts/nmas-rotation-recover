@@ -48,7 +48,7 @@ def main(argv=None) -> int:
     print(f"\nstate: {out['state']}")
     print(out.get("reason", ""))
     if out["state"] in (cr.ROTATED_PENDING_PERSIST,):
-        print(f"\nNext: nmas-persist-credential {args.device} --list {args.list_name}, or "
+        print(f"\nNext: nmas-persist-native {args.device} --list {args.list_name}, or "
               "Persist… on its Device page, so a reload boots the recorded credential.")
     if out["state"] in (cr.ROTATED_PENDING_PERSIST, cr.STAGED_NEVER_APPLIED, cr.NOTHING_STAGED):
         return 0

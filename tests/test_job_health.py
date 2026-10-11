@@ -169,22 +169,22 @@ def test_the_headline_counts_and_names():
     # (C97), the running-version row, the reader rows (test_reader_job.py) and
     # the updater's install row (test_update_button.py) have their own tests.
     h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
-                 rotations=[], owner=[], sessions=[], version=[], readers=[], updater=[])
+                 rotations=[], sessions=[], version=[], readers=[], updater=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
     h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[],
-                 rotations=[], owner=[], sessions=[], version=[], readers=[], updater=[])
-    assert h["headline"].startswith("0 of") and "clab-sync" in h["headline"]
+                 rotations=[], sessions=[], version=[], readers=[], updater=[])
+    assert h["headline"].startswith("0 of") and J.JOBS[0]["unit"] in h["headline"]
 
 
 def test_the_route_reports_rather_than_withholds(monkeypatch):
     import app as nmas
     monkeypatch.setattr(J, "_run", _runner(LOADED, _fail(NOW - 60)))
     body = nmas.app.test_client().get("/jobs/health").get_json()
-    assert body["ok"] is True and "clab-sync" in body["not_ok"]
+    assert body["ok"] is True and J.JOBS[0]["unit"] in body["not_ok"]
     # The STATE, not just "not ok": a route asking the real systemd of a
     # machine without the unit would say not_installed and also be "not ok".
-    clab = next(j for j in body["jobs"] if j["unit"] == "clab-sync")
-    assert clab["state"] == "never_succeeded", clab
+    first = next(j for j in body["jobs"] if j["unit"] == J.JOBS[0]["unit"])
+    assert first["state"] == "never_succeeded", first
 
 
 
@@ -490,7 +490,7 @@ class TestTheZfsPoolThatHoldsEveryVm:
 def test_health_carries_the_image_rows_in_its_headline():
     h = J.health(NOW, _runner(LOADED, _ok(NOW - 60)),
                  images=J.image_jobs(NOW, FakeProxmox(storage={"active": 0})),
-                 settings=[], rotations=[], owner=[])
+                 settings=[], rotations=[])
     assert "vm-images-storage:vzdump-sda" in h["not_ok"]
 
 
@@ -499,19 +499,19 @@ def test_health_carries_the_image_rows_in_its_headline():
 # Register C28: a setting a guard depends on, empty on this install
 # ---------------------------------------------------------------------------
 
-GUARDS = {"clab_sync_script": ["modules/nsot/credential_rotation.py:2160"],
-          "clab_host": ["modules/nsot/credential_rotation.py:2213"]}
+GUARDS = {"kea_ztp_fragment": ["modules/nsot/ztp.py:497"],
+          "syslog_host": ["modules/nsot/onboard.py:767"]}
 
 
 def test_an_empty_guard_setting_is_a_row_naming_what_it_gates():
-    """B15: clab_sync_script was empty for three days and the first rotation to
-    reach it was the one retiring an exposed credential."""
+    """B15: a guard's setting (then the lab's sync script) was empty for three days and the
+    first rotation to reach it was the one retiring an exposed credential."""
     rows = {r["unit"]: r for r in J.settings_rows(
-        GUARDS, load=lambda: {"clab_host": "lab@203.0.113.10"})}
-    assert rows["setting:clab_sync_script"]["state"] == "unset_guard"
-    assert "credential_rotation.py:2160" in rows["setting:clab_sync_script"]["detail"]
-    assert "not configured" in rows["setting:clab_sync_script"]["detail"]
-    assert rows["setting:clab_host"]["state"] == "ok"
+        GUARDS, load=lambda: {"syslog_host": "192.0.2.10"})}
+    assert rows["setting:kea_ztp_fragment"]["state"] == "unset_guard"
+    assert "ztp.py:497" in rows["setting:kea_ztp_fragment"]["detail"]
+    assert "not configured" in rows["setting:kea_ztp_fragment"]["detail"]
+    assert rows["setting:syslog_host"]["state"] == "ok"
 
 
 def test_an_unreadable_settings_file_is_unknown_not_everything_empty():
@@ -531,20 +531,23 @@ def test_a_scan_that_found_nothing_is_unknown_not_clean():
 def test_the_real_scan_covers_the_four_the_erasure_blanked():
     """Floor and anchors on the REAL map: the four found one at a time
     (clab_host, clab_sync_script, oxidized_url; yang_push_script by hand). oxidized_url left
-    with Oxidized (Phase 3): it gates nothing now."""
+    with Oxidized (Phase 3) and the two lab settings with the lab (C663): they gate nothing
+    now. What it finds today is the ZTP fragment, the syslog host, the exporter's config and
+    the hand-recorded one."""
     guards = J._guard_settings()
-    assert len(guards) >= 3, guards
-    assert "oxidized_url" not in guards
-    for key in ("clab_host", "clab_sync_script", "yang_push_script"):
+    assert len(guards) >= 4, guards
+    for gone in ("oxidized_url", "clab_host", "clab_sync_script"):
+        assert gone not in guards, gone
+    for key in ("kea_ztp_fragment", "syslog_host", "yang_push_script"):
         assert key in guards, key
 
 
 def test_health_carries_the_settings_rows():
     h = J.health(NOW, _runner(LOADED, _ok(NOW - 60)), images=[],
                  settings=J.settings_rows(GUARDS, load=lambda: {}),
-                 rotations=[], owner=[])
-    assert "setting:clab_sync_script" in h["not_ok"]
-    assert "setting:clab_host" in h["not_ok"]
+                 rotations=[])
+    assert "setting:kea_ztp_fragment" in h["not_ok"]
+    assert "setting:syslog_host" in h["not_ok"]
 
 
 def test_an_ok_row_states_the_window_it_was_judged_against():

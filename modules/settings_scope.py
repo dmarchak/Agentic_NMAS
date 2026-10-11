@@ -43,8 +43,6 @@ SCOPES: dict = {
              "kea_verify_tls", "kea_ztp_fragment", "kea_dhcp4_config"),
     **_group(NETWORK, "topology_service", "topology_service_url", "topology_service_type",
              "topology_service_token", "topology_service_verify_tls"),
-    **_group(NETWORK, "lab", "clab_host", "clab_configs_dir", "clab_launch_patch", "clab_labs",
-             "clab_sync_script"),
     **_group(NETWORK, "monitoring_profile", "syslog_host", "syslog_trap_level",
              "syslog_origin_id", "syslog_source_interface", "syslog_heartbeat_seconds",
              "ntp_servers", "telemetry_receiver", "snmp_trap_host", "snmp_exporter_config",
@@ -84,7 +82,6 @@ SCOPES: dict = {
     # One value for the installation, keyed by list INSIDE ({list: {device: declaration}}),
     # written by retire under the settings lock: a table of every list's declarations, not a
     # network's setting. Step 9 folds each list's rows into its own store (2026-10-05).
-    **_group(HOST, "lab_declarations", "clab_declared_unmapped"),
     # ── Read by nothing at run time: to retire (P.8 decision 3) ──────────────────────────
     **_group(RETIRING, "form_only", "collector_trap_enabled", "collector_netflow_enabled",
              "collector_syslog_enabled", "monitoring_identity_mode",

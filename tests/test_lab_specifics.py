@@ -53,23 +53,6 @@ ACCESS = "the operator's access setup"
 
 #: ``path: (lines, category, disposition, what it is)``. Measured 2026-10-02.
 INVENTORY = {
-    "routes/clab.py": (4, LAB_PLATFORM, OPTIONAL, "/clab/sync_targets, the map clab-sync asks for"),
-    "routes/__init__.py": (2, LAB_PLATFORM, OPTIONAL, "registers the clab blueprint"),
-    "routes/jobs.py": (2, LAB_PLATFORM, OPTIONAL, "clab-sync wakes the lab-startup reader"),
-    "modules/lab_startup.py": (15, LAB_PLATFORM, OPTIONAL, "C303: lab startup files against goldens"),
-    "modules/readers/lab_startup.py": (3, LAB_PLATFORM, OPTIONAL, "its reader"),
-    "modules/attention.py": (6, LAB_PLATFORM, OPTIONAL, "the lab-startup Needs attention rows"),
-    "modules/job_health.py": (20, LAB_PLATFORM, OPTIONAL, "clab-sync's job row and lab rows"),
-    "modules/settings_scope.py": (3, LAB_PLATFORM, OPTIONAL,
-                                  "names the clab_* settings as the per-network lab group "
-                                  "(P.8 step 1), and clab_declared_unmapped as host-wide "
-                                  "(step 4); they leave with the optional integration"),
-    "modules/settings_schema.py": (29, LAB_PLATFORM, OPTIONAL,
-                                   "clab_* settings (some default to the lab's paths); "
-                                   "netbox_excluded_vrfs defaults to the lab's clab-mgmt"),
-    "modules/nsot/credential_rotation.py": (80, LAB_PLATFORM, OPTIONAL,
-                                            "the persistence chain's clab-sync and startup-file stages; "
-                                            "vrnetlab's injected user (the save and read-back are generic)"),
     # Found by widening the pattern to any rcn- or rcn_ name (2026-10-03, C374: the break-glass
     # file carried the lab's name and `rcn-lab` alone did not see it). The topology renderer is
     # generic (LLDP over Prometheus, drawn as SVG) and carries the lab's name.
@@ -82,20 +65,14 @@ INVENTORY = {
     "templates/index.html": (1, LAB_VALUES, GENERIC, "the renderer's name on the topology tab"),
     "templates/partials/topology_service.html": (2, LAB_VALUES, GENERIC,
                                                  "the renderer's name in its panel"),
-    "modules/nsot/rotate_op.py": (1, LAB_PLATFORM, OPTIONAL,
-                                  "the stepper's persist step names the chain's clab stages "
-                                  "(C370), as credential_rotation runs them"),
     "modules/nsot/bootstrap_config.py": (37, HARDWARE, GENERIC,
                                          "vrnetlab's boot behaviour: console replay, the injected user"),
     "modules/nsot/onboard.py": (9, HARDWARE, GENERIC, "vrnetlab's RW community and injected user"),
-    "modules/nsot/retire.py": (6, LAB_PLATFORM, OPTIONAL, "retire's startup-file step"),
-    "modules/nsot/manifest.py": (3, LAB_PLATFORM, OPTIONAL, "a device's clab_lab key"),
     "modules/nsot/startup_source.py": (1, LAB_PLATFORM, GENERIC, "what a device would boot (generic)"),
-    "modules/nsot/persist_op.py": (2, LAB_PLATFORM, GENERIC, "comments naming the clab chain"),
     "modules/nsot/normalize.py": (2, HARDWARE, GENERIC, "vrnetlab's own lines filtered"),
     "modules/nsot/repo.py": (1, LAB_PLATFORM, GENERIC, "a comment"),
     "modules/nsot/ip_sla_policy.py": (1, LAB_VALUES, GENERIC, "a measured example"),
-    "modules/netbox_client.py": (6, LAB_VALUES, GENERIC, "the clab-mgmt VRF exclusion's examples"),
+    "modules/netbox_client.py": (5, LAB_VALUES, GENERIC, "the clab-mgmt VRF exclusion's examples"),
     "modules/breakglass.py": (4, LAB_VALUES, GENERIC, "the lab's name in the record format"),
     "modules/panels.py": (2, LAB_VALUES, GENERIC, "the lab's dashboard UID in an example"),
     "modules/pipeline.py": (2, LAB_PLATFORM, GENERIC, "comments: containerlab nodes are ephemeral"),
@@ -103,10 +80,6 @@ INVENTORY = {
     "modules/readers/reachability.py": (1, LAB_PLATFORM, GENERIC, "a comment"),
     "scripts/nmas-host": (5, ACCESS, MOVE, "the operator's LAN-or-tunnel host helper"),
     "scripts/nmas-breakglass": (2, LAB_VALUES, GENERIC, "the lab's name"),
-    "scripts/nmas-check-startup-applies": (3, LAB_PLATFORM, OPTIONAL, "checks a lab startup file"),
-    "scripts/nmas-persist-native": (3, LAB_PLATFORM, GENERIC, "names the clab chain it replaces"),
-    "scripts/nmas-rotate-credential": (3, LAB_PLATFORM, OPTIONAL, "runs the clab persistence chain"),
-    "scripts/nmas-persist-credential": (1, LAB_PLATFORM, OPTIONAL, "runs the clab persistence chain"),
     "scripts/nmas-netbox-deletions": (1, LAB_VALUES, MOVE, "a one-off repair for the lab's NetBox"),
     "scripts/nmas-netbox-ip-provenance": (2, LAB_VALUES, MOVE, "a one-off repair for the lab's NetBox"),
     "scripts/nmas-netbox-repair-addresses": (3, LAB_VALUES, MOVE, "a one-off repair for the lab's NetBox"),
@@ -156,11 +129,22 @@ def problems(found: dict, inventory: dict) -> list:
 
 
 class TestTheInventoryIsExact:
-    def test_the_scan_finds_something(self):
-        found = scan()
-        # C663 moves the lab out of the product, so this floor falls with it: measured 47 files
-        # and 299 lines once the sync moved to lab/ (2026-10-11), the floor a little under.
-        assert len(found) >= 40 and sum(found.values()) >= 250, found
+    def test_the_scan_finds_something(self, tmp_path):
+        """The floor, on a PLANTED tree: C663 takes the product's count to nothing, so a floor
+        on the product would have to fall to zero, where a scan that reads nothing also sits.
+        A tracked file in scope with one lab line is found and counted; the same line outside
+        the scope, in an untracked file and in a vendored file is not."""
+        for rel, text in (("modules/x.py", "a = 1\n# the clab-sync job\n"),
+                          ("modules/untracked.py", "# containerlab\n"),
+                          ("docs/notes.md", "rcn-lab1\n"),
+                          ("static/js/vendor/lib.js", "// vrnetlab\n")):
+            (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / rel).write_text(text, encoding="utf-8")
+        git = ["git", "-C", str(tmp_path)]
+        subprocess.run(git + ["init", "-q"], check=True)
+        subprocess.run(git + ["add", "modules/x.py", "docs/notes.md", "static/js/vendor/lib.js"],
+                       check=True)
+        assert scan(root=str(tmp_path)) == {"modules/x.py": 1}
 
     def test_every_lab_specific_line_is_declared_exactly(self):
         assert problems(scan(), INVENTORY) == []

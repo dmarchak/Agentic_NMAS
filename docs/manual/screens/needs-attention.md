@@ -10,8 +10,8 @@ The landing page answers one question: does anything need you?
   since when, the cause, and the ONE action that deals with it. A source that did not answer,
   or whose value is older than it promised, is itself a row.
 - **Never a fact with nothing to do.** Every row names something wrong and an action you can
-  take. Something true that needs nothing, such as a new release being available, a lab
-  startup file left by a retired device, or a check that missed a booting device once, is
+  take. Something true that needs nothing, such as a new release being available, or a
+  check that missed a booting device once, is
   said under "What was checked", beside the source that found it, or on its own page.
 - **Recent changes**: the last deploys and restores, from their receipts.
 
@@ -32,7 +32,7 @@ nothing needing attention.
 Background readers keep each source's value: job health (the host's scheduled checks), drift,
 approvals, pending onboardings, rollback blocks, Grafana's alerts (a device's heartbeat
 stopping is one), integrations, reachability, routing adjacencies,
-baselines, the remote's publication, the lab's startup files, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
+baselines, the remote's publication, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
 
 Oxidized is retired (2026-10-08), and its freshness check with it: nothing here compares

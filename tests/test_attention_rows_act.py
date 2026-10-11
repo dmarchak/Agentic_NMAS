@@ -10,8 +10,9 @@ one more for every retired device, permanently).
   declared kind to a call that emits it, both ways, with floors; a planted
   undeclared call is found.
 - No action label the sources or job health hand a row says there is nothing to do.
-- The two facts that were rows are said in their source's finding instead:
-  r5's leftover lab file (C303's fixture shape) and a release being available.
+- The facts that were rows are said in their source's finding instead: a release
+  being available, and the startup check missing a device once. (r5's leftover lab
+  file was the first; C663 took the lab's startup files out of Mercury.)
 """
 
 import ast
@@ -165,27 +166,8 @@ class TestNoActionSaysNothingToDo:
             assert got["label"] and not any(p in got["label"].lower() for p in A.NOT_AN_ACTION)
 
 
-def _lab_cached(unowned):
-    value = {"configured": True, "labs": 1, "checked": 0, "devices": [], "errors": [],
-             "unowned": unowned}
-    return {"state": "ok", "doc": {"last_good": {"value": value,
-                                                 "value_at": "2026-10-02T04:00:00Z"},
-                                   "stale_after_seconds": 1500}}
-
-
 class TestTheFactsThatWereRows:
-    def test_r5_s_leftover_lab_file_is_the_check_s_finding_not_a_row(self):
-        res = A.lab_startup_source(cached=_lab_cached([{
-            "lab": "default", "file": "labs/lab/configs/r5.cfg", "node": "r5",
-            "declared_by": ["rcn-lab1.clab.yml"], "topologies": ["rcn-lab1.clab.yml"]}]))
-        assert res["rows"] == []
-        assert ("labs/lab/configs/r5.cfg, used by the topology (rcn-lab1.clab.yml declares "
-                "node r5), owned by no managed device") in res["checked"]
-        assert "nothing to do" in res["checked"]
 
-    def test_no_leftover_file_says_nothing_extra(self):
-        res = A.lab_startup_source(cached=_lab_cached([]))
-        assert res["rows"] == [] and "no managed device owns" not in res["checked"]
 
     def test_the_startup_check_missing_a_device_once_is_the_finding_not_a_row(self):
         res = A.job_health_source(health=lambda: {"jobs": [{

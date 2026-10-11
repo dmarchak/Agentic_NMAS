@@ -789,7 +789,7 @@ class TestTheInstallCheck:
         from modules import job_health
         rows = job_health.health(updater=[{"unit": "updater", "state": "ok"}], version=[],
                                  readers=[], monitoring=[], prometheus=[], breakglass=[],
-                                 sessions=[], startup=[], responder=[], ztp=[], owner=[],
+                                 sessions=[], startup=[], responder=[], ztp=[],
                                  rotations=[], settings=[], images=[])["jobs"]
         assert {"unit": "updater", "state": "ok"} in rows
         assert "updater_rows" in open(os.path.join(ROOT, "modules", "job_health.py")).read()

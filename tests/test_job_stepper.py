@@ -58,7 +58,8 @@ def _code_names() -> set:
 class TestTheStepsAreTheCodes:
     def test_every_grouped_name_is_noted_by_the_code_and_every_noted_name_is_grouped(self):
         code = _code_names()
-        assert len(code) >= 20, sorted(code)
+        # The floor: 17 since C663 took the lab's five boot-file stages out of the persist.
+        assert len(code) >= 15, sorted(code)
         grouped = {n for s in RO.STEPS for n in s[3]} | set(RO.DETOURS)
         assert grouped - code == set(), "a step the code never notes"
         assert code - grouped == set(), "a step the code notes that the stepper cannot place"
@@ -117,10 +118,14 @@ class TestTheStepper:
         assert rows[2]["since"] == "1970-01-01T00:16:46Z"
 
     def test_the_persist_chain_names_its_stage(self):
+        # Since C663 the persist is one stage, the device's save, noted when it ends: before it,
+        # the step is running on "persisting"; once it is noted, the step is done.
+        rows = DA.stepper(RO.STEPS, _trail(("commit", 1030), ("persisting", 1031)), now=1050.0)
+        assert rows[5]["state"] == "running" and rows[5]["last"] == "persisting"
+        assert [r["state"] for r in rows[:5]] == ["done"] * 5
         rows = DA.stepper(RO.STEPS, _trail(("commit", 1030), ("persisting", 1031),
                                            ("device_startup_config", 1040)), now=1050.0)
-        assert rows[5]["state"] == "running" and rows[5]["last"] == "device_startup_config"
-        assert [r["state"] for r in rows[:5]] == ["done"] * 5
+        assert rows[5]["state"] == "done"
 
     def test_a_revert_is_drawn_on_the_fresh_login(self):
         rows = DA.stepper(RO.STEPS, _trail(("push", 1010), (cr.VERIFY, 1020),
@@ -170,7 +175,7 @@ class TestTheStepper:
         assert "settle window" in pipeline.stage_doing("verify")
 
     def test_the_last_stage_done_leaves_nothing_running(self):
-        rows = DA.stepper(RO.STEPS, _trail(("commit", 1030), ("startup_safe", 1080)),
+        rows = DA.stepper(RO.STEPS, _trail(("commit", 1030), ("device_startup_config", 1080)),
                           now=1081.0)
         assert [r["state"] for r in rows] == ["done"] * 6
 

@@ -50,7 +50,6 @@ WOKEN_BY = {
     # write, the break-glass export log, its intact checks and drills, the credentials held.
     "job-health": ("rotation", "credentials", "device_state", "breakglass"),
     # each lab startup file against the committed goldens.
-    "lab-startup": ("goldens", "baselines"),
     # NetBox's config contexts and the record of what Mercury modified there.
     "netbox-secrets": ("netbox", "settings"),
     # the planned-restart windows a person declares; Prometheus by settings.

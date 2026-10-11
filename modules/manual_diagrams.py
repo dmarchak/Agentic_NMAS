@@ -83,20 +83,9 @@ def store(x, y, w, h, title, sub=""):
             + _label(x + 2, y, w, h, title, sub))
 
 
-def labtag(x, y):
-    return (f'<rect class="dg-labtag" x="{x}" y="{y}" width="28" height="13" rx="3"/>'
-            + t(x + 14, y + 10, "LAB", "labtx", "middle"))
-
-
-def svc(x, y, w, h, title, sub="", lab=False):
-    c = "dg-labf" if lab else "dg-svc"
-    return (f'<rect class="{c}" x="{x}" y="{y}" width="{w}" height="{h}" rx="{h / 2}"/>'
-            + _label(x, y, w, h, title, sub) + (labtag(x + w - 30, y - 7) if lab else ""))
-
-
-def labfile(x, y, w, h, title, sub=""):
-    return (f'<path class="dg-labf" d="{_docpath(x, y, w, h)}"/>' + _label(x, y, w, h, title, sub)
-            + labtag(x + w - 34, y - 7))
+def svc(x, y, w, h, title, sub=""):
+    return (f'<rect class="dg-svc" x="{x}" y="{y}" width="{w}" height="{h}" rx="{h / 2}"/>'
+            + _label(x, y, w, h, title, sub))
 
 
 def num(x, y, n):
@@ -529,9 +518,9 @@ def credentials_lifecycle():
         t(36, 282, "Save, then read the startup", "tb"), num(22, 278, 3),
         t(36, 296, "config back: every account line.", "sm"),
         t(14, 336, "The hourly startup check keeps asking.", "sm"),
-        band(376, 88, "On the lab only"),
-        labfile(14, 404, 186, 40, "Lab startup file", "a redeploy boots it"),
-        t(214, 426, "Built by the lab sync,", "sm"), t(214, 439, "not by the product.", "sm"),
+        band(376, 88, "A boot file built elsewhere"),
+        store(14, 404, 186, 40, "Golden committed", "an event, naming the device"),
+        t(214, 426, "A tool building the boot", "sm"), t(214, 439, "file follows the event.", "sm"),
     ])
 
 
@@ -657,8 +646,9 @@ def rotate():
         "apply generates a password and stages it before anything is sent, holds one session, "
         "sends the change, and proves it on a fresh login before trusting it, putting the old "
         "line back on the held session if the login fails. Then it records the new credential, "
-        "clears the staged copy and persists. On the lab, persist also updates the lab startup "
-        "file."), [
+        "clears the staged copy and persists: the device's own save, read back. The commit "
+        "writes the golden-committed event, which a tool building a boot file elsewhere "
+        "follows."), [
         lanes(20, 554),
         band(20, 110, "Preview"),
         device(262, 40, 118, 60, "The device", "", top=True),
@@ -675,9 +665,9 @@ def rotate():
             (380, None, 12, "Clear the staged copy", ""),
             (414, "send", 13, "Persist", "save and read back"),
         ]),
-        band(442, 112, "On the lab only"),
-        labfile(14, 466, 186, 40, "Lab startup file", "re-synced"),
-        t(14, 534, "Without the lab, persistence reads unverified.", "sm"),
+        band(442, 112, "A boot file built elsewhere"),
+        store(14, 466, 186, 40, "Golden committed", "an event the commit writes"),
+        t(14, 534, "A tool building the boot file follows it.", "sm"),
     ])
 
 
@@ -686,8 +676,8 @@ def persist():
         "Persist. The device runs one configuration and boots from another. From the device "
         "page, persist saves the running configuration to startup on a held session, reads the "
         "startup configuration back and checks every account line is there verbatim, then "
-        "records the outcome where job health reads it. The host chain after a rotation also "
-        "updates the lab's startup file: a lab integration, off the product's path."), [
+        "records the outcome where job health reads it. A rotation's persistence is this same "
+        "save and read-back."), [
         lanes(20, 364),
         band(20, 210, "From the device page"),
         device(262, 44, 118, 150, "The device", "", top=True),
@@ -696,11 +686,12 @@ def persist():
             (124, "read", 2, "Read startup back", "every account line"),
         ]),
         store(14, 158, 186, 36, "Recorded", "where job health reads it"), num(14, 158, 3),
-        band(236, 128, "The host chain, after a rotation"),
-        t(14, 270, "The device's own save first, then:", "sm"),
-        labfile(14, 284, 186, 40, "Lab startup file", "synced, hash checked"),
-        t(214, 300, "A redeploy boots", "sm"), t(214, 313, "this, not NVRAM.", "sm"),
-        t(14, 344, "Without the lab, these stages cannot pass.", "sm"),
+        band(236, 128, "After a rotation"),
+        t(14, 270, "The same save and read-back is the", "sm"),
+        t(14, 283, "rotation's whole persistence; the commit", "sm"),
+        t(14, 296, "writes the golden-committed event, which", "sm"),
+        t(14, 309, "a tool building a boot file elsewhere", "sm"),
+        t(14, 322, "follows.", "sm"),
     ])
 
 
@@ -786,28 +777,26 @@ def adopt():
 
 
 def retire():
-    return svg(470, (
+    return svg(426, (
         "Retiring a device: the whole exit, sending nothing to it. The preview checks the "
         "break-glass export holds its current credential. The apply masks credentials NetBox "
         "holds in its context where the tool wrote them, clears the credential override, "
-        "declares its lab startup file unmapped, commits the exit as you, removes its legacy "
-        "file only if its content survives, and deletes its inventory row last. NetBox keeps "
-        "the device and history is kept."), [
-        lanes(20, 464),
+        "commits the exit as you, removes its legacy file only if its content survives, and "
+        "deletes its inventory row last. NetBox keeps the device and history is kept."), [
+        lanes(20, 420),
         band(20, 70, "Preview"),
         store(14, 40, 186, 36, "Break-glass export", "holds the current credential?"),
         device(240, 36, 140, 40, "The device", "never contacted", off=True),
-        band(96, 300, "The apply · in order"),
+        band(96, 256, "The apply · in order"),
         svc(14, 118, 186, 34, "NetBox context", "credentials masked"), num(14, 118, 1),
         store(14, 162, 186, 34, "Credential override", "cleared"), num(14, 162, 2),
-        labfile(14, 206, 186, 36, "Lab startup file", "declared unmapped"), num(14, 206, 3),
-        repo(14, 252, 186, 44, "One commit", "the exit, as you"), num(14, 258, 4),
-        store(14, 306, 186, 34, "Legacy file", "removed if it survives"), num(14, 306, 5),
-        store(14, 350, 186, 34, "Inventory row", "deleted last"), num(14, 350, 6),
-        nosend(310, 240, ("nothing is sent", "to the device")),
-        band(402, 62, "Kept, by design"),
-        t(14, 434, "NetBox's record, history,", "sm"),
-        t(14, 447, "backups: each named in the commit.", "sm"),
+        repo(14, 208, 186, 44, "One commit", "the exit, as you"), num(14, 214, 3),
+        store(14, 262, 186, 34, "Legacy file", "removed if it survives"), num(14, 262, 4),
+        store(14, 306, 186, 34, "Inventory row", "deleted last"), num(14, 306, 5),
+        nosend(310, 220, ("nothing is sent", "to the device")),
+        band(358, 62, "Kept, by design"),
+        t(14, 390, "NetBox's record, history,", "sm"),
+        t(14, 403, "backups: each named in the commit.", "sm"),
     ])
 
 

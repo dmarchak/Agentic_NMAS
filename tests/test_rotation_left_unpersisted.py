@@ -9,7 +9,8 @@ Now, wherever the remedy is the device's OWN save (persistence not attempted, or
 startup config): the words name the risk and the save; the card's one button is Persist, in
 place (tests/test_device_rotate_v2.py, through the real job route); the row carries Persist as
 its action and draws a button to the device's Persist card; the browser summary never says
-"runs next" over a job that has ended. A containerlab chain stage keeps its own command.
+"runs next" over a job that has ended. Since C663 the persistence is only that save, so a
+record from before it naming one of the lab's stages gets the same remedy.
 """
 
 import os
@@ -41,10 +42,13 @@ class TestTheRow:
         act = _row(cr.ROTATED_UNVERIFIED, "device_startup_config")["action"]
         assert act["open"] == "persist" and "nmas-persist-native" in act["command"]
 
-    def test_a_lab_chain_stage_keeps_the_chain_s_command(self):
-        """The scope: `nmas-persist-credential` is right for a containerlab boot file."""
+    def test_an_older_record_s_lab_stage_gets_the_device_s_own_save_too(self):
+        """C663: the lab's boot-file stages left the persistence, so a record from before it
+        naming one has the same remedy as every other: the device's own save."""
         row = _row(cr.ROTATED_UNVERIFIED, "lab_startup_file")
-        assert "nmas-persist-credential s1" in row["detail"]
+        assert "nmas-persist-native s1" in row["detail"] and "lab_startup_file" in row["detail"]
+        assert row["action"]["open"] == "persist"
+        assert "nmas-persist-credential" not in row["detail"] + str(row["action"])
 
     def test_needs_attention_draws_the_persist_button(self):
         from flask import render_template
@@ -78,9 +82,10 @@ class TestTheWords:
         words = self._summary(cr.ROTATED_UNVERIFIED)
         assert "nmas-persist-native s1" in words and "nmas-persist-credential" not in words
 
-    def test_a_lab_chain_stage_still_names_the_chain(self):
-        assert "nmas-persist-credential s1" in self._summary(cr.ROTATED_UNVERIFIED,
-                                                              stage="lab_startup_file")
+    def test_an_older_record_s_lab_stage_names_the_device_s_own_save(self):
+        words = self._summary(cr.ROTATED_UNVERIFIED, stage="lab_startup_file")
+        assert "nmas-persist-native s1" in words and "nmas-persist-credential" not in words
+        assert "FAILED at lab_startup_file" in words
 
     def test_the_card_s_next_step_opens_persist(self):
         from modules.preview_confirm import rotate_result
@@ -88,7 +93,7 @@ class TestTheWords:
         for state, stage, opens in ((cr.ROTATED_PENDING_PERSIST, "device_startup_config",
                                      "persist"),
                                     (cr.ROTATED_UNVERIFIED, "device_startup_config", "persist"),
-                                    (cr.ROTATED_UNVERIFIED, "lab_startup_file", ""),
+                                    (cr.ROTATED_UNVERIFIED, "lab_startup_file", "persist"),
                                     (cr.ROTATED_PERSISTED, "", "breakglass_export")):
             got = rotate_result({"device": "s1", "state": state, "steps": [], "persistence": [
                 {"name": stage, "ok": state != cr.ROTATED_UNVERIFIED and

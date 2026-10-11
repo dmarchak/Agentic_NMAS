@@ -83,7 +83,7 @@ def test_the_known_set_comes_from_the_inventory_and_the_manifest(monkeypatch, tm
 
 def test_the_headline_counts_a_departed_row_and_does_not_call_it_a_fault():
     row = _rows([PROBE], ({"s1"}, ""))["rotation:probe-r1a"]
-    out = J.health(images=[], settings=[], rotations=[row], owner=[], ztp=[],
+    out = J.health(images=[], settings=[], rotations=[row], ztp=[],
                     responder=[], startup=[], sessions=[], version=[], run=lambda *a, **k: (0, ""))
     assert "rotation:probe-r1a" not in out["not_ok"]
     assert "about a device that has left management" in out["headline"], out["headline"]

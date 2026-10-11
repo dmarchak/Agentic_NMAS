@@ -7,7 +7,7 @@ a lab, into the files a redeploy boots. A rotation changes the device and the to
 together; persist makes the device's startup configuration carry it; and every other copy
 has to be brought along, or it becomes the copy that locks someone out.
 
-![Where a device's credential lives: the device's running and startup configuration on the right; the tool's inventory, credential store and git repository on the left; the break-glass record on a person's laptop; and, in a lab, the lab startup file. A rotation moves the running configuration and the tool's record together, persist copies running to startup, and an export renews the break-glass record.](diagrams/credentials-lifecycle.svg)
+![Where a device's credential lives: the device's running and startup configuration on the right; the tool's inventory, credential store and git repository on the left; the break-glass record on a person's laptop; and the golden-committed event a tool building a boot file elsewhere follows. A rotation moves the running configuration and the tool's record together, persist copies running to startup, and an export renews the break-glass record.](diagrams/credentials-lifecycle.svg)
 
 ## Where it lives {#where}
 
@@ -36,9 +36,10 @@ Away from the tool:
 - **The break-glass record**: a file sealed with a passphrase, kept on a person's laptop,
   holding each device's credential and the application's key. It is how a person reaches a
   device when the tool cannot. It is current only until the next rotation.
-- **The lab startup file** (lab integration): the file a lab redeploy boots, built from the
-  newest earned baseline with every credential line taken from the device's current golden,
-  so a redeploy never boots a retired password.
+- **A boot file built elsewhere**, where a device boots from one (an emulator's startup
+  file, say): Mercury writes none. Every commit that changes a golden writes the *golden
+  committed* event (`<data>/events/golden-committed/<network>`, naming the devices), and the
+  tool that builds such a file waits on it, so the file carries the current credential.
 
 ## A rotation moves the device and the record together {#rotate}
 
@@ -63,10 +64,7 @@ Rotation is one operation, run as a job that holds the device from start to fini
 6. **Persist** (`device_startup_config`). Read: the startup configuration, after the save.
    Sent: the device's own save. Recorded: the outcome, in the rotation record that job
    health reads. A rotation that is not persisted is a row until a later persist reads back
-   correctly.
-7. **The lab copies** (which lab, the lab sync, `startup_file`, `startup_applies`,
-   `startup_safe`) (lab integration). Read: the lab startup file. Sent: nothing to the
-   device. Recorded: the lab startup files. Each stage gates the next.
+   correctly. The commit in step 5 has already written the golden-committed event.
 
 A failure after step 5 never reverts the device: the rotation has happened and is recorded,
 and only a copy is behind. The result names that state and its next step.

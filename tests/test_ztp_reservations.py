@@ -452,7 +452,7 @@ class TestPostureRows:
 
     def test_it_is_in_health(self):
         from modules import job_health
-        out = job_health.health(images=[], settings=[], rotations=[], owner=[],
+        out = job_health.health(images=[], settings=[], rotations=[],
                                 ztp=[{"unit": "ztp-posture:subnet-255", "state": "d4_violated",
                                       "what": "", "detail": "", "max_age_minutes": 0}])
         assert "ztp-posture:subnet-255" in out["not_ok"]

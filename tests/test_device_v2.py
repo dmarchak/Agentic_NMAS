@@ -674,7 +674,8 @@ class TestTheShippedScripts:
         # +1 2026-10-10: credentials (Credentials › Profiles re-reads a profile saved elsewhere).
         # +1 2026-10-10: topology (P.11's map redraws on the reader's announcement).
         # +1 2026-10-11: dhcp (the DHCP page redraws on the DHCP reader's announcement, C529).
-        assert len(keys) == 38
+        # -1 2026-10-11: lab_startup (the lab-startup reader left the product, C663).
+        assert len(keys) == 37
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

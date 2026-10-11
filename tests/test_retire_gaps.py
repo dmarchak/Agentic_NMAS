@@ -69,7 +69,7 @@ class TestNetBoxStoredCredentials:
     def test_a_held_credential_is_masked_FIRST_when_writes_are_on(self, nb):
         p = RT.plan("Lab", "r5", "left management")
         assert p["ok"], p["refusals"]
-        assert _pending(p) == ["netbox_mask", "declare", "commit", "row"], _pending(p)
+        assert _pending(p) == ["netbox_mask", "commit", "row"], _pending(p)
         step = next(s["what"] for s in p["steps"] if s["key"] == "netbox_mask")
         assert "NetBox device 9" in step and "read back" in step
         assert COMMUNITY not in str(p), "the plan names the slot kinds, never a value"
@@ -95,7 +95,6 @@ class TestNetBoxStoredCredentials:
         assert out["ok"] is False and out["failed_at"] == "netbox_mask", out
         assert out["done"] == [] and "NetBox 500" in out["error"]
         assert world["R"].git(world["repo"], "rev-parse", "HEAD")[1] == head
-        assert not world["settings"]["clab_declared_unmapped"], "not declared either"
 
     def test_a_write_netbox_did_not_keep_stops_the_retirement(self, nb):
         nb["fake"].patch = lambda url, json=None, timeout=None: type(
@@ -339,7 +338,7 @@ def test_every_step_retire_can_do_has_words_in_the_result(nb):
     TestTheLegacyFile()._legacy(nb["world"], "hostname r5\nevent manager applet NMAS-HEARTBEAT\n")
     p = RT.plan("Lab", "r5", "left management")
     keys = {s["key"] for s in p["steps"]}
-    assert {"netbox_mask", "override", "declare", "commit", "legacy", "row"} <= keys
+    assert {"netbox_mask", "override", "commit", "legacy", "row"} <= keys
     assert keys <= set(RETIRE_STEP_WORDS)
     out = _retire(p)
     sent = retire_result(out, p)["targets"][0]["sent"]["lines"]

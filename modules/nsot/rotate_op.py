@@ -5,7 +5,7 @@ recorded and persisted, previewed and confirmed, run as a job.
 the other entry point): `plan()` does the preflight, including a LIVE read of
 the account's line; `rotate()` generates, stages before the push, pushes on a
 held session, verifies on a fresh login, reverts only on a failed verify, and
-records; `persist()` saves on the device and runs the boot-file chain. This
+records; `persist()` saves on the device and reads its startup back. This
 module runs the two as ONE operation, holding the device across both so no
 other operation lands between the record and the persist.
 
@@ -59,9 +59,8 @@ STEPS = (
      "the running configuration read, then one commit recording the new credential",
      ("post_capture", "golden_capture", "commit")),
     ("persist", "Persist",
-     "the device's own save read back, then the boot-file chain",
-     ("persisting", "device_startup_config", "clab_target", "clab_sync", "startup_file",
-      "startup_applies", "startup_safe")),
+     "the device's own save, and its startup configuration read back",
+     ("persisting", "device_startup_config")),
 )
 #: Steps the code takes off the path (a failed verify puts the old line back), drawn on the
 #: step they belong to.

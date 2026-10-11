@@ -134,15 +134,6 @@ ROW_KINDS = {
                                     "golden before changing it, then acknowledge what you found"),
     ("adjacencies", "error"): ("a list's intent could not be read for its adjacencies",
                                "fix the intent file the reason names"),
-    ("lab-startup", "moved"): ("a device moved since the baseline its lab file is built from",
-                               "Save All earns a new baseline"),
-    ("lab-startup", "differs"): ("a lab startup file is not what the sync builds",
-                                 "read the lab sync's job-health row"),
-    ("lab-startup", "not_built"): ("the sync builds no file for a device",
-                                   "Save All earns a baseline that holds it"),
-    ("lab-startup", "missing"): ("a managed device has no lab startup file", "check the sync's run"),
-    ("lab-startup", "unknown"): ("lab startup files could not be compared",
-                                 "check the lab host answers"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -234,13 +225,6 @@ CLEARS = {
     ("restarts", "unplanned"): (("acknowledge", "time"), "a person acknowledges it with a "
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
-    ("lab-startup", "moved"): (("resolves",), "an earned baseline holds the device as it is "
-                               "now"),
-    ("lab-startup", "differs"): (("resolves",), "the lab sync writes the file it builds"),
-    ("lab-startup", "not_built"): (("resolves",), "a baseline holds the device and the sync "
-                                   "builds its file"),
-    ("lab-startup", "missing"): (("resolves",), "the lab sync writes the file"),
-    ("lab-startup", "unknown"): (("resolves",), "the lab host answers the next read"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -2640,149 +2624,12 @@ def adjacency_source(cached=None) -> dict:
                     if settling else "")))
 
 
-def _moved_row(d: dict, name: str, base: str) -> dict:
-    """A device whose current golden has moved since the baseline its file is
-    built from: a redeploy returns it there (plan item 4's cross-check, from
-    the record)."""
-    m = d.get("since_baseline") or {}
-    lines = [f"`{l.strip()}`" for l in (m.get("only_golden") or [])[:3]] + \
-            [f"`{l.strip()}`" for l in (m.get("only_file") or [])[:3]]
-    return row(
-        source="lab-startup", kind="moved", key=f"moved:{d.get('list')}:{name}", level="warning",
-        what=f"A redeploy returns {name} to {base}",
-        devices=[name], operands={"list": d.get("list"), "file": d.get("file") or ""},
-        cause=(f"{name}'s current golden differs from its golden at {base} "
-               f"(+{m.get('only_golden_count', 0)} / -{m.get('only_file_count', 0)} lines"
-               + (": " + "; ".join(lines) if lines else "") + "), and the lab startup file "
-               f"is built from {base}"),
-        action={"label": "Save All earns a new baseline that carries what it runs now"})
-
-
-def lab_startup_source(cached=None) -> dict:
-    """A device whose lab startup file is not what its committed golden would
-    produce (the operator, 2026-10-01): a redeploy boots the file, so the
-    device would come back other than as recorded. One row per device, the
-    differing lines masked and a credential named by its slot; a file no
-    device owns is information, since a redeploy still boots it."""
-    from modules import reader_job
-
-    label = "Lab startup files"
-    started = time.time()
-    got = reader_job.read_cached("lab-startup") if cached is None else cached
-    doc = got.get("doc") or {}
-    good = doc.get("last_good") or {}
-    took = int((time.time() - started) * 1000)
-    if got["state"] != "ok" or not good:
-        why = (got.get("why") if got["state"] != "ok" else
-               "the reader has never stored a value; its last attempt: "
-               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
-        return source_result("lab-startup", label, read_at=started, took_ms=took,
-                             error=f"not read yet: {why}")
-    v = good.get("value") or {}
-    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
-    common = dict(read_at=started, took_ms=took, value_at=value_at,
-                  stale_after_seconds=promise, reader="lab-startup")
-    if not v.get("configured"):
-        return source_result("lab-startup", label, **common,
-                             checked="no lab host configured (clab_host): no lab file to compare")
-    rows = []
-    for d in v.get("devices") or []:
-        name, where = d["device"], d.get("file") or "its lab's configs directory"
-        if d.get("state") == "differs":
-            parts = []
-            if d.get("only_golden_count"):
-                parts.append(f"{d['only_golden_count']} line(s) the build has and the file "
-                             "lacks: " + "; ".join(f"`{l.strip()}`" for l in d["only_golden"][:5]))
-            if d.get("only_file_count"):
-                parts.append(f"{d['only_file_count']} line(s) the file has and the build "
-                             "lacks: " + "; ".join(f"`{l.strip()}`" for l in d["only_file"][:5]))
-            if d.get("credentials"):
-                parts.append("a credential differs in value: "
-                             + "; ".join(f"`{l.strip()}`" for l in d["credentials"]))
-            if d.get("reordered"):
-                parts.append("the same lines in another order")
-            base = d.get("baseline") or "the newest earned baseline"
-            rows.append(row(
-                source="lab-startup", kind="differs", key=f"differs:{d.get('list')}:{name}",
-                level="danger" if d.get("credentials") else "warning",
-                what=(f"{name}'s lab startup file is not what {base} builds"
-                      + (": a credential differs" if d.get("credentials") else "")),
-                devices=[name], operands={"list": d.get("list"), "file": where},
-                cause=(f"A redeploy boots {where}. The clab sync builds it from {base}, every "
-                       f"credential from {name}'s current golden, and the file holds something "
-                       "else: " + ". ".join(parts)
-                       + (". A redeploy would boot a credential the tool no longer holds"
-                          if d.get("credentials") else "")),
-                action={"label": ("Read the clab sync's job-health row: it has not run since "
-                                  "the change, or it refused. A baseline or credential changed "
-                                  "in the last 30 minutes is written by its next run")}))
-            moved = d.get("since_baseline") or {}
-            if moved.get("state") == "differs":
-                rows.append(_moved_row(d, name, base))
-            continue
-        if d.get("state") == "matches" and (d.get("since_baseline") or {}).get("state") == "differs":
-            rows.append(_moved_row(d, name, d.get("baseline") or "the newest earned baseline"))
-            continue
-        if d.get("state") == "not_built":
-            rows.append(row(
-                source="lab-startup", kind="not_built", key=f"not_built:{d.get('list')}:{name}", level="warning",
-                what=f"The clab sync builds no startup file for {name}",
-                devices=[name], operands={"list": d.get("list"), "file": where},
-                cause=d.get("why") or "the sync's source names no reason",
-                action={"label": "Save All earns a baseline that holds it, and the next clab "
-                                 "sync builds its file"}))
-            continue
-        if d.get("state") == "missing":
-            rows.append(row(
-                source="lab-startup", kind="missing", key=f"missing:{d.get('list')}:{name}", level="warning",
-                what=f"{name} has no lab startup file", devices=[name],
-                operands={"list": d.get("list"), "file": where},
-                cause=(f"{where} does not exist, so a redeploy boots {name} on the image's own "
-                       "defaults, without the credential the tool holds"),
-                action={"label": "Check the clab sync's run: it writes the file for every "
-                                 "device it maps"}))
-    unknown = [d for d in v.get("devices") or [] if d.get("state") == "unknown"]
-    if unknown:
-        rows.append(row(
-            source="lab-startup", kind="unknown", key="unknown", level="unknown",
-            what=f"{len(unknown)} device(s) whose lab startup file could not be compared",
-            devices=sorted({d["device"] for d in unknown}),
-            cause="; ".join(sorted({f"{d['device']}: {d.get('why') or '?'}" for d in unknown})),
-            action={"label": "Check the lab host answers SSH from Mercury (its address in "
-                             "Settings); the check reads it again every 10 minutes",
-                    "known": False}))
-    # A file no managed device owns (r5's, after its retirement) is a FACT, not
-    # something wrong, and there is nothing to do about it (the operator,
-    # 2026-10-02): it is said in this check's own finding, never as a row.
-    unowned = "; ".join(unowned_words(u) for u in v.get("unowned") or [])
-    counted = v.get("checked", 0)
-    return source_result(
-        "lab-startup", label, rows=rows, **common,
-        checked=(f"{counted} device(s) compared over {v.get('labs', 0)} lab(s), "
-                 f"{sum(1 for d in v.get('devices') or [] if d.get('state') == 'matches')} "
-                 "holding what the sync builds"
-                 + (f". Startup files no managed device owns (expected after a retirement; "
-                    f"nothing to do): {unowned}" if unowned else "")))
-
-
-def unowned_words(u: dict) -> str:
-    """A lab startup file no managed device owns, in one clause: whether the
-    lab's topology still boots it, from the topology, never guessed."""
-    node, by = u.get("node") or u["file"], u.get("declared_by")
-    if by:
-        return (f"{u['file']}, used by the topology ({', '.join(by)} declares node {node}), "
-                "owned by no managed device")
-    if by == []:
-        return f"{u['file']}, which nothing boots"
-    return f"{u['file']} (whether the topology still boots it was not read)"
-
-
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, integrations_source, ci_source, redaction_source,
            reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
-           host_steps_source, adjacency_source, lab_startup_source, restart_source,
+           host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
            records_source)
 
@@ -2814,7 +2661,6 @@ SOURCE_KEYS = {
     "pushed_source": ("app_version",),
     "host_steps_source": ("app_version",),
     "adjacency_source": ("adjacencies",),
-    "lab_startup_source": ("lab_startup",),
     "restart_source": ("restarts",),
     # A hold left by a process that ended is found at the next read; the page's catch-up on
     # reconnect (the process that ended was this app) is what re-reads it.

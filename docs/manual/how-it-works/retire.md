@@ -6,7 +6,7 @@ destroy the only stored copy of its credential. Retiring sends nothing to the de
 changes the tool's own records, and NetBox's stored copy of the device's credentials where
 the tool wrote them.
 
-![Retiring: nothing is sent to the device; the tool masks NetBox's stored credentials first, clears the credential override, declares the lab startup file unmapped, commits the removal of the golden and intent (history keeps both), deletes the legacy file if it survives elsewhere, and deletes the inventory row last, only against a break-glass export holding the current credential.](diagrams/retire.svg)
+![Retiring: nothing is sent to the device; the tool masks NetBox's stored credentials first, clears the credential override, commits the removal of the golden and intent (history keeps both), deletes the legacy file if it survives elsewhere, and deletes the inventory row last, only against a break-glass export holding the current credential.](diagrams/retire.svg)
 
 ## How you start it {#start}
 
@@ -66,25 +66,18 @@ finished by running it again:
 2. **Clear the credential override** (`override`). Read: the credential store. Sent:
    nothing. Recorded: the device's override removed from the credential store, if it had
    one.
-3. **Declare its lab startup file unmapped** (`declare`) (lab integration). Read: the
-   settings. Sent: nothing. Recorded: a setting naming the device's startup file as
-   deliberately unmapped, with the lab, your reason, you and the time. The lab's sync runs on
-   the lab host and asks the tool over HTTP for its map of devices to startup files; once
-   the device has left the manifest it is not in that map, so its startup file is no longer
-   written, and the map's answer carries the declaration, which the sync's reconcile reports
-   for the leftover file instead of a gap. Without a lab nothing reads it.
-4. **One commit** (`commit`). Read: the repository. Sent: nothing. Recorded: `git rm` of the
+3. **One commit** (`commit`). Read: the repository. Sent: nothing. Recorded: `git rm` of the
    device's `host_vars/<device>.yml` and `golden/<device>.cfg`, its identity released from
    the manifest (NetBox kept, said), committed as you with `Retired-Device:`, `Reason:` and
    one `Not-Done:` trailer per thing deliberately kept. Only those paths are staged. Both
    files stay in history. The post-commit hooks then push the commit to the remote. A failed
    commit puts the tree back.
-5. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
+4. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
    repository. Sent: nothing. Recorded: the device's legacy file deleted, only when its
    content survives in the repository (the migration's verbatim backup or an equivalent
    committed golden), and the step says where. A file whose lines exist nowhere else is
    kept and named.
-6. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
+5. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
    Recorded: the device's row deleted from the list's inventory. LAST, and only against a
    break-glass record holding this device's current credential, because the row is the
    only stored copy. Deleting it also tells the app's Prometheus target keeper the
@@ -103,7 +96,6 @@ for an omission:
 - A template approval is not withdrawn: an approval is of the template, never of its
   devices.
 - What still watches it is said in two kinds, below.
-- Its lab startup file freezes at its last sync (lab integration).
 - Its running configuration is not changed, and its backups are kept.
 - A session the app has pooled to it is closed by the app's idle reaper within two minutes,
   not by retiring.

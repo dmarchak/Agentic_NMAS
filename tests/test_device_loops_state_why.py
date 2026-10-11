@@ -98,14 +98,10 @@ SURVEYED = {
         "sequential", "lists share NetBox objects as devices do, created on first "
                       "encounter, so concurrent lists would race to create them (C199's "
                       "decision)"),
-    ("scripts/nmas-check-startup-applies", "main"): (
-        "sequential", "every read is an ssh to ONE host, the lab VM, not to the devices: a "
-                      "burst of them meets sshd's MaxStartups (10 unauthenticated by "
-                      "default), so serial is the safe default for a single target"),
     ("lab/clab-sync/clab-startup-sync.sh", "reconcile and diff loops"): (
-        "sequential", "reads over ssh to ONE host, the lab VM (MaxStartups, as "
-                      "nmas-check-startup-applies), before a single commit; a person reads "
-                      "the diff in the order it prints"),
+        "sequential", "reads over ssh to ONE host, the lab VM, not to the devices: a burst "
+                      "of them meets sshd's MaxStartups (10 unauthenticated by default), "
+                      "before a single commit; a person reads the diff in the order it prints"),
     ("scripts/nmas-netbox-repair-addresses", "walk / plan / apply"): (
         "sequential", "not a loop over network devices: one NetBox's records, a one-off "
                       "repair run by hand whose writes read back one by one"),

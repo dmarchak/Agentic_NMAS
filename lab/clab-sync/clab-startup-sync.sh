@@ -21,7 +21,6 @@
 #     ./clab-startup-sync.sh --no-deploy    convert and diff only
 #     ./clab-startup-sync.sh --yes          skip the prompt (for cron)
 #     CLAB=user@host ./clab-startup-sync.sh
-#     NMAS_URL=http://<nmas-host>:5000 ./clab-startup-sync.sh
 #
 # WHEN IT RUNS (C553, C663): a baseline earned or a golden committed starts it at once. The
 #   app writes data/events/baseline-earned/<network> on every commit that earns a baseline,
@@ -193,7 +192,6 @@ STAGE="${STAGE:-/tmp/clab-startup-staged}"
 # The latest run's full list of lines the sanitiser removed (report_removed): kept across
 # reboots, owner-only (it holds configuration), replaced whole by each run.
 REMOVED_LIST="${REMOVED_LIST:-${XDG_STATE_HOME:-$HOME/.local/state}/clab-startup-sync/removed-last.txt}"
-NMAS_URL="${NMAS_URL:-}"
 # THE NETWORK THIS LAB BOOTS, NAMED, NEVER THE INSTALLATION'S ACTIVE LIST (C482).
 #
 # Measured 2026-10-05: with a second network made active on today's page, both helpers
@@ -216,7 +214,7 @@ CLAB_LIST="${CLAB_LIST:-Default}"
 # This script is lab tooling (C663: lab/clab-sync/ in the repository, out of the product) and
 # is deployed as a SYMLINK, so its real path is the checkout: its own helper (clab-targets,
 # reading the lab's map) is its sibling, and the product's generic helpers (the startup
-# source, nmas-host, the job-finished notice) are in the checkout's scripts/. One copy: the
+# source, nmas-host) are in the checkout's scripts/. One copy: the
 # deployed file had once diverged from the repo's.
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 HERE="$(dirname "$SELF")"
@@ -251,7 +249,7 @@ for helper in "$TARGETS" "$SOURCE" "$SCRIPTS/nmas-host"; do
   fi
 done
 # THE HOSTS ARE NOT IN THIS FILE (the operator, 2026-09-29: the repository
-# is public). An unset NMAS_URL or CLAB is read from data/lab_hosts.json
+# is public). An unset CLAB is read from data/lab_hosts.json
 # through nmas-host, beside this script, and a file that is missing or
 # unreadable REFUSES naming it: a guessed address is how a config lands on
 # the wrong machine. Not in a command substitution, so `exit` leaves the job.
@@ -266,23 +264,16 @@ lab_value() {  # $1 host, $2 field, $3 the variable it stands in for -> LAB_VALU
   fi
   LAB_VALUE="$out"
 }
-if [ -z "$NMAS_URL" ]; then
-  lab_value nmas lan NMAS_URL
-  NMAS_URL="http://$LAB_VALUE:5000"
-fi
 
 # Each device's source, built from the newest earned baseline (plan item 4).
 SRCDIR="$(mktemp -d)"
 # What each lab holds NOW, read once per device, compared here (C313).
 CUR="$(mktemp -d)"
-# The app re-reads what this job writes as soon as it ends, success or not
-# (the operator, 2026-10-01: the lab-startup reader read two minutes before a
-# sync and its rows stood for ten). Its unit lives outside the repository, so
-# the job tells the app itself; the timer's own result is unaffected.
 finished() {
+  # Only the clean-up. The app was told this sync finished, for its lab-startup reader; that
+  # reader and the sync's job-health row left the product (C663), and the app now refuses a
+  # job it does not declare.
   rm -rf "$CUR" "$SRCDIR"
-  NMAS_URL="$NMAS_URL" "$SCRIPTS/nmas-job-finished" clab-sync \
-    || echo "(the app could not be told this sync finished; its readers catch up on their own schedule)"
 }
 trap finished EXIT
 

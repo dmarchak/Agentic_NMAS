@@ -3,19 +3,15 @@
 OPEN_FINDINGS **C11**. ``POST /device/<ip>/delete`` removes the CSV row and
 nothing else, and measured on r5 that leaves the device half-managed in five
 places: still bound to its template (every approval keeps validating against
-it), still in the clab sync map (reported INCOMPLETE with a false reason, its
-file unmapped), still given a heartbeat rule, and its intent and golden in
-the working tree. It also destroys the only stored copy of the device's
+it), still given a heartbeat rule, and its intent and golden in the working
+tree. It also destroys the only stored copy of the device's
 credential.
 
 **What retire does**, in order, each step skipped if already done so a run
 that stops part way is finished by running it again:
 
 1. clears the device's credential override, if it has one;
-2. declares its startup config DELIBERATELY UNMAPPED, with who and why
-   (``clab_declared_unmapped``), so ``--reconcile`` names a decision instead
-   of reporting a gap for ever;
-3. removes ``host_vars/<h>.yml`` and ``golden/<h>.cfg`` and releases the
+2. removes ``host_vars/<h>.yml`` and ``golden/<h>.cfg`` and releases the
    identity in ONE commit, so history keeps both and the tree does not.
    Template approvals are NOT withdrawn: scheme 3 approves the template,
    never its devices (P.5), so the plan says so rather than asking for a
@@ -27,11 +23,11 @@ that stops part way is finished by running it again:
    `scripts/nmas-netbox-mask-context` (`modules/netbox_context_mask.py`),
    read back after the write. It is the first step, so a failed mask stops
    the retirement with nothing else done;
-4. after the commit, deletes the device's file from the deprecated `golden_configs/` store
+3. after the commit, deletes the device's file from the deprecated `golden_configs/` store
    (C176), but only when its content survives in the repository (the
    migration's verbatim backup or an equivalent committed golden), and says
    where; a file whose lines exist nowhere else is kept and named;
-5. deletes the CSV row, LAST, and only against a break-glass record that
+4. deletes the CSV row, LAST, and only against a break-glass record that
    holds this device's CURRENT credential.
 
 The steps were modelled on r5's retirement (`3592113`, 2026-09-25, the
@@ -57,9 +53,8 @@ Either way an export taken before the last rotation does not count.
 
 **What retire does NOT do, stated every time**, because each is correct and
 each looks like an omission unless it is named: the NetBox device stays
-(NetBox records what exists, not what NMAS manages); the
-startup config freezes at its last sync; the device's running configuration
-is not changed; backups are kept; and a session the app has pooled is not
+(NetBox records what exists, not what NMAS manages); the device's running
+configuration is not changed; backups are kept; and a session the app has pooled is not
 closed by a command that runs outside it. (Oxidized's polling was named here until
 Oxidized was retired, Phase 3, 2026-10-08.)
 
@@ -137,9 +132,8 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     """Everything retire would do, everything it will not, and why it would
     refuse. Reads only."""
     from modules.device import load_saved_devices
-    from modules.nsot import approval, credential_rotation, manifest, repo as R
+    from modules.nsot import approval, manifest, repo as R
     from modules.nsot import templates_repo
-    from modules.settings_schema import get_setting
 
     out = {"ok": True, "list_name": list_name, "hostname": hostname,
            "reason": reason, "refusals": [], "refused_by": {}, "steps": [],
@@ -193,11 +187,6 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         refuse("credentials", f"the credential store could not be checked: {exc}")
         has_override = False
 
-    target = credential_rotation.clab_target_for(list_name, hostname)
-    startup = os.path.join(target.get("configs_dir") or "?", f"{hostname}.cfg")
-    declared = ((get_setting("clab_declared_unmapped") or {})
-                .get(list_name) or {}).get(hostname)
-
     # Scheme 3 (P.5) approves the TEMPLATE, never its devices: releasing one
     # changes no approval. This listed "this withdraws the approval ...
     # re-approve it" until 2026-09-28, which was true for r5's retirement
@@ -220,8 +209,6 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     step("override", f"clear the credential override for {ip}"
          if has_override else "no credential override to clear",
          not has_override)
-    step("declare", f"declare {startup} deliberately unmapped: {reason}",
-         bool(declared))
     step("commit", "one commit: remove " + (", ".join(files) or "(nothing)")
          + (f" and release identity {identity}" if identity else "")
          + " -- history keeps both",
@@ -272,8 +259,6 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
                         for tpl in still_approved]
     out["not_doing"] += [f"{w['what']}: {w['how']}" for w in watchers]
     out["not_doing"] += [
-        f"its startup config {startup} freezes at its last sync, declared "
-        "deliberately unmapped",
         "its running configuration is not changed",
         "its backups are kept",
         "a session the app has pooled to it is not closed by this command, "
@@ -295,7 +280,6 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         out["advisories"].append(mask["advisory"])
     out["identity"], out["ip"], out["files"] = identity, ip, files
     out["legacy_path"] = legacy.get("path", "")
-    out["startup"], out["lab"] = startup, target.get("lab", "")
     out["breakglass_log"] = (breakglass_logged(list_name, row) if row is not None
                              else {"ok": True, "why": "", "export": None,
                                    "statement": "no CSV row: no credential to protect"})
@@ -679,7 +663,6 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
     from modules import credentials
     from modules.device import delete_device, load_saved_devices
     from modules.nsot import manifest, repo as R
-    from modules.settings_schema import get_setting, write_settings
 
     if not actor:
         return {"ok": False, "error": "an actor is required (who is accountable)"}
@@ -774,23 +757,6 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             done.append("override")
         except Exception as exc:               # noqa: BLE001
             return fail("override", exc)
-
-    if "declare" in pending:
-        from modules.config import settings_lock
-
-        # Read and written under ONE hold of the settings lock (R17): read outside it, a
-        # declaration made meanwhile for another list or device was put back without it.
-        with settings_lock():
-            current = dict(get_setting("clab_declared_unmapped") or {})
-            per_list = dict(current.get(list_name) or {})
-            per_list[hostname] = {"lab": p["lab"], "reason": reason, "by": actor,
-                                  "at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                      time.gmtime())}
-            current[list_name] = per_list
-            result = write_settings({"clab_declared_unmapped": current}, actor=actor)
-        if not result.get("ok"):
-            return fail("declare", result.get("error"))
-        done.append("declare")
 
     if "commit" in pending:
         # The removal, the manifest release, the commit and any undo under the repository

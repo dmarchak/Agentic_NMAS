@@ -193,7 +193,7 @@ class TestTheReseedsBlastRadiusIsEnumerable:
 
         assert len(GUARD_GATING_EMPTY_DEFAULTS) >= 3, \
             "the list is the only record of what a reseed silently takes"
-        assert "clab_host" in GUARD_GATING_EMPTY_DEFAULTS
+        assert "syslog_host" in GUARD_GATING_EMPTY_DEFAULTS
 
     def test_each_is_declared_and_each_default_really_is_empty(self):
         """If a default stops being empty, the key stops being invisible and
@@ -213,8 +213,9 @@ class TestTheReseedsBlastRadiusIsEnumerable:
         from modules.settings_schema import (DEFAULTS,
                                              GUARD_GATING_EMPTY_DEFAULTS)
 
-        assert "clab_configs_dir" not in GUARD_GATING_EMPTY_DEFAULTS
-        assert DEFAULTS["clab_configs_dir"] != ""
+        # `clab_configs_dir` was the example until it left with the lab (C663).
+        assert "grafana_device_variable" not in GUARD_GATING_EMPTY_DEFAULTS
+        assert DEFAULTS["grafana_device_variable"] != ""
 
     def test_the_diff_script_cannot_detect_these(self):
         """Stated as a test because it is the reason the list exists, and
@@ -266,7 +267,7 @@ class TestTheEmptyDefaultGuardListIsDerivedNotRemembered:
         assert len(found) >= 3, (
             f"the guard scan found {len(found)} — it is matching nothing, "
             "which is indistinguishable from a codebase with no such guards")
-        assert "clab_host" in found, \
+        assert "kea_ztp_fragment" in found, \
             "the known instance is not being found, so the scan is broken"
         assert all(found.values()), "every hit must name where it was found"
 

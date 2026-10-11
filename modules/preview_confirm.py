@@ -3044,12 +3044,14 @@ def _rotate_state_action(state: str, name: str, list_name: str, failed_stage: st
     """The ONE action for each state a rotation can reach, in words."""
     from modules.nsot import credential_rotation as cr
 
-    if state == cr.ROTATED_UNVERIFIED and failed_stage == "device_startup_config":
-        # C541 (C50): the device's own startup config did not carry the credential; its running
-        # config holds the only working one. Its remedy is its own save, never the lab chain.
-        return (f"Do not reload it: {name}'s startup config did not take the new credential, so "
-                "its running config holds the only working one. Persist it again: Persist saves "
-                "the running config to startup and reads it back.")
+    if state == cr.ROTATED_UNVERIFIED:
+        # C541: the device's own startup config was not shown to carry the credential; its
+        # running config holds the only working one. Its remedy is its own save.
+        return (f"Do not reload it: {name}'s startup config was not shown to carry the new "
+                "credential"
+                + (f" (persistence failed at {failed_stage})" if failed_stage else "")
+                + ", so its running config holds the only working one. Persist it again: "
+                "Persist saves the running config to startup and reads it back.")
     return {
         cr.ROTATED_PERSISTED: ("Export the break-glass record again: the record you keep holds "
                                "the credential this rotation replaced."),
@@ -3059,8 +3061,6 @@ def _rotate_state_action(state: str, name: str, list_name: str, failed_stage: st
                                      "boot the old credential. Persist saves the running config "
                                      "to startup and reads it back; then export the break-glass "
                                      "record again."),
-        cr.ROTATED_UNVERIFIED: (f"Do not reload it. Fix the failed stage, then "
-                                f"nmas-persist-credential {name} --list {list_name}."),
         cr.ROTATED_NOT_RECORDED: (f"Do not rotate again or reload it. Run "
                                   f"nmas-rotation-recover {name} --list {list_name}."),
         cr.REVERTED: "Nothing to do: the device is unchanged. Read why the verify failed.",
@@ -3099,12 +3099,11 @@ def rotate_result(result: dict, plan: dict) -> dict:
     verify = next((s for s in steps if s.get("name") == cr.VERIFY), None)
     level = {cr.ROTATED_PERSISTED: "success",
              cr.ROTATED_PENDING_PERSIST: "partial"}.get(state, "failed")
-    # C541: where persistence failed decides the remedy: the DEVICE's own startup config is
-    # Persist again; a lab boot-file chain stage is that chain's command (C50).
+    # C541: the remedy for a persistence not attempted or failed is the device's own save,
+    # Persist again. Since C663 that save is the whole persistence, whatever stage failed.
     failed_stage = next((s.get("name") for s in result.get("persistence") or []
                          if not s.get("ok")), "")
-    own_save = (state == cr.ROTATED_PENDING_PERSIST
-                or (state == cr.ROTATED_UNVERIFIED and failed_stage == "device_startup_config"))
+    own_save = state in (cr.ROTATED_PENDING_PERSIST, cr.ROTATED_UNVERIFIED)
     action = _rotate_state_action(state, name, list_name, failed_stage)
     did_not = []
     for stage in result.get("persistence") or []:

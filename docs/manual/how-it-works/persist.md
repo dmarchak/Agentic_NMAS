@@ -2,12 +2,12 @@
 
 A device boots from its startup configuration, not from what it runs now. Persist saves the running configuration to startup on the device and proves it was saved, so a reload brings the device back as it is, with the credential the tool holds. It changes no configuration and writes nothing in the tool except a record of what the device answered.
 
-![Persist from the device page: the preview reads only the tool's own records and sends nothing; the apply holds the device, sends write memory, reads the startup and running configurations back, and records the outcome where job health reads it. The host chain that a rotation runs adds the lab's startup-file stages after the same save.](diagrams/persist.svg)
+![Persist from the device page: the preview reads only the tool's own records and sends nothing; the apply holds the device, sends write memory, reads the startup and running configurations back, and records the outcome where job health reads it. A rotation's persistence is the same save and read-back.](diagrams/persist.svg)
 
-There are two paths that persist a device, and they differ in what they touch:
+There are two paths that persist a device, and they do the same thing to it:
 
 - **Persist on the device's page** (Actions > Persist on the redesigned page, its card in place of the tab; Persist… on today's page), and `nmas-persist-native` on the host: the device's own save and its read-back, and nothing else. The two pages call the same plan and apply (`/v2/device/<name>/persist` and its confirm, `/persist/preview` and `/persist/apply`). This is the page's subject.
-- **The host chain** (`credential_rotation.persist()`): run after every rotation, from the device's page or `nmas-rotate-credential`, and by `nmas-persist-credential` to finish one. It does the same save first, then updates the lab host's startup file. Those stages are a lab integration; see [the host chain](#the-host-chain).
+- **A rotation's persistence** (`credential_rotation.persist()`): run after every rotation, from the device's page or `nmas-rotate-credential`, and by `nmas-persist-credential` to finish one. It is the same save and read-back; see [after a rotation](#the-host-chain).
 
 ## The preview
 
@@ -23,25 +23,18 @@ The apply holds the device, so no other operation runs on it meanwhile, and the 
 
 `nmas-persist-native <device> --list <list>` runs the same three steps from the host shell, holding the device the same way, and records the row as `via: nmas-persist-native`.
 
-## The host chain {#the-host-chain}
+## After a rotation {#the-host-chain}
 
-`credential_rotation.persist()` is what a rotation runs after it records the new password, and what `nmas-persist-credential` runs to finish a rotation whose persistence stopped. `nmas-persist-credential` first checks that the inventory's credential still signs in (a fresh login) and that committed intent carries the device's type 9 secret, and refuses otherwise. Each stage gates the next, and every stage may find its work already done:
+`credential_rotation.persist()` is what a rotation runs after it records the new password, and what `nmas-persist-credential` runs to finish a rotation whose persistence stopped. `nmas-persist-credential` first checks that the inventory's credential still signs in (a fresh login) and that committed intent carries the device's type 9 secret, and refuses otherwise. It has one stage, which may find its work already done:
 
-1. **The device's own save** (`device_startup_config`). Read, Sent and Recorded: as steps 1 and 2 above. Done first because a reload boots the device's own startup configuration, whatever happens to the lab's copy.
-2. **Which lab** (lab integration). Read: the device's lab from the lab map (host, startup-file folder, launch script). Sent: nothing. Recorded: nothing. A lab that names no folder or no launch script is refused rather than reading another lab's.
-3. **The lab sync** (lab integration). Read: nothing directly. Sent: nothing to the device. Recorded: the sync script runs, and writes each lab device's startup file on the lab host from the list's newest earned baseline, with every credential taken from the current golden (which the rotation's commit just updated).
-4. **The new hash is in the file** (`startup_file`, lab integration). Read: a search of the device's startup file on the lab host for the new hash, over SSH. Sent: nothing. Recorded: nothing.
-5. **The file would apply** (`startup_applies`, lab integration). Read: the lab's launch script, for the skip that stops the emulator injecting its own user ahead of the file. Sent: nothing. Recorded: nothing. A file can carry the right hash and still not be what the device ends up holding.
-6. **The checker's verdict** (`startup_safe`, lab integration). Read: the startup file's account line against the device's current golden, and the applicability again. Sent: nothing. Recorded: the chain's row in the rotation record, state rotated and persisted only when this reads SAFE. It is the same judgement as `nmas-check-startup-applies`, so the two cannot disagree.
+1. **The device's own save** (`device_startup_config`). Read, Sent and Recorded: as steps 1 and 2 above, and the rotation record's row says rotated and persisted only when the read-back matched. A reload boots the device's own startup configuration, so that is what is proved.
 
-The chain asks nothing of Oxidized: its router list, reload and fetch stages went with Oxidized's retirement (2026-10-08). The rotation's own commit is the record of the new credential.
-
-On an installation without the lab, stage 1 still saves the device, and stage 2 is refused (no lab names the device), so a rotation ends "rotated, persistence unverified" and job health keeps the device in front of you. Persist… on the device's page is then the way to record the device's own save.
+The rotation's own commit is the record of the new credential, and it writes the *golden committed* event (`<data>/events/golden-committed/<network>`, naming the devices). Where a device boots from a file built elsewhere, the tool that builds it waits on that event, so the file carries the new credential; Mercury itself writes no such file. (The chain once had more stages: Oxidized's, gone with Oxidized on 2026-10-08, and a lab's startup-file stages, gone from the product on 2026-10-11.)
 
 ## What persist does not do
 
 - It changes no configuration: the save carries the running configuration exactly as it is, including anything not yet recorded as a golden.
 - It rotates no credential.
-- From the device's page, it does not write the lab host's startup file; the host chain above does.
+- It writes no boot file anywhere but the device itself.
 - It commits no golden: the running configuration is not captured into the record.
 - Nothing re-reads the device's startup configuration until the hourly startup check runs; that check is what notices a later change.

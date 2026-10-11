@@ -20,7 +20,7 @@ from modules import settings_schema as ss
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KEY = "yang_push_script"
 GUARDS = {KEY: ["the rotation's consumer warning"],
-          "clab_host": ["verify_startup_file"]}
+          "syslog_host": ["onboarding's syslog block"]}
 
 
 @pytest.fixture
@@ -74,7 +74,7 @@ class TestJobHealthTellsTheTwoApart:
         row = _rows(store)[f"setting:{KEY}"]
         assert row["state"] == "not_applicable"
         assert "operator" in row["detail"] and "script retired" in row["detail"]
-        assert _rows(store)["setting:clab_host"]["state"] == "unset_guard"
+        assert _rows(store)["setting:syslog_host"]["state"] == "unset_guard"
 
     def test_set_and_declared_is_a_contradiction(self, store):
         ss.declare_not_applicable(KEY, "me", "retired")
@@ -85,7 +85,7 @@ class TestJobHealthTellsTheTwoApart:
         rows = [{"unit": "setting:a", "state": "not_applicable", "detail": ""},
                 {"unit": "setting:b", "state": "contradiction", "detail": ""}]
         h = J.health(0, run=lambda cmd: (1, ""), images=[], settings=rows,
-                     rotations=[], owner=[])
+                     rotations=[])
         assert "setting:a" not in h["not_ok"] and "setting:b" in h["not_ok"]
         assert "declared not applicable" in h["headline"]
 

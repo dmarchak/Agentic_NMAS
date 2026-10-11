@@ -68,25 +68,32 @@ class TestTheRoute:
         assert again.status_code == 200 and again.get_json()["started"] is False
 
 
-class TestTheSyncWakesTheReaderOfWhatItWrote:
+class TestAJobWakesTheReaderOfWhatItWrote:
     """The operator, 2026-10-01: the lab-startup reader read at 00:00:16, the
     clab sync rewrote the files at 00:02, and the rows stood for ten minutes.
-    The sync tells the app when it ends (its unit lives outside this
-    repository), and the route reads lab-startup with job health."""
+    A job that writes a reader's source wakes that reader with job health.
+    Both left the product with the lab (C663), so `WAKES` is empty and the
+    mechanism is shown here with a planted entry."""
 
-    def test_clab_sync_finishing_reads_lab_startup_now(self, monkeypatch):
-        import modules.readers.lab_startup  # noqa: F401 (registers the reader)
+    def test_a_job_with_a_declared_wake_reads_that_reader_now(self, monkeypatch):
+        from routes import jobs as jobs_route
+
         calls = []
         monkeypatch.setattr(reader_job, "running", lambda name: True)
+        monkeypatch.setattr(jobs_route, "WAKES", {"nmas-startup-check": ("job-health",)})
 
         def request_run(reader, by, announce=None, kind="request"):
             calls.append((reader.name, by, kind))
             return {"run": "r1", "started": True}
         monkeypatch.setattr(reader_job, "request_run", request_run)
-        r = _client().post("/jobs/finished", json={"unit": "clab-sync"})
-        assert r.status_code == 202 and r.get_json()["woke"] == ["lab-startup"]
-        assert calls == [("job-health", "clab-sync", "job_finished"),
-                         ("lab-startup", "clab-sync", "job_finished")]
+        r = _client().post("/jobs/finished", json={"unit": "nmas-startup-check"})
+        assert r.status_code == 202 and r.get_json()["woke"] == ["job-health"]
+        assert calls == [("job-health", "nmas-startup-check", "job_finished")] * 2
+
+    def test_no_job_wakes_another_reader_today(self):
+        from routes import jobs as jobs_route
+
+        assert jobs_route.WAKES == {}
 
     def test_another_job_wakes_only_job_health(self, monkeypatch):
         calls = []
@@ -97,11 +104,15 @@ class TestTheSyncWakesTheReaderOfWhatItWrote:
         _client().post("/jobs/finished", json={"unit": "nmas-startup-check"})
         assert calls == ["job-health"]
 
-    def test_the_sync_sends_it_on_every_exit(self):
+    def test_the_lab_sync_no_longer_tells_the_app(self):
+        """The app refuses a job it does not declare, and the lab's sync is not one (C663):
+        its exit trap only cleans up."""
         src = open(os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh"), encoding="utf-8").read()
         body = src[src.index("finished() {"):src.index("trap finished EXIT")]
-        assert '"$SCRIPTS/nmas-job-finished" clab-sync' in body
+        assert "nmas-job-finished" not in src
+        assert 'rm -rf "$CUR" "$SRCDIR"' in body
         assert re.search(r"^trap finished EXIT$", src, re.M)
+        assert "clab-sync" not in {j["unit"] for j in job_health.JOBS}
 
 
 class TestTheRunRecordsItsCause:
@@ -200,9 +211,9 @@ class TestEveryJobUnitWakesTheReader:
             unit_section = text.split("[Service]")[0]
             assert re.search(r"^OnSuccess=nmas-job-finished@%N\.service$", unit_section, re.M), u
             assert re.search(r"^OnFailure=nmas-job-finished@%N\.service$", unit_section, re.M), u
-        # Named, so the gap is a decision: clab-sync's unit lives on the host,
-        # outside this repository, and is read at the reader's schedule.
-        assert sorted(declared - here) == ["clab-sync"]
+        # Every declared job's unit is here. The one that was not, clab-sync's (on the host,
+        # outside this repository), left job health with the lab (C663).
+        assert sorted(declared - here) == []
 
     def test_the_sender_unit_runs_the_script_with_the_instance(self):
         text = _unit("nmas-job-finished@.service")

@@ -70,12 +70,11 @@ class TestThePreview:
         _export(screen)
         p = _preview(screen)
         lines = p["targets"][0]["program"]["lines"]
-        assert any(l.startswith("declare ") for l in lines)
         assert any(l.startswith("one commit: remove host_vars/r5.yml, golden/r5.cfg") for l in lines)
         assert lines[-1].startswith("delete the CSV row"), "the row goes last"
         said = " ".join(i["text"] for i in p["what_not"]["items"])
         for claim in ("NetBox device 9 is KEPT",
-                      "freezes at its last sync", "running configuration is not changed",
+                      "running configuration is not changed",
                       "backups are kept", "is not withdrawn", "Advisory: its golden shows the "
                       "NMAS-HEARTBEAT applet"):
             assert claim in said, claim

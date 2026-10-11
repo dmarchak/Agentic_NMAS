@@ -254,38 +254,48 @@ class TestTheUnitTemplates:
 
 
 class TestTheSanitiserReadsTheHostsFile:
-    """oxidized-to-config.sh's host defaults, EXECUTED under bash: an unset
-    NMAS_URL is read through nmas-host, and a missing file refuses (exit 2,
-    the script's could-not-run code) naming it."""
+    """The lab sync's host defaults, EXECUTED under bash: an unset CLAB is read through
+    nmas-host, and a missing file refuses (exit 2, the script's could-not-run code) naming it.
+    (It read NMAS_URL the same way until C663: the sync no longer tells the app anything.)"""
 
     def _block(self):
-        src = open(os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh"), encoding="utf-8").read()
+        src = open(os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh"),
+                   encoding="utf-8").read()
         start = src.index("lab_value() {")
-        end = src.index('  NMAS_URL="http://$LAB_VALUE:5000"\nfi\n') + len('  NMAS_URL="http://$LAB_VALUE:5000"\nfi\n')
+        end = src.index('  LAB_VALUE="$out"\n}\n') + len('  LAB_VALUE="$out"\n}\n')
         return src[start:end]
 
     def _run(self, env):
-        script = (f'SCRIPTS={os.path.join(ROOT, "scripts")!r}\nNMAS_URL="${{NMAS_URL:-}}"\n'
-                  + self._block() + '\necho "URL=$NMAS_URL"\n')
+        script = (f'SCRIPTS={os.path.join(ROOT, "scripts")!r}\nCLAB="${{CLAB:-}}"\n'
+                  + self._block()
+                  + 'if [ -z "$CLAB" ]; then\n'
+                    '  lab_value clab user CLAB; u="$LAB_VALUE"\n'
+                    '  lab_value clab lan CLAB; CLAB="$u@$LAB_VALUE"\nfi\n'
+                    'echo "CLAB=$CLAB"\n')
         return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
                               env={**os.environ, **env}, timeout=30)
 
-    def test_an_unset_url_is_read_from_the_file(self, _hosts_file):
+    def test_the_script_reads_the_lab_host_the_way_this_test_does(self):
+        src = open(os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh"),
+                   encoding="utf-8").read()
+        assert ('  lab_value clab user CLAB; clab_user="$LAB_VALUE"\n'
+                '  lab_value clab lan CLAB; CLAB="$clab_user@$LAB_VALUE"\n') in src
+
+    def test_an_unset_host_is_read_from_the_file(self, _hosts_file):
         out = self._run({H.HOSTS_FILE_ENV: str(_hosts_file)})
-        assert out.returncode == 0 and "URL=http://192.0.2.11:5000" in out.stdout, out
+        assert out.returncode == 0 and "CLAB=op@192.0.2.10" in out.stdout, out
 
     def test_a_missing_file_refuses_naming_it(self, tmp_path):
         out = self._run({H.HOSTS_FILE_ENV: str(tmp_path / "absent.json")})
-        assert out.returncode == 2 and "REFUSED - NMAS_URL is not set" in out.stdout
+        assert out.returncode == 2 and "REFUSED - CLAB is not set" in out.stdout
         assert "absent.json does not exist" in out.stdout
-        # Anchored: the refusal itself says "set NMAS_URL=", so a bare search
-        # for "URL=" matches the sentence explaining the refusal.
-        assert not [l for l in out.stdout.splitlines() if l.startswith("URL=")]
+        # Anchored: the refusal itself says "set CLAB=", so a bare search matches it.
+        assert not [l for l in out.stdout.splitlines() if l.startswith("CLAB=")]
 
-    def test_an_explicit_url_wins_and_reads_nothing(self, tmp_path):
+    def test_an_explicit_host_wins_and_reads_nothing(self, tmp_path):
         out = self._run({H.HOSTS_FILE_ENV: str(tmp_path / "absent.json"),
-                         "NMAS_URL": "http://192.0.2.99:5000"})
-        assert out.returncode == 0 and "URL=http://192.0.2.99:5000" in out.stdout
+                         "CLAB": "op@192.0.2.99"})
+        assert out.returncode == 0 and "CLAB=op@192.0.2.99" in out.stdout
 
 
 class TestItReadsTheSuitesStoreNotTheCheckouts:

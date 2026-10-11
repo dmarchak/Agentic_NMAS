@@ -79,7 +79,6 @@ def _keys_of(operation):
 PAIRS = [
     ("golden.capture_apply", "baseline-usability"),        # Save All earns a baseline
     ("device_v2.capture_confirm", "baseline-usability"),
-    ("golden.capture_apply", "lab-startup"),
     ("rotation", "job-health"),                            # a rotation job's announcement
     ("rotation", "credential-health"),
     ("rotation", "baseline-usability"),
@@ -109,7 +108,7 @@ class TestTheMechanism:
     def asked(self, monkeypatch):
         _registered()
         got = []
-        monkeypatch.setattr(reader_job, "running", lambda name: name != "lab-startup")
+        monkeypatch.setattr(reader_job, "running", lambda name: name != "remote-publication")
         monkeypatch.setattr(reader_job, "request_run",
                             lambda reader, by, **kw: got.append((reader.name, by, kw["kind"]))
                             or {"started": True, "run": "r"})
@@ -117,8 +116,8 @@ class TestTheMechanism:
 
     def test_a_wake_asks_each_reader_running_here_and_no_other(self, asked):
         woke = W.wake(("goldens",), "golden.capture_apply")
-        assert "lab-startup" not in woke, "not running in this process: not asked"
-        assert set(woke) == {"baseline-usability", "remote-publication"}   # freshness retired
+        assert "remote-publication" not in woke, "not running in this process: not asked"
+        assert set(woke) == {"baseline-usability"}   # freshness retired; the lab's reader left (C663)
         assert {(n, k) for n, _b, k in asked} == {(n, "after_operation") for n in woke}
         assert {b for _n, b, _k in asked} == {"golden.capture_apply"}
 

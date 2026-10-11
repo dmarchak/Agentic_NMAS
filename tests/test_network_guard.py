@@ -11,7 +11,6 @@ them is a check that silently did not run.
 """
 
 import errno
-import json
 import os
 import re
 import socket
@@ -217,31 +216,17 @@ class TestEveryProcessATestStarts:
         finally:
             shutil.rmtree(outside, ignore_errors=True)
 
-    def test_the_c46_case_cannot_reach_the_live_nmas(self, tmp_path):
-        """The exact defect: the sync script via a symlink, NMAS_URL left at
-        the script's default (the live NMAS). Refused by construction, not by
-        this test's REPO happening to name nothing."""
-        script = os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh")
-        link = tmp_path / "oxidized-to-config.sh"
-        link.symlink_to(script)
-        # The sanitiser has no host default since 2026-09-29: an unset NMAS_URL
-        # comes from the hosts file, so the test gives it one naming LIVE_NMAS.
-        # With no file it would refuse before asking anything, and this case
-        # would pass without reaching the guard.
-        hosts = tmp_path / "lab_hosts.json"
-        hosts.write_text(json.dumps({"nmas": {"user": "op", "lan": LIVE_NMAS[0],
-                                              "tunnel": "ssh-nmas.example.net"}}))
-        # C663: the map is the lab's own file (here one that is not there, never this
-        # machine's); the live NMAS is still reached for, by the job-finished notice on exit.
-        out = subprocess.run(["bash", str(link), "--yes"], capture_output=True, text=True,
-                             env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
-                                  "REPO": str(tmp_path / "none"),
-                                  "NMAS_LAB_HOSTS": str(hosts),
-                                  "LAB_TARGETS_MAP": str(tmp_path / "no-map.tsv")},
-                             cwd=str(tmp_path), timeout=60)
-        assert "the lab's map could not be read" in out.stdout, out.stdout
-        tried = network_guard.spawn_guard().take()
-        assert any("192.0.2.211" in t for t in tried), tried
+    def test_the_c46_case_cannot_reach_the_live_nmas(self):
+        """The exact defect: the sync script, run by a test, reached the live NMAS (its map
+        and its job-finished notice). Since C663 it asks the app nothing: the map is the lab's
+        own file and the notice is gone. So the case is closed by construction, and asserted
+        as that: no app URL, no HTTP client, no notice, in any line that is not a comment."""
+        path = os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh")
+        code = [ln for ln in open(path, encoding="utf-8").read().splitlines()
+                if not ln.lstrip().startswith("#")]
+        assert len(code) > 200, "the parse read the script"
+        for token in ("NMAS_URL", "curl ", "wget ", "nmas-job-finished", ":5000"):
+            assert not [ln for ln in code if token in ln], token
 
     def test_the_wrapper_saw_the_suites_spawns(self):
         """Floor: a wrapper that is not on the spawn path counts nothing."""

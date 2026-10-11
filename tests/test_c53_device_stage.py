@@ -73,15 +73,7 @@ BASE = dict(mgmt_ip="192.0.2.21", username="admin", password="pw", hostname="s1"
 
 @pytest.fixture
 def chain(monkeypatch):
-    for name, value in (("run_sync", {"ok": True}),
-                        ("verify_startup_file", {"ok": True, "matches": 1}),
-                        ("verify_startup_applies", {"ok": True, "applies": True}),
-                        ("verify_startup_carries_current", {"ok": True})):
-        monkeypatch.setattr(cr, name, (lambda v: (lambda *a, **k: dict(v)))(value))
-    monkeypatch.setattr(cr, "clab_target_for", lambda ln, h: {
-        "host": "lab@192.0.2.10", "configs_dir": "labs/lab/configs",
-        "launch_patch": "labs/lab/patches/x.py", "sync_script": "/usr/local/bin/clab-sync",
-        "lab": "default"})
+    # C663: the chain is the device's own save and read-back alone; nothing else to stub.
     return monkeypatch
 
 
@@ -90,20 +82,22 @@ def _persist():
 
 
 class TestTheChainSavesTheDevice:
-    def test_the_device_stage_runs_first(self, chain):
+    def test_the_device_stage_is_the_chain(self, chain):
+        """C663 (the operator, 2026-10-11: "rotation persistence becomes save + read back"):
+        the device's save and read-back is the whole chain, and passing it is PERSISTED."""
         chain.setattr(cr, "save_on_device", lambda *a, **k: {"ok": True, "state": "persisted"})
         out = _persist()
-        assert out["persistence"][0]["name"] == "device_startup_config"
+        assert [s["name"] for s in out["persistence"]] == ["device_startup_config"]
         assert out["state"] == cr.ROTATED_PERSISTED
+        assert out["reason"] == ("rotated, committed, saved on the device and read back from "
+                                 "its own startup config")
 
     def test_a_device_that_did_not_save_stops_the_chain_and_is_recorded(self, chain):
-        later = []
         chain.setattr(cr, "save_on_device", lambda *a, **k: {
             "ok": False, "state": "not_persisted",
             "error": "the startup config does not carry username admin privilege 15 secret 9 <value>"})
-        chain.setattr(cr, "run_sync", lambda *a, **k: later.append(1) or {"ok": True})
         out = _persist()
-        assert out["state"] == cr.ROTATED_UNVERIFIED and later == []
+        assert out["state"] == cr.ROTATED_UNVERIFIED
         rec = [r for r in cr.rotation_records() if r.get("device") == "s1"][-1]
         assert rec["failed_stage"] == "device_startup_config"
         row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:s1"][0]

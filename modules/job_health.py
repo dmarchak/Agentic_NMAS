@@ -1,9 +1,9 @@
 """Are the scheduled jobs NMAS depends on actually succeeding?
 
-Measured 2026-09-25: ``clab-sync.service`` failed every 30 minutes for ~36
-hours (72 runs) with ``nmas-clab-targets: command not found``. The script
-refused correctly, into a journal nobody read, and r6's startup config fell a
-day behind its branch-site config. The evidence was durable and nothing
+Measured 2026-09-25: a scheduled job failed every 30 minutes for ~36 hours
+(72 runs) with a helper's ``command not found``. The script refused
+correctly, into a journal nobody read, and a device's boot file fell a day
+behind its committed config. The evidence was durable and nothing
 surfaced it -- the third such place in one session.
 
 So each job NMAS depends on is DECLARED here with the age its last success
@@ -35,8 +35,6 @@ log = logging.getLogger(__name__)
 #: (a few missed runs, never one). A job added to the host without a line
 #: here is invisible -- adding it is part of installing it.
 JOBS = (
-    {"unit": "clab-sync", "max_age_minutes": 90,
-     "what": "the newest earned baseline into the lab's startup files, when a baseline is earned and every 30 min"},
     {"unit": "nmas-netbox-backup", "max_age_minutes": 180,
      "what": "NetBox dump + config, hourly (NSOT_PLAN P.2)"},
     {"unit": "nmas-netbox-restore-test", "max_age_minutes": 50 * 60,
@@ -68,7 +66,7 @@ JOURNAL_DAYS = 14
 
 import re as _re
 
-#: ``BLOCKED:`` opening a line is a gate's verdict (the clab sync's freshness
+#: ``BLOCKED:`` opening a line is a gate's verdict (a sync job's freshness
 #: gate, C306): case-sensitive and anchored, since "blocked" is English too.
 #: Without it the quote fell through to the gate's ADVICE two lines later
 #: ("A curl from the NMAS host is refused ..."), read as an identity lockout.
@@ -138,7 +136,7 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
     # THE CAUSE, not the last line. A refusal is several lines and its last is
     # a continuation ("...into another lab."), measured live. So each run's
     # own output is collected, and the error is its first line that names a
-    # failure -- here `nmas-clab-targets: command not found` -- falling back
+    # failure -- here a helper's `command not found` -- falling back
     # to the run's first line.
     #
     # And NEVER a line that names nothing (the operator, 2026-10-01): the
@@ -588,8 +586,8 @@ def image_jobs(now: float = None, client=None) -> list:
 #
 # After the 2026-09-23 settings erasure nothing re-established which settings
 # were LOAD-BEARING. Each empty one was found by the failure it caused:
-# clab_host during r6's persistence, oxidized_url during the freshness work,
-# clab_sync_script during a credential exposure (B15). One finding, found four
+# the lab host's during r6's persistence, oxidized_url during the freshness work,
+# the lab sync's script during a credential exposure (B15). One finding, found four
 # times. `discover_empty_default_guards()` had derived the class from the code
 # all along, and was called only by tests: it answered "which settings gate a
 # guard", and nothing ever asked "are they set HERE". These rows ask.
@@ -740,7 +738,7 @@ def known_devices() -> tuple:
 def _persist_action(device: str) -> dict:
     """The ONE action for a device whose running config holds the only working credential
     (C541): its own save, Persist on its Device page (`open`, drawn as the button), or the same
-    save from the host. Never `nmas-persist-credential`, the lab boot-file chain (C50)."""
+    save from the host."""
     return {"label": f"Persist {device} now: Persist… on its Device page saves the running "
                      "config to startup and reads it back (or on the host, with the device's "
                      "own list)",
@@ -763,7 +761,8 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
     s1's rotation of an exposed credential left its boot file holding that
     credential, and the only report was a terminal message that is gone. So a
     device stays in front of an operator until a later persist is recorded
-    reaching SAFE (`nmas-persist-credential` records one).
+    reaching SAFE (Persist on the Device page, `nmas-persist-native` or
+    `nmas-persist-credential` records one).
 
     **Derived from the audit AND from where the device is known** (C54, the
     operator's, 2026-09-27). The audit is append-only, so a device that left
@@ -829,22 +828,16 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
             act = _persist_action(device)
         elif state in (cr.REVERTED, cr.NOT_STARTED):
             st, detail = "ok", f"unchanged: the last rotation ended {state} at {at}"
-        elif state == cr.ROTATED_UNVERIFIED and stage == "device_startup_config":
-            # P.6 M4: the DEVICE's own startup config, not a containerlab file.
-            # `nmas-persist-credential` is the containerlab chain and must not
-            # be advised here (for a device outside containerlab it resolves an
-            # unknown lab to rcn-lab1's paths, C50).
-            st, detail = ("not_safe_to_reboot",
-                          f"at {at} the device's startup config did NOT carry the rotated "
-                          f"credential: its running config holds the only working one. Do "
-                          f"not reload it; run nmas-persist-native {device} --list <list>")
-            act = _persist_action(device)
         elif state == cr.ROTATED_UNVERIFIED:
+            # P.6 M4: the DEVICE's own startup config. Since C663 that save is the whole
+            # persistence, so an older record naming another stage has the same remedy.
             st, detail = ("not_safe_to_reboot",
-                          f"rotated at {at}; persistence FAILED at {stage or 'the chain'}. "
-                          f"Fix it, then run nmas-persist-credential {device}")
-            act = {"label": f"Fix the failed stage ({stage or 'the chain'}), then verify the "
-                            "boot file", "command": f"nmas-persist-credential {device}"}
+                          f"at {at} the device's startup config was not shown to carry the "
+                          f"rotated credential (persistence failed at "
+                          f"{stage or 'device_startup_config'}): its running config holds the "
+                          f"only working one. Do not reload it; run nmas-persist-native "
+                          f"{device} --list <list>")
+            act = _persist_action(device)
         elif state == cr.ROTATED_NOT_RECORDED:
             st, detail = ("not_recorded",
                           f"rotated at {at} but NOT RECORDED: the device accepts only the "
@@ -870,8 +863,6 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
                    "command": f"nmas-rotation-recover {device} --list <its list>"}
         elif state == cr.ROTATED_PENDING_PERSIST:
             # C541: the most dangerous state, named with its risk and the device's OWN save.
-            # `nmas-persist-credential` is the lab boot-file chain and must not be advised for a
-            # device's startup config (C50: it resolves an unknown lab to another lab's paths).
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence NOT ATTEMPTED: {device} runs the new "
                           f"credential and its startup config still holds the old one, so a "
@@ -952,45 +943,6 @@ def staged_rotation_rows(lists=None, holder=None) -> list:
                            "command": f"nmas-rotation-recover {s['device']} "
                                       f"--list {item['name']}"}})
     return rows
-
-
-def sync_owner_rows(run=None, get=None) -> list:
-    """`clab_sync_script` must name what the clab-sync timer runs (B15).
-
-    Two owners of one fact: the rotation's persistence chain reads the setting,
-    the timer's unit names the script itself. The setting was empty for three
-    days while the timer worked, so every rotation's chain stopped at its sync
-    stage and a timer closed the window instead."""
-    from modules.settings_schema import get_setting
-
-    run = run or _run
-    get = get or get_setting
-    row = {"unit": "clab-sync-owner", "max_age_minutes": 0,
-           "what": "the persistence chain's sync script is the one the timer runs (B15)"}
-    rc, out = run(["systemctl", "show", "clab-sync.service", "-p", "LoadState",
-                   "-p", "ExecStart"])
-    props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l) if rc == 0 else {}
-    if not props:
-        return [{**row, "state": "unknown",
-                 "detail": "systemctl could not be asked -- not the same as ok"}]
-    if props.get("LoadState") == "not-found":
-        return [{**row, "state": "not_installed",
-                 "detail": "clab-sync.service is not installed here"}]
-    import re as _re
-    m = _re.search(r"path=(\S+)", props.get("ExecStart", ""))
-    unit_path = m.group(1) if m else ""
-    setting = (get("clab_sync_script", "") or "").strip()
-    if not setting:
-        return [{**row, "state": "unset_guard",
-                 "detail": f"clab_sync_script is EMPTY; the timer runs {unit_path or '?'}",
-                 "action": {"label": f"Set clab_sync_script in Settings to the script the "
-                                     f"timer runs: {unit_path or '(the unit names none)'}"}}]
-    if unit_path and setting != unit_path:
-        return [{**row, "state": "mismatch",
-                 "detail": f"clab_sync_script is {setting} but the timer runs {unit_path}",
-                 "action": {"label": f"Make them one: set clab_sync_script to {unit_path}, or "
-                                     "point the timer at the setting's script"}}]
-    return [{**row, "state": "ok", "detail": f"both name {setting}"}]
 
 
 #: A declared not-applicable setting is a recorded decision, not a fault. It
@@ -1505,19 +1457,18 @@ def prometheus_target_rows() -> list:
 
 
 def health(now: float = None, run=None, images=None, settings=None,
-           rotations=None, owner=None, ztp=None, responder=None,
+           rotations=None, ztp=None, responder=None,
            startup=None, sessions=None, version=None, readers=None,
            breakglass=None, prometheus=None, monitoring=None, updater=None,
            helpers=None, serials=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
-    are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
+    are read from Proxmox. *settings*, *rotations*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
     jobs += image_jobs(now) if images is None else list(images)
     jobs += settings_rows() if settings is None else list(settings)
     jobs += rotation_rows() if rotations is None else list(rotations)
     if rotations is None:
         jobs += staged_rotation_rows()
-    jobs += sync_owner_rows(run) if owner is None else list(owner)
     jobs += ztp_rows() if ztp is None else list(ztp)
     jobs += ztp_responder_rows(run) if responder is None else list(responder)
     jobs += startup_rows() if startup is None else list(startup)

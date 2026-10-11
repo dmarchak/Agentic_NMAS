@@ -315,34 +315,18 @@ DEFAULTS: dict = {
     #: than a flag that opens all of them at once.
     "service_allowed_operations": [],
 
-    #: VRFs whose addresses and prefixes the NetBox import does NOT model.
+    #: VRFs whose addresses and prefixes the NetBox import does NOT model: a
+    #: management VRF whose addresses repeat on every device (an emulator's,
+    #: where every node answers on the same internal address, so NetBox's
+    #: global uniqueness refuses all but one, measured 2026-09-24) describes
+    #: the platform, not the network. The VRF object is still modelled; the
+    #: addresses inside it are not.
     #:
-    #: **The second deliberate exception to "every new default reproduces the
-    #: behaviour that predates the setting"**, after `netbox_allow_writes` —
-    #: and for a different reason. The prior behaviour is not a behaviour
-    #: anybody chose: NetBox enforces global uniqueness on IP addresses, and
-    #: every containerlab node answers on the same internal management
-    #: address, so importing them is **not representable**. Measured
-    #: 2026-09-24: the repair created one and NetBox refused the other four
-    #: with *"Duplicate IP address found in global table"*. Defaulting to
-    #: empty would preserve an error, not a choice.
-    #:
-    #: **A setting rather than a constant** because another lab's emulator
-    #: will name its management VRF something else — the same
-    #: network-agnostic rule that makes the TFTP root and the Jenkins shell
-    #: settings.
-    #:
-    #: The decision rule is *would this make sense on a network the tool did
-    #: not build*: no real device has `10.0.0.15`, it is unreachable from
-    #: anywhere, and NMAS reaches the fleet on a different range entirely.
-    #: Importing it teaches NetBox about the emulator's plumbing rather than
-    #: about the network. Disabling NetBox's uniqueness check instead would
-    #: weaken a genuinely useful constraint to accommodate an artefact.
-    #:
-    #: The VRF *object* is still modelled — `vrf forwarding clab-mgmt` really
-    #: is configured on the devices. It is the addresses inside it that
-    #: describe the emulator.
-    "netbox_excluded_vrfs": ["clab-mgmt"],
+    #: EMPTY by default (C663, 2026-10-11: the product names no lab): a
+    #: network that has such a VRF names it here. Until C663 this defaulted
+    #: to one lab's VRF name; the host's value was written explicitly before
+    #: the default changed, so nothing there moved.
+    "netbox_excluded_vrfs": [],
 
     # ── The syslog block every onboarded device is given (NSOT_PLAN P.1) ────
     #: Where device syslog goes. EMPTY by default and a refusal while empty:
@@ -350,13 +334,6 @@ DEFAULTS: dict = {
     #: silence nobody receives. The third deliberate exception to "a new
     #: default reproduces prior behaviour" -- prior onboarding gave no
     #: logging at all, which is the coverage gap r6 was found in.
-    #: Startup-config files that are DELIBERATELY unmapped, per list:
-    #: ``{list: {hostname: {"lab", "reason", "by", "at"}}}``. Written by
-    #: retire (`modules/nsot/retire.py`) and read by the clab sync map, so
-    #: `nmas-clab-targets --reconcile` reports a retired device's frozen file
-    #: as DECLARED, with its reason, instead of as unmapped for ever. A
-    #: declaration for a device that is mapped again is a conflict, reported.
-    "clab_declared_unmapped": {},
     #: Guard-gating settings DECLARED not applicable on this host, with who,
     #: when and why (register C31). An empty guard setting and "there is
     #: nothing here to set" used to report identically, as `unset_guard`.
@@ -396,7 +373,7 @@ DEFAULTS: dict = {
     "snmp_exporter_config": "",
     "snmp_exporter_auth": "public_v2",
 
-    # ── Config persistence (Oxidized → containerlab startup files) ──────────
+    # ── Config persistence (Oxidized's, retired in Phase 3) ──────────────────
     # The pipeline lives outside this repo; see docs/ARCHITECTURE.md. These are
     # settings rather than constants because they are deployment facts, and
     # because modules/nsot/ may not contain IP literals — a rule that caught
@@ -409,32 +386,10 @@ DEFAULTS: dict = {
     # The key is kept because settings keys are never deleted, and it is no
     # longer consulted — a container restart from the app would mean the web
     # process exercising docker-group access, which is root-equivalent.
-    "clab_sync_script":     "",          # the flock wrapper
     # A credential consumer this tool cannot update: it holds a literal.
     # Configured so the confirm screen can say whether THIS device is the one
     # it will stop being able to reach, instead of warning generically.
     "yang_push_script":     "",
-    "clab_host":            "",          # user@host of the containerlab VM
-    "clab_configs_dir":     "labs/lab/configs",
-    # The launch script the c8000v nodes bind. Read (never written) by the
-    # persistence chain's applicability check, which asks whether it carries
-    # the user-skip that lets a `secret` line in a startup file apply.
-    "clab_launch_patch":    "labs/lab/patches/c8000v-launch.py",
-
-    #: Containerlab labs by name. **The four keys above define the lab named
-    #: `default`**, so an install that has never heard of this key behaves
-    #: exactly as it does today -- the rule that every new default
-    #: reproduces the behaviour that predates the setting, which this one
-    #: can honour.
-    #:
-    #: A device onboarded into its own lab (Phase 1 established that as the
-    #: pattern, not an exception) names its lab in the manifest, and
-    #: `credential_rotation.clab_target_for()` resolves all four values
-    #: **together**. They must move together: `clab_configs_dir` alone was
-    #: the dangerous fix, because `verify_startup_applies()` would then read
-    #: rcn-lab1's launch patch for a device booting its own -- verifying a
-    #: file that is not the one in play, and passing.
-    "clab_labs":            {},
 
     # ── S3-compatible archive ───────────────────────────────────────────────
     "s3_endpoint":   "",
@@ -526,7 +481,7 @@ DEFAULTS: dict = {
     # Seconds to wait for a full `show running-config` when reading a device
     # back after a failed deploy. Generous on purpose: this read happens
     # moments after `write memory`, and on an emulated device NVRAM writes
-    # leave it slow for tens of seconds. Measured on a containerlab vIOS-L2 —
+    # leave it slow for tens of seconds. Measured on an emulated vIOS-L2 —
     # 5.5s idle, >16s immediately after a save. A number that happens to work
     # on one lab is the kind of assumption this project keeps out of the code,
     # so it is a setting with a wide default rather than a constant.
@@ -570,13 +525,11 @@ DEFAULTS: dict = {
 
 #: **Settings a GUARD REFUSES WITHOUT, whose default is empty.**
 #:
-#: Enumerated because of a measured loss. `clab_host` was set on
-#: 2026-09-22 -- `nmas-check-startup-applies` passes no `clab=` and read
-#: two remote files per device, which it cannot do otherwise -- and is
-#: empty now. The settings file erased itself on 2026-09-23 and a
-#: version-0 reseed wrote 107 defaults; `clab_configs_dir` and
-#: `clab_launch_patch` have plausible non-empty defaults and survived
-#: **looking** correct, while the keys below went blank leaving no trace.
+#: Enumerated because of a measured loss. The settings file erased itself
+#: on 2026-09-23 and a version-0 reseed wrote 107 defaults; keys with
+#: plausible non-empty defaults survived **looking** correct, while the
+#: keys below went blank leaving no trace. (The lab's two keys that began
+#: this list left the product with C663, 2026-10-11.)
 #:
 #: **`scripts/nmas-settings-diff` cannot find these**, by construction:
 #: it lists what differs from the default, and a reset key is equal to
@@ -587,8 +540,6 @@ DEFAULTS: dict = {
 #: indistinguishable from a guard that ran, unless somebody reads the
 #: reason.
 GUARD_GATING_EMPTY_DEFAULTS = (
-    "clab_host",          # verify_startup_file, verify_startup_applies
-    "clab_sync_script",   # run_sync
     "yang_push_script",   # the rotation's consumer warning
     # THE FOURTH, AND WHAT MADE THIS A PATTERN RATHER THAN A LIST, was
     # `oxidized_rest_url`, then `oxidized_url` when the two keys collapsed. Both
@@ -785,7 +736,6 @@ SCHEMA: dict = {
         "require_person_for_break_glass": _BOOL,
         "service_allowed_operations": {"type": "array", "items": _STR},
         "netbox_excluded_vrfs": {"type": "array", "items": _STR},
-        "clab_declared_unmapped": {"type": "object"},
         "settings_not_applicable": {
             "type": "object",
             "additionalProperties": {
@@ -808,12 +758,7 @@ SCHEMA: dict = {
 
         "oxidized_rest_url": _STR,
         "oxidized_router_db": _STR,
-        "clab_sync_script": _STR,
         "yang_push_script": _STR,
-        "clab_host": _STR,
-        "clab_configs_dir": _STR,
-        "clab_launch_patch": _STR,
-        "clab_labs": {"type": "object"},
 
         "s3_endpoint": _STR,
         "s3_bucket": _STR,

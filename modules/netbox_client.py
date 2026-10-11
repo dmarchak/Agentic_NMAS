@@ -1134,24 +1134,25 @@ class UnscopedAddressLookup(Exception):
 def excluded_vrfs() -> set:
     """VRF names whose addresses the import does not model, lowercased.
 
-    `netbox_excluded_vrfs`, defaulting to `clab-mgmt`. Read at call time, so
-    changing the setting takes effect without a restart.
-    """
-    from modules.settings_schema import DEFAULTS
+    `netbox_excluded_vrfs`, empty by default (C663: a network with an emulator's
+    management VRF names it). Read at call time, so changing the setting takes
+    effect without a restart.
 
+    A read that fails RAISES, naming the setting: with an empty default there is
+    no value to fall back to that keeps an exclusion the network declared, and
+    excluding nothing would model the emulator's plumbing silently. The import
+    names the device it was writing as failed, with this reason.
+    """
     # The resolver (through `settings_schema.get_setting()`), not `config.get_user_setting()`: the
     # first falls back to the declared DEFAULT, the second reads only the
-    # file and returns None for a key no install has ever written -- which
-    # for this setting means excluding nothing, silently, on every install
-    # that predates it. The DEFAULTS fallback below covers an unreadable
-    # settings file, where a read is survivable and must not silently turn
-    # the exclusion off.
+    # file and returns None for a key no install has ever written.
     try:
         # The Default network's: the sync that asks carries no list down to here yet.
         from modules.list_settings import default_layer
         raw = default_layer("netbox_excluded_vrfs")
-    except Exception:                           # noqa: BLE001
-        raw = DEFAULTS.get("netbox_excluded_vrfs", [])
+    except Exception as exc:                    # noqa: BLE001
+        raise RuntimeError(f"netbox_excluded_vrfs could not be read ({exc}), so which VRFs' "
+                           "addresses to leave out is unknown; not modelling any") from exc
     if isinstance(raw, str):                    # a hand-edited file
         raw = [p for p in raw.replace(",", " ").split() if p]
     return {str(v).strip().lower() for v in (raw or []) if str(v).strip()}

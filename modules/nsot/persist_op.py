@@ -16,9 +16,8 @@ confirm bound to the plan's hash, the device held while it saves (C98, C101),
 and a result drawn from what the device answered.
 
 What it does NOT do, stated on every run: it changes no running configuration,
-rotates nothing, and writes neither the containerlab startup file nor
-Oxidized's router.db (the lab boot file is `nmas-persist-credential`'s chain,
-B15).
+rotates nothing, and writes no boot file anywhere but the device (a tool
+building one elsewhere follows the golden-committed event, C663).
 """
 
 import hashlib
@@ -41,8 +40,8 @@ GATES = (
 NOT_DOING = (
     "its running configuration is not changed: the save copies it to startup as it is",
     "no credential is rotated",
-    "the containerlab startup file and Oxidized's router.db are not written: a lab "
-    "redeploy boots that file, and `nmas-persist-credential` runs that chain (B15)",
+    "no boot file is written anywhere but the device: a tool that builds one elsewhere "
+    "follows the golden-committed event, and a persist commits nothing",
     "no golden is committed: the running config is not captured into the record",
 )
 

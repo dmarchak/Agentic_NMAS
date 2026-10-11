@@ -114,8 +114,6 @@ NOT_FREE_TEXT = {
     "modules/nsot/credential_rotation.py:masked_commands": "builds the masked rotation "
         "commands from a username and a privilege",
     "modules/nsot/credential_rotation.py:masked_command": "the same, one command",
-    "modules/nsot/credential_rotation.py:_redact_value": "prints a `username ... secret` "
-        "line's FORM, the value dropped: given only those lines",
     "modules/nsot/adopt.py:masked_program": "builds the masked adoption program from a username",
     "modules/nsot/adopt.py:owner_program_masked": "builds the owner's masked program",
     "modules/nsot/render_artifact.py:contains_mask": "a test for a mask, it masks nothing",

@@ -43,5 +43,5 @@ The card leads with the count saved and recorded and whatever was not, its colou
 
 - It changes no running configuration: each save carries the running configuration exactly as it is, including anything not in committed intent.
 - It does not record without saving. A single device's [Capture](capture), on its own page, records a hand change before you decide.
-- It rotates no credential, and writes no lab startup file.
+- It rotates no credential, and writes no boot file anywhere but each device.
 - Nothing re-reads a device's startup configuration after the run until the hourly startup check runs.

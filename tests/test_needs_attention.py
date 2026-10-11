@@ -22,12 +22,17 @@ from modules import job_health as J
 from tests.test_job_health import LOADED, NOW, _fail, _ok, _runner
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#: The fake runner answers every declared job with one measured journal (clab-sync's, a real
+#: capture), so any declared job reads it. The first is the one asserted; clab-sync itself
+#: left the declared jobs with the lab (C663).
+FIRST = J.JOBS[0]
+U = FIRST["unit"]
 
 
 def _health(journal, **rows):
     """job_health.health() over the measured systemd shapes, with every other
     family empty unless given."""
-    kw = dict(images=[], settings=[], rotations=[], owner=[], ztp=[], responder=[],
+    kw = dict(images=[], settings=[], rotations=[], ztp=[], responder=[],
               startup=[], sessions=[], version=[], readers=[], updater=[])
     kw.update(rows)
     return lambda: J.health(NOW, _runner(LOADED, journal), **kw)
@@ -98,12 +103,12 @@ class TestJobHealthAsASource:
         res = A.job_health_source(_health(journal))
         assert res["state"] == "read"
         rows = {r["id"]: r for r in res["rows"]}
-        r = rows["job_health:clab-sync"]
-        assert r["what"] == "clab-sync is failing" and r["level"] == "danger"
+        r = rows[f"job_health:{U}"]
+        assert r["what"] == f"{U} is failing" and r["level"] == "danger"
         assert "nmas-clab-targets: command not found" in r["cause"]
         # SINCE is the streak's FIRST failure, not the latest one.
         assert r["since"] == A._iso(NOW - 72 * 1800)
-        assert r["action"]["command"] == "journalctl -u clab-sync.service -n 50 --no-pager"
+        assert r["action"]["command"] == f"journalctl -u {U}.service -n 50 --no-pager"
 
     def test_ok_jobs_are_not_rows_and_are_counted_as_looked_at(self):
         res = A.job_health_source(_health(_ok(NOW - 60)))
@@ -113,9 +118,9 @@ class TestJobHealthAsASource:
 
     def test_a_stale_job_says_since_it_went_stale(self):
         res = A.job_health_source(_health(_ok(NOW - 4 * 3600)))
-        r = {x["id"]: x for x in res["rows"]}["job_health:clab-sync"]
-        assert r["what"] == "clab-sync has not succeeded recently"
-        assert r["since"] == A._iso(NOW - 4 * 3600 + 90 * 60)
+        r = {x["id"]: x for x in res["rows"]}[f"job_health:{U}"]
+        assert r["what"] == f"{U} has not succeeded recently"
+        assert r["since"] == A._iso(NOW - 4 * 3600 + FIRST["max_age_minutes"] * 60)
 
     def test_a_device_row_names_its_device_as_a_field(self):
         """Rows concerning a device carry it as a field, never parsed back out
@@ -168,15 +173,12 @@ class TestJobHealthAsASource:
         out["startup"] = J.startup_rows(read=lambda: {"at": 900.0, "devices": [
             {"list": "Default", "device": "s1", "state": "not_persisted", "detail": "old"}]},
             now=1000.0)
-        out["settings"] = J.settings_rows(guards={"clab_host": ["the persistence chain"]},
+        out["settings"] = J.settings_rows(guards={"syslog_host": ["onboarding's syslog block"]},
                                           load=lambda: {})
         out["settings-contradiction"] = J.settings_rows(
-            guards={"clab_host": ["the persistence chain"]},
-            load=lambda: {"clab_host": "h", "settings_not_applicable": {
-                "clab_host": {"by": "p", "at": "t", "reason": "r"}}})
-        out["clab-sync-owner"] = J.sync_owner_rows(
-            run=systemd("LoadState=loaded\nExecStart={ path=/x/sync.sh ; }\n"),
-            get=lambda k, d="": "")
+            guards={"syslog_host": ["onboarding's syslog block"]},
+            load=lambda: {"syslog_host": "h", "settings_not_applicable": {
+                "syslog_host": {"by": "p", "at": "t", "reason": "r"}}})
         out["ztp-responder"] = J.ztp_responder_rows(
             run=systemd("LoadState=loaded\nActiveState=inactive\nListen=[::]:69\n"),
             # ZTP configured: with no fragment the builder rightly returns nothing.
@@ -194,7 +196,7 @@ class TestJobHealthAsASource:
 
     def test_every_non_ok_family_row_carries_its_own_action(self):
         rows = self._rows()
-        assert len(rows) == 8, sorted(rows)
+        assert len(rows) == 7, sorted(rows)   # the lab sync's owner rows left (C663)
         for fam, fam_rows in rows.items():
             bad = [r for r in fam_rows if r["state"] not in J.OK_STATES]
             assert bad, (fam, fam_rows)
@@ -268,9 +270,9 @@ class TestThePageAndThePanel:
         # each is failing; the unknown row sorts after all of them.
         assert levels == ["danger"] * len(J.JOBS) + ["unknown"], levels
         html = _panel(page)
-        assert "clab-sync is failing" in html and "command not found" in html
+        assert f"{U} is failing" in html and "command not found" in html
         # An age, with the absolute time on hover (answer first, detail below).
-        assert "journalctl -u clab-sync.service" in html and 'since <span title="20' in html
+        assert f"journalctl -u {U}.service" in html and 'since <span title="20' in html
         assert re.search(r"since <span title=\"20[^\"]+\">\d+ (s|min|h|d) ago", html)
         assert "cannot tell" in html and "since not recorded" in html
 
@@ -298,7 +300,7 @@ class TestThePageAndThePanel:
         assert r.status_code == 200
         body = r.get_json()
         assert body["ok"] is True and body["rows"]
-        assert "clab-sync is failing" in _panel(body)
+        assert f"{U} is failing" in _panel(body)
 
     def test_the_landing_view_includes_the_panel_and_loads_its_script(self):
         index = open(os.path.join(ROOT, "templates", "index.html")).read()

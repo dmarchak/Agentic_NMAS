@@ -427,13 +427,6 @@ def summarise(result: dict, *, where: str = "cli") -> str:
     return message
 
 
-def _own_save_failed(result: dict) -> bool:
-    """Persistence failed at the DEVICE's own startup config, whose remedy is its own save
-    (C541, C50), never the lab boot-file chain."""
-    return any(not s.get("ok") and s.get("name") == "device_startup_config"
-               for s in result.get("persistence") or [])
-
-
 def _summary(result: dict, where: str = "cli") -> str:
     device = result.get("device", "the device")
     state = result.get("state")
@@ -443,14 +436,8 @@ def _summary(result: dict, where: str = "cli") -> str:
         return (f"{device}: ROTATED, verified and committed, and NOT PERSISTED: persistence was "
                 "not attempted, so its startup config still holds the old credential and a "
                 "reload would boot it. Persist it now.")
-    if state == ROTATED_UNVERIFIED and _own_save_failed(result):
-        return (f"{device}: NOT SAFE TO REBOOT OR REDEPLOY. Its startup config does not hold "
-                "the new password: persistence FAILED at "
-                f"{_failed_stage(result) or 'device_startup_config'}. The device IS ROTATED and "
-                "committed, the new credential is live and recorded, and it is NOT reverted for "
-                "this. Nothing is retrying. A reload would boot the OLD password: fix the cause, "
-                "then persist it again with its own save (Persist on its Device page, or "
-                f"`scripts/nmas-persist-native {device} --list <its list>`).")
+    # ROTATED_UNVERIFIED's remedy is the device's own save whatever stage a record names: since
+    # C663 the persistence IS that save, and an older record's lab stage has no other remedy.
     return {
         ROTATED_PERSISTED: (
             f"{device}: rotated, verified, committed, and confirmed present in "
@@ -471,12 +458,12 @@ def _summary(result: dict, where: str = "cli") -> str:
         ROTATED_UNVERIFIED: (
             f"{device}: NOT SAFE TO REBOOT OR REDEPLOY. Its startup config does "
             "not hold the new password: persistence FAILED at "
-            f"{_failed_stage(result) or 'the persistence chain'}. The device IS "
+            f"{_failed_stage(result) or 'device_startup_config'}. The device IS "
             "ROTATED and committed, the new credential is live and recorded, "
-            "and it is NOT reverted for this. Nothing is retrying. A redeploy "
-            "would boot the OLD password: fix the cause, then run "
-            f"`scripts/nmas-persist-credential {device}`, which succeeds only "
-            "when nmas-check-startup-applies would read SAFE."),
+            "and it is NOT reverted for this. Nothing is retrying. A reload "
+            "would boot the OLD password: fix the cause, then persist it again "
+            "with its own save (Persist on its Device page, or "
+            f"`scripts/nmas-persist-native {device} --list <its list>`)."),
         # THE DANGER FIRST, and the one certain copy named.
         ROTATED_NOT_RECORDED: (
             f"{device}: ROTATED ON THE DEVICE BUT NOT RECORDED. "
@@ -1214,7 +1201,7 @@ def _yang_push_consumer(mgmt_ip: str) -> dict:
 
     **A gap, recorded as the design if a yang-push consumer ever returns**
     (register C31): this never asks whether the literal is the device's
-    CURRENT credential. On 2026-09-26 it was `admin`, the vrnetlab factory
+    CURRENT credential. On 2026-09-26 it was `admin`, the image's factory
     default, which no device had accepted for four days, so "may break"
     implied a script that worked. The third state is *holds a credential this
     device does not have: already not working*, decided by comparing values
@@ -1765,428 +1752,6 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-#: The lab a device is in when its manifest says nothing. Every device
-#: predating `clab_labs` is in it, which is why an absent value means this
-#: rather than "unknown".
-DEFAULT_LAB = "default"
-
-
-def clab_target_for(list_name: str, hostname: str) -> dict:
-    """Where this device's startup config lives, and what boots it.
-
-    **All four values together, from one resolver.** `platform_for_device()`
-    is the precedent and the reason: a second copy of a mapping is how the
-    two come to disagree. Here the cost of disagreement is specific --
-    resolving `configs_dir` for one lab and `launch_patch` for another makes
-    `verify_startup_applies()` read a launch script that is not the one in
-    play **and pass**, which is the hazard that check exists to prevent.
-
-    Returns `host`, `configs_dir`, `launch_patch`, `sync_script` and the
-    `lab` **name**, because a verdict about a remote file that does not say
-    which lab it came from is a verdict nobody can check.
-    """
-    from modules.list_settings import value as list_value
-
-    defaults = {
-        "host":         list_value(list_name, "clab_host", ""),
-        "configs_dir":  list_value(list_name, "clab_configs_dir", "labs/lab/configs"),
-        "launch_patch": list_value(list_name, "clab_launch_patch",
-                                   "labs/lab/patches/c8000v-launch.py"),
-        "sync_script":  list_value(list_name, "clab_sync_script", ""),
-    }
-    labs = list_value(list_name, "clab_labs", {}) or {}
-    name = _lab_of(list_name, hostname)
-    if name == DEFAULT_LAB:
-        return {**defaults, "lab": DEFAULT_LAB, "named": True}
-    if name not in labs:
-        # C50: a lab the map does not know (a typo, or a lab nobody described)
-        # resolved to rcn-lab1's paths, so a persist wrote into that lab's
-        # directory and checked rcn-lab1's C8000v launch patch, and passed.
-        # No paths now: every consumer refuses an empty configs_dir or
-        # launch_patch, and `why` names the cause. The host still falls back
-        # (one containerlab VM); the paths never do.
-        return {"host": defaults["host"], "configs_dir": "", "launch_patch": "",
-                "sync_script": "", "lab": name, "named": False,
-                "why": (f"lab {name!r} (the manifest's clab_lab for {hostname}) is not in "
-                        "clab_labs: a typo, or a lab nobody described. Refusing rather than "
-                        "resolving it to the default lab's paths (C50)")}
-
-    lab = labs[name] or {}
-    # The host falls back: one containerlab VM, several labs on it. The three
-    # PATHS do not -- a lab that names no configs_dir is a lab nobody has
-    # described, and inheriting the default one is exactly the wrong answer.
-    return {
-        "host":         lab.get("host") or defaults["host"],
-        "configs_dir":  lab.get("configs_dir", ""),
-        "launch_patch": lab.get("launch_patch", ""),
-        "sync_script":  lab.get("sync_script") or defaults["sync_script"],
-        "lab":          name,
-        "named":        True,
-    }
-
-
-def _lab_of(list_name: str, hostname: str) -> str:
-    """The manifest's `clab_lab` for this device, or the default lab.
-
-    **An empty `list_name` derives the active list rather than assuming the
-    default lab.** A read may derive it; the alternative here is not a
-    refusal but a *wrong answer* — a caller that dropped the list would
-    resolve every device to `default`, which is the silent partial
-    resolution this map exists to remove.
-    """
-    try:
-        import os
-
-        if not list_name:
-            from modules.device import get_current_device_list
-
-            list_name = get_current_device_list()[0]
-            log.debug("clab lab lookup derived the active list %r for %r",
-                      list_name, hostname)
-
-        from modules.config import get_list_data_dir
-        from modules.nsot import manifest as _manifest
-
-        repo = os.path.join(get_list_data_dir(list_name), "config_repo")
-        for entry in _manifest.load(repo)["devices"].values():
-            if (entry.get("name") or "").lower() == (hostname or "").lower():
-                return entry.get("clab_lab") or DEFAULT_LAB
-    except Exception as exc:                   # noqa: BLE001
-        log.debug("clab lab lookup failed for %r: %s", hostname, exc)
-    return DEFAULT_LAB
-
-
-def sync_targets(list_name: str) -> dict:
-    """Every device in this list with the lab that boots it.
-
-    What `GET /clab/sync_targets` serves and what `nmas-clab-targets`
-    prints. **One producer**: the sync asks rather than keeping a copy,
-    because a second copy of this map is how the two come to disagree, and
-    the disagreement is invisible until a reboot.
-    """
-    import os
-
-    from modules.config import get_list_data_dir
-    from modules.nsot import manifest as _manifest
-
-    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
-    rows, incomplete = [], []
-    try:
-        devices = _manifest.load(repo)["devices"]
-    except Exception as exc:                   # noqa: BLE001
-        return {"ok": False, "error": f"manifest unreadable: {exc}"}
-
-    for entry in devices.values():
-        name = entry.get("name") or ""
-        if not name:
-            continue
-        target = clab_target_for(list_name, name)
-        # PLATFORM AS THE DIALECT, stated by its owner rather than inferred
-        # from the name. The sanitizer keyed router-vs-switch on a hardcoded
-        # `ROUTERS="r1 r2 r3 r4 r5"` and a `case` whose default is *switch*,
-        # so r6 would have been sanitised with the wrong rules -- silently,
-        # because the list was current when it was written. r6 also proves
-        # the naming convention is not a source of truth: the next device
-        # might be called anything.
-        #
-        # `assert_dialect()` at this boundary, so a NetBox SLUG can never
-        # reach a consumer keyed on the dialect. That failure is the same
-        # one it was written for: a lookup that misses returns the default,
-        # and here the default is a device kind.
-        platform = ""
-        try:
-            from modules.nsot.platform import assert_dialect
-
-            platform = assert_dialect(platform_of(list_name, name),
-                                      where="clab sync target")
-        except Exception as exc:               # noqa: BLE001
-            log.debug("clab: no usable platform for %r: %s", name, exc)
-
-        # (Oxidized's node key, the map's sixth column, went with Oxidized in Phase 3: the
-        # sync builds from the earned baseline and reads nothing of Oxidized's.)
-        row = {"hostname": name, "lab": target["lab"],
-               "host": target["host"],
-               "platform": platform,
-               "configs_dir": target["configs_dir"],
-               "launch_patch": target["launch_patch"]}
-        # A device whose lab is named and undescribed is REPORTED, never
-        # defaulted: writing its config into another lab's directory is the
-        # failure this whole map exists to prevent.
-        gaps = [k for k in ("configs_dir", "launch_patch") if not target[k]]
-        if not platform:
-            # Reported, never defaulted. A consumer that picks a device kind
-            # from a missing value picks the wrong one for exactly the
-            # devices nobody thought about.
-            gaps.append("platform")
-        if gaps:
-            row["error"] = target.get("why") or (
-                f"lab {target['lab']!r} names no {' and no '.join(gaps)}, so there is "
-                "nowhere safe to write or verify this device")
-            incomplete.append(name)
-        rows.append(row)
-
-    from modules.settings_schema import get_setting
-    declared = (get_setting("clab_declared_unmapped") or {}).get(list_name) or {}
-    return {"ok": True, "list": list_name, "targets": sorted(
-        rows, key=lambda r: r["hostname"]), "incomplete": sorted(incomplete),
-        "declared_unmapped": declared}
-
-
-def run_sync(script: str = "") -> dict:
-    """Run the startup-config sync. No privilege: same user, flock inside. *script* is the
-    device's network's (`clab_target_for` resolves it per list); none is "not configured",
-    never another network's script (P.8)."""
-    import subprocess
-
-    if not script:
-        return {"ok": False, "error": "clab_sync_script is not configured for this network"}
-    try:
-        proc = subprocess.run([script], capture_output=True, text=True,
-                              timeout=600)
-    except Exception as exc:                   # noqa: BLE001
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
-    return {"ok": proc.returncode == 0, "rc": proc.returncode,
-            "tail": (proc.stdout or "")[-400:]}
-
-
-def _resolve_target(list_name: str, hostname: str, clab: str,
-                    remote_dir: str, launch_patch: str) -> dict:
-    """The lab paths for this check — **always through `clab_target_for()`**.
-
-    Both verifiers used to fall back to `get_setting()` when the caller
-    passed nothing, which is how `nmas-check-startup-applies` came to read
-    `labs/lab/configs/r6.cfg` while `clab_target_for('Default', 'r6')`
-    returned `labs/r6/configs`. The map existed and one caller was not using
-    it -- **by omission**, which is the failure mode a default fallback is
-    built to create.
-
-    So the settings are no longer read here. They are read by
-    `clab_target_for()`, once, as the definition of the lab named
-    `default` -- and a caller that passes nothing gets that lab **only if
-    the device is in it**.
-
-    An explicit value still wins, per argument, so `persist()` can pass a
-    target it has already resolved.
-    """
-    target = clab_target_for(list_name, hostname)
-    return {
-        "host":         clab or target["host"],
-        "configs_dir":  remote_dir or target["configs_dir"],
-        "launch_patch": launch_patch or target["launch_patch"],
-        "lab":          target["lab"],
-    }
-
-
-def verify_startup_file(hostname: str, new_hash: str, *, clab: str = "",
-                        remote_dir: str = "", list_name: str) -> dict:
-    """Does the file that BOOTS the node contain the new hash?
-
-    Reads the clab VM, not the NMAS's local staging copy. Checking the local
-    copy would confirm that something was generated, not that it was delivered.
-    """
-    import shlex
-    import subprocess
-
-    from modules.settings_schema import get_setting
-
-    target = _resolve_target(list_name, hostname, clab, remote_dir, "")
-    clab, remote_dir = target["host"], target["configs_dir"]
-    if not clab:
-        return {"ok": False, "error": "clab_host is not configured"}
-    if not remote_dir:
-        return {"ok": False, "error": (
-            f"lab {target['lab']!r} names no configs_dir for {hostname}, so "
-            "there is nowhere to look. Refusing rather than reading the "
-            "default lab's directory.")}
-    token = new_hash.split()[-1] if new_hash else ""
-    if not token:
-        return {"ok": False, "error": "no hash to look for"}
-    remote = f"{remote_dir}/{hostname}.cfg"
-    cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", clab,
-           f"grep -c -- {shlex.quote(token)} {shlex.quote(remote)} || true"]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    except Exception as exc:                   # noqa: BLE001
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
-    count = (proc.stdout or "0").strip().splitlines()[-1:] or ["0"]
-    try:
-        found = int(count[0])
-    except ValueError:
-        found = 0
-    return {"ok": found > 0, "matches": found, "file": f"{clab}:{remote}",
-            "lab": target["lab"]}
-
-
-def _ssh_read(clab: str, command: str, *, timeout: int = 60) -> dict:
-    """One read over SSH. Returns the text, or says why it could not."""
-    import subprocess
-
-    cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", clab, command]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except Exception as exc:                   # noqa: BLE001
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
-    if proc.returncode != 0:
-        return {"ok": False,
-                "error": (proc.stderr or "").strip()[:160] or f"rc={proc.returncode}"}
-    return {"ok": True, "text": proc.stdout or ""}
-
-
-def verify_startup_carries_current(hostname: str, *, username: str = "admin",
-                                   list_name: str = "", clab: str = "",
-                                   remote_dir: str = "") -> dict:
-    """Does the startup file hold the credential the DEVICE currently has?
-
-    **The presence question, asked where there is no rotation to supply a
-    hash.** `verify_startup_file()` greps for a `new_hash` the caller just
-    generated; a checker run after the fact has none, and a `$9$` hash
-    carries a per-hash salt so it cannot be recomputed from the plaintext
-    NMAS holds.
-
-    So it compares the startup file's `username` line against **the same
-    line in the device's own golden** — the captured record of what the
-    device is running, which `nmas-check-credential` is what proves NMAS can
-    still use. Equal means a reboot brings the device back as it is now.
-
-    **Why this exists.** `verify_startup_applies()` answers *"will this file
-    put the device in the state it describes"* and answers it truthfully: a
-    `password 0` form genuinely does apply behind vrnetlab's injected line.
-    On r6 that is a green result meaning *"this device will come back on a
-    credential NMAS does not hold"*. Inside `persist()` the presence stage
-    runs first and stops the chain; read **directly**, that ordering is not
-    there, and the tool told an operator a device was fine when it was not
-    — **worse than the absent-file failure it replaced, because that one
-    was loud and this one was green.**
-
-    Returns `ok`, `kind` (`secret` / `password` / `""`), the two lines it
-    compared, and a `reason`. It never says "applies".
-    """
-    import os
-    import shlex
-
-    from modules.config import get_list_data_dir
-
-    target = _resolve_target(list_name, hostname, clab, remote_dir, "")
-    if not target["host"]:
-        return {"ok": False, "error": "clab_host is not configured"}
-    if not target["configs_dir"]:
-        return {"ok": False, "lab": target["lab"], "error": (
-            f"lab {target['lab']!r} names no configs_dir for {hostname}")}
-
-    remote = f"{target['configs_dir']}/{hostname}.cfg"
-    read = _ssh_read(target["host"], f"cat {shlex.quote(remote)}")
-    if not read["ok"]:
-        return {"ok": False, "lab": target["lab"],
-                "file": f"{target['host']}:{remote}",
-                "error": f"could not read the startup file -- {read['error']}"}
-
-    startup_line = _user_line(read["text"], username)
-    if not startup_line:
-        return {"ok": False, "lab": target["lab"],
-                "file": f"{target['host']}:{remote}", "kind": "",
-                "error": (f"no `username {username}` line in the startup "
-                          "file, so a reboot leaves whatever the launch "
-                          "script injects")}
-
-    repo = os.path.join(get_list_data_dir(
-        list_name or _active_list_name()), "config_repo")
-    golden_line = _user_line(_current_golden(repo, hostname), username)
-    kind = entry_kind(startup_line)
-
-    if not golden_line:
-        # INCONCLUSIVE, and it must not read as a pass: with nothing to
-        # compare against, "the file holds a credential" says nothing about
-        # whether it is the one NMAS can use.
-        return {"ok": False, "inconclusive": True, "lab": target["lab"],
-                "kind": kind, "file": f"{target['host']}:{remote}",
-                "startup_line": _redact_value(startup_line),
-                "error": (f"no golden config for {hostname} to compare "
-                          "against, so whether this file carries the current "
-                          "credential is unknown -- which is not the same as "
-                          "it carrying it")}
-
-    same = " ".join(startup_line.split()) == " ".join(golden_line.split())
-    return {
-        "ok": same, "lab": target["lab"], "kind": kind,
-        "file": f"{target['host']}:{remote}",
-        "startup_line": _redact_value(startup_line),
-        "golden_line": _redact_value(golden_line),
-        "reason": (
-            f"the startup file's `{kind or 'username'}` line matches the "
-            "device's golden, so a reboot brings it back as it is now"
-            if same else
-            f"the startup file holds a `{kind or 'username'}` form that is "
-            f"NOT what the device is running. A reboot would bring "
-            f"{hostname} back on a credential Mercury does not hold."),
-    }
-
-
-def _user_line(text: str, username: str) -> str:
-    for line in (text or "").splitlines():
-        stripped = line.strip()
-        if stripped.startswith(f"username {username} "):
-            return stripped
-    return ""
-
-
-def _redact_value(line: str) -> str:
-    """The FORM, never the value. `username admin privilege 15 secret 9 …`.
-
-    A checker that prints the hash has put the credential in a terminal
-    buffer and a scrollback, and the question here is which form applies,
-    not what it is.
-    """
-    parts = (line or "").split()
-    for i, part in enumerate(parts):
-        if part in ("secret", "password") and i + 1 < len(parts):
-            keep = parts[:i + 2] if parts[i + 1].isdigit() else parts[:i + 1]
-            return " ".join(keep) + " <redacted>"
-    return " ".join(parts)
-
-
-def _active_list_name() -> str:
-    from modules.device import get_current_device_list
-
-    return get_current_device_list()[0]
-
-
-def startup_safety(hostname: str, *, platform: str, username: str = "admin",
-                   list_name: str = "", clab: str = "", remote_dir: str = "",
-                   launch_patch: str = "") -> dict:
-    """``nmas-check-startup-applies``'s verdict, in ONE place (register B15).
-
-    Presence first, then applicability, and "the file does not carry the
-    credential the device has" outranks "the form would apply". The checker
-    script and the persistence chain's last stage both call this, so a rotation
-    can report success only when the checker would read SAFE: two checks of
-    one property diverge, and the rotation's own check (the new hash present)
-    was a second one.
-    """
-    carries = verify_startup_carries_current(
-        hostname, username=username, list_name=list_name, clab=clab,
-        remote_dir=remote_dir)
-    applies = verify_startup_applies(
-        hostname, platform=platform, username=username, list_name=list_name,
-        clab=clab, remote_dir=remote_dir, launch_patch=launch_patch)
-    out = {"platform": platform, "carries": carries, "applies": applies,
-           "kind": carries.get("kind") or applies.get("kind", ""),
-           "lab": carries.get("lab") or applies.get("lab", ""),
-           "file": carries.get("file") or applies.get("file", ""),
-           "startup_line": carries.get("startup_line", "")}
-    if not carries.get("ok"):
-        out["ok"] = False
-        out["verdict"] = "INCONCLUSIVE" if carries.get("inconclusive") else "NOT SAFE"
-        out["reason"] = carries.get("reason") or carries.get("error", "")
-        if applies.get("ok"):
-            out["reason"] += (" (the form WOULD apply on boot — that is a "
-                              "true statement about a different question)")
-        return out
-    out["ok"] = bool(applies.get("ok"))
-    out["verdict"] = "SAFE" if out["ok"] else "WILL NOT APPLY"
-    out["reason"] = applies.get("reason") or applies.get("error", "")
-    return out
-
-
 # ---------------------------------------------------------------------------
 # The rotation record (registers B2 and B15)
 # ---------------------------------------------------------------------------
@@ -2274,164 +1839,6 @@ def rotation_records_as_known() -> list:
     return out
 
 
-def verify_startup_applies(hostname: str, *, platform: str, username: str,
-                           clab: str = "", remote_dir: str = "",
-                           launch_patch: str = "", list_name: str) -> dict:
-    """Will the startup file put the device in the state it describes?
-
-    The check :func:`verify_startup_file` should always have been. That one
-    greps the file for the new hash and passes when it is there -- a
-    **presence** check. Stage B measured the gap: all five routers' files
-    contained their hash, and not one of them would have applied. The node
-    boots, reports healthy, answers SSH, and holds vrnetlab's credential.
-
-    Presence and applicability differ exactly when something else writes to
-    the same place first, and that is the case nobody thinks of.
-
-    **This asks the real question rather than encoding a platform rule.** The
-    rule would be "a `secret` line is unappliable on a C8000v" -- true when it
-    was written, and false the moment the stage-C launch patch is adopted. So
-    the check reads the launch script the node actually binds and looks for
-    the skip. Adopting the patch satisfies it; replacing the launch script
-    with a stock one breaks it again, which is correct both times.
-
-    Returns ``ok`` with a ``reason`` either way. An unreadable file or launch
-    script is **not ok**: "I could not tell" is not "it applies", and this
-    check exists because something unverifiable was treated as verified.
-    """
-    from modules.nsot.bootstrap_config import (LAUNCH_SKIP_MARKER,
-                                               VRNETLAB_INJECTS_USER)
-    from modules.settings_schema import get_setting
-
-    # Asked FIRST, because a platform that injects nothing needs no lab host
-    # to answer. Requiring one would make this fail for a reason unrelated to
-    # the question -- and a check that fails spuriously gets worked around.
-    if platform not in VRNETLAB_INJECTS_USER:
-        return {"ok": True, "applies": True,
-                "reason": (f"nothing is injected ahead of the startup config on "
-                           f"{platform or 'this platform'}; the file's own "
-                           f"username line is the only one")}
-
-    target = _resolve_target(list_name, hostname, clab, remote_dir,
-                             launch_patch)
-    clab = target["host"]
-    remote_dir, launch_patch = target["configs_dir"], target["launch_patch"]
-    if not clab:
-        return {"ok": False, "error": "clab_host is not configured"}
-    missing = [n for n, v in (("configs_dir", remote_dir),
-                              ("launch_patch", launch_patch)) if not v]
-    if missing:
-        # The dangerous combination, refused rather than half-resolved: a
-        # launch patch from another lab would be read, found to carry the
-        # user-skip, and this would pass about a file that is not the one
-        # booting this device.
-        return {"ok": False, "lab": target["lab"], "error": (
-            f"lab {target['lab']!r} names no {' and no '.join(missing)} for "
-            f"{hostname}. Refusing rather than falling back to the default "
-            "lab's paths.")}
-
-    import shlex
-
-    remote = f"{remote_dir}/{hostname}.cfg"
-    read = _ssh_read(clab, f"cat {shlex.quote(remote)}")
-    if not read["ok"]:
-        return {"ok": False,
-                "error": f"could not read {clab}:{remote} -- {read['error']}"}
-
-    entry = ""
-    for line in read["text"].splitlines():
-        stripped = line.strip()
-        if stripped.startswith(f"username {username} "):
-            entry = stripped
-            break
-    if not entry:
-        return {"ok": False, "file": f"{clab}:{remote}",
-                "error": (f"no `username {username}` line in the startup file. "
-                          f"The device would boot with whatever the launch "
-                          f"script injects and nothing else.")}
-
-    kind = entry_kind(entry)
-    if kind == "password":
-        return {"ok": True, "applies": True, "kind": kind,
-                "file": f"{clab}:{remote}",
-                "reason": ("the password form applies behind the injected "
-                           "line; the device ends up with this credential")}
-
-    # A `secret` (or an unreadable form, which we must assume is the worst)
-    # lands behind vrnetlab's password line and is refused -- unless the
-    # launch script skips its own injection for this user.
-    patch = _ssh_read(clab, f"cat {shlex.quote(launch_patch)}")
-    if not patch["ok"]:
-        return {"ok": False, "unknown": True, "file": f"{clab}:{remote}",
-                "launch_patch": f"{clab}:{launch_patch}",
-                "error": (f"could not read the launch script {clab}:"
-                          f"{launch_patch} -- {patch['error']}. Whether this "
-                          f"file applies depends on it, so this is unknown, "
-                          f"not fine.")}
-
-    # WHAT WAS READ, named and fingerprinted. A verdict about a remote file
-    # that does not say which file, on which host, at which content, is a
-    # verdict nobody can check -- and this one is read in a session where the
-    # operator has just edited that file.
-    import hashlib
-
-    digest = hashlib.sha256(patch["text"].encode("utf-8")).hexdigest()[:12]
-    where = f"{clab}:{launch_patch}@{digest}"
-
-    # THE CALL SITE, not the name.
-    #
-    # This was `if LAUNCH_SKIP_MARKER in patch["text"]` -- a substring search
-    # for an identifier, which is a PRESENCE check: the exact defect class
-    # this function exists to replace, reproduced one level up inside it.
-    # Three ways it passed while the property was false:
-    #
-    #   * `_skip_users_defined_in_startupX` CONTAINS the marker, so renaming
-    #     the helper -- the obvious way to run a negative control -- left the
-    #     check passing. Measured on the live host: the routers reported
-    #     APPLIES with the marker renamed;
-    #   * the helper defined and the call site reverted, so the injection is
-    #     not skipped and the file says it is;
-    #   * a comment mentioning the name.
-    #
-    # The property is that the concatenation goes THROUGH the helper: the
-    # unpatched form absent, and the helper actually called.
-    raw_concat = re.search(
-        r"cfg\s*=\s*self\.gen_bootstrap_config\(\)\s*\+\s*startup_cfg",
-        patch["text"])
-    calls_skip = re.search(r"\b" + re.escape(LAUNCH_SKIP_MARKER) + r"\s*\(",
-                           patch["text"])
-
-    if calls_skip and not raw_concat:
-        return {"ok": True, "applies": True, "kind": kind or "unknown",
-                "file": f"{clab}:{remote}", "launch_patch": where,
-                "reason": (f"{where} calls {LAUNCH_SKIP_MARKER}() at the "
-                           f"concatenation site and no longer carries the "
-                           f"unpatched form, so the `{kind or 'secret'}` "
-                           f"form applies")}
-
-    if calls_skip and raw_concat:
-        return {"ok": False, "applies": False, "kind": kind or "unknown",
-                "file": f"{clab}:{remote}", "launch_patch": where,
-                "error": (f"{where} both calls {LAUNCH_SKIP_MARKER}() and "
-                          f"still contains the unpatched "
-                          f"`cfg = self.gen_bootstrap_config() + startup_cfg`. "
-                          f"Half-patched: which one runs decides whether this "
-                          f"device boots, and that is not something to guess.")}
-
-    return {"ok": False, "applies": False, "kind": kind or "unknown",
-            "file": f"{clab}:{remote}", "launch_patch": where,
-            "error": (
-                f"the hash is in {remote} and the file WILL NOT APPLY. "
-                f"On {platform} the launch script injects `username {username} "
-                f"privilege 15 password ...` before this file, and IOS-XE "
-                f"refuses a secret for a user that already has a password "
-                f"(%CVAC-4-CLI_FAILURE, measured stage B). The node would boot "
-                f"healthy on the injected credential and Mercury would be locked "
-                f"out. Fix: adopt the user-skip into {launch_patch} (see "
-                f"docs/bootstrap-probe/ stage C), or write the password form "
-                f"and rotate after boot. Read: {where}")}
-
-
 def save_on_device(mgmt_ip: str, username: str, password: str, platform: str,
                    secret: str = "") -> dict:
     """The chain's FIRST stage: save on the DEVICE and read its startup config
@@ -2472,18 +1879,15 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     re-running was refused at the FIRST stage because that row was already
     correct.
 
-    Per stage (Oxidized's three, its router.db row, its reload and a confirmed fetch, were
-    removed with Oxidized in Phase 3 step 2, 2026-10-08; *after_iso* is kept for the callers):
+    One stage (Oxidized's three were removed with Oxidized in Phase 3 step 2, 2026-10-08; the
+    lab's sync and its startup-file checks with C663, 2026-10-11; *after_iso* and *new_hash*
+    are kept for the callers):
 
     ``device_startup_config``  the device's own save, read back.
-    ``clab_sync``        a harvest into the startup files. Re-running copies
-                         the same content.
-    ``startup_file``     a grep. Pure read.
-    ``startup_applies``  two reads. Pure read.
 
-    ``platform`` has **no default**. It decides whether the last stage can
-    pass, and a default would pick one -- which is how a required input stops
-    being required. The same correction as ``operation_fingerprint``.
+    ``platform`` has **no default**. It chooses the driver the save runs with, and a default
+    would pick one -- which is how a required input stops being required. The same
+    correction as ``operation_fingerprint``.
     """
     chain = []
     # Entering the chain is what makes "attempted" true. Any stage failing
@@ -2501,97 +1905,19 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
         return outcome.get("ok")
 
     result["persistence"] = chain
-    # THE DEVICE FIRST (C53): its own boot state must not wait on the containerlab sync, and a
-    # guest reload boots NVRAM, not the file.
+    # THE DEVICE (C53): its own boot state is what a reload boots (NVRAM), so it is the stage.
     if not _stage("device_startup_config",
                   save_on_device(mgmt_ip, username, password, platform,
                                  **{k: kw[k] for k in ("secret",) if k in kw})):
         return result
-    # Oxidized's three stages (its router.db row, its reload, a confirmed fetch) are gone with
-    # Oxidized (Phase 3 step 2, the operator's decision, 2026-10-08; C333): the rotation's own
-    # commit is the record GitHub keeps, and the chain goes straight to the boot file.
-    # Each stage gates the next; every one of them may find its work done.
-    # RESOLVED ONCE, and passed to every stage below. Reading the settings
-    # separately in each is how `configs_dir` and `launch_patch` come to
-    # describe different labs, which is the combination that makes the
-    # applicability check verify a file that is not in play.
-    target = clab_target_for(kw.get("list_name", ""), hostname)
-    # BOTH PATHS, and the second is the one a control caught. `configs_dir`
-    # empty is obvious. `launch_patch` empty is NOT: the resolver returns ""
-    # deliberately for a lab that names none, and
-    # `verify_startup_applies(launch_patch="")` falls back to the SETTING --
-    # so passing the empty string through would read the default lab's patch
-    # for a device booting its own, which is precisely the state this map
-    # exists to make unrepresentable. An empty value must be refused here,
-    # not forwarded.
-    missing = [k for k in ("configs_dir", "launch_patch") if not target[k]]
-    if missing:
-        result["reason"] = target.get("why") or (
-            f"lab {target['lab']!r} names no {' and no '.join(missing)} for "
-            f"{hostname}. Refusing rather than falling back to the default "
-            "lab's paths: a launch patch from another lab would be read, "
-            "found to carry the user-skip, and the check would pass about a "
-            "file that is not the one booting this device.")
-        # A dict, as every stage's outcome is: `_stage()` unpacks it, and the
-        # bare False this passed raised TypeError, so the refusal crashed
-        # instead of refusing (found by C50's test, 2026-09-29).
-        _stage("clab_target", {"ok": False, "error": result["reason"]})
-        return result
-    kw.setdefault("clab", target["host"])
-    kw.setdefault("remote_dir", target["configs_dir"])
-    kw.setdefault("launch_patch", target["launch_patch"])
-    kw.setdefault("script", target["sync_script"])
-    result["clab_lab"] = target["lab"]
-
-    if not _stage("clab_sync",
-                  run_sync(**{k: kw[k] for k in ("script",) if k in kw})):
-        return result
-    if not _stage("startup_file",
-                  verify_startup_file(hostname, new_hash, list_name=kw["list_name"],
-                                      **{k: kw[k] for k in ("clab", "remote_dir")
-                                         if k in kw})):
-        return result
-    # PRESENCE IS NOT APPLICABILITY, and the order is now load-bearing for a
-    # second reason it was not written for.
-    #
-    # Originally: Stage B measured five routers whose files contained the
-    # right hash and would not have applied one of them.
-    #
-    # Since the device -> lab map: `verify_startup_applies()` answers
-    # **truthfully** and answers a **different question**. Given a bootstrap
-    # file it returns `ok: True, applies: True` -- a `password 0` form
-    # genuinely does apply behind vrnetlab's injected line, and the device
-    # really does end up holding it. Its question is *"will this file put the
-    # device in the state it describes"*, which is not *"is this device
-    # reboot-safe with the credential NMAS holds"*.
-    #
-    # So presence has to run FIRST and return on failure: during the window
-    # where this half is deployed and the sync half is not, r6's file exists
-    # and is the bootstrap one, and only the hash check says no.
-    # **Reordering these two for efficiency reopens that window.**
-    # `TestThePersistenceChainFailsClosedOnAHalfDeploy` fails if you do.
-    if not _stage("startup_applies",
-                  verify_startup_applies(hostname, platform=platform, list_name=kw["list_name"],
-                                         username=username,
-                                         **{k: kw[k] for k in
-                                            ("clab", "remote_dir", "launch_patch")
-                                            if k in kw})):
-        return result
-    # SUCCESS MEANS THE CHECKER'S VERDICT (register B15): the same function
-    # nmas-check-startup-applies uses, so the two cannot disagree.
-    if not _stage("startup_safe",
-                  startup_safety(hostname, platform=platform, username=username,
-                                 list_name=kw.get("list_name", ""),
-                                 **{k: kw[k] for k in
-                                    ("clab", "remote_dir", "launch_patch")
-                                    if k in kw})):
-        return result
-
+    # The chain ends at the device (C663, the operator's decision, 2026-10-11: "rotation
+    # persistence becomes save + read back"). Where a device boots from a file built elsewhere
+    # (a lab's startup file), the tool that builds it follows the golden-committed event the
+    # rotation's commit writes (modules/nsot/baseline_event.py), so that file carries the new
+    # credential without a stage here.
     result["state"] = ROTATED_PERSISTED
     result["reason"] = ("rotated, committed, saved on the device and read back "
-                        "from its own startup config, present in the startup "
-                        "file, that file applies on boot, and "
-                        "nmas-check-startup-applies reads SAFE")
+                        "from its own startup config")
     return result
 
 

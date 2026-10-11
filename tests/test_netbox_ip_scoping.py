@@ -36,6 +36,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
 
 
+def declare_exclusion(monkeypatch, vrfs=("clab-mgmt",)):
+    """The network declares its emulator's management VRF, as this lab's host does. Since C663
+    the setting is empty by default, so a test about the exclusion declares one."""
+    from modules import settings_schema
+
+    real = settings_schema.get_setting
+    monkeypatch.setattr(settings_schema, "get_setting", lambda k, d=None: list(vrfs)
+                        if k == "netbox_excluded_vrfs" else real(k, d))
+
+
 class TestTheCollisionIsStructural:
     """The fleet shares one management address by construction."""
 
@@ -523,10 +533,14 @@ class TestAnExcludedVRFIsNotModelled:
     already makes the TFTP root and the Jenkins shell settings.
     """
 
-    def test_the_default_excludes_the_containerlab_vrf(self):
+    def test_the_default_excludes_nothing_and_a_declared_vrf_is_excluded(self, monkeypatch):
+        """C663: the default named one lab's VRF. A network with an emulator names its own."""
+        from modules import netbox_client as nc
         from modules.settings_schema import DEFAULTS
 
-        assert DEFAULTS["netbox_excluded_vrfs"] == ["clab-mgmt"]
+        assert DEFAULTS["netbox_excluded_vrfs"] == []
+        declare_exclusion(monkeypatch)
+        assert nc.excluded_vrfs() == {"clab-mgmt"}
 
     def test_it_is_read_through_the_schema_not_the_raw_file(self):
         """`config.get_user_setting()` reads only the file and returns None
@@ -562,7 +576,9 @@ class TestAnExcludedVRFIsNotModelled:
 
     def test_an_unreadable_settings_file_does_not_turn_it_off(self,
                                                               monkeypatch):
-        """A read is survivable; silently dropping the exclusion is not."""
+        """Silently dropping the exclusion is not survivable. With an empty default there is no
+        value to fall back to that keeps a declared exclusion, so the read refuses, naming the
+        setting, and the import names the device it was writing as failed."""
         from modules import netbox_client as nc
         from modules import settings_schema
 
@@ -570,7 +586,9 @@ class TestAnExcludedVRFIsNotModelled:
             raise RuntimeError("settings unreadable")
 
         monkeypatch.setattr(settings_schema, "get_setting", _boom)
-        assert nc.excluded_vrfs() == {"clab-mgmt"}
+        with pytest.raises(RuntimeError) as err:
+            nc.excluded_vrfs()
+        assert "netbox_excluded_vrfs could not be read (settings unreadable)" in str(err.value)
 
     def test_a_hand_edited_string_is_accepted(self, monkeypatch):
         from modules import netbox_client as nc
@@ -651,6 +669,7 @@ class TestTheResidueIsKeyedOnTheInterface:
         """One device, one interface (id 60) whose GOLDEN says `vrf_name`."""
         from modules import netbox_guard as guard
 
+        declare_exclusion(monkeypatch)
         monkeypatch.setattr(repair, "walk", lambda ln: {
             "list": "Default", "csv": "/x", "examined": 1, "skipped": [],
             "session": None, "base": "http://nb",
@@ -784,6 +803,7 @@ class TestTheCreatePathAppliesTheSameExclusion:
 
     def test_an_excluded_interface_is_reported_not_created(
             self, repair, monkeypatch):
+        declare_exclusion(monkeypatch)
         monkeypatch.setattr(repair, "walk", lambda ln: {
             "list": "Default", "csv": "/x", "examined": 1, "skipped": [],
             "session": None, "base": "http://nb",
