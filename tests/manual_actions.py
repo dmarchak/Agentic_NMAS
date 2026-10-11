@@ -98,8 +98,20 @@ NOT_AN_OPERATION = {
                                                "interface and range), a read",
     ("_history_metric.html", "Show"): "asks the question again for the device and interface "
                                       "chosen, a read",
-    ("_history_query.html", "Ask your own (PromQL or LogQL)…"): "opens Ask your own, board B's "
+    ("_history_views.html", "Ask your own (PromQL or LogQL)…"): "opens Ask your own, board B's "
                                                                 "layout with no question, a read",
+    ("_history_views.html", "Pin"): "pins a saved view for everyone: a link to a read, in "
+                                    "Mercury's own store, recorded; no device",
+    ("_history_views.html", "Unpin"): "unpins a saved view for everyone, recorded; no device",
+    ("_history_views.html", "Remove…"): "asks, in place, whether to remove a saved view; "
+                                        "nothing written",
+    ("_history_views.html", "Remove"): "removes a saved view: only the link goes, the history "
+                                       "it asks is untouched, recorded; no device",
+    ("_history_views.html", "Keep"): "keeps the saved view and redraws the list, a read",
+    ("_history_save.html", "Save this view…"): "asks a title for the view the page shows, in "
+                                               "place; nothing written",
+    ("_history_save.html", "Save"): "saves the view the page shows for the network, with its "
+                                    "title, recorded; no device",
     ("_history_metric.html", "Run"): "asks your own query (the question's PromQL edited, or Ask "
                                      "your own's PromQL or LogQL), its text in the address, a read",
     ("_topology_map.html", "'s Neighbours"): "opens that end's Neighbours tab on its device "

@@ -477,6 +477,95 @@ def history_query_metric_data(key):
     return jsonify(payload), code
 
 
+# ---------------------------------------------------------------------------
+# History › Query's saved views (C667; board A's "Saved by your team", board B's "Save this
+# view…"): links to reads, kept per network (modules/saved_views.py). Each write answers with
+# what it did, in place, and announces `saved_views`, on which the list redraws.
+# ---------------------------------------------------------------------------
+
+def _views_region(status: int = 200, op: dict = None):
+    from modules import saved_views
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    name = named_list(request) or listref.active().name
+    op = op or {}
+    html = render_template("v2/_history_views.html", views=saved_views.read(name),
+                           list_name=name, op=op)
+    if request.method == "POST":
+        html += "\n" + render_template("v2/_history_views_result.html", op=op)
+    return _strict(html), status
+
+
+def _save_slot(status: int = 200, **op):
+    return _strict(render_template("v2/_history_save.html", op=op)), status
+
+
+@bp.route("/history/query/views", methods=["GET"])
+def history_views():
+    """Saved by your team, redrawn when `saved_views` is announced. A read."""
+    return _views_region()
+
+
+@bp.route("/history/query/views/remove", methods=["GET"])
+def history_view_remove_form():
+    """Remove…: what removing does, asked in place; nothing written."""
+    return _views_region(op={"state": "removing", "id": (request.args.get("id") or "").strip()})
+
+
+@bp.route("/history/query/views/save", methods=["GET"])
+def history_view_save_form():
+    """Save this view…: a title asked, in place; nothing written."""
+    return _save_slot(state="form", address=(request.args.get("address") or "").strip())
+
+
+@bp.route("/history/query/views", methods=["POST"])
+def history_view_save():
+    """Save the view the page shows, with a title, for the network, as the verified person;
+    recorded."""
+    from modules import identity, saved_views
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    where = (request.form.get("address") or "").strip()
+    got = saved_views.save(named_list(request) or listref.active().name,
+                           request.form.get("title", ""), where, identity.request_actor())
+    if not got["ok"]:
+        return _save_slot(400, state="form", address=where, refused=got["error"],
+                          title=request.form.get("title", ""))
+    return _save_slot(state="saved", view=got["view"], record_error=got["record_error"])
+
+
+@bp.route("/history/query/views/<view_id>/pin", methods=["POST"])
+def history_view_pin(view_id):
+    """Pin or unpin a view, for everyone, as the verified person; recorded."""
+    from modules import identity, saved_views
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    pinned = request.form.get("pinned") == "1"
+    got = saved_views.pin(named_list(request) or listref.active().name, view_id, pinned,
+                          identity.request_actor())
+    if not got["ok"]:
+        return _views_region(409, op={"state": "refused", "refused": got["error"]})
+    return _views_region(op=dict(got, state=got["action"]))
+
+
+@bp.route("/history/query/views/<view_id>/remove", methods=["POST"])
+def history_view_remove(view_id):
+    """Remove a view, as the verified person: only the saved link goes, the history it asks is
+    untouched; recorded."""
+    from modules import identity, saved_views
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    got = saved_views.remove(named_list(request) or listref.active().name, view_id,
+                             identity.request_actor())
+    if not got["ok"]:
+        return _views_region(409, op={"state": "refused", "refused": got["error"]})
+    return _views_region(op=dict(got, state="removed"))
+
+
 def syslog_ctx(request) -> dict:
     """History › Query › Syslog by device's context, for its home and for the sidebar's Logs,
     which draws the same page (C667): only what the tab draws, never the timeline's reads."""

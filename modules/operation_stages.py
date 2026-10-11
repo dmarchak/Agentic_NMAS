@@ -425,6 +425,9 @@ HISTORY = {
                                       "or person (credentials.py keeps no audit)"),
     "inventory.delete_credential_profile": ("MISSING: a deleted credential profile leaves no "
                                             "record of who or when"),
+    "v2.history_view_save": ("saved_views",),
+    "v2.history_view_pin": ("saved_views",),
+    "v2.history_view_remove": ("saved_views",),
     "topology_v2.expected_declare": ("topology_expected",),
     "topology_v2.expected_withdraw": ("topology_expected",),
     "topology_v2.positions_save": ("topology_layout",),

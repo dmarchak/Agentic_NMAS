@@ -4,10 +4,16 @@
 
 Your answers committed in 8224518 (deployed). Then, in your order:
 
-- **C675, the Logs tail:** board D drawn and logged, built, compared (db2e5f0, pushed);
-  deploying; the host walk next.
-- **Next:** C676 (onboarding reads a Planned NetBox record), then C667's remainder, C529
-  steps 3 to 5, boards L and M, 7.5's identity line, the 7.8 removals.
+- **C675, the Logs tail:** built, deployed (db2e5f0), walked on the host; closed.
+- **C676, onboarding from a Planned NetBox record:** built, deployed (9631711), walked
+  read-only; closed. Your "Mercury creates it as Planned" entry point is not what runs today
+  (Verify creates the record Active): it is C556's unbuilt Planned → Active contract.
+- **C667:** the last three questions (7f56d12), the editable PromQL and Ask your own
+  (2e45ab9), both deployed and walked on the host; saved views with pinning built, gating now.
+- **Found and registered:** C677 (r6's restart on 10-09 missing from Mercury's restart record,
+  UNKNOWN); C678 (the deploy's CI wait spent GitHub's 60-an-hour allowance; fixed in 2e45ab9,
+  the updater's copy re-installed, `nmas-update-check` ok).
+- **Next:** C529 steps 3 to 5, boards L and M, 7.5's identity line, the 7.8 removals.
 - **Waiting on you:** the CLAUDE.md script (then `scripts/nmas-host` moves to `lab/`); the
   `l3-switch` answer (proposed: core-switch and distribution-switch map to `switch`, since
   Mercury's kinds are router, switch and firewall); the walk's sittings (below).

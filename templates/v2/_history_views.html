@@ -1,0 +1,34 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- History › Query › Saved by your team (C667; board A): the network's saved views, pinned
+    first, each a link to the question as it was saved, who saved it and when; Pin or Unpin and
+    Remove… in place (modules/saved_views.py). Redrawn when `saved_views` is announced. -#}
+<section id="hq-views" class="hq-views" aria-labelledby="hq-views-h" hx-get="{{ url_for('v2.history_views', list=list_name) }}" hx-trigger="nmas:saved_views from:body" hx-swap="outerHTML">
+<h2 class="hq-h" id="hq-views-h">Saved by your team</h2>
+{%- if views.state == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ views.error }}. Nothing can be saved, pinned or removed until it is repaired.</p></div>
+{%- elif not views.views %}
+<p class="muted small">Nothing is saved yet: open a question, then <strong>Save this view…</strong> beside its title.</p>
+{%- else %}
+<div class="hq-grid">
+  {%- for v in views.views %}
+  <div class="hq-q hq-view">
+    <a href="{{ v.address }}{{ '&' if '?' in v.address else '?' }}list={{ list_name | urlencode }}"><strong>{{ v.title }}</strong></a>
+    <span class="hq-src">saved by {{ v.by }}, {{ stamp(v.at) }}{% if v.pinned %} · {{ badge('pinned', 'neutral') }}{% endif %}</span>
+    {%- if op.state == 'removing' and op.id == v.id %}
+    <form class="hq-view-acts" method="post" action="{{ url_for('v2.history_view_remove', view_id=v.id) }}" hx-post="{{ url_for('v2.history_view_remove', view_id=v.id) }}" hx-target="#hq-views" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ list_name }}">
+      <span class="small">Removes the saved link only; the history it asks is untouched.</span>
+      <span class="op-act"><button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Remove</span><span class="op-busy">Removing…</span></button></span>
+      <a class="btn btn-small" href="{{ url_for('v2.history_views', list=list_name) }}" hx-get="{{ url_for('v2.history_views', list=list_name) }}" hx-target="#hq-views" hx-swap="outerHTML">Keep</a>
+    </form>
+    {%- else %}
+    <div class="hq-view-acts">
+      <form method="post" action="{{ url_for('v2.history_view_pin', view_id=v.id) }}" hx-post="{{ url_for('v2.history_view_pin', view_id=v.id) }}" hx-target="#hq-views" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ list_name }}"><input type="hidden" name="pinned" value="{{ '0' if v.pinned else '1' }}"><span class="op-act">{% if v.pinned %}<button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Unpin</span><span class="op-busy">Unpinning…</span></button>{% else %}<button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Pin</span><span class="op-busy">Pinning…</span></button>{% endif %}</span></form>
+      <a class="btn btn-small" href="{{ url_for('v2.history_view_remove_form', id=v.id, list=list_name) }}" hx-get="{{ url_for('v2.history_view_remove_form', id=v.id, list=list_name) }}" hx-target="#hq-views" hx-swap="outerHTML">Remove…</a>
+    </div>
+    {%- endif %}
+  </div>
+  {%- endfor %}
+</div>
+{%- endif %}
+<a class="hq-q hq-own" href="{{ url_for('v2.history_query_metric', key='ask') }}"><strong>Ask your own (PromQL or LogQL)…</strong></a>
+</section>

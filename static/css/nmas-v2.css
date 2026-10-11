@@ -1641,3 +1641,12 @@ a.hq-q strong { color: var(--accent); }
 .hq-restarts { margin: 0; padding-left: 0; list-style: none; display: flex;
   flex-direction: column; gap: 6px; }
 a.hq-q.hq-own { border-style: dashed; }
+/* Saved views (board A's "Saved by your team", board B's "Save this view…"). */
+.hq-views { display: flex; flex-direction: column; gap: 12px; }
+.hq-view a { text-decoration: none; }
+.hq-view a strong { color: var(--accent); }
+.hq-view-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.hq-view-acts form { margin: 0; }
+.hq-save { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px; }
+.hq-save-form { display: inline-flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin: 0; }
+.hq-save-form label { display: flex; flex-direction: column; gap: 2px; }

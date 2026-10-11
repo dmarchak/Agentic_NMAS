@@ -11,7 +11,7 @@
 <div class="lg-head">
   <h2>Syslog by device {{ info('logs', 'syslog-by-device') }}</h2>
   {%- if g.state == 'ok' %}
-  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ url_for('v2.history_query_syslog') }}{{ g.qs() }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
+  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ url_for('v2.history_query_syslog') }}{{ g.qs() }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button>{% with op={'address': url_for('v2.history_query_syslog') ~ g.qs({'before': ''})} %}{% include "v2/_history_save.html" %}{% endwith %}</span>
   {%- endif %}
 </div>
 

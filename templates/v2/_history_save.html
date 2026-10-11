@@ -1,0 +1,17 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- Board B's "Save this view…" (C667): the button, a title asked in place, and what saving did,
+    in the slot beside the question's title (modules/saved_views.py). -#}
+<span id="hq-save" class="hq-save">
+{%- if op.state == 'form' %}
+<form class="hq-save-form" method="post" action="{{ url_for('v2.history_view_save') }}" hx-post="{{ url_for('v2.history_view_save') }}" hx-target="#hq-save" hx-swap="outerHTML" autocomplete="off">
+  <input type="hidden" name="address" value="{{ op.address }}">
+  <label><span class="muted small">Title</span><input type="text" name="title" value="{{ op.title or '' }}" maxlength="80" required></label>
+  <span class="op-act"><button type="submit" class="btn btn-primary btn-small" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button></span>
+  {%- if op.refused %}<span class="small set-result" role="alert">{{ icon('warn', 14) }} Not saved: {{ op.refused }}.</span>{% endif %}
+</form>
+{%- elif op.state == 'saved' %}
+<span class="small set-result" role="status">{{ icon('check', 14) }} Saved as &ldquo;{{ op.view.title }}&rdquo;, on Query's <a href="{{ url_for('v2.history_page', tab='query') }}">Saved by your team</a>{% if op.record_error %}; it could not be recorded: {{ op.record_error }}{% endif %}.</span>
+{%- else %}
+<a class="btn" href="{{ url_for('v2.history_view_save_form', address=op.address) }}" hx-get="{{ url_for('v2.history_view_save_form', address=op.address) }}" hx-target="#hq-save" hx-swap="outerHTML">Save this view…</a>
+{%- endif %}
+</span>

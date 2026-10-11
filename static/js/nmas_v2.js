@@ -54,7 +54,9 @@
               // The fleet's syslog counts moved (the Logs view, C652).
               'logs',
               // The network's Kea read again: subnets, reservations, leases (C529).
-              'dhcp'];
+              'dhcp',
+              // A History › Query view saved, pinned or removed (C667).
+              'saved_views'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -318,6 +320,7 @@
   function relayTopology() { relay('topology'); }
   function relayLogs() { relay('logs'); }
   function relayDhcp() { relay('dhcp'); }
+  function relaySavedViews() { relay('saved_views'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -401,6 +404,7 @@
     NMAS.subscribe('topology', 'v2Topology', relayTopology);
     NMAS.subscribe('logs', 'v2Logs', relayLogs);
     NMAS.subscribe('dhcp', 'v2Dhcp', relayDhcp);
+    NMAS.subscribe('saved_views', 'v2SavedViews', relaySavedViews);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

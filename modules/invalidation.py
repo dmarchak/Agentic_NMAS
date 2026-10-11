@@ -89,6 +89,8 @@ VOCABULARY = {
     "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
     "logs": "the fleet's syslog counted per day (the Logs view's reader, C652)",
     "dhcp": "the network's Kea: subnets, reservations and leases (the DHCP reader, C529)",
+    "saved_views": "History › Query's saved views: their titles, who saved them, pinned or not "
+                   "(modules/saved_views.py, C667)",
     "variables": "the CSV-era variable store and compliance policy",
     "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",
@@ -164,6 +166,9 @@ DECLARED = {
     "inventory.copy_inherited": ("credentials",),
     "inventory.credential_profiles": ("credentials",),
     "inventory.delete_credential_profile": ("credentials",),
+    "v2.history_view_save": ("saved_views",),
+    "v2.history_view_pin": ("saved_views",),
+    "v2.history_view_remove": ("saved_views",),
     "topology_v2.expected_declare": ("topology",),
     "topology_v2.expected_withdraw": ("topology",),
     "topology_v2.positions_save": ("topology",),

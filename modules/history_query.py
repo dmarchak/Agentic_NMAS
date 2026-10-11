@@ -463,4 +463,6 @@ def library(list_name: str) -> dict:
         route, args = ANSWERS.get(key) or ("", {})
         qs.append({"key": key, "title": title, "what": what, "source": source,
                    "url": url_for(route, **args) if route else ""})
-    return {"coverage": coverage(list_name), "questions": qs, "list": list_name}
+    from modules import saved_views
+    return {"coverage": coverage(list_name), "questions": qs, "list": list_name,
+            "saved": saved_views.read(list_name)}

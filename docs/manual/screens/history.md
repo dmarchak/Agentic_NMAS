@@ -105,8 +105,17 @@ Run it. PromQL is drawn by the chart (at most 4 expressions, one a line, each it
 a LogQL line query draws its newest 200 lines over at most 30 days (Loki answers at most 30
 days at a time), each masked like every other configuration text. A LogQL query that answers
 numbers rather than lines is refused, saying so. A query is at most 2000 characters of
-printable ASCII. These are reads: nothing is written, and nothing reaches a device. Saving a
-view comes next. The sidebar's Logs is the live tail
+printable ASCII. These are reads: nothing is written, and nothing reaches a device.
+
+**Saved views.** **Save this view…**, beside Copy the link on any answer (Syslog by device
+included), asks a title and saves the question as you asked it (the question, its device and
+interface, its range, your own query) for everyone on this network, with your name and the
+time. The Query tab lists them under **Saved by your team**, pinned first, then the newest:
+each opens its question as saved. **Pin** brings a view to the front for everyone and
+**Unpin** returns it; **Remove…** asks first, and removes only the saved link: the history it
+asks is untouched. A network keeps at most 100. Each save, pin and removal is listed on the
+Timeline under **Saved views**. If the saved views' file cannot be read, the tab says so and
+nothing can be saved until it is repaired, so no one's views are written over. The sidebar's Logs is the live tail
 ([Logs](logs)); Syslog by device's "Open these lines on Logs" opens it filtered.
 
 ## Baselines {#baselines}

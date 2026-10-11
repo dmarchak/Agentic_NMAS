@@ -18,7 +18,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Region | Board | Built | Verdict |
 |---|---|---|---|
 | Crumb and title | "Query › Interface errors and discards over time"; the title | the same, with the network | **same** |
-| Actions | Copy the link; Save this view…; How does this work? | Copy the link; the title's info link | **later** (saving a view is C667's next step) |
+| Actions | Copy the link; Save this view…; How does this work? | Copy the link; Save this view… (a title asked in place, saved for the network, said where it went); the title's info link (compared again 2026-10-11) | **same** |
 | Device, interface | two selects (s3; Every interface, Gi1/1) | the same two, Every device first; an interface asked of one device only, its names read from the series | **same** |
 | Range | 24 h, 7 d, 30 d, 180 d, 1 y, beside the selects | the same five, on their own row under them | **deviation** (log: the range row) |
 | Chart | the Monitoring chart component: title, step and points, labelled axes with units, the crosshair with each series' value, a shaded "no data before …" | the Monitoring chart component (uPlot, the same island): title, axes in the unit, the cursor; the step and points and the read time in its foot | **deviation** (log: the chart is Monitoring's as it is; the shaded first day waits on the metrics' first sample being read) |

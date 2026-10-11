@@ -1,0 +1,10 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- A saved view's pin, unpin or removal, said in the slot above the list (C667), out of band:
+    the list redraws on `saved_views`, and a result drawn inside it would be wiped (C656). -#}
+<div id="hq-views-result" aria-live="polite" hx-swap-oob="true">
+{%- if op.state == 'refused' %}
+<div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not changed:</strong> {{ op.refused }}.</p></div>
+{%- elif op.state in ('pinned', 'unpinned', 'removed') %}
+<div class="notice set-result" role="status">{{ icon('check', 16) }}<p>{% if op.state == 'removed' %}Removed &ldquo;{{ op.view.title }}&rdquo;: only the saved link went; the history it asked is untouched.{% else %}{{ op.state | capitalize }} &ldquo;{{ op.view.title }}&rdquo; for everyone.{% endif %}{% if not op.recorded %} It could not be recorded: {{ op.record_error }}.{% endif %}</p></div>
+{%- endif %}
+</div>

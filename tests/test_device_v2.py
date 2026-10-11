@@ -648,7 +648,8 @@ class TestTheShippedScripts:
                                                     "/v2/credentials/profiles?list=Lab",
                                                     "/v2/topology?list=Lab",
                                                     "/v2/logs?list=Lab",
-                                                    "/v2/dhcp?list=Lab"))
+                                                    "/v2/dhcp?list=Lab",
+                                                    "/v2/history?tab=query&list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -675,7 +676,9 @@ class TestTheShippedScripts:
         # +1 2026-10-10: topology (P.11's map redraws on the reader's announcement).
         # +1 2026-10-11: dhcp (the DHCP page redraws on the DHCP reader's announcement, C529).
         # -1 2026-10-11: lab_startup (the lab-startup reader left the product, C663).
-        assert len(keys) == 37
+        # +1 2026-10-11: saved_views (History › Query's saved views redraw when one is saved,
+        # pinned or removed elsewhere, C667).
+        assert len(keys) == 38
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

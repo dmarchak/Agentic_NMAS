@@ -82,6 +82,12 @@ GATES = {
                          "onboard_verify"),
     "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
                           "onboard_abandon"),
+    "v2.history_view_save": _g(K, "saves a History › Query view (a link to a read) for the "
+                                  "network, with a title, recorded (C667)"),
+    "v2.history_view_pin": _g(K, "pins or unpins a saved History › Query view for everyone, "
+                                 "recorded (C667)"),
+    "v2.history_view_remove": _g(K, "removes a saved History › Query view; only the link goes, "
+                                    "the history it asks is untouched, recorded (C667)"),
     "v2.history_reapply_confirm": _g(C, "re-applies a baseline to every device it holds, as one batch job (History › Baselines)"),
     "adopt_v2.confirm": _g(C, "adds the tool's account to a device the tool did not build and "
                               "brings it under management (board G)", "adopt"),

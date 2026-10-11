@@ -854,6 +854,23 @@ def topology_layout(ctx):
     return _out(rows)
 
 
+def saved_views(ctx):
+    """Each History › Query view saved, pinned, unpinned or removed (C667): who, its title and
+    the question it opens. The network's; no device's History lists them."""
+    from modules import saved_views as SV
+    if ctx.get("device"):
+        return _out()
+    got = SV.history(getattr(ctx["ref"], "data_dir", ""))
+    if got["error"]:
+        return _out(errors=[f"the saved-views record could not be read: {got['error']}"])
+    return _out([_event(r.get("at"), "view",
+                        f"History › Query view “{r.get('title', '?')}” "
+                        f"{r.get('action', '?')}", [], who=r.get("actor", ""),
+                        record=[("Action", r.get("action")), ("Title", r.get("title")),
+                                ("Opens", r.get("address"))])
+                 for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
+
+
 def show_commands(ctx):
     """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
     commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
@@ -954,6 +971,7 @@ SOURCES = {
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
+    "saved_views": saved_views,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -977,6 +995,7 @@ KIND_GROUPS = (
                                ("credentials", "Credential profiles", ("credential",)),
                                ("expected", "Expected islands", ("expected",)),
                                ("layout", "Topology layouts", ("layout",)),
+                               ("views", "Saved views", ("view",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),

@@ -20,6 +20,5 @@
   {%- endif %}
   {%- endfor %}
 </div>
-<h2 class="hq-h">Saved by your team</h2>
-<p class="muted small">Saving a view is the next step of this page (C667); nothing is saved yet.</p>
-<a class="hq-q hq-own" href="{{ url_for('v2.history_query_metric', key='ask') }}"><strong>Ask your own (PromQL or LogQL)…</strong></a>
+<div id="hq-views-result" aria-live="polite"></div>
+{%- with views=lib.saved, list_name=lib.list, op={} %}{% include "v2/_history_views.html" %}{% endwith %}

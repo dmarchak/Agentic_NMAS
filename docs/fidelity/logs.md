@@ -11,8 +11,9 @@ Shots: desktop 1440 (120 days, every severity, r4 opened); phone 390 (the page h
 Compared again 2026-10-10 after the host walk: Newest follows the severity asked (the exact time when seen, else the last day counted, the board's "09:41 today" and "2 Oct"); no region's verdict changed.
 Compared again 2026-10-11 after C667 moved the view to its board's home, History › Query (`/v2/history/query/syslog`; the sidebar's Logs draws the same page): History's heading, its four tabs with Query on, and the crumb "Query › Syslog by device" now as the board draws them; the shots at 1440 and 390 again; no other region's verdict changed.
 Compared again 2026-10-11 (C675): the sidebar's Logs became the live tail (board D, its own record, docs/fidelity/logs-tail.md); this page is History › Query's alone, its template renamed `history_syslog.html`, and the drill-down's footer gains the board's "Open these lines on Logs", which opens the tail filtered; the title's (i) opens the manual's Syslog by device section (nothing drawn moved). No other region's verdict changed.
+Compared again 2026-10-11 (C667's saved views): "Save this view…" beside Copy the link, as the board draws it; the title-and-actions row now the same. No other region's verdict changed.
 Templates compared: templates/v2/history_syslog.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
-Templates sha256: `1fc1bfa4f2a4e497068ed4fb0b89083d7e414cba8d9eadb1fe0bcd31851a323a`
+Templates sha256: `4c6a2ac8b3e4630aa2714f1dab75add4c1c7a061d9077d2a48d8423784076ac3`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -20,7 +21,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Region | Board | Built | Verdict |
 |---|---|---|---|
 | Where it sits | History › Query tabs (Timeline, Query, Baselines, Authorisations), breadcrumb "Query › Syslog by device" | History, its Query tab on, breadcrumb "Query › Syslog by device · the network" (C667; the sidebar's Logs draws the same page) | **same** |
-| Title and actions | "Syslog by device"; Copy the link; Save this view…; How does this work? | "Syslog by device" with its info link; Copy the link | **deviation** (log: Logs without saved views) |
+| Title and actions | "Syslog by device"; Copy the link; Save this view…; How does this work? | "Syslog by device" with its info link; Copy the link; Save this view… (since C667's saved views, 2026-10-11) | **same** |
 | Range | 24 h, 7 d, 30 d, 120 d | the same four | **same** |
 | Severity | in the opened device's filters | the same, and beside the range for the table | **deviation** (log: Logs' severity beside the range) |
 | Coverage notice | "Part of this range holds nothing yet: … keeps logs 2 years (its Logs retention setting, Settings), but its log store began on 7 Sep, so the first 93 days … never kept; nothing to show is not nothing happened" | the same words from the setting and the store's first day; also days still being counted, and Loki holding more than the setting says | **same** |

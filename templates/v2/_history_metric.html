@@ -14,7 +14,7 @@
 <div class="lg-crumb"><a href="{{ url_for('v2.history_page', tab='query') }}">Query</a> › {{ m.q.title }} · {{ m.list }}</div>
 <div class="lg-head">
   <h2>{{ m.q.title }}{% if m.edited %} <span class="chip">edited</span>{% endif %} {{ info('history', 'query') }}</h2>
-  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q({}) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
+  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q({}) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button>{% if m.asked %}{% with op={'address': here ~ q({})} %}{% include "v2/_history_save.html" %}{% endwith %}{% endif %}</span>
 </div>
 {%- if m.error %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ m.error }}. {% if ask %}Nothing was asked.{% else %}The question is shown for every device, with its own query, instead.{% endif %}</p></div>{% endif %}
 {%- if m.edited %}<div class="notice hq-yours" role="status">{{ icon('info', 16) }}<p>The chart draws your query, not the question's. <a href="{{ here }}{{ q({'q': ''}) }}">Back to the question's own query</a>.</p></div>{% endif %}
