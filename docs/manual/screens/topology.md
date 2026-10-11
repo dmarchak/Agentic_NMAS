@@ -9,11 +9,11 @@ and the page redraws by itself when the reader reads something new.
 
 ## The map {#map}
 
-One physical map. Each device is drawn as its class's icon, in bands from top to bottom: **core**
-(routers), **edge** (routers with a peer outside management, and those peers, drawn as a cloud
-with their AS), **access** (switches; a switch that runs a routing protocol is badged **L3**),
-and **management**, where Mercury's own host is drawn where it attaches. Each device opens its
-page. A refresh moves nothing: the reader lays the map out when it reads.
+One physical map. Each device is drawn as its class's icon (a switch that runs a routing protocol
+is badged **L3**; a peer outside management is a cloud with its AS; Mercury's own host is drawn
+where it attaches). Each device opens its page. The map has no bands: devices sit where the
+network's shared layout puts them (see [Arranging the map](#arrange)), and where nobody has placed
+them, where the cabling's springs settle them, from a fixed seed. A refresh moves nothing.
 
 Every link is labelled:
 
@@ -53,9 +53,32 @@ The toolbar: **Protocols** chooses which protocols' chips and states are drawn (
 RIP / RIPng; EIGRP and IS-IS are drawn unpressed and do not press, since Mercury does not read
 them); **Ports** shows or hides the port names (on at the desktop, off at phone width); **Labels**
 Auto shows ports and chips at 100% and closer and hides them zoomed out, On always, Off never;
-**−, 100%, +** zoom; **Weak points** tags single points of
-failure and islands on the map. **Find** rings a device whose name, role, address or port
-matches; it never hides anything.
+**Reset layout** (see below); **−, 100%, +** zoom about the middle, 100% fitting the whole map;
+**Weak points** tags single points of failure and islands on the map. **Find** rings a device
+whose name, role, address or port matches; it never hides anything.
+
+## Arranging the map {#arrange}
+
+The map fills the window; a large network does not fit on one screen, so you move around it:
+
+- **Drag empty space** (or a link) to pan.
+- **The mouse wheel**, or a pinch on a trackpad or a phone, zooms in and out **at the pointer**.
+  How far you are zoomed is the middle button's percentage; Labels Auto hides ports and chips
+  while you are zoomed out.
+- **Drag a device** to move it, with a mouse or a pen on a wide screen (with the keyboard: focus
+  a device and press **Alt** and an arrow, **Shift** for a longer step). When you let go, the map
+  as it then stands is saved as **this network's layout, for everyone**: the device is faded until
+  the save answers, and the line under the map says who arranged it and when. Each move is
+  recorded on History (Topology layouts), with your name and the device; a device's own History
+  lists its moves. At phone width you pan and zoom; devices are moved on a wider screen.
+- A device added since the layout was saved is **placed near its neighbours**; no device anyone
+  placed moves.
+- **Reset layout** withdraws every person's moves: the map is laid out by the cabling again, for
+  everyone, and the reset is recorded on History. It is greyed out while nobody has moved a
+  device.
+
+Moving a device changes nothing on any device or in any record but the layout: it is where the
+device is drawn, nothing more.
 
 ## Needs attention on the map {#attention}
 
@@ -114,8 +137,9 @@ bridge.
 ## At phone width {#phone}
 
 Three tabs: **Attention** (first: the counts, then each group's links as a list), **Devices**
-(every device by band, with its ports and links; on the desktop this list appears only for a
-fleet too large to draw) and **Map**. Ports are off by default; **Ports** and **Labels** are
+(every device grouped by kind, routers, switches and the rest, with its ports and links; on the
+desktop this list appears only for a fleet too large to draw) and **Map**, where you pan with a
+finger and pinch to zoom. Ports are off by default; **Ports** and **Labels** are
 under the tabs. A selected
 link opens as a sheet at the bottom, with its ends, each protocol's state, the first end's
 Neighbours and **Show on the map**.

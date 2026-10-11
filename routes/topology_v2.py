@@ -94,3 +94,39 @@ def expected_withdraw():
     if not got["ok"]:
         return _region(409, op={"state": "refused", "device": device, "refused": got["error"]})
     return _result(dict(got, state="withdrawn", device=device))
+
+
+@bp.route("/positions", methods=["POST"])
+def positions_save():
+    """A person dropped a device (C661): the map as it now stands is saved as the network's
+    layout, for everyone, as the verified person, the device named in the record. Every place
+    must be a device the map draws; a refusal names what it compared and redraws the map as
+    saved."""
+    from modules import identity, topology_page, topology_positions
+
+    list_name = _list_name()
+    st = topology_page.stored()
+    net = ((st.get("value") or {}).get("networks") or {}).get(list_name) or {}
+    known = set(net.get("nodes") or {})
+    moved = (request.form.get("moved") or "").strip()
+    places, error = topology_positions.parse(request.form.get("positions", ""), known)
+    if not error and moved not in places:
+        error = f"the device moved, {moved!r}, is not among the places sent"
+    if error:
+        return _region(400, op={"state": "refused", "refused": f"the move was not saved: {error}"})
+    got = topology_positions.save(list_name, places, identity.request_actor(), moved)
+    if not got["ok"]:
+        return _region(409, op={"state": "refused", "refused": got["error"]})
+    return _result(dict(got, state="moved", device=moved))
+
+
+@bp.route("/positions/reset", methods=["POST"])
+def positions_reset():
+    """Reset layout: withdraw every person's moves, as the verified person; the generated layout
+    is drawn for everyone; recorded."""
+    from modules import identity, topology_positions
+
+    got = topology_positions.reset(_list_name(), identity.request_actor())
+    if not got["ok"]:
+        return _region(409, op={"state": "refused", "refused": got["error"]})
+    return _result(dict(got, state="reset"))

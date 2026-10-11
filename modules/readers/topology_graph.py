@@ -40,6 +40,10 @@ LAYERS = ("physical", "ospf", "ospfv3", "bgp")
 LAYER_WORDS = {"physical": "Physical (LLDP)", "ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP"}
 #: How many devices a criticality ranking names.
 CRITICAL_TOP = 5
+#: The most map nodes laid out: the page draws a map of up to 150 managed devices
+#: (`topology_page.COLLAPSE_ABOVE`), plus outside peers and Mercury's host. The spring layout
+#: took 554 ms at 150 devices on the laptop (2026-10-11) and grows with their square.
+LAYOUT_UP_TO = 200
 #: The announcement's keepalive: an unchanged graph is announced at least this often (rule 9),
 #: ten reads, so a page that missed one hears the next within ten minutes.
 KEEPALIVE_SECONDS = 600
@@ -676,13 +680,15 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
                     "warn": not declared}
         analysis[layer] = a
     # Where each device sits on the map, laid out once here so a page view never does
-    # (modules/topology_layout.py).
+    # (modules/topology_layout.py). A map the page does not draw (above LAYOUT_UP_TO devices) is
+    # not laid out: the spring layout grows with the square of the devices.
     from modules import topology_layout
-    try:
-        laid = topology_layout.layout(nodes, phys)
-    except Exception as exc:                         # noqa: BLE001 (the page lays out instead)
-        log.warning("topology: the map could not be laid out (%s); the page lays it out", exc)
-        laid = None
+    laid = None
+    if len(nodes) <= LAYOUT_UP_TO:
+        try:
+            laid = topology_layout.layout(nodes, phys)
+        except Exception as exc:                     # noqa: BLE001 (the page lays out instead)
+            log.warning("topology: the map could not be laid out (%s); the page lays it out", exc)
     return {"nodes": nodes, "layers": layers, "analysis": analysis, "layout": laid}
 
 

@@ -242,9 +242,13 @@ def test_the_protocol_toggles_change_what_the_links_carry(web):
 def test_ports_labels_and_zoom(web):
     assert 'topo-ports-auto' in _get(web) and 'topo-ports-off' in _get(web, "&ports=off")
     assert _ports(_get(web, "&labels=off")) == [] and _chips(_get(web, "&labels=off")) == []
-    # Labels auto: shown at Fit and closer, hidden zoomed out.
-    assert _ports(_get(web, "&z=75")) == [] and _ports(_get(web, "&z=150"))
-    assert 'class="topo-map topo-z150' in _get(web, "&z=150")
+    # Labels auto: shown at Fit and closer, hidden zoomed out (C661: drawn, and hidden by the
+    # browser's `topo-far` as the map is zoomed, so a zoom in the browser needs no redraw).
+    far = _get(web, "&z=75")
+    assert _ports(far) and 'topo-labels-auto topo-far' in far
+    near = _get(web, "&z=150")
+    assert _ports(near) and 'class="topo-map topo-z150 topo-labels-auto topo-ports' in near
+    assert "topo-far" not in _get(web, "&labels=on&z=75").split('class="topo-map')[1][:60]
 
 
 def test_a_down_link_is_thick_red_chipped_and_names_its_end(web):
@@ -331,6 +335,213 @@ def test_a_refusal_declares_no_change_and_a_success_does(web):
     assert "r6 is an expected island" in slot
     page = web["client"].get("/v2/topology?list=Lab").get_data(as_text=True)
     assert '<div id="topo-result" aria-live="polite"></div>' in page
+
+
+# --------------------------------------------------------------- C661: the network's layout
+
+def _places(html):
+    return {n: (float(x), float(y)) for n, x, y in
+            re.findall(r'data-node="([^"]+)" data-x="([\d.]+)" data-y="([\d.]+)"', html)}
+
+
+def test_no_bands_and_a_seeded_layout_a_refresh_does_not_move(web):
+    """C661: no Access, Edge, Core or Management section on the map; the generated layout is the
+    cabling's springs from a fixed seed, every device on the frame and none on another."""
+    html = _get(web)
+    assert "topo-bandrule" not in html and 'class="topo-band"' not in html
+    first = _places(html)
+    assert len(first) >= 10 and first == _places(_get(web))
+    for (a, pa) in first.items():
+        assert pa[0] >= 20 and pa[1] >= 20
+        for b, pb in first.items():
+            if a < b:
+                assert ((pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2) ** 0.5 >= 100, (a, b)
+    assert "Reset layout" in html and 'aria-disabled="true" title="Nobody has moved a device' in html
+    assert "Drag a device to move it" in html and 'data-topo-view="Lab"' in html
+
+
+def _move(web, name, dx, dy, html=None):
+    places = _places(html or _get(web))
+    places[name] = (places[name][0] + dx, places[name][1] + dy)
+    return web["client"].post("/v2/topology/positions", data={
+        "list": "Lab", "moved": name,
+        "positions": json.dumps({n: [x, y] for n, (x, y) in places.items()})}), places
+
+
+def test_a_move_is_the_network_s_layout_for_everyone_and_recorded(web):
+    r, places = _move(web, "r1", 140, 60)
+    assert r.status_code == 200 and r.headers.get("X-NMAS-Invalidates") == "topology"
+    stored = json.loads((web["dir"] / "topology_positions.json").read_text())
+    assert stored["by"] == "test-person@example.invalid"
+    assert stored["positions"]["r1"] == [round(places["r1"][0]), round(places["r1"][1])]
+    log = [json.loads(l) for l in (web["dir"] / "topology_positions_log.jsonl").read_text()
+           .splitlines()]
+    assert log[-1]["action"] == "moved" and log[-1]["device"] == "r1"
+    html = _get(web)
+    assert _places(html)["r1"] == tuple(float(v) for v in stored["positions"]["r1"])
+    assert "Arranged by test-person@example.invalid" in html
+    # A move draws no notice: its result is the device where it was dropped (no narration).
+    assert "set-result" not in r.get_data(as_text=True).split('id="topo-result"')[-1]
+    # History: the move, by whom, on the network's History and on r1's own.
+    from modules import history_sources as H
+
+    class Ref:
+        data_dir = str(web["dir"])
+    ctx = {"ref": Ref(), "device": "", "since": None, "members": None}
+    (event,) = H.topology_layout(ctx)["events"]
+    assert event["what"].startswith("r1 moved on Topology to (") and event["kind"] == "layout"
+    assert event["who"] == "test-person@example.invalid" and event["devices"] == ["r1"]
+    assert H.topology_layout(dict(ctx, device="r1"))["events"]
+    assert not H.topology_layout(dict(ctx, device="r2"))["events"]
+
+
+def test_a_device_the_layout_lacks_is_placed_near_its_neighbours_and_no_arranged_one_moves(web):
+    """The decision: a new device is placed near its neighbours without moving arranged ones.
+    Planted: the layout saved without r2, as if r2 had been added since."""
+    html = _get(web)
+    places = _places(html)
+    held = {n: [x + 30, y + 30] for n, (x, y) in places.items() if n != "r2"}
+    r = web["client"].post("/v2/topology/positions", data={
+        "list": "Lab", "moved": "r1", "positions": json.dumps(held)})
+    assert r.status_code == 200
+    now = _places(_get(web))
+    assert all(now[n] == (float(x), float(y)) for n, (x, y) in held.items())
+    assert "r2" in now and now["r2"] != places["r2"]
+
+
+def test_the_layout_is_the_same_every_time_and_keeps_devices_apart():
+    """The seed: a device the shared layout lacks lands in the same place on every call (it
+    starts at a seeded angle from its neighbours); and no two devices end closer than MIN_GAP,
+    planted: two placed on the same spot with a third to settle."""
+    from modules import topology_layout as L
+    nodes = {n: {} for n in ("hub", "a", "b", "c", "new")}
+    phys = [{"a": "hub", "b": x} for x in ("a", "b", "c", "new")]
+    placed = {"hub": (400, 300), "a": (250, 300), "b": (550, 300), "c": (400, 150)}
+    first = L.layout(nodes, phys, placed)["positions"]["new"]
+    assert all(L.layout(nodes, phys, placed)["positions"]["new"] == first for _ in range(3))
+    pushed = L._apart({"x": (100.0, 100.0), "y": (100.0, 100.0), "z": (104.0, 100.0)})
+    for p, q in (("x", "y"), ("x", "z"), ("y", "z")):
+        d = ((pushed[p][0] - pushed[q][0]) ** 2 + (pushed[p][1] - pushed[q][1]) ** 2) ** 0.5
+        assert d >= 100, (p, q, d)          # a name under each icon: about 100 units
+
+
+@pytest.mark.parametrize("positions,moved,words", [
+    ({"r9": [10, 10]}, "r9", "'r9' is not on this network's map"),
+    ({"r1": [10]}, "r1", "r1's place is not two numbers"),
+    ({"r1": [10, 99999]}, "r1", "outside the map's frame"),
+    ({"r1": [100, 100]}, "r2", "the device moved, 'r2', is not among the places sent"),
+])
+def test_a_move_that_is_not_the_map_s_is_refused_writing_nothing(web, positions, moved, words):
+    r = web["client"].post("/v2/topology/positions", data={
+        "list": "Lab", "moved": moved, "positions": json.dumps(positions)})
+    assert r.status_code == 400 and "X-NMAS-Invalidates" not in r.headers
+    assert words in r.get_data(as_text=True).replace("&#39;", "'")
+    assert not (web["dir"] / "topology_positions.json").exists()
+
+
+def test_an_unreadable_layout_refuses_a_move_and_draws_the_generated_one(web):
+    generated = _places(_get(web))
+    (web["dir"] / "topology_positions.json").write_text("{not json")
+    html = _get(web)
+    assert "The saved layout cannot be read" in html and _places(html) == generated
+    r, _ = _move(web, "r1", 10, 10, html)
+    assert r.status_code == 409 and "nothing was written" in r.get_data(as_text=True)
+    assert (web["dir"] / "topology_positions.json").read_text() == "{not json"
+
+
+def test_reset_withdraws_every_move_for_everyone_recorded(web):
+    generated = _places(_get(web))
+    _move(web, "r1", 140, 60)
+    assert _places(_get(web)) != generated
+    html = _get(web)
+    assert 'action="/v2/topology/positions/reset' in html
+    r = web["client"].post("/v2/topology/positions/reset", data={"list": "Lab"})
+    assert r.status_code == 200 and "The layout is reset" in r.get_data(as_text=True)
+    assert not (web["dir"] / "topology_positions.json").exists()
+    assert _places(_get(web)) == generated
+    assert '"action": "reset"' in (web["dir"] / "topology_positions_log.jsonl").read_text()
+
+
+@pytest.mark.real_identity
+def test_no_person_moves_nothing(web):
+    r, _ = _move(web, "r1", 10, 10)
+    assert r.status_code in (401, 403)
+    assert not (web["dir"] / "topology_positions.json").exists()
+
+
+def test_drag_pan_and_zoom_in_a_browser(web):
+    """A real pointer (WebDriver's actions) at 1440: dragging empty space pans (the view box
+    moves, nothing is saved); the wheel zooms at the pointer (the view box shrinks, the % says
+    so, Labels Auto hide when zoomed out); dragging r1 moves it, its lines follow, and the drop
+    saves the map for everyone. At 390 a drag on a device pans and moves nothing."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+
+    def actions(b, origin, steps):
+        b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+            "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+            "actions": [{"type": "pointerMove", "origin": origin, "x": 0, "y": 0}] + steps}]})
+        b._call("DELETE", f"/session/{b.session}/actions")
+
+    def view(b):
+        return b.js("return document.querySelector('svg.topo-map').getAttribute('viewBox')")
+
+    def element(b, css):
+        return b._call("POST", f"/session/{b.session}/element", {"using": "css selector",
+                                                                  "value": css})
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        b.go(srv.url("/v2/topology?list=Lab"))
+        b.wait_for("return window.NMAS_TOPOLOGY && document.querySelector('svg.topo-map')")
+        before = view(b)
+        # A pan from the map's empty top-left corner.
+        actions(b, element(b, "[data-topo-view]"), [
+            {"type": "pointerMove", "origin": "pointer", "x": -300, "y": -150},
+            {"type": "pointerDown", "button": 0},
+            {"type": "pointerMove", "origin": "pointer", "x": 80, "y": 50, "duration": 150},
+            {"type": "pointerUp", "button": 0}])
+        panned = view(b)
+        assert panned != before and panned.split()[2:] == before.split()[2:], (before, panned)
+        assert not (web["dir"] / "topology_positions.json").exists()
+        # The wheel zooms in at the pointer: the view box shrinks; out past fit, labels hide.
+        b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+            "type": "wheel", "id": "wheel", "actions": [{
+                "type": "scroll", "origin": element(b, "[data-topo-view]"), "x": 0, "y": 0,
+                "deltaX": 0, "deltaY": -300}]}]})
+        assert float(view(b).split()[2]) < float(panned.split()[2])
+        assert b.js("return document.querySelector('[data-topo-zoom=\"fit\"]').textContent") \
+            != "100%"
+        b.click('[data-topo-zoom="fit"]')
+        b.click('[data-topo-zoom="out"]')
+        assert b.js("return document.querySelector('svg.topo-map')"
+                    ".classList.contains('topo-far')")
+        b.click('[data-topo-zoom="fit"]')
+        # A device dragged: it moves, its lines follow straight, the drop saves.
+        x0 = b.js("return +document.querySelector('[data-node=\"r1\"]').getAttribute('data-x')")
+        actions(b, element(b, '[data-node="r1"] .topo-ic'), [
+            {"type": "pointerDown", "button": 0},
+            {"type": "pointerMove", "origin": "pointer", "x": 70, "y": 40, "duration": 200},
+            {"type": "pointerUp", "button": 0}])
+        b.wait_for("return document.body.textContent.indexOf('Arranged by') >= 0")
+        stored = json.loads((web["dir"] / "topology_positions.json").read_text())
+        assert stored["positions"]["r1"][0] > x0 + 20, (x0, stored["positions"]["r1"])
+        assert b.js("return +document.querySelector('[data-node=\"r1\"]')"
+                    ".getAttribute('data-x')") == stored["positions"]["r1"][0]
+        # The phone: a drag on a device pans and moves nothing.
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 390, "height": 844})
+        b.go(srv.url("/v2/topology?list=Lab&tab=map"))
+        b.wait_for("return document.querySelector('svg.topo-map')")
+        before = view(b)
+        actions(b, element(b, '[data-node="r2"] .topo-ic'), [
+            {"type": "pointerDown", "button": 0},
+            {"type": "pointerMove", "origin": "pointer", "x": 40, "y": 30, "duration": 150},
+            {"type": "pointerUp", "button": 0}])
+        assert view(b) != before
+        again = json.loads((web["dir"] / "topology_positions.json").read_text())
+        assert again == stored
 
 
 @pytest.mark.real_identity

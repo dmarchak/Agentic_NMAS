@@ -828,6 +828,32 @@ def topology_expected(ctx):
                  if _mine(ctx, r.get("device", "")) and _recent(ctx, r.get("at"))])
 
 
+def topology_layout(ctx):
+    """Each device a person moved on Topology, and each Reset layout (C661): who, which device,
+    where to. A device's History lists its own moves; a reset belongs to the network."""
+    from modules import topology_positions as TP
+    got = TP.history(getattr(ctx["ref"], "data_dir", ""))
+    if got["error"]:
+        return _out(errors=[f"the Topology layout record could not be read: {got['error']}"])
+    rows = []
+    for r in reversed(got["rows"]):
+        device = r.get("device", "")
+        if not _recent(ctx, r.get("at")) or (ctx.get("device") and not device) or \
+                (device and not _mine(ctx, device)):
+            continue
+        to = r.get("to") or []
+        rows.append(_event(r.get("at"), "layout",
+                           f"{device} moved on Topology"
+                           + (f" to ({to[0]}, {to[1]})" if len(to) == 2 else "")
+                           + ", the network's layout saved for everyone"
+                           if r.get("action") == "moved" else
+                           "Topology's layout reset: the generated one drawn for everyone",
+                           [device] if device else [], who=r.get("actor", ""),
+                           record=[("Action", r.get("action")), ("Device", device),
+                                   ("Places", r.get("places"))]))
+    return _out(rows)
+
+
 def show_commands(ctx):
     """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
     commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
@@ -927,7 +953,7 @@ SOURCES = {
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
-    "topology_expected": topology_expected,
+    "topology_expected": topology_expected, "topology_layout": topology_layout,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -950,6 +976,7 @@ KIND_GROUPS = (
                                ("breakglass", "Break-glass exports", ("breakglass",)),
                                ("credentials", "Credential profiles", ("credential",)),
                                ("expected", "Expected islands", ("expected",)),
+                               ("layout", "Topology layouts", ("layout",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),

@@ -39,7 +39,12 @@ walk: C659, fixed and walked 2026-10-11 (222054b: no link drawn across a device,
 it does not join, checked in a real browser). Wall view and Arrange stay later steps. DHCP
 (C529) step 1 built 2026-10-11: the DHCP reader and the read-only page to board A, the sidebar's
 DHCP under SOURCE OF TRUTH, docs/fidelity/dhcp.md; deployed and walked on the host the same
-day (4f9a699: both families read, the capture's counts); next, step 2 (board B, with the one host step
+day (4f9a699: both families read, the capture's counts); C660 (the reader's reservations outside a
+subnet, 81e3334, walked). The operator's queue since, in order: C661 (Topology arranged by
+people, panned and zoomed, no bands: built 2026-10-11), C664 (Settings › Installation's layout),
+C666 (the drift check's Last column), C663 (the lab out of the product), C665 (roles and
+platforms from NetBox), C667 (History › Query to boards A to C), C662 (RIP and RIPng on
+Topology), then C529 step 2; next after those, step 2 (board B, with the one host step
 that moves Kea's subnets into Mercury's files). Then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
 in the records database); Logs (C652, the operator 2026-10-10): the sidebar's Logs opens

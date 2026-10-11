@@ -16,16 +16,18 @@ region by region):
   (orange, dashed), down or an intended neighbour missing (red, thick), not read (grey, dotted);
   never colour alone;
 - each device as its class's icon (our own symbols, static/img/topology/), an L3 switch badged,
-  in bands (core, edge, access, management), Mercury's own host where it attaches, measured;
+  where the network's layout puts it (no bands: C661), Mercury's own host where it attaches,
+  measured;
 - a hover card per link: each end, the link's state and since, each protocol's neighbours with
   their states against intent; a click selects it (the phone's bottom sheet);
 - "Needs attention on the map": every link and weak point that needs review, grouped by line
   style, filterable; the counts lead.
 
 **The map is drawn on the server, as SVG** (the brief's drawing spike: no new library, strict
-CSP, so every position is an SVG attribute, never a style). Positions are deterministic: bands
-by class, each band ordered by its neighbours' places (fewer crossings); a refresh moves nothing.
-Saved, shared positions a person moves (Arrange) are step 3.
+CSP, so every position is an SVG attribute, never a style). Positions are the network's shared
+layout where people moved devices, the rest by the cabling's springs from a fixed seed
+(`topology_layout`, `topology_positions`); a refresh moves nothing. Panning and zooming are the
+browser's (static/js/nmas_topology.js), over the whole map drawn once.
 """
 
 import logging
@@ -33,7 +35,7 @@ import math
 import os
 from urllib.parse import urlencode
 
-from modules.topology_layout import BANDS, HALF, W, _band, layout, node_class
+from modules.topology_layout import HALF, layout, node_class
 
 log = logging.getLogger(__name__)
 
@@ -553,8 +555,10 @@ def view(list_name: str, values) -> dict:
     links = [_link(l, layers, on, nodes, twoway) for l in phys] + \
         _routing_only(layers, on, nodes, twoway)
     weak = _weak(an, phys)
+    from modules import topology_positions
+    arranged = topology_positions.read(list_name)
     out.update(state="ok", errors=value.get("errors") or [], present=present, on=on,
-               layout=net.get("layout"),
+               layout=net.get("layout"), arranged=arranged,
                nodes=nodes,
                icon_of={name: _ICON[node_class(name, n)] for name, n in nodes.items()})
     fleet = sorted(n for n, v in nodes.items() if v.get("managed"))
@@ -653,22 +657,20 @@ def _ports(phys: list, a: str, b: str) -> str:
 
 
 def _list_groups(nodes: dict, phys: list) -> list:
-    """The phone's Devices tab: devices by band, each with its links, ports and states."""
-    outside = {n for n, v in nodes.items() if v.get("outside")}
-    edge = {l["a"] if l["b"] in outside else l["b"] for l in phys
-            if (l["a"] in outside) != (l["b"] in outside)}
+    """The phone's Devices tab: devices grouped by their class (the legend's words, in its
+    order; no bands since C661), each with its links, ports and states."""
     groups = {}
     for name in sorted(nodes):
         n = nodes.get(name) or {}
         mine = [l for l in phys if name in (l["a"], l["b"])]
-        groups.setdefault(_band(name, n, edge), []).append({
+        groups.setdefault(node_class(name, n), []).append({
             "name": name, "label": label(name), "managed": n.get("managed", False),
             "outside": n.get("outside", False), "cls": node_class(name, n),
             "links": [{"to": label(l["b"] if l["a"] == name else l["a"]),
                        "state": l.get("state"), "kind": l.get("kind", ""),
                        "port": (l.get("port_a") if l["a"] == name else l.get("port_b")) or ""}
                       for l in mine]})
-    return [{"words": band, "devices": groups[band]} for band in BANDS if band in groups]
+    return [{"words": CLASSES[c], "devices": groups[c]} for c in CLASSES if c in groups]
 
 
 def _search(nodes: dict, phys: list, q: str) -> list:
@@ -796,20 +798,34 @@ def _card_h(l: dict) -> int:
 
 
 def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
-    """The map's elements, positioned in its own coordinates: ``{"width", "height", "bands",
+    """The map's elements, positioned in its own coordinates: ``{"width", "height",
     "links", "nodes", "labels"}``; the template draws them and escapes every name."""
     from modules.readers.topology_graph import MANAGER
 
-    # Laid out by the reader when it read the graph; a value stored by a reader that did not
-    # yet lay out is laid out here, until its next read (within a minute).
-    geo = view_.get("layout") or layout(nodes, phys)
+    # The network's shared layout where people placed devices (C661), a device it lacks placed
+    # near its neighbours; else the reader's generated layout; a value stored by a reader that
+    # did not yet lay out is laid out here, until its next read (within a minute).
+    placed = ((view_.get("arranged") or {}).get("positions")) or {}
+    if placed:
+        geo = layout(nodes, phys, placed)
+    else:
+        geo = view_.get("layout")
+        if not geo:
+            geo = layout(nodes, phys)
+        elif "width" not in geo:
+            # Stored before C661 (the banded layout, 880 wide): its places kept, its frame
+            # measured from them, until the reader's next read lays it out again.
+            xs = [p[0] for p in geo["positions"].values()] or [0]
+            geo = dict(geo, width=max(880, round(max(xs) + 100)))
     geo = dict(geo, positions={k: tuple(v) for k, v in geo["positions"].items()})
-    pos, height = geo["positions"], geo["height"]
+    pos, height, width = geo["positions"], geo["height"], geo["width"]
     trace = view_.get("trace") or {}
     on_path = {tuple(e) for e in trace.get("edges") or []} if trace.get("ok") else set()
     wi = view_.get("what_if") or {}
     gone, lost = wi.get("device"), set(wi.get("lost") or [])
-    labels = s["labels"] == "on" or (s["labels"] == "auto" and int(s["z"]) >= 100)
+    # Labels are drawn unless Off: Auto's are hidden by the browser while the map is zoomed out
+    # (`topo-far`, set by the zoom asked for and by static/js/nmas_topology.js as it zooms).
+    labels = s["labels"] != "off"
     pairs = {}
     for l in links:
         pairs.setdefault(tuple(sorted((l["a"], l["b"]))), []).append(l["id"])
@@ -834,7 +850,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
             shift += 22
         x1, y1, x2, y2 = (x1 - uy * shift, y1 + ux * shift, x2 - uy * shift, y2 + ux * shift)
         others = [b for name, bs in boxes.items() if name not in (l["a"], l["b"]) for b in bs]
-        cx_, cy_ = _route((x1, y1), (x2, y2), others, (W, height))
+        cx_, cy_ = _route((x1, y1), (x2, y2), others, (width, height))
         shapes[l["id"]] = (x1, y1, cx_, cy_, x2, y2, length)
     # Ports first (they sit by their device), then each link's chips at the first place along it,
     # from the middle outward, that covers nothing placed: the worst links choose first.
@@ -871,7 +887,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                 ax, ay = _bez(shapes[l["id"]], t)
                 mx, my = ax + dx, ay + dy
                 box = (mx - w / 2, my - h / 2 - 1, mx + w / 2, my + h / 2 + 1)
-                if box[0] < 0 or box[2] > W or box[1] < 0 or box[3] > height:
+                if box[0] < 0 or box[2] > width or box[1] < 0 or box[3] > height:
                     continue
                 hits = sum(1 for b in taken if _overlap(box, b))
                 if best is None or hits < best[0]:
@@ -903,7 +919,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
         (hx1, hy1), (hx2, hy2) = _bez(shapes[l["id"]], 0.2), _bez(shapes[l["id"]], 0.8)
         hcx, hcy = _bez(shapes[l["id"]], 0.5)
         card_h = _card_h(l)
-        cx = min(max(mx + 14, 8), W - 328)
+        cx = min(max(mx + 14, 8), width - 328)
         cy = min(max(my + 14, 8), max(height - card_h - 4, 8))
         drawn.append(dict(l, d=f"M{x1:.0f} {y1:.0f}Q{cx_:.0f} {cy_:.0f} {x2:.0f} {y2:.0f}",
                           hit=f"M{hx1:.0f} {hy1:.0f}Q{hcx:.0f} {hcy:.0f} {hx2:.0f} {hy2:.0f}",
@@ -931,7 +947,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                           "island": any(t["cls"] == "isl" for t in tags.get(name, [])),
                           "spof": any(t["cls"] == "spof" for t in tags.get(name, [])),
                           "role": n.get("role") or "", "manager": name == MANAGER})
-    return {"width": W, "height": height, "bands": geo["bands"], "links": drawn,
+    return {"width": width, "height": height, "links": drawn,
             "nodes": out_nodes, "labels": labels, "z": s["z"]}
 
 

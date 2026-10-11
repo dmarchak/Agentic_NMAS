@@ -402,8 +402,10 @@ class TestSinceAndLayout:
         pos = g["layout"]["positions"]
         assert set(pos) == set(g["nodes"])
         assert pos == _labelled()["layout"]["positions"]        # the same graph, the same map
-        # Bands by class: routers above switches, Mercury's host at the bottom.
-        assert pos["r1"][1] < pos["s3"][1] < pos[T.MANAGER][1]
+        # No bands (C661): the frame holds every device, and nothing names a band.
+        lay = g["layout"]
+        assert "bands" not in lay and lay["placed"] == []
+        assert all(0 < x < lay["width"] and 0 < y < lay["height"] for x, y in pos.values())
 
 
 class TestTheRead:

@@ -6,4 +6,10 @@
 <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is an expected island</strong>, recorded with your reason{% if not op.recorded %} (NOT recorded on History: {{ op.record_error }}){% endif %}. The map draws it as expected once the reader reads again (it was woken).</p></div>
 {%- elif op.state == 'withdrawn' %}
 <div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>{{ op.device }} is no longer declared expected</strong>: if it is an island, it warns again once the reader reads.</p></div>
+{%- elif op.state == 'moved' and not op.recorded %}
+{#- A move's result is the device where it was dropped and the line under the map naming who
+    arranged it; only a move that could not be recorded says more. -#}
+<div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<p><strong>{{ op.device }}'s place is saved for everyone, but NOT recorded on History:</strong> {{ op.record_error }}.</p></div>
+{%- elif op.state == 'reset' %}
+<div class="notice notice-muted set-result" role="status">{{ icon('tick', 16) }}<p><strong>The layout is reset</strong>: every person's moves withdrawn, the map laid out by the cabling again for everyone{% if not op.recorded %} (NOT recorded on History: {{ op.record_error }}){% else %}; recorded on History{% endif %}.</p></div>
 {%- endif %}

@@ -234,6 +234,10 @@ GATES = {
                                           "network, with a reason, recorded (P.11)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "
                                            "recorded (P.11)"),
+    "topology_v2.positions_save": _g(K, "saves the network's Topology layout after a person "
+                                       "moved a device, for everyone, recorded (C661)"),
+    "topology_v2.positions_reset": _g(K, "withdraws the network's arranged Topology layout, "
+                                        "recorded (C661)"),
     "credential_profiles_v2.save": _g(K,"saves a credential profile from Credentials › "
                                          "Profiles, recorded (who, which, the fields set)"),
     "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "

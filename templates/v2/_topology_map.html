@@ -10,8 +10,8 @@
 {%- set op = op or {} -%}
 {%- set page = url_for('topology_v2.page') -%}
 {%- set region = url_for('topology_v2.region') -%}
-{%- macro go(t, over, words, cls='btn btn-small', pressed=none, label='') -%}
-<a class="{{ cls }}" href="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}" hx-get="{{ url_for('topology_v2.region') }}{{ t.qs(over) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+{%- macro go(t, over, words, cls='btn btn-small', pressed=none, label='', zoom='') -%}
+<a class="{{ cls }}" href="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}" hx-get="{{ url_for('topology_v2.region') }}{{ t.qs(over) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}{% if zoom %} data-topo-zoom="{{ zoom }}"{% endif %}>{{ words }}</a>
 {%- endmacro -%}
 {%- macro ic(name, cls='') -%}<svg class="topo-ico {{ cls }}" aria-hidden="true"><use href="#ti-{{ name }}"></use></svg>{%- endmacro -%}
 {%- macro since_words(iso, seen) -%}{% if iso %}<time datetime="{{ iso }}" title="{{ iso }}">{{ t.since_text(iso, seen) }}</time>{% endif %}{%- endmacro -%}
@@ -83,12 +83,22 @@
     {%- for k, w in [('auto', 'Auto'), ('on', 'On'), ('off', 'Off')] %}{{ go(t, {'labels': k, 'tab': 'map'}, w, 'seg-btn' ~ (' on' if t.s.labels == k), t.s.labels == k) }}{% endfor %}
   </div>
   {{ go(t, {'labels': {'auto': 'on', 'on': 'off', 'off': 'auto'}[t.s.labels], 'tab': 'map'}, 'Labels: ' ~ t.s.labels, 'btn btn-small topo-narrow-inline') }}
+  {%- if t.arranged.state == 'ok' %}
+  <form class="topo-wide" method="post" action="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-post="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-target="#topo" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ t.list }}">
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this" title="Withdraw every person's moves: the map is laid out by the cabling again, for everyone (recorded on History)"><span class="op-idle">Reset layout</span><span class="op-busy">Resetting…</span></button>{{ how('topology', 'arrange', compact=True, op='a layout reset') }}</span>
+  </form>
+  {%- elif t.arranged.state == 'unreadable' %}
+  <span class="btn btn-small topo-wide" aria-disabled="true" title="{{ t.arranged.error }}">Reset layout</span>
+  {%- else %}
+  <span class="btn btn-small topo-wide" aria-disabled="true" title="Nobody has moved a device on {{ t.list }}: the map is laid out by the cabling">Reset layout</span>
+  {%- endif %}
   <span class="topo-grow"></span>
   {%- set zi = t.zooms.index(t.s.z | int) %}
   <div class="seg topo-wide" role="group" aria-label="Zoom">
-    {%- if zi > 0 %}{{ go(t, {'z': t.zooms[zi - 1], 'tab': 'map'}, '−', 'seg-btn', none, 'Zoom out') }}{% else %}<span class="seg-btn" aria-disabled="true" title="Zoomed out as far as it goes">−</span>{% endif %}
-    {{- go(t, {'z': 100, 'tab': 'map'}, t.s.z ~ '%', 'seg-btn' ~ (' on' if t.s.z == '100'), none, 'Fit the map to its box (100%)') }}
-    {%- if zi < t.zooms | length - 1 %}{{ go(t, {'z': t.zooms[zi + 1], 'tab': 'map'}, '+', 'seg-btn', none, 'Zoom in') }}{% else %}<span class="seg-btn" aria-disabled="true" title="Zoomed in as far as it goes">+</span>{% endif %}
+    {{- go(t, {'z': t.zooms[[zi - 1, 0] | max], 'tab': 'map'}, '−', 'seg-btn', none, 'Zoom out', 'out') }}
+    {{- go(t, {'z': 100, 'tab': 'map'}, t.s.z ~ '%', 'seg-btn' ~ (' on' if t.s.z == '100'), none, 'Fit the map to its box (100%)', 'fit') }}
+    {{- go(t, {'z': t.zooms[[zi + 1, t.zooms | length - 1] | min], 'tab': 'map'}, '+', 'seg-btn', none, 'Zoom in', 'in') }}
   </div>
   {{ go(t, {'weak': '0' if t.s.weak == '1' else '1', 'tab': 'map'}, 'Weak points', 'btn btn-small topo-wide' ~ (' on' if t.s.weak == '1'), t.s.weak == '1') }}
   <details class="topo-pop topo-wide" data-keep="topo-path"{% if t.s.a or t.s.b %} open{% endif %}>
@@ -116,14 +126,19 @@
 <div class="topo-body">
 <section class="topo-pane topo-pane-map" aria-label="The map">
 {%- if t.collapsed %}
-<div class="notice notice-info" role="status">{{ icon('info', 16) }}<p>{{ t.summary.devices }} devices: above 150 the map is not drawn whole; Needs attention names every link to review, and Devices lists every device by band. Find, a path or a device's page shows one part.</p></div>
+<div class="notice notice-info" role="status">{{ icon('info', 16) }}<p>{{ t.summary.devices }} devices: above 150 the map is not drawn whole; Needs attention names every link to review, and Devices lists every device by kind. Find, a path or a device's page shows one part.</p></div>
 {%- else %}
 {%- set g = t.svg %}
 <div class="topo-mapbox">
-<div class="topo-scroll">
-<svg class="topo-map topo-z{{ g.z }}{{ ' topo-ports-on' if t.s.ports == 'on' else ' topo-ports-off' if t.s.ports == 'off' else ' topo-ports-auto' }}" viewBox="0 0 {{ g.width }} {{ g.height }}" role="img" aria-labelledby="topo-map-title">
+{#- The map is drawn whole; the browser pans and zooms it (static/js/nmas_topology.js): drag empty
+    space to pan, the wheel or a pinch zooms at the pointer, a device dragged on a wide screen is
+    moved and the map saved for everyone through the form below (C661). -#}
+<p class="topo-how small"><span class="topo-wide-inline">Drag a device to move it: saved for everyone on {{ t.list }}, recorded on History. </span>Drag empty space to pan; the wheel or a pinch zooms at the pointer. <span class="topo-narrow-inline">Devices are moved on a wider screen.</span>
+  {%- if t.arranged.state == 'ok' %} <span class="topo-faint">Arranged by {{ t.arranged.by }}, {{ stamp(t.arranged.at) }}; a device added since is placed near its neighbours.</span>
+  {%- elif t.arranged.state == 'unreadable' %} <span class="topo-warn-t">The saved layout cannot be read ({{ t.arranged.error }}): the map is laid out by the cabling, and a move is refused until it is repaired.</span>{% endif %}</p>
+<div class="topo-scroll" data-topo-view="{{ t.list }}">
+<svg class="topo-map topo-z{{ g.z }} topo-labels-{{ t.s.labels }}{{ ' topo-far' if g.z | int < 100 }}{{ ' topo-ports-on' if t.s.ports == 'on' else ' topo-ports-off' if t.s.ports == 'off' else ' topo-ports-auto' }}" viewBox="0 0 {{ g.width }} {{ g.height }}" data-width="{{ g.width }}" data-height="{{ g.height }}" data-z="{{ g.z }}" role="img" aria-labelledby="topo-map-title">
   <title id="topo-map-title">{{ t.list }}: {{ t.summary.devices }} devices and {{ t.summary.links }} links; {{ c.bad }} down or a neighbour missing, {{ c.warn }} not as intended, {{ c.unread }} not read</title>
-  {%- for y, words in g.bands %}<line class="topo-bandrule" x1="0" y1="{{ y - 12 }}" x2="{{ g.width }}" y2="{{ y - 12 }}"></line><text class="topo-band" x="10" y="{{ y + 2 }}">{{ words }}</text>{% endfor %}
   {%- for l in g.links %}
   {%- if l.sel or l.path %}<path class="topo-glow{{ ' topo-pathglow' if l.path and not l.sel }}" d="{{ l.d }}"></path>{% endif %}
   <path class="topo-line topo-{{ l.cls }}{{ ' topo-ronly' if l.routing_only }}{{ ' topo-gone' if l.gone }}" d="{{ l.d }}" data-a="{{ l.a }}" data-b="{{ l.b }}"></path>
@@ -136,7 +151,7 @@
   {%- endfor %}
   {%- endif %}
   {%- for n in g.nodes %}
-  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath' if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}" data-node="{{ n.name }}">
+  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath' if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}" data-node="{{ n.name }}" data-x="{{ n.x }}" data-y="{{ n.y }}">
     {%- if n.managed %}<a href="{{ url_for('device_v2.device', name=n.name, list=t.list) }}">{% endif %}
     <title>{{ n.label }}: {{ t.classes[n.cls] }}{% if n.role and n.cls not in ('router', 'switch', 'l3switch') %} ({{ n.role }}){% endif %}{% if n.manager %}, this host, where Mercury runs{% endif %}{% for tag in n.tags %}. {{ tag.words }}{% endfor %}</title>
     <rect class="topo-ic" x="{{ n.x - 17 }}" y="{{ n.y - 17 }}" width="34" height="34" rx="8"></rect>
@@ -167,6 +182,11 @@
   {%- endfor %}
 </svg>
 </div>
+<form id="topo-move" class="topo-moveform" method="post" action="{{ url_for('topology_v2.positions_save') }}{{ t.qs() }}" hx-post="{{ url_for('topology_v2.positions_save') }}{{ t.qs() }}" hx-target="#topo" hx-swap="outerHTML">
+  <input type="hidden" name="list" value="{{ t.list }}">
+  <input type="hidden" name="moved" value="">
+  <input type="hidden" name="positions" value="">
+</form>
 <div class="topo-legend small" aria-label="Legend">
   {%- for k in ('ok', 'warn', 'bad', 'unread') %}<span><svg width="26" height="10" aria-hidden="true"><line class="topo-line topo-{{ k }}" x1="1" y1="5" x2="25" y2="5"></line></svg>{{ t.line_words[k] }}</span>{% endfor %}
   <span class="topo-legsep"></span>

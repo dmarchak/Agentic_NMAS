@@ -1326,14 +1326,23 @@ select { max-width: 100%; }
    a fleet too large to draw. */
 .topo-pane-dev:not(.topo-dev-always) { display: none; }
 .topo-mapbox { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; }
-.topo-scroll { overflow: auto; }
-.topo-map { display: block; height: auto; width: 100%; min-width: 700px; }
-.topo-map.topo-z50 { width: 50%; min-width: 0; }
-.topo-map.topo-z75 { width: 75%; min-width: 0; }
-.topo-map.topo-z150 { width: 150%; min-width: 1050px; }
-.topo-map.topo-z200 { width: 200%; min-width: 1400px; }
-.topo-bandrule { stroke: var(--line-2); stroke-dasharray: 4 3; }
-.topo-band { fill: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+/* C661: the map is sized to the window (the page is never trapped inside it) and the browser pans
+   and zooms it (static/js/nmas_topology.js): drag empty space to pan, the wheel or a pinch zooms
+   at the pointer; a device is dragged where the pointer is fine and the screen wide. */
+.topo-scroll { overflow: hidden; height: clamp(360px, calc(100vh - 290px), 1600px); touch-action: none;
+  cursor: grab; position: relative; }
+.topo-scroll.topo-panning { cursor: grabbing; }
+.topo-map { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-select: none; }
+.topo-labels-auto.topo-far .topo-port, .topo-labels-auto.topo-far .topo-st,
+.topo-labels-auto.topo-far .topo-st-t, .topo-labels-auto.topo-far .topo-leader,
+.topo-labels-auto.topo-far .topo-anchor { display: none; }
+.topo-moving .topo-port, .topo-moving .topo-st, .topo-moving .topo-st-t, .topo-moving .topo-leader,
+.topo-moving .topo-anchor, .topo-moving .topo-card { display: none; }
+@media (pointer: fine) and (min-width: 701px) { .topo-n, .topo-n a { cursor: move; } }
+.topo-n.topo-saving { opacity: .55; }
+.topo-moveform { display: none; }
+.topo-how { margin: 8px 12px 6px; color: var(--ink-2); }
+.topo-warn-t { color: var(--warn); }
 .topo-line { stroke-width: 2.5; fill: none; stroke-linecap: round; }
 .topo-line.topo-ok { stroke: var(--ok); }
 .topo-line.topo-warn { stroke: var(--warn); stroke-dasharray: 9 6; stroke-linecap: butt; }
@@ -1443,6 +1452,7 @@ a.topo-ent:hover { background: var(--hover); }
   .topo-tab-att .topo-pane-att, .topo-tab-dev .topo-pane-dev, .topo-tab-map .topo-pane-map { display: flex; }
   .topo-tab-dev .topo-pane-dev { display: block; }
   .topo-pane-map { flex-direction: column; }
+  .topo-scroll { height: calc(100vh - 230px); min-height: 320px; }
   .topo-ends { display: inline-flex; }
   .topo-ent { min-height: 44px; }
   .topo-card { display: none !important; }
