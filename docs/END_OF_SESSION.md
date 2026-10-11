@@ -63,9 +63,10 @@ Your answers committed in 8224518 (deployed). Then, in your order:
   credential over TFTP (section 16 says the first-boot file carries a one-time credential only).
   The bare-management way it also draws is what Add device does today.
 - **7.5's identity line (dbc423c), walked on the host:** the region drawn first (canvas v112);
-  the walk found a Save All's commit counted twice (C685, fixed; the corrected count is read
-  again on the host after its deploy); C686 (UNKNOWN) is the three Save All commits of 10-09
-  that name a person and carry Actor-Verified none.
+  the walk found a Save All's commit counted twice (C685, fixed and seen on the host: the last
+  7 days hold 42 commits, 38 verified, 1 host login, 3 not verified); C686 (UNKNOWN) is those
+  three, Save All commits of 10-09 that name a person and carry Actor-Verified none.
+- **7.8:** template coverage's JSON route removed too (aee9a81).
 - **7.8 started (37623c4):** the survey ranked every REMOVE family; the six /netbox/query routes
   are gone. Registered from the survey: C683 (the backup store is still read by v2's intent
   editor and bulk intent, so Backups is blocked), C684, C616's other readers.
