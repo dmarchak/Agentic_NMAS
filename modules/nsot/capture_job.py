@@ -53,8 +53,13 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
     *kind*, *announce_keys* and *announcer* let another operation run as a job
     (the rotate screen's apply, 7.3): one registry, each job announcing its
     own keys, each announcer declared in `invalidation.ANNOUNCERS`."""
-    from modules import op_progress
+    from modules import identity, op_progress
 
+    # The identity THIS request's gate verified, carried into the job's thread, so a commit
+    # the work makes as that person reads `Actor-Verified: access` as it would inside the
+    # request (C686: Save All's commits read "none" because only some jobs carried it). Every
+    # job, never each caller: None outside a gated request, which carries nothing.
+    ident = identity.verified_identity()
     job_id = uuid.uuid4().hex
     now = time.time()
     with _lock:
@@ -68,7 +73,8 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
     def run():
         state, payload, error = "done", None, ""
         try:
-            payload = work(job_id)
+            with identity.carried(ident):
+                payload = work(job_id)
         except Exception as exc:                  # noqa: BLE001
             log.exception("%s %s failed", kind, job_id)
             state, error = "failed", f"{type(exc).__name__}: {exc}"

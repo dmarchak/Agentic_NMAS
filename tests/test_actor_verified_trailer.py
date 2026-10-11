@@ -73,6 +73,25 @@ class TestTheVerdict:
         not a host shell: nobody logged in to run it."""
         assert identity.actor_verification("ai-agent") == "none"
 
+    def test_every_job_carries_the_person_who_started_it(self, app_process, monkeypatch):
+        """C686: Save All ran as a job whose thread carried no identity, so its commits read
+        "none" though a verified person confirmed it (three on the host, 2026-10-09). Every
+        job started inside a gated request now carries that person; one started outside a
+        request carries nothing."""
+        from modules.nsot import capture_job
+        monkeypatch.setattr(capture_job, "_announce", lambda job_id, ok: None)
+
+        def work(job_id):
+            return identity.actor_verification("ops@example.com")
+
+        with Flask(__name__).test_request_context("/"):
+            g.nmas_identity = _person()
+            inside = capture_job.start("Lab", "a save", "ops@example.com", work, kind="save")
+        outside = capture_job.start("Lab", "a save", "ops@example.com", work, kind="save")
+        for job_id, want in ((inside, "access"), (outside, "none")):
+            assert capture_job.wait(job_id, 10)
+            assert capture_job.get(job_id)["payload"] == want, job_id
+
     def test_install_marks_the_app_process(self, monkeypatch):
         monkeypatch.setattr(route_gates, "_installed", False)
         route_gates.install(Flask(__name__))
