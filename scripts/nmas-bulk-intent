@@ -10,7 +10,7 @@ Shell access to the host is the authentication here, as for `nmas-retire`,
 and `--actor` names the person accountable (CLAUDE.md, ACTOR_CONVENTION).
 
     nmas-bulk-intent --list Default --devices s1,s2,r1 \\
-        --change deploy/intent-changes/p1-syslog-block.json
+        --change lab/intent-changes/p1-syslog-block.json
     #   -> the headline ("3 device(s), 1 group(s)"), every group's render
     #      delta, every refusal with both operands, and the preview HASH
 

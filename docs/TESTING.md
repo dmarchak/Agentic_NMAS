@@ -791,7 +791,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_drift_enrolment.py` | a device is covered the moment it is in the inventory; named before its first capture |
 | `test_scale.py` | 900 devices: the page cost pinned as a NUMBER, so bounding the list must update it |
 | `test_probe_topologies.py` | every `cisco_c8000v` probe node binds a launch patch, from its own copy |
-| `test_bootstrap_manager_address.py` | the bootstrap config reaches the manager AND stays a bootstrap: address emitted, no IGP/loopback/route |
+| `test_bootstrap_manager_address.py` | the bootstrap config reaches the manager AND stays a bootstrap: address emitted, no IGP/loopback/route; (C663 step 3) the interfaces refused are the device's ENVIRONMENT's (NetBox's `mgmt_only`), short spellings too, and a device with none reserves nothing (the control) |
+| `test_device_environment.py` | C663 step 3: what a device's environment owns, read from NetBox (a fake NetBox): its `mgmt_only` interfaces reserved and no other; `environment_owned_lines` saying an injected account (`username` opening a line, never elsewhere) and SSH brought up; not configured and not in NetBox are empty and said by source; unreachable, two devices of one name and a context that is not a list of lines each refuse; the record carries no line (an injected account's password) and rebuilds the same render. The import raises `mgmt_only` and never clears it (the write gate opened, so both cases reach the fake). Controls: the management-only filter dropped (3 fail); the import's old set-either-way rule back (1 fails) |
 | `test_inline_javascript.py` | every parser available, one input: the RENDERED page; raw-Jinja control pinned |
 | `test_onboard_abandon.py` | release refuses while named; abandon reverses creation; a partial abandon never reclaims |
 | `test_onboard_pending.py` | pending has an exit; 24h/7d; promotion refuses the bootstrap credential |

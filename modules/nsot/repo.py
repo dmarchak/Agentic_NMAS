@@ -727,7 +727,7 @@ def _guard_content(abs_path: str, hostname: str, incoming: str,
     lives in one caller protects one caller.
 
     The comparison is against the PREVIOUS golden for this device, in the same
-    spirit as the clab-sync truncation guard: counts of interfaces, routing
+    spirit as the lab sync's truncation guard: counts of interfaces, routing
     processes, VRFs, lines and ACLs must not go DOWN. A genuine structural
     change — decommissioning interfaces, removing a routing process — is a
     real thing that must remain possible, so it is allowed with

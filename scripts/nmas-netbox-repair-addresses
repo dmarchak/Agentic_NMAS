@@ -247,12 +247,12 @@ def excluded_residue(list_name: str) -> dict:
     as id 84. The reason is in NetBox's own refusal of the other four:
     *"Duplicate IP address found in the **global table**"*. The repair
     created it **with no VRF at all**, so there was no name to match and the
-    counters honestly reported zero — *"examined every address in
-    clab-mgmt, found none"* about an object that was never in clab-mgmt.
+    counters honestly reported zero — *"examined every address in the
+    excluded VRF, found none"* about an object that was never in it.
 
     Matching on the NetBox field was also a **second copy of the exclusion
     rule**, which is how the import and the clean-up come to disagree. The
-    rule is defined on the config (`vrf forwarding clab-mgmt`), so both read
+    rule is defined on the config (the interface's `vrf forwarding`), so both read
     it from there, through the same `walk()`.
 
     Provenance still governs, and the refusals are separate findings:
@@ -439,7 +439,7 @@ def _remove_excluded(args) -> int:
         print("UNPROVEN — nothing was examined.")
         return 2
 
-    # WHAT IT ACTUALLY LOOKED AT. "examined every address in clab-mgmt" was
+    # WHAT IT ACTUALLY LOOKED AT. "examined every address in the excluded VRF" was
     # a claim the previous version could not support: it matched a NetBox
     # field that was null and reported a count of zero, which reads as "I
     # looked and there is nothing there".

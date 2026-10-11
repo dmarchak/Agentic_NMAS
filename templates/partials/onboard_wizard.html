@@ -81,8 +81,8 @@
             <label class="form-label small fw-semibold" for="obMgmtIp"
                    id="obMgmtIpLabel">Management IP</label>
             {# A DOCUMENTATION-RANGE EXAMPLE, deliberately. This read
-               `10.255.0.31`, which is bp-onboard-c's real address from the
-               first probe -- a torn-down device. A placeholder naming a live
+               bp-onboard-c's real address from the first probe -- a
+               torn-down device. A placeholder naming a live
                range invites typing that exact address, and an address that
                used to belong to something is the worst kind to reuse by
                accident. RFC 5737 exists for this. #}
@@ -116,9 +116,10 @@
             <label class="form-label small fw-semibold" for="obMgrIntf">Management interface</label>
             <input class="form-control form-control-sm" id="obMgrIntf"
                    placeholder="GigabitEthernet2">
-            <div class="form-text small">Where the address goes. On a C8000v
-              <strong>not Gi1</strong> &mdash; vrnetlab owns it, and it is
-              refused. Spelling is checked (<code>Gi2</code> and
+            <div class="form-text small">Where the address goes. Never an
+              interface NetBox marks <strong>management-only</strong> for the
+              device &mdash; its environment owns it, and it is refused.
+              Spelling is checked (<code>Gi2</code> and
               <code>GigabitEthernet2</code> both work);
               <strong>the interface is not checked against the device</strong>,
               which does not exist yet &mdash; a valid name for a port this
@@ -132,11 +133,11 @@
               subnet &mdash; it needs no route to answer.</div>
           </div>
           <div class="col-md-3">
-            <label class="form-label small fw-semibold" for="obMgmtIntf">Containerlab interface</label>
+            <label class="form-label small fw-semibold" for="obMgmtIntf">Platform management port</label>
             <input class="form-control form-control-sm" id="obMgmtIntf"
-                   placeholder="GigabitEthernet0/0">
-            <div class="form-text small">A different network. Blank on a
-              C8000v.</div>
+                   placeholder="(optional)">
+            <div class="form-text small">A separate port the platform manages
+              itself on, a different network. Blank when there is none.</div>
           </div>
         </div>
         <div id="onboardReview" class="small"></div>

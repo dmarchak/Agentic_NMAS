@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 #:
 #: `cisco_ios` is in both `GENERATES_SSH_KEY` and `CONSOLE_REPLAYED`, so its
 #: bootstrap config emits `crypto key generate rsa modulus 2048` into a file
-#: vrnetlab TYPES into a console line by line. Whether key generation stalls
+#: an emulator TYPES into a console line by line. Whether key generation stalls
 #: that replay is **unmeasured** — stage D, `docs/bootstrap-probe/README.md`.
 #:
 #: What a stall costs is not a broken-looking device: the crypto line is
@@ -75,7 +75,7 @@ class OnboardPlan:
 
     #: The address the MANAGER reaches this device on, and where it goes.
     #:
-    #: **Not the containerlab management interface** -- see the two-namespace
+    #: **Not the platform's own management interface** -- see the two-namespace
     #: note in `bootstrap_config`. `mgmt_ip` was collected and displayed long
     #: before anything emitted it into a config: the refusal below ("no
     #: management address -- the device would be created and unreachable")
@@ -115,7 +115,7 @@ class OnboardPlan:
     ztp_subnet_id: object = None
     ztp_reasons: tuple = field(default_factory=tuple)
     ztp_dns_measured_at: float = 0.0
-    #: Chosen, never defaulted -- on a C8000v, Gi1 belongs to vrnetlab.
+    #: Chosen, never defaulted -- the first interface may be the environment's own.
     manager_interface: str = ""
     #: Omitted unless the manager is on another subnet. See
     #: `manager_interface_lines()` for why that is a conditional and not a
@@ -164,6 +164,14 @@ class OnboardPlan:
     #: netmask under it told the operator to go looking for an em dash.
     #: Found by reading the refusals this step's own change produced.
     render_error: str = ""
+
+    #: The platform's own management port the render was given (the form's Platform
+    #: management port), and what the device's environment owned when it rendered
+    #: (`device_environment`, C663 step 3): both recorded with the bootstrap parameters, so
+    #: a re-render is byte-identical. A new device has no NetBox record (a name NetBox holds
+    #: is refused above), so its environment is none, said by its source.
+    platform_mgmt_interface: str = ""
+    environment: dict = field(default_factory=dict)
 
     #: Why the syslog block (NSOT_PLAN P.1) could not be built. Onboarding
     #: gives every device the whole block as part of its baseline intent, so a
@@ -276,14 +284,14 @@ class OnboardPlan:
                            "assumption is how a tool works in exactly one lab")
 
         # Never defaulted, and refused separately from the address so the
-        # operator is told which half is missing. On a C8000v the first
-        # interface is vrnetlab's, and a management address landing there is
-        # the failure 4C.8 exists to prevent.
+        # operator is told which half is missing. The first interface may be
+        # one the device's environment owns, and a management address landing
+        # there is the failure 4C.8 exists to prevent.
         if (self.mgmt_ip or self.address_source in ("dhcp", "ztp")) \
                 and not self.manager_interface:
             reasons.append(
                 "no interface chosen for the management address — it cannot "
-                "be defaulted, because on this platform vrnetlab may own the "
+                "be defaulted, because the device's environment may own the "
                 "first interface and a guess is a silent one")
 
         if self.render_error:
@@ -686,6 +694,16 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                        "address": requested, "source": "this onboarding",
                        "error": ""}
 
+    # THE DEVICE'S ENVIRONMENT, from NetBox (C663 step 3): the interfaces its environment
+    # owns and whether that environment injects an account or brings SSH up. Never keyed on
+    # the platform. Could not read is a refusal, never "nothing there".
+    from modules.nsot.device_environment import NONE, EnvironmentUnreadable
+    from modules.nsot.device_environment import read as read_environment
+    try:
+        environment, environment_error = read_environment(hostname), ""
+    except EnvironmentUnreadable as exc:
+        environment, environment_error = NONE, str(exc)
+
     # DHCP emits `ip address dhcp`, so the generator is given no address --
     # and its refusal for a MISSING one still stands for `static`.
     config, unsendable, render_error = _render(
@@ -699,7 +717,11 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         # `bootstrap_artifact` applies the same rule, so they stay identical.
         generate_ssh_key=(address_source == "ztp"),
         # Nothing injects a user ahead of a ZTP device's config (C52).
-        injects_user=(False if address_source == "ztp" else None))
+        injects_user=(False if address_source == "ztp" else None),
+        environment=environment)
+    if environment_error:
+        config, render_error = "", ("the device's environment could not be read from "
+                                    "NetBox: " + environment_error)
 
     # THE SYSLOG BLOCK IS PART OF THE BASELINE (NSOT_PLAN P.1). Merged into
     # the initial intent, never over an author's own block: a caller that
@@ -739,6 +761,8 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         name_taken_in_manifest=in_manifest, name_taken_in_netbox=in_netbox,
         unsendable=tuple(unsendable), unchecked=tuple(unchecked),
         render_error=render_error,
+        platform_mgmt_interface=(mgmt_interface or "").strip(),
+        environment=environment.record(),
     )
 
 
@@ -850,7 +874,7 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
             mgmt_interface: str, *, manager_interface: str = "",
             manager_address: str = "", manager_mask: str = "",
             manager_gateway: str = "", generate_ssh_key: bool = False,
-            injects_user: bool = None):
+            injects_user: bool = None, environment=None):
     """``(config, unsendable)``. A render that cannot be sent is a refusal.
 
     **The ASCII guard is the generator's own**, not a second copy here.
@@ -882,7 +906,8 @@ def _render(platform: str, hostname: str, secret: str, domain: str,
                                   manager_mask=manager_mask,
                                   manager_gateway=manager_gateway,
                                   generate_ssh_key=generate_ssh_key,
-                                  injects_user=injects_user)
+                                  injects_user=injects_user,
+                                  environment=environment)
     except UnsendableCommand as exc:
         # The ONE failure that belongs in `unsendable`, keyed on the type
         # rather than on "the render raised". `assert_sendable` names the
@@ -1211,7 +1236,7 @@ def run_onboarding(plan, *, bind_credentials, commit, render, reserve=None,
 
 
 # ---------------------------------------------------------------------------
-# 4C.5 — the read-write community a vrnetlab node arrives with
+# 4C.5 — the read-write community a new node may arrive with
 # ---------------------------------------------------------------------------
 
 #: `snmp-server community <name> RW [<acl>]`, and nothing else.
@@ -1534,6 +1559,9 @@ def commit_step(plan, *, actor: str) -> str:
         # produced the identical result the second time.
         "source":    plan.address_source,
         "mac":       plan.mgmt_mac,
+        # What else the render was given (C663 step 3), so the re-render below is the same.
+        "platform_mgmt_interface": plan.platform_mgmt_interface,
+        "environment": plan.environment,
     }
     hostvars.write_committed(repo, dict(plan.host_vars or {},
                                         hostname=plan.hostname,
@@ -2203,8 +2231,8 @@ def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
     not have renders, boots and goes unreachable, and nothing before this
     moment could have caught it.
     """
-    console = ("On the node's console (`docker logs`/`telnet` to it, or "
-               "`containerlab exec`), run:")
+    console = ("On the node's console (a console server, its own port, or "
+               "the console of whatever runs it), run:")
     if state == REFUSED_CREDENTIAL:
         causes = []
         # ANYTHING THAT IS NOT THE STAGED OVERRIDE IS A FINDING, and the
@@ -2269,10 +2297,9 @@ def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
         },
         {
             "cause": "the node did not boot the generated config",
-            "why": ("vrnetlab concatenates its own user line ahead of the "
-                    "startup config; if the launch patch is missing the "
-                    "node comes up on its injected credential and reports "
-                    "healthy either way"),
+            "why": ("an environment that injects its own user line ahead of "
+                    "the startup config (an emulator, say) can leave the node "
+                    "on the injected credential, healthy either way"),
             "command": "show running-config | include ^hostname|^username",
             "where": console,
         },
@@ -2636,10 +2663,16 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
 
     try:
         from modules.nsot.bootstrap_config import render_bootstrap
+        from modules.nsot.device_environment import Environment
 
+        # A record from before C663 step 3 carries no environment: rendered then, the
+        # platform's own rules stood in for it, and that render is what this one reproduces
+        # only where the device's environment matched them. Said in the reason when absent.
         config = render_bootstrap(
             params.get("platform", ""), hostname=hostname, username="admin",
-            secret=staged, domain=params.get("domain", "rcn.lab"),
+            secret=staged, domain=params.get("domain", "example.net"),
+            mgmt_interface=params.get("platform_mgmt_interface", ""),
+            environment=Environment.from_record(params.get("environment") or {}),
             manager_interface=params.get("interface", ""),
             # The same explicit sentinel the plan uses, so a re-render is
             # byte-identical to what the node booted.
@@ -2996,8 +3029,8 @@ def remove_rw_communities(mgmt_ip: str, username: str, password: str,
     `… RW 99` is a command that does not match.
 
     Returns ``{"ok", "removed", "kept", "error"}``. **Nothing to remove is a
-    success** — a vrnetlab node arrives with an RW community, a real one may
-    not, and refusing would make the common case an error.
+    success** — an emulated node may arrive with an RW community, a real one
+    may not, and refusing would make the common case an error.
     """
     plan = rw_removal_plan(config)
     out = {"ok": True, "removed": [], "kept": plan["keep"], "error": ""}

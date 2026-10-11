@@ -1065,8 +1065,11 @@ def _ensure_interface(session, base: str, device_id: int,
             update["mtu"] = mtu
         if existing.get("enabled") != enabled:
             update["enabled"] = enabled
-        if existing.get("mgmt_only") != mgmt_only:
-            update["mgmt_only"] = mgmt_only
+        # RAISED, NEVER LOWERED (C663 step 3). `mgmt_only` is a NetBox fact a person sets (an
+        # environment's own management interface: `device_environment` reads it), so the import
+        # marks what its name heuristic recognises and never clears a flag NetBox holds.
+        if mgmt_only and not existing.get("mgmt_only"):
+            update["mgmt_only"] = True
         if vrf_id and (existing.get("vrf") or {}).get("id") != vrf_id:
             update["vrf"] = vrf_id
         if lag_id and (existing.get("lag") or {}).get("id") != lag_id:
@@ -1202,16 +1205,16 @@ def _ensure_ip_address(session, base: str, address_cidr: str,
     **The key is the interface, not the address.** The question is *"does
     this interface already have this address"*, never *"does this address
     exist"* -- because two devices genuinely can hold the same value and
-    each instance genuinely belongs to its own device. Every containerlab
-    node answers on `10.0.0.15` inside its own namespace; the same is true
+    each instance genuinely belongs to its own device. Every node an
+    emulator runs may answer on one address inside its own namespace; the same is true
     behind different VRFs, and in disconnected management networks. One
     value, many interfaces, **each its own object**.
 
     This used to look up `{"address": cidr}` narrowed by VRF and nothing
     else, and PATCH `assigned_object_id` when the hit sat on another
     interface. Measured on the real NetBox, 2026-09-24: **one object was
-    passed between six devices.** All five Lab 1 routers carry the identical
-    `GigabitEthernet1 / vrf forwarding clab-mgmt / ip address 10.0.0.15`, so
+    passed between six devices.** All five of the lab's routers carry the identical
+    management interface, VRF and address (their emulator's), so
     each import took the object from whoever held it, leaving five routers
     with an unaddressed management interface in NetBox for weeks. Nothing
     reported it: a PATCH neither tags nor records, so the object was
@@ -1220,7 +1223,7 @@ def _ensure_ip_address(session, base: str, address_cidr: str,
     object and this moved a relationship.**
 
     **VRF narrowing was never the fix**, though it reads like one: r3's
-    address is in `clab-mgmt` and so is every other router's, so passing the
+    address is in the emulator's management VRF and so is every other router's, so passing the
     VRF selects the same object.
 
     The scope used here is the one `_upsert_device`'s `primary_ip4` fallback
@@ -2286,7 +2289,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 continue
 
             # An EXCLUDED VRF's addresses are the emulator's plumbing, not
-            # the network. Every containerlab node answers on the same
+            # the network. Every node an emulator runs may answer on the same
             # internal management address, so NetBox -- which enforces
             # global uniqueness -- cannot represent five of them, and the
             # one it accepts is a claim that one device has an address all
@@ -2460,7 +2463,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         for route in static_routes:
             # ONE exclusion rule for addresses and routes (2026-09-28). The
             # excluded VRF's addresses were skipped and its static routes were
-            # not, so every router's `ip route vrf clab-mgmt 0.0.0.0 0.0.0.0`
+            # not, so every router's default route in the emulator's VRF
             # (the emulator's own default route) was attempted as a /0 prefix
             # and refused on all five: two readers of one rule, disagreeing.
             rvrf = route.get("vrf") or ""

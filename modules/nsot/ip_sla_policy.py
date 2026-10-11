@@ -10,7 +10,7 @@ own data):
   intent implies, `modules.neighbours`; a BGP peer outside management by its
   address);
 - `gateway`: probe its static default route's next hop in the global table
-  (a VRF's default, the emulator's `clab-mgmt`, is never a gateway);
+  (a VRF's default, such as an emulator's management VRF, is never a gateway);
 - `none`.
 With `frequency` (seconds; 60 by default, the operator, 2026-10-01: one
 probe every 10 s cost s3 about 12% of its CPU) and `frequency_by_platform`.

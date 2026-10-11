@@ -152,7 +152,7 @@ current one: export again (Credentials › The break-glass record), then verify.
 
 ## Step 2: r2's intent, then its deploy
 
-The change is `deploy/intent-changes/c455-console-login-r2.json`.
+The change is `lab/intent-changes/c455-console-login-r2.json`.
 - **Its `before`** is r2's committed `lines` exactly, read 2026-10-05: `con 0` (`logging
   synchronous`, `stopbits 1`), `aux 0`, and `vty 0 4` (`logging synchronous`, `login local`,
   `length 0`, `transport input all`).
@@ -161,14 +161,14 @@ The change is `deploy/intent-changes/c455-console-login-r2.json`.
   going on.
 
 ```
-scripts/nmas-bulk-intent --list Default --devices r2 --change deploy/intent-changes/c455-console-login-r2.json
+scripts/nmas-bulk-intent --list Default --devices r2 --change lab/intent-changes/c455-console-login-r2.json
 ```
 
 **Expect** "1 device(s), 1 group(s)", with one render delta that adds `login local` under
 `line con 0`. Anything else: stop.
 
 ```
-scripts/nmas-bulk-intent --list Default --devices r2 --change deploy/intent-changes/c455-console-login-r2.json --apply <HASH> --actor <you>
+scripts/nmas-bulk-intent --list Default --devices r2 --change lab/intent-changes/c455-console-login-r2.json --apply <HASH> --actor <you>
 ```
 
 **Then deploy r2 from its device page** (Deploy…). The preview's program must be exactly:

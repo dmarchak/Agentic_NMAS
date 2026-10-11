@@ -8,10 +8,9 @@ nothing else — and when it finds one already assigned elsewhere it PATCHes
 `assigned_object_id` to the interface it is currently importing. The
 docstring says *get-or-create*; the behaviour is get-or-create-**or-take**.
 
-Every vrnetlab node answers on the same internal management address. All
-five Lab 1 routers carry the identical
-`interface GigabitEthernet1 / vrf forwarding clab-mgmt / ip address
-10.0.0.15 255.255.255.0`, so **one NetBox object has been passed between
+Every node an emulator runs may answer on the same internal management
+address. All five of the lab's routers carry the identical management
+interface, VRF and address (their emulator's), so **one NetBox object has been passed between
 six devices**, and the last import to run owns it.
 
 **The `description` field is the evidence.** The sync writes

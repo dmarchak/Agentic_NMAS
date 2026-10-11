@@ -3,7 +3,7 @@
 Measured 2026-09-30 on the host: Prometheus (installed 2026-08-30, its oldest
 sample) has never carried a `device` label with a device's name, nor any
 `role` label. Its SNMP jobs list addresses by hand in `static_configs`, with
-the names only in comments (`- 10.255.1.13 #r3`). So `rcn-lab1-snmp`'s device
+the names only in comments (`- <address> #r3`). So the device dashboard's
 panels, which select `device="$device"`, have been empty in Grafana since the
 install; r6 was never scraped; retired r5 still is. The fix is at the source:
 the targets come from the inventory, every one labelled.

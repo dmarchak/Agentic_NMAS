@@ -67,8 +67,6 @@ EXEMPT = {
     ('modules/ai_assistant.py', '283f8c3aca96'): ('EXAMPLE', ('address',)),
     ('modules/ai_assistant.py', '62a692c54974'): ('EXAMPLE', ('address',)),
     # modules/netbox_client.py
-    ('modules/netbox_client.py', 'd1303c000c65'): ('VRNETLAB', ('address',)),
-    ('modules/netbox_client.py', '87f6e9899581'): ('VRNETLAB', ('address',)),
     ('modules/netbox_client.py', 'b7806a81965b'): ('EXAMPLE', ('address',)),
     ('modules/netbox_client.py', '576e67ac5e4c'): ('EXAMPLE', ('address',)),
     # modules/topology.py
@@ -82,7 +80,6 @@ EXEMPT = {
     ('scripts/nmas-netbox-deletions', 'b5cc5f4f77fd'): ('VRNETLAB', ('address',)),
     # scripts/nmas-netbox-ip-provenance
     ('scripts/nmas-netbox-ip-provenance', '1cb7da624bd7'): ('VRNETLAB', ('address',)),
-    ('scripts/nmas-netbox-ip-provenance', 'ddb890db45ab'): ('VRNETLAB', ('address',)),
     # scripts/nmas-netbox-repair-addresses
     ('scripts/nmas-netbox-repair-addresses', '45a4094e3ca8'): ('VRNETLAB', ('address',)),
     ('scripts/nmas-netbox-repair-addresses', 'bdd2d1a33609'): ('VRNETLAB', ('address',)),

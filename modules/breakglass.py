@@ -1,9 +1,9 @@
 """breakglass.py — getting back into devices that will not answer.
 
-Written as a precondition for lifting the rcn-lab1 redeploy ban. Stage B
+Written as a precondition for lifting the lab's redeploy ban. Stage B
 measured what a bad redeploy looks like: five routers up, healthy, answering
-SSH, holding a credential nobody has. The recovery path is the serial console
-on the clab host, and it needs the credential that was live *before* the
+SSH, holding a credential nobody has. The recovery path is the device's
+console, and it needs the credential that was live *before* the
 redeploy -- which by then exists only in `devices.csv`, encrypted with
 `data/key.key`, on a machine the operator may not be sitting at.
 
@@ -125,10 +125,10 @@ def build_payload(devices: list, *, list_name: str, recovery: str = "",
 
 DEFAULT_RECOVERY = (
     "If a device will not accept these credentials, it is holding what its "
-    "boot path gave it. Reach the serial console on the containerlab host -- "
-    "`docker exec -it <container> telnet localhost 5000` -- and log in with "
-    "the credential vrnetlab injects (see the lab's launch script). Then set "
-    "the credential below by hand. Do NOT redeploy to fix a redeploy.\n\n"
+    "boot path gave it. Reach its console (a console server, the device's own "
+    "port, or the console of whatever runs it) and log in with the credential "
+    "that boot path gives it. Then set the credential below by hand. Do NOT "
+    "redeploy to fix a redeploy.\n\n"
     "If the Mercury host lost its application key, this record carries it: "
     "`nmas-breakglass restore-key <record> --out <data dir>/key.key` writes it "
     "back owner-only and refuses to replace an existing file. Then run "

@@ -10,9 +10,9 @@ broken twice:
 
 * a pushed command, where three UTF-8 bytes made IOS lose sync mid-line and
   surface as a Netmiko echo timeout;
-* a *comment* in a vIOS startup config, where vrnetlab types the file into the
-  console line by line and waits for a prompt after each one. It stopped on a
-  line beginning ``!`` and hung the boot.
+* a *comment* in a vIOS startup config, where an emulator typed the file into
+  the console line by line and waited for a prompt after each one. It stopped
+  on a line beginning ``!`` and hung the boot.
 
 The C8000v booted with the same character in the same position, because it
 loads its startup config as a file rather than typing it. Identical content,
@@ -32,11 +32,12 @@ networks, and conflating them is what made this module emit a config that
 could not reach the manager (4C.8):
 
 ``mgmt_interface``
-    The **containerlab-facing** interface. On a vIOS it is configured here
-    (``ip address dhcp``); on a C8000v vrnetlab owns it and this module emits
-    nothing for it. It lands on the docker management network, in the
-    ``clab-mgmt`` VRF on a real lab device. **Nothing outside the
-    containerlab host has a path to it.**
+    The **platform's own** management port, where it has one apart from the
+    manager's: on a vIOS it is configured here (``ip address dhcp``) when one
+    is named; on a C8000v it is its environment's and this module emits
+    nothing for it. In an emulator it is the emulator's own management
+    network, which nothing outside the emulator's host can reach. Which
+    interfaces those are is NetBox's (`mgmt_only`, `device_environment`).
 
 ``manager_interface`` / ``manager_address``
     The **manager-facing** interface: a data interface, in the global table,
@@ -67,20 +68,20 @@ log = logging.getLogger(__name__)
 #: output carries no commentary.
 CONSOLE_REPLAYED = {"cisco_ios"}
 
-#: Platforms where vrnetlab injects its own ``username ... password ...``
-#: before the startup config. A ``secret`` line for that user arrives second
-#: and is refused, so these must use the password form and rotate afterwards
-#: -- unless the launch script carries the stage-C user skip.
-#:
-#: Read in the patched launch script, CONFIRMED on hardware in stage B
-#: (`%CVAC-4-CLI_FAILURE ... was rejected`, node came up on admin/admin), and
-#: the skip PROVEN in stage C.
-VRNETLAB_INJECTS_USER = {"cisco_iosxe"}
+#: Whether something injects its own ``username ... password ...`` ahead of
+#: the startup config is a fact about the device's ENVIRONMENT, never its
+#: platform (C663 step 3): read from NetBox per device
+#: (`device_environment`, a `username` line among its environment-owned
+#: lines). Where one is injected, a ``secret`` line for that user arrives
+#: second and is refused (measured on an emulated C8000v in stage B:
+#: `%CVAC-4-CLI_FAILURE ... was rejected`), so the password form is used and
+#: rotated afterwards. A device with no such environment takes the stronger
+#: form.
 
 #: The keyword for the DNS domain, which differs between the two platforms and
 #: is not a style choice.
 #:
-#: Measured in stage C: `%CVAC-4-CLI_FAILURE: 'ip domain-name rcn.lab' was
+#: Measured in stage C: `%CVAC-4-CLI_FAILURE: 'ip domain-name <domain>' was
 #: rejected` on IOS-XE 17.6, which spells it `ip domain name`. Classic IOS
 #: (vIOS-L2 15.x) spells it `ip domain-name` and rejects the other. There is
 #: no spelling that works on both, so the generator must know the platform.
@@ -93,79 +94,49 @@ DOMAIN_KEYWORD = {
     "cisco_ios": "ip domain-name",
 }
 
-#: Platforms whose SSH server this file must start itself.
+#: Platforms whose SSH server this file must start itself, whatever their
+#: environment.
 #:
-#: Measured across the probe runs rather than assumed. The C8000v carried no
-#: `ip ssh` line and no key generation, and answered SSH in stages A, B and C
-#: -- vrnetlab's own bootstrap config sets it up. The vIOS carried
+#: Measured across the probe runs rather than assumed. The vIOS carried
 #: `ip ssh version 2` with no key, and its capture had to be taken over the
 #: SERIAL CONSOLE because SSH never came up: IOS will not start an SSH server
-#: without an RSA keypair, and says nothing about it.
+#: without an RSA keypair, and says nothing about it. Any other platform
+#: generates one too unless its ENVIRONMENT brings SSH up (an `ip ssh` or
+#: `crypto key` line among its environment-owned lines, C663 step 3): the
+#: emulated C8000v carried no key generation and answered SSH in stages A to
+#: C because its emulator's own bootstrap set it up, which a real C8000v's
+#: does not.
 #:
 #: Key generation needs a hostname and a domain name already set, so it is
 #: emitted after both and before `ip ssh version 2`.
 GENERATES_SSH_KEY = {"cisco_ios"}
 
-#: The helper name the stage-C launch patch defines.
-#:
-#: Two readers: `docs/bootstrap-probe/patches/patch-skip-injected-user.py`,
-#: which writes it, and `credential_rotation.verify_startup_applies()`, which
-#: greps the clab host's launch script for it to decide whether a `secret`
-#: line in a startup file can apply. A test asserts the patcher still emits
-#: exactly this name -- the check silently degrades to "always refuses" if the
-#: two drift apart, which reads as a safe failure and is actually a check that
-#: has stopped measuring anything.
-LAUNCH_SKIP_MARKER = "_skip_users_defined_in_startup"
-
 #: Modulus for the generated keypair. 2048 is the floor worth shipping.
 #:
 #: UNMEASURED on a console-replayed platform: key generation takes real time
-#: and vrnetlab waits for a prompt after each line it types. See
+#: and a console replay waits for a prompt after each line it types. See
 #: `docs/bootstrap-probe/README.md` stage D.
 SSH_KEY_MODULUS = 2048
 
 
-#: Interfaces the manager-facing address must NEVER be put on, and why.
+#: Interfaces the manager-facing address must NEVER be put on are the
+#: environment's own management interfaces: the device's interfaces NetBox
+#: marks management-only (`device_environment`, C663 step 3). They were a
+#: per-PLATFORM table naming the emulator's ports until then, which a real
+#: device does not have.
 #:
-#: **This is enforced.** Its predecessor, `VRNETLAB_OWNS_FIRST_INTERFACE`,
-#: was a set named for a reservation and used only to pick a stanza *shape* --
-#: so `render_bootstrap(..., manager_interface="GigabitEthernet1")` on a
-#: C8000v emitted the address on vrnetlab's own interface without complaint.
-#: Measured, after "the rule now holds from both ends" had been asserted and
-#: agreed: it held at one end. `test_probe_topologies.py` refused a topology
-#: that cabled Gi1 and nothing refused the config that addressed it.
-#:
-#: **A constant whose name states a rule it does not enforce** is the same
-#: family as a docstring that teaches what the code does not do.
-#:
-#: The failure it prevents is the stage-B shape: a node that boots, reports
-#: healthy, answers its console and cannot be reached -- reproduced inside
-#: the tool built to prevent it.
-#:
-#: The two interfaces coexist happily when they are *different* ones: r1-r5
-#: run Gi1 in `vrf forwarding clab-mgmt` and their data interfaces in the
-#: global table at once.
-RESERVED_INTERFACES = {
-    "cisco_iosxe": {
-        "GigabitEthernet1":
-            "vrnetlab owns Gi1 on this platform and configures it as the "
-            "containerlab management interface. Data interfaces start at "
-            "Gi2.",
-    },
-    "cisco_ios": {
-        "GigabitEthernet0/0":
-            "this is the containerlab management interface on this "
-            "platform, and the bootstrap config already gives it "
-            "`ip address dhcp`. Two stanzas for one interface is not a "
-            "configuration, it is a race.",
-    },
-}
+#: **This is enforced** (`manager_interface_lines`). The failure it prevents
+#: is the stage-B shape: a node that boots, reports healthy, answers its
+#: console and cannot be reached -- the address put on a port something else
+#: owns. The two interfaces coexist happily when they are *different* ones:
+#: an environment's management port in its own VRF and the data interfaces in
+#: the global table at once.
 
 #: Platforms whose ports are switchports unless told otherwise, so a routed
 #: management interface needs `no switchport`.
 #:
 #: **Keyed on what it actually decides.** The stanza shape was previously
-#: selected with `VRNETLAB_OWNS_FIRST_INTERFACE`, which happened to contain
+#: selected with a set naming the emulator's first interface, which happened to contain
 #: the right platform for an unrelated reason -- two facts that coincide on
 #: a two-platform fleet and diverge on the third.
 LAYER2_PLATFORMS = {"cisco_ios"}
@@ -223,7 +194,8 @@ class ReservedInterface(ManagementInterfaceRefused):
 
 def manager_interface_lines(platform: str, *, interface: str, address: str,
                             mask: str, gateway: str = "",
-                            clab_interface: str = "") -> list:
+                            platform_mgmt_interface: str = "",
+                            reserved: dict = None) -> list:
     """The one stanza that makes the device reachable by the manager.
 
     **Why there is no default gateway unless one is given.** The NMAS sits on
@@ -262,9 +234,9 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
                 f"works in exactly one lab")
     if not interface:
         raise ManagementAddressRequired(
-            "no interface given for the management address. On a platform "
-            "where vrnetlab owns the first interface this must be chosen, "
-            "never defaulted")
+            "no interface given for the management address. It must be "
+            "chosen, never defaulted: the first interface may be one the "
+            "device's environment owns")
 
     # CANONICALISED BEFORE ANYTHING COMPARES IT. `Gi2`, `gi2` and
     # `GigabitEthernet2` are one interface, and a reserved-interface check
@@ -286,18 +258,18 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
             f"form or a standard abbreviation -- GigabitEthernet2 or Gi2, "
             f"not GE2 or Gig2.")
 
-    reserved = RESERVED_INTERFACES.get(platform, {})
+    reserved = {canonical(k): v for k, v in (reserved or {}).items()}
     if interface in reserved:
         raise ReservedInterface(
             f"'{interface}' cannot carry the management address: "
             + reserved[interface])
 
     # The same conflict, arrived at dynamically: whatever this render is
-    # already configuring as the containerlab interface cannot also be the
-    # manager-facing one, whichever platform it is and whatever it is called.
-    if clab_interface and canonical(clab_interface.strip()) == interface:
+    # already configuring as the platform's own management interface cannot
+    # also be the manager-facing one, whatever it is called.
+    if platform_mgmt_interface and canonical(platform_mgmt_interface.strip()) == interface:
         raise ReservedInterface(
-            f"'{interface}' is already being configured as the containerlab "
+            f"'{interface}' is already being configured as the platform's own "
             f"management interface in this same config. One interface cannot "
             f"hold two addresses, whatever their source.")
 
@@ -333,19 +305,17 @@ def manager_interface_lines(platform: str, *, interface: str, address: str,
     return body
 
 
-def secret_clause(platform: str, value: str, injects_user: bool = None) -> str:
-    """``password 0 x`` or ``secret 0 x``, per what the platform will accept.
+def secret_clause(platform: str, value: str, injects_user: bool = False) -> str:
+    """``password 0 x`` or ``secret 0 x``, per what the device will accept.
 
-    Not a style choice. On a platform where vrnetlab injects a password line
-    first, a secret line for the same user is refused — the device keeps
-    vrnetlab's credential and the startup file describes one it does not have.
+    Not a style choice. Where the device's environment injects a password line
+    for the user first, a secret line for the same user is refused: the device
+    keeps the injected credential and the startup file describes one it does
+    not have. *injects_user* is that environment's fact (`device_environment`);
+    *platform* stays in the signature because the clause is per platform's
+    syntax, which both platforms here share.
     """
-    # *injects_user*: whether something injects a user line ahead of this
-    # config. None means the platform's rule. A ZTP device boots with no
-    # vrnetlab day-0 config, so nothing injects one, and the stronger form
-    # applies (register C52; the same shape as the SSH key, P.6 M4).
-    injects = platform in VRNETLAB_INJECTS_USER if injects_user is None else injects_user
-    if injects:
+    if injects_user:
         return f"password 0 {value}"
     return f"secret 0 {value}"
 
@@ -364,18 +334,19 @@ def domain_line(platform: str, domain: str) -> str:
 
 
 def ssh_key_lines(platform: str, force: bool = False) -> list:
-    """Key generation, on the platforms that need it and nowhere else.
+    """Key generation, on the platforms that always need it, and wherever
+    *force* says nothing else will.
 
-    Emitting it where vrnetlab already does the work would regenerate a key
-    the device is mid-way through using.
+    Emitting it where the environment already does the work would regenerate
+    a key the device is mid-way through using.
 
     *force*: nothing else will generate one. P.6 M4 found the case: a ZTP
-    C8000v boots the pristine base with vrnetlab's day-0 config REMOVED, so
-    "vrnetlab sets it up" (the reason the C8000v is not in
+    C8000v boots the pristine base with its emulator's day-0 config REMOVED,
+    so "the emulator sets it up" (the reason the C8000v is not in
     `GENERATES_SSH_KEY`) was no longer true. The device fetched and applied
     its config, had no key, and refused TCP 22 (measured in 3 ms). The
-    platform was standing in for "a C8000v whose day-0 config vrnetlab
-    supplied", which is also not a real greenfield C8000v.
+    platform was standing in for the environment, which is why the render now
+    forces it unless the device's environment says it brings SSH up (C663).
     """
     if platform not in GENERATES_SSH_KEY and not force:
         return []
@@ -383,29 +354,36 @@ def ssh_key_lines(platform: str, force: bool = False) -> list:
 
 
 def render_bootstrap(platform: str, *, hostname: str, username: str,
-                     secret: str, domain: str = "rcn.lab",
+                     secret: str, domain: str = "example.net",
                      mgmt_interface: str = "",
                      manager_interface: str = "", manager_address: str = "",
                      manager_mask: str = "", manager_gateway: str = "",
                      generate_ssh_key: bool = False,
-                     injects_user: bool = None) -> str:
-    """The minimal management-plane config for a device joining the lab.
+                     injects_user: bool = None, environment=None) -> str:
+    """The minimal management-plane config for a device joining the network.
 
-    *generate_ssh_key*: on a platform where vrnetlab normally generates the
-    SSH key, generate it here anyway, because nothing else will (a ZTP
-    device, P.6 M4). Off by default, so every existing render is unchanged
-    byte for byte.
+    *environment*: what the device's environment owns, read from NetBox
+    (`device_environment.read`, C663 step 3); None is no environment, and a
+    device with none has none. From it: the interfaces the manager's address
+    may not go on, whether an injected account forces the password form
+    (*injects_user* overrides it: a ZTP device boots with nothing injected),
+    and whether the environment brings SSH up. Where it does not, the C8000v
+    generates its own key too.
+
+    *generate_ssh_key*: generate the key whatever the environment says,
+    because nothing else will (a ZTP device, P.6 M4).
 
     Derived from ``r1.cfg`` and ``s1.cfg`` with everything else removed: no
     loopback, no routing process, no data interface beyond the one the
     manager reaches the device on. What remains is what makes the device
     reachable and nothing more.
 
-    The asymmetry between the platforms is real and load-bearing. The C8000v's
-    *containerlab* management interface is owned by vrnetlab and is absent
-    here; the vIOS's is configured explicitly, because with
-    ``CLAB_MGMT_PASSTHROUGH=false`` nothing else gives it an address. A
-    generator that treated both alike would produce an unreachable switch.
+    The asymmetry between the platforms is real and load-bearing. A vIOS's
+    own management port (*mgmt_interface*, or the one interface its
+    environment marks management-only) is configured here with
+    ``ip address dhcp``, because nothing else gives it an address; a C8000v's
+    is its environment's to configure and is absent here. A generator that
+    treated both alike would produce an unreachable switch.
 
     **``manager_address`` is what makes the device onboardable** -- see the
     module docstring for why it is not the same interface as
@@ -415,6 +393,12 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
     actually download is missing it.
     """
     from modules.nsot.deploy import assert_sendable
+    from modules.nsot.device_environment import NONE
+
+    env = environment or NONE
+    injects = env.injects_user if injects_user is None else injects_user
+    own_mgmt = mgmt_interface or (env.management_interfaces[0]
+                                  if len(env.management_interfaces) == 1 else "")
 
     # Computed before the branches: both platforms need it, and two call
     # sites would be two chances for one of them to forget. Empty when no
@@ -425,7 +409,7 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
         manager_lines = manager_interface_lines(
             platform, interface=manager_interface, address=manager_address,
             mask=manager_mask, gateway=manager_gateway,
-            clab_interface=mgmt_interface)
+            platform_mgmt_interface=own_mgmt, reserved=env.reserved)
 
     lines = []
     if platform == "cisco_iosxe":
@@ -435,13 +419,13 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "!",
             "no aaa new-model",
             "!",
-            f"username {username} privilege 15 {secret_clause(platform, secret, injects_user)}",
+            f"username {username} privilege 15 {secret_clause(platform, secret, injects)}",
             "!",
             domain_line(platform, domain),
             "!",
         ] + manager_lines + ((ssh_key_lines(platform, force=True)
                               + ["ip ssh version 2", "!"])
-                             if generate_ssh_key else []) + [
+                             if generate_ssh_key or not env.owns_ssh else []) + [
             "line vty 0 4",
             " logging synchronous",
             " login local",
@@ -463,7 +447,7 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             #
             # Nothing in NMAS needs telnet: both Netmiko drivers in
             # `platform_map` are SSH (`cisco_xe`, `cisco_ios`, not the
-            # `_telnet` variants), and vrnetlab reaches the device over the
+            # `_telnet` variants), and an emulator reaches the device over the
             # serial console, not the vty lines. The root `telnetlib.py` shim
             # exists because Netmiko IMPORTS the module, not because anything
             # here telnets.
@@ -478,25 +462,27 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "end",
         ]
     elif platform == "cisco_ios":
-        interface = mgmt_interface or "GigabitEthernet0/0"
+        # The platform's own management port, only where one is named (the form's
+        # Platform management port, or the one interface the environment marks
+        # management-only). It was always Gi0/0 until C663: one emulator's port.
+        own_lines = ([f"interface {own_mgmt}",
+                      " description platform management",
+                      " no switchport",
+                      " ip address dhcp",
+                      " negotiation auto",
+                      " no shutdown",
+                      "!"] if own_mgmt else [])
         lines = [
             f"hostname {hostname}",
             "!",
             "no aaa new-model",
             "no logging console",
             "!",
-            f"username {username} privilege 15 {secret_clause(platform, secret)}",
+            f"username {username} privilege 15 {secret_clause(platform, secret, injects)}",
             "!",
             domain_line(platform, domain),
             "!",
-            f"interface {interface}",
-            " description clab-mgmt",
-            " no switchport",
-            " ip address dhcp",
-            " negotiation auto",
-            " no shutdown",
-            "!",
-        ] + manager_lines + ssh_key_lines(platform) + [
+        ] + own_lines + manager_lines + ssh_key_lines(platform) + [
             "ip ssh version 2",
             "!",
             "line vty 0 4",
@@ -528,7 +514,7 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
 def generated_secret(length: int = 24) -> str:
     """A one-time bootstrap credential. Never a fixed word.
 
-    It lands in the startup file, in the clab repository's history, and in the
+    It lands in the startup file, in any repository that keeps it, and in the
     first golden capture, and it stays there after the device is rotated. A
     predictable value there is a predictable value in a published history.
     """

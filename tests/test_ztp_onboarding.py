@@ -554,12 +554,22 @@ class TestAZtpDeviceGeneratesItsOwnSshKey:
         assert [i for i, l in enumerate(cfg) if l.startswith("ip domain name")][0] < key[0]
         assert "ip ssh version 2" in cfg
 
-    def test_no_other_c8000v_render_changes(self, tmp_path, monkeypatch):
-        """The floor: vrnetlab still generates the key for those, and a second
-        generation would replace a key the device is using."""
+    def test_another_c8000v_generates_one_unless_its_environment_brings_ssh_up(
+            self, tmp_path, monkeypatch):
+        """The floor, since C663 step 3 keyed on the ENVIRONMENT NetBox records: an emulator
+        that brings SSH up keeps its key (a second generation would replace a key the device
+        is using); a device with no environment generates its own."""
+        from modules.nsot import device_environment as DE
+        emulated = DE.Environment(owned_lines=("ip ssh maxstartups 128",), source="test")
+        monkeypatch.setattr(DE, "read", lambda h, **k: emulated)
         plan = _plan(tmp_path, monkeypatch, address_source="dhcp", mgmt_ip="",
                      ztp_check=None, kea=_NoKea())
         assert "crypto key generate" not in plan.bootstrap_config
+        assert plan.environment["owns_ssh"] is True
+        monkeypatch.setattr(DE, "read", lambda h, **k: DE.NONE)
+        plan = _plan(tmp_path, monkeypatch, address_source="dhcp", mgmt_ip="",
+                     ztp_check=None, kea=_NoKea())
+        assert "crypto key generate rsa modulus 2048" in plan.bootstrap_config
 
     def test_the_re_render_is_byte_identical_to_the_plan(self, tmp_path, monkeypatch):
         from modules.nsot import hostvars, repo as _repo
@@ -704,8 +714,19 @@ class TestAZtpRenderUsesTheStrongerCredentialForm:
         assert "username admin privilege 15 secret 0 " in cfg
         assert "password 0" not in cfg
 
-    def test_every_other_c8000v_render_is_unchanged(self, tmp_path, monkeypatch):
-        """The floor: vrnetlab still injects for those."""
+    def test_another_c8000v_takes_the_password_form_only_where_an_account_is_injected(
+            self, tmp_path, monkeypatch):
+        """The floor, since C663 step 3 keyed on the ENVIRONMENT NetBox records, never the
+        platform: an injected account forces the password form; none, the secret form."""
+        from modules.nsot import device_environment as DE
+        emulated = DE.Environment(owned_lines=("username admin privilege 15 password admin",),
+                                  source="test")
+        monkeypatch.setattr(DE, "read", lambda h, **k: emulated)
         plan = _plan(tmp_path, monkeypatch, address_source="dhcp", mgmt_ip="",
                      ztp_check=None, kea=_NoKea())
         assert "username admin privilege 15 password 0 " in plan.bootstrap_config
+        assert plan.environment["injects_user"] is True
+        monkeypatch.setattr(DE, "read", lambda h, **k: DE.NONE)
+        plan = _plan(tmp_path, monkeypatch, address_source="dhcp", mgmt_ip="",
+                     ztp_check=None, kea=_NoKea())
+        assert "username admin privilege 15 secret 0 " in plan.bootstrap_config

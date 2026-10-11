@@ -174,7 +174,7 @@ def read(probe_fn=None, targets=None, previous=None, clock=time.time) -> dict:
 
 
 #: How long after a device answered again a failed check is still read as the
-#: boot's: SSH answers last in a vIOS boot (vrnetlab types the whole startup
+#: boot's: SSH answers last in a vIOS boot (its emulator types the whole startup
 #: config into the console first, which on s3 ran to its 900 s bound, C93).
 #: Twice that bound, so a slow boot is still said; a later failure is not.
 BOOT_TAIL_SECONDS = 1800

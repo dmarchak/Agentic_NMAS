@@ -445,6 +445,11 @@ class TestTheREALStepsSatisfyTheContract:
             # per the note above.
             address_source = "static"
             mgmt_mac = ""
+            # What else the render was given (C663 step 3): the platform's own management
+            # port and the device's environment, recorded so a re-render is the same.
+            platform_mgmt_interface = ""
+            environment = {"source": "bp-onboard-c is not in NetBox", "injects_user": False,
+                           "owns_ssh": False, "management_interfaces": []}
             reservation_address = ""
             host_vars = {"hostname": "bp-onboard-c"}
             bootstrap_config = "hostname bp-onboard-c\n!\nend\n"

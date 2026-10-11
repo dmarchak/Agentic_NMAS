@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Write, verify, or open the break-glass credential record.
 
-A precondition for lifting the rcn-lab1 redeploy ban. Stage B measured what a
+A precondition for lifting the lab's redeploy ban. Stage B measured what a
 bad redeploy looks like: five routers up, healthy, answering SSH, holding a
-credential nobody has. Getting back in means the serial console on the
-containerlab host and the credential that was live BEFORE the redeploy --
+credential nobody has. Getting back in means the device's console and the
+credential that was live BEFORE the redeploy --
 which otherwise exists only inside `devices.csv`, encrypted with
 `data/key.key`, on a machine the operator may not be sitting at.
 

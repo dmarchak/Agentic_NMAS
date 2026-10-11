@@ -269,7 +269,7 @@ class TestTheRoutes:
     def test_the_shipped_p1_change_file_is_the_tested_change(self):
         """The file an operator runs is the change these tests prove."""
         import json
-        with open("deploy/intent-changes/p1-syslog-block.json") as fh:
+        with open("lab/intent-changes/p1-syslog-block.json") as fh:
             shipped = json.load(fh)["steps"]
         assert [{"path": s["path"], "before": s["before"], "after": s["after"]}
                 for s in shipped] == P1_MOVE

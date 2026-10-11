@@ -30,14 +30,27 @@ import pytest
 from tests.source_index import tracked
 
 from modules.nsot.bootstrap_config import (CONSOLE_REPLAYED,
-                                           VRNETLAB_INJECTS_USER,
                                            UnsupportedPlatform,
                                            generated_secret, render_bootstrap,
                                            secret_clause)
 from modules.nsot.deploy import UnsendableCommand
+from modules.nsot.device_environment import Environment
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROBE = os.path.join(ROOT, "docs", "bootstrap-probe")
+
+#: The probe's devices booted in an emulator, so they are rendered with that emulator's
+#: ENVIRONMENT as NetBox would record it (C663 step 3): the C8000v's Gi1 management-only,
+#: an injected account and the emulator's own SSH lines; the vIOS's Gi0/0 management-only.
+#: The probe's domain is the one it booted with.
+EMULATED_C8K = Environment(
+    reserved={"GigabitEthernet1": "NetBox marks GigabitEthernet1 management-only"},
+    owned_lines=("username admin privilege 15 password admin", "ip ssh maxstartups 128"),
+    source="the probe's emulator")
+EMULATED_VIOS = Environment(
+    reserved={"GigabitEthernet0/0": "NetBox marks GigabitEthernet0/0 management-only"},
+    source="the probe's emulator")
+PROBE_DOMAIN = "rcn.lab"
 
 
 def _directives(text):
@@ -130,14 +143,22 @@ class TestTheUsernameFormMatchesWhatThePlatformAccepts:
     would describe a credential the device does not have.
     """
 
-    def test_iosxe_uses_the_password_form(self):
-        assert secret_clause("cisco_iosxe", "x") == "password 0 x"
+    def test_an_injected_account_takes_the_password_form(self):
+        assert secret_clause("cisco_iosxe", "x", injects_user=True) == "password 0 x"
 
-    def test_ios_uses_the_secret_form(self):
+    def test_no_injected_account_takes_the_secret_form(self):
+        assert secret_clause("cisco_iosxe", "x") == "secret 0 x"
         assert secret_clause("cisco_ios", "x") == "secret 0 x"
 
-    def test_only_iosxe_is_marked_as_injected(self):
-        assert VRNETLAB_INJECTS_USER == {"cisco_iosxe"}
+    def test_the_injection_is_the_environments_never_the_platforms(self):
+        """C663 step 3: the same C8000v render, with and without an environment that
+        injects an account (a `username` line among its owned lines)."""
+        injected = render_bootstrap("cisco_iosxe", hostname="r6", username="admin",
+                                    secret="abc12345", environment=EMULATED_C8K)
+        alone = render_bootstrap("cisco_iosxe", hostname="r6", username="admin",
+                                 secret="abc12345")
+        assert "username admin privilege 15 password 0 abc12345" in injected
+        assert "username admin privilege 15 secret 0 abc12345" in alone
 
 
 class TestItMatchesTheMeasuredProbeConfigs:
@@ -174,8 +195,8 @@ class TestItMatchesTheMeasuredProbeConfigs:
                   encoding="utf-8") as fh:
             measured = _directives(fh.read())
         generated = _directives(
-            render_bootstrap("cisco_iosxe", hostname="bp-c8k",
-                             username="admin", secret="admin"))
+            render_bootstrap("cisco_iosxe", hostname="bp-c8k", domain=PROBE_DOMAIN,
+                             username="admin", secret="admin", environment=EMULATED_C8K))
 
         assert len(generated) == len(measured), (
             "a line was added or removed, which no declared divergence "
@@ -226,9 +247,21 @@ class TestItMatchesTheMeasuredProbeConfigs:
                   encoding="utf-8") as fh:
             measured = _directives(fh.read())
         generated = _directives(
-            render_bootstrap("cisco_ios", hostname="bp-vios",
-                             username="admin", secret="admin"))
-        assert generated == measured
+            render_bootstrap("cisco_ios", hostname="bp-vios", domain=PROBE_DOMAIN,
+                             username="admin", secret="admin", environment=EMULATED_VIOS))
+        # The ONE declared divergence (C663 step 3): the port's description named the
+        # emulator; it names what the port is. The record of what booted stays as it booted.
+        diverged = {(" description clab-mgmt", " description platform management")}
+        assert len(generated) == len(measured)
+        assert {(m, g) for m, g in zip(measured, generated) if m != g} == diverged
+
+    def test_a_vios_with_no_environment_and_no_port_named_configures_none(self):
+        """A device with none has none: no port is defaulted to Gi0/0 (C663 step 3)."""
+        out = render_bootstrap("cisco_ios", hostname="s5", username="admin", secret="x")
+        assert "ip address dhcp" not in out and "GigabitEthernet0/0" not in out
+        named = render_bootstrap("cisco_ios", hostname="s5", username="admin", secret="x",
+                                 mgmt_interface="Gi0/1")
+        assert "interface Gi0/1" in named and " ip address dhcp" in named
 
 
 class TestEveryProbeFileIsAscii:
@@ -327,13 +360,13 @@ class TestTheDomainKeywordIsPerPlatform:
     def test_iosxe_uses_the_spaced_form(self):
         out = render_bootstrap("cisco_iosxe", hostname="r6", username="admin",
                                secret="abc12345")
-        assert "ip domain name rcn.lab" in out
+        assert "ip domain name example.net" in out
         assert "ip domain-name" not in out
 
     def test_ios_uses_the_hyphenated_form(self):
         out = render_bootstrap("cisco_ios", hostname="s5", username="admin",
                                secret="abc12345")
-        assert "ip domain-name rcn.lab" in out
+        assert "ip domain-name example.net" in out
         assert "ip domain name" not in out
 
     def test_an_unknown_platform_has_no_default_spelling(self):
@@ -371,20 +404,28 @@ class TestSshKeyGenerationWhereThePlatformNeedsIt:
                                secret="abc12345")
         assert "crypto key generate rsa modulus 2048" in out
 
-    def test_iosxe_does_not(self):
-        """vrnetlab already did it; regenerating would replace a key the
+    def test_iosxe_does_not_where_its_environment_brings_ssh_up(self):
+        """The emulator already did it; regenerating would replace a key the
         device is part-way through using."""
         out = render_bootstrap("cisco_iosxe", hostname="r6", username="admin",
-                               secret="abc12345")
+                               secret="abc12345", environment=EMULATED_C8K)
         assert "crypto key" not in out
+
+    def test_iosxe_does_where_nothing_else_will(self):
+        """C663 step 3: a C8000v with no environment is a real one, and nothing else
+        generates its key (the ZTP case, P.6 M4, measured: TCP 22 refused in 3 ms)."""
+        out = render_bootstrap("cisco_iosxe", hostname="r6", username="admin",
+                               secret="abc12345")
+        lines = out.splitlines()
+        assert lines.index("crypto key generate rsa modulus 2048") < lines.index("ip ssh version 2")
 
     def test_the_key_comes_after_hostname_and_domain(self):
         """Key generation fails without both, and IOS reports it as a prompt
         for a domain name rather than an error."""
         lines = render_bootstrap("cisco_ios", hostname="s5", username="admin",
                                  secret="abc12345").splitlines()
-        assert lines.index("hostname s5") < lines.index("ip domain-name rcn.lab")
-        assert (lines.index("ip domain-name rcn.lab")
+        assert lines.index("hostname s5") < lines.index("ip domain-name example.net")
+        assert (lines.index("ip domain-name example.net")
                 < lines.index("crypto key generate rsa modulus 2048"))
 
     def test_the_key_comes_before_ip_ssh(self):

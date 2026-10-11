@@ -5,7 +5,7 @@
 
 The repository is PUBLIC, and the commit gate stages with `git add -A`: every
 untracked file that is not ignored goes in. That is the unscoped add that once
-committed clab-r6's CA private key into r6's lab repository, fixed there by an
+committed r6's emulator CA private key into r6's lab repository, fixed there by an
 allowlist. Printing the status protects nothing unless something reads it and
 can refuse, so this reads the INDEX and refuses:
 

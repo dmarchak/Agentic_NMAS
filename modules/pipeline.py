@@ -2280,7 +2280,7 @@ def _stage_save_startup(ctx: PipelineContext) -> None:
 def _stage_save_golden(ctx: PipelineContext) -> None:
     """Commit the post-deploy config as the new golden baseline.
 
-    Part of the flow, not a callback afterwards. Containerlab nodes are
+    Part of the flow, not a callback afterwards. Emulated nodes are
     ephemeral: pushed config does not survive a redeploy, so the golden commit
     is the durable record of what was actually put on the device.
 
@@ -2549,7 +2549,7 @@ def _parse_rip_sources(show_ip_protocols: str):
 
         Routing Information Sources:
           Gateway         Distance      Last Update
-          10.255.2.10          120      00:00:12
+          192.0.2.10           120      00:00:12
 
     Returns a list of ``{"gateway", "distance", "last_update"}``, or None when
     the section is absent. An empty list is a real answer — RIP is configured

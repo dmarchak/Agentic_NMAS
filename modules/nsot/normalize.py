@@ -251,7 +251,7 @@ def strip_self_signed_certs(text) -> list:
     certificate chain is a stanza: a header plus an indented body of hex.
 
     **Volatile in the true sense** — it changes with nobody changing the
-    config. The clab sanitizer drops these blocks wholesale, the device
+    config. The lab's startup sync drops these blocks wholesale, the device
     regenerates one at boot, and the new body and trustpoint name differ
     from the ones in the golden. Measured on the 2026-09-22 redeploy: r1, r2
     and r4 logged *"yang-infra: ERROR: Failed to create a new self-signed
@@ -311,7 +311,7 @@ def strip_provenance_comments(text) -> list:
 
     Three stores each stamp their own provenance into a config as a comment:
     a golden opens with ``! Golden config — <host> (<ip>)``, Oxidized stores
-    its own metadata header, and the clab sanitiser wrote
+    its own metadata header, and the lab's startup sync wrote
     ``! <host> - from Oxidized HEAD <sha>`` until C313 (2026-10-01). None of them is configuration —
     a device does nothing with a comment — and all three differ between
     stores by construction.

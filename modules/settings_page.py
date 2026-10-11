@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 #: the outside services; Network is the deploy tuning and the network's own addresses. Board
 #: A's host-wide tabs (AI, Server, Security posture, Diagnostics) are Installation's (F).
 INTEGRATIONS = ("grafana", "grafana_roles", "prometheus", "loki", "kea",
-                "topology_service", "monitoring_profile", "s3_archive", "lab")
+                "topology_service", "monitoring_profile", "s3_archive")
 TABS = (("integrations", "Integrations"), ("network", "Network"))
 
 #: A chip's colour for each state (the page's tokens): a state to act on leads in colour.

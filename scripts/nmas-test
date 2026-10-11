@@ -6,7 +6,7 @@
 #                                                  not, run anyway and SAY so
 #
 # Why: "no test touches a live network" held for the test process and for
-# nothing it started. A test ran the clab sync script with its default URL,
+# nothing it started. A test ran the lab's sync script with its default URL,
 # which on the deployment host IS the NMAS, and the live app logged the
 # request on every host run (2026-09-26). Only the kernel covers every child,
 # in any language, so the suite runs in a network namespace holding loopback

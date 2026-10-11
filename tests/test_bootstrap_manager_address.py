@@ -27,6 +27,7 @@ if ROOT not in sys.path:
 from modules.nsot.bootstrap_config import (  # noqa: E402
     ManagementAddressRequired, ManagementInterfaceRefused,
     ReservedInterface, render_bootstrap)
+from modules.nsot.device_environment import Environment  # noqa: E402
 
 #: The verified-free probe address. Confirmed three ways on 2026-09-23:
 #: NetBox held exactly one address in 10.255.0.0/24 (s3's Vlan99), .31/.32/.33
@@ -188,25 +189,42 @@ class TestTheReservedInterfaceIsRefused:
     **cabled** Gi1, and nothing refused a config that **addressed** it.
     """
 
-    def test_the_platforms_own_interface_is_refused(self):
+    #: Since C663 step 3 the reservation is the device's ENVIRONMENT's, read from NetBox
+    #: (`mgmt_only`), never a per-platform table: an emulated C8000v's Gi1 is reserved
+    #: because NetBox says so, and a real C8000v's Gi1 is an interface like any other.
+    ENV = Environment(reserved={"GigabitEthernet1": "NetBox marks GigabitEthernet1 "
+                                "management-only (mgmt_only): it is the environment's own"},
+                      source="test")
+
+    def test_the_environments_own_interface_is_refused(self):
         with pytest.raises(ReservedInterface) as excinfo:
-            _render(manager_interface="GigabitEthernet1")
-        assert "vrnetlab owns Gi1" in str(excinfo.value)
+            _render(manager_interface="GigabitEthernet1", environment=self.ENV)
+        assert "management-only (mgmt_only)" in str(excinfo.value)
 
     def test_the_short_spelling_is_refused_too(self):
         """Canonicalised BEFORE comparison. A check that knew only the long
         form would refuse `GigabitEthernet1` and wave `Gi1` through — the
         shorter, likelier spelling walking past the gate."""
         with pytest.raises(ReservedInterface):
-            _render(manager_interface="Gi1")
+            _render(manager_interface="Gi1", environment=self.ENV)
         with pytest.raises(ReservedInterface):
-            _render(manager_interface="gi1")
+            _render(manager_interface="gi1", environment=self.ENV)
 
-    def test_the_vios_clab_interface_is_refused(self):
-        """Its bootstrap already gives Gi0/0 `ip address dhcp`. Two stanzas
-        for one interface is not a configuration, it is a race."""
+    def test_a_device_with_no_environment_reserves_nothing(self):
+        """The operator's rule (C663): a device with none has none. The control for the two
+        refusals above, which a table keyed on the platform would also pass."""
+        assert "GigabitEthernet1" in _render(manager_interface="GigabitEthernet1")
+
+    def test_the_vios_own_port_is_refused_once_named(self):
+        """A vIOS's own management port gets `ip address dhcp` here when one is named (the
+        form's field, or the one interface its environment marks management-only). Two
+        stanzas for one interface is not a configuration, it is a race."""
         with pytest.raises(ReservedInterface):
-            _render("cisco_ios", manager_interface="GigabitEthernet0/0")
+            _render("cisco_ios", manager_interface="GigabitEthernet0/0",
+                    mgmt_interface="GigabitEthernet0/0")
+        vios_env = Environment(reserved={"GigabitEthernet0/0": "mgmt_only"}, source="test")
+        with pytest.raises(ReservedInterface):
+            _render("cisco_ios", manager_interface="Gi0/0", environment=vios_env)
 
     def test_the_conflict_is_also_caught_dynamically(self):
         """Whatever THIS render is configuring as the containerlab

@@ -207,12 +207,19 @@ class TestABootstrapConfigRoundTripsCleanly:
 
     def _bootstrap(self):
         from modules.nsot import bootstrap_config
+        from modules.nsot.device_environment import Environment
 
+        # r6 is emulated: its environment brings SSH up and injects an account, as NetBox
+        # records it since C663 step 3 (a key generated in the config is not kept in a
+        # capture, so a device with no environment would round-trip a line short).
+        r6_env = Environment(owned_lines=("username admin privilege 15 password admin",
+                                          "ip ssh maxstartups 128"), source="r6's emulator")
         return bootstrap_config.render_bootstrap(
             "cisco_iosxe", hostname="r6", username="admin",
             secret="$9$abc123", domain="rcn.lab",
             manager_interface="GigabitEthernet2",
-            manager_address="10.255.0.32", manager_mask="255.255.255.0")
+            manager_address="10.255.0.32", manager_mask="255.255.255.0",
+            environment=r6_env)
 
     def test_a_captured_bootstrap_round_trips_at_100_percent(self):
         from modules.nsot import roundtrip

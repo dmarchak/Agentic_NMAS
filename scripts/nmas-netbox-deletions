@@ -3,7 +3,7 @@
 
 Written on 2026-09-24, after the Stage 4C probe's teardown deleted **two
 objects it did not create**: `10.0.0.15/24` and `2001:db8::2/64`, r3's
-containerlab management addresses, from the Lab 1 import. Remove's apply
+emulator management addresses, from the lab's first import. Remove's apply
 reported `ok: true`, `skipped: []`, and deleted exactly the eight objects in
 its own record — **every one of which was genuinely its own.** The extra two
 went by database cascade, on Remove's behalf, and nothing in NMAS saw it.

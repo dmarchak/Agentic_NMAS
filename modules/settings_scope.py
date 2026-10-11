@@ -106,7 +106,7 @@ SCOPES: dict = {
 GROUP_LABELS: dict = {
     "grafana": "Grafana", "grafana_roles": "Grafana dashboards", "prometheus": "Prometheus",
     "loki": "Loki", "kea": "Kea",
-    "topology_service": "Topology service", "lab": "Lab",
+    "topology_service": "Topology service",
     "monitoring_profile": "Monitoring profile", "s3_archive": "S3 archive",
     "verify_settle_windows": "Verify settle windows", "deploy_max_workers": "Deploy workers",
     "deploy_verify_failure_limit": "Deploy failure limit",

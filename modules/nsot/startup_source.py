@@ -1,7 +1,7 @@
 """What each lab startup file is built FROM (plan item 4, the operator's
 decision, 2026-10-01).
 
-The clab sync wrote each device's startup file from Oxidized's last copy, so
+The lab's startup sync wrote each device's startup file from Oxidized's last copy, so
 a redeploy booted whatever the device last ran, approved or not, and one
 device's unapproved change held every file back (C306, C309). The source is
 now the list's **newest EARNED baseline**: a moment the tool recorded every

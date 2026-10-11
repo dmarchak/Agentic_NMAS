@@ -271,7 +271,10 @@ class TestTheRecordCarriesTheProcedure:
     the runbook."""
 
     def test_it_names_the_console_path(self, payload):
-        assert "telnet localhost 5000" in payload["recovery"]
+        """The console, said generically since C663 step 3 (it named one emulator's
+        `docker exec ... telnet localhost 5000`, which a real device has no use for)."""
+        assert "Reach its console" in payload["recovery"]
+        assert "docker" not in payload["recovery"] and "vrnetlab" not in payload["recovery"]
 
     def test_it_says_not_to_redeploy(self, payload):
         assert "Do NOT redeploy" in payload["recovery"]

@@ -4,7 +4,7 @@ fill their queries, the bounded range and step, the request sent to Grafana's
 `api/ds/query`, and its answer turned into series a chart can draw.
 
 Pure where it can be, so each rule is tested on its own against REAL captures
-(tests/fixtures/grafana/): the `rcn-lab1-snmp` model and three real answers.
+(tests/fixtures/grafana/): a real dashboard model and three real answers.
 
 **Nothing here invents a panel.** The panels are the dashboard's; the app
 only decides which of them it may draw on a device page, and says why it left
@@ -540,8 +540,8 @@ def answer_errors(answer: dict) -> list:
 #: The panel types this app draws itself from an `api/ds/query` answer. Any
 #: other (an alert list, a text panel, a logs panel) holds no series to draw:
 #: it keeps its place on the page and says Grafana draws it, never an empty
-#: chart that reads as no data (the operator, 2026-10-01: the fleet dashboard
-#: rcn-lab-overview holds all three).
+#: chart that reads as no data (the operator, 2026-10-01: the lab's fleet
+#: dashboard holds all three).
 NATIVE_TYPES = frozenset({"timeseries", "stat", "gauge", "bargauge", "table", "state-timeline"})
 
 
