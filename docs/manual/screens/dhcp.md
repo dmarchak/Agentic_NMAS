@@ -28,9 +28,14 @@ times filled in from the global ones, so the page never claims more than that. *
 active leases against the size of the pools. ZTP's subnet is marked: it has no pool and answers
 only the reservations onboarding writes.
 
-Kea's subnets are written by hand in Kea's own files today. Before Mercury first changes one, a
-single host step moves every subnet and its reservations into Mercury's own files, unchanged,
-with Kea's running configuration compared before and after.
+Kea's subnets start out written by hand in Kea's own files. Before Mercury first changes one, a
+single host step (`scripts/host-steps/c529-step5-subnet-files.sh`, run once on the host) moves
+every subnet, each with its reservation file, into Mercury's own files (`subnets4.json` and
+`subnets6.json` beside Kea's configuration), unchanged, and Kea's files then include them. It
+takes a dated copy of Kea's configuration and lease files first, and proves nothing a client
+sees changed: Kea's running configuration, every reservation and every lease are read before
+and after and must be equal, with Kea's own configuration hash unchanged; otherwise it puts
+Kea's files back and says what moved. The Update page's host steps say whether it has run.
 
 ## Leases {#leases}
 

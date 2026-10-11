@@ -90,10 +90,57 @@ def test_subnets_as_kea_runs_them(web):
     assert html.count("the same as Kea's global") == 6 and "inherited" not in html
     assert "365 d · – · 182.5 d · 319.4 d" in html          # IPv4: no preferred lifetime
     assert "365 d · 365 d · 182.5 d · 319.4 d" in html
-    assert re.search(r"10\.10\.10\.0/24</td>\s*<td class=\"mono\">10</td>", html)
+    assert re.search(r"10\.10\.10\.0/24<br><span class=\"faint small\">Kea id 10</span>", html)
     assert "2 of 101" in html                               # .100 to .200 inclusive
     assert re.search(r"10\.255\.0\.0/24 <span[^>]*>ZTP</span>", html)
     assert "no pool: ZTP answers only its reservations" in html and "0 asking" in html
+
+
+def _s1_intent():
+    """Intent's facts from s1's committed host_vars (tests/fixtures/committed/s1.yml): the SVIs
+    for VLANs 10, 20 and 30 with their VRRP addresses, relays and RA flags."""
+    import yaml
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "committed",
+                           "s1.yml"), encoding="utf-8") as fh:
+        return D.facts_from({"s1": yaml.safe_load(fh)})
+
+
+def test_board_c_s_columns_gateway_against_intent_dns_and_who_holds_it(web):
+    value = _value()
+    value["intent"] = dict(_s1_intent(), error="")
+    value["families"]["dhcp4"]["held"] = {"10": "mercury", "20": "mercury", "255": "ztp"}
+    _store(value)
+    html = _get(web)
+    row10 = html.split("10.10.10.0/24<br>")[1].split("</tr>")[0]
+    assert '<span class="mono">10.10.10.1</span>' in row10 and "matches intent" in row10
+    assert 'title="intent: s1 Vlan10"' in row10
+    assert "10.255.0.10" in row10 and "Mercury" in row10
+    ztp = html.split("10.255.0.0/24 ")[1].split("</tr>")[0]
+    assert "none, by design (D4)" in ztp
+    assert "ZTP&#39;s posture" in ztp or "ZTP's posture" in ztp
+    v6 = html.split("2001:db8:10::/64<br>")[1].split("</tr>")[0]
+    assert "from the routers&#39; RAs" in v6 or "from the routers' RAs" in v6
+    assert "s1 Vlan10: M set, O set" in v6 and "2001:db8:255::10" in v6
+
+
+def test_a_gateway_that_differs_from_intent_says_both():
+    from modules import dhcp_page as P
+    sub = {"family": "IPv4", "prefix": "10.10.20.0/24", "options": {"routers": "10.10.20.254"},
+           "global_options": {}}
+    gw = P.gateway(sub, _s1_intent())
+    assert gw["state"] == "differs" and gw["words"] == "intent says 10.10.20.1"
+    gw = P.gateway(dict(sub, options={}), _s1_intent())
+    assert gw["state"] == "missing" and "Kea offers none; intent says 10.10.20.1" in gw["words"]
+    gw = P.gateway(dict(sub, prefix="10.10.40.0/24"), _s1_intent())
+    assert gw["state"] == "none" and "no interface in intent is on it" in gw["words"]
+
+
+def test_intent_s_facts_read_from_committed_host_vars():
+    f = _s1_intent()
+    assert [e["gateway"] for e in f["IPv4"]["10.10.10.0/24"]] == [["10.10.10.1"]]
+    assert f["IPv4"]["10.10.10.0/24"][0]["relays"] == ["10.255.0.10"]
+    assert f["IPv6"]["2001:db8:30::/64"][0]["managed"] is True
+    assert "10.10.30.0/24" not in f["IPv4"], "VLAN 30 is IPv6-only"
 
 
 def test_leases_grouped_collapsed_and_flagged(web):

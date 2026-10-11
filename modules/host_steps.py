@@ -166,9 +166,35 @@ def check_kea_reservation_files(root: str = ROOT, kea=None) -> dict:
                                        "Mercury's file"}
 
 
+def check_kea_subnet_files(root: str = ROOT) -> dict:
+    """C529 step 5's host step: done when both families' Kea configuration takes its subnets
+    from Mercury's file (`dhcp_subnets.move_plan` reads "done"). Kea's files are read."""
+    from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
+    from modules.list_settings import DEFAULT_LIST
+
+    left = []
+    for family in D.FAMILY:
+        main = D.main_config(DEFAULT_LIST, family)
+        try:
+            with open(main, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError as exc:
+            return {"state": "unknown", "detail": f"{family}: {main} could not be read: {exc}"}
+        p = S.move_plan(text, main, family)
+        if p["state"] == "refused":
+            return {"state": "not_done", "detail": f"{family}: {p['refused']}"}
+        if p["state"] != "done":
+            left.append(f"{family} ({main})")
+    if left:
+        return {"state": "not_done", "detail": "subnets still in Kea's own file: " + ", ".join(left)}
+    return {"state": "done", "detail": "both families' subnets come from Mercury's files"}
+
+
 CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater,
           "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin,
-          "kea-reservation-files": check_kea_reservation_files}
+          "kea-reservation-files": check_kea_reservation_files,
+          "kea-subnet-files": check_kea_subnet_files}
 
 
 def check(step: dict, root: str = ROOT) -> dict:

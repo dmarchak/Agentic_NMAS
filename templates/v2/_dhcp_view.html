@@ -48,21 +48,30 @@
 <section class="card dh-sec" aria-labelledby="dh-sub-h">
   <h2 id="dh-sub-h">Subnets</h2>
   <div class="dh-scroll"><table class="table">
-    <thead><tr><th scope="col">Subnet</th><th scope="col">Kea id</th><th scope="col">Pools</th><th scope="col">Lease times <span class="faint">valid · preferred · renew · rebind</span></th><th scope="col">In use</th><th scope="col">Reservations</th></tr></thead>
+    <thead><tr><th scope="col">Subnet</th><th scope="col">Pools <span class="faint">as set</span></th><th scope="col">Gateway (3)</th><th scope="col">DNS (6 / 23)</th><th scope="col">Lease time <span class="faint">valid · preferred · renew · rebind</span></th><th scope="col">Leases now</th><th scope="col">Held by</th></tr></thead>
     <tbody>
     {%- for x in g.subnets %}
     <tr>
-      <td class="mono">{{ x.prefix }}{% if x.ztp %} {{ badge('ZTP') }}{% endif %}{% if x.shared_network %} <span class="faint">in {{ x.shared_network }}</span>{% endif %}</td>
-      <td class="mono">{{ x.id }}</td>
+      <td class="mono">{{ x.prefix }}{% if x.ztp %} {{ badge('ZTP') }}{% endif %}{% if x.shared_network %} <span class="faint">in {{ x.shared_network }}</span>{% endif %}<br><span class="faint small">Kea id {{ x.id }}{% if x.reservations %} · {{ x.reservations | length }} reserved{% endif %}</span></td>
       <td class="mono">{% for p in x.pools %}{{ g.pool_words(p) }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">no pool{% if x.ztp %}: ZTP answers only its reservations{% endif %}</span>{% endfor %}{% for p in x.pd_pools %}<br>{{ p }}{% endfor %}</td>
+      <td>{%- set gw = x.gateway %}
+        {%- if gw.state == 'ra' %}<span class="faint">{{ gw.words }}</span>{% for r in gw.ra %}<br><span class="small">{{ r.device }} {{ r.iface }}: M {{ 'set' if r.managed else 'not set' }}, O {{ 'set' if r.other else 'not set' }}</span>{% else %}<br><span class="small faint">no router in intent advertises on it</span>{% endfor %}
+        {%- else %}<span class="mono">{{ gw.kea or '—' }}</span>{% if gw.inherited %} <span class="faint">(global)</span>{% endif %}<br><span class="small{% if gw.state in ('differs', 'missing') %} dh-warn{% else %} faint{% endif %}"{% if gw.where %} title="intent: {{ gw.where | join(', ') }}"{% endif %}>{{ gw.words }}</span>{% endif %}</td>
+      <td class="mono">{% for d in x.dns.servers %}{{ d }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">none</span>{% endfor %}{% if x.dns.inherited %} <span class="faint">(global)</span>{% endif %}</td>
       <td>{{ g.duration(x.times.valid) }} · {{ g.duration(x.times.preferred) }} · {{ g.duration(x.times.renew) }} · {{ g.duration(x.times.rebind) }}{% if x.same_as_global %} <span class="faint">the same as Kea's global</span>{% endif %}</td>
       <td>{% if x.ztp %}{{ x.used }} asking{% elif x.size %}{{ x.used }} of {{ x.size }}{% else %}{{ x.used }}{% endif %}</td>
-      <td>{% if x.reservations %}{{ x.reservations | length }}{% else %}<span class="faint">none</span>{% endif %}</td>
+      <td class="small">{% if x.held %}{{ g.held_words[x.held] }}{% else %}<span class="faint">not known: Kea's file is not on this host</span>{% endif %}</td>
     </tr>
-    {%- else %}<tr><td colspan="6" class="faint">Kea serves no subnet that was read.</td></tr>{% endfor %}
+    {%- else %}<tr><td colspan="7" class="faint">Kea serves no subnet that was read.</td></tr>{% endfor %}
     </tbody>
   </table></div>
+  {%- if g.subnets and g.subnets | selectattr('held', 'equalto', 'kea-file') | list %}
   <p class="note small">Kea's subnets are written by hand in Kea's own files today. Before Mercury's first change to them, one host step moves every subnet and its reservations into Mercury's own files, unchanged, with Kea's running configuration compared before and after (board C). From then on Mercury writes only its own files and applies them with <span class="mono">config-reload</span>.</p>
+  {%- elif g.subnets and g.subnets | rejectattr('held') | list %}
+  <p class="note small">Who writes each subnet is not known here: Kea's own files are not on this host.</p>
+  {%- else %}
+  <p class="note small">Every subnet is Mercury's: one host step moved Kea's hand-written subnets into Mercury's own files, unchanged, Kea's running configuration, reservations and leases compared before and after. Mercury writes only its own files and applies them with <span class="mono">config-reload</span>; ZTP's subnet is changed only where onboarding sets it.</p>
+  {%- endif %}
 </section>
 
 {%- elif g.s.tab == 'lea' %}

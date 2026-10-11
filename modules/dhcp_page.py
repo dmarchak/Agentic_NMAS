@@ -111,7 +111,8 @@ def view(list_name: str, values, now: float = None) -> dict:
     s = ask(values)
     now = time.time() if now is None else now
     out = {"list": list_name, "s": s, "qs": lambda over=None: qs(list_name, s, over),
-           "tabs": TABS, "shows": SHOWS, "duration": duration, "pool_words": pool_words}
+           "tabs": TABS, "shows": SHOWS, "duration": duration, "pool_words": pool_words,
+           "held_words": HELD}
     st = stored(list_name)
     out.update(state=st["state"], why=st.get("why", ""), failed=st.get("failed", ""),
                value_at=st.get("value_at", ""))
@@ -194,10 +195,14 @@ def view(list_name: str, values, now: float = None) -> dict:
         for r in sub["reservations"]:
             res_rows.append(dict(r, sub=sub, now=_reservation_now(r, sub, active, subnets)))
     sub_rows = []
+    intent = st["value"].get("intent") or {}
+    held = {svc: f.get("held") for svc, f in _families(st["value"])}
     for sub in subnets:
         used = sum(1 for l in active if l["svc"] == sub["svc"] and l["subnet_id"] == sub["id"])
         same = all(sub["times"].get(k) == sub["global_times"].get(k) for k in sub["times"])
-        sub_rows.append(dict(sub, used=used, size=pool_size(sub["pools"]), same_as_global=same))
+        sub_rows.append(dict(sub, used=used, size=pool_size(sub["pools"]), same_as_global=same,
+                             gateway=gateway(sub, intent), dns=dns(sub),
+                             held=(held.get(sub["svc"]) or {}).get(str(sub["id"]), "")))
     v4 = [x for x in subnets if x["svc"] == "dhcp4"]
     out.update(
         families=families, subnets=sub_rows, groups=groups, reservations=res_rows,
@@ -211,6 +216,57 @@ def view(list_name: str, values, now: float = None) -> dict:
         filtered=bool(needle) or s["show"] != "all",
         shown=sum(len(g["rows"]) for g in groups), total=len(rows))
     return out
+
+
+#: Board C's "Held by": who writes the subnet.
+HELD = {"mercury": "Mercury", "ztp": "ZTP's posture (changed only where onboarding sets it)",
+        "kea-file": "Kea's own file: moved into Mercury's by the one host step (C529 step 5)"}
+
+
+def _option(sub: dict, name: str) -> tuple:
+    """``(value, inherited)``: the subnet's own option, else the global one it inherits."""
+    own = (sub.get("options") or {}).get(name)
+    if own is not None:
+        return own, False
+    glob = (sub.get("global_options") or {}).get(name)
+    return (glob, True) if glob is not None else ("", False)
+
+
+def gateway(sub: dict, intent: dict) -> dict:
+    """Board C's Gateway (3): what Kea offers, against intent's first-hop address for the prefix
+    (the VRRP group's virtual address on its SVIs). IPv6 has no gateway option: a host's default
+    route comes from the routers' advertisements, whose M and O flags intent says.
+    ``{"kea", "inherited", "intent": [addresses], "where": [device iface], "state", "words",
+    "ra": [{device, iface, managed, other}]}``"""
+    if sub.get("family") == "IPv6":
+        ra = [dict(e) for e in (intent.get("IPv6") or {}).get(sub.get("prefix", "").lower()) or []]
+        return {"kea": "", "inherited": False, "intent": [], "where": [], "ra": ra,
+                "state": "ra", "words": "from the routers' RAs"}
+    kea, inherited = _option(sub, "routers")
+    entries = (intent.get("IPv4") or {}).get(sub.get("prefix", "")) or []
+    gw = sorted({a for e in entries for a in e.get("gateway") or []})
+    where = [f"{e['device']} {e['iface']}" for e in entries if e.get("gateway")]
+    out = {"kea": kea, "inherited": inherited, "intent": gw, "where": where, "ra": []}
+    if sub.get("ztp"):
+        out.update(state="ztp", words="none, by design (D4)")
+    elif not gw:
+        out.update(state="none", words="intent names no first-hop address for this prefix"
+                   + ("" if entries else " (no interface in intent is on it)"))
+    elif kea and kea in gw:
+        out.update(state="match", words="matches intent")
+    elif kea:
+        out.update(state="differs", words=f"intent says {', '.join(gw)}")
+    else:
+        out.update(state="missing", words=f"Kea offers none; intent says {', '.join(gw)}")
+    return out
+
+
+def dns(sub: dict) -> dict:
+    """Board C's DNS (6 / 23): the servers Kea offers, and whether they are inherited."""
+    name = "dns-servers" if sub.get("family") == "IPv6" else "domain-name-servers"
+    value, inherited = _option(sub, name)
+    return {"servers": [v.strip() for v in value.split(",") if v.strip()],
+            "inherited": inherited, "code": 23 if sub.get("family") == "IPv6" else 6}
 
 
 def duid_words(duid: str) -> str:

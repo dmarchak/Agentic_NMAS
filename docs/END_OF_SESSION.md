@@ -9,11 +9,18 @@ Your answers committed in 8224518 (deployed). Then, in your order:
   read-only; closed. Your "Mercury creates it as Planned" entry point is not what runs today
   (Verify creates the record Active): it is C556's unbuilt Planned → Active contract.
 - **C667:** the last three questions (7f56d12), the editable PromQL and Ask your own
-  (2e45ab9), both deployed and walked on the host; saved views with pinning built, gating now.
+  (2e45ab9), saved views with pinning (482ad26): each deployed and walked on the host
+  (saved views read-only; a person's save, pin and removal are in the walk).
 - **Found and registered:** C677 (r6's restart on 10-09 missing from Mercury's restart record,
-  UNKNOWN); C678 (the deploy's CI wait spent GitHub's 60-an-hour allowance; fixed in 2e45ab9,
-  the updater's copy re-installed, `nmas-update-check` ok).
-- **Next:** C529 steps 3 to 5, boards L and M, 7.5's identity line, the 7.8 removals.
+  UNKNOWN); C678 (the deploy's CI wait spent GitHub's 60-an-hour allowance: fixed, seen on the
+  host, closed); C679 (the wait's bound 1.3x today's CI run: fixed in 787d9b3, deploying).
+- **C529:** measured first: a stranded address keeps its holder until the lease EXPIRES (Kea
+  2.4.1 answers its renewals with silence; a throwaway Kea in its own namespace), and Kea
+  resolves a nested include. The one-time subnet move (step 5, a fresh dated copy and a
+  before/after of every lease and reservation) is built and gating; boards C and D follow it
+  (the move first, by dependency: logged).
+- **Next:** run the move on the host, boards C and D, boards L and M, 7.5's identity line, the
+  7.8 removals.
 - **Waiting on you:** the CLAUDE.md script (then `scripts/nmas-host` moves to `lab/`); the
   `l3-switch` answer (proposed: core-switch and distribution-switch map to `switch`, since
   Mercury's kinds are router, switch and firewall); the walk's sittings (below).

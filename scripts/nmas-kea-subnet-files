@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""Move Kea's subnets into Mercury's files (C529 step 5), the app's side of the one-time host
+step `scripts/host-steps/c529-step5-subnet-files.sh`. Run as the app's user; Kea's main
+configuration is root's, so the host step installs the candidates this writes.
+
+    nmas-kea-subnet-files plan               # per family: what moves, or done, or refused
+    nmas-kea-subnet-files candidates         # write Mercury's subnet files; write and test
+                                             # each family's candidate main file
+    nmas-kea-subnet-files snapshot <file>    # Kea's running configuration, every reservation
+                                             # and every lease, both families, as JSON
+    nmas-kea-subnet-files compare <a> <b>    # two snapshots: equal, or what moved, named
+    nmas-kea-subnet-files hash               # Kea's own configuration hash, per family
+    nmas-kea-subnet-files reload             # config-reload, both families
+    nmas-kea-subnet-files verify             # every family's subnets come from Mercury's file
+
+Mercury's subnet file is written beside its reservation files (`<Kea's folder>/nmas/`), which
+nothing includes until the candidate is installed. The candidate for each family is
+`<Kea's folder>/nmas/.c529-candidate-<service>.conf` (Kea's AppArmor profile lets it read under
+/etc/kea only), tested by `kea-dhcp4 -t` or `kea-dhcp6 -t`.
+Exit 0 done or equal, 1 refused, failed or different, 2 Kea could not be asked.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+#: A lease's fields compared before and after: who holds what, until when (Kea keeps the rest).
+LEASE_KEYS = ("ip-address", "hw-address", "duid", "client-id", "iaid", "subnet-id",
+              "valid-lft", "cltt", "state", "hostname", "type", "prefix-len")
+
+
+def candidate_path(main: str, svc: str) -> str:
+    return os.path.join(os.path.dirname(main), "nmas", f".c529-candidate-{svc}.conf")
+
+
+def snapshot(kea) -> dict:
+    """Each family's running configuration (its hash set apart), every reservation it holds,
+    and every lease, sorted, so two snapshots compare as values."""
+    from modules import dhcp_reservations as D
+
+    out = {}
+    for family, f in D.FAMILY.items():
+        config = D.kea_config(kea, family)
+        leases = sorted(({k: l.get(k) for k in LEASE_KEYS if k in l}
+                         for l in D.kea_leases(kea, family)),
+                        key=lambda l: json.dumps(l, sort_keys=True))
+        reservations = sorted((json.dumps(r, sort_keys=True)
+                               for r in D.every_reservation(config, family)))
+        cfg = {k: v for k, v in config.items() if k != "hash"}
+        out[family] = {"config": cfg, "reservations": reservations, "leases": leases}
+    return out
+
+
+def compare(a: dict, b: dict) -> list:
+    """What moved between two snapshots, in words; [] when nothing did."""
+    moved = []
+    for family in sorted(set(a) | set(b)):
+        x, y = a.get(family) or {}, b.get(family) or {}
+        cx, cy = x.get("config") or {}, y.get("config") or {}
+        for key in sorted(set(cx) | set(cy)):
+            if cx.get(key) != cy.get(key):
+                moved.append(f"{family}: Kea's configuration key {key!r} differs")
+        for what in ("reservations", "leases"):
+            sx = [json.dumps(v, sort_keys=True) if not isinstance(v, str) else v
+                  for v in x.get(what) or []]
+            sy = [json.dumps(v, sort_keys=True) if not isinstance(v, str) else v
+                  for v in y.get(what) or []]
+            gone, new = sorted(set(sx) - set(sy)), sorted(set(sy) - set(sx))
+            if gone or new:
+                moved.append(f"{family}: {len(gone)} {what} before and not after, {len(new)} "
+                             f"after and not before (of {len(sx)} and {len(sy)})")
+    return moved
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("what", choices=("plan", "candidates", "snapshot", "compare", "hash",
+                                     "reload", "verify"))
+    ap.add_argument("files", nargs="*")
+    args = ap.parse_args(argv)
+
+    if args.what == "compare":
+        if len(args.files) != 2:
+            print("compare takes two snapshot files")
+            return 1
+        snaps = []
+        for path in args.files:
+            with open(path, encoding="utf-8") as fh:
+                snaps.append(json.load(fh))
+        moved = compare(*snaps)
+        for family in sorted(snaps[0]):
+            s = snaps[0][family]
+            print(f"{family}: {len(s['config'].get('subnet4') or s['config'].get('subnet6') or [])}"
+                  f" subnets, {len(s['reservations'])} reservations, {len(s['leases'])} leases "
+                  "before")
+        print("\n".join(moved) if moved else
+              "EQUAL: Kea's running configuration, every reservation and every lease are the "
+              "same, both families")
+        return 1 if moved else 0
+
+    from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
+    from modules.integrations.kea import KeaIntegration
+    from modules.list_settings import DEFAULT_LIST
+    from modules.nsot import ztp
+
+    kea = KeaIntegration()
+    if not kea.is_configured():
+        print("Kea is not configured for the Default network (its Kea card in Settings)")
+        return 2
+    if args.what == "snapshot":
+        if len(args.files) != 1:
+            print("snapshot takes one file to write")
+            return 1
+        try:
+            snap = snapshot(kea)
+        except D.Refused as exc:
+            print(f"Kea could not be asked: {exc}")
+            return 2
+        with open(args.files[0], "w", encoding="utf-8") as fh:
+            json.dump(snap, fh, sort_keys=True, indent=1)
+        for family, s in sorted(snap.items()):
+            print(f"{family}: {len(s['reservations'])} reservations, {len(s['leases'])} leases, "
+                  f"configuration of {len(s['config'])} keys -> {args.files[0]}")
+        return 0
+    rc = 0
+    for family, f in D.FAMILY.items():
+        svc = f["svc"]
+        if args.what == "reload":
+            got = kea.command("config-reload", [svc])
+            print(f"{svc}: config-reload {'ok' if got.get('ok') else 'FAILED: ' + str(got.get('error'))}")
+            rc = rc or (0 if got.get("ok") else 1)
+            continue
+        if args.what == "hash":
+            got = kea.command("config-get", [svc])
+            if not got.get("ok"):
+                print(f"{svc}: Kea could not be asked: {got.get('error')}")
+                return 2
+            print(f"{svc} {D._arguments(got.get('result')).get('hash', 'no-hash')}")  # noqa: SLF001
+            continue
+        main = D.main_config(DEFAULT_LIST, family)
+        with open(main, encoding="utf-8") as fh:
+            text = fh.read()
+        p = S.move_plan(text, main, family)
+        if p["state"] == "refused":
+            print(f"{svc}: REFUSED: {p['refused']}")
+            rc = 1
+            continue
+        if args.what in ("plan", "verify"):
+            print(f"{svc}: " + ("done: every subnet comes from " + p["file"]
+                                if p["state"] == "done" else
+                                f"to move: the subnet array ({len(p['subnets_text'])} characters,"
+                                f" {p['subnets_text'].count('<?include')} reservation includes) "
+                                f"into {p['file']}, and Kea's file to include it"))
+            if args.what == "verify":
+                rc = rc or (0 if p["state"] == "done" else 1)
+            continue
+        if args.what == "candidates":
+            if p["state"] == "done":
+                print(f"{svc}: nothing to move")
+                continue
+            if os.path.exists(p["file"]):
+                with open(p["file"], encoding="utf-8") as fh:
+                    if fh.read() != p["subnets_text"]:
+                        print(f"{svc}: REFUSED: {p['file']} exists and differs from the subnets "
+                              "Kea's file holds: nothing written")
+                        rc = 1
+                        continue
+            else:
+                ztp._write_file(p["file"], p["subnets_text"])                     # noqa: SLF001
+                print(f"{svc}: wrote {p['file']}")
+            cand = candidate_path(main, svc)
+            if os.path.exists(cand):
+                os.remove(cand)
+            ztp._write_file(cand, p["candidate"])                                 # noqa: SLF001
+            ok, detail = ztp._run_kea_test(cand, f["program"])                    # noqa: SLF001
+            print(f"{svc}: candidate {cand}: {f['program']} -t {'PASS' if ok else 'FAIL'}: {detail}")
+            rc = rc or (0 if ok else 1)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

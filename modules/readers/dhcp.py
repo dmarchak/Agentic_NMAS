@@ -16,6 +16,8 @@ page can say a subnet's time is the same as the global one and never that it is 
 """
 
 import logging
+import os
+import re
 import time
 
 from modules import reader_job
@@ -105,7 +107,109 @@ def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
                     "times": {name: s.get(key) for name, key in TIMES},
                     "global_times": glob, "reservations": reservations(s.get("reservations"),
                                                                        family),
+                    # Board C's columns: the subnet's own options, and the global ones it
+                    # inherits where it sets none (C529 step 3).
+                    "options": _options(s.get("option-data")),
+                    "global_options": _options(config.get("option-data")),
                     "uses": uses, "ztp": s.get("id") in ztp_ids, "family": family})
+    return out
+
+
+def _options(data) -> dict:
+    """Kea's option-data as ``{name: data}`` (an option given by code alone keyed "code N")."""
+    out = {}
+    for o in data or []:
+        name = o.get("name") or f"code {o.get('code')}"
+        out[name] = str(o.get("data", ""))
+    return out
+
+
+def held_by(list_name: str, family_words: str, subnets_: list) -> dict:
+    """Who writes each subnet (board C's "Held by"): ``{id: "mercury"|"ztp"|"kea-file"}``, from
+    whether Kea's main file takes the family's subnets from Mercury's file (C529 step 5's
+    move); ``{}`` when Kea's file cannot be read here (a Kea on another host)."""
+    from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
+
+    main = D.main_config(list_name or _default(), family_words)
+    try:
+        with open(main, encoding="utf-8") as fh:
+            state = S.move_plan(fh.read(), main, family_words)["state"]
+    except OSError:
+        return {}
+    return {s["id"]: ("ztp" if s.get("ztp") else "mercury" if state == "done" else "kea-file")
+            for s in subnets_}
+
+
+def intent_facts(list_name: str) -> dict:
+    """What committed intent says each prefix's first hop is (board C): for every device of the
+    network, each interface's IPv4 and IPv6 prefixes with its VRRP virtual addresses (the
+    gateway Kea's option 3 should offer), its DHCP relays, and its IPv6 RA flags (M and O).
+    ``{"IPv4": {prefix: [{device, iface, gateway, relays}]}, "IPv6": {prefix: [{device, iface,
+    managed, other, relays}]}, "error"}``. Read once a run, in the reader, never per request."""
+    import ipaddress
+
+    from modules.nsot import hostvars, listref
+    out = {"IPv4": {}, "IPv6": {}, "error": ""}
+    if not listref.exists(list_name or _default()):
+        out["error"] = f"no network named {list_name or _default()!r} (a read creates none)"
+        return out
+    try:
+        ref = listref.resolve(list_name or _default())
+        repo = os.path.join(ref.data_dir, "config_repo")
+        names = sorted(n[:-4] for n in os.listdir(hostvars.committed_dir(repo))
+                       if n.endswith(".yml"))
+    except Exception as exc:                                  # noqa: BLE001 (said as the error)
+        out["error"] = f"the network's intent could not be listed: {exc}"
+        return out
+    hosts = {}
+    for name in names:
+        try:
+            hosts[name] = hostvars.read_committed(repo, name) or {}
+        except Exception as exc:                              # noqa: BLE001
+            out["error"] = f"{name}'s intent could not be read: {exc}"
+    facts = facts_from(hosts)
+    out.update(IPv4=facts["IPv4"], IPv6=facts["IPv6"])
+    return out
+
+
+def facts_from(hosts: dict) -> dict:
+    """`intent_facts` from ``{device: committed host_vars}``."""
+    import ipaddress
+
+    out = {"IPv4": {}, "IPv6": {}}
+    for name, hv in sorted(hosts.items()):
+        for i in hv.get("interfaces") or []:
+            if not isinstance(i, dict):
+                continue
+            iface = i.get("name", "")
+            vrrp = {"ipv4": [], "ipv6": []}
+            for g in i.get("vrrp_groups") or []:
+                for line in g.get("settings") or []:
+                    m = re.match(r"^address\s+(\S+)", line)
+                    if m:
+                        vrrp.setdefault(g.get("family", "ipv4"), []).append(m.group(1).lower())
+            v4 = (i.get("ipv4") or "").split()
+            if len(v4) == 2:
+                try:
+                    net = str(ipaddress.ip_interface(f"{v4[0]}/{v4[1]}").network)
+                    out["IPv4"].setdefault(net, []).append(
+                        {"device": name, "iface": iface, "gateway": vrrp["ipv4"],
+                         "relays": list(i.get("helper_addresses") or [])})
+                except ValueError:
+                    pass
+            nd = [str(x).strip() for x in i.get("ipv6_nd") or []]
+            for a in i.get("ipv6") or []:
+                try:
+                    net = str(ipaddress.ip_interface(str(a).split()[0]).network)
+                except ValueError:
+                    continue
+                if net.startswith("fe80"):
+                    continue
+                out["IPv6"].setdefault(net.lower(), []).append(
+                    {"device": name, "iface": iface, "managed": "managed-config-flag" in nd,
+                     "other": "other-config-flag" in nd,
+                     "relays": list(i.get("dhcpv6_relay") or [])})
     return out
 
 
@@ -191,7 +295,13 @@ def read(list_name: str = "", kea=None, clock=time.time, previous=None, ztp_ids=
             families[svc] = last
     if len(errors) == len(FAMILIES):
         raise RuntimeError("; ".join(errors))
-    return {"configured": True, "families": families, "read_at": _iso(clock())}
+    for svc, _root, _sub, _lease, words in FAMILIES:
+        fam = families[svc]
+        if fam.get("ok") and fam.get("subnets") is not None:
+            fam["held"] = {str(k): v for k, v in
+                           held_by(list_name, words, fam["subnets"]).items()}
+    return {"configured": True, "families": families, "intent": intent_facts(list_name),
+            "read_at": _iso(clock())}
 
 
 def _default() -> str:

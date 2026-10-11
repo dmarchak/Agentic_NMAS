@@ -86,11 +86,21 @@ def test_dhcp(tmp_path, monkeypatch):
                 _shoot(f"dhcp-walk-{tab}", "", lambda w, t=tab: f"/v2/dhcp?list=Lab&tab={t}",
                        served, widths=((1440, 1.0), (390, 2.0)))
         return
-    T._store(T._value())
+    value = T._value()
+    T._store(value)
     import app as A
     with browser.Served(A.app) as served:
         _shoot("dhcp-sub", "DhcpNetwork.dc.html", lambda w: "/v2/dhcp?list=Lab", served,
                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        # Board C's table (C529 step 3), as it reads after the subnet move: s1's committed
+        # intent beside Kea's options, and every subnet Mercury's (ZTP's its own posture).
+        value["intent"] = dict(T._s1_intent(), error="")
+        value["families"]["dhcp4"]["held"] = {"10": "mercury", "20": "mercury", "255": "ztp"}
+        value["families"]["dhcp6"]["held"] = {"10": "mercury", "20": "mercury", "30": "mercury"}
+        T._store(value)
+        _shoot("dhcp-sub-c", "DhcpSubnets.dc.html", lambda w: "/v2/dhcp?list=Lab", served,
+               widths=((1440, 1.0), (390, 2.0)))
+        T._store(T._value())
         for tab in ("lea", "res", "exc"):
             _shoot(f"dhcp-{tab}", "", lambda w, t=tab: f"/v2/dhcp?list=Lab&tab={t}", served,
                    widths=((1440, 1.0), (390, 2.0)))
