@@ -9,15 +9,16 @@ page fed by the logs reader's value built from the real captures of the lab's Lo
 Boards: `AskLogs.dc.html` (History › Query board C, "Syslog by device", 1440 wide), signed off with History › Query A and B on canvas v31 (NSOT_STAGE7_PLAN 15.5 to 15.9). The board has no phone variant.
 Shots: desktop 1440 (120 days, every severity, r4 opened); phone 390 (the page held to a 390 px column, and its first screen). Compared 2026-10-10.
 Compared again 2026-10-10 after the host walk: Newest follows the severity asked (the exact time when seen, else the last day counted, the board's "09:41 today" and "2 Oct"); no region's verdict changed.
-Templates compared: templates/v2/logs.html, templates/v2/_logs_view.html
-Templates sha256: `2799ce937936d0bcfa9f613d4f41e27d14b7c94e747f4251b534987bd4427b50`
+Compared again 2026-10-11 after C667 moved the view to its board's home, History › Query (`/v2/history/query/syslog`; the sidebar's Logs draws the same page): History's heading, its four tabs with Query on, and the crumb "Query › Syslog by device" now as the board draws them; the shots at 1440 and 390 again; no other region's verdict changed.
+Templates compared: templates/v2/logs.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
+Templates sha256: `478efdd74839d704688992fa3353d6135ecc83fe7d4a68d12048778a3a14c359`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
 
 | Region | Board | Built | Verdict |
 |---|---|---|---|
-| Where it sits | History › Query tabs (Timeline, Query, Baselines, Authorisations), breadcrumb "Query › Syslog by device" | the sidebar's Logs; breadcrumb "Logs › Syslog by device · the network" | **deviation** (log: Logs opens the queryable logs) |
+| Where it sits | History › Query tabs (Timeline, Query, Baselines, Authorisations), breadcrumb "Query › Syslog by device" | History, its Query tab on, breadcrumb "Query › Syslog by device · the network" (C667; the sidebar's Logs draws the same page) | **same** |
 | Title and actions | "Syslog by device"; Copy the link; Save this view…; How does this work? | "Syslog by device" with its info link; Copy the link | **deviation** (log: Logs without saved views) |
 | Range | 24 h, 7 d, 30 d, 120 d | the same four | **same** |
 | Severity | in the opened device's filters | the same, and beside the range for the table | **deviation** (log: Logs' severity beside the range) |

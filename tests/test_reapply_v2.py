@@ -132,6 +132,6 @@ class TestTheConfirm:
 def test_history_s_re_apply_opens_it_on_v2():
     import os
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                            "templates/v2/history.html"), encoding="utf-8").read()
+                            "templates/v2/_history_body.html"), encoding="utf-8").read()
     assert "url_for('v2.history_reapply', list=ref.name, tag=r.tag)" in src
     assert 'data-todays-page="reapply"' not in src

@@ -1,0 +1,24 @@
+{%- from "v2/_macros.html" import icon, stamp, info -%}
+{#- History › Query (C667; board A, AskLibrary): what the history holds, then the ready-made
+    questions, each opening its answer or said "not built yet" (modules/history_query.py). The
+    board's saved views and "Ask your own" are a later step, said so here. -#}
+{%- set c = lib.coverage %}
+<p class="hq-lede muted">Ask the network's history. Pick a question, then a device and a time range; the tool picks the store that holds that range and says how far back it goes.</p>
+<section class="card hq-cov" aria-labelledby="hq-cov-h">
+  <span id="hq-cov-h"><strong>What the history holds</strong></span>
+  <span>Metrics: the last {{ c.metrics_live_days }} days at full detail{% if c.metrics_long_term %}, older from the long-term store{% else %}; nothing older is kept (no long-term store is set, <a href="{{ url_for('settings_v2.index') }}">Settings</a>){% endif %}</span>
+  <span>Logs: kept {{ c.logs_days }} days <span class="muted">(this network's Logs retention, <a href="{{ url_for('settings_v2.index') }}">Settings</a>)</span>{% if c.logs_first_day %}; the log store began {{ c.logs_first_day }}{% elif c.logs_state not in ('ok',) %} <span class="muted">(the logs reader has not counted yet)</span>{% endif %}</span>
+  {%- if c.read_at %}<span class="muted">logs read {{ stamp(c.read_at) }}</span>{% endif %}
+</section>
+<h2 class="hq-h">Ready-made questions</h2>
+<div class="hq-grid">
+  {%- for q in lib.questions %}
+  {%- if q.url %}
+  <a class="hq-q" href="{{ q.url }}"><strong>{{ q.title }}</strong><span class="muted">{{ q.what }}</span><span class="hq-src">{{ q.source }}</span></a>
+  {%- else %}
+  <div class="hq-q hq-later" aria-disabled="true"><strong>{{ q.title }}</strong><span class="muted">{{ q.what }}</span><span class="hq-src">{{ q.source }} · not built yet</span></div>
+  {%- endif %}
+  {%- endfor %}
+</div>
+<h2 class="hq-h">Saved by your team</h2>
+<p class="muted small">Saving a view, and asking your own PromQL or LogQL, are the next step of this page (C667); nothing is saved yet.</p>

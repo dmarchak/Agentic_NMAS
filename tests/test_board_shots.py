@@ -163,14 +163,39 @@ def test_logs(tmp_path, monkeypatch):
                             ["read_at_ts"])
         import app as A
         with browser.Served(A.app) as served:
-            _shoot("logs-walk", "", lambda w: "/v2/logs?list=Lab&range=30d", served,
+            _shoot("logs-walk", "", lambda w: "/v2/history/query/syslog?list=Lab&range=30d", served,
                    widths=((1440, 1.0),))
         return
     T._store(T._read(previous=T._read()))
     import app as A
     with browser.Served(A.app) as served:
         _shoot("logs", "AskLogs.dc.html",
-               lambda w: "/v2/logs?list=Lab&range=120d&sev=all&d=r4", served,
+               lambda w: "/v2/history/query/syslog?list=Lab&range=120d&sev=all&d=r4", served,
+               widths=((1440, 1.0), (390, 2.0)))
+
+
+def test_history_query(tmp_path, monkeypatch):
+    """C667's board A (AskLibrary, 1440) beside History › Query, the logs reader's value built
+    from the same real captures as the logs shot."""
+    from types import SimpleNamespace
+
+    from tests import browser
+    from tests import test_logs_v2 as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.readers.adjacencies.lists",
+                        lambda: [("Lab", SimpleNamespace(repo_dir=str(tmp_path)), T.MANAGED)])
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    T._store(T._read(previous=T._read()))
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("history-query", "AskLibrary.dc.html", lambda w: "/v2/history?tab=query", served,
                widths=((1440, 1.0), (390, 2.0)))
 
 

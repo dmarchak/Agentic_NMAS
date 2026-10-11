@@ -1492,7 +1492,7 @@ a.topo-ent:hover { background: var(--hover); }
 .lg { display: flex; flex-direction: column; gap: 12px; max-width: 1140px; }
 .lg-crumb { font-size: 13px; color: var(--ink-3); }
 .lg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-.lg-head h1 { margin: 0; font-size: 22px; font-weight: 600; }
+.lg-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
 .lg-acts { display: flex; gap: 8px; align-items: center; }
 .lg-q { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .lg-sev { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-size: 13px; color: var(--ink-2); }
@@ -1574,3 +1574,20 @@ a.topo-ent:hover { background: var(--hover); }
   .dh-find input { min-width: 0; width: 100%; }
   .dh-find select { width: 100%; }
 }
+
+/* History › Query (C667; board A, AskLibrary): the coverage strip, the questions grid. */
+.hq-lede { margin: 0 0 4px; font-size: 13px; }
+.card.hq-cov { display: flex; flex-direction: row; align-items: baseline; gap: 6px 22px;
+  flex-wrap: wrap; font-size: 13px; padding: 12px 16px; }
+.card.hq-cov > * { margin: 0; }
+.hq-h { margin: 6px 0 0; font-size: 16px; font-weight: 600; }
+.hq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.hq-q { display: flex; flex-direction: column; gap: 6px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; text-decoration: none;
+  color: var(--ink); min-height: 44px; }
+.hq-q strong { font-size: 15px; }
+a.hq-q strong { color: var(--accent); }
+.hq-q .muted { font-size: 13px; }
+.hq-src { font-size: 12px; color: var(--ink-2); }
+.hq-later { border-style: dashed; color: var(--ink-2); }
+@media (max-width: 900px) { .hq-grid { grid-template-columns: 1fr; } }

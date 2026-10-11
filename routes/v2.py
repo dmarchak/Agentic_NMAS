@@ -188,7 +188,9 @@ def about():
 # (NSOT_GUI_BRIEF 3.4; board D, History as one timeline, signed off 2026-10-03, C369:
 # modules/history_sources.timeline, the one reader behind this page and every device's tab)
 
-HISTORY_TABS = (("timeline", "Timeline"), ("baselines", "Baselines"),
+#: Board D's tabs, and Query between Timeline and Baselines (C667: History › Query, boards A to
+#: C on the canvas page "History, Query").
+HISTORY_TABS = (("timeline", "Timeline"), ("query", "Query"), ("baselines", "Baselines"),
                 ("authorisations", "Authorisations"))
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
 
@@ -294,6 +296,9 @@ def _history_ctx(request) -> dict:
     if tab == "timeline":
         ctx["devices"] = _history_members(ref)
         ctx["h"] = _history_timeline(ref, f, ctx["devices"])
+    elif tab == "query":
+        from modules import history_query
+        ctx["lib"] = history_query.library(ref.name)
     elif tab == "baselines":
         got = reader_job.read_cached("baseline-usability")
         good = (got.get("doc") or {}).get("last_good") or {}
@@ -427,6 +432,29 @@ def history_page():
     its baselines and authorisations, with the remote's state at the top."""
     from flask import request
     return _page("v2/history.html", active_nav="history", **_history_ctx(request))
+
+
+@bp.route("/history/query/syslog", methods=["GET"])
+def history_query_syslog():
+    """History › Query › Syslog by device (board C, AskLogs): the logs reader's stored counts,
+    and a device's lines from Loki when it is opened. A read; the view redraws through
+    `logs_v2.region` when the reader announces `logs`."""
+    from flask import request
+
+    return _page("v2/logs.html", active_nav="history", **syslog_ctx(request))
+
+
+def syslog_ctx(request) -> dict:
+    """History › Query › Syslog by device's context, for its home and for the sidebar's Logs,
+    which draws the same page (C667): only what the tab draws, never the timeline's reads."""
+    from modules import logs_page
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    ref = listref.active()
+    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
+            "f": _history_filters(request), "syslog": True,
+            "g": logs_page.view(named_list(request) or ref.name, request.args)}
 
 
 @bp.route("/history/timeline", methods=["GET"])

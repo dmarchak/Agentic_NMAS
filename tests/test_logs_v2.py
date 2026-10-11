@@ -195,11 +195,18 @@ def _now(monkeypatch):
 
 
 def test_the_sidebar_s_logs_opens_the_queryable_logs(web):
-    html = web.get("/v2/logs?list=Lab").get_data(as_text=True)
-    assert re.search(r'<a class="nav-item active" href="/v2/logs" aria-current="page">', html)
-    assert "the app&#39;s own" not in html and "<h1>Syslog by device" in html
-    assert 'hx-trigger="nmas:logs from:body"' in html
-    assert 'data-label="Copy the link"' in html and "range=" not in html.split("data-copy=")[1][:80]
+    """C667: Syslog by device lives at its board's home, History › Query; the sidebar's Logs
+    draws that same page, History active, and every link in it leads to the home."""
+    for path in ("/v2/logs?list=Lab", "/v2/history/query/syslog?list=Lab"):
+        html = web.get(path).get_data(as_text=True)
+        assert re.search(r'<a class="nav-item active" href="/v2/history"', html), path
+        assert re.search(r'<a class="tab on" href="/v2/history\?tab=query" aria-current="page">'
+                         r'Query</a>', html), path
+        assert "the app&#39;s own" not in html and "<h2>Syslog by device" in html
+        assert ">Query</a> › Syslog by device" in html
+        assert 'hx-trigger="nmas:logs from:body"' in html
+        copy = html.split("data-copy=")[1][:120]
+        assert "/v2/history/query/syslog" in copy and "range=" not in copy[:80]
 
 
 def test_the_headline_and_table_sum_the_kept_days(web, monkeypatch):

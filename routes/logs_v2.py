@@ -33,10 +33,12 @@ def _ctx() -> dict:
 
 @bp.route("", methods=["GET"])
 def page():
-    """The page. A read: the stored counts, and a device's lines when one is opened."""
-    from routes.v2 import _page
+    """The sidebar's Logs: Syslog by device lives at its board's home, History › Query (C667),
+    and this draws that same page (its links lead to the home). What the sidebar's Logs
+    becomes is the operator's to decide, and no board draws it yet."""
+    from routes.v2 import _page, syslog_ctx
 
-    return _page("v2/logs.html", active_nav="logs", list_name=_list_name(), **_ctx())
+    return _page("v2/logs.html", active_nav="history", **syslog_ctx(request))
 
 
 @bp.route("/view", methods=["GET"])

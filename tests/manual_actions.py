@@ -58,7 +58,7 @@ NOT_AN_OPERATION = {
     ("_fleet.html", "Network"): "chooses which network to show, by opening its address",
     ("_monitoring.html", "Dashboard"): "chooses which dashboard to draw",
     ("_macros.html", "Apply"): "applies a time range to the charts (range_controls)",
-    ("history.html", "Show"): "applies the commit filters",
+    ("_history_body.html", "Show"): "applies the commit filters",
     ("heartbeat.html", "Copy"): "copies the host step's command to the clipboard",
     ("_attention.html", "Copy"): "copies a row's command to the clipboard",
     ("_attention.html", "Open"): "navigates to the device page",

@@ -24,9 +24,9 @@ DETAILS = re.compile(r"<details\b[^>]*>")
 
 #: (template, the tag's class or "" ) -> why it is outside every live region.
 NOT_LIVE = {
-    ("history.html", "hist-kinds"): "the Kind filter, in History's filter form, which no "
+    ("_history_body.html", "hist-kinds"): "the Kind filter, in History's filter form, which no "
                                     "announcement redraws",
-    ("history.html", "hist-row"): "the authorisations' rows (#hist-auth), a section with no live "
+    ("_history_body.html", "hist-row"): "the authorisations' rows (#hist-auth), a section with no live "
                                   "trigger; the baselines' rows carry their key",
 }
 

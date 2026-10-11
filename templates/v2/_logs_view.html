@@ -1,16 +1,17 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info -%}
-{#- The Logs view (C652), drawn to AskLogs: the question (range, severity), what the range can
-    hold, the devices by line count, a device opened to its filters, its trend by mnemonic and its
-    lines. Counts from the logs reader's stored days; a device's lines from Loki when opened. -#}
+{#- History › Query › Syslog by device (C652; moved under History by C667, its board's home),
+    drawn to AskLogs: the question (range, severity), what the range can hold, the devices by
+    line count, a device opened to its filters, its trend by mnemonic and its lines. Counts from
+    the logs reader's stored days; a device's lines from Loki when opened. -#}
 {%- macro go(g, over, words, cls='', pressed=none, label='') -%}
-<a class="{{ cls }}" href="{{ url_for('logs_v2.page') }}{{ g.qs(over) }}" hx-get="{{ url_for('logs_v2.region') }}{{ g.qs(over) }}" hx-target="#logs" hx-swap="outerHTML" hx-push-url="{{ url_for('logs_v2.page') }}{{ g.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+<a class="{{ cls }}" href="{{ url_for('v2.history_query_syslog') }}{{ g.qs(over) }}" hx-get="{{ url_for('logs_v2.region') }}{{ g.qs(over) }}" hx-target="#logs" hx-swap="outerHTML" hx-push-url="{{ url_for('v2.history_query_syslog') }}{{ g.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
 {%- endmacro -%}
 <div id="logs" class="lg" hx-get="{{ url_for('logs_v2.region') }}{{ g.qs() }}" hx-trigger="nmas:logs from:body" hx-swap="outerHTML">
-<div class="lg-crumb">Logs › Syslog by device · {{ g.list }}</div>
+<div class="lg-crumb"><a href="{{ url_for('v2.history_page', tab='query') }}">Query</a> › Syslog by device · {{ g.list }}</div>
 <div class="lg-head">
-  <h1>Syslog by device {{ info('logs') }}</h1>
+  <h2>Syslog by device {{ info('logs') }}</h2>
   {%- if g.state == 'ok' %}
-  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ url_for('logs_v2.page') }}{{ g.qs() }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
+  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ url_for('v2.history_query_syslog') }}{{ g.qs() }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
   {%- endif %}
 </div>
 
@@ -27,7 +28,7 @@
   <div class="seg" role="group" aria-label="Time range">
     {%- for key, rv in g.ranges.items() %}{{ go(g, {'range': key, 'd': g.s.d, 'before': ''}, rv[0], 'seg-btn' ~ (' on' if g.s.range == key), g.s.range == key) }}{% endfor %}
   </div>
-  <form class="lg-sev" method="get" action="{{ url_for('logs_v2.page') }}" hx-get="{{ url_for('logs_v2.region') }}" hx-target="#logs" hx-swap="outerHTML" hx-trigger="change">
+  <form class="lg-sev" method="get" action="{{ url_for('v2.history_query_syslog') }}" hx-get="{{ url_for('logs_v2.region') }}" hx-target="#logs" hx-swap="outerHTML" hx-trigger="change">
     <input type="hidden" name="list" value="{{ g.list }}">
     {%- for k in ('range', 'd', 'mn', 'text', 'from', 'to') if g.s[k] %}<input type="hidden" name="{{ k }}" value="{{ g.s[k] }}">{% endfor %}
     <label for="lg-sev">Severity</label>
@@ -63,7 +64,7 @@
     </tr>
     {%- if opened and g.open %}{% set o = g.open %}
     <tr class="lg-open"><td colspan="4">
-      <form class="lg-filters" method="get" action="{{ url_for('logs_v2.page') }}" hx-get="{{ url_for('logs_v2.region') }}" hx-target="#logs" hx-swap="outerHTML" aria-label="Filter {{ r.device }}'s lines">
+      <form class="lg-filters" method="get" action="{{ url_for('v2.history_query_syslog') }}" hx-get="{{ url_for('logs_v2.region') }}" hx-target="#logs" hx-swap="outerHTML" aria-label="Filter {{ r.device }}'s lines">
         <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="d" value="{{ r.device }}"><input type="hidden" name="range" value="{{ g.s.range }}">
         <label>Severity<select name="sev">{% for k, sv in g.severities.items() %}<option value="{{ k }}"{% if g.s.sev == k %} selected{% endif %}>{{ sv[0] }}</option>{% endfor %}</select></label>
         <label>Mnemonic<select name="mn"><option value="">every mnemonic ({{ o.mnemonics | length }})</option>{% for mn, n in o.mnemonics %}<option value="{{ mn }}"{% if g.s.mn == mn %} selected{% endif %}>{{ mn }} ({{ n }})</option>{% endfor %}</select></label>

@@ -69,6 +69,17 @@ row. **Show the change** is masked, like every screen; a reveal is the one place
 drawn in the clear. It needs a verified person, and it is recorded in the reveal record (who,
 when, which device and which commit) before the text is drawn; a refusal draws nothing.
 
+## Query {#query}
+
+Ask the network's history, starting from a question. The tab says first **what the history
+holds**: how many days of metrics are kept at full detail and whether a long-term store answers
+past them (both from this network's settings), and how long logs are kept and when the log
+store began (the logs reader's own count). Then the **ready-made questions**, each opening its
+answer: **Syslog by device** opens the network's syslog by device (see [Logs](logs)); the others
+(interface errors, CPU and memory, routing neighbour changes, restarts, telemetry rates) are
+drawn as not built yet and open nothing. Saving a view, and asking your own PromQL or LogQL,
+come next. The sidebar's Logs opens the same Syslog by device page.
+
 ## Baselines {#baselines}
 
 Every baseline: when it was taken, what its commit recorded it earned, and whether it can be

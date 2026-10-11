@@ -428,7 +428,7 @@ return [out, n];
 #: Matched on the problem's text; the list may only shrink (`test_the_known_gaps_only_shrink`).
 C503_KNOWN_GAPS = (
     '#intent "Editing',                     # the intent editor's card (_intent_edit.html)
-    '#hist-baselines ',                     # History's baselines card (history.html:83)
+    '#hist-baselines ',                     # History's baselines card (_history_body.html)
     '#installation "About this installation"',   # _installation.html:27
     '#card-',                               # each Settings card (_settings_card.html:59)
     'a standalone (i) outside any card or menu (settings-switch)',   # the switch's choice
