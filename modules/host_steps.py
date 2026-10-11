@@ -2,7 +2,7 @@
 commit, and checked by the tool wherever it can be (the operator, 2026-09-30).
 
 A step has a KIND, because the Update page demanded that a580660's step
-("install deploy/topology/rcn-topology.py as a symlink") be said done BEFORE
+("install the topology renderer as a symlink") be said done BEFORE
 the update, while the file it installs exists only AFTER it. Saying so would
 have put a false "done" in the audit trail.
 
@@ -72,16 +72,17 @@ def _service_started(unit: str, run=subprocess.run):
     return int(m.group(1)) if m else None
 
 
-#: Where the topology renderer is installed: a symlink to the checkout's copy.
-TOPOLOGY_LINK = "/usr/local/bin/rcn-topology.py"
-TOPOLOGY_SOURCE_REL = "deploy/topology/rcn-topology.py"
-TOPOLOGY_UNIT = "rcn-topology.service"
+#: Where the topology renderer is installed: a symlink to the checkout's copy. Named for
+#: the product since C663 (it carried the lab's name).
+TOPOLOGY_LINK = "/usr/local/bin/nmas-topology.py"
+TOPOLOGY_SOURCE_REL = "deploy/topology/nmas-topology.py"
+TOPOLOGY_UNIT = "nmas-topology.service"
 
 
 def check_topology_renderer(root: str = ROOT, link: str = TOPOLOGY_LINK,
                             run=subprocess.run) -> dict:
     """Done when the installed renderer IS the checkout's (a symlink resolving
-    to deploy/topology/rcn-topology.py) and rcn-topology.service started after
+    to deploy/topology/nmas-topology.py) and its service started after
     that file last changed, so the running process read this release's code."""
     source = os.path.realpath(os.path.join(root, TOPOLOGY_SOURCE_REL))
     if not os.path.islink(link):
@@ -92,11 +93,11 @@ def check_topology_renderer(root: str = ROOT, link: str = TOPOLOGY_LINK,
                                                f"not {source}"}
     started = _service_started(TOPOLOGY_UNIT, run=run)
     if started is None:
-        return {"state": "unknown", "detail": "the symlink is right; when rcn-topology.service "
+        return {"state": "unknown", "detail": f"the symlink is right; when {TOPOLOGY_UNIT} "
                                               "last started could not be read"}
     changed = int(os.path.getmtime(source))
     if started < changed:
-        return {"state": "not_done", "detail": "the symlink is right, and rcn-topology.service "
+        return {"state": "not_done", "detail": f"the symlink is right, and {TOPOLOGY_UNIT} "
                                                "has not restarted since the file changed"}
     return {"state": "done", "detail": f"{link} is the checkout's, and the service restarted "
                                        "after it changed"}

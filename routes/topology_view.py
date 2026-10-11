@@ -1,7 +1,7 @@
-"""routes/topology_view.py — the rcn-topology service's rendered graph.
+"""routes/topology_view.py — the topology service's rendered graph.
 
 Objective 1.2a(i) asks for the visualization from the previous labs, which is
-the NetworkX-based `rcn-topology` service. The Topology tab had been
+the NetworkX-based topology service (`deploy/topology/nmas-topology.py`). The Topology tab had been
 rediscovering the topology itself over CDP/LLDP — a second implementation of
 something that already exists and is already configured under
 Settings -> Topology service.

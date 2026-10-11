@@ -53,19 +53,13 @@ ACCESS = "the operator's access setup"
 
 #: ``path: (lines, category, disposition, what it is)``. Measured 2026-10-02.
 INVENTORY = {
-    # Found by widening the pattern to any rcn- or rcn_ name (2026-10-03, C374: the break-glass
-    # file carried the lab's name and `rcn-lab` alone did not see it). The topology renderer is
-    # generic (LLDP over Prometheus, drawn as SVG) and carries the lab's name.
-    "deploy/topology/rcn-topology.py": (10, LAB_VALUES, GENERIC,
-                                        "the topology renderer's name and its RCN_ settings"),
-    "modules/host_steps.py": (7, LAB_VALUES, GENERIC, "the renderer's install step, by its name"),
-    "routes/topology_view.py": (2, LAB_VALUES, GENERIC, "the renderer's name in its docstring"),
-    "static/js/gen/partials__topology_service.1.js": (1, LAB_VALUES, GENERIC,
-                                                      "the renderer's name in a message"),
-    "templates/index.html": (1, LAB_VALUES, GENERIC, "the renderer's name on the topology tab"),
-    "templates/partials/topology_service.html": (2, LAB_VALUES, GENERIC,
-                                                 "the renderer's name in its panel"),
+    # C663 (2026-10-11) emptied the rest. This one moves to lab/ once CLAUDE.md, which cites
+    # `scripts/nmas-host` throughout, names its new home: CLAUDE.md is the operator's to change.
     "scripts/nmas-host": (5, ACCESS, MOVE, "the operator's LAN-or-tunnel host helper"),
+    # A one-shot host step naming the old unit and link it removes; removed once it has run on
+    # the one host that had them, as Phase 3's spent step was.
+    "scripts/host-steps/c663-step3b-topology.sh": (4, LAB_VALUES, REMOVE,
+                                                   "renames the renderer's unit and link"),
 }
 
 

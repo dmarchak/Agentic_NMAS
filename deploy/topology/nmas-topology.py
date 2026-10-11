@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-rcn-topology.py - live network topology from LLDP, rendered as SVG.
+nmas-topology.py - live network topology from LLDP, rendered as SVG.
 
 Pulls LLDP adjacencies and device reachability from Prometheus, builds a
 graph, and serves it as an auto-refreshing SVG page.
@@ -24,15 +24,15 @@ NAMES come from the `device` label the scrape targets carry (generated from
 the inventory, C232), then sysName, so no device list is kept here. The
 hand-kept map this file had until 2026-09-30 lacked r6 (C256).
 
-Versioned in the NMAS repository as deploy/topology/rcn-topology.py and
+Versioned in the NMAS repository as deploy/topology/nmas-topology.py and
 installed by the operator (docs/DEPLOY_LINUX.md); it was an unversioned copy
-in /usr/local/bin until then (C256).
+in /usr/local/bin until then (C256), and carried the lab's name until C663.
 
-Run:  python3 rcn-topology.py
+Run:  python3 nmas-topology.py
 Deps: networkx, flask, requests
-Env:  RCN_TOPOLOGY_PROM (http://localhost:9090), RCN_TOPOLOGY_JOBS
-      (cisco_8000v|cisco_vios_l2), RCN_TOPOLOGY_LLDP_JOB (lldp),
-      RCN_TOPOLOGY_PORT (8088)
+Env:  NMAS_TOPOLOGY_PROM (http://localhost:9090), NMAS_TOPOLOGY_JOBS
+      (cisco_8000v|cisco_vios_l2), NMAS_TOPOLOGY_LLDP_JOB (lldp),
+      NMAS_TOPOLOGY_PORT (8088)
 """
 
 import html
@@ -45,11 +45,11 @@ from datetime import datetime, timezone
 import requests
 from flask import Flask, Response, jsonify
 
-PROM = os.environ.get("RCN_TOPOLOGY_PROM", "http://localhost:9090")
-DEVICE_JOBS = os.environ.get("RCN_TOPOLOGY_JOBS", "cisco_8000v|cisco_vios_l2")
-LLDP_JOB = os.environ.get("RCN_TOPOLOGY_LLDP_JOB", "lldp")
+PROM = os.environ.get("NMAS_TOPOLOGY_PROM", "http://localhost:9090")
+DEVICE_JOBS = os.environ.get("NMAS_TOPOLOGY_JOBS", "cisco_8000v|cisco_vios_l2")
+LLDP_JOB = os.environ.get("NMAS_TOPOLOGY_LLDP_JOB", "lldp")
 LISTEN_HOST = "0.0.0.0"
-LISTEN_PORT = int(os.environ.get("RCN_TOPOLOGY_PORT", "8088"))
+LISTEN_PORT = int(os.environ.get("NMAS_TOPOLOGY_PORT", "8088"))
 CACHE_SECONDS = 15          # don't hammer Prometheus on every page refresh
 
 W, H = 1100, 720            # SVG canvas
@@ -78,7 +78,7 @@ def promq(query):
 
 
 def short(name):
-    """r1.example.com -> r1,  s3.rcn.lab -> s3."""
+    """r1.example.com -> r1,  s3.example.net -> s3."""
     return re.split(r"[.]", (name or "").strip())[0].lower()
 
 
@@ -360,7 +360,7 @@ def build(force=False):
 # --------------------------------------------------------------------------
 PAGE = """<!doctype html>
 <html><head><meta charset="utf-8">
-<title>RCN Lab topology</title>
+<title>Network topology</title>
 <meta http-equiv="refresh" content="30">
 <style>
   body {{ background:#111217; margin:0; display:flex; align-items:center;

@@ -16,13 +16,13 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-SCRIPT = ROOT / "deploy" / "topology" / "rcn-topology.py"
+SCRIPT = ROOT / "deploy" / "topology" / "nmas-topology.py"
 FIX = ROOT / "tests" / "fixtures" / "topology"
 
 
 @pytest.fixture(scope="module")
 def topo():
-    spec = importlib.util.spec_from_file_location("rcn_topology", SCRIPT)
+    spec = importlib.util.spec_from_file_location("nmas_topology", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

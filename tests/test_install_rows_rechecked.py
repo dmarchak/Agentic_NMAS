@@ -28,7 +28,7 @@ from modules import config
 from modules import reader_job as R
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCE = os.path.join(ROOT, "deploy", "topology", "rcn-topology.py")
+SOURCE = os.path.join(ROOT, "deploy", "topology", "nmas-topology.py")
 T0 = 1_790_000_000.0
 ROW = "job_health:helper:topology-renderer"
 
@@ -39,9 +39,9 @@ def helper(tmp_path, monkeypatch):
     from modules import host_steps
 
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
-    old = tmp_path / "rcn-topology.older.py"
+    old = tmp_path / "nmas-topology.older.py"
     old.write_text("# an older release\n")
-    link = tmp_path / "rcn-topology.py"
+    link = tmp_path / "nmas-topology.py"
     link.symlink_to(old)
     monkeypatch.setattr(host_steps, "TOPOLOGY_LINK", str(link))
     monkeypatch.setattr(host_steps, "_service_started", lambda unit, run=None: 2 ** 40)

@@ -24,7 +24,7 @@ function _topoSvcShowError(message, notConfigured) {
 function topoSvcStateFor(d) {
   if (!d || !d.configured) {
     return {kind: 'not_configured',
-            message: 'Not configured. This panel shows the rcn-topology service\'s '
+            message: 'Not configured. This panel shows the topology service\'s '
                      + 'rendered graph, and nothing has told the NMAS where that service '
                      + 'is: set Settings \u2192 Integrations \u2192 Topology service \u2192 URL '
                      + 'to its base URL (it fetches <base>/topology.svg). Nothing failed. '

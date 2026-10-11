@@ -183,15 +183,16 @@ Until it is installed, job health's `nmas-startup-check` row reads
 
 ### The topology service (register C256, 2026-09-30)
 
-`rcn-topology.service` runs `/usr/local/bin/rcn-topology.py`, which until
-2026-09-30 was a copy no commit recorded. The repository's copy is
-`deploy/topology/rcn-topology.py`. Install it as a symlink, so the
-checkout is the one copy (the C14 rule), keeping the old file beside it:
+`nmas-topology.service` runs `/usr/local/bin/nmas-topology.py`, a symlink to the
+repository's copy, `deploy/topology/nmas-topology.py`, so the checkout is the one copy
+(the C14 rule). Until 2026-09-30 it was a copy no commit recorded; until C663 (2026-10-11)
+it carried the lab's name (`rcn-topology`), and
+`scripts/host-steps/c663-step3b-topology.sh` renamed the unit and the link on a host
+that had the old ones. On a new host:
 
 ```bash
-sudo cp -p /usr/local/bin/rcn-topology.py /usr/local/bin/rcn-topology.py.pre-c256
-sudo ln -sf <home>/python/Agentic_NMAS/deploy/topology/rcn-topology.py /usr/local/bin/rcn-topology.py
-sudo systemctl restart rcn-topology.service
+sudo ln -sf <home>/python/Agentic_NMAS/deploy/topology/nmas-topology.py /usr/local/bin/nmas-topology.py
+sudo systemctl restart nmas-topology.service
 curl -s http://localhost:8088/graph.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["meta"])'
 ```
 

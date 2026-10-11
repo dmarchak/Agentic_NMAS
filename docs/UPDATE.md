@@ -223,7 +223,7 @@ Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
 
 - **`[<check>]` names one of the tool's checks** (`host_steps.CHECKS`):
   `topology-renderer` (the installed renderer is a symlink to the checkout's, and
-  `rcn-topology.service` started after the file changed), `updater` (the
+  `nmas-topology.service` started after the file changed), `updater` (the
   updater's install check reads ok) and `oxidized-cred` (the installed Oxidized
   credential helper is this release's copy, root-owned, by the helper's own check;
   C416). A checked step is never ticked: done is measured, and a step the check

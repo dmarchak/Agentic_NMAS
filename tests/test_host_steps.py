@@ -68,7 +68,7 @@ def _systemctl(epoch):
 class TestTheTopologyRendererCheck:
     @pytest.fixture
     def tree(self, tmp_path):
-        src = tmp_path / "repo" / "deploy" / "topology" / "rcn-topology.py"
+        src = tmp_path / "repo" / "deploy" / "topology" / "nmas-topology.py"
         src.parent.mkdir(parents=True)
         src.write_text("x\n")
         os.utime(src, (1000, 1000))
@@ -77,7 +77,7 @@ class TestTheTopologyRendererCheck:
     def test_absent_and_a_copy_are_not_done(self, tree):
         from modules import host_steps
         tmp, src = tree
-        link = tmp / "rcn-topology.py"
+        link = tmp / "nmas-topology.py"
         got = host_steps.check_topology_renderer(str(tmp / "repo"), str(link), run=_systemctl(2000))
         assert got["state"] == "not_done" and "absent" in got["detail"]
         link.write_text("a copy\n")
@@ -89,7 +89,7 @@ class TestTheTopologyRendererCheck:
         tmp, src = tree
         other = tmp / "other.py"
         other.write_text("y\n")
-        link = tmp / "rcn-topology.py"
+        link = tmp / "nmas-topology.py"
         link.symlink_to(other)
         got = host_steps.check_topology_renderer(str(tmp / "repo"), str(link), run=_systemctl(2000))
         assert got["state"] == "not_done" and str(other) in got["detail"]
@@ -97,7 +97,7 @@ class TestTheTopologyRendererCheck:
     def test_the_service_must_have_restarted_after_the_file_changed(self, tree):
         from modules import host_steps
         tmp, src = tree
-        link = tmp / "rcn-topology.py"
+        link = tmp / "nmas-topology.py"
         link.symlink_to(src)
         assert host_steps.check_topology_renderer(str(tmp / "repo"), str(link),
                                                   run=_systemctl(500))["state"] == "not_done"

@@ -1,7 +1,7 @@
 """The topology visualization comes from the topology service, as an IMAGE.
 
 Objective 1.2a(i) asks for the visualization from the previous labs -- the
-NetworkX-based `rcn-topology` service. The Topology tab had been
+NetworkX-based topology service (`nmas-topology`). The Topology tab had been
 rediscovering topology itself over CDP/LLDP: a second implementation of
 something already built, already running and already configured under
 Settings.
