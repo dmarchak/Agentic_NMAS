@@ -4253,15 +4253,35 @@ measurements.
 the binary in its own network namespace, its own config and lease file; the live Kea
 untouched):** the discovery range as designed works. Two client classes, each tested AFTER the
 reservation lookup (`not member('KNOWN')`, Kea evaluating the dependency on KNOWN itself), each
-with `"valid-lifetime": 300`: `nmas-discovery-pnp` adds
+with `"valid-lifetime": 300` (**unsafe as written: corrected below**): `nmas-discovery-pnp` adds
 `substring(option[60].hex,0,8) == 'ciscopnp'`; `nmas-discovery` is any device without a
 reservation. Two pools in the ZTP subnet, one per class, pnp's first. A DISCOVER from an
 unreserved MAC sending vendor class `ciscopnp` was offered from the pnp pool, 300 s, with no
 boot file, router, DNS, option 66 or 67; one sending none was offered from the other pool, the
 same; a reserved MAC (vendor class `ciscopnp` too) was offered its reservation, 3600 s, its
 boot file and option 66: never a pool. Boards L and M were redrawn from the measurements the
-same day (canvas version 111). **Still to measure (the operator's, or on the lab host as a
-Mercury operation):** what a configless C8000v does after it TAKES a discovery lease with no
+same day (canvas version 111).
+
+**CORRECTED (2026-10-11 20:50 UTC, the same throwaway kea-dhcp4 2.4.1; C682):** that
+throwaway held one subnet, so it could not show what the classes do to the others. Kea's
+classes are GLOBAL, and a class's lease time beats every subnet's: an unreserved client in a
+subnet with its own 365-day lifetime (the lab's subnets 10 and 20, every host there unreserved)
+was offered 300 s by an unconfined class, and the same with the subnet's lifetime left to the
+global's. So each discovery class is CONFINED to the ZTP subnet's own clients:
+`not member('KNOWN') and pkt4.giaddr == 0.0.0.0 and pkt.iface == '<the ZTP interface>'`
+(ZTP's subnet is, by ZTP's own rule, the one holding this host's address on an interface Kea
+listens on, so it is reached directly, never through a relay). Measured with the lab's shape
+(the global 365 days, the ZTP subnet on its interface, an ordinary subnet declared by its relay
+address): the ZTP segment's unknown device sending `ciscopnp` was offered the first pool's
+address at 300 s, one sending none the second pool's at 300 s, the reserved one its
+reservation and boot file at 365 days, and an unknown client RELAYED into the ordinary subnet
+365 days, with `ciscopnp` or without. Built as `modules/dhcp_discovery.py` and the one-time
+host step `scripts/host-steps/ztp-discovery-range.sh` (the classes in Kea's main file; the
+two pools through board C's write path; before and after compared, only these may move). The
+range: the highest block of 32 in the ZTP subnet holding nothing (no reservation, lease, pool,
+intent address or this host) and not the broadcast address, or the one the step is given.
+
+**Still to measure (the operator's, or on the lab host as a Mercury operation):** what a configless C8000v does after it TAKES a discovery lease with no
 boot file: renews it at T1, or keeps sending DISCOVERs; L's "next request" reads whichever the
 lease shows.
 

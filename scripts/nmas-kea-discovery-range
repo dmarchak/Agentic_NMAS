@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""Board L's discovery range (`modules/dhcp_discovery.py`), the app's side of the one-time host
+step `scripts/host-steps/ztp-discovery-range.sh`. Run as the app's user; Kea's main
+configuration is root's, so the host step installs the classes' candidate this writes.
+
+    nmas-kea-discovery-range plan [RANGE]      # the ZTP subnet, the classes, the range chosen
+    nmas-kea-discovery-range classes           # write and test Kea's main file with the classes
+    nmas-kea-discovery-range pools [RANGE]     # the two pools, through board C's write path
+    nmas-kea-discovery-range reload            # config-reload, IPv4
+    nmas-kea-discovery-range verify            # Kea runs the classes and the pools
+    nmas-kea-discovery-range expected <a> <b>  # two snapshots (nmas-kea-subnet-files snapshot):
+                                               # only the classes and the ZTP subnet's pools moved
+
+RANGE is a block of 32 addresses in the ZTP subnet; without it, the highest one that holds
+nothing (no reservation, lease, pool, intent address or this host) and not the broadcast
+address. The classes' candidate is `<Kea's folder>/nmas/.discovery-candidate-dhcp4.conf` (Kea's
+AppArmor profile lets it read under /etc/kea only), tested by `kea-dhcp4 -t`.
+Exit 0 done or as expected, 1 refused, failed or different, 2 Kea could not be asked.
+"""
+
+import argparse
+import getpass
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+REASON = ("board L: the discovery range on the ZTP segment (the one-time host step, "
+          "scripts/host-steps/ztp-discovery-range.sh)")
+
+
+def candidate_path(main: str) -> str:
+    return os.path.join(os.path.dirname(main), "nmas", ".discovery-candidate-dhcp4.conf")
+
+
+def expected(a: dict, b: dict, ztp_id) -> list:
+    """What moved between two snapshots besides the discovery classes and the ZTP subnet's
+    pools, in words; [] when only those did."""
+    from modules import dhcp_discovery as L
+
+    moved = []
+    for family in sorted(set(a) | set(b)):
+        x, y = a.get(family) or {}, b.get(family) or {}
+        cx, cy = x.get("config") or {}, y.get("config") or {}
+        for key in sorted(set(cx) | set(cy)):
+            if cx.get(key) == cy.get(key):
+                continue
+            if family == "IPv4" and key == "client-classes":
+                if cx.get(key) or [c.get("name") for c in cy.get(key) or []] != list(L.CLASSES):
+                    moved.append("IPv4: the client classes are not exactly the two added")
+                continue
+            if family == "IPv4" and key == "subnet4":
+                sx = {s.get("id"): s for s in cx.get(key) or []}
+                sy = {s.get("id"): s for s in cy.get(key) or []}
+                if set(sx) != set(sy):
+                    moved.append(f"IPv4: the subnets are {sorted(sy)} after, {sorted(sx)} before")
+                for i in sorted(set(sx) & set(sy)):
+                    if sx[i] == sy[i]:
+                        continue
+                    rest = ({k: v for k, v in sx[i].items() if k != "pools"},
+                            {k: v for k, v in sy[i].items() if k != "pools"})
+                    if i != ztp_id or rest[0] != rest[1] or sx[i].get("pools"):
+                        moved.append(f"IPv4: subnet {i} moved beyond the discovery pools")
+                    elif [p.get("client-class") for p in sy[i].get("pools") or []] != \
+                            list(L.CLASSES):
+                        moved.append(f"IPv4: subnet {i}'s pools are not the two discovery pools")
+                continue
+            moved.append(f"{family}: Kea's configuration key {key!r} differs")
+        for what in ("reservations", "leases"):
+            if (x.get(what) or []) != (y.get(what) or []):
+                moved.append(f"{family}: the {what} differ")
+    return moved
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("what", choices=("plan", "classes", "pools", "reload", "verify", "expected"))
+    ap.add_argument("args", nargs="*")
+    args = ap.parse_args(argv)
+
+    from modules import dhcp_discovery as L
+    from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
+    from modules.integrations.kea import KeaIntegration
+    from modules.list_settings import DEFAULT_LIST
+    from modules.nsot import ztp
+
+    kea = KeaIntegration()
+    if not kea.is_configured():
+        print("Kea is not configured for the Default network (its Kea card in Settings)")
+        return 2
+    if args.what == "reload":
+        got = kea.command("config-reload", ["dhcp4"])
+        print(f"dhcp4: config-reload {'ok' if got.get('ok') else 'FAILED: ' + str(got.get('error'))}")
+        return 0 if got.get("ok") else 1
+    try:
+        config = D.kea_config(kea, "IPv4")
+        seg = L.segment(config)
+    except D.Refused as exc:
+        print(f"Kea could not be asked: {exc}")
+        return 2
+    except L.Refused as exc:
+        print(f"REFUSED: {exc}")
+        return 1
+    if args.what == "expected":
+        if len(args.args) != 2:
+            print("expected takes two snapshot files")
+            return 1
+        snaps = []
+        for path in args.args:
+            with open(path, encoding="utf-8") as fh:
+                snaps.append(json.load(fh))
+        moved = expected(*snaps, seg["id"])
+        print("\n".join(moved) if moved else
+              "AS EXPECTED: only the two discovery classes and the ZTP subnet's two pools were "
+              "added; every other setting, subnet, reservation and lease, both families, as "
+              "before")
+        return 1 if moved else 0
+    print(f"the ZTP subnet: {seg['id']} ({seg['prefix']}), answered on {seg['iface']}")
+    if args.what == "verify":
+        r = L.running(config)
+        print(f"Kea runs the discovery range: {r['state']}; classes {r['classes']}, lifetime "
+              f"{r['lifetime']} s; pools {[p['pool'] + ' ' + str(p['class']) for p in r['pools']]}"
+              + (f"; {r['problem']}" if r["problem"] else ""))
+        return 0 if r["state"] == "on" else 1
+    main_ = D.main_config(DEFAULT_LIST, "IPv4")
+    with open(main_, encoding="utf-8") as fh:
+        text = fh.read()
+    c = L.classes_plan(text, main_, config, seg["iface"])
+    if args.what in ("plan", "classes"):
+        print(f"the classes: {c['state']}" + (f": {c['refused']}" if c["refused"] else ""))
+        if c["state"] == "refused":
+            return 1
+    if args.what == "plan":
+        rng = args.args[0] if args.args else ""
+        if c["state"] == "done":
+            p = L.plan(DEFAULT_LIST, {"family": "IPv4", "range": rng}, kea=kea)
+            print(f"the pools: {'REFUSED: ' + p['refused'] if not p['ok'] else p['title']}")
+            for sign, line in p["change"]:
+                print(f"  {sign} {line}")
+        else:
+            print("the pools: planned once Kea runs the classes (the step's second half)")
+        return 0
+    if args.what == "classes":
+        if c["state"] == "done":
+            print("nothing to change: Kea runs the two classes")
+            return 0
+        cand = candidate_path(main_)
+        if os.path.exists(cand):
+            os.remove(cand)
+        ztp._write_file(cand, c["candidate"])                                  # noqa: SLF001
+        ok, detail = ztp._run_kea_test(cand, "kea-dhcp4")                      # noqa: SLF001
+        print(f"candidate {cand}: kea-dhcp4 -t {'PASS' if ok else 'FAIL'}: {detail}")
+        return 0 if ok else 1
+    # pools: previewed, then applied bound to that preview, through board C's one write path.
+    values = {"op": "edit", "family": "IPv4", "range": args.args[0] if args.args else ""}
+    p = L.plan(DEFAULT_LIST, values, kea=kea)
+    if not p["ok"]:
+        print(f"the pools: REFUSED: {p['refused']}")
+        return 1
+    print(f"the pools: {p['title']}")
+    got = S.apply_edit(DEFAULT_LIST, values, p["hash"], actor=f"{getpass.getuser()} (host shell)",
+                       reason=REASON, kea=kea,
+                       planner=lambda ln, v, kea=None, intent=None: L.plan(ln, v, kea=kea,
+                                                                          intent=intent))
+    print(f"  written: {got['outcome'] or 'no'}; read back: {got['read_back'] or '-'}; "
+          f"recorded: {got['commit'] or '-'}"
+          + (f"; rolled back: {got['rolled_back']}" if got["rolled_back"] else "")
+          + (f"; ERROR: {got['error']}" if got["error"] else ""))
+    return 0 if got["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

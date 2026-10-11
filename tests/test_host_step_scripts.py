@@ -37,6 +37,8 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "c529-step2-reservation-files.sh",
             # C529 step 5: Kea's subnets moved into Mercury's files, once (2026-10-11).
             "c529-step5-subnet-files.sh",
+            # Board L: the discovery range's classes and pools on the ZTP segment (2026-10-11).
+            "ztp-discovery-range.sh",
             # C665: Device Roles' kinds with the operator's admin token, prompted (2026-10-11).
             "netbox-role-kinds.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator

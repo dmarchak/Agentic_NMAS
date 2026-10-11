@@ -193,10 +193,31 @@ def check_kea_subnet_files(root: str = ROOT) -> dict:
     return {"state": "done", "detail": "both families' subnets come from Mercury's files"}
 
 
+def check_kea_discovery_range(root: str = ROOT, kea=None, addrs=None) -> dict:
+    """Board L's host step: done when Kea RUNS the discovery range (`dhcp_discovery.running`
+    reads "on": both confined classes and both pools in the ZTP subnet). Kea is asked."""
+    from modules import dhcp_discovery as L
+    from modules import dhcp_reservations as D
+
+    if kea is None:
+        from modules.integrations.kea import KeaIntegration
+        kea = KeaIntegration()
+    try:
+        r = L.running(D.kea_config(kea, "IPv4"), addrs)
+    except D.Refused as exc:
+        return {"state": "unknown", "detail": f"IPv4: {exc}"}
+    if r["state"] == "on":
+        return {"state": "done", "detail": f"Kea runs the discovery range in the ZTP subnet "
+                                           f"{r['prefix']}: " + ", ".join(
+                                               p["pool"] for p in r["pools"])}
+    return {"state": "not_done", "detail": r["problem"] or "Kea runs no discovery range"}
+
+
 CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater,
           "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin,
           "kea-reservation-files": check_kea_reservation_files,
-          "kea-subnet-files": check_kea_subnet_files}
+          "kea-subnet-files": check_kea_subnet_files,
+          "kea-discovery-range": check_kea_discovery_range}
 
 
 def check(step: dict, root: str = ROOT) -> dict:
