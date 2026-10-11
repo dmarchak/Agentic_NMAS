@@ -4249,6 +4249,22 @@ What L shows follows the answer (15.7): the expected next request; a give-up war
 The Kea host step (the discovery pool), and 7.4e redrawn with all three ways, follow these
 measurements.
 
+**MEASURED (2026-10-11 20:25 UTC, on a throwaway kea-dhcp4 2.4.1 on the NMAS host: a copy of
+the binary in its own network namespace, its own config and lease file; the live Kea
+untouched):** the discovery range as designed works. Two client classes, each tested AFTER the
+reservation lookup (`not member('KNOWN')`, Kea evaluating the dependency on KNOWN itself), each
+with `"valid-lifetime": 300`: `nmas-discovery-pnp` adds
+`substring(option[60].hex,0,8) == 'ciscopnp'`; `nmas-discovery` is any device without a
+reservation. Two pools in the ZTP subnet, one per class, pnp's first. A DISCOVER from an
+unreserved MAC sending vendor class `ciscopnp` was offered from the pnp pool, 300 s, with no
+boot file, router, DNS, option 66 or 67; one sending none was offered from the other pool, the
+same; a reserved MAC (vendor class `ciscopnp` too) was offered its reservation, 3600 s, its
+boot file and option 66: never a pool. Boards L and M were redrawn from the measurements the
+same day (canvas version 111). **Still to measure (the operator's, or on the lab host as a
+Mercury operation):** what a configless C8000v does after it TAKES a discovery lease with no
+boot file: renews it at T1, or keeps sending DISCOVERs; L's "next request" reads whichever the
+lease shows.
+
 **Lab note (optional, lab tooling):** containerlab knows each node's MAC and could pre-fill it
 in way 2.
 

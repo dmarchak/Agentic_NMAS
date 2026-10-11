@@ -164,6 +164,22 @@ step that does not show what it says, and tell the agent the step's number. Time
     Expect NetBox to show r6's record created, then gone (only what Mercury created is deleted).
 11. **The remote** (History's remote line): **Set up the remote…** with the existing private config
     repository; then a commit pushes on its own (auto-push). Undo: disconnect from the same card.
+12. **DHCP subnets and exclusions (C529 step 3), on a subnet no client uses.** The subnet move
+    ran (19:49 UTC, 9 of 9 PASS); every subnet but ZTP's now has Edit… and Remove….
+    a. DHCP › Subnets › **Add a subnet…**: IPv4, prefix `10.10.99.0/24`, pool
+       `10.10.99.100 - 10.10.99.199`; **Preview**: Kea id the next free, a "differs" check saying
+       no interface in intent is on it (so Kea would answer nobody there: expected); reason "C529
+       walk"; confirm. Expect "10.10.99.0/24 added", read back, a commit of `dhcp/subnets.yml`.
+    b. Its **Edit…**: DNS `10.255.0.10`, valid lifetime `1 d`; Preview (renew and rebind set to
+       half and 7/8), confirm. Expect "changed".
+    c. DHCP › Exclusions › **Add an exclusion…**: subnet 10.10.99.0/24, range
+       `10.10.99.150 - 10.10.99.159`, reason "C529 walk: keep a range out"; Preview: the pool split
+       into two pieces; confirm. Expect it listed, "the pool is split around it", a commit of
+       `dhcp/exclusions.yml`. Then its **Remove…**; confirm. Expect the pool one piece again.
+    d. Back on Subnets, 10.10.99.0/24's **Remove…**: no lease, so no acknowledgement asked;
+       confirm. Expect "removed", Kea's subnets as before the walk.
+    Undo: each step's own Remove…; the history of every step stays in the repository (`dhcp/`).
+    Not walked by the agent: every confirm needs your verified identity.
 
 ### Sitting 3: fleet-wide writes (each previewed; you confirm)
 

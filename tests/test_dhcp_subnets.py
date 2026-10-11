@@ -399,3 +399,11 @@ class TestAddAndRemove:
         assert S._moved(before, {"subnet4": [{"id": 20}]}, "IPv4", 10, "remove") == []
         assert S._moved(before, before, "IPv4", 10, "remove") == \
             ["the subnets are [10, 20] after; expected [20]"]
+
+    def test_an_ipv6_lease_s_empty_hostname_is_no_name(self, moved):
+        """Kea stores an absent IPv6 FQDN as "." (every IPv6 lease in the lab's capture): the
+        removal names the client by its MAC or DUID, never "."."""
+        p = S.plan("Lab", {"op": "remove", "family": "IPv6", "id": "30"}, kea=moved["kea"])
+        assert p["ok"], p["refused"]
+        assert "(.)" not in p["leases"][0]
+        assert "1 active lease(s) (aa:c1:ab:12:c6:03)" in p["leases"][0]

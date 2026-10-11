@@ -488,7 +488,7 @@ def _plan_remove(list_name, s, p, kea, file_text, intent, D) -> None:
     ends = max(((l.get("cltt", 0) or 0) + (l.get("valid-lft", 0) or 0) for l in held),
                default=0)
     if held:
-        names = sorted({l.get("hostname") or l.get("hw-address") or l.get("duid") or "?"
+        names = sorted({_host(l) or l.get("hw-address") or l.get("duid") or "?"
                         for l in held})
         p["leases"].append(f"{len(held)} active lease(s) ({', '.join(names)}): each client keeps "
                            f"its address until its lease ends (the last {_iso(ends)}), and from "
@@ -552,7 +552,7 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
         if pools and not any(x <= ip <= y for x, y in pools) and addr not in reserved:
             ends = (lease.get("cltt", 0) or 0) + (lease.get("valid-lft", 0) or 0)
             who = lease.get("hw-address") or lease.get("duid") or "?"
-            name = lease.get("hostname") or ""
+            name = _host(lease)
             p["leases"].append(f"{addr} ({who}{', ' + name if name else ''}) is outside the new "
                                "pool: it " + STRANDED_WORDS.format(ends=_iso(ends)))
     if valid is not None:
@@ -570,6 +570,13 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
                                    "candidate, at confirm; the live file untouched until then"))
     p["checks"].append(("pass", f"Mercury's subnet file is the version this preview read "
                                 f"({p['version']})"))
+
+
+def _host(lease: dict) -> str:
+    """A lease's hostname, or "" when it has none (Kea stores an absent IPv6 FQDN as ".",
+    measured on the lab's Kea 2.4.1)."""
+    name = (lease.get("hostname") or "").strip()
+    return "" if name in ("", ".") else name
 
 
 def _iso(ts) -> str:
