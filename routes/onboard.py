@@ -116,6 +116,8 @@ def _plan_args(data, list_name: str, *, secret: str) -> dict:
         # Translated because the operator picks a NetBox slug and
         # `build_plan` speaks the config dialect.
         platform=_dialect(data.get("platform")),
+        # And the slug itself, compared with a Planned NetBox record's platform (C676).
+        platform_slug=(data.get("platform") or "").strip(),
         list_name=list_name,
         mgmt_ip=(data.get("mgmt_ip") or "").strip(),
         mgmt_mask=(data.get("mgmt_mask") or "").strip(),

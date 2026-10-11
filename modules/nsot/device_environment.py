@@ -21,6 +21,12 @@ NetBox not configured, or the device not in it, is an empty environment, said by
 A NetBox that is configured and cannot be read RAISES (`EnvironmentUnreadable`): "could not
 read" is not "nothing there", and a bootstrap config built on a guess is the one a device
 boots and is unreachable on.
+
+**The record itself comes with it** (C676, the operator, 2026-10-11): a device a person made
+in NetBox as Planned is onboarded from that record, so its status, site, role (and the role's
+`mercury_kind`), platform and tags are read here, in the same read, for onboarding to judge
+(`netbox`); the record's id is recorded, so phase 2 updates that record and never makes a
+second.
 """
 
 import logging
@@ -44,6 +50,10 @@ class Environment:
     owned_lines: tuple = ()
     #: where this was read, in words ("NetBox device r6 (id 12)", "not in NetBox", ...)
     source: str = "none given"
+    #: NetBox's record of the device, when it holds one: ``{id, status, status_label, site,
+    #: role, role_name, role_kind, platform, platform_name, tags, url}`` (`_record`); empty
+    #: when NetBox holds none or is not configured
+    netbox: dict = field(default_factory=dict)
 
     @property
     def injects_user(self) -> bool:
@@ -62,7 +72,9 @@ class Environment:
         be byte-identical (`from_record`). Derived facts only, never the lines themselves: an
         injected account's line carries its password."""
         return {"source": self.source, "injects_user": self.injects_user,
-                "owns_ssh": self.owns_ssh, "management_interfaces": self.management_interfaces}
+                "owns_ssh": self.owns_ssh, "management_interfaces": self.management_interfaces,
+                # Not read by a render: the record phase 2 updates (C676).
+                "netbox_id": self.netbox.get("id"), "netbox_status": self.netbox.get("status")}
 
     @classmethod
     def from_record(cls, rec: dict) -> "Environment":
@@ -112,6 +124,12 @@ def read(hostname: str, *, ready=None) -> Environment:
         r.raise_for_status()
         detail = r.json() or {}
         mgmt = _nb_get(session, base, "dcim/interfaces", device_id=dev_id, mgmt_only=True)
+        role_id = (detail.get("role") or detail.get("device_role") or {}).get("id")
+        role = {}
+        if role_id:
+            rr = session.get(f"{base}/api/dcim/device-roles/{role_id}/", timeout=15)
+            rr.raise_for_status()
+            role = rr.json() or {}
     except Exception as exc:                      # noqa: BLE001
         raise EnvironmentUnreadable(
             f"NetBox's record of {hostname} (id {dev_id}) could not be read: {exc}") from exc
@@ -123,4 +141,27 @@ def read(hostname: str, *, ready=None) -> Environment:
                 if i.get("mgmt_only") and i.get("name")}
     return Environment(reserved=reserved,
                        owned_lines=tuple(l.strip() for l in lines if l.strip()),
-                       source=f"NetBox device {hostname} (id {dev_id})")
+                       source=f"NetBox device {hostname} (id {dev_id})",
+                       netbox=_record(base, detail, role))
+
+
+def _record(base: str, detail: dict, role: dict) -> dict:
+    """The facts onboarding judges a NetBox record by (C676)."""
+    from modules.inventory.role_kind import FIELD, KINDS
+
+    status = detail.get("status") or {}
+    if not isinstance(status, dict):
+        status = {"value": status}
+    site = detail.get("site") or {}
+    platform = detail.get("platform") or {}
+    kind = str((role.get("custom_fields") or {}).get(FIELD) or "").strip().lower()
+    return {"id": detail.get("id"),
+            "status": str(status.get("value") or "").lower(),
+            "status_label": str(status.get("label") or status.get("value") or "none"),
+            "site": site.get("name") or site.get("display") or "",
+            "role": role.get("slug") or "", "role_name": role.get("name") or "",
+            "role_kind": kind if kind in KINDS else "",
+            "platform": platform.get("slug") or "",
+            "platform_name": platform.get("name") or platform.get("display") or "",
+            "tags": sorted(t.get("name") or t.get("slug") or "" for t in detail.get("tags") or []),
+            "url": f"{base.rstrip('/')}/dcim/devices/{detail.get('id')}/"}

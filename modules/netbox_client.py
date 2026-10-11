@@ -1993,6 +1993,19 @@ def _existing_device(session, base: str, hostname: str, site_id, serial: str,
     return _nb_first(session, base, "dcim/devices/", name=hostname, site_id=site_id)
 
 
+def _record_by_id(session, base: str, hostname: str, netbox_id) -> dict:
+    """The NetBox record a caller named by id (C676: onboarding's Planned record). It must
+    still exist and still carry this name; otherwise nothing is written, both named."""
+    held = _nb_get(session, base, "dcim/devices/", id=netbox_id) or []
+    if not held:
+        raise RuntimeError(f"NetBox record {netbox_id}, read as {hostname}'s at onboarding, no "
+                           "longer exists: nothing was written")
+    if held[0].get("name") != hostname:
+        raise RuntimeError(f"NetBox record {netbox_id} was {hostname}'s at onboarding and is "
+                           f"now named {held[0].get('name')!r}: nothing was written")
+    return held[0]
+
+
 def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                    interfaces: list[dict],
                    site_id: int, role_id: int,
@@ -2006,7 +2019,8 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                    routing_context: Optional[dict] = None,
                    list_vrf_id: Optional[int] = None,
                    status: str = "active",
-                   mgmt_prefix_len: int = 0) -> dict:
+                   mgmt_prefix_len: int = 0,
+                   netbox_id: Optional[int] = None) -> dict:
     """Create or update a device in NetBox with full DCIM + IPAM data.
 
     Syncs: device record, platform, interfaces (with MAC/MTU/speed/state),
@@ -2051,7 +2065,10 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
     # name+site so devices with no readable serial still upsert correctly
     # instead of silently creating a duplicate.
     serial = (facts.get("serial") or "")[:50]
-    existing = _existing_device(session, base, hostname, site_id, serial)
+    if netbox_id:
+        existing = _record_by_id(session, base, hostname, netbox_id)
+    else:
+        existing = _existing_device(session, base, hostname, site_id, serial)
 
     # NO `Synced: <timestamp>`. Same reasoning as `ndm_sync` in
     # _build_config_context: it made `comments` differ on every sync by
@@ -3041,6 +3058,9 @@ def _scan_device_from_golden(dev: dict, list_name: str = "") -> dict:
         # from there to the NetBox record. Absent means unknown, and NetBox
         # keeps its host-route last resort.
         "mgmt_prefix_len": dev.get("prefix_len") or 0,
+        # The NetBox record this device IS, when the caller knows it (onboarding from a
+        # Planned record, C676): updated by its id, never matched by name and site.
+        "netbox_id":       dev.get("netbox_id"),
         "hostname":        hostname,
         "app_role":        app_role,
         "facts":           facts,
@@ -3248,6 +3268,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
                     routing_context=result.get("routing_context", {}),
                     list_vrf_id=list_vrf_id,
                     mgmt_prefix_len=result.get("mgmt_prefix_len") or 0,
+                    netbox_id=result.get("netbox_id"),
                 )
                 if outcome["action"] == "created":
                     created += 1

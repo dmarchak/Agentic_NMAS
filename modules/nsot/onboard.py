@@ -151,9 +151,15 @@ class OnboardPlan:
     template: str = ""
     template_approved: bool = False
 
-    #: Collisions, as found. Each is fatal; both are reported.
+    #: Collisions, as found. Each is fatal; both are reported. A name NetBox holds as a
+    #: PLANNED record is not a collision (C676): that record is the device's.
     name_taken_in_manifest: bool = False
     name_taken_in_netbox: bool = False
+
+    #: NetBox's record of this name, as the environment read found it (C676,
+    #: `device_environment._record`), and the platform slug the form chose, compared with it.
+    netbox_record: dict = field(default_factory=dict)
+    platform_slug: str = ""
 
     #: Lines of `bootstrap_config` an IOS CLI cannot accept.
     unsendable: tuple = field(default_factory=tuple)
@@ -168,8 +174,8 @@ class OnboardPlan:
     #: The platform's own management port the render was given (the form's Platform
     #: management port), and what the device's environment owned when it rendered
     #: (`device_environment`, C663 step 3): both recorded with the bootstrap parameters, so
-    #: a re-render is byte-identical. A new device has no NetBox record (a name NetBox holds
-    #: is refused above), so its environment is none, said by its source.
+    #: a re-render is byte-identical. A device NetBox holds as Planned brings its environment
+    #: (C676); one NetBox does not hold has none, said by its source.
     platform_mgmt_interface: str = ""
     environment: dict = field(default_factory=dict)
 
@@ -231,8 +237,7 @@ class OnboardPlan:
         if self.name_taken_in_manifest:
             reasons.append(f"'{self.hostname}' already has an identity in this "
                            "list's manifest")
-        if self.name_taken_in_netbox:
-            reasons.append(f"'{self.hostname}' already exists in NetBox")
+        reasons.extend(self.netbox_problems)
 
         if self.address_source == "ztp":
             # P.6. The tool WRITES this reservation, so the MAC and the
@@ -324,6 +329,60 @@ class OnboardPlan:
         return reasons
 
     @property
+    def planned_record(self) -> bool:
+        """NetBox holds this name as a Planned record: onboarding reads it (C676)."""
+        return self.netbox_record.get("status") == "planned"
+
+    @property
+    def netbox_note(self) -> str:
+        """What phase 1 and phase 2 do in NetBox, for the review screen."""
+        rec = self.netbox_record
+        if not self.planned_record:
+            # NOT a count of what phase 1 creates: phase 1 creates nothing in NetBox.
+            return ("nothing — the NetBox record is created in phase 2, from the device's "
+                    "first capture")
+        tags = ", ".join(rec.get("tags") or []) or "none"
+        context = ("its config context gives the environment's own lines"
+                   if self.environment.get("injects_user") or self.environment.get("owns_ssh")
+                   else "no environment-owned lines in its config context")
+        mgmt = ", ".join(self.environment.get("management_interfaces") or []) or "none"
+        return (f"reads NetBox's Planned record {self.hostname} (id {rec.get('id')}, site "
+                f"{rec.get('site') or 'none'}, role {rec.get('role_name') or 'none'}, platform "
+                f"{rec.get('platform') or 'none'}, tags {tags}; {context}; management-only "
+                f"interfaces {mgmt}). Nothing is written in phase 1; phase 2 updates this record "
+                "from the device's first capture, never its status, role, platform or tags")
+
+    @property
+    def netbox_problems(self) -> list:
+        """Why NetBox's record of this name refuses the plan (C676, the operator, 2026-10-11).
+
+        A Planned record is the device's: onboarding reads it, its tags, platform, role and
+        config context with it. Any other status is refused, naming it and where to change
+        it. A Planned record that names a platform, or a role whose `mercury_kind` is set,
+        must agree with the form, both named: NetBox owns them, and phase 2 never writes them.
+        """
+        rec, h = self.netbox_record, self.hostname
+        if not rec:
+            # The name check found something the environment read did not (a device holding
+            # this name as its address, say): the old refusal stands.
+            return [f"'{h}' already exists in NetBox"] if self.name_taken_in_netbox else []
+        if not self.planned_record:
+            return [f"'{h}' already exists in NetBox with status {rec.get('status_label')} "
+                    f"(id {rec.get('id')}): only a Planned record is onboarded. Set its status "
+                    f"to Planned in NetBox (the device's Edit, Status: {rec.get('url')}), or "
+                    "choose another name"]
+        out = []
+        if rec.get("platform") and self.platform_slug and rec["platform"] != self.platform_slug:
+            out.append(f"NetBox's Planned record of '{h}' names platform {rec['platform']}; "
+                       f"the form chose {self.platform_slug}: NetBox owns the platform, so "
+                       "choose its platform here or change it in NetBox")
+        if rec.get("role_kind") and self.role and rec["role_kind"] != self.role:
+            out.append(f"NetBox's Planned record of '{h}' has role {rec.get('role_name')}, a "
+                       f"{rec['role_kind']}; the form chose {self.role}: NetBox owns the role, "
+                       "so choose its kind here or change the role in NetBox")
+        return out
+
+    @property
     def advisories(self) -> list:
         """True, useful, and **not** reasons to refuse.
 
@@ -352,6 +411,16 @@ class OnboardPlan:
         nothing trains the reader to skip warnings.
         """
         notes = []
+        rec = self.netbox_record
+        if self.planned_record and not rec.get("platform"):
+            notes.append(f"NetBox's Planned record of '{self.hostname}' names no platform: "
+                         f"the form's {self.platform_slug or self.platform} is rendered, and "
+                         "NetBox keeps none until a person sets it there (onboarding never "
+                         "writes a record's platform).")
+        if self.planned_record and rec.get("role_name") and not rec.get("role_kind"):
+            notes.append(f"NetBox's role {rec['role_name']} has no mercury_kind, so the form's "
+                         f"{self.role or 'role'} stands: set the role's kind in NetBox so "
+                         "they are compared.")
         if not self.platform:
             return notes
 
@@ -479,8 +548,7 @@ class OnboardPlan:
             # this always read 0 — displayed on a review screen, next to
             # three objects that had in fact been created. The `next_ts`
             # shape, on the panel whose job is to say what will happen.
-            "netbox_note": ("nothing — the NetBox record is created in "
-                            "phase 2, from the device's first capture"),
+            "netbox_note": self.netbox_note,
             "writes_csv":     self.writes_devices_csv,
             "inventory_note": self.inventory_note,
             "onboardable":    self.onboardable,
@@ -624,7 +692,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                mgmt_mask: str = "", manager_interface: str = "",
                manager_gateway: str = "", address_source: str = "static",
                mgmt_mac: str = "", kea=None, ztp_check=None,
-               role: str = "") -> OnboardPlan:
+               role: str = "", platform_slug: str = "") -> OnboardPlan:
     """The only constructor. Always validates; never writes anything.
 
     *secret* is the one-time bootstrap credential (4C.2). It reaches the
@@ -759,6 +827,8 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         syslog_error=syslog_error,
         template=template, template_approved=approved,
         name_taken_in_manifest=in_manifest, name_taken_in_netbox=in_netbox,
+        netbox_record=dict(environment.netbox),
+        platform_slug=(platform_slug or "").strip(),
         unsendable=tuple(unsendable), unchecked=tuple(unchecked),
         render_error=render_error,
         platform_mgmt_interface=(mgmt_interface or "").strip(),
@@ -1414,6 +1484,19 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
               # asked has none, and NetBox takes the importer's own default;
               # the role edit corrects the inventory, and the next import NetBox.
               "role": (entry or {}).get("role", "")}
+    # A PLANNED RECORD IS UPDATED, NEVER DUPLICATED (C676). Onboarding read it in phase 1 and
+    # recorded its id with the bootstrap parameters; matching by name and the list's site
+    # would miss a record a person made in another site, and make a second.
+    try:
+        from modules.nsot import hostvars
+
+        env = ((hostvars.read_committed(repo, hostname) or {}).get("bootstrap") or {}) \
+            .get("environment") or {}
+    except Exception as exc:                   # noqa: BLE001
+        out["reason"] = f"could not read the committed bootstrap parameters: {exc}"
+        return out
+    if env.get("netbox_id"):
+        device["netbox_id"] = env["netbox_id"]
     result = sync(list_name, [device], actor=actor, authority=authority) or {}
 
     if result.get("blocked"):

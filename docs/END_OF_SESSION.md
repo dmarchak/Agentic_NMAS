@@ -1,5 +1,17 @@
 # End of session: where Phase 7 stands
 
+## STATUS: the continued run, 2026-10-11 (from 17:53 UTC; 11:53 UTC−6)
+
+Your answers committed in 8224518 (deployed). Then, in your order:
+
+- **C675, the Logs tail:** board D drawn and logged, built, compared (db2e5f0, pushed);
+  deploying; the host walk next.
+- **Next:** C676 (onboarding reads a Planned NetBox record), then C667's remainder, C529
+  steps 3 to 5, boards L and M, 7.5's identity line, the 7.8 removals.
+- **Waiting on you:** the CLAUDE.md script (then `scripts/nmas-host` moves to `lab/`); the
+  `l3-switch` answer (proposed: core-switch and distribution-switch map to `switch`, since
+  Mercury's kinds are router, switch and firewall); the walk's sittings (below).
+
 ## MORNING REPORT: the overnight run, 2026-10-11 (06:34 to about 11:00 UTC; 00:34 to 05:00 UTC−6)
 
 **Built, deployed and checked, per item** (each commit gated in CI's interpreter, pushed, CI
