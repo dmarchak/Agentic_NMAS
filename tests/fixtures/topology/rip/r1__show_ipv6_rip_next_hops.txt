@@ -1,0 +1,2 @@
+ RIP process "RCN", Next Hops
+  FE80::A8C1:ABFF:FEEC:8D15/GigabitEthernet3 [5 paths]

@@ -14,7 +14,8 @@ on s3 Vlan99's subnet, as the lab's is). What boards TopoDesktop and TopoPhone d
   the weak points (s3 the single point of failure, through Mercury's port; r6 an island to look
   at); a group or a filter shows a subset and says so;
 - a hover card per link, and a selected link's sheet (the phone's);
-- the protocol toggles change what the links carry; Ports, Labels and zoom; RIPng shown as not
+- the protocol toggles change what the links carry; Ports, Labels and zoom; RIP and RIPng as read
+  (C662), a one-sided link confirmed by them (C671), and RIP not read shown as not
   read; a down link is thick and red, chipped "down", naming its end;
 - a path trace and a what-if, each a claim about the stored graph;
 - marking an island expected is a verified person's recorded act; with no person, nothing;
@@ -30,7 +31,7 @@ import pytest
 
 from modules import reader_job
 from modules.readers import topology_graph as T
-from tests.test_topology_graph import MANAGED, _capture, _intents
+from tests.test_topology_graph import MANAGED, _capture, _intents, _rip
 
 
 def _here(intents):
@@ -42,13 +43,14 @@ def _here(intents):
     return [("eth1", f"{net.network_address + 250}/{net.prefixlen}")]
 
 
-def _value(results=None, up=None, expected=None, here=True):
+def _value(results=None, up=None, expected=None, here=True, rip=None):
     res, u = _capture()
     intents = {h: hv for h, hv in _intents().items() if h != "r5"}
     net = T.network_graph(MANAGED, {h: ("router" if h.startswith("r") else "switch")
                                     for h in MANAGED}, intents, results or res, up or u,
                           expected=expected or {}, previous=None, now="2026-10-10T19:00:00Z",
-                          at_here=_here(intents) if here else [])
+                          at_here=_here(intents) if here else [],
+                          rip=_rip() if rip is None else rip)
     return {"configured": True, "networks": {"Lab": net}, "errors": [],
             "read_at": "2026-10-10T19:00:00Z"}
 
@@ -120,15 +122,25 @@ def test_each_link_names_the_neighbourship_between_its_two_ends(web):
     neighbourship between the link's two ends, one chip per protocol; no area, AS or count. The
     lab's twelve links, measured on the captures: r3-r4 OSPF and OSPFv3 FULL; r3-s3 and r4-s4
     OSPF FULL; r1-s3, r2-s4 and s3-s4 OSPF 2WAY (DROthers on VLAN 100, as OSPF intends); r3-r5
-    and r4-r5 BGP Estab (the IPv4 and IPv6 sessions, one chip); r1-s1 and r2-s2 RIPng, not
-    read. Each VLAN 100 trunk also carries seven adjacencies between OTHER devices, all as
-    intended: no chip (the live page repeated them on every trunk)."""
+    and r4-r5 BGP Estab (the IPv4 and IPv6 sessions, one chip); r1-s1 and r2-s2 RIP and RIPng
+    up, heard both ways (C662, the devices' own answers); s1-s2 RIPng up (three VLAN interfaces'
+    adjacencies, one chip). Each VLAN 100 trunk also carries seven adjacencies between OTHER
+    devices, all as intended: no chip (the live page repeated them on every trunk)."""
     chips = _chips(_get(web))
     texts = sorted(t for _c, t in chips)
     assert texts == sorted(["OSPF FULL"] * 3 + ["OSPFv3 FULL"] + ["OSPF 2WAY"] * 3 +
-                           ["BGP Estab"] * 2 + ["RIPng ?"] * 2)
-    assert ("unread", "RIPng ?") in chips
-    assert {c for c, t in chips if t != "RIPng ?"} == {"ok"}
+                           ["BGP Estab"] * 2 + ["RIP up"] * 2 + ["RIPng up"] * 3)
+    assert {c for c, _t in chips} == {"ok"}
+
+
+def test_ripng_not_read_is_said_not_read(web):
+    """No RIP read stored (or one past its promise): the RIP and RIPng adjacencies committed
+    intent implies (r1-s1 and r2-s2 both; s1-s2 RIPng on its VLAN interfaces) are chipped "?",
+    not read, never up and never missing."""
+    _store(_value(rip={}))
+    chips = _chips(_get(web))
+    assert sorted(t for c, t in chips if c == "unread") == ["RIP ?"] * 2 + ["RIPng ?"] * 3
+    assert not [t for _c, t in chips if t.startswith("RIP") and not t.endswith("?")]
 
 
 def test_a_2way_where_full_is_intended_is_flagged_by_name(web):
@@ -152,9 +164,15 @@ def test_a_2way_where_full_is_intended_is_flagged_by_name(web):
 def test_lines_say_how_each_link_compares_with_intent(web):
     html = _get(web)
     classes = re.findall(r'<path class="topo-line topo-(\w+)[^"]*" d=', html)
-    # 12 drawn on the map, 12 again in the zoomed-out view.
+    # 12 drawn on the map, 12 again in the zoomed-out view; r1-s1 and r2-s2, which only r1's
+    # and r2's LLDP reports, are confirmed by RIP and RIPng heard both ways (C671).
     assert len(classes) == 24
-    assert classes[:12].count("warn") == 2 and classes[:12].count("ok") == 10
+    assert classes[:12].count("ok") == 12
+    # With no second witness (RIP not read), the two one-sided links are "not as intended", and
+    # s1-s2, whose only adjacencies are RIPng's, is not read.
+    _store(_value(rip={}))
+    classes = re.findall(r'<path class="topo-line topo-(\w+)[^"]*" d=', _get(web))
+    assert [classes[:12].count(c) for c in ("warn", "unread", "ok")] == [2, 1, 9]
     legend = re.search(r'aria-label="Legend".*?</div>', html, re.S).group(0)
     for words in ("as intended", "not as intended", "down, or a neighbour missing", "not read",
                   "router", "L2 switch", "L3 switch", "server", "external", "not classified in NetBox"):
@@ -165,8 +183,9 @@ def test_devices_are_icons_by_class(web):
     html = _get(web)
     assert html.count('href="#ti-router"') >= 5 and 'href="#ti-cloud"' in html
     assert 'href="#ti-server"' in html and '<symbol id="ti-switch"' in html
-    # s3 and s4 route (OSPF on their VLAN interfaces): L3, badged; s1 and s2 do not.
-    assert html.count('class="topo-l3-t"') == 2
+    # s3 and s4 route (OSPF on their VLAN interfaces), and s1 and s2 (RIP on their routed
+    # ports, RIPng on their VLAN interfaces): L3, badged.
+    assert html.count('class="topo-l3-t"') == 4
     assert re.search(r'<text class="topo-name"[^>]*>r5 · AS 65002</text>', html)
     assert re.search(r'<text class="topo-name"[^>]*>Mercury</text>', html)
 
@@ -187,17 +206,25 @@ def test_the_board_s_other_classes_come_from_the_role_s_own_word(web):
 
 def test_needs_attention_names_what_is_wrong_and_the_weak_points(web):
     att = _section(_get(web), "topo-att-h")
+    # r1-s1 and r2-s2 have their second witness: not listed.
+    assert "Up, not as intended" not in att and "r1 Gi3 ↔ s1 Gi0/2" not in att
+    assert "12 as intended" in att
+    _store(_value(rip={}))
+    att = _section(_get(web), "topo-att-h")
     assert "Up, not as intended (2)" in att
-    assert "r1 Gi3 ↔ s1 Gi0/2" in att and "only r1 reports it: s1 is polled and does not" in att
+    assert "r1 Gi3 ↔ s1 Gi0/2" in att and (
+        "LLDP: r1 Gi3 reports s1; s1 Gi0/2 reports no neighbour, polled; no "
+        "second witness (no routing adjacency on it heard from both ends)") in att
     assert "Weak points (2)" in att
     assert ("the only path between Mercury and r1, r2, r3, r4, s1, s2, s4 (Mercury reaches them "
             "only through s3 Gi1/1, VLAN 99). If s3 or that port fails, Mercury loses 7 "
             "devices") in att
     assert "r6" in att and "island" in att and "Mark as expected…" in att
-    assert "10 as intended" in att and "r5" not in att
+    assert "9 as intended" in att and "r5" not in att
 
 
 def test_a_group_or_a_filter_shows_a_subset_and_says_so(web):
+    _store(_value(rip={}))
     att = _section(_get(web, "&show=weak"), "topo-att-h")
     assert "r1 Gi3" not in att and "s3" in att
     assert "the counts are the whole" in att and "Show all" in att
@@ -213,7 +240,7 @@ def test_each_link_has_a_hover_card_and_a_selected_one_its_sheet(web):
     card = next(c for c in cards if "r3 Gi4 ↔ r4 Gi4" in c)
     # The board's card: a row per protocol, its area, the state, and against intent.
     assert "<dt>OSPF area 0</dt>" in card and "as intended" in card
-    assert "BGP, RIPng</dt>" in card and "none on this link; none intended" in card
+    assert "BGP, RIP / RIPng</dt>" in card and "none on this link; none intended" in card
     assert "r3's Neighbours" in card and "tab=neighbours" in card
     # A VLAN 100 trunk's card lists what passes over it, one level down from the map.
     trunk = next(c for c in cards if "r3 Gi3 ↔ s3 Gi0/2" in c)
@@ -221,9 +248,18 @@ def test_each_link_has_a_hover_card_and_a_selected_one_its_sheet(web):
     html = _get(web, "&sel=r1%3AGi3~s1%3AGi0%2F2")
     assert '<g class="topo-l topo-sel">' in html and 'class="topo-glow' in html
     sheet = re.search(r'<section class="topo-sheet".*?</section>', html, re.S).group(0)
-    assert "r1 Gi3" in sheet and "s1 Gi0/2" in sheet and "only r1 reports it" in sheet
-    assert "configured on r1 Gi3 and s1 Gi0/2 by committed intent" in sheet
+    assert "r1 Gi3" in sheet and "s1 Gi0/2" in sheet
+    assert "only r1&#39;s LLDP reports it" in sheet
+    # The silent LLDP end, with what was measured, and the witness.
+    assert "LLDP: r1 Gi3 reports s1; s1 Gi0/2 reports no neighbour, polled" in sheet
+    assert "confirmed by RIP, RIPng heard both ways" in sheet
+    assert "on 10.255.2.10/31" in sheet and "on 2001:db8:2:a::/64" in sheet
     assert "Show on the map" in sheet
+    _store(_value(rip={}))
+    sheet = re.search(r'<section class="topo-sheet".*?</section>',
+                      _get(web, "&sel=r1%3AGi3~s1%3AGi0%2F2"), re.S).group(0)
+    assert "no second witness" in sheet and "on 2001:db8:2:a::/64" in sheet
+    assert "not measured" in sheet and "confirmed by" not in sheet
 
 
 def test_the_protocol_toggles_change_what_the_links_carry(web):
@@ -646,6 +682,8 @@ def test_a_selected_link_s_card_closes_and_is_smaller_in_a_browser(web):
     from tests import browser
     if not browser.available()[0]:
         pytest.skip(browser.available()[1])
+    # No RIP read: r1-s1 and r2-s2 have no second witness, so Needs attention lists them.
+    _store(_value(rip={}))
     html = _get(web)
     sel = re.search(r'class="topo-ent[^"]*"[^>]*href="[^"]*sel=([^&"]+)', html).group(1)
     assert 'width="250"' in _get(web, f"&sel={sel}") and 'width="320"' not in html
@@ -767,7 +805,7 @@ def _with_mercury_on_r6(value):
         "a": T.MANAGER, "b": "r6", "port_a": "eth1", "port_b": "Gi2", "kind": "address",
         "manager": True, "state": "up", "ends": {"r6": "up"}, "reported_by": [], "via": "Gi2",
         "vlan": "", "since": "2026-10-10T19:00:00Z", "since_seen": False, "speed": None,
-        "unread": {}, "down_at": []})
+        "witness": [], "down_at": []})
     net["layout"] = dict(net["layout"], height=HOST_LAYOUT["height"],
                          positions=dict(HOST_LAYOUT["positions"]))
     return value

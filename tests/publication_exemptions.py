@@ -110,6 +110,12 @@ EXEMPT = {
     ('tests/fixtures/transcripts/r1/show_running-config.txt', 'f1eeba711c88'): ('VENDOR', ('email',)),
     ('tests/fixtures/transcripts/r1/show_startup-config.txt', 'a5b73e35b275'): ('VENDOR', ('email',)),
     ('tests/fixtures/transcripts/r1/show_startup-config.txt', 'f1eeba711c88'): ('VENDOR', ('email',)),
+    # tests/fixtures/topology/rip/ (C662: RIP's classful network statement, as each device
+    # prints it in `show ip protocols`)
+    ('tests/fixtures/topology/rip/r1__show_ip_protocols.txt', 'b0d56c1d2839'): ('CAPTURE', ('address',)),
+    ('tests/fixtures/topology/rip/r2__show_ip_protocols.txt', 'b0d56c1d2839'): ('CAPTURE', ('address',)),
+    ('tests/fixtures/topology/rip/s1__show_ip_protocols.txt', 'b0d56c1d2839'): ('CAPTURE', ('address',)),
+    ('tests/fixtures/topology/rip/s2__show_ip_protocols.txt', 'b0d56c1d2839'): ('CAPTURE', ('address',)),
     # tests/fixtures/configs/fleet/r2.cfg
     ('tests/fixtures/configs/fleet/r2.cfg', '25715794b34e'): ('CAPTURE', ('address',)),
     ('tests/fixtures/configs/fleet/r2.cfg', '4554dea76cef'): ('CAPTURE', ('address',)),

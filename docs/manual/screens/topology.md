@@ -4,8 +4,11 @@ How each network is connected, what each link carries and how it compares with c
 and where the network is weak. The page names its network (`/v2/topology?list=<network>`) and
 draws what the topology reader last read from Prometheus: LLDP's neighbour tables, the OSPF,
 OSPFv3 and BGP neighbour tables, and each interface's state and speed, against each device's
-committed intent. It never reads a device while you look; the header says how old the read is,
-and the page redraws by itself when the reader reads something new.
+committed intent. RIP and RIPng have no neighbour table Prometheus holds, so a second reader asks
+the devices whose intent configures them, every five minutes, two read-only show commands each
+(`show ip protocols` for the gateways RIP hears, `show ipv6 rip next-hops` for RIPng's). The page
+never reads a device while you look; the header says how old the read is, and the page redraws
+by itself when a reader reads something new.
 
 ## The map {#map}
 
@@ -21,8 +24,12 @@ Every link is labelled:
 - **a chip for each routing protocol between its two ends**, in two words: the protocol and the
   state (`OSPF FULL`, `OSPFv3 FULL`, `BGP Estab`, `OSPF 2WAY`). BGP's IPv4 and IPv6 sessions to one
   peer in the same state are one chip. The area and the peer's AS are in the link's card.
-- a protocol committed intent configures and Mercury does not read (RIPng) is chipped `RIPng ?`:
-  not read, never drawn as up.
+- RIP and RIPng are chipped the same way: `RIP up` when both ends hear each other, `RIP one-way`
+  when one end hears the other and the other, read, hears nothing, `RIP up?` when the other end
+  could not be read. Intent says where RIP runs (an interface in a `network` statement, in the
+  global table, not passive) and where RIPng is enabled; the subnet is in the link's card. When
+  the RIP reader's answer is missing or older than its promise, intended RIP and RIPng are
+  chipped `RIP ?` and `RIPng ?`: not read, never drawn as up and never as missing.
 
 A link that carries a switched segment (VLAN 100's trunks) also carries neighbourships between
 OTHER devices on that segment. Those get no chip while they are as intended; one that is not gets
@@ -38,11 +45,19 @@ segment). A 2WAY anywhere else, or any other state short of FULL, is **not as in
 The line says how the link compares with intent, never by colour alone:
 
 - **green, solid**: as intended;
-- **orange, dashed**: up, not as intended: only one end reports it while both are polled, a
-  neighbour committed intent does not name, or an OSPF neighbour short of FULL where FULL is
-  intended;
+- **orange, dashed**: up, not as intended: only one end's LLDP reports it while both are polled
+  and nothing else confirms it, a neighbour committed intent does not name, an OSPF neighbour
+  short of FULL where FULL is intended, or RIP heard one way;
 - **red, thick**: down, or a neighbour intent names that nothing reports;
 - **grey, dotted**: not read.
+
+**A link is drawn as intended only when two witnesses agree it is there.** Both ends' LLDP is
+two. When only one end's LLDP reports it and the other end is polled and reports no neighbour on
+that port, the second witness is a routing adjacency both ends report on the link's own ports
+(OSPF, OSPFv3 or BGP up, or RIP or RIPng heard both ways). With one, the link is green and its
+card's **LLDP** row still says which end is silent, with what was measured; without one, the
+line is orange and Needs attention lists it. Neither case is explained by the device's platform:
+the card says what was read, never why a device might not send or hear LLDP.
 
 **Hover** on a link (or tab to it) for its card: both ends, the link's state and since when, a
 row per protocol with its area or the peer's AS, the state against intent ("2WAY, intended FULL;

@@ -252,6 +252,7 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.coverage_reporting",
                            "modules.readers.platform_facts",
                            "modules.readers.records_check",
+                           "modules.readers.rip",
                            "modules.readers.topology_graph",
                            "modules.readers.logs_summary",
                            "modules.readers.dhcp")

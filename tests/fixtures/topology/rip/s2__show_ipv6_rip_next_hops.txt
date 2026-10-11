@@ -1,0 +1,5 @@
+ RIP process "RCN", Next Hops
+  FE80::E00:ABFF:FE6D:800A/Vlan10 [4 paths]
+  FE80::E00:ABFF:FE6D:8014/Vlan20 [4 paths]
+  FE80::E00:ABFF:FE6D:801E/Vlan30 [4 paths]
+  FE80::A8C1:ABFF:FEB1:65A4/GigabitEthernet0/2 [2 paths]

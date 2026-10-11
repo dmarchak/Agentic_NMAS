@@ -62,6 +62,10 @@ WOKEN_BY = {
     # inventory for its nodes; Prometheus by settings; a network's expected islands (Topology's
     # declare and withdraw invalidate `topology`).
     "topology-graph": ("intent", "inventory", "settings", "topology"),
+    # C662: RIP and RIPng as the devices answer, for the devices whose committed host_vars
+    # configure them (intent), their inventory rows and stored credentials; a deploy changes
+    # what a device runs.
+    "rip": ("intent", "inventory", "credentials", "deploy_job"),
     # The fleet's syslog per day from each network's Loki; a network's Logs retention and Loki
     # by settings. Nothing Mercury does writes Loki's lines.
     "logs-summary": ("settings",),

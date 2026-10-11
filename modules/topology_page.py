@@ -39,10 +39,13 @@ from modules.topology_layout import HALF, layout, node_class
 
 log = logging.getLogger(__name__)
 
-#: The protocols a link's states can show, in the toolbar's order. RIPng is configured by intent
-#: and read by nothing: shown as "not read", never as up.
+#: The protocols a link's states can show, in the toolbar's order. The board's one "RIP / RIPng"
+#: toggle (``ripng``) shows both RIP layers, read from the devices by the RIP reader (C662).
 PROTOS = ("ospf", "ospfv3", "bgp", "ripng")
-PROTO_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "ripng": "RIPng"}
+#: The routing layers drawn, in chip order, and the toggle each is shown under.
+DRAWN = ("ospf", "ospfv3", "bgp", "rip", "ripng")
+TOGGLE_OF = {"rip": "ripng"}
+PROTO_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "rip": "RIP", "ripng": "RIPng"}
 #: The toolbar's words for each toggle, as the board names them.
 TOGGLE_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "ripng": "RIP / RIPng"}
 #: The board's other protocol toggles: drawn off, as the board draws them; nothing reads or
@@ -58,7 +61,10 @@ SHORT = {"full": "FULL", "2-way": "2WAY", "init": "INIT", "attempt": "ATTEMPT",
          "exchange start": "EXSTART", "exchange": "EXCHANGE", "loading": "LOADING",
          "down": "DOWN", "established": "Estab", "idle": "Idle", "connect": "Connect",
          "active": "Active", "open sent": "OpenSent", "open confirm": "OpenConfirm",
-         "not reported": "missing", "not measured": "?"}
+         "not reported": "missing", "not measured": "?",
+         # RIP's and RIPng's (`topology_graph.RIP_WORDS`): heard by both ends, by one end while
+         # the other hears nothing, by one end with the other not read.
+         "both ways": "up", "one way": "one-way", "one end read": "up?"}
 #: A device's class from its role and what it runs, and the words the legend gives it.
 CLASSES = {"router": "router", "switch": "L2 switch", "l3switch": "L3 switch",
            "firewall": "firewall", "server": "server", "accesspoint": "access point",
@@ -167,9 +173,9 @@ def _state_short(adj: dict) -> str:
 def _adj_cls(adj: dict) -> str:
     if adj.get("state") in ("down", "not_seen"):
         return "bad"
-    if not adj.get("intended"):
+    if not adj.get("intended") or adj.get("words") == "one way":
         return "warn"
-    if adj.get("state") == "unknown":
+    if adj.get("state") == "unknown" or adj.get("words") == "one end read":
         return "unread"
     if _short_of_full(adj):
         return "warn"
@@ -225,7 +231,10 @@ def _worst(classes) -> str:
 
 
 def _fact(layer: str, adjs: list) -> str:
-    """The key fact a protocol's chip carries: OSPF's and OSPFv3's area, BGP's peer AS."""
+    """The key fact a protocol's chip carries: OSPF's and OSPFv3's area, BGP's peer AS, RIP's
+    and RIPng's subnet."""
+    if layer in ("rip", "ripng"):
+        return f"on {', '.join(sorted({a.get('network') for a in adjs if a.get('network')}))}"
     if layer in ("ospf", "ospfv3"):
         areas = sorted({a.get("area") for a in adjs if a.get("area")})
         return f"area {', '.join(areas)}" if areas else "area not in intent"
@@ -259,9 +268,12 @@ def _intended_words(adj: dict, layer: str) -> str:
     if c == "bad":
         return f"intended {'Established' if layer == 'bgp' else 'up'}"
     if c == "warn":
+        if adj.get("words") == "one way" and adj.get("intended"):
+            return "heard one way only, intended both"
         return "intended FULL" if _short_of_full(adj) else "not in committed intent"
     if c == "unread":
-        return "not measured"
+        return "heard by one end, the other not read" if adj.get("words") == "one end read" \
+            else "not measured"
     return "as intended"
 
 
@@ -300,7 +312,7 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
     twoway = twoway or {}
     by_layer = {}
     for ref in l.get("adj") or []:
-        if ref["layer"] not in on:
+        if TOGGLE_OF.get(ref["layer"], ref["layer"]) not in on:
             continue
         adj = dict((layers.get(ref["layer"]) or [])[ref["i"]])
         adj["_at"] = ref["at"]
@@ -319,11 +331,23 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
         whats.append(("unread", "the link's state is not read (no ifOperStatus for its ports)",
                       "", False))
     if l.get("kind") == "one_silent":
+        # The operator's rule (2026-10-11, C671): drawn healthy only when a second witness
+        # confirms the link; the silent LLDP end is said with what was measured, never
+        # explained by platform.
         silent = b if l.get("reported_by") == [a] else a
-        classes.append("warn")
-        whats.append(("warn", f"only {label(l['reported_by'][0])} reports it: {label(silent)} "
-                              "is polled and does not", l.get("since"), l.get("since_seen")))
-    for layer in [p for p in PROTOS if p in by_layer]:
+        heard, hears = (pb, pa) if silent == b else (pa, pb)
+        measured = (f"LLDP: {label(l['reported_by'][0])} {hears} reports {label(silent)}; "
+                    f"{label(silent)} {heard} reports no neighbour, polled")
+        seen = [PROTO_WORDS[w] for w in DRAWN if w in (l.get("witness") or ())]
+        none_seen = "no second witness (no routing adjacency on it heard from both ends)"
+        rows.append({"dt": "LLDP", "cls": "ok" if seen else "warn", "chip": "one end",
+                     "lines": [measured, f"confirmed by {', '.join(seen)} heard both ways"
+                               if seen else none_seen]})
+        if not seen:
+            classes.append("warn")
+            whats.append(("warn", f"{measured}; {none_seen}", l.get("since"),
+                          l.get("since_seen")))
+    for layer in [p for p in DRAWN if p in by_layer]:
         adjs = by_layer[layer]
         word = PROTO_WORDS[layer]
         kind = _bgp_kind(adjs[0]) if layer == "bgp" else word
@@ -339,6 +363,9 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
                 chips.append({"text": f"{word} {label(x['a'])}–{label(x['b'])} "
                                       f"{_state_short(x)}", "cls": _adj_cls(x)})
         lines = []
+        if layer in ("rip", "ripng"):
+            # The subnet on its own line: an IPv6 subnet does not fit the card's first column.
+            lines.append(_fact(layer, adjs))
         if ends:
             worst = max(ends, key=lambda x: RANK[_adj_cls(x)])
             line = _intended_words(worst, layer)
@@ -350,7 +377,8 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
                 f"{label(x['a'])}–{label(x['b'])} {_state_short(x)}"
                 + ("" if _adj_cls(x) == "ok" else f" ({_intended_words(x, layer)})")
                 for x in sorted(over, key=lambda x: (-RANK[_adj_cls(x)], x["a"], x["b"]))))
-        rows.append({"dt": f"{kind} {_fact(layer, adjs)}", "cls": cls,
+        rows.append({"dt": kind if layer in ("rip", "ripng") else f"{kind} {_fact(layer, adjs)}",
+                     "cls": cls,
                      "chip": _states(ends) if ends else "passing over",
                      "lines": lines})
         for x in adjs:
@@ -360,18 +388,7 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
             whats.append((c, f"{kind} {_fact(layer, [x])} {label(x['a'])} to {label(x['b'])}: "
                              f"{_state_short(x)}, {_intended_words(x, layer)}", x.get("since"),
                           x.get("since_seen")))
-    unread = sorted({p for ps in (l.get("unread") or {}).values() for p in ps})
-    if "ripng" in on and unread:
-        chips.append({"text": f"{', '.join(unread)} ?", "cls": "unread"})
-        classes.append("unread")
-        ends = " and ".join(f"{label(d)} {pa if d == a else pb}"
-                            for d in sorted(l.get("unread") or {}))
-        rows.append({"dt": ", ".join(unread), "cls": "unread", "chip": "not read",
-                     "lines": [f"configured on {ends} by committed intent; Mercury does not "
-                               "read it"]})
-        whats.append(("unread", f"{', '.join(unread)} configured on {ends}, not read by Mercury",
-                      "", False))
-    none = [PROTO_WORDS[p] for p in on if p not in by_layer and not (p == "ripng" and unread)]
+    none = [TOGGLE_WORDS[p] for p in on if not any(TOGGLE_OF.get(w, w) == p for w in by_layer)]
     cls = _worst(classes)
     if l.get("manager"):
         how = f"measured: {label(b)} {l.get('via')}'s subnet holds this host's address"
@@ -386,7 +403,7 @@ def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> 
         how = (f"as {label(near)} sees it; {label(far)} is "
                f"{'outside management' if (nodes.get(far) or {}).get('outside') else 'not polled'}")
     elif l.get("kind") == "one_silent":
-        how = f"only {label(l['reported_by'][0])} reports it"
+        how = f"only {label(l['reported_by'][0])}'s LLDP reports it"
     else:
         how = ""
     speed = f", {l['speed']} Mb/s" if l.get("speed") else ""
@@ -405,8 +422,8 @@ def _routing_only(layers: dict, on: list, nodes: dict, twoway: dict = None) -> l
     a link LLDP does not see): drawn straight between the two devices, labelled the same."""
     out = []
     twoway = twoway or {}
-    for layer in ("ospf", "ospfv3", "bgp"):
-        if layer not in on:
+    for layer in DRAWN:
+        if TOGGLE_OF.get(layer, layer) not in on:
             continue
         for i, adj in enumerate(layers.get(layer) or []):
             if adj.get("on_link", True) or adj["a"] not in nodes or adj["b"] not in nodes:
@@ -548,9 +565,7 @@ def view(list_name: str, values) -> dict:
     nodes, layers = net["nodes"], net["layers"]
     an = (net.get("analysis") or {}).get("physical") or {}
     phys = layers.get("physical") or []
-    present = [p for p in PROTOS if (p == "ripng" and any(l.get("unread") for l in phys)) or
-               any(ref["layer"] == p for l in phys for ref in l.get("adj") or []) or
-               (p != "ripng" and layers.get(p))]
+    present = [p for p in PROTOS if any(layers.get(w) for w in DRAWN if TOGGLE_OF.get(w, w) == p)]
     on = present if s["p"] is None else [p for p in s["p"] if p in present]
     twoway = _twoway_intended(layers)
     links = [_link(l, layers, on, nodes, twoway) for l in phys] + \
@@ -799,8 +814,9 @@ CARD_W, CARD_CHARS, CARD_LINE = 250, 28, 15
 
 
 def _card_h(l: dict) -> int:
-    lines = 2 + sum(1 + sum(math.ceil(len(x) / CARD_CHARS) for x in r["lines"])
-                    for r in l["rows"])
+    # The Link row's words (how it is known, the speed, since when) wrap like any other row's.
+    lines = 1 + math.ceil((len(l.get("how") or "") + 40) / CARD_CHARS) + sum(
+        1 + sum(math.ceil(len(x) / CARD_CHARS) for x in r["lines"]) for r in l["rows"])
     return 40 + lines * CARD_LINE + (CARD_LINE if l["none"] else 0)
 
 

@@ -36,8 +36,11 @@ INTERVAL_SECONDS = 60
 #: The series read, each one instant query for the whole fleet.
 METRICS = ("lldpRemEntry", "lldpRemPortId", "ifOperStatus", "ifHighSpeed", "ospfNbrState",
            "ospfv3NbrState", "cbgpPeer2State")
-LAYERS = ("physical", "ospf", "ospfv3", "bgp")
-LAYER_WORDS = {"physical": "Physical (LLDP)", "ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP"}
+LAYERS = ("physical", "ospf", "ospfv3", "bgp", "rip", "ripng")
+LAYER_WORDS = {"physical": "Physical (LLDP)", "ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP",
+               "rip": "RIP", "ripng": "RIPng"}
+#: The routing layers: Prometheus's three, and RIP's two, read from the devices (C662).
+ROUTING = LAYERS[1:]
 #: How many devices a criticality ranking names.
 CRITICAL_TOP = 5
 #: The most map nodes laid out: the page draws a map of up to 150 managed devices
@@ -313,6 +316,119 @@ def routing_links(intents: dict, hosts: list, results: dict, up: dict) -> dict:
             for layer, v in out.items()}
 
 
+#: A RIP or RIPng adjacency's words, as each end's read leaves it (C662): heard by both ends,
+#: by one end while the other was read and hears nothing, or by one end with the other unread.
+RIP_WORDS = ("both ways", "one way", "one end read")
+
+
+def rip_links(intents: dict, hosts: list, rip: dict) -> dict:
+    """``{"rip": [...], "ripng": [...]}`` in `routing_links`' shape, from the RIP reader's read
+    of the devices (C662), never from LLDP, so a RIP adjacency can witness a link LLDP sees from
+    one end only.
+
+    Intended: two devices whose intent runs RIP (or enables RIPng) on interfaces sharing an IPv4
+    (IPv6) subnet. Heard: a RIP source gateway is the device whose intent holds that address; a
+    RIPng next hop (a link-local address, which intent does not hold) is the one other device
+    enabling RIPng on the hearing interface's IPv6 subnet, and is left unplaced when there are
+    several. ``state`` is up when either end hears the other, with ``words`` from `RIP_WORDS`;
+    an intended adjacency neither end hears is ``not_seen`` when an end's read answered,
+    ``unknown`` when neither did."""
+    import ipaddress
+
+    from modules.neighbours import addresses
+    from modules.nsot.ifnames import same_interface
+    from modules.readers.rip import rip_interfaces, runs
+
+    owners = {str(k): v for k, v in addresses(intents).items()}
+    out = {"rip": {}, "ripng": {}}
+
+    def answered(layer, h):
+        return (rip.get(h) or {}).get(layer) is not None
+
+    def entry(layer, a, b, network):
+        a, b = sorted((a, b))
+        return out[layer].setdefault((a, b, network), {
+            "a": a, "b": b, "state": "", "words": "", "intended": False, "external": "",
+            "network": network, "ports": {}, "area": "", "asn": {}, "words_by": {}})
+
+    def subnets(layer, h):
+        """``[(interface, network)]``: *h*'s RIP subnets (IPv4, on the interfaces RIP runs on:
+        `rip.rip_interfaces`) or RIPng's (IPv6 global, the interface enables RIPng)."""
+        hv = intents.get(h) or {}
+        on = rip_interfaces(hv) if layer == "rip" else runs(hv)["ripng"]
+        return [(i.get("name", ""), n.network) for i in hv.get("interfaces") or []
+                if i.get("name", "") in on
+                for n in _iface_networks(i)
+                if n.version == (4 if layer == "rip" else 6)
+                and n.network.prefixlen < n.max_prefixlen and not n.ip.is_link_local]
+
+    nets = {layer: {h: subnets(layer, h) for h in hosts} for layer in out}
+    for layer in out:
+        for i, a in enumerate(sorted(hosts)):
+            for b in sorted(hosts)[i + 1:]:
+                for pa, na in nets[layer][a]:
+                    for pb, nb in nets[layer][b]:
+                        if na == nb:
+                            e = entry(layer, a, b, str(na))
+                            e["intended"] = True
+                            e["ports"].update({a: pa, b: pb})
+    for h in hosts:
+        got = rip.get(h) or {}
+        for src in got.get("rip") or []:
+            peer = owners.get(src.get("gateway", ""), "")
+            try:
+                gateway = ipaddress.ip_address(src.get("gateway", ""))
+            except ValueError:
+                continue
+            mine = next(((p, n) for p, n in nets["rip"][h] if gateway in n), None)
+            if not peer or peer == h or mine is None:
+                continue
+            e = entry("rip", h, peer, str(mine[1]))
+            e["ports"].setdefault(h, mine[0])
+            e["state"] = "up"
+            e["words_by"][h] = (f"hears {peer} at {src['gateway']}, its last update "
+                                f"{src.get('last_update', '?')} before the read")
+        for hop in got.get("ripng") or []:
+            mine = [(p, n) for p, n in nets["ripng"][h]
+                    if same_interface(p, hop.get("interface", ""))]
+            far = sorted({(o, p, n) for o in hosts if o != h for p, n in nets["ripng"][o]
+                          for _q, m in mine if n == m}, key=str)
+            if len(far) != 1:
+                continue
+            peer, port, net = far[0]
+            e = entry("ripng", h, peer, str(net))
+            e["ports"].setdefault(h, mine[0][0])
+            e["ports"].setdefault(peer, port)
+            e["state"] = "up"
+            e["words_by"][h] = f"hears {peer} at {hop['address']} on {hop['interface']}"
+    for layer in out:
+        for e in out[layer].values():
+            ends = (e["a"], e["b"])
+            heard = [d for d in ends if d in e["words_by"]]
+            if not heard:
+                e["state"] = "not_seen" if any(answered(layer, d) for d in ends) else "unknown"
+                continue
+            other = next((d for d in ends if d not in heard), None)
+            e["words"] = RIP_WORDS[0] if other is None else \
+                RIP_WORDS[1] if answered(layer, other) else RIP_WORDS[2]
+    return {layer: sorted(v.values(), key=lambda l: (l["a"], l["b"], l["network"]))
+            for layer, v in out.items()}
+
+
+def witnesses(phys: list, layers: dict) -> None:
+    """Each physical link's second witnesses, in place (the operator's rule, 2026-10-11: a link
+    is drawn healthy only when a second witness confirms it): ``witness``, the layers of the
+    adjacencies up on the link that BOTH ends report from the link's own ports (`attach`'s
+    ``at``), a RIP one only when heard both ways. A link both ends' LLDP reports needs none."""
+    for l in phys:
+        l["witness"] = sorted({
+            ref["layer"] for ref in l.get("adj") or ()
+            for adj in [(layers.get(ref["layer"]) or [])[ref["i"]]]
+            if adj.get("state") == "up" and {l["a"], l["b"]} <= set(ref["at"])
+            and {l["a"], l["b"]} <= set(adj.get("words_by") or {})
+            and (ref["layer"] not in ("rip", "ripng") or adj.get("words") == RIP_WORDS[0])})
+
+
 #: The node Mercury's own host is drawn as: never a device name (a hostname cannot start "@").
 MANAGER = "@mercury"
 
@@ -401,7 +517,7 @@ def attach(phys: list, layers: dict, intents: dict) -> None:
 
     for l in phys:
         l["adj"] = []
-    for layer in ("ospf", "ospfv3", "bgp"):
+    for layer in ROUTING:
         for i, adj in enumerate(layers.get(layer) or []):
             adj["on_link"] = False
             for l in phys:
@@ -420,18 +536,6 @@ def attach(phys: list, layers: dict, intents: dict) -> None:
                 if at:
                     l["adj"].append({"layer": layer, "i": i, "at": at})
                     adj["on_link"] = True
-
-
-def unread_protocols(phys: list, intents: dict) -> None:
-    """Each link end's routing protocol committed intent configures that no reader reads (RIPng:
-    `ipv6 rip <name> enable`), in place, as ``unread`` (``{device: ["RIPng"]}``): drawn as not
-    read, never as up."""
-    for l in phys:
-        l["unread"] = {}
-        for end, port in (("a", l["port_a"]), ("b", l["port_b"])):
-            iface = _iface(intents.get(l[end]), port)
-            if any(" enable" in f" {x}" for x in iface.get("ripng") or []):
-                l["unread"].setdefault(l[end], []).append("RIPng")
 
 
 def manager_links(intents: dict, phys: list, ifs: dict, at_here: list) -> list:
@@ -482,7 +586,7 @@ def manager_links(intents: dict, phys: list, ifs: dict, at_here: list) -> list:
                         "state": "down" if state == "down" else
                         ("up" if state == "up" else "unknown"),
                         "down_at": [dev] if state == "down" else [], "speed": None,
-                        "ends": {dev: state}, "adj": [], "unread": {}})
+                        "ends": {dev: state}, "adj": [], "witness": []})
     return out
 
 
@@ -571,14 +675,15 @@ def analyse(nodes: list, links: list) -> dict:
 
 def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: dict,
                   expected: dict = None, previous: dict = None, now: str = "",
-                  at_here: list = None, before_links: dict = None) -> dict:
+                  at_here: list = None, before_links: dict = None, rip: dict = None) -> dict:
     """One network's graph, every layer and its analysis. *hosts* is the inventory (the
     population: a managed device the graph lacks is still a node, drawn apart with why).
     *expected* is the network's declared islands (``{device: {reason, by, at}}``); *previous*
     is each layer's islands at the last good read (``{layer: {device: {since}}}``, None on the
     first read), so a device that becomes an island is told apart from one that was.
     *at_here* is this host's own addresses (`here()`), for where Mercury attaches;
-    *before_links* each layer's link states at the last good read, for each one's since."""
+    *before_links* each layer's link states at the last good read, for each one's since;
+    *rip* the RIP reader's answer for this network's devices (`readers/rip`), ``{}`` when unread."""
     managed = set(hosts)
     polled = {h for h in hosts if (up.get(h) or {}).get("lldp") == 1}
     answering = {h for h in hosts if any(v == 1 for v in (up.get(h) or {}).values())}
@@ -593,6 +698,7 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
                     "lldp_read": False}
     layers = {"physical": phys}
     layers.update(routing_links(intents, hosts, results, up))
+    layers.update(rip_links(intents, hosts, rip or {}))
     # An OUTSIDE PEER (the operator, 2026-10-10: r5, decommissioned, still r4's eBGP neighbour)
     # is a device the fleet peers with and does not manage: never a fleet node, never an island.
     # LLDP names it; a routing peer known only by its address is named through the LLDP
@@ -630,9 +736,9 @@ def network_graph(hosts: list, roles: dict, intents: dict, results: dict, up: di
                           "lldp_read": False, "manager": True}
         phys.extend(mgr)
     attach(phys, layers, intents)
-    unread_protocols(phys, intents)
+    witnesses(phys, layers)
     from modules.nsot.ifnames import abbreviate
-    taking_part = {e for layer in ("ospf", "ospfv3", "bgp") for l in layers[layer]
+    taking_part = {e for layer in ROUTING for l in layers[layer]
                    for e in (l["a"], l["b"])}
     for h in hosts:
         nodes[h]["l3"] = h in taking_part
@@ -747,8 +853,31 @@ def _why_apart(device: str, node: dict, layer: str, alone: bool) -> str:
 
 # ---------------------------------------------------------------------------- the reader
 
+def rip_answer(clock=time.time) -> tuple:
+    """``({list: {device: answer}}, error)``: the RIP reader's last good value while it is
+    current (read within its promise, `reader_job.page_promise`); past it, nothing, and the
+    error says when it was read, so stale RIP is drawn as not read, never as up."""
+    import calendar
+
+    from modules.readers import rip
+
+    got = reader_job.read_cached(rip.NAME)
+    good = (got.get("doc") or {}).get("last_good") or {}
+    if not good:
+        return {}, "" if got["state"] == "absent" else f"RIP: {got['why'] or 'never read'}"
+    try:
+        at = calendar.timegm(time.strptime(good.get("value_at", ""), "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return {}, f"RIP: the stored read's time {good.get('value_at')!r} is not a time"
+    promise = reader_job.page_promise(rip.READER)
+    if clock() - at > promise:
+        return {}, (f"RIP: last read at {good['value_at']}, more than {promise} s ago; drawn "
+                    "as not read")
+    return (good.get("value") or {}).get("lists") or {}, ""
+
+
 def read(source=None, population=None, clock=time.time, previous=None, expected=None,
-         at_here=None) -> dict:
+         at_here=None, rip=None) -> dict:
     from modules import integration_groups as IG
     from modules.neighbours import committed_intents
     from modules.readers.adjacencies import lists
@@ -757,6 +886,7 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
                                                             prometheus_series)))()
     if not configured:
         return {"configured": False, "networks": {}, "errors": []}
+    rip_lists, rip_error = (rip or rip_answer)(clock)
     if previous is None:
         got = reader_job.read_cached(READER_NAME)
         last = (got.get("doc") or {}).get("last_good")
@@ -788,7 +918,10 @@ def read(source=None, population=None, clock=time.time, previous=None, expected=
                                             expected=declared.get("islands") or {},
                                             previous=before, now=now,
                                             at_here=here() if at_here is None else at_here,
-                                            before_links=before_links)
+                                            before_links=before_links,
+                                            rip=rip_lists.get(list_name) or {})
+    if rip_error:
+        errors.append(rip_error)
     return {"configured": True, "networks": networks, "errors": errors, "read_at": now}
 
 

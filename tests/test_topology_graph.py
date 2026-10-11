@@ -305,9 +305,101 @@ class TestWhatEachLinkCarries:
         assert all(a["on_link"] for layer in ("ospf", "ospfv3", "bgp")
                    for a in g["layers"][layer])
 
-    def test_ripng_configured_is_said_not_read(self):
-        assert _link(_labelled(), "r1", "s1")[0]["unread"] == {"r1": ["RIPng"], "s1": ["RIPng"]}
-        assert _link(_labelled(), "r3", "r4")[0]["unread"] == {}
+    def test_ripng_configured_and_not_read_is_unknown_on_its_link(self):
+        adj = self._adj(_labelled(), "r1", "s1")
+        assert [(x["layer"], x["state"], x["at"]) for x in adj] == [
+            ("rip", "unknown", ["r1", "s1"]), ("ripng", "unknown", ["r1", "s1"])]
+        assert not [x for x in self._adj(_labelled(), "r3", "r4") if x["layer"] in
+                    ("rip", "ripng")]
+
+
+RIP = os.path.join(TOPO, "rip")
+
+
+def _rip():
+    """The RIP reader's answer for r1, r2, s1 and s2, through its own parsers, from their real
+    `show ip protocols` and `show ipv6 rip next-hops` (read through Mercury on 2026-10-11 for
+    C671, tests/fixtures/topology/rip/)."""
+    from modules.pipeline import _parse_rip_sources, _parse_ripng_next_hops
+    out = {}
+    for h in ("r1", "r2", "s1", "s2"):
+        with open(os.path.join(RIP, f"{h}__show_ip_protocols.txt"), encoding="utf-8") as fh:
+            sources = _parse_rip_sources(fh.read())
+        with open(os.path.join(RIP, f"{h}__show_ipv6_rip_next_hops.txt"),
+                  encoding="utf-8") as fh:
+            hops = _parse_ripng_next_hops(fh.read())
+        out[h] = {"rip": sources, "ripng": hops, "error": "", "read_at": "2026-10-11T06:40:00Z"}
+    return out
+
+
+class TestRipAndTheSecondWitness:
+    """C662 and the operator's rule (2026-10-11): RIP and RIPng read from the devices are two
+    layers, and an adjacency both ends hear on a link's own ports is that link's second
+    witness. The lab's r1–s1 and r2–s2: only r1's and r2's LLDP reports them (C671), and RIP and
+    RIPng are heard both ways across each."""
+
+    def test_rip_runs_where_each_device_says_it_does(self):
+        # Independent of the model: each device's own `show ip protocols` lists the interfaces
+        # RIP sends and receives on; s1's Gi0/0 is there too, on an address learned by DHCP,
+        # which committed intent does not hold.
+        import re
+        from modules.readers.rip import rip_interfaces
+        intents = _intents()
+        for h in ("r1", "r2", "s1", "s2"):
+            with open(os.path.join(RIP, f"{h}__show_ip_protocols.txt"), encoding="utf-8") as fh:
+                text = fh.read().split('Routing Protocol is "rip"')[1]
+            said = re.findall(r"^\s{4}(\S+)\s+2\s+2\s", text, re.MULTILINE)
+            dhcp = {i["name"] for i in intents[h]["interfaces"] if i.get("ipv4") == "dhcp"}
+            assert said and rip_interfaces(intents[h]) == [s for s in said if s not in dhcp], h
+
+    def test_the_layers_as_measured(self):
+        g = _labelled(rip=_rip())
+        assert [(x["a"], x["b"], x["network"], x["state"], x["words"], x["intended"])
+                for x in g["layers"]["rip"]] == [
+            ("r1", "s1", "10.255.2.10/31", "up", "both ways", True),
+            ("r2", "s2", "10.255.2.12/31", "up", "both ways", True)]
+        assert [(x["a"], x["b"], x["network"], x["words"]) for x in g["layers"]["ripng"]] == [
+            ("r1", "s1", "2001:db8:2:a::/64", "both ways"),
+            ("r2", "s2", "2001:db8:2:c::/64", "both ways"),
+            ("s1", "s2", "2001:db8:10::/64", "both ways"),
+            ("s1", "s2", "2001:db8:20::/64", "both ways"),
+            ("s1", "s2", "2001:db8:30::/64", "both ways")]
+        assert all(x["on_link"] for layer in ("rip", "ripng") for x in g["layers"][layer])
+
+    def test_a_one_sided_link_is_witnessed_by_rip_heard_both_ways(self):
+        g = _labelled(rip=_rip())
+        for a, b in (("r1", "s1"), ("r2", "s2")):
+            l = _link(g, a, b)[0]
+            assert l["kind"] == "one_silent" and l["reported_by"] == [a]
+            assert l["witness"] == ["rip", "ripng"]
+
+    def test_heard_by_one_end_only_is_no_witness(self):
+        rip = _rip()
+        rip["s1"] = dict(rip["s1"], rip=[], ripng=[h for h in rip["s1"]["ripng"]
+                                                  if not h["interface"].startswith("Gig")])
+        g = _labelled(rip=rip)
+        l = _link(g, "r1", "s1")[0]
+        assert l["witness"] == []
+        assert {x["words"] for layer in ("rip", "ripng") for x in g["layers"][layer]
+                if {x["a"], x["b"]} == {"r1", "s1"}} == {"one way"}
+
+    def test_an_end_not_read_is_no_witness_and_never_up_both_ways(self):
+        rip = _rip()
+        rip["s1"] = {"rip": None, "ripng": None, "error": "could not ask: TimeoutError"}
+        g = _labelled(rip=rip)
+        l = _link(g, "r1", "s1")[0]
+        assert l["witness"] == []
+        assert {x["words"] for x in g["layers"]["rip"] if x["b"] == "s1"} == {"one end read"}
+
+    def test_nothing_read_is_unknown_never_missing(self):
+        g = _labelled()
+        assert {x["state"] for layer in ("rip", "ripng") for x in g["layers"][layer]} == \
+            {"unknown"}
+        assert _link(g, "r1", "s1")[0]["witness"] == []
+
+    def test_both_ends_lldp_needs_no_witness_and_ospf_is_one(self):
+        g = _labelled(rip=_rip())
+        assert _link(g, "r3", "r4")[0]["witness"] == ["ospf", "ospfv3"]
 
 
 class TestWhereMercuryAttaches:
