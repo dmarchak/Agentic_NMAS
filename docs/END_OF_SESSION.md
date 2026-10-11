@@ -30,9 +30,13 @@ step is in place (tests/test_board_fidelity.py; 32 signed-off screens still to c
 list only shrinks). The operator then found the map too busy (C654) and asked for it to be
 arranged by people (C655); both were built (a597479, b8f3f0f) and, shown the after shots, the
 operator sent Topology back to the approved board v34, Arrange out too (both WITHDRAWN, in the
-register's Closed). The page is the board as d720434 built it; C656's rule (a refusal declares
-no change) and the result slot above the map stay. Drag-and-drop comes back only on a board of
-its own. Then time travel
+register's Closed). The operator then pointed at the approved boards themselves: the build had
+never matched them (13 regions logged as the agent's "deviations"). C658 drew the page to them
+(840329e: the board's two-word chips per link, its toolbar, legend, times and phone list),
+compared again at 1440, 1280 and 390 (7 regions still differ, each with its reason in
+docs/fidelity/topology.md), deployed and walked on the host's own read 2026-10-11. Open from the
+walk: C659 (Mercury's link to r6 drawn through r5's cloud). Wall view and Arrange stay later
+steps. Then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
 in the records database); Logs (C652, the operator 2026-10-10): the sidebar's Logs opens
 the queryable logs, History › Query board C's "Syslog by device" (e9d4fbe, e112246 and the
