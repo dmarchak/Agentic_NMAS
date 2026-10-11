@@ -34,3 +34,15 @@ device (CPU, and memory's Processor pool share) on one percent axis; a **Covers*
 memory is drawn only where a device's scrape carries a memory pool (measured on the host: the
 routers carry one, the switches none). Shot at 1440 and 390 (`history-metric-cpu`, the same
 Grafana capture standing in for the answer). **deviation** (log: CPU and memory in board B's layout).
+
+## Board A's last three questions, in board B's layout (2026-10-11)
+
+Routing neighbour changes, Restarts and Telemetry rates take the same layout as CPU and memory:
+per device, no interface select, a **Covers** line saying what each counts. Neighbours draws
+the established adjacencies per protocol (OSPF full, OSPFv3 full, BGP established); Restarts
+the uptime counter's falls per step, with **Mercury's restart record** under the chart (each
+restart planned or not, its window and the device's reason, and the record's first day);
+Telemetry the IOS-XE telemetry series each device holds, by YANG model for one device. The
+neighbour question's "per neighbour" (board A) is per protocol on one device. Not shot
+separately: the layout is the CPU shot's, and the record's region is a list in the card style.
+**deviation** (log: the last three questions in board B's layout).

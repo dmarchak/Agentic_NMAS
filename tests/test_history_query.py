@@ -30,8 +30,11 @@ def test_the_six_questions_in_the_board_s_order_and_only_the_built_one_links(web
     links = re.findall(r'<a class="hq-q" href="([^"]+)"><strong>([^<]+)', html)
     assert links == [("/v2/history/query/metric/errors", "Interface errors and discards over time"),
                      ("/v2/history/query/metric/cpu", "CPU and memory trend"),
-                     ("/v2/history/query/syslog", "Syslog by device")]
-    assert html.count("not built yet") == 3
+                     ("/v2/history/query/metric/neighbours", "Routing neighbour changes"),
+                     ("/v2/history/query/syslog", "Syslog by device"),
+                     ("/v2/history/query/metric/restarts", "Restarts"),
+                     ("/v2/history/query/metric/telemetry", "Telemetry rates")]
+    assert "not built yet" not in html
 
 
 def test_what_the_history_holds_comes_from_the_settings_and_the_reader(web, monkeypatch):  # noqa: F811
@@ -177,3 +180,103 @@ class TestTheCpuQuestion:
         assert r.status_code == 200, r.get_json()
         exprs = [q["expr"] for q in grafana.asked[-1]["queries"]]
         assert len(exprs) == 2 and exprs[0].startswith("max(cpmCPUTotal5minRev")
+
+
+class TestTheLastThreeQuestions:
+    """Board A's routing neighbour changes, restarts and telemetry rates, each in board B's
+    layout per device, their expressions from what the host's Prometheus holds (measured
+    2026-10-11: ospfNbrState on 6 devices, ospfv3NbrState on 4, cbgpPeer2State on 2; sysUpTime
+    on 9; 957 Cisco_IOS_XE_ telemetry series, each with a device label)."""
+
+    def test_neighbours_count_the_established_adjacencies_per_protocol(self):
+        from modules import history_query as H
+        every = H.metric_exprs("neighbours", {"d": "", "i": "", "range": "7d"})
+        assert every == [("count by (device) (ospfNbrState == 8)", "{{device}} OSPF"),
+                         ("count by (device) (ospfv3NbrState == 8)", "{{device}} OSPFv3"),
+                         ("count by (device) (cbgpPeer2State == 6)", "{{device}} BGP")]
+        one = H.metric_exprs("neighbours", {"d": "r3", "i": "", "range": "7d"})
+        assert one[2] == ('count(cbgpPeer2State{device="r3"} == 6)', "BGP")
+
+    def test_restarts_count_the_uptime_counter_falling_in_each_step(self):
+        """`$__interval` (the step), never `$__rate_interval`: windows wider than the step
+        would count one fall in several points."""
+        from modules import history_query as H
+        (e, legend), = H.metric_exprs("restarts", {"d": "r6", "i": "", "range": "30d"})
+        assert e == 'sum(resets(sysUpTime{device="r6"}[$__interval]))' and legend == "restarts"
+
+    def test_telemetry_counts_series_by_the_yang_model_never_a_job_name(self):
+        from modules import history_query as H
+        (every, _l), = H.metric_exprs("telemetry", {"d": "", "i": "", "range": "7d"})
+        assert every == 'count by (device) ({__name__=~"Cisco_IOS_XE_.+", device!=""})'
+        assert "job" not in every, "an installation's scrape job name is not the product's"
+        (one, legend), = H.metric_exprs("telemetry", {"d": "r1", "i": "", "range": "7d"})
+        assert 'device="r1"' in one and '"Cisco_IOS_XE_([^:]+):.*"' in one
+        assert legend == "{{model}}"
+
+    @pytest.mark.parametrize("key", ["neighbours", "restarts", "telemetry"])
+    def test_each_is_asked_per_device_and_drawn(self, web, grafana, key):  # noqa: F811
+        from modules import history_query as H
+        r = web.get(f"/v2/history/query/metric/{key}/data?d=r3&range=24h")
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["asked"] == [e for e, _l in H.metric_exprs(
+            key, {"d": "r3", "i": "", "range": "24h"})]
+        html = web.get(f"/v2/history/query/metric/{key}?d=r3").get_data(as_text=True)
+        assert f">Query</a> › {H.METRICS[key]['title']}" in html and 'name="i"' not in html
+        assert "<strong>Covers:</strong>" in html
+
+
+#: Rows shaped as the host's record holds them (its keys read 2026-10-11).
+ROWS = [{"at": "2026-10-02T08:45:01Z", "crash_file": "", "device": "r3",
+         "found_by": "sysUpTime reset", "last_seen": "2026-10-02T08:40:01Z", "list": "Default",
+         "planned": False, "planned_by": "", "planned_why": "", "reason": "Reload Command",
+         "reason_error": "", "seen_at": "2026-10-02T08:50:01Z"},
+        {"at": "2026-09-01T17:05:01Z", "crash_file": "", "device": "r3",
+         "found_by": "sysUpTime reset", "last_seen": "", "list": "Default", "planned": False,
+         "planned_by": "", "planned_why": "", "reason": "", "reason_error": "timed out",
+         "seen_at": "2026-09-01T17:10:01Z"}]
+NOW = 1791720000.0   # 2026-10-11T12:00:00Z
+
+
+class TestTheRestartRecord:
+    @pytest.fixture
+    def record(self, monkeypatch):
+        from modules import restarts
+        state = {"rows": ROWS, "state": "ok", "planned": []}
+        monkeypatch.setattr(restarts, "events", lambda device="", list_name="": {
+            "state": state["state"], "rows": [r for r in state["rows"]
+                                              if not device or r["device"] == device]})
+        monkeypatch.setattr(restarts, "planned_rows", lambda: state["planned"])
+        return state
+
+    def test_the_range_cuts_the_record_and_says_where_it_begins(self, record):
+        from modules import history_query as H
+        got = H.restart_record("Default", "", 30 * 86400, now=NOW)
+        assert [r["at"] for r in got["rows"]] == ["2026-10-02T08:45:01Z"]
+        assert got["since"] == "2026-09-01T17:05:01Z"
+        assert got["rows"][0]["words"].startswith("r3 restarted unexpectedly at 08:45 UTC")
+
+    def test_a_window_recorded_before_it_makes_it_planned(self, record):
+        from modules import history_query as H
+        record["planned"] = [{"devices": ["r3"], "list": "Default",
+                              "from": "2026-10-02T08:30:00Z", "until": "2026-10-02T08:50:00Z",
+                              "by": "operator", "why": "image upgrade",
+                              "recorded_at": "2026-10-02T08:29:00Z"}]
+        row = H.restart_record("Default", "r3", 30 * 86400, now=NOW)["rows"][0]
+        assert row["planned"] is True and row["planned_by"] == "operator"
+
+    def test_an_unreadable_record_says_so_and_judges_nothing(self, record):
+        from modules import history_query as H
+        record["state"] = "unreadable"
+        got = H.restart_record("Default", "", 30 * 86400, now=NOW)
+        assert got["state"] == "unreadable" and got["rows"] == []
+
+    def test_the_page_draws_the_record_beside_the_chart(self, web, grafana, record,  # noqa: F811
+                                                        monkeypatch):
+        import time as _t
+        monkeypatch.setattr(_t, "time", lambda: NOW)
+        html = web.get("/v2/history/query/metric/restarts?range=30d").get_data(as_text=True)
+        assert "Mercury&#39;s restart record, 30 d</h3>" in html or \
+            "Mercury's restart record, 30 d</h3>" in html
+        assert "unplanned</span> r3 restarted unexpectedly at 08:45 UTC on 02 Oct" in html
+        assert "The record begins 2026-09-01" in html
+        assert "a fall the chart shows with no row here is one Mercury did not record" in html

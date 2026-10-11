@@ -84,9 +84,18 @@ set. Its own query is shown under the chart; the device, the interface and the r
 the address, so Copy the link carries the question. **CPU and memory trend** is asked the same
 way, per device: each device's CPU (its 5-minute busy) and its memory (the Processor pool's
 used share) as two lines on one percent axis; memory is drawn only where the device's scrape
-carries a memory pool, and the page says so under the chart. The others (routing neighbour
-changes, restarts, telemetry rates) are drawn as not built yet and open nothing. Saving a view, and asking your own PromQL or LogQL,
-come next. The sidebar's Logs opens the same Syslog by device page.
+carries a memory pool, and the page says so under the chart. **Routing neighbour changes**
+draws each device's established neighbours over time, per protocol (OSPF and OSPFv3
+neighbours in state full, BGP peers established): a dip is a neighbour going down, its return
+the neighbour coming back, and a neighbour down and back between two reads (60 s) is not seen.
+**Restarts** draws each fall of a device's uptime counter in the step it fell in, and under the
+chart **Mercury's restart record** for the range: each restart, planned or not (judged against
+the planned windows recorded), its window and the device's own reason, and the day the record
+began. A fall the chart shows with no row in the record is one Mercury did not record.
+**Telemetry rates** draws the telemetry series each device's stream holds (IOS-XE model-driven
+telemetry), by YANG model for one device: a device that stops streaming falls to nothing. Saving
+a view, and asking your own PromQL or LogQL, come next. The sidebar's Logs is the live tail
+([Logs](logs)); Syslog by device's "Open these lines on Logs" opens it filtered.
 
 ## Baselines {#baselines}
 

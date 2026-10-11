@@ -31,8 +31,8 @@ QUESTIONS = (
 )
 #: The questions built, by the route that answers each (and its arguments).
 ANSWERS = {"syslog": ("v2.history_query_syslog", {}),
-           "errors": ("v2.history_query_metric", {"key": "errors"}),
-           "cpu": ("v2.history_query_metric", {"key": "cpu"})}
+           **{k: ("v2.history_query_metric", {"key": k})
+              for k in ("errors", "cpu", "neighbours", "restarts", "telemetry")}}
 
 # ---------------------------------------------------------------------------
 # A metrics answer (board B, AskMetric): one question's PromQL for a device (or every device)
@@ -84,6 +84,65 @@ METRICS = {
              '(sum(ciscoMemoryPoolUsed{{device="{d}",ciscoMemoryPoolName="Processor"}}) + '
              'sum(ciscoMemoryPoolFree{{device="{d}",ciscoMemoryPoolName="Processor"}}))',
              "{{device}} memory", "memory (Processor pool)"),
+        ),
+    },
+    # Board A's "Routing neighbour changes", in board B's layout. Measured on the host
+    # 2026-10-11: OSPF-MIB's ospfNbrState on 6 devices, OSPFV3-MIB's ospfv3NbrState on 4, and
+    # CISCO-BGP4-MIB's cbgpPeer2State on 2. The established adjacencies are counted, a gauge:
+    # a neighbour lost is a dip, whatever the step, where counting the event counters per step
+    # would over- or under-count as the step moves.
+    "neighbours": {
+        "title": "Routing neighbour changes",
+        "y": "established neighbours", "unit": "short",
+        "source": ("SNMP every 60 s, read from Prometheus through Grafana: OSPF neighbours in "
+                   "state full (ospfNbrState 8), OSPFv3 likewise (ospfv3NbrState 8), BGP peers "
+                   "established (cbgpPeer2State 6)"),
+        "covers": ("each protocol on the devices that report it; a dip is a neighbour going "
+                   "down and its return the neighbour coming back; a neighbour down and back "
+                   "between two reads (60 s) is not seen"),
+        "series": (
+            ("count by (device) (ospfNbrState == 8)",
+             'count(ospfNbrState{{device="{d}"}} == 8)', "{{device}} OSPF", "OSPF"),
+            ("count by (device) (ospfv3NbrState == 8)",
+             'count(ospfv3NbrState{{device="{d}"}} == 8)', "{{device}} OSPFv3", "OSPFv3"),
+            ("count by (device) (cbgpPeer2State == 6)",
+             'count(cbgpPeer2State{{device="{d}"}} == 6)', "{{device}} BGP", "BGP"),
+        ),
+    },
+    # Board A's "Restarts": the uptime counter falling, the restart rule's own measure (never a
+    # boot time from uptime), with Mercury's restart record beside the chart for whether each
+    # was planned and its window (`restart_record`).
+    "restarts": {
+        "title": "Restarts",
+        "y": "restarts (the uptime counter falling)", "unit": "short",
+        "source": ("SNMP sysUpTime every 60 s, read from Prometheus through Grafana: each fall "
+                   "of the counter is a restart; whether it was planned is Mercury's restart "
+                   "record, below"),
+        "covers": ("every device whose uptime is scraped; a restart is drawn in the step it "
+                   "fell in, so at a long range several restarts of one device can share a "
+                   "point"),
+        "series": (
+            ("sum by (device) (resets(sysUpTime[$__interval]))",
+             'sum(resets(sysUpTime{{device="{d}"}}[$__interval]))', "{{device}}", "restarts"),
+        ),
+    },
+    # Board A's "Telemetry rates". Measured on the host 2026-10-11: the IOS-XE model-driven
+    # telemetry Telegraf exposes carries the YANG model in the metric name (Cisco_IOS_XE_…),
+    # 957 series with a device label, none without; a classic IOS device streams none.
+    "telemetry": {
+        "title": "Telemetry rates",
+        "y": "telemetry series held", "unit": "short",
+        "source": ("model-driven telemetry as the collector exposes it, read from Prometheus "
+                   "through Grafana: the series each device's stream holds, by YANG model for "
+                   "one device"),
+        "covers": ("devices that stream IOS-XE telemetry (Cisco_IOS_XE_ models); a device "
+                   "that stops streaming loses its series when the collector expires them, "
+                   "so its line falls to nothing; a device that never streamed is not drawn"),
+        "series": (
+            ('count by (device) ({__name__=~"Cisco_IOS_XE_.+", device!=""})',
+             'count by (model) (label_replace({{__name__=~"Cisco_IOS_XE_.+", device="{d}"}}, '
+             '"model", "$1", "__name__", "Cisco_IOS_XE_([^:]+):.*"))',
+             "{{device}}", "{{model}}"),
         ),
     },
 }
@@ -202,6 +261,8 @@ def metric_view(key: str, list_name: str, values) -> dict:
     out["history_store"] = (st.history or {}).get("name", "") if st else ""
     out["past_live"] = bool(st and seconds > st.live)
     out["grafana_error"] = err
+    if key == "restarts":
+        out["record"] = restart_record(list_name, s["d"], seconds)
     if s["d"] and not err and "names" in q:
         probe = {"type": "table", "targets": [{"refId": "N", "expr": q["names"].format(d=s["d"]),
                                                "instant": True}]}
@@ -217,6 +278,33 @@ def metric_view(key: str, list_name: str, values) -> dict:
         except Exception as exc:                      # noqa: BLE001
             out["interfaces_why"] = f"{type(exc).__name__}: {exc}"
     return out
+
+
+def restart_record(list_name: str, device: str, seconds: int, now: float = None) -> dict:
+    """Mercury's restart record over the range, beside the Restarts chart: each restart newest
+    first, judged planned or not against the planned windows recorded now, with its window
+    and the device's own reason. ``{"state", "error", "rows", "since"}``: *since* is the
+    record's first row, so a range reaching past it says the record began then."""
+    import time as _time
+
+    from modules import restarts
+
+    now = _time.time() if now is None else now
+    got = restarts.events(device=device, list_name=list_name)
+    if got.get("state") == "unreadable":
+        return {"state": "unreadable", "error": got.get("error") or "the record could not be read",
+                "rows": [], "since": ""}
+    every = got.get("rows") or []
+    try:
+        rows = restarts.judged(every, restarts.planned_rows())
+        error = ""
+    except RuntimeError as exc:
+        rows, error = every, str(exc)
+    cut = now - seconds
+    shown = [dict(r, words=restarts.words(r)) for r in rows
+             if restarts._epoch(r.get("at", "")) >= cut]
+    return {"state": got.get("state") or "ok", "error": error, "rows": shown,
+            "since": min((r.get("at", "") for r in every), default="")}
 
 
 def _setting(list_name: str, key: str, default):

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info -%}
+{%- from "v2/_macros.html" import icon, info, badge -%}
 {#- History › Query › a metrics question (C667; board B, AskMetric): the question with its
     device, interface and range in the address (so a view is a link), the chart (the
     Monitoring panel island, reading history_query_metric_data), what holds the range, the
@@ -48,6 +48,26 @@
 {%- endif %}
 <p class="small muted"><strong>Source:</strong> {{ m.q.source }}.</p>
 {%- if m.q.covers %}<p class="small muted"><strong>Covers:</strong> {{ m.q.covers }}.</p>{% endif %}
+{%- if m.record is defined %}{% set rec = m.record %}
+<section class="card hq-record" aria-labelledby="hq-record-h">
+  <h3 id="hq-record-h">Mercury's restart record{% if s.d %}: {{ s.d }}{% endif %}, {{ m.ranges[s.range][0] }}</h3>
+  {%- if rec.state == 'unreadable' %}
+  <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }} The restart record could not be read ({{ rec.error }}), so whether these restarts were planned is not known.</p>
+  {%- elif rec.state == 'absent' %}
+  <p class="muted small">Mercury has recorded no restart yet: the record begins with the first fall of a device's uptime it sees.</p>
+  {%- else %}
+  {%- if rec.error %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }} {{ rec.error }}: each restart is shown as recorded, not judged against the planned windows.</p>{% endif %}
+  {%- if rec.rows %}
+  <ul class="hq-restarts">
+    {%- for r in rec.rows %}<li>{{ badge('planned' if r.planned else 'unplanned', 'neutral' if r.planned else 'warn') }} {{ r.words }}{% if r.planned and r.planned_by %} <span class="muted small">(window by {{ r.planned_by }}{% if r.planned_why %}: {{ r.planned_why }}{% endif %})</span>{% endif %}</li>{% endfor %}
+  </ul>
+  {%- else %}
+  <p class="muted small">No restart recorded in this range{% if s.d %} for {{ s.d }}{% endif %}.</p>
+  {%- endif %}
+  <p class="muted small">The record begins {{ rec.since[:10] if rec.since else 'with its first row' }}; a fall the chart shows with no row here is one Mercury did not record.</p>
+  {%- endif %}
+</section>
+{%- endif %}
 <details class="hq-expr" data-keep="hq-expr">
   <summary>The query (PromQL)</summary>
   <pre class="mono">{{ m.expr }}</pre>
