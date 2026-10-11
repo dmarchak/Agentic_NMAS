@@ -13,17 +13,46 @@ Your answers committed in 8224518 (deployed). Then, in your order:
   (saved views read-only; a person's save, pin and removal are in the walk).
 - **Found and registered:** C677 (r6's restart on 10-09 missing from Mercury's restart record,
   UNKNOWN); C678 (the deploy's CI wait spent GitHub's 60-an-hour allowance: fixed, seen on the
-  host, closed); C679 (the wait's bound 1.3x today's CI run: fixed in 787d9b3, deploying).
-- **C529:** measured first: a stranded address keeps its holder until the lease EXPIRES (Kea
-  2.4.1 answers its renewals with silence; a throwaway Kea in its own namespace), and Kea
-  resolves a nested include. The one-time subnet move (step 5, a fresh dated copy and a
-  before/after of every lease and reservation) is built and gating; boards C and D follow it
-  (the move first, by dependency: logged).
-- **Next:** run the move on the host, boards C and D, boards L and M, 7.5's identity line, the
-  7.8 removals.
+  host, closed); C679 (the wait's bound 1.3x today's CI run: fixed, seen on the host, closed).
+- **C529, DHCP:** measured first (a stranded address keeps its holder until the lease EXPIRES:
+  Kea 2.4.1 answers its renewals with silence, on a throwaway Kea in its own namespace; Kea
+  resolves a nested include). **The subnet move RAN on the host, 19:49 UTC, 9 of 9 PASS**: the
+  fresh dated copy is **`/var/backups/kea/c529-step5-20261011T194937Z`**; every subnet now comes
+  from Mercury's files; Kea's hash, configuration, reservations and every lease equal before
+  and after. Then board C (the table against intent; edit, add and remove a subnet) and board
+  D (exclusions and conflicts), each deployed and walked read-only on the host (89e5e4f last).
+  Every confirm is yours: sitting 2 step 12.
+- **C529 step 5, the report you asked for** (in full in C529's row):
+  (1) the subnets live in `/etc/kea/nmas/subnets4.json` and `/etc/kea/nmas/subnets6.json`,
+  included by `/etc/kea/kea-dhcp4.conf` and `/etc/kea/kea-dhcp6.conf`; each subnet still
+  includes its step-2 reservations file (`/etc/kea/nmas/reservations-<id>.json`,
+  `reservations6-<id>.json`). (2) Before and after, the step's own snapshots: IPv4 3 subnets
+  (10, 20, 255), 2 pools, 6 options, 0 reservations, 3 leases; IPv6 3 subnets (10, 20, 30), 3
+  pools, 4 options, 0 reservations, 6 leases; configuration, reservations and leases equal in
+  both families, Kea's hash unchanged. (3) `kea-dhcp4 -t` and `kea-dhcp6 -t` pass on the live
+  files; both reloaded at 19:49:39 UTC, Kea logging 3 subnets added each and no error; neither
+  restarted. (4) No client had asked since the move (Kea's counters: 0 packets since its start
+  on 10-09 03:20 UTC; 365-day leases), so h1 was made to ask at 20:39 UTC, its interfaces left
+  as they were: IPv4, Kea renewed h1's own 10.10.10.100 (ACK, no NAK); IPv6, Kea answered
+  with a NEW lease (::102) because busybox `udhcpc6` uses a new IA each run (C681, LAB): one
+  unused lease left by the probe. (5) Restore: `sudo install -m 644 -o root -g root
+  /var/backups/kea/c529-step5-20261011T194937Z/etc-kea/kea-dhcp4.conf /etc/kea/kea-dhcp4.conf`,
+  the same for `kea-dhcp6.conf`, then `cd ~/python/Agentic_NMAS &&
+  /opt/mercury-venv/bin/python scripts/nmas-kea-subnet-files reload` (undoes any board C or D
+  change made since).
+- **C680, step 2's stale check:** fixed (it read the pre-move file); it now reads the shape the
+  files have, so it stays true after later steps. Once deployed, the Update row reads done
+  with no re-run.
+- **Boards L and M:** redrawn from the measurements (canvas version 111, logged as signed
+  off); the discovery range measured on a throwaway Kea (the two classes and pools work as
+  drawn); the lab's ZTP subnet's .192 to .223 are free. Building L next.
+- **Next:** board L (the discovery range's host step, its reader, the Discovered tab, Pick by
+  MAC), board M, 7.5's identity line, the 7.8 removals.
+- **Done by you (2026-10-11):** sitting 2 steps 1 and 2, the C663 host step and
+  `netbox-role-kinds.sh` (router and switch set). NetBox also holds a `network-device` role
+  with no kind: Mercury calls any device holding it "not classified" until it has one.
 - **Waiting on you:** the CLAUDE.md script (then `scripts/nmas-host` moves to `lab/`); the
-  `l3-switch` answer (proposed: core-switch and distribution-switch map to `switch`, since
-  Mercury's kinds are router, switch and firewall); the walk's sittings (below).
+  walk's sittings (below).
 
 ## MORNING REPORT: the overnight run, 2026-10-11 (06:34 to about 11:00 UTC; 00:34 to 05:00 UTC−6)
 
@@ -126,6 +155,8 @@ step that does not show what it says, and tell the agent the step's number. Time
    each opens and reads; nothing pressed.
 
 ### Sitting 2: single-device and single-record writes (each previewed; you confirm)
+
+Steps 1 and 2 DONE by the operator, 2026-10-11.
 
 1. **Update page**: C663 step 1's host step (from fbdc686) → **It is done**. Expect it to move to
    done with your name. Undo: none needed (a record that you said so).

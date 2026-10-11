@@ -223,6 +223,52 @@ def moved(tmp_path, monkeypatch):
     return {"mains": mains, "files": files, "kea": SubnetKea(files)}
 
 
+class TestStepTwoSCheckAfterTheMove:
+    """C529 step 2's Update-page check asked after step 5 moved the subnets out of Kea's file
+    (the host, 2026-10-11 19:49 UTC): it read Kea's file for `"id": N,` lines, found none, and
+    said not done. A check must stay true after a later step: it now reads the shape the files
+    have, Mercury's subnet file once the move is done."""
+
+    def test_done_on_the_captured_files_moved_verbatim(self, moved):
+        from modules import host_steps
+        got = host_steps.check_kea_reservation_files(kea=moved["kea"])
+        assert got["state"] == "done", got
+
+    def test_done_after_a_board_c_write_rewrote_mercury_s_file(self, moved):
+        from modules import host_steps
+        for path in moved["files"].values():
+            with open(path, encoding="utf-8") as fh:
+                subs = S.load(fh.read())
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(S.dump(list(reversed([dict(reversed(list(s.items()))) for s in subs]))))
+        assert host_steps.check_kea_reservation_files(kea=moved["kea"])["state"] == "done"
+
+    def test_a_subnet_without_its_include_is_named(self, moved):
+        from modules import host_steps
+        path = moved["files"]["dhcp6"]
+        with open(path, encoding="utf-8") as fh:
+            subs = S.load(fh.read())
+        for s in subs:
+            if s["id"] == 30:
+                s["reservations"] = []
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(S.dump(subs))
+        got = host_steps.check_kea_reservation_files(kea=moved["kea"])
+        assert got == {"state": "not_done",
+                       "detail": "still without Mercury's file: IPv6 subnet 30"}
+
+    def test_a_subnet_kea_runs_that_mercury_s_file_lacks_is_refused_by_name(self, moved):
+        from modules import host_steps
+        path = moved["files"]["dhcp4"]
+        with open(path, encoding="utf-8") as fh:
+            subs = S.load(fh.read())
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(S.dump([s for s in subs if s["id"] != 20]))
+        got = host_steps.check_kea_reservation_files(kea=moved["kea"])
+        assert got["state"] == "not_done"
+        assert "IPv4: subnet 20, which Kea runs, is not in" in got["detail"], got
+
+
 def _intent():
     import yaml
     from modules.readers.dhcp import facts_from

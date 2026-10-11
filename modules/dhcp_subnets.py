@@ -139,6 +139,36 @@ def move_plan(main_text: str, main: str, family: str) -> dict:
     return out
 
 
+def reservation_files(main_text: str, main: str, family: str, ids: list) -> dict:
+    """C529 step 2's question (does every subnet Kea runs take its reservations from Mercury's
+    file?) asked of the shape Kea's files have NOW, so its answer stays true after this step:
+    before the move, `dhcp_reservations.subnet_files` on Kea's file; after it, Mercury's subnet
+    file read as subnets, each one's ``"reservations"`` compared with the include of its own
+    file. Same keys as `subnet_files`, plus ``"moved"``; after the move ``"candidate"`` is Kea's
+    file unchanged (a subnet is changed on the DHCP page then, never by step 2)."""
+    from modules import dhcp_reservations as D
+
+    if move_plan(main_text, main, family)["state"] != "done":
+        return dict(D.subnet_files(main_text, main, family, ids), moved=False)
+    path = subnets_file(main, family)
+    out = {"add": [], "have": [], "refused": "", "candidate": main_text, "moved": True}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            subs = load(fh.read())
+    except (OSError, Refused) as exc:
+        out["refused"] = f"{path}, which {main} includes, could not be read: {exc}"
+        return out
+    by_id = {s.get("id"): s for s in subs if isinstance(s, dict)}
+    for sid in sorted(ids):
+        if sid not in by_id:
+            out["refused"] = (f"subnet {sid}, which Kea runs, is not in {path}: Kea's running "
+                              "configuration and Mercury's file differ")
+            return out
+        want = _SENTINEL.format(D.fragment(main, family, sid))
+        (out["have"] if by_id[sid].get("reservations") == want else out["add"]).append(sid)
+    return out
+
+
 # =============================================================================================
 # Board C: a subnet's pool, options and lease times changed (C529 step 3; `DhcpSubnets.dc.html`
 # sections 2 and 3). Preview → confirm by hash as a verified person with a reason → apply holding

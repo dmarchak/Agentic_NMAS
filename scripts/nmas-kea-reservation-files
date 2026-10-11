@@ -35,6 +35,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
     from modules.integrations.kea import KeaIntegration
     from modules.list_settings import DEFAULT_LIST
     from modules.nsot import ztp
@@ -63,18 +64,26 @@ def main(argv=None) -> int:
         main = D.main_config(DEFAULT_LIST, family)
         with open(main, encoding="utf-8") as fh:
             text = fh.read()
-        plan = D.subnet_files(text, main, family, ids)
+        plan = S.reservation_files(text, main, family, ids)
         if plan["refused"]:
             print(f"{svc}: REFUSED: {plan['refused']}")
             rc = 1
             continue
         print(f"{svc}: Kea's subnets {sorted(ids)}; to give a file: {plan['add'] or 'none'}; "
-              f"already taking theirs from Mercury's file: {plan['have'] or 'none'}")
+              f"already taking theirs from Mercury's file: {plan['have'] or 'none'}"
+              + (f" (read from {S.subnets_file(main, family)}: the subnets moved, step 5)"
+                 if plan["moved"] else ""))
         if args.what == "verify":
             rc = rc or (1 if plan["add"] else 0)
             continue
         if args.what == "candidates":
             if not plan["add"]:
+                continue
+            if plan["moved"]:
+                print(f"{svc}: REFUSED: the subnets moved into {S.subnets_file(main, family)} "
+                      f"(C529 step 5); subnet {plan['add']} is changed on the DHCP page, not "
+                      "by this step")
+                rc = 1
                 continue
             for sid in plan["add"]:
                 path = D.fragment(main, family, sid)

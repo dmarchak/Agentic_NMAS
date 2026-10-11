@@ -138,9 +138,11 @@ def check_oxidized_pin(root: str = ROOT) -> dict:
 
 def check_kea_reservation_files(root: str = ROOT, kea=None) -> dict:
     """C529 step 2's host step: done when every subnet Kea runs, in both families, takes its
-    reservations from Mercury's file (`dhcp_reservations.subnet_files` finds none to add in
-    Kea's configuration files). Kea is asked for its subnets; its files are read."""
+    reservations from Mercury's file (`dhcp_subnets.reservation_files` finds none to add, read
+    in the files' shape now: Kea's own before step 5's move, Mercury's subnet file after it).
+    Kea is asked for its subnets; its files are read."""
     from modules import dhcp_reservations as D
+    from modules import dhcp_subnets as S
     from modules.list_settings import DEFAULT_LIST
 
     if kea is None:
@@ -156,7 +158,7 @@ def check_kea_reservation_files(root: str = ROOT, kea=None) -> dict:
         except (D.Refused, OSError) as exc:
             return {"state": "unknown", "detail": f"{family}: {exc}"}
         ids = [s.get("id") for s, _n in D._subnets(config, family)]     # noqa: SLF001
-        plan = D.subnet_files(text, main, family, ids)
+        plan = S.reservation_files(text, main, family, ids)
         if plan["refused"]:
             return {"state": "not_done", "detail": f"{family}: {plan['refused']}"}
         left += [f"{family} subnet {sid}" for sid in plan["add"]]
