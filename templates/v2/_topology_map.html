@@ -126,7 +126,7 @@
   {%- for y, words in g.bands %}<line class="topo-bandrule" x1="0" y1="{{ y - 12 }}" x2="{{ g.width }}" y2="{{ y - 12 }}"></line><text class="topo-band" x="10" y="{{ y + 2 }}">{{ words }}</text>{% endfor %}
   {%- for l in g.links %}
   {%- if l.sel or l.path %}<path class="topo-glow{{ ' topo-pathglow' if l.path and not l.sel }}" d="{{ l.d }}"></path>{% endif %}
-  <path class="topo-line topo-{{ l.cls }}{{ ' topo-ronly' if l.routing_only }}{{ ' topo-gone' if l.gone }}" d="{{ l.d }}"></path>
+  <path class="topo-line topo-{{ l.cls }}{{ ' topo-ronly' if l.routing_only }}{{ ' topo-gone' if l.gone }}" d="{{ l.d }}" data-a="{{ l.a }}" data-b="{{ l.b }}"></path>
   {%- endfor %}
   {%- if g.labels %}
   {%- for l in g.links %}
@@ -136,7 +136,7 @@
   {%- endfor %}
   {%- endif %}
   {%- for n in g.nodes %}
-  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath' if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}">
+  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath' if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}" data-node="{{ n.name }}">
     {%- if n.managed %}<a href="{{ url_for('device_v2.device', name=n.name, list=t.list) }}">{% endif %}
     <title>{{ n.label }}: {{ t.classes[n.cls] }}{% if n.role and n.cls not in ('router', 'switch', 'l3switch') %} ({{ n.role }}){% endif %}{% if n.manager %}, this host, where Mercury runs{% endif %}{% for tag in n.tags %}. {{ tag.words }}{% endfor %}</title>
     <rect class="topo-ic" x="{{ n.x - 17 }}" y="{{ n.y - 17 }}" width="34" height="34" rx="8"></rect>

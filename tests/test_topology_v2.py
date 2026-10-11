@@ -374,3 +374,78 @@ def test_an_unreadable_store_draws_nothing(web):
         fh.write("{not json")
     html = _get(web)
     assert "store cannot be read" in html and "<svg class=\"topo-map" not in html
+
+
+#: Every drawn link against every device it does not join, measured by the browser on what it
+#: drew: the path's points (every 2% of its length) against each device's icon, name and tags
+#: as laid out (getBBox), independent of the geometry that placed them.
+CROSSINGS_JS = """
+var map = document.querySelector('svg.topo-map'), out = [];
+var nodes = Array.prototype.map.call(map.querySelectorAll('g.topo-n'), function (g) {
+  return {name: g.getAttribute('data-node'), boxes: Array.prototype.map.call(
+    g.querySelectorAll('rect.topo-ic, text.topo-name, g.topo-tag rect'),
+    function (e) { var b = e.getBBox(); return [b.x, b.y, b.x + b.width, b.y + b.height,
+                                                e.getAttribute('class') || 'tag']; })};
+});
+var paths = map.querySelectorAll('path.topo-line');
+Array.prototype.forEach.call(paths, function (p) {
+  var a = p.getAttribute('data-a'), b = p.getAttribute('data-b'), len = p.getTotalLength();
+  nodes.forEach(function (n) {
+    if (n.name === a || n.name === b) return;
+    n.boxes.forEach(function (bb) {
+      for (var i = 1; i < 50; i++) {
+        var pt = p.getPointAtLength(len * i / 50);
+        if (pt.x >= bb[0] && pt.x <= bb[2] && pt.y >= bb[1] && pt.y <= bb[3]) {
+          out.push(a + '-' + b + ' crosses ' + n.name + "'s " + bb[4]); return;
+        }
+      }
+    });
+  });
+});
+return [out, nodes.length, paths.length];
+"""
+
+
+#: The host's layout as its reader stored it (read 2026-10-11 00:08 UTC, the same device names
+#: as the captures): r6 above r5 at the right, Mercury at the bottom; the straight line from
+#: r6 to Mercury passes s2, and the old fixed bow carried it through r5's cloud and name.
+HOST_LAYOUT = {"height": 669, "positions": {
+    "@mercury": [440, 589], "r1": [440, 64], "r2": [187, 64], "r3": [187, 239],
+    "r4": [440, 239], "r5": [693, 160], "r6": [693, 64], "s1": [725, 414], "s2": [535, 414],
+    "s3": [155, 414], "s4": [345, 414]}}
+
+
+def _with_mercury_on_r6(value):
+    """The host's case (C659, read on the host 2026-10-11): Mercury's host also attached to r6
+    Gi2, measured, on the host's own layout."""
+    net = value["networks"]["Lab"]
+    net["layers"]["physical"].append({
+        "a": T.MANAGER, "b": "r6", "port_a": "eth1", "port_b": "Gi2", "kind": "address",
+        "manager": True, "state": "up", "ends": {"r6": "up"}, "reported_by": [], "via": "Gi2",
+        "vlan": "", "since": "2026-10-10T19:00:00Z", "since_seen": False, "speed": None,
+        "unread": {}, "down_at": []})
+    net["layout"] = dict(net["layout"], height=HOST_LAYOUT["height"],
+                         positions=dict(HOST_LAYOUT["positions"]))
+    return value
+
+
+@pytest.mark.parametrize("case", ["captures", "mercury-on-r6"])
+def test_no_link_is_drawn_across_a_device_or_label_it_does_not_join(web, case):
+    """C659: on the host, Mercury's link to r6 was bowed through r5's cloud and name, reading as
+    r5 joined to Mercury. Measured in a real browser on what it drew, at the desktop board's
+    width, Weak points on (their tags are labels too)."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    value = _value()
+    if case == "mercury-on-r6":
+        value = _with_mercury_on_r6(value)
+    _store(value)
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        b.go(srv.url("/v2/topology?list=Lab"))
+        b.wait_for("return !!document.querySelector('svg.topo-map g.topo-n')", 10)
+        crossings, n_nodes, n_paths = b.js(CROSSINGS_JS)
+    assert n_nodes == len(MANAGED) + 2 and n_paths >= 12, (n_nodes, n_paths)
+    assert not crossings, "\n".join(sorted(set(crossings)))

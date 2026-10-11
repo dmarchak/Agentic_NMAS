@@ -8,8 +8,9 @@ headless Firefox, the page fed by the reader's value built from the real capture
 Boards: `TopoDesktop.dc.html` (1440 wide) and `TopoPhone.dc.html` (390 wide), on the mockups canvas (the operator's Design artifact), page "P.11 Topology: APPROVED 2026-10-04 (A to C)", approved as canvas version 34 on 2026-10-05 01:05 UTC with three fixes drawn on the same boards (NSOT_STAGE7_PLAN 15.8 and 15.9). `TopoWall.dc.html` is a later step.
 Shots: desktop 1440 and 1280; phone 390 (Firefox's narrowest window is 488 CSS px, so the page is held to a 390 px column; below 700 px the phone's rules apply to both).
 Compared 2026-10-10 (C649), and again the same day (C658: the operator, "those boards are what I want … fix every difference"). The first comparison marked 13 regions "deviation" and logged each as the agent's decision; C658 withdrew every one the board can be followed in (docs/STANDING_APPROVAL_LOG.md, C658's line). What remains different is listed below with its reason.
+Compared again 2026-10-11 (C659: the operator, "route the Mercury–r6 (Gi2) link so it doesn't pass through r5's cloud or label"): the boards draw every link clear of the devices it does not join, and the host's map bowed Mercury's link to r6 through r5's cloud and name. A link is now drawn straight when it crosses no other device's icon, name or tag, else bowed the least that clears them all, either side, on the map; checked in a real browser on what it drew, on the captures and on the host's own layout. The templates changed only by data attributes naming each link's ends and each device; at 1440, 1280 and 390 no region's verdict changed.
 Templates compared: templates/v2/topology.html, templates/v2/_topology_map.html
-Templates sha256: `6c0428a2d38d9eee4cd77fe4d71a18029c52d1af5019bad519222f7d36a2b031`
+Templates sha256: `562661dd2d16aaf39741ca73e3c1b886374dfb8097b5995307fa9852c700a4f7`
 
 A verdict is **same**, **deviation** (a difference with its approval log line and its reason: data,
 not design, or the operator's own decision), or **later** (a later step of the plan).

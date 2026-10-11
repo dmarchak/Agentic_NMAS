@@ -33,7 +33,7 @@ import math
 import os
 from urllib.parse import urlencode
 
-from modules.topology_layout import BANDS, HALF, W, _band, _near, layout, node_class
+from modules.topology_layout import BANDS, HALF, W, _band, layout, node_class
 
 log = logging.getLogger(__name__)
 
@@ -703,6 +703,89 @@ def _overlap(a: tuple, b: tuple) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
+def _tags(weak: list) -> dict:
+    """Each device's weak-point tags, as the map draws them above its icon."""
+    tags = {}
+    for w in weak:
+        if w["kind"] == "spof":
+            tags.setdefault(w["device"], []).append({"text": "SPOF", "cls": "spof",
+                                                     "words": w["words"]})
+        elif w["kind"] == "island":
+            tags.setdefault(w["device"], []).append({
+                "text": "island", "cls": "isl",
+                "words": f"Island: {w['why']}. {w['device']} cannot be reached through the "
+                         "rest until a link joins it."})
+        elif w["kind"] == "apart":
+            tags.setdefault(w["device"], []).append({
+                "text": "apart", "cls": "apart",
+                "words": f"Apart on purpose: {(w.get('expected') or {}).get('reason', '')}"})
+    return tags
+
+
+def _node_labels(nodes: dict, pos: dict, bgp) -> dict:
+    """Each device's name as drawn under it; an outside peer's with its AS ("r5 · AS 65002")."""
+    peer_as = {}
+    for adj in bgp:
+        for dev, asn in (adj.get("asn") or {}).items():
+            if (nodes.get(dev) or {}).get("outside"):
+                peer_as.setdefault(dev, asn)
+    return {name: label(name) + (f" · AS {peer_as[name]}" if name in peer_as else "")
+            for name in pos}
+
+
+#: The template's own numbers (`_topology_map.html`): the icon a 34 square on the device, its
+#: name at 12.5px mono (7.5 a character) with its baseline 32 below, each tag 15 high from 30
+#: above, 50 apart from 52 left. Each box has 3 to spare, a line's own half width.
+def node_boxes(x: float, y: float, name: str, tags=()) -> list:
+    """The boxes a device occupies on the map: its icon, its name, its tags."""
+    out = [(x - HALF - 3, y - HALF - 3, x + HALF + 3, y + HALF + 3)]
+    w = len(name) * 7.5
+    out.append((x - w / 2 - 3, y + 19, x + w / 2 + 3, y + 37))
+    for i, text in enumerate(tags):
+        x0 = x - 52 - i * 50
+        out.append((x0 - 3, y - 33, x0 + len(text) * 7 + 15, y - 12))
+    return out
+
+
+def _crossed(shape: tuple, boxes: list, bounds: tuple = None) -> int:
+    """How many of *boxes* a link's curve passes through, sampled every 2% of its length; a
+    stretch outside the map counts too."""
+    hit = set()
+    out = 0
+    for i in range(1, 50):
+        px, py = _bez(shape, i / 50)
+        if bounds and not (0 <= px <= bounds[0] and 0 <= py <= bounds[1]):
+            out += 1
+        for j, b in enumerate(boxes):
+            if b[0] <= px <= b[2] and b[1] <= py <= b[3]:
+                hit.add(j)
+    return len(hit) + (1 if out else 0)
+
+
+#: The bows a link may take, either side, before the least crossed is drawn.
+BOWS = (0, 30, 45, 60, 80, 105, 135, 170, 210)
+
+
+def _route(p1: tuple, p2: tuple, others: list, bounds: tuple) -> tuple:
+    """The control point of a link's curve: straight when it crosses no other device's icon,
+    name or tag; else the smallest bow, either side, that crosses none and stays on the map;
+    else the one that crosses fewest (C659)."""
+    (x1, y1), (x2, y2) = p1, p2
+    length = math.hypot(x2 - x1, y2 - y1) or 1
+    nx_, ny_ = -(y2 - y1) / length, (x2 - x1) / length
+    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+    best = None
+    for bow in BOWS:
+        for sign in ((1,) if not bow else (1, -1)):
+            c = (mx + nx_ * bow * 2 * sign, my + ny_ * bow * 2 * sign)
+            hits = _crossed((x1, y1, c[0], c[1], x2, y2, length), others, bounds)
+            if best is None or hits < best[0]:
+                best = (hits, c)
+            if not hits:
+                return c
+    return best[1]
+
+
 def _chip_w(text: str) -> int:
     return int(len(text) * 6.1 + 14)
 
@@ -730,9 +813,14 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
     pairs = {}
     for l in links:
         pairs.setdefault(tuple(sorted((l["a"], l["b"]))), []).append(l["id"])
-    # What a chip must not cover: each device's icon and name.
-    taken = [(x - HALF - 2, y - HALF - 2, x + HALF + 2, y + HALF + 2) for x, y in pos.values()]
-    taken += [(x - 34, y + 20, x + 34, y + 36) for x, y in pos.values()]
+    tags = _tags(weak) if s["weak"] == "1" else {}
+    names = _node_labels(nodes, pos, bgp)
+    # Each device's icon, name and tags: what a link it does not join must not cross (C659: a
+    # link drawn through a device, or under its name, reads as joining it), and what a chip must
+    # not cover.
+    boxes = {name: node_boxes(x, y, names[name], [t["text"] for t in tags.get(name, [])])
+             for name, (x, y) in pos.items()}
+    taken = [b for bs in boxes.values() for b in bs]
     shapes = {}
     for l in links:
         if l["a"] not in pos or l["b"] not in pos:
@@ -745,15 +833,8 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
         if l.get("routing_only"):
             shift += 22
         x1, y1, x2, y2 = (x1 - uy * shift, y1 + ux * shift, x2 - uy * shift, y2 + ux * shift)
-        # A link drawn straight through a device it does not join would read as joining it:
-        # bowed instead, away from the band (down for a link along a band, else to the right).
-        through = any(_near(q, (x1, y1), (x2, y2), 24) for name, q in pos.items()
-                      if name not in (l["a"], l["b"]))
-        bow = 52 if through else 0
-        nx_, ny_ = (-uy, ux) if -uy >= 0 else (uy, -ux)
-        if abs(uy) < 0.3:
-            nx_, ny_ = 0, 1
-        cx_, cy_ = (x1 + x2) / 2 + nx_ * bow * 2, (y1 + y2) / 2 + ny_ * bow * 2
+        others = [b for name, bs in boxes.items() if name not in (l["a"], l["b"]) for b in bs]
+        cx_, cy_ = _route((x1, y1), (x2, y2), others, (W, height))
         shapes[l["id"]] = (x1, y1, cx_, cy_, x2, y2, length)
     # Ports first (they sit by their device), then each link's chips at the first place along it,
     # from the middle outward, that covers nothing placed: the worst links choose first.
@@ -833,36 +914,14 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                           path=tuple(sorted((l["a"], l["b"]))) in on_path,
                           sel=l["id"] == s["sel"], labels=labels,
                           gone=gone in (l["a"], l["b"])))
-    tags = {}
-    if s["weak"] == "1":
-        for w in weak:
-            if w["kind"] == "spof":
-                tags.setdefault(w["device"], []).append({"text": "SPOF", "cls": "spof",
-                                                         "words": w["words"]})
-            elif w["kind"] == "island":
-                tags.setdefault(w["device"], []).append({
-                    "text": "island", "cls": "isl",
-                    "words": f"Island: {w['why']}. {w['device']} cannot be reached through the "
-                             "rest until a link joins it."})
-            elif w["kind"] == "apart":
-                tags.setdefault(w["device"], []).append({
-                    "text": "apart", "cls": "apart",
-                    "words": f"Apart on purpose: {(w.get('expected') or {}).get('reason', '')}"})
     matches = set(view_.get("matches") or [])
     on_trace = set(trace.get("nodes") or [])
-    peer_as = {}
-    for adj in bgp:
-        for dev, asn in (adj.get("asn") or {}).items():
-            if (nodes.get(dev) or {}).get("outside"):
-                peer_as.setdefault(dev, asn)
     out_nodes = []
     for name in sorted(pos):
         n = nodes.get(name) or {}
         x, y = pos[name]
         cls = node_class(name, n)
-        out_nodes.append({"name": name,
-                          "label": label(name) + (f" · AS {peer_as[name]}" if name in peer_as
-                                                  else ""),
+        out_nodes.append({"name": name, "label": names[name],
                           "x": x, "y": y, "cls": cls, "icon": _ICON[cls],
                           "managed": n.get("managed", False), "outside": n.get("outside", False),
                           "answering": n.get("answering", True) or not n.get("managed"),
