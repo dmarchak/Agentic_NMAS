@@ -31,12 +31,13 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: The page's tabs (board F), in order. Connections and Server are built (F2, F3); the rest are
-#: on today's Settings page until drawn here.
+#: The page's tabs (board F), in order. Server's one card is on Connections (C664: the operator,
+#: 2026-10-11, "we don't need an entire tab for one setting"); an old `?tab=server` link opens
+#: Connections.
 TABS = (("connections", "Connections"), ("access", "Access and identity"),
-        ("platforms", "Platforms and roles"), ("server", "Server"),
+        ("platforms", "Platforms and roles"),
         ("ai", "AI and workflow"), ("diagnostics", "Diagnostics"))
-BUILT_TABS = ("connections", "access", "platforms", "server", "ai", "diagnostics")
+BUILT_TABS = ("connections", "access", "platforms", "ai", "diagnostics")
 #: The records database card's fields, in the card's order (the password is a secret, drawn
 #: as set or unset and changed only by Replace…).
 FIELDS = ("records_db_host", "records_db_port", "records_db_name", "records_db_user")
@@ -312,7 +313,7 @@ CARDS = {
                 "author line.",
     },
     "server": {
-        "group": "web_server", "title": "Server", "tab": "server",
+        "group": "web_server", "title": "Server", "tab": "connections",
         "fields": (_f("flask_host", "Bind", "host"), _f("flask_port", "Port", "port")),
         "secret": None, "with_id": None, "integration": None,
         "note": "Bind and port take effect at the next restart, and the result says so.",

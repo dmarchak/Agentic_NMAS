@@ -18,8 +18,9 @@
   var MIN_SCALE = 0.25, MAX_SCALE = 6;
   /* A press that moves less than this many screen pixels is a click. */
   var CLICK_SLOP = 4;
-  /* The fewest screen pixels a map unit is first drawn at: a name (12.5 units) stays about 7.5
-     pixels, readable. */
+  /* On a phone's narrow box (under 700 px), the fewest screen pixels a map unit is first drawn
+     at: a name (12.5 units) stays about 7.5 pixels, readable. A wider box opens on the whole map
+     (the board's 100%). */
   var READABLE = 0.6;
 
   /* PURE: a view box zoomed by *factor* about the point (px, py) in map units, its scale kept
@@ -31,6 +32,16 @@
     if (scale > MAX_SCALE) w = width / MAX_SCALE;
     var f = view.w / w;
     return {x: px - (px - view.x) / f, y: py - (py - view.y) / f, w: w, h: view.h / f};
+  }
+
+  /* PURE: how far a view is zoomed, 1 being the whole map *s* fitted in a box *bw* by *bh*
+     pixels: the pixels a map unit gets in the view over those it gets at the fit, each the
+     smaller of across and down (the box keeps the map's proportions). Measured on the host's map
+     (C661's walk): a map taller than its box fits by its height, and a ratio of widths alone
+     called the whole map 93%, hiding Labels Auto at the first view. */
+  function scaleOf(s, view, bw, bh) {
+    if (!bw || !bh) return s.w / view.w;
+    return Math.min(bw / view.w, bh / view.h) / Math.min(bw / s.w, bh / s.h);
   }
 
   /* PURE: the view a zoom step asks for (the server's steps, 50 to 200), the whole map at 100. */
@@ -70,7 +81,7 @@
       return Math.round(n * 10) / 10;
     }).join(' '));
     views[box.getAttribute('data-topo-view')] = view;
-    var scale = size(svg).w / view.w;
+    var scale = scaleOf(size(svg), view, box.clientWidth, box.clientHeight);
     svg.classList.toggle('topo-far', scale < 0.95);
     var region = box.closest('#topo');
     var fit = region && region.querySelector('[data-topo-zoom="fit"]');
@@ -231,6 +242,26 @@
     }
   }
 
+  /* C668: a click on the map's empty space, or Escape, closes the selected link's card (its close
+     link, .topo-cardx, is pressed, so the region redraws without the selection). A click on a
+     device, a link or a card is theirs. */
+  function closeSelected() {
+    var x = root.document.querySelector('#topo .topo-cardx');
+    if (x) x.click();
+    return !!x;
+  }
+
+  function onClickOff(evt) {
+    if (evt.defaultPrevented || !evt.target.closest) return;
+    if (!evt.target.closest('[data-topo-view]')) return;
+    if (evt.target.closest('[data-node], .topo-l, .topo-card')) return;
+    closeSelected();
+  }
+
+  function onEscape(evt) {
+    if (evt.key === 'Escape' && closeSelected()) evt.preventDefault();
+  }
+
   function onWheel(evt) {
     var box = evt.target.closest && evt.target.closest('[data-topo-view]');
     if (!box) return;
@@ -290,7 +321,8 @@
       if (!svg) return;
       var s = size(svg), kept = views[box.getAttribute('data-topo-view')];
       setView(box, kept || firstView(s, box.clientWidth, box.clientHeight,
-                                     parseFloat(svg.getAttribute('data-z')) || 100, READABLE));
+                                     parseFloat(svg.getAttribute('data-z')) || 100,
+                                     box.clientWidth < 700 ? READABLE : 0));
     });
   }
 
@@ -301,11 +333,13 @@
     root.document.addEventListener('pointercancel', onUp);
     root.document.addEventListener('click', onClick, true);
     root.document.addEventListener('click', onZoomButton, true);
+    root.document.addEventListener('click', onClickOff);
+    root.document.addEventListener('keydown', onEscape);
     root.document.addEventListener('wheel', onWheel, {passive: false});
     root.document.addEventListener('keydown', onKey);
     root.document.addEventListener('DOMContentLoaded', ready);
     root.document.addEventListener('htmx:afterSwap', ready);
   }
-  root.NMAS_TOPOLOGY = {zoomAt: zoomAt, initial: initial, firstView: firstView,
+  root.NMAS_TOPOLOGY = {zoomAt: zoomAt, initial: initial, firstView: firstView, scaleOf: scaleOf,
                         layoutJson: layoutJson, straight: straight};
 }(typeof window !== 'undefined' ? window : this));

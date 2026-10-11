@@ -544,6 +544,69 @@ def test_drag_pan_and_zoom_in_a_browser(web):
         assert again == stored
 
 
+def test_a_map_taller_than_its_box_opens_whole_at_100_with_its_labels(web):
+    """C661's walk on the host: the host's layout is taller than the map's box, the fit is set
+    by the height, and the first view read 93% (widths alone), hiding Labels Auto. Planted: the
+    captures' devices placed down a tall column."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    value = _value()
+    net = value["networks"]["Lab"]
+    names = sorted(net["nodes"])
+    net["layout"] = {"positions": {n: [200 + (i % 2) * 300, 80 + i * 140]
+                                   for i, n in enumerate(names)},
+                     "width": 880, "height": 80 + len(names) * 140 + 90, "placed": []}
+    _store(value)
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        b.go(srv.url("/v2/topology?list=Lab"))
+        b.wait_for("return window.NMAS_TOPOLOGY && document.querySelector('svg.topo-map')")
+        assert b.js("return document.querySelector('[data-topo-zoom=\"fit\"]').textContent") \
+            == "100%"
+        assert not b.js("return document.querySelector('svg.topo-map')"
+                        ".classList.contains('topo-far')")
+
+
+def test_a_selected_link_s_card_closes_and_is_smaller_in_a_browser(web):
+    """C668: a link selected from Needs attention holds its card open; a click on the map's empty
+    space, Escape, or the card's own × closes it (the selection gone from the region); the card is
+    250 map units wide, not 320."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    html = _get(web)
+    sel = re.search(r'class="topo-ent[^"]*"[^>]*href="[^"]*sel=([^&"]+)', html).group(1)
+    assert 'width="250"' in _get(web, f"&sel={sel}") and 'width="320"' not in html
+    assert 'class="topo-cardx"' in _get(web, f"&sel={sel}") and 'class="topo-cardx"' not in html
+    import app as A
+
+    def selected(b):
+        return b.js("return !!document.querySelector('.topo-l.topo-sel')")
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        for how in ("click", "escape"):
+            b.go(srv.url(f"/v2/topology?list=Lab&sel={sel}&tab=map"))
+            b.wait_for("return window.NMAS_TOPOLOGY && document.querySelector('.topo-l.topo-sel')")
+            assert selected(b)
+            if how == "click":
+                # The map's empty top-left corner: no device, link or card there.
+                el = b._call("POST", f"/session/{b.session}/element",
+                             {"using": "css selector", "value": "[data-topo-view]"})
+                b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+                    "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+                    "actions": [{"type": "pointerMove", "origin": el, "x": -330, "y": -170},
+                                {"type": "pointerDown", "button": 0},
+                                {"type": "pointerUp", "button": 0}]}]})
+            else:
+                b.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', "
+                     "bubbles: true})); return 1")
+            b.wait_for("return !document.querySelector('.topo-l.topo-sel')")
+            assert "sel=" not in b.js("return location.search"), how
+
+
 @pytest.mark.real_identity
 def test_no_person_declares_nothing(web):
     r = web["client"].post("/v2/topology/expected",

@@ -1055,6 +1055,7 @@ select { max-width: 100%; }
 .set-label { font-size: 13px; color: var(--ink-2); }
 /* Installation's cards, one column up to board F's 820 px. */
 .set-cards-one { grid-template-columns: minmax(0, 820px); }
+.set-cards-conn { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
 .set-meta { margin: -4px 0 8px; }
 /* A form's foot is a row: `.set-form > div` (each field's column) out-ranked `.set-foot` and
    stacked Save, its link and Test down the middle (seen 2026-10-09, F2's card and A's). */
@@ -1392,11 +1393,16 @@ select { max-width: 100%; }
 .topo-card { display: none; overflow: visible; }
 .topo-l:hover .topo-card, .topo-l:focus-within .topo-card, .topo-l.topo-sel .topo-card { display: block; }
 .topo-cardbox { background: var(--surface); border: 1px solid var(--ink-3); border-radius: 8px; box-shadow: var(--shadow);
-  padding: 10px 12px; font-size: 12.5px; line-height: 1.45; color: var(--ink); display: flex; flex-direction: column; gap: 5px; }
+  padding: 7px 9px; font-size: 11px; line-height: 1.35; color: var(--ink); display: flex; flex-direction: column; gap: 3px; }
 .topo-cardbox dl, .topo-sheet dl { display: grid; grid-template-columns: 96px 1fr; gap: 3px 10px; margin: 0; }
 .topo-cardbox dt, .topo-sheet dt { color: var(--ink-2); }
 .topo-cardbox dd, .topo-sheet dd { margin: 0; }
+/* C668: the hover card smaller (the operator, 2026-10-11: "the pop up text boxes are too large"). */
+.topo-cardbox dl { grid-template-columns: 70px 1fr; gap: 2px 8px; }
 .topo-cardline { display: block; }
+.topo-cardt { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.topo-cardx { color: var(--ink-2); text-decoration: none; font-size: 15px; line-height: 1; padding: 0 2px; }
+.topo-cardx:hover, .topo-cardx:focus-visible { color: var(--ink); }
 .topo-legend { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; padding: 6px 10px;
   border-top: 1px solid var(--line-2); color: var(--ink-2); font-size: 11.5px; }
 .topo-legend span { display: inline-flex; gap: 4px; align-items: center; }

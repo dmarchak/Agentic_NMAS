@@ -32,7 +32,9 @@
     <tr>
       <td>{{ n.name }}</td>
       <td>{{ badge(STATE[n.state][0], STATE[n.state][1]) }}{% if n.state == 'disabled' and n.disabled_by %} <span class="muted small">by {{ n.disabled_by }}{% if n.disabled_at %} {{ n.disabled_at }}{% endif %}</span>{% endif %}{% if n.why %} <span class="muted small">{{ n.why }}</span>{% endif %}</td>
-      <td>{% if n.last_iso %}{{ stamp(n.last_iso) }}{% if n.last_words %} <span class="muted small{% if not n.last_ok %} warn-text{% endif %}">{{ n.last_words }}</span>{% endif %}{% else %}<span class="muted">never</span>{% endif %}</td>
+      {#- C666: how long ago, nothing more; what the run found is on hover (and a failed run says
+          "failed", its words on hover). -#}
+      <td>{% if n.last_iso %}{{ stamp(n.last_iso, note=n.last_words) }}{% if not n.last_ok %} {{ badge('failed', 'warn', title=n.last_words) }}{% endif %}{% else %}<span class="muted">never</span>{% endif %}</td>
       <td>{% if n.next_iso %}{{ stamp(n.next_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="set-row-acts">
         {%- if n.state in ('idle', 'disabled') %}

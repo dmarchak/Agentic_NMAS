@@ -251,6 +251,27 @@ class TestDiagnostics:
             _section(html, sid)
         assert 'data-todays-page' not in html.split('id="tab-body"')[1]
 
+    def test_the_app_log_sits_in_line_and_last_says_how_long_ago(self, networks, monkeypatch):
+        """C664: the app's log is a card like the others, not a full-width row. C666: the drift
+        check's Last column says how long ago; what the run found is on hover, and a failed run
+        says "failed" with its words on hover."""
+        from modules import installation_diagnostics as D
+        html = _get(networks, "/v2/settings/installation?tab=diagnostics")[1]
+        assert '<section class="card set-card" id="diag-log"' in html
+        words = "3 devices drifted: r1 (2 sections), r2 (1 section), s1 (4 sections); see Needs"
+        for ok in (True, False):
+            monkeypatch.setattr(D, "drift", lambda ok=ok: {
+                "interval_s": 14400, "choices": [(14400, "4 hours")], "rows": [{
+                    "name": "Default", "state": "idle", "why": "", "disabled_by": "",
+                    "disabled_at": "", "last_iso": "2026-10-11T01:00:00Z", "last_words": words,
+                    "last_ok": ok, "next_iso": "2026-10-11T05:00:00Z"}]})
+            card = _get(networks, "/v2/settings/installation?tab=diagnostics")[1]
+            row = re.search(r"<td>[^<]*<time class=\"stamp\".*?</td>",
+                            card[card.index('id="diag-drift"'):], re.S).group(0)
+            assert words not in re.sub(r'title="[^"]*"', "", row), row
+            assert f"2026-10-11T01:00:00Z · {words}" in row
+            assert ("failed" in row) is (not ok)
+
     def test_redaction_healthy_and_not_and_its_needs_attention_row(self, networks, monkeypatch):
         from modules import attention, redact
         card = _section(_get(networks, "/v2/settings/installation/diagnostics/redaction")[1],
@@ -582,13 +603,20 @@ class TestTheCards:
         _r, conn = _get(networks, "/v2/settings/installation")
         for name in ("netbox", "proxmox", "author"):
             _kcard(conn, name)
-        assert 'id="records-db"' in conn and 'id="card-server"' not in conn
+        assert 'id="records-db"' in conn
         assert 'data-todays-page' not in body(conn) and "today's" not in body(conn)
-        _r, server = _get(networks, "/v2/settings/installation?tab=server")
-        card = _kcard(server, "server")
+        # C664: Server's one card is on Connections, no tab of its own; an old link opens
+        # Connections. The cards fill the rows, the record stores last, free to grow.
+        card = _kcard(conn, "server")
         assert 'name="flask_host"' in card and 'name="flask_port"' in card
         assert "tftp" not in card.lower(), "the TFTP root retired (C616), not drawn"
-        assert 'data-todays-page' not in body(server)
+        assert ">Server</a>" not in conn and 'class="set-cards set-cards-conn"' in conn
+        order = [conn.index(s) for s in ('id="records-db"', 'id="card-netbox"',
+                                          'id="card-proxmox"', 'id="card-author"',
+                                          'id="card-server"', 'id="records-stores"')]
+        assert order == sorted(order)
+        _r, old = _get(networks, "/v2/settings/installation?tab=server")
+        assert 'id="card-server"' in old and 'id="records-db"' in old
 
     def test_each_field_is_a_control_and_a_token_is_never_drawn(self, networks):
         from modules.secrets_store import set_secret

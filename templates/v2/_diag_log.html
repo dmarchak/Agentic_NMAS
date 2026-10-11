@@ -3,7 +3,7 @@
     read on request and never polled. Every line was masked as it was written (the redaction
     card above). Absent and unreadable are different states. From
     modules/installation_diagnostics.app_log (modules/app_log). -#}
-<section class="card set-card set-card-wide" id="diag-log" aria-labelledby="h-diag-log">
+<section class="card set-card" id="diag-log" aria-labelledby="h-diag-log">
   <div class="card-head"><h2 id="h-diag-log">The app's log</h2>{{ badge('this host', 'neutral') }} <span class="muted small">read {{ stamp(lg.at_iso) }}</span></div>
   <form class="set-inline" method="get" action="{{ url_for('settings_v2.diag_log') }}"
         hx-get="{{ url_for('settings_v2.diag_log') }}" hx-target="#diag-log" hx-swap="outerHTML">

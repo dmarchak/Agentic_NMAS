@@ -25,14 +25,20 @@
 {%- elif tab == 'platforms' %}
 {% include "v2/_install_platforms.html" %}
 {%- else %}
-<div class="set-cards">
+{#- C664 (the operator, 2026-10-11): Connections fills its rows (the records database beside
+    NetBox, Proxmox, Commit author and Server, three across where they fit) and the record
+    stores come last, the full width, free to grow downwards; Diagnostics' app log sits in line
+    with the other cards. -#}
+<div class="set-cards{{ ' set-cards-conn' if tab == 'connections' }}">
 {%- if tab == 'connections' %}
 {% include "v2/_records_db_card.html" %}
-{% include "v2/_records_stores.html" %}
 {%- endif %}
 {%- for k in cards %}
 {% include "v2/_install_card.html" %}
 {%- endfor %}
+{%- if tab == 'connections' %}
+{% include "v2/_records_stores.html" %}
+{%- endif %}
 {%- if tab == 'ai' %}
 {% include "v2/_install_agent.html" %}
 {%- endif %}

@@ -47,7 +47,9 @@ The line says how the link compares with intent, never by colour alone:
 **Hover** on a link (or tab to it) for its card: both ends, the link's state and since when, a
 row per protocol with its area or the peer's AS, the state against intent ("2WAY, intended FULL;
 since 20:58 UTC"), what passes over the link, and links to each end's Neighbours tab. **Click** a link
-to select it: it glows, its card stays open, and its entry in Needs attention is marked.
+to select it (or click its entry in Needs attention): it glows, its card stays open, and its
+entry is marked. To close it, click the card's **×**, click anywhere on the map's empty space, or
+press **Escape**.
 
 The toolbar: **Protocols** chooses which protocols' chips and states are drawn (OSPF, OSPFv3, BGP,
 RIP / RIPng; EIGRP and IS-IS are drawn unpressed and do not press, since Mercury does not read

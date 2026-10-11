@@ -167,9 +167,11 @@
   {%- for l in g.links %}
   <g class="topo-l{{ ' topo-sel' if l.sel }}">
     <a class="topo-hit" href="{{ page }}{{ t.qs({'sel': l.id, 'tab': 'map'}) }}" hx-get="{{ region }}{{ t.qs({'sel': l.id, 'tab': 'map'}) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ page }}{{ t.qs({'sel': l.id, 'tab': 'map'}) }}" aria-label="{{ l.title }}: {{ t.line_words[l.cls] }}"><path d="{{ l.hit }}"></path></a>
-    <foreignObject class="topo-card" x="{{ l.card_x }}" y="{{ l.card_y }}" width="320" height="{{ l.card_h }}">
+    <foreignObject class="topo-card" x="{{ l.card_x }}" y="{{ l.card_y }}" width="{{ g.card_w }}" height="{{ l.card_h }}">
       <div class="topo-cardbox" role="tooltip">
-        <strong class="mono">{{ l.title }}</strong>
+        {#- C668: a selected link's card closes: this, a click on the map's empty space, or Escape
+            (static/js/nmas_topology.js presses this link). -#}
+        <strong class="mono topo-cardt">{{ l.title }}{% if l.sel %}<a class="topo-cardx" href="{{ page }}{{ t.qs({'sel': '', 'tab': 'map'}) }}" hx-get="{{ region }}{{ t.qs({'sel': '', 'tab': 'map'}) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ page }}{{ t.qs({'sel': '', 'tab': 'map'}) }}" aria-label="Close: deselect {{ l.title }}" title="Close (Esc, or click the map)">×</a>{% endif %}</strong>
         <dl>
           {%- if not l.routing_only %}<dt>Link</dt><dd>{{ badge(l.state if l.state != 'unknown' else 'not read', {'up': 'ok', 'down': 'danger'}.get(l.state, 'neutral')) }} {{ l.how }}{% if l.since %}; {{ since_words(l.since, l.since_seen) }}{% endif %}</dd>{% endif %}
           {%- for r in l.rows %}<dt>{{ r.dt }}</dt><dd>{{ badge(r.chip, {'ok': 'ok', 'warn': 'warn', 'bad': 'danger'}.get(r.cls, 'neutral')) }} {% for line in r.lines %}<span class="topo-cardline">{{ line }}</span>{% endfor %}</dd>{% endfor %}

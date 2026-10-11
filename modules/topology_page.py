@@ -792,9 +792,15 @@ def _chip_w(text: str) -> int:
     return int(len(text) * 6.1 + 14)
 
 
+#: A link's hover card, in map units (C668: the operator, 2026-10-11, "the pop up text boxes are
+#: too large"): 250 wide at 11 px, a 70 px term column, so about 28 characters a line of text.
+CARD_W, CARD_CHARS, CARD_LINE = 250, 28, 15
+
+
 def _card_h(l: dict) -> int:
-    lines = 2 + sum(1 + sum(math.ceil(len(x) / 46) for x in r["lines"]) for r in l["rows"])
-    return 60 + lines * 17 + (17 if l["none"] else 0)
+    lines = 2 + sum(1 + sum(math.ceil(len(x) / CARD_CHARS) for x in r["lines"])
+                    for r in l["rows"])
+    return 40 + lines * CARD_LINE + (CARD_LINE if l["none"] else 0)
 
 
 def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
@@ -919,7 +925,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
         (hx1, hy1), (hx2, hy2) = _bez(shapes[l["id"]], 0.2), _bez(shapes[l["id"]], 0.8)
         hcx, hcy = _bez(shapes[l["id"]], 0.5)
         card_h = _card_h(l)
-        cx = min(max(mx + 14, 8), width - 328)
+        cx = min(max(mx + 14, 8), width - CARD_W - 8)
         cy = min(max(my + 14, 8), max(height - card_h - 4, 8))
         drawn.append(dict(l, d=f"M{x1:.0f} {y1:.0f}Q{cx_:.0f} {cy_:.0f} {x2:.0f} {y2:.0f}",
                           hit=f"M{hx1:.0f} {hy1:.0f}Q{hcx:.0f} {hcy:.0f} {hx2:.0f} {hy2:.0f}",
@@ -947,7 +953,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                           "island": any(t["cls"] == "isl" for t in tags.get(name, [])),
                           "spof": any(t["cls"] == "spof" for t in tags.get(name, [])),
                           "role": n.get("role") or "", "manager": name == MANAGER})
-    return {"width": width, "height": height, "links": drawn,
+    return {"width": width, "height": height, "card_w": CARD_W, "links": drawn,
             "nodes": out_nodes, "labels": labels, "z": s["z"]}
 
 
