@@ -1,0 +1,274 @@
+[
+ {
+  "arguments": {
+   "Dhcp4": {
+    "allocator": "iterative",
+    "authoritative": false,
+    "boot-file-name": "",
+    "calculate-tee-times": false,
+    "control-socket": {
+     "socket-name": "/run/kea/kea4-ctrl-socket",
+     "socket-type": "unix"
+    },
+    "ddns-generated-prefix": "myhost",
+    "ddns-override-client-update": false,
+    "ddns-override-no-update": false,
+    "ddns-qualifying-suffix": "",
+    "ddns-replace-client-name": "never",
+    "ddns-send-updates": true,
+    "ddns-update-on-renew": false,
+    "ddns-use-conflict-resolution": true,
+    "decline-probation-period": 86400,
+    "dhcp-ddns": {
+     "enable-updates": false,
+     "max-queue-size": 1024,
+     "ncr-format": "JSON",
+     "ncr-protocol": "UDP",
+     "sender-ip": "0.0.0.0",
+     "sender-port": 0,
+     "server-ip": "127.0.0.1",
+     "server-port": 53001
+    },
+    "dhcp-queue-control": {
+     "capacity": 64,
+     "enable-queue": false,
+     "queue-type": "kea-ring4"
+    },
+    "dhcp4o6-port": 0,
+    "early-global-reservations-lookup": false,
+    "echo-client-id": true,
+    "expired-leases-processing": {
+     "flush-reclaimed-timer-wait-time": 25,
+     "hold-reclaimed-time": 3600,
+     "max-reclaim-leases": 100,
+     "max-reclaim-time": 250,
+     "reclaim-timer-wait-time": 10,
+     "unwarned-reclaim-cycles": 5
+    },
+    "hooks-libraries": [
+     {
+      "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_lease_cmds.so"
+     }
+    ],
+    "host-reservation-identifiers": [
+     "hw-address",
+     "duid",
+     "circuit-id",
+     "client-id"
+    ],
+    "hostname-char-replacement": "",
+    "hostname-char-set": "[^A-Za-z0-9.-]",
+    "interfaces-config": {
+     "interfaces": [
+      "enp6s19"
+     ],
+     "re-detect": true
+    },
+    "ip-reservations-unique": true,
+    "lease-database": {
+     "lfc-interval": 3600,
+     "name": "/var/lib/kea/kea-leases4.csv",
+     "type": "memfile"
+    },
+    "loggers": [
+     {
+      "debuglevel": 0,
+      "name": "kea-dhcp4",
+      "output_options": [
+       {
+        "flush": true,
+        "maxsize": 10240000,
+        "maxver": 1,
+        "output": "/var/log/kea/kea-dhcp4.log",
+        "pattern": ""
+       }
+      ],
+      "severity": "INFO"
+     }
+    ],
+    "match-client-id": true,
+    "multi-threading": {
+     "enable-multi-threading": true,
+     "packet-queue-size": 64,
+     "thread-pool-size": 0
+    },
+    "next-server": "0.0.0.0",
+    "option-data": [],
+    "option-def": [],
+    "parked-packet-limit": 256,
+    "rebind-timer": 27594000,
+    "renew-timer": 15768000,
+    "reservations-global": false,
+    "reservations-in-subnet": true,
+    "reservations-lookup-first": false,
+    "reservations-out-of-pool": false,
+    "sanity-checks": {
+     "extended-info-checks": "fix",
+     "lease-checks": "warn"
+    },
+    "server-hostname": "",
+    "server-tag": "",
+    "shared-networks": [],
+    "statistic-default-sample-age": 0,
+    "statistic-default-sample-count": 20,
+    "store-extended-info": false,
+    "subnet4": [
+     {
+      "4o6-interface": "",
+      "4o6-interface-id": "",
+      "4o6-subnet": "",
+      "allocator": "iterative",
+      "calculate-tee-times": false,
+      "id": 10,
+      "max-valid-lifetime": 31536000,
+      "min-valid-lifetime": 31536000,
+      "option-data": [
+       {
+        "always-send": false,
+        "code": 3,
+        "csv-format": true,
+        "data": "10.10.10.1",
+        "name": "routers",
+        "never-send": false,
+        "space": "dhcp4"
+       },
+       {
+        "always-send": false,
+        "code": 6,
+        "csv-format": true,
+        "data": "10.255.0.10",
+        "name": "domain-name-servers",
+        "never-send": false,
+        "space": "dhcp4"
+       },
+       {
+        "always-send": false,
+        "code": 15,
+        "csv-format": true,
+        "data": "rcn.lab",
+        "name": "domain-name",
+        "never-send": false,
+        "space": "dhcp4"
+       }
+      ],
+      "pools": [
+       {
+        "option-data": [],
+        "pool": "10.10.10.100-10.10.10.200"
+       }
+      ],
+      "rebind-timer": 27594000,
+      "relay": {
+       "ip-addresses": [
+        "10.10.10.2",
+        "10.10.10.3"
+       ]
+      },
+      "renew-timer": 15768000,
+      "reservations": [],
+      "store-extended-info": false,
+      "subnet": "10.10.10.0/24",
+      "t1-percent": 0.5,
+      "t2-percent": 0.875,
+      "user-context": {
+       "comment": "VLAN 10 - h1, h3"
+      },
+      "valid-lifetime": 31536000
+     },
+     {
+      "4o6-interface": "",
+      "4o6-interface-id": "",
+      "4o6-subnet": "",
+      "allocator": "iterative",
+      "calculate-tee-times": false,
+      "id": 20,
+      "max-valid-lifetime": 31536000,
+      "min-valid-lifetime": 31536000,
+      "option-data": [
+       {
+        "always-send": false,
+        "code": 3,
+        "csv-format": true,
+        "data": "10.10.20.1",
+        "name": "routers",
+        "never-send": false,
+        "space": "dhcp4"
+       },
+       {
+        "always-send": false,
+        "code": 6,
+        "csv-format": true,
+        "data": "10.255.0.10",
+        "name": "domain-name-servers",
+        "never-send": false,
+        "space": "dhcp4"
+       },
+       {
+        "always-send": false,
+        "code": 15,
+        "csv-format": true,
+        "data": "rcn.lab",
+        "name": "domain-name",
+        "never-send": false,
+        "space": "dhcp4"
+       }
+      ],
+      "pools": [
+       {
+        "option-data": [],
+        "pool": "10.10.20.100-10.10.20.200"
+       }
+      ],
+      "rebind-timer": 27594000,
+      "relay": {
+       "ip-addresses": [
+        "10.10.20.2",
+        "10.10.20.3"
+       ]
+      },
+      "renew-timer": 15768000,
+      "reservations": [],
+      "store-extended-info": false,
+      "subnet": "10.10.20.0/24",
+      "t1-percent": 0.5,
+      "t2-percent": 0.875,
+      "user-context": {
+       "comment": "VLAN 20 - h2"
+      },
+      "valid-lifetime": 31536000
+     },
+     {
+      "4o6-interface": "",
+      "4o6-interface-id": "",
+      "4o6-subnet": "",
+      "allocator": "iterative",
+      "calculate-tee-times": false,
+      "id": 255,
+      "interface": "enp6s19",
+      "max-valid-lifetime": 31536000,
+      "min-valid-lifetime": 31536000,
+      "option-data": [],
+      "pools": [],
+      "rebind-timer": 27594000,
+      "relay": {
+       "ip-addresses": []
+      },
+      "renew-timer": 15768000,
+      "reservations": [],
+      "reservations-out-of-pool": true,
+      "store-extended-info": false,
+      "subnet": "10.255.0.0/24",
+      "t1-percent": 0.5,
+      "t2-percent": 0.875,
+      "valid-lifetime": 31536000
+     }
+    ],
+    "t1-percent": 0.5,
+    "t2-percent": 0.875,
+    "valid-lifetime": 31536000
+   },
+   "hash": "B6DF5618EBC98D62CBB71720A957DAE5AD3FBFC8D2B2EFFAAE04BE007EEBD0FE"
+  },
+  "result": 0
+ }
+]

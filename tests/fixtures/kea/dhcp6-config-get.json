@@ -1,0 +1,283 @@
+[
+ {
+  "arguments": {
+   "Dhcp6": {
+    "allocator": "iterative",
+    "calculate-tee-times": true,
+    "control-socket": {
+     "socket-name": "/run/kea/kea6-ctrl-socket",
+     "socket-type": "unix"
+    },
+    "ddns-generated-prefix": "myhost",
+    "ddns-override-client-update": false,
+    "ddns-override-no-update": false,
+    "ddns-qualifying-suffix": "",
+    "ddns-replace-client-name": "never",
+    "ddns-send-updates": true,
+    "ddns-update-on-renew": false,
+    "ddns-use-conflict-resolution": true,
+    "decline-probation-period": 86400,
+    "dhcp-ddns": {
+     "enable-updates": false,
+     "max-queue-size": 1024,
+     "ncr-format": "JSON",
+     "ncr-protocol": "UDP",
+     "sender-ip": "0.0.0.0",
+     "sender-port": 0,
+     "server-ip": "127.0.0.1",
+     "server-port": 53001
+    },
+    "dhcp-queue-control": {
+     "capacity": 64,
+     "enable-queue": false,
+     "queue-type": "kea-ring6"
+    },
+    "dhcp4o6-port": 0,
+    "early-global-reservations-lookup": false,
+    "expired-leases-processing": {
+     "flush-reclaimed-timer-wait-time": 25,
+     "hold-reclaimed-time": 3600,
+     "max-reclaim-leases": 100,
+     "max-reclaim-time": 250,
+     "reclaim-timer-wait-time": 10,
+     "unwarned-reclaim-cycles": 5
+    },
+    "hooks-libraries": [
+     {
+      "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_lease_cmds.so"
+     }
+    ],
+    "host-reservation-identifiers": [
+     "hw-address",
+     "duid"
+    ],
+    "hostname-char-replacement": "",
+    "hostname-char-set": "[^A-Za-z0-9.-]",
+    "interfaces-config": {
+     "interfaces": [
+      "enp6s19/2001:db8:255::10"
+     ],
+     "re-detect": true
+    },
+    "ip-reservations-unique": true,
+    "lease-database": {
+     "lfc-interval": 3600,
+     "name": "/var/lib/kea/kea-leases6.csv",
+     "type": "memfile"
+    },
+    "loggers": [
+     {
+      "debuglevel": 0,
+      "name": "kea-dhcp6",
+      "output_options": [
+       {
+        "flush": true,
+        "maxsize": 10240000,
+        "maxver": 1,
+        "output": "/var/log/kea/kea-dhcp6.log",
+        "pattern": ""
+       }
+      ],
+      "severity": "INFO"
+     }
+    ],
+    "mac-sources": [
+     "any"
+    ],
+    "multi-threading": {
+     "enable-multi-threading": true,
+     "packet-queue-size": 64,
+     "thread-pool-size": 0
+    },
+    "option-data": [],
+    "option-def": [],
+    "parked-packet-limit": 256,
+    "pd-allocator": "iterative",
+    "preferred-lifetime": 31536000,
+    "rebind-timer": 27594000,
+    "relay-supplied-options": [
+     "65"
+    ],
+    "renew-timer": 15768000,
+    "reservations-global": false,
+    "reservations-in-subnet": true,
+    "reservations-lookup-first": false,
+    "reservations-out-of-pool": false,
+    "sanity-checks": {
+     "extended-info-checks": "fix",
+     "lease-checks": "warn"
+    },
+    "server-id": {
+     "enterprise-id": 0,
+     "htype": 0,
+     "identifier": "",
+     "persist": true,
+     "time": 0,
+     "type": "LLT"
+    },
+    "server-tag": "",
+    "shared-networks": [],
+    "statistic-default-sample-age": 0,
+    "statistic-default-sample-count": 20,
+    "store-extended-info": false,
+    "subnet6": [
+     {
+      "allocator": "iterative",
+      "calculate-tee-times": true,
+      "id": 10,
+      "max-preferred-lifetime": 31536000,
+      "max-valid-lifetime": 31536000,
+      "min-preferred-lifetime": 31536000,
+      "min-valid-lifetime": 31536000,
+      "option-data": [
+       {
+        "always-send": false,
+        "code": 23,
+        "csv-format": true,
+        "data": "2001:db8:255::10",
+        "name": "dns-servers",
+        "never-send": false,
+        "space": "dhcp6"
+       }
+      ],
+      "pd-allocator": "iterative",
+      "pd-pools": [],
+      "pools": [
+       {
+        "option-data": [],
+        "pool": "2001:db8:10::100-2001:db8:10::200"
+       }
+      ],
+      "preferred-lifetime": 31536000,
+      "rapid-commit": false,
+      "rebind-timer": 27594000,
+      "relay": {
+       "ip-addresses": [
+        "2001:db8:10::2",
+        "2001:db8:10::3"
+       ]
+      },
+      "renew-timer": 15768000,
+      "reservations": [],
+      "store-extended-info": false,
+      "subnet": "2001:db8:10::/64",
+      "t1-percent": 0.5,
+      "t2-percent": 0.8,
+      "user-context": {
+       "comment": "VLAN 10 - dual-stack, h1 and h3"
+      },
+      "valid-lifetime": 31536000
+     },
+     {
+      "allocator": "iterative",
+      "calculate-tee-times": true,
+      "id": 20,
+      "max-preferred-lifetime": 31536000,
+      "max-valid-lifetime": 31536000,
+      "min-preferred-lifetime": 31536000,
+      "min-valid-lifetime": 31536000,
+      "option-data": [
+       {
+        "always-send": false,
+        "code": 23,
+        "csv-format": true,
+        "data": "2001:db8:255::10",
+        "name": "dns-servers",
+        "never-send": false,
+        "space": "dhcp6"
+       }
+      ],
+      "pd-allocator": "iterative",
+      "pd-pools": [],
+      "pools": [
+       {
+        "option-data": [],
+        "pool": "2001:db8:20::100-2001:db8:20::200"
+       }
+      ],
+      "preferred-lifetime": 31536000,
+      "rapid-commit": false,
+      "rebind-timer": 27594000,
+      "relay": {
+       "ip-addresses": [
+        "2001:db8:20::2",
+        "2001:db8:20::3"
+       ]
+      },
+      "renew-timer": 15768000,
+      "reservations": [],
+      "store-extended-info": false,
+      "subnet": "2001:db8:20::/64",
+      "t1-percent": 0.5,
+      "t2-percent": 0.8,
+      "user-context": {
+       "comment": "VLAN 20 - dual-stack, h2"
+      },
+      "valid-lifetime": 31536000
+     },
+     {
+      "allocator": "iterative",
+      "calculate-tee-times": true,
+      "id": 30,
+      "max-preferred-lifetime": 31536000,
+      "max-valid-lifetime": 31536000,
+      "min-preferred-lifetime": 31536000,
+      "min-valid-lifetime": 31536000,
+      "option-data": [
+       {
+        "always-send": false,
+        "code": 23,
+        "csv-format": true,
+        "data": "2001:db8:255::10",
+        "name": "dns-servers",
+        "never-send": false,
+        "space": "dhcp6"
+       },
+       {
+        "always-send": false,
+        "code": 24,
+        "csv-format": true,
+        "data": "rcn.lab",
+        "name": "domain-search",
+        "never-send": false,
+        "space": "dhcp6"
+       }
+      ],
+      "pd-allocator": "iterative",
+      "pd-pools": [],
+      "pools": [
+       {
+        "option-data": [],
+        "pool": "2001:db8:30::100-2001:db8:30::200"
+       }
+      ],
+      "preferred-lifetime": 31536000,
+      "rapid-commit": false,
+      "rebind-timer": 27594000,
+      "relay": {
+       "ip-addresses": [
+        "2001:db8:30::2",
+        "2001:db8:30::3"
+       ]
+      },
+      "renew-timer": 15768000,
+      "reservations": [],
+      "store-extended-info": false,
+      "subnet": "2001:db8:30::/64",
+      "t1-percent": 0.5,
+      "t2-percent": 0.8,
+      "user-context": {
+       "comment": "VLAN 30 - IPv6 only, h4"
+      },
+      "valid-lifetime": 31536000
+     }
+    ],
+    "t1-percent": 0.5,
+    "t2-percent": 0.8,
+    "valid-lifetime": 31536000
+   },
+   "hash": "B13205253F03E14EE6AE5A35892DD60CEB330C3C0456EF895A76E1C7640D4678"
+  },
+  "result": 0
+ }
+]

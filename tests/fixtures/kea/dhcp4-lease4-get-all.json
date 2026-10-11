@@ -1,0 +1,46 @@
+[
+ {
+  "arguments": {
+   "leases": [
+    {
+     "client-id": "01:aa:c1:ab:99:f6:e2",
+     "cltt": 1791269745,
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": "",
+     "hw-address": "aa:c1:ab:99:f6:e2",
+     "ip-address": "10.10.10.100",
+     "state": 0,
+     "subnet-id": 10,
+     "valid-lft": 31536000
+    },
+    {
+     "client-id": "01:aa:c1:ab:b0:85:65",
+     "cltt": 1791266574,
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": "",
+     "hw-address": "aa:c1:ab:b0:85:65",
+     "ip-address": "10.10.10.102",
+     "state": 0,
+     "subnet-id": 10,
+     "valid-lft": 31536000
+    },
+    {
+     "client-id": "01:aa:c1:ab:3e:11:70",
+     "cltt": 1791266573,
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": "",
+     "hw-address": "aa:c1:ab:3e:11:70",
+     "ip-address": "10.10.20.101",
+     "state": 0,
+     "subnet-id": 20,
+     "valid-lft": 31536000
+    }
+   ]
+  },
+  "result": 0,
+  "text": "3 IPv4 lease(s) found."
+ }
+]

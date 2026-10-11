@@ -35,8 +35,11 @@ never matched them (13 regions logged as the agent's "deviations"). C658 drew th
 (840329e: the board's two-word chips per link, its toolbar, legend, times and phone list),
 compared again at 1440, 1280 and 390 (7 regions still differ, each with its reason in
 docs/fidelity/topology.md), deployed and walked on the host's own read 2026-10-11. Open from the
-walk: C659 (Mercury's link to r6 drawn through r5's cloud). Wall view and Arrange stay later
-steps. Then time travel
+walk: C659, fixed and walked 2026-10-11 (222054b: no link drawn across a device, name or tag
+it does not join, checked in a real browser). Wall view and Arrange stay later steps. DHCP
+(C529) step 1 built 2026-10-11: the DHCP reader and the read-only page to board A, the sidebar's
+DHCP under SOURCE OF TRUTH, docs/fidelity/dhcp.md; next, step 2 (board B, with the one host step
+that moves Kea's subnets into Mercury's files). Then time travel
 and the wall (whose kiosk identity is a Cloudflare Access service token: stop 2, the operator's); C635 closed (the checker reads receipts
 in the records database); Logs (C652, the operator 2026-10-10): the sidebar's Logs opens
 the queryable logs, History › Query board C's "Syslog by device" (e9d4fbe, e112246 and the
@@ -44,10 +47,7 @@ Newest fix after them), counted per day by the `logs-summary` reader; compared w
 docs/fidelity/logs.md; walked on the host (its first reads: 71 s, then 7.7 s after the first-line
 search was fixed, the history filling 7 days a read; the lab's Logs retention set to 730 days,
 from 90, through the settings write path, as NSOT_STAGE7_PLAN 14.15 said). Next: DHCP (C529)
-with its fidelity record (a draft Kea reader from 2026-10-10 was set aside uncommitted when the
-Topology fidelity work came first; the read-only page is built from boards DhcpNetwork,
-DhcpSubnets, DhcpReserve and DhcpExclusions, Kea measured through its control sockets), boards L and
-M, C641,
+steps 2 and 3 (boards B, C and D; step 1, the read-only page, is built), boards L and M, C641,
 7.5 to 7.7, the 7.8 removals and the walk. Since 2026-10-10 each change is deployed and walked
 on the host as it lands (Phase 7 mode); the walk at the end runs everything again.
 

@@ -142,7 +142,7 @@ PAGES = ["/v2/", "/v2/devices", "/v2/netbox", "/v2/device/r2", "/v2/device/r2?ta
          "/v2/settings/installation?tab=access", "/v2/settings/installation?tab=platforms",
          "/v2/templates", "/v2/templates?bring=_common.j2", "/v2/monitoring/profile",
          "/v2/monitoring/profile?propose=1", "/v2/device/r2?tab=ask",
-         "/v2/device/r2?tab=ask&command=show%20ip%20route", "/v2/show-commands"]
+         "/v2/device/r2?tab=ask&command=show%20ip%20route", "/v2/show-commands", "/v2/dhcp"]
 
 LINKS = "a.info-link, a.how-link"
 

@@ -1,0 +1,137 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{#- The DHCP page's region (C529 step 1), drawn to board A: the network, the counts and the read,
+    the tabs Subnets, Leases, Reservations and Exclusions. Everything from the DHCP reader's
+    stored value; never a Kea call per view. -#}
+{%- macro go(g, over, words, cls='', pressed=none, label='') -%}
+<a class="{{ cls }}" href="{{ url_for('dhcp_v2.page') }}{{ g.qs(over) }}" hx-get="{{ url_for('dhcp_v2.region') }}{{ g.qs(over) }}" hx-target="#dhcp" hx-swap="outerHTML" hx-push-url="{{ url_for('dhcp_v2.page') }}{{ g.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+{%- endmacro -%}
+{%- macro ident(by, value) -%}{% if by and by != 'MAC' %}{{ by }} {% endif %}{{ value or '–' }}{%- endmacro -%}
+<div id="dhcp" class="dh" hx-get="{{ url_for('dhcp_v2.region') }}{{ g.qs() }}" hx-trigger="nmas:dhcp from:body" hx-swap="outerHTML">
+<div class="dh-head">
+  <h1>DHCP {{ info('dhcp') }} <span class="chip dh-net">network: {{ g.list }}</span></h1>
+</div>
+
+{%- if g.state == 'never' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The DHCP reader has not read Kea yet{% if g.failed %}: its last attempt failed, {{ g.failed }}{% endif %}. It reads every 5 minutes; this page redraws when it has.</p></div>
+{%- elif g.state == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The DHCP reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than a picture of Kea that may be wrong.</p></div>
+{%- elif g.state in ('not_configured', 'not_applicable') %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there is no DHCP server to read here (Settings › Integrations › Kea).</p></div>
+{%- else %}
+{%- set m = g.summary %}
+<section class="card dh-sum" aria-label="Summary">
+  <div class="dh-counts">
+    <span><strong>{{ m.subnets }}</strong> subnet{{ 's' if m.subnets != 1 }} <span class="faint">({{ m.v4 }} IPv4{% if m.ztp %} incl. ZTP{% endif %}, {{ m.v6 }} IPv6)</span></span>
+    <span><strong>{{ m.active }}</strong> active lease{{ 's' if m.active != 1 }}</span>
+    <span><strong>{{ m.reservations }}</strong> reservation{{ 's' if m.reservations != 1 }}</span>
+    {%- if m.unmatched %}<span>{{ badge(m.unmatched ~ ' reservation' ~ ('s' if m.unmatched != 1) ~ ' unmatched', 'warn') }}</span>{% endif %}
+    {%- if m.shared %}<span>{{ badge(m.shared ~ ' leases share an identity', 'warn') }}</span>{% endif %}
+  </div>
+  <p class="muted small dh-read">Read from Kea ({% for f in g.families %}<span class="mono">{{ f.svc }}</span>{{ ' and ' if not loop.last }}{% endfor %}{% if g.families and g.families[0].version %}, Kea {{ g.families[0].version }}{% endif %}) by the DHCP reader, {{ stamp(g.value_at) }}; it reads again every 5 minutes. Each family is read on its own.</p>
+  {%- for f in g.families if not f.ok %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p><strong>{{ f.words }} ({{ f.svc }}) could not be read:</strong> {{ f.error }}. {% if f.known %}Drawn below as last read, {{ stamp(f.read_at) }}.{% else %}Nothing of {{ f.words }} has been read yet: its subnets and leases are not drawn, never drawn as none.{% endif %}</p></div>
+  {%- endfor %}
+  {%- if g.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ g.failed }}); this is its last good read, {{ stamp(g.value_at) }}.</p></div>{% endif %}
+  <nav class="tabs dh-tabs" aria-label="DHCP">
+    {%- for key, words in g.tabs.items() %}
+    {%- set n = {'sub': m.subnets, 'lea': m.active, 'res': m.reservations}.get(key) %}
+    {{ go(g, {'tab': key, 'show': 'all', 'q': '', 'open': ''}, words ~ (' (' ~ n ~ ')' if n is not none else ''), 'tab' ~ (' on' if g.s.tab == key), g.s.tab == key) }}
+    {%- endfor %}
+  </nav>
+</section>
+
+{%- if g.s.tab == 'sub' %}
+<section class="card dh-sec" aria-labelledby="dh-sub-h">
+  <h2 id="dh-sub-h">Subnets</h2>
+  <div class="dh-scroll"><table class="table">
+    <thead><tr><th scope="col">Subnet</th><th scope="col">Kea id</th><th scope="col">Pools</th><th scope="col">Lease times <span class="faint">valid · preferred · renew · rebind</span></th><th scope="col">In use</th><th scope="col">Reservations</th></tr></thead>
+    <tbody>
+    {%- for x in g.subnets %}
+    <tr>
+      <td class="mono">{{ x.prefix }}{% if x.ztp %} {{ badge('ZTP') }}{% endif %}</td>
+      <td class="mono">{{ x.id }}</td>
+      <td class="mono">{% for p in x.pools %}{{ g.pool_words(p) }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">no pool{% if x.ztp %}: ZTP answers only its reservations{% endif %}</span>{% endfor %}{% for p in x.pd_pools %}<br>{{ p }}{% endfor %}</td>
+      <td>{{ g.duration(x.times.valid) }} · {{ g.duration(x.times.preferred) }} · {{ g.duration(x.times.renew) }} · {{ g.duration(x.times.rebind) }}{% if x.same_as_global %} <span class="faint">the same as Kea's global</span>{% endif %}</td>
+      <td>{% if x.ztp %}{{ x.used }} asking{% elif x.size %}{{ x.used }} of {{ x.size }}{% else %}{{ x.used }}{% endif %}</td>
+      <td>{% if x.reservations %}{{ x.reservations | length }}{% else %}<span class="faint">none</span>{% endif %}</td>
+    </tr>
+    {%- else %}<tr><td colspan="6" class="faint">Kea serves no subnet that was read.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <p class="note small">Kea's subnets are written by hand in Kea's own files today. Before Mercury's first change to them, one host step moves every subnet and its reservations into Mercury's own files, unchanged, with Kea's running configuration compared before and after (board C). From then on Mercury writes only its own files and applies them with <span class="mono">config-reload</span>.</p>
+</section>
+
+{%- elif g.s.tab == 'lea' %}
+<section class="card dh-sec" aria-labelledby="dh-lea-h">
+  <h2 id="dh-lea-h">Leases</h2>
+  <form class="dh-find" method="get" action="{{ url_for('dhcp_v2.page') }}" hx-get="{{ url_for('dhcp_v2.region') }}" hx-target="#dhcp" hx-swap="outerHTML" hx-trigger="change, submit">
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="tab" value="lea">
+    <label class="sr" for="dh-q">Find by address, MAC, DUID or hostname</label>
+    <input id="dh-q" type="search" name="q" value="{{ g.s.q }}" placeholder="Find by address, MAC, DUID or hostname" enterkeyhint="search">
+    <label class="sr" for="dh-show">Show</label>
+    <select id="dh-show" name="show">{% for k, w in g.shows.items() %}<option value="{{ k }}"{% if g.s.show == k %} selected{% endif %}>{{ w }}</option>{% endfor %}</select>
+  </form>
+  {%- if g.filtered %}<p class="small faint">Showing {{ g.shown }} of {{ g.total }} leases{% if g.s.q %} matching {{ g.s.q }}{% endif %}{% if g.s.show != 'all' %}, {{ g.shows[g.s.show] | lower }}{% endif %}. {{ go(g, {'show': 'all', 'q': ''}, 'Show all') }}</p>{% endif %}
+  {%- for grp in g.groups %}
+  {%- set x = grp.sub %}
+  <details class="dh-grp" data-keep="dh-{{ x.svc }}-{{ x.id }}"{% if grp.open %} open{% endif %}>
+    <summary><span class="mono">{{ x.prefix }}</span>{% if x.ztp %}, ZTP{% endif %} <span class="muted small">· {% if x.ztp %}{{ grp.total }} asking: onboarding's Discovered list (board L, not built yet){% else %}{{ grp.total }} lease{{ 's' if grp.total != 1 }}{% endif %}</span>{% for f in grp.flags %} {{ badge(f, 'warn') }}{% endfor %}</summary>
+    {%- if grp.rows %}
+    <div class="dh-scroll"><table class="table">
+      <thead><tr><th scope="col">Address</th><th scope="col">Identity</th><th scope="col">Hostname</th><th scope="col">Device</th><th scope="col">Kea's lease</th><th scope="col">As the host holds it</th></tr></thead>
+      <tbody>
+      {%- for l in grp.rows %}
+      <tr>
+        <td class="mono dh-addr">{{ l.address }}</td>
+        <td class="mono">{% if l.same %}the same {{ l.by }}{% else %}{{ ident(l.by, l.identity) }}{% if l.duid %} <span class="faint">({{ l.duid }})</span>{% endif %}{% endif %}</td>
+        <td class="mono">{{ l.hostname or '–' }}</td>
+        <td>{% if l.device %}<a href="{{ url_for('device_v2.device', name=l.device, list=g.list) }}">{{ l.device }}</a>{% else %}<span class="faint">not in the inventory</span>{% endif %}</td>
+        <td>{{ g.duration(l.valid) }}{% if l.ends %}, <span class="dh-lease">ends <time datetime="{{ l.ends }}" title="{{ l.ends }}">{{ l.ends[:10] }}</time></span>{% endif %}{% if l.state != 'active' %} {{ badge(l.state) }}{% endif %}{% if l.reserved %} {{ badge('reserved', 'ok') }}{% elif l.reserved_for_other %} {{ badge('reserved for another client', 'warn') }}{% endif %}</td>
+        {%- if l.span %}
+        <td rowspan="{{ l.span }}" class="dh-shared"><strong>{{ l.span }} addresses for one client.</strong> It asked again and was given a new address each time; Kea keeps each until it ends. A host may still answer on an older one (Linux installs a DHCPv6 address with no lifetime). A reservation for one address stops the drift.</td>
+        {%- elif not l.same %}
+        <td>{% if l.holds == 'pending' %}{{ badge('pending: reading the device’s own lease is designed, not built') }}{% else %}<span class="faint">not readable: a host the tool does not reach</span>{% endif %}</td>
+        {%- endif %}
+      </tr>
+      {%- endfor %}
+      </tbody>
+    </table></div>
+    {%- elif grp.total %}<p class="small faint">None of its {{ grp.total }} leases matches.</p>
+    {%- else %}<p class="small faint">No lease in this subnet.</p>{% endif %}
+  </details>
+  {%- endfor %}
+  <p class="note small"><strong>"As the host holds it".</strong> Kea knows the lease it granted, not what the client installed. Where the tool reaches the client (a device it manages), it will read the client's own lease and name any difference; for anything else the cell says "not readable", never blank, so a host that installed an address "forever" is never shown as agreeing with Kea.</p>
+</section>
+
+{%- elif g.s.tab == 'res' %}
+<section class="card dh-sec" aria-labelledby="dh-res-h">
+  <h2 id="dh-res-h">Reservations</h2>
+  {%- if g.reservations %}
+  <div class="dh-scroll"><table class="table">
+    <thead><tr><th scope="col">Subnet</th><th scope="col">Host</th><th scope="col">Reserved by</th><th scope="col">Address</th><th scope="col">Now</th></tr></thead>
+    <tbody>
+    {%- for r in g.reservations %}
+    <tr>
+      <td class="mono">{{ r.sub.prefix }}{% if r.sub.ztp %} {{ badge('ZTP') }}{% endif %}</td>
+      <td class="mono">{{ r.hostname or '–' }}</td>
+      <td class="mono">{{ r.by }} {{ r.identity }}</td>
+      <td class="mono">{{ r.addresses | join(', ') or '–' }}</td>
+      <td>{% if r.now.state == 'in_use' %}{{ badge(r.now.words, 'ok') }}{% elif r.now.state == 'waiting' %}{{ badge(r.now.words) }}{% else %}{{ badge('unmatched' if r.now.state == 'unmatched' else 'held by another', 'warn') }} <span class="small">{{ r.now.words }}</span>{% endif %}</td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- else %}
+  <p class="small">Kea holds no reservation in any subnet that was read: every client here is given an address from a pool.</p>
+  {%- endif %}
+  <p class="note small">Adding, changing and removing a reservation is board B: each previewed, confirmed by hash as a verified person, applied with <span class="mono">config-reload</span>, read back from Kea and recorded (C529 step 2, not built yet). ZTP's reservations are written by onboarding, and changed there.</p>
+</section>
+
+{%- else %}
+<section class="card dh-sec" aria-labelledby="dh-exc-h">
+  <h2 id="dh-exc-h">Exclusions</h2>
+  <p class="small">Nothing is excluded: Kea has no excluded-address setting, so exclusions are Mercury's record (each range with its reason and its source), and Mercury shapes the pools around them when it writes Kea (board D). They arrive with the subnet operations (C529 step 3), as do the conflicts it finds: an address NetBox or intent assigns inside a pool.</p>
+</section>
+{%- endif %}
+{%- endif %}
+</div>

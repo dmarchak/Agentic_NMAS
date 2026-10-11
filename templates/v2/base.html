@@ -52,10 +52,12 @@
   {#- C652: Logs opens the queryable logs, the network's syslog by device (History › Query
       board C); Mercury's own log stays in Settings › Installation › Diagnostics. -#}
   <a class="nav-item{% if active_nav == 'logs' %} active{% endif %}" href="{{ url_for('logs_v2.page') }}"{% if active_nav == 'logs' %} aria-current="page"{% endif %}>{{ icon('logs') }}<span>Logs</span></a>
-  <span class="nav-item nav-off" aria-disabled="true" title="DHCP (Kea) has no screen yet (C529): Kea serves today, and its reservations are written by onboarding's ZTP or by hand on the host.">{{ icon('dhcp') }}<span>DHCP</span><small class="nav-todays">not built yet</small></span>
   <div class="nav-head">SOURCE OF TRUTH</div>
   <a class="nav-item{% if active_nav == 'templates' %} active{% endif %}" href="{{ url_for('templates_v2.page') }}"{% if active_nav == 'templates' %} aria-current="page"{% endif %}>{{ icon('templates') }}<span>Templates</span></a>
   <a class="nav-item{% if active_nav == 'netbox' %} active{% endif %}" href="{{ url_for('netbox_v2.page') }}"{% if active_nav == 'netbox' %} aria-current="page"{% endif %}>{{ icon('netbox') }}<span>NetBox</span></a>
+  {#- C529: DHCP moved from OBSERVE to SOURCE OF TRUTH, after NetBox (the operator, 2026-10-06):
+      it holds intended configuration, with the live leases as evidence beside it. -#}
+  <a class="nav-item{% if active_nav == 'dhcp' %} active{% endif %}" href="{{ url_for('dhcp_v2.page') }}"{% if active_nav == 'dhcp' %} aria-current="page"{% endif %}>{{ icon('dhcp') }}<span>DHCP</span></a>
   <a class="nav-item{% if active_nav == 'credentials' %} active{% endif %}" href="{{ url_for('v2.credentials') }}"{% if active_nav == 'credentials' %} aria-current="page"{% endif %}>{{ icon('credentials') }}<span>Credentials</span></a>
   <div class="grow"></div>
   <p class="spike-note">The redesign so far: Needs attention, Devices and the device page, History, Monitoring, Show commands, Templates (approval), Credentials (the break-glass record), Settings per network and Help. Other items open today's screens.</p>

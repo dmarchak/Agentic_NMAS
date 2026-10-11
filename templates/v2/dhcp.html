@@ -1,0 +1,9 @@
+{%- extends "v2/base.html" -%}
+{#- SOURCE OF TRUTH › DHCP (C529 step 1): one network's Kea, drawn to board A ("Item 5, DHCP on
+    v2", DhcpNetwork, approved 2026-10-06 with boards B to D); compared region by region in
+    docs/fidelity/dhcp.md. The view is one region, _dhcp_view.html, redrawn when the DHCP
+    reader announces. -#}
+{% block title %}DHCP · {{ brand.short }}{% endblock %}
+{% block main %}
+{% include "v2/_dhcp_view.html" %}
+{% endblock %}

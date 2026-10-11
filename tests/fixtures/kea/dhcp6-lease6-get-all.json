@@ -1,0 +1,100 @@
+[
+ {
+  "arguments": {
+   "leases": [
+    {
+     "cltt": 1791266579,
+     "duid": "00:03:00:01:aa:c1:ab:99:f6:e2",
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": ".",
+     "hw-address": "aa:c1:ab:99:f6:e2",
+     "iaid": 3587257709,
+     "ip-address": "2001:db8:10::101",
+     "preferred-lft": 31536000,
+     "state": 0,
+     "subnet-id": 10,
+     "type": "IA_NA",
+     "valid-lft": 31536000
+    },
+    {
+     "cltt": 1791266580,
+     "duid": "00:03:00:01:aa:c1:ab:b0:85:65",
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": ".",
+     "hw-address": "aa:c1:ab:b0:85:65",
+     "iaid": 4280463984,
+     "ip-address": "2001:db8:10::103",
+     "preferred-lft": 31536000,
+     "state": 0,
+     "subnet-id": 10,
+     "type": "IA_NA",
+     "valid-lft": 31536000
+    },
+    {
+     "cltt": 1791269687,
+     "duid": "00:03:00:01:aa:c1:ab:99:f6:e2",
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": ".",
+     "hw-address": "aa:c1:ab:99:f6:e2",
+     "iaid": 3688053113,
+     "ip-address": "2001:db8:10::105",
+     "preferred-lft": 31536000,
+     "state": 0,
+     "subnet-id": 10,
+     "type": "IA_NA",
+     "valid-lft": 31536000
+    },
+    {
+     "cltt": 1791269745,
+     "duid": "00:03:00:01:aa:c1:ab:99:f6:e2",
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": ".",
+     "hw-address": "aa:c1:ab:99:f6:e2",
+     "iaid": 657211943,
+     "ip-address": "2001:db8:10::107",
+     "preferred-lft": 31536000,
+     "state": 0,
+     "subnet-id": 10,
+     "type": "IA_NA",
+     "valid-lft": 31536000
+    },
+    {
+     "cltt": 1791266579,
+     "duid": "00:03:00:01:aa:c1:ab:3e:11:70",
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": ".",
+     "hw-address": "aa:c1:ab:3e:11:70",
+     "iaid": 3464217983,
+     "ip-address": "2001:db8:20::101",
+     "preferred-lft": 31536000,
+     "state": 0,
+     "subnet-id": 20,
+     "type": "IA_NA",
+     "valid-lft": 31536000
+    },
+    {
+     "cltt": 1791266581,
+     "duid": "00:03:00:01:aa:c1:ab:12:c6:03",
+     "fqdn-fwd": false,
+     "fqdn-rev": false,
+     "hostname": ".",
+     "hw-address": "aa:c1:ab:12:c6:03",
+     "iaid": 2505250668,
+     "ip-address": "2001:db8:30::103",
+     "preferred-lft": 31536000,
+     "state": 0,
+     "subnet-id": 30,
+     "type": "IA_NA",
+     "valid-lft": 31536000
+    }
+   ]
+  },
+  "result": 0,
+  "text": "6 IPv6 lease(s) found."
+ }
+]

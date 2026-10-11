@@ -66,6 +66,9 @@ WOKEN_BY = {
     # The fleet's syslog per day from each network's Loki; a network's Logs retention and Loki
     # by settings. Nothing Mercury does writes Loki's lines.
     "logs-summary": ("settings",),
+    # The network's Kea, by settings. Board A also reads again after every reservation change:
+    # the key joins this row with the operation that sends it (C529 step 2).
+    "dhcp": ("settings",),
     # HEAD against the remote: also re-read by its own post-commit hook.
     "remote-publication": ("goldens", "intent", "templates", "remote"),
 }

@@ -1,0 +1,9 @@
+[
+ {
+  "arguments": {
+   "extended": "2.4.1\ntarball\nlinked with:\nlog4cplus 2.0.8\nOpenSSL 3.0.13 30 Jan 2024\ndatabase:\nMySQL backend 19.0, library 8.0.46\nPostgreSQL backend 18.0, library 160015\nMemfile backend 3.0"
+  },
+  "result": 0,
+  "text": "2.4.1"
+ }
+]

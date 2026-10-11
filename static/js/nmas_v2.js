@@ -54,7 +54,9 @@
               // The topology reader's graph moved, or an island was declared (P.11).
               'topology',
               // The fleet's syslog counts moved (the Logs view, C652).
-              'logs'];
+              'logs',
+              // The network's Kea read again: subnets, reservations, leases (C529).
+              'dhcp'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -318,6 +320,7 @@
   function relayCredentials() { relay('credentials'); }
   function relayTopology() { relay('topology'); }
   function relayLogs() { relay('logs'); }
+  function relayDhcp() { relay('dhcp'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -401,6 +404,7 @@
     NMAS.subscribe('credentials', 'v2Credentials', relayCredentials);
     NMAS.subscribe('topology', 'v2Topology', relayTopology);
     NMAS.subscribe('logs', 'v2Logs', relayLogs);
+    NMAS.subscribe('dhcp', 'v2Dhcp', relayDhcp);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

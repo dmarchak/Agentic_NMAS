@@ -55,6 +55,46 @@ class _Boards:
         self.server.server_close()
 
 
+def test_dhcp(tmp_path, monkeypatch):
+    """C529's board A (DhcpNetwork, 1440) beside the DHCP page's tabs, fed by the DHCP reader's
+    value built from the lab's Kea answers (tests/fixtures/kea/); or, as a walk, the reader's
+    stored document as the host holds it (`NMAS_BOARD_DHCP_DOC`)."""
+    from tests import browser
+    from tests import test_dhcp_v2 as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.dhcp_page._devices", lambda name: set())
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    walked = os.environ.get("NMAS_BOARD_DHCP_DOC", "")
+    if walked:
+        from modules import reader_job
+        with open(walked, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        os.makedirs(os.path.dirname(reader_job.store_path("dhcp")), exist_ok=True)
+        with open(reader_job.store_path("dhcp"), "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+        import app as A
+        with browser.Served(A.app) as served:
+            for tab in ("sub", "lea", "res"):
+                _shoot(f"dhcp-walk-{tab}", "", lambda w, t=tab: f"/v2/dhcp?list=Lab&tab={t}",
+                       served, widths=((1440, 1.0), (390, 2.0)))
+        return
+    T._store(T._value())
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("dhcp-sub", "DhcpNetwork.dc.html", lambda w: "/v2/dhcp?list=Lab", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        for tab in ("lea", "res", "exc"):
+            _shoot(f"dhcp-{tab}", "", lambda w, t=tab: f"/v2/dhcp?list=Lab&tab={t}", served,
+                   widths=((1440, 1.0), (390, 2.0)))
+
+
 def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.0))):
     from tests.browser import Browser
 

@@ -1525,3 +1525,36 @@ a.topo-ent:hover { background: var(--hover); }
   .lg-unit { display: inline; }
   .lg-filters label, .lg-filters input, .lg-filters select { width: 100%; }
 }
+/* DHCP (C529), drawn to board A, "Item 5, DHCP on v2" (DhcpNetwork; docs/fidelity/dhcp.md). */
+.dh { display: flex; flex-direction: column; gap: 14px; max-width: 1180px; }
+.dh-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.dh-head h1 { margin: 0; font-size: 24px; font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dh-net { font-size: 13px; font-weight: 400; background: var(--accent-soft); color: var(--accent-ink); }
+.dh-sum { display: flex; flex-direction: column; gap: 10px; }
+.dh-counts { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; font-size: 13.5px; }
+.dh-counts strong { font-size: 20px; font-weight: 600; }
+.dh-read { margin: 0; }
+.dh-tabs { margin-top: 2px; }
+.dh-sec { display: flex; flex-direction: column; gap: 10px; }
+.dh-sec h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.dh-scroll { overflow-x: auto; }
+/* Board A keeps its tables whole and scrolls them in their box: a date or an address never
+   breaks mid-way, and a phone scrolls the table rather than crushing its columns. */
+.dh .table td { overflow-wrap: normal; }
+.dh .table { min-width: 760px; }
+.dh-lease { white-space: nowrap; }
+.dh-find { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0; }
+.dh-find input, .dh-find select { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); color: var(--ink); }
+.dh-find input { min-width: 280px; }
+.dh-grp { border-top: 1px solid var(--line-2); padding-top: 6px; }
+.dh-grp > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0; }
+.dh-grp table { margin-top: 6px; }
+.dh-shared { background: var(--warn-soft); }
+.dh-addr { white-space: nowrap; }
+.dh .note { margin: 0; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--r); padding: 8px 10px; }
+@media (max-width: 700px) {
+  .dh-find input { min-width: 0; width: 100%; }
+  .dh-find select { width: 100%; }
+}
