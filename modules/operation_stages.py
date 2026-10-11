@@ -141,6 +141,11 @@ STAGES = {
         "dhcp_v2.subnet_preview", "hash",
         "modules.dhcp_subnets._moved", "modules.nsot.ztp._replace",
         "modules.dhcp_subnets.record_commit"),
+    # DHCP › Exclusions (C529 step 3, board D): the subnet's write path, its own record.
+    "dhcp_v2.exclusion_confirm": Stages(
+        "dhcp_v2.exclusion_preview", "hash",
+        "modules.dhcp_subnets._moved", "modules.nsot.ztp._replace",
+        "modules.dhcp_exclusions.record_commit"),
     "update.apply": Stages(
         "v2.update", "hash",
         "n/a: the root-owned updater (deploy/update/nmas-update) confirms the new version by identity",
@@ -363,6 +368,9 @@ HISTORY = {
                                     "the network's repository keeps it (dhcp/reservations.yml)"),
     "dhcp_v2.subnet_confirm": ("n/a: changes a Kea subnet, never one device's record; the "
                                "network's repository keeps it (dhcp/subnets.yml)"),
+    "dhcp_v2.exclusion_confirm": ("n/a: changes a Kea subnet's pools, never one device's "
+                                  "record; the network's repository keeps it "
+                                  "(dhcp/exclusions.yml)"),
     "update.step_done": NOT_A_DEVICE,
     "run_command": NO_RECORD,
     "bulk_execute": NO_RECORD,

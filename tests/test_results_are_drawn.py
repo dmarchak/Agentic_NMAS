@@ -229,6 +229,10 @@ PAGE_RECORD = {
     "dhcp_v2.reservation_confirm": ("templates/v2/_dhcp_reserve.html",
                                     ("op.state == 'done'", "r.read_back", "r.commit"),
                                     "v2.history_page"),
+    # DHCP › Exclusions (C529 step 3, board D): the same, in dhcp/exclusions.yml.
+    "dhcp_v2.exclusion_confirm": ("templates/v2/_dhcp_exclusion.html",
+                                  ("xop.state == 'done'", "r.read_back", "r.commit"),
+                                  "v2.history_page"),
     # DHCP › Subnets (C529 step 3, board C): the same, in dhcp/subnets.yml.
     "dhcp_v2.subnet_confirm": ("templates/v2/_dhcp_subnet.html",
                                ("sop.state == 'done'", "r.read_back", "r.commit"),

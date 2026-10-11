@@ -246,8 +246,12 @@ def test_reservations_kea_holds_outside_a_subnet_are_drawn(web):
 
 
 def test_exclusions_say_what_kea_cannot_do(web):
+    """Board D's tab with nothing recorded: no conflict in the lab (its SVIs sit below the
+    pools), nothing excluded, Add an exclusion…, and what Kea cannot do."""
     html = _get(web, "&tab=exc")
-    assert "Kea has no excluded-address setting" in html and "C529 step 3" in html
+    assert "Kea has no excluded-address setting" in html and "Nothing is excluded." in html
+    assert "None found: no static address committed intent assigns" in html
+    assert ">Add an exclusion…</a>" in html
 
 
 def test_a_family_not_answered_is_drawn_as_last_read_with_its_error(web):

@@ -71,6 +71,8 @@ NOT_AN_OPERATION = {
     ("_dhcp_reserve.html", "Close"): "puts the Reservations tab back after a change, a read",
     ("_dhcp_subnet.html", "Cancel"): "puts the Subnets tab back, writing nothing",
     ("_dhcp_subnet.html", "Close"): "puts the Subnets tab back after a change, a read",
+    ("_dhcp_exclusion.html", "Cancel"): "puts the Exclusions tab back, writing nothing",
+    ("_dhcp_exclusion.html", "Close"): "puts the Exclusions tab back after a change, a read",
     ("_macros.html", "btn btn-small"): "Check again: re-reads origin and CI now, a read",
     ("_apply_job.html", "Check now"): "re-reads the job's progress: a read",
     ("_breakglass_drill.html", "Copy"): "copies the drill's command to the clipboard",

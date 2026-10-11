@@ -1042,6 +1042,34 @@ def dhcp_subnet():
     ])
 
 
+def dhcp_exclusion():
+    return svg(470, (
+        "Excluding addresses from a pool. The preview reads the committed record of the pool as "
+        "set and its exclusions, asks Kea for its configuration and leases, and computes the "
+        "pieces Kea is given. You confirm with a reason. The apply is the subnet's write: plan "
+        "again, Kea's own check on a candidate, write, reload Kea, read back exactly this "
+        "subnet's pools, or put the previous file back. Then the exclusions and the subnets "
+        "are committed with your reason."), [
+        lanes(20, 464, right="KEA"),
+        doc("box", 14, 40, 186, 40, "The preview: the pieces", "leases on them, the checks"),
+        num(14, 40, 1),
+        person(14, 96, 186, 30, "You confirm, with a reason"), num(14, 96, 2),
+        _down(107, 128, 148),
+        band(150, 300, "The subnet's write · its file held"),
+        store(262, 172, 118, 150, "Kea", "Mercury's subnet file"),
+        *rows([
+            (174, "read", 3, "Plan again", "moved: nothing written"),
+            (210, None, 4, "Kea's own check", "on a candidate copy"),
+            (246, "send", 5, "Write, reload", "a failure: file put back"),
+            (282, "read", 6, "Read back", "only this subnet's pools"),
+        ]),
+        repo(14, 330, 186, 40, "One commit", "dhcp/exclusions.yml, your reason"),
+        num(14, 330, 7),
+        t(14, 400, "Kea is given the pieces of the range;", "sm"),
+        t(14, 413, "you edit the range and the reason.", "sm"),
+    ])
+
+
 def show_commands():
     return svg(470, (
         "Show commands, and Ask the device its one-device form. Every command is checked "
@@ -1368,6 +1396,7 @@ DIAGRAMS = {
     "reload": reload,
     "dhcp-reservation": dhcp_reservation,
     "dhcp-subnet": dhcp_subnet,
+    "dhcp-exclusion": dhcp_exclusion,
     "show-commands": show_commands,
     "logging-path": logging_path,
     "privileged": privileged,

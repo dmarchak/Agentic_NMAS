@@ -203,6 +203,31 @@ def view(list_name: str, values, now: float = None) -> dict:
         sub_rows.append(dict(sub, used=used, size=pool_size(sub["pools"]), same_as_global=same,
                              gateway=gateway(sub, intent), dns=dns(sub),
                              held=(held.get(sub["svc"]) or {}).get(str(sub["id"]), "")))
+    # Board D: the exclusions recorded (committed) and the conflicts found against the pools.
+    from modules import dhcp_exclusions as E
+    try:
+        rec = E.read_committed(list_name)
+        exc_error = ""
+    except E.Refused as exc:
+        rec, exc_error = {"exclusions": [], "pools": {}}, str(exc)
+    by_key = {(x.get("family"), x.get("id")): x for x in sub_rows}
+    exclusions = []
+    for e in rec["exclusions"]:
+        sub = by_key.get((e.get("family"), e.get("subnet"))) or {}
+        as_set = rec["pools"].get(f"{e.get('family')}:{e.get('subnet')}", "")
+        try:
+            a, b = E.span(e.get("range", ""))
+            lo, hi = E.span(as_set) if as_set else (None, None)
+            inside = bool(as_set) and not (b < lo or a > hi)
+        except E.Refused:
+            inside = False
+        exclusions.append(dict(e, prefix=sub.get("prefix", ""), as_set=as_set, inside=inside))
+    shaped = [{"key": k, "as_set": v, "excluded": [e["range"] for e in rec["exclusions"]
+                                                   if f"{e.get('family')}:{e.get('subnet')}" == k],
+               "kea": (by_key.get(tuple([k.split(":")[0], int(k.split(":")[1])])) or {})
+               .get("pools", [])} for k, v in sorted(rec["pools"].items())]
+    out.update(exclusions=exclusions, shaped=shaped, exc_error=exc_error,
+               conflicts=E.conflicts(st["value"], rec))
     v4 = [x for x in subnets if x["svc"] == "dhcp4"]
     out.update(
         families=families, subnets=sub_rows, groups=groups, reservations=res_rows,

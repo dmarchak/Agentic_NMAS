@@ -1,0 +1,62 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board D (DhcpExclusions, approved 2026-10-06), section 4: an exclusion added (Add an
+    exclusion…, or Exclude… from a conflict with its reason filled from the source) or removed,
+    in place on the Exclusions tab: the form, then the preview (the pool as set and as Kea is
+    told, the leases on those addresses, the checks), the confirm bound to its hash as a verified
+    person with a reason, the result in place (modules/dhcp_exclusions.py, written through board
+    C's one write path for subnets). -#}
+{%- set s = xop.ask -%}
+{%- set p = xop.plan -%}
+{%- set back = url_for('dhcp_v2.region') ~ g.qs({'tab': 'exc'}) -%}
+{%- if xop.state == 'done' %}
+{%- set r = xop.result %}
+<div class="op-card op-ok" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{{ p.title }} {{ badge('done', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-exclusion') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>Subnet {{ p.id }}'s pools written as the pieces to Mercury's subnet file (<span class="mono">{{ p.path }}</span>), tested by Kea's own check first, Kea reloaded through its API, and read back: {{ r.read_back }}.</p></div></div>
+  <div class="op-part"><h3>Recorded</h3><div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ xop.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/exclusions.yml</span> and <span class="mono">dhcp/subnets.yml</span>. In History.</p></div></div>
+</div>
+{%- else %}
+<div class="op-card{{ ' op-danger' if xop.state == 'refused' or (p and not p.ok) }}" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% elif s.op == 'remove' %}Remove an exclusion{% else %}Add an exclusion{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-exclusion') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
+  {%- if xop.state == 'refused' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing was changed{% if xop.result.rolled_back %} in the end: {{ xop.result.rolled_back }}{% endif %}.</strong> {{ xop.result.error }}</p></div>
+  {%- endif %}
+  {%- if s.op != 'remove' %}
+  <form hx-get="{{ url_for('dhcp_v2.exclusion_preview') }}" hx-target="#dhcp" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="op" value="add"><input type="hidden" name="source" value="{{ s.source }}"><input type="hidden" name="detail" value="{{ s.detail }}">
+    <div class="op-part"><h3>Exclusion</h3><div class="dh-fields">
+      <label class="dh-f">Subnet<select name="where" required>
+        {%- for o in xop.subnets %}<option value="{{ o.family }}:{{ o.id }}"{% if o.family == s.family and o.id|string == s.id %} selected{% endif %}>{{ o.prefix }} ({{ o.family }}, subnet {{ o.id }})</option>{% endfor %}
+      </select><span class="dh-msg">ZTP's subnet has no pool to shape</span></label>
+      <label class="dh-f">Range<input type="text" name="range" value="{{ s.range }}" class="mono" autocomplete="off" spellcheck="false" required><span class="dh-msg">first - last, or one address</span></label>
+      <label class="dh-f">Reason<input type="text" name="reason" value="{{ s.reason }}" autocomplete="off" required maxlength="160"><span class="dh-msg">{% if s.source != 'manual' %}from the source ({{ s.detail }}); edit it if you like{% else %}shown beside the exclusion{% endif %}</span></label>
+      <div class="dh-f dh-go"><button type="submit" class="btn" data-op="dhcp-exclusion" hx-disabled-elt="this"><span class="op-idle">{{ 'Preview again' if p else 'Preview' }}</span><span class="op-busy">Asking Kea…</span></button>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}</div>
+    </div></div>
+  </form>
+  {%- endif %}
+  {%- if p and not p.ok %}
+  <div class="op-part"><h3>Not changed</h3><div class="dh-refuse" role="alert"><p>{{ p.refused }}</p></div></div>
+  {%- elif p %}
+  <div class="op-part dh-cont"><h3>Subnet {{ p.id }}'s pools, as Kea is told</h3><div>
+    <pre class="op-diff">{% for sign, line in p.change %}<span class="{{ 'op-add' if sign == '+' else ('op-del' if sign == '-' else 'muted') }}">{{ sign }} {{ line }}</span>{% if not loop.last %}
+{% endif %}{% endfor %}</pre></div></div>
+  <div class="op-part"><h3>Leases now</h3><div>{% for n in p.leases %}<p>{{ n }}</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">{% for state, text in p.checks %}<li>{{ badge({'pass': 'pass', 'pending': 'at confirm', 'note': 'note', 'warn': 'differs', 'fail': 'fail'}[state], {'pass': 'ok', 'pending': '', 'note': '', 'warn': 'warn', 'fail': 'danger'}[state]) }}<span>{{ text }}</span></li>{% endfor %}</ul></div></div>
+  {%- if p.survives %}<div class="op-part"><h3>What survives</h3><div>{% for n in p.survives %}<p>{{ n }}</p>{% endfor %}</div></div>{% endif %}
+  <form class="op-ft" method="post" action="{{ url_for('dhcp_v2.exclusion_confirm', list=g.list) }}" hx-post="{{ url_for('dhcp_v2.exclusion_confirm', list=g.list) }}" hx-target="#dhcp" hx-swap="outerHTML">
+    {%- for k in ('op', 'family', 'id', 'range', 'reason', 'source', 'detail', 'was') %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="hash" value="{{ p.hash }}">
+    <label class="op-reason">Why (recorded with the change, in its commit)<input type="text" name="why" value="{{ xop.why or '' }}" autocomplete="off" required maxlength="200"></label>
+    <p class="op-note">Applied through the subnet's write: Kea's own check, <span class="mono">config-reload</span>, read back (refused unless exactly this subnet's pools changed), recorded as one commit in <span class="mono">dhcp/exclusions.yml</span> and <span class="mono">dhcp/subnets.yml</span>. {{ may.statement }} Bound to this preview.</p>
+    {%- if may.may %}
+    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-exclusion" hx-disabled-elt="this"><span class="op-idle">{{ 'Remove the exclusion' if s.op == 'remove' else 'Exclude ' ~ s.range }}</span><span class="op-busy">Testing, writing, reloading Kea, reading back…</span></button>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}</span>
+    {%- endif %}
+  </form>
+  {%- endif %}
+</div>
+{%- endif %}

@@ -153,6 +153,61 @@ def subnet_confirm():
                         "actor": actor})
 
 
+# ---------------------------------------------------------------------------------- board D
+
+def _xop_region(xop: dict, code: int = 200):
+    """The Exclusions tab with board D's card in place (region for htmx, the page otherwise)."""
+    from modules.preview_confirm import confirm_part
+
+    ctx = _ctx()
+    ctx["g"]["s"] = dict(ctx["g"]["s"], tab="exc")
+    extra = dict(xop=xop, may=confirm_part(request, "confirm"))
+    if not request.headers.get("HX-Request"):
+        from routes.v2 import _page
+        return _page("v2/dhcp.html", active_nav="dhcp", list_name=_list_name(), **extra,
+                     **ctx), code
+    return _strict(render_template("v2/_dhcp_view.html", **extra, **ctx), code)
+
+
+@bp.route("/exclusion", methods=["GET"])
+def exclusion_preview():
+    """Board D's card in place of the Exclusions tab: the form (Add an exclusion…, or Exclude…
+    from a conflict with its reason filled from the source), and once it names a range the
+    preview: the pool as set and as Kea is told, the leases on those addresses, the checks. A
+    read: Kea is asked, Mercury's subnet file and the committed record read; nothing written."""
+    from modules import dhcp_exclusions as E
+
+    s = E.ask(request.args)
+    filled = (s["op"] == "remove" and s["was"]) or (s["op"] == "add" and s["family"] and
+                                                     s["id"] and s["range"] and s["reason"])
+    p = E.plan(_list_name(), request.args, intent=_intent()) if filled else None
+    return _xop_region({"state": "preview" if filled else "form", "ask": s, "plan": p,
+                        "subnets": _op_subnets()})
+
+
+@bp.route("/exclusion", methods=["POST"])
+def exclusion_confirm():
+    """Apply the previewed exclusion as the verified person, bound to the preview's hash: the
+    subnet's pools written as the pieces through board C's write path (Kea's own check,
+    config-reload, read back), the record committed; the result in place."""
+    from modules import dhcp_exclusions as E
+    from modules import dhcp_subnets as S
+    from modules import identity
+
+    actor = identity.request_actor()
+    got = S.apply_edit(_list_name(), request.form, request.form.get("hash", ""), actor=actor,
+                       reason=request.form.get("why", "") or request.form.get("reason", ""),
+                       intent=_intent(), planner=E.plan, record=E.record_commit)
+    s = E.ask(request.form)
+    if not got["ok"]:
+        return _xop_region({"state": "refused", "ask": s, "plan": got.get("plan"),
+                            "result": got, "subnets": _op_subnets(),
+                            "why": request.form.get("why", "")},
+                           409 if not got.get("rolled_back") else 502)
+    return _xop_region({"state": "done", "ask": s, "plan": got["plan"], "result": got,
+                        "actor": actor, "subnets": _op_subnets()})
+
+
 def _op_subnets() -> list:
     """The subnets a reservation can be made in, from the DHCP reader's stored value: every
     subnet of both families but ZTP's (onboarding's)."""

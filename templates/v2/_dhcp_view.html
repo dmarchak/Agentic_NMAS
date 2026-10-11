@@ -152,9 +152,44 @@
 </section>
 
 {%- else %}
+{%- if xop is defined and xop %}<section class="card dh-sec">{% include "v2/_dhcp_exclusion.html" %}</section>{% endif %}
+<section class="card dh-sec" aria-labelledby="dh-con-h">
+  <h2 id="dh-con-h">Conflicts{% if g.conflicts %} ({{ g.conflicts | length }}){% endif %} <span class="faint small">a static address inside a pool, not excluded</span></h2>
+  {%- if g.conflicts %}
+  <div class="dh-scroll"><table class="table">
+    <thead><tr><th scope="col">Address</th><th scope="col">Pool</th><th scope="col">Assigned by</th><th scope="col">Leased now</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+    <tbody>{% for c in g.conflicts %}<tr>
+      <td class="mono">{{ c.address }}</td><td class="mono">{{ c.pool }}</td>
+      <td>intent: {{ c.device }}'s {{ c.iface }}</td><td>{{ c.leased }}</td>
+      <td><a class="btn btn-small btn-primary" href="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='add', family=c.family, id=c.id, range=c.address, source='intent', detail=c.device ~ ' ' ~ c.iface ~ ' in intent', reason=c.device ~ ' ' ~ c.iface ~ ' in intent, a static address') }}" hx-get="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='add', family=c.family, id=c.id, range=c.address, source='intent', detail=c.device ~ ' ' ~ c.iface ~ ' in intent', reason=c.device ~ ' ' ~ c.iface ~ ' in intent, a static address') }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-exclusion">Exclude {{ c.address }}…</a>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {%- else %}
+  <p class="small muted">None found: no static address committed intent assigns lies inside a pool without being excluded.</p>
+  {%- endif %}
+  <p class="note small">Found from the DHCP reader's read of committed intent, each run: every static address an interface is given, against each pool. NetBox's assigned addresses are not compared yet.</p>
+</section>
 <section class="card dh-sec" aria-labelledby="dh-exc-h">
-  <h2 id="dh-exc-h">Exclusions</h2>
-  <p class="small">Nothing is excluded: Kea has no excluded-address setting, so exclusions are Mercury's record (each range with its reason and its source), and Mercury shapes the pools around them when it writes Kea (board D). They arrive with the subnet operations (C529 step 3), as do the conflicts it finds: an address NetBox or intent assigns inside a pool.</p>
+  <div class="dh-head2"><h2 id="dh-exc-h">Exclusions</h2>
+    {%- if not (xop is defined and xop) %}<span class="dh-acts"><a class="btn btn-primary" href="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='add') }}" hx-get="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='add') }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-exclusion">Add an exclusion…</a>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}</span>{% endif %}</div>
+  {%- if g.exc_error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ g.exc_error }}. No exclusion can be changed until it is repaired.</p></div>{% endif %}
+  {%- if g.exclusions %}
+  <div class="dh-scroll"><table class="table">
+    <thead><tr><th scope="col">Range</th><th scope="col">Subnet</th><th scope="col">Reason</th><th scope="col">Source</th><th scope="col">In a pool?</th><th scope="col"><span class="sr-only">Change</span></th></tr></thead>
+    <tbody>{% for e in g.exclusions %}<tr>
+      <td class="mono">{{ e.range }}</td><td class="mono">{{ e.prefix }}</td><td>{{ e.reason }}</td>
+      <td class="small">{{ e.source }}{% if e.detail %} <span class="faint">{{ e.detail }}</span>{% endif %}<br><span class="faint">{{ e.by }}, {{ (e.at or '')[:10] }}</span></td>
+      <td class="small">{{ 'yes: the pool is split around it' if e.inside else 'outside the pool today; kept out if it grows' }}</td>
+      <td><a class="btn btn-small" href="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='remove', family=e.family, id=e.subnet, was=e.range) }}" hx-get="{{ url_for('dhcp_v2.exclusion_preview', list=g.list, op='remove', family=e.family, id=e.subnet, was=e.range) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-exclusion" aria-label="Remove the exclusion {{ e.range }}">Remove…</a>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {%- else %}
+  <p class="small muted">Nothing is excluded.</p>
+  {%- endif %}
+  {%- for x in g.shaped if x.excluded %}
+  <p class="small"><strong>{{ x.key }}</strong>: the pool as set, <span class="mono">{{ x.as_set }}</span>, excluding {{ x.excluded | join(', ') }}; Kea is told <span class="mono">{{ x.kea | join(', ') }}</span>.</p>
+  {%- endfor %}
+  <p class="note small">Kea has no excluded-address setting: you set one range per pool and Kea is given the pieces. The range and its exclusions are Mercury's record (<span class="mono">dhcp/subnets.yml</span>, <span class="mono">dhcp/exclusions.yml</span>), so a person edits the range and the reason, never the arithmetic. A reservation for an excluded address is allowed: a fixed address kept out of the pool.</p>
 </section>
 {%- endif %}
 {%- endif %}

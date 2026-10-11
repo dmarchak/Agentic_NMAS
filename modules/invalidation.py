@@ -176,6 +176,7 @@ DECLARED = {
     # C529 step 2: a reservation written to Kea and recorded in the network's repository.
     "dhcp_v2.reservation_confirm": ("dhcp",),
     "dhcp_v2.subnet_confirm": ("dhcp",),
+    "dhcp_v2.exclusion_confirm": ("dhcp",),
     "credential_profiles_v2.save": ("credentials",),
     "credential_profiles_v2.delete": ("credentials",),
     # Goldens, the repository and the remote.

@@ -13,7 +13,7 @@ Compared again 2026-10-11 (C529 step 3, board C's section 1): the Subnets table 
 Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html, templates/v2/_dhcp_reserve.html
 Compared again 2026-10-11 after the subnet move (C529 step 5, run on the host): each subnet Mercury holds has board C's Edit… (its card: sections 2 and 3, the form, the change, Leases now, Checks, the confirm); ZTP's has none. Remove… and Add a subnet… are the next part. Walked on the host (2fbff36): the edit's preview against the live Kea named both leases a narrower pool would strand, each kept until its lease ends, and passed the gateway against intent.
 Compared again 2026-10-11 (board C sections 4 and 5): Add a subnet… beside the heading with its (i), and Remove… under each subnet's Edit…, as board C draws them; the removal's card says the leases it ends service for and what survives, and asks the acknowledgement.
-Templates sha256: `e5fa45267b1afd0f84b8c4d6e3fae2fe5db4c6a97722b4f8b7b9baf335bf5bdc`
+Templates sha256: `491d0c23e1b6fa1c9564c955c7064e8abc35b7de004ac757d6f120d853015e9d`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -42,7 +42,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Unmatched as Needs attention | a row naming the reservation, its action Edit… | not drawn: its action is board B's | **later** C529 step 2 |
 | ZTP's subnet and board L | one store, two views: the Discovered list and this page | the ZTP group's line names the Discovered list | **later** board L |
 | For the operator | how a reservation reaches Kea, the two ways | not drawn: the board's note to the operator, whose decision (option 1) is recorded in C529 | **same** |
-| Exclusions | board D: named exclusions and the conflicts found | what Kea cannot do and when Mercury's arrive | **later** C529 step 3 |
+| Exclusions | board D: named exclusions and the conflicts found | board D's sections (compared 2026-10-11 against DhcpExclusions in their empty states, as the lab is): Conflicts first (address, pool, assigned by, leased now, Exclude… opening the card with its reason from the source; "None found" when none); Exclusions with Add an exclusion…, each row's range, subnet, reason, source with who and when, in a pool or not, and Remove…; how each shaped pool is written to Kea; the card (section 4) in place. NetBox's addresses as a conflict source and the conflict's Needs attention row are not yet built | **deviation** (log: C529 step 3: board D's exclusions, where they live and how they are written) |
 
 ## Board B: a reservation's operations (C529 step 2)
 

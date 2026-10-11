@@ -598,9 +598,12 @@ def _change_lines(before: dict, after: dict, sid, prefix) -> list:
 
 
 def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reason: str,
-               kea=None, run_test=None, main_text=None, record=None, intent=None) -> dict:
+               kea=None, run_test=None, main_text=None, record=None, intent=None,
+               planner=None) -> dict:
     """``{ok, error, outcome, read_back, rolled_back, commit, plan}``: board C's change applied,
-    holding Mercury's subnet file from its read to its read-back."""
+    holding Mercury's subnet file from its read to its read-back. *planner* is board D's
+    (an exclusion shapes a subnet's pools: the same write, its own record); board C's `plan`
+    otherwise. The one write path for Kea's subnets."""
     from modules import dhcp_reservations as D
     from modules.nsot import ztp
 
@@ -621,7 +624,7 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
     main = D.main_config(list_name, family)
     path = subnets_file(main, family)
     with ztp.fragment_lock(path):
-        p = plan(list_name, values, kea=kea, intent=intent)
+        p = (planner or plan)(list_name, values, kea=kea, intent=intent)
         out["plan"] = p
         if not p["ok"]:
             out["error"] = p["refused"]
@@ -722,15 +725,13 @@ def _moved(before: dict, after: dict, family: str, sid, op: str = "edit") -> lis
     return out
 
 
-def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
-    """Write `dhcp/subnets.yml` (every subnet in Mercury's subnet files, both families, as
-    Mercury's files hold them) and commit it as *actor*, the reason in its body."""
+def write_subnets_record(list_name: str, repo: str) -> None:
+    """Write `dhcp/subnets.yml` in *repo*: every subnet in Mercury's subnet files, both
+    families, as Mercury's files hold them. The caller holds the repository's lock and commits."""
     import yaml
 
     from modules import dhcp_reservations as D
-    from modules.config import get_list_data_dir
     from modules.filestore import write_atomic
-    from modules.nsot import repo as R
 
     doc = {}
     for family in FILES:
@@ -740,12 +741,20 @@ def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
                 doc[family] = load(fh.read())
         except (OSError, Refused) as exc:
             doc[family] = f"not read: {exc}"
+    target = os.path.join(repo, RECORD)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    write_atomic(target, "# Kea's subnets as Mercury's files hold them (C529); written on "
+                         "each change.\n" + yaml.safe_dump(doc, sort_keys=False))
+
+
+def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
+    """Write `dhcp/subnets.yml` and commit it as *actor*, the reason in its body."""
+    from modules.config import get_list_data_dir
+    from modules.nsot import repo as R
+
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
     with R.repo_lock(repo):
-        target = os.path.join(repo, RECORD)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        write_atomic(target, "# Kea's subnets as Mercury's files hold them (C529); written on "
-                             "each change.\n" + yaml.safe_dump(doc, sort_keys=False))
+        write_subnets_record(list_name, repo)
         subject = p.get("subject") or "dhcp: subnet changed"
         return R._commit_paths(list_name, [RECORD], f"{subject}\n\n{reason.strip()}",  # noqa: SLF001
                                [f"Actor: {actor}"], "dhcp")
