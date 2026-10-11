@@ -210,7 +210,7 @@ class TestTheGate:
         assert code == 0 and _head(world) == sha and restarted
         assert sum(1 for c in calls if "head_sha=" in c) == 4
         assert out.count("waiting ") == 2, out
-        assert "typically ~200 s" in out and "of at most 600 s" in out
+        assert "typically ~7.5 min" in out and "of at most 1100 s" in out
         assert "waited " in out and "CI passed" in out
 
     def test_wait_stops_at_the_bound_and_says_so(self, world, capsys):
@@ -219,7 +219,7 @@ class TestTheGate:
                                   wait=True)
         err = capsys.readouterr().err
         assert code == 7 and _head(world) == world.base and not restarted
-        assert "still PENDING after waiting" in err and "the bound, 600 s" in err
+        assert "still PENDING after waiting" in err and "the bound, 1100 s" in err
 
     def test_wait_ends_at_once_on_a_failure(self, world, capsys):
         """The gate is unchanged: a run that fails while followed refuses."""
@@ -967,9 +967,17 @@ class TestTheApiAllowance:
 
     def test_a_typical_run_costs_few_enough_calls_for_several_deploys_an_hour(self):
         mod = _script()
-        typical_s = 6 * 60                         # CI's run, measured on 2026-10-11 (#634, #635)
+        typical_s = 454                            # push to green, #638, measured 2026-10-11
         per_deploy = -(-typical_s // mod.WAIT_POLL_S) + 1
-        assert 60 // per_deploy >= 6, (mod.WAIT_POLL_S, per_deploy)
+        assert 60 // per_deploy >= 5, (mod.WAIT_POLL_S, per_deploy)
+
+    def test_the_bound_is_about_two_and_a_half_times_the_measured_run(self):
+        """C679: push to green measured 454 s (#638) and each job at most 7.3 minutes over runs
+        #629 to #638 (2026-10-11); the bound is about 2.5x, and the words say the same."""
+        mod = _script()
+        assert 2.2 <= mod.WAIT_BOUND_S / 454 <= 2.8, mod.WAIT_BOUND_S
+        assert mod.WAIT_BOUND_S > 7.3 * 60 * 1.5, "a slow job alone must fit with room"
+        assert "measured 2026-10-11" in mod.MEASURED_TYPICAL
 
     def test_a_rate_limited_answer_says_when_the_allowance_comes_back(self, monkeypatch):
         import email.message

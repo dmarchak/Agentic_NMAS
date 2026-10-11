@@ -93,15 +93,18 @@ LOCK_REL = os.path.join("data", "update", "lock")
 #: --wait (the operator, 2026-09-28): 35 "still running" refusals across 19
 #: waits in 28 hours, a retry loop where the waiting itself was ~33 minutes.
 #: The bound comes from a measurement, not a round number (C129): push to
-#: green measured median 201 s, p90 259 s over 85 runs (2026-09-27/28); 600 s
-#: is about 2.5x the p90. The poll is paced to GitHub's API allowance, 60 calls an hour
+#: green measured median 201 s, p90 259 s over 85 runs (2026-09-27/28), and
+#: 600 s was about 2.5x that p90. Measured again 2026-10-11 (C679, `nmas-ci-log
+#: times` over runs #629 to #638): each job 4.0 to 7.3 minutes, the slowest job
+#: the run's length, a deploy started at the push waiting about 7.5 minutes
+#: (454 s for #638), so the bound is 1100 s, about 2.5x that. The poll is paced to GitHub's API allowance, 60 calls an hour
 #: unauthenticated for the host's address (C678, measured 2026-10-11: three deploys inside
 #: an hour at a 20 s poll, about 18 calls each with the Update page's checks, spent all 60,
 #: and the third deploy was refused as unverified). One call a poll; at 45 s a run of about
 #: 6 minutes costs about 8, so about 7 deploys fit an hour.
-WAIT_BOUND_S = 600
+WAIT_BOUND_S = 1100
 WAIT_POLL_S = 45
-MEASURED_TYPICAL = "typically ~200 s, p90 ~260 s (measured 2026-09-28)"
+MEASURED_TYPICAL = "typically ~7.5 min, each job 4 to 7.3 min (measured 2026-10-11)"
 
 
 def can_restart(run=subprocess.run, isatty=None):

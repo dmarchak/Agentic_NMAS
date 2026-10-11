@@ -210,8 +210,8 @@ Link it into your PATH (one copy, versioned):
 `ln -sf ~/python/Agentic_NMAS/scripts/nmas-deploy ~/bin/nmas-deploy`. On a
 machine that cannot reach GitHub, `nmas-deploy --offline` runs the whole suite
 here against the target instead. There is no flag that deploys an unverified
-commit. `nmas-deploy --wait` follows a run that is still going (every 20 s, at
-most 600 s, printing what it is doing) and deploys when it passes; the gate is
+commit. `nmas-deploy --wait` follows a run that is still going (every 45 s, at
+most 1100 s, printing what it is doing) and deploys when it passes; the gate is
 unchanged, only the retrying moves from you to the tool.
 
 **The verdict is of the SET of runs for the commit** (C124). A commit can have

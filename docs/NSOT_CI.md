@@ -277,9 +277,12 @@ over 2026-09-27 00:00 UTC to 2026-09-28 (~28 h), rather than guessed:
 
 **Decided (the operator): keep the gate as it is, and add `nmas-deploy --wait`.**
 The real cost was the retry loop (35 refusals across 19 waits), not the minutes.
-`--wait` follows the run every 20 s, bounded at 600 s (about 2.5x the measured
-p90, the timeout rule of C129), printing the run's state, the time waited and
-the measured typical, so a wait going slowly can be told from one going wrong.
+`--wait` follows the run every 45 s, bounded at 1100 s (about 2.5x the measured
+push-to-green, the timeout rule of C129), printing the run's state, the time waited and
+the measured typical, so a wait going slowly can be told from one going wrong. (Measured
+again 2026-10-11: the suite had grown to about 7.5 minutes a run, so the 600 s bound set
+from 2026-09-28's p90 of 259 s was 1.3x, C679; and a 20 s poll spent the host's 60
+unauthenticated GitHub API calls an hour in three deploys, C678.)
 Any other verdict ends the wait at once; the gate is the same gate.
 
 Declined, with reasons: **(b) a split fast gate**, because "the tests that matter"
