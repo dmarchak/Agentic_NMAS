@@ -13,6 +13,7 @@ one code path today's wizard and banner call too.
 """
 
 import logging
+import re
 
 from flask import Blueprint, render_template, request
 
@@ -63,9 +64,41 @@ def new():
     from modules.nsot import listref
 
     name = (request.args.get("list") or "").strip() or listref.active_name()
-    # A retired device's "Onboard it again…" names it.
-    return _add(f={"list_name": name, "address_source": "static",
-                   "hostname": (request.args.get("hostname") or "").strip()})
+    # A retired device's "Onboard it again…" names it; Discovered's Pick… gives the MAC it
+    # asked with, and ZTP reserves it by that MAC and serves its first config (board L: "By MAC").
+    mac = (request.args.get("mac") or "").strip().lower()
+    if not re.fullmatch(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}", mac):
+        mac = ""
+    return _add(f={"list_name": name, "address_source": "ztp" if mac else "static",
+                   "mgmt_mac": mac, "hostname": (request.args.get("hostname") or "").strip()})
+
+
+# ---------------------------------------------------------------------------
+# Onboard devices › Discovered (board L): the discovery reader's devices, drawn.
+# ---------------------------------------------------------------------------
+
+def _discovered_ctx() -> dict:
+    from modules import discovery_page
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    return {"g": discovery_page.view(named_list(request) or listref.active().name, request.args)}
+
+
+@bp.route("/discovered", methods=["GET"])
+def page():
+    """The page. A read: the discovery reader's stored value, drawn."""
+    from routes.v2 import _page
+
+    ctx = _discovered_ctx()
+    return _page("v2/onboard.html", active_nav="devices", list_name=ctx["g"]["list"], **ctx)
+
+
+@bp.route("/discovered/view", methods=["GET"])
+def region():
+    """The page's region alone: re-read when `ztp-discovery` is announced, and asked again with a
+    filter or a search. Writes nothing."""
+    return _strict(render_template("v2/_onboard_discovered.html", **_discovered_ctx()))
 
 
 @bp.route("/preview", methods=["POST"])

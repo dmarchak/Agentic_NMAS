@@ -106,6 +106,30 @@ def test_dhcp(tmp_path, monkeypatch):
                    widths=((1440, 1.0), (390, 2.0)))
 
 
+def test_onboard_discovered(tmp_path, monkeypatch):
+    """Board L (ZtpDiscovery, 1440) beside Onboard devices › Discovered, fed the discovery
+    reader's value with all three groups (tests/test_onboard_discovered_v2.py's), and a Pick's
+    Add device card opened in place."""
+    from tests import browser
+    from tests import test_onboard_discovered_v2 as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    monkeypatch.setattr("modules.discovery_page.time.time", lambda: T.NOW)
+    T.store(T.value())
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("onboard-discovered", "ZtpDiscovery.dc.html",
+               lambda w: "/v2/onboard/discovered?list=Lab", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+
+
 def test_dhcp_reserve(tmp_path, monkeypatch):
     """C529 step 2's board B (DhcpReserve, 1440) beside the Reservations tab's card: board B's
     three operations as previews (Edit h2's MAC, Add an IPv6 address for h1, Remove h3's) and

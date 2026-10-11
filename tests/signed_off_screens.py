@@ -162,6 +162,10 @@ SIGNED_OFF = {
     "tab:ask": ("2026-10-08", "C547, board A (canvas page 'reads'), signed off 2026-10-08 with "
                               "the design NSOT_READS.md and R1 to R5; the tab's name approved "
                               "2026-09-30 (NSOT_STAGE7_PLAN 1g)"),
+    "onboard.html": ("2026-10-11", "board L (canvas `ZtpDiscovery.dc.html`, version 111), "
+                                   "Devices › Onboard devices › Discovered, redrawn from "
+                                   "NSOT_STAGE7_PLAN 16's measurements and signed off under the "
+                                   "Phase 7 mode (docs/STANDING_APPROVAL_LOG.md)"),
     "pending.html": ("2026-10-10", "board E's pending page (cutover blocker 3), drawn under the "
                                    "Phase 7 mode and so signed off by the operator's standing "
                                    "approval (docs/STANDING_APPROVAL_LOG.md): the onboarding "

@@ -1578,6 +1578,19 @@ a.topo-ent:hover { background: var(--hover); }
 .dh .table { min-width: 760px; }
 .dh-lease { white-space: nowrap; }
 .dh-find { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0; }
+/* Onboard devices › Discovered (board L): the summary card, the vendor filter and the search,
+   then one collapsible card per group, its table scrolling in its box as board A's do. */
+.dv { display: flex; flex-direction: column; gap: 14px; }
+.dv-sum { display: flex; flex-direction: column; gap: 10px; }
+.dv-filter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.dv-filter .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+.dv-search { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 0 auto; }
+.dv-search .search { min-width: 0; width: min(280px, 100%); }
+.dv-grp > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 2px 0; }
+.dv-grp[open] > summary { margin-bottom: 8px; }
+.dv .table td { overflow-wrap: normal; }
+.dv .table { min-width: 760px; }
+.dv-pick { white-space: nowrap; }
 .dh-find input, .dh-find select { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line);
   border-radius: var(--r); background: var(--surface); color: var(--ink); }
 .dh-find input { min-width: 280px; }

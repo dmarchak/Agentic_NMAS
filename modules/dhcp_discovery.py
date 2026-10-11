@@ -143,9 +143,11 @@ def _taken(dhcp4: dict, subnet: dict, leases: list, intent: dict, host: str) -> 
     for r in D.every_reservation(dhcp4, "IPv4"):
         out += [(a, f"a reservation ({r.get('identity')})") for a in r.get("addresses") or []]
     out += [(l.get("ip-address", ""), "a lease") for l in leases if l.get("state", 0) == 0]
+    from modules.dhcp_subnets import pool_span
+
     for p in subnet.get("pools") or []:
         try:
-            a, b = (ipaddress.ip_address(x.strip()) for x in p.get("pool", "").split("-"))
+            a, b = pool_span(p.get("pool", ""))
         except ValueError:
             continue
         out += [(str(a), f"the pool {p.get('pool')}"), (str(b), f"the pool {p.get('pool')}")]

@@ -649,6 +649,7 @@ class TestTheShippedScripts:
                                                     "/v2/topology?list=Lab",
                                                     "/v2/logs?list=Lab",
                                                     "/v2/dhcp?list=Lab",
+                                                    "/v2/onboard/discovered?list=Lab",
                                                     "/v2/history?tab=query&list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
@@ -678,7 +679,9 @@ class TestTheShippedScripts:
         # -1 2026-10-11: lab_startup (the lab-startup reader left the product, C663).
         # +1 2026-10-11: saved_views (History › Query's saved views redraw when one is saved,
         # pinned or removed elsewhere, C667).
-        assert len(keys) == 38
+        # +1 2026-10-11: ztp_discovery (Onboard devices › Discovered redraws when a device
+        # asks anew, is picked or goes quiet, board L).
+        assert len(keys) == 39
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

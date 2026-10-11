@@ -42,10 +42,12 @@ def qs(list_name: str, s: dict, over: dict = None) -> str:
     return "?" + urlencode(pairs)
 
 
-def stored(list_name: str) -> dict:
+def stored(list_name: str, reader: str = READER) -> dict:
+    """A Kea reader's stored value for the network, in the states its page draws (this page's
+    reader, or the discovery reader's for Onboard devices › Discovered)."""
     from modules import reader_job
 
-    got = reader_job.read_cached_for(READER, list_name)
+    got = reader_job.read_cached_for(reader, list_name)
     state = got.get("state")
     if state in ("not_applicable", "not_configured", "unreadable"):
         return {"state": state, "why": got.get("why") or "the reader's store could not be read"}

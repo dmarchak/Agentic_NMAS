@@ -89,6 +89,8 @@ VOCABULARY = {
     "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
     "logs": "the fleet's syslog counted per day (the Logs view's reader, C652)",
     "dhcp": "the network's Kea: subnets, reservations and leases (the DHCP reader, C529)",
+    "ztp_discovery": "the devices asking on the ZTP segment that the tool does not know (the "
+                     "discovery reader, board L)",
     "saved_views": "History › Query's saved views: their titles, who saved them, pinned or not "
                    "(modules/saved_views.py, C667)",
     "variables": "the CSV-era variable store and compliance policy",

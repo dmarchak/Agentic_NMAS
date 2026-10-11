@@ -40,6 +40,15 @@ Your answers committed in 8224518 (deployed). Then, in your order:
   the same for `kea-dhcp6.conf`, then `cd ~/python/Agentic_NMAS &&
   /opt/mercury-venv/bin/python scripts/nmas-kea-subnet-files reload` (undoes any board C or D
   change made since).
+- **Board L, the discovery range: RUN on the host 2026-10-11 21:16 UTC (5cbb226), 10 of 10
+  PASS.** Found first (C682): the classes as recorded would have cut every unreserved client's
+  lease in every subnet to five minutes (Kea's classes are global; a class's lease time beats
+  a subnet's, measured). They are confined to the ZTP subnet's own clients, measured safe on a
+  throwaway Kea and then live: after the step, h1 and h2 renewed through their relays and
+  still got 365 days. The range is 10.255.0.192/27 (two pools, ciscopnp's first), recorded
+  through board C's write path. Dated copy: `/var/backups/kea/ztp-discovery-20261011T211641Z`
+  (with before.json and after.json). Then the discovery reader and Devices › Onboard devices ›
+  Discovered, with Pick… opening Add device with the MAC and the ZTP way.
 - **C680, step 2's stale check:** fixed (it read the pre-move file); it now reads the shape the
   files have, so it stays true after later steps. Once deployed, the Update row reads done
   with no re-run.

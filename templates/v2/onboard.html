@@ -1,0 +1,9 @@
+{%- extends "v2/base.html" -%}
+{#- Devices › Onboard devices › Discovered (board L, ZtpDiscovery.dc.html, canvas version 111,
+    signed off under the Phase 7 mode): the devices asking on the ZTP segment that the tool does
+    not know, from the discovery reader; compared region by region in
+    docs/fidelity/onboard-discovered.md. The region redraws when the reader announces. -#}
+{% block title %}Onboard devices · {{ brand.short }}{% endblock %}
+{% block main %}
+{% include "v2/_onboard_discovered.html" %}
+{% endblock %}

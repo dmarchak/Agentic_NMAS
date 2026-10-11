@@ -90,6 +90,8 @@ PAGES = (
      "concepts/credentials-lifecycle.md"),
     ("needs-attention", "Needs attention", "Screens", "screens/needs-attention.md"),
     ("devices", "Devices", "Screens", "screens/devices.md"),
+    ("onboard-discovered", "Onboard devices: Discovered", "Screens",
+     "screens/onboard-discovered.md"),
     ("device-page", "The device page", "Screens", "screens/device-page.md"),
     ("history", "History", "Screens", "screens/history.md"),
     ("monitoring", "Monitoring", "Screens", "screens/monitoring.md"),

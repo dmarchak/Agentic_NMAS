@@ -79,6 +79,10 @@ configuration), the address, mask and MAC that source needs, the interface the a
 on, a gateway when this host is not on the device's subnet, and the DNS domain. A platform not
 yet onboardable is listed and disabled, with its reason.
 
+**Discovered** opens the devices asking for an address on the ZTP segment that the tool does
+not know, each with **Pick…**, which opens this card with the MAC it asked with: see
+[Onboard devices: Discovered](onboard-discovered).
+
 **Review the plan** creates nothing. It shows every reason the device cannot be onboarded at
 once, and otherwise the startup configuration it will boot (with a placeholder for the
 one-time password, which is generated at Create and never sent to the browser), what Create

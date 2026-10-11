@@ -1,0 +1,117 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{#- Onboard devices › Discovered (board L): the summary and the range, the vendor filter and the
+    search, then the three groups (asking now open; picked, gone quiet collapsed). Everything from
+    the discovery reader's stored value; never a Kea call per view. -#}
+{%- macro go(g, over, words, cls='', pressed=none) -%}
+<a class="{{ cls }}" href="{{ url_for('onboard_v2.page') }}{{ g.qs(over) }}" hx-get="{{ url_for('onboard_v2.region') }}{{ g.qs(over) }}" hx-target="#discovered" hx-swap="outerHTML" hx-push-url="{{ url_for('onboard_v2.page') }}{{ g.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}>{{ words }}</a>
+{%- endmacro -%}
+{#- Board L's times: the clock time in UTC, the full instant on hover (never an age that
+    drifts while the page is open). -#}
+{%- macro at(iso) -%}{% if iso %}<time datetime="{{ iso }}" title="{{ iso }}">{{ iso[11:16] }} UTC</time>{% else %}<span class="faint">not recorded</span>{% endif %}{%- endmacro -%}
+<div id="discovered" class="dv" hx-get="{{ url_for('onboard_v2.region') }}{{ g.qs() }}" hx-trigger="nmas:ztp_discovery from:body" hx-swap="outerHTML">
+<p class="crumbs small"><a href="{{ url_for('v2.devices', list=g.list) }}">Devices</a> › Onboard devices › Discovered</p>
+<div class="dh-head">
+  <h1>Devices asking for an address the tool doesn't know {{ info('onboard-discovered') }}</h1>
+</div>
+<nav class="tabs dv-tabs" aria-label="Onboard devices">
+  <a class="tab" href="{{ url_for('v2.devices', list=g.list) }}">Plan devices</a>
+  <a class="tab on" aria-current="page" href="{{ url_for('onboard_v2.page', list=g.list) }}">Discovered{% if g.state == 'ok' %} ({{ g.total }}){% endif %}</a>
+</nav>
+
+{%- if g.state == 'never' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The discovery reader has not read Kea yet{% if g.failed %}: its last attempt failed, {{ g.failed }}{% endif %}. It reads every 30 s; this page redraws when it has.</p></div>
+{%- elif g.state == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The discovery reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than a list that may be wrong.</p></div>
+{%- elif g.state in ('not_configured', 'not_applicable') %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there is no DHCP server to read here (Settings › Integrations › Kea).</p></div>
+{%- else %}
+{%- set r = g.range %}
+<section class="card dv-sum" aria-label="Summary">
+  <div class="dh-counts">
+    <span><strong>{{ g.summary.asking }}</strong> asking now</span>
+    <span><strong>{{ g.summary.picked }}</strong> picked, not taken</span>
+    <span><strong>{{ g.summary.quiet }}</strong> gone quiet</span>
+    <span class="faint">not listed: {{ g.not_listed.reserved }} MAC{{ 's' if g.not_listed.reserved != 1 }} already reserved, {{ g.not_listed.pending }} pending onboarding{{ 's' if g.not_listed.pending != 1 }}</span>
+  </div>
+  {%- if g.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ g.failed }}); this is its last good read, {{ stamp(g.value_at) }}.</p></div>{% endif %}
+  {%- if r.state == 'on' %}
+  <p class="small muted">Read from Kea's leases in the ZTP segment's discovery range, <span class="mono">{% for p in r.pools %}{{ p.pool }}{% if not loop.last %}, {% endif %}{% endfor %}</span>, every 30 s, {{ stamp(g.value_at) }}. A lease there lasts {{ g.ago(r.lifetime) }} and carries no boot file, router or DNS, so a device waiting here reaches nothing and phones no one. The range has two pools: the first for a device sending vendor class ciscopnp (option 60), the second for the rest, so the pool a lease came from says its vendor class. Nothing happens to a device until a person picks it.</p>
+  {%- elif r.state == 'partial' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The discovery range is only partly in Kea:</strong> {{ r.problem }}. A device asking now may be given nothing, or listed wrongly. Run the host step again: <span class="mono">scripts/host-steps/ztp-discovery-range.sh</span> (the Update page).</p></div>
+  {%- else %}
+  <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p><strong>Kea runs no discovery range{% if r.problem %} ({{ r.problem }}){% endif %}:</strong> a device asking on the ZTP segment that no reservation names is given nothing, so it cannot be listed here. The one-time host step adds it: <span class="mono">scripts/host-steps/ztp-discovery-range.sh</span> (the Update page).</p></div>
+  {%- endif %}
+  <div class="dv-filter">
+    {%- for key, words in g.vendors %}{{ go(g, {'vendor': key}, words, 'btn btn-small' ~ (' on' if g.s.vendor == key), g.s.vendor == key) }} {% endfor %}
+    <form class="dv-search" action="{{ url_for('onboard_v2.page') }}" method="get" hx-get="{{ url_for('onboard_v2.region') }}" hx-target="#discovered" hx-swap="outerHTML" hx-push-url="true" role="search">
+      <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="vendor" value="{{ g.s.vendor }}">
+      <label class="sr-only" for="dv-q">Search by MAC, client-id or hostname</label>
+      <input id="dv-q" class="search" type="search" name="q" value="{{ g.s.q }}" placeholder="MAC, client-id or hostname">
+      <button class="btn btn-small" type="submit">Search</button>
+    </form>
+  </div>
+  {%- if g.subset %}<p class="small" role="status">Showing {{ g.shown }} of {{ g.total }}: {% if g.s.vendor %}vendor class {{ dict(g.vendors)[g.s.vendor] }}{% endif %}{% if g.s.vendor and g.s.q %}, {% endif %}{% if g.s.q %}matching “{{ g.s.q }}”{% endif %}. {{ go(g, {'vendor': '', 'q': ''}, 'Show all') }}</p>{% endif %}
+</section>
+<div id="onboard-add"></div>
+
+{%- for grp in g.groups %}
+<details class="card dv-grp" id="dv-{{ grp.key }}" data-keep="dv-{{ grp.key }}"{% if grp.key == 'asking' or (grp.rows and grp.key != 'quiet') %} open{% endif %}>
+  <summary>{{ grp.title }} ({{ grp.rows | length }}{% if grp.rows | length != grp.total %} of {{ grp.total }}{% endif %}) <span class="faint small">· {{ grp.words }}</span></summary>
+  {%- if not grp.rows %}
+  <p class="small faint">{% if grp.total %}None matches the filter.{% elif grp.key == 'asking' %}No device the tool doesn't know is asking now.{% else %}None.{% endif %}</p>
+  {%- elif grp.key == 'asking' %}
+  <div class="dh-scroll"><table class="table">
+    <thead><tr><th scope="col">MAC</th><th scope="col">Vendor class (opt. 60)</th><th scope="col">Client-id (opt. 61)</th><th scope="col">Hostname sent</th><th scope="col">Its lease</th><th scope="col">Asking since</th><th scope="col">Last asked</th><th scope="col">Next request</th><th scope="col"><span class="sr-only">Pick</span></th></tr></thead>
+    <tbody>
+    {%- for d in grp.rows %}
+    <tr>
+      <td class="mono">{{ d.mac }}</td>
+      <td>{% if d.vendor %}{{ badge(d.vendor, 'info') }}{% else %}<span class="faint">none sent</span>{% endif %}</td>
+      <td class="mono small">{{ d.client_id or '–' }}</td>
+      <td>{{ d.hostname or 'none sent' }}</td>
+      <td class="mono">{{ d.address }}</td>
+      <td>{{ at(d.first_seen) }}</td>
+      <td>{{ at(d.last_asked) }}</td>
+      <td>{% if d.cadence.next %}{{ d.cadence.next }} <span class="faint small">({{ d.cadence.words }})</span>{% else %}<span class="faint small">{{ d.cadence.words }}</span>{% endif %}</td>
+      <td class="dv-pick"><a class="btn btn-small" data-op="onboard" href="{{ url_for('onboard_v2.new', list=g.list, mac=d.mac) }}" hx-get="{{ url_for('onboard_v2.new', list=g.list, mac=d.mac) }}" hx-target="#onboard-add" hx-swap="outerHTML">Pick…</a>{{ how('onboard', compact=True, op='a Pick') }}</td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  <p class="small muted">The clock. “Next request” is each device's own cadence, read from the gaps between its requests, never a number written into the tool. A C8000v keeps asking until configured (measured: every 3–7 s for over an hour), so Pick is not a race; a device picked after asking a long time may not take it, and is listed apart with its re-trigger. Any input at a device's console ends its discovery.</p>
+  {%- elif grp.key == 'picked' %}
+  <div class="dh-scroll"><table class="table">
+    <thead><tr><th scope="col">MAC</th><th scope="col">Picked as</th><th scope="col">Asking since</th><th scope="col">Picked</th><th scope="col">Now</th></tr></thead>
+    <tbody>
+    {%- for d in grp.rows %}
+    <tr>
+      <td class="mono">{{ d.mac }}</td>
+      <td>{% if d.picked_as %}<a href="{{ url_for('device_v2.device', name=d.picked_as, list=g.list) }}">{{ d.picked_as }}</a>{% else %}<span class="faint">reserved{% if d.reserved %} as {{ d.reserved }}{% endif %}, no onboarding names it</span>{% endif %}</td>
+      <td>{{ at(d.first_seen) }}</td>
+      <td>{% if d.picked_at %}{{ at(d.picked_at) }}{% else %}<span class="faint">not recorded</span>{% endif %}</td>
+      <td><strong>Not taken yet:</strong> still on its discovery lease {{ d.address }}, last asked {{ at(d.last_asked) }}. A device asking for over an hour before its Pick may never take it: measured on a C8000v, it was offered its reservation on every DISCOVER and never sent a Request (a fresh boot took the same reservation in a second). Reload it to re-trigger, declaring its planned restart first; then it asks again as it boots and takes the Pick. Or withdraw the onboarding (its page's Abandon…).</td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- else %}
+  <div class="dh-scroll"><table class="table">
+    <thead><tr><th scope="col">MAC</th><th scope="col">Client-id (opt. 61)</th><th scope="col">Asking since</th><th scope="col">Last asked</th><th scope="col">Now</th></tr></thead>
+    <tbody>
+    {%- for d in grp.rows %}
+    <tr>
+      <td class="mono">{{ d.mac }}</td>
+      <td class="mono small">{{ d.client_id or '–' }}</td>
+      <td>{{ at(d.first_seen) }}</td>
+      <td>{{ at(d.last_asked) }}</td>
+      <td>Stopped asking {{ d.quiet_words }} ago. A C8000v never gives up on its own (measured: over an hour, every 3–7 s, without backing off), so it was most likely switched off or given a configuration at its console. To bring it back, reload it: it asks again as it boots, and Pick works then.</td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  {%- endif %}
+</details>
+{%- endfor %}
+<p class="small faint">Measured (NSOT_STAGE7_PLAN 16, 2026-10-05): a C8000v sends vendor class ciscopnp (option 60), read here from the pool its lease came from; its client-id (option 61) alternates by request between the MAC form and its board serial. On a virtual C8000v that serial changes at every fresh boot, so a discovered device is picked by its MAC.</p>
+{%- endif %}
+</div>

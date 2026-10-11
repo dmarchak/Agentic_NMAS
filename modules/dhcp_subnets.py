@@ -278,16 +278,25 @@ def _pool(text: str, prefix: str, family: str) -> tuple:
     return a, b
 
 
+def pool_span(text: str) -> tuple:
+    """``(first, last)`` of a pool as Kea writes it: ``a - b``, ``a-b``, or a prefix (Kea's
+    `config-get` reports an aligned range as a prefix, ``192.0.2.192/28``, measured 2026-10-11).
+    Raises ValueError for anything else."""
+    parts = [x.strip() for x in re.split(r"\s*-\s*", text or "") if x.strip()]
+    if len(parts) == 2:
+        a, b = (ipaddress.ip_address(x) for x in parts)
+        return a, b
+    if len(parts) == 1 and "/" in parts[0]:
+        n = ipaddress.ip_network(parts[0], strict=False)
+        return n[0], n[-1]
+    raise ValueError(f"{text!r} is not a pool")
+
+
 def _pools_of(subnet: dict) -> list:
     out = []
     for p in subnet.get("pools") or []:
-        parts = [x.strip() for x in re.split(r"\s*-\s*", p.get("pool", "")) if x.strip()]
         try:
-            if len(parts) == 2:
-                out.append(tuple(ipaddress.ip_address(x) for x in parts))
-            elif len(parts) == 1 and "/" in parts[0]:
-                n = ipaddress.ip_network(parts[0], strict=False)
-                out.append((n[0], n[-1]))
+            out.append(pool_span(p.get("pool", "")))
         except ValueError:
             continue
     return out
