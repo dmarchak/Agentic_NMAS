@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Move each device role's Mercury kind into NetBox (C665): the `mercury_kind` custom field on
+device roles, set from Mercury's role map. Read-only unless --apply names this plan's hash.
+
+    python3 scripts/nmas-netbox-role-kind                 # the plan, and its hash
+    python3 scripts/nmas-netbox-role-kind --apply <hash>  # write it, then read it back
+
+A role NetBox already classifies keeps its kind (NetBox's wins); a role the map does not name
+stays unclassified, and is listed. Needs NetBox writes on (netbox_allow_writes). Exit 0 done or
+nothing to do, 1 refused or not read back, 2 NetBox could not be read.
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--apply", default="", help="the plan's hash, to write it")
+    args = ap.parse_args(argv)
+
+    from modules.inventory import role_kind as RK
+    from modules.netbox_client import _nb_ready
+    from modules.settings_schema import get_setting
+
+    ok, err, session, base = _nb_ready()
+    if not ok:
+        print(f"UNPROVEN: NetBox is not reachable: {err}")
+        return 2
+    try:
+        now = RK.read(session, base)
+    except RK.KindUnreadable as exc:
+        print(f"UNPROVEN: {exc}")
+        return 2
+    p = RK.plan(get_setting("role_map") or {}, now)
+    print(f"{len(now['roles'])} NetBox device role(s); the field {RK.FIELD} "
+          + ("exists" if now["field"] else "does not exist yet"))
+    if p["create_field"]:
+        print(f"  would create the custom field {RK.FIELD} on device roles "
+              f"(text, one of {', '.join(RK.KINDS)})")
+    for s in p["set"]:
+        print(f"  would set role {s['slug']}: {RK.FIELD} = {s['kind']} (from the role map)")
+    for k in p["kept"]:
+        print(f"  role {k['slug']}: already {k['kind']} in NetBox, kept")
+    for u in p["unclassified"]:
+        print(f"  role {u}: the role map does not name it, so it stays not classified")
+    print(f"plan {p['hash']}")
+    if not p["create_field"] and not p["set"]:
+        print("Nothing to write.")
+        return 0
+    if not args.apply:
+        print(f"DRY RUN: nothing was written. Re-run with --apply {p['hash']}.")
+        return 0
+    if args.apply != p["hash"]:
+        print(f"REFUSED: --apply {args.apply} is not this plan ({p['hash']}): NetBox or the "
+              "role map moved since. Nothing was written.")
+        return 1
+    actor = f"{os.environ.get('USER') or 'unknown'} (nmas-netbox-role-kind)"
+    got = RK.apply(p, session, base, actor)
+    for line in got["lines"]:
+        print(f"  {line}")
+    return 0 if got["ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
