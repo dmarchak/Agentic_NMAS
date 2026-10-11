@@ -54,8 +54,12 @@ def _timeline(ref, f, members):
          "exception": LONG_NOTE, "outcome": "",
          "who": "a-person-with-a-long-name@example.com (host login, not verified)",
          "who_short": "a-person-with-a-long-name@example.com", "detail": "golden: 9 device(s)",
-         "sha": "abc1def" + "0" * 33, "record": []}],
-        "errors": [], "cut": [], "limit": 50, "total": 2, "people": [], "counts": {}}
+         "sha": "abc1def" + "0" * 33, "record": [], "verified": "host-shell"}],
+        "errors": [], "cut": [], "limit": 50, "total": 2, "people": [], "counts": {},
+        # 7.5's identity line at its widest: every kind of identity counted (52 commits).
+        "identity": {"commits": 52, "verified": 41, "unverified": 11,
+                     "others": [("host login", 8), ("not verified", 2),
+                                ("before verification was recorded", 1)]}}
 
 
 def _history(ref, dev, limit=None):

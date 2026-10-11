@@ -583,6 +583,9 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .hist-remote-said.ok { color: var(--ok); }
 .hist-remote-said.bad { color: var(--danger); }
 .hist-filter { display: flex; flex-direction: column; gap: 2px; }
+/* 7.5's identity line under the filters: the count in ink, the kinds as badges. */
+.hist-identity { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.hist-identity-ok { color: var(--ok); }
 /* The commit list: one line per commit (a grid row in its summary), the detail under it at
    full width. Below 640 px the line stacks: when, what, then workflow, who and baseline. */
 .hist-list { font-size: 13px; }

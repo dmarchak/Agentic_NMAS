@@ -46,8 +46,23 @@
     <select name="since">
       {%- for v, words in since_choices %}<option value="{{ v }}"{% if v == f.since %} selected{% endif %}>{{ words }}</option>{% endfor %}
     </select></label>
+  {%- if f.identity %}<input type="hidden" name="identity" value="{{ f.identity }}">{% endif %}
   <button type="submit" class="btn">Show</button>
 </form>
+{#- 7.5's identity line (board HistoryIdentity, canvas v112): the commits in the window the
+    filters draw, counted by their Actor-Verified trailer. -#}
+{%- set idn = h.identity or {} -%}
+{%- set narrowed = [('device', f.device), ('person', f.person)] | selectattr(1) | map('join', ': ') | list + (['kinds: ' ~ (f.kinds | join(', '))] if f.kinds else []) -%}
+{%- set where = ('shown (' ~ (narrowed | join('; ')) ~ ')') if narrowed else 'in this window' -%}
+{%- if idn %}
+<p class="hist-identity small" role="status" id="hist-identity">
+  {%- if f.identity %}{{ idn.commits }} commit{{ 's' if idn.commits != 1 }} {{ where }} {{ 'are' if idn.commits != 1 else 'is' }} not verified{% if idn.commits %} ({% for w, n in idn.others if n %}{{ n }} {{ w }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}. <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind=f.kinds) }}">Show every identity</a>
+  {%- elif not idn.commits %}No commit {{ where }}, so no identity to count.
+  {%- elif not idn.unverified %}<span class="hist-identity-ok">{{ 'All ' ~ idn.commits ~ ' commits' if idn.commits != 1 else 'The one commit' }} {{ where }} {{ 'carry' if idn.commits != 1 else 'carries' }} a verified identity.</span>
+  {%- else %}<strong>{{ idn.verified }} of {{ idn.commits }} commits</strong> {{ where }} carry a verified identity (signed in through the access proxy). {% for w, n in idn.others if n %}{{ badge(n ~ ' ' ~ w, 'muted' if w.startswith('before') else 'warn') }} {% endfor %}<a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind=f.kinds, identity='unverified') }}">Show only these {{ idn.unverified }}</a>
+  {%- endif %}
+</p>
+{%- endif %}
 {% include "v2/_history_timeline.html" %}
 {%- elif tab == 'query' and metric %}
 {% include "v2/_history_metric.html" %}

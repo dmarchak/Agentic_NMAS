@@ -61,6 +61,15 @@ address, so a view is a link you can share. A long list shows the newest and say
 are, with **Show more**. A record store that could not be read is said above the list. A
 commit whose record is known to be wrong says so in its row.
 
+**Who changed it, and can it be trusted.** Under the filters, one line counts the commits in the
+window the filters draw by how their person was identified: signed in through the access proxy
+(verified), a host login, not verified, or made before the tool recorded how. For example,
+"41 of 52 commits in this window carry a verified identity", with a badge for each other kind.
+When a filter narrows the window, the line says which ("shown (person: alex)"). A window with no
+commit says so rather than "0 of 0". **Show only these** keeps your filters and lists just the
+commits not verified; **Show every identity** undoes it. Each commit's own row says how its
+person was identified when it was not a verified sign-in.
+
 ## Reveal a version {#reveal}
 
 A golden row (on a device's History tab, or on History when the commit is one device's) offers

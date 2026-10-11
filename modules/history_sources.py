@@ -143,6 +143,7 @@ def _log(ctx, paths, *extra, follow=False, count=None):
                      "measured": split(parts[6]), "baseline": parts[7].strip(),
                      "subject": parts[8], "files": files,
                      "who": _who(parts[3].strip(), parts[9].strip()),
+                     "verified": parts[9].strip(),
                      "tags": [d.strip()[len("tag: "):] for d in parts[10].split(",")
                               if d.strip().startswith("tag: ")]})
     return rows, ""
@@ -222,9 +223,31 @@ def _from_commit(r, kind, what, devices, **kw):
     why = _known_wrong(r["sha"])
     e = _event(r["at"], kind, what, devices, who=r["who"], detail=kw.pop("detail", r["subject"]),
                sha=r["sha"], marks=["record known wrong"] if why else [], **kw)
+    # Its Actor-Verified value, for the window's identity line (7.5): "" on a commit made
+    # before the trailer existed.
+    e["verified"] = r.get("verified", "")
     if why:
         e["exception"] = why
     return e
+
+
+#: The identity line's words for each Actor-Verified value other than a verified sign-in.
+IDENTITY_KINDS = (("host-shell", "host login"), ("none", "not verified"),
+                  ("", "before verification was recorded"))
+
+
+def identity(events) -> dict:
+    """The 7.5 line for the commits in *events* (the window the filters draw): ``{commits,
+    verified, others: [(words, n)], unverified}``. A value the table does not name counts as
+    not verified."""
+    commits = [e for e in events if "verified" in e]
+    counts = {}
+    for e in commits:
+        v = e["verified"] if e["verified"] in ("access", "host-shell", "") else "none"
+        counts[v] = counts.get(v, 0) + 1
+    return {"commits": len(commits), "verified": counts.get("access", 0),
+            "others": [(w, counts.get(k, 0)) for k, w in IDENTITY_KINDS],
+            "unverified": len(commits) - counts.get("access", 0)}
 
 
 def _renames(ctx, folder):
@@ -1024,7 +1047,7 @@ def devices_words(devices: list) -> str:
 
 
 def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: str = "",
-             limit: int = DEFAULT_LIMIT, members=None) -> dict:
+             limit: int = DEFAULT_LIMIT, members=None, unverified: bool = False) -> dict:
     """THE reader (C369): ``{"events", "errors", "cut", "limit", "total", "people",
     "counts"}``, newest first. Both the History page and a device's History tab call it; the
     tab with *device* set. *kinds*: KIND_FILTERS keys to keep (None or empty: every kind);
@@ -1063,6 +1086,9 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
     wanted = {k for key in (kinds or ()) for k in KIND_FILTERS.get(key, ())}
     if wanted:
         events = [e for e in events if e["kind"] in wanted]
+    if unverified:
+        events = [e for e in events if "verified" in e and e["verified"] != "access"]
     events.sort(key=lambda e: epoch(e["at"]), reverse=True)
     return {"events": events[:limit], "errors": errors, "cut": cut, "limit": limit,
-            "total": len(events), "people": people, "counts": counts}
+            "total": len(events), "people": people, "counts": counts,
+            "identity": identity(events)}

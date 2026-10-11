@@ -13,7 +13,8 @@ Compared again 2026-10-11 after C667 moved the view to its board's home, History
 Compared again 2026-10-11 (C675): the sidebar's Logs became the live tail (board D, its own record, docs/fidelity/logs-tail.md); this page is History › Query's alone, its template renamed `history_syslog.html`, and the drill-down's footer gains the board's "Open these lines on Logs", which opens the tail filtered; the title's (i) opens the manual's Syslog by device section (nothing drawn moved). No other region's verdict changed.
 Compared again 2026-10-11 (C667's saved views): "Save this view…" beside Copy the link, as the board draws it; the title-and-actions row now the same. No other region's verdict changed.
 Templates compared: templates/v2/history_syslog.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
-Templates sha256: `4c6a2ac8b3e4630aa2714f1dab75add4c1c7a061d9077d2a48d8423784076ac3`
+Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the line under the timeline tab's filters, a branch the syslog view never draws; nothing on this board's page moved.
+Templates sha256: `2ddb0e20395e5f4425ce1055dbb40882a481c514af230de29b135a7c0c224ff4`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

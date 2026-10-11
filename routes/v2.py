@@ -209,7 +209,10 @@ def _history_filters(request) -> dict:
     f = {"device": a.get("device", "").strip(), "person": a.get("person", "").strip(),
          "kinds": kinds,
          "since": since if since in [s for s, _w in HS.SINCE_CHOICES] else "7",
-         "limit": a.get("limit", ""), "error": ""}
+         "limit": a.get("limit", ""), "error": "",
+         # 7.5's identity line: "unverified" keeps only the commits not signed in through the
+         # access proxy; any other value is no filter.
+         "identity": "unverified" if a.get("identity") == "unverified" else ""}
     for name in ("device", "person"):
         if f[name] and not _SAFE_NAME.match(f[name]):
             f["error"] = f"the {name} filter {f[name]!r} is not a name"
@@ -272,7 +275,7 @@ def _history_timeline(ref, f, members) -> dict:
     h = HS.timeline(ref, device=f["device"], person=f["person"], kinds=f["kinds"],
                     since_days=f["since"],
                     limit=int(f["limit"]) if str(f["limit"]).isdigit() else HS.DEFAULT_LIMIT,
-                    members=members or None)
+                    members=members or None, unverified=f.get("identity") == "unverified")
     if f["error"]:
         h["errors"] = [f["error"]] + h["errors"]
     return h
