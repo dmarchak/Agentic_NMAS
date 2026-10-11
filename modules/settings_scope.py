@@ -66,7 +66,7 @@ SCOPES: dict = {
              *(f"require_{w}_for_{a}" for w in ("identity", "person")
                for a in ("approve", "break_glass", "configure", "confirm", "publish_remote",
                          "reveal"))),
-    **_group(HOST, "platforms", "platform_map", "platform_default_netmiko_type", "role_map"),
+    **_group(HOST, "platforms", "platform_map", "platform_default_netmiko_type"),
     **_group(HOST, "web_server", "flask_host", "flask_port", "auto_open_browser", "tftp_root"),
     **_group(HOST, "ai", "ai_enabled", "background_agent_enabled"),
     **_group(HOST, "workflow", "wf_auto_backup", "wf_read_first", "wf_require_approval",

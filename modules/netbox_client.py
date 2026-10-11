@@ -2119,10 +2119,12 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         # text, which never says "IOS XE" and never names the model, so every IOS-XE router was
         # written `ios` and every device's type "Unknown", on every sync, and a person's
         # correction in NetBox would have been overwritten by the next one (C557, C559). A
-        # create still sets them; an update never does.
+        # create still sets them; an update never does. `role` is absent for the same reason
+        # (C665, 2026-10-11): the import wrote every device's role on every sync, an empty one
+        # as router, so NetBox's own role, and the kind Mercury now reads from it, would be
+        # Mercury's. A create still sets it.
         update = {k: v for k, v in payload.items()
                   if k in ("name", "serial", "comments",
-                            "role", "device_role",
                             "local_context_data", "config_template",
                             "custom_fields")}
 

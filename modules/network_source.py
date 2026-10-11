@@ -116,7 +116,8 @@ def preview(name: str, form: dict) -> dict:
         got = fetch_netbox_devices(p["filters"])
         if got.get("ok"):
             devices, skipped, _warnings = adapt_devices(got["devices"],
-                                                        credential_list=p["credential_list"])
+                                                        credential_list=p["credential_list"],
+                                                        kinds=got.get("kinds"))
             out["would"] = {"count": len(devices),
                             "names": sorted(d.get("hostname", "") for d in devices)[:20],
                             "skipped": [{"name": s.get("name") or s.get("hostname") or "",

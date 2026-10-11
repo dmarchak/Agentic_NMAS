@@ -32,6 +32,14 @@ FIELD_SPEC = {
 }
 
 
+#: The role map every install had by default until C665, kept for the migration on a host
+#: that never stored its own.
+FORMER_DEFAULT = {"router": "router", "core-router": "router", "edge-router": "router",
+                  "switch": "switch", "access-switch": "switch",
+                  "distribution-switch": "switch", "core-switch": "switch",
+                  "firewall": "firewall"}
+
+
 class KindUnreadable(Exception):
     """NetBox could not be asked for its roles or the field."""
 
@@ -82,15 +90,28 @@ def apply(p: dict, session, base: str, actor: str) -> dict:
     from modules.netbox_guard import for_list
 
     lines = []
+    # A refusal by NetBox (measured on the lab's, 2026-10-11: the token may create a custom
+    # field and may not change a device role, 403) is said with NetBox's words, and the rest
+    # is still written and read back: a traceback said none of what had landed.
     with for_list("", actor=actor, authority=f"nmas-netbox-role-kind --apply {p['hash']}, "
                                              f"by {actor}"):
+        # The write gate's own refusal (writes off) stops everything, before anything is sent:
+        # it is not one of NetBox's refusals.
+        from modules.netbox_guard import assert_writes_allowed
+        assert_writes_allowed("nmas-netbox-role-kind")
         if p["create_field"]:
-            _nb_post(session, base, "extras/custom-fields/", dict(FIELD_SPEC))
-            lines.append(f"created the custom field {FIELD} on device roles")
+            try:
+                _nb_post(session, base, "extras/custom-fields/", dict(FIELD_SPEC))
+                lines.append(f"created the custom field {FIELD} on device roles")
+            except RuntimeError as exc:
+                lines.append(f"REFUSED by NetBox: creating the field {FIELD}: {exc}")
         for s in p["set"]:
-            _nb_patch(session, base, f"dcim/device-roles/{s['id']}/",
-                      {"custom_fields": {FIELD: s["kind"]}})
-            lines.append(f"role {s['slug']}: {FIELD} = {s['kind']}")
+            try:
+                _nb_patch(session, base, f"dcim/device-roles/{s['id']}/",
+                          {"custom_fields": {FIELD: s["kind"]}})
+                lines.append(f"role {s['slug']}: {FIELD} = {s['kind']}")
+            except RuntimeError as exc:
+                lines.append(f"REFUSED by NetBox: role {s['slug']}: {exc}")
     back = read(session, base)
     wrong = [s["slug"] for s in p["set"] if back["kinds"].get(s["slug"]) != s["kind"]]
     if not back["field"]:

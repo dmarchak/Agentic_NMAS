@@ -62,7 +62,8 @@ SHORT = {"full": "FULL", "2-way": "2WAY", "init": "INIT", "attempt": "ATTEMPT",
 #: A device's class from its role and what it runs, and the words the legend gives it.
 CLASSES = {"router": "router", "switch": "L2 switch", "l3switch": "L3 switch",
            "firewall": "firewall", "server": "server", "accesspoint": "access point",
-           "controller": "controller", "external": "external", "unknown": "class unknown"}
+           "controller": "controller", "external": "external",
+           "unknown": "not classified in NetBox"}
 LINE_WORDS = {"ok": "as intended", "warn": "not as intended",
               "bad": "down, or a neighbour missing", "unread": "not read"}
 GROUP_WORDS = {"bad": "Down, or an intended neighbour missing",

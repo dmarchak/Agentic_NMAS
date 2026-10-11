@@ -148,7 +148,8 @@ def refresh_list(list_name: str, block: bool = True) -> dict:
         return {"ok": False, "error": result["error"]}
 
     devices, skipped, warnings = adapt_devices(
-        result["devices"], credential_list=cfg.get("credential_list", ""))
+        result["devices"], credential_list=cfg.get("credential_list", ""),
+        kinds=result.get("kinds"))
     devices = apply_device_order(list_name, devices)
 
     # Capture what the previous refresh saw BEFORE overwriting the cache —

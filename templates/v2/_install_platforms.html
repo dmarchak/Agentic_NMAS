@@ -58,34 +58,8 @@
     </form>
   </section>
   <section class="card set-card set-card-wide" id="card-role-map" aria-labelledby="h-role-map">
-    <div class="card-head"><h2 id="h-role-map">Role map</h2>{{ badge('every network', 'neutral') }}</div>
-    <p class="muted small">A NetBox role (its slug) → the role Mercury draws and checks by. An unmapped role is guessed from the hostname.</p>
-    <form method="post" action="{{ url_for('settings_v2.platforms_preview') }}"
-          hx-post="{{ url_for('settings_v2.platforms_preview') }}" hx-target="#install-platforms" hx-swap="outerHTML">
-      <input type="hidden" name="kind" value="roles">
-      <div class="table-wrap">
-      <table class="table set-table set-maps">
-        <thead><tr><th>NetBox role</th><th>Mercury role</th><th></th></tr></thead>
-        <tbody>
-        {%- for r in pm.roles %}
-        <tr>
-          <td><span class="mono">{{ r.slug }}</span><input type="hidden" name="slug" value="{{ r.slug }}"></td>
-          <td><select name="role" aria-label="Role for {{ r.slug }}">{% for value, words in pm.role_choices %}<option value="{{ value }}"{% if value == r.role %} selected{% endif %}>{{ words }}</option>{% endfor %}</select></td>
-          <td><button type="submit" class="btn btn-small" name="remove" value="{{ r.slug }}" data-op="installation-settings" hx-disabled-elt="this">Remove</button>{{ how('installation-settings', 'platforms', compact=True, op='removing a role') }}</td>
-        </tr>
-        {%- endfor %}
-        <tr>
-          <td><input name="new_slug" class="mono" type="text" placeholder="new role slug" aria-label="New role slug" autocomplete="off"></td>
-          <td><select name="new_role" aria-label="New role">{% for value, words in pm.role_choices %}<option value="{{ value }}">{{ words }}</option>{% endfor %}</select></td>
-          <td><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this">Add</button>{{ how('installation-settings', 'platforms', compact=True, op='adding a role') }}</td>
-        </tr>
-        </tbody>
-      </table>
-      </div>
-      <div class="set-foot set-form-note">
-        <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Preview changes</span><span class="op-busy">Previewing…</span></button>{{ how('installation-settings', 'platforms', op='changing the role map') }}</span>
-      </div>
-    </form>
+    <div class="card-head"><h2 id="h-role-map">Roles</h2>{{ badge('NetBox', 'neutral') }}</div>
+    <p class="muted small">What a device is (router, switch or firewall) is NetBox's: its Device Role's <span class="mono">mercury_kind</span> field, read with the inventory. A role without one is “not classified in NetBox”, never guessed from a hostname; set it on the role in NetBox.</p>
   </section>
   {%- if pv %}{% include "v2/_install_platforms_preview.html" %}{% endif %}
 </div>

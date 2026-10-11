@@ -118,7 +118,6 @@ class TestPlatformDefault:
     def test_default_type_replaces_the_skip(self, creds, monkeypatch):
         monkeypatch.setattr(netbox_source, "get_setting", lambda key, default=None: {
             "platform_map": {}, "platform_default_netmiko_type": "cisco_ios",
-            "role_map": {"router": "router"},
         }.get(key, default))
         devices, skipped, warnings = netbox_source.adapt_devices([_raw(platform="arista-eos")])
         assert skipped == []
@@ -130,31 +129,52 @@ class TestPlatformDefault:
         assert skipped and skipped[0]["field"] == "platform"
 
 
-class TestRoleMapping:
-    """Amendment 3: roles drive topology icons and must be valid or blank."""
+class TestTheKindIsNetBoxs:
+    """C665: a device's kind is its NetBox Device Role's `mercury_kind`, read once per load;
+    a role without one is not classified in NetBox, said with where to set it, never guessed
+    from a map or a hostname."""
 
-    def test_mapped_role(self):
-        assert netbox_source.map_role("core-router") == "router"
-        assert netbox_source.map_role("access-switch") == "switch"
-        assert netbox_source.map_role("firewall") == "firewall"
+    KINDS = {"field": True, "kinds": {"core-router": "router", "access-switch": "switch"},
+             "roles": []}
 
-    def test_unmapped_role_is_blank_for_inference(self, creds):
-        """Blank lets topology._infer_role(hostname) apply, as for a local list."""
-        assert netbox_source.map_role("spine") == ""
-        devices, _s, warnings = netbox_source.adapt_devices([_raw(role="spine")])
-        assert devices[0]["role"] == ""
+    def test_a_classified_role_gives_its_kind(self, creds):
+        devices, _s, warnings = netbox_source.adapt_devices(
+            [_raw(role="core-router"), _raw("S1", "203.0.113.2", role="access-switch", nb_id=2)],
+            kinds=self.KINDS)
+        assert [d["role"] for d in devices] == ["router", "switch"] and warnings == []
+
+    def test_an_unclassified_role_is_said_with_where_to_set_it(self, creds):
+        devices, _s, warnings = netbox_source.adapt_devices([_raw(name="SW-1", role="spine")],
+                                                            kinds=self.KINDS)
+        assert devices[0]["role"] == "", "never guessed from the hostname SW-1"
         assert warnings[0]["field"] == "role"
+        assert "not classified in NetBox: its role 'spine' has no Mercury kind" in \
+            warnings[0]["reason"]
 
-    def test_blank_role_still_yields_a_topology_icon(self, creds):
-        """A blank role must not break topology, which falls back to the hostname."""
-        from modules.topology import _infer_role
-        devices, _s, _w = netbox_source.adapt_devices([_raw(name="SW-1", role="spine")])
-        assert _infer_role(devices[0]["hostname"]) in ("router", "switch", "firewall")
+    def test_no_field_in_netbox_is_said_as_that(self, creds):
+        _d, _s, warnings = netbox_source.adapt_devices([_raw(role="core-router")],
+                                                       kinds={"field": False, "kinds": {}})
+        assert "NetBox has no `mercury_kind` field on device roles" in warnings[0]["reason"]
 
-    def test_invalid_map_value_is_rejected(self, monkeypatch):
-        monkeypatch.setattr(netbox_source, "get_setting",
-                            lambda key, default=None: {"role_map": {"x": "gateway"}}.get(key, default))
-        assert netbox_source.map_role("x") == ""
+    def test_a_device_with_no_role_has_no_kind_and_no_warning(self, creds):
+        devices, _s, warnings = netbox_source.adapt_devices([_raw(role="")], kinds=self.KINDS)
+        assert devices[0]["role"] == "" and warnings == []
+
+    def test_the_load_reads_the_classification_with_the_devices(self, monkeypatch):
+        from tests.fake_netbox import FakeNetBox
+        nb = FakeNetBox()
+        nb.seed("dcim/devices", {"name": "R1"})
+        nb.seed("extras/custom-fields", {"name": "mercury_kind"})
+        nb.seed("dcim/device-roles", {"slug": "core-router",
+                                      "custom_fields": {"mercury_kind": "router"}})
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (True, "", nb, "http://netbox.example.invalid"))
+        got = netbox_source.fetch_netbox_devices({})
+        assert got["ok"] and got["kinds"]["kinds"] == {"core-router": "router"}
+
+    def test_the_hostname_guess_is_gone(self):
+        from modules import topology
+        assert not hasattr(topology, "_infer_role")
 
 
 class TestCredentialResolution:

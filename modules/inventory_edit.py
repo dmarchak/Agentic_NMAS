@@ -22,7 +22,8 @@ shape:
   `inventory_edits.jsonl`, 0600. The row is the record: devices.csv is not
   versioned, since it holds every device's encrypted credential.
 
-A NetBox-sourced list is refused: its roles are NetBox's (`role_map`).
+A NetBox-sourced list is refused: its roles are NetBox's (each Device Role's `mercury_kind`,
+C665).
 """
 
 import hashlib
@@ -136,7 +137,8 @@ def plan(list_name: str, hostname: str, role: str, reason: str = "") -> dict:
     ref = listref.resolve(list_name)
     if is_netbox_sourced(ref.name):
         raise RoleEditRefused(f"{ref.name} takes its inventory from NetBox: a device's role "
-                              "is NetBox's there (and `role_map` maps it). Edit it in NetBox")
+                              "is NetBox's there (its Device Role's Mercury kind). Edit it in "
+                              "NetBox")
     row = _row(ref, hostname)
     before, after = (row.get("role") or "").strip(), (role or "").strip().lower()
     gates = []

@@ -174,23 +174,9 @@ def shorten_interface(name):
     return name
 
 
-_SWITCH_PATTERNS = re.compile(
-    r'(^|[^a-z])(sw|switch|cat|ws-c|nexus|nxos|csw|dsw|asw|access|dist|core)([^a-z]|$)',
-    re.IGNORECASE,
-)
-_FIREWALL_PATTERNS = re.compile(
-    r'(^|[^a-z])(fw|asa|firewall|ftd|pix|fortigate|palo)([^a-z]|$)',
-    re.IGNORECASE,
-)
-
-
-def _infer_role(hostname: str) -> str:
-    """Guess device role from hostname when no explicit role is stored."""
-    if _FIREWALL_PATTERNS.search(hostname):
-        return 'firewall'
-    if _SWITCH_PATTERNS.search(hostname):
-        return 'switch'
-    return 'router'
+#: A device's kind is NetBox's (C665, the operator, 2026-10-11): its Device Role's
+#: `mercury_kind`. It was guessed from the hostname here when none was stored; a device with
+#: none is not classified, and nothing on the map is drawn as a guess.
 
 
 def gather_device_topology(conn, hostname, protocols=('cdp', 'lldp')):
@@ -307,7 +293,7 @@ def build_topology(devices_data):
             'title':      title,
             'interfaces': iface_list,
             'type':       'managed',
-            'role':       dev_data.get('role') or _infer_role(hostname),
+            'role':       dev_data.get('role') or '',   # C665: NetBox's kind, never a hostname guess
         })
 
     # Build edges — resolve remote interface IP from the remote device's own data.
@@ -330,7 +316,7 @@ def build_topology(devices_data):
                     'title':      f"<b>{neighbor_hostname}</b><br>{neighbor.get('ip_address', '')}",
                     'interfaces': [],
                     'type':       'discovered',
-                    'role':       _infer_role(neighbor_hostname),
+                    'role':       '',   # C665: a discovered neighbour is not classified
                 })
 
             local_intf  = neighbor.get('local_interface', '')
@@ -1214,7 +1200,7 @@ def discover_topology(devices, connection_factory, connections_pool, pool_lock,
         try:
             conn = connection_factory(dev, connections_pool, pool_lock)
             result = gather_device_topology(conn, dev['hostname'], protocols=protocols)
-            result['role'] = dev.get('role') or _infer_role(dev['hostname'])
+            result['role'] = dev.get('role') or ''
             return result
         except Exception as e:
             logger.warning(f"Topology query failed for {dev['hostname']} ({dev['ip']}): {e}")
@@ -1222,7 +1208,7 @@ def discover_topology(devices, connection_factory, connections_pool, pool_lock,
                 'hostname': dev['hostname'],
                 'neighbors': [],
                 'interfaces': [],
-                'role': dev.get('role') or _infer_role(dev['hostname']),
+                'role': dev.get('role') or '',
             }
 
     # Query devices in parallel

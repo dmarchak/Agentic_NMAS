@@ -157,7 +157,7 @@ def test_lines_say_how_each_link_compares_with_intent(web):
     assert classes[:12].count("warn") == 2 and classes[:12].count("ok") == 10
     legend = re.search(r'aria-label="Legend".*?</div>', html, re.S).group(0)
     for words in ("as intended", "not as intended", "down, or a neighbour missing", "not read",
-                  "router", "L2 switch", "L3 switch", "server", "external", "class unknown"):
+                  "router", "L2 switch", "L3 switch", "server", "external", "not classified in NetBox"):
         assert words in legend, words
 
 

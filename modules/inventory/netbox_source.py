@@ -56,16 +56,22 @@ def map_platform(platform_slug: str) -> tuple:
     )
 
 
-def map_role(role_slug: str) -> str:
-    """Resolve a NetBox role slug to an NMAS role.
+def kind_of(role_slug: str, kinds) -> tuple:
+    """``(kind, warning)`` for a NetBox role slug, from NetBox's own classification (C665): the
+    Device Role's `mercury_kind` custom field (`role_kind.read`, one read per load). A role
+    with none is "not classified in NetBox", said with where to set it; never guessed from a
+    hostname or a map."""
+    from modules.inventory.role_kind import FIELD
 
-    Amendment 3: NMAS roles are router/switch/firewall and drive topology icons.
-    An unmapped role returns "" so ``topology._infer_role(hostname)`` applies —
-    the same treatment a local list with a blank role field gets.
-    """
-    role_map = get_setting("role_map", {}) or {}
-    mapped = (role_map.get(role_slug) or "").strip().lower()
-    return mapped if mapped in VALID_ROLES else ""
+    kind = ((kinds or {}).get("kinds") or {}).get(role_slug, "")
+    if kind or not role_slug:
+        return kind, ""
+    if not (kinds or {}).get("field"):
+        return "", (f"not classified in NetBox: NetBox has no `{FIELD}` field on device roles "
+                    "yet (scripts/nmas-netbox-role-kind adds it), so its role "
+                    f"'{role_slug}' says nothing of what it is")
+    return "", (f"not classified in NetBox: its role '{role_slug}' has no Mercury kind; set "
+                f"`{FIELD}` (router, switch or firewall) on the role in NetBox")
 
 
 def _address_only(address: str) -> str:
@@ -87,15 +93,24 @@ def fetch_netbox_devices(filters: dict) -> dict:
         value = (filters or {}).get(key, "")
         if value:
             params[nb_key] = value
+    from modules.inventory.role_kind import KindUnreadable, read as read_kinds
     try:
-        return {"ok": True, "devices": _nb_get(session, base, "dcim/devices/", **params)}
+        devices = _nb_get(session, base, "dcim/devices/", **params)
+        # What each role IS (C665): NetBox's own classification, one read with the devices.
+        kinds = read_kinds(session, base)
+        return {"ok": True, "devices": devices, "kinds": kinds}
+    except KindUnreadable as exc:
+        log.warning("netbox_source: role classification query failed: %s", exc)
+        return {"ok": False, "error": str(exc), "devices": []}
     except Exception as exc:                  # noqa: BLE001
         log.warning("netbox_source: device query failed: %s", exc)
         return {"ok": False, "error": str(exc), "devices": []}
 
 
-def adapt_devices(raw_devices: list, credential_list: str = "") -> tuple:
-    """Map raw NetBox records to device dicts.
+def adapt_devices(raw_devices: list, credential_list: str = "", kinds: dict = None) -> tuple:
+    """Map raw NetBox records to device dicts. *kinds* is NetBox's role classification
+    (`role_kind.read`, which `fetch_netbox_devices` returns as ``kinds``); without it every
+    role is not classified.
 
     Returns ``(devices, skipped, warnings)``:
 
@@ -131,13 +146,10 @@ def adapt_devices(raw_devices: list, credential_list: str = "") -> tuple:
 
         # ── role ─────────────────────────────────────────────────────────────
         role_slug = (raw.get("role") or raw.get("device_role") or {}).get("slug", "")
-        role = map_role(role_slug)
-        if role_slug and not role:
-            warnings.append({
-                "name": name, "netbox_id": nb_id, "field": "role",
-                "reason": (f"role '{role_slug}' is not in the role map — the topology "
-                           "icon will be guessed from the hostname"),
-            })
+        role, role_warning = kind_of(role_slug, kinds)
+        if role_warning:
+            warnings.append({"name": name, "netbox_id": nb_id, "field": "role",
+                             "reason": role_warning})
 
         # ── credentials ──────────────────────────────────────────────────────
         site_slug = (raw.get("site") or {}).get("slug", "")

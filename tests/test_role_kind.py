@@ -83,6 +83,22 @@ class TestApplying:
             RK.apply(p, nb, BASE, "tester")
         assert nb.posts == [] and nb.patches == []
 
+    def test_a_refusal_by_netbox_is_said_and_the_rest_still_written(self, writes_open,
+                                                                     monkeypatch):
+        """Measured on the lab's NetBox: the token may create the field and may not change a
+        device role (403). It crashed with a traceback; now it says so and reads back."""
+        from tests.fake_netbox import FakeResponse
+        nb = _nb()
+        p = RK.plan(MAP, RK.read(nb, BASE))
+        monkeypatch.setattr(nb, "patch", lambda url, json=None, timeout=None: FakeResponse(
+            {"detail": "You do not have permission to perform this action."}, 403))
+        got = RK.apply(p, nb, BASE, "tester")
+        assert got["ok"] is False
+        assert got["lines"][0] == "created the custom field mercury_kind on device roles"
+        assert any(l.startswith("REFUSED by NetBox: role router: PATCH") and "403" in l
+                   for l in got["lines"])
+        assert "NOT there: router, switch" in got["lines"][-1]
+
     def test_a_write_that_did_not_land_is_said(self, writes_open, monkeypatch):
         """The control for the read back: a PATCH that answers but changes nothing."""
         nb = _nb()

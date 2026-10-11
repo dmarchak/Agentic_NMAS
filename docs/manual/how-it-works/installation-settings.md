@@ -79,26 +79,26 @@ There is no confirm step: turning writes off takes nothing away a person must ke
 operation that needs NetBox writes afterwards asks for its own confirm, which turns the switch
 back on.
 
-## Change the platform or role map {#platforms}
+## Change the platform map {#platforms}
 
 A device that comes from NetBox becomes something Mercury can open a session to through the
 **platform map** (its NetBox platform → the netmiko driver, the config dialect Mercury renders
 from, how it delivers and whether it supports NETCONF, with a default driver for a platform
-the map lacks) and is drawn and checked as a router, switch or firewall through the **role
-map** (its NetBox role → that role, or a guess from its hostname). Devices from a local list
-keep the driver their list names. A driver is chosen from the drivers Mercury supports, a
+the map lacks). What it is (router, switch or firewall) is **NetBox's**: its Device Role's
+`mercury_kind` field, read with the inventory; a role without one is "not classified in
+NetBox", never guessed from a hostname, and is set on the role in NetBox. Devices from a
+local list keep the driver and role their list names. A driver is chosen from the drivers Mercury supports, a
 dialect from the dialects it knows: neither is typed.
 
 A change is never saved blind. **Remove**, **Add** and **Preview changes** each show what it
 would do first:
 
 1. `check`: every row is checked: a supported driver, a known dialect, ssh or netconf, a NetBox
-   slug; a new slug not already in the map. Removing a platform or role a device uses is
-   refused, naming the devices.
+   slug; a new slug not already in the map. Removing a platform a device uses is refused,
+   naming the devices.
 2. `preview`: from each NetBox network's last inventory (never a refresh, so the preview
-   writes nothing), every device whose driver or role the change moves, network by network;
-   devices skipped today for an unmapped platform that would now load; devices whose role
-   cannot be judged until their list is next refreshed. **Test** opens one read-only session
+   writes nothing), every device whose driver the change moves, network by network; devices
+   skipped today for an unmapped platform that would now load. **Test** opens one read-only session
    to one of the devices with its new driver and asks `show version`, through the same reads
    as Show commands (recorded there), so a driver that cannot reach the device is seen before
    it is saved.
@@ -107,7 +107,7 @@ would do first:
 4. `record`: who, when and how many devices changed are appended to the installation's
    settings record.
 5. `refresh`: each NetBox network refreshes its inventory from NetBox, so its devices take the
-   new driver and role.
+   new driver.
 
 ## Record a decision about access {#record}
 

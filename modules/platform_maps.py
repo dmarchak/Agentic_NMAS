@@ -9,7 +9,9 @@ How a NetBox-sourced device becomes something Mercury can open a session to and 
   config **dialect** (the templates it renders from; one of `nsot.platform.DIALECTS`, C628),
   how it delivers (ssh or netconf) and whether it supports NETCONF; a **default driver** for a
   platform the map lacks (empty: the device is skipped, with its reason);
-- **role map**: a NetBox role slug → router, switch, firewall, or "" (the hostname guesses).
+- **roles are NetBox's** (C665, 2026-10-11): a device's kind is its Device Role's
+  `mercury_kind` custom field, read with the inventory (`inventory.role_kind`); the role map
+  this card edited is gone, and a role with no kind is "not classified in NetBox".
 
 A change is never saved blind (the operator's validation): **Preview changes** names every
 device whose driver or role it moves, network by network, from each NetBox list's last
@@ -26,10 +28,6 @@ import re
 
 #: Preview, then confirm: the steps the manual's page names.
 SAVE_STEPS = ("check", "preview", "write", "record", "refresh")
-#: The roles Mercury draws and checks by ("" lets the hostname guess).
-ROLES = ("router", "switch", "firewall", "")
-ROLE_WORDS = {"router": "router", "switch": "switch", "firewall": "firewall",
-              "": "guess from hostname"}
 TRANSPORTS = ("ssh", "netconf")
 SLUG = re.compile(r"[a-z0-9][a-z0-9._-]*")
 #: The command the Test asks the one device: read-only on every supported driver.
@@ -70,8 +68,7 @@ def _maps() -> dict:
     from modules.settings_schema import DEFAULTS, get_setting
 
     return {"platform_map": dict(get_setting("platform_map", DEFAULTS["platform_map"]) or {}),
-            "default_driver": (get_setting("platform_default_netmiko_type", "") or "").strip(),
-            "role_map": dict(get_setting("role_map", DEFAULTS["role_map"]) or {})}
+            "default_driver": (get_setting("platform_default_netmiko_type", "") or "").strip()}
 
 
 def view() -> dict:
@@ -96,10 +93,8 @@ def view() -> dict:
         rows.append({"slug": slug, "driver": driver, "dialect": dialect,
                      "transport": e.get("deploy_transport") or "ssh",
                      "netconf": bool(e.get("supports_netconf")), "problems": problems})
-    roles = [{"slug": s, "role": r or ""} for s, r in sorted(m["role_map"].items())]
-    return {"rows": rows, "default_driver": m["default_driver"], "roles": roles,
-            "drivers": drivers, "dialects": dialects(), "transports": TRANSPORTS,
-            "role_choices": [(r, ROLE_WORDS[r]) for r in ROLES]}
+    return {"rows": rows, "default_driver": m["default_driver"],
+            "drivers": drivers, "dialects": dialects(), "transports": TRANSPORTS}
 
 
 def _slug(raw, what: str) -> str:
@@ -142,27 +137,9 @@ def proposal(kind: str, form) -> dict:
         return {"kind": kind, "platform_map": out, "default_driver": default,
                 "removed": removed}
     if kind == "roles":
-        out = {}
-        for slug, role in zip(form.getlist("slug"), form.getlist("role")):
-            slug = _slug(slug, "Role")
-            if slug == removed:
-                continue
-            if role not in ROLES:
-                raise Refused(f"{slug}'s role {role!r} is not one of: "
-                              + ", ".join(ROLE_WORDS.values()))
-            out[slug] = role
-        new = (form.get("new_slug") or "").strip()
-        if new:
-            new = _slug(new, "The new role")
-            if new in out:
-                raise Refused(f"{new} is in the map already: change its row instead")
-            role = form.get("new_role") or ""
-            if role not in ROLES:
-                raise Refused(f"the new role {role!r} is not one of: "
-                              + ", ".join(ROLE_WORDS.values()))
-            out[new] = role
-        return {"kind": kind, "role_map": out, "removed": removed}
-    raise Refused(f"{kind!r} is neither the platform map nor the role map")
+        raise Refused("roles are NetBox's: set each Device Role's Mercury kind "
+                      "(mercury_kind) in NetBox (C665)")
+    raise Refused(f"{kind!r} is not the platform map")
 
 
 def _platform_row(slug, driver, dialect, transport, netconf, drivers, known) -> dict:
@@ -215,7 +192,6 @@ def effect(p: dict) -> dict:
     m = _maps()
     new_pmap = p.get("platform_map", m["platform_map"])
     new_default = p.get("default_driver", m["default_driver"])
-    new_roles = p.get("role_map", m["role_map"])
     out = {"changes": [], "local": [], "unread": [], "role_unknown": 0, "now_loaded": 0,
            "in_use": {}}
     for name in sorted(listref._registry()):
@@ -240,19 +216,11 @@ def effect(p: dict) -> dict:
             slug, host = d.get("_platform", ""), d.get("hostname", "")
             if p.get("removed") and slug == p["removed"] and p["kind"] == "platforms":
                 out["in_use"].setdefault(slug, []).append(f"{host} ({name})")
-            if p["kind"] == "roles" and p.get("removed") and \
-                    d.get("_role_slug") == p["removed"]:
-                out["in_use"].setdefault(p["removed"], []).append(f"{host} ({name})")
             d_from = d.get("device_type", "")
             d_to = _driver(slug, new_pmap, new_default) or d_from
-            r_from = d.get("role", "")
-            if "_role_slug" in d:
-                r_to = new_roles.get(d["_role_slug"], "") if d["_role_slug"] else r_from
-            else:
-                r_to = r_from
-                if p["kind"] == "roles":
-                    out["role_unknown"] += 1
-            if d_from != d_to or r_from != r_to:
+            # A role's kind is NetBox's (C665): this card changes no device's kind.
+            r_from = r_to = d.get("role", "")
+            if d_from != d_to:
                 out["changes"].append({"network": name, "device": host,
                                        "driver_from": d_from, "driver_to": d_to,
                                        "role_from": r_from, "role_to": r_to})
@@ -315,11 +283,10 @@ def apply(proposal_json: str, fp: str, actor: str, verified: str) -> dict:
     if fingerprint(p, e) != fp:                                                   # check
         raise Refused("the maps or the devices moved since the preview (its fingerprint "
                       f"{fp or '(none)'} no longer matches): preview it again")
-    if p["kind"] == "platforms":
-        updates = {"platform_map": p["platform_map"],
-                   "platform_default_netmiko_type": p["default_driver"]}
-    else:
-        updates = {"role_map": p["role_map"]}
+    if p.get("kind") != "platforms":
+        raise Refused("only the platform map is saved here: roles are NetBox's (C665)")
+    updates = {"platform_map": p["platform_map"],
+               "platform_default_netmiko_type": p["default_driver"]}
     out = write_settings(updates, actor=actor)                                     # write
     if not out["ok"]:
         raise Refused(out["error"])

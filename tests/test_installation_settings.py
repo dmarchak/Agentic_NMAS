@@ -489,12 +489,17 @@ class TestPlatformsAndRoles:
         import html as html_mod
         assert r.status_code == 409 and "'linux' is not one Mercury supports" in html_mod.unescape(html)
 
-    def test_a_role_change_previews_each_device_it_moves(self, networks, netbox_branch):
+    def test_roles_are_netbox_s_and_no_role_change_is_previewed_here(self, networks,
+                                                                    netbox_branch):
+        """C665: a device's kind is its NetBox Device Role's `mercury_kind`; the role map
+        this card edited is gone, and a role post is refused naming where to set it."""
         _r, html = _post(networks, "/v2/settings/installation/platforms/preview",
                          {"kind": "roles", "slug": ["access-switch", "router"],
                           "role": ["router", "router"]})
-        pv = re.sub(r"<[^>]+>", "", _section(html, "card-platforms-preview"))
-        assert "1 device changes" in pv and "nb2" in pv and "switch → router" in pv
+        import html as html_mod
+        text = html_mod.unescape(re.sub(r"<[^>]+>", "", html))
+        assert "roles are NetBox's" in text and "mercury_kind" in text
+        assert 'id="card-platforms-preview"' not in html
 
     def test_the_confirm_is_bound_writes_records_and_refreshes(self, networks, netbox_branch):
         from modules import installation_settings as I

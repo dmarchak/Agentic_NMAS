@@ -1199,7 +1199,9 @@ class TestASecondSyncOfAnUnchangedDeviceIsSilent:
         echoes only its own, so sending both logs `<unknown> → N` for every
         device on every sync — the shape of a failed read, not a no-op."""
         _, sent = self._sent(monkeypatch)
-        assert "role" in sent
+        # Neither, since C665: an update never writes the role, which is NetBox's (the kind
+        # Mercury reads from it), as it never writes the platform or the device type.
+        assert "role" not in sent
         assert "device_role" not in sent
 
     def test_a_real_change_is_still_recorded(self, monkeypatch):

@@ -28,7 +28,7 @@ def main(argv=None) -> int:
 
     from modules.inventory import role_kind as RK
     from modules.netbox_client import _nb_ready
-    from modules.settings_schema import get_setting
+    from modules.settings_schema import load_user_settings
 
     ok, err, session, base = _nb_ready()
     if not ok:
@@ -39,7 +39,9 @@ def main(argv=None) -> int:
     except RK.KindUnreadable as exc:
         print(f"UNPROVEN: {exc}")
         return 2
-    p = RK.plan(get_setting("role_map") or {}, now)
+    # The map as this host stored it, or the default every install had (C665 removed the key
+    # from the schema, so a file is the only place one is left).
+    p = RK.plan(load_user_settings().get("role_map") or RK.FORMER_DEFAULT, now)
     print(f"{len(now['roles'])} NetBox device role(s); the field {RK.FIELD} "
           + ("exists" if now["field"] else "does not exist yet"))
     if p["create_field"]:

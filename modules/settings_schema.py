@@ -437,20 +437,11 @@ DEFAULTS: dict = {
     # "skip the device with a warning"; setting it trades a skip for a guess.
     "platform_default_netmiko_type": "",
 
-    # ── Role map (NetBox role slug → NMAS role) ─────────────────────────────
-    # NMAS roles drive topology icons and are one of router/switch/firewall.
-    # An unmapped role resolves to "" so topology._infer_role(hostname) applies,
-    # which is the same behaviour a local list with a blank role field gets.
-    "role_map": {
-        "router": "router",
-        "core-router": "router",
-        "edge-router": "router",
-        "switch": "switch",
-        "access-switch": "switch",
-        "distribution-switch": "switch",
-        "core-switch": "switch",
-        "firewall": "firewall",
-    },
+    # ── Roles: NetBox's (C665, 2026-10-11) ──────────────────────────────────
+    # A device's kind (router, switch, firewall) is its NetBox Device Role's
+    # `mercury_kind` custom field (`inventory.role_kind`). The role map that
+    # stood here is gone; a host that stored one keeps it in its file, read by
+    # nothing but `scripts/nmas-netbox-role-kind`'s migration.
 
     # ── Deploy verification ─────────────────────────────────────────────────
     # Per-check settle windows, in seconds. Verifying immediately after a
@@ -787,11 +778,6 @@ SCHEMA: dict = {
             },
         },
         "platform_default_netmiko_type": _STR,
-        "role_map": {
-            "type": "object",
-            # "" is allowed and means "fall back to hostname inference".
-            "additionalProperties": {"enum": ["router", "switch", "firewall", ""]},
-        },
 
         "nsot_device_tag_retention": {"type": "integer", "minimum": 0},
         "nsot_config_read_timeout": {"type": "integer", "minimum": 5},
