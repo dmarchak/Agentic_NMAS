@@ -200,7 +200,6 @@ def _bodies(v):
         "templatize.preview_committed_edit": (200, ("json", {"list_name": LIST,
                                                              "yaml": v["_intent_text"]}),
                                               "committed intent, previewed against the device"),
-        "templatize.report": (200, ("json", {"list_name": LIST}), "the fleet report"),
         # H, the v2 intent editor (board H): its check, acknowledgement and reopen.
         "intent_v2.check": (200, ("form", {"yaml": v["_intent_text"]}),
                             "r1's committed intent checked as typed: its diffs against the "

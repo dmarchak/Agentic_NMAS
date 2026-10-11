@@ -74,7 +74,10 @@ Your answers committed in 8224518 (deployed). Then, in your order:
   `netbox-role-kinds.sh` (router and switch set). NetBox also holds a `network-device` role
   with no kind: Mercury calls any device holding it "not classified" until it has one.
 - **Waiting on you:** the CLAUDE.md script (then `scripts/nmas-host` moves to `lab/`); the
-  walk's sittings (below).
+  walk's sittings (below); three questions (the report, `~/Documents/nmas-reports/
+  2026-10-11-evening-report.md`): board M's full-config way (whole intent before boot, and its
+  other secrets over TFTP) or first boot kept bare and M redrawn; the kind for NetBox's
+  `network-device` role; whether to fix C681 in the lab's host-net.sh.
 
 ## MORNING REPORT: the overnight run, 2026-10-11 (06:34 to about 11:00 UTC; 00:34 to 05:00 UTC−6)
 

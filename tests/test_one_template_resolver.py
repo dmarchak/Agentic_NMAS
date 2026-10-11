@@ -133,9 +133,11 @@ def test_the_resolver_is_called_by_each_render_path():
     import modules.nsot.seed as sd
     import routes.deploy as rd
     import routes.templates as rt
-    import routes.templatize as tz
 
     for fn in (rd._artifact_for, rt.artifact_for, im.intent_match, rs.validate_restored_intent,
                sd.entry_for):
         assert "render_source(" in inspect.getsource(fn), fn.__qualname__
-    assert "render_source(" in inspect.getsource(tz)
+    # routes/templatize.py's one render path was the coverage report, removed at 7.8
+    # (2026-10-11); Templates › Coverage renders through modules/nsot/template_coverage.py.
+    import modules.nsot.template_coverage as tc
+    assert "render_source(" in inspect.getsource(tc)

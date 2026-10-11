@@ -70,8 +70,6 @@ A, B, C, D = "(a) no entry point", "(b) credentials", \
 KNOWN_UNREACHABLE = {
     # (a) Phase 3 and later features with no entry point.
     "GET /templatize/committed": (A, "the list of devices with committed intent; Fleet (7.4)"),
-    "GET /templatize/report": (A, "round-trip coverage for the fleet; Source of truth, Templates (7.6)"),
-    "POST /templatize/report": (A, "the same coverage report with a body; Source of truth, Templates (7.6)"),
     "GET /templatize/rolled-back": (A, "rollback-blocked devices; a Needs attention row (7.2)"),
     "GET /templatize/rolled-back/retries": (A, "the retry record; Device, History (7.3)"),
     "POST /templatize/bulk/preview": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
@@ -128,7 +126,8 @@ KNOWN_UNREACHABLE = {
 # 49 -> 47 (2026-10-02): /ai/restart and /server/restart removed (CONCURRENCY_AUDIT R5).
 # 47 -> 45 (2026-10-08): /freshness/authorisations and /freshness/authorise removed (Phase 3).
 # 45 -> 39 (2026-10-11): the six /netbox/query routes removed (7.8, the first family).
-CEILING = 39
+# 39 -> 37 (2026-10-11): /templatize/report's GET and POST removed (7.8).
+CEILING = 37
 
 
 @pytest.fixture(scope="module")

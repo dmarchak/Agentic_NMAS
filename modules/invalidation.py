@@ -429,7 +429,6 @@ DECLARED = {
     "templatize.bulk_preview": Nothing("previews a bulk intent change; the apply commits"),
     "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
                                       "commits"),
-    "templatize.report": Nothing("round-trip coverage computed from goldens; writes nothing"),
     "netbox_safety.preview_import": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "netbox_safety.preview_import_all": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "netbox_safety.preview_removal": Nothing("a NetBox dry run: reads, and issues a one-shot token"),

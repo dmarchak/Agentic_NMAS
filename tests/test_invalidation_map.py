@@ -183,11 +183,10 @@ class TestTheResponseCarriesIt:
         assert I.HEADER not in r.headers
         assert "invalidates" not in (r.get_json() or {})
 
-    def test_a_nothing_route_carries_no_header(self, client, monkeypatch):
-        import routes.templatize as rt
-
-        monkeypatch.setattr(rt, "_repo_for", lambda name: "/nonexistent")
-        r = client.post("/templatize/report", json={})
+    def test_a_nothing_route_carries_no_header(self, client):
+        # Add device's review (a POST declared Nothing: it builds a plan and creates nothing);
+        # the fleet coverage report this used went at 7.8 (2026-10-11).
+        r = client.post("/v2/onboard/preview", data={})
         assert I.HEADER not in r.headers
 
     def test_a_read_carries_no_header(self, client):

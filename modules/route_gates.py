@@ -337,7 +337,6 @@ GATES = {
     "templatize.profile_propose_preview": _g(N, "reads committed intent and compares stored values in memory; writes nothing"),
     "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),
     "templatize.retry_preview": _g(N, "reads the rollback record and the retry log; writes nothing"),
-    "templatize.report": _g(N, "reads goldens; opens no session and writes nothing"),
     "templates.preview": _g(N, "renders; writes nothing"),
     "templates.validate": _g(N, "validates; writes nothing"),
     "templates.refresh_capture": _g(N, "reads a device into a backup"),

@@ -1,4 +1,5 @@
-"""Templatize blueprint: the coverage report, SEED INTENT, and committed intent.
+"""Templatize blueprint: SEED INTENT, committed intent and bulk intent (its coverage report went
+at 7.8; Templates › Coverage is its home).
 
 Phase 3a made it read-only (extractions to a gitignored staging area) and 3b
 added a reviewed commit. Both halves had no screen, and the commit refused
@@ -28,65 +29,6 @@ def _active_list(payload=None) -> str:
     from modules.config import get_current_list_name
     name = (payload or {}).get("list_name") or request.args.get("list_name") or ""
     return name.strip() or get_current_list_name()
-
-
-def _platform_for(device: dict) -> str:
-    """The device's config dialect.
-
-    Previously this returned the platform map's ``netmiko_device_type``, which
-    is the session driver rather than the config dialect — the same conflation
-    corrected in modules/nsot/platform.py.
-    """
-    from modules.nsot.platform import platform_for_device
-    return platform_for_device(device)
-
-
-@bp.route("/report", methods=["GET", "POST"])
-def report():
-    """Round-trip coverage for every device with a golden config.
-
-    Reads golden configs only — it opens no SSH session and writes nothing.
-    """
-    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
-    from modules.device import get_current_device_list, load_saved_devices
-    from modules.nsot.roundtrip import rank_unmodeled, validate_device
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-
-    try:
-        _name, csv_path = get_current_device_list()
-        devices = {d.get("ip", ""): d for d in load_saved_devices(csv_path)}
-
-        reports, errors = [], []
-        for entry in _list_golden_configs():
-            ip = entry.get("device_ip", "")
-            config = _load_golden_config_file(ip)
-            if not config:
-                continue
-            device = devices.get(ip, {})
-            platform = _platform_for(device)
-            from modules.nsot import templates_repo
-            src = templates_repo.render_source(_repo_for(list_name), entry.get("hostname", ""), platform)
-            result = validate_device(config, platform, template_root=src["root"],
-                                     template_name=src["name"])
-            if result.get("error"):
-                errors.append({"hostname": entry.get("hostname", ip),
-                               "error": result["error"]})
-                continue
-            reports.append(result)
-
-        summary = _summarise(reports)
-        return jsonify({
-            "ok": True, "list": list_name,
-            "devices": [_public(r) for r in reports],
-            "summary": summary,
-            "unmodeled_ranked": rank_unmodeled(reports),
-            "errors": errors,
-        })
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("templatize: report failed")
-        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -494,32 +436,6 @@ def rolled_back_notes(list_name: str) -> dict:
         (stale if applicability in STALE_APPLICABILITY else applies)[hostname] = {
             **raw, "applicability": applicability}
     return {"applies": applies, "stale": stale, "unreadable": ""}
-
-
-def _public(result: dict) -> dict:
-    """Report fields for the UI — host_vars and rendered config excluded."""
-    return {k: v for k, v in result.items()
-            if k not in ("host_vars", "rendered", "details")} | {
-        "missing_sample": [m["line"] for m in result.get("details", {}).get("missing", [])[:20]],
-        "extra_sample": [e["line"] for e in result.get("details", {}).get("extra", [])[:20]],
-        "reordered": result.get("details", {}).get("reordered", []),
-    }
-
-
-def _summarise(reports: list) -> dict:
-    if not reports:
-        return {"devices": 0, "mean_modeled_coverage": 0.0,
-                "mean_round_trip_fidelity": 0.0, "fully_reproduced": 0}
-    count = len(reports)
-    return {
-        "devices": count,
-        "mean_modeled_coverage": round(
-            sum(r["modeled_coverage"] for r in reports) / count, 1),
-        "mean_round_trip_fidelity": round(
-            sum(r["round_trip_fidelity"] for r in reports) / count, 1),
-        "fully_reproduced": sum(1 for r in reports if r["ok"]),
-        "total_unmodeled": sum(r["unmodeled"] for r in reports),
-    }
 
 
 # ---------------------------------------------------------------------------
