@@ -1,5 +1,25 @@
 # End of session: where Phase 7 stands
 
+## OVERNIGHT RUN, 2026-10-11 (the operator's list, items 1 to 9): status
+
+Kept current after every item so the run can resume. Started 06:34 UTC on 2502f5c (deployed:
+fbdc686; 2502f5c is documentation only). Device rule tonight: read-only commands only, never on
+s3, nothing 08:30 to 09:10 UTC.
+
+| # | Item | State |
+|---|---|---|
+| 1 | C671: measure r1–s1, r2–s2 as a possible real fault | **done** 06:45: no routing fault, traffic both ways; LLDP alone fails (s1/s2 Gi0/2 receive no LLDP); CDP off on r1/r2, so no second witness tonight (enabling it is a config change, the operator's). Raw captures: `~/Documents/nmas-reports/2026-10-11-c671-captures.txt` on the laptop |
+| 2 | C670: the layout's grid version, timed | in progress |
+| 3 | C663 steps 2 and 3: the lab out of the product | to do |
+| 4 | C665: roles and platforms from NetBox | to do |
+| 5 | C667: History › Query, boards A to C | to do |
+| 6 | C662: RIP and RIPng read into Topology | to do |
+| 7 | C529 DHCP step 2 (then 3, 4; 5 only with a fresh copy) | to do |
+| 8 | The cutover blockers | to do |
+| 9 | Nice-to-haves, CUTOVER 7.5 to 7.7 | to do |
+
+Logged blockers and stops: none yet.
+
 **Status, 2026-10-10 (UTC).** The Phase 7 operating mode is ON: the operator ran
 `scripts/host-steps/phase7-mode-on.sh` (about 02:23 UTC), and CLAUDE.md carries its section.
 Done: receipts on the records database (d79ba34, not yet moved on the host); C630 (CUTOVER.md
