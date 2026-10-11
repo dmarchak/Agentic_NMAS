@@ -98,6 +98,10 @@ NOT_AN_OPERATION = {
                                                "interface and range), a read",
     ("_history_metric.html", "Show"): "asks the question again for the device and interface "
                                       "chosen, a read",
+    ("_history_query.html", "Ask your own (PromQL or LogQL)…"): "opens Ask your own, board B's "
+                                                                "layout with no question, a read",
+    ("_history_metric.html", "Run"): "asks your own query (the question's PromQL edited, or Ask "
+                                     "your own's PromQL or LogQL), its text in the address, a read",
     ("_topology_map.html", "'s Neighbours"): "opens that end's Neighbours tab on its device "
                                              "page, a read",
     ("_credential_profiles.html", "Cancel"): "puts the profiles table back, writing nothing",

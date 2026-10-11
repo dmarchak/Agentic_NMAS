@@ -148,31 +148,94 @@ METRICS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Your own query (board B's "The query (PromQL), editable"; board A's "Ask your own (PromQL or
+# LogQL)"): a question's PromQL edited in place, or a query of your own in board B's layout
+# with an empty question. It is a READ of the network's Grafana (PromQL, through the panel
+# path's range and step bounds) or Loki (LogQL lines, at most `LOGQL_LIMIT` from at most
+# `LOGQL_MAX_DAYS`, masked), carried in the address so a link shows the same answer, and
+# marked as yours wherever it is drawn, never passed off as the question's.
+# ---------------------------------------------------------------------------
+
+#: The longest query taken, the most PromQL expressions (one a line, each a series), and the
+#: LogQL bounds: Loki answers at most 30 days 1 hour at a time; 200 lines is board C's page.
+QUERY_MAX = 2000
+QUERY_LINES = 4
+LOGQL_LIMIT = 200
+LOGQL_MAX_DAYS = 30
+LANGS = {"promql": "PromQL", "logql": "LogQL"}
+
+ASK = {"title": "Ask your own", "y": "your query's values", "unit": "short",
+       "source": ("your own query: PromQL asked of the network's Grafana, from the store that "
+                  "keeps the range; LogQL asked of the network's Loki, its lines masked")}
+
+
 class AskRefused(ValueError):
     """A question asked with a value it cannot carry, named."""
 
 
+def question(key: str):
+    """The question *key* asks: one of `METRICS`, or ``ask`` (your own); None if neither."""
+    return ASK if key == "ask" else METRICS.get(key)
+
+
+def custom_query(text: str, lang: str = "promql") -> str:
+    """A query of your own, as it is asked: printable ASCII, at most `QUERY_MAX` characters,
+    at most `QUERY_LINES` PromQL expressions (one a line) or one LogQL line; refused by name."""
+    text = (text or "").replace("\r\n", "\n").strip()
+    if not text:
+        return ""
+    if len(text) > QUERY_MAX:
+        raise AskRefused(f"the query is {len(text)} characters; at most {QUERY_MAX} are asked")
+    bad = sorted({c for c in text if c != "\n" and not 32 <= ord(c) <= 126})
+    if bad:
+        raise AskRefused("the query may hold only printable ASCII; it holds "
+                         + ", ".join(f"U+{ord(c):04X}" for c in bad))
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    if lang == "promql" and len(lines) > QUERY_LINES:
+        raise AskRefused(f"the query holds {len(lines)} expressions; at most {QUERY_LINES} are "
+                         "asked, one a line")
+    if lang == "logql" and len(lines) > 1:
+        raise AskRefused("a LogQL query is one line")
+    return "\n".join(lines)
+
+
 def metric_ask(values, key: str = "errors") -> dict:
-    """The question's values from the address: device, interface, range. A name that is not
-    one is refused by name, never passed into the expression; an interface is refused for a
-    question asked per device."""
+    """The question's values from the address: device, interface, range, and your own query
+    (``q``, and ``lang`` for Ask your own). A name that is not one is refused by name, never
+    passed into the expression; an interface is refused for a question asked per device."""
     s = {"d": (values.get("d") or "").strip(), "i": (values.get("i") or "").strip(),
-         "range": (values.get("range") or "30d").strip()}
+         "range": (values.get("range") or "30d").strip(), "q": "",
+         "lang": (values.get("lang") or "promql").strip().lower() if key == "ask" else ""}
+    if key == "ask" and s["lang"] not in LANGS:
+        raise AskRefused(f"{s['lang']!r} is not a query language here: PromQL or LogQL")
+    if key == "ask" and (s["d"] or s["i"]):
+        raise AskRefused("your own query names its own devices: Ask your own takes no device or "
+                         "interface")
     if s["i"] and "series" in METRICS.get(key, {}):
         raise AskRefused(f"{METRICS[key]['title']} is asked per device, not per interface")
     if s["range"] not in METRIC_RANGES:
         raise AskRefused(f"{s['range']!r} is not one of the ranges: "
                          + ", ".join(METRIC_RANGES))
+    if s["lang"] == "logql" and METRIC_RANGES[s["range"]][1] > LOGQL_MAX_DAYS * 86400:
+        raise AskRefused(f"Loki answers at most {LOGQL_MAX_DAYS} days at a time: choose 30 d "
+                         "or shorter for a LogQL query")
     for k, what in (("d", "a device"), ("i", "an interface")):
         if s[k] and not _NAME.match(s[k]):
             raise AskRefused(f"{s[k]!r} is not {what} name")
     if s["i"] and not s["d"]:
         raise AskRefused("an interface is asked of one device: choose the device first")
+    s["q"] = custom_query(values.get("q"), s["lang"] or "promql")
     return s
 
 
 def metric_exprs(key: str, s: dict) -> list:
-    """``[(PromQL, legend)]``: the question's series for these values."""
+    """``[(PromQL, legend)]``: the question's series for these values, or your own query's
+    (one series a line, labelled by Grafana from the series' labels)."""
+    if s.get("q") and s.get("lang", "promql") in ("promql", ""):
+        return [(line, "") for line in s["q"].split("\n")]
+    if key == "ask":
+        return []
     q = METRICS[key]
     if "series" in q:
         return [(every, legend_every) if not s["d"] else
@@ -191,7 +254,7 @@ def metric_expr(key: str, s: dict) -> str:
 
 def metric_panel(key: str, s: dict) -> dict:
     """The question as a panel the chart draws: its PromQL, its unit and its legends."""
-    q = METRICS[key]
+    q = question(key)
     return {"id": 0, "type": "timeseries", "title": q["title"],
             "fieldConfig": {"defaults": {"unit": q["unit"]}},
             "targets": [{"refId": "ABCDEFGH"[n], "expr": e, "legendFormat": legend}
@@ -212,12 +275,17 @@ def metric_data(key: str, list_name: str, values) -> tuple:
     """``(payload, status)``: the question's series, as a Monitoring panel's payload."""
     from modules import panels
 
-    if key not in METRICS:
+    if question(key) is None:
         return {"ok": False, "error": f"{key!r} is not a question"}, 404
     try:
         s = metric_ask(values, key)
     except AskRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
+    if s["lang"] == "logql":
+        return {"ok": False, "error": "a LogQL query is drawn as lines on its page, not as a "
+                                      "chart"}, 400
+    if not metric_exprs(key, s):
+        return {"ok": False, "error": "nothing is asked yet: write a query and run it"}, 400
     client, datasources, err = _grafana(list_name)
     if err:
         return {"ok": False, "error": err}, 503
@@ -244,16 +312,27 @@ def metric_view(key: str, list_name: str, values) -> dict:
     interfaces, the range, the stores that hold it, the source and the PromQL."""
     from modules import logs_page, panels
 
-    q = METRICS[key]
+    q = question(key)
     out = {"key": key, "q": q, "list": list_name, "ranges": METRIC_RANGES, "error": "",
-           "devices": logs_page._devices(list_name), "interfaces": [], "interfaces_why": ""}
+           "devices": logs_page._devices(list_name), "interfaces": [], "interfaces_why": "",
+           "langs": LANGS, "limits": {"chars": QUERY_MAX, "lines": QUERY_LINES,
+                                      "logql_lines": LOGQL_LIMIT, "logql_days": LOGQL_MAX_DAYS}}
     try:
         s = metric_ask(values, key)
     except AskRefused as exc:
-        s = {"d": "", "i": "", "range": "30d"}
+        # The refused query stays in the box, so the person can correct it; nothing is asked.
+        s = {"d": "", "i": "", "range": "30d", "q": "",
+             "lang": "promql" if key == "ask" else ""}
         out["error"] = str(exc)
+        out["refused_text"] = (values.get("q") or "")[:QUERY_MAX]
     out["s"] = s
-    out["expr"] = metric_expr(key, s)
+    own = dict(s, q="")
+    out["own_expr"] = metric_expr(key, own) if key != "ask" else ""
+    out["edited"] = bool(s["q"]) and key != "ask"
+    out["expr"] = s["q"] or out.get("refused_text") or out["own_expr"]
+    out["asked"] = bool(s["q"]) or key != "ask"
+    if s.get("lang") == "logql" and s["q"]:
+        out["logql"] = logql_lines(list_name, s)
     client, datasources, err = _grafana(list_name)
     st = panels.stores(datasources, list_name) if not err else None
     seconds = METRIC_RANGES[s["range"]][1]
@@ -277,6 +356,51 @@ def metric_view(key: str, list_name: str, values) -> dict:
                 out["interfaces_why"] = f"Grafana: {got.get('error')}"
         except Exception as exc:                      # noqa: BLE001
             out["interfaces_why"] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
+def logql_lines(list_name: str, s: dict, now: float = None) -> dict:
+    """Your own LogQL query's lines, newest first, each masked: one Loki query over the range
+    (at most `LOGQL_MAX_DAYS`), at most `LOGQL_LIMIT` lines, a full page said to be cut. A
+    metric query (numbers, not lines) is refused by what Loki answered, never drawn as lines."""
+    import time as _time
+
+    from modules.integrations.loki import LokiIntegration
+    from modules.redact import redact_text
+
+    now = _time.time() if now is None else now
+    seconds = METRIC_RANGES[s["range"]][1]
+    out = {"lines": [], "error": "", "cut": False,
+           "window": (_time.strftime("%Y-%m-%d %H:%M", _time.gmtime(now - seconds)),
+                      _time.strftime("%Y-%m-%d %H:%M", _time.gmtime(now)))}
+    loki = LokiIntegration(list_name=list_name)
+    if not loki.is_configured():
+        out["error"] = "no log store is configured for this network (its Loki card in Settings)"
+        return out
+    r = loki._get("loki/api/v1/query_range", query=s["q"], limit=LOGQL_LIMIT,  # noqa: SLF001
+                  start=str(int((now - seconds) * 1e9)), end=str(int(now * 1e9)),
+                  direction="backward")
+    if not r.get("ok"):
+        out["error"] = f"Loki: {r.get('error')}"
+        return out
+    try:
+        data = r["response"].json().get("data") or {}
+    except ValueError as exc:
+        out["error"] = f"Loki's answer could not be read: {exc}"
+        return out
+    if data.get("resultType") not in (None, "streams"):
+        out["error"] = (f"this LogQL query answers numbers ({data.get('resultType')}), not lines; "
+                        "a LogQL metric query is not drawn here: ask for lines")
+        return out
+    rows = []
+    for stream in data.get("result") or []:
+        labels = ", ".join(f"{k}={v}" for k, v in sorted((stream.get("stream") or {}).items()))
+        for ns, line in stream.get("values") or []:
+            rows.append({"ns": int(ns), "text": redact_text(line), "labels": redact_text(labels),
+                         "at": _time.strftime("%Y-%m-%d %H:%M:%S", _time.gmtime(int(ns) / 1e9))})
+    rows.sort(key=lambda x: x["ns"], reverse=True)
+    out["lines"] = rows[:LOGQL_LIMIT]
+    out["cut"] = len(rows) >= LOGQL_LIMIT
     return out
 
 

@@ -2,18 +2,23 @@
 {#- History › Query › a metrics question (C667; board B, AskMetric): the question with its
     device, interface and range in the address (so a view is a link), the chart (the
     Monitoring panel island, reading history_query_metric_data), what holds the range, the
-    source and the question's PromQL (modules/history_query.py). Saving a view and editing the
-    PromQL are the next step. -#}
+    source and the question's PromQL, editable (your query travels in the address as `q` and
+    is marked as yours). Ask your own (board A's dashed card) is the same layout with no
+    question: PromQL drawn by the chart, a LogQL line query by board C's lines table
+    (modules/history_query.py). Saving a view is the next step. -#}
 {%- set m = metric %}{% set s = m.s %}
 {%- set here = url_for('v2.history_query_metric', key=m.key) %}
+{%- set ask = m.key == 'ask' %}
 {%- macro q(over) -%}?{% for k, v in dict(s, list=m.list, **over).items() %}{% if v %}{{ k }}={{ v | urlencode }}&{% endif %}{% endfor %}{%- endmacro %}
 <div id="hq-metric" class="hq-metric">
 <div class="lg-crumb"><a href="{{ url_for('v2.history_page', tab='query') }}">Query</a> › {{ m.q.title }} · {{ m.list }}</div>
 <div class="lg-head">
-  <h2>{{ m.q.title }} {{ info('history', 'query') }}</h2>
+  <h2>{{ m.q.title }}{% if m.edited %} <span class="chip">edited</span>{% endif %} {{ info('history', 'query') }}</h2>
   <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q({}) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
 </div>
-{%- if m.error %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ m.error }}. The question is shown for every device instead.</p></div>{% endif %}
+{%- if m.error %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ m.error }}. {% if ask %}Nothing was asked.{% else %}The question is shown for every device, with its own query, instead.{% endif %}</p></div>{% endif %}
+{%- if m.edited %}<div class="notice hq-yours" role="status">{{ icon('info', 16) }}<p>The chart draws your query, not the question's. <a href="{{ here }}{{ q({'q': ''}) }}">Back to the question's own query</a>.</p></div>{% endif %}
+{%- if not ask %}
 <form class="hq-ask" method="get" action="{{ here }}">
   <input type="hidden" name="list" value="{{ m.list }}"><input type="hidden" name="range" value="{{ s.range }}">
   <label><span class="muted small">Device</span>
@@ -29,15 +34,42 @@
   <button type="submit" class="btn">Show</button>
   {%- if not m.q.names %}{% elif not s.d %}<span class="muted small">choose a device to ask by interface</span>{% elif m.interfaces_why %}<span class="muted small">its interfaces could not be listed: {{ m.interfaces_why }}</span>{% endif %}
 </form>
+{%- endif %}
 <div class="seg" role="group" aria-label="Time range">
   {%- for key, rv in m.ranges.items() %}<a class="seg-btn{% if s.range == key %} on{% endif %}" href="{{ here }}{{ q({'range': key}) }}" aria-pressed="{{ 'true' if s.range == key else 'false' }}">{{ rv[0] }}</a>{% endfor %}
 </div>
-{%- if m.grafana_error %}
+{%- if ask %}
+<form class="card hq-query hq-ask-own" method="get" action="{{ here }}">
+  <input type="hidden" name="list" value="{{ m.list }}"><input type="hidden" name="range" value="{{ s.range }}">
+  <label><span class="muted small">Language</span>
+    <select name="lang">{% for k, w in m.langs.items() %}<option value="{{ k }}"{% if k == s.lang %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></label>
+  <label class="hq-q-text"><span class="muted small">The query</span>
+    <textarea name="q" rows="3" spellcheck="false" maxlength="{{ m.limits.chars }}" placeholder="sum by (device) (rate(ifInErrors[$__rate_interval]))   or   {job=&quot;syslog&quot;} |= &quot;%LINK&quot;">{{ m.expr }}</textarea></label>
+  <span class="op-act"><button type="submit" class="btn">Run</button></span>
+  <p class="muted small">PromQL: up to {{ m.limits.lines }} expressions, one a line, each drawn as series. LogQL: one line query, its newest {{ m.limits.logql_lines }} lines over at most {{ m.limits.logql_days }} days, masked. Your query is in the address, so Copy the link carries it.</p>
+</form>
+{%- endif %}
+{%- if ask and s.lang == 'logql' and s.q %}{% set lq = m.logql %}
+<section class="card hq-logql" aria-labelledby="hq-logql-h">
+  <h3 id="hq-logql-h">Your LogQL query's lines, {{ lq.window[0] }} to {{ lq.window[1] }} UTC</h3>
+  {%- if lq.error %}
+  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }} {{ lq.error }}</p>
+  {%- elif not lq.lines %}
+  <p class="muted small">No line in this range matches the query.</p>
+  {%- else %}
+  <div class="table-wrap"><table class="table lg-lines">
+    <thead><tr><th>Received (UTC)</th><th>Stream</th><th>Line</th></tr></thead>
+    <tbody>{% for l in lq.lines %}<tr><td class="mono">{{ l.at }}</td><td class="mono small muted">{{ l.labels }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {%- if lq.cut %}<p class="muted small">The newest {{ lq.lines | length }} lines are drawn; there are more: narrow the query or the range.</p>{% endif %}
+  {%- endif %}
+</section>
+{%- elif m.grafana_error %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ m.grafana_error }}: nothing can be asked yet.</p></div>
-{%- else %}
+{%- elif m.asked %}
 <div class="panels">
 <section class="panel gx-0 gw-24" data-panel-h="9" data-panel-src="{{ url_for('v2.history_query_metric_data', key=m.key) }}{{ q({}) }}" data-panel-type="timeseries" data-panel-unit="{{ m.q.unit }}">
-  <div class="panel-head"><h3>{{ s.d or 'Every device' }}: {{ m.q.y }}{% if not m.q.names %}{% elif s.d %}, by interface{% else %}, by device{% endif %}</h3></div>
+  <div class="panel-head"><h3>{% if s.q %}Your query{% if s.d %}, {{ s.d }}{% endif %}{% else %}{{ s.d or 'Every device' }}: {{ m.q.y }}{% if not m.q.names %}{% elif s.d %}, by interface{% else %}, by device{% endif %}{% endif %}</h3></div>
   <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
 </section>
 </div>
@@ -45,9 +77,11 @@
   {%- if m.past_live and not m.history_store %} this range reaches past the {{ m.live_days }} days the live store keeps, and no long-term store is set (Settings › Integrations), so it is not asked: choose a shorter range.
   {%- elif m.past_live %} the last {{ m.live_days }} days at full detail from the live store; the rest from the long-term store, {{ m.history_store }}.
   {%- else %} full detail, from the live store (it keeps {{ m.live_days }} days).{% endif %}</p>
+{%- else %}
+<p class="muted small">Write a PromQL or LogQL query above and run it.</p>
 {%- endif %}
-<p class="small muted"><strong>Source:</strong> {{ m.q.source }}.</p>
-{%- if m.q.covers %}<p class="small muted"><strong>Covers:</strong> {{ m.q.covers }}.</p>{% endif %}
+<p class="small muted"><strong>Source:</strong> {{ 'your query, asked of the network' ~ "'" ~ 's Grafana' if m.edited else m.q.source }}.</p>
+{%- if m.q.covers and not m.edited %}<p class="small muted"><strong>Covers:</strong> {{ m.q.covers }}.</p>{% endif %}
 {%- if m.record is defined %}{% set rec = m.record %}
 <section class="card hq-record" aria-labelledby="hq-record-h">
   <h3 id="hq-record-h">Mercury's restart record{% if s.d %}: {{ s.d }}{% endif %}, {{ m.ranges[s.range][0] }}</h3>
@@ -68,9 +102,14 @@
   {%- endif %}
 </section>
 {%- endif %}
-<details class="hq-expr" data-keep="hq-expr">
-  <summary>The query (PromQL)</summary>
-  <pre class="mono">{{ m.expr }}</pre>
-  <p class="muted small">The question's own query for the device and interface chosen. Editing it, and saving a view, are the next step of this page.</p>
-</details>
+{%- if not ask %}
+<form class="card hq-query" method="get" action="{{ here }}">
+  <input type="hidden" name="list" value="{{ m.list }}"><input type="hidden" name="range" value="{{ s.range }}">
+  {%- if s.d %}<input type="hidden" name="d" value="{{ s.d }}">{% endif %}{% if s.i %}<input type="hidden" name="i" value="{{ s.i }}">{% endif %}
+  <label class="hq-q-text"><span><strong>The query (PromQL), editable</strong></span>
+    <textarea name="q" rows="3" spellcheck="false" maxlength="{{ m.limits.chars }}">{{ m.expr }}</textarea></label>
+  <span class="op-act"><button type="submit" class="btn">Run</button></span>
+  <p class="muted small">{% if m.edited %}Your query, in the address as you ran it. The question's own: <span class="mono">{{ m.own_expr }}</span>{% else %}The question's own query for the device and interface chosen. Edit it and run it to draw your own: up to {{ m.limits.lines }} expressions, one a line.{% endif %}</p>
+</form>
+{%- endif %}
 </div>

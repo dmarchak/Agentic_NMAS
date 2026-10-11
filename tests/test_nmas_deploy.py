@@ -959,3 +959,32 @@ class TestTheHostStepsAreSaidLast:
         mod = _script()
         mod.INSTALLED_UPDATER = str(tmp_path / "absent")
         assert mod.updater_check(str(tmp_path), run=lambda *a, **k: 1 / 0) is None
+
+
+class TestTheApiAllowance:
+    """C678: the host's address may ask GitHub 60 times an hour unauthenticated, and three
+    deploys inside an hour at a 20 s poll spent it all (measured 2026-10-11)."""
+
+    def test_a_typical_run_costs_few_enough_calls_for_several_deploys_an_hour(self):
+        mod = _script()
+        typical_s = 6 * 60                         # CI's run, measured on 2026-10-11 (#634, #635)
+        per_deploy = -(-typical_s // mod.WAIT_POLL_S) + 1
+        assert 60 // per_deploy >= 6, (mod.WAIT_POLL_S, per_deploy)
+
+    def test_a_rate_limited_answer_says_when_the_allowance_comes_back(self, monkeypatch):
+        import email.message
+        import urllib.error
+        mod = _script()
+        headers = email.message.Message()
+        headers["X-RateLimit-Limit"] = "60"
+        headers["X-RateLimit-Remaining"] = "0"
+        headers["X-RateLimit-Reset"] = "1791745012"         # 2026-10-11T18:56:52Z
+
+        def refuse(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, 403, "rate limit exceeded", headers, None)
+        monkeypatch.setattr(mod.urllib.request, "urlopen", refuse)
+        status, body, reason = mod.github_get("/repos/o/r/actions/runs")
+        assert status == 403 and body is None
+        assert reason == ("rate-limited: GitHub allows this address 60 calls an hour "
+                          "unauthenticated, all spent; the allowance resets at 18:56:52 UTC, "
+                          "deploy again after it")

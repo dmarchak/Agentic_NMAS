@@ -454,7 +454,7 @@ def history_query_metric(key):
     from modules.nsot import listref
     from routes.list_param import named_list
 
-    if key not in history_query.METRICS:
+    if history_query.question(key) is None:
         abort(404)
     ref = listref.active()
     m = history_query.metric_view(key, named_list(request) or ref.name, request.args)

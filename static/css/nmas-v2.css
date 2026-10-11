@@ -1629,3 +1629,15 @@ a.hq-q strong { color: var(--accent); }
 .hq-ask label { display: flex; flex-direction: column; gap: 2px; }
 .hq-expr pre { white-space: pre-wrap; word-break: break-word; background: var(--surface-2);
   border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
+/* Your own query: the question's PromQL editable, and Ask your own (board B's query card). */
+.card.hq-query { display: flex; flex-direction: column; gap: 8px; }
+.card.hq-query > * { margin: 0; }
+.hq-ask-own { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+.hq-q-text { display: flex; flex-direction: column; gap: 4px; flex: 1 1 100%; }
+.hq-q-text textarea { font-family: var(--mono); font-size: 12.5px; width: 100%;
+  box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r);
+  padding: 8px 10px; background: var(--surface-2); color: var(--ink); min-height: 64px; }
+.hq-yours { background: var(--accent-soft); }
+.hq-restarts { margin: 0; padding-left: 0; list-style: none; display: flex;
+  flex-direction: column; gap: 6px; }
+a.hq-q.hq-own { border-style: dashed; }

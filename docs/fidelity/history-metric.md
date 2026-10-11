@@ -24,7 +24,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Chart | the Monitoring chart component: title, step and points, labelled axes with units, the crosshair with each series' value, a shaded "no data before …" | the Monitoring chart component (uPlot, the same island): title, axes in the unit, the cursor; the step and points and the read time in its foot | **deviation** (log: the chart is Monitoring's as it is; the shaded first day waits on the metrics' first sample being read) |
 | Coverage | where the range starts, the history's first day, which store answers which part | which store answers (the live store's days; past them the long-term store, or a refusal naming the setting when none is set) | **deviation** (log: no first sample is read yet) |
 | Source | the counters, every 60 s, Prometheus and Thanos | the counters, every 60 s, read from Prometheus through Grafana | **same** |
-| The query | "The query (PromQL), editable" | the question's PromQL for the device and interface chosen, shown; editing is the next step | **later** |
+| The query | "The query (PromQL), editable" | "The query (PromQL), editable": the question's PromQL in a box with Run; your query is drawn by the same chart, carried in the address, the title chipped "edited" with the question's own shown beside it and a way back (compared again 2026-10-11) | **same** |
 
 ## Board A's "CPU and memory trend", in board B's layout (2026-10-11)
 
@@ -46,3 +46,12 @@ Telemetry the IOS-XE telemetry series each device holds, by YANG model for one d
 neighbour question's "per neighbour" (board A) is per protocol on one device. Not shot
 separately: the layout is the CPU shot's, and the record's region is a list in the card style.
 **deviation** (log: the last three questions in board B's layout).
+
+## Board A's "Ask your own (PromQL or LogQL)…", in board B's layout (2026-10-11)
+
+Board A draws only the dashed card. It opens board B's layout with no question: no device or
+interface select, the range row, a query card first (the language, the query, Run, its
+bounds said), then PromQL drawn by the same chart, or a LogQL line query drawn as board C's
+lines table (received time, the stream's labels, the line, masked; the newest 200 over at most
+30 days). Nothing is asked until a query is written. **deviation** (log: Ask your own in board
+B's layout).

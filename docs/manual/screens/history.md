@@ -93,8 +93,20 @@ chart **Mercury's restart record** for the range: each restart, planned or not (
 the planned windows recorded), its window and the device's own reason, and the day the record
 began. A fall the chart shows with no row in the record is one Mercury did not record.
 **Telemetry rates** draws the telemetry series each device's stream holds (IOS-XE model-driven
-telemetry), by YANG model for one device: a device that stops streaming falls to nothing. Saving
-a view, and asking your own PromQL or LogQL, come next. The sidebar's Logs is the live tail
+telemetry), by YANG model for one device: a device that stops streaming falls to nothing.
+
+**Your own query.** Under each metrics answer, **The query (PromQL), editable** holds the
+question's own query: change it and press **Run**, and the chart draws yours, from the same
+store and over the same range. The title is marked **edited**, the question's own query is
+shown beside yours, and **Back to the question's own query** returns to it. Your query is in
+the address, so Copy the link carries it. **Ask your own (PromQL or LogQL)…**, under the
+questions, opens the same page with no question: choose the language, write the query and
+Run it. PromQL is drawn by the chart (at most 4 expressions, one a line, each its own series);
+a LogQL line query draws its newest 200 lines over at most 30 days (Loki answers at most 30
+days at a time), each masked like every other configuration text. A LogQL query that answers
+numbers rather than lines is refused, saying so. A query is at most 2000 characters of
+printable ASCII. These are reads: nothing is written, and nothing reaches a device. Saving a
+view comes next. The sidebar's Logs is the live tail
 ([Logs](logs)); Syslog by device's "Open these lines on Logs" opens it filtered.
 
 ## Baselines {#baselines}

@@ -23,7 +23,7 @@ def test_the_tab_sits_between_timeline_and_baselines(web):  # noqa: F811
 
 def test_the_six_questions_in_the_board_s_order_and_only_the_built_one_links(web):  # noqa: F811
     html = _tab(web)
-    titles = re.findall(r'class="hq-q[^"]*"[^>]*><strong>([^<]+)</strong>', html)
+    titles = re.findall(r'class="hq-q(?: hq-later)?"[^>]*><strong>([^<]+)</strong>', html)
     assert titles == ["Interface errors and discards over time", "CPU and memory trend",
                       "Routing neighbour changes", "Syslog by device", "Restarts",
                       "Telemetry rates"]
@@ -280,3 +280,100 @@ class TestTheRestartRecord:
         assert "unplanned</span> r3 restarted unexpectedly at 08:45 UTC on 02 Oct" in html
         assert "The record begins 2026-09-01" in html
         assert "a fall the chart shows with no row here is one Mercury did not record" in html
+
+
+class TestYourOwnQuery:
+    """Board B's "The query (PromQL), editable" and board A's "Ask your own (PromQL or LogQL)":
+    a read of the network's Grafana or Loki, carried in the address, marked as yours."""
+
+    def test_an_edited_query_is_asked_and_marked_as_yours(self, web, grafana):  # noqa: F811
+        mine = "sum by (device) (rate(ifInErrors[$__rate_interval]))"
+        r = web.get("/v2/history/query/metric/errors/data", query_string={"q": mine})
+        assert r.status_code == 200 and r.get_json()["asked"] == [mine]
+        html = web.get("/v2/history/query/metric/errors", query_string={"q": mine}) \
+            .get_data(as_text=True)
+        assert '<span class="chip">edited</span>' in html
+        assert "The chart draws your query, not the question's." in html
+        assert "Back to the question's own query" in html
+        assert "The question's own: <span class=\"mono\">sum by (device) (rate(ifInDiscards" \
+            in html, "the question's own query stays readable beside yours"
+        src = html.split('data-panel-src="')[1].split('"')[0]
+        assert "q=sum" in src, "the chart reads your query from the address"
+
+    def test_an_unedited_question_offers_its_own_query_to_edit(self, web, grafana):  # noqa: F811
+        html = web.get("/v2/history/query/metric/errors?d=s3").get_data(as_text=True)
+        assert "<strong>The query (PromQL), editable</strong>" in html
+        assert re.search(r'<textarea name="q"[^>]*>sum by \(ifName\) \(rate\(ifInDiscards', html)
+        assert "edited</span>" not in html
+
+    @pytest.mark.parametrize("text, words", [
+        ("x" * 2001, "at most 2000 are asked"),
+        ("up\nup\nup\nup\nup", "holds 5 expressions; at most 4"),
+        ("up\u200b", "only printable ASCII; it holds U+200B"),
+    ], ids=["too-long", "five-expressions", "not-ascii"])
+    def test_a_query_it_cannot_take_is_refused_by_name(self, web, grafana, text, words):  # noqa: F811
+        r = web.get("/v2/history/query/metric/errors/data", query_string={"q": text})
+        assert r.status_code == 400 and words in r.get_json()["error"]
+        assert grafana.asked == [], "nothing is asked"
+
+    def test_ask_your_own_is_board_b_with_no_question(self, web, grafana):  # noqa: F811
+        html = _tab(web)
+        assert re.search(r'<a class="hq-q hq-own" href="/v2/history/query/metric/ask"><strong>'
+                         r'Ask your own \(PromQL or LogQL\)…</strong>', html)
+        page = web.get("/v2/history/query/metric/ask").get_data(as_text=True)
+        assert ">Query</a> › Ask your own" in page and 'name="d"' not in page
+        assert "Write a PromQL or LogQL query above and run it." in page
+        assert "data-panel-src" not in page, "nothing is asked until a query is written"
+        r = web.get("/v2/history/query/metric/ask/data?q=up")
+        assert r.status_code == 200 and r.get_json()["asked"] == ["up"]
+
+    def test_ask_your_own_takes_no_device(self):
+        from modules import history_query as H
+        with pytest.raises(H.AskRefused) as err:
+            H.metric_ask({"d": "r1", "q": "up"}, "ask")
+        assert "takes no device or interface" in str(err.value)
+
+    def test_logql_lines_are_drawn_masked_newest_first(self, web, monkeypatch):  # noqa: F811
+        from modules.integrations import loki as L
+        answer = json.load(open(os.path.join(ROOT, "tests", "fixtures", "loki",
+                                             "lines_r4.json"), encoding="utf-8"))["answer"]
+        first = answer["data"]["result"][0]
+        ns = first["values"][0][0]
+        first["values"].insert(0, [str(int(ns) + 1), "r4: username admin password 0 Sup3rSecret"])
+        asked = []
+
+        class _Resp:
+            def json(self):
+                return answer
+
+        monkeypatch.setattr(L.LokiIntegration, "is_configured", lambda self: True)
+        monkeypatch.setattr(L.LokiIntegration, "_get", lambda self, path, **p: (
+            asked.append(p) or {"ok": True, "response": _Resp()}))
+        html = web.get("/v2/history/query/metric/ask", query_string={
+            "lang": "logql", "q": '{host="r4"} |= "LINK"', "range": "7d"}).get_data(as_text=True)
+        assert asked and asked[0]["query"] == '{host="r4"} |= "LINK"'
+        assert asked[0]["limit"] == 200 and asked[0]["direction"] == "backward"
+        assert int(asked[0]["end"]) - int(asked[0]["start"]) == 7 * 86400 * 10 ** 9
+        assert "Your LogQL query's lines" in html and "Sup3rSecret" not in html
+        times = re.findall(r'<tr><td class="mono">([0-9: -]+)</td>', html)
+        assert times and times == sorted(times, reverse=True)
+
+    def test_a_logql_metric_query_is_refused_by_what_loki_answered(self, web, monkeypatch):  # noqa: F811
+        from modules.integrations import loki as L
+
+        class _Resp:
+            def json(self):
+                return {"status": "success", "data": {"resultType": "matrix", "result": []}}
+
+        monkeypatch.setattr(L.LokiIntegration, "is_configured", lambda self: True)
+        monkeypatch.setattr(L.LokiIntegration, "_get",
+                            lambda self, path, **p: {"ok": True, "response": _Resp()})
+        html = web.get("/v2/history/query/metric/ask", query_string={
+            "lang": "logql", "q": 'rate({host="r4"}[5m])'}).get_data(as_text=True)
+        assert "this LogQL query answers numbers (matrix), not lines" in html
+
+    def test_logql_past_thirty_days_is_refused(self):
+        from modules import history_query as H
+        with pytest.raises(H.AskRefused) as err:
+            H.metric_ask({"lang": "logql", "q": "{a=\"b\"}", "range": "180d"}, "ask")
+        assert "Loki answers at most 30 days at a time" in str(err.value)
