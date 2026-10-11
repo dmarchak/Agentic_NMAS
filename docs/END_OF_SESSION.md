@@ -55,8 +55,21 @@ Your answers committed in 8224518 (deployed). Then, in your order:
 - **Boards L and M:** redrawn from the measurements (canvas version 111, logged as signed
   off); the discovery range measured on a throwaway Kea (the two classes and pools work as
   drawn); the lab's ZTP subnet's .192 to .223 are free. Building L next.
-- **Next:** board L (the discovery range's host step, its reader, the Discovered tab, Pick by
-  MAC), board M, 7.5's identity line, the 7.8 removals.
+- **Board L's page (8470511), walked on the host:** the discovery reader reads every 30 s, Kea
+  runs the range, Devices › Onboard devices › Discovered draws it; no unknown device is asking
+  (none is booting). Pick… opens Add device with the MAC and the ZTP way.
+- **Board M: not built, a question for you.** Its "full config at first boot" needs a new
+  device's whole intent committed before it boots, and serves secrets beyond the one-time
+  credential over TFTP (section 16 says the first-boot file carries a one-time credential only).
+  The bare-management way it also draws is what Add device does today.
+- **7.5's identity line (dbc423c), walked on the host:** the region drawn first (canvas v112);
+  the walk found a Save All's commit counted twice (C685, fixed; the corrected count is read
+  again on the host after its deploy); C686 (UNKNOWN) is the three Save All commits of 10-09
+  that name a person and carry Actor-Verified none.
+- **7.8 started (37623c4):** the survey ranked every REMOVE family; the six /netbox/query routes
+  are gone. Registered from the survey: C683 (the backup store is still read by v2's intent
+  editor and bulk intent, so Backups is blocked), C684, C616's other readers.
+- **Next:** the 7.8 families in the survey's order, one commit each.
 - **Done by you (2026-10-11):** sitting 2 steps 1 and 2, the C663 host step and
   `netbox-role-kinds.sh` (router and switch set). NetBox also holds a `network-device` role
   with no kind: Mercury calls any device holding it "not classified" until it has one.

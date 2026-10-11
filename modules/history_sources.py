@@ -240,7 +240,13 @@ def identity(events) -> dict:
     """The 7.5 line for the commits in *events* (the window the filters draw): ``{commits,
     verified, others: [(words, n)], unverified}``. A value the table does not name counts as
     not verified."""
-    commits = [e for e in events if "verified" in e]
+    # One commit can be two events (a Save All's measurement and its baseline decision, the
+    # same sha; measured on the host 2026-10-11): each commit is counted once.
+    seen, commits = set(), []
+    for e in events:
+        if "verified" in e and (e.get("sha") or id(e)) not in seen:
+            seen.add(e.get("sha") or id(e))
+            commits.append(e)
     counts = {}
     for e in commits:
         v = e["verified"] if e["verified"] in ("access", "host-shell", "") else "none"

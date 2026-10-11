@@ -45,6 +45,16 @@ def test_each_value_is_counted_under_its_words():
                              ("before verification was recorded", 1)]
 
 
+def test_a_commit_drawn_as_two_events_is_counted_once():
+    """A Save All's commit is a measurement and a baseline decision, one sha (the host's
+    history, 2026-10-11: three such commits were counted as six)."""
+    events = [{"verified": "none", "sha": "a" * 40, "kind": "measured"},
+              {"verified": "none", "sha": "a" * 40, "kind": "decision"},
+              {"verified": "access", "sha": "b" * 40, "kind": "intent"}]
+    got = HS.identity(events)
+    assert (got["commits"], got["verified"], got["unverified"]) == (2, 1, 1)
+
+
 def test_a_commit_event_carries_its_trailer(lab):  # noqa: F811
     _plant(lab["repo"])
     from modules.nsot import listref
