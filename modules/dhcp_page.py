@@ -118,19 +118,26 @@ def view(list_name: str, values, now: float = None) -> dict:
     if st["state"] != "ok":
         return out
     mine = _devices(list_name)
-    families, subnets, leases = [], [], []
+    families, subnets, leases, globals_ = [], [], [], []
     for svc, f in _families(st["value"]):
         families.append({"svc": svc, "words": f.get("words", svc), "ok": f.get("ok", False),
                          "error": f.get("error", ""), "read_at": f.get("read_at", ""),
                          "version": f.get("version", ""),
-                         "known": f.get("subnets") is not None})
+                         "known": f.get("subnets") is not None,
+                         "elsewhere": f.get("reservations_elsewhere") or []})
         for sub in f.get("subnets") or []:
             subnets.append(dict(sub, svc=svc))
         for lease in f.get("leases") or []:
             leases.append(dict(lease, svc=svc))
+        if f.get("global_reservations"):
+            # Kea's global level, drawn as its own group: used in each subnet that turns
+            # reservations-global on, and nowhere else.
+            globals_.append({"svc": svc, "id": None, "prefix": "", "global": True, "ztp": False,
+                             "family": f.get("words", svc),
+                             "reservations": f["global_reservations"]})
     by_subnet = {(x["svc"], x["id"]): x for x in subnets}
     reserved = {}
-    for sub in subnets:
+    for sub in globals_ + subnets:
         for r in sub["reservations"]:
             for a in r["addresses"]:
                 reserved[(sub["svc"], a)] = r
@@ -154,7 +161,7 @@ def view(list_name: str, values, now: float = None) -> dict:
             holds=("pending" if device else "not_readable"),
             shared=(l["svc"], l["subnet_id"], l["identity"]) in shared,
             expiring=bool(ends_ts) and ends_ts - now < day and l["state"] == "active",
-            from_pool_beside_reservation=_beside_reservation(l, by_subnet)))
+            from_pool_beside_reservation=_beside_reservation(l, by_subnet, globals_)))
     needle = s["q"].lower()
 
     def keep(l):
@@ -183,9 +190,9 @@ def view(list_name: str, values, now: float = None) -> dict:
                        "open": bool(flags) or bool(needle) or s["show"] != "all"
                        or s["open"] == f"{sub['svc']}:{sub['id']}"})
     res_rows = []
-    for sub in subnets:
+    for sub in globals_ + subnets:
         for r in sub["reservations"]:
-            res_rows.append(dict(r, sub=sub, now=_reservation_now(r, sub, active)))
+            res_rows.append(dict(r, sub=sub, now=_reservation_now(r, sub, active, subnets)))
     sub_rows = []
     for sub in subnets:
         used = sum(1 for l in active if l["svc"] == sub["svc"] and l["subnet_id"] == sub["id"])
@@ -198,6 +205,8 @@ def view(list_name: str, values, now: float = None) -> dict:
                  "ztp": sum(1 for x in v4 if x["ztp"]), "active": len(active),
                  "reservations": len(res_rows),
                  "unmatched": sum(1 for r in res_rows if r["now"]["state"] == "unmatched"),
+                 "unused": sum(1 for r in res_rows if r["now"]["state"] == "off"),
+                 "elsewhere": [f for f in families if f["elsewhere"]],
                  "shared": sum(len(v) for v in shared.values())},
         filtered=bool(needle) or s["show"] != "all",
         shown=sum(len(g["rows"]) for g in groups), total=len(rows))
@@ -253,21 +262,38 @@ def _ts(iso: str) -> float:
         return 0.0
 
 
-def _beside_reservation(lease: dict, by_subnet: dict) -> bool:
+def _beside_reservation(lease: dict, by_subnet: dict, globals_=()) -> bool:
     """A lease from the pool to a host with a reservation in the same subnet for another
-    address (board A: h2 asked with a new MAC and was given a pool address)."""
+    address (board A: h2 asked with a new MAC and was given a pool address); a global
+    reservation counts where the subnet uses the global ones."""
     sub = by_subnet.get((lease["svc"], lease["subnet_id"]))
     if not sub or not lease["hostname"]:
         return False
+    uses = sub.get("uses") or {"in_subnet": True, "global": False}
+    mine = list(sub["reservations"]) if uses["in_subnet"] else []
+    if uses["global"]:
+        mine += [r for g in globals_ if g["svc"] == lease["svc"] for r in g["reservations"]]
     return any(r["hostname"] == lease["hostname"] and lease["address"] not in r["addresses"]
-               for r in sub["reservations"])
+               for r in mine)
 
 
-def _reservation_now(r: dict, sub: dict, active: list) -> dict:
-    """What a reservation does now (board A's "Now"): in use by it; held by another client;
+def _reservation_now(r: dict, sub: dict, active: list, subnets=()) -> dict:
+    """What a reservation does now (board A's "Now"): not used (Kea's reservations-in-subnet or
+    reservations-global is off where it would apply); in use by it; held by another client;
     unmatched (no lease to its identity; a client under its hostname asked with another); or
     no request yet."""
-    here = [l for l in active if l["svc"] == sub["svc"] and l["subnet_id"] == sub["id"]]
+    if sub.get("global"):
+        where = [x["id"] for x in subnets
+                 if x["svc"] == sub["svc"] and (x.get("uses") or {}).get("global")]
+        if not where:
+            return {"state": "off", "words": "Kea does not use it: reservations-global is off "
+                                             "in every subnet"}
+    else:
+        if not (sub.get("uses") or {"in_subnet": True})["in_subnet"]:
+            return {"state": "off", "words": "Kea does not use it: reservations-in-subnet is "
+                                             "off for this subnet"}
+        where = [sub["id"]]
+    here = [l for l in active if l["svc"] == sub["svc"] and l["subnet_id"] in where]
     ident = (r["identity"] or "").lower()
     for a in r["addresses"]:
         lease = next((l for l in here if l["address"] == a), None)

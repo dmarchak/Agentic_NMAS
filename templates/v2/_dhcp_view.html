@@ -25,11 +25,15 @@
     <span><strong>{{ m.active }}</strong> active lease{{ 's' if m.active != 1 }}</span>
     <span><strong>{{ m.reservations }}</strong> reservation{{ 's' if m.reservations != 1 }}</span>
     {%- if m.unmatched %}<span>{{ badge(m.unmatched ~ ' reservation' ~ ('s' if m.unmatched != 1) ~ ' unmatched', 'warn') }}</span>{% endif %}
+    {%- if m.unused %}<span>{{ badge(m.unused ~ ' reservation' ~ ('s' if m.unused != 1) ~ ' Kea does not use', 'warn') }}</span>{% endif %}
     {%- if m.shared %}<span>{{ badge(m.shared ~ ' leases share an identity', 'warn') }}</span>{% endif %}
   </div>
   <p class="muted small dh-read">Read from Kea ({% for f in g.families %}<span class="mono">{{ f.svc }}</span>{{ ' and ' if not loop.last }}{% endfor %}{% if g.families and g.families[0].version %}, Kea {{ g.families[0].version }}{% endif %}) by the DHCP reader, {{ stamp(g.value_at) }}; it reads again every 5 minutes. Each family is read on its own.</p>
   {%- for f in g.families if not f.ok %}
   <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p><strong>{{ f.words }} ({{ f.svc }}) could not be read:</strong> {{ f.error }}. {% if f.known %}Drawn below as last read, {{ stamp(f.read_at) }}.{% else %}Nothing of {{ f.words }} has been read yet: its subnets and leases are not drawn, never drawn as none.{% endif %}</p></div>
+  {%- endfor %}
+  {%- for f in m.elsewhere %}
+  <div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p><strong>{{ f.words }} ({{ f.svc }}) also keeps reservations in {{ f.elsewhere | join(' and ') }}.</strong> Kea's configuration does not list them and this page does not read them yet: the reservations counted here are only the configuration's.</p></div>
   {%- endfor %}
   {%- if g.failed %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>The reader's last attempt failed ({{ g.failed }}); this is its last good read, {{ stamp(g.value_at) }}.</p></div>{% endif %}
   <nav class="tabs dh-tabs" aria-label="DHCP">
@@ -48,7 +52,7 @@
     <tbody>
     {%- for x in g.subnets %}
     <tr>
-      <td class="mono">{{ x.prefix }}{% if x.ztp %} {{ badge('ZTP') }}{% endif %}</td>
+      <td class="mono">{{ x.prefix }}{% if x.ztp %} {{ badge('ZTP') }}{% endif %}{% if x.shared_network %} <span class="faint">in {{ x.shared_network }}</span>{% endif %}</td>
       <td class="mono">{{ x.id }}</td>
       <td class="mono">{% for p in x.pools %}{{ g.pool_words(p) }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">no pool{% if x.ztp %}: ZTP answers only its reservations{% endif %}</span>{% endfor %}{% for p in x.pd_pools %}<br>{{ p }}{% endfor %}</td>
       <td>{{ g.duration(x.times.valid) }} · {{ g.duration(x.times.preferred) }} · {{ g.duration(x.times.renew) }} · {{ g.duration(x.times.rebind) }}{% if x.same_as_global %} <span class="faint">the same as Kea's global</span>{% endif %}</td>
@@ -112,17 +116,17 @@
     <tbody>
     {%- for r in g.reservations %}
     <tr>
-      <td class="mono">{{ r.sub.prefix }}{% if r.sub.ztp %} {{ badge('ZTP') }}{% endif %}</td>
+      <td class="mono">{% if r.sub.global %}{{ r.sub.family }}, Kea's global level{% else %}{{ r.sub.prefix }}{% if r.sub.ztp %} {{ badge('ZTP') }}{% endif %}{% endif %}</td>
       <td class="mono">{{ r.hostname or '–' }}</td>
       <td class="mono">{{ r.by }} {{ r.identity }}</td>
       <td class="mono">{{ r.addresses | join(', ') or '–' }}</td>
-      <td>{% if r.now.state == 'in_use' %}{{ badge(r.now.words, 'ok') }}{% elif r.now.state == 'waiting' %}{{ badge(r.now.words) }}{% else %}{{ badge('unmatched' if r.now.state == 'unmatched' else 'held by another', 'warn') }} <span class="small">{{ r.now.words }}</span>{% endif %}</td>
+      <td>{% if r.now.state == 'in_use' %}{{ badge(r.now.words, 'ok') }}{% elif r.now.state == 'waiting' %}{{ badge(r.now.words) }}{% else %}{{ badge({'unmatched': 'unmatched', 'off': 'not used'}.get(r.now.state, 'held by another'), 'warn') }} <span class="small">{{ r.now.words }}</span>{% endif %}</td>
     </tr>
     {%- endfor %}
     </tbody>
   </table></div>
   {%- else %}
-  <p class="small">Kea holds no reservation in any subnet that was read: every client here is given an address from a pool.</p>
+  <p class="small">Kea's configuration holds no reservation, in any subnet that was read or at its global level{% if m.elsewhere %}; a hosts database's are not read (above){% else %}: every client here is given an address from a pool{% endif %}.</p>
   {%- endif %}
   <p class="note small">Adding, changing and removing a reservation is board B: each previewed, confirmed by hash as a verified person, applied with <span class="mono">config-reload</span>, read back from Kea and recorded (C529 step 2, not built yet). ZTP's reservations are written by onboarding, and changed there.</p>
 </section>

@@ -3,7 +3,8 @@ approved 2026-10-06): one network's Kea, read through its Control Agent, for the
 
 Everything the page draws comes from here, never a Kea call per page view (board A). Per family
 (IPv4 from ``dhcp4``, IPv6 from ``dhcp6``), three reads: ``version-get``, ``config-get`` (the
-subnets, their pools, lease times and reservations as Kea RUNS them) and ``lease4-get-all`` /
+subnets, those in a shared network too, their pools, lease times, the reservations in each and
+at the global level, and which of them Kea uses where, as Kea RUNS them) and ``lease4-get-all`` /
 ``lease6-get-all`` (every lease). Each family is read on its own: one that cannot be asked keeps
 its last good value, named with its error and its age, and never blanks the other (board A).
 Both families are always asked: whether Kea serves one is Kea's answer ("not served"), not a
@@ -66,28 +67,55 @@ def _hostname(value) -> str:
     return "" if value in (".", "") else value.rstrip(".")
 
 
-def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
-    """Each subnet as Kea runs it: id, prefix, pools, its lease times and the global ones, and
-    its reservations."""
-    glob = {name: config.get(key) for name, key in TIMES}
+def reservations(entries, family: str) -> list:
+    """Reservations as Kea's configuration holds them, each keyed the way Kea keys its client."""
     out = []
-    for s in config.get(sub_key) or []:
-        res = []
-        for r in s.get("reservations") or []:
-            kind, ident = _identity(r, family)
-            addresses = ([r["ip-address"]] if r.get("ip-address") else []) + \
-                list(r.get("ip-addresses") or [])
-            res.append({"hostname": _hostname(r.get("hostname")), "by": kind,
-                        "identity": ident, "addresses": addresses,
-                        "prefixes": list(r.get("prefixes") or [])})
+    for r in entries or []:
+        kind, ident = _identity(r, family)
+        addresses = ([r["ip-address"]] if r.get("ip-address") else []) + \
+            list(r.get("ip-addresses") or [])
+        out.append({"hostname": _hostname(r.get("hostname")), "by": kind,
+                    "identity": ident, "addresses": addresses,
+                    "prefixes": list(r.get("prefixes") or [])})
+    return out
+
+
+#: Whether Kea uses a subnet's own reservations and the global ones there: a subnet's own
+#: setting, else its shared network's, else the global one (Kea's inheritance; config-get gives
+#: the global value always and a subnet's only where its file sets one, measured 2026-10-11).
+USES = (("in_subnet", "reservations-in-subnet", True), ("global", "reservations-global", False))
+
+
+def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
+    """Each subnet as Kea runs it, those inside a shared network too: id, prefix, pools, its
+    lease times and the global ones, its reservations, and which reservations Kea uses there."""
+    glob = {name: config.get(key) for name, key in TIMES}
+    every = [(s, {}) for s in config.get(sub_key) or []]
+    for net in config.get("shared-networks") or []:
+        every += [(s, net) for s in net.get(sub_key) or []]
+    out = []
+    for s, net in every:
+        uses = {name: bool(s.get(key, net.get(key, config.get(key, default))))
+                for name, key, default in USES}
         out.append({"id": s.get("id"), "prefix": s.get("subnet", ""),
+                    "shared_network": net.get("name", ""),
                     "pools": [p.get("pool", "") for p in s.get("pools") or []],
                     "pd_pools": [f"{p.get('prefix')}/{p.get('prefix-len')} by "
                                  f"/{p.get('delegated-len')}" for p in s.get("pd-pools") or []],
                     "times": {name: s.get(key) for name, key in TIMES},
-                    "global_times": glob, "reservations": res,
-                    "ztp": s.get("id") in ztp_ids, "family": family})
+                    "global_times": glob, "reservations": reservations(s.get("reservations"),
+                                                                       family),
+                    "uses": uses, "ztp": s.get("id") in ztp_ids, "family": family})
     return out
+
+
+def held_elsewhere(config: dict) -> list:
+    """Where Kea keeps reservations its configuration does not list: a hosts database, named by
+    its type only (its entry also holds a user and a password, never taken)."""
+    dbs = list(config.get("hosts-databases") or [])
+    if config.get("hosts-database"):
+        dbs.append(config["hosts-database"])
+    return [f"a hosts database ({d.get('type') or 'of no stated type'})" for d in dbs]
 
 
 def leases(raw: list, family: str) -> list:
@@ -131,6 +159,8 @@ def read_family(kea, svc: str, root: str, sub_key: str, lease_cmd: str, words: s
     ids = ztp_ids if ztp_ids is not None else (_ztp_ids(config) if svc == "dhcp4" else [])
     return {"ok": True, "words": words, "version": version.strip(),
             "subnets": subnets(config, words, sub_key, ids),
+            "global_reservations": reservations(config.get("reservations"), words),
+            "reservations_elsewhere": held_elsewhere(config),
             "leases": leases(got[lease_cmd].get("leases"), words),
             "read_at": _iso(clock()), "error": ""}
 

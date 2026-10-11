@@ -51,8 +51,13 @@ holds it** is the client's side, which Kea cannot see: for a host Mercury does n
 Each reservation, with what it does now: **in use by it** (a client with its identity holds the
 address), **held by another client**, **unmatched** (no client has asked with its identity, and
 one under its hostname asked with another, as a lab host's MAC does at each redeploy), or **no
-request yet**. Adding, changing and removing a reservation is previewed, confirmed and recorded,
-and arrives next; ZTP's reservations are written by onboarding and changed there.
+request yet**, or **not used** (Kea's `reservations-in-subnet` or `reservations-global` is off
+where it would apply, the setting named). A reservation kept at Kea's global level is listed as
+its own group and counts in each subnet that turns the global ones on. Reservations Kea keeps in
+a hosts database are not in its configuration: the page names the database above the tabs and
+counts only the configuration's. Adding, changing and removing a reservation is previewed,
+confirmed and recorded, and arrives next; ZTP's reservations are written by onboarding and
+changed there.
 
 ## Exclusions {#exclusions}
 

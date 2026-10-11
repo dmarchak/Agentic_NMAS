@@ -8,8 +8,9 @@ the DHCP reader's value built from the lab's Kea 2.4.1 answers (`tests/fixtures/
 Boards: `DhcpNetwork.dc.html` (board A, 1440 wide) on the mockups canvas, page "Item 5, DHCP on v2", approved 2026-10-06 with boards B to D and the sidebar move (canvas v59; register C529). Re-read from the canvas 2026-10-11 before building. Board A draws its three tabs one under another; the page shows one at a time. It has no phone variant: at 390 the page keeps each table whole and scrolls it in its box. Boards B (a reservation's operations), C (subnets and options) and D (exclusions) are later steps.
 Shots: desktop 1440 and 1280 (Subnets), 1440 (Leases, Reservations, Exclusions); phone 390 (each tab, and its first screen). Compared 2026-10-11.
 Walked on the host 2026-10-11 (4f9a699, deployed 02:19 UTC): the DHCP reader's first read landed a second after the restart, both families answered (Kea 2.4.1), its store `data/readers/dhcp.json`; the page drawn from that stored document at 1440 and 390 shows what the capture showed: 6 subnets (3 IPv4 with ZTP's 255, 3 IPv6), 9 leases with IPv6 subnet 10 open on its three addresses for one DUID, 0 reservations. At 390 the tab strip scrolls sideways, as every v2 page's tabs do.
+Compared again 2026-10-11 (C660: the operator asked whether the lab hosts' August reservations were missed). Kea's files on the host, counted read-only, hold none in any subnet or globally and no hosts database, so the 0 was true (C525 records their loss); the reader still drew 0 wherever Kea holds reservations outside a subnet's own list. It now reads the global ones and the subnets inside a shared network, says which reservations Kea uses in each subnet (reservations-global, reservations-in-subnet), and names a hosts database it does not read. On the lab's answer nothing drawn moved but the empty Reservations sentence, now "Kea's configuration holds no reservation, in any subnet that was read or at its global level".
 Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html
-Templates sha256: `fc3d6a1dc7df7a03fe5f4d897253df4cbeb8753d19241d492a8e115e94f65201`
+Templates sha256: `f88007394a6572e57d0289227a1f211b8eecb1f39f2f2c26f24d34f4085a7b94`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -32,6 +33,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | "As the host holds it" | "not readable" for a host the tool does not reach, never blank; the note | the same | **same** |
 | ZTP's leases | "3 asking, unknown: board L's list, Onboard › Discovered" (a link) | the count, and the Discovered list named in words, not built yet | **later** board L |
 | Reservations | subnet, host, reserved by, address, Now (in use by it, unmatched with why, pending, no request yet) | the same columns and states, and "held by another client" | **same** |
+| Reservations outside a subnet (C660) | not drawn: the board's Kea holds every reservation in a subnet | a global one as its own group ("IPv4, Kea's global level"), used only in subnets that turn reservations-global on; "not used" with Kea's setting named where Kea ignores one; a hosts database named above the tabs; a shared network's name beside its subnet | **deviation** (log: DHCP draws the reservations Kea holds outside a subnet) |
 | Add, Edit, Remove | a button and a row's actions (board B) | not drawn; the note says they arrive next | **later** C529 step 2 |
 | ZTP's reservations | "Open r8's plan" | not drawn: the lab's Kea holds none, and the plan page is onboarding's | **later** board M |
 | Unmatched as Needs attention | a row naming the reservation, its action Edit… | not drawn: its action is board B's | **later** C529 step 2 |

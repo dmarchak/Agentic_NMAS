@@ -169,6 +169,35 @@ def test_reservations_say_what_each_does_now(web):
     assert "1 from the pool where a reservation exists" in _get(web, "&tab=lea")
 
 
+def test_reservations_kea_holds_outside_a_subnet_are_drawn(web):
+    """C660: a global reservation drawn and counted, used only where a subnet turns the global
+    ones on; a subnet whose reservations Kea ignores says so; a hosts database named."""
+    from tests.test_dhcp_reader import plant_elsewhere
+    _store(_value(kea=FakeKea(plant=plant_elsewhere)))
+    head = _get(web)
+    assert "<strong>1</strong> reservation<" in head
+    assert "IPv4 (dhcp4) also keeps reservations in a hosts database (postgresql).</strong>" \
+           in head and "only the configuration's" in head
+    assert "10.10.20.0/24 <span class=\"faint\">in floor-2</span>" in head
+    html = _get(web, "&tab=res")
+    assert "IPv4, Kea's global level" in html and "no request yet" in html
+
+    def off(svc, result):
+        result = plant_elsewhere(svc, result)
+        conf = result[0]["arguments"]["Dhcp4" if svc == "dhcp4" else "Dhcp6"]
+        if svc == "dhcp4":
+            conf["shared-networks"][0]["reservations-global"] = False
+            conf["subnet4"][0]["reservations-in-subnet"] = False
+            conf["subnet4"][0]["reservations"] = [{"hw-address": "aa:c1:ab:00:00:99",
+                                                   "ip-address": "10.10.10.150"}]
+        return result
+    _store(_value(kea=FakeKea(plant=off)))
+    html = _get(web, "&tab=res")
+    assert "Kea does not use it: reservations-global is off in every subnet" in html
+    assert "Kea does not use it: reservations-in-subnet is off for this subnet" in html
+    assert "2 reservations Kea does not use" in _get(web)
+
+
 def test_exclusions_say_what_kea_cannot_do(web):
     html = _get(web, "&tab=exc")
     assert "Kea has no excluded-address setting" in html and "C529 step 3" in html

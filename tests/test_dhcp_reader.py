@@ -108,6 +108,42 @@ def test_reservations_by_their_identity():
     assert r6["by"] == "DUID" and r6["addresses"] == ["2001:db8:10::103"]
 
 
+def plant_elsewhere(svc, result):
+    """C660's shapes, planted into the lab's answer (it held none, measured in Kea's files
+    2026-10-11): a global reservation, subnet 20 moved into a shared network that turns
+    reservations-global on, and a hosts database whose entry carries a password."""
+    conf = result[0]["arguments"]["Dhcp4" if svc == "dhcp4" else "Dhcp6"]
+    key = "subnet4" if svc == "dhcp4" else "subnet6"
+    if svc == "dhcp4":
+        conf["reservations"] = [{"hw-address": "aa:c1:ab:3e:11:00",
+                                 "ip-address": "10.10.20.110", "hostname": "h2"}]
+        twenty = conf[key].pop(1)
+        conf["shared-networks"] = [{"name": "floor-2", "reservations-global": True,
+                                    key: [twenty]}]
+        conf["hosts-database"] = {"type": "postgresql", "name": "kea", "user": "kea",
+                                  "password": "planted-not-a-secret"}
+    return result
+
+
+def test_reservations_kea_holds_outside_a_subnet_are_read():
+    """C660: the page said 0 wherever Kea held reservations at its global level, in a shared
+    network's subnet, or in a hosts database; each is now read or named."""
+    v4 = _read(kea=FakeKea(plant=plant_elsewhere))["families"]["dhcp4"]
+    assert v4["global_reservations"] == [{"hostname": "h2", "by": "MAC",
+                                          "identity": "aa:c1:ab:3e:11:00",
+                                          "addresses": ["10.10.20.110"], "prefixes": []}]
+    assert [s["id"] for s in v4["subnets"]] == [10, 255, 20]
+    twenty = v4["subnets"][2]
+    assert twenty["shared_network"] == "floor-2"
+    # Kea's inheritance: the shared network's setting, else the global one (off in the lab).
+    assert twenty["uses"] == {"in_subnet": True, "global": True}
+    assert v4["subnets"][0]["uses"] == {"in_subnet": True, "global": False}
+    assert v4["reservations_elsewhere"] == ["a hosts database (postgresql)"]
+    assert "planted-not-a-secret" not in json.dumps(v4)
+    v6 = _read()["families"]["dhcp6"]
+    assert v6["global_reservations"] == [] and v6["reservations_elsewhere"] == []
+
+
 def test_a_family_that_cannot_be_asked_keeps_its_last_good_and_blanks_nothing():
     good = _read()
     v = _read(kea=FakeKea(fail={("dhcp6", "lease6-get-all")}), previous=good)
