@@ -1557,6 +1557,11 @@ a.topo-ent:hover { background: var(--hover); }
 /* DHCP (C529), drawn to board A, "Item 5, DHCP on v2" (DhcpNetwork; docs/fidelity/dhcp.md). */
 .dh { display: flex; flex-direction: column; gap: 14px; max-width: 1180px; }
 .dh-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+/* Board C: the Subnets heading with Add a subnet…, and a removal's acknowledgement. */
+.dh-head2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.dh-head2 h2 { margin: 0; }
+.dh-acts { display: inline-flex; align-items: center; gap: 6px; }
+.op-ack { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; }
 .dh-head h1 { margin: 0; font-size: 24px; font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .dh-net { font-size: 13px; font-weight: 400; background: var(--accent-soft); color: var(--accent-ink); }
 .dh-sum { display: flex; flex-direction: column; gap: 10px; }

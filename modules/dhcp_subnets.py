@@ -149,7 +149,8 @@ def move_plan(main_text: str, main: str, family: str) -> dict:
 #: The form's fields per family (board C): Kea's option names and the lease times it sets.
 OPTIONS = {"IPv4": {"gateway": "routers", "dns": "domain-name-servers", "domain": "domain-name"},
            "IPv6": {"dns": "dns-servers", "domain": "domain-search"}}
-ASKS = ("op", "family", "id", "pool", "gateway", "dns", "domain", "valid", "preferred")
+ASKS = ("op", "family", "id", "prefix", "pool", "gateway", "dns", "domain", "valid",
+        "preferred", "ack")
 #: Measured on the host's kea-dhcp4 2.4.1 (C529, 2026-10-11): a client holding an address the
 #: new pool leaves out is answered with silence when it renews or rebinds, so it keeps the
 #: address until its lease ends, and is then given one from the pool.
@@ -278,38 +279,39 @@ def _option_of(subnet: dict, name: str) -> str:
                  if o.get("name") == name), "")
 
 
-def plan_edit(list_name: str, values, kea=None, file_text=None, intent=None) -> dict:
-    """What board C's Edit preview draws: ``{ok, refused, family, id, prefix, title, change:
-    [(sign, text)], checks: [(state, text)], leases: [str], before, after, path, version,
-    hash, subject}``. A read: Kea is asked and Mercury's subnet file is read; nothing is
-    written."""
+def plan(list_name: str, values, kea=None, file_text=None, intent=None) -> dict:
+    """What board C's preview draws, for an edit, an add or a removal: ``{ok, refused, op,
+    family, id, prefix, title, change: [(sign, text)], checks: [(state, text)], leases: [str],
+    survives: [str], ack: bool, before, after, path, version, hash, subject}``. A read: Kea is
+    asked and Mercury's subnet file is read; nothing is written."""
     from modules import dhcp_reservations as D
 
     s = ask(values)
-    p = {"ok": False, "refused": "", "ask": s, "op": "edit", "family": s["family"], "id": None,
-         "prefix": "", "title": "", "change": [], "checks": [], "leases": [], "before": None,
-         "after": None, "path": "", "version": "", "hash": "", "subject": ""}
+    p = {"ok": False, "refused": "", "ask": s, "op": s["op"], "family": s["family"],
+         "id": None, "prefix": "", "title": "", "change": [], "checks": [], "leases": [],
+         "survives": [], "ack": False, "before": None, "after": None, "path": "",
+         "version": "", "hash": "", "subject": ""}
+    steps = {"edit": _plan_edit, "add": _plan_add, "remove": _plan_remove}
     try:
-        _plan_edit(list_name, s, p, kea, file_text, intent, D)
+        if s["op"] not in steps:
+            raise Refused(f"{s['op']!r} is not edit, add or remove")
+        steps[s["op"]](list_name, s, p, kea, file_text, intent, D)
     except (Refused, D.Refused) as exc:
         p["refused"] = str(exc)
         return p
     p["hash"] = hashlib.sha256(json.dumps(
-        {k: p[k] for k in ("family", "id", "before", "after", "version")},
+        {k: p[k] for k in ("op", "family", "id", "before", "after", "version", "ack")},
         sort_keys=True).encode("utf-8")).hexdigest()
     p["ok"] = True
     return p
 
 
-def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
+def _state(list_name, s, p, kea, file_text, D) -> tuple:
+    """``(subnets, config, kea)``: Mercury's subnet file for the family (refused before the move)
+    and Kea's running configuration; *p* gets the path and the file's version."""
     if s["family"] not in FILES:
         raise Refused(f"{s['family']!r} is not IPv4 or IPv6")
     family = s["family"]
-    try:
-        sid = int(s["id"])
-    except ValueError:
-        raise Refused(f"{s['id']!r} is not a Kea subnet id") from None
-    p["id"] = sid
     main = D.main_config(list_name, family)
     path = subnets_file(main, family)
     p["path"] = path
@@ -324,25 +326,15 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
         except OSError as exc:
             raise Refused(f"{path} could not be read: {exc}") from None
     p["version"] = hashlib.sha256(file_text.encode("utf-8")).hexdigest()[:7]
-    subnets = load(file_text)
-    hit = [x for x in subnets if x.get("id") == sid]
-    if len(hit) != 1:
-        raise Refused(f"subnet {sid} is in Mercury's {family} subnet file {len(hit)} times")
-    before = hit[0]
-    p["before"] = before
-    prefix = before.get("subnet", "")
-    p["prefix"] = prefix
     if kea is None:
         from modules.integrations.kea import KeaIntegration
         kea = KeaIntegration(list_name=list_name)
-    config = D.kea_config(kea, family)
-    from modules.readers.dhcp import _ztp_ids
-    if family == "IPv4" and sid in _ztp_ids(config):
-        raise Refused(f"subnet {sid} is ZTP's: its posture is onboarding's, changed only where "
-                      "onboarding sets it")
-    after = json.loads(json.dumps(before))
-    names = OPTIONS[family]
-    # The pool: one range as the form sets it (board D's exclusions shape it later).
+    return load(file_text), D.kea_config(kea, family), kea
+
+
+def _settings(s, after: dict, before: dict, family: str, prefix: str, config: dict, sid,
+              intent) -> tuple:
+    """The form's pool, options and lifetimes applied to *after*: ``(pool_given, valid)``."""
     if s["pool"]:
         a, b = _pool(s["pool"], prefix, family)
         for other in config.get(FILES[family][0]) or []:
@@ -353,7 +345,7 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
                     raise Refused(f"the pool {a} - {b} overlaps subnet {other.get('id')}'s pool "
                                   f"{x} - {y}")
         after["pools"] = [{"pool": f"{a} - {b}"}]
-    for field, name in names.items():
+    for field, name in OPTIONS[family].items():
         value = s.get(field, "")
         if not value:
             continue                       # an empty field keeps what Kea's subnet holds
@@ -384,6 +376,162 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
             if valid is not None and preferred > valid:
                 raise Refused("the preferred lifetime is longer than the valid one")
             after["preferred-lifetime"] = preferred
+    return bool(s["pool"]), valid
+
+
+def _gateway_check(p, after, prefix, intent) -> None:
+    gw = _option_of(after, "routers")
+    want = sorted({g for e in ((intent or {}).get("IPv4") or {}).get(prefix) or []
+                   for g in e.get("gateway") or []})
+    if not want:
+        p["checks"].append(("note", "intent names no first-hop address for this prefix, so "
+                                    "the gateway is not compared"))
+    elif gw in want:
+        p["checks"].append(("pass", f"the gateway equals intent's VRRP address ({gw})"))
+    else:
+        p["checks"].append(("warn", f"the gateway {gw or '(none)'} is not intent's VRRP "
+                                    f"address ({', '.join(want)})"))
+
+
+def _plan_add(list_name, s, p, kea, file_text, intent, D) -> None:
+    """Board C's section 4: a new subnet, its relay addresses and gateway from intent."""
+    subnets, config, kea = _state(list_name, s, p, kea, file_text, D)
+    family = s["family"]
+    try:
+        net = ipaddress.ip_network(s["prefix"].strip(), strict=True)
+    except ValueError as exc:
+        raise Refused(f"the prefix {s['prefix']!r}: {exc}") from None
+    if (net.version == 4) != (family == "IPv4"):
+        raise Refused(f"{net} is not an {family} prefix")
+    prefix = str(net)
+    p["prefix"] = prefix
+    for other in config.get(FILES[family][0]) or []:
+        try:
+            if ipaddress.ip_network(other.get("subnet", ""), strict=False).overlaps(net):
+                raise Refused(f"{prefix} overlaps Kea's subnet {other.get('id')} "
+                              f"({other.get('subnet')})")
+        except ValueError:
+            continue
+    if not s["pool"]:
+        raise Refused("a new subnet needs its pool: first - last")
+    entries = ((intent or {}).get(family) or {}).get(prefix.lower() if family == "IPv6"
+                                                       else prefix) or []
+    used = {x.get("id") for x in subnets} | {x.get("id") for x in config.get(FILES[family][0])
+                                             or []}
+    vlan = next((int(m.group(1)) for e in entries
+                 for m in [re.match(r"^vlan(\d+)$", e.get("iface", ""), re.I)] if m), None)
+    sid = vlan if vlan and vlan not in used else max([i for i in used if isinstance(i, int)]
+                                                     or [0]) + 1
+    p["id"] = sid
+    from modules import dhcp_reservations as Dr
+    main = D.main_config(list_name, family)
+    after = {"id": sid, "subnet": prefix,
+             "reservations": _SENTINEL.format(Dr.fragment(main, family, sid))}
+    relay = sorted({e.get("address") for e in entries if e.get("address")})
+    if relay:
+        after["relay"] = {"ip-addresses": relay}
+    if family == "IPv4" and not s["gateway"]:
+        gw = sorted({g for e in entries for g in e.get("gateway") or []})
+        if len(gw) == 1:
+            s = dict(s, gateway=gw[0])
+    _settings(s, after, {}, family, prefix, config, sid, intent)
+    p["after"] = after
+    p["title"] = f"Add {prefix}"
+    p["subject"] = f"dhcp: {family} subnet {sid} ({prefix}) added"
+    p["change"] = [(" ", f"subnet {sid} ({prefix}), a new reservations file of Mercury's")] + [
+        ("+", f"{k}: {json.dumps(v)}") for k, v in after.items() if k != "reservations"]
+    where = ", ".join(f"{e['device']} {e['iface']}" for e in entries)
+    if not entries:
+        p["checks"].append(("warn", "no interface in intent is on this prefix: no relay brings "
+                                    "a client's request, so Kea would answer nobody on it"))
+    else:
+        to = sorted({r for e in entries for r in e.get("relays") or []})
+        p["checks"].append(("pass" if to else "warn",
+                            f"relayed to {', '.join(to)} by {where} (intent)" if to else
+                            f"{where} relay to no DHCP server in intent"))
+    p["checks"].append(("pass", f"no Kea subnet overlaps {prefix}; Kea id {sid}"
+                        + (f" (its VLAN, {vlan})" if vlan == sid else " (the next free)")))
+    if family == "IPv4":
+        _gateway_check(p, after, prefix, intent)
+    p["checks"].append(("pending", f"kea-{'dhcp4' if family == 'IPv4' else 'dhcp6'} -t on the "
+                                   "candidate, at confirm; the live file untouched until then"))
+    p["leases"].append("no lease is held in a subnet Kea does not have yet")
+
+
+def _plan_remove(list_name, s, p, kea, file_text, intent, D) -> None:
+    """Board C's section 5: refused until its effect on the leases held now is acknowledged."""
+    subnets, config, kea = _state(list_name, s, p, kea, file_text, D)
+    family = s["family"]
+    try:
+        sid = int(s["id"])
+    except ValueError:
+        raise Refused(f"{s['id']!r} is not a Kea subnet id") from None
+    p["id"] = sid
+    hit = [x for x in subnets if x.get("id") == sid]
+    if len(hit) != 1:
+        raise Refused(f"subnet {sid} is in Mercury's {family} subnet file {len(hit)} times")
+    from modules.readers.dhcp import _ztp_ids
+    if family == "IPv4" and sid in _ztp_ids(config):
+        raise Refused(f"subnet {sid} is ZTP's: onboarding's, never removed here")
+    before = hit[0]
+    p["before"] = before
+    prefix = before.get("subnet", "")
+    p["prefix"] = prefix
+    p["title"] = f"Remove {prefix}"
+    p["subject"] = f"dhcp: {family} subnet {sid} ({prefix}) removed"
+    p["change"] = [(" ", f"subnet {sid} ({prefix})")] + [
+        ("-", f"{k}: {json.dumps(v)}") for k, v in before.items() if k != "reservations"]
+    held = [l for l in D.kea_leases(kea, family)
+            if l.get("subnet-id") == sid and l.get("state", 0) == 0]
+    kept = next((x for x in config.get(FILES[family][0]) or [] if x.get("id") == sid), {})
+    res = kept.get("reservations") or []
+    ends = max(((l.get("cltt", 0) or 0) + (l.get("valid-lft", 0) or 0) for l in held),
+               default=0)
+    if held:
+        names = sorted({l.get("hostname") or l.get("hw-address") or l.get("duid") or "?"
+                        for l in held})
+        p["leases"].append(f"{len(held)} active lease(s) ({', '.join(names)}): each client keeps "
+                           f"its address until its lease ends (the last {_iso(ends)}), and from "
+                           "its next renewal Kea answers it nothing on this subnet")
+    else:
+        p["leases"].append("no lease is held in this subnet now")
+    if res:
+        p["leases"].append(f"{len(res)} reservation(s) go with the subnet")
+    p["ack"] = bool(held or res)
+    p["survives"] = [f"The subnet's definition and its reservations stay in the repository's "
+                     f"history (dhcp/subnets.yml, dhcp/reservations.yml); adding it back is "
+                     f"one Add. Mercury's reservations file for it stays on disk, included by "
+                     f"nothing."]
+    p["checks"].append(("pass" if not p["ack"] else "warn",
+                        "nothing is served on it now" if not p["ack"] else
+                        "its clients lose DHCP service from their next renewal: acknowledged "
+                        "at confirm"))
+    p["checks"].append(("pending", f"kea-{'dhcp4' if family == 'IPv4' else 'dhcp6'} -t on the "
+                                   "candidate, at confirm"))
+
+
+def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
+    subnets, config, kea = _state(list_name, s, p, kea, file_text, D)
+    family = s["family"]
+    try:
+        sid = int(s["id"])
+    except ValueError:
+        raise Refused(f"{s['id']!r} is not a Kea subnet id") from None
+    p["id"] = sid
+    hit = [x for x in subnets if x.get("id") == sid]
+    if len(hit) != 1:
+        raise Refused(f"subnet {sid} is in Mercury's {family} subnet file {len(hit)} times")
+    before = hit[0]
+    p["before"] = before
+    prefix = before.get("subnet", "")
+    p["prefix"] = prefix
+    from modules.readers.dhcp import _ztp_ids
+    if family == "IPv4" and sid in _ztp_ids(config):
+        raise Refused(f"subnet {sid} is ZTP's: its posture is onboarding's, changed only where "
+                      "onboarding sets it")
+    after = json.loads(json.dumps(before))
+    # The pool: one range as the form sets it (board D's exclusions shape it later).
+    _pool_given, valid = _settings(s, after, before, family, prefix, config, sid, intent)
     if after == before:
         raise Refused("nothing would change: the values are those Kea's subnet holds now")
     p["after"] = after
@@ -417,17 +565,7 @@ def _plan_edit(list_name, s, p, kea, file_text, intent, D) -> None:
     p["checks"].append(("pass", f"the pool lies inside {prefix} and overlaps no other subnet's "
                                 "pool" if s["pool"] else "the pool is as Kea holds it"))
     if family == "IPv4":
-        gw = _option_of(after, "routers")
-        want = sorted({g for e in ((intent or {}).get("IPv4") or {}).get(prefix) or []
-                       for g in e.get("gateway") or []})
-        if not want:
-            p["checks"].append(("note", "intent names no first-hop address for this prefix, so "
-                                        "the gateway is not compared"))
-        elif gw in want:
-            p["checks"].append(("pass", f"the gateway equals intent's VRRP address ({gw})"))
-        else:
-            p["checks"].append(("warn", f"the gateway {gw or '(none)'} is not intent's VRRP "
-                                        f"address ({', '.join(want)})"))
+        _gateway_check(p, after, prefix, intent)
     p["checks"].append(("pending", f"kea-{'dhcp4' if family == 'IPv4' else 'dhcp6'} -t on the "
                                    "candidate, at confirm; the live file untouched until then"))
     p["checks"].append(("pass", f"Mercury's subnet file is the version this preview read "
@@ -483,7 +621,7 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
     main = D.main_config(list_name, family)
     path = subnets_file(main, family)
     with ztp.fragment_lock(path):
-        p = plan_edit(list_name, values, kea=kea, intent=intent)
+        p = plan(list_name, values, kea=kea, intent=intent)
         out["plan"] = p
         if not p["ok"]:
             out["error"] = p["refused"]
@@ -493,10 +631,22 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
                             f"{p['hash'][:12]}): Kea or Mercury's subnet file moved since; "
                             "nothing was written. Preview again")
             return out
+        if p["ack"] and s["ack"] != "1":
+            out["error"] = ("the removal's effect on the clients it serves was not acknowledged: "
+                            "nothing was written")
+            return out
         with open(path, encoding="utf-8") as fh:
             previous_text = fh.read()
         subnets = load(previous_text)
-        candidate = [p["after"] if x.get("id") == p["id"] else x for x in subnets]
+        if p["op"] == "add":
+            candidate = subnets + [p["after"]]
+            fresh = p["after"]["reservations"][len("@@kea-include:"):-2]
+            if not os.path.exists(fresh):
+                ztp._write_file(fresh, "[]\n")                                 # noqa: SLF001
+        elif p["op"] == "remove":
+            candidate = [x for x in subnets if x.get("id") != p["id"]]
+        else:
+            candidate = [p["after"] if x.get("id") == p["id"] else x for x in subnets]
         candidate_text = dump(candidate)
         before_cfg = D.kea_config(kea, family)
         if main_text is None:
@@ -527,14 +677,18 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
         except D.Refused as exc:
             out["error"] = f"written and reloaded, and the read-back failed: {exc}"
             return out
-        moved = _moved(before_cfg, after_cfg, family, p["id"])
+        moved = _moved(before_cfg, after_cfg, family, p["id"], p["op"])
         if moved:
             restore("Kea's running configuration does not hold exactly this change: "
                     + "; ".join(moved))
             return out
-        out["read_back"] = (f"Kea's running configuration holds subnet {p['id']} as written, and "
-                            "every other subnet and setting as before")
-        out["outcome"] = "changed"
+        out["read_back"] = ({"remove": f"Kea's running configuration no longer holds subnet "
+                                       f"{p['id']}", "add": f"Kea's running configuration holds "
+                                       f"the new subnet {p['id']}"}.get(
+                                p["op"], f"Kea's running configuration holds subnet {p['id']} "
+                                         "as written")
+                            + ", and every other subnet and setting as before")
+        out["outcome"] = {"add": "added", "remove": "removed"}.get(p["op"], "changed")
         rec = (record or record_commit)(list_name, p, actor=actor, reason=reason)
         out["commit"] = rec.get("commit", "")
         if not rec.get("ok"):
@@ -544,9 +698,10 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
         return out
 
 
-def _moved(before: dict, after: dict, family: str, sid) -> list:
-    """What moved in Kea's running configuration besides subnet *sid*, in words; and whether
-    subnet *sid* itself changed at all ("did not change" when the write did not land)."""
+def _moved(before: dict, after: dict, family: str, sid, op: str = "edit") -> list:
+    """What moved in Kea's running configuration besides what *op* does to subnet *sid*, in
+    words; [] when exactly that happened (an edit changed it, an add brought it, a removal took
+    it away) and nothing else moved."""
     key = FILES[family][0]
     out = []
     for k in sorted(set(before) | set(after)):
@@ -556,12 +711,13 @@ def _moved(before: dict, after: dict, family: str, sid) -> list:
             out.append(f"Kea's setting {k!r} moved")
     b = {x.get("id"): x for x in before.get(key) or []}
     a = {x.get("id"): x for x in after.get(key) or []}
-    if set(a) != set(b):
-        out.append(f"the subnets are {sorted(a)} after and were {sorted(b)}")
+    want = set(b) | {sid} if op == "add" else set(b) - {sid} if op == "remove" else set(b)
+    if set(a) != want:
+        out.append(f"the subnets are {sorted(a)} after; expected {sorted(want)}")
     for i in sorted(set(a) & set(b)):
         if i != sid and a[i] != b[i]:
             out.append(f"subnet {i} moved")
-    if sid in a and sid in b and a[sid] == b[sid]:
+    if op == "edit" and sid in a and sid in b and a[sid] == b[sid]:
         out.append(f"subnet {sid} did not change")
     return out
 

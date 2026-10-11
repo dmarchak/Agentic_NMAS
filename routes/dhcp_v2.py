@@ -126,8 +126,10 @@ def subnet_preview():
     from modules import dhcp_subnets as S
 
     s = S.ask(request.args)
-    filled = any(s[k] for k in ("pool", "gateway", "dns", "domain", "valid", "preferred"))
-    p = S.plan_edit(_list_name(), request.args, intent=_intent()) if filled else None
+    filled = (s["op"] == "remove" or (s["op"] == "add" and s["prefix"] and s["pool"])
+              or (s["op"] == "edit" and any(s[k] for k in ("pool", "gateway", "dns", "domain",
+                                                           "valid", "preferred"))))
+    p = S.plan(_list_name(), request.args, intent=_intent()) if filled else None
     return _sop_region({"state": "preview" if filled else "form", "ask": s, "plan": p})
 
 

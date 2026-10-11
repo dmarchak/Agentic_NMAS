@@ -147,8 +147,6 @@ def intent_facts(list_name: str) -> dict:
     gateway Kea's option 3 should offer), its DHCP relays, and its IPv6 RA flags (M and O).
     ``{"IPv4": {prefix: [{device, iface, gateway, relays}]}, "IPv6": {prefix: [{device, iface,
     managed, other, relays}]}, "error"}``. Read once a run, in the reader, never per request."""
-    import ipaddress
-
     from modules.nsot import hostvars, listref
     out = {"IPv4": {}, "IPv6": {}, "error": ""}
     if not listref.exists(list_name or _default()):
@@ -195,6 +193,7 @@ def facts_from(hosts: dict) -> dict:
                     net = str(ipaddress.ip_interface(f"{v4[0]}/{v4[1]}").network)
                     out["IPv4"].setdefault(net, []).append(
                         {"device": name, "iface": iface, "gateway": vrrp["ipv4"],
+                         "address": v4[0],
                          "relays": list(i.get("helper_addresses") or [])})
                 except ValueError:
                     pass
@@ -207,7 +206,8 @@ def facts_from(hosts: dict) -> dict:
                 if net.startswith("fe80"):
                     continue
                 out["IPv6"].setdefault(net.lower(), []).append(
-                    {"device": name, "iface": iface, "managed": "managed-config-flag" in nd,
+                    {"device": name, "iface": iface, "address": str(a).split("/")[0].lower(),
+                     "managed": "managed-config-flag" in nd,
                      "other": "other-config-flag" in nd,
                      "relays": list(i.get("dhcpv6_relay") or [])})
     return out

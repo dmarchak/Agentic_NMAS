@@ -1,11 +1,33 @@
 # Change a DHCP subnet: its pool, options and lease times
 
-On **DHCP › Subnets**, each subnet Mercury holds has **Edit…**: its pool, its gateway (IPv4), its
-DNS servers, its domain, and its lease times. Each change is an operation: the card previews it
-against Kea as it runs now, a verified person confirms with a reason, and the apply tests,
-writes, reloads Kea, reads it back and records it.
+On **DHCP › Subnets**, each subnet Mercury holds has **Edit…** (its pool, its gateway for IPv4,
+its DNS servers, its domain, and its lease times) and **Remove…**, and **Add a subnet…** sits
+beside the heading. Each is an operation: the card previews it against Kea as it runs now, a
+verified person confirms with a reason, and the apply tests, writes, reloads Kea, reads it back
+and records it.
 
 ![Changing a subnet: the preview asks Kea, names the leases the change affects and checks the pool and the gateway; you confirm with a reason; the apply plans again and writes nothing if anything moved, tests the candidate with Kea's own check, writes it, reloads Kea, and reads Kea's configuration back, putting the previous file back unless exactly this subnet changed; then one commit with your reason.](diagrams/dhcp-subnet.svg)
+
+## Adding a subnet {#add}
+
+Give the family, the prefix and its pool; the rest is offered. From committed intent: the
+interfaces on the prefix are Kea's relay addresses for it (Kea matches a relayed request to the
+subnet by them), the VRRP group's virtual address is its gateway (IPv4), and the interface's name
+gives the Kea id (VLAN 30 is id 30 when free, else the next free id). The checks say whether an
+interface in intent relays the prefix to a DHCP server, and refuse a prefix that overlaps one
+Kea already serves. A prefix no interface in intent is on is said plainly: no relay brings a
+client's request, so Kea would answer nobody on it. The new subnet takes its reservations from a
+fresh file of Mercury's, created empty.
+
+## Removing a subnet {#remove}
+
+The card says what the removal does to the clients served now: each client holding a lease keeps
+its address until its lease ends, and from its next renewal Kea answers it nothing on this
+subnet; its reservations go with it. When any client or reservation is affected, the confirm
+needs the acknowledgement ticked, and is refused without it. **What survives:** the subnet's
+definition and its reservations stay in the repository's history (`dhcp/subnets.yml`,
+`dhcp/reservations.yml`), so adding it back is one Add; Mercury's reservations file for it stays
+on disk, included by nothing. ZTP's subnet is onboarding's and never removed here.
 
 ## Where a subnet lives
 
@@ -54,9 +76,9 @@ interleaving:
 3. `write`: Mercury's subnet file is replaced by the tested candidate.
 4. `reload`: Kea reloads its configuration through its API (`config-reload`). A failed reload
    puts the previous file back and reloads that.
-5. `read-back`: Kea's configuration is read again: exactly this subnet changed, and every other
-   subnet and setting as before. Anything else puts the previous file back, reloads, and says
-   what moved.
+5. `read-back`: Kea's configuration is read again: exactly this subnet changed (or, for an add,
+   is there; for a removal, is gone), and every other subnet and setting as before. Anything
+   else puts the previous file back, reloads, and says what moved.
 6. `record`: `dhcp/subnets.yml` in the network's repository (every subnet as Mercury's files
    hold them) is committed as you, with your reason in its body. It shows on History.
 
@@ -75,5 +97,4 @@ interleaving:
   until its lease ends.
 - It does not change a device: a gateway or an RA flag that intent does not have is changed in
   that device's intent and deployed.
-- It does not add, remove or exclude: those are the next subnet operations and board D's
-  exclusions.
+- It does not exclude addresses from a pool: that is DHCP › Exclusions.

@@ -235,7 +235,7 @@ EDIT = {"op": "edit", "family": "IPv4", "id": "10", "pool": "10.10.10.101 - 10.1
 
 class TestTheSubnetPlan:
     def test_a_pool_change_names_the_lease_it_strands_and_how_long_it_keeps_it(self, moved):
-        p = S.plan_edit("Lab", EDIT, kea=moved["kea"], intent=_intent())
+        p = S.plan("Lab", EDIT, kea=moved["kea"], intent=_intent())
         assert p["ok"], p["refused"]
         assert ("+", 'pools: [{"pool": "10.10.10.101 - 10.10.10.149"}]') in p["change"]
         stranded = [n for n in p["leases"] if n.startswith("10.10.10.100 ")]
@@ -245,14 +245,14 @@ class TestTheSubnetPlan:
         assert ("pass", "the gateway equals intent's VRRP address (10.10.10.1)") in p["checks"]
 
     def test_a_lifetime_sets_both_timers_and_says_who_it_applies_to(self, moved):
-        p = S.plan_edit("Lab", dict(EDIT, pool="", valid="1 d"), kea=moved["kea"])
+        p = S.plan("Lab", dict(EDIT, pool="", valid="1 d"), kea=moved["kea"])
         assert ("+", "valid-lifetime: 86400") in p["change"]
         assert ("+", "renew-timer: 43200") in p["change"] and ("+", "rebind-timer: 75600") in \
             p["change"]
         assert any("applies to leases granted or renewed after" in n for n in p["leases"])
 
     def test_a_gateway_other_than_intent_s_is_said(self, moved):
-        p = S.plan_edit("Lab", dict(EDIT, pool="", gateway="10.10.10.254"), kea=moved["kea"],
+        p = S.plan("Lab", dict(EDIT, pool="", gateway="10.10.10.254"), kea=moved["kea"],
                         intent=_intent())
         assert ("warn", "the gateway 10.10.10.254 is not intent's VRRP address (10.10.10.1)") \
             in p["checks"]
@@ -267,12 +267,12 @@ class TestTheSubnetPlan:
         (dict(EDIT, pool="", valid="soon"), "is not a time"),
     ], ids=["outside", "backwards", "ztp", "gateway-outside", "dns-name", "no-change", "time"])
     def test_what_it_cannot_do_is_refused_by_name(self, moved, values, words):
-        p = S.plan_edit("Lab", values, kea=moved["kea"])
+        p = S.plan("Lab", values, kea=moved["kea"])
         assert not p["ok"] and words in p["refused"], p["refused"]
 
     def test_before_the_move_it_is_refused_naming_the_step(self, moved):
         os.remove(moved["files"]["dhcp4"])
-        p = S.plan_edit("Lab", EDIT, kea=moved["kea"])
+        p = S.plan("Lab", EDIT, kea=moved["kea"])
         assert not p["ok"] and "c529-step5-subnet-files.sh" in p["refused"]
 
 
@@ -282,7 +282,7 @@ def _ok_test(path):
 
 class TestTheSubnetApply:
     def _apply(self, moved, h=None, **kw):
-        p = S.plan_edit("Lab", EDIT, kea=moved["kea"])
+        p = S.plan("Lab", EDIT, kea=moved["kea"])
         recorded = []
         got = S.apply_edit("Lab", EDIT, h or p["hash"], actor="p@example.invalid",
                            reason="narrow the pool", kea=moved["kea"], run_test=_ok_test,
@@ -316,3 +316,86 @@ class TestTheSubnetApply:
     def test_a_change_needs_a_reason(self, moved):
         got = S.apply_edit("Lab", EDIT, "x", actor="p", reason=" ", kea=moved["kea"])
         assert not got["ok"] and "a reason is recorded" in got["error"]
+
+
+def _vlan30():
+    """s1's intent with VLAN 30 given an IPv4 SVI and VRRP group, as a new VLAN would be."""
+    import yaml
+    from modules.readers.dhcp import facts_from
+    with open(os.path.join(os.path.dirname(KEA), "committed", "s1.yml"), encoding="utf-8") as fh:
+        hv = yaml.safe_load(fh)
+    for i in hv["interfaces"]:
+        if i.get("name") == "Vlan30":
+            i["ipv4"] = "10.10.30.2 255.255.255.0"
+            i["helper_addresses"] = ["10.255.0.10"]
+            i["vrrp_groups"].append({"family": "ipv4", "group": "30",
+                                     "settings": ["address 10.10.30.1 primary"]})
+    return facts_from({"s1": hv})
+
+
+ADD = {"op": "add", "family": "IPv4", "prefix": "10.10.30.0/24",
+       "pool": "10.10.30.100 - 10.10.30.199"}
+
+
+class TestAddAndRemove:
+    def test_an_add_takes_its_id_relay_and_gateway_from_intent(self, moved):
+        p = S.plan("Lab", ADD, kea=moved["kea"], intent=_vlan30())
+        assert p["ok"], p["refused"]
+        assert p["id"] == 30 and p["after"]["relay"] == {"ip-addresses": ["10.10.30.2"]}
+        assert {"name": "routers", "data": "10.10.30.1", "space": "dhcp4"} in \
+            p["after"]["option-data"]
+        assert ("pass", "relayed to 10.255.0.10 by s1 Vlan30 (intent)") in p["checks"]
+        assert ("pass", "the gateway equals intent's VRRP address (10.10.30.1)") in p["checks"]
+
+    def test_an_add_writes_a_fresh_reservations_file_and_kea_holds_the_new_subnet(self, moved):
+        p = S.plan("Lab", ADD, kea=moved["kea"], intent=_vlan30())
+        got = S.apply_edit("Lab", ADD, p["hash"], actor="p", reason="VLAN 30 servers",
+                           kea=moved["kea"], run_test=_ok_test, intent=_vlan30(),
+                           record=lambda l, plan, **k: {"ok": True, "commit": "abc"})
+        assert got["ok"], got["error"]
+        assert "holds the new subnet 30" in got["read_back"] and got["outcome"] == "added"
+        fresh = os.path.join(os.path.dirname(moved["files"]["dhcp4"]), "reservations-30.json")
+        assert open(fresh, encoding="utf-8").read() == "[]\n"
+        assert [s["id"] for s in moved["kea"].loaded["dhcp4"]] == [10, 20, 255, 30]
+
+    @pytest.mark.parametrize("values, words", [
+        (dict(ADD, prefix="10.10.10.0/25"), "overlaps Kea's subnet 10"),
+        (dict(ADD, prefix="10.10.30.5/24"), "has host bits set"),
+        (dict(ADD, family="IPv6"), "is not an IPv6 prefix"),
+        (dict(ADD, pool=""), "needs its pool"),
+    ], ids=["overlap", "host-bits", "family", "no-pool"])
+    def test_an_add_it_cannot_make_is_refused_by_name(self, moved, values, words):
+        p = S.plan("Lab", values, kea=moved["kea"], intent=_vlan30())
+        assert not p["ok"] and words in p["refused"], p["refused"]
+
+    def test_an_add_no_interface_reaches_is_said(self, moved):
+        p = S.plan("Lab", ADD, kea=moved["kea"], intent={})
+        assert any(state == "warn" and "no interface in intent is on this prefix" in text
+                   for state, text in p["checks"])
+
+    def test_a_removal_with_leases_needs_their_acknowledgement(self, moved):
+        rm = {"op": "remove", "family": "IPv4", "id": "10"}
+        p = S.plan("Lab", rm, kea=moved["kea"])
+        assert p["ok"] and p["ack"] is True
+        assert "2 active lease(s)" in p["leases"][0] and "keeps its address until its lease " \
+            "ends" in p["leases"][0]
+        assert "stay in the repository's history" in p["survives"][0]
+        kwargs = dict(actor="p", reason="VLAN 10 retired", kea=moved["kea"], run_test=_ok_test,
+                      record=lambda l, plan, **k: {"ok": True, "commit": "abc"})
+        refused = S.apply_edit("Lab", rm, p["hash"], **kwargs)
+        assert not refused["ok"] and "was not acknowledged" in refused["error"]
+        got = S.apply_edit("Lab", dict(rm, ack="1"), p["hash"], **kwargs)
+        assert got["ok"], got["error"]
+        assert [s["id"] for s in moved["kea"].loaded["dhcp4"]] == [20, 255]
+
+    def test_zt_p_s_subnet_is_never_removed_here(self, moved):
+        p = S.plan("Lab", {"op": "remove", "family": "IPv4", "id": "255"}, kea=moved["kea"])
+        assert not p["ok"] and "ZTP's: onboarding's, never removed here" in p["refused"]
+
+    def test_the_read_back_expects_what_the_operation_does(self):
+        before = {"subnet4": [{"id": 10}, {"id": 20}]}
+        assert S._moved(before, {"subnet4": [{"id": 10}, {"id": 20}, {"id": 30}]}, "IPv4", 30,
+                        "add") == []
+        assert S._moved(before, {"subnet4": [{"id": 20}]}, "IPv4", 10, "remove") == []
+        assert S._moved(before, before, "IPv4", 10, "remove") == \
+            ["the subnets are [10, 20] after; expected [20]"]
