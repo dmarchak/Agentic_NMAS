@@ -347,6 +347,11 @@ DEFAULTS: dict = {
     #: The kea-dhcp4 config that includes the fragment. The writer tests a
     #: candidate against a copy of it before the fragment is replaced.
     "kea_dhcp4_config": "/etc/kea/kea-dhcp4.conf",
+    #: C529 step 2: the kea-dhcp6 config whose subnets take their reservations from Mercury's
+    #: files; DHCP's IPv6 reservation writer tests a candidate against a copy of it. A setting,
+    #: because Kea's `config-get` does not name the file it was started with (measured
+    #: 2026-10-11: its arguments are the configuration and its hash); the default is Kea's own.
+    "kea_dhcp6_config": "/etc/kea/kea-dhcp6.conf",
     "syslog_host": "",
     "syslog_trap_level": "notifications",
     #: Puts the hostname in every line; the Grafana heartbeat rules key on it.
@@ -734,6 +739,7 @@ SCHEMA: dict = {
                 "properties": {"by": _STR, "at": _STR, "reason": _STR}}},
         "kea_ztp_fragment": _STR,
         "kea_dhcp4_config": _STR,
+        "kea_dhcp6_config": _STR,
         "syslog_host": _STR,
         "syslog_trap_level": {"enum": ["emergencies", "alerts", "critical",
                                        "errors", "warnings", "notifications",

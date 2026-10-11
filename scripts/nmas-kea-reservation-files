@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Give each Kea subnet its reservations file of Mercury's (C529 step 2), the app's side of the
+one-time host step `scripts/host-steps/c529-step2-reservation-files.sh`. Run as the app's user;
+Kea's main configuration is root's, so the host step installs the candidates this writes.
+
+    nmas-kea-reservation-files plan        # per family: subnets to give a file, those that have
+    nmas-kea-reservation-files candidates  # create the empty files; write and test candidates
+    nmas-kea-reservation-files hash        # Kea's own configuration hash, per family
+    nmas-kea-reservation-files reload      # config-reload, both families
+    nmas-kea-reservation-files verify      # every subnet takes its reservations from its file
+
+The candidate for each family is `<Kea's folder>/nmas/.c529-candidate-<service>.conf` (Kea's
+AppArmor profile lets it read under /etc/kea only), tested by `kea-dhcp4 -t` or `kea-dhcp6 -t`.
+Exit 0 done, 1 refused or failed, 2 Kea could not be asked.
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def candidate_path(main: str, svc: str) -> str:
+    return os.path.join(os.path.dirname(main), "nmas", f".c529-candidate-{svc}.conf")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("what", choices=("plan", "candidates", "hash", "reload", "verify"))
+    args = ap.parse_args(argv)
+
+    from modules import dhcp_reservations as D
+    from modules.integrations.kea import KeaIntegration
+    from modules.list_settings import DEFAULT_LIST
+    from modules.nsot import ztp
+
+    kea = KeaIntegration()
+    if not kea.is_configured():
+        print("Kea is not configured for the Default network (its Kea card in Settings)")
+        return 2
+    rc = 0
+    for family, f in D.FAMILY.items():
+        svc = f["svc"]
+        if args.what == "reload":
+            got = kea.command("config-reload", [svc])
+            print(f"{svc}: config-reload {'ok' if got.get('ok') else 'FAILED: ' + str(got.get('error'))}")
+            rc = rc or (0 if got.get("ok") else 1)
+            continue
+        got = kea.command("config-get", [svc])
+        if not got.get("ok"):
+            print(f"{svc}: Kea could not be asked: {got.get('error')}")
+            return 2
+        args_ = D._arguments(got.get("result"))                               # noqa: SLF001
+        if args.what == "hash":
+            print(f"{svc} {args_.get('hash', 'no-hash')}")
+            continue
+        ids = [s.get("id") for s, _n in D._subnets(args_.get(f["root"]) or {}, family)]  # noqa: SLF001
+        main = D.main_config(DEFAULT_LIST, family)
+        with open(main, encoding="utf-8") as fh:
+            text = fh.read()
+        plan = D.subnet_files(text, main, family, ids)
+        if plan["refused"]:
+            print(f"{svc}: REFUSED: {plan['refused']}")
+            rc = 1
+            continue
+        print(f"{svc}: Kea's subnets {sorted(ids)}; to give a file: {plan['add'] or 'none'}; "
+              f"already taking theirs from Mercury's file: {plan['have'] or 'none'}")
+        if args.what == "verify":
+            rc = rc or (1 if plan["add"] else 0)
+            continue
+        if args.what == "candidates":
+            if not plan["add"]:
+                continue
+            for sid in plan["add"]:
+                path = D.fragment(main, family, sid)
+                if not os.path.exists(path):
+                    ztp._write_file(path, "[]\n")                              # noqa: SLF001
+                    print(f"{svc}: created {path} (an empty list)")
+            cand = candidate_path(main, svc)
+            if os.path.exists(cand):
+                os.remove(cand)
+            ztp._write_file(cand, plan["candidate"])                           # noqa: SLF001
+            ok, detail = ztp._run_kea_test(cand, f["program"])                 # noqa: SLF001
+            print(f"{svc}: candidate {cand}: {f['program']} -t {'PASS' if ok else 'FAIL'}: {detail}")
+            rc = rc or (0 if ok else 1)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -96,6 +96,75 @@ def test_dhcp(tmp_path, monkeypatch):
                    widths=((1440, 1.0), (390, 2.0)))
 
 
+def test_dhcp_reserve(tmp_path, monkeypatch):
+    """C529 step 2's board B (DhcpReserve, 1440) beside the Reservations tab's card: board B's
+    three operations as previews (Edit h2's MAC, Add an IPv6 address for h1, Remove h3's) and
+    its refusal, against the lab's Kea answers with each subnet's file of Mercury's, and an
+    Add's result in place."""
+    import json as _json
+
+    from tests import browser
+    from tests import test_dhcp_v2 as T
+    from tests.test_dhcp_reservations import FakeKea as KeaFiles
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import dhcp_reservations as R
+    from modules.nsot import ztp
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.dhcp_page._devices", lambda name: set())
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    nmas = tmp_path / "nmas"
+    nmas.mkdir()
+    files, mains = {}, {}
+    for family, svc, ids in (("IPv4", "dhcp4", (10, 20, 255)), ("IPv6", "dhcp6", (10, 20, 30))):
+        main = str(tmp_path / f"kea-{svc}.conf")
+        for sid in ids:
+            files[(svc, sid)] = R.fragment(main, family, sid)
+            entries = []
+            if (svc, sid) == ("dhcp4", 20):
+                entries = [{"hw-address": "aa:c1:ab:3e:11:70", "ip-address": "10.10.20.101",
+                            "hostname": "h2"}]
+            if (svc, sid) == ("dhcp4", 10):
+                entries = [{"hw-address": "aa:c1:ab:b0:85:65", "ip-address": "10.10.10.102",
+                            "hostname": "h3"}]
+            with open(files[(svc, sid)], "w", encoding="utf-8") as fh:
+                _json.dump(entries, fh)
+        with open(main, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(R.directive(files[(svc, sid)]) for sid in ids))
+        mains[family] = main
+    kea = KeaFiles(files)
+    monkeypatch.setattr(R, "main_config", lambda list_name, family: mains[family])
+    monkeypatch.setattr(R, "_ztp_fragment", lambda list_name: files[("dhcp4", 255)])
+    monkeypatch.setattr("modules.integrations.kea.KeaIntegration", lambda **kw: kea)
+    monkeypatch.setattr(ztp, "_run_kea_test", lambda path, program="kea-dhcp4": (True, "ok"))
+    T._store(T._value(kea=kea))
+    from urllib.parse import urlencode
+    asks = {
+        "edit": {"op": "edit", "family": "IPv4", "subnet": "20", "key": "hw-address",
+                 "identity": "aa:c1:ab:5d:20:9e", "address": "10.10.20.101",
+                 "was": "hw-address=aa:c1:ab:3e:11:70"},
+        "add": {"op": "add", "where": "IPv6:10", "key": "duid",
+                "identity": "00:03:00:01:aa:c1:ab:99:f6:e2", "address": "2001:db8:10::101",
+                "hostname": "h1"},
+        "remove": {"op": "remove", "family": "IPv4", "subnet": "10",
+                   "was": "hw-address=aa:c1:ab:b0:85:65"},
+        "refused": {"op": "add", "where": "IPv4:20", "key": "hw-address",
+                    "identity": "aa:c1:ab:77:02:10", "address": "10.10.20.101",
+                    "hostname": "h5"},
+    }
+    import app as A
+    with browser.Served(A.app) as served:
+        for i, (name, ask) in enumerate(asks.items()):
+            _shoot(f"dhcp-reserve-{name}", "DhcpReserve.dc.html" if i == 0 else "",
+                   lambda w, a=ask: "/v2/dhcp/reservation?" + urlencode(dict(a, list="Lab")),
+                   served, widths=((1440, 1.0), (390, 2.0)))
+
+
 def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.0)),
            settled=""):
     from tests.browser import Browser

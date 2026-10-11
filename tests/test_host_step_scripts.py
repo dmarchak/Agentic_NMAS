@@ -32,7 +32,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # C663 step 2: ratify the excluded VRFs before their default empties (2026-10-11).
             "c663-step2-pin-vrfs.sh",
             # C663 step 3b: the topology renderer renamed for the product (2026-10-11).
-            "c663-step3b-topology.sh"}
+            "c663-step3b-topology.sh",
+            # C529 step 2: each Kea subnet's reservations file of Mercury's (2026-10-11).
+            "c529-step2-reservation-files.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

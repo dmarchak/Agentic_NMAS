@@ -55,9 +55,16 @@ request yet**, or **not used** (Kea's `reservations-in-subnet` or `reservations-
 where it would apply, the setting named). A reservation kept at Kea's global level is listed as
 its own group and counts in each subnet that turns the global ones on. Reservations Kea keeps in
 a hosts database are not in its configuration: the page names the database above the tabs and
-counts only the configuration's. Adding, changing and removing a reservation is previewed,
-confirmed and recorded, and arrives next; ZTP's reservations are written by onboarding and
-changed there.
+counts only the configuration's.
+
+**Add a reservation…** reserves an address for one client in a subnet; each reservation's
+**Edit…** changes the client it waits for, its address or its hostname, and **Remove…** takes it
+away, saying what survives. Each opens a card in place: the change, its checks by name, what it
+does not do, and a confirm with your reason, bound to the preview; the result is read back from
+Kea and recorded in the network's repository ([how it works](dhcp-reservation)).
+**Edit…** is the action for an **unmatched** reservation. ZTP's reservations are written by
+onboarding and changed there; one written by hand in Kea's own files is shown and not changed
+here.
 
 ## Exclusions {#exclusions}
 

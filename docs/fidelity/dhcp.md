@@ -9,8 +9,8 @@ Boards: `DhcpNetwork.dc.html` (board A, 1440 wide) on the mockups canvas, page "
 Shots: desktop 1440 and 1280 (Subnets), 1440 (Leases, Reservations, Exclusions); phone 390 (each tab, and its first screen). Compared 2026-10-11.
 Walked on the host 2026-10-11 (4f9a699, deployed 02:19 UTC): the DHCP reader's first read landed a second after the restart, both families answered (Kea 2.4.1), its store `data/readers/dhcp.json`; the page drawn from that stored document at 1440 and 390 shows what the capture showed: 6 subnets (3 IPv4 with ZTP's 255, 3 IPv6), 9 leases with IPv6 subnet 10 open on its three addresses for one DUID, 0 reservations. At 390 the tab strip scrolls sideways, as every v2 page's tabs do.
 Compared again 2026-10-11 (C660: the operator asked whether the lab hosts' August reservations were missed). Kea's files on the host, counted read-only, hold none in any subnet or globally and no hosts database, so the 0 was true (C525 records their loss); the reader still drew 0 wherever Kea holds reservations outside a subnet's own list. It now reads the global ones and the subnets inside a shared network, says which reservations Kea uses in each subnet (reservations-global, reservations-in-subnet), and names a hosts database it does not read. On the lab's answer nothing drawn moved but the empty Reservations sentence, now "Kea's configuration holds no reservation, in any subnet that was read or at its global level".
-Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html
-Templates sha256: `f88007394a6572e57d0289227a1f211b8eecb1f39f2f2c26f24d34f4085a7b94`
+Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html, templates/v2/_dhcp_reserve.html
+Templates sha256: `6d99301e21bd2178b73056a6b6be6947fcc8530b0c2d3d69a3a943813bc2ff6c`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -40,3 +40,23 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | ZTP's subnet and board L | one store, two views: the Discovered list and this page | the ZTP group's line names the Discovered list | **later** board L |
 | For the operator | how a reservation reaches Kea, the two ways | not drawn: the board's note to the operator, whose decision (option 1) is recorded in C529 | **same** |
 | Exclusions | board D: named exclusions and the conflicts found | what Kea cannot do and when Mercury's arrive | **later** C529 step 3 |
+
+## Board B: a reservation's operations (C529 step 2)
+
+Board: `DhcpReserve.dc.html` (board B, 1440), approved 2026-10-06 with board A. Shots: the board
+at 1440; the page at 1440 and 390 with board B's three operations as previews (Edit h2's MAC,
+Add an IPv6 address for h1, Remove h3's) and a refusal, against the lab's Kea answers with each
+subnet's file of Mercury's (`tests/test_board_shots.py::test_dhcp_reserve`). Compared 2026-10-11.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| Entry points | board A: Add a reservation… on the tab; Edit… and Remove… on each row, Edit… primary on the unmatched one | the same; a row Mercury did not write (ZTP's, Kea's global level) says whose it is instead | **same** |
+| The card's place | in place of the Reservations tab, the table below | the same | **same** |
+| Header | the operation's title (Edit the reservation for h2 on 10.10.20.0/24); How does this work? | the same; Cancel in the header only until a preview can be confirmed | **same** |
+| Fields | Reserved by (a select), the identity with a hint, Address, Hostname; "kept" under an edit's unchanged values | the same four, a Subnet select first for an Add (both families, ZTP's left out); Preview to ask Kea | **same** |
+| Change | the subnet and reservation named, then − and + lines, wrapped | the same, under the fields in one part (a removal's in its own) | **same** |
+| Checks | pass, note: inside the subnet and its pool; no other reservation names it; Kea's own check; the file's version | the same, and the stranded check (every place Kea holds reservations); Kea's own check marked "at confirm" | **deviation** (log: Kea's own check runs at confirm) |
+| Not done / What survives | the lease kept until the client asks again; other leases named, not removed; a removal's lease and the repository's history | the same, from Kea's leases | **same** |
+| Footer | Recorded on confirm…; the reason; Cancel; the primary, disabled until a reason is given | the same; the reason field required, so an empty one is refused by the browser, the button not drawn disabled | **deviation** (log: A required reason, as Reload's) |
+| Result | done, What happened (read back), Recorded (commit, Actor, Source) | the same, in place | **same** |
+| Refusal | Not reserved, the comparison and both operands, when Kea was read | the same, inside the card under the fields, so the person corrects and previews again | **same** |

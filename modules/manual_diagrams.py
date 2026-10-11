@@ -984,6 +984,34 @@ def reload():
     ])
 
 
+def dhcp_reservation():
+    return svg(470, (
+        "Reserving an address. The preview asks Kea for its configuration and leases and reads "
+        "Mercury's file for the subnet, and checks the address is inside the subnet, that no "
+        "other reservation names the client or the address, and that no other client holds it. "
+        "You confirm with a reason. The apply plans again and writes nothing if anything "
+        "moved, tests the candidate file with Kea's own check, writes it, reloads Kea through "
+        "its API, and reads every reservation back: exactly the change, or the previous file "
+        "is put back. Then the change is committed with your reason."), [
+        lanes(20, 464, right="KEA"),
+        doc("box", 14, 40, 186, 40, "The preview asks Kea", "the checks, by name"), num(14, 40, 1),
+        person(14, 96, 186, 30, "You confirm, with a reason"), num(14, 96, 2),
+        _down(107, 128, 148),
+        band(150, 300, "The apply · the subnet's file held"),
+        store(262, 172, 118, 150, "Kea", "its subnet's file"),
+        *rows([
+            (174, "read", 3, "Plan again", "moved: nothing written"),
+            (210, None, 4, "Kea's own check", "on a candidate copy"),
+            (246, "send", 5, "Write, reload", "a failure: file put back"),
+            (282, "read", 6, "Read back", "else the file put back"),
+        ]),
+        repo(14, 330, 186, 40, "One commit", "dhcp/reservations.yml, your reason"),
+        num(14, 330, 7),
+        t(14, 400, "A client keeps a lease it holds", "sm"),
+        t(14, 413, "until it asks again.", "sm"),
+    ])
+
+
 def show_commands():
     return svg(470, (
         "Show commands, and Ask the device its one-device form. Every command is checked "
@@ -1308,6 +1336,7 @@ DIAGRAMS = {
     "bring-template": bring_template,
     "edit-template": edit_template,
     "reload": reload,
+    "dhcp-reservation": dhcp_reservation,
     "show-commands": show_commands,
     "logging-path": logging_path,
     "privileged": privileged,

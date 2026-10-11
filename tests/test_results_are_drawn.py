@@ -224,6 +224,11 @@ PAGE_RECORD = {
     # again on the device's History (the reloads source, with its window and its restart).
     "device_v2.reload_confirm": ("templates/v2/_reload.html",
                                  ('id="device-op"', "r.steps", "r.reason"), "device_v2.history"),
+    # DHCP › Reservations (C529 step 2, board B): the result in place, read back from Kea, and
+    # its commit; read again on the network's History (dhcp/reservations.yml).
+    "dhcp_v2.reservation_confirm": ("templates/v2/_dhcp_reserve.html",
+                                    ("op.state == 'done'", "r.read_back", "r.commit"),
+                                    "v2.history_page"),
     "templates_v2.seed": ("templates/v2/_template_op.html",
                           ("op.state == 'seeded'", "op.added", "op.commit"),
                           "templates_v2.page"),

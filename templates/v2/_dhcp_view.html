@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
 {#- The DHCP page's region (C529 step 1), drawn to board A: the network, the counts and the read,
     the tabs Subnets, Leases, Reservations and Exclusions. Everything from the DHCP reader's
     stored value; never a Kea call per view. -#}
@@ -109,10 +109,13 @@
 
 {%- elif g.s.tab == 'res' %}
 <section class="card dh-sec" aria-labelledby="dh-res-h">
-  <h2 id="dh-res-h">Reservations</h2>
+  {%- set keys = {'MAC': 'hw-address', 'DUID': 'duid', 'client-id': 'client-id'} %}
+  <div class="dh-sec-hd"><h2 id="dh-res-h">Reservations</h2>
+    {%- if not op %}<a class="btn btn-primary" href="{{ url_for('dhcp_v2.reservation_preview', list=g.list, op='add') }}" hx-get="{{ url_for('dhcp_v2.reservation_preview', list=g.list, op='add') }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-reservation">Add a reservation…</a>{{ how('dhcp-reservation', compact=True, op='a reservation') }}{% endif %}</div>
+  {%- if op %}{% include "v2/_dhcp_reserve.html" %}{% endif %}
   {%- if g.reservations %}
   <div class="dh-scroll"><table class="table">
-    <thead><tr><th scope="col">Subnet</th><th scope="col">Host</th><th scope="col">Reserved by</th><th scope="col">Address</th><th scope="col">Now</th></tr></thead>
+    <thead><tr><th scope="col">Subnet</th><th scope="col">Host</th><th scope="col">Reserved by</th><th scope="col">Address</th><th scope="col">Now</th><th scope="col"><span class="sr-only">Change</span></th></tr></thead>
     <tbody>
     {%- for r in g.reservations %}
     <tr>
@@ -121,6 +124,11 @@
       <td class="mono">{{ r.by }} {{ r.identity }}</td>
       <td class="mono">{{ r.addresses | join(', ') or '–' }}</td>
       <td>{% if r.now.state == 'in_use' %}{{ badge(r.now.words, 'ok') }}{% elif r.now.state == 'waiting' %}{{ badge(r.now.words) }}{% else %}{{ badge({'unmatched': 'unmatched', 'off': 'not used'}.get(r.now.state, 'held by another'), 'warn') }} <span class="small">{{ r.now.words }}</span>{% endif %}</td>
+      <td class="dh-acts">{%- if r.sub.global %}<span class="faint small">Kea's file, by hand</span>{% elif r.sub.ztp %}<span class="faint small">onboarding's</span>{% elif keys.get(r.by) %}
+        {%- set was = keys[r.by] ~ '=' ~ r.identity %}
+        <a class="btn btn-small{{ ' btn-primary' if r.now.state == 'unmatched' }}" href="{{ url_for('dhcp_v2.reservation_preview', list=g.list, op='edit', family=r.sub.family, subnet=r.sub.id, was=was, key=keys[r.by], identity=r.identity, address=r.addresses[0] if r.addresses else '', hostname=r.hostname or '') }}" hx-get="{{ url_for('dhcp_v2.reservation_preview', list=g.list, op='edit', family=r.sub.family, subnet=r.sub.id, was=was, key=keys[r.by], identity=r.identity, address=r.addresses[0] if r.addresses else '', hostname=r.hostname or '') }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-reservation" aria-label="Edit {{ r.hostname or r.identity }}'s reservation">Edit…</a>{{ how('dhcp-reservation', compact=True, op='a reservation') }}
+        <a class="btn btn-small" href="{{ url_for('dhcp_v2.reservation_preview', list=g.list, op='remove', family=r.sub.family, subnet=r.sub.id, was=was) }}" hx-get="{{ url_for('dhcp_v2.reservation_preview', list=g.list, op='remove', family=r.sub.family, subnet=r.sub.id, was=was) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-reservation" aria-label="Remove {{ r.hostname or r.identity }}'s reservation">Remove…</a>{{ how('dhcp-reservation', compact=True, op='a reservation') }}
+      {%- endif %}</td>
     </tr>
     {%- endfor %}
     </tbody>
@@ -128,7 +136,7 @@
   {%- else %}
   <p class="small">Kea's configuration holds no reservation, in any subnet that was read or at its global level{% if m.elsewhere %}; a hosts database's are not read (above){% else %}: every client here is given an address from a pool{% endif %}.</p>
   {%- endif %}
-  <p class="note small">Adding, changing and removing a reservation is board B: each previewed, confirmed by hash as a verified person, applied with <span class="mono">config-reload</span>, read back from Kea and recorded (C529 step 2, not built yet). ZTP's reservations are written by onboarding, and changed there.</p>
+  <p class="note small">Each change is previewed, confirmed by hash as a verified person, written to Mercury's file for the subnet, applied with <span class="mono">config-reload</span>, read back from Kea and recorded in <span class="mono">dhcp/reservations.yml</span>. ZTP's reservations are written by onboarding, and changed there; one written by hand in Kea's own files is changed there, until the subnet move (C529 step 5).</p>
 </section>
 
 {%- else %}

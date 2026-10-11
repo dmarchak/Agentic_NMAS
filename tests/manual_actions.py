@@ -66,6 +66,8 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Open on GitHub"): "opens the CI run a row names, on GitHub, a read (C418)",
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
+    ("_dhcp_reserve.html", "Cancel"): "puts the Reservations tab back, writing nothing",
+    ("_dhcp_reserve.html", "Close"): "puts the Reservations tab back after a change, a read",
     ("_macros.html", "btn btn-small"): "Check again: re-reads origin and CI now, a read",
     ("_apply_job.html", "Check now"): "re-reads the job's progress: a read",
     ("_breakglass_drill.html", "Copy"): "copies the drill's command to the clipboard",

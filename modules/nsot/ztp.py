@@ -447,10 +447,12 @@ def _config_test(main_text: str, fragment: str, candidate_text: str,
                 pass
 
 
-def _run_kea_test(config_path: str) -> tuple:
-    binary = shutil.which("kea-dhcp4")
+def _run_kea_test(config_path: str, program: str = "kea-dhcp4") -> tuple:
+    """``(ok, detail)``: *program* (`kea-dhcp4`, or `kea-dhcp6` for DHCP's IPv6 reservations,
+    C529) checks *config_path* without serving it."""
+    binary = shutil.which(program)
     if not binary:
-        return False, "kea-dhcp4 is not on this host's PATH, so the candidate cannot be tested"
+        return False, f"{program} is not on this host's PATH, so the candidate cannot be tested"
     try:
         proc = subprocess.run([binary, "-t", config_path], capture_output=True,
                               text=True, timeout=60)

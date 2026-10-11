@@ -1,0 +1,76 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- Board B (DhcpReserve, approved 2026-10-06): a reservation's add, change and remove, in place
+    of the Reservations tab. The form (Add, Edit), then the preview: the change, its checks,
+    what it does not do, and what is recorded; the confirm, bound to the preview's hash, as a
+    verified person with a reason; the result in place, read back from Kea and recorded
+    (modules/dhcp_reservations.py; docs/fidelity/dhcp-reserve.md). -#}
+{%- set s = op.ask -%}
+{%- set p = op.plan -%}
+{%- set back = url_for('dhcp_v2.region') ~ g.qs({'tab': 'res'}) -%}
+{%- set name = (p.before.hostname if p and p.before and p.before.hostname else '') or s.hostname or s.identity or 'the client' -%}
+{%- set verb = {'add': 'Reserve', 'edit': 'Change', 'remove': 'Remove'}[s.op] if s.op in ('add', 'edit', 'remove') else 'Reserve' -%}
+{%- if op.state == 'done' %}
+{%- set r = op.result %}
+<section class="op-card op-ok" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{{ name }}'s reservation {{ r.outcome }} {{ badge('done', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-reservation') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>Written to Mercury's file for subnet {{ p.subnet_id }} (<span class="mono">{{ p.path }}</span>), Kea reloaded through its API, and read back: {{ r.read_back }}.</p>
+    {%- for n in p.not_done %}<p class="muted">{{ n }}</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ op.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/reservations.yml</span>. In History.</p></div></div>
+</section>
+{%- else %}
+<section class="op-card{{ ' op-danger' if op.state == 'refused' or (p and not p.ok) }}" id="dh-op" aria-labelledby="dh-op-h">
+  <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% elif s.op == 'edit' %}Edit a reservation{% elif s.op == 'remove' %}Remove a reservation{% else %}Reserve an address{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('dhcp-reservation') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
+  {%- if op.state == 'refused' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing was changed{% if op.result.rolled_back %} in the end: {{ op.result.rolled_back }}{% endif %}.</strong> {{ op.result.error }}</p></div>
+  {%- endif %}
+  {%- if s.op != 'remove' %}
+  <form hx-get="{{ url_for('dhcp_v2.reservation_preview') }}" hx-target="#dhcp" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="op" value="{{ s.op or 'add' }}"><input type="hidden" name="was" value="{{ s.was }}">
+    <div class="op-part"><h3>{{ 'Change' if s.op == 'edit' else 'Reservation' }}</h3><div class="dh-fields">
+      {%- if s.op == 'edit' %}
+      <input type="hidden" name="family" value="{{ s.family }}"><input type="hidden" name="subnet" value="{{ s.subnet }}">
+      {%- else %}
+      <label class="dh-f">Subnet<select name="where" required>
+        {%- for o in op.subnets %}<option value="{{ o.family }}:{{ o.id }}"{% if o.family == s.family and o.id|string == s.subnet %} selected{% endif %}>{{ o.prefix }} ({{ o.family }}, subnet {{ o.id }})</option>{% endfor %}
+      </select><span class="dh-msg">ZTP's subnet is onboarding's</span></label>
+      {%- endif %}
+      <label class="dh-f">Reserved by<select name="key">
+        {%- for k in ('hw-address', 'duid', 'client-id') %}<option value="{{ k }}"{% if (s.key or 'hw-address') == k %} selected{% endif %}>{{ words[k] }}</option>{% endfor %}
+      </select><span class="dh-msg">IPv6 identifies a client by its DUID</span></label>
+      <label class="dh-f">{{ words.get(s.key, 'MAC') if s.key else 'MAC, DUID or client-id' }}<input type="text" name="identity" value="{{ s.identity }}" class="mono" autocomplete="off" required spellcheck="false"><span class="dh-msg">hex bytes separated by colons</span></label>
+      <label class="dh-f">Address<input type="text" name="address" value="{{ s.address }}" class="mono" autocomplete="off" required spellcheck="false"><span class="dh-msg">inside the subnet</span></label>
+      <label class="dh-f">Hostname<input type="text" name="hostname" value="{{ s.hostname }}" autocomplete="off" spellcheck="false"><span class="dh-msg">{% if s.op == 'edit' %}kept when left empty{% else %}optional{% endif %}</span></label>
+      <div class="dh-f dh-go"><button type="submit" class="btn" data-op="dhcp-reservation" hx-disabled-elt="this"><span class="op-idle">{{ 'Preview again' if p else 'Preview' }}</span><span class="op-busy">Asking Kea…</span></button>{{ how('dhcp-reservation', compact=True, op='a reservation') }}</div>
+    </div></div>
+  </form>
+  {%- endif %}
+  {%- if p and not p.ok %}
+  <div class="op-part"><h3>Not {{ 'removed' if s.op == 'remove' else 'reserved' }}</h3><div class="dh-refuse" role="alert"><p>{{ p.refused }}</p></div></div>
+  {%- elif p %}
+  {#- Board B draws the change under the fields, one part; a removal has no fields. #}
+  <div class="op-part{{ ' dh-cont' if s.op != 'remove' }}"><h3>{{ 'Change' if s.op == 'remove' }}</h3><div>
+    <p class="muted">{% if s.op == 'add' %}subnet {{ p.subnet_id }} ({{ p.prefix }}){% else %}subnet {{ p.subnet_id }} ({{ p.prefix }}), reservation {{ name }}{% endif %}</p>
+    <pre class="op-diff">{% for sign, line in p.change %}<span class="{{ 'op-add' if sign == '+' else 'op-del' }}">{{ sign }} {{ line }}</span>{% if not loop.last %}
+{% endif %}{% endfor %}</pre></div></div>
+  {%- if p.checks %}
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">{% for state, text in p.checks %}<li>{{ badge({'pass': 'pass', 'apply': 'at confirm', 'note': 'note', 'fail': 'fail'}[state], {'pass': 'ok', 'apply': '', 'note': 'warn', 'fail': 'danger'}[state]) }}<span>{{ text }}</span></li>{% endfor %}</ul></div></div>
+  {%- endif %}
+  <div class="op-part"><h3>{{ 'What survives' if s.op == 'remove' else 'Not done' }}</h3><div>
+    {%- for n in p.not_done %}<p>{{ n }}</p>{% else %}<p class="muted">Nothing left out: the client is given this address at its next request.</p>{% endfor %}</div></div>
+  <form class="op-ft" method="post" action="{{ url_for('dhcp_v2.reservation_confirm', list=g.list) }}" hx-post="{{ url_for('dhcp_v2.reservation_confirm', list=g.list) }}" hx-target="#dhcp" hx-swap="outerHTML">
+    {%- for k in ('op', 'family', 'subnet', 'key', 'identity', 'address', 'hostname', 'was') %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+    <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="hash" value="{{ p.hash }}">
+    <label class="op-reason">Why (recorded with the change, in its commit)<input type="text" name="reason" value="{{ op.reason or '' }}" autocomplete="off" required maxlength="200"></label>
+    <p class="op-note">Recorded on confirm: a commit in the network's repository, <span class="mono">dhcp/reservations.yml</span>, as you, with your reason; Kea's read-back is in the result. {{ may.statement }} Bound to this preview: if Kea or Mercury's file moves before you confirm, nothing is written.</p>
+    {%- if may.may %}
+    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-reservation" hx-disabled-elt="this"><span class="op-idle">{% if s.op == 'remove' %}Remove {{ name }}'s reservation{% elif s.op == 'edit' %}Change {{ name }}'s reservation{% else %}Reserve {{ s.address }} for {{ name }}{% endif %}</span><span class="op-busy">Writing, reloading Kea, reading back…</span></button>{{ how('dhcp-reservation', compact=True, op='a reservation') }}</span>
+    {%- endif %}
+  </form>
+  {%- endif %}
+</section>
+{%- endif %}

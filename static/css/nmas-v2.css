@@ -1570,9 +1570,28 @@ a.topo-ent:hover { background: var(--hover); }
 .dh-addr { white-space: nowrap; }
 .dh .note { margin: 0; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line-2);
   border-radius: var(--r); padding: 8px 10px; }
+/* Board B (C529 step 2): a reservation's card in place of the Reservations tab. */
+.dh-sec-hd { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  flex-wrap: wrap; }
+.dh-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 14px; }
+.dh-f { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-2);
+  margin: 0; min-width: 0; }
+.dh-f input[type=text], .dh-f select { font: inherit; font-size: 13px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); }
+.dh-f .dh-msg { min-height: 17px; line-height: 17px; font-size: 11.5px; color: var(--ink-3); }
+.op-part.dh-cont { border-top: none; padding-top: 0; }
+/* Board B's change lines wrap, a phone's width too (a reservation line is long). */
+.dh .op-diff { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dh-go { justify-content: flex-end; grid-column: 1 / -1; flex-direction: row; }
+.dh-refuse { border: 1px solid var(--danger); background: var(--danger-soft); border-radius: 8px;
+  padding: 12px 14px; font-size: 13px; }
+.dh-refuse p { margin: 0; }
+.dh-acts { white-space: nowrap; }
+.dh-acts .btn + .btn { margin-left: 6px; }
 @media (max-width: 700px) {
   .dh-find input { min-width: 0; width: 100%; }
   .dh-find select { width: 100%; }
+  .dh-fields { grid-template-columns: 1fr 1fr; }
 }
 
 /* History › Query (C667; board A, AskLibrary): the coverage strip, the questions grid. */

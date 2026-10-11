@@ -229,3 +229,116 @@ def test_an_unreadable_store_draws_nothing(web):
         fh.write("{not json")
     html = _get(web)
     assert "store cannot be read" in html and "<table" not in html
+
+
+# ---- Board B (C529 step 2): a reservation's add, change and remove, in place of the tab.
+
+from tests.test_dhcp_reservations import FakeKea as KeaFiles, kea_dir  # noqa: E402,F401
+
+
+@pytest.fixture
+def board_b(web, kea_dir, monkeypatch):  # noqa: F811 (the fixture imported above)
+    """The page with Kea as captured and each subnet's file of Mercury's (the host step run),
+    Kea's own check passing, and the record kept here instead of committed."""
+    from modules import dhcp_reservations as R
+    from modules.nsot import ztp
+    kea = KeaFiles(kea_dir["files"])
+    monkeypatch.setattr("modules.integrations.kea.KeaIntegration", lambda **kw: kea)
+    monkeypatch.setattr(ztp, "_run_kea_test", lambda path, program="kea-dhcp4": (True, "ok"))
+    recorded = []
+    monkeypatch.setattr(R, "record_commit", lambda list_name, p, actor, reason:
+                        recorded.append((p["subject"], actor, reason)) or
+                        {"ok": True, "commit": "5e7b21c0"})
+    return dict(web, kea=kea, files=kea_dir["files"], recorded=recorded)
+
+
+ADD = {"list": "Lab", "op": "add", "where": "IPv4:20", "key": "hw-address",
+       "identity": "aa:c1:ab:5d:20:9e", "address": "10.10.20.150", "hostname": "h5"}
+
+
+def _card(web, **args):
+    from urllib.parse import urlencode
+    return web["client"].get("/v2/dhcp/reservation?" + urlencode(args))
+
+
+def test_the_tab_offers_add_and_each_row_edit_and_remove(web):
+    """Board A's controls: Add a reservation… on the tab; Edit… and Remove… on each row but
+    ZTP's (onboarding's) and the global level's (Kea's own file)."""
+    from tests.test_dhcp_reader import plant_elsewhere
+
+    def plant(svc, result):
+        result = plant_elsewhere(svc, result)
+        conf = result[0]["arguments"]["Dhcp4" if svc == "dhcp4" else "Dhcp6"]
+        if svc == "dhcp4":
+            conf["subnet4"][0]["reservations"] = [{"hw-address": "aa:c1:ab:00:00:99",
+                                                   "ip-address": "10.10.10.150", "hostname": "h9"}]
+        return result
+    _store(_value(kea=FakeKea(plant=plant)))
+    html = _get(web, "&tab=res")
+    assert ">Add a reservation…</a>" in html and "Kea's file, by hand" in html
+    assert html.count(">Edit…</a>") == html.count(">Remove…</a>") == 1
+    edit = re.search(r"href=\"([^\"]*op=edit[^\"]*)\"", html).group(1)
+    from urllib.parse import parse_qs, urlsplit
+    q = {k: v[0] for k, v in parse_qs(urlsplit(edit.replace("&amp;", "&")).query).items()}
+    assert q["was"] == "hw-address=aa:c1:ab:00:00:99" and q["subnet"] == "10" and q["family"] == "IPv4"
+    assert "/v2/help/dhcp-reservation" in html
+
+
+def test_the_form_offers_every_subnet_but_ztp_s(board_b):
+    html = _card(board_b, list="Lab", op="add").get_data(as_text=True)
+    assert 'id="dh-op"' in html and "Reserve an address" in html
+    subnets = re.findall(r'<option value="(IPv[46]:\d+)"', html)
+    assert subnets == ["IPv4:10", "IPv4:20", "IPv6:10", "IPv6:20", "IPv6:30"]
+    assert "hash" not in re.findall(r'name="(\w+)"', html)
+
+
+def test_the_preview_draws_the_change_its_checks_and_its_hash(board_b):
+    html = _card(board_b, **ADD).get_data(as_text=True)
+    assert "Reserve an address on 10.10.20.0/24" in html
+    assert "+ reservation h5: hw-address aa:c1:ab:5d:20:9e, " \
+           "address 10.10.20.150" in html
+    assert "inside its pool, so no other client may be given it while reserved" in html
+    assert "at confirm" in html and re.search(r'name="hash" value="[0-9a-f]{64}"', html)
+    assert 'name="reason"' in html and "Reserve 10.10.20.150 for h5" in html
+
+
+def test_a_refused_preview_names_both_operands_and_offers_no_confirm(board_b):
+    html = _card(board_b, **dict(ADD, address="10.10.20.101")).get_data(as_text=True)
+    assert "Not reserved: 10.10.20.101 is leased to another client." in html
+    assert 'name="hash"' not in html
+
+
+@pytest.mark.real_identity
+def test_the_confirm_needs_a_verified_person(board_b):
+    p = _card(board_b, **ADD).get_data(as_text=True)
+    h = re.search(r'name="hash" value="([0-9a-f]{64})"', p).group(1)
+    r = board_b["client"].post("/v2/dhcp/reservation?list=Lab", data=dict(ADD, hash=h, reason="printer"))
+    assert r.status_code in (401, 403)
+    assert open(board_b["files"][("dhcp4", 20)], encoding="utf-8").read() == "[]\n"
+
+
+def test_the_confirm_writes_reads_back_and_records_in_place(board_b, monkeypatch):
+    import types
+    from modules import identity
+    who = types.SimpleNamespace(actor="operator@example.invalid", kind="person",
+                                peer="192.0.2.5", is_identified=True)
+    monkeypatch.setattr(identity, "require", lambda *a, **k: (who, None))
+    monkeypatch.setattr(identity, "request_actor", lambda: who.actor)
+    p = _card(board_b, **ADD).get_data(as_text=True)
+    h = re.search(r'name="hash" value="([0-9a-f]{64})"', p).group(1)
+    r = board_b["client"].post("/v2/dhcp/reservation?list=Lab",
+                               data=dict(ADD, hash=h, reason="h5 is the printer"))
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200, html
+    assert "h5's reservation added" in html
+    assert "exactly the change shown" in html
+    assert "5e7b21c" in html and "Actor: operator@example.invalid" in html
+    assert board_b["recorded"] == [("dhcp: h5 reserved 10.10.20.150 by MAC aa:c1:ab:5d:20:9e",
+                                    "operator@example.invalid", "h5 is the printer")]
+    assert json.load(open(board_b["files"][("dhcp4", 20)], encoding="utf-8")) == [
+        {"hw-address": "aa:c1:ab:5d:20:9e", "ip-address": "10.10.20.150", "hostname": "h5"}]
+    # A second confirm of the same preview: the file moved, so nothing is written again.
+    again = board_b["client"].post("/v2/dhcp/reservation?list=Lab",
+                                   data=dict(ADD, hash=h, reason="twice")).get_data(as_text=True)
+    assert "Nothing was changed" in again
+

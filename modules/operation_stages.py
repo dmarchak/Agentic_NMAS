@@ -127,6 +127,14 @@ STAGES = {
         "retire.preview", "hash",
         "n/a: retirement changes no device; the NetBox mask is read back inside the apply",
         "n/a: one commit; a failed commit restores the tree", "modules.nsot.repo.commit"),
+    # DHCP › Reservations (C529 step 2, board B): the preview plans against Kea and Mercury's
+    # file; the apply plans again under the file's lock and compares the hash, tests the
+    # candidate with Kea's own check, reloads, reads every reservation back, and restores the
+    # previous file when the read-back disagrees.
+    "dhcp_v2.reservation_confirm": Stages(
+        "dhcp_v2.reservation_preview", "hash",
+        "modules.dhcp_reservations.every_reservation", "modules.nsot.ztp._replace",
+        "modules.dhcp_reservations.record_commit"),
     "update.apply": Stages(
         "v2.update", "hash",
         "n/a: the root-owned updater (deploy/update/nmas-update) confirms the new version by identity",
@@ -345,6 +353,8 @@ HISTORY = {
     "onboard_v2.abandon": ("onboarding",),
     "bulk_reload": ("restart_windows", "restarts"),
     "update.apply": NOT_A_DEVICE,
+    "dhcp_v2.reservation_confirm": ("n/a: changes a Kea reservation, never one device's record; "
+                                    "the network's repository keeps it (dhcp/reservations.yml)"),
     "update.step_done": NOT_A_DEVICE,
     "run_command": NO_RECORD,
     "bulk_execute": NO_RECORD,
