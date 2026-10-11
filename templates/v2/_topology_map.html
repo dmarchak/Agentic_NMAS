@@ -83,13 +83,11 @@
     {%- for k, w in [('auto', 'Auto'), ('on', 'On'), ('off', 'Off')] %}{{ go(t, {'labels': k, 'tab': 'map'}, w, 'seg-btn' ~ (' on' if t.s.labels == k), t.s.labels == k) }}{% endfor %}
   </div>
   {{ go(t, {'labels': {'auto': 'on', 'on': 'off', 'off': 'auto'}[t.s.labels], 'tab': 'map'}, 'Labels: ' ~ t.s.labels, 'btn btn-small topo-narrow-inline') }}
-  {%- if t.arranged.state == 'ok' %}
+  {%- if t.arranged.state in ('ok', 'unreadable') %}
   <form class="topo-wide" method="post" action="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-post="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-target="#topo" hx-swap="outerHTML">
     <input type="hidden" name="list" value="{{ t.list }}">
-    <span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this" title="Withdraw every person's moves: the map is laid out by the cabling again, for everyone (recorded on History)"><span class="op-idle">Reset layout</span><span class="op-busy">Resetting…</span></button>{{ how('topology', 'arrange', compact=True, op='a layout reset') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this" title="{% if t.arranged.state == 'ok' %}Withdraw every person's moves: the map is laid out by the cabling again, for everyone (recorded on History){% else %}The saved layout cannot be read: Reset sets it aside under a dated name (kept) and the map is laid out by the cabling, for everyone (recorded on History){% endif %}"><span class="op-idle">Reset layout</span><span class="op-busy">Resetting…</span></button>{{ how('topology', 'arrange', compact=True, op='a layout reset') }}</span>
   </form>
-  {%- elif t.arranged.state == 'unreadable' %}
-  <span class="btn btn-small topo-wide" aria-disabled="true" title="{{ t.arranged.error }}">Reset layout</span>
   {%- else %}
   <span class="btn btn-small topo-wide" aria-disabled="true" title="Nobody has moved a device on {{ t.list }}: the map is laid out by the cabling">Reset layout</span>
   {%- endif %}
@@ -135,7 +133,7 @@
     moved and the map saved for everyone through the form below (C661). -#}
 <p class="topo-how small"><span class="topo-wide-inline">Drag a device to move it: saved for everyone on {{ t.list }}, recorded on History. </span>Drag empty space to pan; the wheel or a pinch zooms at the pointer. <span class="topo-narrow-inline">Devices are moved on a wider screen.</span>
   {%- if t.arranged.state == 'ok' %} <span class="topo-faint">Arranged by {{ t.arranged.by }}, {{ stamp(t.arranged.at) }}; a device added since is placed near its neighbours.</span>
-  {%- elif t.arranged.state == 'unreadable' %} <span class="topo-warn-t">The saved layout cannot be read ({{ t.arranged.error }}): the map is laid out by the cabling, and a move is refused until it is repaired.</span>{% endif %}</p>
+  {%- elif t.arranged.state == 'unreadable' %} <span class="topo-warn-t">The saved layout cannot be read ({{ t.arranged.error }}): the map is laid out by the cabling; a move is refused until Reset layout sets it aside (kept, under a dated name).</span>{% endif %}</p>
 <div class="topo-scroll" data-topo-view="{{ t.list }}">
 <svg class="topo-map topo-z{{ g.z }} topo-labels-{{ t.s.labels }}{{ ' topo-far' if g.z | int < 100 }}{{ ' topo-ports-on' if t.s.ports == 'on' else ' topo-ports-off' if t.s.ports == 'off' else ' topo-ports-auto' }}" viewBox="0 0 {{ g.width }} {{ g.height }}" data-width="{{ g.width }}" data-height="{{ g.height }}" data-z="{{ g.z }}" role="img" aria-labelledby="topo-map-title">
   <title id="topo-map-title">{{ t.list }}: {{ t.summary.devices }} devices and {{ t.summary.links }} links; {{ c.bad }} down or a neighbour missing, {{ c.warn }} not as intended, {{ c.unread }} not read</title>

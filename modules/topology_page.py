@@ -812,9 +812,18 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
     # near its neighbours; else the reader's generated layout; a value stored by a reader that
     # did not yet lay out is laid out here, until its next read (within a minute).
     placed = ((view_.get("arranged") or {}).get("positions")) or {}
+    geo = None
     if placed:
-        geo = layout(nodes, phys, placed)
-    else:
+        try:
+            geo = layout(nodes, phys, placed)
+        except Exception as exc:                          # noqa: BLE001 (one part's data)
+            # The map never fails whole for its saved layout: the generated one is drawn and
+            # the layout is said to be unreadable, with why (the operator, 2026-10-11).
+            log.warning("topology: the saved layout of %s could not be drawn: %s",
+                        view_.get("list"), exc)
+            view_["arranged"] = dict(view_.get("arranged") or {}, state="unreadable",
+                                     error=f"its places could not be drawn ({exc})")
+    if geo is None:
         geo = view_.get("layout")
         if not geo:
             geo = layout(nodes, phys)

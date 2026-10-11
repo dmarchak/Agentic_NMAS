@@ -21,8 +21,12 @@ import time
 
 log = logging.getLogger(__name__)
 
-STORE = "topology_positions.json"
-LOG = "topology_positions_log.jsonl"
+#: Its own names: today's (v1) Topology page keeps ITS layout as `topology_positions.json` in
+#: the same folder, places as ``{"x", "y"}`` in its own coordinates. Sharing that name made the
+#: v2 page read v1's places as its own and fail whole (the operator's report, 2026-10-11 03:46
+#: UTC: "KeyError: 0" on the host's Default network). One owner per piece of state.
+STORE = "topology_layout.json"
+LOG = "topology_layout_log.jsonl"
 #: The map's coordinate space is at least 880 wide (modules/topology_layout.W) and grows with the
 #: map: the spring layout of 150 devices spans about 5,800 by 4,300 (measured 2026-10-11). A place
 #: is kept inside a generous frame, so a device dragged far out is not lost.
@@ -52,6 +56,13 @@ def read(list_name: str) -> dict:
         positions = doc.get("positions") if isinstance(doc, dict) else None
         if not isinstance(positions, dict):
             raise ValueError("it holds no positions table")
+        # Every place two finite numbers, or the layout is unreadable, naming the first that is
+        # not: a page draws the generated layout and says why, never fails whole.
+        for node, xy in positions.items():
+            if not (isinstance(xy, list) and len(xy) == 2 and
+                    all(isinstance(v, (int, float)) and not isinstance(v, bool) and
+                        math.isfinite(v) for v in xy)):
+                raise ValueError(f"{node}'s place is not two numbers (a {type(xy).__name__})")
         return {"state": "ok", "positions": positions, "by": doc.get("by", ""),
                 "at": doc.get("at", ""), "error": ""}
     except (OSError, ValueError) as exc:
@@ -101,11 +112,18 @@ def _change(list_name: str, positions, actor: str, action: str, moved: str = "")
 
     path = _path(list_name)
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    set_aside = ""
     with filestore.PathLock(lambda: path):
         got = read(list_name)
-        if got["state"] == "unreadable":
-            return {"ok": False, "error": got["error"] + ": nothing was written"}
-        if positions is None:
+        if got["state"] == "unreadable" and positions is None:
+            # Reset of a layout that cannot be read: set aside under a dated name (kept, never
+            # deleted), so the generated layout is drawn and a person can move devices again.
+            set_aside = f"{path}.unreadable-{at.replace(':', '')}"
+            os.replace(path, set_aside)
+        elif got["state"] == "unreadable":
+            return {"ok": False, "error": got["error"] + ": nothing was written; Reset layout "
+                                                         "sets it aside"}
+        elif positions is None:
             if got["state"] == "absent":
                 return {"ok": False, "error": "the map is not arranged: it is the generated "
                                               "layout already"}
@@ -121,6 +139,8 @@ def _change(list_name: str, positions, actor: str, action: str, moved: str = "")
     if moved:
         entry["device"] = moved
         entry["to"] = (positions or {}).get(moved)
+    if set_aside:
+        entry["set_aside"] = os.path.basename(set_aside)
     try:
         with open(os.path.join(os.path.dirname(path), LOG), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, sort_keys=True) + "\n")
@@ -128,7 +148,8 @@ def _change(list_name: str, positions, actor: str, action: str, moved: str = "")
         log.error("topology_positions: COULD NOT RECORD %s by %s (%s)", action, actor, exc)
         return {"ok": True, "error": "", "recorded": False,
                 "record_error": f"{LOG} could not be written: {exc}"}
-    return {"ok": True, "error": "", "recorded": True, "record_error": ""}
+    return {"ok": True, "error": "", "recorded": True, "record_error": "",
+            "set_aside": os.path.basename(set_aside) if set_aside else ""}
 
 
 def history(data_dir: str) -> dict:

@@ -371,10 +371,10 @@ def _move(web, name, dx, dy, html=None):
 def test_a_move_is_the_network_s_layout_for_everyone_and_recorded(web):
     r, places = _move(web, "r1", 140, 60)
     assert r.status_code == 200 and r.headers.get("X-NMAS-Invalidates") == "topology"
-    stored = json.loads((web["dir"] / "topology_positions.json").read_text())
+    stored = json.loads((web["dir"] / "topology_layout.json").read_text())
     assert stored["by"] == "test-person@example.invalid"
     assert stored["positions"]["r1"] == [round(places["r1"][0]), round(places["r1"][1])]
-    log = [json.loads(l) for l in (web["dir"] / "topology_positions_log.jsonl").read_text()
+    log = [json.loads(l) for l in (web["dir"] / "topology_layout_log.jsonl").read_text()
            .splitlines()]
     assert log[-1]["action"] == "moved" and log[-1]["device"] == "r1"
     html = _get(web)
@@ -436,17 +436,70 @@ def test_a_move_that_is_not_the_map_s_is_refused_writing_nothing(web, positions,
         "list": "Lab", "moved": moved, "positions": json.dumps(positions)})
     assert r.status_code == 400 and "X-NMAS-Invalidates" not in r.headers
     assert words in r.get_data(as_text=True).replace("&#39;", "'")
-    assert not (web["dir"] / "topology_positions.json").exists()
+    assert not (web["dir"] / "topology_layout.json").exists()
 
 
 def test_an_unreadable_layout_refuses_a_move_and_draws_the_generated_one(web):
     generated = _places(_get(web))
-    (web["dir"] / "topology_positions.json").write_text("{not json")
+    (web["dir"] / "topology_layout.json").write_text("{not json")
     html = _get(web)
     assert "The saved layout cannot be read" in html and _places(html) == generated
     r, _ = _move(web, "r1", 10, 10, html)
     assert r.status_code == 409 and "nothing was written" in r.get_data(as_text=True)
-    assert (web["dir"] / "topology_positions.json").read_text() == "{not json"
+    assert (web["dir"] / "topology_layout.json").read_text() == "{not json"
+
+
+#: Today's (v1) Topology page's own layout, its shape as the host's Default network held it
+#: (read 2026-10-11 through topology_positions.read, shapes only): places as {x, y}, a hidden
+#: list, no who or when. Coordinates planted.
+V1_LAYOUT = {"positions": {"r1": {"x": 412.5, "y": -80.25}, "s3": {"x": 10, "y": 220}},
+             "hidden": []}
+
+
+def test_today_s_layout_file_is_not_this_page_s_and_never_breaks_it(web):
+    """The operator's report, 2026-10-11 03:46 UTC: /v2/topology failed whole, "KeyError: 0".
+    The v2 layout had taken the file name today's page keeps its layout in, and read v1's
+    {x, y} places as its own. Now each has its own file: v1's is not read here at all."""
+    generated = _places(_get(web))
+    (web["dir"] / "topology_positions.json").write_text(json.dumps(V1_LAYOUT))
+    for path in ("/v2/topology?list=Lab", "/v2/topology/map?list=Lab"):
+        r = web["client"].get(path)
+        assert r.status_code == 200, path
+    html = _get(web)
+    assert _places(html) == generated and "cannot be read" not in html
+
+
+def test_odd_saved_places_draw_the_generated_layout_and_say_why(web, monkeypatch):
+    """The page never fails whole because one part's data is odd: places that are not two
+    numbers make the saved layout unreadable, named; the generated layout is drawn; Reset sets
+    the file aside under a dated name (kept) and records it. A layout step that raises for any
+    other reason draws the generated layout too."""
+    generated = _places(_get(web))
+    (web["dir"] / "topology_layout.json").write_text(json.dumps(V1_LAYOUT))
+    for path in ("/v2/topology?list=Lab", "/v2/topology/map?list=Lab"):
+        assert web["client"].get(path).status_code == 200, path
+    html = _get(web)
+    assert _places(html) == generated
+    assert "r1&#39;s place is not two numbers (a dict)" in html
+    assert 'title="The saved layout cannot be read: Reset sets it aside' in html
+    r = web["client"].post("/v2/topology/positions/reset", data={"list": "Lab"})
+    body = r.get_data(as_text=True)
+    assert r.status_code == 200 and "is set aside as" in body
+    aside = [p.name for p in web["dir"].iterdir()
+             if p.name.startswith("topology_layout.json.unreadable-")]
+    assert len(aside) == 1 and aside[0].startswith("topology_layout.json.unreadable-")
+    assert json.loads((web["dir"] / aside[0]).read_text()) == V1_LAYOUT
+    assert '"set_aside"' in (web["dir"] / "topology_layout_log.jsonl").read_text()
+    r, _ = _move(web, "r1", 30, 30)
+    assert r.status_code == 200, "a move is saved again once the layout is set aside"
+    # Any other failure laying out saved places: drawn as generated, said, never a 500.
+    monkeypatch.setattr("modules.topology_page.layout",
+                        lambda nodes, phys, placed=None: (_ for _ in ()).throw(KeyError(0))
+                        if placed else __import__("modules.topology_layout").topology_layout
+                        .layout(nodes, phys))
+    r = web["client"].get("/v2/topology?list=Lab")
+    assert r.status_code == 200 and "its places could not be drawn (0)" in \
+        r.get_data(as_text=True)
 
 
 def test_reset_withdraws_every_move_for_everyone_recorded(web):
@@ -457,16 +510,16 @@ def test_reset_withdraws_every_move_for_everyone_recorded(web):
     assert 'action="/v2/topology/positions/reset' in html
     r = web["client"].post("/v2/topology/positions/reset", data={"list": "Lab"})
     assert r.status_code == 200 and "The layout is reset" in r.get_data(as_text=True)
-    assert not (web["dir"] / "topology_positions.json").exists()
+    assert not (web["dir"] / "topology_layout.json").exists()
     assert _places(_get(web)) == generated
-    assert '"action": "reset"' in (web["dir"] / "topology_positions_log.jsonl").read_text()
+    assert '"action": "reset"' in (web["dir"] / "topology_layout_log.jsonl").read_text()
 
 
 @pytest.mark.real_identity
 def test_no_person_moves_nothing(web):
     r, _ = _move(web, "r1", 10, 10)
     assert r.status_code in (401, 403)
-    assert not (web["dir"] / "topology_positions.json").exists()
+    assert not (web["dir"] / "topology_layout.json").exists()
 
 
 def test_drag_pan_and_zoom_in_a_browser(web):
@@ -505,7 +558,7 @@ def test_drag_pan_and_zoom_in_a_browser(web):
             {"type": "pointerUp", "button": 0}])
         panned = view(b)
         assert panned != before and panned.split()[2:] == before.split()[2:], (before, panned)
-        assert not (web["dir"] / "topology_positions.json").exists()
+        assert not (web["dir"] / "topology_layout.json").exists()
         # The wheel zooms in at the pointer: the view box shrinks; out past fit, labels hide.
         b._call("POST", f"/session/{b.session}/actions", {"actions": [{
             "type": "wheel", "id": "wheel", "actions": [{
@@ -526,7 +579,7 @@ def test_drag_pan_and_zoom_in_a_browser(web):
             {"type": "pointerMove", "origin": "pointer", "x": 70, "y": 40, "duration": 200},
             {"type": "pointerUp", "button": 0}])
         b.wait_for("return document.body.textContent.indexOf('Arranged by') >= 0")
-        stored = json.loads((web["dir"] / "topology_positions.json").read_text())
+        stored = json.loads((web["dir"] / "topology_layout.json").read_text())
         assert stored["positions"]["r1"][0] > x0 + 20, (x0, stored["positions"]["r1"])
         assert b.js("return +document.querySelector('[data-node=\"r1\"]')"
                     ".getAttribute('data-x')") == stored["positions"]["r1"][0]
@@ -540,7 +593,7 @@ def test_drag_pan_and_zoom_in_a_browser(web):
             {"type": "pointerMove", "origin": "pointer", "x": 40, "y": 30, "duration": 150},
             {"type": "pointerUp", "button": 0}])
         assert view(b) != before
-        again = json.loads((web["dir"] / "topology_positions.json").read_text())
+        again = json.loads((web["dir"] / "topology_layout.json").read_text())
         assert again == stored
 
 
