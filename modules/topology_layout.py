@@ -37,6 +37,16 @@ def node_class(name: str, n: dict) -> str:
         return "router"
     if "switch" in role:
         return "l3switch" if n.get("l3") else "switch"
+    # The board's other classes (TopoDesktop's legend), each from its role's own word: a role
+    # that does not name one stays "class unknown", never a guess.
+    if "firewall" in role:
+        return "firewall"
+    if "access-point" in role or "access point" in role:
+        return "accesspoint"
+    if "controller" in role:
+        return "controller"
+    if "server" in role:
+        return "server"
     return "unknown"
 
 
@@ -48,7 +58,9 @@ def _band(name: str, n: dict, edge: set) -> str:
         return "edge"
     if cls == "router":
         return "core"
-    if cls in ("switch", "l3switch"):
+    if cls == "firewall":
+        return "edge"
+    if cls in ("switch", "l3switch", "accesspoint"):
         return "access"
     return "no class"
 

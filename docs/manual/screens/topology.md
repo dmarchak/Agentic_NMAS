@@ -18,34 +18,42 @@ page. A refresh moves nothing: the reader lays the map out when it reads.
 Every link is labelled:
 
 - **the port at each end** (r1 Gi2 ↔ s3 Gi1/0), LLDP's own names;
-- **a chip for each routing protocol it carries**, with its key fact and state: OSPF and OSPFv3
-  with their **area** (`OSPF area 0: FULL`), BGP with the **peer's AS** and whether it is eBGP or
-  iBGP (`eBGP AS 65002: Estab×2`, two sessions, IPv4 and IPv6). A port on a shared segment
-  carries several neighbourships; its chip counts them by state (`OSPF area 0: 2WAY×3 FULL×2`).
-  2WAY is the normal state between two routers that are neither DR nor BDR.
+- **a chip for each routing protocol between its two ends**, in two words: the protocol and the
+  state (`OSPF FULL`, `OSPFv3 FULL`, `BGP Estab`, `OSPF 2WAY`). BGP's IPv4 and IPv6 sessions to one
+  peer in the same state are one chip. The area and the peer's AS are in the link's card.
 - a protocol committed intent configures and Mercury does not read (RIPng) is chipped `RIPng ?`:
   not read, never drawn as up.
 
-A neighbourship is put on the link it leaves by: the port it leaves from, or, for a switch's
-VLAN interface, the port carrying that VLAN towards the neighbour. One no link carries (between
-loopbacks) is drawn thin, straight between the two devices.
+A link that carries a switched segment (VLAN 100's trunks) also carries neighbourships between
+OTHER devices on that segment. Those get no chip while they are as intended; one that is not gets
+its own, naming both devices (`OSPF r1–r3 2WAY`). The card lists every one passing over the link.
+A neighbourship no link carries (between loopbacks) is drawn thin, straight between the two
+devices.
+
+2WAY is what OSPF intends between two devices on a segment where neither is the DR or BDR. The
+DR and BDR are worked out from the neighbourships themselves (the devices FULL with most of the
+segment). A 2WAY anywhere else, or any other state short of FULL, is **not as intended**:
+"2WAY, intended FULL".
 
 The line says how the link compares with intent, never by colour alone:
 
 - **green, solid**: as intended;
-- **orange, dashed**: up, not as intended: only one end reports it while both are polled, or a
-  neighbour committed intent does not name;
+- **orange, dashed**: up, not as intended: only one end reports it while both are polled, a
+  neighbour committed intent does not name, or an OSPF neighbour short of FULL where FULL is
+  intended;
 - **red, thick**: down, or a neighbour intent names that nothing reports;
 - **grey, dotted**: not read.
 
-**Hover** on a link (or tab to it) for its card: both ends, the link's state and since when, each
-protocol's neighbours with their states, and links to each end's Neighbours tab. **Click** a link
+**Hover** on a link (or tab to it) for its card: both ends, the link's state and since when, a
+row per protocol with its area or the peer's AS, the state against intent ("2WAY, intended FULL;
+since 20:58 UTC"), what passes over the link, and links to each end's Neighbours tab. **Click** a link
 to select it: it glows, its card stays open, and its entry in Needs attention is marked.
 
-The toolbar: **Protocols** chooses which protocols' chips and states are drawn (EIGRP and IS-IS
-are not read, and the toolbar says so); **Ports** shows or hides the port names (on at the
-desktop, off at phone width); **Labels** Auto shows ports and chips at Fit and closer and hides
-them zoomed out, On always, Off never; **−, Fit, +** zoom; **Weak points** tags single points of
+The toolbar: **Protocols** chooses which protocols' chips and states are drawn (OSPF, OSPFv3, BGP,
+RIP / RIPng; EIGRP and IS-IS are drawn unpressed and do not press, since Mercury does not read
+them); **Ports** shows or hides the port names (on at the desktop, off at phone width); **Labels**
+Auto shows ports and chips at 100% and closer and hides them zoomed out, On always, Off never;
+**−, 100%, +** zoom; **Weak points** tags single points of
 failure and islands on the map. **Find** rings a device whose name, role, address or port
 matches; it never hides anything.
 
@@ -101,12 +109,14 @@ was not an island at the last read) is told apart: "became an island", with when
 
 A device whose loss splits the network (an articulation point), or a link whose loss does (a
 bridge), each with what it would cut off, among the weak points. Parallel links are never a
-bridge. Below them, the devices most paths pass through (betweenness).
+bridge.
 
 ## At phone width {#phone}
 
-Three tabs: **Attention** (first), **Devices** (every device by band, with its ports and links)
-and **Map**. Ports are off by default; **Ports** and **Labels** are under the tabs. A selected
+Three tabs: **Attention** (first: the counts, then each group's links as a list), **Devices**
+(every device by band, with its ports and links; on the desktop this list appears only for a
+fleet too large to draw) and **Map**. Ports are off by default; **Ports** and **Labels** are
+under the tabs. A selected
 link opens as a sheet at the bottom, with its ends, each protocol's state, the first end's
 Neighbours and **Show on the map**.
 

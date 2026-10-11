@@ -41,10 +41,12 @@ log = logging.getLogger(__name__)
 #: and read by nothing: shown as "not read", never as up.
 PROTOS = ("ospf", "ospfv3", "bgp", "ripng")
 PROTO_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "ripng": "RIPng"}
-#: Protocols neither read nor modelled: said beside the toggles, never a toggle that changes
-#: nothing (docs/STANDING_APPROVAL_LOG.md, 2026-10-10).
-NOT_READ = "EIGRP, IS-IS"
-#: The zoom steps; 100 fits the map to its box (the board's "100%" is labelled Fit).
+#: The toolbar's words for each toggle, as the board names them.
+TOGGLE_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "ripng": "RIP / RIPng"}
+#: The board's other protocol toggles: drawn off, as the board draws them; nothing reads or
+#: models them, so pressing one could change nothing, and each says so instead of pressing.
+NOT_READ = ("EIGRP", "IS-IS")
+#: The zoom steps; 100 fits the map to its box (the board's "100%").
 ZOOMS = (50, 75, 100, 150, 200)
 #: Above this many fleet devices the map is not drawn; the attention list still names every
 #: link that needs review (the brief, Q12; the board's large-fleet inset).
@@ -57,8 +59,8 @@ SHORT = {"full": "FULL", "2-way": "2WAY", "init": "INIT", "attempt": "ATTEMPT",
          "not reported": "missing", "not measured": "?"}
 #: A device's class from its role and what it runs, and the words the legend gives it.
 CLASSES = {"router": "router", "switch": "L2 switch", "l3switch": "L3 switch",
-           "server": "Mercury's host", "external": "outside management",
-           "unknown": "class unknown"}
+           "firewall": "firewall", "server": "server", "accesspoint": "access point",
+           "controller": "controller", "external": "external", "unknown": "class unknown"}
 LINE_WORDS = {"ok": "as intended", "warn": "not as intended",
               "bad": "down, or a neighbour missing", "unread": "not read"}
 GROUP_WORDS = {"bad": "Down, or an intended neighbour missing",
@@ -166,7 +168,50 @@ def _adj_cls(adj: dict) -> str:
         return "warn"
     if adj.get("state") == "unknown":
         return "unread"
+    if _short_of_full(adj):
+        return "warn"
     return "ok"
+
+
+def _short_of_full(adj: dict) -> bool:
+    """The board's "OSPF 2WAY, intended FULL": an OSPF or OSPFv3 neighbour up and short of FULL,
+    except 2WAY between two devices neither of which is the segment's DR or BDR, which is what
+    OSPF intends on a multi-access segment (`_twoway_intended`)."""
+    if adj.get("_layer") not in ("ospf", "ospfv3") or adj.get("state") != "up":
+        return False
+    words = adj.get("words") or ""
+    return words != "full" and not (words == "2-way" and adj.get("_twoway_ok"))
+
+
+def _twoway_intended(layers: dict) -> dict:
+    """``{layer: {adjacency index}}``: the OSPF and OSPFv3 adjacencies where 2WAY is intended,
+    between two DROthers of a multi-access segment (a network with more than two devices).
+    The DR and BDR are inferred from the adjacencies themselves: FULL with at least
+    min(max(n - 2, 3), n - 1) of the segment's n devices (a DROther is FULL with only the DR and
+    BDR), so a DR whose own adjacency breaks is still found by the others."""
+    out = {}
+    for layer in ("ospf", "ospfv3"):
+        adjs = layers.get(layer) or []
+        nets = {}
+        for i, adj in enumerate(adjs):
+            if adj.get("network"):
+                nets.setdefault(adj["network"], []).append(i)
+        keep = set()
+        for idx in nets.values():
+            devices = {d for i in idx for d in (adjs[i]["a"], adjs[i]["b"])}
+            n = len(devices)
+            if n <= 2:
+                continue
+            full = {d: 0 for d in devices}
+            for i in idx:
+                if adjs[i].get("words") == "full":
+                    full[adjs[i]["a"]] += 1
+                    full[adjs[i]["b"]] += 1
+            need = min(max(n - 2, 3), n - 1)
+            dr_bdr = {d for d, k in full.items() if k >= need}
+            keep |= {i for i in idx if not {adjs[i]["a"], adjs[i]["b"]} & dr_bdr}
+        out[layer] = keep
+    return out
 
 
 RANK = {"bad": 3, "warn": 2, "unread": 1, "ok": 0}
@@ -184,16 +229,6 @@ def _fact(layer: str, adjs: list) -> str:
     peers = sorted({asn for a in adjs for dev, asn in (a.get("asn") or {}).items()
                     if dev not in (a.get("_mine") or ())})
     return f"AS {', '.join(peers)}" if peers else "AS not in intent"
-
-
-def _chip_states(adjs: list) -> str:
-    counts = {}
-    for a in adjs:
-        s = _state_short(a)
-        counts[s] = counts.get(s, 0) + 1
-    if len(adjs) == 1:
-        return next(iter(counts))
-    return " ".join(f"{s}×{n}" for s, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 def _bgp_kind(adj: dict) -> str:
@@ -215,10 +250,51 @@ def _neighbour_words(adj: dict, from_dev: str) -> str:
     return words
 
 
-def _link(l: dict, layers: dict, on: list, nodes: dict) -> dict:
-    """One physical link as drawn: its class, chips, hover rows and attention words."""
+def _intended_words(adj: dict, layer: str) -> str:
+    """What the board writes beside a state: "intended FULL", "intended Established"."""
+    c = _adj_cls(adj)
+    if c == "bad":
+        return f"intended {'Established' if layer == 'bgp' else 'up'}"
+    if c == "warn":
+        return "intended FULL" if _short_of_full(adj) else "not in committed intent"
+    if c == "unread":
+        return "not measured"
+    return "as intended"
+
+
+def _since_text(iso: str, seen: bool = True, today: str = "") -> str:
+    """The board's "since 21:02 UTC": the time of day in UTC, with the date when it is not
+    today's; "at least since" when the state was already so at the reader's first read."""
+    if not iso or len(iso) < 16:
+        return ""
+    if not today:
+        import time
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+    when = iso[11:16] if iso[:10] == today else f"{iso[:10]} {iso[11:16]}"
+    return f"{'since' if seen else 'at least since'} {when} UTC"
+
+
+def _states(adjs: list) -> str:
+    """A chip's state: the one state its adjacencies share ("Estab" for BGP's IPv4 and IPv6
+    sessions to one peer), or each different one, the worst first."""
+    seen = []
+    for x in sorted(adjs, key=lambda x: -RANK[_adj_cls(x)]):
+        s = _state_short(x)
+        if s not in seen:
+            seen.append(s)
+    return " / ".join(seen)
+
+
+def _link(l: dict, layers: dict, on: list, nodes: dict, twoway: dict = None) -> dict:
+    """One physical link as drawn: its class, chips, hover rows and attention words.
+
+    A chip names the neighbourship between the link's TWO ENDS, in the board's two words
+    ("OSPF FULL", "BGP Estab"), one per protocol. An adjacency that only passes over the link
+    (two other devices on a switched segment) gets no chip unless it is not as intended, and
+    then its own, naming both devices; the hover card lists them all."""
     a, b = l["a"], l["b"]
     pa, pb = l.get("port_a") or "?", l.get("port_b") or "?"
+    twoway = twoway or {}
     by_layer = {}
     for ref in l.get("adj") or []:
         if ref["layer"] not in on:
@@ -226,6 +302,8 @@ def _link(l: dict, layers: dict, on: list, nodes: dict) -> dict:
         adj = dict((layers.get(ref["layer"]) or [])[ref["i"]])
         adj["_at"] = ref["at"]
         adj["_mine"] = ref["at"]
+        adj["_layer"] = ref["layer"]
+        adj["_twoway_ok"] = ref["i"] in (twoway.get(ref["layer"]) or ())
         by_layer.setdefault(ref["layer"], []).append(adj)
     chips, rows, whats, classes = [], [], [], []
     if l.get("state") == "down":
@@ -244,27 +322,40 @@ def _link(l: dict, layers: dict, on: list, nodes: dict) -> dict:
                               "is polled and does not", l.get("since"), l.get("since_seen")))
     for layer in [p for p in PROTOS if p in by_layer]:
         adjs = by_layer[layer]
-        word = _bgp_kind(adjs[0]) if layer == "bgp" else PROTO_WORDS[layer]
+        word = PROTO_WORDS[layer]
+        kind = _bgp_kind(adjs[0]) if layer == "bgp" else word
+        ends = [x for x in adjs if {x["a"], x["b"]} == {a, b}]
+        over = [x for x in adjs if {x["a"], x["b"]} != {a, b}]
         cls = _worst(_adj_cls(x) for x in adjs)
         classes.append(cls)
-        chips.append({"text": f"{word} {_fact(layer, adjs)}: {_chip_states(adjs)}", "cls": cls})
+        if ends:
+            chips.append({"text": f"{word} {_states(ends)}",
+                          "cls": _worst(_adj_cls(x) for x in ends)})
+        for x in over:
+            if _adj_cls(x) != "ok":
+                chips.append({"text": f"{word} {label(x['a'])}–{label(x['b'])} "
+                                      f"{_state_short(x)}", "cls": _adj_cls(x)})
         lines = []
-        for dev in sorted({d for x in adjs for d in x["_at"]}):
-            port = pa if dev == a else pb
-            mine = [x for x in adjs if dev in x["_at"]]
-            lines.append(f"{label(dev)} {port} to " +
-                         ", ".join(_neighbour_words(x, dev) for x in mine))
-        rows.append({"dt": f"{word} {_fact(layer, adjs)}", "cls": cls,
-                     "chip": _chip_states(adjs), "lines": lines})
+        if ends:
+            worst = max(ends, key=lambda x: RANK[_adj_cls(x)])
+            line = _intended_words(worst, layer)
+            if worst.get("since") and _adj_cls(worst) != "ok":
+                line += f"; {_since_text(worst['since'], worst.get('since_seen'))}"
+            lines.append(line)
+        if over:
+            lines.append("passing over this link: " + ", ".join(
+                f"{label(x['a'])}–{label(x['b'])} {_state_short(x)}"
+                + ("" if _adj_cls(x) == "ok" else f" ({_intended_words(x, layer)})")
+                for x in sorted(over, key=lambda x: (-RANK[_adj_cls(x)], x["a"], x["b"]))))
+        rows.append({"dt": f"{kind} {_fact(layer, adjs)}", "cls": cls,
+                     "chip": _states(ends) if ends else "passing over",
+                     "lines": lines})
         for x in adjs:
             c = _adj_cls(x)
             if c == "ok":
                 continue
-            intended = {"bad": f"intended {'Established' if layer == 'bgp' else 'up'}",
-                        "warn": "not in committed intent",
-                        "unread": "not measured"}[c]
-            whats.append((c, f"{word} {_fact(layer, [x])} {label(x['a'])} to {label(x['b'])}: "
-                             f"{_state_short(x)}, {intended}", x.get("since"),
+            whats.append((c, f"{kind} {_fact(layer, [x])} {label(x['a'])} to {label(x['b'])}: "
+                             f"{_state_short(x)}, {_intended_words(x, layer)}", x.get("since"),
                           x.get("since_seen")))
     unread = sorted({p for ps in (l.get("unread") or {}).values() for p in ps})
     if "ripng" in on and unread:
@@ -306,25 +397,27 @@ def _link(l: dict, layers: dict, on: list, nodes: dict) -> dict:
             "manager": bool(l.get("manager")), "kind": l.get("kind", "")}
 
 
-def _routing_only(layers: dict, on: list, nodes: dict) -> list:
+def _routing_only(layers: dict, on: list, nodes: dict, twoway: dict = None) -> list:
     """Neighbourships no physical link carries (a peering between loopbacks, an adjacency over
     a link LLDP does not see): drawn straight between the two devices, labelled the same."""
     out = []
+    twoway = twoway or {}
     for layer in ("ospf", "ospfv3", "bgp"):
         if layer not in on:
             continue
-        for adj in layers.get(layer) or []:
+        for i, adj in enumerate(layers.get(layer) or []):
             if adj.get("on_link", True) or adj["a"] not in nodes or adj["b"] not in nodes:
                 continue
             word = _bgp_kind(adj) if layer == "bgp" else PROTO_WORDS[layer]
-            x = dict(adj, _mine=tuple((adj.get("ports") or {}).keys()))
+            x = dict(adj, _mine=tuple((adj.get("ports") or {}).keys()), _layer=layer,
+                     _twoway_ok=i in (twoway.get(layer) or ()))
             cls = _adj_cls(x)
             out.append({"id": f"{layer}:{adj['a']}~{adj['b']}:{adj.get('network', '')}",
                         "a": adj["a"], "b": adj["b"], "port_a": "", "port_b": "",
                         "la": label(adj["a"]), "lb": label(adj["b"]),
                         "title": f"{label(adj['a'])} ↔ {label(adj['b'])}, {word}",
                         "cls": cls, "routing_only": True,
-                        "chips": [{"text": f"{word} {_fact(layer, [x])}: {_state_short(x)}",
+                        "chips": [{"text": f"{PROTO_WORDS[layer]} {_state_short(x)}",
                                    "cls": cls}],
                         "state": "", "how": "no physical link carries it (between loopbacks, "
                                             "or over a link LLDP does not see)",
@@ -435,7 +528,8 @@ def view(list_name: str, values) -> dict:
     st = stored()
     out = {"list": list_name, "s": s, "qs": lambda over=None: qs(list_name, s, over),
            "state": st["state"], "value_at": st["value_at"], "failed": st["failed"],
-           "proto_words": PROTO_WORDS, "not_read": NOT_READ, "zooms": ZOOMS,
+           "proto_words": PROTO_WORDS, "toggle_words": TOGGLE_WORDS, "not_read": NOT_READ,
+           "zooms": ZOOMS, "since_text": _since_text,
            "line_words": LINE_WORDS, "group_words": GROUP_WORDS, "classes": CLASSES,
            "manager": MANAGER, "label": label, "symbols": symbols(), "icon_of": {}}
     if st["state"] != "ok":
@@ -455,7 +549,9 @@ def view(list_name: str, values) -> dict:
                any(ref["layer"] == p for l in phys for ref in l.get("adj") or []) or
                (p != "ripng" and layers.get(p))]
     on = present if s["p"] is None else [p for p in s["p"] if p in present]
-    links = [_link(l, layers, on, nodes) for l in phys] + _routing_only(layers, on, nodes)
+    twoway = _twoway_intended(layers)
+    links = [_link(l, layers, on, nodes, twoway) for l in phys] + \
+        _routing_only(layers, on, nodes, twoway)
     weak = _weak(an, phys)
     out.update(state="ok", errors=value.get("errors") or [], present=present, on=on,
                layout=net.get("layout"),
@@ -780,7 +876,8 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
             "nodes": out_nodes, "labels": labels, "z": s["z"]}
 
 
-_ICON = {"router": "router", "switch": "switch", "l3switch": "switch", "server": "server",
+_ICON = {"router": "router", "switch": "switch", "l3switch": "switch", "firewall": "firewall",
+         "server": "server", "accesspoint": "access-point", "controller": "controller",
          "external": "cloud", "unknown": "unknown"}
 
 

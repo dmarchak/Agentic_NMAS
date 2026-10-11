@@ -14,7 +14,7 @@
 <a class="{{ cls }}" href="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}" hx-get="{{ url_for('topology_v2.region') }}{{ t.qs(over) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ url_for('topology_v2.page') }}{{ t.qs(over) }}"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
 {%- endmacro -%}
 {%- macro ic(name, cls='') -%}<svg class="topo-ico {{ cls }}" aria-hidden="true"><use href="#ti-{{ name }}"></use></svg>{%- endmacro -%}
-{%- macro since_words(iso, seen) -%}{% if iso %}{{ 'since' if seen else 'at least since' }} {{ stamp(iso, (iso[11:16] ~ ' UTC') if iso|length > 15 else '') }}{% endif %}{%- endmacro -%}
+{%- macro since_words(iso, seen) -%}{% if iso %}<time datetime="{{ iso }}" title="{{ iso }}">{{ t.since_text(iso, seen) }}</time>{% endif %}{%- endmacro -%}
 {%- macro hidden_state(t, skip) -%}
 <input type="hidden" name="list" value="{{ t.list }}">
 {%- for k, v in t.s.items() if k not in skip and v not in (none, '') %}{% if k == 'p' %}<input type="hidden" name="p" value="{{ v | join(',') }}">{% else %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
@@ -26,13 +26,13 @@
 {%- endif %}
 
 <div class="topo-head">
-  <h1>Topology {{ info('topology') }} <span class="topo-sub">· {{ t.list }}{% if t.state == 'ok' %} · {{ t.summary.devices }} devices, {{ t.summary.links }} links{% if t.summary.outside %}, {{ t.summary.outside }} outside{% endif %} · read {{ stamp(t.value_at) }}{% endif %}</span></h1>
+  <h1>Topology {{ info('topology') }} <span class="topo-sub">· {{ t.list }}{% if t.state == 'ok' %} · {{ t.summary.devices }} devices, {{ t.summary.links }} links{% if t.summary.outside %}, {{ t.summary.outside }} external{% endif %} · read {{ stamp(t.value_at) }}{% endif %}</span></h1>
   {%- if t.state == 'ok' %}
   <form class="topo-find" method="get" action="{{ page }}" hx-get="{{ region }}" hx-target="#topo" hx-swap="outerHTML">
     {{- hidden_state(t, ('q', 'sel')) }}
     <label class="sr" for="topo-find">Find a device, address or interface</label>
-    <input id="topo-find" type="search" name="q" value="{{ t.s.q }}" placeholder="Find a device, address or interface">
-    <span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"><span class="op-idle">Find</span><span class="op-busy">Finding…</span></button>{{ how('topology', 'map') }}</span>
+    <input id="topo-find" type="search" name="q" value="{{ t.s.q }}" placeholder="Find a device, address or interface" enterkeyhint="search">
+    {{ how('topology', 'map') }}
   </form>
   {%- endif %}
 </div>
@@ -60,12 +60,16 @@
 <div class="topo-tools">
   <span class="topo-tools-l topo-wide">Protocols</span>
   <div class="topo-protos topo-wide" role="group" aria-label="Protocols on the links">
-    {%- for p in t.present %}
+    {%- for p in t.toggle_words %}
+    {%- if p in t.present %}
     {%- set now_on = p in t.on %}
     {%- set next = (t.on | reject('equalto', p) | list) if now_on else (t.on + [p]) %}
-    {{ go(t, {'p': next, 'tab': 'map'}, t.proto_words[p] ~ (' (not read)' if p == 'ripng' else ''), 'btn btn-small' ~ (' on' if now_on), now_on) }}
+    {{ go(t, {'p': next, 'tab': 'map'}, t.toggle_words[p], 'btn btn-small' ~ (' on' if now_on), now_on) }}
+    {%- else %}
+    <span class="btn btn-small" aria-disabled="true" title="No {{ t.toggle_words[p] }} neighbourship is read or configured on {{ t.list }}">{{ t.toggle_words[p] }}</span>
+    {%- endif %}
     {%- endfor %}
-    <span class="topo-faint small" title="Mercury reads OSPF, OSPFv3 and BGP; RIPng is shown where committed intent configures it">Not read: {{ t.not_read }}</span>
+    {%- for w in t.not_read %}<span class="btn btn-small" aria-disabled="true" title="Mercury does not read {{ w }}">{{ w }}</span>{% endfor %}
   </div>
   <span class="topo-tools-l topo-narrow">On the map:</span>
   {%- if t.s.ports == '' %}
@@ -83,7 +87,7 @@
   {%- set zi = t.zooms.index(t.s.z | int) %}
   <div class="seg topo-wide" role="group" aria-label="Zoom">
     {%- if zi > 0 %}{{ go(t, {'z': t.zooms[zi - 1], 'tab': 'map'}, '−', 'seg-btn', none, 'Zoom out') }}{% else %}<span class="seg-btn" aria-disabled="true" title="Zoomed out as far as it goes">−</span>{% endif %}
-    {{- go(t, {'z': 100, 'tab': 'map'}, 'Fit' if t.s.z == '100' else t.s.z ~ '%', 'seg-btn' ~ (' on' if t.s.z == '100'), none, 'Fit the map to its box') }}
+    {{- go(t, {'z': 100, 'tab': 'map'}, t.s.z ~ '%', 'seg-btn' ~ (' on' if t.s.z == '100'), none, 'Fit the map to its box (100%)') }}
     {%- if zi < t.zooms | length - 1 %}{{ go(t, {'z': t.zooms[zi + 1], 'tab': 'map'}, '+', 'seg-btn', none, 'Zoom in') }}{% else %}<span class="seg-btn" aria-disabled="true" title="Zoomed in as far as it goes">+</span>{% endif %}
   </div>
   {{ go(t, {'weak': '0' if t.s.weak == '1' else '1', 'tab': 'map'}, 'Weak points', 'btn btn-small topo-wide' ~ (' on' if t.s.weak == '1'), t.s.weak == '1') }}
@@ -166,7 +170,7 @@
 <div class="topo-legend small" aria-label="Legend">
   {%- for k in ('ok', 'warn', 'bad', 'unread') %}<span><svg width="26" height="10" aria-hidden="true"><line class="topo-line topo-{{ k }}" x1="1" y1="5" x2="25" y2="5"></line></svg>{{ t.line_words[k] }}</span>{% endfor %}
   <span class="topo-legsep"></span>
-  {%- for k, icon_name in [('router', 'router'), ('switch', 'switch'), ('l3switch', 'switch'), ('server', 'server'), ('external', 'cloud'), ('unknown', 'unknown')] %}<span>{{ ic(icon_name) }}{% if k == 'l3switch' %}<b class="topo-l3b">L3</b>{% endif %}{{ t.classes[k] }}</span>{% endfor %}
+  {%- for k, icon_name in [('router', 'router'), ('switch', 'switch'), ('l3switch', 'switch'), ('firewall', 'firewall'), ('server', 'server'), ('accesspoint', 'access-point'), ('controller', 'controller'), ('external', 'cloud'), ('unknown', 'unknown')] %}<span>{{ ic(icon_name) }}{% if k == 'l3switch' %}<b class="topo-l3b">L3</b>{% endif %}{{ t.classes[k] }}</span>{% endfor %}
 </div>
 </div>
 {%- endif %}
@@ -200,7 +204,7 @@
 <section class="card topo-panel topo-pane topo-pane-att" aria-labelledby="topo-att-h">
   <h2 id="topo-att-h">Needs attention on the map {{ badge(c.all, 'danger' if c.bad else 'warn' if c.all else 'ok') }}</h2>
   <div class="topo-counts" role="group" aria-label="Show">
-    {{ go(t, {'show': 'all'}, 'All ' ~ c.all, 'topo-count' ~ (' on' if t.s.show == 'all'), t.s.show == 'all') }}
+    {{ go(t, {'show': 'all'}, 'All ' ~ c.all, 'topo-count topo-count-all' ~ (' on' if t.s.show == 'all'), t.s.show == 'all') }}
     {%- for k in ('bad', 'warn', 'unread') %}
     <a class="topo-count{{ ' on' if t.s.show == k }}" href="{{ page }}{{ t.qs({'show': k}) }}" hx-get="{{ region }}{{ t.qs({'show': k}) }}" hx-target="#topo" hx-swap="outerHTML" hx-push-url="{{ page }}{{ t.qs({'show': k}) }}" aria-pressed="{{ 'true' if t.s.show == k else 'false' }}" title="{{ t.line_words[k] }}"><svg width="16" height="8" aria-hidden="true"><line class="topo-line topo-{{ k }}" x1="1" y1="4" x2="15" y2="4"></line></svg><span class="sr">{{ t.line_words[k] }}: </span>{{ c[k] }}</a>
     {%- endfor %}
@@ -234,7 +238,7 @@
     <div class="topo-ent topo-weak">
       {%- if w.kind == 'spof' %}<span class="mono">{{ w.device }} {{ badge('SPOF', 'warn') }}</span><span class="topo-what">{{ w.words }}</span>
       {%- elif w.kind == 'bridge' %}<span class="mono">{{ w.title }} {{ badge('only link', 'warn') }}</span><span class="topo-what">{{ w.words }}</span>
-      {%- else %}<span class="mono">{{ w.device }} {{ badge('island', 'danger') }}</span><span class="topo-what">Island: {{ w.why }}. {% if w.became %}Became an island {{ stamp(w.since) }}.{% elif w.since %}An island since {{ stamp(w.since) }}.{% endif %}</span>
+      {%- else %}<span class="mono">{{ w.device }} {{ badge('island', 'danger') }}</span><span class="topo-what">Island: {{ w.why }}. {% if w.became %}Became an island: {{ t.since_text(w.since) }}.{% elif w.since %}An island {{ t.since_text(w.since) }}.{% endif %}</span>
         <span><a class="btn btn-small" data-op="topology" href="{{ url_for('topology_v2.expected_form', list=t.list, device=w.device) }}" hx-get="{{ url_for('topology_v2.expected_form', list=t.list, device=w.device) }}" hx-target="#topo" hx-swap="outerHTML">Mark as expected…</a>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span>
         {%- if op.state == 'form' and op.device == w.device %}
         <form class="set-form topo-expect" method="post" action="{{ url_for('topology_v2.expected_declare') }}" hx-post="{{ url_for('topology_v2.expected_declare') }}" hx-target="#topo" hx-swap="outerHTML" autocomplete="off">
@@ -252,7 +256,6 @@
       {%- endif %}
     </div>
     {%- endfor %}
-    {%- if t.critical and not at.filtered %}<p class="small topo-faint">Most paths pass through (betweenness): {% for x in t.critical %}{{ t.label(x.device) }} ({{ x.betweenness }}){{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
   </details>
   {%- endif %}
   {%- if at.groups.apart %}
@@ -274,12 +277,12 @@
     {%- for l in t.svg.links %}<path class="topo-line topo-{{ l.cls }}" d="{{ l.d }}"></path>{% endfor %}
     {%- for n in t.svg.nodes %}<use class="topo-mini-n" href="#ti-{{ n.icon }}" x="{{ n.x - 20 }}" y="{{ n.y - 20 }}" width="40" height="40"></use>{% endfor %}
   </svg>
-  <p class="small topo-faint">The whole map with labels off: icons and colours only. Labels Auto shows ports and states at Fit and closer and hides them zoomed out; On, always; Off, never. Needs attention still names every link to review.</p>
+  <p class="small topo-faint">Labels (Auto) appear as you zoom in. At this zoom: icons and colours only, and the attention list still names every link that needs review. On, labels always; Off, never.</p>
 </section>
 {%- endif %}
 </aside>
 
-<section class="card topo-panel topo-pane topo-pane-dev" aria-labelledby="topo-dev-h">
+<section class="card topo-panel topo-pane topo-pane-dev{{ ' topo-dev-always' if t.collapsed }}" aria-labelledby="topo-dev-h">
   <details class="topo-devs" data-keep="topo-devs"{% if t.s.tab == 'dev' %} open{% endif %}>
   <summary><h2 id="topo-dev-h">Devices by band</h2></summary>
   {%- for grp in t.list_groups %}

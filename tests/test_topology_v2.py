@@ -5,8 +5,9 @@ on s3 Vlan99's subnet, as the lab's is). What boards TopoDesktop and TopoPhone d
 (docs/fidelity/topology.md compares them region by region; this checks what each region holds):
 
 - the header: the network, its counts and the read's age, Find, How does this work?;
-- every link labelled with the PORT at each end, and the neighbourships it carries as chips with
-  their key fact and state (OSPF and OSPFv3 area, BGP peer AS; the operator, 2026-10-10);
+- every link labelled with the PORT at each end, and the neighbourship between its two ends as
+  the board's chips, the protocol and the state ("OSPF FULL", "BGP Estab"; C658); the area and
+  the peer AS in the link's card;
 - each link's line class against intent, the legend's four styles and device classes; device
   icons, an L3 switch badged, r5 as an outside peer with its AS, Mercury's host where measured;
 - Needs attention on the map: the one-sided links under "not as intended" with what is wrong,
@@ -97,8 +98,10 @@ def test_the_page_its_sidebar_and_header(web):
     assert 'aria-current="page"' in html and "<span>Topology</span>" in html
     assert re.search(r"<h1>Topology <a class=\"info-link\".*?</a> <span class=\"topo-sub\">· Lab · "
                      r"9 devices, 12 links, 1 "
-                     r"outside · read <time", html)
+                     r"external · read <time", html)
     assert 'placeholder="Find a device, address or interface"' in html
+    # The board's header: Find is the field alone (Enter finds), no button beside it.
+    assert ">Find</span>" not in html
     assert "How does this work?" in html
     assert re.search(r'<a href="/v2/device/r1\?list=Lab">', html), "a device opens its page"
     assert 'hx-trigger="nmas:topology from:body"' in html
@@ -112,18 +115,38 @@ def test_every_link_names_the_port_at_each_end(web):
         assert p in ports, p
 
 
-def test_each_neighbourship_is_chipped_with_its_key_fact_and_state(web):
+def test_each_link_names_the_neighbourship_between_its_two_ends(web):
+    """C658, the board's chips: "OSPF FULL", "BGP Estab": the protocol and the state of the
+    neighbourship between the link's two ends, one chip per protocol; no area, AS or count. The
+    lab's twelve links, measured on the captures: r3-r4 OSPF and OSPFv3 FULL; r3-s3 and r4-s4
+    OSPF FULL; r1-s3, r2-s4 and s3-s4 OSPF 2WAY (DROthers on VLAN 100, as OSPF intends); r3-r5
+    and r4-r5 BGP Estab (the IPv4 and IPv6 sessions, one chip); r1-s1 and r2-s2 RIPng, not
+    read. Each VLAN 100 trunk also carries seven adjacencies between OTHER devices, all as
+    intended: no chip (the live page repeated them on every trunk)."""
     chips = _chips(_get(web))
-    texts = [t for _c, t in chips]
-    # r3 Gi4 to r4 Gi4: one adjacency each way, FULL, area 0.
-    assert "OSPF area 0: FULL" in texts and "OSPFv3 area 0: FULL" in texts
-    # A port on the shared VLAN 100 segment: its five OSPF neighbours, counted by state.
-    assert "OSPF area 0: 2WAY×3 FULL×2" in texts
-    # eBGP to the outside peer: its AS and the two sessions (IPv4 and IPv6).
-    assert texts.count("eBGP AS 65002: Estab×2") == 2
-    # RIPng is configured on the one-sided links and read by nothing.
-    assert texts.count("RIPng ?") == 2 and ("unread", "RIPng ?") in chips
-    assert {c for c, _t in chips} <= {"ok", "unread"}
+    texts = sorted(t for _c, t in chips)
+    assert texts == sorted(["OSPF FULL"] * 3 + ["OSPFv3 FULL"] + ["OSPF 2WAY"] * 3 +
+                           ["BGP Estab"] * 2 + ["RIPng ?"] * 2)
+    assert ("unread", "RIPng ?") in chips
+    assert {c for c, t in chips if t != "RIPng ?"} == {"ok"}
+
+
+def test_a_2way_where_full_is_intended_is_flagged_by_name(web):
+    """The board's "OSPF 2WAY, intended FULL": r1's adjacency with r3, the segment's DR, stuck in
+    2WAY. It passes over r1-s3 and r3-s3 (VLAN 100), so each gets its own chip naming both
+    devices, the lines turn "not as intended", and Needs attention says what was intended."""
+    res, up = _capture()
+    for row in res["r1"]["ospfNbrState"]:
+        if row["metric"].get("ospfNbrIpAddr", "").endswith(".13"):          # r3, the DR
+            row["value"] = [row["value"][0], "4"]                           # 2-way
+    for row in res["r3"]["ospfNbrState"]:
+        if row["metric"].get("ospfNbrIpAddr", "").endswith(".11"):
+            row["value"] = [row["value"][0], "4"]
+    _store(_value(res, up))
+    html = _get(web)
+    assert _chips(html).count(("warn", "OSPF r1–r3 2WAY")) == 2
+    att = _section(html, "topo-att-h")
+    assert "OSPF area 0 r1 to r3: 2WAY, intended FULL" in att
 
 
 def test_lines_say_how_each_link_compares_with_intent(web):
@@ -134,8 +157,7 @@ def test_lines_say_how_each_link_compares_with_intent(web):
     assert classes[:12].count("warn") == 2 and classes[:12].count("ok") == 10
     legend = re.search(r'aria-label="Legend".*?</div>', html, re.S).group(0)
     for words in ("as intended", "not as intended", "down, or a neighbour missing", "not read",
-                  "router", "L2 switch", "L3 switch", "Mercury&#39;s host", "outside management",
-                  "class unknown"):
+                  "router", "L2 switch", "L3 switch", "server", "external", "class unknown"):
         assert words in legend, words
 
 
@@ -147,6 +169,20 @@ def test_devices_are_icons_by_class(web):
     assert html.count('class="topo-l3-t"') == 2
     assert re.search(r'<text class="topo-name"[^>]*>r5 · AS 65002</text>', html)
     assert re.search(r'<text class="topo-name"[^>]*>Mercury</text>', html)
+
+
+def test_the_board_s_other_classes_come_from_the_role_s_own_word(web):
+    """C658: the board's legend has nine classes; firewall, access point and controller are each
+    our own icon, and a device is one only when its role names it; never a guess."""
+    from modules.topology_layout import node_class
+    assert node_class("x", {"role": "edge-firewall"}) == "firewall"
+    assert node_class("x", {"role": "access-point"}) == "accesspoint"
+    assert node_class("x", {"role": "wlan-controller"}) == "controller"
+    assert node_class("x", {"role": "app-server"}) == "server"
+    assert node_class("x", {"role": "load-balancer"}) == "unknown"
+    html = _get(web)
+    for name in ("firewall", "access-point", "controller"):
+        assert f'<symbol id="ti-{name}"' in html, name
 
 
 def test_needs_attention_names_what_is_wrong_and_the_weak_points(web):
@@ -175,9 +211,13 @@ def test_each_link_has_a_hover_card_and_a_selected_one_its_sheet(web):
     cards = re.findall(r'<foreignObject class="topo-card".*?</foreignObject>', html, re.S)
     assert len(cards) == 12
     card = next(c for c in cards if "r3 Gi4 ↔ r4 Gi4" in c)
-    assert "OSPF area 0" in card and "r3 Gi4 to r4 FULL" in card
+    # The board's card: a row per protocol, its area, the state, and against intent.
+    assert "<dt>OSPF area 0</dt>" in card and "as intended" in card
     assert "BGP, RIPng</dt>" in card and "none on this link; none intended" in card
     assert "r3's Neighbours" in card and "tab=neighbours" in card
+    # A VLAN 100 trunk's card lists what passes over it, one level down from the map.
+    trunk = next(c for c in cards if "r3 Gi3 ↔ s3 Gi0/2" in c)
+    assert "passing over this link: " in trunk and "r1–r3 FULL" in trunk
     html = _get(web, "&sel=r1%3AGi3~s1%3AGi0%2F2")
     assert '<g class="topo-l topo-sel">' in html and 'class="topo-glow' in html
     sheet = re.search(r'<section class="topo-sheet".*?</section>', html, re.S).group(0)
@@ -189,10 +229,14 @@ def test_each_link_has_a_hover_card_and_a_selected_one_its_sheet(web):
 def test_the_protocol_toggles_change_what_the_links_carry(web):
     html = _get(web, "&p=bgp")
     texts = [t for _c, t in _chips(html)]
-    assert texts == ["eBGP AS 65002: Estab×2"] * 2
+    assert texts == ["BGP Estab"] * 2
     assert re.search(r'aria-pressed="false">OSPF</a>', html)
     assert re.search(r'aria-pressed="true">BGP</a>', html)
-    assert "Not read: EIGRP, IS-IS" in html
+    # The board's six toggles, in its order; EIGRP and IS-IS drawn off and say why.
+    tools = re.search(r'aria-label="Protocols on the links">(.*?)</div>', html, re.S).group(1)
+    assert re.findall(r">(OSPF|OSPFv3|BGP|RIP / RIPng|EIGRP|IS-IS)<", tools) == \
+        ["OSPF", "OSPFv3", "BGP", "RIP / RIPng", "EIGRP", "IS-IS"]
+    assert 'aria-disabled="true" title="Mercury does not read EIGRP">EIGRP<' in tools
 
 
 def test_ports_labels_and_zoom(web):
