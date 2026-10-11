@@ -91,6 +91,10 @@ NOT_AN_OPERATION = {
     ("_logs_view.html", "Copy the link"): "copies this view's address (the question it carries), "
                                           "a read",
     ("_logs_view.html", "Show"): "redraws the opened device's lines with the filters asked, a read",
+    ("_history_metric.html", "Copy the link"): "copies this question's address (its device, "
+                                               "interface and range), a read",
+    ("_history_metric.html", "Show"): "asks the question again for the device and interface "
+                                      "chosen, a read",
     ("_topology_map.html", "'s Neighbours"): "opens that end's Neighbours tab on its device "
                                              "page, a read",
     ("_credential_profiles.html", "Cancel"): "puts the profiles table back, writing nothing",

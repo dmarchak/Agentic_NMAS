@@ -1591,3 +1591,9 @@ a.hq-q strong { color: var(--accent); }
 .hq-src { font-size: 12px; color: var(--ink-2); }
 .hq-later { border-style: dashed; color: var(--ink-2); }
 @media (max-width: 900px) { .hq-grid { grid-template-columns: 1fr; } }
+/* History › Query › a metrics question (C667; board B, AskMetric). */
+.hq-metric { display: flex; flex-direction: column; gap: 12px; }
+.hq-ask { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.hq-ask label { display: flex; flex-direction: column; gap: 2px; }
+.hq-expr pre { white-space: pre-wrap; word-break: break-word; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }

@@ -1,0 +1,53 @@
+{%- from "v2/_macros.html" import icon, info -%}
+{#- History › Query › a metrics question (C667; board B, AskMetric): the question with its
+    device, interface and range in the address (so a view is a link), the chart (the
+    Monitoring panel island, reading history_query_metric_data), what holds the range, the
+    source and the question's PromQL (modules/history_query.py). Saving a view and editing the
+    PromQL are the next step. -#}
+{%- set m = metric %}{% set s = m.s %}
+{%- set here = url_for('v2.history_query_metric', key=m.key) %}
+{%- macro q(over) -%}?{% for k, v in dict(s, list=m.list, **over).items() %}{% if v %}{{ k }}={{ v | urlencode }}&{% endif %}{% endfor %}{%- endmacro %}
+<div id="hq-metric" class="hq-metric">
+<div class="lg-crumb"><a href="{{ url_for('v2.history_page', tab='query') }}">Query</a> › {{ m.q.title }} · {{ m.list }}</div>
+<div class="lg-head">
+  <h2>{{ m.q.title }} {{ info('history', 'query') }}</h2>
+  <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q({}) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
+</div>
+{%- if m.error %}<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>{{ m.error }}. The question is shown for every device instead.</p></div>{% endif %}
+<form class="hq-ask" method="get" action="{{ here }}">
+  <input type="hidden" name="list" value="{{ m.list }}"><input type="hidden" name="range" value="{{ s.range }}">
+  <label><span class="muted small">Device</span>
+    <select name="d"><option value="">Every device</option>
+      {%- for d in m.devices %}<option value="{{ d }}"{% if d == s.d %} selected{% endif %}>{{ d }}</option>{% endfor %}
+    </select></label>
+  <label><span class="muted small">Interface</span>
+    <select name="i"{% if not s.d %} disabled{% endif %}><option value="">Every interface</option>
+      {%- for i in m.interfaces %}<option value="{{ i }}"{% if i == s.i %} selected{% endif %}>{{ i }}</option>{% endfor %}
+    </select></label>
+  <button type="submit" class="btn">Show</button>
+  {%- if not s.d %}<span class="muted small">choose a device to ask by interface</span>{% elif m.interfaces_why %}<span class="muted small">its interfaces could not be listed: {{ m.interfaces_why }}</span>{% endif %}
+</form>
+<div class="seg" role="group" aria-label="Time range">
+  {%- for key, rv in m.ranges.items() %}<a class="seg-btn{% if s.range == key %} on{% endif %}" href="{{ here }}{{ q({'range': key}) }}" aria-pressed="{{ 'true' if s.range == key else 'false' }}">{{ rv[0] }}</a>{% endfor %}
+</div>
+{%- if m.grafana_error %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ m.grafana_error }}: nothing can be asked yet.</p></div>
+{%- else %}
+<div class="panels">
+<section class="panel gx-0 gw-24" data-panel-h="9" data-panel-src="{{ url_for('v2.history_query_metric_data', key=m.key) }}{{ q({}) }}" data-panel-type="timeseries" data-panel-unit="{{ m.q.unit }}">
+  <div class="panel-head"><h3>{{ s.d or 'Every device' }}: {{ m.q.y }}{% if s.d %}, by interface{% else %}, by device{% endif %}</h3></div>
+  <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
+</section>
+</div>
+<p class="small"><strong>Coverage:</strong>
+  {%- if m.past_live and not m.history_store %} this range reaches past the {{ m.live_days }} days the live store keeps, and no long-term store is set (Settings › Integrations), so it is not asked: choose a shorter range.
+  {%- elif m.past_live %} the last {{ m.live_days }} days at full detail from the live store; the rest from the long-term store, {{ m.history_store }}.
+  {%- else %} full detail, from the live store (it keeps {{ m.live_days }} days).{% endif %}</p>
+{%- endif %}
+<p class="small muted"><strong>Source:</strong> {{ m.q.source }}.</p>
+<details class="hq-expr" data-keep="hq-expr">
+  <summary>The query (PromQL)</summary>
+  <pre class="mono">{{ m.expr }}</pre>
+  <p class="muted small">The question's own query for the device and interface chosen. Editing it, and saving a view, are the next step of this page.</p>
+</details>
+</div>

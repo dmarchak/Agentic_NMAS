@@ -11,7 +11,7 @@ Shots: desktop 1440 (120 days, every severity, r4 opened); phone 390 (the page h
 Compared again 2026-10-10 after the host walk: Newest follows the severity asked (the exact time when seen, else the last day counted, the board's "09:41 today" and "2 Oct"); no region's verdict changed.
 Compared again 2026-10-11 after C667 moved the view to its board's home, History › Query (`/v2/history/query/syslog`; the sidebar's Logs draws the same page): History's heading, its four tabs with Query on, and the crumb "Query › Syslog by device" now as the board draws them; the shots at 1440 and 390 again; no other region's verdict changed.
 Templates compared: templates/v2/logs.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
-Templates sha256: `478efdd74839d704688992fa3353d6135ecc83fe7d4a68d12048778a3a14c359`
+Templates sha256: `300891a16259a8b7e18e49ac767f416e544600e6aa0ed3b74a1774b1559cd9b4`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

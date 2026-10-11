@@ -17,6 +17,7 @@ import functools
 import http.server
 import os
 import threading
+import time
 
 import pytest
 
@@ -95,7 +96,8 @@ def test_dhcp(tmp_path, monkeypatch):
                    widths=((1440, 1.0), (390, 2.0)))
 
 
-def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.0))):
+def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.0)),
+           settled=""):
     from tests.browser import Browser
 
     os.makedirs(OUT, exist_ok=True)
@@ -109,6 +111,13 @@ def _shoot(name, board_file, page_url_for, served, widths=((1280, 1.0), (390, 2.
                     b.go(boards.url(board_file))
                     _full(b, os.path.join(OUT, f"{name}-board-{width}.png"))
                 b.go(served.url(page_url_for(width)))
+                if settled:
+                    # A page that draws after it loads (a chart reading its data): shot once
+                    # *settled* (a JS expression) is true, at most 10 s.
+                    for _ in range(100):
+                        if b.js(f"return !!({settled})"):
+                            break
+                        time.sleep(0.1)
                 if width < 480:
                     # Firefox's narrowest window is 488 CSS px wide; a phone is narrower. The
                     # media queries are the same below 700, so the page is held to the phone's
@@ -196,6 +205,28 @@ def test_history_query(tmp_path, monkeypatch):
     import app as A
     with browser.Served(A.app) as served:
         _shoot("history-query", "AskLibrary.dc.html", lambda w: "/v2/history?tab=query", served,
+               widths=((1440, 1.0), (390, 2.0)))
+
+
+def test_history_metric(tmp_path, monkeypatch):
+    """C667's board B (AskMetric, 1440) beside the metrics question, Grafana answering with a
+    real capture (tests/fixtures/grafana/dsquery/throughput.json)."""
+    from tests import browser
+    from tests import test_history_query as Q
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import device_page
+    g = Q._Grafana()
+    monkeypatch.setattr(device_page, "_cached", lambda name, list_name=None: (
+        {"datasources": [{"uid": "prom", "type": "prometheus", "name": "Prometheus",
+                          "isDefault": True}]}, "2026-10-11T09:00:00Z", ""))
+    monkeypatch.setattr(device_page, "grafana_client", lambda list_name: g)
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("history-metric", "AskMetric.dc.html",
+               lambda w: "/v2/history/query/metric/errors?range=30d", served,
+               settled="!document.querySelector('.panel-wait')",
                widths=((1440, 1.0), (390, 2.0)))
 
 

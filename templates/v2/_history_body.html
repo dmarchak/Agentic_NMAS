@@ -49,6 +49,8 @@
   <button type="submit" class="btn">Show</button>
 </form>
 {% include "v2/_history_timeline.html" %}
+{%- elif tab == 'query' and metric %}
+{% include "v2/_history_metric.html" %}
 {%- elif tab == 'query' and syslog %}
 {% include "v2/_logs_view.html" %}
 {%- elif tab == 'query' %}

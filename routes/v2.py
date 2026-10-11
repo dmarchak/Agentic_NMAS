@@ -444,6 +444,39 @@ def history_query_syslog():
     return _page("v2/logs.html", active_nav="history", **syslog_ctx(request))
 
 
+@bp.route("/history/query/metric/<key>", methods=["GET"])
+def history_query_metric(key):
+    """History › Query › a metrics question (board B, AskMetric): the question, its device and
+    interface, the range, and the chart, which reads `history_query_metric_data`. A read."""
+    from flask import abort, request
+
+    from modules import history_query
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    if key not in history_query.METRICS:
+        abort(404)
+    ref = listref.active()
+    m = history_query.metric_view(key, named_list(request) or ref.name, request.args)
+    return _page("v2/history.html", active_nav="history", tab="query", tabs=HISTORY_TABS,
+                 ref=ref, remote=_history_remote(ref), f=_history_filters(request), metric=m)
+
+
+@bp.route("/history/query/metric/<key>/data", methods=["GET"])
+def history_query_metric_data(key):
+    """The question's series for the chart (the Monitoring panel's payload): the question's
+    PromQL, never the browser's, asked of the network's Grafana. A read."""
+    from flask import jsonify, request
+
+    from modules import history_query
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    payload, code = history_query.metric_data(key, named_list(request) or listref.active().name,
+                                              request.args)
+    return jsonify(payload), code
+
+
 def syslog_ctx(request) -> dict:
     """History › Query › Syslog by device's context, for its home and for the sidebar's Logs,
     which draws the same page (C667): only what the tab draws, never the timeline's reads."""

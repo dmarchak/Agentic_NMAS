@@ -75,9 +75,14 @@ Ask the network's history, starting from a question. The tab says first **what t
 holds**: how many days of metrics are kept at full detail and whether a long-term store answers
 past them (both from this network's settings), and how long logs are kept and when the log
 store began (the logs reader's own count). Then the **ready-made questions**, each opening its
-answer: **Syslog by device** opens the network's syslog by device (see [Logs](logs)); the others
-(interface errors, CPU and memory, routing neighbour changes, restarts, telemetry rates) are
-drawn as not built yet and open nothing. Saving a view, and asking your own PromQL or LogQL,
+answer: **Syslog by device** opens the network's syslog by device (see [Logs](logs));
+**Interface errors and discards over time** opens a chart of discards per second, for every
+device or, choosing one, by its interfaces, over 24 hours to a year. It is asked of the
+network's Grafana the way a Monitoring panel is, from the store that keeps the range: a range
+past the days the live store keeps is refused, naming the setting, unless a long-term store is
+set. Its own query is shown under the chart; the device, the interface and the range are in
+the address, so Copy the link carries the question. The others (CPU and memory, routing
+neighbour changes, restarts, telemetry rates) are drawn as not built yet and open nothing. Saving a view, and asking your own PromQL or LogQL,
 come next. The sidebar's Logs opens the same Syslog by device page.
 
 ## Baselines {#baselines}

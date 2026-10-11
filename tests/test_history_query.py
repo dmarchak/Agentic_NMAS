@@ -28,8 +28,9 @@ def test_the_six_questions_in_the_board_s_order_and_only_the_built_one_links(web
                       "Routing neighbour changes", "Syslog by device", "Restarts",
                       "Telemetry rates"]
     links = re.findall(r'<a class="hq-q" href="([^"]+)"><strong>([^<]+)', html)
-    assert links == [("/v2/history/query/syslog", "Syslog by device")]
-    assert html.count("not built yet") == 5
+    assert links == [("/v2/history/query/metric/errors", "Interface errors and discards over time"),
+                     ("/v2/history/query/syslog", "Syslog by device")]
+    assert html.count("not built yet") == 4
 
 
 def test_what_the_history_holds_comes_from_the_settings_and_the_reader(web, monkeypatch):  # noqa: F811
@@ -57,3 +58,85 @@ def test_the_coverage_reads_nothing_per_device(web, monkeypatch):  # noqa: F811
         raise AssertionError("the Query tab opened a device session")
     monkeypatch.setattr(connection, "open_ssh", refuse)
     assert "What the history holds" in _tab(web)
+
+
+# ---------------------------------------------------------------------------
+# Board B (AskMetric): a metrics question, its PromQL the question's, asked of the network's
+# Grafana by the Monitoring panel's path, drawn by the same chart.
+# ---------------------------------------------------------------------------
+
+import json  # noqa: E402
+import os  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ANSWER = json.load(open(os.path.join(ROOT, "tests", "fixtures", "grafana", "dsquery",
+                                     "throughput.json"), encoding="utf-8"))["answer"]
+
+
+class _Grafana:
+    """A Grafana that records each body asked and answers with a real capture."""
+
+    def __init__(self):
+        self.asked = []
+
+    def query(self, body, timeout=20.0):
+        self.asked.append(body)
+        return {"ok": True, "body": ANSWER}
+
+
+@pytest.fixture
+def grafana(monkeypatch):
+    from modules import device_page
+    g = _Grafana()
+    monkeypatch.setattr(device_page, "_cached", lambda name, list_name=None: (
+        {"datasources": [{"uid": "prom", "type": "prometheus", "name": "Prometheus",
+                          "isDefault": True}]}, "2026-10-11T09:00:00Z", ""))
+    monkeypatch.setattr(device_page, "grafana_client", lambda list_name: g)
+    return g
+
+
+class TestTheMetricQuestion:
+    def test_the_expression_carries_only_the_checked_names(self):
+        from modules import history_query as H
+        assert H.metric_expr("errors", {"d": "", "i": "", "range": "30d"}).startswith(
+            "sum by (device) (rate(ifInDiscards")
+        e = H.metric_expr("errors", {"d": "s3", "i": "Gi1/1", "range": "30d"})
+        assert 'ifInDiscards{device="s3",ifName="Gi1/1"}' in e and "sum by (ifName)" in e
+
+    @pytest.mark.parametrize("values, words", [
+        ({"d": 's3"}) or vector(1'}, "is not a device name"),
+        ({"d": "s3", "i": "Gi1 1"}, "is not an interface name"),
+        ({"i": "Gi1"}, "choose the device first"),
+        ({"range": "2y"}, "is not one of the ranges"),
+    ])
+    def test_a_value_it_cannot_carry_is_refused_by_name(self, values, words):
+        from modules import history_query as H
+        with pytest.raises(H.AskRefused) as err:
+            H.metric_ask(values)
+        assert words in str(err.value)
+
+    def test_the_data_route_asks_grafana_the_question_s_query(self, web, grafana):  # noqa: F811
+        r = web.get("/v2/history/query/metric/errors/data?d=s3&range=24h")
+        assert r.status_code == 200, r.get_json()
+        body = grafana.asked[-1]
+        assert [q["expr"] for q in body["queries"]][0].startswith(
+            'sum by (ifName) (rate(ifInDiscards{device="s3"}')
+        assert body["from"] == "now-86400s"
+        assert r.get_json()["series"], "the capture's series are drawn"
+
+    def test_a_range_past_the_live_store_with_no_long_term_store_is_refused(self, web,  # noqa: F811
+                                                                           grafana):
+        r = web.get("/v2/history/query/metric/errors/data?range=1y")
+        assert r.status_code == 400 and grafana.asked == []
+
+    def test_the_page_draws_the_question_and_the_chart_island(self, web, grafana):  # noqa: F811
+        html = web.get("/v2/history/query/metric/errors?d=s3&range=7d").get_data(as_text=True)
+        assert ">Query</a> › Interface errors and discards over time" in html
+        assert 'data-panel-src="/v2/history/query/metric/errors/data?' in html
+        assert "d=s3" in html.split('data-panel-src="')[1].split('"')[0]
+        assert 'sum by (ifName) (rate(ifInDiscards{device=&#34;s3&#34;}' in html
+        assert re.findall(r'class="seg-btn[^"]*"[^>]*>([^<]+)</a>', html) == \
+            ["24 h", "7 d", "30 d", "180 d", "1 y"]
+
+    def test_an_unknown_question_is_not_found(self, web):  # noqa: F811
+        assert web.get("/v2/history/query/metric/nope").status_code == 404
