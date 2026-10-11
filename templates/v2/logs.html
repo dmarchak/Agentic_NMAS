@@ -1,10 +1,8 @@
 {%- extends "v2/base.html" -%}
-{#- History › Query › Syslog by device (C652; at its board's home since C667): History's page
-    body (_history_body.html), its Query tab on, and the view drawn to board C (AskLogs, signed
-    off 2026-10-04), compared region by region in docs/fidelity/logs.md. The view is one region,
-    _logs_view.html, redrawn when the logs reader announces. The sidebar's Logs draws this same
-    page. -#}
-{% block title %}Syslog by device · History · {{ brand.short }}{% endblock %}
+{#- OBSERVE › Logs: the network's syslog as it arrives (C675; board D, LogsTail, drawn 2026-10-11
+    under the Phase 7 mode; compared in docs/fidelity/logs-tail.md). One region, _logs_tail.html,
+    redrawn when the logs-tail reader announces `logs`. -#}
+{% block title %}Logs · {{ brand.short }}{% endblock %}
 {% block main %}
-{% include "v2/_history_body.html" %}
+{% include "v2/_logs_tail.html" %}
 {% endblock %}

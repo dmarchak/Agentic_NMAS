@@ -59,6 +59,7 @@ NOT_AN_OPERATION = {
     ("_monitoring.html", "Dashboard"): "chooses which dashboard to draw",
     ("_macros.html", "Apply"): "applies a time range to the charts (range_controls)",
     ("_history_body.html", "Show"): "applies the commit filters",
+    ("_logs_tail.html", "Show"): "applies the live tail's filters to the stored window, a read",
     ("heartbeat.html", "Copy"): "copies the host step's command to the clipboard",
     ("_attention.html", "Copy"): "copies a row's command to the clipboard",
     ("_attention.html", "Open"): "navigates to the device page",

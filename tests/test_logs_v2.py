@@ -194,10 +194,14 @@ def _now(monkeypatch):
     monkeypatch.setattr("modules.logs_page.time.time", lambda: NOW)
 
 
-def test_the_sidebar_s_logs_opens_the_queryable_logs(web):
-    """C667: Syslog by device lives at its board's home, History › Query; the sidebar's Logs
-    draws that same page, History active, and every link in it leads to the home."""
-    for path in ("/v2/logs?list=Lab", "/v2/history/query/syslog?list=Lab"):
+def test_syslog_by_device_is_history_s_and_the_sidebar_s_logs_is_the_tail(web):
+    """C667: Syslog by device lives at its board's home, History › Query, History active, and
+    every link in it leads to the home. C675: the sidebar's Logs is the live tail
+    (tests/test_logs_tail.py), Logs active."""
+    tail = web.get("/v2/logs?list=Lab").get_data(as_text=True)
+    assert re.search(r'<a class="nav-item active" href="/v2/logs"', tail)
+    assert 'id="logs-tail"' in tail and "<h2>Syslog by device" not in tail
+    for path in ("/v2/history/query/syslog?list=Lab",):
         html = web.get(path).get_data(as_text=True)
         assert re.search(r'<a class="nav-item active" href="/v2/history"', html), path
         assert re.search(r'<a class="tab on" href="/v2/history\?tab=query" aria-current="page">'

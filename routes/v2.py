@@ -441,7 +441,7 @@ def history_query_syslog():
     `logs_v2.region` when the reader announces `logs`."""
     from flask import request
 
-    return _page("v2/logs.html", active_nav="history", **syslog_ctx(request))
+    return _page("v2/history_syslog.html", active_nav="history", **syslog_ctx(request))
 
 
 @bp.route("/history/query/metric/<key>", methods=["GET"])

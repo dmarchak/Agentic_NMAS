@@ -1,0 +1,71 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{#- The sidebar's Logs, the live tail (C675; board D, LogsTail): the logs-tail reader's stored
+    15-minute window, filtered here (modules/logs_tail_page.py). Redrawn when the reader announces
+    `logs`; paused, the window stays as it was and the count of what arrived since moves. -#}
+{%- macro go(over, words, cls='', label='') -%}
+<a class="{{ cls }}" href="{{ url_for('logs_v2.page') }}{{ g.qs(over) }}" hx-get="{{ url_for('logs_v2.tail') }}{{ g.qs(over) }}" hx-target="#logs-tail" hx-swap="outerHTML" hx-push-url="{{ url_for('logs_v2.page') }}{{ g.qs(over) }}"{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+{%- endmacro -%}
+{%- set older = url_for('v2.history_query_syslog', list=g.list, **g.older) if g.older is defined else url_for('v2.history_query_syslog', list=g.list) %}
+<div id="logs-tail" class="lt" hx-get="{{ url_for('logs_v2.tail') }}{{ g.qs() }}" hx-trigger="nmas:logs from:body" hx-swap="outerHTML">
+<div class="lt-head">
+  <h1>Logs {{ info('logs') }} <span class="chip dh-net">network: {{ g.list }}</span></h1>
+  {%- if g.state == 'ok' %}
+  <span class="lt-acts">
+    {%- if g.paused_at %}
+    <span class="lt-live"><span class="lt-dot lt-off" aria-hidden="true"></span>Paused at {{ stamp(g.paused_at, g.paused_at[11:19] ~ ' UTC') }} · {{ g.new_since }} new line{{ 's' if g.new_since != 1 }} since</span>
+    {{ go({'paused': ''}, 'Resume', 'btn btn-primary') }}
+    {%- else %}
+    <span class="lt-live" title="last read {{ g.read_at }}"><span class="lt-dot" aria-hidden="true"></span>Live · checked every 5 s{% if g.newest_at %} · the newest line {{ g.newest_at[11:19] }} UTC{% endif %}</span>
+    {{ go({'paused': g.read_at}, 'Pause', 'btn') }}
+    {%- endif %}
+  </span>
+  {%- endif %}
+</div>
+
+{%- if g.state == 'never' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>The logs-tail reader has not read the log store yet{% if g.failed %}: its last attempt failed, {{ g.failed }}{% endif %}. It reads every 5 seconds; this page redraws when it has.</p></div>
+{%- elif g.state == 'unreadable' %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The logs-tail reader's store cannot be read: {{ g.why }}. Nothing is drawn rather than lines that may be wrong.</p></div>
+{%- elif g.state in ('not_configured', 'not_applicable') %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ g.why }}: there is no log store to read here (the network's Loki card in Settings).</p></div>
+{%- else %}
+{%- if g.failed %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The log store did not answer{% if g.failed_at %} at {{ g.failed_at[11:19] }} UTC{% endif %} ({{ g.failed }}). Showing the lines read {{ stamp(g.read_at) }}; asked again every 5 seconds.</p></div>
+{%- endif %}
+{%- if g.from_query and g.filtered %}
+<div class="notice lt-came" role="status">{{ icon('info', 16) }}<p>Filtered as you came from History › Query{% if g.s.d %}: device <span class="mono">{{ g.s.d }}</span>{% endif %}{% if g.s.sev != 'all' %}, {{ g.severities[g.s.sev][0] }}{% endif %}{% if g.s.mn %}, mnemonic <span class="mono">{{ g.s.mn }}</span>{% endif %}{% if g.s.text %}, text <span class="mono">{{ g.s.text }}</span>{% endif %}. {{ go({'d': '', 'sev': 'all', 'mn': '', 'text': '', 'from': ''}, 'Clear filters') }} to see every line.</p></div>
+{%- endif %}
+<section class="card lt-card" aria-label="The last {{ g.window_minutes }} minutes">
+  <div class="lt-counts">
+    <span><strong>{{ g.total }}</strong> line{{ 's' if g.total != 1 }} in the last {{ g.window_minutes }} minutes</span>
+    <span>{{ badge(g.counts.error ~ ' error or worse', 'danger' if g.counts.error else 'neutral') }}</span>
+    <span>{{ badge(g.counts.warning ~ ' warning', 'warn' if g.counts.warning else 'neutral') }}</span>
+    <span>{{ badge(g.counts.other ~ ' notice and below') }}</span>
+    <span class="muted">from {{ g.devices | length }} device{{ 's' if g.devices | length != 1 }}</span>
+  </div>
+  <form class="lg-filters" method="get" action="{{ url_for('logs_v2.page') }}" hx-get="{{ url_for('logs_v2.tail') }}" hx-target="#logs-tail" hx-swap="outerHTML" hx-push-url="true" aria-label="Filter the lines">
+    <input type="hidden" name="list" value="{{ g.list }}">{% if g.paused_at %}<input type="hidden" name="paused" value="{{ g.paused_at }}">{% endif %}
+    <label>Device<select name="d"><option value="">every device ({{ g.devices | length }})</option>{% for d in g.devices %}<option value="{{ d }}"{% if g.s.d == d %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></label>
+    <label>Severity<select name="sev">{% for k, sv in g.severities.items() %}<option value="{{ k }}"{% if g.s.sev == k %} selected{% endif %}>{{ sv[0] }}</option>{% endfor %}</select></label>
+    <label>Mnemonic<input type="text" name="mn" value="{{ g.s.mn }}" placeholder="%LINK-3-UPDOWN" maxlength="80"></label>
+    <label>Text contains<input type="text" name="text" value="{{ g.s.text }}" maxlength="120"></label>
+    <span class="op-act"><button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Show</span><span class="op-busy">Filtering…</span></button></span>
+    {%- if g.filtered %} {{ go({'d': '', 'sev': 'all', 'mn': '', 'text': '', 'from': ''}, 'Clear filters', 'btn btn-small') }}{% endif %}
+  </form>
+  {%- if g.lines %}
+  <div class="table-wrap"><table class="table lg-lines" aria-label="The newest lines first">
+    <thead><tr><th scope="col">Received (UTC)</th><th scope="col">Device</th><th scope="col">Severity</th><th scope="col">Mnemonic</th><th scope="col">Message</th></tr></thead>
+    <tbody>{% for l in g.lines %}<tr><td class="mono">{{ l.at[11:19] }}</td><td class="mono">{% if l.dev %}<a href="{{ url_for('device_v2.device', name=l.dev, list=g.list) }}">{{ l.dev }}</a>{% else %}<span class="muted">—</span>{% endif %}</td><td>{% if l.sev is not none %}{{ badge(l.sev ~ ' ' ~ {0: 'emergency', 1: 'alert', 2: 'critical', 3: 'error', 4: 'warning', 5: 'notice', 6: 'informational', 7: 'debug'}[l.sev], 'danger' if l.sev <= 3 else ('warn' if l.sev == 4 else 'neutral')) }}{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono">{{ l.mn or '—' }}</td><td class="lg-msg">{{ l.text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {%- else %}
+  <p class="small">{% if g.filtered %}No line in the window matches these filters.{% else %}No line arrived in the last {{ g.window_minutes }} minutes.{% endif %}</p>
+  {%- endif %}
+  <p class="muted small">
+    {%- if g.filtered %}{{ g.matching }} of {{ g.total }} lines match. {% endif %}
+    {%- if g.matching > g.lines | length %}The newest {{ g.lines | length }} of {{ g.matching }} are drawn; filter to narrow them. {% endif %}
+    {%- if g.truncated %}More arrived than the window keeps (1000): the oldest are not here. {% endif %}
+    A line's time is when the collector received it, never the device's clock; heartbeat lines are left out. Each device opens its page.</p>
+  <p class="small lt-older">Older than {{ g.window_minutes }} minutes: <a href="{{ older }}">History › Query › Syslog by device</a>, with the filters you set here.</p>
+</section>
+{%- endif %}
+</div>

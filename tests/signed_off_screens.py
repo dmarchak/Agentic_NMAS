@@ -65,9 +65,14 @@ SIGNED_OFF = {
     "dhcp.html": ("2026-10-06", "Item 5, DHCP on v2, boards A to D (canvas v59, page 'Item 5, "
                                 "DHCP on v2'), approved 2026-10-06 with the sidebar move; built "
                                 "2026-10-11 as board A's read-only page (C529 step 1)"),
-    "logs.html": ("2026-10-04", "History › Query board C (AskLogs, 'Syslog by device'), signed "
-                                "off with A and B on canvas v31 (NSOT_STAGE7_PLAN 15.5 to 15.9); "
-                                "built 2026-10-10 as the sidebar's Logs (C652, the operator)"),
+    "logs.html": ("2026-10-11", "the sidebar's Logs, a live tail (C675, the operator's design, "
+                                "2026-10-11): board D (LogsTail, canvas v110, page 'History, "
+                                "Query'), drawn under the Phase 7 mode and counted as signed off "
+                                "(docs/STANDING_APPROVAL_LOG.md)"),
+    "history_syslog.html": ("2026-10-04", "History › Query board C (AskLogs, 'Syslog by "
+                                          "device'), signed off with A and B on canvas v31 "
+                                          "(NSOT_STAGE7_PLAN 15.5 to 15.9); built 2026-10-10 "
+                                          "(C652), at its board's home since C667"),
     "templates.html": ("2026-10-05", "7.6's Templates, boards A to C (canvas v47, page '7.6 "
                                      "Source of truth, Templates'), signed off 2026-10-05: the "
                                      "network's configuration templates with their approvals "

@@ -1,0 +1,10 @@
+{%- extends "v2/base.html" -%}
+{#- History › Query › Syslog by device (C652; at its board's home since C667): History's page
+    body (_history_body.html), its Query tab on, and the view drawn to board C (AskLogs, signed
+    off 2026-10-04), compared region by region in docs/fidelity/logs.md. The view is one region,
+    _logs_view.html, redrawn when the logs reader announces. (The sidebar's Logs is the live tail,
+    logs.html, C675.) -#}
+{% block title %}Syslog by device · History · {{ brand.short }}{% endblock %}
+{% block main %}
+{% include "v2/_history_body.html" %}
+{% endblock %}

@@ -1490,6 +1490,19 @@ a.topo-ent:hover { background: var(--hover); }
 .topo-protos .btn[aria-disabled="true"] { opacity: 1; cursor: default; }
 /* Logs (C652), drawn to History › Query board C (AskLogs; docs/fidelity/logs.md). */
 .lg { display: flex; flex-direction: column; gap: 12px; max-width: 1140px; }
+/* OBSERVE › Logs, the live tail (C675; board D, LogsTail). */
+.lt { display: flex; flex-direction: column; gap: 12px; }
+.lt-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.lt-head h1 { margin: 0; font-size: 24px; font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lt-acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lt-live { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.lt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.lt-dot.lt-off { background: var(--ink-3); }
+.lt-card { display: flex; flex-direction: column; gap: 10px; }
+.lt-counts { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; font-size: 13.5px; }
+.lt-counts strong { font-size: 20px; font-weight: 600; }
+.lt-came { background: var(--accent-soft); }
+.lt-older { margin: 0; }
 .lg-crumb { font-size: 13px; color: var(--ink-3); }
 .lg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
 .lg-head h2 { margin: 0; font-size: 18px; font-weight: 600; }

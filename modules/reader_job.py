@@ -255,6 +255,7 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.rip",
                            "modules.readers.topology_graph",
                            "modules.readers.logs_summary",
+                           "modules.readers.logs_tail",
                            "modules.readers.dhcp")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
@@ -374,6 +375,10 @@ CHANGE_ONLY = {
     "logs-summary": ("it reads every 300 s and Logs redraws its device table on its "
                      "announcement; the read's time is drawn only on hover: unchanged counts "
                      "redraw nothing (its 1800 s keepalive proves it alive)"),
+    "logs-tail": ("it reads every 5 s and Logs redraws its lines on its announcement; the page "
+                  "says it checks every 5 s and draws the newest line's time, the read's only on "
+                  "hover: a window with nothing new redraws nothing (its 300 s keepalive proves "
+                  "it alive)"),
     "dhcp": ("it reads every 300 s and DHCP redraws its tabs on its announcement; the read's "
              "time is drawn only on hover: an unchanged Kea redraws nothing (its 1800 s "
              "keepalive proves it alive)"),

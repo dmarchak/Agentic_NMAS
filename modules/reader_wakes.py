@@ -83,6 +83,8 @@ NOT_WOKEN = {
     "ci-verdict": "GitHub Actions: changed by CI, never by an operation here",
     "reachability": "whether each device answers ICMP and SSH: read every 5 s, and no operation's "
                     "write changes it",
+    "logs-tail": "the network's log store's last 15 minutes: devices write it, never an operation "
+                 "here; read every 5 s",
 }
 
 

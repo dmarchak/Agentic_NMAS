@@ -25,7 +25,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIDELITY = os.path.join(ROOT, "docs", "fidelity")
 
 #: Screen -> its record.
-RECORDS = {"topology.html": "topology.md", "logs.html": "logs.md", "dhcp.html": "dhcp.md"}
+RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
+           "logs.html": "logs-tail.md", "dhcp.html": "dhcp.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

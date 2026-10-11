@@ -10,8 +10,9 @@ Boards: `AskLogs.dc.html` (History › Query board C, "Syslog by device", 1440 w
 Shots: desktop 1440 (120 days, every severity, r4 opened); phone 390 (the page held to a 390 px column, and its first screen). Compared 2026-10-10.
 Compared again 2026-10-10 after the host walk: Newest follows the severity asked (the exact time when seen, else the last day counted, the board's "09:41 today" and "2 Oct"); no region's verdict changed.
 Compared again 2026-10-11 after C667 moved the view to its board's home, History › Query (`/v2/history/query/syslog`; the sidebar's Logs draws the same page): History's heading, its four tabs with Query on, and the crumb "Query › Syslog by device" now as the board draws them; the shots at 1440 and 390 again; no other region's verdict changed.
-Templates compared: templates/v2/logs.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
-Templates sha256: `300891a16259a8b7e18e49ac767f416e544600e6aa0ed3b74a1774b1559cd9b4`
+Compared again 2026-10-11 (C675): the sidebar's Logs became the live tail (board D, its own record, docs/fidelity/logs-tail.md); this page is History › Query's alone, its template renamed `history_syslog.html`, and the drill-down's footer gains the board's "Open these lines on Logs", which opens the tail filtered; the title's (i) opens the manual's Syslog by device section (nothing drawn moved). No other region's verdict changed.
+Templates compared: templates/v2/history_syslog.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
+Templates sha256: `1fc1bfa4f2a4e497068ed4fb0b89083d7e414cba8d9eadb1fe0bcd31851a323a`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -29,6 +30,6 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Opened device's filters | Severity, Mnemonic (with counts), From, To, Text contains | the same five, and Show | **same** |
 | Trend | "Trend by mnemonic, lines per day": two series, y and x ticks, a key with "y: lines per day · x: date (UTC)" | the same, up to three series, from the first day counted | **same** |
 | Lines | Received (UTC), Severity chip, Mnemonic, Message; newest first | the same, masked | **same** |
-| Lines' foot | "Showing 3 of 61 matching lines · the next 50 · Open these lines on Logs" | "Showing 50 of 2295 matching lines … · the next 50 · Open r4's Logs tab" | **deviation** (log: Logs opens a device's own Logs tab) |
+| Lines' foot | "Showing 3 of 61 matching lines · the next 50 · Open these lines on Logs" | "Showing 50 of 2295 matching lines … · the next 50 · Open r4's Logs tab · Open these lines on Logs" (the last opening the live tail filtered, since C675) | **same** |
 | Footnote | "A line's time is when the collector received it, never the device's clock. The heartbeat lines are left out." | the same | **same** |
 | Phone | no board | each device a wrapped row, each line its time and severity over its message | **deviation** (log: Logs at phone width) |

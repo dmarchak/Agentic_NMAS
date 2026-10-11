@@ -9,7 +9,7 @@
 <div id="logs" class="lg" hx-get="{{ url_for('logs_v2.region') }}{{ g.qs() }}" hx-trigger="nmas:logs from:body" hx-swap="outerHTML">
 <div class="lg-crumb"><a href="{{ url_for('v2.history_page', tab='query') }}">Query</a> › Syslog by device · {{ g.list }}</div>
 <div class="lg-head">
-  <h2>Syslog by device {{ info('logs') }}</h2>
+  <h2>Syslog by device {{ info('logs', 'syslog-by-device') }}</h2>
   {%- if g.state == 'ok' %}
   <span class="lg-acts"><button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ url_for('v2.history_query_syslog') }}{{ g.qs() }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button></span>
   {%- endif %}
@@ -98,7 +98,8 @@
       {%- else %}<p class="small">No line of {{ r.device }} matches, {{ o.window[0] }} to {{ o.window[1] }} UTC.</p>{% endif %}
       <p class="muted small">Showing {{ o.lines | length }}{% if o.matching is defined %} of {{ o.matching }} matching line{{ 's' if o.matching != 1 }}{% else %} matching line{{ 's' if o.lines | length != 1 }}{% endif %}{% if o.cut_window %}, from the newest 30 days of this range (Loki answers at most 30 days at a time){% endif %}
         {%- if o.more %} · {{ go(g, {'before': o.next_before}, 'the next 50') }}{% endif %}
-        · <a href="{{ url_for('device_v2.device', name=r.device, list=g.list, tab='logs') }}">Open {{ r.device }}'s Logs tab</a></p>
+        · <a href="{{ url_for('device_v2.device', name=r.device, list=g.list, tab='logs') }}">Open {{ r.device }}'s Logs tab</a>
+        · <a href="{{ url_for('logs_v2.page', list=g.list, d=r.device, sev=g.s.sev, mn=g.s.mn, text=g.s.text, **{'from': 'query'}) }}">Open these lines on Logs</a></p>
       {%- endif %}
     </td></tr>
     {%- endif %}

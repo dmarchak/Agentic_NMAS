@@ -252,6 +252,46 @@ def test_logs(tmp_path, monkeypatch):
                widths=((1440, 1.0), (390, 2.0)))
 
 
+def test_logs_tail(tmp_path, monkeypatch):
+    """C675's board D (LogsTail, 1440) beside the sidebar's Logs, the live tail, fed by the
+    logs-tail reader's value built from real lines of the lab's Loki (tests/test_logs_tail's
+    fixtures); and the same page arrived from History › Query, filtered, and paused; or, as a
+    walk, the reader's stored document as the host holds it (`NMAS_BOARD_TAIL_DOC`)."""
+    from tests import browser
+    from tests import test_logs_tail as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import reader_job
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: reader_job.read_cached(name))
+    path = reader_job.store_path("logs-tail")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    walked = os.environ.get("NMAS_BOARD_TAIL_DOC", "")
+    if walked:
+        with open(walked, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    else:
+        doc = {"last_attempt": {"at": "2026-10-11T18:20:17Z", "ok": True, "error": ""},
+               "last_good": {"value": T._read(), "value_at": "2026-10-11T18:20:12Z"}}
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+    paused = doc["last_good"]["value"]["lines"][5]["at"] if \
+        len(doc["last_good"]["value"].get("lines") or []) > 5 else ""
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("logs-tail" + ("-walk" if walked else ""), "" if walked else "LogsTail.dc.html",
+               lambda w: "/v2/logs?list=Lab", served, widths=((1440, 1.0), (390, 2.0)))
+        if not walked:
+            _shoot("logs-tail-came", "", lambda w: "/v2/logs?list=Lab&d=s3&sev=error&from=query",
+                   served, widths=((1440, 1.0),))
+            _shoot("logs-tail-paused", "", lambda w: f"/v2/logs?list=Lab&paused={paused}",
+                   served, widths=((1440, 1.0),))
+
+
 def test_history_query(tmp_path, monkeypatch):
     """C667's board A (AskLibrary, 1440) beside History › Query, the logs reader's value built
     from the same real captures as the logs shot."""
