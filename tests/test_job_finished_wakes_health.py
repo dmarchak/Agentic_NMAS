@@ -98,9 +98,9 @@ class TestTheSyncWakesTheReaderOfWhatItWrote:
         assert calls == ["job-health"]
 
     def test_the_sync_sends_it_on_every_exit(self):
-        src = open(os.path.join(ROOT, "scripts", "oxidized-to-config.sh"), encoding="utf-8").read()
+        src = open(os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh"), encoding="utf-8").read()
         body = src[src.index("finished() {"):src.index("trap finished EXIT")]
-        assert '"$HERE/nmas-job-finished" clab-sync' in body
+        assert '"$SCRIPTS/nmas-job-finished" clab-sync' in body
         assert re.search(r"^trap finished EXIT$", src, re.M)
 
 

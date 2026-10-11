@@ -38,7 +38,7 @@ import subprocess
 log = logging.getLogger(__name__)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SANITISER = os.path.join(ROOT, "scripts", "clab-startup-sync.sh")
+SANITISER = os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh")
 #: Separates the files in one lab's read: a control character no config holds.
 SEP = "\x1e"
 #: How many differing lines a result carries per side (the count is always whole).

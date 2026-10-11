@@ -304,3 +304,7 @@ def register_default_hooks() -> None:
     # Phase 3), rather than polling for the newest baseline on a timer.
     from modules.nsot.baseline_event import hook as baseline_event_hook
     register("baseline-event", baseline_event_hook, timeout=10)
+    # A commit that changed a golden writes its own event (C663): a rotation changes a golden
+    # without earning a baseline, and what a device boots from carries its current credential.
+    from modules.nsot.baseline_event import golden_hook as golden_event_hook
+    register("golden-event", golden_event_hook, timeout=15)

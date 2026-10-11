@@ -23,7 +23,7 @@ FOLDER = os.path.join(ROOT, "scripts", "host-steps")
 SCRIPTS = sorted(os.path.basename(p) for p in tracked("scripts/host-steps", suffix=".sh")
                  if not p.endswith("lib.sh"))
 # The sections the operator named, each a script.
-EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "phase3-step3.sh", "c584-loki-writer.sh",
+EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             "minio-4a-4b.sh", "minio-4c.sh", "minio-lifecycle-probe.sh", "postgres-6a.sh",
             "venv-1-build.sh", "venv-2-switch.sh", "venv-3-undo.sh", "venv-swap.sh",
             "venv-rollback.sh", "postgres-rotate.sh",

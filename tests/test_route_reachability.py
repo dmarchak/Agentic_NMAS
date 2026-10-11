@@ -36,7 +36,7 @@ from tests.route_references import ROOT, reachability
 #: stale unnoticed. ``None`` only where no file can: a browser requests
 #: `/favicon.ico` by convention, and that is the reason.
 NON_GUI = {
-    "GET /clab/sync_targets": ("scripts/nmas-clab-targets",
+    "GET /clab/sync_targets": ("lab/clab-sync/clab-targets",
                                "the clab host's sync asks for its map; it "
                                "refuses rather than guessing when it cannot"),
     "POST /jobs/finished": ("scripts/nmas-job-finished",

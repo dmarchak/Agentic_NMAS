@@ -1,0 +1,22 @@
+# TEMPLATE: LAB TOOLING, not the product (C663: lab/clab-sync/). The repository is public, so the
+# host's paths are placeholders. Render it, never copy it:
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" lab/clab-sync/clab-sync.path && sudo install -o root -g root -m 0644 "$d/clab-sync.path" /etc/systemd/system/clab-sync.path && sudo systemctl daemon-reload && sudo systemctl enable --now clab-sync.path
+# The app writes two generic events, naming no lab tool (modules/nsot/baseline_event.py):
+# data/events/baseline-earned/<network> whenever a commit earns that network's baseline (C553),
+# and data/events/golden-committed/<network> whenever a commit changes a golden (C663: a
+# rotation's new credential, which earns no baseline). This unit watches both files of the lab's
+# network (Default, the network the lab boots: the sync's CLAB_LIST) and starts the existing
+# clab-sync.service, so the lab's startup files follow at once rather than at the next
+# 30-minute timer, which stays as the fallback, and a redeploy after a rotation never boots
+# with the old credential. A sync already running holds its lock; a start while it runs waits
+# for it (lab/clab-sync/clab-startup-sync.sh, the sync lock).
+[Unit]
+Description=Lab: start the clab startup sync when the lab's network earns a baseline or commits a golden
+
+[Path]
+PathChanged=@NMAS_CHECKOUT@/data/events/baseline-earned/Default
+PathChanged=@NMAS_CHECKOUT@/data/events/golden-committed/Default
+Unit=clab-sync.service
+
+[Install]
+WantedBy=multi-user.target

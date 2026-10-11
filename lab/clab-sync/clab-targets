@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Ask the NMAS where each device's startup config belongs.
+"""Where each device's startup config belongs in the lab: the LAB's own map (lab tooling).
 
-For `~/bin/clab-sync` and `scripts/clab-startup-sync.sh` to call
-instead of holding a device -> lab map of their own. **A second copy is how
-the two come to disagree**, and here the disagreement is invisible until a
-reboot: the file lands somewhere plausible either way, and the device comes
-back on whatever that directory held.
+C663 (the operator, 2026-10-11: "containerlab is test infrastructure, not something Mercury
+should know about"): the map used to be Mercury's (`GET /clab/sync_targets`, from its Lab
+settings and its manifest's `clab_lab` keys). It is now the lab's, one file per network beside
+the checkout, gitignored like the hosts file (`data/lab_targets/<network>.tsv`), in the text
+format Mercury served, so the sync reads the same rows it always did. ONE copy: the sync and
+this helper read the same file.
 
-    nmas-clab-targets --url http://<nmas-host>:5000
+    clab-targets --list Default
         -> hostname<TAB>configs_dir<TAB>lab<TAB>host<TAB>platform
-    nmas-clab-targets --url ... --device r6          # one line, or exit 3
-    nmas-clab-targets --url ... --stray labs/lab/configs
+    clab-targets --list Default --device r6          # one line, or exit 3
+    clab-targets --list Default --stray labs/lab/configs
+    clab-targets --map FILE ...                      # another map file
 
-## The failure mode of asking, and the only acceptable answer to it
+## A map that cannot be read, and the only acceptable answer to it
 
-**If the NMAS cannot be reached, this exits non-zero and prints nothing
-usable. It never falls back to a default directory and it never caches.**
+**If the map cannot be read, this exits non-zero and prints nothing usable. It never falls
+back to a default directory and it never caches.**
 
 A fallback is a guess about where a config boots from, and a wrong guess
 writes one device's credentials into another lab's directory. A cache is a
@@ -42,20 +44,20 @@ one remembered filename, because the next one will not be remembered.
 
 import argparse
 import os
+import re
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Phase 4 section 8.1: the interpreter flask-app runs, before any other import.
-from modules.app_interpreter import adopt  # noqa: E402
-adopt(__name__)
-
-#: Honest, and accepted by the integrity check that rejects `Python-urllib`.
-_UA = "nmas-automation/1.0"
+#: The checkout this file sits in (lab/clab-sync/ under it); the map is in its data/.
+CHECKOUT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 EXIT_OK, EXIT_UNREACHABLE, EXIT_NOT_FOUND = 0, 2, 3
+
+
+def map_path(list_name: str) -> str:
+    """The lab's map for *list_name*: ``<checkout>/data/lab_targets/<network>.tsv``, the name
+    with anything outside ``[A-Za-z0-9_.-]`` as ``_``."""
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", list_name or "") or "_"
+    return os.path.join(CHECKOUT, "data", "lab_targets", f"{safe}.tsv")
 
 #: `--reconcile` only. **A mapped device that produced no file is blocking;
 #: a file nobody mapped is not.** They exited the same code, so a caller
@@ -70,21 +72,12 @@ class StrayLookupFailed(Exception):
     """The remote listing did not happen. **Not the same as no litter.**"""
 
 
-def fetch(url: str, list_name: str = "", timeout: int = 15,
-          declared: dict = None) -> list:
-    """``[(hostname, configs_dir, lab, host, platform)]``.
-    Raises on anything else. *declared*, if given, is filled with the list's
+def load(path: str, declared: dict = None) -> list:
+    """``[(hostname, configs_dir, lab, host, platform)]`` from the lab's map file at *path*.
+    Raises on a file that cannot be read. *declared*, if given, is filled with the list's
     DECLARED-UNMAPPED entries ``{hostname: "reason (by, at)"}``."""
-    endpoint = url.rstrip("/") + "/clab/sync_targets"
-    if list_name:
-        endpoint += "?list=" + urllib.parse.quote(list_name)
-    req = urllib.request.Request(endpoint, headers={"User-Agent": _UA})
-    for name in ("CF-Access-Client-Id", "CF-Access-Client-Secret"):
-        value = os.environ.get(name.upper().replace("-", "_"))
-        if value:
-            req.add_header(name, value)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read().decode("utf-8", "replace")
+    with open(path, encoding="utf-8") as fh:
+        body = fh.read()
 
     rows, problems = [], []
     for line in body.splitlines():
@@ -105,7 +98,7 @@ def fetch(url: str, list_name: str = "", timeout: int = 15,
         # simply carries blanks in the later fields.
         rows.append(tuple(parts[:5]))
     if problems:
-        # Printed, never silently dropped: a device the NMAS could not place
+        # Printed, never silently dropped: a device the map could not place
         # is a device nobody should write.
         for p in problems:
             print(p, file=sys.stderr)
@@ -125,7 +118,7 @@ def remote_listing(clab_host: str, directory: str) -> list:
     if not clab_host:
         raise StrayLookupFailed(
             "the map carries no clab host, so there is nothing to list "
-            "against. An older NMAS serves three columns; this needs four.")
+            "against: the map's rows need a host column (the fourth).")
     cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", clab_host,
            f"ls -1 {shlex.quote(directory)}/*.cfg 2>/dev/null || true"]
     try:
@@ -164,8 +157,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--url", required=True, help="the NMAS base URL")
-    ap.add_argument("--list", default="", help="device list (default: current)")
+    ap.add_argument("--list", required=True, help="the network whose map is read")
+    ap.add_argument("--map", default="",
+                    help="the map file (default: data/lab_targets/<network>.tsv beside the "
+                         "checkout)")
     ap.add_argument("--device", default="", help="print one device's target")
     ap.add_argument("--stray", default="",
                     help="list .cfg files here that belong to another lab")
@@ -183,12 +178,12 @@ def main() -> int:
                          "configs_dir<TAB>host<TAB>space-separated hostnames")
     args = ap.parse_args()
 
+    path = args.map or map_path(args.list)
     try:
         declared = {}
-        rows = fetch(args.url, args.list, declared=declared)
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        print(f"REFUSED — the NMAS could not be asked where configs belong: "
-              f"{exc}", file=sys.stderr)
+        rows = load(path, declared=declared)
+    except (OSError, ValueError) as exc:
+        print(f"REFUSED — the lab's map could not be read ({path}): {exc}", file=sys.stderr)
         print("Not falling back to a default directory: a guess about where a "
               "config boots from writes one device's credentials into another "
               "lab.", file=sys.stderr)
@@ -322,7 +317,7 @@ def _reconcile(directory: str, rows: list, strict: bool = False,
               file=sys.stderr)
     if unmapped:
         print(f"  unmapped : {len(unmapped)} — {' '.join(unmapped)}")
-        print("             a file the NMAS does not account for; not "
+        print("             a file the map does not account for; not "
               "deleted from here, and worth knowing")
 
     # The totals are checked, so a bucket that silently swallowed a device

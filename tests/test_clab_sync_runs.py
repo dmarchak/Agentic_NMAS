@@ -21,7 +21,7 @@ import subprocess
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "scripts", "clab-startup-sync.sh")
+SCRIPT = os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh")
 TAG = "baseline/20261001T235242Z"
 
 CONFIG = ("hostname {h}\ninterface Loopback0\n ip address 192.0.2.{n} 255.255.255.255\n!\n"

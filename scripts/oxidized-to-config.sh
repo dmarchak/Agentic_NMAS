@@ -1,1 +1,0 @@
-clab-startup-sync.sh

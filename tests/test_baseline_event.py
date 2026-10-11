@@ -79,11 +79,59 @@ class TestTheLabUnitWatchesWhatIsWritten:
         """The unit is a template (@NMAS_CHECKOUT@/data/...); the product writes under
         DATA_DIR, which on the host is the checkout's data/. The sync boots CLAB_LIST,
         Default unless its unit says otherwise."""
-        unit = open(os.path.join(ROOT, "deploy", "systemd", "clab-sync.path"),
+        unit = open(os.path.join(ROOT, "lab", "clab-sync", "clab-sync.path"),
                     encoding="utf-8").read()
-        watched = re.search(r"^PathChanged=(.+)$", unit, re.M).group(1)
+        watched = re.findall(r"^PathChanged=(.+)$", unit, re.M)
         monkeypatch.setattr("modules.config.DATA_DIR", "@NMAS_CHECKOUT@/data")
-        sync = open(os.path.join(ROOT, "scripts", "clab-startup-sync.sh"), encoding="utf-8").read()
+        sync = open(os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh"),
+                    encoding="utf-8").read()
         network = re.search(r'^CLAB_LIST="\$\{CLAB_LIST:-([^}]+)\}"$', sync, re.M).group(1)
-        assert watched == BE.path(network), (watched, BE.path(network))
+        # C663: both events, so a rotation's golden (which earns no baseline) starts the sync.
+        assert watched == [BE.path(network), BE.path(network, BE.GOLDEN_EVENTS)], watched
         assert re.search(r"^Unit=clab-sync\.service$", unit, re.M)
+
+
+def _git(repo, *args):
+    import subprocess
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
+class TestAGoldenCommittedWritesItsEvent:
+    """C663 (the operator, 2026-10-11): Mercury emits a generic "golden committed" event next to
+    "baseline earned", naming the devices, so a tool building what a device boots from (its
+    current credentials) follows a rotation, which changes a golden and earns no baseline."""
+
+    @pytest.fixture
+    def repo(self, tmp_path):
+        r = tmp_path / "repo"
+        r.mkdir()
+        _git(r, "init", "-q")
+        (r / "golden").mkdir()
+        (r / "golden" / "r1.cfg").write_text("hostname r1\n")
+        (r / "notes.txt").write_text("x\n")
+        _git(r, "add", "-A")
+        _git(r, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "seed")
+        return r
+
+    def test_a_golden_changed_writes_the_event_naming_the_devices(self, data, repo):
+        sha = _git(repo, "rev-parse", "HEAD")
+        got = BE.golden_hook({"list_name": "Default", "repo": str(repo), "sha": sha})
+        assert got["ok"], got
+        body = json.loads((data / "events" / "golden-committed" / "Default").read_text())
+        assert body["devices"] == ["r1"] and body["commit"] == sha and body["list"] == "Default"
+        assert not (data / "events" / "baseline-earned" / "Default").exists()
+
+    def test_a_commit_that_changed_no_golden_writes_nothing(self, data, repo):
+        (repo / "notes.txt").write_text("y\n")
+        _git(repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit",
+             "-qam", "notes")
+        got = BE.golden_hook({"list_name": "Default", "repo": str(repo),
+                              "sha": _git(repo, "rev-parse", "HEAD")})
+        assert got == {"ok": True, "message": "no golden changed"}
+        assert not (data / "events" / "golden-committed").exists()
+
+    def test_it_is_a_default_post_commit_hook(self):
+        from modules.nsot import archive, hooks
+        archive.register_default_hooks()
+        assert "golden-event" in hooks.registered()

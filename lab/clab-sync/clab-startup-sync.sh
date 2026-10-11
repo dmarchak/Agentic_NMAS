@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# clab-startup-sync.sh (until 2026-10-08 oxidized-to-config.sh, which stays a
-# link to this file for one release, so a host still calling the old name keeps
-# working until it is repointed: Phase 3, docs/NSOT_PHASE3_RETIRE_OXIDIZED.md)
+# clab-startup-sync.sh: LAB TOOLING (C663, the operator, 2026-10-11: containerlab is test
+# infrastructure, not something Mercury should know about). It lives in lab/clab-sync/, out of
+# the product; Mercury gives it only generic hooks: the "baseline earned" and "golden committed"
+# events, and the startup source (scripts/nmas-startup-source).
 #
 # Turns each device's newest EARNED baseline (credentials from its current
 # golden), as committed in the network's repository, into replayable
@@ -22,23 +23,26 @@
 #     CLAB=user@host ./clab-startup-sync.sh
 #     NMAS_URL=http://<nmas-host>:5000 ./clab-startup-sync.sh
 #
-# WHEN IT RUNS (C553): a baseline earned starts it at once. The app writes
-#   data/events/baseline-earned/<network> on every commit that earns a baseline
-#   (a generic event, naming no lab tool); the host's clab-sync.path unit
-#   watches the lab's network's file and starts clab-sync.service. The 30-minute
-#   timer stays as the fallback.
+# WHEN IT RUNS (C553, C663): a baseline earned or a golden committed starts it at once. The
+#   app writes data/events/baseline-earned/<network> on every commit that earns a baseline,
+#   and data/events/golden-committed/<network> on every commit that changes a golden (a
+#   rotation's new credential among them): generic events, naming no lab tool. The host's
+#   clab-sync.path unit (lab/clab-sync/clab-sync.path) watches both of the lab's network's
+#   files and starts clab-sync.service, so a redeploy after a rotation never boots with the
+#   old credential. The 30-minute timer stays as the fallback.
 #
 #   With neither set, both come from data/lab_hosts.json beside the NMAS
 #   checkout, through nmas-host (the repository is public, so the hosts'
 #   addresses are not in this file); a missing file REFUSES, exit 2.
 #
 # WHERE THE DEVICE LIST COMES FROM
-#   The NMAS, once, via nmas-clab-targets. It used to be SIX places encoding
+#   The lab's own map, once, via clab-targets beside this script (data/lab_targets/<network>.tsv
+#   beside the checkout; it was Mercury's until C663). It used to be SIX places encoding
 #   the same population: three loops over "r1 r2 r3 r4 r5 s1 s2 s3 s4", the
 #   implicit cp glob, the ROUTERS string, and the NODE array. All were
 #   current when they were written. r6 was in none of them.
 #
-#   If the NMAS cannot be asked, this STOPS. It does not fall back to a
+#   If the map cannot be read, this STOPS. It does not fall back to a
 #   default directory: a guess about where a config boots from writes one
 #   device's credentials into another lab.
 #
@@ -209,13 +213,20 @@ CLAB_LIST="${CLAB_LIST:-Default}"
 # refusal was correct and went into a journal nobody read, and r6's startup
 # config fell a day behind its branch-site config.
 #
-# This script lives in the NMAS repository (scripts/) and is deployed as a
-# SYMLINK, so its real path is the checkout and the helpers are its
-# siblings. One copy: the deployed file had also diverged from the repo's.
+# This script is lab tooling (C663: lab/clab-sync/ in the repository, out of the product) and
+# is deployed as a SYMLINK, so its real path is the checkout: its own helper (clab-targets,
+# reading the lab's map) is its sibling, and the product's generic helpers (the startup
+# source, nmas-host, the job-finished notice) are in the checkout's scripts/. One copy: the
+# deployed file had once diverged from the repo's.
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 HERE="$(dirname "$SELF")"
-TARGETS="${TARGETS:-$HERE/nmas-clab-targets}"
-SOURCE="${SOURCE:-$HERE/nmas-startup-source}"
+SCRIPTS="$(dirname "$(dirname "$HERE")")/scripts"
+TARGETS="${TARGETS:-$HERE/clab-targets}"
+SOURCE="${SOURCE:-$SCRIPTS/nmas-startup-source}"
+# The lab's map: clab-targets' own default (data/lab_targets/<network>.tsv beside the
+# checkout) unless LAB_TARGETS_MAP names another file (the tests name one that is not there).
+MAP_ARGS=()
+[ -n "${LAB_TARGETS_MAP:-}" ] && MAP_ARGS=(--map "$LAB_TARGETS_MAP")
 # The committer's identity, on EVERY commit this job makes (see the commit
 # step): used by the reconcile below as well as the per-lab commit.
 GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)
@@ -231,7 +242,7 @@ if ! flock -w 600 8; then
   echo "REFUSED - another clab startup sync held $SYNC_LOCK for ten minutes"
   exit 75
 fi
-for helper in "$TARGETS" "$SOURCE" "$HERE/nmas-host"; do
+for helper in "$TARGETS" "$SOURCE" "$SCRIPTS/nmas-host"; do
   if [ ! -x "$helper" ]; then
     echo "REFUSED - helper not found or not executable: $helper"
     echo "  (resolved beside this script, $SELF -- not through PATH, which"
@@ -246,7 +257,7 @@ done
 # the wrong machine. Not in a command substitution, so `exit` leaves the job.
 lab_value() {  # $1 host, $2 field, $3 the variable it stands in for -> LAB_VALUE
   local out
-  if ! out="$("$HERE/nmas-host" "$1" --field "$2" 2>&1)"; then
+  if ! out="$("$SCRIPTS/nmas-host" "$1" --field "$2" 2>&1)"; then
     echo "REFUSED - $3 is not set, and the lab hosts file could not be read:"
     echo "  $out"
     echo "  The hosts' addresses are kept out of the public repository, in"
@@ -270,7 +281,7 @@ CUR="$(mktemp -d)"
 # the job tells the app itself; the timer's own result is unaffected.
 finished() {
   rm -rf "$CUR" "$SRCDIR"
-  NMAS_URL="$NMAS_URL" "$HERE/nmas-job-finished" clab-sync \
+  NMAS_URL="$NMAS_URL" "$SCRIPTS/nmas-job-finished" clab-sync \
     || echo "(the app could not be told this sync finished; its readers catch up on their own schedule)"
 }
 trap finished EXIT
@@ -300,8 +311,8 @@ done
 declare -A CFGDIR=() PLATFORM=() LAB=()
 DEVICES=()
 
-map="$("$TARGETS" --url "$NMAS_URL" --list "$CLAB_LIST")" || {
-  echo "REFUSED - the NMAS could not be asked where configs belong."
+map="$("$TARGETS" --list "$CLAB_LIST" "${MAP_ARGS[@]}")" || {
+  echo "REFUSED - the lab's map could not be read (clab-targets said why above)."
   echo "Not falling back to a default directory: a guess about where a"
   echo "config boots from writes one device's credentials into another lab."
   exit 2
@@ -333,7 +344,7 @@ fi
 
 [ ${#DEVICES[@]} -gt 0 ] || { echo "REFUSED - the map is empty. That is a fact about the answer, not about the fleet."; exit 2; }
 
-echo "Map: ${#DEVICES[@]} device(s) of $CLAB_LIST from $NMAS_URL"
+echo "Map: ${#DEVICES[@]} device(s) of $CLAB_LIST from the lab's map"
 
 # The config DIALECT decides the sanitising rules, not the hostname. The
 # default branch REFUSES: picking a kind for a platform nobody described is
@@ -637,7 +648,7 @@ report_removed "$SRCDIR/removed.txt" "$REMOVED_LIST"
 # worth knowing and is not a reason to stop a sync.
 # ---------------------------------------------------------------------------
 echo
-if ! "$TARGETS" --url "$NMAS_URL" --list "$CLAB_LIST" --reconcile "$OUT" --not-built "$NOT_BUILT_LIST"; then
+if ! "$TARGETS" --list "$CLAB_LIST" "${MAP_ARGS[@]}" --reconcile "$OUT" --not-built "$NOT_BUILT_LIST"; then
   echo
   echo "PROBLEMS ABOVE - nothing will be copied."
   exit 1

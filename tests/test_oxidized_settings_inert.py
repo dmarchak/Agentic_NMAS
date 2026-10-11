@@ -78,7 +78,7 @@ def test_the_population_is_found():
     files = python_files()
     assert len(files) >= FLOOR, f"the scan shrank: {len(files)} Python files"
     assert DECLARING <= set(files)
-    assert "scripts/nmas-clab-targets" in files            # an extensionless python script
+    assert "scripts/nmas-startup-source" in files           # an extensionless python script
 
 
 def test_the_declaring_files_still_declare_every_key():

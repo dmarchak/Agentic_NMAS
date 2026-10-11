@@ -135,6 +135,7 @@
   "routes/*": "this repository's",
   "templates/*": "this repository's",
   "scripts/*": "this repository's",
+  "lab/*": "this repository's lab tooling, out of the product (C663)",
   "tests/*": "this repository's; fixtures are captures from the lab (see audit)",
   "docs/*": "this repository's; the probe configs are the lab's (see audit)",
   "deploy/*": "this repository's, except what vendored claims",

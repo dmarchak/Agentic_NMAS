@@ -118,6 +118,35 @@ class TestTheBuild:
             f"{tag} holds no golden for r7 (onboarded since, or renamed): earn a new baseline "
             "(Save All) to build its file")}
 
+    def test_a_rotation_after_a_baseline_starts_the_sync_and_never_boots_the_old_credential(
+            self, lab, tmp_path, monkeypatch):
+        """C663 (the operator, 2026-10-11: "the lab's sync listens to both, so a lab redeploy
+        after a rotation never boots with the old credential (test that sequence)"). A Save All
+        earns a baseline; a rotation commits r2's new account and earns NONE, so only the
+        golden-committed event can start the sync (lab/clab-sync/clab-sync.path watches it);
+        the build the sync then runs carries the new account, never the old."""
+        import json
+
+        from modules.nsot import baseline_event as BE
+        monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path / "data"))
+        _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")],
+              source="save_all")
+        rotated = R.save_golden("Lab", [R.GoldenItem("r2", ROTATED, "203.0.113.12",
+                                                     platform="cisco_ios")],
+                                source="rotation", actor="t", allow_new=False)
+        assert rotated["ok"] and not [t for t in rotated.get("tags") or []
+                                      if t.startswith("baseline/")]
+        # The hooks the post-commit runner calls, on the rotation's commit.
+        ctx = {"list_name": "Lab", "repo": lab, "sha": rotated["commit"],
+               "tags": rotated.get("tags") or []}
+        assert BE.hook(ctx) == {"ok": True, "message": "no baseline earned"}
+        assert BE.golden_hook(ctx)["ok"]
+        with open(BE.path("Lab", BE.GOLDEN_EVENTS), encoding="utf-8") as fh:
+            event = json.load(fh)
+        assert event["devices"] == ["r2"] and event["commit"] == rotated["commit"]
+        text = SS.build("Lab", hosts=["r2"])["devices"]["r2"]["text"]
+        assert NEW_ACCOUNT in text and OLD_ACCOUNT not in text
+
     def test_no_earned_baseline_builds_nothing_and_says_why(self, lab):
         _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")])
         got = SS.build("Lab", hosts=["r2"])
@@ -164,7 +193,7 @@ class TestTheMappingCheckCountsANotBuiltDevice:
 
     def _helper(self):
         loader = importlib.machinery.SourceFileLoader("nmas_clab_targets",
-                                                      "scripts/nmas-clab-targets")
+                                                      "lab/clab-sync/clab-targets")
         spec = importlib.util.spec_from_loader("nmas_clab_targets", loader)
         mod = importlib.util.module_from_spec(spec)
         loader.exec_module(mod)

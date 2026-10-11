@@ -53,11 +53,6 @@ ACCESS = "the operator's access setup"
 
 #: ``path: (lines, category, disposition, what it is)``. Measured 2026-10-02.
 INVENTORY = {
-    "scripts/clab-startup-sync.sh": (92, LAB_PLATFORM, MOVE, "clab-sync: writes containerlab startup files"),
-    "scripts/oxidized-to-config.sh": (92, LAB_PLATFORM, MOVE, "a link to clab-startup-sync.sh, its name until Phase 3, kept one release"),
-    "deploy/systemd/clab-sync.path": (6, LAB_PLATFORM, MOVE, "starts clab-sync when the lab's network earns a baseline (C553)"),
-    "scripts/host-steps/phase3-step3.sh": (15, LAB_PLATFORM, REMOVE, "Phase 3's one-off host step renaming the lab's startup sync; removed once the operator has run it"),
-    "scripts/nmas-clab-targets": (22, LAB_PLATFORM, MOVE, "clab-sync's map of devices to labs"),
     "routes/clab.py": (4, LAB_PLATFORM, OPTIONAL, "/clab/sync_targets, the map clab-sync asks for"),
     "routes/__init__.py": (2, LAB_PLATFORM, OPTIONAL, "registers the clab blueprint"),
     "routes/jobs.py": (2, LAB_PLATFORM, OPTIONAL, "clab-sync wakes the lab-startup reader"),
@@ -163,7 +158,9 @@ def problems(found: dict, inventory: dict) -> list:
 class TestTheInventoryIsExact:
     def test_the_scan_finds_something(self):
         found = scan()
-        assert len(found) >= 40 and sum(found.values()) >= 300, found
+        # C663 moves the lab out of the product, so this floor falls with it: measured 47 files
+        # and 299 lines once the sync moved to lab/ (2026-10-11), the floor a little under.
+        assert len(found) >= 40 and sum(found.values()) >= 250, found
 
     def test_every_lab_specific_line_is_declared_exactly(self):
         assert problems(scan(), INVENTORY) == []

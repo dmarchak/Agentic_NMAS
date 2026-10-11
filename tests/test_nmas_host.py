@@ -259,13 +259,13 @@ class TestTheSanitiserReadsTheHostsFile:
     the script's could-not-run code) naming it."""
 
     def _block(self):
-        src = open(os.path.join(ROOT, "scripts", "oxidized-to-config.sh"), encoding="utf-8").read()
+        src = open(os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh"), encoding="utf-8").read()
         start = src.index("lab_value() {")
         end = src.index('  NMAS_URL="http://$LAB_VALUE:5000"\nfi\n') + len('  NMAS_URL="http://$LAB_VALUE:5000"\nfi\n')
         return src[start:end]
 
     def _run(self, env):
-        script = (f'HERE={os.path.join(ROOT, "scripts")!r}\nNMAS_URL="${{NMAS_URL:-}}"\n'
+        script = (f'SCRIPTS={os.path.join(ROOT, "scripts")!r}\nNMAS_URL="${{NMAS_URL:-}}"\n'
                   + self._block() + '\necho "URL=$NMAS_URL"\n')
         return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
                               env={**os.environ, **env}, timeout=30)

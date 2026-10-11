@@ -17,7 +17,7 @@ import os
 import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "scripts", "clab-startup-sync.sh")
+SCRIPT = os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh")
 TEXT = open(SCRIPT, encoding="utf-8").read()
 
 
@@ -277,12 +277,12 @@ class TestHelpersResolveBesideTheScriptNotThroughPath:
 
     def test_a_copy_without_helpers_refuses_by_name(self, tmp_path):
         import shutil
-        copy = tmp_path / "oxidized-to-config.sh"
+        copy = tmp_path / "clab-startup-sync.sh"
         shutil.copy(SCRIPT, copy)
         r = subprocess.run(["bash", str(copy), "--yes"], capture_output=True,
                            text=True, env=self.ENV, cwd=str(tmp_path))
         assert r.returncode == 2
-        assert f"helper not found or not executable: {tmp_path}/nmas-clab-targets" in r.stdout
+        assert f"helper not found or not executable: {tmp_path}/clab-targets" in r.stdout
 
     def test_a_symlink_to_the_repo_copy_finds_its_helpers(self, tmp_path):
         """The helper must be FOUND and RUN, and must reach no NMAS.
@@ -294,18 +294,21 @@ class TestHelpersResolveBesideTheScriptNotThroughPath:
         stopped it going further was only this test's `REPO`, which names
         nothing. A refused connection is also immediate, and it proves the
         helper ran, where "no error text" alone does not."""
-        link = tmp_path / "oxidized-to-config.sh"
+        link = tmp_path / "clab-startup-sync.sh"
         link.symlink_to(SCRIPT)
-        env = {**self.ENV, "REPO": str(tmp_path / "none"), "NMAS_URL": CLOSED_PORT_URL}
+        # C663: the map is the lab's own file; the test names one that is not there, so the
+        # helper is found, runs and refuses with its own reason, whatever map this machine
+        # holds. NMAS_URL a closed port still: the job-finished notice reaches no NMAS.
+        missing = tmp_path / "no-map.tsv"
+        env = {**self.ENV, "REPO": str(tmp_path / "none"), "NMAS_URL": CLOSED_PORT_URL,
+               "LAB_TARGETS_MAP": str(missing)}
         r = subprocess.run(["bash", str(link), "--yes"], capture_output=True,
                            text=True, env=env, cwd=str(tmp_path), timeout=60)
         assert "helper not found" not in r.stdout, r.stdout
         assert "command not found" not in r.stdout + r.stderr
-        assert "the NMAS could not be asked" in r.stdout, r.stdout
-        # REFUSED, the closed port's own answer. The live NMAS gives "timed
-        # out" from the laptop and a map on the host, so this is what fails if
-        # the override is lost, on either machine.
-        assert "Connection refused" in r.stderr, r.stderr   # the helper's own reason
+        assert "the lab's map could not be read" in r.stdout, r.stdout
+        # The helper's own reason, naming the file it was given.
+        assert f"the lab's map could not be read ({missing})" in r.stderr, r.stderr
         assert r.returncode == 2
 
 

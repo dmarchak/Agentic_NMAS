@@ -166,53 +166,61 @@ class TestTheHelperRefusesRatherThanGuessing:
         import importlib.util
         from importlib.machinery import SourceFileLoader
 
-        path = os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        path = os.path.join(ROOT, "lab", "clab-sync", "clab-targets")
         spec = importlib.util.spec_from_file_location(
             "clabt", path, loader=SourceFileLoader("clabt", path))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod
 
-    def test_an_unreachable_nmas_exits_non_zero(self, helper, monkeypatch,
-                                                capsys):
+    def test_an_unreadable_map_exits_non_zero(self, helper, monkeypatch, capsys, tmp_path):
+        """C663: the map is the lab's own file; one that cannot be read is a refusal naming it,
+        never a default directory."""
+        missing = tmp_path / "no-map.tsv"
         monkeypatch.setattr(helper.sys, "argv",
-                            ["x", "--url", "http://127.0.0.1:59999"])
+                            ["x", "--list", "Default", "--map", str(missing)])
         assert helper.main() == helper.EXIT_UNREACHABLE
         err = capsys.readouterr().err
-        assert "REFUSED" in err
+        assert f"REFUSED — the lab's map could not be read ({missing})" in err
         assert "Not falling back" in err
 
+    def test_the_default_map_is_the_network_s_file_beside_the_checkout(self, helper):
+        assert helper.map_path("Default") == os.path.join(ROOT, "data", "lab_targets",
+                                                          "Default.tsv")
+        assert helper.map_path("a b/c").endswith(os.path.join("lab_targets", "a_b_c.tsv"))
+
     def test_an_empty_map_is_also_a_refusal(self, helper, monkeypatch):
-        """*"No devices"* from a reachable NMAS is a fact about the answer,
+        """*"No devices"* from a readable map is a fact about the answer,
         not about the fleet."""
-        monkeypatch.setattr(helper, "fetch", lambda *a, **k: [])
-        monkeypatch.setattr(helper.sys, "argv", ["x", "--url", "http://nmas"])
+        monkeypatch.setattr(helper, "load", lambda *a, **k: [])
+        monkeypatch.setattr(helper.sys, "argv", ["x", "--list", "Default", "--map", "m"])
         assert helper.main() == helper.EXIT_UNREACHABLE
 
     def test_it_never_caches(self, helper):
         """A cache is a second copy wearing a different name.
 
-        **Parsed, not grepped** — `urlopen(` contains `open(`, and the first
-        version of this test matched the fetch it was written to allow.
-        Fifth time tonight that a substring matched the thing it described.
-        """
+        **Parsed, not grepped**. Since C663 the map IS a file, the lab's own, so exactly one
+        `open` is allowed: in `load`, reading. Nothing else opens a file; nothing is written
+        or pickled."""
         import ast
         import inspect
 
         tree = ast.parse(inspect.getsource(helper))
-        plain_open = [n for n in ast.walk(tree)
-                      if isinstance(n, ast.Call)
-                      and isinstance(n.func, ast.Name) and n.func.id == "open"]
-        assert not plain_open, \
-            "it reads or writes a file — a cache is a second copy wearing a "\
-            "different name"
+        opens = []
+        for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
+            for n in ast.walk(fn):
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and \
+                        n.func.id == "open":
+                    mode = n.args[1].value if len(n.args) > 1 and \
+                        isinstance(n.args[1], ast.Constant) else "r"
+                    opens.append((fn.name, mode))
+        assert opens == [("load", "r")], opens
         names = {getattr(n, "id", "") for n in ast.walk(tree)
                  if isinstance(n, ast.Name)}
-        assert "urlopen" not in names or True
-        assert "pickle" not in names
+        assert "pickle" not in names and "urlopen" not in names
         # The floor: the parse really did see this module.
-        assert "fetch" in {n.name for n in ast.walk(tree)
-                           if isinstance(n, ast.FunctionDef)}
+        assert "load" in {n.name for n in ast.walk(tree)
+                          if isinstance(n, ast.FunctionDef)}
 
     def test_strays_finds_a_config_in_the_wrong_lab(self, helper):
         """`labs/lab/configs/r6.cfg`, written before the sync learned about
@@ -274,12 +282,12 @@ class TestTheHelperRefusesRatherThanGuessing:
                                                     monkeypatch, capsys):
         """*"I could not look"* and *"there is nothing there"* are the two
         answers this must never confuse."""
-        monkeypatch.setattr(helper, "fetch", lambda *a, **k: [
+        monkeypatch.setattr(helper, "load", lambda *a, **k: [
             ("r1", "labs/lab/configs", "default", "user@clab", "cisco_ios", "r1")])
         monkeypatch.setattr(helper, "remote_listing", lambda h, d: (_ for _ in ()).throw(
             helper.StrayLookupFailed("ssh: connect refused")))
         monkeypatch.setattr(helper.sys, "argv",
-                            ["x", "--url", "http://nmas",
+                            ["x", "--list", "Default", "--map", "m",
                              "--stray", "labs/lab/configs"])
 
         assert helper.main() == helper.EXIT_UNREACHABLE
@@ -551,30 +559,19 @@ class TestThePlatformIsCarriedNotInferred:
         import os as _os
         from importlib.machinery import SourceFileLoader
 
-        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        path = _os.path.join(ROOT, "lab", "clab-sync", "clab-targets")
         spec = importlib.util.spec_from_file_location(
             "clabt2", path, loader=SourceFileLoader("clabt2", path))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-        class _R:
-            def read(self):
-                return (b"r6\tlabs/r6/configs\tr6\tuser@clab\tcisco_iosxe\tr6\n"
-                        b"old\tlabs/lab/configs\tdefault\n")
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        import urllib.request
-        orig = urllib.request.urlopen
-        try:
-            urllib.request.urlopen = lambda *a, **k: _R()
-            rows = mod.fetch("http://nmas")
-        finally:
-            urllib.request.urlopen = orig
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = _os.path.join(d, "Default.tsv")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("r6\tlabs/r6/configs\tr6\tuser@clab\tcisco_iosxe\tr6\n"
+                         "old\tlabs/lab/configs\tdefault\n")
+            rows = mod.load(path)
 
         assert rows[0] == ("r6", "labs/r6/configs", "r6", "user@clab",
                            "cisco_iosxe")
@@ -601,7 +598,7 @@ class TestEveryDeviceAndEveryFileIsAccountedFor:
         import os as _os
         from importlib.machinery import SourceFileLoader
 
-        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        path = _os.path.join(ROOT, "lab", "clab-sync", "clab-targets")
         spec = importlib.util.spec_from_file_location(
             "clabt3", path, loader=SourceFileLoader("clabt3", path))
         mod = importlib.util.module_from_spec(spec)
@@ -717,7 +714,7 @@ class TestGroupingIsByDestination:
         import os as _os
         from importlib.machinery import SourceFileLoader
 
-        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        path = _os.path.join(ROOT, "lab", "clab-sync", "clab-targets")
         spec = importlib.util.spec_from_file_location(
             "clabt4", path, loader=SourceFileLoader("clabt4", path))
         mod = importlib.util.module_from_spec(spec)
@@ -726,12 +723,12 @@ class TestGroupingIsByDestination:
 
     def test_devices_sharing_a_destination_are_one_line(self, helper,
                                                         monkeypatch, capsys):
-        monkeypatch.setattr(helper, "fetch", lambda *a, **k: [
+        monkeypatch.setattr(helper, "load", lambda *a, **k: [
             ("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe"),
             ("s1", "labs/lab/configs", "default", "user@clab", "cisco_ios"),
             ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe")])
         monkeypatch.setattr(helper.sys, "argv",
-                            ["x", "--url", "http://nmas", "--group"])
+                            ["x", "--list", "Default", "--map", "m", "--group"])
 
         assert helper.main() == helper.EXIT_OK
         lines = capsys.readouterr().out.strip().splitlines()
@@ -752,7 +749,7 @@ class TestADeclaredFileIsADecisionNotAGap:
         import os as _os
         from importlib.machinery import SourceFileLoader
 
-        path = _os.path.join(ROOT, "scripts", "nmas-clab-targets")
+        path = _os.path.join(ROOT, "lab", "clab-sync", "clab-targets")
         spec = importlib.util.spec_from_file_location(
             "clabt4", path, loader=SourceFileLoader("clabt4", path))
         mod = importlib.util.module_from_spec(spec)
@@ -786,25 +783,12 @@ class TestADeclaredFileIsADecisionNotAGap:
         assert code == helper.EXIT_MISSING_OUTPUT
         assert "CONFLICT" in capsys.readouterr().err
 
-    def test_fetch_collects_declarations(self, helper):
-        class _R:
-            def read(self):
-                return (b"r1\tlabs/lab/configs\tdefault\tu@c\tcisco_iosxe\tr1\n"
-                        b"# DECLARED-UNMAPPED\tr5\tdefault\tISP PE (op, today)\n")
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *a):
-                return False
-
-        import urllib.request
-        orig, declared = urllib.request.urlopen, {}
-        try:
-            urllib.request.urlopen = lambda *a, **k: _R()
-            rows = helper.fetch("http://nmas", declared=declared)
-        finally:
-            urllib.request.urlopen = orig
+    def test_load_collects_declarations(self, helper, tmp_path):
+        path = tmp_path / "Default.tsv"
+        path.write_text("r1\tlabs/lab/configs\tdefault\tu@c\tcisco_iosxe\tr1\n"
+                        "# DECLARED-UNMAPPED\tr5\tdefault\tISP PE (op, today)\n")
+        declared = {}
+        rows = helper.load(str(path), declared=declared)
         assert [r[0] for r in rows] == ["r1"]
         assert declared == {"r5": "ISP PE (op, today)"}
 
@@ -812,8 +796,8 @@ class TestADeclaredFileIsADecisionNotAGap:
                                                capsys):
         """`--device` unpacked three columns from six-column rows and raised
         on the first one."""
-        monkeypatch.setattr(helper, "fetch", lambda *a, **k: list(self.ROWS))
-        monkeypatch.setattr("sys.argv", ["x", "--url", "u", "--device", "r1"])
+        monkeypatch.setattr(helper, "load", lambda *a, **k: list(self.ROWS))
+        monkeypatch.setattr("sys.argv", ["x", "--list", "Default", "--map", "m", "--device", "r1"])
         assert helper.main() == helper.EXIT_OK
         assert "r1\tlabs/lab/configs\tdefault" in capsys.readouterr().out
 

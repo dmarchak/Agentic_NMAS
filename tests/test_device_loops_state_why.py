@@ -102,7 +102,7 @@ SURVEYED = {
         "sequential", "every read is an ssh to ONE host, the lab VM, not to the devices: a "
                       "burst of them meets sshd's MaxStartups (10 unauthenticated by "
                       "default), so serial is the safe default for a single target"),
-    ("scripts/oxidized-to-config.sh", "reconcile and diff loops"): (
+    ("lab/clab-sync/clab-startup-sync.sh", "reconcile and diff loops"): (
         "sequential", "reads over ssh to ONE host, the lab VM (MaxStartups, as "
                       "nmas-check-startup-applies), before a single commit; a person reads "
                       "the diff in the order it prints"),

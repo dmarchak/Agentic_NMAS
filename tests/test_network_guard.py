@@ -221,7 +221,7 @@ class TestEveryProcessATestStarts:
         """The exact defect: the sync script via a symlink, NMAS_URL left at
         the script's default (the live NMAS). Refused by construction, not by
         this test's REPO happening to name nothing."""
-        script = os.path.join(ROOT, "scripts", "oxidized-to-config.sh")
+        script = os.path.join(ROOT, "lab", "clab-sync", "clab-startup-sync.sh")
         link = tmp_path / "oxidized-to-config.sh"
         link.symlink_to(script)
         # The sanitiser has no host default since 2026-09-29: an unset NMAS_URL
@@ -231,12 +231,15 @@ class TestEveryProcessATestStarts:
         hosts = tmp_path / "lab_hosts.json"
         hosts.write_text(json.dumps({"nmas": {"user": "op", "lan": LIVE_NMAS[0],
                                               "tunnel": "ssh-nmas.example.net"}}))
+        # C663: the map is the lab's own file (here one that is not there, never this
+        # machine's); the live NMAS is still reached for, by the job-finished notice on exit.
         out = subprocess.run(["bash", str(link), "--yes"], capture_output=True, text=True,
                              env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
                                   "REPO": str(tmp_path / "none"),
-                                  "NMAS_LAB_HOSTS": str(hosts)},
+                                  "NMAS_LAB_HOSTS": str(hosts),
+                                  "LAB_TARGETS_MAP": str(tmp_path / "no-map.tsv")},
                              cwd=str(tmp_path), timeout=60)
-        assert "the NMAS could not be asked" in out.stdout, out.stdout
+        assert "the lab's map could not be read" in out.stdout, out.stdout
         tried = network_guard.spawn_guard().take()
         assert any("192.0.2.211" in t for t in tried), tried
 
