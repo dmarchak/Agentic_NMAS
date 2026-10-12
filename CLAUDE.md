@@ -120,7 +120,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **A diff must not remove a definition something still calls.**
   [scripts/check_removed_definitions.py in hooks/pre-commit and CI; tests/test_check_removed_definitions.py] [why](docs/LESSONS.md#removed-definitions-still-called)
 - **A commit touching a host-installed file** (`deploy/update/`, `scripts/nmas-deploy`, `scripts/nmas-oxidized-cred`,
-  `deploy/systemd/`, `deploy/topology/`) carries `Host-Step:`/`Host-Step-After:` or
+  `deploy/systemd/`, `deploy/postgres/`) carries `Host-Step:`/`Host-Step-After:` or
   `Host-Step-None: <why>`; a step fills every value (no `<…>`), renders into a fresh `mktemp -d`
   folder, and installs files by name, never a glob.
   [scripts/nmas-host-step-check in hooks/commit-msg and CI; tests/test_host_step_check.py] [why](docs/LESSONS.md#host-steps-in-commits)
@@ -338,7 +338,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   `hostvars.py`, `parsers/`, `roundtrip.py`, `normalize.py`, `templates_repo.py`, `approval.py`,
   `render_artifact.py`, `deploy.py`, `recreate.py`, `removal.py`, `verify_scope.py`, `restore.py`,
   `receipts.py`, `authorisation.py`, `device_ops.py`, `intent_match.py`, `golden_state.py`,
-  `profile*.py`, `platform.py`, `listref.py`, `freshness.py`, `ztp*.py`, `onboard.py`,
+  `profile*.py`, `platform.py`, `listref.py`, `ztp*.py`, `onboard.py`,
   `credential_rotation.py`, and the operations `seed`, `intent_ops`, `persist_op`, `rotate_op`,
   `adopt`, `retire`.
 - **Operations and screens:** `preview_confirm.py`, `invalidation.py`, `attention.py`,

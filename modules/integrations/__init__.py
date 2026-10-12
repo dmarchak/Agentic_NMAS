@@ -13,7 +13,6 @@ from modules.integrations.prometheus import PrometheusIntegration
 from modules.integrations.grafana import GrafanaIntegration
 from modules.integrations.loki import LokiIntegration
 from modules.integrations.kea import KeaIntegration
-from modules.integrations.topology_service import TopologyServiceIntegration
 from modules.integrations.nsot_git import NsotGitIntegration
 from modules.integrations.s3_archive import S3ArchiveIntegration
 from modules.integrations.proxmox import ProxmoxIntegration
@@ -29,12 +28,20 @@ REGISTRY: dict = {
         GrafanaIntegration,
         LokiIntegration,
         KeaIntegration,
-        TopologyServiceIntegration,
         NsotGitIntegration,
         S3ArchiveIntegration,
         ProxmoxIntegration,
         MonitoringProfileIntegration,
     )
+}
+
+
+#: Integrations retired, by settings prefix, with when: never registered, so nothing probes
+#: them, draws their card or reads their keys (their keys stay declared for one release,
+#: `retiring` in settings_scope; tests/test_retired_integrations.py holds all three).
+RETIRED: dict = {
+    "oxidized": "Phase 3, 2026-10-08",
+    "topology_service": "7.8, 2026-10-12: OBSERVE › Topology replaced it",
 }
 
 
@@ -63,5 +70,5 @@ __all__ = [
     "get_integration", "all_statuses",
     "NetBoxIntegration", "PrometheusIntegration", "GrafanaIntegration",
     "LokiIntegration", "KeaIntegration",
-    "TopologyServiceIntegration", "NsotGitIntegration", "S3ArchiveIntegration",
+    "NsotGitIntegration", "S3ArchiveIntegration",
 ]

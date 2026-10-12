@@ -23,7 +23,7 @@ FOLDER = os.path.join(ROOT, "modules", "integrations")
 def test_no_client_reads_a_setting_past_its_list():
     found = []
     names = sorted(n for n in os.listdir(FOLDER) if n.endswith(".py"))
-    assert len(names) >= 12, "the population shrank: the clients moved?"
+    assert len(names) >= 11, "the population shrank: the clients moved?"   # 11 since 7.8 (C714)
     for name in names:
         if name in ("base.py", "__init__.py"):
             continue

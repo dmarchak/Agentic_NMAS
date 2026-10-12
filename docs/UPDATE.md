@@ -236,8 +236,9 @@ Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
 - **A commit changing a file a check answers for names that check in its step**
   (`STEP_CHECKS` in `scripts/nmas-host-step-check`, the same pairs as the
   registry in `modules/host_helpers.py`): `deploy/update/` and `scripts/nmas-deploy`
-  take `[updater]`, `deploy/topology/` `[topology-renderer-gone]`, and
-  `scripts/nmas-oxidized-cred` `[oxidized-cred]`. A step without it is refused.
+  take `[updater]`, and `scripts/nmas-oxidized-cred` `[oxidized-cred]` (`deploy/topology/`
+  took `[topology-renderer-gone]` until the folder was retired, 7.8). A step without it is
+  refused.
   `Host-Step-None` alone needs no check.
 - **While such a step is owed, job health's row for the same helper is part of the
   step's row** (C419): one install clears both, so the page draws one row, the
@@ -278,7 +279,7 @@ document's by a test.
 (the operator, 2026-09-30: between af8630a and e7b80c7 `scripts/nmas-deploy`
 changed in 7551c2a and no step was said, so the updater's root-owned copy
 silently differed). A commit touching `deploy/update/`, `scripts/nmas-deploy`,
-`deploy/systemd/` or `deploy/topology/` carries `Host-Step: <the step>`, or
+`scripts/nmas-oxidized-cred`, `deploy/systemd/` or `deploy/postgres/` carries `Host-Step: <the step>`, or
 `Host-Step-None: <why nothing is needed>` (a comment, a test-only edit), which
 the preview never lists as a step to do. `scripts/nmas-host-step-check` holds the
 list and the rule; the commit-msg hook refuses the commit

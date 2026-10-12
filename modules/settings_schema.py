@@ -234,6 +234,8 @@ DEFAULTS: dict = {
     "proxmox_verify_tls":     True,
 
     # ── External topology service ───────────────────────────────────────────
+    # Read by nothing since 7.8 retired the service (2026-10-12): kept declared for one
+    # release so a rollback finds them, then removed with a version bump (Oxidized's way).
     "topology_service_url":   "",
     "topology_service_type":  "json",    # json | svg | iframe
     "topology_service_token": "",

@@ -781,7 +781,8 @@ Dates, counts and statuses below are as they were written. Where a later entry o
 
 - **A commit touching a host-installed file says what the host needs**
   (2026-09-30): `deploy/update/`, `scripts/nmas-deploy`, `deploy/systemd/` or
-  `deploy/topology/` needs `Host-Step: <the step>` or `Host-Step-None: <why>`.
+  `deploy/topology/` (retired at 7.8; `deploy/postgres/` since Phase 4) needs
+  `Host-Step: <the step>` or `Host-Step-None: <why>`.
   `scripts/nmas-host-step-check` is the rule; install the commit-msg hook with
   `ln -sf ../../scripts/hooks/commit-msg .git/hooks/commit-msg`; CI refuses a
   pushed range that bypassed it (docs/UPDATE.md).

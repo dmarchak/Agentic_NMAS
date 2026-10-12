@@ -4,8 +4,8 @@ Host-Step check; job health compares each installed helper with this release and
 install step BEFORE an operation needs it").
 
 ONE registry, built from the constants each owner already declares (the updater's
-`update_op.INSTALLED`, the rotation's `HELPER_INSTALLED` and `HELPER_SOURCE_REL`, the retired topology
-renderer's link in `host_steps`), so a path is written once. Read by:
+`update_op.INSTALLED`, the rotation's `HELPER_INSTALLED` and `HELPER_SOURCE_REL`), so a
+path is written once. Read by:
 
 - the Host-Step check: every source here is under `HOST_STEP_PATHS`, so a commit changing one
   says what the host needs (tests/test_host_helpers.py holds the two together);
@@ -35,7 +35,7 @@ def registry() -> list:
     names in its step (scripts/nmas-host-step-check); *unit* is its job-health row; *folds*
     are that row's states one install clears, so while a step with that check is owed the row
     attaches to the step's (C419: one cause, one row, for every helper)."""
-    from modules import host_steps, update_op
+    from modules import update_op
 
     out = [{"name": name, "installed": path, "source": source, "how": "copy",
             "needed_by": "the Update button", "checked_by": "updater_rows",
@@ -50,13 +50,9 @@ def registry() -> list:
                 "installed": cr.HELPER_INSTALLED, "source": cr.HELPER_SOURCE_REL,
                 "how": "copy", "needed_by": "nothing since Phase 3 step 2: the host steps remove it",
                 "checked_by": "", "check": "oxidized-cred", "unit": "", "folds": ()})
-    # The topology renderer was retired at 7.8 (2026-10-12: OBSERVE › Topology replaced it).
-    # Its source left the repository with the release that carries its removal step, so its
-    # check measures that the link and the unit are gone; no job-health row, nothing folded.
-    out.append({"name": "the topology renderer (retired)", "installed": host_steps.TOPOLOGY_LINK,
-                "source": host_steps.TOPOLOGY_SOURCE_REL, "how": "symlink",
-                "needed_by": "nothing since 7.8: its host step removes it", "checked_by": "",
-                "check": "topology-renderer-gone", "unit": "", "folds": ()})
+    # The topology renderer was retired at 7.8 (2026-10-12: OBSERVE › Topology replaced it)
+    # and its host step removed the link and the unit (`topology-renderer-gone` in
+    # host_steps.CHECKS still measures that), so it is no longer a root-installed file here.
     return out
 
 

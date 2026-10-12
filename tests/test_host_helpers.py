@@ -41,16 +41,14 @@ class TestTheRegistryAndTheHostStepCheck:
         from modules import host_steps, update_op
         from modules.nsot import credential_rotation as cr
         reg = HH.registry()
-        assert len(reg) >= 4
+        assert len(reg) >= 3   # 3 since 7.8 retired the topology renderer
         assert {(h["installed"], h["source"]) for h in reg} >= {
             (p, s) for _n, p, s in update_op.INSTALLED if s}
         assert (cr.HELPER_INSTALLED, cr.HELPER_SOURCE_REL) in {(h["installed"], h["source"])
                                                                for h in reg}
-        assert host_steps.TOPOLOGY_LINK in {h["installed"] for h in reg}
-        # A helper with a job-health row is compared with its source, so the source exists; a
-        # retired one's may have left with the release that carries its removal step (7.8).
-        assert all(os.path.exists(os.path.join(ROOT, h["source"])) for h in reg if h["unit"])
-        assert not os.path.exists(os.path.join(ROOT, host_steps.TOPOLOGY_SOURCE_REL))
+        assert all(os.path.exists(os.path.join(ROOT, h["source"])) for h in reg)
+        # The topology renderer, retired at 7.8 and removed from the host, is no longer one.
+        assert host_steps.TOPOLOGY_LINK not in {h["installed"] for h in reg}
 
     def test_every_root_installed_source_is_under_the_host_step_check(self):
         paths = _host_step_paths()
@@ -86,11 +84,11 @@ def _status(state, **extra):
 
 
 class TestTheRetiredTopologyRenderer:
-    def test_it_is_registered_with_its_removal_check_and_no_job_health_row(self):
-        """7.8: the renderer's source left with the release carrying its removal step; the
-        registry keeps its installed path for that step's check, and job health no row."""
-        (row,) = [h for h in HH.registry() if h["check"] == "topology-renderer-gone"]
-        assert row["unit"] == "" and row["folds"] == () and "retired" in row["name"]
+    def test_it_has_no_job_health_row_and_its_removal_check_stays(self):
+        """7.8: removed from the host by its step (8 of 8, 2026-10-12); the check that measured
+        it stays, for that step's commit, and job health draws no row for it."""
+        from modules import host_steps
+        assert "topology-renderer-gone" in host_steps.CHECKS
         assert HH.helper_rows() == [] and HH.INSTALL_UNITS == ("updater",)
 
 

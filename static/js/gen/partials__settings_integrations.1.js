@@ -47,12 +47,6 @@ const INTEGRATION_SPEC = {
     {key: 'kea_username', label: 'Username', type: 'text'},
     {key: 'kea_password', label: 'Password', type: 'secret'},
     {key: 'kea_verify_tls', label: 'Verify TLS', type: 'switch'}]},
-  topology_service: {icon: '🕸️', fields: [
-    {key: 'topology_service_url', label: 'URL', type: 'url',
-     help: 'Optional. The built-in CDP/LLDP topology is unaffected.'},
-    {key: 'topology_service_type', label: 'Type', type: 'select', options: ['json', 'svg', 'iframe']},
-    {key: 'topology_service_token', label: 'Token', type: 'secret'},
-    {key: 'topology_service_verify_tls', label: 'Verify TLS', type: 'switch'}]},
   nsot_git: {icon: '🔀', fields: [
     {key: 'nsot_git_repo_path', label: 'Local repo path', type: 'text',
      help: 'Blank uses each list’s data/lists/{slug}/config_repo.'},

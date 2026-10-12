@@ -1490,7 +1490,7 @@ RENEW_AT = {
     "accounts", "proxmox": "Proxmox: Datacenter > Permissions > API Tokens",
     "prometheus": "the proxy in front of Prometheus", "loki": "the proxy in front of Loki",
     "kea": "the Kea control agent's credentials",
-    "topology_service": "the topology service's own token", "nsot_git": "the git host's tokens",
+    "nsot_git": "the git host's tokens",
     "s3": "the S3 provider's access keys",
 }
 #: An expiry a person declares where the service does not let the tool read it (P.21).

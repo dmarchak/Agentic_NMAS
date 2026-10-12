@@ -114,7 +114,7 @@ class TestSecretHandling:
 class TestRegistry:
     def test_expected_integrations_registered(self):
         for expected in ("netbox", "prometheus", "grafana", "loki",
-                         "kea", "topology_service", "nsot_git", "s3"):
+                         "kea", "nsot_git", "s3"):
             assert expected in REGISTRY
         assert "oxidized" not in REGISTRY, "Oxidized is retired (Phase 3)"
 

@@ -153,7 +153,8 @@ def test_no_planted_integration_secret_reaches_a_log_or_a_message(planted, caplo
         # service (a Basic header is decoded), with a floor, so a probe that sent nothing
         # cannot pass for one that kept what it sent out of the log.
         sent = _sent(_Echo.seen, planted)
-        assert len(sent) >= (5 if mode == "basic" else 4), (mode, sent)
+        # 4 in basic mode since 7.8 retired the topology service's client (its token was one).
+        assert len(sent) >= 4, (mode, sent)
     logged = "\n".join(r.getMessage() for r in caplog.records)
     assert len(caplog.records) >= 5 and len(said) >= 10, (len(caplog.records), len(said))
     leaked_log = sorted({v for v in planted if v in logged})

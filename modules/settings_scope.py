@@ -42,8 +42,6 @@ SCOPES: dict = {
     **_group(NETWORK, "kea", "kea_url", "kea_username", "kea_password", "kea_services",
              "kea_verify_tls", "kea_ztp_fragment", "kea_dhcp4_config",
              "kea_dhcp6_config"),
-    **_group(NETWORK, "topology_service", "topology_service_url", "topology_service_type",
-             "topology_service_token", "topology_service_verify_tls"),
     **_group(NETWORK, "monitoring_profile", "syslog_host", "syslog_trap_level",
              "syslog_origin_id", "syslog_source_interface", "syslog_heartbeat_seconds",
              "ntp_servers", "telemetry_receiver", "snmp_trap_host", "snmp_exporter_config",
@@ -94,6 +92,9 @@ SCOPES: dict = {
     # network's group, so no Settings screen draws a card for them.
     **_group(RETIRING, "oxidized", "oxidized_url", "oxidized_username", "oxidized_password",
              "oxidized_verify_tls", "oxidized_node_identity", "oxidized_router_db"),
+    # The topology service, retired at 7.8 (2026-10-12): OBSERVE › Topology replaced it.
+    **_group(RETIRING, "topology_service", "topology_service_url", "topology_service_type",
+             "topology_service_token", "topology_service_verify_tls"),
     # ── Already dead, recorded (never split) ─────────────────────────────────────────────
     **_group(DEAD, "dead", "jenkins_step_shell", "wf_run_jenkins",
              "netbox_remove_on_list_delete", "oxidized_rest_url", "grafana_embed_mode",
@@ -107,7 +108,6 @@ SCOPES: dict = {
 GROUP_LABELS: dict = {
     "grafana": "Grafana", "grafana_roles": "Grafana dashboards", "prometheus": "Prometheus",
     "loki": "Loki", "kea": "Kea",
-    "topology_service": "Topology service",
     "monitoring_profile": "Monitoring profile", "s3_archive": "S3 archive",
     "verify_settle_windows": "Verify settle windows", "deploy_max_workers": "Deploy workers",
     "deploy_verify_failure_limit": "Deploy failure limit",
@@ -124,7 +124,7 @@ GROUP_LABELS: dict = {
 #: (NSOT_P8_DESIGN section 8, step 5) rather than failing every interval.
 URL_KEYS: dict = {
     "grafana": "grafana_url", "prometheus": "prometheus_url", "loki": "loki_url",
-    "kea": "kea_url", "topology_service": "topology_service_url",
+    "kea": "kea_url",
     "s3_archive": "s3_endpoint",
 }
 

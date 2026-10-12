@@ -7,9 +7,9 @@ nothing about the host (the operator, 2026-09-30).
 
 A file under HOST_STEP_PATHS is not live when the checkout moves: the updater
 runs a ROOT-OWNED copy of scripts/nmas-deploy and deploy/update/nmas-update,
-the systemd units are rendered and installed by a person, and the topology
-renderer runs from a symlink a service must be restarted to re-read. So a
-commit touching one carries either
+the systemd units are rendered and installed by a person, and Mercury's records
+database's files are installed by its host step (the topology renderer, which
+ran from a symlink, was retired at 7.8). So a commit touching one carries either
 
     Host-Step: [<check>] <the step, done BEFORE the update>
     Host-Step-After: [<check>] <the step, done once the update runs>
@@ -40,7 +40,6 @@ HOST_STEP_PATHS = (
     "deploy/update/",
     "scripts/nmas-deploy",
     "deploy/systemd/",
-    "deploy/topology/",
     # The Oxidized credential helper, installed root-owned as /usr/local/sbin/nmas-oxidized-cred
     # (2026-10-03: every root-installed helper; modules/host_helpers.py is the registry).
     "scripts/nmas-oxidized-cred",
@@ -56,7 +55,6 @@ HOST_STEP_PATHS = (
 STEP_CHECKS = {
     "deploy/update/": "updater",
     "scripts/nmas-deploy": "updater",
-    "deploy/topology/": "topology-renderer-gone",
     "scripts/nmas-oxidized-cred": "oxidized-cred",
 }
 

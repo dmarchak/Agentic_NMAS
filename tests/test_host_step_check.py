@@ -71,10 +71,10 @@ class TestTheRange:
         assert "Host-Step-None" in p.stderr
 
     @pytest.mark.parametrize("path", ["deploy/update/nmas-update", "deploy/systemd/x.service",
-                                      "deploy/topology/nmas-topology.py", "scripts/nmas-deploy"])
+                                      "deploy/postgres/docker-compose.yml", "scripts/nmas-deploy"])
     def test_a_step_said_passes(self, repo, path):
-        check = {"deploy/update/nmas-update": "[updater] ", "scripts/nmas-deploy": "[updater] ",
-                 "deploy/topology/nmas-topology.py": "[topology-renderer-gone] "}.get(path, "")
+        check = {"deploy/update/nmas-update": "[updater] ",
+                 "scripts/nmas-deploy": "[updater] "}.get(path, "")
         _commit(repo, path, f"change\n\nHost-Step: {check}re-install it as root")
         assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 0
 
