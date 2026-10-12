@@ -100,7 +100,6 @@ class TestEveryMutatingEndpointIsDeclared:
     @pytest.mark.parametrize("endpoint,kind", [
         ("deploy.apply", "confirm"),
         ("golden.restore_apply", "confirm"),
-        ("bulk_reload", "confirm"),
         ("bulk_execute", "confirm"),
         ("bulk_tftp_upload", "confirm"),
         ("ai_approval_approve", "approve"),
@@ -197,7 +196,6 @@ REFUSED_WITHOUT_IDENTITY = [
     "/deploy/apply",
     "/golden/restore/apply",
     "/ai/approvals/xyz/approve",
-    "/bulk_reload",
     "/bulk_tftp_upload",
     "/settings",
     "/templatize/bulk/apply",

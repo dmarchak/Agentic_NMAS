@@ -304,9 +304,6 @@ STAGES = {
     # ---- Legacy device routes, removed or replaced at cutover
     "run_command": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
     "bulk_execute": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
-    "bulk_reload": Stages(
-        "MISSING: no gates or preview; reload becomes P.14's gated operation", LEGACY, LEGACY,
-        "n/a: a reload cannot be undone", "modules.restarts.record_planned"),
     "upload_file": Stages(LEGACY, LEGACY, LEGACY, LEGACY, LEGACY),
     "bulk_tftp_upload": Stages(LEGACY, LEGACY, LEGACY, LEGACY, LEGACY),
     "delete_file": Stages(LEGACY, LEGACY, LEGACY, "n/a: a deleted file cannot be restored", LEGACY),
@@ -358,7 +355,6 @@ HISTORY = {
     "device_v2.reload_confirm": ("reloads", "restart_windows", "restarts"),
     "v2.history_reapply_confirm": ("receipts", "golden"),
     "onboard_v2.abandon": ("onboarding",),
-    "bulk_reload": ("restart_windows", "restarts"),
     "update.apply": NOT_A_DEVICE,
     "dhcp_v2.reservation_confirm": ("n/a: changes a Kea reservation, never one device's record; "
                                     "the network's repository keeps it (dhcp/reservations.yml)"),

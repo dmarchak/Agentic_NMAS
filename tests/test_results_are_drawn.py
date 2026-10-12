@@ -286,7 +286,6 @@ PENDING = {
     "remote.auto_push": "the remote panel's output box",
     "remote.acknowledge": "the remote panel's output box",
     # -- a toast, gone in seconds --
-    "bulk_reload": "the bulk results modal, each device polled (C152), not the result component",
     "ai_agent_run": "nothing: the response is never read (the agent is off)",
     "ai_approval_approve": "a toast; the commit an approval makes is never shown",
     "ai_approval_reject": "a toast",
@@ -341,7 +340,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 18, "FALSE_GREEN": 0, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 17, "FALSE_GREEN": 0, "UNESCAPED": 0}
 
 
 def _population():

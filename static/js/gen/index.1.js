@@ -219,55 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
 
-  window.reloadSelectedDevices = function() {
-    const selectedIps = Array.from(deviceCheckboxes())
-      .filter(cb => cb.checked && !cb.disabled)
-      .map(cb => cb.value);
-
-    if (selectedIps.length === 0) {
-      showToast('Select at least one device first', 'warning');
-      return;
-    }
-
-    if (!confirm(
-      `WARNING: This will reload (reboot) ${selectedIps.length} device(s).\n\n` +
-      `The devices will be unreachable for several minutes.\n\nContinue?`
-    )) return;
-
-    const btn     = document.getElementById('reloadDevicesBtn');
-    const btnText = btn.querySelector('.btn-text');
-    const spinner = btn.querySelector('.spinner-border');
-    btnText.textContent = 'Reloading…';
-    spinner.classList.remove('d-none');
-    btn.disabled = true;
-
-    const formData = new FormData();
-    selectedIps.forEach(ip => formData.append('device_ips[]', ip));
-
-    fetch('/bulk_reload', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => {
-      btnText.textContent = 'Reload Devices';
-      spinner.classList.add('d-none');
-      btn.disabled = false;
-      if (data.status === 'success') {
-        // The response comes back BEFORE any device is contacted, so it can
-        // say only that the reload was requested. Each device's real outcome
-        // is polled and drawn, as bulk execute's is (C152: probe-r1a's reload
-        // failed before connecting while this said "sent").
-        showBulkResults(data.operation_id);
-      } else {
-        showToast(data.message || 'Reload failed', 'danger');
-      }
-    })
-    .catch(err => {
-      btnText.textContent = 'Reload Devices';
-      spinner.classList.add('d-none');
-      btn.disabled = false;
-      showToast('Reload request failed: ' + err, 'danger');
-    });
-  };
-
   window.saveTftpServer = function() {
     const tftpServer = document.getElementById('bulkTftpServer').value.trim();
 

@@ -284,7 +284,7 @@ HELD_BY_CALLER = {
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
     "scripts/nmas-tier2-probe:measure": "the probe's main(), which holds the device for the run",
     "modules/commands.py:_run": "run_device_command's body (C272); its callers: /run_command holds a non-read",
-    "modules/device_reload.py:reload_device": "app.bulk_reload's per-device thread (C153)",
+    "modules/device_reload.py:reload_device": "reload_op.run, which holds the device for the reload (P.14; app.bulk_reload left at 7.8)",
     # Found when the scan was widened to config mode and the scripts (C191,
     # 2026-09-29); each caller verified in the code.
     "modules/bulk_ops.py:_execute_remove_static_routes": "the bulk worker, per device",

@@ -198,15 +198,6 @@ class TestHistory:
         assert ev[0]["outcome"] == "crash" and "crash file bootflash:" in ev[0]["detail"]
 
 
-class TestTheToolsOwnReload:
-    def test_the_reload_records_its_window_before_it_is_sent(self):
-        src = open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "app.py"),
-                   encoding="utf-8").read()
-        body = src[src.index("def bulk_reload("):]
-        body = body[:body.index(chr(10) + "@" + "app.route")]   # the next route
-        assert 0 < body.index("_restarts.record_planned(") < body.index("outcome = reload_device(conn)")
-
-
 def test_the_command_sent_is_the_declared_one():
     """The send carries the literal (so the command scans see a read) and it is REASON_COMMAND."""
     from modules import restarts

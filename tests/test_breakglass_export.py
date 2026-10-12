@@ -46,10 +46,22 @@ def lab(tmp_path, monkeypatch):
     return {"client": A.app.test_client(), "dir": tmp_path, "key": key}
 
 
+def _preview_text(lab):
+    """The preview as Credentials computes it (routes/v2.py: `export_plan`, then
+    `breakglass_preview`, masked on the way out), as the JSON a page would carry. Its JSON
+    route left at 7.8 (2026-10-12)."""
+    import app as A
+    from flask import request
+
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import breakglass_preview
+    with A.app.test_request_context("/v2/credentials"):
+        return json.dumps(mask_payload(breakglass_preview(BE.export_plan(LIST),
+                                                          request=request)))
+
+
 def _preview(lab):
-    r = lab["client"].post("/breakglass/preview", json={"list_name": LIST})
-    assert r.status_code == 200, r.get_data(as_text=True)[:300]
-    return r.get_json()["preview"]
+    return json.loads(_preview_text(lab))
 
 
 def _export(lab, preview=None, passphrase=PASS, confirm=PASS, hash_=None):
@@ -73,10 +85,9 @@ def _log(lab):
 
 class TestThePreview:
     def test_it_names_the_devices_and_reveals_no_value(self, lab):
-        r = lab["client"].post("/breakglass/preview", json={"list_name": LIST})
-        text = r.get_data(as_text=True)
+        text = _preview_text(lab)
         assert not [v for v in VALUES if v in text], "a preview reveals no value"
-        p = r.get_json()["preview"]
+        p = json.loads(text)
         lines = p["targets"][0]["program"]["lines"]
         assert lines[0].startswith("r1") and "+ enable secret" in lines[1]
         ops = {o["name"]: o["value"] for o in p["targets"][0]["operands"]}
@@ -210,17 +221,6 @@ class TestTheThreeEntryPointsAndOneClient:
     def _run(self, js):
         import dukpy
         return dukpy.evaljs(js)
-
-    def test_the_button_refuses_a_short_or_mismatched_passphrase(self, lab):
-        p = _preview(lab)
-        js = (lift(shipped("nmas_preview_confirm.js"), "previewConfirmButton") + "\n"
-              + lift(shipped("nmas_breakglass.js"), "breakglassButton") + "\nvar MIN = 12;\n")
-        call = lambda a, b: self._run(js + f"breakglassButton({json.dumps(p)}, "
-                                           f"{json.dumps(a)}, {json.dumps(b)})")
-        assert call("short", "short")["disabled"]
-        assert call(PASS, PASS + "!")["text"] == "The two passphrases differ"
-        assert call(PASS, PASS) == {"disabled": False,
-                                    "text": "Build, verify and download (2 device(s))"}
 
     def test_the_rotate_result_offers_it_in_its_next_step(self):
         js = (lift(shipped("nmas_preview_confirm.js"), "esc") + "\n"

@@ -71,32 +71,15 @@ def test_a_failure_is_never_recorded_as_an_empty_sentence():
 
 
 def test_the_per_device_recorders_use_it():
-    """The two per-device failure recorders the bulk paths have (the
-    reload's and the bulk loop's). A bare `str(exc)` put back is found."""
+    """The per-device failure recorder the bulk loop has (the reload's left with
+    /bulk_reload at 7.8). A bare `str(exc)` put back is found."""
     import re
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     bare = re.compile(r'result\["error"\]\s*=\s*str\((exc|e)\)')
     found = {}
-    for rel in ("app.py", "modules/bulk_ops.py"):
+    for rel in ("modules/bulk_ops.py",):
         text = open(os.path.join(root, rel), encoding="utf-8").read()
         found[rel] = (len(re.findall(r'result\["error"\]\s*=', text)), bare.findall(text))
     assert all(n >= 1 for n, _ in found.values()), found
     assert all(not b for _, b in found.values()), found
-
-
-def test_the_reload_screen_draws_each_device_s_result_not_a_sent_toast():
-    """The screen half. `/bulk_reload` answers before any device is
-    contacted, and the handler drew that answer ("Reload sent to 1
-    device(s)") as the result. It now opens the per-device poller bulk
-    execute already uses. Read from the handler's own body (comments
-    stripped), anchored on its definition, never a phrase in prose."""
-    import re
-
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    src = open(os.path.join(root, "static", "js", "gen", "index.1.js"), encoding="utf-8").read()
-    start = src.index("window.reloadSelectedDevices = function()")
-    end = src.index("window.saveTftpServer = function()", start)
-    body = re.sub(r"//[^\n]*", "", src[start:end])
-    assert "showBulkResults(data.operation_id)" in body, body[-600:]
-    assert "showToast(data.message, 'warning')" not in body

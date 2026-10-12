@@ -328,7 +328,6 @@ DECLARED = {
     "device_v2.rotate_confirm": Nothing("the same confirm as rotate.apply: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     "bulk_execute": ("device_state",),
-    "bulk_reload": ("device_state", "inventory"),
     "backup_config": ("backups",),
     "delete_backup_route": ("backups",),
     "upload_file": ("device_files",),
@@ -400,8 +399,6 @@ DECLARED = {
     "intent_v2.check": Nothing("checks and renders an intent edit as it is typed"),
     "intent_v2.acknowledge": Nothing("rewrites the editor's document; the commit writes it"),
     "intent_v2.reopen": Nothing("opens the editor again; writes nothing"),
-    "breakglass.preview": Nothing("names the devices and the key's fingerprint an export "
-                                  "would hold; writes nothing"),
     "rotate.preview": Nothing("computes the rotation plan and reads the device's account line; writes nothing"),
     "persist.preview": Nothing("computes the persist plan from the inventory and the "
                                "startup check's record; contacts no device and writes nothing"),

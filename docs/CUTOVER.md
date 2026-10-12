@@ -63,7 +63,7 @@ and built.
 | Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
 | Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | BUILT, P.8 (2026-10-10; not run on the host) | Choosing one: BUILT (board N, 2026-10-10; not run on the host): the top bar's Network picker, the choice each verified person's own (`routes/network_v2.py`), so `/select_device_list`'s one choice for everyone has no v2 equivalent by design. Create and delete: BUILT (2026-10-10; not run on the host): Settings' New network… and a network's Delete this network…, each previewed and recorded; a deleted network's folder is moved aside, never erased. Rename: never offered by today's pages (C639), not built |
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` | BUILT, 7.7 (board F4, 2026-10-10) | Results are Needs attention rows; the schedule and Check now are Settings › Installation › Diagnostics |
-| Break-glass export | `/breakglass/preview`, `/export` | `/breakglass/export` STAYS; `/breakglass/preview` REMOVE, 7.8 (board 7) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
+| Break-glass export | `/breakglass/export` | STAYS (its preview route removed 2026-10-12, 7.8) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
 | Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
 | TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | Its only readers are the device file routes below, and it points at nothing on this installation |
@@ -76,7 +76,7 @@ and built.
 | Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02): ZTP delivery in onboarding and image management (P.13) replace them. ZTP is served by Mercury's own responder, which none of these routes touches (C616, checked 2026-10-09); `tftp_root` and `tftp_server_ip` leave with them |
 | Bulk read-only commands | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | BUILT (C548; not yet walked on the host) | Show commands (`/v2/show-commands`): devices by name, role or network, commands from the allowlist, results grouped and compared |
 | Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
-| Reload | `/bulk_reload` | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device); the route REMOVE at 7.8 | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
+| Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
 | Configure | `/configure/*` (5) | REMOVE, 7.8 (decided 2026-10-05) | The intent editor and deploy replace them (they already send nothing) |
@@ -144,6 +144,21 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   (`nsot_verify_migration.py`, `nsot_adopt_marker.py`). Proved before removal: none of the
   five paths is in the app's url_map, and nothing in templates, scripts, routes, modules or
   tests names them.
+- **Today's bulk reload** (/bulk_reload), 2026-10-12: its home, Device Actions › Reload…
+  (P.14), is built: gates judged by a preview job, a reason, the planned-restart window
+  declared before anything is sent, the wait bounded by the platform's boot time, verify, the
+  record. Today's device list's Reload Devices button and handler went with the route, and so
+  did the two tests that read the route's body for "the window before the send"; that property
+  is tested on v2's Reload (`tests/test_reload_v2.py`), and `device_reload.reload_device` stays
+  (v2's `reload_op.run` calls it, holding the device). Proved before removal: not in the
+  url_map; nothing but count comments names it.
+- **The break-glass preview's JSON route** (/breakglass/preview), 2026-10-12: Credentials draws
+  the preview itself (`routes/v2.py`, board 7) and posts to `/breakglass/export`, which stays.
+  The route's only caller was today's modal in `static/js/nmas_breakglass.js`, which nothing
+  opened since board 7 sent every opener to Credentials; the modal went, the two redirects
+  stay. v2's passphrase checks are `nmas_credentials.js`'s, tested in
+  `tests/test_credentials_v2.py`; the export tests now compute the preview the way
+  Credentials does. Proved before removal: not in the url_map; nothing but comments names it.
 
 ## Legacy actions that are not routes
 

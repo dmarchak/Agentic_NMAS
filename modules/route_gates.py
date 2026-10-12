@@ -112,7 +112,6 @@ GATES = {
                          "an ungated GET)"),
     "bulk_execute": _g(C, "sends READS to many devices: every ;-part passes the read-only "
                           "allowlist or none runs (C570; config mode cut in P.3 step 2)"),
-    "bulk_reload": _g(C, "reloads devices"),
     "bulk_tftp_upload": _g(C, "copies a file ONTO devices' flash (copy tftp: flash:)"),
     "bulk_delete_file": _g(C, "deletes files from devices' flash"),
     "upload_file": _g(C, "copies a file onto a device's flash"),
@@ -318,7 +317,6 @@ GATES = {
     "intent_v2.reopen": _g(N, "opens the editor on what is committed now with the person's edit on it; writes nothing"),
     "retire.preview": _g(N, "computes the retire plan and reads the export log; writes nothing"),
     "rotate.preview": _g(N, "computes the rotation plan and READS the device's account line; changes nothing"),
-    "breakglass.preview": _g(N, "names the devices and the key's fingerprint an export would hold; reveals no value"),
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
     "attention.acknowledge": _g(K, "records that a person acknowledged one event row on Needs attention, with a reason; the row leaves the page and the event stays in its record"),

@@ -202,7 +202,7 @@ def _routes_that_send_request_text():
 
 def test_every_route_sending_request_text_is_checked():
     found = _routes_that_send_request_text()
-    assert len(found) >= 16, found               # a floor; measured 2026-10-08: 16
+    assert len(found) >= 15, found               # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload (2026-10-12)
     unchecked = sorted(set(found) - set(CHECKED) - set(NOT_REQUEST_TEXT))
     assert not unchecked, (
         "a route reads the request and sends to a device with no declared check: "
@@ -213,8 +213,6 @@ def test_every_route_sending_request_text_is_checked():
 #: sent to it: each named with what it reads.
 NOT_REQUEST_TEXT = {
     "backup_config": "config_type picks show running-config or show startup-config",
-    "bulk_reload": ("device_ips pick devices; a fixed reload, each device held and its planned "
-                    "restart declared first; replaced by P.14 (CUTOVER)"),
     "configure_interfaces": "ips pick devices; fixed show commands",
     "configure_networks": "ips pick devices; fixed show commands",
     "manage_device": "active_tab picks a tab; get_device_context with no filesystem",

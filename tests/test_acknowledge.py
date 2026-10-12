@@ -285,11 +285,3 @@ class TestThePlannedWindowAPI:
         from modules.route_gates import GATES
         g = GATES["restarts.planned"]
         assert g.kind == "configure" and g.operation == "planned_restart"
-
-
-class TestTheToolsOwnReloadRefusesUnrecorded:
-    def test_a_window_that_cannot_be_recorded_stops_the_reload(self):
-        src = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
-        body = src[src.index("def bulk_reload("):]
-        body = body[:body.index("outcome = reload_device(conn)")]
-        assert 'if not _planned["ok"]:' in body and "raise RuntimeError(\"not reloaded" in body

@@ -19,20 +19,7 @@ log = logging.getLogger(__name__)
 bp = Blueprint("breakglass", __name__, url_prefix="/breakglass")
 
 
-@bp.route("/preview", methods=["POST"])
-def preview():
-    """What the record would hold: device names, the key's fingerprint and
-    verdict, and the hash the confirm binds. Reveals no value."""
-    from modules.breakglass_export import export_plan
-    from modules.config import get_current_list_name
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import breakglass_preview
-
-    data = request.get_json(silent=True) or {}
-    list_name = (data.get("list_name") or "").strip() or get_current_list_name()
-    plan = export_plan(list_name)
-    return jsonify(mask_payload({"ok": True, "list": list_name,
-                                 "preview": breakglass_preview(plan, request=request)}))
+# The preview is drawn by Credentials (routes/v2.py, board 7); its JSON route left at 7.8.
 
 
 @bp.route("/export", methods=["POST"])
