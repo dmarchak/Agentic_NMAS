@@ -75,9 +75,24 @@ def unenforced(text):
 PATH = re.compile(r"(?<![\w/.])((?:tests|scripts|modules|routes|docs|deploy|\.claude)/[\w./-]*[\w-])")
 
 
+def _held(root):
+    """Every path the repository holds (git's files, and each folder above one): what a path
+    named in CLAUDE.md must resolve to, never the disk, where an emptied folder left by a
+    removal still exists in one checkout and not in CI's (C592's class; 2026-10-12)."""
+    names = subprocess.run(["git", "-C", root, "ls-files", "--cached", "--others",
+                            "--exclude-standard"], capture_output=True, text=True).stdout.split()
+    held = set()
+    for n in names:
+        if os.path.exists(os.path.join(root, n)):
+            parts = n.split("/")
+            held.update("/".join(parts[:i]) for i in range(1, len(parts) + 1))
+    return held
+
+
 def missing_paths(text, root=ROOT):
     found = sorted({m.group(1).rstrip(".") for m in PATH.finditer(text)})
-    return found, [p for p in found if not os.path.exists(os.path.join(root, p.split("#")[0]))]
+    held = _held(root)
+    return found, [p for p in found if p.split("#")[0].rstrip("/") not in held]
 
 
 def tracked_text_files():
