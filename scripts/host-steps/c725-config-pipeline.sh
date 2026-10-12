@@ -23,8 +23,9 @@ LIST=${LIST:-$(cd "$CHECKOUT" && "$PY" -c 'from modules.config import get_curren
 REPO=$(cd "$CHECKOUT" && "$PY" -c 'import os, sys; from modules.config import list_data_path; print(os.path.join(list_data_path(sys.argv[1]), "config_repo"))' "$LIST")
 SHA=$(git -C "$CHECKOUT" rev-parse HEAD)
 # owner/name from the checkout's origin (https://github.com/o/n(.git), or the ssh form
-# <user>@github.com:o/n.git); the URL itself is never printed.
-REPOSITORY=$(git -C "$CHECKOUT" remote get-url origin | sed -E 's#^(https://([^@/]*@)?github\.com/|[a-z]+@github\.com:)##; s#\.git$##')
+# [<user>@]<host>:o/n.git, the host an ssh alias too: the NMAS host's origin is one, measured
+# 2026-10-12); the URL itself is never printed.
+REPOSITORY=$(git -C "$CHECKOUT" remote get-url origin | sed -E 's#^(https://([^@/]*@)?github\.com/|([A-Za-z0-9_.-]+@)?[A-Za-z0-9_.-]+:)##; s#\.git$##')
 printf 'repository=%s\nsha=%s\n' "$REPOSITORY" "$SHA" > "$DIR/nmas-pin"
 echo "   list: $LIST; pin: $REPOSITORY at $SHA"
 

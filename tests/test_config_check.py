@@ -248,3 +248,15 @@ def test_the_workflow_checks_out_the_pinned_mercury_and_runs_the_script():
     assert "--require-hashes" in runs
     upload = next(s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact"))
     assert upload["with"]["path"] == "nmas-config-check.json" and upload.get("if") == "always()"
+
+
+@pytest.mark.parametrize("url", ["https://github.com/o/n.git", "https://<token>@github.com/o/n",
+                                 "git@github-alias:o/n.git",
+                                 # the NMAS host's origin is an ssh alias (measured 2026-10-12)
+                                 "github-alias:o/n.git"])
+def test_the_host_step_reads_owner_and_name_from_every_origin_form(url):
+    text = open(os.path.join(ROOT, "scripts", "host-steps", "c725-config-pipeline.sh"),
+                encoding="utf-8").read()
+    expr = re.search(r"^REPOSITORY=\$\(git .* \| sed -E '(.*)'\)$", text, re.M).group(1)
+    got = subprocess.run(["sed", "-E", expr], input=url + "\n", capture_output=True, text=True)
+    assert got.stdout.strip() == "o/n", (url, got.stdout)
