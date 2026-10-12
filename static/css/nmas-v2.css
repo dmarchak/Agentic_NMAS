@@ -1053,7 +1053,7 @@ select { max-width: 100%; }
 .scope-row:hover, .scope-row:focus-visible { background: var(--hover); }
 .scope-row small { color: var(--ink-2); font-size: 12px; }
 .banner-mode { align-items: center; flex-wrap: wrap; }
-.set-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap: 12px; }
+.set-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 12px; }
 .set-card { display: flex; flex-direction: column; gap: 10px; }
 .set-card-done { border-color: var(--ok); }
 .set-choice { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -1078,7 +1078,7 @@ select { max-width: 100%; }
 .set-label { font-size: 13px; color: var(--ink-2); }
 /* Installation's cards, one column up to board F's 820 px. */
 .set-cards-one { grid-template-columns: minmax(0, 820px); }
-.set-cards-conn { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
+.set-cards-conn { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
 .set-meta { margin: -4px 0 8px; }
 /* A form's foot is a row: `.set-form > div` (each field's column) out-ranked `.set-foot` and
    stacked Save, its link and Test down the middle (seen 2026-10-09, F2's card and A's). */

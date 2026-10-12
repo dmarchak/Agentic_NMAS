@@ -457,6 +457,42 @@ def test_the_known_gaps_only_shrink():
     assert len(C503_KNOWN_GAPS) <= C503_GAPS_CEILING
 
 
+SETTINGS_PAGES = [p for p in PAGES if p.startswith("/v2/settings")]
+
+#: Each settings card grid, measured: [page, grid index, cards, gap at its right in px].
+GRID_GAPS_JS = """
+var out = [];
+document.querySelectorAll('.set-cards').forEach(function (g, i) {
+  var cards = Array.from(g.children).filter(function (c) { return c.offsetParent; });
+  if (!cards.length) return;
+  var right = Math.max.apply(null, cards.map(function (c) { return c.getBoundingClientRect().right; }));
+  out.push([i, cards.length, Math.round(g.getBoundingClientRect().right - right)]);
+});
+return out;"""
+
+
+def test_every_settings_grid_fills_its_width_on_a_wide_screen(served):
+    """C710 (the operator, with Settings › Installation › Connections at about 2560 px: five
+    cards, then a card-wide gap; "ensure all settings pages/tabs fill in empty space"). On
+    every settings page and tab at 2560, each card grid's last card reaches the grid's right
+    edge: no empty column. `auto-fill` kept the empty track; `auto-fit` collapses it."""
+    srv, b = served
+    b._call("POST", f"/session/{b.session}/window/rect", {"width": 2560, "height": 1400})
+    gaps, seen = [], 0
+    try:
+        for page in SETTINGS_PAGES:
+            b.go(srv.url(page))
+            b.wait_for("return !document.querySelector('.htmx-request')", 10)
+            for i, cards, gap in b.js(GRID_GAPS_JS):
+                seen += 1
+                if gap > 2:
+                    gaps.append(f"{page}: grid {i} ({cards} cards) leaves {gap} px at its right")
+    finally:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+    assert seen >= 3, f"the scan found {seen} settings grids: it is not looking"
+    assert gaps == [], gaps
+
+
 def test_the_context_rule_fails_each_way_on_a_planted_page(served):
     """The rule's three failures and its passes, planted in a page the browser draws: a card
     with no words, a card with words twice, a menu row with words, a standalone (i)."""
