@@ -1,5 +1,45 @@
 # End of session: where Phase 7 stands
 
+## STATUS: 2026-10-12, your seven decisions (from 03:20 UTC; 21:20 UTC−6)
+
+- **(1), (5) accepted, noted.** Snap to grid (C691) after the 7.8 removals.
+- **(2) C690's caveat: done (C699, 14689b4, deployed 03:59 UTC).** The neighbours read takes
+  the window's raw samples, so each value keeps its own scrape time; one older than 90 s is the
+  last good report: Neighbours says "As of HH:MM UTC" above the protocol and on each row, and a
+  Needs attention link says "(as of HH:MM UTC, its last good scrape)". **r1's OSPF scrape
+  measured (C700):** 55 SNMP requests a walk, 0.5 s typical, 15 s at p99, 9 timeouts in 24 h;
+  the exporter retries 0.94% of packets after its 5 s default per request. Proposed, yours to
+  pick: (a) a 2 s per-request timeout on the routing modules; (b) the walk narrowed to
+  ospfNbrState (about a tenth of the requests); (c) the job's timeout 20 s to 40 s. (a) and (b)
+  remove the cause; (c) hides it.
+- **(4) and (7) h1's reservation first, then the other six: DONE 04:00 UTC** through Mercury's
+  write path, each read back from Kea and committed (22f233a to 548e2db, pushed). Found on the
+  way and fixed first (C701, 14689b4): since the subnet move NO reservation could be written
+  through Mercury, onboarding's ZTP reservation would have refused too, and the Kea check
+  before both tested the live files instead of the candidate. Nothing was written unchecked
+  in between (both refused before writing). Sitting 2 step 1 is done.
+- **(3) the lab change: HELD, measured, your decision needed.** h1's busybox (1.31.1) gives
+  its script no lifetime for the address, so "installed with the lease's real lifetimes"
+  cannot be done with it. And the proof you asked for fails, measured on h1 with the
+  reservation in place: a client restart draws a new IAID and Kea gave it ::104 from the pool,
+  because ::107 stays leased to h1's old IAID. That test left one more orphan, ::104 (ends
+  2027-10-12); h1 itself is unchanged and still uses ::107. Options (C681's row): (a) a client
+  with a stable IAID that passes lifetimes (dhcpcd or odhcp6c): a new package, one of your
+  four stops; (b) static IPv6 addresses on the lab hosts from the addressing plan, Kea's
+  reservations recording them; (c) keep busybox and release the previous lease at each host
+  start (C697 first). (b) is the smallest. Sitting 2 step 14 waits on this.
+- **(6) C695 measured** (its row has every answer): neither edge holds a real default (both
+  originate one "always"); r5 advertises 8.8.8.8/32, 10.255.1.15/32 and 203.0.113.0/31 to both
+  and each holds all three; nothing r5 advertises is blackholed (traces and 5/5 pings); only
+  the two peering /31s are (r1 to .1 0/5, to .3 5/5). Fixes, yours to pick: (a) the /31s into
+  OSPF, passive: the smallest, fixes exactly this; (b) a conditional default: failover; (c)
+  iBGP r3–r4 with next-hop-self: failover, and the /31s only with a `network` for each.
+- **Found and fixed on the way:** C696 (bb57da7, deployed 03:43): Path… drew a hand-off to
+  the ISP as "not delivered" in red; "leaves the network" is now its own grey outcome.
+  **Registered:** C697 (release a lease, FUTURE), C698 (one SSH connect to r3 failed, UNKNOWN),
+  C702 (a script's commit loses its s3-archive hook at exit; these held no golden, nothing lost).
+- **Next:** the 7.8 removals, one commit each; then C667's remaining questions.
+
 ## STATUS: 2026-10-12 (from about 01:00 UTC; 19:00 UTC−6 the evening before)
 
 - **Your reports, fixed, deployed and seen on the host:** Topology's double tooltip (C687) and
@@ -232,7 +272,11 @@ The first list's steps 1 and 2 (the Update page's C663 host step; the NetBox rol
 DONE by the operator, 2026-10-11. Step 1 is now C681's reservations (the operator, 2026-10-12:
 first in sitting 2).
 
-1. **Reservations for every lab host (C525's design, C681), h1's IPv6 first.** DHCP ›
+1. **DONE by the agent 2026-10-12 04:00 UTC (your decision (7)); to see:** DHCP ›
+   Reservations lists the seven below, each expected to read "in use by it" (a client with its
+   identity holds the address) once the DHCP reader has read again; Leases badges each held
+   address "reserved". What was done:
+   **Reservations for every lab host (C525's design, C681), h1's IPv6 first.** DHCP ›
    Reservations › **Add a reservation…** for each row below, in order. Each: **Preview** shows
    the subnet, the identity, the address and the checks, each "pass"; for h1's IPv6 the
    address is leased to the same DUID (under the IAID h1 uses), so the preview says it is
@@ -301,7 +345,10 @@ first in sitting 2).
 13. **History › Query, a saved view (C667)**: open "Interface errors and discards over time",
     **Save this view…** with a title; pin it; open it from board A's list; remove it. Expect each
     act recorded on History as you, and the list redrawn in other tabs. Undo: the remove.
-14. **IPv6 lease times on subnets 10, 20 and 30 (C681), ONLY after the lab change.** Measured
+14. **WAITS on your choice in C681's row (2026-10-12 04:01 UTC: the approved lab change cannot
+    install the lease's lifetimes with busybox, and a restart takes a new address despite the
+    reservation; options (a) to (c) there).** As drawn before that measurement:
+    **IPv6 lease times on subnets 10, 20 and 30 (C681), ONLY after the lab change.** Measured
     2026-10-12: no lab host runs a DHCP client after its first lease, so a shorter lease would
     let Kea hand a host's address to another client while the host still uses it ("forever").
     First approve or refuse the lab change in C681's row (udhcpc6 kept running, the address
