@@ -101,7 +101,6 @@ function _hasUnseenFailures(entries) {
 // Load tab data when tab becomes active for the first time
 document.addEventListener('DOMContentLoaded', function () {
   const ansibleTabBtn    = document.getElementById('ansible-tab');
-  const historyTabBtn    = document.getElementById('history-tab');
   const netboxTabBtn     = document.getElementById('netbox-tab');
   const agentTabBtn      = document.getElementById('agent-tab');
   const approvalsTabBtn  = document.getElementById('approvals-tab');
@@ -109,7 +108,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const gitTabBtn        = document.getElementById('git-tab');
 
   if (ansibleTabBtn)    ansibleTabBtn.addEventListener('shown.bs.tab', loadPlaybooks);
-  if (historyTabBtn)    historyTabBtn.addEventListener('shown.bs.tab', loadHistoryTab);
   if (netboxTabBtn)     netboxTabBtn.addEventListener('shown.bs.tab', loadNetboxTab);
 
   if (agentTabBtn) {
@@ -167,46 +165,6 @@ document.addEventListener('DOMContentLoaded', function () {
 // COMPLIANCE TAB
 // ========================================================================
 
-
-// ========================================================================
-// HISTORY TAB
-// ========================================================================
-
-async function loadHistoryTab() {
-  const panel = document.getElementById('changeLogPanel');
-  if (!panel) return;
-  panel.innerHTML = '<div class="text-muted small py-2"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div>';
-  try {
-    const r    = await fetch('/list/change_log?limit=50');
-    const data = await r.json();
-    const changes = data.changes || [];
-    if (changes.length === 0) {
-      panel.innerHTML = '<div class="text-muted small py-4 text-center">No changes logged yet. Changes are recorded after every AI config push.</div>';
-      return;
-    }
-    const badge = r => ({ SUCCESS:'success', FAILURE:'danger', SKIPPED:'secondary', '':'secondary' }[r] || 'secondary');
-    const icon  = r => ({ SUCCESS:'✓', FAILURE:'✗', SKIPPED:'~', '':'—' }[r] || '?');
-    const typeColor = t => ({ config_push:'primary', rollback:'warning', restore:'warning', playbook:'info', compliance_fix:'success' }[t] || 'secondary');
-    panel.innerHTML = `
-      <div class="list-group">
-        ${changes.map(c => `
-          <div class="list-group-item" style="background:#1e293b;border-color:#334155;color:#e2e8f0">
-            <div class="d-flex justify-content-between align-items-center mb-1">
-              <span class="badge bg-${badge(c.jenkins_result)} me-2">${icon(c.jenkins_result)} ${c.jenkins_result || 'NO CI'}</span>
-              <span class="badge bg-${typeColor(c.change_type)} me-auto">${c.change_type || ''}</span>
-              ${c.golden_config_saved ? '<span class="badge bg-success ms-1">golden saved</span>' : ''}
-              <small class="text-muted ms-2">${c.timestamp || ''}</small>
-            </div>
-            <div class="fw-semibold">${_esc(c.description || '')}</div>
-            <div class="text-muted small mt-1">
-              Devices: ${(c.devices || []).join(', ') || 'none'}
-              ${c.jenkins_pipeline ? ' &middot; Pipeline: ' + _esc(c.jenkins_pipeline) : ''}
-              ${c.playbook_id      ? ' &middot; Playbook: ' + _esc(c.playbook_id) : ''}
-            </div>
-          </div>`).join('')}
-      </div>`;
-  } catch { panel.innerHTML = '<div class="text-danger small">Failed to load change history.</div>'; }
-}
 
 // ========================================================================
 // NETBOX TAB

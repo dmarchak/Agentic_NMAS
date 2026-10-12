@@ -3279,17 +3279,6 @@ def ai_download_report(filename):
 
 
 # ---------------------------------------------------------------------------
-# Change audit log
-# ---------------------------------------------------------------------------
-
-@app.route("/list/change_log")
-def list_change_log():
-    limit = min(int(request.args.get("limit", 50)), 200)
-    log   = _ai._load_change_log()
-    return jsonify({"changes": list(reversed(log[-limit:]))})
-
-
-# ---------------------------------------------------------------------------
 # NetBox source-of-truth sync
 # ---------------------------------------------------------------------------
 
@@ -3325,39 +3314,6 @@ def netbox_status():
         "status":     sync_status_with_results(),
         "lists":      get_device_lists(),
     })
-
-
-# ---------------------------------------------------------------------------
-# Golden configs
-# ---------------------------------------------------------------------------
-
-@app.route("/list/golden_configs")
-def list_golden_configs_route():
-    return jsonify({"golden_configs": _ai._list_golden_configs()})
-
-
-
-
-# ---------------------------------------------------------------------------
-# Drift detection (quick endpoint for UI)
-# ---------------------------------------------------------------------------
-
-@app.route("/list/drift_status")
-def list_drift_status():
-    """Return a quick drift status (has_golden, drift) per device without full diff."""
-    import difflib as _dl
-    devices = _load_current_devices()
-    result  = []
-    for dev in devices:
-        dip  = dev.get("ip", "")
-        host = dev.get("hostname") or dip
-        golden = _ai._load_golden_config_file(dip)
-        result.append({
-            "device_ip":  dip,
-            "hostname":   host,
-            "has_golden": golden is not None,
-        })
-    return jsonify({"devices": result})
 
 
 @app.route("/ai/events")

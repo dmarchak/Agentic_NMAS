@@ -64,7 +64,6 @@ and built.
 | Inventory source | `/inventory/source/<list>`, `/inventory/refresh/<list>` | BUILT (2026-10-10; not run on the host) | Every network's Settings › Network tab, Inventory source: its own list or NetBox through filters, a preview reading NetBox once with the new filters (how many devices, which skipped and why), a confirm bound to it, recorded; Refresh now for a NetBox network |
 | Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
 | Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | BUILT, P.8 (2026-10-10; not run on the host) | Choosing one: BUILT (board N, 2026-10-10; not run on the host): the top bar's Network picker, the choice each verified person's own (`routes/network_v2.py`), so `/select_device_list`'s one choice for everyone has no v2 equivalent by design. Create and delete: BUILT (2026-10-10; not run on the host): Settings' New network… and a network's Delete this network…, each previewed and recorded; a deleted network's folder is moved aside, never erased. Rename: never offered by today's pages (C639), not built |
-| List data | `/list/golden_configs`, `/list/drift_status`, `/list/change_log` | REMOVE, 7.8 | Superseded by Devices, Needs attention and History |
 | Refresh hostnames | `/refresh_hostnames` | REMOVE, 7.8 (cut 2026-10-05) | C465 removed its NetBox write; a device's hostname comes from its captures |
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` | BUILT, 7.7 (board F4, 2026-10-10) | Results are Needs attention rows; the schedule and Check now are Settings › Installation › Diagnostics |
 | Break-glass export | `/breakglass/preview`, `/export` | `/breakglass/export` STAYS; `/breakglass/preview` REMOVE, 7.8 (board 7) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
@@ -121,6 +120,11 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   `ai_assistant._save_compliance_policy`, which only they used, went with them. The variable
   store's readers that remain (the agent's tools, the hostname refresh) are today's agent's and
   go with it.
+- **List data** (/list/golden_configs, /list/drift_status, /list/change_log), 2026-10-12:
+  superseded by Devices, Needs attention and History. The first two had no caller; the change
+  log was today's index page's History tab, which went with it (its button, pane and loader).
+  The change log's store and `ai_assistant._list_golden_configs` stay: today's agent reads them
+  and goes with its own family.
 
 ## Legacy actions that are not routes
 

@@ -82,12 +82,10 @@ KNOWN_UNREACHABLE = {
     "POST /remote/adopt": (A, "connect a remote; Versions (7.5)"),
     # (b) Credential management: the whole resolution chain is HTTP-only.
     # (c) State that exists and is never shown.
-    "GET /list/drift_status": (C, "superseded by /drift/status, which the drift panel reads; removed in 7.8"),
     "GET /backup_stats": (C, "backup statistics, never drawn; removed in 7.8 unless Versions draws them"),
     "GET /configure/audit/<config_id>": (C, "pipeline audit records, never drawn; Versions (7.5) or removed in 7.8"),
     "GET /configure/audit_latest": (C, "pipeline audit records, never drawn; Versions (7.5) or removed in 7.8"),
     # (d) Superseded, duplicate or dead.
-    "GET /list/golden_configs": (D, "the legacy enumerator's route: on the audit's CUT list; removed in 7.8"),
     "GET /ai/events": (D, "on the audit's CUT list; removed in 7.8"),
     "POST /ai/events/clear": (D, "on the audit's CUT list with /ai/events; removed in 7.8"),
     "GET /ai/tool_cache_snapshot": (D, "on the audit's CUT list; removed in 7.8"),
@@ -119,7 +117,7 @@ KNOWN_UNREACHABLE = {
 # 37 -> 32 (2026-10-12): the credential profile JSON routes and /inventory/dependents removed
 # (7.8; Credentials › Profiles is their home).
 # 32 -> 26 (2026-10-12): /list/variables (4) and /list/compliance_policy (2) removed (7.8).
-CEILING = 26
+CEILING = 24
 
 
 @pytest.fixture(scope="module")

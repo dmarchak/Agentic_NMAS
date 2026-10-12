@@ -56,12 +56,6 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#historyPane"
-            type="button" role="tab" aria-controls="historyPane" aria-selected="false">
-      History
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
     <button class="nav-link" id="netbox-tab" data-bs-toggle="tab" data-bs-target="#netboxPane"
             type="button" role="tab" aria-controls="netboxPane" aria-selected="false">
       NetBox
@@ -496,25 +490,6 @@
 </div><!-- end Ansible tab pane -->
 
 <!-- ================================================================== -->
-
-<!-- ================================================================== -->
-<!-- HISTORY TAB -->
-<!-- ================================================================== -->
-<div class="tab-pane fade" id="historyPane" role="tabpanel" aria-labelledby="history-tab">
-
-<div class="d-flex align-items-center gap-2 mb-3">
-  <h2 class="text-primary mb-0 me-auto">Change History</h2>
-  <button class="btn btn-outline-secondary btn-sm" onclick="loadHistoryTab()">Refresh</button>
-</div>
-
-<div id="changeLogPanel">
-  <div class="text-center text-muted py-5">
-    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-    Loading change history&hellip;
-  </div>
-</div>
-
-</div><!-- end History tab pane -->
 
 <!-- ================================================================== -->
 <!-- NETBOX TAB -->
