@@ -41,6 +41,35 @@ logger = logging.getLogger(__name__)
 #: and per network once P.8 exists, is the recorded follow-up.
 CONNECT_TIMEOUT_S = 35
 
+#: C698 (measured 2026-10-12): the connect failures in the record are the SSH transport not
+#: coming up, "Error reading SSH protocol banner" (paramiko's 15 s banner wait, firing 17 to 18
+#: s into s3's startup check) and "No existing session"; once a day, all but one on s3 (C93),
+#: and the same read a minute later answered. Nothing has been sent when either is raised, so
+#: the one opener tries once more, after this pause; an authentication failure, or anything
+#: after login, is never retried.
+TRANSPORT_UNREADY = ("Error reading SSH protocol banner", "No existing session")
+CONNECT_RETRY_PAUSE_S = 2
+
+
+def transport_unready(exc: BaseException) -> bool:
+    """Whether *exc*, or what it was raised from, says the SSH transport never came up
+    (so nothing was sent). An authentication failure never is, whatever its words."""
+    from netmiko.exceptions import NetmikoAuthenticationException
+
+    seen = 0
+    while exc is not None and seen < 5:
+        if isinstance(exc, NetmikoAuthenticationException):
+            return False
+        if any(words in str(exc) for words in TRANSPORT_UNREADY):
+            return True
+        exc = exc.__cause__ or exc.__context__
+        seen += 1
+    return False
+
+
+def _first_line(exc: BaseException) -> str:
+    return (str(exc).strip().splitlines() or [type(exc).__name__])[0][:160]
+
 
 def read_floor() -> float:
     """The least any read on a tool session may wait: the config read's
@@ -447,19 +476,28 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
         # The session logs in only after floor_reads(): Netmiko's login and
         # session preparation read with its own 10 s and 20 s bounds, and at
         # 06:03 on 2026-10-01 s1, s3 and s4 failed inside them.
-        conn = netmiko.ConnectHandler(**{"conn_timeout": CONNECT_TIMEOUT_S,
-                                         "auto_connect": False, **params})
-        floor_reads(conn)
-        login = getattr(conn, "_open", None)
-        if callable(login):
+        for attempt in (1, 2):
+            conn = netmiko.ConnectHandler(**{"conn_timeout": CONNECT_TIMEOUT_S,
+                                             "auto_connect": False, **params})
+            floor_reads(conn)
+            login = getattr(conn, "_open", None)
+            if not callable(login):
+                break
             try:
                 login()
-            except Exception:
+                break
+            except Exception as exc:
                 try:
                     conn.disconnect()
                 except Exception:                       # noqa: BLE001
                     pass
-                raise
+                if attempt == 2 or not transport_unready(exc):
+                    raise
+                # C698: the SSH transport never came up, so nothing was sent; one more try.
+                logger.warning("ssh: %s's connect failed before anything was sent (%s); "
+                               "retrying once in %s s (C698)", ip, _first_line(exc),
+                               CONNECT_RETRY_PAUSE_S)
+                time.sleep(CONNECT_RETRY_PAUSE_S)
     except Exception:
         _drop(ip, sid, "connect failed")
         raise

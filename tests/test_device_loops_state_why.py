@@ -61,6 +61,9 @@ SCANNED = {
     ("modules/pipeline.py", "_stage_rollback"): ("sequential", _ONE_RUN),
     ("modules/nsot/credential_rotation.py", "push_rotation"): (
         "one_device", "the rotation's commands on the one session it verifies on"),
+    ("modules/connection.py", "open_ssh"): (
+        "one_device", "C698: one device's connect tried a second time when its SSH transport "
+                      "never came up, holding the same session slot; never a loop over devices"),
     ("app.py", "ai_device_context._warm"): (
         "sequential", "C202: every open goes through the persistent pool, which holds ONE "
                       "lock across open_ssh, so concurrent opens would queue on it"),

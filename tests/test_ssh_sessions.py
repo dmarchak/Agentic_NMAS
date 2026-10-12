@@ -348,6 +348,86 @@ class TestTheFlashListingIsARead:
         assert sent and all(refusal(c) == "" for c in sent), sent
 
 
+class TestATransportThatNeverCameUpIsTriedOnce:
+    """C698 (measured 2026-10-12): a connect fails about once a day before anything is sent,
+    "Error reading SSH protocol banner" or "No existing session", all but one on s3, and the
+    same read a minute later answers. The one opener tries once more for those two only;
+    never for an authentication failure, and never twice. The words are the real exceptions'
+    (the host's journal, nmas-startup-check)."""
+
+    BANNER = ("A paramiko SSHException occurred during connection creation:\n\n"
+              "Error reading SSH protocol banner")
+    NO_SESSION = ("Paramiko: 'No existing session' error: try increasing 'conn_timeout' to 15 "
+                  "seconds or larger.")
+
+    def _logins(self, monkeypatch, *outcomes):
+        """Each connect's login raises the next outcome (None: it logs in)."""
+        import netmiko
+
+        left = list(outcomes)
+
+        class Scripted(FakeConn):
+            def _open(self):
+                out = left.pop(0)
+                if out is not None:
+                    raise out
+
+        monkeypatch.setattr(netmiko, "ConnectHandler", Scripted)
+        monkeypatch.setattr(C, "CONNECT_RETRY_PAUSE_S", 0)
+        return left
+
+    def test_a_banner_that_never_came_is_tried_once_more(self, monkeypatch, caplog):
+        from netmiko.exceptions import NetmikoTimeoutException
+        self._logins(monkeypatch, NetmikoTimeoutException(self.BANNER), None)
+        with caplog.at_level(logging.WARNING, logger="modules.connection"):
+            conn = C.open_ssh(_params(), owner="test")
+        assert len(FakeConn.opened) == 2 and FakeConn.opened[0].disconnected
+        assert "before anything was sent" in caplog.text and "C698" in caplog.text
+        assert len(C._sessions[IP]) == 1, "the retry holds the one slot, never a second"
+        conn.disconnect()
+        assert not C._sessions.get(IP)
+
+    def test_no_existing_session_is_tried_once_more(self, monkeypatch):
+        from netmiko.exceptions import NetmikoTimeoutException
+        self._logins(monkeypatch, NetmikoTimeoutException(self.NO_SESSION), None)
+        C.open_ssh(_params(), owner="test").disconnect()
+        assert len(FakeConn.opened) == 2
+
+    def test_twice_is_the_limit(self, monkeypatch):
+        from netmiko.exceptions import NetmikoTimeoutException
+        self._logins(monkeypatch, NetmikoTimeoutException(self.BANNER),
+                     NetmikoTimeoutException(self.BANNER), None)
+        with pytest.raises(NetmikoTimeoutException):
+            C.open_ssh(_params(), owner="test")
+        assert len(FakeConn.opened) == 2 and not C._sessions.get(IP)
+
+    def test_an_authentication_failure_is_never_retried(self, monkeypatch):
+        """Even one whose words resemble the transport's: a retry could lock the account."""
+        from netmiko.exceptions import NetmikoAuthenticationException
+        self._logins(monkeypatch, NetmikoAuthenticationException(self.NO_SESSION), None)
+        with pytest.raises(NetmikoAuthenticationException):
+            C.open_ssh(_params(), owner="test")
+        assert len(FakeConn.opened) == 1
+
+    def test_any_other_failure_is_never_retried(self, monkeypatch):
+        from netmiko.exceptions import NetmikoTimeoutException
+        self._logins(monkeypatch, NetmikoTimeoutException("TCP connection to device failed."),
+                     None)
+        with pytest.raises(NetmikoTimeoutException):
+            C.open_ssh(_params(), owner="test")
+        assert len(FakeConn.opened) == 1
+
+    def test_a_cause_raised_from_is_read_too(self):
+        try:
+            try:
+                raise OSError(self.BANNER)
+            except OSError as inner:
+                raise RuntimeError("connect failed") from inner
+        except RuntimeError as outer:
+            assert C.transport_unready(outer)
+        assert not C.transport_unready(RuntimeError("Authentication to device failed."))
+
+
 class TestTheConnectBoundIsChosen:
     """C205: the SSH connect bound was Netmiko's default 10 s, set by nothing,
     while s3's connect measured 13.7 s, so a Save All gave up on a device that
