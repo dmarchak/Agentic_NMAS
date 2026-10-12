@@ -32,7 +32,6 @@ INVENTORY = {
     "modules/heartbeat_windows.py": (1, "paired with the Loki it measures from (step 5)"),
     "modules/readers/coverage_reporting.py": (1, "a reader of one global integration (step 5)"),
     "modules/readers/credential_health.py": (2, "a reader of one global integration (step 5)"),
-    "routes/topology_view.py": (2, "paired with the topology client built for no list (step 8)"),
     "modules/netbox_client.py": (1, "the sync that asks carries no list down to here yet"),
     "modules/prometheus_targets.py": (1, "one targets directory serves every list (P.7)"),
     "modules/nsot/ztp.py": (4, "one Kea fragment and responder serve every list (P.7)"),

@@ -270,12 +270,6 @@ RENDERS = {
         _get("/ai/approvals"),
         {I4: ("loadApprovalsTab", "_renderApprovalCard")},
         ((I4, "loadApprovalsTab", "data"),)),
-    "GET /topology/service/status": Render(
-        _get("/topology/service/status"),
-        # topoSvcStateFor decides what an unconfigured service says (C126).
-        {"partials__topology_service.1.js": ("topoSvcRefresh", "topoSvcStateFor")},
-        (("partials__topology_service.1.js", "topoSvcRefresh", "d"),
-         ("partials__topology_service.1.js", "topoSvcStateFor", "d"))),
     "GET /settings/integrations/status": Render(
         # The reader stores a value first (the real reader over the real
         # registry, every integration unconfigured in the test store): the
@@ -432,9 +426,6 @@ UNDRAWN = {
     "GET /templates/approval/<path>": [
         ("path", "the path an approval covers; the badge states what it covers in words "
                  "(the fingerprint is READ: the row keeps it and Approve sends it, R12)"),
-        ("ok", OK)],
-    "GET /topology/service/status": [
-        ("type url", "the service's type and address; the panel draws its state"),
         ("ok", OK)],
     "POST /deploy/apply": [
         ("capture_confirmed capture_current current_hash moved",
@@ -819,7 +810,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 118  # -1: 7.8 (2026-10-12), the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 115  # -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 15  # 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
 
 

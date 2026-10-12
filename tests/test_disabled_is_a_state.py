@@ -49,7 +49,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #:                say what to do about it.
 CLASSIFIED = {
     "/drift/settings":     "reports",
-    "/svg":                "fetches",   # topology_view: no SVG without a URL
 }
 
 _STATE = re.compile(r"disabled|not configured|not_configured|unconfigured|"
@@ -94,8 +93,9 @@ class TestEveryDegradedReadIsClassified:
     def test_the_scan_finds_something(self):
         """A scan that returns nothing would make the test below vacuous —
         and this project has found five controls that could not fail."""
-        # 2 since 2026-10-12: the monitoring stack panel's per-tool card left at 7.8.
-        assert len(_gets_mentioning_a_degraded_state()) >= 2
+        # 1 since 2026-10-12: the monitoring stack panel's per-tool card and the topology
+        # service's SVG left at 7.8; /drift/settings remains.
+        assert len(_gets_mentioning_a_degraded_state()) >= 1
 
     def test_every_one_is_classified(self):
         unclassified = [r for r in _gets_mentioning_a_degraded_state() if r not in CLASSIFIED]

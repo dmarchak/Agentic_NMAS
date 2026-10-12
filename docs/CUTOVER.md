@@ -79,7 +79,7 @@ and built.
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
 | Topology | `/topology/*` (9), `/topology_data` | REMOVE, 7.8 | Neighbours carries discovery per device (C126); the fleet map is P.11's Topology item |
-| Topology service | `/topology/service/status`, `/svg` | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the two routes and the service REMOVE at 7.8 | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
+| Topology service | (no route of today's; its two routes and panel removed 2026-10-12) | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the service itself REMOVE at 7.8: the `nmas-topology` unit and `deploy/topology/nmas-topology.py` on the host (a host step), and the integration's Settings card | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
 | AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages. The in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`, started by `app.py`) and `modules/collector_config.py` go with it: since the legacy collectors' routes left (2026-10-12) the agent's tools are their only readers |
 
 ## Removed at 7.8
@@ -205,6 +205,15 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   (`settings_integrations.general_settings` for a GET-and-POST endpoint, `git_status` for a
   v1 navigation). Proved before removal: today's Monitoring tab was the only caller; after
   it, none of the paths is in the url_map.
+- **The topology service's routes and panel** (/topology/service/status,
+  /topology/service/svg), 2026-10-12: OBSERVE › Topology (`routes/topology_v2.py`, over the
+  `topology-graph` reader) is the fleet map. The panel was the top of today's Topology tab, its
+  one caller; the route file, the partial, its script and its test file
+  (`tests/test_topology_service_view.py`, every test the panel's or the routes') went. Not done
+  here: the service itself (the `nmas-topology` unit and `deploy/topology/nmas-topology.py`,
+  host-installed, so its removal carries a host step) and the integration's Settings card;
+  the Topology service row above keeps them. Proved before removal: the panel was the only
+  caller; after it, neither path is in the url_map.
 
 ## Legacy actions that are not routes
 
