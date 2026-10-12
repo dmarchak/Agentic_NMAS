@@ -29,21 +29,22 @@ between 08:30 and 09:10 UTC.
   the host step ran: 7 of 7 checks PASS (unit stopped, disabled, removed; link removed; nothing
   on 8088). Mercury's `topology-renderer-gone` check reads done; `/v2/topology` answers 200.
 
+**Later the same afternoon (19:30 to 20:05 UTC):** C714 (c961204: the retired topology
+service's integration removed, so Needs attention no longer draws it down; your two CLAUDE.md
+lines committed; `deploy/topology/` and its references gone) and **C713** (c907cc7: the IP SLA
+flow writes a probe as the device prints it, no frequency at the default, and a deploy that
+sends IP SLA lines now fails verify unless the device equals its rendered intent, both ways).
+Both deployed; on the host the `upstream` suggestions for s1, s4 and r6 carry no frequency line.
+
 **Waiting on you:**
-1. **The AI agent's family:** held for your decision (what's lost between 7.8 and Stage 8, as
-   reported: 6 model calls ever, the last 2026-09-23; the agent off since 2026-08-28).
-2. **C711's last step is a person's confirm:** Monitoring › IP SLA, set the policy to
-   `upstream`, then add the three suggested probes. r6's probe sits on r6 and targets s3's
-   loopback once a minute: s3 only answers a ping, but you may prefer to untick it.
-3. **CLAUDE.md, yours to paste** (two lines that no longer hold):
-   - in "A commit touching a host-installed file", replace
-     `` `deploy/systemd/`, `deploy/topology/`) carries `` with
-     `` `deploy/systemd/`, `deploy/postgres/`) carries `` (the topology folder is retired;
-     `deploy/postgres/` is already in `HOST_STEP_PATHS` and was missing from the list);
-   - in the module map, delete `` `freshness.py`, `` (`modules/nsot/freshness.py` went with
-     C708).
-   After you paste, the commit removes `deploy/topology/README.md`, the folder's
-   `HOST_STEP_PATHS` and `STEP_CHECKS` entries and the retired registry entry together.
+1. **s2's one-off correction is to intent, not the device:** s2 › Intent › Edit, delete
+   ` frequency 60` under `ip sla 1`, Commit (nothing to deploy: s2 already runs the default and
+   prints no line). Then Save All for the baseline.
+2. **C711's proof, held by you until C713:** Monitoring › IP SLA, set `upstream`, add the three
+   probes. All three land on IOS-XE routers, where printing the default is unmeasured; if a
+   router prints `frequency 60`, verify now fails and rolls back naming it.
+3. **The AI agent's family:** the answer is in the session reply of 2026-10-12 ~20:05 UTC
+   (one v2 gap: approving or rejecting approval-queue items).
 4. As before: C700's 24 h reading is due 2026-10-13 05:06 UTC (23:06 UTC−6 tonight); C695 and
    C673's confirms are in the walk.
 
