@@ -246,7 +246,6 @@ GATES = {
     "select_device_list_route": _g(K, "changes the active list, which every derived read and the ping worker follow"),
     "inventory.set_source": _g(K, "changes where a list's inventory comes from"),
     "inventory.set_order": _g(K, "reorders a list"),
-    "inventory.credential_profiles": _g(K, "writes credential profiles"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "
@@ -259,8 +258,6 @@ GATES = {
                                          "Profiles, recorded (who, which, the fields set)"),
     "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "
                                            "Profiles, recorded"),
-    "inventory.delete_credential_profile": _g(K, "deletes a credential profile"),
-    "inventory.copy_inherited": _g(K, "copies inherited credentials into device overrides"),
     "list_variables_set": _g(K, "writes list variables"),
     "list_variables_delete": _g(K, "deletes a list variable"),
     "list_variables_discover": _g(K, "reads devices and WRITES list variables"),

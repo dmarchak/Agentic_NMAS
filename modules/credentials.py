@@ -577,37 +577,3 @@ def resolve(mgmt_ip: str, role: str = "", site: str = "",
             "source": "",
             "error": ("no credentials — set a device override, a default profile, "
                       "or a credential list for this NetBox list")}
-
-
-def copy_inherited_to_overrides(list_name: str) -> dict:
-    """Freeze inherited credentials into per-device overrides (amendment 2).
-
-    Decouples a NetBox list from its designated credential list, so deleting
-    that list no longer strands it.
-    """
-    from modules.inventory import load_netbox_devices
-    from modules.inventory.source_config import load as load_source
-
-    cfg = load_source(list_name)
-    credential_list = cfg.get("credential_list", "")
-    if not credential_list:
-        return {"ok": False, "error": "This list does not inherit credentials."}
-
-    devices, _skipped, _meta = load_netbox_devices(list_name, use_cache=True)
-    copied, skipped = [], []
-    for dev in devices:
-        ip = dev.get("ip", "")
-        if not ip or has_device_override(ip):
-            continue
-        found = _from_credential_list(credential_list, ip)
-        if found and found[0]:
-            set_device_override(ip, found[0], found[1], found[2])
-            copied.append(dev.get("hostname", ip))
-        else:
-            skipped.append(dev.get("hostname", ip))
-
-    log.info("credentials: copied %d inherited credential(s) into overrides for '%s'",
-             len(copied), list_name)
-    return {"ok": True, "copied": copied, "skipped": skipped,
-            "message": (f"Copied credentials for {len(copied)} device(s). "
-                        f"'{list_name}' no longer depends on '{credential_list}'.")}

@@ -435,12 +435,6 @@ HISTORY = {
     "restarts.planned": ("restart_windows",),
     "golden.migrate_apply": ("golden",),
     "golden.sync_renames": ("golden",),
-    "inventory.copy_inherited": ("MISSING: a credential override is saved with no time or "
-                                 "person (credentials.py keeps no audit)"),
-    "inventory.credential_profiles": ("MISSING: a credential profile is saved with no time "
-                                      "or person (credentials.py keeps no audit)"),
-    "inventory.delete_credential_profile": ("MISSING: a deleted credential profile leaves no "
-                                            "record of who or when"),
     "v2.history_view_save": ("saved_views",),
     "v2.history_view_pin": ("saved_views",),
     "v2.history_view_remove": ("saved_views",),
@@ -522,5 +516,6 @@ WRITTEN_ELSEWHERE = {
                      "reveal routes that read devices, Ask the device and Show commands",
 }
 
-#: The history gaps, counted: only down.
-HISTORY_MISSING_CEILING = 12
+#: The history gaps, counted: only down (12 -> 9, 2026-10-12: the three credential profile JSON
+#: routes removed at 7.8).
+HISTORY_MISSING_CEILING = 9

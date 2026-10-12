@@ -165,9 +165,6 @@ DECLARED = {
     "delete_device_list_route": ("lists", "active_list"),
     "select_device_list_route": ("active_list",),
     # Credentials.
-    "inventory.copy_inherited": ("credentials",),
-    "inventory.credential_profiles": ("credentials",),
-    "inventory.delete_credential_profile": ("credentials",),
     "v2.history_view_save": ("saved_views",),
     "v2.history_view_pin": ("saved_views",),
     "v2.history_view_remove": ("saved_views",),

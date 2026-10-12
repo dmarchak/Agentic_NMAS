@@ -61,7 +61,6 @@ and built.
 | Adopt | (no route; `modules/nsot/adopt.py`) | BUILT (board G, 2026-10-10; not run on the host) | Devices › Adopt a device… (`routes/adopt_v2.py`): the preview reads over the supplied login and sends nothing, the confirm (a verified person, the password typed again, bound to the preview's fingerprint) runs `adopt.apply` as a job on the stepper |
 | NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | BUILT, 7.6 (2026-10-10; not run on the host) | Source of truth › NetBox (`/v2/netbox`): every network's Import into NetBox… and Remove from NetBox…, Import every network…, each a preview job and a confirm that may turn writes on (C619), its result and recorded removals; the same core as today's routes (`modules/netbox_ops.py`) |
 | NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
-| Credential profiles | `/inventory/credentials/*` (3), `/inventory/dependents/<list>` | BUILT (2026-10-10, the board drawn under the Phase 7 mode; not run on the host); the JSON routes REMOVE at 7.8 | Source of truth › Credentials › Profiles (`routes/credential_profiles_v2.py`): each profile with what it covers in the resolver's order (one under a name the resolver never reads says so), set or not set, never a value; Add a profile…, Edit… (empty keeps), Delete…, each a verified person's and recorded (`credential_changes`, History's Credential profiles). `dependents`' warning moved into v2's Delete network preview (C645). `copy-inherited` (freezing a network's inherited logins into per-device overrides) has no v2 home: no v1 control called it, and Delete network now names what would break instead |
 | Inventory source | `/inventory/source/<list>`, `/inventory/refresh/<list>` | BUILT (2026-10-10; not run on the host) | Every network's Settings › Network tab, Inventory source: its own list or NetBox through filters, a preview reading NetBox once with the new filters (how many devices, which skipped and why), a confirm bound to it, recorded; Refresh now for a NetBox network |
 | Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
 | Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | BUILT, P.8 (2026-10-10; not run on the host) | Choosing one: BUILT (board N, 2026-10-10; not run on the host): the top bar's Network picker, the choice each verified person's own (`routes/network_v2.py`), so `/select_device_list`'s one choice for everyone has no v2 equivalent by design. Create and delete: BUILT (2026-10-10; not run on the host): Settings' New network… and a network's Delete this network…, each previewed and recorded; a deleted network's folder is moved aside, never erased. Rename: never offered by today's pages (C639), not built |
@@ -107,6 +106,13 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   and compared, as a job a person starts. The route read the ACTIVE list's inventory beside the
   named list's templates and did per-device work per request. Its helpers `_platform_for`,
   `_public` and `_summarise` went with it.
+- **Credential profiles' JSON routes** (the three /inventory/credentials routes and
+  /inventory/dependents), 2026-10-12: no page called them. Their home is Credentials › Profiles
+  (`routes/credential_profiles_v2.py`): each profile with what it covers, set or not set, never
+  a value; Add, Edit, Delete, each a verified person's and recorded. `dependents`' warning lives
+  in v2's Delete network preview (C645). `copy-inherited` had no caller and no v2 home; it went
+  with `credentials.copy_inherited_to_overrides`, which only it used (Delete network names what
+  would break instead).
 
 ## Legacy actions that are not routes
 

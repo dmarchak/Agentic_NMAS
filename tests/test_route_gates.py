@@ -200,7 +200,6 @@ REFUSED_WITHOUT_IDENTITY = [
     "/bulk_reload",
     "/bulk_tftp_upload",
     "/settings",
-    "/inventory/credentials/profiles",
     "/templatize/bulk/apply",
 ]
 

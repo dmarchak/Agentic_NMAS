@@ -81,11 +81,6 @@ KNOWN_UNREACHABLE = {
     "POST /inventory/source/<path:list_name>": (A, "set a network's inventory source: the panel only READS it; Fleet, Networks (7.4)"),
     "POST /remote/adopt": (A, "connect a remote; Versions (7.5)"),
     # (b) Credential management: the whole resolution chain is HTTP-only.
-    "GET /inventory/credentials/profiles": (B, "credential profiles; Source of truth, Credentials (7.6)"),
-    "POST /inventory/credentials/profiles": (B, "credential profiles; Source of truth, Credentials (7.6)"),
-    "DELETE /inventory/credentials/profiles/<path:name>": (B, "credential profiles; Source of truth, Credentials (7.6)"),
-    "POST /inventory/credentials/copy-inherited/<path:list_name>": (B, "decouple a list before its source is deleted; Source of truth, Credentials (7.6)"),
-    "GET /inventory/dependents/<path:list_name>": (B, "which lists depend on a credential list; Source of truth, Credentials (7.6)"),
     # (c) State that exists and is never shown.
     "GET /list/drift_status": (C, "superseded by /drift/status, which the drift panel reads; removed in 7.8"),
     "GET /backup_stats": (C, "backup statistics, never drawn; removed in 7.8 unless Versions draws them"),
@@ -127,7 +122,9 @@ KNOWN_UNREACHABLE = {
 # 47 -> 45 (2026-10-08): /freshness/authorisations and /freshness/authorise removed (Phase 3).
 # 45 -> 39 (2026-10-11): the six /netbox/query routes removed (7.8, the first family).
 # 39 -> 37 (2026-10-11): /templatize/report's GET and POST removed (7.8).
-CEILING = 37
+# 37 -> 32 (2026-10-12): the credential profile JSON routes and /inventory/dependents removed
+# (7.8; Credentials › Profiles is their home).
+CEILING = 32
 
 
 @pytest.fixture(scope="module")
