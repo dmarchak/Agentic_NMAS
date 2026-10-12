@@ -69,7 +69,6 @@ and built.
 | App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
 | In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
 | Version | `/health/version` | BUILT | Help › About |
-| Device regions | `/devices/regions` | REMOVE, 7.8 | `/v2/devices` replaces today's device list |
 | Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8, after today's template editor | Section 6a's prerequisite (no render reads a backup): the v2 intent editor and bulk intent render against the committed golden only since 2026-10-11 (C683); today's template preview and refresh-capture still read the backup store (C632), and go with today's template editor, the last prerequisite. Today's device page also names these routes by `url_for` |
 | Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02): ZTP delivery in onboarding and image management (P.13) replace them. ZTP is served by Mercury's own responder, which none of these routes touches (C616, checked 2026-10-09); `tftp_root` and `tftp_server_ip` leave with them |
 | Bulk read-only commands | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | BUILT (C548; not yet walked on the host) | Show commands (`/v2/show-commands`): devices by name, role or network, commands from the allowlist, results grouped and compared |
@@ -235,6 +234,15 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   Connected" badge and, every 5 s while that page was open, asked the device for its prompt
   on a persistent session: the badge, its script and the session went. Proved before removal:
   those two scripts were the only callers; after it, neither path is in the url_map.
+- **Device regions** (/devices/regions), 2026-10-12 (the operator asked for it next): `/v2/devices`
+  replaces today's device list, and redraws itself when `inventory` is announced (v2's
+  relay). The route re-rendered today's list in place for the same announcement
+  (`routes/devices_view.py`, Stage 7.0); its client (`applyDeviceRegions`,
+  `refreshDeviceRegions` in `static/js/gen/index.1.js`) and the two app extensions only it read
+  (`nmas_device_status`, `nmas_tftp_server`) went with it. Today's list now shows what it held
+  when the page loaded; a reload redraws it. The two partials stay (today's index renders
+  them). The subscription floor's device-list case is v2's relay now. Proved before removal:
+  that client was its only caller; after it, the path is not in the url_map.
 
 ## Legacy actions that are not routes
 

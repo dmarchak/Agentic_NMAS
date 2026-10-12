@@ -1,7 +1,6 @@
-{#- The device list's toolbar, rendered by the index AND by GET /devices/regions
-    (routes/devices_view.py), so the list can be re-drawn in place when a
-    response invalidates `inventory` (Stage 7.0). One template, two callers:
-    a second copy is how the two come to disagree. -#}
+{#- The device list's toolbar, rendered by today's index. Its second caller, GET
+    /devices/regions (the in-place redraw, Stage 7.0), was removed at 7.8; v2's Devices
+    replaces this list. -#}
   {% if devices %}
   <div class="d-flex gap-2 align-items-center">
     <button class="btn btn-success btn-sm" onclick="saveAllConfigs()" id="saveAllBtn">

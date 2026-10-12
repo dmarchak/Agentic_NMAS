@@ -283,10 +283,6 @@ RENDERS = {
         _get("/ai/agent_timers"),
         {I4: ("loadAgentTimers",)},
         ((I4, "loadAgentTimers", "j"),)),
-    "GET /devices/regions": Render(
-        _get("/devices/regions"),
-        {I1: ("applyDeviceRegions", "refreshDeviceRegions")},
-        ((I1, "applyDeviceRegions", "data"),)),
     "GET /onboard/platforms": Render(
         _get("/onboard/platforms"),
         {"partials__onboard_wizard.1.js": ("openOnboardWizard", "onboardPlatformOptions")},

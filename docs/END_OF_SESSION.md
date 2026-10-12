@@ -506,7 +506,14 @@ first in sitting 2).
    edit run through the editor's own preview on the host, against base `eb8c0e39de09`, gave
    exactly `+    passive-interface GigabitEthernet0/0` under `router rip` in both diffs, nothing
    unmodelled; the agent's commit of it was refused by the session's permission check, so the
-   commit is yours here). **Commit** with a reason ("C673"). Then
+   commit is yours here). **Checked again 2026-10-12 08:20 UTC on your question (RIPng, and
+   every switch), from each switch's committed golden read masked:** every switch's Gi0/0 is
+   `ip address dhcp` with no IPv6 address and no interface-level routing, so RIPng
+   (`ipv6 rip RCN enable`, on s1's and s2's other interfaces only) cannot speak there and
+   `passive-interface` under `router rip` needs no RIPng partner; s2's `router rip` already has
+   `passive-interface GigabitEthernet0/0`; s3's and s4's only process is OSPF on
+   10.255.0.0/16, which does not cover the address vrnetlab hands Gi0/0 (inside 10/8, outside
+   that /16, as s4's live read showed on 2026-10-11). So s1's one line is the whole change. **Commit** with a reason ("C673"). Then
    s1 › Actions › **Deploy…**: the program is one line under `router rip`; confirm. Expect
    verify passed, a receipt, and on s1 `show ip protocols` (Show commands) listing Gi0/0 under
    Passive Interface(s). Undo: Intent › Edit to remove the line, commit, Deploy (merge-only

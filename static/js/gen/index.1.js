@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
   //
   // DELEGATED, and every lookup LIVE (Stage 7.0). The device list's rows,
   // checkboxes and search box are redrawn in place when a response
-  // invalidates `inventory` (refreshDeviceRegions below). They were captured
+  // invalidates `inventory` (the in-place redraw, removed at 7.8). They were captured
   // once at load, so a redrawn list kept these handlers pointed at rows that
   // no longer existed: the newly promoted device could not be searched or
   // selected, and "Select all" missed it.
@@ -574,62 +574,3 @@ document.addEventListener('DOMContentLoaded', () => {
     return div.innerHTML;
   }
 });
-
-// ========================================================================
-// The device list, redrawn in place (Stage 7.0; NSOT_STAGE7_GUI.md 6b)
-// ========================================================================
-//
-// The first of the three measured cases: onboarding's Verify promoted a
-// device and the list still read "0 devices" until a manual reload. The
-// list is server-rendered, and an empty list renders no table at all, so it
-// is redrawn from the SAME templates the index uses (GET /devices/regions).
-
-/* The payload in, the two regions and the list selector's count updated.
-   Returns false when there is nothing to apply, so the registry marks the
-   panel stale instead of leaving a stale list looking current. */
-function applyDeviceRegions(data, doc) {
-  doc = doc || document;
-  if (!data || data.ok !== true) return false;
-  const toolbar = doc.getElementById('deviceToolbarRegion');
-  const table = doc.getElementById('deviceTableRegion');
-  if (!toolbar || !table) return false;
-  toolbar.innerHTML = data.toolbar_html;
-  table.innerHTML = data.table_html;
-  const select = doc.getElementById('deviceListSelect');
-  if (select && select.options) {
-    for (let i = 0; i < select.options.length; i++) {
-      const opt = select.options[i];
-      if (opt.value === data.list) opt.textContent = `${data.list} (${data.count} devices)`;
-    }
-  }
-  return true;
-}
-
-async function refreshDeviceRegions() {
-  // The operator's place survives the redraw: the search text and the
-  // devices they had ticked. A redraw that clears a half-made selection is
-  // a panel that punishes the action it is reporting on.
-  const search = document.getElementById('deviceSearch');
-  const term = search ? search.value : '';
-  const ticked = Array.from(document.querySelectorAll('.device-checkbox:checked'))
-    .map(cb => cb.value);
-  const r = await fetch('/devices/regions');
-  if (!r.ok) return false;
-  if (!applyDeviceRegions(await r.json())) return false;
-  let first = null;
-  document.querySelectorAll('.device-checkbox').forEach(cb => {
-    if (ticked.indexOf(cb.value) !== -1 && !cb.disabled) {
-      cb.checked = true;
-      first = first || cb;
-    }
-  });
-  if (first) first.dispatchEvent(new Event('change', {bubbles: true}));
-  const newSearch = document.getElementById('deviceSearch');
-  if (newSearch && term) {
-    newSearch.value = term;
-    newSearch.dispatchEvent(new Event('input', {bubbles: true}));
-  }
-  return true;
-}
-
-NMAS.subscribe('inventory', 'deviceList', refreshDeviceRegions, {panel: 'deviceTableRegion'});

@@ -212,9 +212,10 @@ class TestTheResponseCarriesIt:
 
 class TestSubscriptions:
     def test_the_scan_finds_the_three_cases(self):
-        """Floor, and the three measured cases wired by name."""
+        """Floor, and the three measured cases wired by name (the device list's is v2's relay
+        since today's in-place redraw left at 7.8)."""
         subs = {(k, loader) for k, _, loader, _ in shipped_subscriptions()}
-        assert ("inventory", "refreshDeviceRegions") in subs
+        assert ("inventory", "relayInventory") in subs
         assert ("remote", "loadRemotePanel") in subs
         assert ("drift", "loadDriftStatus") in subs
 
@@ -427,73 +428,3 @@ class TestTheClientExecutes:
           said.join('');
         """)
         assert "gone" in out
-
-
-# ── the first case: the device list, redrawn from the index's own templates ──
-
-@pytest.fixture
-def one_device(monkeypatch):
-    import modules.device as D
-
-    dev = {"ip": "192.0.2.40", "hostname": "bp-new", "device_type": "cisco_ios",
-           "username": "admin", "password": "", "secret": ""}
-    monkeypatch.setattr(D, "load_saved_devices", lambda *a, **k: [dict(dev)])
-    return dev
-
-
-class TestTheDeviceListRedraws:
-    def test_the_route_renders_a_new_device(self, client, one_device):
-        body = client.get("/devices/regions").get_json()
-        assert body["ok"] is True and body["count"] == 1
-        assert "bp-new" in body["table_html"] and "192.0.2.40" in body["table_html"]
-        assert "1 device(s)" in body["toolbar_html"]
-
-    def test_an_empty_list_renders_its_empty_state(self, client, monkeypatch):
-        """The measured case started from a list with NO table at all."""
-        import modules.device as D
-
-        monkeypatch.setattr(D, "load_saved_devices", lambda *a, **k: [])
-        body = client.get("/devices/regions").get_json()
-        assert "No devices in this list yet" in body["table_html"]
-        assert "deviceSearch" not in body["toolbar_html"]
-
-    def test_the_index_and_the_route_render_the_same_rows(self, client, one_device,
-                                                           monkeypatch):
-        """One template, two callers: the redraw is the index's own rows."""
-        import app as A
-
-        monkeypatch.setattr(A, "load_saved_devices", lambda *a, **k: [dict(one_device)])
-        page = client.get("/").get_data(as_text=True)
-        body = client.get("/devices/regions").get_json()
-        rows = re.findall(r'<tr data-ip="[^"]+"[^>]*>', body["table_html"])
-        assert rows and all(row in page for row in rows)
-
-    def test_the_shipped_redraw_applies_the_real_payload(self, client, one_device):
-        """`applyDeviceRegions`, executed against what the route returns."""
-        payload = client.get("/devices/regions").get_json()
-        src = open(os.path.join(GEN, "index.1.js"), encoding="utf-8").read()
-        start = src.index("function applyDeviceRegions(")
-        end = src.index("async function refreshDeviceRegions(")
-        out = dukpy.evaljs(src[start:end] + """
-          var els = {deviceToolbarRegion: {innerHTML: 'old'},
-                     deviceTableRegion: {innerHTML: 'No devices in this list yet'},
-                     deviceListSelect: {options: [
-                       {value: dukpy['list'], textContent: 'x (0 devices)'}]}};
-          var doc = {getElementById: function (id) { return els[id] || null; }};
-          var ok = applyDeviceRegions(dukpy['payload'], doc);
-          [ok, els.deviceTableRegion.innerHTML, els.deviceListSelect.options[0].textContent];
-        """, payload=payload, list=payload["list"])
-        ok, table, label = out
-        assert ok is True and "bp-new" in table
-        assert label == f"{payload['list']} (1 devices)"
-
-    def test_a_failed_payload_is_a_failure_not_an_empty_list(self):
-        src = open(os.path.join(GEN, "index.1.js"), encoding="utf-8").read()
-        start = src.index("function applyDeviceRegions(")
-        end = src.index("async function refreshDeviceRegions(")
-        out = dukpy.evaljs(src[start:end] + """
-          var els = {deviceToolbarRegion: {innerHTML: 'kept'}, deviceTableRegion: {innerHTML: 'kept'}};
-          var doc = {getElementById: function (id) { return els[id] || null; }};
-          [applyDeviceRegions({ok: false, error: 'x'}, doc), els.deviceTableRegion.innerHTML];
-        """)
-        assert out == [False, "kept"]
