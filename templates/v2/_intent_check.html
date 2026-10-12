@@ -21,7 +21,7 @@
 {%- endmacro %}
 {%- set d = p.diffs or {} %}
 {%- macro golden_words() -%}
-{%- if d.golden %}its golden <span class="mono">{{ d.golden.sha[:7] }}</span> (captured {{ stamp(d.golden.timestamp) }}){% elif p.captured_from == 'running' %}its last captured running config{% else %}its capture{% endif %}
+{%- if d.golden %}its golden <span class="mono">{{ d.golden.sha[:7] }}</span> (captured {{ stamp(d.golden.timestamp) }}){% else %}its golden{% endif %}
 {%- endmacro %}
 <div class="ie-col">
   {%- if d.same %}

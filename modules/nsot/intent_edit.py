@@ -146,17 +146,16 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
     parsed = checked["parsed"]
     lines = unmodelled(parsed)
 
-    from routes.templates import (_captured_golden, _captured_running,
-                                  _platform_for as _platform_of_host)
+    from routes.templates import _captured_golden, _platform_for as _platform_of_host
     from modules.nsot import templates_repo
 
-    golden, _at = _captured_golden(hostname, list_name)
-    running, _at2 = _captured_running(list_name, hostname)
-    capture = golden or running
+    # Its committed golden only (C683): the backup store this fell back to retires at 7.8, and
+    # what Mercury renders against is what it recorded, never a file beside it.
+    capture, _at = _captured_golden(hostname, list_name)
     if not capture:
         return {"status": 200, "ok": True, "valid": True, "rendered": "", "unmodelled": lines,
-                "message": ("Valid. No captured config for this device, so there is nothing "
-                            "to render against yet.")}
+                "message": ("Valid. No golden is recorded for this device yet (its page's "
+                            "Capture records one), so there is nothing to render against.")}
 
     # The platform from THIS list's inventory (C495): the active list's held no row for a
     # device of another network, and the refusal said its row named no platform.
@@ -211,7 +210,7 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
             "vs_device": vs_device, "masked_not_compared": masked,
             # The v2 editor's right column (C500): the same two diffs as rows, compared.
             "diffs": diffs(repo, hostname, current_render, edited.rendered_masked, capture),
-            "captured_from": "golden" if golden else "running",
+            "captured_from": "golden",
             "rendered": edited.rendered_masked, "template": template,
             "unmodelled": lines}
 

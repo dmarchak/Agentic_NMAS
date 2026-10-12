@@ -640,3 +640,34 @@ class TestNeverCommittedIsItsOwnState:
 
         assert "_safe_hostname" in inspect.getsource(hostvars.committed_path)
         assert "_safe_hostname" in inspect.getsource(hostvars.committed_at_head)
+
+
+class TestNoBackupStore:
+    """C683: the intent editor and bulk intent render against the device's committed golden
+    only. The backup store they fell back to retires at 7.8; a device with a backup and no
+    golden is told it has no golden, and nothing reads the store."""
+
+    def _backup_only(self, world):
+        import yaml
+        from modules.nsot.parsers import get_parser
+        backups = os.path.join(os.path.dirname(world["repo"]), "backups")
+        os.makedirs(backups, exist_ok=True)
+        with open(os.path.join(backups, "s9_20261011.cfg"), "w", encoding="utf-8") as fh:
+            fh.write(CONFIG.replace("hostname s4", "hostname s9"))
+        doc = get_parser("cisco_ios").parse(CONFIG.replace("hostname s4", "hostname s9"))
+        doc["hostname"] = "s9"
+        doc.pop("secrets", None)      # committed intent holds secret names only, never a map
+        return yaml.safe_dump(doc)
+
+    def test_the_editor_says_no_golden_for_a_device_with_only_a_backup(self, world):
+        from modules.nsot import intent_edit
+        got = intent_edit.preview("lab", "s9", self._backup_only(world))
+        assert got["ok"] and got["rendered"] == "", got
+        assert "No golden is recorded for this device yet" in got["message"]
+
+    def test_bulk_intent_refuses_a_device_with_only_a_backup(self, world):
+        import routes.templatize as T
+        self._backup_only(world)
+        render, _eligible = T._bulk_render_and_eligible("lab", world["repo"])
+        with pytest.raises(RuntimeError, match="no golden is recorded for it yet"):
+            render("s9", {"hostname": "s9"})

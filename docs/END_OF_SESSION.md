@@ -75,10 +75,16 @@ Your answers committed in 8224518 (deployed). Then, in your order:
   `netbox-role-kinds.sh` (router and switch set). NetBox also holds a `network-device` role
   with no kind: Mercury calls any device holding it "not classified" until it has one.
 - **Waiting on you:** the CLAUDE.md script (then `scripts/nmas-host` moves to `lab/`); the
-  walk's sittings (below); three questions (the report, `~/Documents/nmas-reports/
-  2026-10-11-evening-report.md`): board M's full-config way (whole intent before boot, and its
-  other secrets over TFTP) or first boot kept bare and M redrawn; the kind for NetBox's
-  `network-device` role; whether to fix C681 in the lab's host-net.sh.
+  walk's sittings (below); deleting NetBox's `network-device` role (no device holds it, read
+  2026-10-12).
+- **Answered (the operator, 2026-10-11 night) and done:** board M kept first boot bare and its
+  intent as an ordinary deploy (redrawn, canvas v113, built 8ac3a6a); C686's cause found and
+  fixed (every job carries its confirming person, a776224); C683 done (the intent editor and
+  bulk intent off the backup store). C681: the DUID is already MAC-derived; the varying part is
+  busybox's random IAID; the lab fix is a host image with ISC dhclient (its row). **Yours to
+  decide first:** ISC dhclient is a new third-party package (MPL-2.0) in the lab hosts' image,
+  one of the four stops. The alternative needs no new package: shorter IPv6 lease times on
+  subnets 10, 20 and 30 (board C, your confirm) with the hosts' udhcpc6 kept running to renew.
 
 ## MORNING REPORT: the overnight run, 2026-10-11 (06:34 to about 11:00 UTC; 00:34 to 05:00 UTC−6)
 
@@ -157,8 +163,8 @@ step that does not show what it says, and tell the agent the step's number. Time
 
 ### Sitting 1: read-only screens (nothing is written; nothing to undo)
 
-1. **Needs attention** (`/v2/`): rows each name something wrong and an action. Expect C663 step
-   1's host step owed, and no Topology row.
+1. **Needs attention** (`/v2/`): rows each name something wrong and an action. Expect no host
+   step owed (C663's and the discovery range's are done), and no Topology row.
 2. **Devices**: nine devices with counts by state at the top; search narrows; a device opens.
 3. **A device, r1**: every tab opens; Neighbours shows OSPF and BGP; Monitoring draws the
    device dashboard; Intent shows the committed document; History lists its commits.
@@ -169,8 +175,10 @@ step that does not show what it says, and tell the agent the step's number. Time
 5. **History › Query**: Syslog by device draws lines by severity; "Interface errors and
    discards over time" draws a chart and its query; "CPU and memory trend" for r1 draws two
    lines (CPU, memory), for s1 one (CPU), with the Covers line under it.
-6. **History › Timeline and Baselines**: commits with who and how verified; baselines listed
-   with whether each can be re-applied.
+6. **History › Timeline and Baselines**: commits with who and how verified; under the filters,
+   "N of M commits in this window carry a verified identity" (on 10-11: 38 of 42, 1 host
+   login, 3 not verified); **Show only these** lists the 4 (the 3 are C686's Save All of 10-09),
+   **Show every identity** undoes it. Baselines listed with whether each can be re-applied.
 7. **DHCP** (SOURCE OF TRUTH › DHCP): Subnets 6 (3 IPv4 with ZTP's, 3 IPv6); Leases grouped;
    Reservations empty but for what onboarding wrote. Press **Add a reservation…**, fill any
    free address, **Preview**: the change, the checks (each "pass" or "at confirm") and the
@@ -179,6 +187,12 @@ step that does not show what it says, and tell the agent the step's number. Time
    recorded. **Ask the device** on r1's page: `show ip route summary` answers.
 9. **Templates, Coverage, NetBox, Credentials › Profiles, Settings (Installation and Default)**:
    each opens and reads; nothing pressed.
+10. **Devices › Discovered** (board L): the range 10.255.0.192/28 and .208/28 named, read every
+    30 s; three groups, Asking now open and empty ("No device the tool doesn't know is asking
+    now"), until a device boots on the ZTP segment (sitting 5).
+11. **DHCP › Subnets and Exclusions**: board C's columns (gateway against intent, DNS, lease
+    times, held by Mercury); ZTP's subnet shows the discovery pools; Exclusions empty.
+12. **History › Query › saved views**: board A's list (empty until sitting 2 step 13).
 
 ### Sitting 2: single-device and single-record writes (each previewed; you confirm)
 
@@ -237,12 +251,17 @@ Steps 1 and 2 DONE by the operator, 2026-10-11.
        confirm. Expect "removed", Kea's subnets as before the walk.
     Undo: each step's own Remove…; the history of every step stays in the repository (`dhcp/`).
     Not walked by the agent: every confirm needs your verified identity.
+13. **History › Query, a saved view (C667)**: open "Interface errors and discards over time",
+    **Save this view…** with a title; pin it; open it from board A's list; remove it. Expect each
+    act recorded on History as you, and the list redrawn in other tabs. Undo: the remove.
 
 ### Sitting 3: fleet-wide writes (each previewed; you confirm)
 
 1. **Save All** (Devices › Save…): every device saved and read back, then one capture commit.
    Expect a baseline earned and, within seconds, the lab sync starting (the clab VM's sync log
-   or the labs' repositories at the new baseline). Undo: none (saving running to startup).
+   or the labs' repositories at the new baseline). **And (C686, fixed 2026-10-12):** History's
+   line counts this commit as verified, as you; the three of 10-09 stay "not verified". Undo:
+   none (saving running to startup).
 2. **Deploy to several devices** (Devices › select r1 and r2 › Deploy…): with nothing pending the
    preview says it changes nothing; confirm to prove the batch path. Undo: none needed.
 3. **Bulk intent** (Devices › select s1, s2, s4 › Change a setting…): choose a setting and set
@@ -260,18 +279,35 @@ the restart), the session dropping, SSH answering again within the bound (about 
 an emulated IOS-XE), verify "runs what it ran", and the run recorded. Undo: none (a reload cannot
 be undone); if r6 does not come back, its console and break-glass record.
 
+### Sitting 5: a device's first boot through Discovered (boards L and M)
+
+Needs a configless device booting on the ZTP segment: a throwaway C8000v on the lab host (the
+agent can stand it up under the Phase 7 mode, outside 08:30 to 09:10 UTC; never s3). It also
+measures the open question in NSOT_STAGE7_PLAN 16: what a configless C8000v does once it takes
+a discovery lease.
+1. **Devices › Discovered**: within a minute it is under Asking now, vendor class ciscopnp, an
+   address from .192/28, its cadence once a second request is seen.
+2. **Pick…**: Add device opens with its MAC and the ZTP way; name it (e.g. `r8`), platform,
+   role, management address; **Review the plan**: the first-boot config is the management plane
+   only (hostname, the one-time account, domain, address, SSH); **Create** as you.
+3. **r8's page (pending)**: the five steps; step 4 moves through Kea's and the responder's
+   sub-states as it reboots onto its reservation (a long-asking device may need the reload the
+   picked group names).
+4. **Verify…** when it answers: rotated, first golden, in the inventory. Its result names the
+   next step: **Deploy its intent…** (or where to write its intent first).
+5. **Deploy** its intent: an ordinary deploy, previewed, confirmed, verified.
+Undo: Abandon… before Verify; after it, Retire.
+
 **Answered (the operator, 2026-10-11 evening):** CDP no (RIP and RIPng are the witness; C671 kept
 as an observation); C673 yes (surveyed: only s1's Gi0/0 sends, s2 already passive; the deploy is
 sitting 2 step 3); the sidebar's Logs a live tail (C675); onboarding reads a Planned NetBox
 record (C676).
 
-**Phase 7, re-estimated** (from tonight's measured pace: a board-built step with its tests,
-record, manual, gate, deploy and host check took 40 to 90 minutes): C529 steps 3 to 5, about
-4 to 5 hours; C667's remainder, about 2 to 3; boards L and M, about 4 to 6 (both need drawing
-first); 7.5's claim, about 1; the 7.8 removals (about 30 rows), about 6 to 10; then the walk of
-everything with you, about half a day of your time. **About 18 to 25 agent hours plus the walk:
-three to four overnight runs like this one.** Assumes no new findings of C671's size; tonight's
-items each found one or two.
+**Phase 7, re-estimated 2026-10-12** (a 7.8 family took 20 to 40 minutes; a board step 40 to
+90): the 7.8 removals left (about 16 families; today's device page and the AI agent the large
+ones; Backups after today's template editor), about 7 to 10 hours; C681's lab image, about 1;
+sitting 5's throwaway device, about 1; then the walk with you, about half a day of your time.
+**About 9 to 12 agent hours plus the walk.**
 
 ## OVERNIGHT RUN, 2026-10-11 (the operator's list, items 1 to 9): status
 

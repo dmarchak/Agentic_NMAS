@@ -479,8 +479,7 @@ def _bulk_inputs(data: dict):
 def _bulk_render_and_eligible(list_name: str, repo: str):
     from modules.device import load_saved_devices
     from modules.nsot import hostvars, manifest, templates_repo
-    from routes.templates import (_captured_golden, _captured_running,
-                                  _platform_for as _platform_of_host,
+    from routes.templates import (_captured_golden, _platform_for as _platform_of_host,
                                   artifact_for)
 
     from modules.config import LISTS_DIR
@@ -499,11 +498,11 @@ def _bulk_render_and_eligible(list_name: str, repo: str):
         return ""
 
     def render(host, host_vars):
-        golden, _a = _captured_golden(host, list_name)
-        running, _b = _captured_running(list_name, host)
-        capture = golden or running
+        # Its committed golden only (C683): never the backup store, which retires at 7.8.
+        capture, _a = _captured_golden(host, list_name)
         if not capture:
-            raise RuntimeError("no captured config to render against")
+            raise RuntimeError("no golden is recorded for it yet to render against (its "
+                               "page's Capture records one)")
         platform = _platform_of_host(host, list_name)       # this list's row (C495)
         from modules.nsot.platform import UnknownPlatform, is_dialect
         if not is_dialect(platform):
