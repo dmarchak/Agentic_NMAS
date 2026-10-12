@@ -43,15 +43,14 @@ def prometheus_all(list_name: str = "") -> tuple:
     the whole fleet. Raises when Prometheus is configured and cannot be read,
     so the failure is a job-health row, never "every adjacency up"."""
     from modules.integrations.prometheus import PrometheusIntegration
-    from modules.neighbours import SERIES
+    from modules.neighbours import SERIES, query
 
     prom = PrometheusIntegration(list_name=list_name) if list_name else PrometheusIntegration()
     if not prom.is_configured():
         return False, {}, {}
     results, up = {}, {}
     for metric in [m for _j, m in SERIES.values()] + ["up"]:
-        q = 'up{job=~"ospf|ospfv3|bgp"}' if metric == "up" else metric
-        r = prom._get("api/v1/query", query=q)
+        r = prom._get("api/v1/query", query=query(metric))
         if not r.get("ok"):
             raise RuntimeError(f"Prometheus could not be asked for {metric}: {r.get('error')}")
         for row in (r["response"].json().get("data") or {}).get("result") or []:

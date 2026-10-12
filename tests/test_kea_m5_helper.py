@@ -162,10 +162,14 @@ class TestD4ForbiddenOptions:
             {"name": "boot-file-name", "data": "bp-ztp-a.cfg"}]})])
         assert _helper().forbidden_options(cfg) == []
 
-    def test_client_classes_are_not_ruled_out(self):
+    def test_a_class_counts_by_its_own_options(self):
+        """C689 (2026-10-12): a class's option-data is read directly; one with none is clean,
+        one carrying a route is named."""
         cfg = _config([FRAGMENT_ONE])
         cfg["Dhcp4"]["client-classes"] = [{"name": "x"}]
-        assert _helper().forbidden_options(cfg) == [("client-classes", "defined: could not be ruled out")]
+        assert _helper().forbidden_options(cfg) == []
+        cfg["Dhcp4"]["client-classes"] = [{"name": "x", "option-data": [{"name": "routers"}]}]
+        assert _helper().forbidden_options(cfg) == [("client-class x", "routers")]
 
     def test_show_exits_nonzero_on_a_forbidden_option(self, fake_kea, monkeypatch, capsys):
         path, state = fake_kea

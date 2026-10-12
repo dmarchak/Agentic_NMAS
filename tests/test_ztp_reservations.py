@@ -191,10 +191,25 @@ class TestD4AtWriteTime:
         out = _write(site, kea, [e])
         assert "this reservation" in out["outcomes"][MAC]["detail"]
 
-    def test_client_classes_are_not_ruled_out(self, site):
-        kea = FakeKea(site[0], classes=[{"name": "x"}])
+    def test_a_class_with_no_option_is_clean(self, site):
+        """The discovery classes as Kea runs them (board L, read on the host 2026-10-12): no
+        option-data, so D4 holds and the reservation is written (until 2026-10-12 any class
+        read "could not be ruled out")."""
+        from modules import dhcp_discovery as L
+        kea = FakeKea(site[0], classes=L.classes("enp6s19"))
         out = _write(site, kea, [_entry()])
-        assert "could not be ruled out" in out["outcomes"][MAC]["detail"]
+        assert out["outcomes"][MAC]["outcome"] != "refused", out
+
+    @pytest.mark.parametrize("option", [{"name": "routers", "data": "192.0.2.1"},
+                                        {"code": 6, "data": "192.0.2.53"}])
+    def test_a_class_carrying_a_route_or_resolver_refuses_naming_it(self, site, option):
+        """The operator, 2026-10-12: a planted class giving subnet-255 clients a routers
+        option must fail D4, whatever its test."""
+        kea = FakeKea(site[0], classes=[{"name": "planted", "test": "not member('KNOWN')",
+                                         "option-data": [option]}])
+        out = _write(site, kea, [_entry()])
+        assert out["outcomes"][MAC]["outcome"] == "refused"
+        assert "client-class planted" in out["outcomes"][MAC]["detail"]
 
     def test_the_other_subnets_options_do_not_count(self, site):
         # Floor: subnet 10 carries routers and DNS, and it is not the ZTP subnet.
@@ -412,6 +427,19 @@ def test_the_module_and_the_probe_helper_agree_on_d4():
         cfg = {"Dhcp4": {"subnet4": [{"id": 255, "subnet": SUBNET, "option-data": opts,
                                       "reservations": [{"hw-address": MAC, "ip-address": ADDR}]}]}}
         assert bool(helper.forbidden_options(cfg)) == bool(ztp.forbidden_options(cfg["Dhcp4"], ADDR)), opts
+    # A class's and a pool's option-data count in both, whatever the class's test (2026-10-12).
+    for where in ("class", "pool"):
+        for opts in cases:
+            sub = {"id": 255, "subnet": SUBNET,
+                   "reservations": [{"hw-address": MAC, "ip-address": ADDR}]}
+            dhcp4 = {"subnet4": [sub]}
+            if where == "class":
+                dhcp4["client-classes"] = [{"name": "c", "test": "false", "option-data": opts}]
+            else:
+                sub["pools"] = [{"pool": "192.0.2.192/28", "option-data": opts}]
+            cfg = {"Dhcp4": dhcp4}
+            assert bool(helper.forbidden_options(cfg)) == \
+                bool(ztp.forbidden_options(dhcp4, ADDR)), (where, opts)
 
 
 class TestPostureRows:

@@ -146,24 +146,30 @@ def forbidden_options(dhcp4: dict, address: str) -> list:
     EFFECTIVELY receive, as ``(level, name_or_code)``. Empty means none.
 
     Kea sends an option the client requests from the most specific level
-    that has it, so every level is looked at: global, the shared network,
-    the subnet, and every reservation in that subnet. Client classes can
-    carry options too and are not evaluated here, so their presence is
-    reported as a level that could not be ruled out, never as clean.
+    that has it, so every level is looked at: global, every client class, the
+    shared network, the subnet, its pools and every reservation in it. A
+    class counts whatever its test says (the discovery classes, board L,
+    match only the ZTP subnet's own clients, and a class carrying a route
+    would still be a breach): its option-data is read directly, so a class
+    with none is clean and one with a forbidden option is named. Until
+    2026-10-12 any defined class read "could not be ruled out" (the operator:
+    D4 is a security guarantee and cannot stay unknown).
     """
     subnet, net = subnet_for_address(dhcp4, address)
     codes, names = set(FORBIDDEN_OPTIONS.values()), set(FORBIDDEN_OPTIONS)
     levels = [("global", dhcp4.get("option-data") or [])]
+    for c in dhcp4.get("client-classes") or []:
+        if isinstance(c, dict):
+            levels.append((f"client-class {c.get('name')}", c.get("option-data") or []))
     if net is not None:
         levels.append((f"shared-network {net.get('name')}", net.get("option-data") or []))
     levels.append((f"subnet {subnet.get('id')}", subnet.get("option-data") or []))
+    for p in subnet.get("pools") or []:
+        levels.append((f"pool {p.get('pool')}", p.get("option-data") or []))
     for r in subnet.get("reservations") or []:
         levels.append((f"reservation {r.get('hw-address')}", r.get("option-data") or []))
-    found = [(level, o.get("name") or o.get("code")) for level, opts in levels
-             for o in opts if o.get("name") in names or o.get("code") in codes]
-    if dhcp4.get("client-classes"):
-        found.append(("client-classes", "defined: could not be ruled out"))
-    return found
+    return [(level, o.get("name") or o.get("code")) for level, opts in levels
+            for o in opts if o.get("name") in names or o.get("code") in codes]
 
 
 # ── D3: the server address is derived, never stored ────────────────────────

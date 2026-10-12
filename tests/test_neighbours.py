@@ -166,7 +166,23 @@ class TestWhatGoesWrongIsNamed:
             if r["metric"]["device"] == "r3" and r["metric"]["job"] == "ospf":
                 r["value"][1] = "0"
         ospf = next(p for p in _view("r3", cap=cap)["protocols"] if p["proto"] == "ospf")
-        assert "last `ospf` scrape of r3 failed" in ospf["why"]
+        assert "no `ospf` scrape of r3 has answered Prometheus in the last 5 minutes" in ospf["why"]
+
+
+def test_a_failed_scrape_keeps_the_last_good_value():
+    """The operator, 2026-10-12: "r1 (OSPF) not measured" on Needs attention while r1 was up.
+    r1's OSPF walk times out on about 1.4% of scrapes (20 lone minutes in 24 h, measured), and
+    an instant read is blank for the minute after one. Both reads ask over a 5-minute window:
+    measured when any scrape in it answered, each adjacency its last good sample."""
+    from modules import neighbours as N
+    assert N.query("ospfNbrState", "r1") == 'last_over_time(ospfNbrState{device="r1"}[5m])'
+    assert N.query("up", "r1") == 'max_over_time(up{device="r1",job=~"ospf|ospfv3|bgp"}[5m])'
+    assert N.query("up") == 'max_over_time(up{job=~"ospf|ospfv3|bgp"}[5m])'
+    assert N.query("cbgpPeer2State") == "last_over_time(cbgpPeer2State{}[5m])"
+    import inspect
+    from modules.readers import adjacencies
+    assert "query(metric)" in inspect.getsource(adjacencies.prometheus_all)
+    assert "query(metric, label)" in inspect.getsource(N.for_device)
 
 
 class TestTheFleetIsReadInFixedCalls:
@@ -238,7 +254,8 @@ def page(lab, monkeypatch):
         q = params["query"]
         asked.append(q)
         dev = re.search(r'device="([^"]+)"', q).group(1)
-        metric = "up" if q.startswith("up{") else q.split("{")[0]
+        name = re.match(r"(?:max_over_time|last_over_time)\((\w+)\{", q)
+        metric = name.group(1) if name else q.split("{")[0]
         key = UP if metric == "up" else metric
         body = copy.deepcopy(cap[key])
         body["data"]["result"] = [r for r in body["data"]["result"] if r["metric"].get("device") == dev]

@@ -78,26 +78,28 @@ FORBIDDEN_OPTIONS = {"routers": 3, "domain-name-servers": 6,
 
 def forbidden_options(config_args, subnet_id=SUBNET_ID):
     """D4: every route or resolver option a reservation in the subnet would
-    EFFECTIVELY receive, from global, shared-network, subnet and reservation
-    option-data, as (level, name-or-code). Client classes are reported as a
-    level that could not be ruled out, never as clean."""
+    EFFECTIVELY receive, from global, client-class, shared-network, subnet,
+    pool and reservation option-data, as (level, name-or-code). A class's
+    option-data is read directly, whatever its test (modules/nsot/ztp.py's
+    rule, pinned to this by tests/test_ztp_reservations.py)."""
     codes = set(FORBIDDEN_OPTIONS.values())
     names = set(FORBIDDEN_OPTIONS)
     dhcp4 = config_args.get("Dhcp4") or {}
     levels = [("global", dhcp4.get("option-data") or [])]
+    for c in dhcp4.get("client-classes") or []:
+        levels.append((f"client-class {c.get('name')}", c.get("option-data") or []))
     for net in dhcp4.get("shared-networks") or []:
         if any(s.get("id") == subnet_id for s in net.get("subnet4") or []):
             levels.append((f"shared-network {net.get('name')}", net.get("option-data") or []))
             dhcp4 = dict(dhcp4, subnet4=list(dhcp4.get("subnet4") or []) + list(net.get("subnet4") or []))
     s = subnet(dict(config_args, Dhcp4=dhcp4), subnet_id)
     levels.append((f"subnet {subnet_id}", s.get("option-data") or []))
+    for p in s.get("pools") or []:
+        levels.append((f"pool {p.get('pool')}", p.get("option-data") or []))
     for r in s.get("reservations") or []:
         levels.append((f"reservation {r.get('hw-address')}", r.get("option-data") or []))
-    found = [(level, o.get("name") or o.get("code")) for level, opts in levels for o in opts
-             if o.get("name") in names or o.get("code") in codes]
-    if dhcp4.get("client-classes"):
-        found.append(("client-classes", "defined: could not be ruled out"))
-    return found
+    return [(level, o.get("name") or o.get("code")) for level, opts in levels for o in opts
+            if o.get("name") in names or o.get("code") in codes]
 
 
 def with_reservation(config_args, mac, ip, subnet_id=SUBNET_ID):

@@ -47,6 +47,24 @@ SERIES = {"ospf": ("ospf", "ospfNbrState"), "ospfv3": ("ospfv3", "ospfv3NbrState
           "bgp": ("bgp", "cbgpPeer2State")}
 WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP"}
 
+#: A failed read keeps the last good value: a device's protocol counts as measured when ANY of
+#: its scrapes in the last WINDOW answered, and its adjacencies are the last good sample in it.
+#: An instant read went blank for the minute after one failed scrape (Prometheus marks the
+#: series stale), and Needs attention drew "not measured": r1's OSPF walk times out (20 s) on
+#: about 1.4% of scrapes, 20 lone minutes in 24 h (measured 2026-10-12). Five scrapes at the
+#: 1 m interval; a device unanswering for longer still reads "not measured".
+WINDOW = "5m"
+WINDOW_WORDS = "5 minutes"
+
+
+def query(metric: str, label: str = "") -> str:
+    """The PromQL for one adjacency series, or ``up`` for the three jobs, over WINDOW: one
+    device's when *label* (a hostname, escaped by the caller) is given, else the fleet's."""
+    dev = f'device="{label}"' if label else ""
+    if metric == "up":
+        return f'max_over_time(up{{{dev + "," if dev else ""}job=~"ospf|ospfv3|bgp"}}[{WINDOW}])'
+    return f"last_over_time({metric}{{{dev}}}[{WINDOW}])"
+
 
 # ---------------------------------------------------------------------------
 # Committed intent, the whole fleet in a fixed number of reads.
@@ -327,8 +345,8 @@ def compare(intents: dict, host: str, results: dict, up: dict) -> dict:
             entry["why"] = (f"not measured: Prometheus does not scrape {WORDS[proto]} from "
                             f"{host} (no `{job}` target for it)")
         elif scraped == 0:
-            entry["why"] = (f"not measured: Prometheus's last `{job}` scrape of {host} failed, "
-                            "so what it holds is not current")
+            entry["why"] = (f"not measured: no `{job}` scrape of {host} has answered Prometheus "
+                            f"in the last {WINDOW_WORDS}, so what it holds is not current")
         used = set()
         for e in mine:
             match = None
@@ -393,9 +411,7 @@ def for_device(ref, dev: dict) -> dict:
     results, up = {}, {}
     label = host.replace("\\", "\\\\").replace('"', '\\"')
     for metric in [m for _j, m in SERIES.values()] + ["up"]:
-        q = (f'up{{device="{label}",job=~"ospf|ospfv3|bgp"}}' if metric == "up"
-             else f'{metric}{{device="{label}"}}')
-        r = prom._get("api/v1/query", query=q)
+        r = prom._get("api/v1/query", query=query(metric, label))
         if not r.get("ok"):
             view["errors"].append(f"Prometheus could not be asked for {metric}: {r.get('error')}")
             continue
