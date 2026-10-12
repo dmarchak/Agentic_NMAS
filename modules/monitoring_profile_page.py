@@ -19,8 +19,7 @@ COLUMNS_OF = {"snmp": ("snmp",), "syslog": ("syslog", "heartbeat"), "ntp": ("ntp
               "management": ("management",), "lldp": ("lldp",), "cdp": (),
               "telemetry": ("telemetry",), "ip_sla": ("ip_sla",)}
 
-_POLICY_WORDS = {"gateway": "probe the default gateway", "peers": "probe the routing peers",
-                 "none": "probe nothing"}
+from modules.nsot.ip_sla_policy import SHORT_WORDS as _POLICY_WORDS  # noqa: E402 (one table)
 
 
 def _canon(v) -> str:

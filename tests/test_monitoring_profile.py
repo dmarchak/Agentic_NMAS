@@ -65,7 +65,7 @@ class TestTheDocument:
         assert any("version is 2" in p for p in got)
         assert "snmp: no data" in got
         assert any("'dns' is not a profile section" in p for p in got)
-        assert any("ip_sla.policy must be one of gateway, peers, none" in p for p in got)
+        assert any("ip_sla.policy must be one of upstream, gateway, peers, none" in p for p in got)
         assert any("ip_sla holds a policy, never data" in p for p in got)
         assert "ntp.platforms must be a list of names" in got
 

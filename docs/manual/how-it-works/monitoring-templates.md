@@ -192,11 +192,20 @@ closest:
    next Propose derives the profile from them. **Test** checks what can be checked.
 2. **IP SLA's policy** (Monitoring > IP SLA, reached from Coverage's IP SLA cells). Read: the
    committed profile. Sent: nothing. Recorded: the profile's IP SLA section (its targeting,
-   routing peers or the default gateway or none, and its frequency, 10 to 3600 s) committed
+   and its frequency, 10 to 3600 s) committed
    as you, `Source: profile`, refused if the profile moved since the page showed it. The
    probes it suggests are a SECOND commit, into the chosen devices' intent
    (`Source: ip-sla`), and are sent by Coverage's [Deploy missing templates](#combined) or by
    a scoped Apply (scope `ip_sla`), never by the profile's Apply.
+
+   The targeting is one of four. **Upstream** probes what each device depends on: its static
+   default gateway, else its routing peers, else the next hop of its widest static route, so
+   a network whose devices differ (one with a static default, one running only RIP, one
+   reached by a static route alone) gets a probe for each. **Peers** probes the routing peers
+   its intent implies (OSPF, BGP and RIP), one probe per shared network; **gateway** only the
+   static default route's next hop (a management VRF's default never counts); **none** probes
+   nothing. A device the targeting names nothing for is listed with the reason. A path between
+   a switch and a router is probed from the router, sparing the switch.
 
 The signed-off design (not built) says: each template's settings live with it in Settings >
 Monitoring templates, one compact row each; IP SLA's are its targeting, its frequency and its

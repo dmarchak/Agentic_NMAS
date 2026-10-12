@@ -11,6 +11,13 @@ own data):
   address);
 - `gateway`: probe its static default route's next hop in the global table
   (a VRF's default, such as an emulator's management VRF, is never a gateway);
+- `upstream` (C711): what each device depends on, so every device with a way
+  out in its intent has an answer: its static default gateway, else its routing
+  peers (OSPF, BGP and RIP), else the next hop of its widest static route in the
+  global table (a device with no routing protocol and no default, reached by a
+  static route to the management network). One policy per network could not
+  fit a network whose devices differ: `gateway` named nothing for a device whose
+  default is learned, `peers` nothing for one that runs no protocol;
 - `none`.
 With `frequency` (seconds; 60 by default, the operator, 2026-10-01: one
 probe every 10 s cost s3 about 12% of its CPU) and `frequency_by_platform`.
@@ -97,6 +104,56 @@ def gateway(hv: dict) -> str:
     return ""
 
 
+def static_hop(hv: dict) -> tuple:
+    """``(next hop, the route's words)`` of the widest IPv4 static route in the global table
+    (a VRF's route is never one), or ``("", "")``. Widest: the route most destinations take."""
+    best = None
+    for r in (hv or {}).get("static_routes") or []:
+        spec = (r.get("spec") or "").split()
+        if r.get("family", "ipv4") != "ipv4" or len(spec) < 3 or spec[0] == "vrf":
+            continue
+        try:
+            net = ipaddress.ip_network(f"{spec[0]}/{spec[1]}", strict=False)
+            hop = ipaddress.ip_address(spec[2])
+        except ValueError:
+            continue
+        if best is None or net.prefixlen < best[0].prefixlen:
+            best = (net, str(hop))
+    return (best[1], f"its static route to {best[0]}") if best else ("", "")
+
+
+def rip_peers(intents: dict, host: str) -> list:
+    """``[{proto, peer, address, network}]``: the devices whose committed intent runs RIP on
+    an interface sharing an IPv4 subnet with one *host* runs RIP on (`readers.rip
+    .rip_interfaces`: inside a `network` statement, not passive). RIP keeps no neighbour
+    table, so intent is what implies its peers here, as it does for OSPF."""
+    from modules.readers.rip import rip_interfaces
+
+    def nets(hv):
+        on = set(rip_interfaces(hv))
+        out = []
+        for i in (hv or {}).get("interfaces") or []:
+            v4 = (i.get("ipv4") or "").split()
+            if i.get("name") in on and len(v4) == 2:
+                try:
+                    out.append(ipaddress.ip_interface(f"{v4[0]}/{v4[1]}"))
+                except ValueError:
+                    continue
+        return out
+
+    mine = nets(intents.get(host))
+    out = []
+    for other, hv in sorted(intents.items()):
+        if other == host:
+            continue
+        for theirs in nets(hv):
+            for m in mine:
+                if theirs.network == m.network and theirs.network.prefixlen < 32:
+                    out.append({"proto": "rip", "peer": other, "address": str(theirs.ip),
+                                "network": str(m.network)})
+    return out
+
+
 def _owner(addr: str, intents: dict) -> str:
     from modules.neighbours import addresses
     try:
@@ -111,6 +168,17 @@ def targets(intents: dict, host: str, policy: str) -> tuple:
     on a shared segment every peer measures the same path, so one probe
     covers it (the operator's load rule, 2026-10-01)."""
     hv = intents.get(host) or {}
+    if policy == "upstream":
+        for step in ("gateway", "peers"):
+            found, _why = targets(intents, host, step)
+            if found:
+                return found, ""
+        hop, _words = static_hop(hv)
+        if hop:
+            owner = _owner(hop, intents)
+            return [(owner, router_address(intents[owner]) if owner else hop, "static")], ""
+        return [], ("its committed intent names nothing it depends on: no static default route, "
+                    "no routing peer and no static route in the global table")
     if policy == "gateway":
         gw = gateway(hv)
         if not gw:
@@ -121,7 +189,7 @@ def targets(intents: dict, host: str, policy: str) -> tuple:
     if policy == "peers":
         from modules.neighbours import expected
         by_net = {}
-        for e in expected(intents, host):
+        for e in expected(intents, host) + rip_peers(intents, host):
             if e.get("proto") == "ospfv3":
                 continue                      # the same peers as OSPF, over IPv6
             net = e.get("network") or e.get("address") or ""
@@ -135,9 +203,6 @@ def targets(intents: dict, host: str, policy: str) -> tuple:
                 out.append(("", rows[0].get("address", ""), net))
         if out:
             return out, ""
-        if ((hv.get("routing") or {}).get("rip")):
-            return [], ("it runs RIP, whose peers this policy does not read (only OSPF and BGP "
-                        "adjacencies): choose its targets by hand")
         return [], "its committed intent implies no routing peer"
     return [], "the profile's IP SLA policy is to probe nothing"
 
@@ -295,9 +360,15 @@ def scoped(intended: str, captured: str, policy_words: str = "") -> dict:
 # The operations: set the policy, plan the probes, commit them into intent.
 # ---------------------------------------------------------------------------
 
-POLICY_WORDS = {"peers": "probe each device's routing peers, one probe per shared network",
+POLICY_WORDS = {"upstream": ("probe what each device depends on: its static default gateway, "
+                             "else its routing peers, else its static routes' next hop"),
+                "peers": "probe each device's routing peers, one probe per shared network",
                 "gateway": "probe each device's static default gateway",
                 "none": "probe nothing"}
+#: The same, short, where a sentence goes on after it (Coverage's cell, the profile's page).
+SHORT_WORDS = {"upstream": "probe what each device depends on",
+               "gateway": "probe the default gateway",
+               "peers": "probe the routing peers", "none": "probe nothing"}
 
 
 class Refused(Exception):

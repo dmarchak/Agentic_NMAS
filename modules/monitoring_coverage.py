@@ -319,8 +319,7 @@ def _not_rendered(ref, host: str, platform: str, role: str, intent: dict, doc: d
             f"profile's {_SECTION_WORDS.get(section, section)} section, so Apply cannot send "
             "it: bring in the shipped version on Templates")
 _PLATFORM_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
-_IP_SLA_POLICY_WORDS = {"gateway": "probe the default gateway",
-                        "peers": "probe the routing peers", "none": "probe nothing"}
+from modules.nsot.ip_sla_policy import SHORT_WORDS as _IP_SLA_POLICY_WORDS  # noqa: E402
 
 
 def _model_words(text: str, platform: str, host: str = "", known: tuple = None) -> str:

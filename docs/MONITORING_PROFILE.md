@@ -220,11 +220,18 @@ device but one, and over a pure per-device item, which gives a new device nothin
 `/v2/monitoring/ip-sla`).** The operator split adding from changing: adding a probe is a new
 operation, merge-only; changing a running one is the re-create (C290), which waits on staged
 run 9. What was built, and what differs from the paragraph above:
-- `peers` reads the adjacencies the device's COMMITTED INTENT implies (`modules.neighbours`,
-  OSPF and BGP), not a capture: one probe per shared network, since on a segment every peer
-  measures the same path. RIP's peers are not read, and a RIP device says so ("choose its
-  targets by hand"). `gateway` is the static default in the global table only (a VRF's
-  default, the emulator's `clab-mgmt`, is never a gateway).
+- `peers` reads the adjacencies the device's COMMITTED INTENT implies (`modules.neighbours`
+  for OSPF and BGP; RIP from the interfaces RIP runs on by intent, `readers.rip
+  .rip_interfaces`, since C711), not a capture: one probe per shared network, since on a
+  segment every peer measures the same path. `gateway` is the static default in the global
+  table only (a VRF's default, the emulator's `clab-mgmt`, is never a gateway).
+- **`upstream`** (C711, 2026-10-12): what each device depends on, so one policy has an
+  answer for every device that has a way out in its intent: its static default gateway, else
+  its routing peers, else the next hop of its widest static route in the global table. The
+  lab showed why one of the others cannot be the network's policy: under `gateway` s1 (RIP),
+  s4 (OSPF) and r6 (no protocol; a static route to the management network) had no target.
+  Under `upstream` s1 is probed from r1, s4 from r2, and r6 probes s3, its static route's
+  next hop. A device whose intent names none of the three says so.
 - **The default is every 60 s** (the operator: one probe every 10 s cost s3 about 12% of its
   CPU, C93), `frequency` and `frequency_by_platform` in the section, 10 to 3600.
 - **A switch's path to a router is placed ON THE ROUTER**, which probes the switch's
@@ -238,7 +245,7 @@ run 9. What was built, and what differs from the paragraph above:
   commit puts every file back), then the batch Apply with scope `ip_sla` sends ONLY the IP SLA
   lines, each device's exact program previewed and confirmed by hash.
 - On the real fleet with `peers`: s4 gets `ip sla 2` on r2 probing s4's loopback every 60 s;
-  s1 and s2 run RIP (by hand); s3 is already measured.
+  s1 and s2 are probed from r1 and r2 (RIP, since C711); s3 is already measured.
 - After any IP SLA apply to a switch, its CPU and clock rate are read before and after from
   Prometheus (the operator, 2026-10-01).
 

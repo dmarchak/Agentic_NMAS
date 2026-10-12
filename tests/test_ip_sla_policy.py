@@ -43,6 +43,29 @@ def fleet():
     return intents, devices
 
 
+def _r6():
+    """r6's committed intent as read on the NMAS host, 2026-10-12 (through
+    `scripts/nmas-config-read`, masked): its interfaces and static routes, the parts the
+    policy reads. No routing protocol; a default only in its management VRF, whose two
+    addresses are documentation ones here (the policy never reads that VRF)."""
+    return {"interfaces": [
+        {"name": "Loopback0", "ipv4": "10.255.1.16 255.255.255.255", "vrf": ""},
+        {"name": "GigabitEthernet1", "ipv4": "192.0.2.15 255.255.255.0", "vrf": "clab-mgmt"},
+        {"name": "GigabitEthernet2", "ipv4": "10.255.0.32 255.255.255.0", "vrf": ""}],
+        "routing": {"bgp": None, "ospf": [], "ospfv3": [], "rip": None, "ripng": []},
+        "ip_sla": [],
+        "static_routes": [
+            {"family": "ipv4", "spec": "vrf clab-mgmt 0.0.0.0 0.0.0.0 192.0.2.2"},
+            {"family": "ipv6", "spec": "vrf clab-mgmt ::/0 2001:DB8::1"},
+            {"family": "ipv4", "spec": "10.255.0.0 255.255.0.0 10.255.0.1"}]}
+
+
+def _with_r6(fleet):
+    intents, devices = fleet
+    return (dict(intents, r6=_r6()),
+            dict(devices, r6={"hostname": "r6", "platform": "cisco_iosxe"}))
+
+
 def _suggest(fleet, chosen, policy="peers", **section):
     from modules.nsot import ip_sla_policy as P
     intents, devices = fleet
@@ -76,16 +99,52 @@ class TestTheSuggestions:
         assert any("its path to r3 is already measured by the suggested ip sla 1 on r5"
                    in k["why"] for k in out["skipped"])
 
-    def test_rip_peers_are_named_as_not_read(self, fleet):
+    def test_rip_peers_are_routing_peers(self, fleet):
+        """C711: s1 and s2 run only RIP towards r1 and r2; their peers are read from intent,
+        and each path is placed on the router."""
         out = _suggest(fleet, ["s1", "s2"])
-        assert out["suggestions"] == []
-        assert {k["device"] for k in out["skipped"]} == {"s1", "s2"}
-        assert all("runs RIP" in k["why"] and "by hand" in k["why"] for k in out["skipped"])
+        assert [(s["on"], s["target_device"]) for s in out["suggestions"]] == [
+            ("r1", "s1"), ("r2", "s2")]
+        assert out["skipped"] == []
+
+    def test_a_management_port_by_dhcp_is_no_rip_link(self, fleet):
+        from modules.nsot import ip_sla_policy as P
+        intents, _devices = fleet
+        assert [(p["peer"], p["network"]) for p in P.rip_peers(intents, "s1")] == [
+            ("r1", "10.255.2.10/31")]
 
     def test_the_gateway_policy_names_a_learned_default_as_no_target(self, fleet):
         out = _suggest(fleet, ["s4"], policy="gateway")
         assert out["suggestions"] == []
         assert "no static default route" in out["skipped"][0]["why"]
+
+    def test_upstream_has_an_answer_for_each_of_s1_s4_and_r6(self, fleet):
+        """C711: the gateway policy named nothing for s1, s4 and r6. Upstream: s1 by its RIP
+        peer, s4 by its OSPF peer, r6 (no protocol, no global default) by its static route's
+        next hop, s3's address, probed at s3's identity address from r6; r6's management
+        VRF's default is never one."""
+        intents, devices = _with_r6(fleet)
+        from modules.nsot import ip_sla_policy as P
+        out = P.suggest(intents, devices, {"policy": "upstream"}, ["s1", "s4", "r6"])
+        assert out["skipped"] == []
+        assert [(s["on"], s["target"], s["target_device"]) for s in out["suggestions"]] == [
+            ("r1", "10.255.1.21", "s1"), ("r2", "10.255.1.24", "s4"),
+            ("r6", P.router_address(intents["s3"]), "s3")]
+
+    def test_upstream_takes_a_static_default_first(self, fleet):
+        intents, devices = _with_r6(fleet)
+        intents["r6"]["static_routes"].append(
+            {"family": "ipv4", "spec": "0.0.0.0 0.0.0.0 10.255.0.2"})
+        from modules.nsot import ip_sla_policy as P
+        assert P.targets(intents, "r6", "upstream") == ([("", "10.255.0.2", "gateway")], "")
+
+    def test_upstream_with_nothing_to_depend_on_says_so(self, fleet):
+        intents, devices = _with_r6(fleet)
+        intents["r6"]["static_routes"] = [r for r in intents["r6"]["static_routes"]
+                                          if r["spec"].startswith("vrf ")]
+        from modules.nsot import ip_sla_policy as P
+        found, why = P.targets(intents, "r6", "upstream")
+        assert found == [] and "names nothing it depends on" in why
 
     def test_none_suggests_nothing(self, fleet):
         out = _suggest(fleet, ["s4"], policy="none")
