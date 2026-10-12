@@ -79,6 +79,19 @@ report_timeout() {
     echo "--- stacks of ${f##*/stack-} at the SIGTERM ---" >&2
     cat "$f" >&2
   done
+  # A process with a test in progress and no stack printed: which of the two it was (C567,
+  # 2026-10-12: CI run #698's report printed no stack section at all, 4 s into the hang).
+  # Absent: the process never opened its stack file; empty: it opened it and the SIGTERM's
+  # dump wrote nothing into it.
+  for f in "$INFLIGHT"/running-*; do
+    [ -s "$f" ] || continue
+    p="${f##*/running-}"
+    if [ ! -e "$INFLIGHT/stack-$p" ]; then
+      echo "  no stack for ${p}: its stack file is absent" >&2
+    elif [ ! -s "$INFLIGHT/stack-$p" ]; then
+      echo "  no stack for ${p}: its stack file is empty (0 bytes)" >&2
+    fi
+  done
 }
 
 # Run under the bound, then report. Not `exec`: the report runs after.

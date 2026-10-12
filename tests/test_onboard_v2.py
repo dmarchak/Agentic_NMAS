@@ -308,6 +308,32 @@ class TestAPendingDevice:
             "list_name": "probe", "fingerprint": "f" * 64}).get_data(as_text=True)
         assert seen == [("bp1", "f" * 64, "operator@example.invalid")]
         assert "bp1 is onboarded" in html and "Open bp1&#39;s page" in html
+        assert "data-run-stepper" not in html, "no steps recorded: none drawn"
+
+    def test_verify_draws_the_steps_it_reached_on_the_one_stepper(self, client, person,
+                                                                  monkeypatch):
+        """The one stepper (2026-10-12): phase two's steps from its own result, the one it
+        stopped at failed with its reason, the rest not reached."""
+        from modules.nsot.onboard import PHASE_TWO_STEPS
+        from routes import onboard
+
+        ran = [{"step": "verify", "ok": True, "detail": "answered"},
+               {"step": "capture", "ok": True, "detail": ""},
+               {"step": "rotate", "ok": False, "detail": "the new secret did not log in"}]
+        ran += [{"step": s, "ok": False, "detail": "did not run"} for s in PHASE_TWO_STEPS[3:]]
+        monkeypatch.setattr(onboard, "verify_run", lambda name, data, ident: ({
+            "ok": False, "steps": ran, "stopped_at": "rotate", "reason": "rotation refused",
+            "result": {"level": "failed", "happened": {"summary": "bp1 is still pending"},
+                       "did_not": {"items": []}}}, 200))
+        html = client.post("/v2/onboard/bp1/verify", data={
+            "list_name": "probe", "fingerprint": "f" * 64}).get_data(as_text=True)
+        got = re.findall(r'<li class="run-step run-step-([a-z_]+)" data-step="([a-z_]+)"'
+                         r'(?: title="([^"]*)")?', html)
+        assert [(k, s) for s, k, _t in got] == [
+            ("verify", "done"), ("capture", "done"), ("rotate", "failed")] + [
+            (k, "not_reached") for k in PHASE_TWO_STEPS[3:]]
+        assert got[2][2] == "the new secret did not log in"
+        assert "bp1 is still pending" in html
 
 
 class TestAbandon:

@@ -848,9 +848,8 @@ def retire_result_card(ref, host: str, result: dict, plan: dict, targets: dict) 
             "level": RETIRE_LEVELS.get(result.get("level"), "danger"), "retired": retired,
             "words": target.get("words", ""),
             "summary": (result.get("happened") or {}).get("summary", ""),
-            "done": list((target.get("sent") or {}).get("lines") or []),
+            # What was done and what remains are THE stepper's steps (`retire.result_run`).
             "stopped": (stopped or {}).get("text", ""),
-            "remaining": list((stopped or {}).get("lines") or []),
             "basis": " ".join(checks.get("statements") or ([checks["why"]]
                                                            if checks.get("why") else [])),
             # Only once the commit landed (the route reads the targets back only then).

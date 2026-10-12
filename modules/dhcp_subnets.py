@@ -743,12 +743,14 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
         if main_text is None:
             with open(main, encoding="utf-8") as fh:
                 main_text = fh.read()
+        out["at"] = "test"                       # the step reached: dhcp_page.WRITE_STEPS
         run = run_test or (lambda cfg: ztp._run_kea_test(cfg, f["program"]))   # noqa: SLF001
         ok, detail = ztp._config_test(main_text, path, candidate_text, run)    # noqa: SLF001
         if not ok:
             out["error"] = (f"{f['program']} -t refused the candidate: {detail}. Mercury's file "
                             "was not touched")
             return out
+        out["at"] = "write"
         ztp._replace(path, candidate_text)                                     # noqa: SLF001
 
         def restore(why):
@@ -759,10 +761,12 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
                                   f"restored, and Kea's reload of it FAILED ({again.get('error')})")
             out["error"] = why
 
+        out["at"] = "reload"
         reload = kea.command("config-reload", [f["svc"]])
         if not reload.get("ok"):
             restore(f"config-reload failed ({reload.get('error')}): nothing changed in Kea")
             return out
+        out["at"] = "read_back"
         try:
             after_cfg = D.kea_config(kea, family)
         except D.Refused as exc:
@@ -780,6 +784,7 @@ def apply_edit(list_name: str, values, confirmed_hash: str, *, actor: str, reaso
                                          "as written")
                             + ", and every other subnet and setting as before")
         out["outcome"] = {"add": "added", "remove": "removed"}.get(p["op"], "changed")
+        out["at"] = "record"
         rec = (record or record_commit)(list_name, p, actor=actor, reason=reason)
         out["commit"] = rec.get("commit", "")
         if not rec.get("ok"):

@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Board D (DhcpExclusions, approved 2026-10-06), section 4: an exclusion added (Add an
     exclusion…, or Exclude… from a conflict with its reason filled from the source) or removed,
     in place on the Exclusions tab: the form, then the preview (the pool as set and as Kea is
@@ -14,6 +15,7 @@
   <div class="op-hd"><h2 id="dh-op-h">{{ p.title }} {{ badge('done', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('dhcp-exclusion') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
   <div class="op-part"><h3>What happened</h3><div>
+    {{ run_stepper(xop.run) }}
     <p>Subnet {{ p.id }}'s pools written as the pieces to Mercury's subnet file (<span class="mono">{{ p.path }}</span>), tested by Kea's own check first, Kea reloaded through its API, and read back: {{ r.read_back }}.</p></div></div>
   <div class="op-part"><h3>Recorded</h3><div>
     <p>Commit <span class="mono">{{ (r.commit or '')[:7] }}</span> "{{ p.subject }}", Actor: {{ xop.actor }}, Source: dhcp, your reason in its body, in <span class="mono">dhcp/exclusions.yml</span> and <span class="mono">dhcp/subnets.yml</span>. In History.</p></div></div>
@@ -23,7 +25,8 @@
   <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% elif s.op == 'remove' %}Remove an exclusion{% else %}Add an exclusion{% endif %}</h2>
     <div class="op-hd-actions">{{ how('dhcp-exclusion') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
   {%- if xop.state == 'refused' %}
-  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing was changed{% if xop.result.rolled_back %} in the end: {{ xop.result.rolled_back }}{% endif %}.</strong> {{ xop.result.error }}</p></div>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ xop.said }}</strong> {{ xop.result.error }}</p></div>
+  {%- if xop.run %}{{ run_stepper(xop.run) }}{% endif %}
   {%- endif %}
   {%- if s.op != 'remove' %}
   <form hx-get="{{ url_for('dhcp_v2.exclusion_preview') }}" hx-target="#dhcp" hx-swap="outerHTML">

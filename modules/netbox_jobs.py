@@ -23,6 +23,44 @@ log = logging.getLogger(__name__)
 
 STATES = ("previewing", "previewed", "refused", "importing", "imported", "failed")
 
+#: The phases `netbox_client` reports through `op_progress` while it reads and plans or writes,
+#: in order: (its phase words, the step's key, the step's words). THE stepper's steps (the one
+#: stepper, 2026-10-12).
+PHASES = (("setting up the region, site and template", "setup", "Region, site and template"),
+          ("reading and planning each device", "devices", "Each device"),
+          ("cables between devices", "cables", "Cables between devices"))
+
+
+def run_card(job: dict, progress) -> dict:
+    """A previewing or importing job on THE stepper (`run_stepper.at_step`): its declared steps,
+    the one it is on from *progress* (`op_progress.get`; None after a restart, which starts it
+    at the first), with that step's counts as its note. None in any other state.
+
+    An import's confirm re-checks the plan in its request, so the card it draws starts there,
+    done; the write then runs the same phases again, from when it says so (`writing`)."""
+    from modules import run_stepper as RS
+
+    state, op, p = job.get("state"), job.get("operation") or "", progress or {}
+    if state not in ("previewing", "importing"):
+        return None
+    name = "every network" if op == "import_all" else (job.get("list") or "NetBox")
+    at = next((i for i, (ph, _k, _w) in enumerate(PHASES) if ph == p.get("phase")), 0)
+    if op == "remove":
+        # The removal's dry run reads what Mercury created and recorded; it names no phase.
+        steps, current = (("read", "What it created, read"), ("preview", "The preview")), 0
+    elif state == "previewing":
+        steps = tuple((k, w + (" read and planned" if k == "devices" else ""))
+                      for _ph, k, w in PHASES) + (("preview", "The preview"),)
+        current = at
+    else:
+        steps = (("recheck", "The plan re-checked"),) + tuple(
+            (k, w + (" written" if k == "devices" else "")) for _ph, k, w in PHASES)
+        current = 1 + at if p.get("writing") else 1
+    note = p.get("step_words", "") if p else "this server process holds no progress for it"
+    return RS.at_step(name, "NetBox progress", steps, current, elapsed_s=(
+        round(p["elapsed_s"]) if p.get("elapsed_s") is not None else None), note=note,
+        device=False)
+
 
 def _dir() -> str:
     from modules.config import DATA_DIR
@@ -81,6 +119,7 @@ def start_preview(operation: str, list_name: str, actor: str, confirm: dict) -> 
     label = "every network" if operation == "import_all" else list_name
     op_progress.start(job_id, "previewed for " + ("removal" if operation == "remove" else
                                                   "import"), f"NetBox ({label})", actor=actor)
+    op_progress.on_phase(job_id, _announce)           # THE stepper redraws as the phase moves
     _write(job_id, {"state": "previewing", "operation": operation, "list": list_name,
                     "actor": actor})
 
@@ -123,6 +162,7 @@ def start_import(job_id: str, data: dict, actor: str) -> dict:
     op_progress.start(job_id, "re-checked, then imported",
                       f"NetBox ({'every network' if operation == 'import_all' else list_name})",
                       actor=actor)
+    op_progress.on_phase(job_id, _announce)
 
     def on_end(outcome):
         from modules.netbox_client import sync_status_with_results

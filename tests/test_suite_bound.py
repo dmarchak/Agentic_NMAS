@@ -47,8 +47,26 @@ def test_a_hang_is_named_with_its_line(tmp_path):
     err = out.stderr
     assert "TIMED OUT after 5 s" in err
     assert "test_probe_bound.py::test_hangs_here" in err, err[-800:]
-    assert "test_probe_bound.py\", line 7 in test_hangs_here" in err, "no stack for the hang"
+    assert "test_probe_bound.py\", line 7 in test_hangs_here" in err, \
+        ("no stack for the hang", err[-1200:])
     assert "test_finished_first" not in err, "a test that finished is not what was running"
+    assert "no stack for main" not in err
+
+
+#: A hang whose process writes no stack at the SIGTERM (its dump unregistered): the planted case
+#: for the report's "no stack" line (C567: CI run #698 printed no stack section at all).
+HANG_WITHOUT_A_DUMP = ("import faulthandler, signal, time\n\n"
+                       "def test_hangs_with_no_dump():\n"
+                       "    faulthandler.unregister(signal.SIGTERM)\n"
+                       "    time.sleep(600)\n")
+
+
+def test_a_hang_with_no_stack_says_which_way_it_has_none(tmp_path):
+    out = _runner(tmp_path, HANG_WITHOUT_A_DUMP)
+    assert out.returncode == 124, (out.returncode, out.stderr[-800:])
+    assert "test_hangs_with_no_dump" in out.stderr
+    assert "no stack for main: its stack file is empty (0 bytes)" in out.stderr, \
+        out.stderr[-800:]
 
 
 def test_a_run_that_finishes_is_never_reported_as_a_timeout(tmp_path):

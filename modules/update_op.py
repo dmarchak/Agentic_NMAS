@@ -66,6 +66,18 @@ STEPS = (("request", "Request written"), ("started", "Updater started"),
          ("restart", "Restarting the app"), ("wait", "Waiting for the new version"),
          ("running", "Running <target>"))
 
+
+def run_card(target: str) -> dict:
+    """STEPS on THE stepper (`run_stepper`), every step waiting: the page's script sets each
+    one's state from the updater's record (static/js/nmas_update.js), since the app itself
+    restarts part way through and cannot redraw it."""
+    from modules import run_stepper as RS
+    short = (target or "")[:10] or "?"
+    steps = [RS.step(k, w.replace("<target>", short), "waiting") for k, w in STEPS]
+    return RS.card([RS.row("This server", "waiting", steps, device=False)],
+                   label="Update progress", key="update-run")
+
+
 #: The ONE lock a terminal deploy and the updater both take (C242): whoever
 #: holds it moves the checkout; the other refuses by name. In the checkout's
 #: data/, so the service user can create it and root opens it read-only.

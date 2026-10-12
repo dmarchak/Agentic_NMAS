@@ -671,27 +671,6 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .fact-actions { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px; vertical-align: middle; }
 .check-again { display: inline-flex; align-items: center; gap: 8px; }
 
-/* The Update page's stepper: each step of the updater's own record. */
-.stepper { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; }
-.stepper .step { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--ink-2); }
-.stepper .step-mark { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); flex: none; }
-.stepper .step-done { color: var(--ink); }
-.stepper .step-done .step-mark { background: var(--ok); border-color: var(--ok); }
-.stepper .step-current { color: var(--ink); font-weight: 600; }
-.stepper .step-current .step-mark { border-color: var(--accent); background: var(--accent-soft); }
-.stepper .step-failed { color: var(--danger); font-weight: 600; }
-.stepper .step-failed .step-mark { background: var(--danger); border-color: var(--danger); }
-.stepper .step-note { font-weight: 400; color: var(--ink-2); }
-/* After a failure: never reached, and drawn so nobody reads it as done (C246). */
-.stepper .step-not_reached { color: var(--ink-2); }
-.stepper .step-not_reached .step-words { text-decoration: line-through; }
-.stepper .step-not_reached .step-mark { border-style: dashed; background: none; }
-.stepper .step-failed .step-note { color: var(--danger); font-weight: 600; }
-/* Sent, and its verify did not pass (C394): never the done green. */
-.stepper .step-partial { color: var(--ink); font-weight: 600; }
-.stepper .step-partial .step-mark { background: var(--warn-mark); border-color: var(--warn-mark); }
-.stepper .step-partial .step-note { color: var(--warn-mark); }
-
 .check-again .check-late:empty { display: none; }
 /* A check that answered late, or a last attempt that failed: said in words. */
 .check-again .check-late, .check-again .check-failed { color: var(--warn); }

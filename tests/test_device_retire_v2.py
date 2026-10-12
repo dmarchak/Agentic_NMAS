@@ -142,6 +142,10 @@ class TestTheConfirm:
         assert "heartbeat rule" in dropped
         assert "Oxidized" not in _part(out, "Still to remove")
         assert "this address shows its retired record" in out and "Back to Devices" in out
+        # THE stepper (the one stepper, 2026-10-12): every step of the plan, done.
+        steps = re.findall(r'<li class="run-step run-step-([a-z_]+)" data-step="([a-z_]+)"', out)
+        assert steps and {s for s, _k in steps} == {"done"}, steps
+        assert [k for _s, k in steps][-1] == "row" and out.count("data-run-stepper") == 1
         assert json.loads((d / "nmas-snmp-all.json").read_text())[0]["labels"]["device"] == "r4"
         msg = exported["R"].git(exported["repo"], "log", "-1", "--format=%B")[1]
         assert "Retired-Device: r5" in msg and f"Actor: {TEST_PERSON}" in msg
@@ -159,6 +163,7 @@ class TestTheConfirm:
         out = exported["client"].post("/v2/device/r5/retire/confirm",
                                       data=vals).get_data(as_text=True)
         assert "op-ok" not in out and "the plan changed since you confirmed it" in out
+        assert "data-run-stepper" not in out, "nothing ran: no steps drawn"
         assert _state(exported) == before
 
     @pytest.mark.parametrize("drop, said", [("list", "names no list"),
@@ -205,6 +210,23 @@ class TestTheReadBack:
         assert got["state"] == "still" and "nmas-snmp-all.json" in got["statement"]
         monkeypatch.setattr(PT, "generate", lambda: (_ for _ in ()).throw(OSError("disk")))
         assert RT.targets_after("r5", "192.0.2.15")["state"] == "failed"
+
+    def test_a_retirement_that_stopped_draws_where_on_the_stepper(self):
+        """The one stepper (2026-10-12): already done, done by this run, failed with its error,
+        not reached; a refusal before any step draws none."""
+        from modules.nsot import retire as RT
+        plan = {"steps": [{"key": "override", "what": "no override", "done": True},
+                          {"key": "commit", "what": "one commit", "done": False},
+                          {"key": "legacy", "what": "delete the file", "done": False},
+                          {"key": "row", "what": "delete the row", "done": False}]}
+        out = {"ok": False, "failed_at": "legacy", "error": "disk full", "done": ["commit"]}
+        (row,) = RT.result_run("r5", out, plan)["rows"]
+        assert [(s["key"], s["state"]) for s in row["steps"]] == [
+            ("override", "done"), ("commit", "done"), ("legacy", "failed"),
+            ("row", "not_reached")]
+        assert row["group"] == "failed" and row["steps"][2]["note"] == "disk full"
+        assert row["steps"][0]["note"].startswith("already done")
+        assert RT.result_run("r5", {"ok": False, "error": "break-glass: x"}, plan) is None
 
     def test_retired_record_matches_the_trailer_exactly(self, world):  # noqa: F811
         from modules.nsot import retire as RT

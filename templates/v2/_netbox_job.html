@@ -1,5 +1,6 @@
 {%- from "v2/_macros.html" import icon, badge, how, stamp -%}
 {%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- A NetBox job's card (modules/netbox_jobs): previewing (the dry run running), previewed (the
     preview component's parts, and the confirm bound to its one-shot token, which may turn writes
     on), refused, importing, and its result. While it runs it redraws when the job announces
@@ -15,7 +16,8 @@
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ refused }}. Nothing was written to NetBox.</div></div>
   {%- endif %}
   {%- if job.state == 'previewing' %}
-  <p>{{ badge('previewing', 'neutral') }} A dry run of the real {{ 'removal' if op == 'remove' else 'import' }} against the real NetBox, writing nothing{% if progress %}: {{ progress.phase }}{% if progress.devices_total %}, {{ progress.devices_done }} of {{ progress.devices_total }} devices{% endif %}, {{ progress.requests }} request{{ '' if progress.requests == 1 else 's' }} to NetBox{% endif %}. This card fills in when it is ready.</p>
+  {{ run_stepper(run) }}
+  <p class="muted">A dry run of the real {{ 'removal' if op == 'remove' else 'import' }} against the real NetBox, writing nothing. This card fills in when it is ready.</p>
   {%- elif job.state == 'refused' %}
   <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>{{ job.error or 'Not previewed' }}.</span></p>
   {%- elif job.state == 'unknown' %}
@@ -37,7 +39,8 @@
     </div>
   </form>
   {%- elif job.state == 'importing' %}
-  <p>{{ badge('importing', 'neutral') }} Writing to NetBox{% if progress %}: {{ progress.phase }}{% if progress.devices_total %}, {{ progress.devices_done }} of {{ progress.devices_total }} devices{% endif %}{% endif %}. This card fills in when it ends.</p>
+  {{ run_stepper(run) }}
+  <p class="muted">Writing to NetBox. This card fills in when it ends.</p>
   {%- else %}
   {%- set results = [job.removal] if job.removal else (job.results or {}).values() | list %}
   {%- if job.outcome == 'failed' and not results %}<p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>The import failed before it recorded a result: the app's log names why.</span></p>{% endif %}

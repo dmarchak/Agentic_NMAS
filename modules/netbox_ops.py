@@ -210,7 +210,8 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
             try:
                 for n in names:
                     set_sync_running(n, True)
-                op_progress.update(progress_id, phase="importing", devices_done=0)
+                op_progress.update(progress_id, phase="importing", devices_done=0,
+                                   writing=True)
                 sync_all_lists_to_netbox(payload, progress_id=progress_id, actor=actor,
                                          authority=f"{where}'s one-time confirmation of this "
                                                    f"import-all, by {actor}")
@@ -251,7 +252,7 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
         outcome = "done"
         try:
             set_sync_running(name, True)
-            op_progress.update(progress_id, phase="importing", devices_done=0)
+            op_progress.update(progress_id, phase="importing", devices_done=0, writing=True)
             sync_list_to_netbox(name, devices, progress_id=progress_id, actor=actor,
                                 authority=f"{where}'s one-time confirmation of this import, "
                                           f"by {actor}")

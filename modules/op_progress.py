@@ -61,12 +61,32 @@ def start(op_id: str, kind: str, label: str, actor: str = "", counts: str = "Net
     return True
 
 
+#: op id -> a callable run when that operation's phase changes (`on_phase`).
+_watchers: dict = {}
+
+
+def on_phase(op_id: str, fn) -> None:
+    """Call *fn()* each time *op_id*'s phase changes, outside the lock: a card that draws the
+    phase as a step (THE stepper, the NetBox job's) announces then, so it redraws as the phase
+    moves and never on a timer. Dropped when the operation finishes."""
+    with _lock:
+        _watchers[op_id] = fn
+
+
 def update(op_id: str, **fields) -> None:
+    fn = None
     with _lock:
         op = _ops.get(op_id)
         if op is not None:
+            if "phase" in fields and fields["phase"] != op.get("phase"):
+                fn = _watchers.get(op_id)
             op.update(fields)
             op["moved_at"] = time.time()
+    if fn is not None:
+        try:
+            fn()
+        except Exception as exc:                      # noqa: BLE001 (the work goes on)
+            log.warning("op_progress: %s's phase watcher failed: %s", op_id, exc)
 
 
 def tick(op_id: str) -> None:
@@ -80,6 +100,7 @@ def tick(op_id: str) -> None:
 
 def finish(op_id: str, outcome: str = "done") -> None:
     with _lock:
+        _watchers.pop(op_id, None)
         op = _ops.get(op_id)
         if op is not None:
             op["finished_at"] = time.time()

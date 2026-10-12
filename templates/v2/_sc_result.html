@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_summary -%}
 {#- Boards C, D and C2 (C577 to C580): the run's region. Running: its progress, re-read on
     `reads` (never a timer). Done: the summary per command first; the answers grouped (the same
     masked answer, the columns a person ticked blanked) and collapsed; filters. Nothing is a
@@ -22,8 +23,8 @@
   {%- if r.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not recorded:</strong> {{ r.error }}</p></div>{% endif %}
   {%- if r.lost %}<div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this run was reading: {{ r.record.done }} of {{ r.record.total }} devices had answered and are kept below; the others were not read.</p></div>{% endif %}
   {%- if r.state == 'running' %}
-  <progress class="sc-bar" max="{{ r.record.total or 1 }}" value="{{ r.record.done }}" aria-label="{{ r.record.done }} of {{ r.record.total }} devices done"></progress>
-  <p><strong>{{ r.record.done }} of {{ r.record.total }} done</strong> <span class="muted">· {{ r.summary.words }}. The answers so far are below; the summary is final when the last device is done.</span></p>
+  {{ run_summary(r.progress) }}
+  <p class="muted">The answers so far are below; the summary is final when the last device is done.</p>
   {%- endif %}
   <div class="table-wrap"><table class="table sc-sum">
     <thead><tr><th scope="col">Command</th><th scope="col">Answered</th><th scope="col">Distinct answers</th><th scope="col">Failed</th><th scope="col">Skipped</th></tr></thead>

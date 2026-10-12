@@ -601,13 +601,16 @@ def apply(list_name: str, values, confirmed_hash: str, *, actor: str, reason: st
         if main_text is None:
             with open(main, encoding="utf-8") as fh:
                 main_text = fh.read()
+        out["at"] = "test"                       # the step reached: dhcp_page.WRITE_STEPS
         run = run_test or (lambda cfg: ztp._run_kea_test(cfg, f["program"]))   # noqa: SLF001
         ok, detail = ztp._config_test(main_text, path, candidate_text, run)  # noqa: SLF001
         if not ok:
             out["error"] = (f"{f['program']} -t refused the candidate: {detail}. Mercury's file "
                             "was not touched")
             return out
+        out["at"] = "write"
         ztp._replace(path, candidate_text)                                   # noqa: SLF001
+        out["at"] = "reload"
         reload = kea.command("config-reload", [f["svc"]])
         if not reload.get("ok"):
             ztp._replace(path, previous_text)                                # noqa: SLF001
@@ -619,6 +622,7 @@ def apply(list_name: str, values, confirmed_hash: str, *, actor: str, reason: st
         # READ BACK every reservation Kea holds: exactly the one change, nothing else moved.
         def key_of(r):
             return (r["where"], r["key"], r["identity"], tuple(r["addresses"]))
+        out["at"] = "read_back"
         try:
             after_config = kea_config(kea, family)
             after_all = every_reservation(after_config, family)
@@ -650,6 +654,7 @@ def apply(list_name: str, values, confirmed_hash: str, *, actor: str, reason: st
                             f"{family} reservation(s), and in {where} exactly the change shown; "
                             "nothing else changed")
         out["outcome"] = {"add": "added", "edit": "changed", "remove": "removed"}[p["op"]]
+        out["at"] = "record"
         rec = (record or record_commit)(list_name, p, actor=actor, reason=reason)
         out["commit"] = rec.get("commit", "")
         if not rec.get("ok"):

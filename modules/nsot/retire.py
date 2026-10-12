@@ -714,6 +714,40 @@ def _holds_the_device(func):
     return wrapper
 
 
+#: The plan's steps (`plan()["steps"]`, by key) in a step's few words on THE stepper; the
+#: plan's own sentence is the step's hover.
+STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Override cleared",
+              "declare": "Startup declared unmapped", "commit": "Intent and golden removed",
+              "legacy": "Legacy file deleted", "row": "Inventory row deleted"}
+
+
+def result_run(host: str, out: dict, plan: dict):
+    """Retire's result on THE stepper (`modules.run_stepper`; the one stepper, 2026-10-12): the
+    plan's steps, each done (already, or by this run), failed where it stopped with its
+    error, or not reached after it. None for a refusal before any step ran (`apply` returns
+    no ``done`` then): the card says that refusal and nothing ran."""
+    from modules import run_stepper as RS
+
+    if "done" not in out and not out.get("ok"):
+        return None
+    done, failed_at = set(out.get("done") or []), out.get("failed_at")
+    steps, stopped = [], False
+    for s in (plan or {}).get("steps") or []:
+        words = STEP_WORDS.get(s["key"], s["key"])
+        if s["done"]:
+            steps.append(RS.step(s["key"], words, "done", note="already done: " + s["what"]))
+        elif s["key"] in done or (out.get("ok") and not stopped):
+            steps.append(RS.step(s["key"], words, "done", note=s["what"]))
+        elif s["key"] == failed_at:
+            stopped = True
+            steps.append(RS.step(s["key"], words, "failed",
+                                 note=out.get("error") or "no reason recorded"))
+        else:
+            steps.append(RS.step(s["key"], words, "not_reached", note=s["what"]))
+    group = "done" if out.get("ok") else "failed"
+    return RS.card([RS.row(host, group, steps)], label="Retire", key="retire")
+
+
 @_holds_the_device
 def apply(list_name: str, hostname: str, *, reason: str, actor: str,
           confirmed_hash: str, breakglass: dict = None,

@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, check_again, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The Update operation (modules/update_op.py): the last outcome, the preview
     in its parts, and the confirm, which then waits on /health. Re-fetched when
     the `app-pushed` reader announces. -#}
@@ -113,11 +114,9 @@
     <span class="op-act" x-show="waiting" x-cloak><button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak data-op="update" x-on:click="stopWaiting"
             x-bind:disabled="stopping" x-text="stopText">Stop waiting</button>{{ how('update', 'update-when-ci-passes', compact=True, op='waiting for CI') }}</span>
     <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal"></p></div>
-    <ol class="stepper" data-stepper x-show="running" x-cloak aria-label="Update progress">
-      {%- for key, words in steps %}
-      <li class="step step-pending" data-step="{{ key }}"><span class="step-mark" aria-hidden="true"></span><span class="step-words">{{ words|replace('<target>', f.target[:10]) }}</span><span class="step-note"></span></li>
-      {%- endfor %}
-    </ol>
+    {#- THE stepper (run_stepper), its steps drawn waiting; the script sets each step's state
+        from the updater's record, the app being down for part of it (nmas_update.js). -#}
+    <div data-update-steps x-show="running" x-cloak>{{ run_stepper(update_run) }}</div>
     <p class="wait" x-show="running" x-text="words" role="status" aria-live="polite"></p>
   </div>
   {%- endif %}

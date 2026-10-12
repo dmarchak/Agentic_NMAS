@@ -2803,6 +2803,40 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
 #: 2026-10-08): the onboarding's golden commit is the backup.
 PHASE_TWO_STEPS = ("verify", "capture", "rotate", "remove_rw", "profile", "persist",
                    "golden", "netbox", "promote")
+#: Each of PHASE_TWO_STEPS in a step's few words on THE stepper (Verify's result).
+PHASE_TWO_WORDS = {"verify": "Reached, logged in", "capture": "Config read",
+                   "rotate": "Credential rotated", "remove_rw": "RW community removed",
+                   "profile": "Profile sent", "persist": "Saved to startup",
+                   "golden": "First golden", "netbox": "NetBox record", "promote": "Promoted"}
+
+
+def phase_two_run(host: str, out: dict):
+    """Verify's result on THE stepper (`modules.run_stepper`; the one stepper, 2026-10-12):
+    each of PHASE_TWO_STEPS done with its detail, the step it stopped at (`stopped_at`)
+    failed with its reason, the rest not reached. None when it recorded no steps (a refusal
+    before phase two began)."""
+    from modules import run_stepper as RS
+
+    rows = {r.get("step"): r for r in (out or {}).get("steps") or []}
+    if not rows:
+        return None
+    stopped, after = out.get("stopped_at"), False
+    steps = []
+    for k in PHASE_TWO_STEPS:
+        r, words = rows.get(k) or {}, PHASE_TWO_WORDS.get(k, k)
+        detail = r.get("detail", "")
+        if after:
+            steps.append(RS.step(k, words, "not_reached"))
+        elif k == stopped:
+            after = True
+            why = out.get("reason") or "no reason recorded"
+            steps.append(RS.step(k, words, "failed", note=(
+                detail if detail and not r.get("ok") and detail != "did not run" else why)))
+        else:
+            steps.append(RS.step(k, words, "done" if r.get("ok") else "not_reached",
+                                 note=detail))
+    return RS.card([RS.row(host, "done" if out.get("ok") else "failed", steps)],
+                   label="Verify", key="verify")
 
 
 def capture_config(mgmt_ip: str, username: str, password: str, secret: str,
@@ -3223,6 +3257,7 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
         nothing else."""
         log.warning("onboard: phase 2 for %s stopped at %s: %s", hostname, name, reason)
         result["reason"] = reason
+        result["stopped_at"] = name    # THE stepper draws this step failed (phase_two_run)
         ran = {r["step"] for r in result["steps"]}
         for step in PHASE_TWO_STEPS:
             if step not in ran:

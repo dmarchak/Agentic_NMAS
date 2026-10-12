@@ -26,6 +26,49 @@ TABS = {"sub": "Subnets", "lea": "Leases", "res": "Reservations", "exc": "Exclus
 SHOWS = {"all": "Every lease", "shared": "Sharing an identity",
          "not_inv": "Not in the inventory", "expiring": "Expiring within a day"}
 ASKS = {"tab": "sub", "show": "all", "q": "", "open": ""}
+#: The one write path's steps for a reservation, a subnet or an exclusion
+#: (`dhcp_reservations.apply`, `dhcp_subnets.apply_edit`, each noting the step it reached as
+#: ``at``): THE stepper's (the one stepper, 2026-10-12).
+WRITE_STEPS = (("test", "Kea's own check"), ("write", "Mercury's file written"),
+               ("reload", "Kea reloaded"), ("read_back", "Read back"), ("record", "Recorded"))
+
+
+def write_run(got: dict):
+    """A DHCP write's result on THE stepper: the steps before the one it reached done, that one
+    done (the change landed) or failed with its error and what the rollback did, the rest not
+    reached. None for a refusal before Kea's own check (nothing ran: the card says why)."""
+    from modules import run_stepper as RS
+
+    at = (got or {}).get("at")
+    if at not in dict(WRITE_STEPS):
+        return None
+    reached = [k for k, _w in WRITE_STEPS].index(at)
+    steps = []
+    for i, (k, w) in enumerate(WRITE_STEPS):
+        if i < reached or got.get("ok"):
+            steps.append(RS.step(k, w, "done"))
+        elif i == reached:
+            why = got.get("error") or "no reason recorded"
+            if got.get("rolled_back"):
+                why += f"; then {got['rolled_back']}"
+            steps.append(RS.step(k, w, "failed", note=why))
+        else:
+            steps.append(RS.step(k, w, "not_reached"))
+    return RS.card([RS.row("Kea", "done" if got.get("ok") else "failed", steps, device=False)],
+                   label="DHCP write", key="dhcp-write")
+
+
+def write_said(got: dict) -> str:
+    """A failed DHCP write's first words, from the step it reached (C723): "Nothing was
+    changed" only while that is true. A record that failed comes after Kea holds the change,
+    and a read-back that could not be read leaves it written (nothing was rolled back)."""
+    got = got or {}
+    at, back = got.get("at"), got.get("rolled_back")
+    if at == "record":
+        return "Written to Kea and read back, and not recorded."
+    if at == "read_back" and not back:
+        return "Written and Kea reloaded; what Kea runs now could not be read back."
+    return "Nothing was changed" + (f" in the end: {back}" if back else "") + "."
 
 
 def ask(values) -> dict:

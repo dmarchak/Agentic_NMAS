@@ -476,6 +476,7 @@ class TestTheSubnetApply:
         got, recorded = self._apply(moved)
         assert got["ok"], got["error"]
         assert "holds subnet 10 as written" in got["read_back"] and recorded
+        assert got["at"] == "record", "the step reached, for the one stepper"
         text = open(moved["files"]["dhcp4"], encoding="utf-8").read()
         assert "10.10.10.101 - 10.10.10.149" in text
         assert text.count("<?include") == 3, "every subnet's reservation file still included"
@@ -493,6 +494,7 @@ class TestTheSubnetApply:
         got, recorded = self._apply(moved)
         assert not got["ok"] and "subnet 10 did not change" in got["error"]
         assert "previous subnet file restored" in got["rolled_back"] and not recorded
+        assert got["at"] == "read_back", "the step it stopped at, for the one stepper"
         assert open(moved["files"]["dhcp4"], encoding="utf-8").read() == before
 
     def test_a_change_needs_a_reason(self, moved):

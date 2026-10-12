@@ -1,5 +1,6 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
 {%- from "v2/_preview_parts.html" import preview_parts, result_parts -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- A pending device's actions (cutover blocker 3, drawn under the Phase 7 mode,
     docs/STANDING_APPROVAL_LOG.md): Verify… (its preview, then the confirm bound to it), Get the
     bootstrap config… (a reveal in place), Abandon… (its dry run, then the confirm bound to it),
@@ -39,6 +40,7 @@
   </form>
 
   {%- elif mode in ('verified', 'abandoned') and done %}
+  {%- if done.run %}{{ run_stepper(done.run) }}{% endif %}
   {{ result_parts(done.result) }}
   {%- if done.result.record_error is defined and done.result.record_error %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>{{ done.result.record_error }}</span></p>{% endif %}
   {#- Board M (canvas v113): first boot was the management plane only; its intent follows as

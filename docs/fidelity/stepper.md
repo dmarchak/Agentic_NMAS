@@ -17,8 +17,15 @@ built by the real code from rows marked as its job keeps them. Compared 2026-10-
 Compared again 2026-10-12: the model gained `at_step` (an operation that knows its step and notes
 no trail: Capture's read, onboarding's lifecycle); nothing the macro draws moved, so no region's
 verdict changed.
+Compared again 2026-10-12, with the last pages: the model gained `summary` and the macro
+`run_summary` (the card's bar and counts alone, for Show commands and the logging-path test,
+whose rows are their answers: the same `<progress>` bar and counts line as the card, so the
+bar's and the counts line's verdicts stand), and `at_step` a `device` flag (a NetBox job's
+subject is a list, drawn unlinked). Update draws the macro's markup and its script sets each
+step's state as the updater reports it (the app restarts part way, so no redraw can); the
+classes it sets are the macro's own.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `376f34db11b479e772e3876f173ac4da7875d4eb080d6b4670d64a238059d969`
+Templates sha256: `a0a1a5729910baf16a183c7c6046dff5fa16a275b9b0634d673c3ef9dfd12ace`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -50,25 +57,37 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Reload, and Revert by reload | `_reload.html` | `job_stepper` | the one stepper |
 | Rotate a credential | `_rotate.html` | `job_stepper` | the one stepper |
 | Adopt | `_adopt.html` | `job_stepper` | the one stepper |
-| Update | `_update.html`, `nmas_update.js` | its own stepper, drawn by script | not yet |
+| Update | `_update.html`, `nmas_update.js` | its own stepper, drawn by script | the one stepper: the updater's steps (`update_op.STEPS`, `run_card`), each one's state set by the script from the updater's record (`drawSteps`), the row's group with them |
 | Capture | `_capture.html` | "Reading now" | the one stepper: its declared steps (`CAPTURE_STEPS`), the read running for the job's time |
 | Onboarding and first boot | `pending.html` | its own five-step list | the one stepper: board M's five steps (`onboard.LIFECYCLE`), "Waiting for it" running with the ZTP stage as its note; each step's explanation kept under it as text |
-| Verify, onboarding's arrival | `_onboard_pending.html` | a busy button, then the result | not yet |
-| NetBox import and removal | `_netbox_job.html` | "phase, n of m devices" in words | not yet |
-| Show commands runs | `_sc_result.html` | a bar and counts, then the answers grouped | not yet |
-| The logging-path test | `_lp_result.html` | two bars and counts | not yet |
+| Verify, onboarding's arrival | `_onboard_pending.html` | a busy button, then the result | one request; its result on the one stepper: phase two's nine steps (`onboard.PHASE_TWO_STEPS`, `phase_two_run`), the step it stopped at (`stopped_at`) failed with its reason, the rest not reached |
+| NetBox import and removal | `_netbox_job.html` | "phase, n of m devices" in words | the one stepper: the phases `netbox_client` reports (`netbox_jobs.PHASES`, `run_card`), an import's re-check done first, the step's counts as its note; the card redraws as the phase moves (`op_progress.on_phase` announces `netbox`), never on a timer |
+| Show commands runs | `_sc_result.html` | a bar and counts, then the answers grouped | the component's bar and counts (`run_summary`): devices answered, still reading, failed; the rows are the answers (below) |
+| The logging-path test | `_lp_result.html` | two bars and counts | the component's bar and counts, "Lines sent" then "Lines received"; the rows are the arrivals (below) |
 | Persist | `_persist.html` | a busy button, then the result | one request, so nothing to watch while it runs; its result on the one stepper: the stages it reached (`persist_op.STEPS`, the hold's trail kept), finished as its outcome says |
-| Retire | `_retire.html` | the result | not yet |
-| Template approve | `_template_op.html` | the result | not yet |
-| DHCP writes (subnets, reservations, exclusions) | `_dhcp_subnet.html`, `_dhcp_reserve.html`, `_dhcp_exclusion.html` | the result, its steps in prose | not yet |
+| Retire | `_retire.html` | the result, its done and remaining steps as lists | one request; its result on the one stepper: the plan's steps (`retire.STEP_WORDS`, `result_run`), already done, done, failed with its error, or not reached; a refusal before any step draws none |
+| Template approve | `_template_op.html` | the result | does not fit (below) |
+| DHCP writes (subnets, reservations, exclusions) | `_dhcp_subnet.html`, `_dhcp_reserve.html`, `_dhcp_exclusion.html` | the result, its steps in prose | one request; its result, done or refused, on the one stepper: the one write path's five steps (`dhcp_page.WRITE_STEPS`, `write_run`; each apply notes the step it reached), a failure with what the rollback did. The refusal's first words follow the step reached (C723) |
 
 Not counted: a preview's program and gates, a settings card's Test results and setup steps
-(`set-steps`: what a confirm will do, or a check's outcomes, not progress over time); Retire's,
-Seed's, Revert's and Retry's intent commits, template edits and bulk intent, which have no device
-step to watch; today's (v1) operations, which retire at cutover; the background readers, which
-no person starts.
+(`set-steps`: what a confirm will do, or a check's outcomes, not progress over time); Seed's,
+Revert's and Retry's intent commits, template edits and bulk intent, which have no device step
+to watch; today's (v1) operations, which retire at cutover; the background readers, which no
+person starts.
 
 ## Where a stepper does not fit
 
-None so far: each is said here, with why, as its page is reached (tests/test_one_stepper.py,
-`DOES_NOT_FIT`).
+Each is in tests/test_one_stepper.py with the same reason (`DOES_NOT_FIT`, `SUMMARY_ONLY`), and
+in docs/STANDING_APPROVAL_LOG.md.
+
+- **Template approve** (`_template_op.html`): Approve's check runs in its request, holds no
+  device and sends nothing, so there is no running state to watch; its per-device rows are the
+  comparison's evidence, every line that failed and where to clear it (board B), where one step
+  per device would draw every row done beside a result that says pass or fail. Approve and
+  Revoke are a commit each.
+- **Show commands and the logging-path test: the bar and counts, not rows of steps**
+  (`run_summary`). A Show commands run has one step per device (ask, read the answer), so a row
+  of steps says nothing the bar does not; its rows are the answers, grouped where alike (boards
+  C, D and C2). The logging-path test sends one line per device and then watches Loki for it:
+  its rows are the arrivals with their delay (board F), and its two phases are the bar's two
+  labels.

@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Board B (DhcpReserve, approved 2026-10-06): a reservation's add, change and remove, in place
     of the Reservations tab. The form (Add, Edit), then the preview: the change, its checks,
     what it does not do, and what is recorded; the confirm, bound to the preview's hash, as a
@@ -15,6 +16,7 @@
   <div class="op-hd"><h2 id="dh-op-h">{{ name }}'s reservation {{ r.outcome }} {{ badge('done', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('dhcp-reservation') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
   <div class="op-part"><h3>What happened</h3><div>
+    {{ run_stepper(op.run) }}
     <p>Written to Mercury's file for subnet {{ p.subnet_id }} (<span class="mono">{{ p.path }}</span>), Kea reloaded through its API, and read back: {{ r.read_back }}.</p>
     {%- for n in p.not_done %}<p class="muted">{{ n }}</p>{% endfor %}</div></div>
   <div class="op-part"><h3>Recorded</h3><div>
@@ -25,7 +27,8 @@
   <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% elif s.op == 'edit' %}Edit a reservation{% elif s.op == 'remove' %}Remove a reservation{% else %}Reserve an address{% endif %}</h2>
     <div class="op-hd-actions">{{ how('dhcp-reservation') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
   {%- if op.state == 'refused' %}
-  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing was changed{% if op.result.rolled_back %} in the end: {{ op.result.rolled_back }}{% endif %}.</strong> {{ op.result.error }}</p></div>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ op.said }}</strong> {{ op.result.error }}</p></div>
+  {%- if op.run %}{{ run_stepper(op.run) }}{% endif %}
   {%- endif %}
   {%- if s.op != 'remove' %}
   <form hx-get="{{ url_for('dhcp_v2.reservation_preview') }}" hx-target="#dhcp" hx-swap="outerHTML">

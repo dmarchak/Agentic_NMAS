@@ -96,16 +96,29 @@ def finished(steps: list, outcome: str) -> list:
     return out
 
 
+def summary(value: int, total: int, *, label: str, parts: list) -> dict:
+    """The card's bar and counts alone (`run_summary`), for a run whose per-device rows are its
+    own answers rather than steps (Show commands' answers grouped where alike, the
+    logging-path test's arrivals): *value* of *total* through, *parts* the counts line as
+    ``[(n, words, kind)]``, a failed kind drawn red when any."""
+    return {"label": label, "bar": {"max": total or 1, "value": value,
+                                    "words": f"{value} of {total} {label.lower()}"},
+            "tally": [{"group": kind, "n": n, "words": words, "kind": kind}
+                      for n, words, kind in parts]}
+
+
 def at_step(name: str, label: str, steps: tuple, current: int, *, elapsed_s=None,
-            note: str = "") -> dict:
+            note: str = "", device: bool = True) -> dict:
     """A one-row card for an operation that knows which of its declared *steps* (``(key,
-    words)``) it is on but notes no trail (a read that holds no device, as Capture's preview):
-    the steps before *current* done, *current* running for *elapsed_s*, the rest waiting."""
+    words)``) it is on but notes no trail (a read that holds no device, as Capture's preview;
+    a NetBox job, whose subject is a list, ``device=False``): the steps before *current*
+    done, *current* running for *elapsed_s*, the rest waiting."""
     rows = [step(k, w, "done" if i < current else "running" if i == current else "waiting",
                  took_s=elapsed_s if i == current else None,
                  note=note if i == current else "")
             for i, (k, w) in enumerate(steps)]
-    return card([row(name, "running", rows)], label=label, key=label.lower().replace(" ", "-"))
+    return card([row(name, "running", rows, device=device)], label=label,
+                key=label.lower().replace(" ", "-"))
 
 
 def single(steps: list, name: str, label: str) -> dict:

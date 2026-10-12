@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Board C (DhcpSubnets, approved 2026-10-06), sections 2 and 3: a subnet's pool, options and
     lease times changed, in place of the Subnets tab. The form, then the preview: the change, its
     effect on the leases held now, its checks; the confirm, bound to the preview's hash, as a
@@ -15,6 +16,7 @@
   <div class="op-hd"><h2 id="dh-op-h">{{ p.prefix }} {{ r.outcome }} {{ badge('done', 'ok') }}</h2>
     <div class="op-hd-actions">{{ how('dhcp-subnet') }}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Close</button></div></div>
   <div class="op-part"><h3>What happened</h3><div>
+    {{ run_stepper(sop.run) }}
     <p>Written to Mercury's subnet file (<span class="mono">{{ p.path }}</span>), tested by Kea's own check first, Kea reloaded through its API, and read back: {{ r.read_back }}.</p>
     {%- for n in p.leases %}<p class="muted">{{ n }}</p>{% endfor %}</div></div>
   <div class="op-part"><h3>Recorded</h3><div>
@@ -25,7 +27,8 @@
   <div class="op-hd"><h2 id="dh-op-h">{% if p and p.title %}{{ p.title }}{% elif s.op == 'add' %}Add a subnet{% elif s.op == 'remove' %}Remove {{ sub.prefix or 'a subnet' }}{% else %}Edit {{ sub.prefix or 'a subnet' }}{% endif %}</h2>
     <div class="op-hd-actions">{{ how('dhcp-subnet') }}{% if not (p and p.ok and may.may) %}<button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button>{% endif %}</div></div>
   {%- if sop.state == 'refused' %}
-  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Nothing was changed{% if sop.result.rolled_back %} in the end: {{ sop.result.rolled_back }}{% endif %}.</strong> {{ sop.result.error }}</p></div>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ sop.said }}</strong> {{ sop.result.error }}</p></div>
+  {%- if sop.run %}{{ run_stepper(sop.run) }}{% endif %}
   {%- endif %}
   {%- if s.op != 'remove' %}
   <form hx-get="{{ url_for('dhcp_v2.subnet_preview') }}" hx-target="#dhcp" hx-swap="outerHTML">

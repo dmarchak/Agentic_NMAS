@@ -54,10 +54,11 @@ def _view() -> dict:
 
 
 def _card(job: dict, code: int = 200, **ctx):
-    from modules import op_progress
+    from modules import netbox_jobs, op_progress
 
     progress = op_progress.get(job.get("id", "")) if job.get("id") else None
-    return _strict(render_template("v2/_netbox_job.html", job=job, progress=progress, **ctx), code)
+    return _strict(render_template("v2/_netbox_job.html", job=job,
+                                   run=netbox_jobs.run_card(job, progress), **ctx), code)
 
 
 @bp.route("", methods=["GET"])

@@ -135,16 +135,42 @@
       .then(function (b) { return b; }, function () { return null; });
   }
 
-  /* Draw a stepStates() answer into the server-rendered stepper. */
-  function drawSteps(list, states) {
-    var items = list.querySelectorAll('[data-step]');
+  /* stepStates()'s states as THE stepper's (templates/v2/_run_stepper.html), and a row's
+     group words as modules/run_stepper.GROUPS says them. */
+  var RUN_STATE = {pending: 'waiting', current: 'running', done: 'done', failed: 'failed',
+                   not_reached: 'not_reached', partial: 'partial'};
+  var ROW_WORDS = {failed: 'failed', running: 'running', waiting: 'waiting their turn',
+                   done: 'done'};
+
+  /* Draw a stepStates() answer into the server-rendered stepper (run_stepper): each step's
+     class, its note (the hover, and drawn under it at phone width), and the row's group. */
+  function drawSteps(card, states) {
+    var items = card.querySelectorAll('[data-step]');
+    var seen = {};
     for (var i = 0; i < items.length; i++) {
       var s = states[items[i].getAttribute('data-step')] || {state: 'pending', note: ''};
-      items[i].className = 'step step-' + s.state;
-      items[i].setAttribute('aria-current', s.state === 'current' ? 'step' : 'false');
-      var note = items[i].querySelector('.step-note');
-      if (note) note.textContent = s.note ? ' · ' + s.note : '';
+      var run = RUN_STATE[s.state] || 'waiting';
+      seen[run] = true;
+      items[i].className = 'run-step run-step-' + run;
+      if (run === 'running') items[i].setAttribute('aria-current', 'step');
+      else items[i].removeAttribute('aria-current');
+      items[i].title = s.note || '';
+      var note = items[i].querySelector('.run-note');
+      if (!note) {
+        note = items[i].ownerDocument.createElement('span');
+        note.className = 'run-note';
+        items[i].appendChild(note);
+      }
+      note.textContent = s.note || '';
     }
+    var group = seen.failed ? 'failed' : seen.running ? 'running'
+      : (seen.done && !seen.waiting && !seen.not_reached) ? 'done' : 'waiting';
+    var row = card.querySelector('.run-row');
+    if (row) row.className = 'run-row run-row-' + group;
+    var mark = card.querySelector('.run-mark');
+    if (mark) mark.className = 'run-mark run-mark-' + group;
+    var said = card.querySelector('.run-name .sr-only');
+    if (said) said.textContent = ROW_WORDS[group] + ': ';
   }
 
   function register() {
@@ -286,7 +312,7 @@
         poll: function (id) {
           var self = this, el = this.$root;
           var timeout = parseInt(el.getAttribute('data-timeout'), 10) || 900;
-          var list = el.querySelector('[data-stepper]');
+          var list = el.querySelector('[data-run-stepper]');
           var keys = [];
           var items = list.querySelectorAll('[data-step]');
           for (var i = 0; i < items.length; i++) keys.push(items[i].getAttribute('data-step'));

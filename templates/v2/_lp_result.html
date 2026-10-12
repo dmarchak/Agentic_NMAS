@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_summary -%}
 {#- Board F (approved 2026-10-08): a logging-path test's region. Sending, then watching Loki
     (re-read on `reads` as lines arrive, never a timer), then the result: what to act on first,
     coloured because a line is expected to arrive; "unknown" (Mercury could not look) is
@@ -14,10 +15,10 @@
   {%- if v.lost %}
   <div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this test was watching Loki: {{ v.received | length }} line{{ 's' if v.received | length != 1 }} had arrived; the others were not watched for. Test again.</p></div>
   {%- elif v.state == 'sending' %}
-  <progress class="sc-bar" max="{{ v.total or 1 }}" value="{{ v.sent }}" aria-label="{{ v.sent }} of {{ v.total }} sent"></progress>
-  <p><strong>Sending: {{ v.sent }} of {{ v.total }}</strong> <span class="muted">· then Loki is watched for each line, {{ v.wait }} s after its send.</span></p>
+  {{ run_summary(v.progress) }}
+  <p class="muted">Sending, then Loki is watched for each line, {{ v.wait }} s after its send.</p>
   {%- elif v.state == 'watching' %}
-  <progress class="sc-bar" max="{{ v.sent or 1 }}" value="{{ v.received | length }}" aria-label="{{ v.received | length }} received of {{ v.sent }} sent"></progress>
+  {{ run_summary(v.progress) }}
   <p><strong>{{ v.sent }} of {{ v.total }} sent</strong> <span class="muted">· watching Loki: {{ v.received | length }} received{% if v.received %} ({% for h, s in v.received[:6] %}{{ h }} after {{ s }} s{{ ', ' if not loop.last }}{% endfor %}{% if v.received | length > 6 %}, …{% endif %}){% endif %} · {{ v.waiting }} not yet{% if v.until %}, watched until {{ stamp(v.until) }}{% endif %}</span></p>
   <p class="faint small">The page updates as lines arrive, never on a timer of its own.</p>
   {%- else %}

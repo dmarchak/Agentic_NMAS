@@ -291,6 +291,35 @@ class TestTheApply:
         assert out["rolled_back"] == "Mercury's previous file restored and Kea reloaded"
         assert open(kea_dir["files"][("dhcp4", 20)], encoding="utf-8").read() == "[]\n"
 
+    def test_each_outcome_on_the_one_stepper_and_its_first_words(self, kea_dir):
+        """The one stepper (2026-10-12): the write path notes the step it reached, and the card
+        draws it; "Nothing was changed" only while true (C723)."""
+        from modules import dhcp_page as P
+
+        def states(out):
+            return [s["state"] for s in P.write_run(out)["rows"][0]["steps"]]
+
+        out, _r = _apply(kea_dir, FakeKea(kea_dir["files"]), ADD())
+        assert out["at"] == "record" and states(out) == ["done"] * 5
+        _with(kea_dir, "IPv4", 20, [])
+        out, _r = _apply(kea_dir, FakeKea(kea_dir["files"]), ADD(),
+                         run_test=lambda path: (False, "syntax error"))
+        assert states(out) == ["failed"] + ["not_reached"] * 4
+        assert P.write_said(out) == "Nothing was changed."
+        _with(kea_dir, "IPv4", 20, [])
+        out, _r = _apply(kea_dir, FakeKea(kea_dir["files"], reloads=False), ADD())
+        assert states(out) == ["done", "done", "done", "failed", "not_reached"]
+        step = P.write_run(out)["rows"][0]["steps"][3]
+        assert "does not hold what was written" in step["note"] and "restored" in step["note"]
+        assert P.write_said(out).startswith("Nothing was changed in the end: Mercury's previous")
+        out, _r = _apply(kea_dir, FakeKea(kea_dir["files"]), ADD(), h="0" * 64)
+        assert P.write_run(out) is None and P.write_said(out) == "Nothing was changed."
+        # Kea holds the change and the record failed: never "Nothing was changed".
+        failed_record = dict(out, at="record", error="written to Kea and read back; the "
+                             "record failed: disk full")
+        assert P.write_said(failed_record) == "Written to Kea and read back, and not recorded."
+        assert states(failed_record) == ["done"] * 4 + ["failed"]
+
     def test_no_reason_writes_nothing(self, kea_dir):
         out, _r = _apply(kea_dir, FakeKea(kea_dir["files"]), ADD(), reason=" ")
         assert "a reason is recorded" in out["error"]

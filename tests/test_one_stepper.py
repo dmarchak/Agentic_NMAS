@@ -52,21 +52,32 @@ OPERATION_PAGES = {
     "_dhcp_reserve.html": "DHCP reservation writes",
     "_dhcp_exclusion.html": "DHCP exclusion writes",
 }
-#: Operation pages not yet converted (the 2026-10-12 program): EXACT, so a converted page
-#: leaves it and nothing joins it.
-NOT_YET = {
-    "_update.html", "_onboard_pending.html",
-    "_netbox_job.html", "_sc_result.html", "_lp_result.html", "_retire.html",
-    "_template_op.html", "_dhcp_subnet.html", "_dhcp_reserve.html", "_dhcp_exclusion.html",
-}
+#: Operation pages not yet converted (the 2026-10-12 program, finished the same day): EXACT,
+#: so nothing joins it.
+NOT_YET: set = set()
 #: Operation pages where a stepper does not fit: template -> why (said in the fidelity record
 #: and the approval log too).
-DOES_NOT_FIT: dict = {}
-#: Files that still draw progress some other way, until their page is converted: EXACT.
-OTHER_PROGRESS = {
-    "templates/v2/_update.html", "templates/v2/_sc_result.html",
-    "templates/v2/_lp_result.html", "static/js/nmas_update.js",
+DOES_NOT_FIT = {
+    "_template_op.html": "Approve's check runs in its request, holds no device and sends "
+                         "nothing, so there is no running state to watch; its per-device rows "
+                         "are the comparison's evidence, every line that failed and where to "
+                         "clear it (board B), where one step per device would draw every row "
+                         "done beside a result that says pass or fail. Approve and Revoke are "
+                         "a commit each",
 }
+#: Operation pages that draw the component's bar and counts alone (`run_summary`), because their
+#: per-device rows are the run's own answers, not steps: template -> why (EXACT; said in the
+#: fidelity record too).
+SUMMARY_ONLY = {
+    "_sc_result.html": "a Show commands run has one step per device (ask, read the answer), so a "
+                       "row of steps says nothing the bar does not; its rows are the answers, "
+                       "grouped where alike (boards C, D and C2)",
+    "_lp_result.html": "the logging-path test sends one line per device and then watches Loki "
+                       "for it: its rows are the arrivals with their delay (board F), and its "
+                       "two phases are the bar's two labels, Lines sent then Lines received",
+}
+#: Files that still draw progress some other way, until their page is converted: EXACT.
+OTHER_PROGRESS: set = set()
 
 _CLASS = re.compile(r'class="([^"]*)"')
 _STEPPISH = re.compile(r"^(stepper|step-[a-z_]+|[a-z]+-steplist|[a-z]+-step|[a-z]+-steps)$")
@@ -110,8 +121,14 @@ def _read(rel):
 
 
 def _uses_component(text: str) -> bool:
-    return ('from "v2/_run_stepper.html" import run_stepper' in text
-            and re.search(r"\brun_stepper\(", text) is not None)
+    return _calls(text, "run_stepper") or _calls(text, "run_summary")
+
+
+def _calls(text: str, macro: str) -> bool:
+    """*text* imports *macro* from the component and calls it."""
+    imp = re.search(r'from "v2/_run_stepper\.html" import ([\w, ]+)', text)
+    return bool(imp and macro in [m.strip() for m in imp.group(1).split(",")]
+                and re.search(r"\b%s\(" % macro, text))
 
 
 class TestEveryOperationPageUsesTheOneStepper:
@@ -129,6 +146,13 @@ class TestEveryOperationPageUsesTheOneStepper:
         assert not using & NOT_YET, ("converted: take it off NOT_YET", sorted(using & NOT_YET))
         for f, why in DOES_NOT_FIT.items():
             assert len(why) > 40, f"{f}: say why a stepper does not fit"
+        summary_only = {f for f in using if not _calls(_read(f"templates/v2/{f}"), "run_stepper")}
+        assert summary_only == set(SUMMARY_ONLY), (
+            "draws only the bar and counts: say why on SUMMARY_ONLY",
+            sorted(summary_only - set(SUMMARY_ONLY)),
+            "now draws rows: take it off SUMMARY_ONLY", sorted(set(SUMMARY_ONLY) - summary_only))
+        for f, why in SUMMARY_ONLY.items():
+            assert len(why) > 40, f"{f}: say why rows of steps do not fit"
 
     def test_no_page_draws_progress_any_other_way(self):
         files = _files()
@@ -146,6 +170,125 @@ class TestEveryOperationPageUsesTheOneStepper:
         assert progress_marks('{{ job_stepper(c.steps) }}') == ["job_stepper("]
         assert progress_marks('<ol class="set-steps">') == [], "a preview's list is not progress"
         assert progress_marks('<ol class="run-steps"><li class="run-step">') == []
+
+
+class TestTheBarAndCountsAlone:
+    """Show commands and the logging-path test, running, draw the component's bar and counts
+    (`run_summary`) from their own records, through the real templates."""
+
+    def _draw(self, monkeypatch, record, job_state="running"):
+        import app as A
+        from flask import render_template
+        from modules import reads_page
+        from modules.nsot import capture_job, reads as R
+        monkeypatch.setattr(capture_job, "get", lambda job_id: {"state": job_state})
+        monkeypatch.setattr(R, "get", lambda list_name, run_id: record)
+        c = reads_page.result("Lab", record["id"], job="j1")
+        with A.app.test_request_context():
+            return c, render_template("v2/_sc_result.html", r=c)
+
+    def test_a_show_commands_run_counts_its_devices_by_state(self, monkeypatch):
+        from modules.nsot import reads as R
+        ans = {"command": "show clock", "state": R.ANSWERED, "sha256": "a" * 64,
+               "answer": "x"}
+        record = {"id": "run1", "state": "running", "devices": ["r1", "r2", "r3", "r4"],
+                  "commands": ["show clock"], "started_at": 1.0,
+                  "results": {"r1": {"state": R.ANSWERED, "answers": [ans]},
+                              "r2": {"state": R.FAILED, "answers": []}}}
+        c, html = self._draw(monkeypatch, record)
+        assert c["state"] == "running"
+        assert html.count("data-run-stepper") == 1 and "run-summary" in html
+        assert 'max="4" value="2" aria-label="2 of 4 devices read"' in html
+        counts = re.sub(r"<[^>]+>", "", re.search(r'<p class="run-counts">(.*?)</p>',
+                                                  html, re.S).group(1))
+        assert counts == "1 answered · 2 still reading · 1 failed", counts
+        assert 'class="run-failed"' in html
+
+    def test_a_logging_path_test_says_what_it_sent_then_what_arrived(self, monkeypatch):
+        from modules.nsot import logging_path
+        base = {"id": "run2", "devices": ["r1", "r2", "r3"], "commands": ["send log x"],
+                "purpose": logging_path.PURPOSE, "started_at": 1.0}
+        _c, html = self._draw(monkeypatch, dict(base, state="running",
+                                                results={"r1": {}}))
+        assert 'max="3" value="1" aria-label="1 of 3 lines sent"' in html
+        _c, html = self._draw(monkeypatch, dict(
+            base, state="done", results={"r1": {}, "r2": {}, "r3": {}},
+            logging_path={"state": "watching", "received": {"r2": 4}}), job_state="done")
+        assert 'max="3" value="1" aria-label="1 of 3 lines received"' in html
+        assert "<progress" not in html.replace('<progress class="run-bar"', "")
+
+
+class TestTheNetBoxJob:
+    """A NetBox preview or import on THE stepper: the phases `netbox_client` reports are its
+    steps, the card redraws as the phase moves (`op_progress.on_phase`), and a list is no
+    device."""
+
+    PID = "stepper-netbox-0001"
+
+    def _progress(self, phase, writing=False):
+        from modules import op_progress
+        op_progress.start(self.PID, "previewed for import", "NetBox (Lab)")
+        op_progress.update(self.PID, phase=phase, devices_total=9, devices_done=3,
+                           current="r4", writing=writing)
+        return op_progress.get(self.PID)
+
+    def _states(self, card):
+        (r,) = card["rows"]
+        return [(s["key"], s["state"]) for s in r["steps"]], r
+
+    def test_a_preview_is_on_the_phase_it_reports(self):
+        from modules import netbox_jobs as NJ
+        card = NJ.run_card({"state": "previewing", "operation": "import", "list": "Lab"},
+                           self._progress("reading and planning each device"))
+        steps, r = self._states(card)
+        assert steps == [("setup", "done"), ("devices", "running"), ("cables", "waiting"),
+                         ("preview", "waiting")]
+        assert r["name"] == "Lab" and r["device"] is False
+        assert "device 4 of 9 (r4)" in r["steps"][1]["note"]
+
+    def test_an_import_starts_re_checked_and_follows_the_write_once_it_says_so(self):
+        from modules import netbox_jobs as NJ
+        job = {"state": "importing", "operation": "import_all", "list": ""}
+        # The re-check's last phase still stands until the write says it began.
+        steps, r = self._states(NJ.run_card(job, self._progress("cables between devices")))
+        assert steps[:2] == [("recheck", "done"), ("setup", "running")]
+        assert r["name"] == "every network"
+        steps, _r = self._states(NJ.run_card(job, self._progress("cables between devices",
+                                                                 writing=True)))
+        assert steps == [("recheck", "done"), ("setup", "done"), ("devices", "done"),
+                         ("cables", "running")]
+
+    def test_no_progress_held_says_so_and_other_states_draw_none(self):
+        from modules import netbox_jobs as NJ
+        _s, r = self._states(NJ.run_card({"state": "previewing", "operation": "remove",
+                                          "list": "Lab"}, None))
+        assert "holds no progress" in r["steps"][0]["note"]
+        assert NJ.run_card({"state": "previewed", "operation": "import"}, None) is None
+
+    def test_a_phase_change_runs_the_watcher_once_and_finish_drops_it(self):
+        from modules import op_progress
+        heard = []
+        op_progress.start(self.PID, "previewed for import", "NetBox (Lab)")
+        op_progress.on_phase(self.PID, lambda: heard.append(1))
+        op_progress.update(self.PID, phase="reading and planning each device")
+        op_progress.update(self.PID, phase="reading and planning each device", devices_done=4)
+        op_progress.tick(self.PID)
+        assert heard == [1]
+        op_progress.finish(self.PID)
+        op_progress.update(self.PID, phase="cables between devices")
+        assert heard == [1]
+
+    def test_the_card_draws_it(self):
+        import app as A
+        from flask import render_template
+        from modules import netbox_jobs as NJ
+        job = {"id": "x", "state": "previewing", "operation": "import", "list": "Lab"}
+        with A.app.test_request_context():
+            html = render_template("v2/_netbox_job.html", job=job, run=NJ.run_card(
+                job, self._progress("setting up the region, site and template")))
+        assert html.count("data-run-stepper") == 1
+        assert re.search(r'<li class="run-step run-step-running" data-step="setup"', html)
+        assert 'href="/v2/device/Lab"' not in html
 
 
 class TestTheModel:

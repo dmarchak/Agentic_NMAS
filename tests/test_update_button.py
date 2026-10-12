@@ -948,8 +948,12 @@ class TestTheStepperFollowsTheUpdatersOwnSteps:
 
     def test_not_reached_is_drawn_apart_from_pending_and_done(self):
         css = open(os.path.join(ROOT, "static", "css", "nmas-v2.css"), encoding="utf-8").read()
-        rules = re.findall(r"\.stepper \.step-not_reached[^{]*\{([^}]*)\}", css)
-        assert any("line-through" in r for r in rules) and any("dashed" in r for r in rules)
+        # THE stepper's rule (the one stepper, 2026-10-12): struck through, and its dot never
+        # the done green.
+        rules = re.findall(r"\.run-step-not_reached[^{]*\{([^}]*)\}", css)
+        assert any("line-through" in r for r in rules)
+        done_dot = re.findall(r"\.run-step-not_reached \.run-dot[^{]*\{([^}]*)\}", css)
+        assert not any("--ok" in r for r in done_dot)
 
     def test_another_requests_record_is_not_this_ones(self):
         r = self._states({"commit": "a" * 40}, self._status("refused", "ci", rid="other"))
@@ -1252,10 +1256,16 @@ class TestClickingTheShippedButton:
         b.wait_for("return window.Alpine && !document.querySelector('#update-confirm').disabled")
         b.click("#update-confirm")
         cls = b.wait_for("var li=document.querySelector('[data-step=ci]');"
-                         "return li && li.className.indexOf('step-current') >= 0 && li.className")
-        assert "step-current" in cls
-        assert b.js("return document.querySelector('[data-step=fetch]').className") == "step step-done"
-        assert b.js("return getComputedStyle(document.querySelector('[data-stepper]')).display") != "none"
+                         "return li && li.className.indexOf('run-step-running') >= 0 && li.className")
+        assert cls == "run-step run-step-running"
+        assert (b.js("return document.querySelector('[data-step=fetch]').className")
+                == "run-step run-step-done")
+        assert b.js("return document.querySelector('[data-step=ci]').getAttribute('aria-current')") \
+            == "step"
+        assert b.js("return document.querySelector('[data-update-steps] .run-row').className") \
+            == "run-row run-row-running"
+        assert b.js("return getComputedStyle(document.querySelector('[data-update-steps]'))"
+                    ".display") != "none"
 
     def test_a_wait_in_force_does_not_hold_the_panel(self, served_update, monkeypatch):
         """The operator, 2026-10-01: with a wait active, Check again said "No

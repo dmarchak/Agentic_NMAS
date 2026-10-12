@@ -9,6 +9,8 @@ import logging
 
 from flask import Blueprint, render_template, request
 
+from modules import dhcp_page
+
 from routes.device_v2 import _strict
 
 log = logging.getLogger(__name__)
@@ -49,6 +51,8 @@ def _op_region(op: dict, code: int = 200):
     from modules import dhcp_reservations as D
     from modules.preview_confirm import confirm_part
 
+    op = dict(op, run=dhcp_page.write_run(op.get("result")),       # THE stepper
+              said=dhcp_page.write_said(op.get("result")))
     ctx = _ctx()
     ctx["g"]["s"] = dict(ctx["g"]["s"], tab="res")
     extra = dict(op=op, offered=D.OFFERED, words=D.WORDS, may=confirm_part(request, "confirm"))
@@ -100,6 +104,8 @@ def _sop_region(sop: dict, code: int = 200):
     """The Subnets tab with board C's card in place (region for htmx, the page otherwise)."""
     from modules.preview_confirm import confirm_part
 
+    sop = dict(sop, run=dhcp_page.write_run(sop.get("result")),    # THE stepper
+               said=dhcp_page.write_said(sop.get("result")))
     ctx = _ctx()
     ctx["g"]["s"] = dict(ctx["g"]["s"], tab="sub")
     sub = next((x for x in ctx["g"].get("subnets") or []
@@ -162,6 +168,8 @@ def _xop_region(xop: dict, code: int = 200):
     """The Exclusions tab with board D's card in place (region for htmx, the page otherwise)."""
     from modules.preview_confirm import confirm_part
 
+    xop = dict(xop, run=dhcp_page.write_run(xop.get("result")),    # THE stepper
+               said=dhcp_page.write_said(xop.get("result")))
     ctx = _ctx()
     ctx["g"]["s"] = dict(ctx["g"]["s"], tab="exc")
     extra = dict(xop=xop, may=confirm_part(request, "confirm"))

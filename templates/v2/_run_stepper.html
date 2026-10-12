@@ -25,6 +25,15 @@
 </li>
 {%- endmacro %}
 
+{#- The bar and counts alone (`run_stepper.summary`): a run whose per-device rows are its own
+    answers (Show commands, the logging-path test), the same bar and counts line as the card. -#}
+{% macro run_summary(s) -%}
+<div class="run run-summary" data-run-stepper aria-label="{{ s.label }}">
+  <progress class="run-bar" max="{{ s.bar.max }}" value="{{ s.bar.value }}" aria-label="{{ s.bar.words }}"></progress>
+  <p class="run-counts">{% for t in s.tally %}<strong{% if t.group == 'failed' and t.n %} class="run-failed"{% endif %}>{{ t.n }}</strong> {{ t.words }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+</div>
+{%- endmacro %}
+
 {% macro run_stepper(r) -%}
 <div class="run{% if r.single %} run-single{% endif %}" data-run-stepper aria-label="{{ r.label }}">
   {%- if not r.single %}

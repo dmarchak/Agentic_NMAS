@@ -171,6 +171,8 @@ def verify_preview(name):
 def verify(name):
     """Verify (phase 2) as previewed, as the verified person."""
     from modules import identity
+    from modules.nsot.onboard import phase_two_run
+    from modules.outbound import mask_payload
     from routes.onboard import verify_run
 
     ident, refusal = identity.require(request, action="confirm", operation="onboard_verify")
@@ -181,7 +183,9 @@ def verify(name):
         return _pending(name, status, mode="verify", refused=out.get("error", ""))
     nxt = _next_intent((request.form.get("list_name") or "").strip(), name) if out.get("ok") \
         else None
-    return _pending(name, status, mode="verified", done=out, nxt=nxt)
+    # THE stepper (the one stepper, 2026-10-12): the steps phase two reached.
+    return _pending(name, status, mode="verified", nxt=nxt,
+                    done=dict(out, run=mask_payload(phase_two_run(name, out))))
 
 
 def _next_intent(list_name: str, name: str) -> dict:

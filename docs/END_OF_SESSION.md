@@ -1,5 +1,33 @@
 # End of session: where Phase 7 stands
 
+## EVENING, 2026-10-12 (about 20:05 to 23:30 UTC; 14:05 to 17:30 UTC−6)
+
+**The one stepper is done (C716 closed).** Every operation page draws its progress through the
+one component, or is named with why not (docs/fidelity/stepper.md; tests/test_one_stepper.py):
+- On it, as it runs: Save, the batch apply (every multi-device deploy: IP SLA's Send, the
+  profile's Apply, Coverage's Deploy missing, Re-apply), Deploy, Restore, Reload, Rotate, Adopt,
+  Capture, onboarding's lifecycle (the pending page), Update (its script sets each step as the
+  updater reports), NetBox's preview and import (redrawn as each phase moves).
+- One request each, so their RESULT draws the steps reached: Persist, Verify, Retire, the DHCP
+  writes.
+- Its bar and counts only: Show commands and the logging-path test (their rows are the answers).
+- Does not fit: Template approve (no running state; its rows are the comparison's evidence).
+- Found on the way, fixed: **C723**, a DHCP write that failed after Kea held the change said
+  "Nothing was changed".
+
+Also: **C720** (Ask your own at half a screen) deployed 21:25 UTC and checked. **C721** (the
+query builder): found on the first mockups canvas, restored as boards E and F on History, Query,
+your sign-off with changes recorded; to build. **C722** (a `device` label at Loki's ingest)
+registered; to build.
+
+**CI run #698 (951fe99) went red** on C567's flake (the suite-bound probe; this change touched
+neither), its fourth firing, and the first with no stack in the report at all. Fixed forward
+in the commit that finished the stepper: the report now says whether a stack file was absent or
+empty, so the next firing tells the two apart. 951fe99 deploys with that commit once CI passes.
+
+**Waiting on you:** as below (C718's board, C719, the AI agent's family, sitting 3, C700's
+reading due 2026-10-13 05:06 UTC). Sitting 3 can now exercise every converted page. **178 open.**
+
 ## AFTERNOON, 2026-10-12 (about 12:00 to 19:30 UTC; 06:00 to 13:30 UTC−6)
 
 Every commit went through the gate, was pushed and deployed once CI was green, and was checked

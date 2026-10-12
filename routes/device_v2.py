@@ -1558,7 +1558,8 @@ def retire_confirm(name):
     c = device_actions.retire_result_card(
         ref, host, mask_payload(retire_result(out, out.get("plan") or before)),
         mask_payload(before), targets)
-    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    c.update(back=_back(request.form), ip=dev.get("ip", ""),
+             run=mask_payload(retire_op.result_run(host, out, out.get("plan") or before)))
     return _strict(render_template("v2/_retire.html", c=c))
 
 

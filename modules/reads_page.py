@@ -17,6 +17,7 @@ Ask the device (board A) is one card on the device page, in one of these states:
 import re
 import time
 
+from modules import run_stepper as RS
 from modules.nsot import reads
 
 
@@ -285,11 +286,17 @@ def logging_view(record: dict, running: bool, lost: bool = False) -> dict:
         return v
     if running or record.get("state") == "running":
         v["state"] = "sending"
+        # The one stepper's bar and counts (2026-10-12): the lines sent so far.
+        v["progress"] = RS.summary(sent, len(hosts), label="Lines sent", parts=[
+            (sent, "sent", "done"), (max(0, len(hosts) - sent), "to send", "waiting")])
         return v
     if lp.get("state") != "done":
         received = lp.get("received") or {}
         v.update(state="watching", received=sorted(received.items()),
                  until=lp.get("until_iso", ""), waiting=max(0, sent - len(received)))
+        v["progress"] = RS.summary(len(received), sent, label="Lines received", parts=[
+            (len(received), "received", "done"),
+            (max(0, sent - len(received)), "not received yet", "running")])
         return v
     v["state"] = "done"
     results = lp.get("results") or {}
@@ -477,6 +484,15 @@ def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: 
                      "took_s": (round(record["finished_at"] - record["started_at"], 1)
                                 if record.get("finished_at") else None)},
              summary=summary)
+    if running:
+        # The one stepper's bar and counts (2026-10-12): devices through, by their state.
+        n = {k: len(v) for k, v in (summary.get("by_state") or {}).items()}
+        rest = n.get(reads.SKIPPED, 0) + n.get(reads.UNKNOWN, 0)
+        c["progress"] = RS.summary(done, total, label="Devices read", parts=[
+            (n.get(reads.ANSWERED, 0), "answered", "done")]
+            + ([(rest, "skipped or unknown", "not_reached")] if rest else [])
+            + [(max(0, total - done), "still reading", "running"),
+               (n.get(reads.FAILED, 0), "failed", "failed")])
     find_l, text_l = (find or "").strip().lower(), (text or "").strip()
     ignored = record.get("ignored") or {}
     answered = set()
