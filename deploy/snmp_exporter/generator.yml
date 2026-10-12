@@ -14,10 +14,17 @@
 # from the IETF MIBs installed on the host and Cisco's CISCO-SMI and
 # CISCO-BGP4-MIB. No auth section: the output's modules are merged into the
 # host's snmp.yml, whose own auths (public_v2) stay as they are.
+#
+# C700 (the operator, 2026-10-12): each module asks with a 2 s per-request timeout and 3 retries,
+# not the exporter's 5 s default: r1's OSPF scrape had a 15 s p99 and 9 timeouts a day, each step
+# a lost UDP request waiting out 5 s (0.94% of packets retried); 99.7% answer within 1.6 s. Worst
+# per request: 4 tries x 2 s = 8 s, inside the jobs' 20 s scrape timeout. The OSPF walks are the
+# state column alone (its index and the router-id lookup keep every label): Mercury, the device
+# dashboard and the fleet's read nothing else (surveyed 2026-10-12), so 55 requests a walk fall.
 modules:
   ospf:
     walk:
-      - ospfNbrTable
+      - ospfNbrState
     lookups:
       # Each neighbour's state labelled with its router id, not only its
       # interface address.
@@ -26,13 +33,19 @@ modules:
     overrides:
       ospfNbrState:
         type: gauge
+    timeout: 2s
+    retries: 3
   ospfv3:
     walk:
-      - ospfv3NbrTable
+      - ospfv3NbrState
     overrides:
       ospfv3NbrState:
         type: gauge
+    timeout: 2s
+    retries: 3
   cisco_bgp_peer2:
+    timeout: 2s
+    retries: 3
     walk:
       - cbgpPeer2State
       - cbgpPeer2AdminStatus

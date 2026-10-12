@@ -227,7 +227,17 @@ answers:
   and CISCO-BGP4-MIB.
 - Its output, `deploy/snmp_exporter/routing-modules.yml`: `ospf` (the neighbour table, each
   neighbour labelled with its router id), `ospfv3` and `cisco_bgp_peer2`, with no auth
-  section.
+  section. **Regenerated 2026-10-12 (C700):** the OSPF and OSPFv3 walks are the state column
+  alone (the router-id lookup and every index label kept), and each module asks with a 2 s
+  per-request timeout and 3 retries instead of the exporter's 5 s default. Reproduced first:
+  the same generator over the same MIBs (the host's `/var/lib/mibs/ietf` and
+  `/usr/share/snmp/mibs`, Cisco's two from cisco/cisco-mibs) gave the committed modules
+  exactly, written with `yaml.safe_dump(sort_keys=True)` under the four comment lines; the
+  generator needs `--no-fail-on-parse-errors` for MIBs these modules do not use.
+- Replacing the modules a host already holds: `scripts/nmas-snmp-add-modules --replace` (a dry
+  run), then `sudo scripts/nmas-snmp-add-modules --replace --apply` (backed up, replaced in
+  place, proven: each module once, every other module and key unchanged), the exporter's
+  `--dry-run`, then `docker restart snmp-exporter`.
 - The three target files above, from the goldens, written by the NMAS like the others.
 
 **The operator's host steps:**

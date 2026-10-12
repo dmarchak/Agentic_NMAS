@@ -42,9 +42,22 @@ class TestTheFragment:
     def test_it_walks_exactly_the_measured_tables(self):
         mods = _fragment()
         assert sorted(mods) == ["cisco_bgp_peer2", "ospf", "ospfv3"]
-        assert mods["ospf"]["walk"] == ["1.3.6.1.2.1.14.10"]                  # ospfNbrTable
-        assert mods["ospfv3"]["walk"] == ["1.3.6.1.2.1.191.1.9"]              # ospfv3NbrTable
+        # C700 (2026-10-12): the OSPF walks narrowed to the state column (and the router-id
+        # column its lookup reads); every label Mercury and the dashboards use is an index.
+        assert mods["ospf"]["walk"] == ["1.3.6.1.2.1.14.10.1.3",             # ospfNbrRtrId
+                                        "1.3.6.1.2.1.14.10.1.6"]             # ospfNbrState
+        assert mods["ospfv3"]["walk"] == ["1.3.6.1.2.1.191.1.9.1.8"]         # ospfv3NbrState
         assert all(o.startswith("1.3.6.1.4.1.9.9.187.1.2.5.1.") for o in mods["cisco_bgp_peer2"]["walk"])
+        assert [m["name"] for m in mods["ospf"]["metrics"]] == ["ospfNbrState"]
+        assert [i["labelname"] for i in mods["ospfv3"]["metrics"][0]["indexes"]] == [
+            "ospfv3NbrIfIndex", "ospfv3NbrIfInstId", "ospfv3NbrRtrId"]
+
+    def test_each_asks_with_a_2_s_timeout_that_fits_the_scrape(self):
+        """C700: a lost request waits 2 s, not the exporter's 5 s default; the worst per
+        request (the first try and 3 retries) fits the routing jobs' 20 s scrape timeout."""
+        for name, mod in _fragment().items():
+            assert mod["timeout"] == "2s" and mod["retries"] == 3, name
+            assert (mod["retries"] + 1) * 2 < 20
 
     def test_the_states_carry_their_names_for_the_value_mappings(self):
         mods = _fragment()
@@ -95,6 +108,45 @@ class TestTheAppend:
         once = cfg.read_text()
         r = self._run(cfg, "--apply")
         assert r.returncode == 1 and "already has module(s)" in r.stderr and cfg.read_text() == once
+
+    def test_replace_swaps_the_routing_modules_in_place_and_proves_the_rest(self, tmp_path):
+        """C700: the regenerated modules replace the ones the host holds, in place; every other
+        module and key keeps its bytes."""
+        cfg = tmp_path / "snmp.yml"
+        old = {"ospf": {"walk": ["1.3.6.1.2.1.14.10"], "metrics": []},
+               "ospfv3": {"walk": ["1.3.6.1.2.1.191.1.9"], "metrics": []},
+               "cisco_bgp_peer2": {"walk": ["1.3.6.1.4.1.9.9.187.1.2.5.1.3"], "metrics": []}}
+        # The host's shape: the old modules as entries of `modules:`, after the others.
+        cfg.write_text(HOST_SHAPE + "".join(
+            f"  {line}\n" for line in yaml.safe_dump(old, sort_keys=True).splitlines()))
+        before = yaml.safe_load(cfg.read_text())
+        assert sorted(before["modules"]) == ["cisco_bgp_peer2", "if_mib", "lldp", "ospf",
+                                             "ospfv3"], "the floor: the old modules are there"
+        dry = self._run(cfg, "--replace")
+        assert dry.returncode == 0 and "would replace" in dry.stdout
+        assert yaml.safe_load(cfg.read_text()) == before
+        r = self._run(cfg, "--replace", "--apply")
+        assert r.returncode == 0, r.stderr
+        assert "replaced and proven" in r.stdout
+        text = cfg.read_text()
+        after = yaml.safe_load(text)
+        # In place: each module once in the text, and every byte before them kept.
+        for name in ("ospf", "ospfv3", "cisco_bgp_peer2"):
+            assert text.count(f"\n  {name}:\n") == 1, name
+        assert text.startswith(HOST_SHAPE)
+        assert after["auths"] == before["auths"]
+        assert after["modules"]["if_mib"] == before["modules"]["if_mib"]
+        assert after["modules"]["lldp"] == before["modules"]["lldp"]
+        for k, v in _fragment().items():
+            assert after["modules"][k] == v
+        assert "not-the-real-one" not in r.stdout + r.stderr
+
+    def test_replace_refuses_a_module_the_config_lacks(self, tmp_path):
+        cfg = tmp_path / "snmp.yml"
+        cfg.write_text(HOST_SHAPE)
+        r = self._run(cfg, "--replace", "--apply")
+        assert r.returncode == 1 and "has no module(s)" in r.stderr
+        assert cfg.read_text() == HOST_SHAPE
 
     def test_modules_not_last_is_refused(self, tmp_path):
         cfg = tmp_path / "snmp.yml"

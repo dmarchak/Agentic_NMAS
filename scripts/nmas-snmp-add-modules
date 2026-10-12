@@ -3,6 +3,8 @@
 
     nmas-snmp-add-modules                                   # dry run: what would change
     sudo nmas-snmp-add-modules --apply                      # back up, append, prove
+    nmas-snmp-add-modules --replace                         # dry run of replacing in place
+    sudo nmas-snmp-add-modules --replace --apply            # back up, replace, prove (C700)
 
 The operator's host step (PROMETHEUS_TARGETS.md). Defaults: the fragment
 `deploy/snmp_exporter/routing-modules.yml` (ospf, ospfv3, cisco_bgp_peer2)
@@ -43,6 +45,34 @@ def _top_level_keys(text: str) -> list:
             if line and not line[0].isspace() and not line.startswith("#") and ":" in line]
 
 
+def _blocks(text: str) -> list:
+    """The `modules:` map's entries as text, ``[(name, block)]`` in order: each from its
+    two-space-indented ``  name:`` line to the next one (or the end)."""
+    out, name, lines = [], None, []
+    for line in text.splitlines(keepends=True):
+        key = line[2:].split(":", 1)[0] if (line.startswith("  ") and not line.startswith("   ")
+                                            and line.rstrip().endswith(":")) else None
+        if key is not None:
+            if name is not None:
+                out.append((name, "".join(lines)))
+            name, lines = key, [line]
+        elif name is not None:
+            lines.append(line)
+    if name is not None:
+        out.append((name, "".join(lines)))
+    return out
+
+
+def _replace(text: str, frag: str) -> str:
+    """*text* with each module *frag* holds replaced, as text, in place; everything before
+    `modules:` and every other module keeps its bytes."""
+    head, sep, body = text.partition("\nmodules:\n")
+    if text.startswith("modules:\n"):
+        head, sep, body = "", "modules:\n", text[len("modules:\n"):]
+    new = dict(_blocks(frag))
+    return head + sep + "".join(new.get(n, b) for n, b in _blocks(body))
+
+
 def main(argv=None) -> int:
     import yaml
 
@@ -50,6 +80,9 @@ def main(argv=None) -> int:
     ap.add_argument("--config", default=CONFIG)
     ap.add_argument("--fragment", default=FRAGMENT)
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--replace", action="store_true",
+                    help="replace the fragment's modules, each already in the config, in place "
+                         "(C700: the routing modules regenerated), instead of appending them")
     args = ap.parse_args(argv)
 
     try:
@@ -68,6 +101,8 @@ def main(argv=None) -> int:
     if not new:
         print(f"REFUSED: {args.fragment} holds no module", file=sys.stderr)
         return 1
+    if args.replace:
+        return _main_replace(args, text, frag, before, new, yaml)
     clash = sorted(set(new) & set(before))
     if clash:
         print(f"REFUSED: {args.config} already has module(s) {clash}; nothing changed",
@@ -96,6 +131,52 @@ def main(argv=None) -> int:
         return 2
     print(f"appended and proven: {len(after)} module(s), the {len(before)} before unchanged; "
           f"backup {backup}")
+    print("next: `docker exec snmp-exporter /bin/snmp_exporter --config.file=/etc/snmp_exporter/snmp.yml "
+          "--dry-run`, then `docker restart snmp-exporter`")
+    return 0
+
+
+def _main_replace(args, text, frag, before, new, yaml) -> int:
+    """--replace: each module of the fragment, already in the config, replaced in place as text.
+    Proven after: every other module and every other top-level key unchanged, the replaced
+    ones exactly the fragment's; otherwise the backup goes back."""
+    missing = sorted(set(new) - set(before))
+    if missing:
+        print(f"REFUSED: {args.config} has no module(s) {missing} to replace (it has "
+              f"{len(before)}); add them without --replace. Nothing changed", file=sys.stderr)
+        return 1
+    candidate = _replace(text, frag)
+    changed = sorted(k for k in new if before[k] != new[k])
+    print(f"{args.config}: {len(before)} module(s); would replace {sorted(new)} in place "
+          f"({', '.join(changed) or 'none'} differ from what the config holds)")
+    if not args.apply:
+        print("dry run: nothing written (--apply backs up, replaces and proves)")
+        return 0
+    backup = f"{args.config}.bak-routing-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    shutil.copy2(args.config, backup)
+    with open(args.config, "w", encoding="utf-8") as fh:
+        fh.write(candidate)
+    whole_before = yaml.safe_load(text) or {}
+    written = open(args.config, encoding="utf-8").read()
+    whole_after = yaml.safe_load(written) or {}
+    after = whole_after.get("modules") or {}
+    # YAML keeps the last of two equal keys, so a module written twice would parse as one:
+    # each name must appear once in the text.
+    names = [n for n, _b in _blocks(written.partition("\nmodules:\n")[2])]
+    ok = (len(names) == len(set(names))
+          and {k: v for k, v in whole_after.items() if k != "modules"}
+          == {k: v for k, v in whole_before.items() if k != "modules"}
+          and set(after) == set(before)
+          and all(after[k] == v for k, v in before.items() if k not in new)
+          and all(after[k] == v for k, v in new.items()))
+    if not ok:
+        shutil.copy2(backup, args.config)
+        print(f"NOT PROVEN: the file after the replace did not hold every other module and key "
+              f"unchanged and exactly the fragment's {sorted(new)}; the backup {backup} was put "
+              "back", file=sys.stderr)
+        return 2
+    print(f"replaced and proven: {sorted(new)}; the other {len(before) - len(new)} module(s) "
+          f"and every other key unchanged; backup {backup}")
     print("next: `docker exec snmp-exporter /bin/snmp_exporter --config.file=/etc/snmp_exporter/snmp.yml "
           "--dry-run`, then `docker restart snmp-exporter`")
     return 0

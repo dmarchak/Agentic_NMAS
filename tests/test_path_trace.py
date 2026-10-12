@@ -194,6 +194,22 @@ class TestTrace:
         assert lit["nodes"] == {"r1": "out", "r3": "out", "r4": "out", "r5": "out"}
         assert {e["cls"] for e in lit["edges"].values()} == {"out"}
 
+    def test_no_route_is_dropped_whatever_the_destination(self, net):
+        """The operator's rule (2026-10-12): "leaves the network" only when the last router's
+        CEF forwards out of an interface toward an unmanaged next hop; a router with no route
+        drops it, whatever the destination. Captured 04:39 UTC: 192.0.2.1, which r5 does not
+        advertise, is "no route" at both edges; 8.8.8.8, which it does (8.8.8.8/32 over BGP),
+        is forwarded out Gi2 toward r5."""
+        beyond = os.path.join(os.path.dirname(FIX), "cef_beyond_r5.json")
+        with open(beyond, encoding="utf-8") as fh:
+            answers = json.load(fh)["answers"]
+        dropped, _ = _trace(net, "r1", "192.0.2.1", answers=answers)
+        assert _paths(dropped) == [("dropped", ("r1", "r3")), ("dropped", ("r1", "r4"))]
+        assert {b["cls"] for b in dropped["branches"]} == {"drop"}
+        left, _ = _trace(net, "r1", "8.8.8.8", answers=answers)
+        assert all(b["end"] == "edge" and b["hops"][-1]["to"] == "r5"
+                   and b["hops"][-1]["iface"] == "GigabitEthernet2" for b in left["branches"])
+
     def test_past_the_branch_bound_it_says_so(self, net, monkeypatch):
         monkeypatch.setattr(P, "MAX_BRANCHES", 1)
         got, _ = _trace(net, "r1", "198.51.100.1")
