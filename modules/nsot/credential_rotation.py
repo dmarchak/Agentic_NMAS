@@ -1239,8 +1239,9 @@ def _yang_push_consumer(mgmt_ip: str) -> dict:
 
 def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
            actor: str = "", actor_kind: str = "", device: dict = None,
-           capture: str = "", record: str = "csv") -> dict:
-    """Rotate one device. Returns one of the five states.
+           capture: str = "", record: str = "csv", source: str = "rotation") -> dict:
+    """Rotate one device. Returns one of the five states. *source* is the commit's
+    ``Source:`` slug (a scheduled rotation's is ``scheduled-rotation``, C724).
 
     The ordering is the lockout defence, and every line of it is load-bearing:
 
@@ -1496,7 +1497,8 @@ def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
               "recorded. Re-capture this device's golden.")
 
     commit = _commit(list_name, repo, hostname, device, username, privilege,
-                     password, new_hash, golden_config, actor, record=record)
+                     password, new_hash, golden_config, actor, record=record,
+                     source=source)
     result["golden_updated"] = capture_ok
     _step("commit", commit["ok"], commit.get("error", commit.get("commit", "")))
     result["commit"] = commit
@@ -1602,7 +1604,8 @@ def _csv_path_for(list_name: str) -> str:
 
 
 def _commit(list_name, repo, hostname, device, username, privilege, password,
-            new_hash, post_config, actor, *, record: str = "csv") -> dict:
+            new_hash, post_config, actor, *, record: str = "csv",
+            source: str = "rotation") -> dict:
     """Record the rotation: credential store, devices.csv, golden + intent.
 
     One commit for the golden capture and the intent change, because the
@@ -1717,7 +1720,7 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
                                     netbox_id=device.get("_netbox_id"),
                                     device_uid=device.get("device_uid", "")))
         commit = save_golden(
-            list_name, items, source="rotation", actor=actor or "operator",
+            list_name, items, source=source or "rotation", actor=actor or "operator",
             message=f"credential: {hostname} rotated to a device-generated "
                     "type-9 secret",
             allow_new=False,

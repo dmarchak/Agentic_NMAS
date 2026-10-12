@@ -26,7 +26,9 @@ still true against intent, and what to do next. **Persist and Rotate run here to
 
 What the tool knows about the device, each fact with where it came from: its last golden, its
 intent state, whether its golden matches its intent, the monitoring profile it inherits, and
-its checks (reachability, alerts).
+its checks (reachability, alerts, and its credential: how long since Mercury last rotated it,
+or "never rotated by Mercury", and when its profile's rotation policy next makes it due; see
+[on a schedule](rotate#scheduled)).
 
 ## Intent {#intent}
 

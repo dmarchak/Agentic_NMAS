@@ -67,4 +67,21 @@ Every rotation and every persist writes a row (each step's name, outcome and rea
 
 ## After a rotation
 
-The break-glass record holds the old password, so the result's next step is a new break-glass export.
+The break-glass record holds the old password, so the result's next step is a new break-glass export. Until it is exported again, Needs attention has a row for each rotated device saying the record is out of date for it (a rotation from the device page and a scheduled one alike).
+
+## On a schedule {#scheduled}
+
+A credential profile on Credentials › Profiles can carry a **rotation policy**: off, or every N days (30 unless you say otherwise; 1 is allowed), a preferred window in UTC hours, and at most K devices a run. Only a verified person sets one, with Rotation policy… on the profile's row, and History records who, when and what. A device follows the policy of the profile the resolver would give it a login from, the most specific that exists (`role:<role>`, then `site:<site>`, then `default`), and that profile's policy alone, off included.
+
+A device's **credential age** is read from the rotation record: its last rotation that reached the device. A device with none is "never rotated by Mercury" and counts as due. Credentials › Profiles shows each device's age and next due date, grouped (due now, within their policy, no policy on), and the device page's Overview shows its own as the Credential check.
+
+A timer in the app looks every five minutes. A policy's run happens inside its preferred window, at most once a UTC day; **Rotate due devices now** on Credentials › Profiles runs the same thing at once, as you, outside the preferred window too, after a preview of the devices it takes and confirmed by that preview's hash. A run, in order:
+
+1. **Refuse** (`refuse`). No run starts inside the nightly backup window, 08:30 to 09:10 UTC, or while another run is going (one at a time, across processes; the second is refused naming the first). The timer also starts no run while the last run's failure stands.
+2. **Select** (`select`). The due devices, oldest credential first (never rotated first), at most each policy's limit; the rest wait for the next run, each with why.
+3. **Check** (`check`). Before each device: skipped, with the reason recorded, when another operation holds it, when it is mid-restart (a planned-restart window covers now, or it restarted in the last ten minutes), when its committed golden is off its intent, or when its plan cannot be made (unreachable, or its account line unreadable).
+4. **Rotate** (`rotate`). The device-page rotation itself, one device at a time: the same plan, the same steps above (read the account, stage, send, fresh login, record, persist), the same record and commit. History draws it as "Scheduled rotation (policy set by <person>)"; the commit's `Actor:` is the policy's setter (you, for Rotate due devices now) and its `Source:` is `scheduled-rotation`. A timer's commit reads `Actor-Verified: none`, since nobody was verified at that moment; yours reads `access`.
+5. **Stop** (`stop`). The first device that does not end rotated and persisted stops the run: the rest are not reached, and Needs attention raises a critical row naming the device and the stage. It clears when a later run (Rotate due devices now, once you have settled the device) finishes without a failure; until then the timer starts no run. A run that reaches the backup window stops there too, the rest left for the next run.
+6. **Record** (`record`). Every run, including one refused, is a row in `scheduled_rotation_runs.jsonl` in the data folder: what it rotated, what it skipped and why, what failed and where, what it did not reach. Credentials › Profiles shows the last one.
+
+A scheduled rotation changes nothing a manual one does not: no template, no shared profile, no enable secret.

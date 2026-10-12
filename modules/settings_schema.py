@@ -269,6 +269,11 @@ DEFAULTS: dict = {
     #: grant. Identity still comes from the verified assertion; an unlabelled
     #: token authenticates exactly as well, it just reads worse.
     "cf_access_service_labels": {},
+    #: C724: ``{profile name: policy}``, the scheduled credential rotation each credential
+    #: profile's devices follow (`modules/nsot/scheduled_rotation.py`), set on Credentials ›
+    #: Profiles by a verified person and recorded. Empty: no policy, nothing rotates on a
+    #: schedule (the behaviour before it existed).
+    "credential_rotation_policies": {},
     #: All three default ON. Reveal exposes a secret; approve and confirm are
     #: the two actions that put configuration **on a device**. An audit entry
     #: for any of them is worthless without a name attached to it, and the two
@@ -720,6 +725,22 @@ SCHEMA: dict = {
         # being trusted (identity.JWKS_TTL_MIN and JWKS_TTL_MAX, the reason beside them).
         "cf_access_jwks_ttl": {"type": "integer", "minimum": 300, "maximum": 86400},
         "cf_access_service_labels": {"type": "object"},
+        "credential_rotation_policies": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "required": ["state", "days", "window_start", "window_end", "max_per_run",
+                             "set_by", "set_at"],
+                "properties": {
+                    "state": {"enum": ["on", "off"]},
+                    "days": {"type": "integer", "minimum": 1, "maximum": 3650},
+                    "window_start": {"type": "integer", "minimum": 0, "maximum": 23},
+                    "window_end": {"type": "integer", "minimum": 0, "maximum": 24},
+                    "max_per_run": {"type": "integer", "minimum": 1, "maximum": 1000},
+                    "set_by": _STR, "set_at": _STR, "verified": _STR,
+                },
+            },
+        },
         "require_identity_for_reveal": _BOOL,
         "require_identity_for_approve": _BOOL,
         "require_identity_for_confirm": _BOOL,

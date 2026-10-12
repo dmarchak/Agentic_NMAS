@@ -2814,6 +2814,13 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Prometheus targets keeper did not start: %s", _e)
 
+    # The scheduled credential rotation's timer (C724): a run only when a policy is on.
+    try:
+        from modules.nsot import scheduled_rotation as _scheduled_rotation
+        _scheduled_rotation.start()
+    except Exception as _e:
+        app.logger.error("Scheduled rotation timer did not start: %s", _e)
+
     # Start SNMP trap receiver and NetFlow collector using per-list config
     try:
         from modules.collector_config import get_snmp_trap_port, get_netflow_port

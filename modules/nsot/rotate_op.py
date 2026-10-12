@@ -91,9 +91,14 @@ def _inventory_password(list_name: str, hostname: str) -> str:
 
 
 def run(list_name: str, hostname: str, *, actor: str, fingerprint: str,
-        started_iso: str = "") -> dict:
+        started_iso: str = "", via: str = "device page", actor_kind: str = "person",
+        source: str = "rotation") -> dict:
     """Rotate, then persist, holding the device across both. The result of the
-    last step that ran, with `persist_skipped` saying why when it did not."""
+    last step that ran, with `persist_skipped` saying why when it did not.
+
+    *via*, *actor_kind* and *source* name the caller on the record and the commit: the
+    scheduled rotation (`scheduled_rotation`, C724) runs THIS path with its own words, so its
+    stages, records and History rows are a manual rotation's."""
     from modules.nsot import credential_rotation as cr
     from modules.nsot import device_ops
 
@@ -101,7 +106,7 @@ def run(list_name: str, hostname: str, *, actor: str, fingerprint: str,
     try:
         with device_ops.hold(list_name, hostname, "rotate", actor):
             result = cr.rotate(list_name, hostname, confirmed_fingerprint=fingerprint,
-                               actor=actor, actor_kind="person", via="device page")
+                               actor=actor, actor_kind=actor_kind, via=via, source=source)
             if result.get("state") != cr.ROTATED_PENDING_PERSIST:
                 return result
             password = _inventory_password(list_name, hostname)
@@ -119,7 +124,7 @@ def run(list_name: str, hostname: str, *, actor: str, fingerprint: str,
                               hostname=hostname, new_hash=result["new_hash"],
                               after_iso=started_iso,
                               platform=cr.platform_of(list_name, hostname),
-                              list_name=list_name, via="device page", actor=actor)
+                              list_name=list_name, via=via, actor=actor)
     except device_ops.DeviceBusy as exc:
         return {"device": hostname, "state": cr.NOT_STARTED, "steps": [],
                 "reason": f"{exc}. Nothing was sent."}

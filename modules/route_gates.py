@@ -120,6 +120,7 @@ GATES = {
     "device_v2.restore_confirm": _g(C, "re-applies a moment (its golden now, an older golden or a baseline) to one device from the v2 device page (7.3; THE restore plan and apply, run as a job, in the list its preview was drawn in, C396), merge-only, every line needing a reason (a dangerous line, an account added back) with its stated reason in the hash"),
     "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; the same plan and apply as deploy.apply and the batch apply, run as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
     "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; the same confirm as rotate.apply): the device then accepts only the new password"),
+    "credential_profiles_v2.rotate_due_confirm": _g(C, "rotates every due device's login credential (C724, Rotate due devices now), one at a time through the device page's rotation, bound to the previewed list's hash"),
     "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "v2.save_confirm": _g(C, "saves the running config to startup on each chosen device, reads it back, and records the running config as golden in one commit (C593, Devices › Save): changes what the devices boot"),
@@ -254,6 +255,9 @@ GATES = {
                                          "Profiles, recorded (who, which, the fields set)"),
     "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "
                                            "Profiles, recorded"),
+    "credential_profiles_v2.policy_save": _g(K, "sets a credential profile's scheduled "
+                                              "rotation policy (C724), a verified person's, "
+                                              "recorded (who, when, what)"),
     "add_quick_action": _g(K, "stores a canned command"),
     "delete_quick_action": _g(K, "deletes a canned command"),
 

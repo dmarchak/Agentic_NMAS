@@ -64,3 +64,15 @@ covered and that those devices then take their login from the next source; one n
 covers is skipped by its next NetBox import, which says so. Each needs a verified person, and
 each is recorded on History (Credential profiles): who, which profile, and the fields set,
 never a value.
+
+**Rotation policy…** on a profile's row sets how its devices' credentials are rotated on a
+schedule: off, or every N days inside a preferred window of UTC hours, at most K devices a run.
+Only a verified person sets one, and History records who, when and the policy. The row's
+Rotation policy column says the policy, how many devices follow it, how many are due and the
+next due date. The **Scheduled rotation** card below the table leads with how many devices are
+due, says when the last run ran and what it did, and lists each device's credential age and
+next due date in three collapsed groups (due now, within their policy, no policy on); a device
+Mercury has never rotated says "never rotated by Mercury" and is due. **Rotate due devices
+now…** previews the devices it would take, and confirming runs them one at a time through the
+device page's rotation, each row on the run's stepper in place. See
+[Rotate a credential: on a schedule](rotate#scheduled).

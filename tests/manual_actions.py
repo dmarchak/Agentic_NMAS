@@ -124,6 +124,8 @@ NOT_AN_OPERATION = {
     ("_topology_map.html", "'s Neighbours"): "opens that end's Neighbours tab on its device "
                                              "page, a read",
     ("_credential_profiles.html", "Cancel"): "puts the profiles table back, writing nothing",
+    ("_credential_profiles.html", "Close"): "puts the profiles table back after a scheduled "
+                                            "rotation run, a read",
     ("_bulk_intent.html", "Back to Devices"):"returns to Devices, a read",
     ("_bulk_intent.html", "Change the settings"): "puts the change's form back with what was "
                                                   "typed, computing nothing",

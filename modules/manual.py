@@ -147,6 +147,7 @@ OPERATIONS = {
     "restore": ("modules.pipeline", "STAGE_NAMES"),
     "removal": ("modules.pipeline", "STAGE_NAMES"),
     "rotate": ("modules.nsot.rotate_op", "STEPS"),
+    "scheduled-rotation": ("modules.nsot.scheduled_rotation", "STEPS"),
     "persist": None,
     "seed": None,
     "onboard": ("modules.nsot.onboard", "STEPS"),
@@ -190,6 +191,7 @@ OPERATIONS = {
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).
 OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard",
+                  "scheduled-rotation": "rotate",
                   "records-database-test": "records-database",
                   "records-database-replace": "records-database",
                   "network-create": "settings-switch",

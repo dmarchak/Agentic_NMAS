@@ -291,6 +291,21 @@ def checks(ref, dev: dict) -> list:
                                   + startup_check.brief(srow.get("detail") or st or "unknown")
                                   + "); it reads it again at the next run")})
 
+    # Credential: its age and its next rotation under its profile's policy (C724).
+    try:
+        from modules.nsot import scheduled_rotation
+        cs = scheduled_rotation.device_state(ref.name, host)
+    except Exception as exc:                     # noqa: BLE001
+        cs = {"_error": f"its credential age could not be read ({type(exc).__name__})"}
+    if cs is None or cs.get("_error"):
+        out.append({"name": "Credential", "state": "unknown",
+                    "text": (cs or {}).get("_error") or "not in its list's inventory"})
+    else:
+        out.append({"name": "Credential",
+                    "state": "warn" if cs["due"] else ("ok" if cs["on"] else "off"),
+                    "at": cs["rotated_at"] or None,
+                    "text": f"{cs['age_words']}; {cs['words']}"})
+
     # Alerts: Grafana's instances naming this device, by label, line or address.
     value, at, why = _cached("grafana-alerts")
     if value is None:

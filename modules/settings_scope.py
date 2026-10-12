@@ -66,6 +66,8 @@ SCOPES: dict = {
                for a in ("approve", "break_glass", "configure", "confirm", "publish_remote",
                          "reveal"))),
     **_group(HOST, "platforms", "platform_map", "platform_default_netmiko_type"),
+    # C724: keyed by credential profile, which is the installation's (as the profiles are).
+    **_group(HOST, "credential_rotation", "credential_rotation_policies"),
     **_group(HOST, "web_server", "flask_host", "flask_port", "auto_open_browser", "tftp_root"),
     **_group(HOST, "ai", "ai_enabled", "background_agent_enabled"),
     **_group(HOST, "workflow", "wf_auto_backup", "wf_read_first", "wf_require_approval",

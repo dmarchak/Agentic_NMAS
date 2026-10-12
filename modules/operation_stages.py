@@ -74,6 +74,14 @@ STAGES = {
         "modules.nsot.credential_rotation.verify_new_credential",
         "modules.nsot.credential_rotation.revert_commands",
         "modules.nsot.credential_rotation.record_outcome"),
+    # Credentials › Profiles' Rotate due devices now (C724): the due list previewed and bound by
+    # its hash; each device then runs the device page's rotation (its own plan's fingerprint,
+    # verify, revert and record), and the run is recorded.
+    "credential_profiles_v2.rotate_due_confirm": Stages(
+        "credential_profiles_v2.rotate_due_preview", "hash",
+        "modules.nsot.credential_rotation.verify_new_credential",
+        "modules.nsot.credential_rotation.revert_commands",
+        "modules.nsot.credential_rotation.record_outcome"),
     "onboard.verify": Stages(
         "onboard.verify_preview", "fingerprint in routes.onboard.verify_run",
         "modules.nsot.onboard.verify_device",
@@ -348,6 +356,7 @@ HISTORY = {
     "v2.save_confirm": ("rotation", "golden"),
     "rotate.apply": ("rotation", "golden", "intent"),
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
+    "credential_profiles_v2.rotate_due_confirm": ("rotation", "golden", "intent"),
     "onboard.verify": ("onboarding", "golden"),
     "onboard.abandon": ("onboarding",),
     "onboard_v2.verify": ("onboarding", "golden"),
@@ -433,6 +442,7 @@ HISTORY = {
     "topology_v2.positions_reset": ("topology_layout",),
     "credential_profiles_v2.save": ("credential_profiles",),
     "credential_profiles_v2.delete": ("credential_profiles",),
+    "credential_profiles_v2.policy_save": ("credential_profiles",),
     "v2.credentials_intact": ("breakglass",),
     "v2.credentials_check": ("breakglass",),
     "v2.credentials_drill": ("breakglass",),

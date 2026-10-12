@@ -192,6 +192,12 @@ PAGE_RECORD = {
                                  ('id="device-op"', "c.words", "c.record"), "device_v2.history"),
     "device_v2.rotate_confirm": ("templates/v2/_rotate.html",
                                  ('id="device-op"', "c.summary", "c.record"), "jobs.jobs_health"),
+    # C724, Rotate due devices now: the run on the one stepper in place, then its result (what
+    # it rotated, skipped and where it stopped); each device's rotation read on History.
+    "credential_profiles_v2.rotate_due_confirm": (
+        "templates/v2/_credential_profiles.html",
+        ("op.state == 'rotate_done'", "res.rotated", "res.failed", "run_stepper(op.r.card)"),
+        "v2.history_page"),
     "privileged_v2.confirm": ("templates/v2/_privileged.html",
                               ('id="device-op"', "c.record", "r.verify"), "device_v2.history"),
     "device_v2.persist_confirm": ("templates/v2/_persist.html",

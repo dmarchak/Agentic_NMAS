@@ -134,6 +134,9 @@ ROW_KINDS = {
                                     "golden before changing it, then acknowledge what you found"),
     ("adjacencies", "error"): ("a list's intent could not be read for its adjacencies",
                                "fix the intent file the reason names"),
+    ("scheduled_rotation", "stopped"): ("a scheduled credential rotation stopped on a failure",
+                                        "read the device's rotation result and settle the "
+                                        "stage it names, then run Rotate due devices now"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -225,6 +228,9 @@ CLEARS = {
     ("restarts", "unplanned"): (("acknowledge", "time"), "a person acknowledges it with a "
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
+    ("scheduled_rotation", "stopped"): (("resolves",), "a later run (Rotate due devices now on "
+                                        "Credentials › Profiles) finishes without a failure; "
+                                        "until then the timer starts no scheduled run"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -1982,6 +1988,57 @@ def records_source(cached=None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Source: the scheduled credential rotation (C724)
+# ---------------------------------------------------------------------------
+
+def scheduled_rotation_source(found=None) -> dict:
+    """The scheduled credential rotation's last run that ran (`scheduled_rotation.runs`): one
+    that STOPPED on a failure is a CRITICAL row naming the device and the stage, standing
+    until a later run finishes clean (the timer starts none while it stands). A file read,
+    never a device."""
+    from modules.nsot import scheduled_rotation as SR
+
+    started = time.time()
+    label = "Scheduled credential rotation"
+    got = SR.runs() if found is None else found
+    took = int((time.time() - started) * 1000)
+    if got["state"] == "unreadable":
+        return source_result("scheduled_rotation", label, read_at=started, took_ms=took,
+                             error=f"its run record could not be read: {got.get('error')}")
+    last = SR.last_decisive(got["rows"])
+    if not last:
+        return source_result("scheduled_rotation", label, read_at=started, took_ms=took,
+                             checked="no scheduled rotation run is recorded")
+    rows = []
+    f = last.get("failed") or {}
+    if last.get("state") == "stopped" and f:
+        rows.append(row(
+            source="scheduled_rotation", kind="stopped", key=f"run:{last.get('run')}",
+            level="danger", devices=[f.get("device", "?")], since=_ts(last.get("finished")),
+            what=(f"Scheduled credential rotation stopped: {f.get('device', '?')} failed at "
+                  f"{f.get('stage', '?')}"),
+            cause=(f"Run {last.get('run')} ({last.get('trigger')}, started "
+                   f"{last.get('started')}) rotated {len(last.get('rotated') or [])} device(s), "
+                   f"then {f.get('device', '?')} in {f.get('list', '?')} ended "
+                   f"{str(f.get('state') or '?').replace('_', ' ')} at {f.get('stage', '?')}"
+                   + (f" ({f['detail']})" if f.get("detail") else "")
+                   + f"; {len(last.get('not_reached') or [])} device(s) were not reached. "
+                   "The timer starts no scheduled run while this stands"),
+            operands={"device": f.get("device", ""), "stage": f.get("stage", ""),
+                      "run": last.get("run", "")},
+            action={"label": f"Open {f.get('device', '?')}'s page and read its rotation "
+                             "result (a staged credential or an unpersisted rotation is named "
+                             "there with its button); settle it, then run Rotate due devices "
+                             "now on Credentials › Profiles",
+                    "href": f"/v2/device/{f.get('device', '')}"}))
+    return source_result("scheduled_rotation", label, read_at=started, took_ms=took, rows=rows,
+                         checked=(f"the last run ({last.get('finished')}): "
+                                  f"{str(last.get('state')).replace('_', ' ')}, "
+                                  f"{len(last.get('rotated') or [])} rotated, "
+                                  f"{len(last.get('skipped') or [])} skipped"))
+
+
+# ---------------------------------------------------------------------------
 # Source: history committed and not on its remote (C223)
 # ---------------------------------------------------------------------------
 
@@ -2634,7 +2691,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            remote_source, pushed_source,
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
-           records_source)
+           records_source, scheduled_rotation_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -2674,6 +2731,8 @@ SOURCE_KEYS = {
     "template_behind_source": ("templates", "intent"),
     # The reader's stored check, and a move or move back (which changes the settings).
     "records_source": ("records", "settings"),
+    # A scheduled run's end (or a device in it) announces both (C724).
+    "scheduled_rotation_source": ("rotation", "credentials"),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

@@ -558,6 +558,9 @@ def rotation(ctx):
         what = (SAVE_WORDS[state] if save else
                 f"{ROTATION_WORDS.get(phase, phase or 'Rotation')}: "
                 f"{state.replace('_', ' ') or 'no state recorded'}")
+        # C724: a scheduled rotation's rows say so, and whose policy ran it (its `via`).
+        if not save and str(r.get("via") or "").startswith("scheduled rotation"):
+            what = f"{r['via'][0].upper()}{r['via'][1:]}: {what[0].lower()}{what[1:]}"
         known = r.get("exception") or {}
         marks = (["failed"] if failed or state == cr.SAVE_NOT_PERSISTED else []) + (
             ["corrected"] if known else [])
@@ -807,14 +810,18 @@ def credential_profiles(ctx):
     got = credential_changes.entries()
     if got["error"]:
         return _out(errors=[f"the credential profile record could not be read: {got['error']}"])
-    return _out([_event(r.get("at"), "credential",
-                        f"Credential profile {r.get('profile', '?')} "
-                        f"{'deleted' if r.get('action') == 'deleted' else 'saved'}"
-                        + (f": {', '.join(r.get('fields') or [])} set"
-                           if r.get("fields") else ""), [],
+    def what(r):
+        if r.get("action") == "rotation_policy":
+            return (f"Credential profile {r.get('profile', '?')}'s rotation policy set: "
+                    f"{r.get('policy') or 'not recorded'}")
+        return (f"Credential profile {r.get('profile', '?')} "
+                f"{'deleted' if r.get('action') == 'deleted' else 'saved'}"
+                + (f": {', '.join(r.get('fields') or [])} set" if r.get("fields") else ""))
+    return _out([_event(r.get("at"), "credential", what(r), [],
                         who=_who(r.get("actor", ""), r.get("verified", "")),
                         record=[("Profile", r.get("profile")), ("Action", r.get("action")),
-                                ("Fields set", ", ".join(r.get("fields") or []))])
+                                ("Fields set", ", ".join(r.get("fields") or []))]
+                        + ([("Rotation policy", r.get("policy"))] if r.get("policy") else []))
                  for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
 
 

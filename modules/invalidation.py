@@ -127,6 +127,7 @@ ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     "show-commands": ("reads",),               # modules/nsot/reads.py: a run's end
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
+    "scheduled-rotation": ("rotation", "credentials"),  # modules/nsot/scheduled_rotation.py (C724)
     "netbox-job": ("netbox",),                 # modules/netbox_jobs.py: a preview or import landed
     # modules/nsot/save_op.py (C593): the run's end, its commit and what each device boots.
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
@@ -177,6 +178,7 @@ DECLARED = {
     "dhcp_v2.exclusion_confirm": ("dhcp",),
     "credential_profiles_v2.save": ("credentials",),
     "credential_profiles_v2.delete": ("credentials",),
+    "credential_profiles_v2.policy_save": ("credentials",),
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items
@@ -319,6 +321,7 @@ DECLARED = {
     "device_v2.restore_confirm": Nothing("starts a job and answers at once; the restore ANNOUNCES deploy_job as it finishes, and what a restore changes (ANNOUNCERS deploy-job)"),
     "device_v2.deploy_confirm": Nothing("starts a job and answers at once; the deploy ANNOUNCES deploy_job as it finishes, and what a deploy changes (ANNOUNCERS)"),
     "device_v2.rotate_confirm": Nothing("the same confirm as rotate.apply: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
+    "credential_profiles_v2.rotate_due_confirm": Nothing("starts the run as a job and answers at once; the run ANNOUNCES rotation and credentials after each device and when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     "bulk_execute": ("device_state",),
     "backup_config": ("backups",),

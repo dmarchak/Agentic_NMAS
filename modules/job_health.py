@@ -1153,6 +1153,7 @@ def breakglass_rows(exports=None, current=None, intact=None, drills=None,
                            "same as current"}]
     rows = []
     now = time.time() if now is None else now
+    rotated_at = None                                 # read once, when a device is stale
     for list_name, now_digests in sorted(current.items()):
         # THE OFFLINE DRILL (board 7, D): a row only once overdue (every DRILL_DAYS days); the
         # Credentials page carries the quiet reminder before.
@@ -1204,10 +1205,25 @@ def breakglass_rows(exports=None, current=None, intact=None, drills=None,
                                     f"server sent {str(last.get('sha256', '?'))[:12]}")})
             continue
         stale = judged["stale"]
+        if stale and rotated_at is None:
+            # When each device was last rotated (the rotation record, C724's credential age):
+            # the row says since when the record has been out of date for it.
+            try:
+                from modules.nsot.scheduled_rotation import last_rotations
+                rotated_at = {d: iso for d, (_t, iso) in last_rotations().items()}
+            except Exception as exc:                  # noqa: BLE001
+                log.warning("breakglass rows: the rotation record could not be read: %s", exc)
+                rotated_at = {}
         for r in stale:
+            since = (rotated_at or {}).get(r["device"]) if r["state"] == "differs" else ""
             rows.append({"unit": f"breakglass:{list_name}/{r['device']}", "what": what,
                          "device": r["device"], "list": list_name, "state": "breakglass_stale",
                          "max_age_minutes": 0,
+                         "headline": (f"{r['device']}'s break-glass record is out of date "
+                                      + (f"since {since}" if since else
+                                         "(it holds an older credential)" if
+                                         r["state"] == "differs" else "(it has no entry for it)")
+                                      + ": export it again"),
                          "action": {"label": "Export the break-glass record again: it cannot "
                                              "recover this device as it stands. Verify the "
                                              "copy on the machine that keeps it (C221): this "

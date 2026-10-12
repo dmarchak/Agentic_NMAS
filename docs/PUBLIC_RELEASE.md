@@ -139,3 +139,32 @@ IPv4 literals out of `modules/nsot/`, `modules/integrations/` and `routes/`, and
 `modules/` and `scripts/` outside the lab tooling to the literal check.
 
 **Size:** each row its own; the literal check's widening is small.
+
+---
+
+## f. Device-login two-factor authentication (a release feature; not started)
+
+The operator, 2026-10-12: registered here, not built now. Today a person and Mercury both log in
+to a device with the same kind of local credential (a password Mercury holds and rotates).
+Release adds a second factor for PEOPLE and keeps Mercury's own access key-based:
+
+- **AAA with an OTP server.** Devices authenticate logins through RADIUS or TACACS+ against an
+  OTP-capable server (FreeRADIUS with TOTP, privacyIDEA, or Duo's RADIUS proxy). The AAA lines
+  (servers, groups, `login authentication` lists with a local fallback for when the server is
+  unreachable) are rendered through the management profile like every other management line,
+  previewed, confirmed and verified; a change to them is a change to the path the tool reaches a
+  device on, so it carries its own repair route (docs/LESSONS.md, "changing-the-path-to-the-device").
+- **A RADIUS (or TACACS+) integration card with its health** in Settings › Integrations, as the
+  other integrations have: configured or not, answering or not, and a Needs attention row when
+  it stops answering (devices then fall back to local accounts, which the row says).
+- **People** log in with password plus OTP. **Mercury's own service account** logs in with an
+  SSH key restricted to Mercury's address (no OTP: a scheduled job cannot type one), so
+  rotation, verify and every read keep working unattended.
+- **ZTP and first boot are unaffected:** a device boots with the bootstrap credential and
+  Mercury's key; AAA arrives with the management profile's first deploy, after Verify.
+- **The RADIUS shared secret** is a secret like the others: entered by a person, stored
+  encrypted, masked on the way out, and rotated like any other credential (C724's schedule
+  applies to it).
+
+**Size:** large (the integration, the profile's AAA section with its fallback and repair route,
+key-based service login, the secret's rotation, and a lab OTP server to prove it).

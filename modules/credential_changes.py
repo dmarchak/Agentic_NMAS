@@ -29,12 +29,16 @@ def _path() -> str:
     return os.path.join(config.DATA_DIR, LOG)
 
 
-def record(*, action: str, profile: str, fields: list, actor: str, verified: str = "") -> dict:
+def record(*, action: str, profile: str, fields: list, actor: str, verified: str = "",
+           policy: str = "") -> dict:
     """Append one change: ``{"ok", "error", "entry"}``. Never raises: the change was made
-    whether or not its record could be written, and the caller says which."""
+    whether or not its record could be written, and the caller says which. *policy*: a
+    rotation policy set (action ``rotation_policy``, C724), in words; never a value."""
     entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "action": action,
              "profile": profile, "fields": [f for f in FIELDS if f in (fields or [])],
              "actor": actor or "unauthenticated", "verified": verified}
+    if policy:
+        entry["policy"] = policy
     try:
         with _lock, open(_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry, sort_keys=True) + "\n")
