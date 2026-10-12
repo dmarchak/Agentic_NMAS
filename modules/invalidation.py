@@ -185,7 +185,6 @@ DECLARED = {
     "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items
     "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # the same apply
     "golden.migrate_apply": _COMMIT,
-    "golden.sync_renames": _COMMIT,
     "golden.restore_apply": ("device_state", "intent", "baselines", "drift",
                              "approvals", "rolled_back") + _COMMIT,
     "remote.acknowledge": ("remote",),

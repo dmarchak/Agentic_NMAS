@@ -232,10 +232,6 @@ RENDERS = {
         lambda mp, tmp: P.golden_panel(mp, tmp, "/golden/legacy_store"),
         {GR3: ("loadGoldenRepoPanel", "_gLegacyStoreCard")},
         ((GR3, "loadGoldenRepoPanel", "lRes"), (GR3, "_gLegacyStoreCard", "l"))),
-    "GET /golden/renames": Render(
-        _get("/golden/renames"),
-        {GR3: ("loadGoldenRepoPanel",)},
-        ((GR3, "loadGoldenRepoPanel", "rRes"),)),
     "GET /golden/migrate/plan": Render(
         _get("/golden/migrate/plan"),
         {GR3: ("loadGoldenRepoPanel", "_migrationCard")},
@@ -580,7 +576,6 @@ EMPTY_IN_FIXTURE = {
     "GET /golden/migrate/plan devices": (R_, "nothing to migrate in the fixture"),
     "GET /golden/migrate/plan merges": (R_, "no duplicate to merge in the fixture"),
     "GET /golden/migrate/plan staged_files": (S_, _STRINGS),
-    "GET /golden/renames pending": (R_, "no pending rename in the fixture's manifest"),
     "GET /identity/posture service_allowed_operations": (S_, _STRINGS),
     "GET /identity/posture settings_read_failure": (R_, "the settings file reads; the "
                                                         "failure record is never exhibited"),
@@ -775,7 +770,8 @@ EMPTY_IN_FIXTURE = {
 # tests/test_declared_effects.py.
 # 34 -> 38: C506 phase 4 (2026-10-06): the receipt's expected effects and interfaces, empty
 # because the fixtures' runs compare no interface by name; reached in tests/test_verify_checks.py.
-EMPTY_RECORDS_CEILING = 38
+# 38 -> 37: 7.8 (2026-10-12): /golden/renames left, and its `pending` with it.
+EMPTY_RECORDS_CEILING = 37
 
 
 def _empty_paths(obj, path=""):

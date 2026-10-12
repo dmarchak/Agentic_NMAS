@@ -1093,26 +1093,6 @@ def migrate_apply():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-@bp.route("/renames", methods=["GET"])
-def renames():
-    """Renames noticed by an inventory refresh but not yet committed."""
-    from modules.inventory import pending_renames
-    return jsonify({"ok": True, "pending": pending_renames(_active_list())})
-
-
-@bp.route("/renames/sync", methods=["POST"])
-def sync_renames():
-    """Apply pending renames as their own commits."""
-    from modules.inventory import sync_device_names_to_repo
-
-    data = request.get_json(silent=True) or {}
-    try:
-        return jsonify(sync_device_names_to_repo(_active_list(data),
-                                                 actor=request_actor()))
-    except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
 def _legacy_action(list_name: str, legacy_dir: str, entry: dict) -> dict:
     """What to DO about one legacy-only file (the operator, 2026-09-28: the
     notice stated a state and a condition for clearing it, and no action).

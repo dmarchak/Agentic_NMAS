@@ -429,7 +429,6 @@ HISTORY = {
     "attention.acknowledge": ("acknowledgements", "restarts"),
     "restarts.planned": ("restart_windows",),
     "golden.migrate_apply": ("golden",),
-    "golden.sync_renames": ("golden",),
     "v2.history_view_save": ("saved_views",),
     "v2.history_view_pin": ("saved_views",),
     "v2.history_view_remove": ("saved_views",),

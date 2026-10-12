@@ -34,28 +34,20 @@ async function loadGoldenRepoPanel() {
   const host = document.getElementById('goldenRepoPanel');
   if (!host || !_gList()) return;
   try {
-    const [bRes, mRes, rRes, lRes] = await Promise.all([
+    // Renames are no longer shown or synced here (7.8): a pending rename is committed alone by
+    // the next golden save.
+    const [bRes, mRes, lRes] = await Promise.all([
       fetch('/golden/baselines').then(r => r.json()),
       fetch('/golden/migrate/plan').then(r => r.json()),
-      fetch('/golden/renames').then(r => r.json()),
       fetch('/golden/legacy_store').then(r => r.json()),
     ]);
 
     const baselines = bRes.baselines || [];   // all of them: the table collapses, never cuts
     window._gBaselineCache = baselines;
-    const pending = (rRes.pending || []);
     const needsMigration = mRes.ok && mRes.device_count > 0 && !mRes.already_migrated;
 
     host.innerHTML = `
       ${needsMigration ? _migrationCard(mRes) : ''}
-      ${pending.length ? `
-        <div class="alert alert-info py-2 px-3 d-flex align-items-center gap-2">
-          <span>${pending.length} device rename(s) noticed but not yet in the repo:
-            ${pending.map(p => `<code>${_gEsc(p.from)} → ${_gEsc(p.to)}</code>`).join(', ')}</span>
-          <button class="btn btn-outline-primary btn-sm ms-auto" onclick="syncGoldenRenames()">
-            Sync device names to repo
-          </button>
-        </div>` : ''}
       ${_gLegacyStoreCard(lRes)}
       <div class="card border-light-subtle">
         <div class="card-body py-2 px-3">
@@ -179,19 +171,6 @@ async function applyGoldenMigration() {
       : `Migration failed: ${d.error}`, d.ok ? 'success' : 'danger');
     loadGoldenRepoPanel();
   } catch (e) { showToast(e.message, 'danger'); btn.disabled = false; }
-}
-
-async function syncGoldenRenames() {
-  try {
-    const r = await fetch('/golden/renames/sync', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({}),
-    });
-    const d = await r.json();
-    showToast(d.message || (d.ok ? 'Renames synced' : 'Sync failed'),
-              d.ok ? 'success' : 'danger');
-    loadGoldenRepoPanel();
-  } catch (e) { showToast(e.message, 'danger'); }
 }
 
 // `unOnboard` is empty on the first pass. If the operator opts in for devices

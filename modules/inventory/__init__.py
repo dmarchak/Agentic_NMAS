@@ -326,41 +326,6 @@ def _record_platforms(list_name: str) -> None:
         log.debug("inventory: platform sync failed for '%s': %s", list_name, exc)
 
 
-def sync_device_names_to_repo(list_name: str, actor: str = "user") -> dict:
-    """Apply pending renames to the repo as their own commits.
-
-    The explicit half of the deferred-rename design: a refresh records the
-    rename, this applies it. Also runs automatically at the next save_golden.
-    """
-    import os as _os
-
-    from modules.config import get_list_data_dir
-    from modules.nsot.repo import apply_pending_renames
-
-    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
-    if not _os.path.isdir(repo):
-        return {"ok": True, "renamed": [], "message": "No repository yet."}
-    result = apply_pending_renames(repo, actor)
-    result["message"] = (
-        f"Renamed {len(result['renamed'])} device file(s) in the repo."
-        if result["renamed"] else "No pending renames."
-    )
-    return result
-
-
-def pending_renames(list_name: str) -> list:
-    """Renames noticed by a refresh but not yet committed."""
-    import os as _os
-
-    try:
-        from modules.config import get_list_data_dir
-        from modules.nsot.manifest import pending_renames as _pending
-    except ImportError:
-        return []
-    repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
-    return _pending(repo) if _os.path.isdir(repo) else []
-
-
 # ---------------------------------------------------------------------------
 # Stale devices (amendment 4)
 # ---------------------------------------------------------------------------

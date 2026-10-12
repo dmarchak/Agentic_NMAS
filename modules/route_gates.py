@@ -263,7 +263,6 @@ GATES = {
     "add_quick_action": _g(K, "stores a canned command"),
     "delete_quick_action": _g(K, "deletes a canned command"),
     "golden.migrate_apply": _g(K, "one-shot migration of the golden store"),
-    "golden.sync_renames": _g(K, "commits pending renames"),
 
     # ---- reveal: device configuration or secrets leave the device --------
     "bulk_tftp_download": _g(R, "copies files OFF devices to a TFTP server the form names"),

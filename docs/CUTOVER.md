@@ -48,7 +48,6 @@ and built.
 | Remote | `/remote/push`, `/remote/verify`, `/remote/status` | BUILT | History's header (Push now, Verify; no real run yet) and `/v2/history/remote` |
 | Remote, auto-push | `/remote/auto-push` | BUILT (C631, 2026-10-10; not run on the host) | History › Remote set-up…: Turn on automatic pushing, offered after a successful push |
 | Remote, connect and the rest | `/remote/verify-write`, `/preview`, `/acknowledge`, `/adopt` | BUILT (C631, 2026-10-10; not run on the host) | History › Remote set-up…: Connect, Run the write probe, What a first push publishes and its typed Acknowledge, each a verified person's (`routes/remote_v2.py`). They were to stay CLI-only through a command that never existed; a host command cannot carry the verified person they need |
-| Renames | `/golden/renames`, `/golden/renames/sync` | REMOVE, 7.8 (decided 2026-10-05) | Refresh Hostnames is cut: C465 removed its NetBox write, and a device's hostname comes from its captures |
 | Legacy golden store, migration | `/golden/legacy_store`, `/golden/migrate/plan`, `/golden/migrate/apply` | REMOVE, 7.8 | Its retirement condition (`legacy_only_goldens()` empty) has held on the host since 2026-09-28 |
 | Persist, rotate, retire | `/persist/*` (2), `/rotate/*` (3), `/retire/*` (2) | BUILT, walked | The device page's Actions: Persist (C359), Rotate (C370), Retire (r5); the routes go with today's pages |
 | Seed, revert, retry | `/templatize/seed/*` (2), `/templatize/revert/*` (2), `/templatize/retry/*` (2), `/templatize/rolled-back/retries` | BUILT | Device Actions; seed walked, revert and retry not yet run |
@@ -129,6 +128,12 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   and its handler went with it, as did its gate, invalidation and stage entries, and its own
   test file (the manifest's pending rename it recorded is still tested in
   `tests/test_golden_repo.py`).
+- **Renames** (/golden/renames, /golden/renames/sync), 2026-10-12 (decided 2026-10-05): today's
+  Git tab drew pending renames and a Sync button. A rename the NetBox inventory refresh
+  notices is still recorded in the manifest and committed alone by the next golden save
+  (`repo.save_golden` runs `apply_pending_renames` first), so nothing is stranded. The two
+  inventory helpers only these routes used (`sync_device_names_to_repo`, `pending_renames`)
+  went with them; the manifest's own `pending_renames` stays.
 
 ## Legacy actions that are not routes
 
