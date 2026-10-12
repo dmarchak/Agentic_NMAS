@@ -921,15 +921,6 @@ def refresh_files(ip):
         return redirect(url_for("manage_device", ip=ip))
 
 
-# Delete device (CSV)
-# Device status (from cache)
-@app.route("/status/<ip>")
-def device_status(ip):
-    # Return online status for a device
-    online = device_status_cache.get(ip, False)
-    return {"ip": ip, "online": online}
-
-
 # ---------------------------------------------------------------------------
 # Device List Management Routes
 # ---------------------------------------------------------------------------
@@ -1370,24 +1361,6 @@ def delete_quick_action():
     return jsonify({"status": "success"})
 
 
-
-
-@app.route("/connection_status/<ip>")
-def connection_status(ip):
-    # Return connection status for persistent Netmiko session
-    status = "disconnected"
-    # Use the persistent connection strictly for status checks
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    dev = next((d for d in devices if d["ip"] == ip), None)
-    if dev:
-        try:
-            conn = get_persistent_connection(dev, connections, lock)
-            conn.find_prompt()  # lightweight check
-            status = "connected"
-        except Exception:
-            status = "disconnected"
-    return jsonify({"status": status})
 
 
 # ---------------------------------------------------------------------------

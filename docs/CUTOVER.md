@@ -69,7 +69,6 @@ and built.
 | App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
 | In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
 | Version | `/health/version` | BUILT | Help › About |
-| Reachability | `/status/<ip>`, `/connection_status/<ip>` | REMOVE, 7.8 | The reachability reader (C92) is what v2 draws |
 | Device regions | `/devices/regions` | REMOVE, 7.8 | `/v2/devices` replaces today's device list |
 | Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8, after today's template editor | Section 6a's prerequisite (no render reads a backup): the v2 intent editor and bulk intent render against the committed golden only since 2026-10-11 (C683); today's template preview and refresh-capture still read the backup store (C632), and go with today's template editor, the last prerequisite. Today's device page also names these routes by `url_for` |
 | Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02): ZTP delivery in onboarding and image management (P.13) replace them. ZTP is served by Mercury's own responder, which none of these routes touches (C616, checked 2026-10-09); `tftp_root` and `tftp_server_ip` leave with them |
@@ -227,6 +226,15 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   able to fail by moving that route's key. Proved before removal: nothing outside the tab's
   pane and script named its functions or ids; after it, no `/topology` path of today's is in
   the url_map.
+- **Reachability** (/status/<ip>, /connection_status/<ip>), 2026-10-12: the reachability
+  reader (C92) is what v2 draws (Devices, each device's status, Needs attention).
+  `/status/<ip>` was polled every 5 s for each row of today's device list; the polling
+  (`deviceIps`, `updateStatus` in `static/js/gen/index.2.js`) went, so today's list shows each
+  device's reachability as of the page's load, and the AI device cache that file seeds keeps
+  being seeded from the page. `/connection_status/<ip>` drew today's device page's "SSH
+  Connected" badge and, every 5 s while that page was open, asked the device for its prompt
+  on a persistent session: the badge, its script and the session went. Proved before removal:
+  those two scripts were the only callers; after it, neither path is in the url_map.
 
 ## Legacy actions that are not routes
 
