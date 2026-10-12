@@ -284,8 +284,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Any operation that restarts devices declares its planned-restart window BEFORE it acts**
   (the tool's Reload, the lab redeploy script, anything else), through `POST /restarts/planned`;
   a window recorded after the restart it covers is only a CORRECTION, with its reason.
-  [the late refusal, the correction and the Reload's window: tests/test_restarts.py,
-  tests/test_acknowledge.py; that every restarting operation declares one: not mechanised]
+  [the late refusal and the correction: tests/test_restarts.py, tests/test_acknowledge.py;
+  the Reload's window: tests/test_reload_v2.py; that every restarting operation declares one:
+  not mechanised]
 
 ### Measurement and testing
 
