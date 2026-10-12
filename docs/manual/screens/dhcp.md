@@ -28,6 +28,13 @@ times filled in from the global ones, so the page never claims more than that. *
 active leases against the size of the pools. ZTP's subnet is marked: it has no pool and answers
 only the reservations onboarding writes.
 
+Under each pool's range is what the pool is for: the description kept with it in Kea (in the
+pool's `user-context`), or, for ZTP's discovery pools, the vendor class it serves. A pool on a
+subnet Mercury holds that has no description says so, and Edit… adds one: the **Pool
+description** field (at most 80 printable characters; empty removes it). The description alone
+is a change Kea reloads with, and changes no lease. A pool split by an exclusion keeps its
+description on every piece.
+
 Kea's subnets start out written by hand in Kea's own files. Before Mercury first changes one, a
 single host step (`scripts/host-steps/c529-step5-subnet-files.sh`, run once on the host) moves
 every subnet, each with its reservation file, into Mercury's own files (`subnets4.json` and

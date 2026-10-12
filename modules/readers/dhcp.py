@@ -88,6 +88,18 @@ def reservations(entries, family: str) -> list:
 USES = (("in_subnet", "reservations-in-subnet", True), ("global", "reservations-global", False))
 
 
+def pool_note(pool: dict) -> str:
+    """C709: what a pool is for, as a person reads it: the description it carries in Kea's
+    `user-context`, else the words for its client class (ZTP's discovery pools), else ""."""
+    from modules.dhcp_discovery import CLASS_WORDS
+
+    note = str(((pool.get("user-context") or {}).get("description")) or "").strip()
+    if note:
+        return note
+    cls = pool.get("client-class") or ""
+    return CLASS_WORDS.get(cls, f"for clients of class {cls}" if cls else "")
+
+
 def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
     """Each subnet as Kea runs it, those inside a shared network too: id, prefix, pools, its
     lease times and the global ones, its reservations, and which reservations Kea uses there."""
@@ -102,6 +114,9 @@ def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
         out.append({"id": s.get("id"), "prefix": s.get("subnet", ""),
                     "shared_network": net.get("name", ""),
                     "pools": [p.get("pool", "") for p in s.get("pools") or []],
+                    # C709: what each pool is for, beside it by index (its description in
+                    # Kea's user-context, else what its client class says, else "").
+                    "pool_notes": [pool_note(p) for p in s.get("pools") or []],
                     "pd_pools": [f"{p.get('prefix')}/{p.get('prefix-len')} by "
                                  f"/{p.get('delegated-len')}" for p in s.get("pd-pools") or []],
                     "times": {name: s.get(key) for name, key in TIMES},

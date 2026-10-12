@@ -415,6 +415,49 @@ class TestTheSubnetPlan:
         assert not p["ok"] and "c529-step5-subnet-files.sh" in p["refused"]
 
 
+class TestAPoolSaysWhatItIsFor:
+    """C709 (the operator, 2026-10-12: "DHCP pools should have a name or description field of
+    some kind to identify what that pool is for"). Board C revised: a description per pool,
+    kept with it in Kea's `user-context`, set on Add and Edit."""
+
+    def test_a_new_range_carries_its_description(self, moved):
+        p = S.plan("Lab", dict(EDIT, pool_note="lab hosts, VLAN 10"), kea=moved["kea"])
+        assert p["ok"], p["refused"]
+        assert ("+", 'pools: [{"pool": "10.10.10.101 - 10.10.10.149", "user-context": '
+                     '{"description": "lab hosts, VLAN 10"}}]') in p["change"], p["change"]
+
+    def test_the_description_alone_is_a_change(self, moved):
+        p = S.plan("Lab", dict(EDIT, pool="", pool_note="lab hosts, VLAN 10"), kea=moved["kea"])
+        assert p["ok"], p["refused"]
+        assert any(sign == "+" and '"description": "lab hosts, VLAN 10"' in text
+                   for sign, text in p["change"]), p["change"]
+
+    def test_a_request_without_the_field_keeps_the_description_an_empty_one_removes_it(
+            self, moved):
+        got = S.apply_edit("Lab", dict(EDIT, pool_note="lab hosts, VLAN 10"),
+                           S.plan("Lab", dict(EDIT, pool_note="lab hosts, VLAN 10"),
+                                  kea=moved["kea"])["hash"],
+                           actor="p@example.invalid", reason="describe the pool",
+                           kea=moved["kea"], run_test=_ok_test,
+                           record=lambda l, plan, **k: {"ok": True, "commit": "abc1234"})
+        assert got["ok"], got["error"]
+        kept = S.plan("Lab", dict(EDIT, pool="10.10.10.110 - 10.10.10.149"), kea=moved["kea"])
+        assert any('"description": "lab hosts, VLAN 10"' in t for s_, t in kept["change"]
+                   if s_ == "+"), kept["change"]
+        cleared = S.plan("Lab", dict(EDIT, pool="", pool_note=""), kea=moved["kea"])
+        assert cleared["ok"] and any(s_ == "-" and "description" in t
+                                     for s_, t in cleared["change"]), cleared["change"]
+        assert not any(s_ == "+" and "description" in t for s_, t in cleared["change"])
+
+    @pytest.mark.parametrize("note, words", [
+        ("x" * 81, "at most 80"),
+        ("lab\x07hosts", "does not print"),
+    ], ids=["long", "control"])
+    def test_a_description_it_cannot_keep_is_refused_by_name(self, moved, note, words):
+        p = S.plan("Lab", dict(EDIT, pool_note=note), kea=moved["kea"])
+        assert not p["ok"] and words in p["refused"], p["refused"]
+
+
 def _ok_test(path):
     return True, "ok"
 

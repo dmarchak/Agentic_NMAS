@@ -179,8 +179,11 @@ def reservation_files(main_text: str, main: str, family: str, ids: list) -> dict
 #: The form's fields per family (board C): Kea's option names and the lease times it sets.
 OPTIONS = {"IPv4": {"gateway": "routers", "dns": "domain-name-servers", "domain": "domain-name"},
            "IPv6": {"dns": "dns-servers", "domain": "domain-search"}}
-ASKS = ("op", "family", "id", "prefix", "pool", "gateway", "dns", "domain", "valid",
-        "preferred", "ack")
+ASKS = ("op", "family", "id", "prefix", "pool", "pool_note", "gateway", "dns", "domain",
+         "valid", "preferred", "ack")
+#: C709: a pool's description, kept in Kea's `user-context` with the pool (Kea carries it and
+#: answers it in config-get). Words a person reads, so printable and short.
+POOL_NOTE_MAX = 80
 #: Measured on the host's kea-dhcp4 2.4.1 (C529, 2026-10-11): a client holding an address the
 #: new pool leaves out is answered with silence when it renews or rebinds, so it keeps the
 #: address until its lease ends, and is then given one from the pool.
@@ -244,7 +247,36 @@ def dump(subnets: list) -> str:
 def ask(values) -> dict:
     s = {k: (values.get(k) or "").strip() for k in ASKS}
     s["op"] = s["op"] or "edit"
+    # C709: the form always sends the description (opened with the pool's own), so what it sends
+    # is the whole intended text and empty clears it; a request without the field keeps it.
+    if values.get("pool_note") is None:
+        s["pool_note"] = None
     return s
+
+
+def _note_refusal(note: str) -> str:
+    """Why *note* cannot be a pool's description, or ""."""
+    if len(note) > POOL_NOTE_MAX:
+        return f"the pool's description is {len(note)} characters; at most {POOL_NOTE_MAX}"
+    if any(not ch.isprintable() for ch in note):
+        return "the pool's description holds a character that does not print"
+    return ""
+
+
+def _with_note(pool: dict, note) -> dict:
+    """*pool* carrying *note* as its description in `user-context` ("" removes it; None keeps
+    whatever it has); any other key of its `user-context` kept."""
+    if note is None:
+        return pool
+    out = dict(pool)
+    ctx = {k: v for k, v in (pool.get("user-context") or {}).items() if k != "description"}
+    if note:
+        ctx["description"] = note
+    if ctx:
+        out["user-context"] = ctx
+    else:
+        out.pop("user-context", None)
+    return out
 
 
 def lifetime(text: str, what: str):
@@ -374,6 +406,9 @@ def _state(list_name, s, p, kea, file_text, D) -> tuple:
 def _settings(s, after: dict, before: dict, family: str, prefix: str, config: dict, sid,
               intent) -> tuple:
     """The form's pool, options and lifetimes applied to *after*: ``(pool_given, valid)``."""
+    note = s.get("pool_note")
+    if note is not None and _note_refusal(note):
+        raise Refused(_note_refusal(note))
     if s["pool"]:
         a, b = _pool(s["pool"], prefix, family)
         for other in config.get(FILES[family][0]) or []:
@@ -383,7 +418,14 @@ def _settings(s, after: dict, before: dict, family: str, prefix: str, config: di
                 if x.version == a.version and not (b < x or a > y):
                     raise Refused(f"the pool {a} - {b} overlaps subnet {other.get('id')}'s pool "
                                   f"{x} - {y}")
-        after["pools"] = [{"pool": f"{a} - {b}"}]
+        kept = next((str((p.get("user-context") or {}).get("description") or "")
+                     for p in before.get("pools") or []
+                     if (p.get("user-context") or {}).get("description")), "")
+        after["pools"] = [_with_note({"pool": f"{a} - {b}"}, kept if note is None else note)]
+    elif note is not None and after.get("pools"):
+        # The description alone changed: every piece of the pool carries it (an exclusion may
+        # have split the range Kea is told into several).
+        after["pools"] = [_with_note(p, note) for p in after["pools"]]
     for field, name in OPTIONS[family].items():
         value = s.get(field, "")
         if not value:

@@ -96,6 +96,57 @@ def test_subnets_as_kea_runs_them(web):
     assert "no pool: ZTP answers only its reservations" in html and "0 asking" in html
 
 
+def _subnet(value, prefix):
+    """The reader value's subnet *prefix* (wherever the families keep it)."""
+    stack = [value]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, dict):
+            if x.get("prefix") == prefix and "pools" in x:
+                return x
+            stack.extend(x.values())
+        elif isinstance(x, list):
+            stack.extend(x)
+    raise AssertionError(f"no subnet {prefix} in the value")
+
+
+def test_a_pool_s_description_is_drawn_under_its_range(web):
+    """C709 (board C revised): what a pool is for, under its range; none, nothing drawn."""
+    value = _value()
+    _subnet(value, "10.10.10.0/24")["pool_notes"] = ["lab hosts, VLAN 10"]
+    _store(value)
+    html = _get(web)
+    assert ('10.10.10.100 – 10.10.10.200<br><span class="dh-pool-note">lab hosts, VLAN 10'
+            '</span>') in html, html[html.find("10.10.10.100"):][:300]
+    assert html.count('class="dh-pool-note"') == 1
+
+
+def test_a_pool_mercury_holds_without_a_description_says_how_to_add_one(web):
+    """Board C: a pool with none, on a subnet Mercury writes, says Edit… adds one; a subnet in
+    Kea's own file (no Edit…) says nothing."""
+    value = _value()
+    value["families"]["dhcp4"]["held"] = {"10": "mercury", "20": "kea-file"}
+    _subnet(value, "10.10.10.0/24")["pool_notes"] = [""]
+    _store(value)
+    html = _get(web)
+    assert ('10.10.10.100 – 10.10.10.200<br><span class="dh-pool-note faint">no description: '
+            'Edit… adds one</span>') in html, html[html.find("10.10.10.100"):][:300]
+    assert html.count("no description: Edit… adds one") == 1
+
+
+def test_the_reader_says_what_each_pool_is_for():
+    """Its description in Kea's user-context, else its client class's words (ZTP's discovery
+    pools), else nothing."""
+    from modules.dhcp_discovery import ANY, PNP
+    assert D.pool_note({"pool": "a - b", "user-context": {"description": "lab hosts"}}) == \
+        "lab hosts"
+    assert D.pool_note({"pool": "a - b", "client-class": PNP}) == \
+        "discovery: Cisco PnP (vendor class ciscopnp)"
+    assert D.pool_note({"pool": "a - b", "client-class": ANY}) == "discovery: any other vendor"
+    assert D.pool_note({"pool": "a - b", "client-class": "voip"}) == "for clients of class voip"
+    assert D.pool_note({"pool": "a - b"}) == ""
+
+
 def _s1_intent():
     """Intent's facts from s1's committed host_vars (tests/fixtures/committed/s1.yml): the SVIs
     for VLANs 10, 20 and 30 with their VRRP addresses, relays and RA flags."""

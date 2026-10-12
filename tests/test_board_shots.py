@@ -97,9 +97,18 @@ def test_dhcp(tmp_path, monkeypatch):
         value["intent"] = dict(T._s1_intent(), error="")
         value["families"]["dhcp4"]["held"] = {"10": "mercury", "20": "mercury", "255": "ztp"}
         value["families"]["dhcp6"]["held"] = {"10": "mercury", "20": "mercury", "30": "mercury"}
+        # Board C's revision (C709): a pool says what it is for under its range, or that
+        # Edit… adds a description.
+        for fam, prefix in (("dhcp4", "10.10.10.0/24"), ("dhcp6", "2001:db8:10::/64")):
+            sub = next((x for x in value["families"][fam]["subnets"] if x["prefix"] == prefix),
+                       None)
+            if sub:
+                sub["pool_notes"] = ["lab hosts, VLAN 10"] * len(sub.get("pools") or [])
         T._store(value)
         _shoot("dhcp-sub-c", "DhcpSubnets.dc.html", lambda w: "/v2/dhcp?list=Lab", served,
                widths=((1440, 1.0), (390, 2.0)))
+        _shoot("dhcp-sub-c-edit", "", lambda w: "/v2/dhcp/subnet?list=Lab&family=IPv4&id=10",
+               served, widths=((1440, 1.0), (390, 2.0)))
         T._store(T._value())
         for tab in ("lea", "res", "exc"):
             _shoot(f"dhcp-{tab}", "", lambda w, t=tab: f"/v2/dhcp?list=Lab&tab={t}", served,

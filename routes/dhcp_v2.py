@@ -127,8 +127,11 @@ def subnet_preview():
 
     s = S.ask(request.args)
     filled = (s["op"] == "remove" or (s["op"] == "add" and s["prefix"] and s["pool"])
-              or (s["op"] == "edit" and any(s[k] for k in ("pool", "gateway", "dns", "domain",
-                                                           "valid", "preferred"))))
+              or (s["op"] == "edit" and (any(s[k] for k in ("pool", "gateway", "dns", "domain",
+                                                            "valid", "preferred"))
+                                         # C709: the description is always sent once the form
+                                         # is submitted; unchanged, the plan says nothing moves.
+                                         or s["pool_note"] is not None)))
     p = S.plan(_list_name(), request.args, intent=_intent()) if filled else None
     return _sop_region({"state": "preview" if filled else "form", "ask": s, "plan": p})
 

@@ -1656,6 +1656,8 @@ a.topo-ent:hover { background: var(--hover); }
 .dh-f input[type=text], .dh-f select { font: inherit; font-size: 13px; padding: 6px 8px;
   border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); }
 .dh-f .dh-msg { min-height: 17px; line-height: 17px; font-size: 11.5px; color: var(--ink-3); }
+/* C709: what a pool is for, under its range (words, not an address: the sans face, quiet). */
+.dh-pool-note { font-family: var(--sans); font-size: 12px; color: var(--ink-3); }
 .op-part.dh-cont { border-top: none; padding-top: 0; }
 /* Board B's change lines wrap, a phone's width too (a reservation line is long). */
 .dh .op-diff { white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -236,7 +236,11 @@ def _plan(list_name, s, p, kea, intent, record, D, S) -> None:
     if not shaped:
         raise Refused(f"the exclusions would leave nothing of the pool {as_set}")
     after = json.loads(json.dumps(before))
-    after["pools"] = [{"pool": x} for x in shaped]
+    # C709: every piece keeps what the pool says it is for (its user-context, the description).
+    ctx = next((dict(x["user-context"]) for x in before.get("pools") or []
+                if x.get("user-context")), None)
+    after["pools"] = [dict({"pool": x}, **({"user-context": ctx} if ctx else {}))
+                      for x in shaped]
     p["after"] = after
     others = [e for e in rec["exclusions"]
               if not (e.get("family") == family and e.get("subnet") == sid)]

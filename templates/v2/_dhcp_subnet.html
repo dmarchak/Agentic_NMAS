@@ -40,6 +40,8 @@
     {%- endif %}
     <div class="op-part"><h3>Settings</h3><div class="dh-fields">
       <label class="dh-f">Pool<input type="text" name="pool" value="{{ s.pool }}" class="mono" autocomplete="off" spellcheck="false" placeholder="{{ (sub.pools or [''])[0] }}"><span class="dh-msg">was {{ (sub.pools or ['none']) | join(', ') }}; first - last</span></label>
+      {#- C709: opened with the pool's own description, so what is sent is the whole text; empty removes it. #}
+      <label class="dh-f">Pool description<input type="text" name="pool_note" value="{{ s.pool_note if s.pool_note is not none else ((sub.pool_notes or [''])[0] if s.op != 'add' else '') }}" maxlength="80" autocomplete="off"><span class="dh-msg">what the pool is for; kept with it in Kea, drawn under its range</span></label>
       {%- if not v6 %}
       <label class="dh-f">Gateway (3)<input type="text" name="gateway" value="{{ s.gateway }}" class="mono" autocomplete="off" spellcheck="false"><span class="dh-msg">{% if sub.gateway and sub.gateway.intent %}intent: VRRP {{ sub.gateway.intent | join(', ') }} on {{ sub.gateway.where | join(', ') }}{% else %}intent names no first-hop address here{% endif %}</span></label>
       {%- endif %}

@@ -31,6 +31,10 @@ log = logging.getLogger(__name__)
 
 PNP, ANY = "nmas-discovery-pnp", "nmas-discovery"
 CLASSES = (PNP, ANY)
+#: What each discovery pool is for, drawn under its range where the pool carries no description
+#: of its own (C709, board C revised).
+CLASS_WORDS = {PNP: "discovery: Cisco PnP (vendor class ciscopnp)",
+               ANY: "discovery: any other vendor"}
 #: The vendor class a C8000v sends (option 60, measured in the throwaway session 2026-10-05).
 VENDOR = "ciscopnp"
 #: Board L's lease: five minutes, so a device that stops asking leaves the range soon and the

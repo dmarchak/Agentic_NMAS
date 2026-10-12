@@ -44,6 +44,21 @@ class TestThePlan:
         assert ("pass", "inside the pool 10.10.10.100 - 10.10.10.200: the pool is split around "
                         "it") in p["checks"]
 
+    def test_each_piece_keeps_what_the_pool_says_it_is_for(self, moved):
+        """C709: an exclusion splits a described pool; each piece carries its description."""
+        values = {"op": "edit", "family": "IPv4", "id": "10", "pool": "",
+                  "pool_note": "lab hosts, VLAN 10"}
+        got = S.apply_edit("Lab", values, S.plan("Lab", values, kea=moved["kea"])["hash"],
+                           actor="p@example.invalid", reason="describe the pool",
+                           kea=moved["kea"], run_test=_ok_test,
+                           record=lambda l, plan, **k: {"ok": True, "commit": "abc1234"})
+        assert got["ok"], got["error"]
+        p = E.plan("Lab", RIG, kea=moved["kea"], record=EMPTY)
+        assert p["ok"], p["refused"]
+        assert [(x["pool"], x.get("user-context")) for x in p["after"]["pools"]] == [
+            ("10.10.10.100 - 10.10.10.119", {"description": "lab hosts, VLAN 10"}),
+            ("10.10.10.130 - 10.10.10.200", {"description": "lab hosts, VLAN 10"})]
+
     def test_a_held_address_is_said_with_how_long_its_client_keeps_it(self, moved):
         p = E.plan("Lab", dict(RIG, range="10.10.10.102", source="intent",
                                reason="r7 Gi2 in intent, a static address"),
