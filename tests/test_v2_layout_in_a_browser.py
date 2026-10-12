@@ -80,10 +80,6 @@ BASELINES = {"state": "ok", "doc": {"last_good": {"value_at": "2026-10-02T09:00:
         {"tag": "baseline/20260926T080000Z", "created": "2026-09-26T08:00:00Z", "withdrawn": False,
          "decision": "earned", "usable": True, "stale": []}]}}}}}}
 
-AUTHS = [{"device": "r3", "at": "2026-10-02T07:00:00Z", "actor": "operator@example.com",
-          "reason": "Oxidized fetched r3 during the crash and kept a partial config; the next poll "
-                    "replaces it", "expired": False, "expires_at": "2026-10-03T07:00:00Z"}]
-
 
 @pytest.fixture
 def served(lab, monkeypatch):  # noqa: F811
@@ -120,8 +116,6 @@ def served(lab, monkeypatch):  # noqa: F811
     stored = {"baseline-usability": BASELINES, "app-pushed": pushed}
     monkeypatch.setattr(reader_job, "read_cached",
                         lambda name: stored[name] if name in stored else real(name))
-    monkeypatch.setattr("modules.nsot.freshness.authorisations",
-                        lambda ln, include_expired=False: [dict(a) for a in AUTHS])
     # For the frame the top bar is measured in, and nothing else (the module docstring).
     monkeypatch.setattr(csp, "STRICT_POLICY", csp.STRICT_POLICY.replace(
         "frame-ancestors 'none'", "frame-ancestors 'self'"))
@@ -138,7 +132,7 @@ PAGES = ["/v2/", "/v2/devices", "/v2/netbox", "/v2/device/r2", "/v2/device/r2?ta
          "/v2/device/r2?tab=intent&edit=1",
          "/v2/device/r2?tab=history", "/v2/device/r2?tab=monitoring", "/v2/device/r2?tab=logs",
          "/v2/device/r2?tab=netbox", "/v2/device/r2?tab=neighbours", "/v2/history",
-         "/v2/history?tab=baselines", "/v2/history?tab=authorisations", "/v2/monitoring",
+         "/v2/history?tab=baselines", "/v2/monitoring",
          "/v2/monitoring/coverage", "/v2/help/about", "/v2/update", "/v2/settings",
          "/v2/settings/installation", "/v2/help/records-database",
          "/v2/help/installation-settings",
@@ -221,7 +215,7 @@ class TestNoOneLineRowOverflows:
         srv, b = served
         b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 1000})
         problems = []
-        for page in ("/v2/history", "/v2/history?tab=baselines", "/v2/history?tab=authorisations",
+        for page in ("/v2/history", "/v2/history?tab=baselines",
                      "/v2/device/r2?tab=history"):
             b.go(srv.url(page))
             b.wait_for("return document.querySelector('.hist-sum, .tl-sum')", 10)

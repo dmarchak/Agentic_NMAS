@@ -111,26 +111,5 @@
   <p class="muted small">Judged {{ stamp(b_at) }}, in the background, whenever a commit or a tag moves.</p>
   {%- endif %}
 </section>
-{%- else %}
-<p class="tab-help">{{ info('history', 'authorisations', 'About authorisations') }}</p>
-<section class="card" id="hist-auth">
-  {%- if auth.error %}
-  <div class="notice notice-warn">{{ icon('warn') }}<p>The authorisations could not be read: {{ auth.error }}. Not the same as there being none.</p></div>
-  {%- elif not auth.rows %}
-  <p class="cov-head">{{ icon('info') }} No Oxidized divergence has been authorised in {{ ref.name }}.</p>
-  {%- else %}
-  {#- One line per authorisation; the stated reason opens UNDER it at full width. -#}
-  <div class="hist-list hist-au">
-    <div class="hist-head" aria-hidden="true"><span></span><span>Device</span><span>Authorised</span><span>By</span><span>Reason</span><span>Expires</span></div>
-    {%- for a in auth.rows %}
-    <details class="hist-row">
-      <summary class="hist-sum"><span class="hist-what"><a href="{{ url_for('device_v2.device', name=a.device) }}">{{ a.device }}</a></span><span class="hist-when">{{ stamp(a.at) }}</span>
-        <span class="hist-meta"><span class="hist-who">{{ a.actor }}</span><span class="hist-why muted">{{ a.reason }}</span><span>{% if a.expired %}{{ badge('expired', 'muted') }}{% else %}expires {{ stamp(a.expires_at) }}{% endif %}</span></span></summary>
-      <div class="hist-detail"><p>Stated reason: {{ a.reason }}</p><p class="muted">By {{ a.actor }}</p></div>
-    </details>
-    {%- endfor %}
-  </div>
-  {%- endif %}
-</section>
 {%- endif %}
 </div>

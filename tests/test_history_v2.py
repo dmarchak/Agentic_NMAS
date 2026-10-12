@@ -255,16 +255,14 @@ class TestThePage:
         assert "have not been read yet" in client.get("/v2/history?tab=baselines").get_data(
             as_text=True)
 
-    def test_the_authorisations_tab(self, client, monkeypatch):
-        from modules.nsot import freshness
-        monkeypatch.setattr(freshness, "authorisations", lambda name, include_expired=False: [
-            {"device": "r3", "at": "2026-10-01T10:00:00+00:00", "actor": "test-person@example.invalid",
-             "reason": "an approved change not yet captured", "expires_at": "2026-10-02T10:00:00+00:00",
-             "expired": True}])
+    def test_the_authorisations_tab_is_gone_and_its_link_opens_the_timeline(self, client):
+        """C708 (the operator, 2026-10-12: "What is this tab for? If not needed, remove it"). It
+        showed only the retired Oxidized freshness gate's authorisations, which nothing has
+        written since Phase 3, and the host held none. An old link opens the Timeline."""
         html = client.get("/v2/history?tab=authorisations").get_data(as_text=True)
-        assert "an approved change not yet captured" in html and "expired" in html
-        summaries, details = _rows(html)
-        assert "Stated reason: an approved change not yet captured" in details[0]
+        assert "Authorisations" not in re.sub(r"<script.*?</script>", "", html, flags=re.S)
+        assert 'id="hist-auth"' not in html and "Oxidized divergence" not in html
+        assert "Timeline" in html
 
     def test_the_remote_header_says_the_sentence(self, client):
         html = client.get("/v2/history/remote").get_data(as_text=True)

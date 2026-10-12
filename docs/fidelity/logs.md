@@ -14,7 +14,8 @@ Compared again 2026-10-11 (C675): the sidebar's Logs became the live tail (board
 Compared again 2026-10-11 (C667's saved views): "Save this view…" beside Copy the link, as the board draws it; the title-and-actions row now the same. No other region's verdict changed.
 Templates compared: templates/v2/history_syslog.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
 Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the line under the timeline tab's filters, a branch the syslog view never draws; nothing on this board's page moved.
-Templates sha256: `2ddb0e20395e5f4425ce1055dbb40882a481c514af230de29b135a7c0c224ff4`
+Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
+Templates sha256: `6da8adc653190b3e982fb5e380969f2905355e41d8081d9c7edf3c9a5e8a9bcf`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

@@ -490,8 +490,6 @@ WRITTEN_ELSEWHERE = {
                "templates, a policy (every writer, through repo.commit())",
     "decisions": "a Save All's baseline decision, its commit's Baseline: trailer",
     "updates": "the app's updater (deploy/update), not a device",
-    # Phase 3 removed the freshness gate and its writer; what it recorded stays readable.
-    "freshness": "past authorisations past the retired freshness gate: written by nothing now",
     "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
                      "reveal routes that read devices, Ask the device and Show commands",
 }

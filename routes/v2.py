@@ -190,8 +190,7 @@ def about():
 
 #: Board D's tabs, and Query between Timeline and Baselines (C667: History › Query, boards A to
 #: C on the canvas page "History, Query").
-HISTORY_TABS = (("timeline", "Timeline"), ("query", "Query"), ("baselines", "Baselines"),
-                ("authorisations", "Authorisations"))
+HISTORY_TABS = (("timeline", "Timeline"), ("query", "Query"), ("baselines", "Baselines"))
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
 
 
@@ -307,12 +306,6 @@ def _history_ctx(request) -> dict:
         good = (got.get("doc") or {}).get("last_good") or {}
         ctx["b"] = (((good.get("value") or {}).get("lists") or {}).get(ref.name) or {})
         ctx["b_at"] = good.get("value_at")
-    else:
-        try:
-            rows = HS.past_authorisations(ref.name)
-            ctx["auth"] = {"rows": list(reversed(rows)), "error": ""}
-        except Exception as exc:                          # noqa: BLE001
-            ctx["auth"] = {"rows": [], "error": f"{type(exc).__name__}: {exc}"}
     return ctx
 
 

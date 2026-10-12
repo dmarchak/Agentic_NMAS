@@ -602,7 +602,6 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .hist-list { font-size: 13px; }
 .hist-list { --cols: 14px 110px minmax(0, 1fr) 120px minmax(0, 240px) 120px; }
 .hist-list.hist-bl { --cols: 14px minmax(0, 1fr) 90px 110px 140px 200px; }
-.hist-list.hist-au { --cols: 14px 70px 100px minmax(0, 220px) minmax(0, 1fr) 140px; }
 /* The one timeline (C369, board D): when, kind, device, what, who. */
 .hist-list.hist-tl { --cols: 14px 110px 92px 96px minmax(0, 1fr) minmax(0, 150px); }
 .hist-dev { white-space: nowrap; }

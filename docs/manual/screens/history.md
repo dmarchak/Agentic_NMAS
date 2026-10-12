@@ -40,8 +40,7 @@ Open a line for the full record underneath. It shows:
 - for a commit, **Show the change**: its diff, with every secret masked;
 - **Open (device)'s History** for each device the record names.
 
-The Baselines and Authorisations tabs work the same way, with each baseline's reasons and each
-authorisation's stated reason under its line.
+The Baselines tab works the same way, with each baseline's reasons under its line.
 
 Filters:
 
@@ -52,8 +51,8 @@ Filters:
   - **What ran on a device:** deploys and restores, rotations, persists, onboarding and adopt,
     runs cut off midway, and authorised retries.
   - **What happened to a device:** restarts and planned windows.
-  - **Decisions and records:** approvals, acknowledgements, freshness authorisations,
-    break-glass exports, baseline decisions and app updates.
+  - **Decisions and records:** approvals, acknowledgements, break-glass exports, baseline
+    decisions and app updates.
 - **Since.**
 
 **Every kind** and **Commits only** are one click away. Each filter is part of the page's
@@ -145,9 +144,3 @@ each line is given its reason. One confirm restores the rest, one device at a ti
 verified and rolled back alone, its configuration and its intent from the baseline; the batch
 is drawn below as it runs. See [Restore and re-apply a baseline](restore).
 
-## Authorisations {#authorisations}
-
-Each divergence between Oxidized's copy of a device and its approved golden that a person
-authorised, with who, why, and when it expired. These are past records: the freshness gate
-they passed was retired with Oxidized (2026-10-08), so nothing adds to them now, and the tab
-keeps every one readable. A network that never had one shows none.

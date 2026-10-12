@@ -760,28 +760,6 @@ def interrupted(ctx):
                  for r in rows[:ctx["limit"]]])
 
 
-def past_authorisations(list_name: str) -> list:
-    """Every authorisation the retired freshness gate recorded for *list_name*, newest last,
-    expired ones included: a past record History keeps readable (Phase 3 removed the gate and
-    its writer)."""
-    from modules.nsot import freshness as fr
-    return fr.authorisations(list_name, include_expired=True)
-
-
-def freshness(ctx):
-    """Each authorisation to deploy past the freshness gate, with its reason."""
-    try:
-        rows = [a for a in past_authorisations(ctx["ref"].name)
-                if _mine(ctx, a.get("device", ""))]
-    except Exception as exc:                          # noqa: BLE001
-        return _out(errors=[f"the freshness authorisations could not be read: {exc}"])
-    return _out([_event(a.get("at", ""), "freshness", "Freshness gate authorised",
-                        [a.get("device", "")], who=a.get("actor", ""), detail=a.get("reason", ""),
-                        record=[("Reason", a.get("reason")), ("Expires", iso(a.get("expires_at"))),
-                                ("Fingerprint", a.get("fingerprint"))])
-                 for a in rows[-ctx["limit"]:]])
-
-
 def approvals(ctx):
     """Each approval-queue item about a device that a person or a capture resolved."""
     from modules import approval_queue
@@ -996,7 +974,7 @@ SOURCES = {
     "decisions": decisions, "receipts": receipts, "restarts": restarts,
     "restart_windows": restart_windows, "rotation": rotation, "retries": retries,
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
-    "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
+    "interrupted": interrupted, "approvals": approvals,
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
@@ -1019,7 +997,6 @@ KIND_GROUPS = (
                                    ("windows", "Planned windows", ("window",)))),
     ("Decisions and records", (("approvals", "Approvals", ("approval",)),
                                ("acknowledged", "Acknowledgements", ("acknowledged",)),
-                               ("freshness", "Freshness authorised", ("freshness",)),
                                ("breakglass", "Break-glass exports", ("breakglass",)),
                                ("credentials", "Credential profiles", ("credential",)),
                                ("expected", "Expected islands", ("expected",)),

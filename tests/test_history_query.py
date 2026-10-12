@@ -16,7 +16,7 @@ def _tab(web):  # noqa: F811
 def test_the_tab_sits_between_timeline_and_baselines(web):  # noqa: F811
     html = _tab(web)
     tabs = re.findall(r'<a class="tab[^"]*" href="/v2/history\?tab=(\w+)"', html)
-    assert tabs == ["timeline", "query", "baselines", "authorisations"]
+    assert tabs == ["timeline", "query", "baselines"]   # C708: Authorisations removed
     assert re.search(r'<a class="tab on" href="/v2/history\?tab=query" aria-current="page">',
                      html)
 

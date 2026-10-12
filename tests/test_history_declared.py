@@ -180,13 +180,11 @@ class TestEachSourceReachesTheTab:
         assert "Acknowledged: shutdown authorised 3 times" in html
         assert "Break-glass record exported (1 device)" in html
 
-    def test_an_interrupted_hold_a_freshness_authorisation_and_an_approval(self, lab,  # noqa: F811
-                                                                            monkeypatch):
+    def test_an_interrupted_hold_and_an_approval(self, lab):  # noqa: F811
+        """C708: the retired freshness gate's authorisations left History with its tab (the
+        host held none)."""
         from modules import config
-        from modules.nsot import freshness, listref
-        # Freshness resolves its file from LISTS_DIR (never creating a list); the lab's list
-        # folder is <tmp>/lab, so LISTS_DIR is <tmp>.
-        monkeypatch.setattr(config, "LISTS_DIR", os.path.dirname(listref.resolve("Lab").data_dir))
+        from modules.nsot import listref
         folder = os.path.join(config.DATA_DIR, "device_ops", "lab")
         os.makedirs(folder, exist_ok=True)
         with open(os.path.join(folder, "interrupted.jsonl"), "a") as fh:
@@ -194,15 +192,6 @@ class TestEachSourceReachesTheTab:
                                             "actor": "alex@example.com", "started": time.time(),
                                             "pid": 4242, "progress": {"step": "push"}},
                                  "found_at": time.time()}) + "\n")
-        # A record the retired gate wrote (Phase 3 removed its writer): History still reads it.
-        apath = freshness._authorisation_path("Lab")
-        os.makedirs(os.path.dirname(apath), exist_ok=True)
-        with open(apath, "w") as fh:
-            json.dump([{"device": "r3", "list": "Lab", "fingerprint": "fp123",
-                        "actor": "alex@example.com", "reason": "Oxidized is a day behind",
-                        "at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()),
-                        "expires_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00",
-                                                    time.gmtime(time.time() + 86400))}], fh)
         qpath = os.path.join(listref.resolve("Lab").data_dir, "approval_queue.json")
         with open(qpath, "w") as fh:
             json.dump([{"id": "q1", "device_hostname": "r3", "action_type": "revert_to_golden",
@@ -211,7 +200,6 @@ class TestEachSourceReachesTheTab:
                         "resolved_by": "alex@example.com", "context": "drift answered"}], fh)
         html = _history(lab)
         assert "A deploy was cut off: its process ended" in html
-        assert "Freshness gate authorised" in html and "Oxidized is a day behind" in html
         assert "Revert to golden: approved" in html
 
     def test_a_save_that_measured_the_device_and_changed_no_golden(self, lab):  # noqa: F811
