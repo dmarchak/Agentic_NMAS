@@ -158,7 +158,12 @@
     if (!editing) return;
     e.detail.shouldSwap = false;
     region.setAttribute('data-held', '1');
-    var unit = (editing.closest && (editing.closest('[x-data]') || editing.parentNode)) || region;
+    // The note stays INSIDE the region, beside the field: its form or Alpine component when
+    // that is the region's own, else the field's parent. `<body>` carries x-data (the frame),
+    // so a field with no nearer component put the note on the page grid as a new column
+    // (Topology's Find box, the operator 2026-10-12).
+    var unit = editing.closest && editing.closest('form, [x-data]');
+    if (!unit || unit === region || !region.contains(unit)) unit = editing.parentNode || region;
     if (!unit.querySelector('.held-note')) {
       var note = root.document.createElement('span');
       note.className = 'held-note';

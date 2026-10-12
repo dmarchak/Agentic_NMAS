@@ -166,3 +166,37 @@ def test_stamp_draws_words_not_the_iso_time():
                                      '{{ stamp("2026-10-05T02:31:00Z") }}')
     text = out.split(">", 1)[1].split("<", 1)[0]
     assert "2026-10-05T02:31:00Z" not in text and text.endswith("ago"), out
+
+
+def test_the_held_note_stays_inside_the_region_beside_the_field(served):  # noqa: F811
+    """The operator, 2026-10-12: on Topology, with text left in Find and the reader's update
+    arriving, the note appeared outside the page (top right) and the map's layout broke. The
+    field has no Alpine component nearer than `<body x-data="frame">`, so the note became a
+    child of the page grid. It now goes beside the field, inside the region."""
+    from tests.test_topology_v2 import _store, _value
+    _store(_value())
+    srv, b = served
+    b.go(srv.url("/v2/topology?list=Lab"))
+    b.wait_for(READY + " && !!document.getElementById('topo-find')", 15)
+    b.js("var i = document.getElementById('topo-find'); i.focus(); i.value = 'r6';"
+         "i.dispatchEvent(new Event('input', {bubbles: true})); return 1")
+    b.js("document.body.dispatchEvent(new CustomEvent('nmas:topology')); return 1")
+    b.wait_for("var t = document.getElementById('topo');"
+               f"return !!t && t.getAttribute('data-held') === '1' && {SETTLED}", 15)
+    state = b.js("var n = document.querySelector('.held-note');"
+                 "return {note: !!n, inside: !!n && document.getElementById('topo').contains(n),"
+                 " onBody: !!n && n.parentNode === document.body,"
+                 " value: document.getElementById('topo-find').value}")
+    assert state == {"note": True, "inside": True, "onBody": False, "value": "r6"}, state
+
+
+def test_the_map_carries_no_native_tooltip_over_its_links():
+    """The operator, 2026-10-12: hovering a link drew the browser's own tooltip (the map's SVG
+    `<title>`, the network's summary) over the link's card. The summary is the map's accessible
+    name, as an attribute, which no browser shows on hover."""
+    with open("templates/v2/_topology_map.html", encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    at = [i for i, line in enumerate(lines) if line.startswith('<svg class="topo-map')]
+    assert len(at) == 1, at
+    assert 'aria-label="{{ t.list }}: {{ t.summary.devices }} devices' in lines[at[0]]
+    assert not lines[at[0] + 1].lstrip().startswith("<title"), lines[at[0] + 1]
