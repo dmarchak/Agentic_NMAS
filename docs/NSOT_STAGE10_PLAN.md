@@ -7,6 +7,11 @@ operator's lab runs that way first (section 11). The plan's entry is in
 [NSOT_PLAN.md](NSOT_PLAN.md) ("STAGE 10"). No earlier Stage 10 was recorded anywhere; this
 is the first.
 
+**Beside it, [PUBLIC_RELEASE.md](PUBLIC_RELEASE.md)** (the operator, 2026-10-12): the
+milestone after Phase 7 that lists what makes Mercury Cisco-only and lab-shaped today and what
+a public release needs instead (a vendor-neutral Path… hop lookup, the Cisco-assumption
+survey, packaging, licensing for distribution). Where the two overlap, this plan governs.
+
 **What it produces:** a clean public version that someone else can download, install and
 use to manage their own network, in a SEPARATE, NEW public GitHub repository holding only
 what is needed. Once it exists, the operator makes this repository private, because its

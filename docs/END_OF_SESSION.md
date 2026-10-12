@@ -1,5 +1,31 @@
 # End of session: where Phase 7 stands
 
+## STATUS: 2026-10-12, your picks (from 04:35 UTC; 22:35 UTC−6)
+
+- **C681 (a), dhcpcd: DONE and proved.** On h1: the first start renewed ::107 under IAID
+  657211943 with real lifetimes; a stop and start confirmed the same lease under the same IAID,
+  no new lease; a forced renew moved Kea's record to 05:00:44 under the same IAID; the
+  reservation matches. Then h2, h3, h4, each renewing its own address under its pinned IAID,
+  and the lab's start-up (`host-net.sh`, the package bound into each host) carries it across a
+  redeploy. Needed beyond the plan: an exit hook putting the /64 on-link (DHCPv6 has no prefix
+  length). **My slip:** on h2 I started dhcpcd by hand before its pinned files were in place;
+  it took ::100 with a generated DUID and turned h2's RA handling off: undone, the lease ::100
+  is one more orphan. **Sitting 2 step 14 can proceed.**
+- **C700 (a) and (b): installed 05:05 UTC.** 2 s per request and 3 retries (8 s worst, inside
+  the 20 s scrape); the OSPF walks only the state column, since nothing reads another (the live
+  dashboards and Mercury checked). Every OSPF target up, 10 to 12 requests a scrape (was 55 to
+  66), 0.1 to 0.7 s. **The 24 h timeout rate is due 2026-10-13 05:06 UTC.**
+- **C695 (a): sitting 2 step 15, for your confirm** (the intent lines, the expected program,
+  and the proof the agent runs after). **C703** registered (the "always" defaults, a note).
+- **C696 checked: the code already follows your rule.** 8.8.8.8 is not dropped at the edge:
+  r5 advertises 8.8.8.8/32 over BGP and each edge's CEF forwards it out Gi2 toward r5 (raw
+  answers in C696's row); 192.0.2.1, which r5 does not advertise, is "no route" and dropped. A
+  test pins both.
+- **Public release readiness:** `docs/PUBLIC_RELEASE.md` (items a to e), noted in NSOT_PLAN and
+  beside Stage 10. C13 and C336 moved there; C663, C329, C396 and C333 listed and kept in their
+  phases (each a defect here too).
+- **Next:** the 7.8 removals (renames and the legacy store next), then C667.
+
 ## STATUS: 2026-10-12, your seven decisions (from 03:20 UTC; 21:20 UTC−6)
 
 - **(1), (5) accepted, noted.** Snap to grid (C691) after the 7.8 removals.
@@ -345,9 +371,9 @@ first in sitting 2).
 13. **History › Query, a saved view (C667)**: open "Interface errors and discards over time",
     **Save this view…** with a title; pin it; open it from board A's list; remove it. Expect each
     act recorded on History as you, and the list redrawn in other tabs. Undo: the remove.
-14. **WAITS on your choice in C681's row (2026-10-12 04:01 UTC: the approved lab change cannot
-    install the lease's lifetimes with busybox, and a restart takes a new address despite the
-    reservation; options (a) to (c) there).** As drawn before that measurement:
+14. **CAN PROCEED (2026-10-12 05:05 UTC): every lab host now runs dhcpcd pinned to its lease,
+    renewing as a daemon with the lease's real lifetimes (C681's row; h1 proved first).** The
+    "first approve the lab change" sentence below is done. As drawn:
     **IPv6 lease times on subnets 10, 20 and 30 (C681), ONLY after the lab change.** Measured
     2026-10-12: no lab host runs a DHCP client after its first lease, so a shorter lease would
     let Kea hand a host's address to another client while the host still uses it ("forever").
@@ -363,6 +389,29 @@ first in sitting 2).
     releasing (C681's row: a previewed release through Mercury, which you set aside on
     2026-10-12 on the expectation that they would expire). The read-back after this step
     shows it: ::101 still ends 2027-10-06. Undo: Edit… back to 365 days.
+15. **C695 (a), your pick (2026-10-12): the ISP peering /31s into OSPF, passive.** Outside 08:30
+    to 09:10 UTC; nothing on s3. Today r1 pings 198.51.100.1 0/5 (its flow hashes to r4,
+    which has no route to it) and 198.51.100.3 5/5 (measured 03:25 UTC).
+    a. **r3 › Intent › Edit**: under `routing.ospf` (process 1), add to `settings`
+       `- passive-interface GigabitEthernet2` and to `networks`
+       `- network 198.51.100.0 0.0.0.1 area 0`. **Preview**: two lines added against intent
+       and against the device. **Commit** with the reason "C695: r3's peering /31 into OSPF,
+       passive".
+    b. **r3 › Actions › Deploy…**: the program is those two lines under `router ospf 1`
+       (passive-interface before the network line, since the template renders `settings`
+       before `networks`, so no hello leaves toward r5; if the preview shows another order,
+       stop and tell the agent); confirm.
+       Expect verify passed (OSPF's settle window waited out), a receipt, and on r3's
+       Neighbours the same OSPF neighbours as before (none toward r5: Gi2 is passive).
+    c. The same for **r4**: `- passive-interface GigabitEthernet2` and
+       `- network 198.51.100.2 0.0.0.1 area 0`; reason "C695: r4's peering /31 into OSPF,
+       passive"; Deploy….
+    d. **The proof (the agent runs it after your confirms, read-only):** Path… from r1 to
+       r5's 198.51.100.1 shows one branch, via r3, delivered (r1's CEF for it is now
+       198.51.100.0/31 via 10.255.3.13 only); Show commands on r1:
+       `ping 198.51.100.1 repeat 5 source Loopback0` 5/5, and the same for 198.51.100.3.
+    Undo: Intent › Edit to remove the two lines, commit; the deploy preview offers them as a
+    Mode B removal with your reason.
 
 ### Sitting 3: fleet-wide writes (each previewed; you confirm)
 

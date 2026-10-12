@@ -6675,6 +6675,15 @@ runs this way and is tested before Stage 10's release depends on it.
 
 ---
 
+### PUBLIC RELEASE READINESS — a milestone after Phase 7 (the operator, 2026-10-12; scoped, not built)
+
+**The scope is [PUBLIC_RELEASE.md](PUBLIC_RELEASE.md):** a vendor-neutral hop lookup for
+Topology's Path… (CEF, IP-FORWARD-MIB, room for OpenConfig AFT), a survey of every other
+Cisco-specific assumption with its vendor-neutral approach and size, packaging (a container
+image first, the venv for bare metal), licensing for distribution (psycopg's LGPL and every
+bundled package), and the lab-shaped rows already registered. It comes after Phase 7, whose
+order is unchanged, and beside Stage 10 below, whose plan governs delivery and sign-in.
+
 ### STAGE 10 — A release other people can install and use (SCOPED 2026-09-30, the operator; not built)
 
 **The scope is [NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md)**, governing as
