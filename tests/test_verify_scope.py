@@ -150,6 +150,44 @@ class TestThePipelineRunsTheScopedVerify:
         assert v["verify_scope"]["scope"] == "full" and v["read_back"]["checked"] >= 1
         assert "interface Loopback9 > description x" in v["read_back"]["missing"]
 
+    # C713: s2's case. Its probe was sent with ` frequency 60` and the device printed no
+    # frequency line (the receipt and the golden on the NMAS host, 2026-10-12); the deploy
+    # read "deployed". A scoped deploy that sends IP SLA lines now compares the device's
+    # operations with its rendered intent's, both ways.
+    SLA_AS_PRINTED = ("ip sla 9\n icmp-echo 192.0.2.9 source-interface Loopback0\n"
+                      "ip sla schedule 9 life forever start-time now\n")
+    SLA_SENT = ["ip sla 9", " icmp-echo 192.0.2.9 source-interface Loopback0", " frequency 60",
+                "exit", "ip sla schedule 9 life forever start-time now"]
+
+    def test_an_ip_sla_deploy_fails_verify_when_the_device_is_not_its_rendered_intent(
+            self, world):
+        ctx, clock = world(_summary(), config=R3 + "\n" + self.SLA_AS_PRINTED)
+        ctx.rendered_commands = {"x": self.SLA_SENT}
+        ctx.expect_ip_sla = {"x": R3 + "\n" + "\n".join(l for l in self.SLA_SENT
+                                                        if l != "exit") + "\n"}
+        with pytest.raises(pipeline.PipelineStageError):
+            pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert v["ok"] is False
+        assert v["ip_sla_against_intent"] == {"missing": ["ip sla 9 > frequency 60"],
+                                              "extra": []}
+        assert ("IP SLA: intent's `ip sla 9 > frequency 60` is not on the device after the "
+                "push") in v["issues"]
+
+    def test_an_ip_sla_deploy_whose_device_is_its_rendered_intent_passes(self, world):
+        ctx, clock = world(_summary(), config=R3 + "\n" + self.SLA_AS_PRINTED)
+        ctx.rendered_commands = {"x": [l for l in self.SLA_SENT if "frequency" not in l]}
+        ctx.expect_ip_sla = {"x": R3 + "\n" + self.SLA_AS_PRINTED}
+        pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert v["ok"] is True and v["ip_sla_against_intent"] == {"missing": [], "extra": []}
+
+    def test_a_deploy_that_checks_no_ip_sla_records_none(self, world):
+        ctx, clock = world(_summary(), config=MERGED)
+        ctx.rendered_commands = {"x": VTY}
+        pipeline._stage_verify(ctx)
+        assert ctx.verify_result["x"]["ip_sla_against_intent"] is None
+
     def test_a_quick_verify_still_catches_a_neighbour_lost(self, world, monkeypatch):
         ctx, clock = world(_summary("Idle"), config=MERGED)
         ctx.rendered_commands = {"x": VTY}

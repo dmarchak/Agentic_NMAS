@@ -533,6 +533,15 @@
               + ' not checked: ' + esc(c.read_back.skipped.map(function (k) { return k.why; })
                 .filter(function (w, i, all) { return all.indexOf(w) === i; }).join('; ')) + ')' : '')
            + '</div>' : '')
+        // C713: the IP SLA operations against rendered intent, both ways (each line is an issue).
+        + (c.ip_sla_against_intent ? '<div data-pr-ip-sla-intent>IP SLA against intent: '
+           + ((c.ip_sla_against_intent.missing || []).length
+              || (c.ip_sla_against_intent.extra || []).length
+              ? esc(String((c.ip_sla_against_intent.missing || []).length))
+                + ' in intent and not on the device, '
+                + esc(String((c.ip_sla_against_intent.extra || []).length))
+                + ' on the device and not in intent'
+              : 'the device is its rendered intent') + '</div>' : '')
         + '</div>'
         + (c.issues || []).map(function (i) {
             return '<div class="small text-danger">' + esc(i) + '</div>';

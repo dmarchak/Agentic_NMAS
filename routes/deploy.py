@@ -1361,6 +1361,12 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # one when any did not land (artboard A2).
     from modules.nsot.profile_apply import TEMPLATES
     ctx.read_back_all = scope == TEMPLATES
+    # C713: a scope that sends IP SLA lines leaves the device's IP SLA operations equal to its
+    # rendered intent's (the whole render, before scoping), verified both ways.
+    from modules.nsot import ip_sla_policy
+    if scope in (ip_sla_policy.SCOPE, TEMPLATES) and any(
+            ip_sla_policy.is_ip_sla_line((), c) for c in commands or []):
+        ctx.expect_ip_sla = {device.get("ip", ""): prepared["config"]}
     # What the TARGET intent declares, so verify checks the protocol this
     # operation may exist to bring back (it read the device's before-state
     # alone). A restore's target is the ref's intent (None: the ref predates

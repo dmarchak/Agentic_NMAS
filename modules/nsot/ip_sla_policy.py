@@ -224,13 +224,45 @@ def cost_words(platform: str, frequency: int, probes: int = 1) -> str:
             f"s3: about {pct:g}% for one probe every {at} s, scaled by frequency)")
 
 
+#: The device's own frequency for an operation that sets none, which it then does not print
+#: (C713). Measured on vIOS: s2's `ip sla 1` was sent with ` frequency 60` and its running
+#: config shows no frequency line; on IOS-XE the same default is not yet measured, and the
+#: scoped deploy's verify (`compare`) fails, naming the line, if it reads back otherwise.
+DEVICE_DEFAULT_FREQUENCY = 60
+
+
 def operation(platform: str, op_id: int, target: str, source: str, frequency: int) -> dict:
-    """One operation in the parsers' `ip_sla` shape, in the platform's own
-    form: IOS-XE nests `frequency` under `icmp-echo` (r1's golden), vIOS does
-    not (s3's)."""
+    """One operation in the parsers' `ip_sla` shape, in the form the device prints it, so
+    the committed intent, the program sent and the configuration captured afterwards are one
+    text (C713): IOS-XE nests `frequency` under `icmp-echo` (r1's golden), vIOS does not
+    (s3's), and a frequency at the device's own default is not written at all, as the device
+    does not print it."""
     echo = f" icmp-echo {target}" + (f" source-interface {source}" if source else "")
+    if int(frequency) == DEVICE_DEFAULT_FREQUENCY:
+        return {"id": str(op_id), "settings": [echo]}
     freq = ("  " if platform == "cisco_iosxe" else " ") + f"frequency {frequency}"
     return {"id": str(op_id), "settings": [echo, freq]}
+
+
+def compare(intended: str, running: str) -> dict:
+    """``{"missing", "extra"}``: the IP SLA operations and schedules of the rendered intent
+    *intended* against the device's *running* configuration, each a line shown with its
+    section. ``missing`` is in intent and not on the device, ``extra`` on the device and not
+    in intent. Both empty: the device IS its rendered intent here. What a scoped deploy that
+    sends IP SLA lines verifies afterwards (C713), both ways, since a line the device prints
+    differently fails as surely as one that never landed."""
+    from modules.nsot.profile_apply import _keyed
+
+    def leaves(text):
+        return {(tuple(" ".join(c.split()) for c in chain), " ".join(line.split()))
+                for chain, line in _keyed(text) if is_ip_sla_line(chain, line)}
+
+    def shown(k):
+        return " > ".join(list(k[0]) + [k[1]])
+
+    want, have = leaves(intended), leaves(running)
+    return {"missing": sorted(shown(k) for k in want - have),
+            "extra": sorted(shown(k) for k in have - want)}
 
 
 def _has_loopback(hv: dict) -> bool:

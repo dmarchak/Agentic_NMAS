@@ -136,6 +136,8 @@ def _checks(result: dict) -> dict:
         # Quick or full, and why (verify_scope); a quick verify's read-back.
         "verify_scope": verify.get("verify_scope"),
         "read_back": verify.get("read_back"),
+        # C713: the IP SLA operations against rendered intent, both ways (None: not checked).
+        "ip_sla_against_intent": verify.get("ip_sla_against_intent"),
         # C506 phase 3: each declared move's outcome, and verify's notes (an adjacency nobody
         # declared forming beside the expected ones; a declared route change read).
         "declared_moves": list(verify.get("declared_moves") or []),

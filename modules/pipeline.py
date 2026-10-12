@@ -211,6 +211,10 @@ class PipelineContext:
     #: and a line not read back FAILS verify, so the program is rolled back as one (a quick
     #: verify's missing line only keeps it from passing, nothing rolled back for it).
     read_back_all: bool = False
+    #: ip -> the device's rendered intent, for a scoped deploy that sends IP SLA lines (C713):
+    #: verify compares the device's IP SLA operations afterwards with intent's, both ways
+    #: (`ip_sla_policy.compare`), and any difference FAILS verify, so the program rolls back.
+    expect_ip_sla: dict = field(default_factory=dict)
     #: Captures handed to the batch when :attr:`defer_golden` is set.
     golden_pending: list = field(default_factory=list)
     #: ip -> pushed lines the device rejected, so there was nothing to undo.
@@ -1766,6 +1770,25 @@ def _stage_verify(ctx: PipelineContext) -> None:
                                   + "; ".join(read_back["missing"][:5])
                                   + (" …" if len(read_back["missing"]) > 5 else ""))
 
+        # ── A scoped deploy that sends IP SLA lines leaves the device's IP SLA operations
+        # equal to its rendered intent's, both ways (C713: s2's ` frequency 60` was sent,
+        # the device printed no such line, and the deploy read "deployed" while its own
+        # golden commit said the device departed from intent).
+        ip_sla_differs = None
+        if ip in ctx.expect_ip_sla:
+            post_cfg = post.get("running_config") or ""
+            if not post_cfg:
+                cant_read.append("IP SLA against intent: `show running-config`: "
+                                 + (post.get("running_config_error") or "nothing was read"))
+            else:
+                from modules.nsot import ip_sla_policy
+                ip_sla_differs = ip_sla_policy.compare(ctx.expect_ip_sla[ip], post_cfg)
+                for line in ip_sla_differs["missing"]:
+                    issues.append(f"IP SLA: intent's `{line}` is not on the device after the push")
+                for line in ip_sla_differs["extra"]:
+                    issues.append(f"IP SLA: the device shows `{line}`, which its intent does "
+                                  "not have")
+
         ctx.verify_result[ip] = {
             "ok":     (not issues and not unmet and not cant_read
                        and not (read_back or {}).get("missing")),
@@ -1773,6 +1796,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
             "verify_scope": {"scope": scope["scope"], "why": scope["why"]},
             # A quick verify's read-back of each new line; None for a full one.
             "read_back": read_back,
+            # C713: the IP SLA operations against rendered intent, both ways; None when this
+            # deploy sends no IP SLA line in a scope that checks it.
+            "ip_sla_against_intent": ip_sla_differs,
             # Read after the change and not trustworthy (C272): verify did not
             # pass, did not fail on them, and rolled nothing back for them.
             "unreadable": cant_read,

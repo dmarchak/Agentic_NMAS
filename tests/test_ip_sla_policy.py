@@ -78,9 +78,10 @@ class TestTheSuggestions:
         assert [(s["on"], s["target"], s["target_device"]) for s in out["suggestions"]] == [
             ("r2", "10.255.1.24", "s4")]
         s = out["suggestions"][0]
-        # r2 already runs ip sla 1, so the next free id; IOS-XE nests frequency.
+        # r2 already runs ip sla 1, so the next free id; at the device's default 60 s no
+        # frequency line is written, as the device prints none (C713).
         assert s["op"] == {"id": "2", "settings": [
-            " icmp-echo 10.255.1.24 source-interface Loopback0", "  frequency 60"]}
+            " icmp-echo 10.255.1.24 source-interface Loopback0"]}
         assert s["schedule"] == "2 life forever start-time now"
         assert "sparing the switch" in s["why"] and "s4 is a switch" in s["why"]
 
@@ -157,8 +158,15 @@ class TestTheSuggestions:
 
     def test_vios_writes_frequency_at_one_level(self):
         from modules.nsot import ip_sla_policy as P
-        assert P.operation("cisco_ios", 3, "192.0.2.1", "Loopback0", 60)["settings"] == [
-            " icmp-echo 192.0.2.1 source-interface Loopback0", " frequency 60"]
+        assert P.operation("cisco_ios", 3, "192.0.2.1", "Loopback0", 10)["settings"] == [
+            " icmp-echo 192.0.2.1 source-interface Loopback0", " frequency 10"]
+
+    def test_a_frequency_at_the_device_default_is_not_written_on_either_platform(self):
+        """C713: the device prints no frequency at its default, so intent writes none."""
+        from modules.nsot import ip_sla_policy as P
+        for platform in ("cisco_ios", "cisco_iosxe"):
+            assert P.operation(platform, 1, "192.0.2.1", "Loopback0", 60)["settings"] == [
+                " icmp-echo 192.0.2.1 source-interface Loopback0"], platform
 
     def test_the_cost_is_the_measurement_scaled_and_unmeasured_says_so(self):
         from modules.nsot import ip_sla_policy as P
@@ -408,6 +416,96 @@ class TestTheScopeIsCarried:
             "list": "Lab", "scope": "ip_sla", "order": ["r2"],
             "confirmations": {"r2": "x"}, "command_hashes": {"r2": "y"}})
         assert r.status_code == 202 and seen["scope"] == "ip_sla"
+
+
+#: C713, s2's real pair (the NMAS host, 2026-10-12): the program Mercury sent, from the
+#: deploy's receipt (batch-2a531f), and the block s2's running configuration printed after
+#: it, from the golden committed at 1485dfa (read through `scripts/nmas-config-read`,
+#: masked; nothing in these lines is masked).
+S2_SENT = ["ip sla 1", " icmp-echo 10.255.1.21 source-interface Loopback0", " frequency 60",
+           "exit", "ip sla schedule 1 life forever start-time now"]
+S2_PRINTED = ["ip sla 1", " icmp-echo 10.255.1.21 source-interface Loopback0",
+              "ip sla schedule 1 life forever start-time now"]
+
+
+def _as_printed(program):
+    """The device's text after *program*, modelled on s2's measured pair: every line sent,
+    less those s2 was sent and did not print. Taken from the capture, never from the code
+    under test, so a fix that guessed the device wrongly still fails here."""
+    dropped = ({l.strip() for l in S2_SENT} - {l.strip() for l in S2_PRINTED}) - {"exit"}
+    return "\n".join(l for l in program if l.strip() != "exit" and l.strip() not in dropped)
+
+
+class TestTheProbeIsWhatTheDevicePrints:
+    """C713: the probe Coverage's "Suggest IP SLA probes" leads to is committed, sent and
+    captured as one text, and a scoped deploy whose device does not then equal its rendered
+    intent fails verify."""
+
+    def test_s2_as_sent_and_as_printed_differ_by_the_default_frequency(self):
+        from modules.nsot import ip_sla_policy as P
+        got = P.compare("\n".join(S2_SENT), "\n".join(S2_PRINTED))
+        assert got == {"missing": ["ip sla 1 > frequency 60"], "extra": []}
+
+    def test_the_suggestion_for_s2_is_what_s2_prints(self):
+        from modules.nsot import ip_sla_policy as P
+        op = P.operation("cisco_ios", 1, "10.255.1.21", "Loopback0", 60)
+        block = ["ip sla 1", *op["settings"], f"ip sla schedule 1 {P.SCHEDULE}"]
+        assert P.compare("\n".join(block), "\n".join(S2_PRINTED)) == {"missing": [],
+                                                                       "extra": []}
+
+    def _apply_context(self, lab, monkeypatch):
+        """The flow end to end up to the push: the policy, the suggestion for s4 (r2 probes
+        it), its intent commit, the scoped plan and the apply, the pipeline's context caught
+        where it would run."""
+        import routes.deploy as rd
+        assert _policy(lab).status_code == 200
+        _r, page = _page(lab)
+        assert TestTheCommit._commit(None, lab, page).get_json()["ok"]
+        plan = lab["client"].post("/deploy/plan", json={"devices": ["r2"], "scope": "ip_sla",
+                                                         "list_name": "Lab"}).get_json()
+        (d,) = plan["devices"]
+        caught = []
+
+        class Runner:
+            def __init__(self, ctx):
+                caught.append(ctx)
+
+            def run(self):
+                raise RuntimeError("stopped here: the test reads the context only")
+        monkeypatch.setattr("modules.pipeline.PipelineRunner", Runner)
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
+        lab["client"].post("/deploy/apply", json={
+            "confirmations": {"r2": d["capture_hash"]}, "command_hashes": {"r2": d["command_hash"]},
+            "list_name": "Lab", "scope": "ip_sla"})
+        assert caught, "the apply reached the pipeline"
+        ctx = caught[-1]
+        (ip,) = ctx.confirmed_commands
+        return ctx, ip
+
+    def test_suggested_and_sent_the_device_equals_its_rendered_intent(self, lab, monkeypatch):
+        from modules.nsot import ip_sla_policy as P
+        ctx, ip = self._apply_context(lab, monkeypatch)
+        program = ctx.confirmed_commands[ip]
+        assert "ip sla 2" in program
+        after = _cfg("r2") + "\n" + _as_printed(program)
+        assert P.compare(ctx.expect_ip_sla[ip], after) == {"missing": [], "extra": []}
+
+    def test_a_suggestion_the_device_prints_otherwise_is_caught(self, lab, monkeypatch):
+        """The control: the suggestion's old form (a frequency at the default written out).
+        The flow carries it to the program, the device prints it otherwise, and the
+        comparison verify runs names the line."""
+        from modules.nsot import ip_sla_policy as P
+
+        def old_form(platform, op_id, target, source, frequency):
+            echo = f" icmp-echo {target}" + (f" source-interface {source}" if source else "")
+            return {"id": str(op_id), "settings": [echo, "  frequency 60"]}
+        monkeypatch.setattr(P, "operation", old_form)
+        ctx, ip = self._apply_context(lab, monkeypatch)
+        after = _cfg("r2") + "\n" + _as_printed(ctx.confirmed_commands[ip])
+        got = P.compare(ctx.expect_ip_sla[ip], after)
+        assert got["missing"] == [
+            "ip sla 2 > icmp-echo 10.255.1.24 source-interface Loopback0 > frequency 60"], got
 
 
 class TestCoverageLinksHere:
