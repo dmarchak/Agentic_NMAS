@@ -12,7 +12,6 @@ name them, and it names them to assert their absence.
 """
 
 import os
-import re
 
 import pytest
 
@@ -121,13 +120,3 @@ def test_playbook_replay_is_refused_and_never_reaches_the_model(monkeypatch):
     assert resp.status_code == 410, resp.status_code
     assert "Running a playbook was removed" in resp.get_json()["error"]
     assert called == []
-
-
-def test_the_configure_tab_sends_nothing_and_says_so():
-    from tests.js_source import read_shipped
-    page = read_shipped("templates/index.html")
-    assert "data-p3-configure-note" in page
-    body = re.search(r"function _cfgShowParams\(payload\) \{(.*?)\n  \}", page, re.S)
-    assert body, "_cfgShowParams not found"
-    assert "fetch(" not in body.group(1)
-    assert "Nothing was sent" in body.group(1)

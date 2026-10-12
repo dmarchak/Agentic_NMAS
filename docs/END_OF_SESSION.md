@@ -14,10 +14,23 @@ release deployed and checked on the host.
 2. **7.8 removals, in progress:** list data (e7f82f9), refresh hostnames (4daf00d), renames
    (5c49896), the legacy store and migration (94797a3, deployed 05:41 UTC), bulk reload with
    the break-glass preview route (3c3b1c7: two families in one commit, since the second was
-   edited while the first's gate ran). Next: the unblocked families in the survey's order.
-3. C667: to check against boards A to C (built in earlier runs: 7f56d12, 2e45ab9, 482ad26).
-4. The Logs tail: to check (C675 built and walked in an earlier run, db2e5f0).
-5. C673 intent preview: not started.
+   edited while the first's gate ran; deployed 05:57), inventory order (249f0e6, deployed
+   06:06; C704 found: v2 Devices has no column sort), the monitoring stack panel with the
+   integrations' `monitor()` (c6fba50; C705 found: the Grafana URL setting has no reader).
+   Next: Configure, then the legacy collectors.
+3. **C667: checked 06:15 UTC, nothing left to build.** Every part the message names is built,
+   deployed and walked read-only on the host (7f56d12, 2e45ab9, 482ad26), and each is in a
+   fidelity record against its board: board A in `docs/fidelity/history-query.md` (Saved by
+   your team, Ask your own), board B in `history-metric.md` (the editable query; routing
+   neighbour changes, restarts and telemetry rates; Ask your own in B's layout, a logged
+   deviation), board C in `logs.md` (Save this view…, compared again). What closes it is yours:
+   a save, a pin and a removal (walk sitting 2 step 13).
+4. **The Logs tail: checked, nothing left to build** (C675: built, compared in
+   `docs/fidelity/logs-tail.md`, walked, db2e5f0).
+5. **C673 intent preview: DONE 06:08 UTC** (the walk's sitting 2 step 3): the editor's own
+   preview on the host gives the one line against intent and device. The agent's intent commit
+   was refused by the session's permission check (not retried): the commit is the operator's
+   in the walk, as the step already said.
 6. C691 snap to grid: not started.
 7. Findings closable without the operator (C698, C702 first): not started.
 8. The host health check: not started.
@@ -353,7 +366,11 @@ first in sitting 2).
    the NetBox role kinds (router and switch set).
 3. **C673, s1's RIP passive on Gi0/0**: s1 › Intent › **Edit**; under `routing.rip.settings`, after
    `- passive-interface Vlan20`, add `- passive-interface GigabitEthernet0/0`; **Preview**: one
-   line added against intent and against the device. **Commit** with a reason ("C673"). Then
+   line added against intent and against the device (**prepared 2026-10-12 06:08 UTC**: the same
+   edit run through the editor's own preview on the host, against base `eb8c0e39de09`, gave
+   exactly `+    passive-interface GigabitEthernet0/0` under `router rip` in both diffs, nothing
+   unmodelled; the agent's commit of it was refused by the session's permission check, so the
+   commit is yours here). **Commit** with a reason ("C673"). Then
    s1 › Actions › **Deploy…**: the program is one line under `router rip`; confirm. Expect
    verify passed, a receipt, and on s1 `show ip protocols` (Show commands) listing Gi0/0 under
    Passive Interface(s). Undo: Intent › Edit to remove the line, commit, Deploy (merge-only

@@ -26,7 +26,6 @@ KNOWN_WRITERS = {
     "/ai/playbooks": "the playbooks directory",
     "/ai/topology_context": "the topology cache",
     "/backup_stats": "the backups directory",
-    "/configure/audit_latest": "the pipeline audit directory",
     "/templates": "the whole template library, seeded",
     # migrate() RUNS on every GET of this panel and WRITES when the stored
     # schema version is behind, which on a fresh install it always is.

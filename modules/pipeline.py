@@ -2814,38 +2814,3 @@ def _protocol_counts(snapshot: dict) -> dict:
         return {name: info.get("count", -1) for name, info in per.items()}
     name, count = snapshot.get("protocol"), snapshot.get("count", -1)
     return {name: count} if name and name != "none" and count >= 0 else {}
-
-
-# ---------------------------------------------------------------------------
-# Public helper — load latest audit entry for a config_id
-# ---------------------------------------------------------------------------
-
-def load_audit_entry(config_id: str) -> Optional[dict]:
-    """Return the audit log entry for *config_id*, or None if not found."""
-    try:
-        path = os.path.join(_audit_dir(), f"{config_id}.json")
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
-
-
-def list_audit_entries(limit: int = 20) -> list[dict]:
-    """Return the *limit* most recent audit entries, newest first."""
-    audit_dir = _audit_dir()
-    try:
-        files = sorted(
-            (f for f in os.listdir(audit_dir) if f.endswith(".json")),
-            key=lambda f: os.path.getmtime(os.path.join(audit_dir, f)),
-            reverse=True,
-        )
-        entries = []
-        for fname in files[:limit]:
-            try:
-                with open(os.path.join(audit_dir, fname), encoding="utf-8") as fh:
-                    entries.append(json.load(fh))
-            except Exception:
-                pass
-        return entries
-    except FileNotFoundError:
-        return []

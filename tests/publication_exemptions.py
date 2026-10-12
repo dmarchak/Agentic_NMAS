@@ -33,7 +33,6 @@ EXEMPT = {
     ('docs/LESSONS.md', '78d35b5cb4c8'): ('VRNETLAB', ('address',)),
     ('docs/LESSONS.md', 'd70a0a321f4c'): ('VRNETLAB', ('address',)),
     # app.py
-    ('app.py', '5e26ffc61b4b'): ('EXAMPLE', ('address',)),
     # docs/NSOT_WRITEUP.md
     ('docs/NSOT_WRITEUP.md', '65d73a3b391d'): ('VRNETLAB', ('address',)),
     # docs/NSOT_WRITEUP_NOTES.md
@@ -85,15 +84,6 @@ EXEMPT = {
     ('scripts/nmas-netbox-repair-addresses', 'bdd2d1a33609'): ('VRNETLAB', ('address',)),
     ('scripts/nmas-netbox-repair-addresses', 'ab78c9b98441'): ('VRNETLAB', ('address',)),
     # templates/index.html
-    ('templates/index.html', '4545fc99b761'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', '367e90d50fbd'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', '58607bdbcc7f'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', '60097d7392bb'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', '9dd46217fee0'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', 'c08087506e93'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', '80badbb869fd'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', '2c71ce76c4fc'): ('EXAMPLE', ('address',)),
-    ('templates/index.html', 'e10071bf559c'): ('EXAMPLE', ('address',)),
     # tests/fixtures/configs/fleet/r1.cfg
     ('tests/fixtures/configs/fleet/r1.cfg', '25715794b34e'): ('CAPTURE', ('address',)),
     ('tests/fixtures/configs/fleet/r1.cfg', '4554dea76cef'): ('CAPTURE', ('address',)),

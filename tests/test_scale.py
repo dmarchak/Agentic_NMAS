@@ -42,7 +42,10 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
 #: §0b's own claim is unchanged and still the bigger one: the fixed cost is
 #: 97% of a nine-device page and is re-sent before a single device row.
 #: Moving it did not make it smaller, it made it cacheable.
-FIXED_PAGE_BYTES = 365_417
+#:
+#: 205,352 since 2026-10-12: today's Configure tab (its pane, two modals and inline script,
+#: about 160 kB) was removed at 7.8.
+FIXED_PAGE_BYTES = 205_352
 EXTRACTED_SCRIPT_BYTES = 284_662
 BYTES_PER_DEVICE = 2_239
 TOLERANCE = 0.25
