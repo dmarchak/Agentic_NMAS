@@ -200,3 +200,32 @@ def test_the_map_carries_no_native_tooltip_over_its_links():
     assert len(at) == 1, at
     assert 'aria-label="{{ t.list }}: {{ t.summary.devices }} devices' in lines[at[0]]
     assert not lines[at[0] + 1].lstrip().startswith("<title"), lines[at[0] + 1]
+
+
+def test_a_failed_count_refresh_marks_the_count_not_the_sidebar(served):  # noqa: F811
+    """The operator, 2026-10-12: "Couldn't load this view" appeared beside Needs attention and
+    distorted the page. The count's refresh failed (a restart), and the notice, with no card or
+    section around the count, went into the sidebar's link. Now the count shows its own
+    unreadable "?" with the reason on hover, keeps its listener, and no box is drawn."""
+    import app as A
+    srv, b = served
+    b.go(srv.url("/v2/"))
+    b.wait_for(READY + " && !!document.getElementById('attention-count')", 15)
+    real = A.app.view_functions["device_v2.attention_count"]
+    # As a restart answers through the proxy: a whole error page, not a fragment.
+    A.app.view_functions["device_v2.attention_count"] = lambda: (
+        "<!doctype html><html><head><title>502 Bad Gateway</title></head><body></body></html>",
+        502)
+    try:
+        b.js("document.body.dispatchEvent(new CustomEvent('nmas:acknowledgements')); return 1")
+        b.wait_for("var c = document.getElementById('attention-count');"
+                   f"return !!c && c.hasAttribute('data-couldnt') && {SETTLED}", 15)
+        state = b.js("var c = document.getElementById('attention-count');"
+                     "return {text: c.textContent.trim(), cls: c.className, title: c.title,"
+                     " boxes: document.querySelectorAll('.sidebar .couldnt').length,"
+                     " listens: !!c.getAttribute('hx-get')}")
+    finally:
+        A.app.view_functions["device_v2.attention_count"] = real
+    assert state["text"] == "?" and "count-unreadable" in state["cls"], state
+    assert "could not be read (" in state["title"] and "502" in state["title"], state
+    assert state["boxes"] == 0 and state["listens"], state

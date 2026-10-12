@@ -603,7 +603,32 @@
     return "Couldn't load " + (what || (inCard ? 'this card' : 'this view')) + '.';
   }
 
+  /* An inline target outside every card and section (the frame's sidebar or top bar: the Needs
+     attention count) holds no notice: a box there pushed the sidebar apart (the operator,
+     2026-10-12). The failure is said ON the element: the count its own unreadable "?", anything
+     else marked, the words and the reason on hover. It keeps its listener, so the next update
+     tries again. */
+  function sayCouldntInline(target, reason) {
+    var words = couldntWords(target.getAttribute('data-what'), false);
+    target.setAttribute(COULDNT, '');
+    if (target.classList.contains('count')) {
+      target.className = 'count count-unreadable';
+      target.textContent = '?';
+      target.title = 'Needs attention could not be read (' + reason + '): this is not the ' +
+        'same as nothing needing attention. It is read again at the next update.';
+    } else {
+      target.classList.add('couldnt-inline');
+      target.title = words + ' ' + reason;
+    }
+  }
+
   function sayCouldnt(target, control, reason) {
+    if (target && target.ownerDocument && target.ownerDocument.contains(target) &&
+        INLINE.test(target.tagName || '') && target.closest &&
+        !target.closest('[role=menu], .op-card, .card, section, .tab-body, main')) {
+      sayCouldntInline(target, reason);
+      return;
+    }
     var region = regionFor(target, control);
     if (!region) return;
     var doc = region.ownerDocument, box = null;
