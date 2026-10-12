@@ -12,13 +12,14 @@ reads not-ok is asked again at the read of the page, so an install clears it at 
 shows the reading from before it. A stored ok row is not asked again (a check per page view).
 Every job-health row says when its reading was taken.
 
-Since Phase 3 step 2 (2026-10-08) the Oxidized helper has no row (nothing runs it), so the
-class is held on the topology renderer, the other root-installed helper with a row: its real
-check runs against a symlink in a temporary folder; only the service's start time is stood in
-for, since a test cannot read systemd.
+Since Phase 3 step 2 (2026-10-08) the Oxidized helper has no row (nothing runs it), and since
+7.8 (2026-10-12) the topology renderer, the last other helper with one, is retired. So the
+class is held on a helper planted through the registry's own seams (`HELPERS` and
+`INSTALL_UNITS`): its row reads a symlink in a temporary folder, as a helper's install check
+does, and everything after it (the reader's stored reading, Needs attention asking it again)
+is the real code.
 """
 
-import functools
 import os
 
 import pytest
@@ -28,27 +29,34 @@ from modules import config
 from modules import reader_job as R
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCE = os.path.join(ROOT, "deploy", "topology", "nmas-topology.py")
 T0 = 1_790_000_000.0
-ROW = "job_health:helper:topology-renderer"
+UNIT = "helper:planted"
+ROW = f"job_health:{UNIT}"
 
 
 @pytest.fixture
 def helper(tmp_path, monkeypatch):
-    """The renderer's link, pointing at an older copy, its service started long after."""
-    from modules import host_steps
+    """A helper's link pointing at an older copy; its row says ok only when the link is this
+    release's copy."""
+    from modules import host_helpers
 
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
-    old = tmp_path / "nmas-topology.older.py"
+    release = tmp_path / "helper.release"
+    release.write_text("# this release\n")
+    old = tmp_path / "helper.older"
     old.write_text("# an older release\n")
-    link = tmp_path / "nmas-topology.py"
+    link = tmp_path / "helper"
     link.symlink_to(old)
-    monkeypatch.setattr(host_steps, "TOPOLOGY_LINK", str(link))
-    monkeypatch.setattr(host_steps, "_service_started", lambda unit, run=None: 2 ** 40)
-    monkeypatch.setattr(host_steps, "check_topology_renderer", functools.partial(
-        host_steps.check_topology_renderer.__wrapped__
-        if hasattr(host_steps.check_topology_renderer, "__wrapped__")
-        else host_steps.check_topology_renderer, link=str(link)))
+
+    def row():
+        ok = os.path.realpath(link) == str(release)
+        return {"unit": UNIT, "max_age_minutes": 0, "what": "the planted helper is this "
+                "release's", "state": "ok" if ok else "differs",
+                "detail": "it is this release's" if ok else f"{link} differs from this release"}
+
+    monkeypatch.setattr(host_helpers, "HELPERS", ((UNIT, row),))
+    monkeypatch.setattr(host_helpers, "INSTALL_UNITS", ("updater", UNIT))
+
     return link
 
 
@@ -58,14 +66,15 @@ def _store_a_reading(monkeypatch):
     from modules import job_health as J
     from modules.readers import job_health_reader as JHR
 
-    monkeypatch.setattr(J, "health", lambda **kw: {"jobs": [host_helpers.topology_row()]})
+    monkeypatch.setattr(J, "health", lambda **kw: {"jobs": host_helpers.helper_rows()})
     return R.run_once(JHR.READER, clock=lambda: T0)
 
 
 def _install(link):
     """The operator's install: the link pointed at this release's copy."""
+    release = os.path.join(os.path.dirname(link), "helper.release")
     os.remove(link)
-    os.symlink(SOURCE, link)
+    os.symlink(release, link)
 
 
 def _rows(res):
@@ -98,8 +107,8 @@ def test_a_stored_ok_row_is_not_asked_again(helper, monkeypatch):
     _install(helper)
     _store_a_reading(monkeypatch)
     calls = []
-    real = host_helpers.topology_row
-    monkeypatch.setattr(host_helpers, "topology_row", lambda: calls.append(1) or real())
+    ((unit, real),) = host_helpers.HELPERS
+    monkeypatch.setattr(host_helpers, "HELPERS", ((unit, lambda: calls.append(1) or real()),))
     res = A.job_health_source(readers_now=[])
     assert ROW not in _rows(res) and calls == [], "an ok row asked again on a page view"
 

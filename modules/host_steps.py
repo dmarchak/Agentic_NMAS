@@ -61,46 +61,27 @@ def step_id(sha: str, step: str) -> str:
 # The checks
 # ---------------------------------------------------------------------------
 
-def _service_started(unit: str, run=subprocess.run):
-    """The unit's main process start as epoch seconds, or None."""
-    try:
-        p = run(["systemctl", "show", unit, "-p", "ExecMainStartTimestamp", "--timestamp=unix"],
-                capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    m = re.search(r"=@(\d+)", p.stdout or "")
-    return int(m.group(1)) if m else None
-
-
-#: Where the topology renderer is installed: a symlink to the checkout's copy. Named for
-#: the product since C663 (it carried the lab's name).
+#: Where the retired topology renderer was installed: a symlink to the checkout's copy, run by
+#: its own unit. OBSERVE › Topology (the `topology-graph` reader) replaced it; the renderer
+#: and its source went at 7.8 (2026-10-12), and `scripts/host-steps/topology-service-removal.sh`
+#: removes what was installed.
 TOPOLOGY_LINK = "/usr/local/bin/nmas-topology.py"
 TOPOLOGY_SOURCE_REL = "deploy/topology/nmas-topology.py"
 TOPOLOGY_UNIT = "nmas-topology.service"
+TOPOLOGY_UNIT_FILE = "/etc/systemd/system/nmas-topology.service"
 
 
-def check_topology_renderer(root: str = ROOT, link: str = TOPOLOGY_LINK,
-                            run=subprocess.run) -> dict:
-    """Done when the installed renderer IS the checkout's (a symlink resolving
-    to deploy/topology/nmas-topology.py) and its service started after
-    that file last changed, so the running process read this release's code."""
-    source = os.path.realpath(os.path.join(root, TOPOLOGY_SOURCE_REL))
-    if not os.path.islink(link):
-        return {"state": "not_done", "detail": (f"{link} is not a symlink to the checkout"
-                                                if os.path.exists(link) else f"{link} is absent")}
-    if os.path.realpath(link) != source:
-        return {"state": "not_done", "detail": f"{link} points to {os.path.realpath(link)}, "
-                                               f"not {source}"}
-    started = _service_started(TOPOLOGY_UNIT, run=run)
-    if started is None:
-        return {"state": "unknown", "detail": f"the symlink is right; when {TOPOLOGY_UNIT} "
-                                              "last started could not be read"}
-    changed = int(os.path.getmtime(source))
-    if started < changed:
-        return {"state": "not_done", "detail": f"the symlink is right, and {TOPOLOGY_UNIT} "
-                                               "has not restarted since the file changed"}
-    return {"state": "done", "detail": f"{link} is the checkout's, and the service restarted "
-                                       "after it changed"}
+def check_topology_renderer_gone(root: str = ROOT, link: str = TOPOLOGY_LINK,
+                                 unit_file: str = TOPOLOGY_UNIT_FILE) -> dict:
+    """Done when neither the renderer's link nor its unit file is installed: the host step
+    stopped and disabled the service, then removed both. A link that dangles (its source
+    gone with the release) still counts as installed: `lexists`, never `exists`."""
+    left = [p for p in (unit_file, link) if os.path.lexists(p)]
+    if left:
+        return {"state": "not_done", "detail": " and ".join(left) + (
+            " is" if len(left) == 1 else " are") + " still installed; the topology service "
+            "was retired (OBSERVE › Topology replaced it)"}
+    return {"state": "done", "detail": f"neither {unit_file} nor {link} is installed"}
 
 
 def check_updater(root: str = ROOT) -> dict:
@@ -213,7 +194,7 @@ def check_kea_discovery_range(root: str = ROOT, kea=None, addrs=None) -> dict:
     return {"state": "not_done", "detail": r["problem"] or "Kea runs no discovery range"}
 
 
-CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater,
+CHECKS = {"topology-renderer-gone": check_topology_renderer_gone, "updater": check_updater,
           "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin,
           "kea-reservation-files": check_kea_reservation_files,
           "kea-subnet-files": check_kea_subnet_files,

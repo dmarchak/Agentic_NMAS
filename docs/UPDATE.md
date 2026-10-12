@@ -222,8 +222,8 @@ Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
 ```
 
 - **`[<check>]` names one of the tool's checks** (`host_steps.CHECKS`):
-  `topology-renderer` (the installed renderer is a symlink to the checkout's, and
-  `nmas-topology.service` started after the file changed), `updater` (the
+  `topology-renderer-gone` (the retired topology renderer's link and
+  `nmas-topology.service`'s unit file are both removed, 7.8), `updater` (the
   updater's install check reads ok) and `oxidized-cred` (the installed Oxidized
   credential helper is this release's copy, root-owned, by the helper's own check;
   C416). A checked step is never ticked: done is measured, and a step the check
@@ -236,7 +236,7 @@ Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
 - **A commit changing a file a check answers for names that check in its step**
   (`STEP_CHECKS` in `scripts/nmas-host-step-check`, the same pairs as the
   registry in `modules/host_helpers.py`): `deploy/update/` and `scripts/nmas-deploy`
-  take `[updater]`, `deploy/topology/` `[topology-renderer]`, and
+  take `[updater]`, `deploy/topology/` `[topology-renderer-gone]`, and
   `scripts/nmas-oxidized-cred` `[oxidized-cred]`. A step without it is refused.
   `Host-Step-None` alone needs no check.
 - **While such a step is owed, job health's row for the same helper is part of the

@@ -56,7 +56,7 @@ HOST_STEP_PATHS = (
 STEP_CHECKS = {
     "deploy/update/": "updater",
     "scripts/nmas-deploy": "updater",
-    "deploy/topology/": "topology-renderer",
+    "deploy/topology/": "topology-renderer-gone",
     "scripts/nmas-oxidized-cred": "oxidized-cred",
 }
 

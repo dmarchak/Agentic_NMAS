@@ -181,26 +181,20 @@ python3 -c 'import json; d=json.load(open("<home>/python/Agentic_NMAS/data/start
 Until it is installed, job health's `nmas-startup-check` row reads
 `not_installed`, so the gap is visible rather than silent.
 
-### The topology service (register C256, 2026-09-30)
+### The topology service (retired at 7.8, 2026-10-12)
 
-`nmas-topology.service` runs `/usr/local/bin/nmas-topology.py`, a symlink to the
-repository's copy, `deploy/topology/nmas-topology.py`, so the checkout is the one copy
-(the C14 rule). Until 2026-09-30 it was a copy no commit recorded; until C663 (2026-10-11)
-it carried the lab's name (`rcn-topology`), and
-`scripts/host-steps/c663-step3b-topology.sh` renamed the unit and the link on a host
-that had the old ones. On a new host:
+A new host installs nothing for topology: OBSERVE › Topology draws the fleet map from
+Mercury's own `topology-graph` reader. The separate service (`nmas-topology.service`,
+running `/usr/local/bin/nmas-topology.py`, a symlink to the repository's
+`deploy/topology/nmas-topology.py`) left the repository at 7.8. On a host that still has it,
+the release's host step stops and disables the unit, then removes the unit file and the link
+by name:
 
 ```bash
-sudo ln -sf <home>/python/Agentic_NMAS/deploy/topology/nmas-topology.py /usr/local/bin/nmas-topology.py
-sudo systemctl restart nmas-topology.service
-curl -s http://localhost:8088/graph.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["meta"])'
+bash <home>/python/Agentic_NMAS/scripts/host-steps/topology-service-removal.sh
 ```
 
-The last line prints an `islands` count (0 while r6 is not yet polled).
-The old script's meta has no `islands` key, so its absence means the old
-copy is still the one running. A device appears on the map once its golden
-configures SNMP (the generated targets, C232); one with no LLDP link to the
-rest is then drawn in the band at the bottom with its reason.
+The Update page's `topology-renderer-gone` check reads done once neither file is installed.
 
 ## Deploying an update
 

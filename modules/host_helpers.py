@@ -4,7 +4,7 @@ Host-Step check; job health compares each installed helper with this release and
 install step BEFORE an operation needs it").
 
 ONE registry, built from the constants each owner already declares (the updater's
-`update_op.INSTALLED`, the rotation's `HELPER_INSTALLED` and `HELPER_SOURCE_REL`, the topology
+`update_op.INSTALLED`, the rotation's `HELPER_INSTALLED` and `HELPER_SOURCE_REL`, the retired topology
 renderer's link in `host_steps`), so a path is written once. Read by:
 
 - the Host-Step check: every source here is under `HOST_STEP_PATHS`, so a commit changing one
@@ -50,11 +50,13 @@ def registry() -> list:
                 "installed": cr.HELPER_INSTALLED, "source": cr.HELPER_SOURCE_REL,
                 "how": "copy", "needed_by": "nothing since Phase 3 step 2: the host steps remove it",
                 "checked_by": "", "check": "oxidized-cred", "unit": "", "folds": ()})
-    out.append({"name": "the topology renderer", "installed": host_steps.TOPOLOGY_LINK,
+    # The topology renderer was retired at 7.8 (2026-10-12: OBSERVE › Topology replaced it).
+    # Its source left the repository with the release that carries its removal step, so its
+    # check measures that the link and the unit are gone; no job-health row, nothing folded.
+    out.append({"name": "the topology renderer (retired)", "installed": host_steps.TOPOLOGY_LINK,
                 "source": host_steps.TOPOLOGY_SOURCE_REL, "how": "symlink",
-                "needed_by": "the topology panel", "checked_by": "helper_rows",
-                "check": "topology-renderer", "unit": "helper:topology-renderer",
-                "folds": ("differs",)})
+                "needed_by": "nothing since 7.8: its host step removes it", "checked_by": "",
+                "check": "topology-renderer-gone", "unit": "", "folds": ()})
     return out
 
 
@@ -72,42 +74,16 @@ def sources() -> list:
     return sorted({h["source"] for h in registry()} | set(RENDERED) | set(BY_HAND))
 
 
-def _setting(key: str) -> str:
-    from modules.list_settings import default_layer   # one renderer on the host
-    return str(default_layer(key, "") or "").strip()
-
-
-
-def topology_row(check=None) -> dict:
-    """The topology renderer: a symlink to the checkout's copy, its service restarted after the
-    file changed (`host_steps.check_topology_renderer`). Optional: an installation with no
-    topology service configured and no renderer has no row."""
-    import os
-
-    from modules import host_steps
-
-    if not _setting("topology_service_url") and not os.path.lexists(host_steps.TOPOLOGY_LINK):
-        return {}
-    got = (check or host_steps.check_topology_renderer)()
-    row = {"unit": "helper:topology-renderer", "max_age_minutes": 0,
-           "what": "the topology renderer is this release's, and its service runs it"}
-    if got["state"] == "done":
-        return dict(row, state="ok", detail=got["detail"])
-    if got["state"] == "unknown":
-        return dict(row, state="unknown", detail=got["detail"])
-    return dict(row, state="differs", detail=got["detail"] + ". The topology panel draws the "
-                                                             "installed copy until then.",
-                action={"label": "Link this release's renderer and restart its service",
-                        "command": (f"sudo ln -sfn {os.path.join(host_steps.ROOT, host_steps.TOPOLOGY_SOURCE_REL)} "
-                                    f"{host_steps.TOPOLOGY_LINK} && sudo systemctl restart "
-                                    f"{host_steps.TOPOLOGY_UNIT}")})
-
-
 #: Job health's rows about a root-installed file, by unit: each is the same file the host-step
 #: check reads live, so a stored reading of one that says not-ok is asked again when Needs
 #: attention is read (`attention._install_rows_asked_again`, C439). Every registry unit
 #: (tests/test_install_rows_rechecked.py holds the two together).
-INSTALL_UNITS = ("updater", "helper:topology-renderer")
+INSTALL_UNITS = ("updater",)
+
+#: ``(unit, row function)`` for each root-installed helper the updater's rows do not cover.
+#: None since the topology renderer was retired (7.8, 2026-10-12); the Oxidized helper's row
+#: and the retired devices' router.db row (C398) went with Oxidized (Phase 3 step 2).
+HELPERS = ()
 
 
 def ask_now(unit: str) -> list:
@@ -115,8 +91,7 @@ def ask_now(unit: str) -> list:
     if unit == "updater":
         from modules import job_health
         return job_health.updater_rows()
-    check = {"helper:topology-renderer": topology_row}
-    row = check[unit]()
+    row = dict(HELPERS)[unit]()
     return [row] if row else []
 
 
@@ -124,9 +99,7 @@ def helper_rows() -> list:
     """Job health's rows for the root-installed helpers the updater's rows do not cover; a
     check that raises is said as such, never a missing row."""
     rows = []
-    # The Oxidized helper's row and the retired devices' router.db row (C398) went with
-    # Oxidized (Phase 3 step 2, 2026-10-08).
-    for unit, fn in (("helper:topology-renderer", topology_row),):
+    for unit, fn in HELPERS:
         try:
             row = fn()
         except Exception as exc:                            # noqa: BLE001

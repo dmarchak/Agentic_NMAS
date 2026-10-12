@@ -9,10 +9,8 @@ own check, so "done" is measured (a symlink's target, a service's restart)
 instead of claimed.
 """
 import json
-import os
 import re
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -58,53 +56,38 @@ class TestTheTrailers:
             (True, "", "tell the team")]
 
 
-def _systemctl(epoch):
-    def run(argv, **kw):
-        out = f"ExecMainStartTimestamp=@{epoch}\n" if epoch is not None else ""
-        return subprocess.CompletedProcess(argv, 0 if epoch is not None else 1, out, "")
-    return run
+class TestTheRetiredTopologyRendererCheck:
+    """7.8: the renderer's removal step is done when neither its link nor its unit file is
+    installed; a link left dangling (its source gone with the release) is still installed."""
 
-
-class TestTheTopologyRendererCheck:
-    @pytest.fixture
-    def tree(self, tmp_path):
-        src = tmp_path / "repo" / "deploy" / "topology" / "nmas-topology.py"
-        src.parent.mkdir(parents=True)
-        src.write_text("x\n")
-        os.utime(src, (1000, 1000))
-        return tmp_path, src
-
-    def test_absent_and_a_copy_are_not_done(self, tree):
+    def test_both_installed_names_both(self, tmp_path):
         from modules import host_steps
-        tmp, src = tree
-        link = tmp / "nmas-topology.py"
-        got = host_steps.check_topology_renderer(str(tmp / "repo"), str(link), run=_systemctl(2000))
-        assert got["state"] == "not_done" and "absent" in got["detail"]
-        link.write_text("a copy\n")
-        got = host_steps.check_topology_renderer(str(tmp / "repo"), str(link), run=_systemctl(2000))
-        assert got["state"] == "not_done" and "not a symlink" in got["detail"]
+        link, unit = tmp_path / "nmas-topology.py", tmp_path / "nmas-topology.service"
+        link.symlink_to(tmp_path / "gone-with-the-release.py")
+        unit.write_text("[Service]\n")
+        got = host_steps.check_topology_renderer_gone(str(tmp_path), str(link), str(unit))
+        assert got["state"] == "not_done"
+        assert str(link) in got["detail"] and str(unit) in got["detail"]
 
-    def test_a_symlink_elsewhere_is_not_done_naming_it(self, tree):
+    def test_the_unit_alone_left_is_not_done(self, tmp_path):
         from modules import host_steps
-        tmp, src = tree
-        other = tmp / "other.py"
-        other.write_text("y\n")
-        link = tmp / "nmas-topology.py"
-        link.symlink_to(other)
-        got = host_steps.check_topology_renderer(str(tmp / "repo"), str(link), run=_systemctl(2000))
-        assert got["state"] == "not_done" and str(other) in got["detail"]
+        link, unit = tmp_path / "nmas-topology.py", tmp_path / "nmas-topology.service"
+        unit.write_text("[Service]\n")
+        got = host_steps.check_topology_renderer_gone(str(tmp_path), str(link), str(unit))
+        assert got["state"] == "not_done" and got["detail"].startswith(f"{unit} is still")
 
-    def test_the_service_must_have_restarted_after_the_file_changed(self, tree):
+    def test_both_gone_is_done(self, tmp_path):
         from modules import host_steps
-        tmp, src = tree
-        link = tmp / "nmas-topology.py"
-        link.symlink_to(src)
-        assert host_steps.check_topology_renderer(str(tmp / "repo"), str(link),
-                                                  run=_systemctl(500))["state"] == "not_done"
-        assert host_steps.check_topology_renderer(str(tmp / "repo"), str(link),
-                                                  run=_systemctl(2000))["state"] == "done"
-        assert host_steps.check_topology_renderer(str(tmp / "repo"), str(link),
-                                                  run=_systemctl(None))["state"] == "unknown"
+        got = host_steps.check_topology_renderer_gone(
+            str(tmp_path), str(tmp_path / "nmas-topology.py"),
+            str(tmp_path / "nmas-topology.service"))
+        assert got["state"] == "done"
+
+    def test_it_is_the_check_the_step_names(self):
+        from modules import host_steps
+        assert host_steps.CHECKS["topology-renderer-gone"] is \
+            host_steps.check_topology_renderer_gone
+        assert (ROOT / "scripts" / "host-steps" / "topology-service-removal.sh").is_file()
 
     def test_an_unnamed_check_is_not_checkable_and_a_raising_one_unknown(self, monkeypatch):
         from modules import host_steps

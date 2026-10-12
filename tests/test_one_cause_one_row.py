@@ -57,7 +57,7 @@ def test_no_owed_step_leaves_the_updater_row_alone(page):
 
 
 def test_an_owed_step_of_another_check_does_not_absorb_it(page):
-    other = dict(STEP, id="aaaa:0", check="topology-renderer")
+    other = dict(STEP, id="aaaa:0", check="planted-check")
     rows = page("differs", steps=(other,))
     assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]
 
@@ -65,7 +65,8 @@ def test_an_owed_step_of_another_check_does_not_absorb_it(page):
 # C419 (the operator, 2026-10-04): the Oxidized helper's drift was two rows again, the host
 # step's and job health's "helper:oxidized-cred differs". Every root-installed helper folds,
 # by the registry (modules/host_helpers.py), not the updater alone. (The Oxidized helper has no
-# row since Phase 3 step 2, 2026-10-08: the topology renderer and the updater hold the class.)
+# row since Phase 3 step 2, 2026-10-08, and the topology renderer, retired at 7.8 on 2026-10-12,
+# none: a helper planted in the registry holds the class beside the updater.)
 
 def _helper(unit, state):
     return {"jobs": [{"unit": unit, "state": state, "what": "a root-installed helper",
@@ -74,8 +75,14 @@ def _helper(unit, state):
 
 @pytest.fixture
 def helper_page(monkeypatch):
+    from modules import host_helpers
     from routes import health
     monkeypatch.setattr(health, "_COMMIT", "f" * 40)
+    real = host_helpers.registry
+    monkeypatch.setattr(host_helpers, "registry", lambda: real() + [{
+        "name": "a planted helper", "installed": "/usr/local/sbin/planted", "source": "x",
+        "how": "copy", "needed_by": "a test", "checked_by": "", "check": "planted-check",
+        "unit": "helper:planted", "folds": ("differs",)}])
 
     def render(check, unit, state):
         step = dict(STEP, id="c2440a6000:0", check=check, step=f"re-install {unit}")
@@ -86,7 +93,7 @@ def helper_page(monkeypatch):
 
 
 @pytest.mark.parametrize("check,unit,state", [
-    ("topology-renderer", "helper:topology-renderer", "differs")])
+    ("planted-check", "helper:planted", "differs")])
 def test_every_helpers_drift_folds_into_its_host_step(helper_page, check, unit, state):
     rows = helper_page(check, unit, state)
     assert [r["source"] for r in rows] == ["host_steps"], [r["what"] for r in rows]
@@ -96,10 +103,10 @@ def test_every_helpers_drift_folds_into_its_host_step(helper_page, check, unit, 
 
 @pytest.mark.parametrize("state", ["writable", "cannot_run", "unknown"])
 def test_a_helper_state_one_install_does_not_clear_stays_its_own_row(helper_page, state):
-    rows = helper_page("topology-renderer", "helper:topology-renderer", state)
+    rows = helper_page("planted-check", "helper:planted", state)
     assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]
 
 
 def test_a_helpers_step_does_not_absorb_another_helpers_row(helper_page):
-    rows = helper_page("updater", "helper:topology-renderer", "differs")
+    rows = helper_page("updater", "helper:planted", "differs")
     assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]

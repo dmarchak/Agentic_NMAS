@@ -40,7 +40,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # Board L: the discovery range's classes and pools on the ZTP segment (2026-10-11).
             "ztp-discovery-range.sh",
             # C665: Device Roles' kinds with the operator's admin token, prompted (2026-10-11).
-            "netbox-role-kinds.sh"}
+            "netbox-role-kinds.sh",
+            # 7.8: the retired topology service's unit and link removed (2026-10-12).
+            "topology-service-removal.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

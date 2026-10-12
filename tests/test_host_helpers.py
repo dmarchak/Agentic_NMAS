@@ -47,7 +47,10 @@ class TestTheRegistryAndTheHostStepCheck:
         assert (cr.HELPER_INSTALLED, cr.HELPER_SOURCE_REL) in {(h["installed"], h["source"])
                                                                for h in reg}
         assert host_steps.TOPOLOGY_LINK in {h["installed"] for h in reg}
-        assert all(os.path.exists(os.path.join(ROOT, h["source"])) for h in reg)
+        # A helper with a job-health row is compared with its source, so the source exists; a
+        # retired one's may have left with the release that carries its removal step (7.8).
+        assert all(os.path.exists(os.path.join(ROOT, h["source"])) for h in reg if h["unit"])
+        assert not os.path.exists(os.path.join(ROOT, host_steps.TOPOLOGY_SOURCE_REL))
 
     def test_every_root_installed_source_is_under_the_host_step_check(self):
         paths = _host_step_paths()
@@ -72,17 +75,7 @@ class TestTheRegistryAndTheHostStepCheck:
             assert any(h["source"].startswith(p) and h["check"] == c for h in reg), (p, c)
 
     def test_folds_name_each_helpers_job_health_row(self):
-        assert HH.folds() == {"updater": ("job_health:updater", ("differs",)),
-                              "topology-renderer": ("job_health:helper:topology-renderer",
-                                                    ("differs",))}
-
-
-@pytest.fixture
-def settings(monkeypatch):
-    values = {}
-    monkeypatch.setattr("modules.settings_schema.get_setting",
-                        lambda key, default=None: values.get(key, default))
-    return values
+        assert HH.folds() == {"updater": ("job_health:updater", ("differs",))}
 
 
 def _status(state, **extra):
@@ -92,16 +85,13 @@ def _status(state, **extra):
                 **extra)
 
 
-class TestTheTopologyRenderer:
-    def test_a_stale_link_is_a_row_naming_its_command(self, settings):
-        settings["topology_service_url"] = "http://192.0.2.6:8088"
-        row = HH.topology_row(check=lambda: {"state": "not_done", "detail": "points elsewhere"})
-        assert row["state"] == "differs" and "ln -sfn" in row["action"]["command"]
-        assert HH.topology_row(check=lambda: {"state": "done", "detail": "ok"})["state"] == "ok"
-
-    def test_no_service_and_no_renderer_is_no_row(self, settings, monkeypatch):
-        monkeypatch.setattr("os.path.lexists", lambda p: False)
-        assert HH.topology_row(check=lambda: {"state": "not_done", "detail": "x"}) == {}
+class TestTheRetiredTopologyRenderer:
+    def test_it_is_registered_with_its_removal_check_and_no_job_health_row(self):
+        """7.8: the renderer's source left with the release carrying its removal step; the
+        registry keeps its installed path for that step's check, and job health no row."""
+        (row,) = [h for h in HH.registry() if h["check"] == "topology-renderer-gone"]
+        assert row["unit"] == "" and row["folds"] == () and "retired" in row["name"]
+        assert HH.helper_rows() == [] and HH.INSTALL_UNITS == ("updater",)
 
 
 class TestInJobHealthAndNeedsAttention:
@@ -114,8 +104,8 @@ class TestInJobHealthAndNeedsAttention:
 
     def test_a_check_that_raises_is_said(self, monkeypatch):
         def boom():
-            raise PermissionError("cannot read the renderer's link")
-        monkeypatch.setattr(HH, "topology_row", boom)
+            raise PermissionError("cannot read the helper's link")
+        monkeypatch.setattr(HH, "HELPERS", (("helper:x", boom),))
         (row,) = HH.helper_rows()
         assert row["state"] == "unknown" and "PermissionError" in row["detail"]
 

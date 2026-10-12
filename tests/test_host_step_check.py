@@ -74,7 +74,7 @@ class TestTheRange:
                                       "deploy/topology/nmas-topology.py", "scripts/nmas-deploy"])
     def test_a_step_said_passes(self, repo, path):
         check = {"deploy/update/nmas-update": "[updater] ", "scripts/nmas-deploy": "[updater] ",
-                 "deploy/topology/nmas-topology.py": "[topology-renderer] "}.get(path, "")
+                 "deploy/topology/nmas-topology.py": "[topology-renderer-gone] "}.get(path, "")
         _commit(repo, path, f"change\n\nHost-Step: {check}re-install it as root")
         assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 0
 
