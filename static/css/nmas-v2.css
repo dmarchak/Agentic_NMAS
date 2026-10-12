@@ -877,6 +877,12 @@ button.menu-item[disabled]:hover { background: none; }
 .intent-doc { max-height: 520px; }
 /* The device page's Neighbours tab (step 4, C38). */
 .nb-proto { font-size: 14px; margin: 14px 0 4px; }
+/* C706: every protocol's table shares one column layout, so OSPF's, OSPFv3's and BGP's columns
+   line up; a long address wraps in its cell rather than widening its table alone. */
+.nb-table { table-layout: fixed; width: 100%; min-width: 640px; }
+.nb-table td, .nb-table th { overflow-wrap: anywhere; }
+.nb-c-name { width: 16%; } .nb-c-addr { width: 24%; } .nb-c-via { width: 22%; }
+.nb-c-state { width: 22%; } .nb-c-when { width: 16%; }
 .nb-limits { margin-top: 12px; font-size: 12px; }
 /* C690: a protocol's last good report, after scrapes that failed, said as of its time. */
 .nb-asof { display: flex; gap: 6px; align-items: center; color: var(--warn); font-size: 13px; margin: 2px 0 6px; }

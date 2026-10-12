@@ -344,6 +344,27 @@ def page(lab, monkeypatch):
     return get
 
 
+def test_the_protocols_columns_line_up_in_a_browser(page):
+    """C706 (the operator's shot of r4): each protocol's table sized its own columns, so BGP's
+    Address, Via and State sat right of OSPF's. Measured in a real browser at 1440: every
+    table's five column headers start at the same x as the first table's."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        b.go(srv.url("/v2/device/r3?tab=neighbours"))
+        b.wait_for("return document.querySelectorAll('table.nb-table').length >= 3", 15)
+        lefts = b.js("return Array.from(document.querySelectorAll('table.nb-table')).map("
+                     "t => Array.from(t.querySelectorAll('thead th')).map("
+                     "th => Math.round(th.getBoundingClientRect().left)))")
+        b.go("about:blank")
+    assert len(lefts) == 3 and all(len(cols) == 5 for cols in lefts), lefts
+    assert all(cols == lefts[0] for cols in lefts), lefts
+
+
 class TestThePage:
     def test_r3s_neighbours_drawn_linked_and_strict(self, page):
         from modules import csp
