@@ -320,8 +320,12 @@ def _together(rows: list) -> list:
     out = []
     for key in order:
         members = sets[key]
+        # How many IA identifiers the set's leases carry (C681): one client that drew a new
+        # IAID each time it asked was given a new address each time.
+        iaids = len({r.get("iaid") for r in members if r.get("iaid") is not None})
         for i, r in enumerate(members):
             out.append(dict(r, span=len(members) if (i == 0 and r["shared"]) else 0,
+                            iaids=iaids,
                             same=i > 0 and r["shared"], duid=duid_words(r["identity"])
                             if r["by"] == "DUID" else ""))
     return out

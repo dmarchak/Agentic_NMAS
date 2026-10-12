@@ -234,7 +234,10 @@ def leases(raw: list, family: str) -> list:
                     "hostname": _hostname(l.get("hostname")), "valid": valid,
                     "ends": ends, "state": LEASE_STATES.get(l.get("state"), str(l.get("state"))),
                     "type": l.get("type", ""), "family": family,
-                    "prefix_len": l.get("prefix-len")})
+                    "prefix_len": l.get("prefix-len"),
+                    # DHCPv6 only: the client's IA identifier. A client drawing a new one
+                    # each time it asks is given a new address each time (C681).
+                    "iaid": l.get("iaid")})
     return sorted(out, key=lambda x: (x["subnet_id"] or 0, x["address"]))
 
 

@@ -162,6 +162,16 @@ def test_leases_grouped_collapsed_and_flagged(web):
     assert addresses == ["2001:db8:10::101", "2001:db8:10::105", "2001:db8:10::107",
                          "2001:db8:10::103"]
     assert "not readable: a host the tool does not reach" in html
+    # C681: each IPv6 lease's IAID, from Kea's lease data (the captured lease6-get-all), and
+    # the drift's cause said: h1 asked with a new IAID each time.
+    with open(os.path.join(os.path.dirname(__file__), "fixtures", "kea",
+                           "dhcp6-lease6-get-all.json"), encoding="utf-8") as fh:
+        raw = json.load(fh)
+    raw = raw[0] if isinstance(raw, list) else raw
+    for lease in raw["arguments"]["leases"]:
+        assert f">IAID {lease['iaid']}</span>" in html, lease["ip-address"]
+    assert "with a new IAID each time (3 different)" in six
+    assert "keeps using it whatever Kea's lease says" in six
 
 
 def test_a_filter_or_a_search_shows_a_subset_and_says_so(web):

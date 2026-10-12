@@ -13,7 +13,8 @@ Compared again 2026-10-11 (C529 step 3, board C's section 1): the Subnets table 
 Templates compared: templates/v2/dhcp.html, templates/v2/_dhcp_view.html, templates/v2/_dhcp_reserve.html
 Compared again 2026-10-11 after the subnet move (C529 step 5, run on the host): each subnet Mercury holds has board C's Edit… (its card: sections 2 and 3, the form, the change, Leases now, Checks, the confirm); ZTP's has none. Remove… and Add a subnet… are the next part. Walked on the host (2fbff36): the edit's preview against the live Kea named both leases a narrower pool would strand, each kept until its lease ends, and passed the gateway against intent.
 Compared again 2026-10-11 (board C sections 4 and 5): Add a subnet… beside the heading with its (i), and Remove… under each subnet's Edit…, as board C draws them; the removal's card says the leases it ends service for and what survives, and asks the acknowledgement.
-Templates sha256: `491d0c23e1b6fa1c9564c955c7064e8abc35b7de004ac757d6f120d853015e9d`
+Compared again 2026-10-12 (C681, the operator's asks): each IPv6 lease's Identity cell carries its IAID under the DUID, and the shared-identity note says when the client asked with a new IAID each time and that a client installing its address "forever" keeps it whatever Kea's lease says, so a reservation is the fix (shot `dhcp-lea` at 1440 and 390). Board A draws the Identity column and the note's place; neither moved, so no region's verdict changed.
+Templates sha256: `6ef154a6faeab066c94d5132cec48016950917a0aea7a47767773d5e2ad699ee`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

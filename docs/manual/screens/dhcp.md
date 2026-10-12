@@ -46,7 +46,13 @@ another address. **Find** matches an address, MAC, DUID or hostname; **Show** na
 sharing an identity, those not in the inventory, or those expiring within a day. Either shows a
 part and says how much of the whole.
 
-An IPv4 lease is held by its MAC, an IPv6 lease by its DUID. A hostname that names a device of
+An IPv4 lease is held by its MAC, an IPv6 lease by its DUID, and an IPv6 lease also shows its
+**IAID**, the identifier of the client's address association: a client that asks with a new IAID
+each time is given a new address each time, which is how one DUID comes to hold several. A
+client that installs its address with no lifetime ("forever", as Linux does for DHCPv6) keeps
+using it whatever Kea's lease says, so a lease ending or being shortened changes nothing on the
+host. A reservation for the address the host uses is the fix: the host is given that address
+every time it asks. A hostname that names a device of
 the network links to its page. **Kea's lease** is its lifetime and when it ends. **As the host
 holds it** is the client's side, which Kea cannot see: for a host Mercury does not reach it says
 "not readable", never blank; reading a managed device's own lease is designed and not built yet.
