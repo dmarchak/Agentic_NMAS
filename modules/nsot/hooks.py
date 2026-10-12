@@ -155,13 +155,32 @@ _exit_join_registered = False
 
 
 def _ensure_exit_join() -> None:
+    """Join the hooks before the interpreter starts shutting down, not after (C702).
+
+    `atexit` runs once shutdown has begun: a hook joined from there that first imports
+    `concurrent.futures.thread` (boto3's client does, for the s3 archive) fails with "can't
+    register atexit after shutdown", and an executor started there refuses work. Measured on
+    the host's interpreter (3.12.3), 2026-10-12. So the module is imported now, and the join is
+    one of threading's own exit callbacks, which run newest first and before
+    `concurrent.futures` shuts its executors; `atexit` where an interpreter lacks them."""
     global _exit_join_registered
     with _lock:
         if _exit_join_registered:
             return
         _exit_join_registered = True
-    import atexit
-    atexit.register(wait_for_hooks)
+    import concurrent.futures.thread  # noqa: F401  (registers its own exit callback first)
+    import threading as _threading
+    register = getattr(_threading, "_register_atexit", None)
+    if register is not None:
+        register(_join_at_exit)
+    else:
+        import atexit
+        atexit.register(_join_at_exit)
+
+
+def _join_at_exit() -> None:
+    """The exit join, reading the bound when it runs (a test shortens it)."""
+    wait_for_hooks(_EXIT_JOIN_SECONDS)
 
 
 def wait_for_hooks(timeout: float = _EXIT_JOIN_SECONDS) -> list:

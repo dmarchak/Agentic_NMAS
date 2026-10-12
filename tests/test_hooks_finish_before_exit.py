@@ -25,10 +25,6 @@ from modules.nsot import hooks
 hooks.ensure_default_hooks = lambda: []          # no real push in a test
 if {join_seconds!r} is not None:
     hooks._EXIT_JOIN_SECONDS = {join_seconds!r}
-    import atexit
-    atexit.unregister(hooks.wait_for_hooks)
-    hooks._exit_join_registered = True
-    atexit.register(lambda: hooks.wait_for_hooks({join_seconds!r}))
 def slow_push(ctx):
     time.sleep({sleep!r})
     open({str(marker)!r}, "w").write("done")
@@ -52,3 +48,31 @@ def test_a_push_that_cannot_finish_is_named_not_silent(tmp_path):
     assert not pushed
     assert "still running at exit" in r.stderr
     assert "may not have been pushed" in r.stderr
+
+
+def test_a_hook_that_uses_an_executor_still_runs_at_exit(tmp_path):
+    """C702 (2026-10-12): seven commits made from a host-shell script each logged "hooks:
+    's3-archive' failed: can't register atexit after shutdown". The archive's client (boto3)
+    first imports concurrent.futures.thread inside the hook, which ran from atexit, after
+    shutdown had begun. A hook here imports it inside and runs an executor, as boto3's does,
+    in a process that exits right after its commit: it finishes."""
+    marker = tmp_path / "archived"
+    code = f"""
+import sys
+sys.path.insert(0, {ROOT!r})
+from modules.nsot import hooks
+hooks.ensure_default_hooks = lambda: []          # no real archive in a test
+def archive(ctx):
+    import concurrent.futures.thread  # noqa: F401
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(1) as ex:
+        word = ex.submit(lambda: "archived").result()
+    open({str(marker)!r}, "w").write(word)
+    return {{"ok": True}}
+hooks.register("s3-archive", archive, timeout=30)
+hooks.run_post_commit({{"list_name": "x", "repo": "/nonexistent", "sha": "abc"}})
+"""
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                       timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert marker.exists() and marker.read_text() == "archived", r.stderr

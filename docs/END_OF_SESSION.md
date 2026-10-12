@@ -41,7 +41,16 @@ release deployed and checked on the host.
 6. **C691 snap to grid: board E drawn and signed off (canvas v115), built, compared** (next
    commit); the walk: a drag with the switch on.
 7. Findings closable without the operator (C698, C702 first): not started.
-8. The host health check: not started.
+8. **The host health check: DONE 07:18 UTC, read only, on 963eb8e.** Failed units: only
+   `openipmi.service` (failed before, 2026-10-09's check too). Active: flask-app, Prometheus,
+   Grafana, the three Kea services, Docker, nmas-topology, Alloy; the ZTP responder socket
+   listening; the five nmas timers armed (next runs 08:01 to 08:04, the NetBox restore test
+   2026-10-13 04:35). Containers: mercury-postgres healthy, NetBox's five healthy, Loki and the
+   SNMP exporter up; the two Oxidized containers stopped, as decided. Endpoints: Mercury,
+   Prometheus, Grafana, Loki, the SNMP exporter and NetBox all 200. The records database on
+   127.0.0.1:5433 only. Prometheus: 39 targets, 0 down (every device's jobs). Every managed
+   device heartbeating: syslog from all nine (r1 to r4, r6, s1 to s4) in the last 15 minutes.
+   **Needs attention: empty**, all 24 sources read, none unreadable. Disk 14% of 291G.
 
 ## STATUS: 2026-10-12, your picks (from 04:35 UTC; 22:35 UTC−6)
 
