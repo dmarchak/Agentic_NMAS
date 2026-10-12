@@ -44,7 +44,7 @@
   <label><span class="muted small">Language</span>
     <select name="lang">{% for k, w in m.langs.items() %}<option value="{{ k }}"{% if k == s.lang %} selected{% endif %}>{{ w }}</option>{% endfor %}</select></label>
   <label class="hq-q-text"><span class="muted small">The query</span>
-    <textarea name="q" rows="3" spellcheck="false" maxlength="{{ m.limits.chars }}" placeholder="sum by (device) (rate(ifInErrors[$__rate_interval]))   or   {job=&quot;syslog&quot;} |= &quot;%LINK&quot;">{{ m.expr }}</textarea></label>
+    <textarea name="q" rows="4" spellcheck="false" maxlength="{{ m.limits.chars }}" placeholder="sum by (device) (rate(ifInErrors[$__rate_interval]))   or   {job=&quot;syslog&quot;} |= &quot;%LINK&quot;">{{ m.expr }}</textarea></label>
   <span class="op-act"><button type="submit" class="btn">Run</button></span>
   <p class="muted small">PromQL: up to {{ m.limits.lines }} expressions, one a line, each drawn as series. LogQL: one line query, its newest {{ m.limits.logql_lines }} lines over at most {{ m.limits.logql_days }} days, masked. Your query is in the address, so Copy the link carries it.</p>
 </form>

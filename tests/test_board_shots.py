@@ -358,6 +358,11 @@ def test_history_query(tmp_path, monkeypatch):
     with browser.Served(A.app) as served:
         _shoot("history-query", "AskLibrary.dc.html", lambda w: "/v2/history?tab=query", served,
                widths=((1440, 1.0), (390, 2.0)))
+        # C720: Ask your own at a desk, at half a screen and at phone width, a LogQL query in it.
+        ask = ("/v2/history/query/metric/ask?list=Lab&lang=logql&range=30d&q="
+               "%7Bjob%3D~%22.%2B%22%7D+%7C%3D+%22%25SYS-5-CONFIG_I%22")
+        _shoot("history-ask", "", lambda w: ask, served,
+               widths=((1440, 1.0), (960, 1.0), (390, 2.0)))
 
 
 def test_history_metric(tmp_path, monkeypatch):

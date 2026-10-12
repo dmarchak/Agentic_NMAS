@@ -146,6 +146,34 @@ class TestTheMetricQuestion:
         assert web.get("/v2/history/query/metric/nope").status_code == 404
 
 
+def test_ask_your_own_fits_half_a_screen_in_a_browser(web):  # noqa: F811
+    """C720 (the operator, with a shot of a half-screen window: Run not displayed, the help
+    past the right edge, the query box too small): at 960 px, Run and the help sit inside the
+    query card, and the box takes most of the card's width."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 960, "height": 1000})
+        b.go(srv.url("/v2/history/query/metric/ask?list=Lab&lang=logql&range=30d&q="
+                     "%7Bjob%3D~%22.%2B%22%7D+%7C%3D+%22%25SYS-5-CONFIG_I%22"))
+        got = b.wait_for(
+            "var f = document.querySelector('form.hq-ask-own'); if (!f) return null;"
+            "var c = f.getBoundingClientRect();"
+            "var run = f.querySelector('button[type=submit]').getBoundingClientRect();"
+            "var p = f.querySelector('p').getBoundingClientRect();"
+            "var t = f.querySelector('textarea').getBoundingClientRect();"
+            "return [c.left, c.right, run.left, run.right, p.right, t.width / c.width,"
+            " document.documentElement.scrollWidth <= window.innerWidth]", 15)
+    left, right, run_l, run_r, p_r, share, no_side_scroll = got
+    assert left <= run_l and run_r <= right, ("Run off the card", got)
+    assert p_r <= right + 1, ("the help runs past the card", got)
+    assert share >= 0.8, ("the query box is too small", got)
+    assert no_side_scroll, ("the page scrolls sideways", got)
+
+
 def test_hovering_the_chart_reads_out_each_series_in_a_browser(web, grafana):  # noqa: F811
     """C707 (the operator, with a shot of this question's chart: "shows nothing when mousing
     over"): in a real browser at 1440, the pointer over the chart's middle draws the readout,

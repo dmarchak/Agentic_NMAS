@@ -1745,7 +1745,21 @@ a.hq-q strong { color: var(--accent); }
 /* Your own query: the question's PromQL editable, and Ask your own (board B's query card). */
 .card.hq-query { display: flex; flex-direction: column; gap: 8px; }
 .card.hq-query > * { margin: 0; }
-.hq-ask-own { flex-direction: row; flex-wrap: wrap; align-items: flex-end; }
+/* Ask your own (C720: at half a screen the row did not wrap, so Run sat off the card and the
+   help ran past its edge): the language, then the query across the card, then Run with the
+   help beside it; on a phone each on its own line. */
+.card.hq-ask-own { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 14px;
+  align-items: center; }
+.card.hq-ask-own > label:not(.hq-q-text) { grid-column: 1 / -1; display: flex; gap: 8px;
+  align-items: center; }
+.card.hq-ask-own > .hq-q-text { grid-column: 1 / -1; }
+.card.hq-ask-own > .op-act { grid-column: 1; }
+.card.hq-ask-own > p { grid-column: 2; min-width: 0; overflow-wrap: anywhere; }
+.card.hq-ask-own textarea { min-height: 96px; resize: vertical; }
+@media (max-width: 640px) {
+  .card.hq-ask-own { grid-template-columns: minmax(0, 1fr); }
+  .card.hq-ask-own > .op-act, .card.hq-ask-own > p { grid-column: 1; }
+}
 .hq-q-text { display: flex; flex-direction: column; gap: 4px; flex: 1 1 100%; }
 .hq-q-text textarea { font-family: var(--mono); font-size: 12.5px; width: 100%;
   box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--r);
