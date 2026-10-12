@@ -204,11 +204,6 @@ def _bodies(v):
                                   "references only, no stored value"),
         "intent_v2.reopen": (200, ("form", {"yaml": v["_intent_text"]}),
                              "the editor on the document sent"),
-        "topology_save_hidden": (200, ("json", {"hidden": []}), "layout"),
-        "topology_save_positions": (200, ("json", {"positions": {}}), "layout"),
-        "topology_save_proto_hidden": (200, ("json", {"view": "ospf", "hidden": []}), "layout"),
-        "topology_save_proto_positions": (200, ("json", {"view": "ospf", "positions": {}}),
-                                          "layout"),
     }
 
 
@@ -538,10 +533,6 @@ class TestNoPostReturnsAStoredSecret:
 MAY_WRITE = {
     "drift_check_sync": "runs the drift check NOW and records its run in drift_state.json; "
                         "a check run, not a preview",
-    "topology_save_hidden": "layout: saves which topology nodes are hidden",
-    "topology_save_positions": "layout: saves node positions",
-    "topology_save_proto_hidden": "layout: saves hidden nodes per protocol view",
-    "topology_save_proto_positions": "layout: saves positions per protocol view",
 }
 
 

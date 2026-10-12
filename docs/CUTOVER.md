@@ -78,7 +78,6 @@ and built.
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
-| Topology | `/topology/*` (9), `/topology_data` | REMOVE, 7.8 | Neighbours carries discovery per device (C126); the fleet map is P.11's Topology item |
 | Topology service | (no route of today's; its two routes and panel removed 2026-10-12) | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the service itself REMOVE at 7.8: the `nmas-topology` unit and `deploy/topology/nmas-topology.py` on the host (a host step), and the integration's Settings card | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
 | AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages. The in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`, started by `app.py`) and `modules/collector_config.py` go with it: since the legacy collectors' routes left (2026-10-12) the agent's tools are their only readers |
 
@@ -214,6 +213,20 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   host-installed, so its removal carries a host step) and the integration's Settings card;
   the Topology service row above keeps them. Proved before removal: the panel was the only
   caller; after it, neither path is in the url_map.
+- **Today's Topology tab** (/topology_data, /topology/state, /topology/positions,
+  /topology/hidden, /topology/link_status, /topology/proto_link_status,
+  /topology/protocol_data, /topology/protocol_state, /topology/proto_hidden,
+  /topology/proto_positions), 2026-10-12: Neighbours carries discovery per device (C126) and
+  OBSERVE › Topology is the fleet map (P.11). The tab went whole: its nav button, pane (the
+  legacy CDP/LLDP, OSPF, BGP and tunnel views), `static/js/gen/index.3.js` (all of it the tab's)
+  and the vendored vis-network it alone loaded (files, manifest and licence entries). The two
+  routes that opened a session per device (link status, protocol link status) went with it.
+  Kept: `modules/topology.py`, whose `discover_topology` today's agent still calls; it goes
+  with the AI agent's family. Four invalidation-map tests that used the layout save as their
+  example mutating route now use `POST /remote/auto-push` (one key, a JSON answer), shown
+  able to fail by moving that route's key. Proved before removal: nothing outside the tab's
+  pane and script named its functions or ids; after it, no `/topology` path of today's is in
+  the url_map.
 
 ## Legacy actions that are not routes
 

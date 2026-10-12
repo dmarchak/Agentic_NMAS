@@ -151,32 +151,5 @@
   "sha256": "df630c6a8d6f8eeaff264b50f73ce5b114f646ffd9a0bb74f049b0a00135fa04",
   "tarball": "https://registry.npmjs.org/uplot/-/uplot-1.6.32.tgz",
   "version": "1.6.32"
- },
- "vis-network/LICENSE-APACHE-2.0": {
-  "bytes": 10171,
-  "from": "LICENSE-APACHE-2.0",
-  "integrity": "sha512-Eiwx1JleAsUqfy4pzcsFngCVlCEdjAtRPB/OwCV7PHBm+o2jtE4IZPcPITAEGUlxvL4Fdw7/lZsfD32dL+IL6g==",
-  "package": "vis-network",
-  "sha256": "1509904280a272780fd69c04b858f512cf216f8e3464a0dd98d8f34416feced9",
-  "tarball": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
-  "version": "9.1.6"
- },
- "vis-network/LICENSE-MIT": {
-  "bytes": 1084,
-  "from": "LICENSE-MIT",
-  "integrity": "sha512-Eiwx1JleAsUqfy4pzcsFngCVlCEdjAtRPB/OwCV7PHBm+o2jtE4IZPcPITAEGUlxvL4Fdw7/lZsfD32dL+IL6g==",
-  "package": "vis-network",
-  "sha256": "1f65085e54c036645082257618db2c7b787e68c3b02485e214ecd09e0834ee8f",
-  "tarball": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
-  "version": "9.1.6"
- },
- "vis-network/vis-network.min.js": {
-  "bytes": 702611,
-  "from": "standalone/umd/vis-network.min.js",
-  "integrity": "sha512-Eiwx1JleAsUqfy4pzcsFngCVlCEdjAtRPB/OwCV7PHBm+o2jtE4IZPcPITAEGUlxvL4Fdw7/lZsfD32dL+IL6g==",
-  "package": "vis-network",
-  "sha256": "576bb887733eb01bb52ee75b90ef46d818454de5fddb5b616fb8a298d307ca12",
-  "tarball": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
-  "version": "9.1.6"
  }
 }

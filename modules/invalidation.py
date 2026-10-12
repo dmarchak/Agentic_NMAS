@@ -334,10 +334,6 @@ DECLARED = {
     # The rest of the page's own state.
     "add_quick_action": ("quick_actions",),
     "delete_quick_action": ("quick_actions",),
-    "topology_save_hidden": ("topology",),
-    "topology_save_positions": ("topology",),
-    "topology_save_proto_hidden": ("topology",),
-    "topology_save_proto_positions": ("topology",),
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),

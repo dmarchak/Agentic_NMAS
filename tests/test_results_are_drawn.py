@@ -313,8 +313,6 @@ FALSE_GREEN = {
 #: green and on no list: the class was not zero, the list was. Keyed by
 #: (file, a literal from the call); a scan finds them all, both ways.
 GREEN_TOASTS = {
-    ("static/js/gen/index.3.js", "Topology updated"): "topology read with nodes (0 nodes is a warning)",
-    ("static/js/gen/index.3.js", "topology: ${n} node(s)"): "green only when nodes were found",
     ("static/js/gen/index.4.js", "Deleted \"${pbName}\""): "one playbook deleted after an HTTP ok",
     ("static/js/gen/index.4.js", "data.drifted > 0 ? 'warning'"): "level from drifted and errors",
     ("static/js/gen/index.4.js", "Approved and executed"): "one item; failure and note have their own",

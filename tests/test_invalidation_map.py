@@ -27,6 +27,7 @@ import dukpy
 import pytest
 
 from modules import invalidation as I
+from modules.nsot import remote as R
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.path.join(ROOT, "static", "js", "nmas_invalidation.js")
@@ -155,20 +156,21 @@ class TestTheResponseCarriesIt:
     def test_header_and_body(self, client, monkeypatch):
         import app as A
 
-        monkeypatch.setattr(A, "_save_topo_layout", lambda layout: None)
-        r = client.post("/topology/positions", json={"positions": {}})
-        assert r.headers.get(I.HEADER) == "topology"
+        monkeypatch.setattr(R, "enable_auto_push",
+                            lambda name, actor="": {"ok": True, "enabled": True})
+        r = client.post("/remote/auto-push", json={})
+        assert r.headers.get(I.HEADER) == "remote"
         body = r.get_json()
-        assert body["invalidates"] == ["topology"] and body["ok"] is True
+        assert body["invalidates"] == ["remote"] and body["ok"] is True
 
     def test_the_response_is_otherwise_unchanged(self, client, monkeypatch):
         """Acceptance 7: nothing about a route changes but the added field."""
         import app as A
 
-        monkeypatch.setattr(A, "_save_topo_layout", lambda layout: None)
-        body = client.post("/topology/positions",
-                           json={"positions": {"r1": {"x": 1}}}).get_json()
-        assert body == {"ok": True, "saved": 1, "invalidates": ["topology"]}
+        monkeypatch.setattr(R, "enable_auto_push",
+                            lambda name, actor="": {"ok": True, "enabled": True})
+        body = client.post("/remote/auto-push", json={}).get_json()
+        assert body == {"ok": True, "enabled": True, "invalidates": ["remote"]}
 
     @pytest.mark.real_identity
     def test_an_identity_refusal_carries_no_header(self, client):
@@ -285,11 +287,12 @@ class TestTheClientExecutes:
         """Against a REAL response's header, not a hand-typed one."""
         import app as A
 
-        monkeypatch.setattr(A, "_save_topo_layout", lambda layout: None)
-        header = client.post("/topology/positions", json={}).headers[I.HEADER]
+        monkeypatch.setattr(R, "enable_auto_push",
+                            lambda name, actor="": {"ok": True, "enabled": True})
+        header = client.post("/remote/auto-push", json={}).headers[I.HEADER]
         out = _run("""
           var calls = 0;
-          NMAS.subscribe('topology', 'layout', function () { calls++; return true; });
+          NMAS.subscribe('remote', 'card', function () { calls++; return true; });
           NMAS.subscribe('drift', 'badge', function () { calls += 100; return true; });
           var resp = {marker: 'the response', headers: {get: function (h) {
             return h === 'X-NMAS-Invalidates' ? dukpy['header'] : null; }}};
@@ -306,13 +309,14 @@ class TestTheClientExecutes:
         registry, against a REAL response's header."""
         import app as A
 
-        monkeypatch.setattr(A, "_save_topo_layout", lambda layout: None)
-        header = client.post("/topology/positions", json={}).headers[I.HEADER]
+        monkeypatch.setattr(R, "enable_auto_push",
+                            lambda name, actor="": {"ok": True, "enabled": True})
+        header = client.post("/remote/auto-push", json={}).headers[I.HEADER]
         out = _run("""
           var calls = 0;
-          NMAS.subscribe('topology', 'layout', function () { calls++; return true; });
+          NMAS.subscribe('remote', 'card', function () { calls++; return true; });
           NMAS.subscribe('drift', 'badge', function () { calls += 100; return true; });
-          NMAS.onHtmxResponse({detail: {xhr: {responseURL: '/topology/positions',
+          NMAS.onHtmxResponse({detail: {xhr: {responseURL: '/remote/auto-push',
             getResponseHeader: function (h) {
               return h === 'X-NMAS-Invalidates' ? dukpy['header'] : null; }}}});
           NMAS.onHtmxResponse({detail: {}});

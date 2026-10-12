@@ -78,13 +78,6 @@
    "source": "https://registry.npmjs.org/uplot/-/uplot-1.6.32.tgz",
    "licence_file": "static/js/vendor/uplot/LICENSE"
   },
-  "static/js/vendor/vis-network/*": {
-   "component": "vis-network",
-   "version": "9.1.6",
-   "licence": "Apache-2.0 OR MIT",
-   "source": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
-   "licence_file": "static/js/vendor/vis-network/LICENSE-MIT"
-  },
   "static/css/bootstrap*": {
    "component": "Bootstrap (CSS)",
    "version": "5.3.3",

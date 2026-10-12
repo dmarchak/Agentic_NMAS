@@ -342,10 +342,6 @@ GATES = {
     "bulk_clear": _g(N, "clears a finished operation's on-screen result"),
     "ai_stop": _g(N, "stops a running request; refusing a stop is the unsafe direction"),
     "ai_clear": _g(N, "clears the caller's chat history"),
-    "topology_save_positions": _g(N, "layout"),
-    "topology_save_hidden": _g(N, "layout"),
-    "topology_save_proto_positions": _g(N, "layout"),
-    "topology_save_proto_hidden": _g(N, "layout"),
 }
 
 #: SocketIO events, which never reach ``before_request``. Empty since the break-glass
