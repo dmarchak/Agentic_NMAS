@@ -59,38 +59,6 @@ class TestTheResolver:
 
 
 class TestTheCallers:
-    def test_the_poll_route_uses_the_device_s_value_never_the_request_s(
-            self, two_devices, monkeypatch):
-        import app as A
-        from modules import snmp_collector
-
-        seen = []
-        monkeypatch.setattr(snmp_collector, "snmp_get",
-                            lambda host, oids, community, version=2, **k:
-                            seen.append((host, community)) or [("sysName", "s4")])
-        monkeypatch.setattr(A, "get_current_device_list", lambda: (LIST, "x"))
-        r = A.app.test_client().post("/monitoring/snmp/poll", json={
-            "device_ip": "192.0.2.24", "community": "TYPEDBYREQUEST"},
-            headers={"Accept": "application/json"})
-        assert seen == [("192.0.2.24", "NEWCOMMUNITY2")], (r.status_code, r.get_json())
-        assert "NEWCOMMUNITY2" not in r.get_data(as_text=True)
-
-    def test_the_form_refuses_a_community_by_naming_its_owner(self, monkeypatch, tmp_path):
-        import app as A
-        from modules import collector_config
-
-        monkeypatch.setattr(collector_config, "_config_path",
-                            lambda: str(tmp_path / "collector_config.json"))
-        from modules import identity
-        who = identity.Identity(actor="p@example.invalid", email="p@example.invalid",
-                                kind="person", verified=True, outcome="ok",
-                                peer="198.51.100.7", peer_trusted=True, header_present=True)
-        monkeypatch.setattr(identity, "identify", lambda _r: who)
-        r = A.app.test_client().post("/monitoring/config", json={
-            "snmp_community_ro": "TYPEDINTOFORM"}, headers={"Accept": "application/json"})
-        assert r.status_code == 400 and "each device's own secret" in r.get_json()["error"]
-        assert not (tmp_path / "collector_config.json").exists(), "nothing stored"
-
     def test_the_agent_tool_never_hands_the_model_the_value(self, two_devices, monkeypatch):
         """The success branch, which the leak sweep cannot reach (no test
         device answers SNMP): it printed `community=<value>` in prose, which

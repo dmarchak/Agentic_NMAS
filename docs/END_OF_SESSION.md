@@ -16,8 +16,10 @@ release deployed and checked on the host.
    the break-glass preview route (3c3b1c7: two families in one commit, since the second was
    edited while the first's gate ran; deployed 05:57), inventory order (249f0e6, deployed
    06:06; C704 found: v2 Devices has no column sort), the monitoring stack panel with the
-   integrations' `monitor()` (c6fba50; C705 found: the Grafana URL setting has no reader).
-   Next: Configure, then the legacy collectors.
+   integrations' `monitor()` (c6fba50, deployed 06:15; C705 found: the Grafana URL setting
+   has no reader), Configure (eb64d5e), the legacy collectors' routes with today's Monitoring
+   tab (next commit; the receivers go with the AI agent). Next: today's Topology tab
+   (/topology/*, /topology_data), then reachability, then the AI agent's family.
 3. **C667: checked 06:15 UTC, nothing left to build.** Every part the message names is built,
    deployed and walked read-only on the host (7f56d12, 2e45ab9, 482ad26), and each is in a
    fidelity record against its board: board A in `docs/fidelity/history-query.md` (Saved by

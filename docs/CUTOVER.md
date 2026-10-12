@@ -78,10 +78,9 @@ and built.
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
-| Legacy collectors | `/monitoring/config`, `/monitoring/interfaces`, `/monitoring/netflow`, `/monitoring/netflow/clear`, `/monitoring/snmp/poll`, `/monitoring/snmp/traps`, `/monitoring/snmp/traps/clear` | REMOVE, 7.8 | The in-app collector and SNMP Quick Poll are removed (the mockup review, 2026-09-29) |
 | Topology | `/topology/*` (9), `/topology_data` | REMOVE, 7.8 | Neighbours carries discovery per device (C126); the fleet map is P.11's Topology item |
 | Topology service | `/topology/service/status`, `/svg` | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the two routes and the service REMOVE at 7.8 | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
-| AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages |
+| AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages. The in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`, started by `app.py`) and `modules/collector_config.py` go with it: since the legacy collectors' routes left (2026-10-12) the agent's tools are their only readers |
 
 ## Removed at 7.8
 
@@ -191,6 +190,21 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   agent's family. Proved before removal: nothing outside the tab's own pane and script named
   its functions or ids, and no v2 page, job or script reaches the five paths; after it, none is
   in the url_map.
+- **The legacy collectors' routes** (/monitoring/config GET and POST, /monitoring/interfaces,
+  /monitoring/snmp/poll, /monitoring/snmp/traps and its clear, /monitoring/netflow and its
+  clear), 2026-10-12: the in-app collector and SNMP Quick Poll were removed at the mockup
+  review (2026-09-29); monitoring is Prometheus's, Loki's and Grafana's, drawn on
+  `/v2/monitoring` and each device's Monitoring tab. Today's Monitoring tab, their one caller,
+  went whole (its nav button, pane and script), and with it the `monitoring` invalidation key
+  (no writer left). The protection the routes carried stays where it now matters: a device's
+  SNMP community is still resolved only from its own secret (`collector_config.community_for_address`,
+  tested with the agent's tool in `tests/test_community_has_one_owner.py`). Kept, for today's
+  agent, their only reader now: the trap and NetFlow receivers `app.py` starts and the
+  collector configuration; they go with the AI agent's family (its row says so). Two tests
+  that used `monitoring_config` as an example moved to another endpoint of the same shape
+  (`settings_integrations.general_settings` for a GET-and-POST endpoint, `git_status` for a
+  v1 navigation). Proved before removal: today's Monitoring tab was the only caller; after
+  it, none of the paths is in the url_map.
 
 ## Legacy actions that are not routes
 

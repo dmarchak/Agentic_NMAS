@@ -85,7 +85,6 @@ VOCABULARY = {
     "chat": "the AI chat transcript",
     "playbooks": "AI playbooks",
     "quick_actions": "quick actions",
-    "monitoring": "the SNMP and NetFlow collectors",
     "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
     "logs": "the fleet's syslog counted per day (the Logs view's reader, C652)",
     "dhcp": "the network's Kea: subnets, reservations and leases (the DHCP reader, C529)",
@@ -298,10 +297,6 @@ DECLARED = {
     "settings_v2.diag_drift_switch": ("drift",),
     "settings_v2.diag_drift_check": ("drift",),
     "identity.ratify_setting": ("posture", "settings"),
-    "monitoring_config": ("monitoring",),
-    "monitoring_snmp_poll": ("monitoring",),
-    "clear_netflow_flows": ("monitoring",),
-    "clear_snmp_traps": ("monitoring",),
     # A device, its files and backups.
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),

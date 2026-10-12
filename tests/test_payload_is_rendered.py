@@ -302,10 +302,6 @@ RENDERS = {
         {"partials__settings_integrations.1.js": ("loadGeneralIntegrationSettings",)},
         (("partials__settings_integrations.1.js", "loadGeneralIntegrationSettings", "d"),),
         tables={"partials__settings_integrations.1.js": ("_GENERAL_MAP",)}),
-    "GET /monitoring/config": Render(
-        _get("/monitoring/config"),
-        {I4: ("loadMonitoringTab",)},
-        ((I4, "loadMonitoringTab", "cfg"),)),
     # A STORED PARTIAL IMPORT (C85). This entry used `_get("/netbox/status")`
     # on a store with no import, so `status` was empty (declared "NetBox is
     # not configured in the fixture") and the summary C8 filled with

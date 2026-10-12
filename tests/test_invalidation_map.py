@@ -47,12 +47,11 @@ NOT_YET_SUBSCRIBED = {
     "device_files": "the device page's file list; 7.3 (Device)",
     "files": "transferred files; 7.3 (Device)",
     "lists": "the list selector; 7.4 (Fleet, Networks)",
-    "monitoring": "the collectors' cards; 7.3 (Device, Monitoring)",
     "playbooks": "the chat panel's playbooks; 8.2",
     "posture": "the posture panel; 7.7 (Settings)",
     "quick_actions": "the device page's quick actions; 7.3 (Device)",
 }
-NOT_YET_CEILING = 13  # -1 2026-10-12: variables, its routes removed at 7.8. Before: -1 2026-10-10: topology, heard by P.11's Topology map. Before: -1 2026-10-10: credentials, heard by Credentials › Profiles. Before: +1 2026-10-06: breakglass (C539), declared so the export, the drill and the intact check wake job health; its own subscriber comes with C538. Before: -1 2026-10-06: templates, heard by the Templates table (C516). Before: -1 2026-10-05: settings, heard by Needs attention's dashboard settings (P.8 step 8c). Before: -2 2026-10-02: device_state and intent, heard by Needs attention and its count. Before: the redesign's landing subscribes to `netbox` (2026-09-30); C148 retired "staging" with extraction's routes (seed intent replaced them); the freshness panel and Needs attention subscribe to `freshness` (7.2 step 15); Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
+NOT_YET_CEILING = 12  # -1 2026-10-12: monitoring, its collector routes removed at 7.8. Before: -1 2026-10-12: variables, its routes removed at 7.8. Before: -1 2026-10-10: topology, heard by P.11's Topology map. Before: -1 2026-10-10: credentials, heard by Credentials › Profiles. Before: +1 2026-10-06: breakglass (C539), declared so the export, the drill and the intact check wake job health; its own subscriber comes with C538. Before: -1 2026-10-06: templates, heard by the Templates table (C516). Before: -1 2026-10-05: settings, heard by Needs attention's dashboard settings (P.8 step 8c). Before: -2 2026-10-02: device_state and intent, heard by Needs attention and its count. Before: the redesign's landing subscribes to `netbox` (2026-09-30); C148 retired "staging" with extraction's routes (seed intent replaced them); the freshness panel and Needs attention subscribe to `freshness` (7.2 step 15); Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
 
 _SUB = re.compile(r"^\s*NMAS\.subscribe\(\s*'([a-z_]+)'\s*,\s*'(\w+)'\s*,\s*(\w+)", re.M)
 
@@ -192,15 +191,17 @@ class TestTheResponseCarriesIt:
         assert I.HEADER not in client.get("/health").headers
 
     def test_a_read_of_a_mixed_endpoint_carries_no_header(self, client):
-        """`monitoring_config` serves GET and POST from ONE endpoint. The hook
+        """`settings_integrations.general_settings` serves GET and POST from ONE endpoint
+        (`monitoring_config` did, until 7.8 removed it). The hook
         first keyed on the endpoint alone, so every read of the panel
         announced an invalidation and carried `invalidates` in its body;
         `/health` above could not show it, having no write half."""
         import app as A
 
-        rules = [r for r in A.app.url_map.iter_rules() if r.endpoint == "monitoring_config"]
+        rules = [r for r in A.app.url_map.iter_rules()
+                 if r.endpoint == "settings_integrations.general_settings"]
         assert {"GET", "POST"} <= set().union(*(r.methods for r in rules))
-        r = client.get("/monitoring/config")
+        r = client.get("/settings/integrations/general")
         assert I.HEADER not in r.headers
         assert "invalidates" not in (r.get_json() or {})
 

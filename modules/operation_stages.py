@@ -438,7 +438,6 @@ HISTORY = {
     "v2.credentials_drill": ("breakglass",),
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
-    "monitoring_config": "n/a: the collectors' settings, never one device's record",
     "inventory.set_source": NOT_A_DEVICE,
     "add_quick_action": NOT_A_DEVICE,
     "delete_quick_action": NOT_A_DEVICE,
@@ -448,8 +447,6 @@ HISTORY = {
     "ai_delete_playbook": NOT_A_DEVICE,
     "ai_events_clear": NOT_A_DEVICE,
     "ai_set_provider": NOT_A_DEVICE,
-    "clear_netflow_flows": NOT_A_DEVICE,
-    "clear_snmp_traps": NOT_A_DEVICE,
     "create_device_list_route": NOT_A_DEVICE,
     "delete_backup_route": NOT_A_DEVICE,
     "delete_device_list_route": NOT_A_DEVICE,

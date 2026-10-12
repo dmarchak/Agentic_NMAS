@@ -177,8 +177,8 @@ class TestAFailedV2RequestStaysOnV2:
 
         def boom(*a, **k):
             raise ValueError("planted")
-        monkeypatch.setitem(A.app.view_functions, "monitoring_config", boom)
-        r = failing.get("/monitoring/config", headers={"Accept": "text/html"})
+        monkeypatch.setitem(A.app.view_functions, "git_status", boom)
+        r = failing.get("/git/status", headers={"Accept": "text/html"})
         assert r.status_code == 302
 
 

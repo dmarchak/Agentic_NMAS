@@ -316,7 +316,6 @@ GREEN_TOASTS = {
     ("static/js/gen/index.3.js", "Topology updated"): "topology read with nodes (0 nodes is a warning)",
     ("static/js/gen/index.3.js", "topology: ${n} node(s)"): "green only when nodes were found",
     ("static/js/gen/index.4.js", "Deleted \"${pbName}\""): "one playbook deleted after an HTTP ok",
-    ("static/js/gen/index.4.js", "Monitoring config saved"): "one settings write, ok checked",
     ("static/js/gen/index.4.js", "data.drifted > 0 ? 'warning'"): "level from drifted and errors",
     ("static/js/gen/index.4.js", "Approved and executed"): "one item; failure and note have their own",
     ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create/delete, TFTP server, bulk STARTED): the per-device outcome is the bulk modal's",

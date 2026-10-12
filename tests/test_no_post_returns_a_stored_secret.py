@@ -134,8 +134,6 @@ def _bodies(v):
                                    "the first golden against HEAD: a program that adds its "
                                    "community, and HEAD's as residue"),
         "inventory.refresh": (200, ("json", {}), "a local list: refused as not NetBox-sourced"),
-        "monitoring_snmp_poll": (200, ("json", {"device_ip": DEVICE["ip"]}),
-                                 "an SNMP read with the stored community; the read is faked"),
         "netbox_safety.preview_import": (200, ("json", {"list_name": LIST}),
                                          "a dry-run import of r1 from its golden"),
         "netbox_safety.preview_import_all": (200, ("json", {}), "the same, every list"),

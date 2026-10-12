@@ -24,7 +24,7 @@ def store(tmp_path, monkeypatch):
 def make(read, **over):
     kw = dict(name="t-reader", what="a test reader", endpoints=("api/test",),
               interval_seconds=60, interval_basis="the test's own choice",
-              read=read, invalidates=("monitoring",), remedy="check the test service")
+              read=read, invalidates=("logs",), remedy="check the test service")
     kw.update(over)
     return R.Reader(**kw)
 
@@ -171,7 +171,7 @@ class TestAnnounce:
         def boom():
             raise RuntimeError("x")
         R.run_once(make(boom), announce=lambda *a: heard.append(a), clock=Clock())
-        assert heard == [(["monitoring"], "t-reader", True), (["monitoring"], "t-reader", False)]
+        assert heard == [(["logs"], "t-reader", True), (["logs"], "t-reader", False)]
 
     def test_a_failed_announcement_is_counted_and_never_breaks_the_read(self):
         before = R.announce_health()["failed"]
