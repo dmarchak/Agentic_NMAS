@@ -1,5 +1,6 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {%- set active_nav = 'devices' -%}
 {#- A pending device's page (NSOT_GUI_BRIEF 3.3): onboarded (phase 1: its
     commit and its staged credential) and not yet reached, so it is in no
@@ -42,15 +43,16 @@
 {#- Board M (canvas v113, the operator's decision 2026-10-11): where it has got to, in five
     steps. First boot is the management plane only; its intent follows as an ordinary deploy. -#}
 {%- set ztp_way = p.address_source == 'ztp' %}
-<section class="card ob-steps" aria-labelledby="ob-steps-h">
+<section class="card ob-where" aria-labelledby="ob-steps-h">
   <h2 id="ob-steps-h">Where {{ p.name }} has got to</h2>
-  <ol class="ob-steplist">
-    <li>{{ badge('done', 'ok') }} <strong>Identity:</strong> {% if p.mgmt_mac %}by MAC, <span class="mono">{{ p.mgmt_mac }}</span>{% elif p.mgmt_ip %}by its address, <span class="mono">{{ p.mgmt_ip }}</span>{% else %}by its name{% endif %}. <span class="muted">By serial: not offered; a virtual C8000v's board serial changes at every boot (measured).</span></li>
-    <li>{{ badge('done', 'ok') }} <strong>First-boot config:</strong> the management plane only (hostname, the one-time account, the domain, the address the tool reaches it on, SSH); nothing else is sent at first boot. Get the bootstrap config… below shows it.</li>
-    <li>{{ badge('done', 'ok') }} <strong>Confirmed</strong> {{ stamp(p.onboarded_at) }}: {% if ztp_way %}reserved in Kea{% if p.mgmt_mac and p.reserved_address %} (<span class="mono">{{ p.mgmt_mac }}</span> → <span class="mono">{{ p.reserved_address }}</span>){% endif %} and served to the device that asks with that MAC{% else %}committed, its one-time credential staged{% endif %}.</li>
-    <li>{{ badge('now', 'info') }} <strong>Waiting for it:</strong> {% if ztp %}{{ badge(ztp.stage | replace('_', ' '), 'warn' if ztp.stage in ('reservation_missing', 'asked_not_served', 'unknown') else 'info') }} {{ ztp.summary }}{% else %}boot it with its bootstrap config{% endif %}.</li>
-    <li>{{ badge('next', 'muted') }} <strong>Arrival:</strong> Verify… reaches it with the one-time account, rotates it to its role's credential, records its first golden and adds it to the inventory. Then its intent follows as an ordinary deploy, previewed, confirmed, verified and rolled back on failure.</li>
-  </ol>
+  {{ run_stepper(run) }}
+  <ul class="ob-steps-say">
+    <li><strong>Identity:</strong> {% if p.mgmt_mac %}by MAC, <span class="mono">{{ p.mgmt_mac }}</span>{% elif p.mgmt_ip %}by its address, <span class="mono">{{ p.mgmt_ip }}</span>{% else %}by its name{% endif %}. <span class="muted">By serial: not offered; a virtual C8000v's board serial changes at every boot (measured).</span></li>
+    <li><strong>First-boot config:</strong> the management plane only (hostname, the one-time account, the domain, the address the tool reaches it on, SSH); nothing else is sent at first boot. Get the bootstrap config… below shows it.</li>
+    <li><strong>Confirmed</strong> {{ stamp(p.onboarded_at) }}: {% if ztp_way %}reserved in Kea{% if p.mgmt_mac and p.reserved_address %} (<span class="mono">{{ p.mgmt_mac }}</span> → <span class="mono">{{ p.reserved_address }}</span>){% endif %} and served to the device that asks with that MAC{% else %}committed, its one-time credential staged{% endif %}.</li>
+    <li><strong>Waiting for it:</strong> {% if ztp %}{{ badge(ztp.stage | replace('_', ' '), 'warn' if ztp.stage in ('reservation_missing', 'asked_not_served', 'unknown') else 'info') }} {{ ztp.summary }}{% else %}boot it with its bootstrap config{% endif %}.</li>
+    <li><strong>Arrival:</strong> Verify… reaches it with the one-time account, rotates it to its role's credential, records its first golden and adds it to the inventory. Then its intent follows as an ordinary deploy, previewed, confirmed, verified and rolled back on failure.</li>
+  </ul>
 </section>
 {%- set name = p.name %}
 {% include "v2/_onboard_pending.html" %}

@@ -60,6 +60,10 @@ def _preview_card(lab):
     assert reading.status_code == 200, reading.get_data(as_text=True)[:400]
     html = reading.get_data(as_text=True)
     assert 'id="device-op"' in html and 'hx-trigger="nmas:capture_preview from:body"' in html
+    if "Read the running configuration" in html:
+        # Still reading: THE stepper (2026-10-12), the read running, the preview waiting.
+        assert "data-run-stepper" in html and 'data-step="read"' in html
+        assert re.search(r'class="run-step run-step-running" data-step="read"', html), html
     job = re.search(r"/capture/job/([0-9a-f]+)", html).group(1)
     assert capture_job.wait(job, 60)
     return c.get(f"/v2/device/r2/capture/job/{job}?back=history").get_data(as_text=True)
@@ -70,6 +74,26 @@ def _confirm(lab, html, **over):
     import json
     body = {**json.loads(vals), **over}
     return lab["client"].post("/v2/device/r2/capture/confirm", data=body)
+
+
+def test_the_reading_card_draws_the_one_stepper():
+    """2026-10-12: Capture's read on THE stepper, its declared steps (`CAPTURE_STEPS`): the read
+    running for the job's time, the preview and the record waiting."""
+    from types import SimpleNamespace
+
+    from flask import render_template
+
+    import app as A
+    from modules import device_actions
+
+    card = device_actions.capture_card(SimpleNamespace(name="Lab"), "r2", "j" * 32,
+                                       {"state": "running", "elapsed_s": 7})
+    with A.app.test_request_context():
+        html = render_template("v2/_capture.html", c=dict(card, back="history"))
+    assert "data-run-stepper" in html
+    steps = re.findall(r'class="run-step run-step-(\w+)" data-step="(\w+)"', html)
+    assert steps == [("running", "read"), ("waiting", "preview"), ("waiting", "record")], steps
+    assert ">7 s<" in html
 
 
 class TestTheMenu:

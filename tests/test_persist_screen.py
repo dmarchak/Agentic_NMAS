@@ -57,6 +57,8 @@ def lab(tmp_path, monkeypatch):
 
         sent.append({"ip": ip, "held": device_ops.may_write(ip), "type": device_type,
                      "password_ok": password == PW})
+        # As `onboard.persist_on_device` does once its save returns: the read-back begins.
+        device_ops.note("read_back")
         return dict(lab_state["answer"])
 
     lab_state = {"answer": {"ok": True, "state": "persisted",

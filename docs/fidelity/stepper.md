@@ -14,8 +14,11 @@ Boards: `SaveProgress.dc.html` (C605, the desk, 1440) and `StepperPhone.dc.html`
 stepper at phone width: vertical", 390), on the mockups canvas. Shots: tests/test_board_shots.py
 `test_stepper` (`stepper-save` at 1440 and 1280, `stepper-phone` at 390), Save's running card
 built by the real code from rows marked as its job keeps them. Compared 2026-10-12.
+Compared again 2026-10-12: the model gained `at_step` (an operation that knows its step and notes
+no trail: Capture's read, onboarding's lifecycle); nothing the macro draws moved, so no region's
+verdict changed.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `deb0bb0c899e126f152a3bb2ebe66fe759698ecba753f73c664a6397e50b0a09`
+Templates sha256: `376f34db11b479e772e3876f173ac4da7875d4eb080d6b4670d64a238059d969`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -48,13 +51,13 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Rotate a credential | `_rotate.html` | `job_stepper` | the one stepper |
 | Adopt | `_adopt.html` | `job_stepper` | the one stepper |
 | Update | `_update.html`, `nmas_update.js` | its own stepper, drawn by script | not yet |
-| Capture | `_capture.html` | "Reading now" | not yet |
-| Onboarding and first boot | `pending.html` | its own five-step list | not yet |
+| Capture | `_capture.html` | "Reading now" | the one stepper: its declared steps (`CAPTURE_STEPS`), the read running for the job's time |
+| Onboarding and first boot | `pending.html` | its own five-step list | the one stepper: board M's five steps (`onboard.LIFECYCLE`), "Waiting for it" running with the ZTP stage as its note; each step's explanation kept under it as text |
 | Verify, onboarding's arrival | `_onboard_pending.html` | a busy button, then the result | not yet |
 | NetBox import and removal | `_netbox_job.html` | "phase, n of m devices" in words | not yet |
 | Show commands runs | `_sc_result.html` | a bar and counts, then the answers grouped | not yet |
 | The logging-path test | `_lp_result.html` | two bars and counts | not yet |
-| Persist | `_persist.html` | a busy button, then the result | not yet |
+| Persist | `_persist.html` | a busy button, then the result | one request, so nothing to watch while it runs; its result on the one stepper: the stages it reached (`persist_op.STEPS`, the hold's trail kept), finished as its outcome says |
 | Retire | `_retire.html` | the result | not yet |
 | Template approve | `_template_op.html` | the result | not yet |
 | DHCP writes (subnets, reservations, exclusions) | `_dhcp_subnet.html`, `_dhcp_reserve.html`, `_dhcp_exclusion.html` | the result, its steps in prose | not yet |

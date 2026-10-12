@@ -23,8 +23,38 @@ building one elsewhere follows the golden-committed event, C663).
 import hashlib
 import json
 import logging
+import time
 
 log = logging.getLogger(__name__)
+
+#: Persist's steps on the one stepper (`device_actions.stepper`'s ``(key, words, waits,
+#: names)``): the hold notes "saving" as the save begins and "read_back" as the read-back does
+#: (`onboard.persist_on_device`); the record follows, noted by nothing.
+STEPS = (("save", "Save to startup", "the device's own save (`write memory`)", ("saving",)),
+         ("read_back", "Read back", "the startup config and the running config's accounts",
+          ("read_back",)),
+         ("record", "Recorded", "the outcome's record", ("record",)))
+
+
+def result_run(host: str, got: dict) -> dict:
+    """Persist's result on the one stepper (`modules.run_stepper`): the stages it reached, with
+    their times, finished as its outcome says (persisted: done; the read-back did not carry
+    the accounts: the read-back failed; otherwise the stage it stopped in)."""
+    from modules import device_actions
+    from modules import run_stepper as RS
+
+    trail = got.get("trail") or []
+    state = got.get("state", "")
+    group = "done" if state == "persisted" else "failed"
+    if not trail:
+        return RS.card([RS.row(host, group, detail=got.get("detail", ""))],
+                       label="Persist", key="persist")
+    steps = RS.from_stepper(device_actions.stepper(STEPS, {"trail": trail},
+                                                   now=got.get("ended"), starts=True))
+    steps = RS.finished(steps, group)
+    return RS.card([RS.row(host, group, steps,
+                           detail="" if group == "done" else got.get("detail", ""))],
+                   label="Persist", key="persist")
 
 #: Each refusal the plan can make, as the gate that draws it: the plan's
 #: `refused_by` keys. A key with no gate would be a reason drawn nowhere, and a
@@ -171,10 +201,15 @@ def apply(list_name: str, hostname: str, *, actor: str, confirmed_hash: str,
             out = (persist or onboard.persist_on_device)(
                 p["ip"], p["username"], decrypt_field(row.get("password", "")),
                 cr.enable_secret(row), p["device_type"])
+            # The stages it reached, with their times, kept before the hold goes: the result
+            # draws them on the one stepper (`STEPS`).
+            trail = list((((device_ops.holder(list_name, hostname) or {}).get("progress"))
+                          or {}).get("trail") or [])
+            ended = time.time()
     except device_ops.DeviceBusy as exc:
         return {"ok": False, "state": "refused", "plan": p,
                 "detail": f"{exc}. Nothing was sent."}
     (record or onboard._record_native_persist)(hostname, out, actor, via="device page")
     log.info("persist: %s/%s by %s: %s", list_name, hostname, actor, out.get("state"))
     return {"ok": bool(out.get("ok")), "state": out.get("state", "unknown"),
-            "detail": out.get("detail", ""), "plan": p}
+            "detail": out.get("detail", ""), "plan": p, "trail": trail, "ended": ended}

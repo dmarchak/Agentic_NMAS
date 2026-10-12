@@ -96,6 +96,18 @@ def finished(steps: list, outcome: str) -> list:
     return out
 
 
+def at_step(name: str, label: str, steps: tuple, current: int, *, elapsed_s=None,
+            note: str = "") -> dict:
+    """A one-row card for an operation that knows which of its declared *steps* (``(key,
+    words)``) it is on but notes no trail (a read that holds no device, as Capture's preview):
+    the steps before *current* done, *current* running for *elapsed_s*, the rest waiting."""
+    rows = [step(k, w, "done" if i < current else "running" if i == current else "waiting",
+                 took_s=elapsed_s if i == current else None,
+                 note=note if i == current else "")
+            for i, (k, w) in enumerate(steps)]
+    return card([row(name, "running", rows)], label=label, key=label.lower().replace(" ", "-"))
+
+
 def single(steps: list, name: str, label: str) -> dict:
     """A one-device operation's card: its one row from `device_actions.stepper`'s rows (a
     deploy, a restore, a reload, a rotation, an adoption, holding the device). The row runs

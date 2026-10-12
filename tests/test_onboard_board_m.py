@@ -32,8 +32,16 @@ class TestTheFiveSteps:
         monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(row)])
         monkeypatch.setattr("modules.nsot.ztp.progress", lambda entry: {
             "stage": "leased_not_fetched", "summary": "leased 192.0.2.60; it has not asked yet"})
-        text = _text(client.get("/v2/device/bp1").get_data(as_text=True))
+        html = client.get("/v2/device/bp1").get_data(as_text=True)
+        text = _text(html)
         assert "Where bp1 has got to" in text
+        # On THE stepper (2026-10-12): three done, waiting for it running with the ZTP stage as
+        # its note, the arrival waiting.
+        import re
+        assert re.findall(r'class="run-step run-step-(\w+)" data-step="(\w+)"', html) == [
+            ("done", "identity"), ("done", "first_boot"), ("done", "confirmed"),
+            ("running", "waiting"), ("waiting", "arrival")]
+        assert "leased 192.0.2.60; it has not asked yet" in html[html.index('data-step="waiting"'):]
         assert "Identity: by MAC, aa:bb:cc:00:02:60" in text
         assert "the management plane only" in text and "nothing else is sent at first boot" in text
         assert "reserved in Kea ( aa:bb:cc:00:02:60 → 192.0.2.60 )" in text

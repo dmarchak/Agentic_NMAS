@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The device page's Capture (7.3; the mockup signed off 2026-10-02, "Device actions on v2"):
     one card drawn in place of the tab's content, from modules/device_actions.py. It starts
     its own read (`starting` POSTs on load), waits for the job's announcement (`reading`),
@@ -21,7 +22,7 @@
          hx-trigger="nmas:capture_preview from:body" hx-swap="outerHTML">
   <div class="op-hd"><h2 id="op-title">Capture {{ c.host }} as its golden</h2>
     <div class="op-hd-actions">{{ how('capture') }}{{ close_button('Cancel') }}</div></div>
-  <div class="op-part"><h3>What</h3><div><p class="op-wait">Reading {{ c.host }}'s running configuration now. Nothing is recorded until you confirm.</p></div></div>
+  <div class="op-part"><h3>What</h3><div>{% if c.run %}{{ run_stepper(c.run) }}{% endif %}<p class="op-wait">Reading {{ c.host }}'s running configuration now. Nothing is recorded until you confirm.</p></div></div>
 </section>
 {%- elif c.state in ('unknown', 'failed', 'refused_list', 'refused_hash', 'refused_reason') %}
 <section class="op-card op-warn" id="device-op" aria-labelledby="op-title">

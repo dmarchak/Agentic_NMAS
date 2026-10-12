@@ -216,6 +216,13 @@ def _pending_facts(ref, p) -> dict:
     out["last_run"] = runs["last"].get(p.get("name", ""))
     if runs["state"] == "unreadable":
         out["runs_error"] = runs["error"] or "unreadable"
+    # Where it has got to, on the one stepper (board M's five steps; 2026-10-12).
+    from modules import run_stepper
+    from modules.nsot import onboard
+    waits = (out["ztp"] or {}).get("summary") or "boot it with its bootstrap config"
+    out["run"] = run_stepper.at_step(p.get("name", ""), "Onboarding progress",
+                                     onboard.LIFECYCLE, onboard.LIFECYCLE_NOW, note=waits)
+    out["run"]["rows"][0]["device"] = False      # not in the inventory yet: its page is this one
     return out
 
 
@@ -579,9 +586,13 @@ def capture_start(name):
     if refusal is not None:
         return refusal
     job = start_capture_preview(ref.name, _devices_of(ref.name), [dev], fleet=False)
-    return _strict(render_template("v2/_capture.html", c={
-        "state": "reading", "op": "capture", "host": dev.get("hostname", ""),
-        "list": ref.name, "job": job, "back": _back(request.form)}))
+    from modules import device_actions
+    from modules.nsot import capture_job
+    # The same card the job's own route draws (`device_actions.capture_card`), the one stepper
+    # with it, so the first paint and every redraw are one model.
+    card = device_actions.capture_card(ref, dev.get("hostname", ""), job, capture_job.get(job)
+                                       or {"state": "running", "elapsed_s": 0})
+    return _strict(render_template("v2/_capture.html", c=dict(card, back=_back(request.form))))
 
 
 @bp.route("/device/<name>/capture/job/<job>", methods=["GET"])
@@ -700,7 +711,9 @@ def persist_confirm(name):
     out = persist_op.apply(ref.name, host, actor=actor, confirmed_hash=confirmed)
     c = device_actions.persist_result_card(ref, host, out, mask_payload(
         persist_result(out, out.get("plan") or {}, actor)))
-    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    # The stages it reached, on the one stepper (2026-10-12).
+    c.update(back=_back(request.form), ip=dev.get("ip", ""),
+             run=persist_op.result_run(host, out) if out.get("state") != "refused" else None)
     return _strict(render_template("v2/_persist.html", c=c))
 
 

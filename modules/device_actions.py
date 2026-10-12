@@ -56,6 +56,13 @@ def _operand(target: dict, name: str) -> str:
                  if o.get("name") == name), "")
 
 
+#: Capture's steps, on the one stepper (`run_stepper.at_step`): the read is the job; the
+#: preview and the record follow it, the record only once a person confirms.
+CAPTURE_STEPS = (("read", "Read the running configuration"),
+                 ("preview", "Preview against the golden"),
+                 ("record", "Record it, once you confirm"))
+
+
 def capture_card(ref, host: str, job_id: str, got, viewer: dict = None) -> dict:
     """The capture card for *host* from the preview job *got* (`capture_job.get`, or None):
     ``{"state": "reading"|"failed"|"unknown"|"preview", ...}``. *viewer* is who would confirm,
@@ -65,7 +72,11 @@ def capture_card(ref, host: str, job_id: str, got, viewer: dict = None) -> dict:
     if got is None:
         return dict(card, state="unknown")
     if got["state"] == "running":
-        return dict(card, state="reading", elapsed_s=got.get("elapsed_s"))
+        from modules import run_stepper
+        return dict(card, state="reading", elapsed_s=got.get("elapsed_s"),
+                    run=run_stepper.at_step(host, "Capture progress", CAPTURE_STEPS, 0,
+                                            elapsed_s=got.get("elapsed_s"),
+                                            note="waits on the device's running configuration"))
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
     preview = (got.get("payload") or {}).get("preview") or {}
@@ -258,7 +269,8 @@ JOB_STEPPERS = {
     # A restore runs the same pipeline (`run_targets`), as a job.
     "restore": ("modules.pipeline", "STEPS", None, "starts"),
     "capture": ("one step: the preview's read of the device, which holds nothing and so notes "
-                "no progress; its card names what it reads"),
+                "no progress; its card draws CAPTURE_STEPS on the one stepper, the read running "
+                "for the job's own time (`run_stepper.at_step`)"),
     # Reload (P.14): each step noted once done.
     "reload": ("modules.nsot.reload_op", "STEPS", None),
     # Adopt (board G): each step noted once it ends.

@@ -1186,6 +1186,14 @@ def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
 #: onboarding is a commit plus a staged credential and never touches NetBox.
 STEPS = ("credentials", "commit", "render")
 
+#: A pending device's lifecycle on the one stepper (board M's five steps, 2026-10-11): a
+#: pending device has its identity, its first-boot config and its confirm behind it, and
+#: waits for the device itself; Verify… is its arrival. ``(key, words)``.
+LIFECYCLE = (("identity", "Identity"), ("first_boot", "First-boot config"),
+             ("confirmed", "Confirmed"), ("waiting", "Waiting for it"), ("arrival", "Arrival"))
+#: The step a pending device is on: every pending device has been confirmed and not reached.
+LIFECYCLE_NOW = 3
+
 #: P.6: a ZTP device's phase 1. **The reservation is the one step that
 #: reaches outside this host's own stores**, so it follows the commit and is
 #: last among the fallible: a failure before it has written nothing to Kea,

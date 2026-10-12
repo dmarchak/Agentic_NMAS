@@ -55,8 +55,8 @@ OPERATION_PAGES = {
 #: Operation pages not yet converted (the 2026-10-12 program): EXACT, so a converted page
 #: leaves it and nothing joins it.
 NOT_YET = {
-    "_update.html", "_capture.html", "pending.html", "_onboard_pending.html",
-    "_netbox_job.html", "_sc_result.html", "_lp_result.html", "_persist.html", "_retire.html",
+    "_update.html", "_onboard_pending.html",
+    "_netbox_job.html", "_sc_result.html", "_lp_result.html", "_retire.html",
     "_template_op.html", "_dhcp_subnet.html", "_dhcp_reserve.html", "_dhcp_exclusion.html",
 }
 #: Operation pages where a stepper does not fit: template -> why (said in the fidelity record
@@ -64,7 +64,7 @@ NOT_YET = {
 DOES_NOT_FIT: dict = {}
 #: Files that still draw progress some other way, until their page is converted: EXACT.
 OTHER_PROGRESS = {
-    "templates/v2/_update.html", "templates/v2/pending.html", "templates/v2/_sc_result.html",
+    "templates/v2/_update.html", "templates/v2/_sc_result.html",
     "templates/v2/_lp_result.html", "static/js/nmas_update.js",
 }
 

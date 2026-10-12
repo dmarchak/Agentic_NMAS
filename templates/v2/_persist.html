@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The device page's Persist (7.3; the device-actions mockup signed off 2026-10-02): the card
     in place of the tab, from modules/device_actions.py over `persist_preview` and
     `persist_result`, the same builders today's page draws. The preview contacts no device, so
@@ -52,6 +53,7 @@
   <div class="op-hd"><h2 id="op-title">Persist {{ c.host }} {{ badge(c.chip, c.level) }}</h2>
     <div class="op-hd-actions">{{ how('persist') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
+    {%- if c.run %}{{ run_stepper(c.run) }}{% endif %}
     <p>{{ c.summary }} {{ stamp(c.at, c.at[11:19] ~ ' UTC') }}</p>
     {%- if c.outcome != 'persisted' %}
     <p><button type="button" class="btn" data-op="persist" hx-get="{{ url_for('device_v2.persist', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('persist', compact=True, op='persist') }}</p>

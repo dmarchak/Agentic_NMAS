@@ -117,6 +117,9 @@ class TestTheConfirm:
         assert "hourly startup check" in out[out.index("Still true"):]
         assert "Preview it again" not in out
         assert 'hx-get="/v2/device/r2/history?list=Lab"' in out, "Close puts back the tab it replaced"
+        # The stages it reached, on THE stepper (2026-10-12), every one done.
+        assert re.findall(r'class="run-step run-step-(\w+)" data-step="(\w+)"', out) == [
+            ("done", "save"), ("done", "read_back"), ("done", "record")]
 
     def test_saved_and_not_persisted_is_danger_and_offers_another_preview(self, lab):  # noqa: F811
         lab["state"]["answer"] = {"ok": False, "state": "not_persisted",
@@ -124,6 +127,10 @@ class TestTheConfirm:
         out = _confirm(lab, _card(lab)).get_data(as_text=True)
         assert "op-card op-danger" in out and "Saved, NOT persisted" in out
         assert "the startup config lacks the username line" in out and "Preview it again" in out
+        # Saved, and the read-back did not carry the accounts: that step failed, the record
+        # not reached as a success.
+        assert re.findall(r'class="run-step run-step-(\w+)" data-step="(\w+)"', out) == [
+            ("done", "save"), ("failed", "read_back"), ("not_reached", "record")]
 
     def test_a_plan_that_moved_is_refused_with_nothing_sent(self, lab):  # noqa: F811
         out = _confirm(lab, _card(lab), hash="0000000000000000").get_data(as_text=True)
