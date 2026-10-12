@@ -1967,38 +1967,6 @@
 <!-- Polling script -->
 <script src="{{ url_for('static', filename='js/gen/index.2.js') }}"></script>
 
-<!-- SortableJS for drag & drop -->
-<script src="{{ url_for('static', filename='js/vendor/sortablejs/Sortable.min.js') }}"></script>
-<script>
-/* A function, called at load and after the device list is redrawn in place
-   (refreshDeviceRegions, Stage 7.0): Sortable binds the tbody element, and a
-   redrawn list has a new one. */
-window.bindDeviceTableSortable = function () {
-  const tbody = document.getElementById("deviceTableBody");
-  if (tbody) {
-    Sortable.create(tbody, {
-      animation: 150,
-      onEnd: function () {
-        const newOrder = Array.from(tbody.querySelectorAll("tr")).map(row => row.dataset.ip);
-        fetch("/reorder", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newOrder)
-        })
-        .then(resp => resp.json())
-        .then(data => {
-          if (data.status !== "success") {
-            console.error("Reorder failed:", data.message);
-          }
-        })
-        .catch(err => console.error("Error saving order:", err));
-      }
-    });
-  }
-};
-document.addEventListener("DOMContentLoaded", () => window.bindDeviceTableSortable());
-</script>
-
 <!-- ================================================================== -->
 <!-- Topology Visualization Script -->
 <!-- ================================================================== -->

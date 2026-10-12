@@ -158,9 +158,7 @@ _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's
 #: endpoint -> keys, or Nothing(reason).
 DECLARED = {
     # Inventory and lists.
-    "reorder_devices": ("inventory",),
     "inventory.refresh": ("inventory",),
-    "inventory.set_order": ("inventory",),
     "inventory.set_source": ("inventory", "lists"),
     "create_device_list_route": ("lists",),
     "delete_device_list_route": ("lists", "active_list"),

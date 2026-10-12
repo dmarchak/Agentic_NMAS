@@ -629,7 +629,6 @@ async function refreshDeviceRegions() {
     newSearch.value = term;
     newSearch.dispatchEvent(new Event('input', {bubbles: true}));
   }
-  if (typeof window.bindDeviceTableSortable === 'function') window.bindDeviceTableSortable();
   return true;
 }
 

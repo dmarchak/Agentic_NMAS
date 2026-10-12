@@ -56,23 +56,3 @@ def refresh(list_name):
     except Exception as exc:                  # noqa: BLE001
         log.exception("inventory: refresh failed for '%s'", list_name)
         return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@bp.route("/order/<path:list_name>", methods=["POST"])
-def set_order(list_name):
-    """Persist drag-and-drop ordering for a NetBox-sourced list.
-
-    Local lists reorder by rewriting the CSV; NetBox lists have no CSV, so the
-    order lives in source.json instead.
-    """
-    try:
-        from modules.inventory import invalidate
-        from modules.inventory.source_config import set_device_order
-
-        data = request.get_json(silent=True) or {}
-        order = data.get("order") or []
-        cfg = set_device_order(list_name, order)
-        invalidate(list_name)
-        return jsonify({"ok": True, "order": cfg["device_order"]})
-    except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 500

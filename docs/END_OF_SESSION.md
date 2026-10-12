@@ -12,7 +12,9 @@ release deployed and checked on the host.
    walk (sitting 2 step 15) and C703 registered, C696 checked (8.8.8.8 leaves toward r5 because
    r5 advertises it; 192.0.2.1 drops: no route), PUBLIC_RELEASE.md with the roadmap note.
 2. **7.8 removals, in progress:** list data (e7f82f9), refresh hostnames (4daf00d), renames
-   (5c49896) committed and deployed or deploying; the legacy store and migration next.
+   (5c49896), the legacy store and migration (94797a3, deployed 05:41 UTC), bulk reload with
+   the break-glass preview route (3c3b1c7: two families in one commit, since the second was
+   edited while the first's gate ran). Next: the unblocked families in the survey's order.
 3. C667: to check against boards A to C (built in earlier runs: 7f56d12, 2e45ab9, 482ad26).
 4. The Logs tail: to check (C675 built and walked in an earlier run, db2e5f0).
 5. C673 intent preview: not started.

@@ -71,13 +71,6 @@
    "source": "https://registry.npmjs.org/socket.io-client/-/socket.io-client-4.8.4.tgz",
    "licence_file": "static/js/vendor/socket.io-client/LICENSE"
   },
-  "static/js/vendor/sortablejs/*": {
-   "component": "sortablejs",
-   "version": "1.15.0",
-   "licence": "MIT",
-   "source": "https://registry.npmjs.org/sortablejs/-/sortablejs-1.15.0.tgz",
-   "licence_file": "static/js/vendor/sortablejs/LICENSE"
-  },
   "static/js/vendor/uplot/*": {
    "component": "uplot",
    "version": "1.6.32",

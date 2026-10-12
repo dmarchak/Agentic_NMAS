@@ -439,9 +439,7 @@ HISTORY = {
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
     "monitoring_config": "n/a: the collectors' settings, never one device's record",
-    "inventory.set_order": NOT_A_DEVICE,
     "inventory.set_source": NOT_A_DEVICE,
-    "reorder_devices": NOT_A_DEVICE,
     "add_quick_action": NOT_A_DEVICE,
     "delete_quick_action": NOT_A_DEVICE,
     "ai_agent_pause": NOT_A_DEVICE,

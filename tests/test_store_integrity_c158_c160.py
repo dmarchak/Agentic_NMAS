@@ -177,31 +177,6 @@ def test_a_write_REPLACES_the_file_never_truncates_it(tmp_path):
     assert [n for n in os.listdir(tmp_path) if ".tmp" in n] == []
 
 
-@pytest.fixture
-def inventory(tmp_path, monkeypatch):
-    import app as A
-    from modules import device
-    path = str(tmp_path / "devices.csv")
-    device.write_devices_csv([_dev("192.0.2.1"), _dev("192.0.2.2")], path)
-    monkeypatch.setattr(A, "get_current_device_list", lambda: ("lab", path))
-    return A, path
-
-
-def _ips(path):
-    return [r["ip"] for r in csv.DictReader(open(path, newline=""))]
-
-
-def test_reorder_keeps_a_device_the_order_does_not_name(inventory):
-    """The order is the browser's view from page load; a device added since
-    was dropped, with the only stored copy of its credential."""
-    A, path = inventory
-    from modules import device
-    device.save_device(_dev("192.0.2.3"), path)        # added after page load
-    r = A.app.test_client().post("/reorder", json=["192.0.2.2", "192.0.2.1"])
-    assert r.status_code == 200, r.get_data(as_text=True)[:300]
-    assert _ips(path) == ["192.0.2.2", "192.0.2.1", "192.0.2.3"]
-
-
 def test_every_devices_csv_write_goes_through_the_one_writer():
     """No second writer: a CSV writer anywhere in the program is the atomic
     one. A floor, so a scan that found nothing cannot pass."""

@@ -60,7 +60,6 @@ and built.
 | NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | BUILT, 7.6 (2026-10-10; not run on the host) | Source of truth › NetBox (`/v2/netbox`): every network's Import into NetBox… and Remove from NetBox…, Import every network…, each a preview job and a confirm that may turn writes on (C619), its result and recorded removals; the same core as today's routes (`modules/netbox_ops.py`) |
 | NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
 | Inventory source | `/inventory/source/<list>`, `/inventory/refresh/<list>` | BUILT (2026-10-10; not run on the host) | Every network's Settings › Network tab, Inventory source: its own list or NetBox through filters, a preview reading NetBox once with the new filters (how many devices, which skipped and why), a confirm bound to it, recorded; Refresh now for a NetBox network |
-| Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
 | Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | BUILT, P.8 (2026-10-10; not run on the host) | Choosing one: BUILT (board N, 2026-10-10; not run on the host): the top bar's Network picker, the choice each verified person's own (`routes/network_v2.py`), so `/select_device_list`'s one choice for everyone has no v2 equivalent by design. Create and delete: BUILT (2026-10-10; not run on the host): Settings' New network… and a network's Delete this network…, each previewed and recorded; a deleted network's folder is moved aside, never erased. Rename: never offered by today's pages (C639), not built |
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` | BUILT, 7.7 (board F4, 2026-10-10) | Results are Needs attention rows; the schedule and Check now are Settings › Installation › Diagnostics |
 | Break-glass export | `/breakglass/export` | STAYS (its preview route removed 2026-10-12, 7.8) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
@@ -159,6 +158,16 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   stay. v2's passphrase checks are `nmas_credentials.js`'s, tested in
   `tests/test_credentials_v2.py`; the export tests now compute the preview the way
   Credentials does. Proved before removal: not in the url_map; nothing but comments names it.
+- **Inventory order** (/reorder, /inventory/order/<list>), 2026-10-12: drag-reorder was
+  removed in favour of sortable columns (the operator, 2026-09-29). v2's Devices is searched
+  and filtered by state and platform, and has no column sort yet (C704). /inventory/order's
+  one caller, `saveInventoryOrder`, was itself called by nothing; /reorder's was today's device
+  list's drag binding, which went with it, and so did the vendored SortableJS (its files, its
+  manifest and licence entries: `tests/test_csp.py` holds every vendored file to a page that
+  loads it). The C160 test that held /reorder to keeping an unnamed device went with the route
+  (`write_devices_csv`'s own tests stay). A NetBox list's stored order is still applied when
+  the list loads (`source_config.apply_device_order`), so nothing reorders on the host. Proved
+  before removal: today's index and the inventory partial were the only callers.
 
 ## Legacy actions that are not routes
 

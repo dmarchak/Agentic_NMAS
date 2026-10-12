@@ -158,19 +158,4 @@ async function refreshInventory() {
   } catch (e) { showToast('Error: ' + e.message, 'danger'); }
 }
 
-/* Persist drag-and-drop order. NetBox lists have no CSV to reorder, so the
-   order lives in source.json instead. */
-async function saveInventoryOrder(hostnames) {
-  if (_inventoryStatus.source !== 'netbox') return false;
-  const listName = _inventoryListName();
-  if (!listName) return false;
-  try {
-    await fetch(`/inventory/order/${encodeURIComponent(listName)}`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({order: hostnames}),
-    });
-    return true;
-  } catch (e) { console.error('saveInventoryOrder', e); return false; }
-}
-
 document.addEventListener('DOMContentLoaded', loadInventorySource);

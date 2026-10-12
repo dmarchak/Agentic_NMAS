@@ -238,12 +238,10 @@ GATES = {
     "clear_netflow_flows": _g(K, "clears the collected flow record"),
     "clear_snmp_traps": _g(K, "clears the trap record"),
     "delete_backup_route": _g(K, "deletes a backup"),
-    "reorder_devices": _g(K, "reorders the inventory"),
     "create_device_list_route": _g(K, "creates a device list"),
     "delete_device_list_route": _g(K, "deletes a device list"),
     "select_device_list_route": _g(K, "changes the active list, which every derived read and the ping worker follow"),
     "inventory.set_source": _g(K, "changes where a list's inventory comes from"),
-    "inventory.set_order": _g(K, "reorders a list"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "

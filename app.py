@@ -930,31 +930,6 @@ def device_status(ip):
     return {"ip": ip, "online": online}
 
 
-# Reorder devices (CSV rewrite)
-@app.route("/reorder", methods=["POST"])
-def reorder_devices():
-    # Reorder devices in current device list based on new order
-    new_order = request.get_json()
-    if not new_order:
-        return {"status": "error", "message": "No order received"}, 400
-
-    from modules.device import devices_csv_lock
-
-    _, current_list_file = get_current_device_list()
-    with devices_csv_lock(current_list_file):
-        devices = load_saved_devices(current_list_file)
-        ip_to_device = {d["ip"]: d for d in devices}
-        reordered = [ip_to_device[ip] for ip in new_order if ip in ip_to_device]
-        # A device the order does not name is KEPT, at the end (C160). The
-        # order is the browser's view from when the page loaded; a device
-        # added since (onboarding's promotion, another tab) was DROPPED, and
-        # with it the only stored copy of its credential.
-        named = set(new_order)
-        reordered += [d for d in devices if d["ip"] not in named]
-        write_devices_csv(reordered, current_list_file)
-    return {"status": "success"}
-
-
 # ---------------------------------------------------------------------------
 # Device List Management Routes
 # ---------------------------------------------------------------------------
