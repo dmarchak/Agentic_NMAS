@@ -1594,6 +1594,10 @@ a.topo-ent:hover { background: var(--hover); }
 .dv .table td { overflow-wrap: normal; }
 .dv .table { min-width: 760px; }
 .dv-pick { white-space: nowrap; }
+/* Board M: a pending device's five steps, and Verify's next step (its intent). */
+.ob-steps h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.ob-steplist { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
+.ob-next { margin-top: 8px; }
 .dh-find input, .dh-find select { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line);
   border-radius: var(--r); background: var(--surface); color: var(--ink); }
 .dh-find input { min-width: 280px; }

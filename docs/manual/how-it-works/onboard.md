@@ -107,4 +107,13 @@ A step that fails stops the run and names every step that did not run; the devic
 
 ## Then
 
-The device has bootstrap intent only. Seed its intent (see [Seed intent](seed)), and from then on change it by deploys.
+First boot carries the management plane only: its hostname, the one-time account, the domain,
+the address the tool reaches it on and SSH. Nothing else is sent at first boot, so no other
+secret travels by TFTP. Its pending page shows five steps: identity, first-boot config,
+confirmed, waiting (with Kea's and the config server's view of it) and arrival.
+
+Verify's result then names the next step. When its committed intent says more than it runs,
+**Deploy its intent…** opens its Deploy: an ordinary deploy, the exact program previewed and
+masked, confirmed by its hash, verified and rolled back on failure. When its intent is still
+only its first-boot config, write it first (Intent › Edit, bulk intent for many, or
+[Seed intent](seed) from what it runs), then deploy. From then on, change it by deploys.

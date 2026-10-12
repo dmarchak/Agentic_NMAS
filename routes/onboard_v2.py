@@ -179,7 +179,38 @@ def verify(name):
     out, status = verify_run(name, request.form, ident)
     if not out.get("result"):
         return _pending(name, status, mode="verify", refused=out.get("error", ""))
-    return _pending(name, status, mode="verified", done=out)
+    nxt = _next_intent((request.form.get("list_name") or "").strip(), name) if out.get("ok") \
+        else None
+    return _pending(name, status, mode="verified", done=out, nxt=nxt)
+
+
+def _next_intent(list_name: str, name: str) -> dict:
+    """Board M's step after arrival: what its committed intent says beyond what it runs, its
+    first golden (``intent_match`` once, for the one device Verify just recorded). ``{state:
+    deploy|write|unknown, adds, why}``: lines to deploy as an ordinary deploy, its intent the
+    first-boot config only (write it first), or not known, with why."""
+    from modules.nsot import listref, manifest
+    from modules.nsot import repo as R
+    from modules.nsot.intent_match import intent_match
+
+    list_name = list_name or listref.active_name()
+    if not listref.exists(list_name):
+        # A read creates no list (tests/test_reads_create_no_list.py).
+        return {"state": "unknown", "adds": 0, "why": f"no network named {list_name!r}"}
+    try:
+        ref = listref.resolve(list_name)
+        entry = manifest.find_by_name(ref.repo_dir, name)[1]
+        golden = R.committed_golden_for(ref.repo_dir, entry) if entry else {}
+        if not golden.get("text"):
+            return {"state": "unknown", "adds": 0,
+                    "why": golden.get("refused") or "no golden is recorded for it yet"}
+        im = intent_match(ref.repo_dir, ref.name, name, golden["text"])
+    except Exception as exc:                          # noqa: BLE001 (a read, said in place)
+        log.warning("onboard_v2: %s's intent could not be compared: %s", name, exc)
+        return {"state": "unknown", "adds": 0, "why": f"{type(exc).__name__}: {exc}"}
+    if im["state"] == "unknown":
+        return {"state": "unknown", "adds": 0, "why": im["why"]}
+    return {"state": "deploy" if im["adds"] else "write", "adds": im["adds"], "why": ""}
 
 
 @bp.route("/<name>/abandon/preview", methods=["POST"])

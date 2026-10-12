@@ -4281,6 +4281,14 @@ two pools through board C's write path; before and after compared, only these ma
 range: the highest block of 32 in the ZTP subnet holding nothing (no reservation, lease, pool,
 intent address or this host) and not the broadcast address, or the one the step is given.
 
+**Board M revised (the operator's decision, 2026-10-11; canvas v113):** way 1's and way 2's
+"full device-specific configuration" at first boot is withdrawn. First boot is the management
+plane only (hostname, the one-time account, the domain, the manager-facing address, SSH), as
+`bootstrap_config.render_bootstrap` already renders it, and nothing else travels by TFTP; the
+device's intent follows as an ordinary deploy over SSH, previewed, confirmed, verified and rolled
+back on failure. Built: the pending page's five steps and Verify's next step (Deploy its
+intent…, or where to write it when it is still the first-boot config).
+
 **Still to measure (the operator's, or on the lab host as a Mercury operation):** what a configless C8000v does after it TAKES a discovery lease with no
 boot file: renews it at T1, or keeps sending DISCOVERs; L's "next request" reads whichever the
 lease shows.
