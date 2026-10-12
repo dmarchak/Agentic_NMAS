@@ -80,7 +80,6 @@ and built.
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
 | Configure | `/configure/*` (5) | REMOVE, 7.8 (decided 2026-10-05) | The intent editor and deploy replace them (they already send nothing) |
 | Legacy collectors | `/monitoring/config`, `/monitoring/interfaces`, `/monitoring/netflow`, `/monitoring/netflow/clear`, `/monitoring/snmp/poll`, `/monitoring/snmp/traps`, `/monitoring/snmp/traps/clear` | REMOVE, 7.8 | The in-app collector and SNMP Quick Poll are removed (the mockup review, 2026-09-29) |
-| Monitoring stack panel | `/monitoring/stack/`, `/monitoring/stack/<name>` | REMOVE, 7.8 | The status bar and integration health replace it |
 | Topology | `/topology/*` (9), `/topology_data` | REMOVE, 7.8 | Neighbours carries discovery per device (C126); the fleet map is P.11's Topology item |
 | Topology service | `/topology/service/status`, `/svg` | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the two routes and the service REMOVE at 7.8 | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
 | AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages |
@@ -168,6 +167,16 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   (`write_devices_csv`'s own tests stay). A NetBox list's stored order is still applied when
   the list loads (`source_config.apply_device_order`), so nothing reorders on the host. Proved
   before removal: today's index and the inventory partial were the only callers.
+- **The monitoring stack panel** (/monitoring/stack/, /monitoring/stack/<name>), 2026-10-12:
+  every v2 page's status strip (`device_v2.strip`, redrawn on `integration_health`) says which
+  integrations answer, and Settings › Integrations tests each one. The panel was today's
+  Monitoring tab's top card, its one caller. The five integrations' `monitor()` methods (NetBox,
+  Prometheus, Loki, Kea, Grafana), which only it called, went with it, as did their tests: the
+  Kea card's family-by-family counts (`tests/test_kea_dual_stack.py` keeps the active-lease rule
+  `lease_for` reads) and the two card tests in `tests/test_onboard_dhcp_source.py` (Kea's
+  EMPTY-is-success rule keeps its own test there). Today's Monitoring tab keeps the legacy
+  collectors, their own family. Proved before removal: not reached by any v2 page, job or
+  script; after it, neither path is in the url_map.
 
 ## Legacy actions that are not routes
 

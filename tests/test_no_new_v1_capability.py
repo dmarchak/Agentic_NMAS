@@ -22,9 +22,9 @@ TEMPLATES = os.path.join(ROOT, "templates")
 JS = os.path.join(ROOT, "static", "js")
 
 #: Measured 2026-10-03.
-CONTROLS_CEILING = 198   # 2026-10-12: Reload Devices left with /bulk_reload (7.8). Before: Refresh Hostnames left (7.8). Before: today's History tab left with /list/change_log (7.8). Before: 2026-10-08: the freshness panel left (Phase 3). Before: 2026-10-04: the 81 CCIE-KB config types left with ccie_kb/ (NSOT_PLAN 8.12)
-HANDLERS_CEILING = 190   # 2026-10-12: Reload Devices left with /bulk_reload (7.8). Before: Refresh Hostnames left (7.8). Before: today's History tab left (7.8). Before: 2026-10-08: the freshness panel left (Phase 3)
-FUNCTIONS_CEILING = 433   # 2026-10-12: saveInventoryOrder left with /inventory/order (7.8). Before: the break-glass modal's eight functions left with /breakglass/preview (7.8). Before: the legacy store's card, the migration's card and its apply left (7.8). Before: Sync device names left with the renames routes (7.8). Before: today's History tab left (7.8). Before: 2026-10-08: the freshness panel left (Phase 3)
+CONTROLS_CEILING = 197   # 2026-10-12: the stack panel's Refresh left (7.8). Before: Reload Devices left with /bulk_reload (7.8). Before: Refresh Hostnames left (7.8). Before: today's History tab left with /list/change_log (7.8). Before: 2026-10-08: the freshness panel left (Phase 3). Before: 2026-10-04: the 81 CCIE-KB config types left with ccie_kb/ (NSOT_PLAN 8.12)
+HANDLERS_CEILING = 189   # 2026-10-12: the stack panel's Refresh left (7.8). Before: Reload Devices left with /bulk_reload (7.8). Before: Refresh Hostnames left (7.8). Before: today's History tab left (7.8). Before: 2026-10-08: the freshness panel left (Phase 3)
+FUNCTIONS_CEILING = 429   # 2026-10-12: the stack panel's four functions left (7.8). Before: saveInventoryOrder left with /inventory/order (7.8). Before: the break-glass modal's eight functions left with /breakglass/preview (7.8). Before: the legacy store's card, the migration's card and its apply left (7.8). Before: Sync device names left with the renames routes (7.8). Before: today's History tab left (7.8). Before: 2026-10-08: the freshness panel left (Phase 3)
 #: Fields a person can fill on today's pages: form elements in its templates, and the
 #: settings fields its scripts draw from a spec (`{key: '<setting>', ...}`), less the
 #: recorded exceptions below. Measured 2026-10-03 (261 elements and 68 spec fields).
@@ -92,7 +92,8 @@ def counts() -> dict:
 
 class TestTodaysInterfaceOnlyShrinks:
     def test_the_populations_are_found(self):
-        assert len(v1_templates()) >= 20 and len(v1_scripts()) >= 40
+        # v1 scripts 39 since 2026-10-12: the monitoring stack panel's left at 7.8.
+        assert len(v1_templates()) >= 20 and len(v1_scripts()) >= 39
         assert {"nmas_v2.js", "nmas_update.js"} <= v2_scripts()
 
     def test_no_new_control_handler_or_function(self):

@@ -65,22 +65,3 @@ class GrafanaIntegration(IntegrationClient):
             except Exception:
                 return {"ok": True, "message": "Connected"}
         return r
-
-    def monitor(self) -> dict:
-        """Reachable, plus the dashboard link.
-
-        No embedding and no iframe: the browser reaches NMAS through the
-        Cloudflare tunnel and Grafana is LAN-only, so an iframe would render
-        a broken frame for every remote viewer. The link is honest about
-        being a link.
-        """
-        probe = self.test_connection()
-        if not probe.get("ok"):
-            return probe
-        url = self._setting("grafana_device_dashboard_url", "") or self.url
-        return {
-            "ok": True,
-            "metrics": [{"label": "status", "value": probe.get("message", "Connected")}],
-            "link": {"href": url, "text": "Open Grafana",
-                     "note": "reachable from the LAN only"},
-        }

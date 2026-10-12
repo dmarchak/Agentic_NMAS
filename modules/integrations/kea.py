@@ -23,8 +23,8 @@ class KeaIntegration(IntegrationClient):
     #: Kea's own per-service result codes. **0 and 3 are both successes** — 3
     #: means the command worked and returned nothing, which is what
     #: `lease4-get-all` says on a server with no leases. Treating it as a
-    #: failure would report "v4: unavailable" for an empty pool, which is the
-    #: absent-versus-empty error on the monitoring card.
+    #: failure would report an empty pool as unreadable, the absent-versus-empty
+    #: error (first seen on today's monitoring card, removed at 7.8).
     RESULT_SUCCESS = 0
     RESULT_ERROR = 1
     RESULT_UNSUPPORTED = 2
@@ -135,60 +135,6 @@ class KeaIntegration(IntegrationClient):
                 continue
             active.append(lease)
         return active
-
-    def monitor(self) -> dict:
-        """Active lease counts, v4 and v6.
-
-        `lease4-get-all` / `lease6-get-all` rather than statistics: the
-        statistic names are per-subnet and differ between deployments, so
-        reading them means guessing a subnet id. Counting what comes back
-        cannot be wrong about which subnet it counted.
-
-        **Both families, because counting only v4 makes an IPv6-only host
-        invisible.** Measured: h4 sits on the IPv6-only VLAN and only ever
-        holds a DHCPv6 lease, so it never appeared on this card -- and the
-        card said "active leases: 3" rather than anything that hinted a whole
-        family was unread. A number with a silent scope is worse than a
-        missing one.
-
-        **The service is named explicitly per query**, not taken from
-        `kea_services`. That setting may list both, and sending
-        `lease4-get-all` to `dhcp6` is an error rather than an empty answer.
-
-        Each family fails on its own. One dead service reports its reason
-        beside the other's count instead of blanking the card.
-        """
-        families = (("v4", "lease4-get-all", "dhcp4"),
-                    ("v6", "lease6-get-all", "dhcp6"))
-
-        counts, detail, errors = [], [], []
-        for label, command, service in families:
-            result = self.command(command, service=[service])
-            if not result.get("ok"):
-                counts.append(f"{label}: unavailable")
-                errors.append({"text": f"{service}: {result.get('error', 'failed')}",
-                               "state": "down"})
-                continue
-            leases = self._active_leases(result.get("result"))
-            counts.append(f"{label}: {len(leases)}")
-            for lease in leases[:10]:
-                detail.append({
-                    "text": (lease.get("hostname") or lease.get("hw-address")
-                             or lease.get("duid") or "?"),
-                    "value": lease.get("ip-address", ""),
-                    "note": label,
-                })
-
-        return {
-            # True while ANY family answered: a v6 outage must not hide the
-            # v4 count behind a card-wide error.
-            "ok": len(errors) < len(families),
-            "error": "; ".join(e["text"] for e in errors) if len(errors) == len(families) else "",
-            "metrics": [{"label": "active leases",
-                         "value": " \u00b7 ".join(counts),
-                         "state": "down" if errors else "up"}],
-            "detail": errors + detail,
-        }
 
     # ── reservations ────────────────────────────────────────────────────────
 

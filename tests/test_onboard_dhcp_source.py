@@ -333,19 +333,6 @@ class TestOkMeansKeaDidTheThing:
             "lease4-get-all", service=["dhcp4"])
         assert captured["service"] == ["dhcp4"]
 
-    def test_the_monitoring_card_still_counts_an_empty_server(self):
-        """End to end on the regression the EMPTY rule protects."""
-        client = self._client([{"result": 3, "text": "no leases"}])
-        out = client.monitor()
-        assert out["ok"] is True
-        assert "unavailable" not in out["metrics"][0]["value"]
-
-    def test_a_refusal_reaches_the_monitoring_card_as_a_failure(self):
-        client = self._client([{"result": 1, "text": "broken"}])
-        out = client.monitor()
-        assert out["ok"] is False
-        assert "unavailable" in out["metrics"][0]["value"]
-
 
 class TestADhcpDeviceHasCompleteBootstrapParameters:
     """A device created two minutes ago reported as a legacy one, with the

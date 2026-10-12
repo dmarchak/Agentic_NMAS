@@ -49,7 +49,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #:                say what to do about it.
 CLASSIFIED = {
     "/drift/settings":     "reports",
-    "/<name>":             "reports",   # monitoring_stack: one card per tool
     "/svg":                "fetches",   # topology_view: no SVG without a URL
 }
 
@@ -95,7 +94,8 @@ class TestEveryDegradedReadIsClassified:
     def test_the_scan_finds_something(self):
         """A scan that returns nothing would make the test below vacuous —
         and this project has found five controls that could not fail."""
-        assert len(_gets_mentioning_a_degraded_state()) >= 3
+        # 2 since 2026-10-12: the monitoring stack panel's per-tool card left at 7.8.
+        assert len(_gets_mentioning_a_degraded_state()) >= 2
 
     def test_every_one_is_classified(self):
         unclassified = [r for r in _gets_mentioning_a_degraded_state() if r not in CLASSIFIED]

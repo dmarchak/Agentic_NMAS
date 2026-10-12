@@ -37,7 +37,7 @@ KNOWN_UNREACHABLE = {}
 #: calling it is its design, not a gap. `KNOWN_UNREACHABLE` is for gaps to
 #: close; putting a diagnostic there would imply somebody should close it.
 GUI_BLUEPRINTS = ("templatize", "templates", "deploy", "golden", "remote",
-                  "inventory", "monitoring_stack", "topology_view", "onboard")
+                  "inventory", "topology_view", "onboard")
 
 
 @pytest.fixture(scope="module")
@@ -85,7 +85,6 @@ class TestEveryGuiBlueprintIsReachable:
         groups = _routes_by_blueprint()
         assert _reachable(groups.get("golden", []), rendered)
         assert _reachable(groups.get("deploy", []), rendered)
-        assert _reachable(groups.get("monitoring_stack", []), rendered)
 
     def test_no_new_unreachable_blueprint(self, rendered):
         groups = _routes_by_blueprint()
