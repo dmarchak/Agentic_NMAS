@@ -1,0 +1,27 @@
+name: nmas-stage-d
+
+# Stage D (2026-10-12): does generating the SSH key inside vrnetlab's console replay stall it?
+# Two throwaway vIOS-L2 nodes on their own network, sharing nothing with the lab:
+#   bp-vios-d     the file Mercury's bootstrap renders now (the key generation last)
+#   bp-vios-dneg  the same file cut before the vty block: what a stall at the key line left
+#                 behind in the old order. Every check that passes on the first must fail here.
+
+mgmt:
+  network: clab-stage-d
+  ipv4-subnet: 172.30.31.0/24
+
+topology:
+  kinds:
+    cisco_vios:
+      image: vrnetlab/cisco_vios:L2-20180619
+      env:
+        CLAB_MGMT_PASSTHROUGH: "false"
+  nodes:
+    bp-vios-d:
+      kind: cisco_vios
+      mgmt-ipv4: 172.30.31.53
+      startup-config: configs/bp-vios-d.cfg
+    bp-vios-dneg:
+      kind: cisco_vios
+      mgmt-ipv4: 172.30.31.54
+      startup-config: configs/bp-vios-dneg.cfg

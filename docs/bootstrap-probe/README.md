@@ -938,6 +938,38 @@ the startup file and into a post-boot step over the console, or ahead of the
 vty block so a stall costs nothing that matters. The point of measuring first
 is that either answer is cheap now and expensive after r6 is onboarded.
 
+## Stage D result: switches can be onboarded (2026-10-12, C712)
+
+Run by the agent on the lab host under the Phase 7 mode, after the operator's "Still cant
+onboard a switch". **Two changes from the runbook above, both deliberate:**
+
+1. **The key line moved first.** The generator now puts the vty block before the key, and
+   only `ip ssh version 2` after it (IOS refuses that line with no keypair). A stall can then
+   cost one line, not the vty block. The runbook's control (cut AFTER the key line) would now
+   only lose `ip ssh version 2` and could not fail. So the control is cut BEFORE the vty block,
+   which is what the old order's stall would have left.
+2. **Its own lab file and network:** `nmas-stage-d.clab.yml` (172.30.31.0/24, `clab-stage-d`).
+   The configs are `configs/bp-vios-d.cfg` (the generator's own render, stage A's throwaway
+   credential) and `configs/bp-vios-dneg.cfg` (the control). `nmas-vios-d3.clab.yml` and
+   `scripts/nmas-render-d3-probe` were retired with it: they built the old order's control.
+
+| observation | bp-vios-d (the generator's file) | bp-vios-dneg (the control) |
+|---|---|---|
+| Startup complete | 2 m 33 s (both nodes up 2 m 38 s after deploy) | reached |
+| the replay at the key line | sent 17:46:57.6 UTC; the next line, `ip ssh version 2`, sent 17:47:37.1: **39.5 s**, inside vrnetlab's 900 s wait | — |
+| boot log | the key's two `%` lines (modulus, generating), no error, rejection or timeout | — |
+| RSA key | present (general purpose and server keys) | — |
+| `ip ssh version 2` (after the key) | present | — |
+| vty block, `transport input ssh` | present | absent by construction |
+| SSH | logs in; uptime 2 minutes (no silent reload) | TCP 22 gave no answer; login reset by peer |
+
+**What it licenses:** on vIOS-L2 15.x (`L2-20180619`), at modulus 2048, on this lab host, key
+generation does not stall the console replay; the margin is 39.5 s against a 900 s wait. Even
+a stall would now cost only `ip ssh version 2`. `onboard.BLOCKED_PENDING_MEASUREMENT` is empty,
+and `tests/test_bootstrap_config.py` holds the generator to the file that booted, so a change
+to the switch bootstrap is a new stage D. Destroyed after: no container, network or folder left
+on the lab host.
+
 
 ## Reaching probe nodes, and stopping what you started
 

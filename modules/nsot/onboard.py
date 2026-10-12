@@ -30,27 +30,17 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
-#: Platforms whose onboarding is blocked pending a measurement.
+#: Platforms whose onboarding is blocked pending a measurement: {platform: why}.
 #:
-#: `cisco_ios` is in both `GENERATES_SSH_KEY` and `CONSOLE_REPLAYED`, so its
-#: bootstrap config emits `crypto key generate rsa modulus 2048` into a file
-#: an emulator TYPES into a console line by line. Whether key generation stalls
-#: that replay is **unmeasured** — stage D, `docs/bootstrap-probe/README.md`.
-#:
-#: What a stall costs is not a broken-looking device: the crypto line is
-#: number 17 of 25, and the eight after it are `ip ssh version 2` and the
-#: whole `line vty` block. A stalled node reaches `Startup complete`, answers
-#: ping, and cannot be reached over SSH.
-#:
-#: So the wizard refuses rather than discovers. `cisco_iosxe` is in neither
-#: set and emits no crypto line at all, which is why r6 is not blocked.
-BLOCKED_PENDING_MEASUREMENT = {
-    "cisco_ios": ("stage D has not been run: on this platform the bootstrap "
-                  "config generates an SSH key inside a console replay, and "
-                  "whether that stalls the replay is unmeasured. A stall "
-                  "leaves the device reachable by ping and not by SSH. See "
-                  "docs/bootstrap-probe/README.md."),
-}
+#: EMPTY since stage D ran (C712, 2026-10-12, `docs/bootstrap-probe/README.md`). `cisco_ios`
+#: was here because its bootstrap generated an SSH key inside a console replay, BEFORE
+#: `ip ssh version 2` and the whole vty block, so a stalled replay would have left a switch
+#: reachable by ping and not by SSH, and nobody had measured whether it stalls. Measured on
+#: a throwaway vIOS-L2 with this generator's own render: the replay waited 39.5 s on the
+#: key and carried on, every line after it landed, SSH answered; a control cut before the
+#: vty block answered no SSH. The key line is now last (bootstrap_config), so a stall could
+#: cost only `ip ssh version 2`. A future platform blocked here names its measurement.
+BLOCKED_PENDING_MEASUREMENT = {}
 
 #: A hostname a device can actually carry, and a filename the repo can hold.
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,62}$")

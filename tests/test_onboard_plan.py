@@ -207,10 +207,10 @@ class TestEveryReasonAtOnce:
         as one.
         """
         reasons = _plan(hostname="9bad", mgmt_ip="",
-                        platform="cisco_ios").blocking_reasons
+                        platform="").blocking_reasons
         assert any("usable device name" in r for r in reasons)
         assert any("management address" in r for r in reasons)
-        assert any("cannot be onboarded" in r for r in reasons)   # stage D
+        assert any("no platform selected" in r for r in reasons)
         assert len(reasons) >= 3
 
     # `test_an_unapproved_template_refuses_with_the_reason` was REMOVED in
@@ -225,19 +225,20 @@ class TestEveryReasonAtOnce:
                    for r in _plan(mgmt_ip="").blocking_reasons)
 
 
-class TestThePlatformBlockedPendingStageD:
-    """cisco_ios emits `crypto key generate rsa` into a console replay and
-    whether that stalls is unmeasured. A stall leaves the device reachable by
-    ping and not by SSH, so the wizard refuses rather than discovers."""
+class TestStageDLiftedTheSwitchBlock:
+    """C712 (the operator, 2026-10-12: "Still cant onboard a switch"). cisco_ios was refused
+    pending stage D, whether generating the SSH key inside a console replay stalls it. Stage D
+    ran on 2026-10-12 (docs/bootstrap-probe/README.md): the replay waited 39.5 s on the key
+    and carried on, every line after it landed, SSH answered; the key is now last, so a stall
+    could cost only `ip ssh version 2`. No platform is blocked pending a measurement."""
 
-    def test_a_vios_target_is_refused(self, lab):
+    def test_a_vios_target_is_not_refused_for_stage_d(self, lab):
         plan = _plan(platform="cisco_ios")
-        assert plan.onboardable is False
-        assert any("stage D" in r for r in plan.blocking_reasons)
+        assert not any("stage D" in r for r in plan.blocking_reasons), plan.blocking_reasons
 
-    def test_the_refusal_names_where_to_read_about_it(self, lab):
-        reasons = _plan(platform="cisco_ios").blocking_reasons
-        assert any("bootstrap-probe" in r for r in reasons)
+    def test_no_platform_waits_on_a_measurement(self):
+        from modules.nsot.onboard import BLOCKED_PENDING_MEASUREMENT
+        assert BLOCKED_PENDING_MEASUREMENT == {}
 
     def test_the_c8000v_is_not_blocked(self, lab):
         """Measured: cisco_iosxe is in neither GENERATES_SSH_KEY nor

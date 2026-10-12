@@ -482,13 +482,20 @@ def render_bootstrap(platform: str, *, hostname: str, username: str,
             "!",
             domain_line(platform, domain),
             "!",
-        ] + own_lines + manager_lines + ssh_key_lines(platform) + [
-            "ip ssh version 2",
-            "!",
+        ] + own_lines + manager_lines + [
             "line vty 0 4",
             " logging synchronous",
             " login local",
             " transport input ssh",
+            "!",
+            # LAST, after everything SSH needs but the key (stage D, 2026-10-12): an emulator
+            # TYPES this file into a console, and key generation takes real time. Before, the
+            # key line came before `ip ssh version 2` and the whole vty block, so a replay
+            # stalled there would have left a switch that answers ping and not SSH. Now a
+            # stall can cost only the line after it; `ip ssh version 2` must follow the key
+            # (IOS refuses it with no keypair).
+        ] + ssh_key_lines(platform) + [
+            "ip ssh version 2",
             "!",
             "end",
         ]

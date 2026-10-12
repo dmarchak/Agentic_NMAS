@@ -242,18 +242,28 @@ class TestItMatchesTheMeasuredProbeConfigs:
                    for p in DEFAULTS["platform_map"].values()}
         assert not any(d.endswith("_telnet") for d in drivers), drivers
 
-    def test_the_vios_shape_matches_bp_vios(self):
-        with open(os.path.join(PROBE, "configs", "bp-vios.cfg"),
+    def test_the_vios_shape_matches_what_stage_d_booted(self):
+        """C712: stage D (2026-10-12) booted this generator's own render on a throwaway
+        vIOS-L2, the key generation last; the lines after it landed and SSH answered. The
+        generator must still emit exactly that file; a change to it is a new stage D."""
+        with open(os.path.join(PROBE, "configs", "bp-vios-d.cfg"),
                   encoding="utf-8") as fh:
             measured = _directives(fh.read())
         generated = _directives(
-            render_bootstrap("cisco_ios", hostname="bp-vios", domain=PROBE_DOMAIN,
+            render_bootstrap("cisco_ios", hostname="bp-vios-d", domain=PROBE_DOMAIN,
                              username="admin", secret="admin", environment=EMULATED_VIOS))
-        # The ONE declared divergence (C663 step 3): the port's description named the
-        # emulator; it names what the port is. The record of what booted stays as it booted.
-        diverged = {(" description clab-mgmt", " description platform management")}
-        assert len(generated) == len(measured)
-        assert {(m, g) for m, g in zip(measured, generated) if m != g} == diverged
+        assert generated == measured
+
+    def test_the_key_comes_after_everything_ssh_needs_but_the_key(self):
+        """C712: a console replay stalled at the key line can lose only what follows it, so
+        nothing but `ip ssh version 2` (which IOS refuses before a key exists) follows it."""
+        lines = render_bootstrap("cisco_ios", hostname="s5", username="admin", secret="x",
+                                 mgmt_interface="GigabitEthernet0/0").splitlines()
+        key = next(i for i, ln in enumerate(lines) if ln.startswith("crypto key generate"))
+        assert [ln for ln in lines[key + 1:] if ln.strip() not in ("!", "end")] == \
+            ["ip ssh version 2"]
+        assert lines.index(" transport input ssh") < key
+        assert next(i for i, ln in enumerate(lines) if ln.startswith("username ")) < key
 
     def test_a_vios_with_no_environment_and_no_port_named_configures_none(self):
         """A device with none has none: no port is defaulted to Gi0/0 (C663 step 3)."""

@@ -50,7 +50,6 @@ KEYING = {
     "modules/nsot/parsers/base.py":         "dialect",
     "modules/nsot/parsers/cisco_ios.py":    "dialect",
     "modules/nsot/parsers/cisco_iosxe.py":  "dialect",
-    "modules/nsot/onboard.py":              "dialect",
     # BOOT_SECONDS: each platform's measured boot, keyed as the inventory's `platform`.
     "modules/nsot/reload_op.py":            "dialect",
     # TELEMETRY_PLATFORMS: the dialect the telemetry section applies to.

@@ -295,13 +295,24 @@ class TestTheRoutes:
         assert body["ok"] is True
         assert "blocking_reasons" in body["plan"]
 
-    def test_a_blocked_platform_is_listed_not_omitted(self, client):
+    def test_a_blocked_platform_is_listed_not_omitted(self, client, monkeypatch):
         """An absent option teaches the operator the tool does not support
-        their device, which is a different and wrong lesson."""
+        their device, which is a different and wrong lesson. No platform is
+        blocked since stage D (C712), so one is planted to show the listing."""
+        from modules.nsot import onboard
+        monkeypatch.setitem(onboard.BLOCKED_PENDING_MEASUREMENT, "cisco_ios",
+                            "planted: a measurement this test pretends is owed")
         body = client.get("/onboard/platforms").get_json()
         blocked = [p for p in body["platforms"] if p["blocked"]]
-        assert blocked, "cisco_ios should be listed and disabled"
-        assert all(p["reason"] for p in blocked)
+        assert [p["reason"] for p in blocked] == \
+            ["planted: a measurement this test pretends is owed"], blocked
+
+    def test_no_platform_is_blocked_now(self, client):
+        """C712: a switch (cisco_ios) is offered like any other platform."""
+        body = client.get("/onboard/platforms").get_json()
+        assert not [p for p in body["platforms"] if p["blocked"]]
+        assert any(p.get("dialect", p.get("platform")) == "cisco_ios" or "cisco-ios" ==
+                   p.get("name") for p in body["platforms"]), body["platforms"]
 
     @pytest.mark.real_identity
 
