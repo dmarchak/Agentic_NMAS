@@ -1,5 +1,37 @@
 # End of session: where Phase 7 stands
 
+## STATUS: 2026-10-12 (from about 01:00 UTC; 19:00 UTC−6 the evening before)
+
+- **Your reports, fixed, deployed and seen on the host:** Topology's double tooltip (C687) and
+  the held note breaking the layout (C688); "Couldn't load this view" in the sidebar (C692,
+  bf418d0, deployed 01:36 UTC); D4 now reads ok (C689: no option reaches subnet 255 through a
+  class or the subnet; a planted routers option fails the check); r1's OSPF row (C690: about
+  1.4% of r1's OSPF scrapes time out, unrelated to the evening's work; one lone failure no
+  longer blanks the read). Read on the host 02:23 UTC: Needs attention holds 0 rows, every one
+  of its 24 sources read.
+- **Path… (C693, C694), 642f2a5, deployed 02:15 UTC, walked on the host.** Board D (canvas
+  v114) drawn and signed off under the Phase 7 mode. Each hop's own `show ip cef` decides the
+  next hop, read through the reads engine as a job; r5 is a destination by each peering
+  address. Walked: r1 to r5's r3 peering splits over r3 (delivered) and r4 (dropped, no
+  route), 7.2 s, 3 devices read; r2 to r4's peering the mirror; s1 to r4's loopback one path
+  through r1, delivered. Each drew its card and lit the map.
+- **Found by that trace: C695 (LAB, UNKNOWN).** r4 drops traffic for r3's ISP peering address
+  (and r3 for r4's) while each advertises a default into OSPF, so the flows hashed to the
+  other edge router are lost. The one measurement: r3's and r4's BGP tables, for what r5
+  advertises beyond the peering addresses.
+- **C681's page asks (8dfee66):** DHCP's Identity column shows each IPv6 lease's IAID; the
+  page and the manual say a client installing "forever" keeps its address whatever Kea says,
+  so a reservation is the fix. Sitting 2 step 1 is now the reservations for every lab host
+  (h1's ::107 first, the table read from Kea at 02:20 UTC); step 14 is the lease-time change,
+  after the lab change.
+- **A correction to the plan you set, C681:** shortening the lease time will not clear h1's
+  three orphans. Kea keeps each lease's own end (2027-10), and no client renews under those
+  IAIDs. Your choice: a previewed release of the three through Mercury (a board first), or
+  leave them to 2027. The pool has room either way (257 addresses per subnet).
+- **Waiting on you:** the lab change in C681's row (udhcpc6 kept running), before step 14;
+  the orphans' release, above; C691's snap to grid needs a board (next after the 7.8
+  families, or before them if you say).
+
 ## STATUS: the continued run, 2026-10-11 (from 17:53 UTC; 11:53 UTC−6)
 
 Your answers committed in 8224518 (deployed). Then, in your order:
@@ -196,15 +228,37 @@ step that does not show what it says, and tell the agent the step's number. Time
 
 ### Sitting 2: single-device and single-record writes (each previewed; you confirm)
 
-Steps 1 and 2 DONE by the operator, 2026-10-11.
+The first list's steps 1 and 2 (the Update page's C663 host step; the NetBox role kinds) were
+DONE by the operator, 2026-10-11. Step 1 is now C681's reservations (the operator, 2026-10-12:
+first in sitting 2).
 
-1. **Update page**: C663 step 1's host step (from fbdc686) → **It is done**. Expect it to move to
-   done with your name. Undo: none needed (a record that you said so).
-2. **NetBox role kinds**: first answer the agent's question on `l3-switch` (below). Then on the
-   NMAS host: `bash ~/python/Agentic_NMAS/scripts/host-steps/netbox-role-kinds.sh`; paste the
-   admin token at the hidden prompt; read the PLAN table; type `yes`. Expect each listed role's
-   before, wanted and after, roles not listed "unchanged", `RESULT: PASS`. Undo: in NetBox,
-   clear `mercury_kind` on a role (Mercury then calls it "not classified").
+1. **Reservations for every lab host (C525's design, C681), h1's IPv6 first.** DHCP ›
+   Reservations › **Add a reservation…** for each row below, in order. Each: **Preview** shows
+   the subnet, the identity, the address and the checks, each "pass"; for h1's IPv6 the
+   address is leased to the same DUID (under the IAID h1 uses), so the preview says it is
+   leased to this client. Reason "C681: pin the lab hosts"; confirm. Expect each result card
+   "added", read back from Kea, one commit of `dhcp/reservations.yml`, and at the next read (5
+   min) the lease row badged "reserved" (the Reservations tab: "in use by it"). The leases
+   below are as Kea held them, read 2026-10-12 02:20 UTC; each is the address the host holds
+   now, so nothing moves.
+
+   | Host | Family | Subnet | Identity | Address |
+   |---|---|---|---|---|
+   | h1 | IPv6 | 2001:db8:10::/64 | DUID `00:03:00:01:aa:c1:ab:99:f6:e2` | 2001:db8:10::107 |
+   | h1 | IPv4 | 10.10.10.0/24 | MAC `aa:c1:ab:99:f6:e2` | 10.10.10.100 |
+   | h2 | IPv6 | 2001:db8:20::/64 | DUID `00:03:00:01:aa:c1:ab:3e:11:70` | 2001:db8:20::101 |
+   | h2 | IPv4 | 10.10.20.0/24 | MAC `aa:c1:ab:3e:11:70` | 10.10.20.101 |
+   | h3 | IPv6 | 2001:db8:10::/64 | DUID `00:03:00:01:aa:c1:ab:b0:85:65` | 2001:db8:10::103 |
+   | h3 | IPv4 | 10.10.10.0/24 | MAC `aa:c1:ab:b0:85:65` | 10.10.10.102 |
+   | h4 | IPv6 | 2001:db8:30::/64 | DUID `00:03:00:01:aa:c1:ab:12:c6:03` | 2001:db8:30::103 |
+
+   h4 has no IPv4 lease (VLAN 30 is IPv6-only). The Leases tab now shows each IPv6 lease's
+   IAID: h1's four share one DUID under four IAIDs. Known limit (C525): the lab's hosts' MACs
+   are not pinned in the topology, so a redeploy that gives a host a new MAC (and so a new
+   DUID) leaves its reservation "unmatched", said on the page. Undo: **Remove…** on a row (the
+   host keeps its address; what survives is said).
+2. **DONE 2026-10-11** (the first list's steps 1 and 2): the Update page's C663 host step, and
+   the NetBox role kinds (router and switch set).
 3. **C673, s1's RIP passive on Gi0/0**: s1 › Intent › **Edit**; under `routing.rip.settings`, after
    `- passive-interface Vlan20`, add `- passive-interface GigabitEthernet0/0`; **Preview**: one
    line added against intent and against the device. **Commit** with a reason ("C673"). Then
@@ -212,14 +266,7 @@ Steps 1 and 2 DONE by the operator, 2026-10-11.
    verify passed, a receipt, and on s1 `show ip protocols` (Show commands) listing Gi0/0 under
    Passive Interface(s). Undo: Intent › Edit to remove the line, commit, Deploy (merge-only
    cannot remove it: the deploy preview offers it as a Mode B removal with your reason).
-4. **One real DHCP reservation, C525 (h1)**: DHCP › Leases: note h1's IPv4 address and MAC
-   (subnet 10.10.10.0/24). Reservations › **Add a reservation…**: subnet 10.10.10.0/24, MAC
-   h1's, address the one h1 holds now (so nothing moves), hostname `h1`; **Preview**: "leased
-   only to this client now"; reason "C525: h1's reservation back"; confirm. Expect the result
-   card "h1's reservation added", read back, a commit of `dhcp/reservations.yml`; the row reads
-   "in use by it" at the next read (5 min). **Known limit (C525):** the lab's hosts' MACs are not
-   pinned, so this reservation holds until h1's next redeploy. Undo: **Remove…** on its row
-   (what survives: h1 keeps its lease until it ends).
+4. **Folded into step 1:** C525's h1 IPv4 reservation is step 1's second row.
 5. **Capture with a reason** (s2 › Capture…): if it shows a shrink, give the reason; expect a
    golden commit with the reason. Undo: none needed (a new golden; the previous stays in
    History).
@@ -254,6 +301,21 @@ Steps 1 and 2 DONE by the operator, 2026-10-11.
 13. **History › Query, a saved view (C667)**: open "Interface errors and discards over time",
     **Save this view…** with a title; pin it; open it from board A's list; remove it. Expect each
     act recorded on History as you, and the list redrawn in other tabs. Undo: the remove.
+14. **IPv6 lease times on subnets 10, 20 and 30 (C681), ONLY after the lab change.** Measured
+    2026-10-12: no lab host runs a DHCP client after its first lease, so a shorter lease would
+    let Kea hand a host's address to another client while the host still uses it ("forever").
+    First approve or refuse the lab change in C681's row (udhcpc6 kept running, the address
+    installed with the lease's lifetimes). Then, for each of 2001:db8:10::/64, :20: and :30:,
+    DHCP › Subnets › **Edit…**: valid lifetime `1 d`, preferred `12 h`; **Preview** (renew and
+    rebind derived), reason "C681: shorter IPv6 leases"; confirm. Expect "changed", read back,
+    a commit of `dhcp/subnets.yml`, and the next lease a host renews ending a day out.
+    **What it will NOT do:** Kea's lease file holds each lease's own lifetime, so an existing
+    lease keeps its end (expected from Kea's lease records, not yet measured), and h1's three orphans
+    (::101, ::102, ::105, IAIDs no client uses again) keep their 2027 ends: nothing renews
+    them. Shortening the lease time stops new orphans from living a year; the three need
+    releasing (C681's row: a previewed release through Mercury, which you set aside on
+    2026-10-12 on the expectation that they would expire). The read-back after this step
+    shows it: ::101 still ends 2027-10-06. Undo: Edit… back to 365 days.
 
 ### Sitting 3: fleet-wide writes (each previewed; you confirm)
 
