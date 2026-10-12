@@ -1,5 +1,56 @@
 # End of session: where Phase 7 stands
 
+## AFTERNOON, 2026-10-12 (about 12:00 to 19:30 UTC; 06:00 to 13:30 UTC−6)
+
+Every commit went through the gate, was pushed and deployed once CI was green, and was checked
+on the host. **One CI run went red** (c638aad, run #691): CLAUDE.md names `deploy/topology/`,
+which the topology removal emptied; the laptop's leftover empty folder had passed the gate.
+Fixed forward in 5cdd353 (the path check now asks git, C592's class; a README holds the folder
+until your CLAUDE.md edit below). No device's configuration was changed; nothing ran on s3 or
+between 08:30 and 09:10 UTC.
+
+**Done, deployed, checked on the host:**
+- Your morning items: the Reload citation committed (a40eb55); C673 rechecked (RIPng and every
+  switch's management port: s1's one line is still the whole change, noted in sitting 2
+  step 3); `/devices/regions` removed (d13c0be).
+- C706 Neighbours' columns line up; C707 a chart reads out on hover; C708 History's
+  Authorisations tab removed (an old link opens the Timeline); C710 Settings' grids fill the
+  width; C712 switches can be onboarded (stage D run on throwaway nodes on the lab host; the
+  SSH key line last).
+- **C709, DHCP pool descriptions** (8d69e1f): board C revised (canvas v117), a Pool description
+  on Add and Edit…, kept in Kea's `user-context`, drawn under each range. On the host: ZTP's two
+  discovery pools say what they are for, and the five other pools Mercury holds say
+  "no description: Edit… adds one".
+- **C711, IP SLA for s1, s4 and r6** (8d53810): a fourth policy, `upstream` (the static default
+  gateway, else the routing peers, now RIP's too, else the widest static route's next hop).
+  Walked read-only on the host over committed intent: under today's `gateway` all three name
+  nothing, as you saw; under `upstream`, s1 from r1, s4 from r2, r6 to s3's loopback.
+- **The topology service retired** (c638aad + 5cdd353): the renderer left the repository, and
+  the host step ran: 7 of 7 checks PASS (unit stopped, disabled, removed; link removed; nothing
+  on 8088). Mercury's `topology-renderer-gone` check reads done; `/v2/topology` answers 200.
+
+**Waiting on you:**
+1. **The AI agent's family:** held for your decision (what's lost between 7.8 and Stage 8, as
+   reported: 6 model calls ever, the last 2026-09-23; the agent off since 2026-08-28).
+2. **C711's last step is a person's confirm:** Monitoring › IP SLA, set the policy to
+   `upstream`, then add the three suggested probes. r6's probe sits on r6 and targets s3's
+   loopback once a minute: s3 only answers a ping, but you may prefer to untick it.
+3. **CLAUDE.md, yours to paste** (two lines that no longer hold):
+   - in "A commit touching a host-installed file", replace
+     `` `deploy/systemd/`, `deploy/topology/`) carries `` with
+     `` `deploy/systemd/`, `deploy/postgres/`) carries `` (the topology folder is retired;
+     `deploy/postgres/` is already in `HOST_STEP_PATHS` and was missing from the list);
+   - in the module map, delete `` `freshness.py`, `` (`modules/nsot/freshness.py` went with
+     C708).
+   After you paste, the commit removes `deploy/topology/README.md`, the folder's
+   `HOST_STEP_PATHS` and `STEP_CHECKS` entries and the retired registry entry together.
+4. As before: C700's 24 h reading is due 2026-10-13 05:06 UTC (23:06 UTC−6 tonight); C695 and
+   C673's confirms are in the walk.
+
+**Decisions I made for you** (each in STANDING_APPROVAL_LOG.md): board C's revision for C709;
+C711 as a new policy rather than changing what `gateway` or `peers` means, with no board (one
+more option in an existing select). **174 open.**
+
 ## MORNING REPORT: the overnight run, 2026-10-12 (03:20 to about 08:10 UTC; 21:20 to 02:10 UTC−6)
 
 **Every item on your list is done or waits only on you**, except the AI agent's 7.8 family,
