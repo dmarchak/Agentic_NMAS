@@ -112,8 +112,28 @@ class TestTheStoreIsWatched:
         assert not mod.store_write("open", (self.STORE + "-other/x", "w", 0), self.STORE)
 
     def test_its_own_write_is_a_defect_whatever_else_happened(self):
-        code, lines = _script().store_report({}, {}, ["/srv/nmas/data/x"], [4242])
+        x = "/srv/nmas/data/x"
+        code, lines = _script().store_report({x: (1, 1)}, {x: (2, 9)}, [x], [4242])
         assert code == 3 and "DEFECT" in lines[0]
+        # A file it created is a write too.
+        code, _ = _script().store_report({}, {x: (2, 9)}, [x], [])
+        assert code == 3
+
+    def test_an_open_that_changed_nothing_is_not_a_defect(self):
+        """C674: `read_or_create_key`'s create-once open of an existing key.key (R30) is an
+        open with O_CREAT, and writes nothing: every capture exited 3 and said DEFECT."""
+        key = "/srv/nmas/data/key.key"
+        code, lines = _script().store_report({key: (1, 44)}, {key: (1, 44)}, [key], [])
+        assert code == 0 and "DEFECT" not in " ".join(lines)
+
+    def test_the_session_slots_are_a_lock_not_the_store(self):
+        """C674: every SSH session takes a slot, a flock on ssh_slots/<address>/<n>.lock."""
+        mod = _script()
+        lock = self.STORE + "/ssh_slots/10.255.1.13/0.lock"
+        assert not mod.store_write("open", (lock, None, os.O_RDWR | os.O_CREAT), self.STORE)
+        # The control: the same open anywhere else under the store is seen.
+        assert mod.store_write("open", (self.STORE + "/ssh_slotsX/0.lock", None,
+                                        os.O_RDWR | os.O_CREAT), self.STORE)
 
     def test_a_change_with_the_app_running_is_named_as_the_apps(self):
         code, lines = _script().store_report({"f": (1, 1)}, {"f": (2, 1)}, [], [4242])

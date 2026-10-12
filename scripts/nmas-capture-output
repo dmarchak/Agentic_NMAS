@@ -90,6 +90,11 @@ def out_dir_refusal(out: str) -> str:
     return ""
 
 
+#: C674: the SSH session slots (`connection._take_slot`, a `flock` on
+#: `ssh_slots/<address>/<n>.lock`) live beside the store, a cross-process lock every session
+#: takes, never a record; opening one is not a write to the store.
+LOCKS = "ssh_slots"
+
 _WRITE_EVENTS = ("os.rename", "os.replace", "os.remove", "os.unlink",
                  "os.mkdir", "os.rmdir", "os.chmod", "shutil.copyfile",
                  "shutil.move", "shutil.rmtree")
@@ -112,6 +117,8 @@ def store_write(event: str, args: tuple, store: str) -> str:
     for path in paths:
         if isinstance(path, (str, bytes)):
             real = os.path.realpath(os.fsdecode(path))
+            if real.startswith(os.path.join(store, LOCKS) + os.sep):
+                continue          # the SSH session slots: a cross-process lock, not the store
             if real == store or real.startswith(store + os.sep):
                 return real
     return ""
@@ -153,8 +160,12 @@ def store_report(before: dict, after: dict, own: list, pids: list) -> tuple:
     """(exit code, lines) for what happened to the store during the run."""
     changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
     lines = []
-    if own:
-        lines.append(f"DEFECT: this process wrote to the store: {sorted(set(own))}")
+    # C674: an open this process made for writing counts only if the file changed (its time
+    # or size) or appeared or went: the key's create-once open of an existing key.key (R30)
+    # writes nothing, and a capture that wrote nothing is not a defect.
+    wrote = sorted(set(own) & set(changed))
+    if wrote:
+        lines.append(f"DEFECT: this process wrote to the store: {wrote}")
         return 3, lines
     if not changed:
         return 0, ["store: unchanged, and this process wrote nothing to it"]
