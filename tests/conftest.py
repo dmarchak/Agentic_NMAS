@@ -450,6 +450,15 @@ def _rotation_record_goes_to_a_temp_file(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_device_label_measurement(monkeypatch):
+    """When Loki's `device` label began (C722) is measured once an hour per process; a fake Loki
+    answering every query with lines would otherwise leave its answer to the next test."""
+    from modules import device_logs
+
+    monkeypatch.setattr(device_logs, "_LABEL", {"since": None, "asked": None})
+
+
+@pytest.fixture(autouse=True)
 def _fresh_redaction_cache():
     from modules import redact
 

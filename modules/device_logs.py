@@ -56,9 +56,56 @@ def host_pattern(hostname: str) -> str:
     return r"\s" + re.escape(hostname) + r":\s"
 
 
-def selector(hostname: str) -> str:
-    """This device's lines. The substring stage first is only for Loki's cost;
-    the anchored regex is the match (a prefix of another name never matches)."""
+#: C722: Alloy labels each line with its `device` (the same pattern as LOGQL_FIELDS, set by
+#: scripts/host-steps/c722-device-label.sh) from the moment that step ran. When that was is
+#: MEASURED, as Loki's first labelled line, and asked again at most this often (seconds).
+LABEL_ASK_EVERY = 3600
+_LABEL = {"since": None, "asked": None}
+
+
+def label_since(now: float = None, ask=None):
+    """When the first `device`-labelled line reached Loki (epoch seconds), within Loki's 30-day
+    query limit; None when none is held or Loki could not say (then every window is read by the
+    line regex, which matches labelled and unlabelled lines alike). *ask(query, start, end)*
+    returns Loki's answer (`LokiIntegration._get`'s), for tests."""
+    now = time.time() if now is None else now
+    if _LABEL["asked"] is not None and now - _LABEL["asked"] < LABEL_ASK_EVERY:
+        return _LABEL["since"]
+    start, end = int((now - 30 * 86400) * 1e9), int(now * 1e9)
+    query = f'{{job="{JOB}", device=~".+"}}'
+    if ask is None:
+        from modules.integrations.loki import LokiIntegration
+
+        loki = LokiIntegration()
+        if not loki.is_configured():
+            return None
+        r = loki._get("loki/api/v1/query_range", query=query, limit=1, start=start,  # noqa: SLF001
+                      end=end, direction="forward")
+    else:
+        r = ask(query, start, end)
+    if not r.get("ok"):
+        log.warning("device_logs: when the device label began could not be asked: %s",
+                    r.get("error"))
+        return None                           # not remembered: asked again next time
+    try:
+        streams = (r["response"].json().get("data") or {}).get("result") or []
+    except (ValueError, AttributeError) as exc:
+        log.warning("device_logs: Loki's answer on the device label could not be read: %s", exc)
+        return None
+    stamps = [int(ns) for s in streams for ns, _l in s.get("values") or []]
+    _LABEL.update(since=min(stamps) / 1e9 if stamps else None, asked=now)
+    return _LABEL["since"]
+
+
+def selector(hostname: str, start: float = None) -> str:
+    """This device's lines over a window from *start* (epoch seconds). By its `device` label
+    when the window starts after the label began (C722); otherwise by the line itself: the
+    substring stage first is only for Loki's cost, the anchored regex is the match (a prefix of
+    another name never matches), and it reads labelled and unlabelled lines alike."""
+    if start is not None:
+        since = label_since(now=None)
+        if since is not None and start >= since:
+            return f'{{job="{JOB}", device="{hostname}"}}'
     return f'{{job="{JOB}"}} |= "{hostname}:" |~ `{host_pattern(hostname)}`'
 
 
@@ -105,7 +152,7 @@ def for_device(dev: dict, *, now: float = None) -> dict:
         return view
     now = now if now is not None else time.time()
     start, end = int((now - WINDOW_HOURS * 3600) * 1e9), int(now * 1e9)
-    sel = selector(host)
+    sel = selector(host, start=now - WINDOW_HOURS * 3600)
 
     def ask(path, query, **extra):
         r = loki._get(path, query=query, **extra)

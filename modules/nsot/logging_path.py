@@ -240,11 +240,11 @@ LAST_LINE_HOURS = 24
 def last_lines(hosts: list, *, now: float = None, ask=None) -> dict:
     """``{host: iso or ""}``: when Loki last received a line from each of *hosts* (the first
     `LAST_LINE_FOR`), within `LAST_LINE_HOURS`; ``""`` when none, absent when not read."""
-    from modules.device_logs import JOB, host_pattern
+    from modules.device_logs import selector
     now = time.time() if now is None else now
     out = {}
     for host in hosts[:LAST_LINE_FOR]:
-        query = f'{{job="{JOB}"}} |= "{host}:" |~ `{host_pattern(host)}`'
+        query = selector(host, start=now - LAST_LINE_HOURS * 3600)
         if ask is not None:
             r = ask(query)
         else:

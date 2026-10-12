@@ -84,6 +84,25 @@ def check_topology_renderer_gone(root: str = ROOT, link: str = TOPOLOGY_LINK,
     return {"state": "done", "detail": f"neither {unit_file} nor {link} is installed"}
 
 
+def check_device_label(root: str = ROOT, since=None) -> dict:
+    """Done when Loki holds a line carrying the `device` label Alloy sets (C722's host step),
+    measured as `device_logs.label_since`; unknown when Loki is not configured or could not
+    say. *since*: that measurement, for tests."""
+    from modules import device_logs
+    from modules.integrations.loki import LokiIntegration
+
+    if since is None:
+        if not LokiIntegration().is_configured():
+            return {"state": "unknown", "detail": "Loki is not configured here, so it cannot be "
+                                                  "asked whether lines carry a device label"}
+        since = device_logs.label_since()
+    if since is None:
+        return {"state": "not_done", "detail": "Loki holds no line with a device label in the "
+                                               "last 30 days (or could not say)"}
+    return {"state": "done", "detail": "Loki's first line with a device label arrived "
+            + time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(since))}
+
+
 def check_updater(root: str = ROOT) -> dict:
     """Done when the updater's install check reads ok (update_op.install_state)."""
     from modules import update_op
@@ -195,6 +214,7 @@ def check_kea_discovery_range(root: str = ROOT, kea=None, addrs=None) -> dict:
 
 
 CHECKS = {"topology-renderer-gone": check_topology_renderer_gone, "updater": check_updater,
+          "device-label": check_device_label,
           "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin,
           "kea-reservation-files": check_kea_reservation_files,
           "kea-subnet-files": check_kea_subnet_files,
