@@ -93,7 +93,6 @@ VOCABULARY = {
                      "discovery reader, board L)",
     "saved_views": "History › Query's saved views: their titles, who saved them, pinned or not "
                    "(modules/saved_views.py, C667)",
-    "variables": "the CSV-era variable store and compliance policy",
     "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
@@ -346,10 +345,6 @@ DECLARED = {
     "topology_save_positions": ("topology",),
     "topology_save_proto_hidden": ("topology",),
     "topology_save_proto_positions": ("topology",),
-    "list_variables_set": ("variables",),
-    "list_variables_delete": ("variables",),
-    "list_variables_discover": ("variables",),
-    "list_compliance_policy_update": ("variables",),
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),

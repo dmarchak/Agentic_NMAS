@@ -86,12 +86,6 @@ KNOWN_UNREACHABLE = {
     "GET /backup_stats": (C, "backup statistics, never drawn; removed in 7.8 unless Versions draws them"),
     "GET /configure/audit/<config_id>": (C, "pipeline audit records, never drawn; Versions (7.5) or removed in 7.8"),
     "GET /configure/audit_latest": (C, "pipeline audit records, never drawn; Versions (7.5) or removed in 7.8"),
-    "GET /list/variables": (C, "the CSV-era variable store: CUT by the feature audit; removed in 7.8"),
-    "POST /list/variables": (C, "the CSV-era variable store: CUT by the feature audit; removed in 7.8"),
-    "DELETE /list/variables/<key>": (C, "the CSV-era variable store: CUT by the feature audit; removed in 7.8"),
-    "POST /list/variables/discover": (C, "the CSV-era variable store: CUT by the feature audit; removed in 7.8"),
-    "GET /list/compliance_policy": (C, "compliance as strings: CUT, absorbed into CI (feature audit); removed in 7.8"),
-    "POST /list/compliance_policy": (C, "compliance as strings: CUT, absorbed into CI (feature audit); removed in 7.8"),
     # (d) Superseded, duplicate or dead.
     "GET /list/golden_configs": (D, "the legacy enumerator's route: on the audit's CUT list; removed in 7.8"),
     "GET /ai/events": (D, "on the audit's CUT list; removed in 7.8"),
@@ -124,7 +118,8 @@ KNOWN_UNREACHABLE = {
 # 39 -> 37 (2026-10-11): /templatize/report's GET and POST removed (7.8).
 # 37 -> 32 (2026-10-12): the credential profile JSON routes and /inventory/dependents removed
 # (7.8; Credentials › Profiles is their home).
-CEILING = 32
+# 32 -> 26 (2026-10-12): /list/variables (4) and /list/compliance_policy (2) removed (7.8).
+CEILING = 26
 
 
 @pytest.fixture(scope="module")
@@ -160,7 +155,7 @@ class TestThePopulation:
         assert pairs["POST /add_quick_action"] is True          # url_for, device page
         assert pairs["POST /drift/settings"] is True            # a mixed path, write half
         assert pairs["POST /templatize/bulk/apply"] is False     # bulk intent: no page yet
-        assert pairs["POST /list/variables"] is False           # its GET half is no proof
+        assert pairs["POST /inventory/source/<path:list_name>"] is False  # its GET half is no proof
         # The device page's Actions menu loop (`url_for('device_v2.' ~ op)`, one row per op):
         # Seed's card is reached only from its row there (2026-10-03).
         assert pairs["GET /v2/device/<name>/seed"] is True

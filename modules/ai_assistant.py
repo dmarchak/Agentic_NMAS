@@ -865,11 +865,6 @@ def _load_compliance_policy() -> dict:
         return {"rules": []}
 
 
-def _save_compliance_policy(policy: dict) -> None:
-    with open(_get_compliance_policy_path(), "w", encoding="utf-8") as fh:
-        json.dump(policy, fh, indent=2)
-
-
 # ---- Variable store --------------------------------------------------------
 # Per-list structured key-value store for network facts used in config templates.
 # A module-level lock prevents concurrent writers from corrupting the JSON file.

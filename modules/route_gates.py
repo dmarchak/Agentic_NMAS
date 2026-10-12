@@ -258,10 +258,6 @@ GATES = {
                                          "Profiles, recorded (who, which, the fields set)"),
     "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "
                                            "Profiles, recorded"),
-    "list_variables_set": _g(K, "writes list variables"),
-    "list_variables_delete": _g(K, "deletes a list variable"),
-    "list_variables_discover": _g(K, "reads devices and WRITES list variables"),
-    "list_compliance_policy_update": _g(K, "writes the compliance policy"),
     "add_quick_action": _g(K, "stores a canned command"),
     "delete_quick_action": _g(K, "deletes a canned command"),
     "golden.migrate_apply": _g(K, "one-shot migration of the golden store"),

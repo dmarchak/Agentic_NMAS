@@ -65,7 +65,6 @@ and built.
 | Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
 | Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | BUILT, P.8 (2026-10-10; not run on the host) | Choosing one: BUILT (board N, 2026-10-10; not run on the host): the top bar's Network picker, the choice each verified person's own (`routes/network_v2.py`), so `/select_device_list`'s one choice for everyone has no v2 equivalent by design. Create and delete: BUILT (2026-10-10; not run on the host): Settings' New network… and a network's Delete this network…, each previewed and recorded; a deleted network's folder is moved aside, never erased. Rename: never offered by today's pages (C639), not built |
 | List data | `/list/golden_configs`, `/list/drift_status`, `/list/change_log` | REMOVE, 7.8 | Superseded by Devices, Needs attention and History |
-| List variables, compliance policy | `/list/variables`, `/list/variables/*` (2), `/list/compliance_policy` | REMOVE, 7.8 | Superseded by intent, drift, group intent and the monitoring templates (the operator, 2026-10-02) |
 | Refresh hostnames | `/refresh_hostnames` | REMOVE, 7.8 (cut 2026-10-05) | C465 removed its NetBox write; a device's hostname comes from its captures |
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` | BUILT, 7.7 (board F4, 2026-10-10) | Results are Needs attention rows; the schedule and Check now are Settings › Installation › Diagnostics |
 | Break-glass export | `/breakglass/preview`, `/export` | `/breakglass/export` STAYS; `/breakglass/preview` REMOVE, 7.8 (board 7) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
@@ -116,6 +115,12 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   chat panel called it after a lost connection (C684), but nothing wrote the marker it read, so
   its auto-resume never fired. The route and that one fetch went; the chat still says "Server
   is back online". The Update button restarts, gated on held devices.
+- **List variables and the compliance policy** (/list/variables and its two children,
+  /list/compliance_policy, GET and POST each), 2026-10-12: no page called them; superseded by
+  intent, drift, group intent and the monitoring templates (the operator, 2026-10-02).
+  `ai_assistant._save_compliance_policy`, which only they used, went with them. The variable
+  store's readers that remain (the agent's tools, the hostname refresh) are today's agent's and
+  go with it.
 
 ## Legacy actions that are not routes
 
