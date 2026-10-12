@@ -655,8 +655,14 @@ def trace_view(list_name: str, trace_id: str, phys: list, nodes: dict) -> dict:
     view_["lit"] = path_trace.drawn(rec, phys, nodes)
     ends = [b["end"] for b in rec.get("branches") or []]
     view_["n"] = len(ends)
-    view_["not_delivered"] = sum(1 for e in ends if e != "delivered")
+    # C696: a branch handed to a device outside the network ("leaves") is neither delivered
+    # nor stopped short; counted apart.
+    view_["left"] = sum(1 for e in ends if path_trace.ENDS.get(e) == "out")
+    view_["not_delivered"] = sum(1 for e in ends if path_trace.ENDS.get(e) == "drop")
     view_["all_ok"] = bool(ends) and not view_["not_delivered"]
+    view_["left_to"] = sorted({b["hops"][-1].get("to") or b["hops"][-1].get("to_address", "")
+                               for b in rec.get("branches") or []
+                               if b.get("end") == "edge" and b.get("hops")} - {""})
     import datetime
     at = rec.get("finished_at") or rec.get("started_at")
     view_["read_iso"] = (datetime.datetime.fromtimestamp(at, datetime.timezone.utc)

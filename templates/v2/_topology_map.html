@@ -141,13 +141,13 @@
   <h2 id="topo-trace-h">Path</h2>
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The trace's record cannot be read: {{ tr.why }}. Nothing is drawn rather than a path that may be wrong.</p></div>
   {%- else %}
-  <h2 id="topo-trace-h">{{ tr.source }} to {{ tr.dest_words }}{% if tr.state == 'done' and tr.n %}: {% if tr.n == 1 %}one path, {{ 'delivered' if tr.all_ok else tr.branches[0].end }}{% else %}{{ tr.n }} equal-cost branches, {{ tr.delivered }} deliver{{ 's' if tr.delivered == 1 }}{% if tr.not_delivered %}, {{ tr.not_delivered }} do{{ 'es' if tr.not_delivered == 1 }} not{% endif %}{% endif %}{% endif %}</h2>
+  <h2 id="topo-trace-h">{{ tr.source }} to {{ tr.dest_words }}{% if tr.state == 'done' and tr.n %}: {% if tr.n == 1 %}one path, {{ tr.branches[0].end_words }}{% if tr.left %} toward {{ tr.left_to | join(', ') }}{% endif %}{% else %}{{ tr.n }} equal-cost branches{% if tr.delivered %}, {{ tr.delivered }} deliver{{ 's' if tr.delivered == 1 }}{% endif %}{% if tr.left %}, {{ tr.left }} leave{{ 's' if tr.left == 1 }} the network toward {{ tr.left_to | join(', ') }}{% endif %}{% if tr.not_delivered %}, {{ tr.not_delivered }} do{{ 'es' if tr.not_delivered == 1 }} not arrive{% endif %}{% endif %}{% endif %}</h2>
   {%- if tr.state == 'running' %}
   <p class="op-wait">Reading {{ tr.reading | join(', ') }} now: <span class="mono">show ip cef {{ tr.dest }}</span>. Each hop's answer decides the next; the path appears here when the last arrives.</p>
   {%- elif tr.state == 'failed' %}
   <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The trace failed:</strong> {{ tr.error }}. What was read is on History › Reads.</p></div>
   {%- else %}
-  <p>{% if tr.not_delivered %}{{ badge(tr.not_delivered ~ ' of ' ~ tr.n ~ ' branch' ~ ('es' if tr.n != 1) ~ ' not delivered', 'danger') }}{% else %}{{ badge('delivered', 'ok') }}{% endif %}</p>
+  <p>{% if tr.not_delivered %}{{ badge(tr.not_delivered ~ ' of ' ~ tr.n ~ ' branch' ~ ('es' if tr.n != 1) ~ ' not delivered', 'danger') }}{% elif tr.left %}{{ badge('leaves the network', 'neutral', title='Handed to a device outside the network: where Mercury’s knowledge of the path ends') }}{% else %}{{ badge('delivered', 'ok') }}{% endif %}</p>
   {%- if tr.n > 1 %}<p class="small">{{ tr.source }}'s forwarding table splits traffic for {{ tr.dest }} between equal-cost next hops; the device chooses per flow, so some flows take each branch.</p>{% endif %}
   <div class="table-wrap"><table class="table topo-trace-table">
     <thead><tr><th scope="col">Branch</th><th scope="col">Hop</th><th scope="col">Its forwarding answer for {{ tr.dest }}</th><th scope="col">To the next hop</th></tr></thead>
@@ -155,17 +155,17 @@
     {%- for b in tr.branches %}
     {%- for h in b.hops %}
     <tr>
-      {%- if loop.first %}<td rowspan="{{ b.hops | length + 1 }}">{{ badge(b.end_words, 'ok' if b.end == 'delivered' else 'danger') }}</td>{% endif %}
+      {%- if loop.first %}<td rowspan="{{ b.hops | length + 1 }}">{{ badge(b.end_words, {'on': 'ok', 'out': 'neutral'}.get(b.cls, 'danger')) }}</td>{% endif %}
       <td class="mono">{{ h.device }}</td>
       <td class="mono small">{{ h.words }}</td>
       <td class="small">{% if h.across %}across {{ h.across | join(', ') }} <span class="faint">(layer 2, not read)</span>{% elif h.to and h.cabled %}{{ h.device }} to {{ h.to }}, cabled directly{% elif h.to %}<span class="faint">the cabling from {{ h.device }} to {{ h.to }} is not known</span>{% endif %}</td>
     </tr>
     {%- endfor %}
-    <tr><td colspan="3" class="small{{ ' topo-trace-drop' if b.end != 'delivered' }}">{{ b.words }}</td></tr>
+    <tr><td colspan="3" class="small{{ ' topo-trace-drop' if b.cls == 'drop' }}">{{ b.words }}</td></tr>
     {%- endfor %}
     </tbody>
   </table></div>
-  <p class="faint small">Read {{ stamp(tr.read_iso) }} from {{ tr.read | join(', ') }} ({{ tr.runs | length }} read{{ 's' if tr.runs | length != 1 }}{% if tr.runs %}, on <a href="{{ url_for('reads_v2.show_commands_result', run_id=tr.runs[-1], list=t.list) }}">History › Reads</a>{% endif %}). On the map: a delivered branch drawn on, one that is not in red to where it stops; the switches between routed hops dashed, since layer 2 is not read.</p>
+  <p class="faint small">Read {{ stamp(tr.read_iso) }} from {{ tr.read | join(', ') }} ({{ tr.runs | length }} read{{ 's' if tr.runs | length != 1 }}{% if tr.runs %}, on <a href="{{ url_for('reads_v2.show_commands_result', run_id=tr.runs[-1], list=t.list) }}">History › Reads</a>{% endif %}). On the map: a delivered branch drawn on, one leaving the network in grey to where it leaves, one that stops short in red to where it stops; the switches between routed hops dashed, since layer 2 is not read.</p>
   {%- endif %}
   {%- endif %}
   <div class="topo-trace-acts">{{ go(t, {'a': '', 'b': '', 'trace': ''}, 'Clear the path') }}{% if tr.state in ('done', 'failed') %}<form class="topo-inline" method="post" action="{{ url_for('topology_v2.path_run') }}" hx-post="{{ url_for('topology_v2.path_run') }}" hx-target="#topo" hx-swap="outerHTML">{{ hidden_state(t, ('trace', 'sel')) }}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"><span class="op-idle">Trace again</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}</form>{% endif %}</div>

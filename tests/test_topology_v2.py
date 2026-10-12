@@ -369,6 +369,20 @@ def test_a_trace_is_the_path_packets_take_read_hop_by_hop(web, monkeypatch):
     assert "Trace again" in card
 
 
+def test_a_trace_beyond_the_network_says_it_leaves_and_is_not_red(web, monkeypatch):
+    """C696: r1 to 8.8.8.8, both branches handed to r5 (the captured answers)."""
+    with open(os.path.join(os.path.dirname(__file__), "fixtures", "path",
+                           "cef_beyond_r5.json"), encoding="utf-8") as fh:
+        _fake_reads(monkeypatch, json.load(fh)["answers"])
+    there = _trace_post(web, b="8.8.8.8").headers["HX-Push-Url"]
+    html = _get(web, "&" + there.split("?", 1)[1].split("&", 1)[1])
+    card = _section(html, "topo-trace-h")
+    assert "r1 to 8.8.8.8: 2 equal-cost branches, 2 leave the network toward r5</h2>" in card
+    assert "not delivered" not in card and "topo-trace-drop" not in card
+    assert card.count(">leaves the network</span>") == 3
+    assert "topo-path-drop" not in html and html.count("topo-pathglow topo-path-out") >= 3
+
+
 def test_a_running_trace_is_busy_on_its_button(web, monkeypatch):
     from modules import path_trace
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(web["dir"]))

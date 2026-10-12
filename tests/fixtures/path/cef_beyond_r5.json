@@ -1,0 +1,17 @@
+{
+ "captured": "2026-10-12T03:26Z, Mercury reads engine, Default network (C696): r1, r3 and r4 for addresses r5 advertises",
+ "answers": {
+  "r3": {
+   "show ip cef 8.8.8.8": "8.8.8.8/32\n  nexthop 198.51.100.1 GigabitEthernet2",
+   "show ip cef 203.0.113.1": "203.0.113.0/31\n  nexthop 198.51.100.1 GigabitEthernet2"
+  },
+  "r1": {
+   "show ip cef 8.8.8.8": "0.0.0.0/0\n  nexthop 10.255.3.13 GigabitEthernet2\n  nexthop 10.255.3.14 GigabitEthernet2",
+   "show ip cef 203.0.113.1": "0.0.0.0/0\n  nexthop 10.255.3.13 GigabitEthernet2\n  nexthop 10.255.3.14 GigabitEthernet2"
+  },
+  "r4": {
+   "show ip cef 8.8.8.8": "8.8.8.8/32\n  nexthop 198.51.100.3 GigabitEthernet2",
+   "show ip cef 203.0.113.1": "203.0.113.0/31\n  nexthop 198.51.100.3 GigabitEthernet2"
+  }
+ }
+}

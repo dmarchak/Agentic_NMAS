@@ -1360,6 +1360,9 @@ select { max-width: 100%; }
 /* Topology board D (C693): a delivered branch in the accent, one that is not in danger; the
    switches between routed hops dashed, since layer 2 is not read. */
 .topo-pathglow.topo-path-drop { stroke: var(--danger); }
+/* C696: handed to a device outside the network, neither delivered nor a failure. */
+.topo-pathglow.topo-path-out { stroke: var(--ink-2); }
+.topo-onpath-out .topo-ic { stroke: var(--ink-2); }
 .topo-pathglow.topo-path-l2 { stroke-dasharray: 14 10; stroke-linecap: butt; }
 .topo-onpath-drop .topo-ic { stroke: var(--danger); }
 .topo-trace-table td { vertical-align: top; }

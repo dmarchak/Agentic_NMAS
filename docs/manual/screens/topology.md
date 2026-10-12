@@ -120,9 +120,11 @@ The card names each branch (equal-cost next hops split traffic per flow, so a tr
 several), each hop's forwarding answer and the next hop, and how the branch ends: delivered,
 dropped (a device with no route), not read (a device that did not answer or another operation
 holds; what follows is not known, never guessed), a loop, leaving the network (a next hop no
-device of the network holds), or a bound (more than 8 branches or 16 hops). On the map a
-delivered branch is drawn on, one that is not in red to where it stops; the switches between two
-routed hops are dashed, since a trace reads layer 3 only. Every read is on History › Reads.
+device of the network holds, or a device outside it such as the ISP's router: where Mercury's
+knowledge of the path ends, the right outcome for an address beyond the network), or a bound
+(more than 8 branches or 16 hops). On the map a delivered branch is drawn on, one leaving the
+network in grey to where it leaves, one that stops short in red to where it stops; the switches
+between two routed hops are dashed, since a trace reads layer 3 only. Every read is on History › Reads.
 **Clear the path** takes it off the map; **Trace again** reads it afresh.
 
 ## Take out a device (what-if) {#what-if}

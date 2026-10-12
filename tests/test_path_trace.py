@@ -179,6 +179,21 @@ class TestTrace:
         b = next(b for b in got["branches"] if b["end"] == "edge")
         assert "leaves the network at r1 toward 10.255.3.13" in b["words"]
 
+    def test_an_address_beyond_the_network_leaves_it_and_is_no_failure(self, net):
+        """C696: r1 to 8.8.8.8 (captured 2026-10-12: each edge's BGP route hands it to r5)
+        leaves the network on both branches; neither is drawn as stopping short."""
+        beyond = os.path.join(os.path.dirname(FIX), "cef_beyond_r5.json")
+        with open(beyond, encoding="utf-8") as fh:
+            answers = json.load(fh)["answers"]
+        got, _ = _trace(net, "r1", "8.8.8.8", answers=answers)
+        assert _paths(got) == [("edge", ("r1", "r3")), ("edge", ("r1", "r4"))]
+        assert {b["cls"] for b in got["branches"]} == {"out"}
+        assert [b["words"] for b in got["branches"]] == [
+            "leaves the network at r3 toward r5", "leaves the network at r4 toward r5"]
+        lit = P.drawn(got, net["layers"]["physical"], net["nodes"])
+        assert lit["nodes"] == {"r1": "out", "r3": "out", "r4": "out", "r5": "out"}
+        assert {e["cls"] for e in lit["edges"].values()} == {"out"}
+
     def test_past_the_branch_bound_it_says_so(self, net, monkeypatch):
         monkeypatch.setattr(P, "MAX_BRANCHES", 1)
         got, _ = _trace(net, "r1", "198.51.100.1")

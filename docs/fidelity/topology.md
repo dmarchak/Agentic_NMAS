@@ -14,7 +14,8 @@ Walked on the host 2026-10-11 (335c0ee, deployed 03:25 UTC): the reader's first 
 Templates compared: templates/v2/topology.html, templates/v2/_topology_map.html
 Compared again 2026-10-12 (C687): the map's summary moved from an SVG `<title>` to its `aria-label`, so the browser no longer draws its own tooltip over a link's card; nothing drawn on the board moved.
 Compared again 2026-10-12 (C693, C694): board D, `TopoPathTrace.dc.html` (canvas version 114, signed off under the Phase 7 mode), beside the page at 1440, 1280 and 390, a trace of r1 to r5's peering with r3 drawn from the captured `show ip cef` answers (`topology-path` in tests/test_board_shots.py). Its regions are in the section "Path… (board D)" below; the rest of the page did not move, except that the Path… popover now opens from its left edge (it opened off the page once Path… wrapped to the toolbar's second row).
-Templates sha256: `bb6dcd5148b0b2597d50f7f620fe31a205ebb7f3f6a6be6c2dc5d77441601617`
+Compared again 2026-10-12 (C696): a branch handed to a device outside the network (r1 to 8.8.8.8, both edges handing it to r5) was coloured with the drops; board D names "leaves the network … where Mercury's knowledge ends" without a colour. It is now its own outcome: grey on the map and the card, a neutral "leaves the network" chip, counted apart in the heading ("2 leave the network toward r5"). Board D's drawn case (one branch delivered, one dropped) did not move.
+Templates sha256: `3ea5b3331559dbaf55760b10fd21c9d482092a2ca9fc3fa2b3659d3a9e430204`
 
 A verdict is **same**, **deviation** (a difference with its approval log line and its reason: data,
 not design, or the operator's own decision), or **later** (a later step of the plan).

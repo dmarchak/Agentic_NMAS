@@ -37,9 +37,12 @@ KEEP = 50
 ANNOUNCE_KEYS = ("path_trace",)
 ANNOUNCER = "path-trace"
 
-#: How a branch ends: (cls, words). `on` draws the branch as delivered, `drop` in danger.
+#: How a branch ends, as the map draws it: `on` delivered; `out` handed to a device outside
+#: the network (C696: the right outcome for an address beyond it, and where Mercury's
+#: knowledge ends, so neither delivered nor a failure); `drop` stopped short.
 ENDS = {"delivered": "on", "dropped": "drop", "unread": "drop", "loop": "drop",
-        "edge": "drop", "bounded": "drop"}
+        "edge": "out", "bounded": "drop"}
+RANK = {"on": 2, "out": 1, "drop": 0}
 END_WORDS = {"delivered": "delivered", "dropped": "dropped", "unread": "not read",
              "loop": "a loop", "edge": "leaves the network", "bounded": "stopped at a bound"}
 
@@ -292,7 +295,7 @@ def trace(source: str, dest: str, owner_of: dict, read, managed: set) -> dict:
                                                        "equal-cost branches"))
             nxt = nxt[:max(room, 0)]
         active = nxt
-    done.sort(key=lambda b: (b["end"] != "delivered", [h["device"] for h in b["hops"]]))
+    done.sort(key=lambda b: (-RANK[b["cls"]], [h["device"] for h in b["hops"]]))
     return {"branches": done, "read_order": order,
             "delivered": sum(1 for b in done if b["end"] == "delivered")}
 
@@ -302,29 +305,33 @@ def _end(hops: list, end: str, words: str) -> dict:
 
 
 def drawn(result: dict, phys: list, nodes: dict) -> dict:
-    """What the map lights: ``{"edges": {"a|b": {cls, l2}}, "nodes": {device: cls}}``; a
-    delivered branch's colour wins where branches share a link."""
+    """What the map lights: ``{"edges": {"a|b": {cls, l2}}, "nodes": {device: cls}}``. Where
+    branches share a link or a device, a delivered branch's colour wins, then one leaving the
+    network (C696: handed to a device outside it), then one that stops."""
     edges, lit = {}, {}
     through = switches(nodes)
 
     def put(key, cls, l2):
         cur = edges.get(key)
-        if cur is None or (cur["cls"] == "drop" and cls == "on"):
+        if cur is None or RANK[cls] > RANK[cur["cls"]]:
             edges[key] = {"cls": cls, "l2": l2}
         elif cur["cls"] == cls:
             cur["l2"] = cur["l2"] and l2
 
+    def mark(device, cls):
+        if device not in lit or RANK[cls] > RANK[lit[device]]:
+            lit[device] = cls
+
     for b in result.get("branches") or []:
         for h in b["hops"]:
-            lit[h["device"]] = "on" if b["cls"] == "on" or lit.get(h["device"]) == "on" \
-                else "drop"
+            mark(h["device"], b["cls"])
             if not h.get("to"):
                 continue
             path = l2_path(phys, h["device"], h.get("iface") or "", h["to"], through)
             for a, z in path:
                 put(f"{a}|{z}", b["cls"], len(path) > 1)
-            if b["end"] == "delivered" and h is b["hops"][-1]:
-                lit[h["to"]] = "on"
+            if b["end"] in ("delivered", "edge") and h is b["hops"][-1]:
+                mark(h["to"], b["cls"])
     return {"edges": edges, "nodes": lit}
 
 
