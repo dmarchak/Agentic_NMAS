@@ -1799,26 +1799,8 @@
         return;
       }
 
-      // Server is up — check for a pending resume
-      try {
-        const r    = await fetch('/session/pending-restart', { cache: 'no-store' });
-        const data = await r.json();
-        if (data && data.session_id) {
-          // Restore the session ID so the checkpoint is matched
-          sessionId = data.session_id;
-          const notice = document.createElement('div');
-          notice.className = 'alert alert-info py-2 px-3 mb-2';
-          notice.style.cssText = 'font-size:.85rem;transition:opacity 0.5s';
-          notice.innerHTML = '&#9654; Server restarted &mdash; resuming previous task&hellip;';
-          document.getElementById('aiMessages').appendChild(notice);
-          setTimeout(() => { notice.style.opacity = '0'; }, 4000);
-          setTimeout(() => { notice.remove(); }, 4500);
-          sendMessage('continue');
-          return;
-        }
-      } catch { /* no pending restart */ }
-
-      // Plain reconnect — briefly notify then fade out
+      // Reconnected — briefly notify then fade out. (Its auto-resume went at 7.8, 2026-10-12:
+      // nothing wrote the marker /session/pending-restart read, so it never fired; C684.)
       const notice = document.createElement('div');
       notice.className = 'alert alert-success py-2 px-3 mb-2';
       notice.style.cssText = 'font-size:.85rem;transition:opacity 0.5s';

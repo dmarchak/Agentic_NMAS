@@ -72,7 +72,6 @@ and built.
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
 | Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
 | TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | Its only readers are the device file routes below, and it points at nothing on this installation |
-| Pending restart | `/session/pending-restart` | REMOVE, 7.8 | No caller; the Update button restarts, gated on held devices (`/server/restart` was removed 2026-10-02) |
 | App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
 | In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
 | Version | `/health/version` | BUILT | Help › About |
@@ -113,6 +112,10 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   in v2's Delete network preview (C645). `copy-inherited` had no caller and no v2 home; it went
   with `credentials.copy_inherited_to_overrides`, which only it used (Delete network names what
   would break instead).
+- **Pending restart** (/session/pending-restart), 2026-10-12. The row said "no caller"; today's
+  chat panel called it after a lost connection (C684), but nothing wrote the marker it read, so
+  its auto-resume never fired. The route and that one fetch went; the chat still says "Server
+  is back online". The Update button restarts, gated on held devices.
 
 ## Legacy actions that are not routes
 

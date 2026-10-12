@@ -3239,28 +3239,6 @@ def drift_settings_post():
     return jsonify({"ok": True, **saved})
 
 
-@app.route("/session/pending-restart")
-def session_pending_restart():
-    """
-    Return pending restart info so the frontend can auto-resume the AI session.
-    The file is deleted after reading (one-shot) and expires after 120 seconds.
-    """
-    import time as _time
-    from modules.config import DATA_DIR
-    path = os.path.join(DATA_DIR, "pending_restart.json")
-    try:
-        with open(path, encoding="utf-8") as fh:
-            data = json.load(fh)
-        # Expire stale markers (> 120 s old)
-        if _time.time() - data.get("timestamp", 0) > 120:
-            os.remove(path)
-            return jsonify({})
-        os.remove(path)
-        return jsonify(data)
-    except (FileNotFoundError, Exception):
-        return jsonify({})
-
-
 @app.route("/ai/playbooks")
 def ai_playbooks():
     """Return the list of saved Ansible playbooks."""
