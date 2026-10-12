@@ -2579,9 +2579,12 @@ def adjacency_source(cached=None) -> dict:
             settling += 1
             continue
         devs = a.get("devices") or []
+        # A side judged on a failed scrape's last good value says when it was read (C690).
         sides = "; ".join(
             f"{s['device']}{(' ' + s['via']) if s.get('via') else ''} reports "
             + ("it " + s["words"] if s["state"] == "down" else "no such neighbour")
+            + (f" (as of {s['as_of'][11:16]} UTC, its last good scrape)" if s.get("as_of")
+               else "")
             for s in a.get("sides") or [])
         if a.get("managed") and len(devs) == 2:
             what = f"{a['protocol']} between {devs[0]} and {devs[1]} is not up"

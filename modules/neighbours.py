@@ -56,14 +56,45 @@ WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP"}
 WINDOW = "5m"
 WINDOW_WORDS = "5 minutes"
 
+#: A sample is CURRENT while it is younger than the longest routing job's scrape interval plus
+#: its timeout (ospf: 60 s and 20 s, read from Prometheus's targets 2026-10-12; ospfv3 scrapes
+#: every 30 s), rounded up to 90 s. An older one is the last good value of a scrape that has failed since, and is
+#: drawn "as of" its own scrape time, never as current (the operator, 2026-10-12: "a FULL from
+#: 4 minutes ago is never read as current").
+CURRENT_SECONDS = 90
+
 
 def query(metric: str, label: str = "") -> str:
-    """The PromQL for one adjacency series, or ``up`` for the three jobs, over WINDOW: one
-    device's when *label* (a hostname, escaped by the caller) is given, else the fleet's."""
+    """The PromQL for one adjacency series, or ``up`` for the three jobs: every raw sample in
+    WINDOW (a range vector, so each sample keeps the time it was scraped; `last_over_time`
+    stamped an old value with the query's time). One device's when *label* (a hostname,
+    escaped by the caller) is given, else the fleet's. `rows_of` folds the answer."""
     dev = f'device="{label}"' if label else ""
     if metric == "up":
-        return f'max_over_time(up{{{dev + "," if dev else ""}job=~"ospf|ospfv3|bgp"}}[{WINDOW}])'
-    return f"last_over_time({metric}{{{dev}}}[{WINDOW}])"
+        return f'up{{{dev + "," if dev else ""}job=~"ospf|ospfv3|bgp"}}[{WINDOW}]'
+    return f"{metric}{{{dev}}}[{WINDOW}]"
+
+
+def rows_of(metric: str, rows: list) -> list:
+    """Prometheus's answer to `query`, one row per series in the instant shape
+    ``{"metric", "value": [time, value]}``: an adjacency series' NEWEST sample with its own
+    scrape time; ``up``'s 1 when ANY scrape in the window answered (a lone failure does not
+    blank the read, C690). An instant row (``value``) passes through."""
+    out = []
+    for r in rows or []:
+        if "values" not in r:
+            out.append(r)
+            continue
+        samples = r.get("values") or []
+        if not samples:
+            continue
+        if metric == "up":
+            ok = any(str(v) == "1" for _t, v in samples)
+            out.append({"metric": r.get("metric") or {}, "value": [samples[-1][0],
+                                                                   "1" if ok else "0"]})
+        else:
+            out.append({"metric": r.get("metric") or {}, "value": list(samples[-1])})
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -320,13 +351,15 @@ def _same(a: str, b: str) -> bool:
         return a == b
 
 
-def compare(intents: dict, host: str, results: dict, up: dict) -> dict:
-    """``{"protocols": [{proto, words, measured, why, rows}], "counts"}``.
+def compare(intents: dict, host: str, results: dict, up: dict, now: float = None) -> dict:
+    """``{"protocols": [{proto, words, measured, why, rows, as_of}], "counts"}``.
 
     *up* is ``{job: 0|1}`` for this device (absent: not scraped). Each row is
     one expected adjacency with what the device reports for it (``up``,
     ``down``, ``not_seen``), or one reported neighbour no expectation matched
-    (``unexpected``)."""
+    (``unexpected``). With *now*, a reported value older than CURRENT_SECONDS carries
+    ``as_of`` (its own scrape time), and so does a protocol whose newest sample is, with
+    each neighbour it no longer reports: what a failed scrape left, never drawn as now."""
     exp = expected(intents, host)
     rep = reported(results)
     rid_owner = {router_id(hv): h for h, hv in intents.items() if router_id(hv)}
@@ -380,11 +413,18 @@ def compare(intents: dict, host: str, results: dict, up: dict) -> dict:
                                   "rid": s["rid"], "via": "", "managed": bool(peer),
                                   "state": "unexpected", "words": words, "at": s["at"],
                                   "up": ok})
+        newest = max((s["at"] for s in seen if s.get("at")), default=None)
+        if now is not None and newest is not None and now - newest > CURRENT_SECONDS:
+            entry["as_of"] = _iso(newest)
         for row in entry["rows"]:
             if row["state"] in counts:
                 counts[row["state"]] += 1
             if row.get("at"):
                 row["at_iso"] = _iso(row["at"])
+                if now is not None and now - row["at"] > CURRENT_SECONDS:
+                    row["as_of"] = row["at_iso"]
+            elif row["state"] == "not_seen" and entry.get("as_of"):
+                row["as_of"] = entry["as_of"]
         protos.append(entry)
     return {"protocols": protos, "counts": counts}
 
@@ -420,7 +460,7 @@ def for_device(ref, dev: dict) -> dict:
         except ValueError as exc:
             view["errors"].append(f"Prometheus's answer for {metric} could not be read: {exc}")
             continue
-        rows = (body.get("data") or {}).get("result") or []
+        rows = rows_of(metric, (body.get("data") or {}).get("result") or [])
         if metric == "up":
             for row in rows:
                 try:
@@ -431,5 +471,6 @@ def for_device(ref, dev: dict) -> dict:
             results[metric] = rows
     if view["errors"] and not results and not up:
         return view
-    view.update(compare(intents, host, results, up))
+    import time
+    view.update(compare(intents, host, results, up, now=time.time()))
     return view

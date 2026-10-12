@@ -435,18 +435,44 @@ def _config_test(main_text: str, fragment: str, candidate_text: str,
     include names a CANDIDATE fragment. Both copies live beside the fragment,
     because Kea's AppArmor profile allows reads under /etc/kea only (measured:
     /tmp/kea-broken.conf was denied)."""
-    directive = f'<?include "{fragment}"?>'
+    import re
+
+    def include(path):
+        return f'<?include "{path}"?>'
+
+    directive = include(fragment)
     folder = os.path.dirname(fragment)
     tag = f"{os.getpid()}-{secrets.token_hex(4)}"
     candidate = os.path.join(folder, f".candidate-{tag}.json")
     test_main = os.path.join(folder, f".test-main-{tag}.conf")
+    middle = os.path.join(folder, f".test-sub-{tag}.json")
     run = run or _run_kea_test
     try:
         _write_file(candidate, candidate_text)
-        _write_file(test_main, main_text.replace(directive, f'<?include "{candidate}"?>'))
+        if directive in main_text:
+            _write_file(test_main, main_text.replace(directive, include(candidate)))
+        else:
+            # C701: after C529 step 5's move Kea's file includes Mercury's subnet file, and IT
+            # names the fragment. Substituting in Kea's file alone changed nothing, so Kea
+            # checked the live files and never the candidate.
+            via, text = "", ""
+            for path in re.findall(r'<\?include "([^"]+)"\?>', main_text):
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        text = fh.read()
+                except OSError:
+                    continue
+                if directive in text:
+                    via = path
+                    break
+            if not via:
+                return False, (f"no file Kea's configuration includes names {fragment}, so the "
+                               "candidate could not be checked where Kea would read it")
+            _write_file(middle, text.replace(directive, include(candidate)))
+            _write_file(test_main, main_text.replace(include(via), include(middle)))
         return run(test_main)
     finally:
-        for p in (candidate, test_main):
+        for p in (candidate, test_main, middle):
             try:
                 os.remove(p)
             except FileNotFoundError:
@@ -510,14 +536,34 @@ def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
                                           main_config, run_test)
 
 
+def _includer(main_config: str, main_text: str, fragment: str) -> str:
+    """The file that includes *fragment*, asked of the shape Kea's files have now (C701):
+    Kea's own IPv4 file before C529 step 5's subnet move, Mercury's subnet file after it (the
+    move carried each subnet's include there). ``""`` when neither does."""
+    directive = f'<?include "{fragment}"?>'
+    if directive in main_text:
+        return main_config
+    from modules import dhcp_subnets
+    if dhcp_subnets.move_plan(main_text, main_config, "IPv4")["state"] != "done":
+        return ""
+    path = dhcp_subnets.subnets_file(main_config, "IPv4")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return path if directive in fh.read() else ""
+    except OSError:
+        return ""
+
+
 def _write_reservations_locked(out, adds, removes, kea, fragment, main_config,
                                run_test) -> dict:
     try:
         with open(main_config, encoding="utf-8") as fh:
             main_text = fh.read()
-        if f'<?include "{fragment}"?>' not in main_text:
-            raise Refused(f"{main_config} does not include {fragment}, so a reservation "
-                          "written there would never reach Kea")
+        including = _includer(main_config, main_text, fragment)
+        if not including:
+            raise Refused(f"{main_config} does not include {fragment}, nor does Mercury's "
+                          "subnet file it includes, so a reservation written there would never "
+                          "reach Kea")
         current = _read_fragment(fragment)
         got = kea.command("config-get")
         if not got.get("ok"):

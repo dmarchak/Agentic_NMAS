@@ -117,6 +117,13 @@ The routing adjacencies the network's committed intent implies for this device, 
 Prometheus last read from its routing tables: up, down with its state, unexpected, or not
 measured. It opens no session to the device.
 
+**Reported** is when the device's routing table was read. A protocol counts as measured when
+any of its scrapes in the last 5 minutes answered, so one failed scrape does not blank it; but
+when the newest value is older than a scrape and its timeout (90 seconds), the scrapes since
+have failed, and the protocol says **As of HH:MM UTC** above its table, each row "as of" its
+time: the last good report, never shown as what the device holds now. Needs attention says
+the same on a link it judged from such a report.
+
 ## Ask the device {#ask-the-device}
 
 Ask the device a Tier 1 command and read its answer here: a `show`, a bounded `ping` or

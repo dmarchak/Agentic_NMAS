@@ -223,6 +223,99 @@ def moved(tmp_path, monkeypatch):
     return {"mains": mains, "files": files, "kea": SubnetKea(files)}
 
 
+class TestBoardBAfterTheMove:
+    """C701 (found 2026-10-12 doing sitting 2 step 1 on the host): after the subnet move, board
+    B's plan looked for each subnet's reservation include in Kea's own file, found none, and
+    refused every reservation, naming a host step that had run. It now asks the shape the files
+    have (`reservation_files`)."""
+
+    def test_a_reservation_plans_after_the_move(self, moved):
+        from modules import dhcp_reservations as D
+        for family, subnet, key, ident, address in (
+                ("IPv4", "10", "hw-address", "aa:c1:ab:99:f6:e2", "10.10.10.100"),
+                ("IPv6", "10", "duid", "00:03:00:01:aa:c1:ab:99:f6:e2", "2001:db8:10::107")):
+            p = D.plan("Lab", {"op": "add", "family": family, "subnet": subnet, "key": key,
+                               "identity": ident, "address": address, "hostname": "h1"},
+                       kea=moved["kea"])
+            assert p["refused"] == "" and p["ok"], (family, p["refused"])
+
+    def test_a_moved_subnet_without_its_include_names_mercury_s_file(self, moved):
+        from modules import dhcp_reservations as D
+        path = moved["files"]["dhcp4"]
+        subs = S.load(open(path, encoding="utf-8").read())
+        for s in subs:
+            if s.get("id") == 10:
+                s.pop("reservations", None)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(subs, indent=2))
+        p = D.plan("Lab", {"op": "add", "family": "IPv4", "subnet": "10", "key": "hw-address",
+                           "identity": "aa:c1:ab:99:f6:e2", "address": "10.10.10.100",
+                           "hostname": "h1"}, kea=moved["kea"])
+        assert f"Kea's configuration ({path}) does not take subnet 10's reservations" \
+            in p["refused"]
+        assert "c529-step2-reservation-files.sh" in p["refused"]
+
+
+def _reached(config_path: str, seen=None) -> str:
+    """The text Kea would read from *config_path*, every include followed (two levels deep is
+    the most the files have): what a `kea-dhcp -t` of it checks."""
+    with open(config_path, encoding="utf-8") as fh:
+        text = fh.read()
+    for path in re.findall(r'<\?include "([^"]+)"\?>', text):
+        text = text.replace(f'<?include "{path}"?>', _reached(path))
+    return text
+
+
+class TestKeasCheckReachesTheCandidateAfterTheMove:
+    """C701: after the move Kea's file includes Mercury's subnet file, which names each subnet's
+    reservation file. The check before a reservation write substituted the candidate into Kea's
+    file only, a no-op once the include had moved, so `kea -t` checked the LIVE files and a
+    broken candidate passed. Board B's apply and onboarding's ZTP writer both use it."""
+
+    def _check(self, moved, family, sid, candidate):
+        from modules import dhcp_reservations as D
+        from modules.nsot import ztp
+        main = moved["mains"][family]
+        with open(main, encoding="utf-8") as fh:
+            main_text = fh.read()
+        seen = {}
+
+        def run(cfg):
+            seen["text"] = _reached(cfg)
+            return True, ""
+        got = ztp._config_test(main_text, D.fragment(main, family, sid), candidate, run)
+        return got, seen.get("text", "")
+
+    def test_the_candidate_is_what_kea_checks(self, moved):
+        marker = '[{"hw-address": "aa:c1:ab:99:f6:e2", "ip-address": "10.10.10.100"}]'
+        got, text = self._check(moved, "IPv4", 10, marker + "\n")
+        assert got == (True, "") and marker in text
+        got, text = self._check(moved, "IPv6", 10, '[{"duid": "00:03"}]\n')
+        assert '[{"duid": "00:03"}]' in text
+
+    def test_onboarding_s_ztp_fragment_is_found_in_mercury_s_file(self, moved):
+        from modules import dhcp_reservations as D
+        from modules.nsot import ztp
+        main = moved["mains"]["IPv4"]
+        with open(main, encoding="utf-8") as fh:
+            main_text = fh.read()
+        frag = D.fragment(main, "IPv4", 255)
+        assert f'<?include "{frag}"?>' not in main_text, "the floor: the include moved"
+        assert ztp._includer(main, main_text, frag) == moved["files"]["dhcp4"]
+        assert ztp._includer(main, main_text, frag + ".elsewhere") == ""
+
+    def test_a_fragment_nothing_includes_is_refused_never_the_live_files(self, moved):
+        from modules.nsot import ztp
+        main = moved["mains"]["IPv4"]
+        with open(main, encoding="utf-8") as fh:
+            main_text = fh.read()
+        ran = []
+        got = ztp._config_test(main_text, os.path.join(os.path.dirname(main), "nmas", "x.json"),
+                               "[]\n", lambda cfg: ran.append(cfg) or (True, ""))
+        assert got[0] is False and "no file Kea's configuration includes names" in got[1]
+        assert ran == []
+
+
 class TestStepTwoSCheckAfterTheMove:
     """C529 step 2's Update-page check asked after step 5 moved the subnets out of Kea's file
     (the host, 2026-10-11 19:49 UTC): it read Kea's file for `"id": N,` lines, found none, and

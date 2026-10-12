@@ -20,6 +20,7 @@ ignores the reload (or reads something else) is how a read-back that disagrees i
 import copy
 import json
 import os
+import re
 
 import pytest
 
@@ -141,8 +142,16 @@ class TestThePlan:
 
     def test_a_subnet_kea_does_not_take_from_mercury_s_file_is_refused(self, kea_dir):
         text = open(kea_dir["main"]["IPv4"], encoding="utf-8").read()
+        # Reservations kept inline in Kea's file: the cause said (C701: asked of the files'
+        # shape, the subnet move's job, not the host step's).
         p = D.plan("Lab", ADD(), kea=FakeKea(kea_dir["files"]),
                    main_text=text.replace(D.directive(kea_dir["files"][("dhcp4", 20)]), "[]"))
+        assert "does not take subnet 20's reservations" in p["refused"]
+        assert "the subnet move (C529 step 5)" in p["refused"]
+        # No include at all: the one-time host step has not run for it.
+        bare = re.sub(r'\s*"reservations":\s*' + re.escape(
+            D.directive(kea_dir["files"][("dhcp4", 20)])) + ",?", "", text)
+        p = D.plan("Lab", ADD(), kea=FakeKea(kea_dir["files"]), main_text=bare)
         assert "does not take subnet 20's reservations" in p["refused"]
         assert "c529-step2-reservation-files.sh" in p["refused"]
 

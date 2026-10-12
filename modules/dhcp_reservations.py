@@ -384,10 +384,18 @@ def _plan(list_name, s, p, kea, main_text) -> None:
         except OSError as exc:
             raise Refused(f"Kea's configuration {main} could not be read on this host ({exc}); "
                           "Mercury writes reservations only where Kea's files are") from None
-    if directive(path) not in main_text:
-        raise Refused(f"Kea's configuration ({main}) does not take subnet {sid}'s reservations "
-                      f"from Mercury's file {path}: the one-time host step "
-                      "(scripts/host-steps/c529-step2-reservation-files.sh) has not run for it")
+    # Asked of the shape Kea's files have now (C701): before C529 step 5's move, the subnet's
+    # block in Kea's own file; after it, the subnet in Mercury's subnet file. Looking for the
+    # include in Kea's own file alone refused every reservation once the subnets had moved.
+    from modules import dhcp_subnets
+    took = dhcp_subnets.reservation_files(main_text, main, family, [sid])
+    if took["refused"] or sid not in took["have"]:
+        where = dhcp_subnets.subnets_file(main, family) if took.get("moved") else main
+        raise Refused(f"Kea's configuration ({where}) does not take subnet {sid}'s reservations "
+                      f"from Mercury's file {path}: " + (
+                          took["refused"] or "the one-time host step "
+                          "(scripts/host-steps/c529-step2-reservation-files.sh) has not run "
+                          "for it"))
     mine, text = _read_file(path)
     p["version"] = _version(text)
     held = every_reservation(config, family)

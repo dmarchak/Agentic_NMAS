@@ -43,7 +43,7 @@ def prometheus_all(list_name: str = "") -> tuple:
     the whole fleet. Raises when Prometheus is configured and cannot be read,
     so the failure is a job-health row, never "every adjacency up"."""
     from modules.integrations.prometheus import PrometheusIntegration
-    from modules.neighbours import SERIES, query
+    from modules.neighbours import SERIES, query, rows_of
 
     prom = PrometheusIntegration(list_name=list_name) if list_name else PrometheusIntegration()
     if not prom.is_configured():
@@ -53,7 +53,7 @@ def prometheus_all(list_name: str = "") -> tuple:
         r = prom._get("api/v1/query", query=query(metric))
         if not r.get("ok"):
             raise RuntimeError(f"Prometheus could not be asked for {metric}: {r.get('error')}")
-        for row in (r["response"].json().get("data") or {}).get("result") or []:
+        for row in rows_of(metric, (r["response"].json().get("data") or {}).get("result") or []):
             dev = (row.get("metric") or {}).get("device")
             if not dev:
                 continue
@@ -110,7 +110,7 @@ def read(previous=None, clock=time.time, source=None, population=None) -> dict:
             errors.append(f"{list_name}: {err}")
         for host in hosts:
             devices += 1
-            view = compare(intents, host, results.get(host, {}), up.get(host, {}))
+            view = compare(intents, host, results.get(host, {}), up.get(host, {}), now=now)
             for p in view["protocols"]:
                 if not p["measured"] and any(r["state"] == "unknown" for r in p["rows"]):
                     unmeasured.append({"list": list_name, "device": host, "protocol": p["words"],
@@ -130,7 +130,9 @@ def read(previous=None, clock=time.time, source=None, population=None) -> dict:
                         e["devices"].append(r["peer"])
                     e["sides"].append({"device": host, "via": r.get("via", ""),
                                        "address": r.get("address", ""), "state": r["state"],
-                                       "words": r.get("words", "")})
+                                       "words": r.get("words", ""),
+                                       # The last good value, never drawn as now (C690).
+                                       "as_of": r.get("as_of", "")})
     prev = previous.get("adjacencies") or {}
     for k, e in seen.items():
         before = prev.get(k) or {}

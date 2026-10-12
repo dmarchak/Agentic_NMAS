@@ -878,6 +878,9 @@ button.menu-item[disabled]:hover { background: none; }
 /* The device page's Neighbours tab (step 4, C38). */
 .nb-proto { font-size: 14px; margin: 14px 0 4px; }
 .nb-limits { margin-top: 12px; font-size: 12px; }
+/* C690: a protocol's last good report, after scrapes that failed, said as of its time. */
+.nb-asof { display: flex; gap: 6px; align-items: center; color: var(--warn); font-size: 13px; margin: 2px 0 6px; }
+.nb-asof-cell { color: var(--warn); }
 /* The device page's Logs tab (step 4). */
 .log-msg { word-break: break-word; }
 .log-table td { vertical-align: top; }

@@ -21,6 +21,7 @@
   {%- for p in n.protocols %}
   <h3 class="nb-proto">{{ p.words }}</h3>
   {%- if p.why %}<p class="muted">{{ p.why }}.</p>{% endif %}
+  {%- if p.as_of and p.measured %}<p class="nb-asof">{{ icon('warn') }} As of {{ p.as_of[11:16] }} UTC: {{ device.hostname }}'s {{ p.words }} scrapes since then have failed, so this is its last good report, not what it holds now.</p>{% endif %}
   <div class="table-wrap">
     <table class="table nb-table">
       <thead><tr><th scope="col">Neighbour</th><th scope="col">Address</th><th scope="col">Via</th><th scope="col">State</th><th scope="col">Reported</th></tr></thead>
@@ -31,7 +32,7 @@
           <td class="mono">{{ r.address or r.rid or '—' }}</td>
           <td>{{ r.via or '—' }}</td>
           <td>{{ badge(WORD.get(r.state, r.state), KIND.get(r.state, 'muted')) }}{% if r.state in ('up', 'down', 'unexpected') %} <span class="muted">{{ r.words }}</span>{% endif %}</td>
-          <td>{% if r.at_iso %}{{ stamp(r.at_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{% if r.as_of %}<span class="nb-asof-cell">as of {{ stamp(r.as_of, r.as_of[11:16] ~ ' UTC') }}</span>{% elif r.at_iso %}{{ stamp(r.at_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
         </tr>
         {%- endfor %}
       </tbody>

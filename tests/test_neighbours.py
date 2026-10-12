@@ -175,14 +175,83 @@ def test_a_failed_scrape_keeps_the_last_good_value():
     an instant read is blank for the minute after one. Both reads ask over a 5-minute window:
     measured when any scrape in it answered, each adjacency its last good sample."""
     from modules import neighbours as N
-    assert N.query("ospfNbrState", "r1") == 'last_over_time(ospfNbrState{device="r1"}[5m])'
-    assert N.query("up", "r1") == 'max_over_time(up{device="r1",job=~"ospf|ospfv3|bgp"}[5m])'
-    assert N.query("up") == 'max_over_time(up{job=~"ospf|ospfv3|bgp"}[5m])'
-    assert N.query("cbgpPeer2State") == "last_over_time(cbgpPeer2State{}[5m])"
+    # Raw samples over the window (the operator's caveat, 2026-10-12): each keeps its own
+    # scrape time, which `last_over_time` replaced with the query's.
+    assert N.query("ospfNbrState", "r1") == 'ospfNbrState{device="r1"}[5m]'
+    assert N.query("up", "r1") == 'up{device="r1",job=~"ospf|ospfv3|bgp"}[5m]'
+    assert N.query("up") == 'up{job=~"ospf|ospfv3|bgp"}[5m]'
+    assert N.query("cbgpPeer2State") == "cbgpPeer2State{}[5m]"
     import inspect
     from modules.readers import adjacencies
-    assert "query(metric)" in inspect.getsource(adjacencies.prometheus_all)
-    assert "query(metric, label)" in inspect.getsource(N.for_device)
+    for src in (inspect.getsource(adjacencies.prometheus_all), inspect.getsource(N.for_device)):
+        assert "rows_of(metric," in src
+
+
+WINDOW = os.path.join(os.path.dirname(__file__), "fixtures", "prometheus",
+                      "neighbours_window_r1.json")
+
+
+def _window():
+    with open(WINDOW, encoding="utf-8") as fh:
+        return json.load(fh)["answers"]
+
+
+class TestALastGoodValueSaysWhen:
+    """The operator, 2026-10-12 (C690's caveat): when a neighbour's value is the last good one
+    rather than the current scrape, Neighbours and Needs attention say "as of <time>". Over
+    Prometheus's real answer for r1's window (5 OSPF neighbours, 5 samples each)."""
+
+    def _fold(self, answers=None):
+        from modules import neighbours as N
+        answers = answers or _window()
+        res = {m: N.rows_of(m, answers[m]["data"]["result"]) for m in METRICS}
+        up = {r["metric"]["job"]: int(r["value"][1])
+              for r in N.rows_of("up", answers["up"]["data"]["result"])}
+        return res, up
+
+    def test_each_series_keeps_its_newest_sample_and_its_own_time(self):
+        res, up = self._fold()
+        raw = _window()["ospfNbrState"]["data"]["result"]
+        assert len(raw) == 5 and all(len(r["values"]) == 5 for r in raw)
+        assert [r["value"] for r in res["ospfNbrState"]] == [r["values"][-1] for r in raw]
+        assert up == {"ospf": 1, "ospfv3": 1}
+
+    def test_a_failed_newest_scrape_still_counts_as_measured(self):
+        # One edit: r1's newest OSPF scrape failed (up 0); an earlier one in the window answered.
+        answers = copy.deepcopy(_window())
+        for r in answers["up"]["data"]["result"]:
+            if r["metric"]["job"] == "ospf":
+                r["values"][-1][1] = "0"
+        _res, up = self._fold(answers)
+        assert up["ospf"] == 1
+
+    def test_current_samples_carry_no_as_of_and_old_ones_do(self):
+        from modules import neighbours as N
+        res, up = self._fold()
+        newest = max(float(r["value"][0]) for r in res["ospfNbrState"])
+        fresh = N.compare(_intents(), "r1", res, up, now=newest + 30)
+        ospf = next(p for p in fresh["protocols"] if p["proto"] == "ospf")
+        assert "as_of" not in ospf and not any(r.get("as_of") for r in ospf["rows"])
+        # Four minutes later with no newer sample: the last good report, said as of its time.
+        old = N.compare(_intents(), "r1", res, up, now=newest + 240)
+        ospf = next(p for p in old["protocols"] if p["proto"] == "ospf")
+        assert ospf["as_of"] == N._iso(newest)
+        reported = [r for r in ospf["rows"] if r.get("at")]
+        assert reported and all(r["as_of"] == r["at_iso"] for r in reported)
+        assert all(r.get("as_of") for r in ospf["rows"] if r["state"] == "not_seen")
+
+    def test_needs_attention_says_as_of_on_a_side(self):
+        from modules import attention
+        side = {"device": "r1", "via": "Gi2", "address": "10.255.3.12", "state": "down",
+                "words": "INIT", "as_of": "2026-10-12T03:36:59Z"}
+        value = {"configured": True, "unmeasured": [], "errors": [],
+                 "adjacencies": {"k": {"list": "Lab", "protocol": "OSPF", "devices": ["r1", "r2"],
+                                       "managed": True, "network": "10.255.3.0/24", "reads": 5,
+                                       "since": "2026-10-12T03:30:00Z", "sides": [side]}}}
+        got = attention.adjacency_source(cached={"state": "ok", "doc": {"last_good": {
+            "value": value, "value_at": "2026-10-12T03:40:00Z"}, "stale_after_seconds": 300}})
+        cause = got["rows"][0]["cause"]
+        assert "r1 Gi2 reports it INIT (as of 03:36 UTC, its last good scrape)" in cause
 
 
 class TestTheFleetIsReadInFixedCalls:
@@ -288,6 +357,20 @@ class TestThePage:
         assert "nothing here opens a session to the device" in html
         # Four instant queries, each filtered to the device.
         assert len(page.asked) == 4 and all('device="r3"' in q for q in page.asked)
+
+    def test_a_last_good_report_says_as_of_and_a_current_one_does_not(self, page, monkeypatch):
+        """C690's caveat on the tab: the capture's samples are hours old, so r3's OSPF is its
+        last good report, said as of its time; read 30 s after its newest sample, it is not."""
+        import time as T
+        _r, html = page("/v2/device/r3/neighbours")
+        newest = max(float(r["value"][0]) for r in _capture()["ospfNbrState"]["data"]["result"]
+                     if r["metric"].get("device") == "r3")
+        hhmm = T.strftime("%H:%M", T.gmtime(newest))
+        assert f"As of {hhmm} UTC: r3's OSPF scrapes since then have failed" in html
+        assert 'class="nb-asof-cell">as of <time' in html
+        monkeypatch.setattr(T, "time", lambda: newest + 30)
+        _r, html = page("/v2/device/r3/neighbours")
+        assert "nb-asof" not in html
 
     def test_the_tab_is_built(self, page):
         _r, html = page("/v2/device/r3?tab=neighbours")
