@@ -181,7 +181,7 @@ class TestTheConfirm:
         r = self._confirm(deploy, _vals(card))
         assert r.status_code == 200
         waiting = r.get_data(as_text=True)
-        assert "Deploying to r2" in waiting and "data-stepper" in waiting
+        assert "Deploying to r2" in waiting and "data-run-stepper" in waiting
         assert "nmas:deploy_job from:body, nmas:device_progress from:body" in waiting
         job = re.search(r"/deploy/job/([0-9a-f]+)", waiting).group(1)
         assert capture_job.get(job)["kind"] == "deploy", "never 'monitoring profile apply'"

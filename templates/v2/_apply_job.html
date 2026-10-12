@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, info -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The batch Apply, after the confirm (P.9 step d2): where it is, in the
     rollout order, then its result, drawn from the receipts the apply wrote
     (preview_confirm.operation_result). Redrawn when the job announces
@@ -12,22 +13,9 @@
 </section>
 {%- elif j.state == 'running' %}
 <section class="card apply-job" id="apply-job" hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
-         hx-trigger="nmas:deploy_job from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:deploy_job from:body, nmas:device_progress from:body" hx-swap="outerHTML">
   <h2 class="apply-h">Applying, one device at a time</h2>
-  <ol class="stepper">
-    {%- for s in j.steps %}
-    {%- set failed = s.state == 'done' and s.outcome != 'deployed' %}
-    <li class="step step-{{ 'failed' if failed else 'current' if s.state == 'running' else s.state }}">
-      <span class="step-mark"></span>
-      <span class="step-words">{{ s.device }}</span>
-      <span class="step-note">
-        {%- if s.state == 'done' %}{{ s.words }}{% if s.reason and failed %}: {{ s.reason }}{% endif %} ({{ s.took_s }} s)
-        {%- elif s.state == 'running' %}being applied{% if s.doing %}, now {{ s.doing }}{% else %}: its program is sent, then verified as its preview said{% endif %} ({{ s.took_s }} s so far)
-        {%- else %}waits its turn{% endif -%}
-      </span>
-    </li>
-    {%- endfor %}
-  </ol>
+  {{ run_stepper(run) }}
   <p class="muted">Started {{ j.elapsed_s }} s ago. This page follows it; it keeps running if you leave.
     <button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
             hx-target="#apply-job" hx-swap="outerHTML">Check now</button></p>
@@ -44,18 +32,7 @@
 <section class="card apply-job" id="apply-job"
          {%- if arrivals and not arrivals.ended %} hx-get="{{ url_for('v2.profile_apply_job', job=job) }}" hx-trigger="nmas:deploy_job from:body" hx-swap="outerHTML"{% endif %}>
   <h2 class="apply-h">{{ badge(lv[0], lv[1]) }} {{ (res.happened or {}).summary }}</h2>
-  <ol class="stepper">
-    {%- for t in res.targets or [] %}
-    {#- C394: sent, and its verify did not pass (intent unmet, unreadable, a line not read
-        back): never green, and said beside it, as the heading already says partly done. -#}
-    {%- set partial = t.outcome == 'deployed' and (t.checks or {}).ran and not (t.checks or {}).ok %}
-    {%- set ok = t.outcome == 'deployed' and not partial %}
-    <li class="step step-{{ 'done' if ok else 'partial' if partial else 'failed' }}">
-      <span class="step-mark"></span><span class="step-words">{{ t.name }}</span>
-      <span class="step-note">{{ ((res.happened or {}).targets | selectattr('name', 'equalto', t.name) | map(attribute='words') | first) or t.outcome }}{% if partial %}, and its verify did not pass{% endif %}{% if t.reason and not ok %}: {{ t.reason }}{% endif %}</span>
-    </li>
-    {%- endfor %}
-  </ol>
+  {{ run_stepper(run) }}
   {%- if arrivals %}
   <h3 class="apply-sub">Arrival {{ info('monitoring-templates', 'arrival') }}</h3>
   {%- if arrivals.ended %}

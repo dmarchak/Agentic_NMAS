@@ -218,7 +218,7 @@ PAGE_RECORD = {
                                  "templates_v2.page"),
     # History's Re-apply (2026-10-10): the batch drawn in place by the Apply's job view, from
     # the receipts; each device's receipt read again on its History.
-    "v2.history_reapply_confirm": ("templates/v2/_apply_job.html", ("j.steps", "s.words"),
+    "v2.history_reapply_confirm": ("templates/v2/_apply_job.html", ("run_stepper(run)",),
                                    "device_v2.history"),
     # Reload (P.14, cutover blocker 6): the result in place, each step's outcome; the run read
     # again on the device's History (the reloads source, with its window and its restart).

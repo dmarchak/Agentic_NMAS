@@ -73,11 +73,18 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
                     p["current"], p["started"][name] = name, time.time()
                 else:
                     p["current"] = ""
+                    checks = (result or {}).get("checks") or {}
                     p["done"][name] = {"outcome": (result or {}).get("outcome", ""),
                                        "stage": (result or {}).get("stage", ""),
                                        "reason": (result or {}).get("reason", ""),
+                                       # Sent, and its verify did not pass (C394).
+                                       "partial": bool(checks.get("ran") and not checks.get("ok")),
                                        "took_s": round(time.time() - p["started"].get(
-                                           name, time.time()), 1)}
+                                           name, time.time()), 1),
+                                       # Its steps' trail, kept while the batch still holds
+                                       # it, so its finished row keeps each step's time (the
+                                       # one stepper, 2026-10-12).
+                                       "trail": _trail(list_name, name), "at": time.time()}
             try:
                 from modules import invalidation
                 invalidation.announce(PROGRESS_KEYS, by=ANNOUNCER)
@@ -161,6 +168,108 @@ def start_restore(list_name: str, ref: str, confirmations: dict, command_hashes:
     return job
 
 
+def _trail(list_name: str, host: str) -> list:
+    """The steps the device's pipeline noted on its hold so far (`device_ops.note`), or []."""
+    from modules.nsot import device_ops
+    try:
+        return list(((device_ops.holder(list_name, host) or {}).get("progress") or {})
+                    .get("trail") or [])
+    except Exception:                                 # noqa: BLE001 (a row's times)
+        return []
+
+
+#: A finished device's outcome as the one stepper groups it (`run_stepper.GROUPS`).
+_DONE = {"deployed": "done", "captured": "done", "unchanged": "done",
+         "unattempted": "not_reached", "skipped_not_selected": "not_reached"}
+
+
+def run_card(st: dict, list_name: str, *, q: str = "") -> dict:
+    """The batch on THE stepper (`modules.run_stepper`): a row per device in the rollout order,
+    the pipeline's declared steps (`pipeline.STEPS`) with the time in each, read from its hold
+    while it runs and from the trail kept when it finished; the batch's commit as the last
+    row. *st* is `state()`'s."""
+    from modules import device_actions, pipeline
+    from modules import run_stepper as RS
+    from modules.preview_confirm import OUTCOME_WORDS
+
+    def steps_of(progress, at=None):
+        return RS.from_stepper(device_actions.stepper(pipeline.STEPS, progress, now=at,
+                                                      starts=True))
+
+    rows = []
+    by_name = {s["device"]: s for s in st.get("steps") or []}
+    result = (st.get("payload") or {}).get("result") or {}
+    if st.get("state") != "running" and result.get("targets"):
+        # Ended: the result is the authority for each device's outcome and words (C394: sent,
+        # its verify not passed, is never green); its steps' times come from the trail kept.
+        said = {x.get("name"): x.get("words", "") for x in
+                (result.get("happened") or {}).get("targets") or []}
+        for t in result["targets"]:
+            name = t.get("name", "")
+            checks = t.get("checks") or {}
+            group = _DONE.get(t.get("outcome"), "failed")
+            if group == "done" and t.get("outcome") == "deployed" and checks.get("ran") \
+                    and not checks.get("ok"):
+                group = "partial"
+            words = said.get(name) or OUTCOME_WORDS.get(t.get("outcome"), t.get("outcome", ""))
+            if group == "partial":
+                words += ", and its verify did not pass"
+            if t.get("reason") and group != "done":
+                words += f": {t['reason']}"
+            kept = by_name.get(name) or {}
+            steps = (RS.finished(steps_of({"trail": kept["trail"]}, kept.get("at")),
+                                 group if group in ("done", "partial") else "failed")
+                     if kept.get("trail") else [])
+            rows.append(RS.row(name, group, steps, detail="" if group == "done" else words,
+                               elapsed_words=f"{kept.get('took_s') or 0} s" if steps else ""))
+        return RS.card(rows, label=f"Applied to {len(rows)} devices", key=f"apply-{st['job']}",
+                       search=("v2.profile_apply_job", {"job": st["job"]}),
+                       search_target="#apply-job",
+                       q=q, final={"name": "Commit", "state": "done", "detail": "",
+                                   "words": "the batch's goldens and receipts are committed"})
+    for s in st.get("steps") or []:
+        name = s["device"]
+        if s["state"] == "running":
+            from modules.nsot import device_ops
+            prog = (device_ops.holder(list_name, name) or {}).get("progress")
+            rows.append(RS.row(name, "running", steps_of(prog),
+                               elapsed_words=f"running {round(s.get('took_s') or 0)} s"))
+        elif s["state"] == "done":
+            group = _DONE.get(s.get("outcome"), "failed")
+            if group == "done" and s.get("partial"):
+                group = "partial"
+            # `state()`'s words: the outcome, and while the batch runs, that its record is
+            # committed when the batch ends.
+            words = s.get("words") or OUTCOME_WORDS.get(s.get("outcome"), s.get("outcome", ""))
+            detail = words + (f": {s['reason']}" if s.get("reason") and group == "failed" else "")
+            if s.get("trail"):
+                steps = RS.finished(steps_of({"trail": s["trail"]}, s.get("at")),
+                                    "failed" if group == "failed" else group)
+            else:
+                steps = []
+            rows.append(RS.row(name, group, steps, detail=detail,
+                               elapsed_words=f"{s.get('took_s') or 0} s" if steps else ""))
+        elif s["state"] == "pending":
+            rows.append(RS.row(name, "waiting", detail="waiting its turn: one device at a time, "
+                                                       "in the rollout order"))
+        else:
+            rows.append(RS.row(name, "not_reached",
+                               detail="not reached: the batch stopped before it"))
+    running = st.get("state") == "running"
+    left = any(r["group"] in ("running", "waiting") for r in rows)
+    final = {"name": "Commit",
+             "detail": "not started" if running and left else ("running" if running else "done"),
+             "state": "waiting" if running and left else ("running" if running else "done"),
+             "words": ("waits for every device's turn, then one golden commit for the batch and "
+                       "each device's receipt" if running and left else
+                       "committing the batch's goldens and receipts now" if running else
+                       "the batch's goldens and receipts are committed")}
+    return RS.card(rows, label=f"Applying {len(rows)} devices", final=final, q=q,
+                   search=("v2.profile_apply_job", {"job": st.get("job", "")}),
+                   search_target="#apply-job",
+                   key=f"apply-{st.get('job', '')}")
+
+
 def _doing(list_name: str, host: str) -> str:
     """What the running device's pipeline is doing NOW, in words, from the stage it noted on
     the device's hold (a quick verify says it reads each line back; a full one, the settle
@@ -208,5 +317,6 @@ def state(job_id: str):
             steps.append({"device": name, "state": ("pending" if job["state"] == "running"
                                                     else "not_reached")})
     return {"job": job_id, "state": job["state"], "order": p["order"], "steps": steps,
+            "list": job.get("list", ""),
             "elapsed_s": job.get("elapsed_s"), "payload": job.get("payload"),
             "error": job.get("error", "")}

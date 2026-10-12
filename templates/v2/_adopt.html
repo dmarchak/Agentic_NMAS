@@ -1,4 +1,5 @@
-{%- from "v2/_macros.html" import icon, badge, how, job_stepper -%}
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- Devices › Adopt a device… (7.4's board G, signed off 2026-10-04; built 2026-10-10): the
     form (the supplied login typed, never drawn back), the preview (every gate by name, the
     program masked, what a save makes permanent, NetBox, what it does not do), the confirm
@@ -14,7 +15,7 @@
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not adopted:</strong> {{ refused }}{{ '' if refused.endswith('.') else '.' }}</div></div>
   {%- endif %}
   {%- if running %}
-  {{ job_stepper(steps, 'Adoption progress') }}
+  {{ run_stepper(steps | one_run(f.hostname, 'Adoption progress')) }}
   <p class="op-wait">It holds {{ f.hostname }} until it ends. This page can close; a run that stops can be run again and resumes.</p>
   {%- elif r %}
   <div class="notice notice-{{ 'muted' if r.ok else 'danger' }} set-result" role="status">{{ icon('tick' if r.ok else 'warn', 16) }}<div><strong>{% if r.ok %}{{ f.hostname }} is adopted: in the inventory, with its first golden and its NetBox record, and the tool signs in with its own account.{% else %}{{ f.hostname }} is NOT adopted{% if r.reason %}: {{ r.reason }}{% endif %}.{% endif %}</strong>

@@ -1,4 +1,5 @@
-{%- from "v2/_macros.html" import icon, badge, how, job_stepper -%}
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The device page's Deploy, with Mode B (7.3; the device-actions canvas, boards 5 and 6):
     the card in place of the tab, from modules/device_actions.py over THE plan
     (`routes.deploy.plan_devices`) and `deploy_preview`. The form plans again on each change
@@ -166,7 +167,7 @@
   <div class="op-hd"><h2 id="op-title">Deploying to {{ c.host }}</h2>
     <div class="op-hd-actions">{{ how('deploy') }}</div></div>
   <div class="op-part"><h3>Where it is</h3><div>
-    {{ job_stepper(c.steps, 'Deploy progress') }}
+    {{ run_stepper(c.steps | one_run(c.host, 'Deploy progress')) }}
     <p class="op-wait">It holds {{ c.host }} until it ends; a failed verify rolls back what landed. This page can close: the receipt and History keep the result.</p></div></div>
 </section>
 {%- elif c.state == 'result' %}

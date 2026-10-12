@@ -73,6 +73,38 @@ def _run_row(list_name: str, host: str, row: dict, now: float) -> dict:
     return {"host": host, "state": state, "group": group, "steps": steps,
             "detail": row.get("detail", ""),
             "elapsed_s": round(max(0.0, now - started)) if started else None}
+#: Save's live groups on the one stepper's (`run_stepper.GROUPS`): through its turn is done.
+_RUN_GROUP = {"failed": "failed", "running": "running", "waiting": "waiting", "through": "done"}
+
+
+def _run_card(list_name: str, job_id: str, rows: list, committing: bool, q: str) -> dict:
+    """The run on THE stepper (`modules.run_stepper`): Save's rows, its commit as the last row."""
+    from modules import run_stepper as RS
+    from modules.nsot import save_op
+
+    out = []
+    for r in rows:
+        group = _RUN_GROUP.get(r["group"], "running")
+        detail = r["detail"] if group == "failed" else (
+            "" if r["steps"] else f"waiting its turn: starts when one of the {save_op.WORKERS} "
+                                  "running finishes")
+        elapsed = "" if r["elapsed_s"] is None else (
+            f"{ {'done': 'its turn', 'failed': 'stopped after'}.get(group, 'running')} "
+            f"{r['elapsed_s']} s")
+        out.append(RS.row(r["host"], group, RS.from_stepper(r["steps"]),
+                          detail=detail,
+                          elapsed_s=r["elapsed_s"], elapsed_words=elapsed))
+    final = {"name": "Commit", "state": "running" if committing else "waiting",
+             "detail": "running" if committing else "not started",
+             "words": ("committing now: one commit for the batch, then the baseline decision when "
+                       "every device was saved" if committing else
+                       "waits for every device's turn, then one commit for the batch")}
+    return RS.card(out, label=f"Saving {len(rows)} devices", final=final, q=q,
+                   search=("v2.save_job", {"job": job_id, "list": list_name}),
+                   search_target="#save-op", key="save-run", group_words={
+                       "done": "through their turn, waiting for the commit"})
+
+
 #: Outcomes a retry may help: the device answered nothing it should have, or was busy.
 RETRYABLE = ("not_persisted", "unread", "held", "not_answering")
 
@@ -123,11 +155,13 @@ def job_card(list_name: str, job_id: str, got, *, q: str = "", outcome: str = ""
                    "rows": [r for r in shown if r["group"] == name],
                    "open": name in ("failed", "running")}
                   for name, words, kind in LIVE_ORDER if counts[name]]
+        committing = total > 0 and not counts["running"] and not counts["waiting"]
         return dict(card, state="running", elapsed_s=got.get("elapsed_s"),
                     started_at=got.get("started_at"), total=total, counts=counts, rows=rows,
                     groups=groups, grouped=total >= SEARCH_FROM, cap=save_op.WORKERS,
                     # The commit is the run's own last row: it waits for every device's turn.
-                    committing=total > 0 and not counts["running"] and not counts["waiting"])
+                    committing=committing,
+                    run=_run_card(list_name, job_id, rows, committing, q))
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
     payload = got.get("payload") or {}

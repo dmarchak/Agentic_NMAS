@@ -296,9 +296,8 @@ class TestTheConfirm:
         out = lab["client"].post("/v2/monitoring/apply/confirm", json=body).get_json()
         assert capture_job.wait(out["job"], 20)
         frag = lab["client"].get(out["url"]).get_data(as_text=True)
-        step = re.search(r'<li class="step step-([a-z_]+)">\s*<span class="step-mark"></span>'
-                         r'<span class="step-words">r6</span>\s*<span class="step-note">([^<]*)<',
-                         frag)
+        step = re.search(r'<li class="run-row run-row-([a-z_]+)" data-row="r6">.*?'
+                         r'<span class="run-(?:wait|detail)">([^<]*)<', frag, re.S)
         assert step, frag[:600]
         assert step.group(1) == "partial", step.group(0)
         assert "and its verify did not pass" in step.group(2)
@@ -422,7 +421,8 @@ def test_a_real_browser_pages_earlier_and_later_while_a_job_runs(lab, monkeypatc
         return real_plan(*a, **k)
     monkeypatch.setattr(rd, "plan_devices", slow_plan)
     seen = ("window.__seen = []; document.body.addEventListener('htmx:beforeRequest',"
-            "function (e) { window.__seen.push(e.detail.pathInfo.requestPath); }); return 1")
+            "function (e) { var el = e.detail.elt; if (el && el.closest('#apply-form, #rollout')) "
+            "window.__seen.push(e.detail.pathInfo.requestPath); }); return 1")
     with browser.Served(A.app) as srv, browser.Browser() as b:
         try:
             b.go(srv.url(f"/v2/monitoring/apply?list=Lab&scope={scope}&device=r6&device=r2"))
@@ -520,8 +520,11 @@ def test_a_real_browser_finds_the_profile_apply_locked_while_its_batch_runs(
                                                          "Leave outLeaving out…"], locked
             assert all(d and t.startswith("The batch is running in the order you confirmed")
                        for _w, d, t in locked), locked
+            # A request FROM the locked controls; the running card's own redraws (each step,
+            # since the one stepper) and the badge's are reads the batch announces.
             b.js("window.__seen = []; document.body.addEventListener('htmx:beforeRequest',"
-                 "function (e) { window.__seen.push(e.detail.pathInfo.requestPath); });"
+                 "function (e) { var el = e.detail.elt; if (el && el.closest('#apply-form, "
+                 "#rollout')) window.__seen.push(e.detail.pathInfo.requestPath); });"
                  "document.querySelector('button[aria-label=\"Leave r6 out of this batch\"]')"
                  ".click(); return 1")
             time.sleep(2)

@@ -11,7 +11,7 @@ signed off 2026-10-02).
   waits on, the last thing done) and waiting, including a detour and the end.
 - Every job-backed card in the templates (a card that waits on a `*_job_card` route) is in
   `device_actions.JOB_STEPPERS`, declaring its steps or why it draws none, and a declared
-  card's running state draws `job_stepper`; rotate's running card, through the real route
+  card's running state draws THE stepper (`run_stepper`, since 2026-10-12); rotate's running card, through the real route
   with a real hold, draws the stepper with the current step, its waits and its time.
 """
 
@@ -204,7 +204,7 @@ class TestEveryJobCard:
             import importlib
             mod = importlib.import_module(ref[0])
             assert getattr(mod, ref[1]), op
-            assert "job_stepper(" in cards[op], f"{op}'s running card draws no stepper"
+            assert "run_stepper(" in cards[op], f"{op}'s running card draws no stepper"
 
     def test_rotates_running_card_draws_the_stepper_from_the_hold(self, rot, monkeypatch):  # noqa: F811
         from modules.nsot import capture_job
@@ -217,14 +217,15 @@ class TestEveryJobCard:
             html = rot["client"].get("/v2/device/r2/rotate/job/x").get_data(as_text=True)
         finally:
             device_ops.release("Lab", "r2")
-        assert "data-stepper" in html
-        current = re.search(r'<li class="step step-current" data-step="(\w+)" '
+        # THE stepper (2026-10-12; tests/test_one_stepper.py): the one row, its steps across.
+        assert "data-run-stepper" in html
+        current = re.search(r'<li class="run-step run-step-running" data-step="(\w+)"[^>]*'
                             r'aria-current="step">(.*?)</li>', html, re.S)
         assert current and current.group(1) == "send"
         assert "waits on a held session to the device" in current.group(2)
         assert "last done: original_session" in current.group(2)
-        assert 'data-age="' in current.group(2), "its time, kept current by the page"
-        assert html.count("step step-done") == 2
+        assert 'data-run-since="' in current.group(2), "its time, kept current by the page"
+        assert html.count("run-step run-step-done") == 2
         assert 'nmas:device_progress from:body' in html
 
 

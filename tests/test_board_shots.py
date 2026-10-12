@@ -450,3 +450,42 @@ def test_topology(tmp_path, monkeypatch):
         # Board E (C691): Snap to grid on.
         _shoot("topology-snap", "TopoSnap.dc.html", lambda w: "/v2/topology?list=Lab&snap=1",
                served, widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+
+
+def test_stepper(lab, monkeypatch):            # noqa: F811 (Save's lab, imported below)
+    """THE stepper (2026-10-12; docs/fidelity/stepper.md) beside its boards: Save's running
+    card, the one component, at the desk's 1440 beside `SaveProgress.dc.html` (C605) and at
+    phone width beside `StepperPhone.dc.html`. Its rows are marked as Save's job keeps them
+    (`save_op._mark`) and built by the real code (`save_page.job_card`); only the page's plan
+    model is stood in for by that running card, as the page draws whichever card it is given."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import save_page
+    from modules.nsot import save_op
+
+    job, t = "c" * 32, time.time() - 30
+    for host, state, trail in (
+            ("r1", "through", [["save", t], ["read_back", t + 4], ["read_running", t + 10],
+                               ["commit_wait", t + 22]]),
+            ("r2", "through", [["save", t], ["read_back", t + 3], ["read_running", t + 9],
+                               ["commit_wait", t + 21]]),
+            ("s1", "running", [["save", t], ["read_back", t + 9]]),
+            ("r3", "running", [["save", t], ["read_back", t + 4], ["read_running", t + 10]]),
+            ("r6", "waiting", []),
+            ("s9", "not_persisted", [["save", t], ["read_back", t + 5]])):
+        save_op._mark(job, host, state, trail=trail)
+    card = save_page.job_card("Lab", job, {"state": "running", "elapsed_s": 41,
+                                           "started_at": time.time() - 41})
+    monkeypatch.setattr(save_page, "plan_card", lambda *a, **k: card)
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: True)
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("stepper-save", "SaveProgress.dc.html", lambda w: "/v2/devices/save?list=Lab",
+               served, widths=((1440, 1.0), (1280, 1.0)))
+        _shoot("stepper-phone", "StepperPhone.dc.html", lambda w: "/v2/devices/save?list=Lab",
+               served, widths=((390, 2.0),))
+
+
+from tests.test_save_v2 import lab  # noqa: E402,F401 (test_stepper's lab: Save's own)

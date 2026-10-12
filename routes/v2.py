@@ -22,6 +22,14 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint("v2", __name__, url_prefix="/v2")
 
+@bp.app_template_filter("one_run")
+def one_run(steps, name, label="Progress") -> dict:
+    """A one-device operation's steps (`device_actions.job_steps`) as THE stepper's card
+    (`run_stepper.single`), for `run_stepper(c.steps | one_run(c.host, 'Deploy progress'))`."""
+    from modules import run_stepper
+    return run_stepper.single(steps or [], name, label)
+
+
 @bp.app_template_filter("age_words")
 def age_words(iso, now=None) -> str:
     """An ISO time as the page's own age words ("just now", "3 min ago", "2 h ago"), the
@@ -1363,7 +1371,8 @@ def profile_apply_job(job):
     from modules import deploy_job
     got = deploy_job.state(job)
     from modules import arrival_watch
-    return _strict(render_template("v2/_apply_job.html", j=got, job=job,
+    run = deploy_job.run_card(got, got["list"], q=request.args.get("q", "")) if got else None
+    return _strict(render_template("v2/_apply_job.html", j=got, job=job, run=run,
                                    arrivals=arrival_watch.state(job))), (200 if got else 404)
 
 

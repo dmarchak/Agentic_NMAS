@@ -1,0 +1,53 @@
+{%- from "v2/_macros.html" import badge -%}
+{#- THE progress display (modules/run_stepper.py; boards SaveProgress C605 and StepperPhone):
+    one row per device (or the operation's one subject), its declared steps across with the time
+    in each, an overall bar and counts when there is more than one row, groups with Find from 25
+    rows, and the operation's own last row (the commit). Below 640 px each row's steps run down
+    (nmas-v2.css, `.run`). The running step's time keeps counting between redraws
+    (static/js/nmas_stepper.js, from `data-run-since`). Every operation page draws its progress
+    through this macro and no other way (tests/test_one_stepper.py). -#}
+{%- macro _row(x) %}
+<li class="run-row run-row-{{ x.group }}" data-row="{{ x.name }}">
+  <span class="run-name"><span class="run-mark run-mark-{{ x.group }}" aria-hidden="true"></span><span class="sr-only">{{ x.state_words }}: </span>{% if x.device %}<a href="{{ url_for('device_v2.device', name=x.name) }}">{{ x.name }}</a>{% elif x.href %}<a href="{{ x.href }}">{{ x.name }}</a>{% else %}{{ x.name }}{% endif %}</span>
+  {%- if x.steps %}
+  <ol class="run-steps" aria-label="{{ x.name }}'s steps">
+    {%- for s in x.steps %}
+    <li class="run-step run-step-{{ s.state }}" data-step="{{ s.key }}"{% if s.note %} title="{{ s.note }}"{% endif %}{% if s.state == 'running' %} aria-current="step"{% endif %}><span class="run-dot"></span><span class="run-words">{{ s.words }}</span><span class="run-took"{% if s.state == 'running' and s.since %} data-run-since="{{ s.since }}"{% endif %}>{% if s.took_s is not none and s.state in ('done', 'running', 'failed', 'partial') %}{{ s.took_s }} s{% endif %}</span>{% if s.note %}<span class="run-note">{{ s.note }}</span>{% endif %}</li>
+    {%- endfor %}
+  </ol>
+  {%- else %}
+  <span class="run-wait">{{ x.detail }}</span>
+  {%- endif %}
+  <span class="run-el">{{ x.elapsed_words }}</span>
+  {%- if x.steps and x.detail %}
+  <span class="run-detail">{{ x.detail }}</span>
+  {%- endif %}
+</li>
+{%- endmacro %}
+
+{% macro run_stepper(r) -%}
+<div class="run{% if r.single %} run-single{% endif %}" data-run-stepper aria-label="{{ r.label }}">
+  {%- if not r.single %}
+  <progress class="run-bar" max="{{ r.bar.max }}" value="{{ r.bar.value }}" aria-label="{{ r.bar.words }}"></progress>
+  <p class="run-counts">{% for t in r.tally %}<strong{% if t.group == 'failed' and t.n %} class="run-failed"{% endif %}>{{ t.n }}</strong> {{ t.words }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {%- endif %}
+  {%- if r.grouped %}
+  {%- if r.search %}
+  <form class="run-find" hx-get="{{ url_for(r.search[0], **r.search[1]) }}" hx-target="{{ r.search_target }}" hx-swap="outerHTML" hx-trigger="input changed delay:400ms from:input, search">
+    <label>Find a {{ r.noun }}<input type="search" name="q" value="{{ r.q }}"></label>
+  </form>
+  {%- endif %}
+  {%- for g in r.groups %}
+  <details class="run-grp" data-keep="{{ r.key }}-{{ g.name }}"{% if g.open %} open{% endif %}>
+    <summary>{{ badge(g.words, g.kind) }}<span>{{ g.count }}</span>{% if r.q %}<span class="muted">· {{ g.rows | length }} match "{{ r.q }}"</span>{% endif %}</summary>
+    <ol class="run-rows">{% for x in g.rows %}{{ _row(x) }}{% endfor %}</ol>
+  </details>
+  {%- endfor %}
+  {%- else %}
+  <ol class="run-rows">{% for x in r.rows %}{{ _row(x) }}{% endfor %}</ol>
+  {%- endif %}
+  {%- if r.final %}
+  <div class="run-final run-final-{{ r.final.state }}"><span class="run-name">{{ r.final.name }}</span><span class="run-final-words">{{ r.final.words }}</span><span class="run-el">{{ r.final.detail }}</span></div>
+  {%- endif %}
+</div>
+{%- endmacro %}

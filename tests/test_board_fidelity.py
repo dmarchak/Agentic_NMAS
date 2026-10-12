@@ -28,6 +28,10 @@ FIDELITY = os.path.join(ROOT, "docs", "fidelity")
 RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "logs.html": "logs-tail.md", "dhcp.html": "dhcp.md", "onboard.html": "onboard.md"}
 
+#: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
+#: the one stepper, "add it to the board-fidelity records"): component -> its record.
+COMPONENTS = {"_run_stepper.html": "stepper.md"}
+
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.
 UNCHECKED = {
@@ -74,7 +78,7 @@ def test_every_signed_off_screen_has_a_record_or_is_unchecked():
 
 
 def test_each_record_compares_the_templates_as_they_are():
-    for screen, name in RECORDS.items():
+    for screen, name in {**RECORDS, **COMPONENTS}.items():
         r = _record(name)
         assert f"templates/v2/{screen}" in r["paths"], name
         assert templates_hash(r["paths"]) == r["digest"], (
@@ -86,7 +90,7 @@ def test_each_record_compares_the_templates_as_they_are():
 def test_every_region_has_a_verdict_and_a_deviation_its_log_line():
     with open(os.path.join(ROOT, "docs", "STANDING_APPROVAL_LOG.md"), encoding="utf-8") as fh:
         log = fh.read()
-    for name in RECORDS.values():
+    for name in {**RECORDS, **COMPONENTS}.values():
         rows = _record(name)["rows"]
         assert len(rows) >= 10, name
         for region, verdict, _rest in rows:

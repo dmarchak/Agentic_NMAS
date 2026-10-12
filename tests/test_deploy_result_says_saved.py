@@ -134,7 +134,9 @@ class TestTheCardsDrawIt:
 
         result = operation_result([_row(saved_startup={"ok": False, "error": "timed out"})],
                                   {}, {"ok": True, "written": 1}, "deploy")
-        html = _render("v2/_apply_job.html", j={"state": "done", "payload": {"result": result}},
-                       job="job1", arrivals=None)
+        from modules import deploy_job
+        j = {"job": "job1", "state": "done", "payload": {"result": result}}
+        html = _render("v2/_apply_job.html", j=j, job="job1", arrivals=None,
+                       run=deploy_job.run_card(j, "Lab"))
         evidence = html.split('class="apply-evidence"')[1].split("</details>")[0]
         assert "NOT saved to startup" in evidence and "timed out" in evidence

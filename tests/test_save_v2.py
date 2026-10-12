@@ -418,10 +418,9 @@ class TestTheRunningCard:
         assert 'hx-trigger="nmas:save from:body, nmas:device_progress from:body"' in html
         assert "Saving 4 devices" in html and "1 of 4 through their turn" in html
         assert "at most 6 at once" in html
-        assert 'class="save-step save-step-running" aria-current="step"' in html
+        assert re.search(r'class="run-step run-step-running"[^>]*aria-current="step"', html)
         assert "waiting its turn: starts when one of the 6 running finishes" in html
-        assert "<strong>waits for every device&#39;s turn</strong>" in html or \
-            "<strong>waits for every device's turn</strong>" in html
+        assert "waits for every device&#39;s turn, then one commit for the batch" in html
         assert 'name="q"' not in html, "no search under 25 devices"
 
     def test_from_25_devices_the_rows_group_with_a_search(self, lab):
@@ -629,9 +628,9 @@ class TestInARealBrowser:
             assert reached.wait(20), "the run never reached r2's read-back"
             # The card redraws on the device's own step (device_progress), never a timer.
             got = b.wait_for(
-                "var r=document.querySelector('.save-row-running[data-device=r2]');"
-                "var c=r && r.querySelector('.save-step-running');"
-                "var m=document.querySelector('.save-commit');"
+                "var r=document.querySelector('.run-row-running[data-row=r2]');"
+                "var c=r && r.querySelector('.run-step-running .run-words');"
+                "var m=document.querySelector('.run-final');"
                 "return c && m && [c.textContent.trim(), m.textContent.replace(/\\s+/g,' ')]", 15)
             assert got[0].startswith("Read back"), got
             assert "waits for every device's turn" in got[1], got

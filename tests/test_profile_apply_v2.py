@@ -250,16 +250,19 @@ class TestTheConfirm:
             # load the fragment was read then).
             for _ in range(200):
                 _rr, frag = _get(ready, out["url"])
-                if "step-done" in frag and "being applied" in frag:
+                if 'run-row-done" data-row="r6"' in frag and \
+                        'run-row-running" data-row="r2"' in frag:
                     break
                 threading.Event().wait(0.02)
-            assert 'hx-trigger="nmas:deploy_job from:body"' in frag
-            r6 = frag.index(">r6<")
-            r2 = frag.index(">r2<")
-            assert r6 < r2
+            # On THE stepper (2026-10-12): redrawn as each device ends and as each step moves.
+            assert ('hx-trigger="nmas:deploy_job from:body, nmas:device_progress from:body"'
+                    in frag)
+            assert frag.index('data-row="r6"') < frag.index('data-row="r2"')
             # r6 finished; its record is committed only when the batch ends (R5's receipts)
-            assert "step-done" in frag and "done; its record is committed when the batch ends (" in frag
-            assert "step-current" in frag and "being applied" in frag     # r2 running
+            assert 'class="run-row run-row-done" data-row="r6"' in frag
+            assert "done; its record is committed when the batch ends" in frag
+            assert 'class="run-row run-row-running" data-row="r2"' in frag    # r2 running
+            assert 'aria-current="step"' in frag and "<progress" in frag
             assert "Check now" in frag
         finally:
             gate.set()
