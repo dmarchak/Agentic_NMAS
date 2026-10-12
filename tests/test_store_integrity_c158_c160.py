@@ -202,34 +202,6 @@ def test_reorder_keeps_a_device_the_order_does_not_name(inventory):
     assert _ips(path) == ["192.0.2.2", "192.0.2.1", "192.0.2.3"]
 
 
-def test_refresh_hostnames_keeps_a_change_made_while_it_ran(inventory, monkeypatch):
-    """It read the list, opened a session per device, and wrote its minutes-old
-    copy back: a rotation's new credential in between was erased."""
-    A, path = inventory
-    from modules import device
-
-    def rotate_meanwhile(dev, fn):
-        if dev["ip"] == "192.0.2.1":
-            rows = device.load_saved_devices(path)
-            for row in rows:
-                if row["ip"] == "192.0.2.2":
-                    row["password"] = "ROTATED-TOKEN"
-            device.write_devices_csv(rows, path)
-        return "renamed-" + dev["ip"].split(".")[-1]
-
-    monkeypatch.setattr(A, "with_temp_connection", rotate_meanwhile)
-    for ip in ("192.0.2.1", "192.0.2.2"):
-        monkeypatch.setitem(A.device_status_cache, ip, True)
-    monkeypatch.setattr("modules.ai_assistant._load_variables", lambda: {})
-    monkeypatch.setattr("modules.ai_assistant._nsot_repo_dir", lambda: "")
-    monkeypatch.setattr("modules.netbox_client.get_netbox_config", lambda: {})
-    A.app.test_client().post("/refresh_hostnames")
-    rows = {r["ip"]: r for r in csv.DictReader(open(path, newline=""))}
-    assert rows["192.0.2.2"]["password"] == "ROTATED-TOKEN", "the rotation was written over"
-    assert rows["192.0.2.1"]["hostname"] == "renamed-1"
-    assert rows["192.0.2.2"]["hostname"] == "renamed-2"
-
-
 def test_every_devices_csv_write_goes_through_the_one_writer():
     """No second writer: a CSV writer anywhere in the program is the atomic
     one. A floor, so a scan that found nothing cannot pass."""

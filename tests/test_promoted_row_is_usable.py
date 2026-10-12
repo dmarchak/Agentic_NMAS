@@ -96,7 +96,7 @@ def test_the_reload_screen_draws_each_device_s_result_not_a_sent_toast():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     src = open(os.path.join(root, "static", "js", "gen", "index.1.js"), encoding="utf-8").read()
     start = src.index("window.reloadSelectedDevices = function()")
-    end = src.index("window.refreshHostnames = function()", start)
+    end = src.index("window.saveTftpServer = function()", start)
     body = re.sub(r"//[^\n]*", "", src[start:end])
     assert "showBulkResults(data.operation_id)" in body, body[-600:]
     assert "showToast(data.message, 'warning')" not in body

@@ -290,7 +290,6 @@ PENDING = {
     "ai_agent_run": "nothing: the response is never read (the agent is off)",
     "ai_approval_approve": "a toast; the commit an approval makes is never shown",
     "ai_approval_reject": "a toast",
-    "refresh_hostnames": "a toast, then a page reload",
     "templates.approve": "a toast carrying the per-device evidence",
     "templates.write_template": "a toast",
     "remote.verify_write": "a toast, then the panel reloads",
@@ -344,7 +343,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 19, "FALSE_GREEN": 0, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 18, "FALSE_GREEN": 0, "UNESCAPED": 0}
 
 
 def _population():

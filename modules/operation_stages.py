@@ -301,10 +301,6 @@ STAGES = {
         "n/a: a conversation whose tools are read-only (P.3 step 8)", "n/a: nothing is previewed",
         NO_DEVICE, "n/a: nothing to undo",
         "n/a: kept as the session's chat history, not an operation's record"),
-    "refresh_hostnames": Stages(
-        "MISSING: no preview of the renames it will record", "MISSING: no hash is bound",
-        "n/a: reads hostnames; records a pending rename only", "n/a: a pending rename is undone by "
-        "the next refresh", "modules.nsot.manifest.record_pending_rename"),
     # ---- Legacy device routes, removed or replaced at cutover
     "run_command": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
     "bulk_execute": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
@@ -389,7 +385,6 @@ HISTORY = {
     "ai_approval_reject": ("approvals",),
     "onboard.create": ("intent",),
     "onboard_v2.create": ("intent",),
-    "refresh_hostnames": ("golden",),
     "templatize.seed_apply": ("intent",),
     "templatize.edit_committed": ("intent",),
     "intent_v2.commit": ("intent",),

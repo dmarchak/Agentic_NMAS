@@ -268,43 +268,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  window.refreshHostnames = function() {
-    if (!confirm('Query all online devices for their current hostnames?\n\nThis will update the device list if any hostnames have changed.')) {
-      return;
-    }
-
-    const refreshBtn = document.getElementById('refreshHostnamesBtn');
-    const btnText = refreshBtn.querySelector('.btn-text');
-    const spinner = refreshBtn.querySelector('.spinner-border');
-    btnText.textContent = 'Refreshing...';
-    spinner.classList.remove('d-none');
-    refreshBtn.disabled = true;
-
-    fetch('/refresh_hostnames', { method: 'POST' })
-    .then(resp => resp.json())
-    .then(data => {
-      btnText.textContent = 'Refresh Hostnames';
-      spinner.classList.add('d-none');
-      refreshBtn.disabled = false;
-
-      // No reload: the response invalidates `inventory` and `goldens`, so the
-      // device list and the golden panel redraw in place, and the message
-      // (which says what is left to do) is not erased by a new page.
-      if (data.status === 'success' || data.status === 'warning') {
-        showToast(data.message, data.status);
-      } else {
-        showToast(data.message || 'Refresh hostnames failed', 'danger');
-      }
-    })
-    .catch(err => {
-      btnText.textContent = 'Refresh Hostnames';
-      spinner.classList.add('d-none');
-      refreshBtn.disabled = false;
-      console.error('Refresh hostnames failed:', err);
-      showToast('Failed to refresh hostnames', 'danger');
-    });
-  };
-
   window.saveTftpServer = function() {
     const tftpServer = document.getElementById('bulkTftpServer').value.trim();
 

@@ -159,7 +159,6 @@ _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's
 DECLARED = {
     # Inventory and lists.
     "reorder_devices": ("inventory",),
-    "refresh_hostnames": ("inventory", "goldens"),   # a pending golden rename
     "inventory.refresh": ("inventory",),
     "inventory.set_order": ("inventory",),
     "inventory.set_source": ("inventory", "lists"),

@@ -221,9 +221,9 @@ class TestTheConvertedReadsRunAtOnce:
     """The READ loops the rule converted (2026-09-29): each through the one
     helper, `modules.fanout.read_each`, and gone from the declared serial set."""
 
-    # modules/nsot/freshness.py's Oxidized read was converted too, and removed in Phase 3.
+    # modules/nsot/freshness.py's Oxidized read was converted too, and removed in Phase 3; so
+    # was app.py's Refresh Hostnames read, removed at 7.8 (2026-10-12).
     CONVERTED = [("modules/nsot/startup_check.py", "read_each(lambda lr: check(lr[1])"),
-                 ("app.py", "read_each(lambda d: with_temp_connection(d, get_hostname)"),
                  ("scripts/nmas-golden-state", "read_each(one, devices"),
                  ("routes/onboard.py", "read_each(_ztp.progress, ztp_rows"),
                  ("scripts/nmas-heartbeat-rules", "read_each(lambda h: gaps_from(")]

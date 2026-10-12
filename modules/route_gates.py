@@ -186,7 +186,6 @@ GATES = {
     # state being enshrined was the one intended.
     "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
     "device_v2.capture_confirm": _g(A, "commits a device's confirmed capture as its golden, from the v2 device page (7.3; the same apply as golden.capture_apply)"),
-    "refresh_hostnames": _g(A, "renames devices and records a pending golden rename"),
     "onboard.create": _g(A, "commits a new device's identity and intent", "onboard_device"),
     "onboard_v2.create": _g(A, "commits a new device's identity and intent, from v2's Add device",
                             "onboard_device"),
