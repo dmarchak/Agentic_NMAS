@@ -146,6 +146,41 @@ class TestTheMetricQuestion:
         assert web.get("/v2/history/query/metric/nope").status_code == 404
 
 
+def test_hovering_the_chart_reads_out_each_series_in_a_browser(web, grafana):  # noqa: F811
+    """C707 (the operator, with a shot of this question's chart: "shows nothing when mousing
+    over"): in a real browser at 1440, the pointer over the chart's middle draws the readout,
+    the time and each series' value there, as Grafana's tooltip does; off the chart it goes."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+
+    def move(b, origin, x=0, y=0):
+        b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+            "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+            "actions": [{"type": "pointerMove", "origin": origin, "x": x, "y": y}]}]})
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        b.go(srv.url("/v2/history/query/metric/errors?range=7d&list=Lab"))
+        b.wait_for("return document.querySelector('.chart .u-over')", 15)
+        over = b._call("POST", f"/session/{b.session}/element",
+                       {"using": "css selector", "value": ".chart .u-over"})
+        move(b, over)
+        b.wait_for("var t = document.querySelector('.chart-tip'); return t && !t.hidden", 10)
+        got = b.js("var t = document.querySelector('.chart-tip'); return ["
+                   "t.querySelector('.chart-tip-time').textContent,"
+                   "t.querySelectorAll('.chart-tip-row').length,"
+                   "t.querySelector('.chart-tip-value').textContent]")
+        move(b, "viewport", 5, 5)
+        b.wait_for("return document.querySelector('.chart-tip').hidden", 10)
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.go("about:blank")
+    time_text, rows, first_value = got
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d", time_text), got
+    assert rows >= 1 and first_value.strip() and first_value != "-", got
+
+
 class TestTheCpuQuestion:
     """Board A's "CPU and memory trend" in board B's layout: per device, two series (CPU from
     either object a device answers, memory from its Processor pool), no interface, and what

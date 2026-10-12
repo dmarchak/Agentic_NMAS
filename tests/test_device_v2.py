@@ -596,6 +596,24 @@ class TestTheShippedScripts:
                                "alignSeries([{times: [1, 2, 3], values: [5, 6, 7]}, {times: [2, 4], values: [8, 9]}])"))
         assert out == [[1, 2, 3, 4], [5, 6, 7, None], [None, 8, None, 9]]
 
+    def test_the_hover_readout_lists_each_series_value_largest_first(self):
+        """C707 (the operator: "show detailed information like Grafana does when the mouse is
+        hovering over the graph"): at a point, the time and every series with a value there,
+        largest first, formatted in the panel's unit; a series with no value there is left
+        out; no point, no readout."""
+        data = "[[100, 200], [1, 3], [null, 5], [2, null]]"
+        labels = "['device=r1', 'device=r2', 'device=r3']"
+        out = json.loads(_eval("nmas_panels.js", "NMAS_PANELS",
+                               f"hoverRows ? [window.NMAS_PANELS.hoverRows({data}, 1, {labels}, 'pps'),"
+                               f" window.NMAS_PANELS.hoverRows({data}, 0, {labels}, 'pps'),"
+                               f" window.NMAS_PANELS.hoverRows({data}, null, {labels}, 'pps')] : 0"))
+        at1, at0, nowhere = out
+        assert at1["time"] == 200
+        assert [(r["label"], r["text"]) for r in at1["rows"]] == [("device=r2", "5 p/s"),
+                                                                   ("device=r1", "3 p/s")]
+        assert [r["label"] for r in at0["rows"]] == ["device=r3", "device=r1"]
+        assert nowhere is None
+
     def test_a_stat_takes_the_kind_of_the_last_step_it_reaches(self):
         steps = json.dumps([{"color": "red", "value": None}, {"color": "orange", "value": 1},
                             {"color": "green", "value": 9}])

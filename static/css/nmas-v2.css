@@ -333,6 +333,17 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .panel-error { margin: 0; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
 .panel-foot { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+/* C707: the hover readout, as Grafana's tooltip: the time, then each series' value there. */
+.chart { position: relative; }
+.chart-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 160px; max-width: 360px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: var(--shadow); padding: 6px 8px; font-size: 12px; }
+.chart-tip[hidden] { display: none; }
+.chart-tip-time { color: var(--ink-2); margin-bottom: 4px; font-family: var(--mono); }
+.chart-tip-row { display: grid; grid-template-columns: 10px 1fr auto; gap: 6px; align-items: center; }
+.chart-tip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-tip-value { font-family: var(--mono); text-align: right; }
+.chart-tip-more { color: var(--ink-2); margin-top: 2px; }
 .swatch { width: 10px; height: 3px; border-radius: 2px; background: var(--accent); }
 .swatch.s0 { background: var(--series-0); } .swatch.s1 { background: var(--series-1); } .swatch.s2 { background: var(--series-2); }
 .swatch.s3 { background: var(--series-3); } .swatch.s4 { background: var(--series-4); } .swatch.s5 { background: var(--series-5); }

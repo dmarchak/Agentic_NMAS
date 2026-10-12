@@ -219,6 +219,63 @@
             ticks: token('--line', '#DADDE2')};
   }
 
+  /* PURE (C707): what the hover readout says at point *idx* of uPlot's aligned *data*: the
+     time (epoch seconds) and each series that has a value there, largest first, as Grafana's
+     tooltip lists them: [{i, label, text}]. A series with no value at that point is left out. */
+  function hoverRows(data, idx, labels, unit, mappings) {
+    if (!data || idx === null || idx === undefined || !data[0] || data[0][idx] === undefined) {
+      return null;
+    }
+    var rows = [];
+    for (var s = 1; s < data.length; s++) {
+      var v = data[s][idx];
+      if (v === null || v === undefined || isNaN(v)) continue;
+      var m = mapValue(v, mappings);
+      rows.push({i: s - 1, label: labels[s - 1], value: v, text: m ? m.text : formatValue(v, unit)});
+    }
+    rows.sort(function (a, b) { return b.value - a.value; });
+    return {time: data[0][idx], rows: rows};
+  }
+
+  /* The hover readout's time: the date and minute in the viewer's time, as the axis draws. */
+  function tipTime(epoch) {
+    var d = new Date(epoch * 1000);
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+      pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /* C707: the readout under the cursor, redrawn as it moves, hidden when it leaves the chart. */
+  function hoverTip(holder, p, unit, data) {
+    var tip = el('div', 'chart-tip');
+    tip.hidden = true;
+    holder.appendChild(tip);
+    var labels = p.series.map(function (s) { return s.label; });
+    return function (u) {
+      var got = hoverRows(data, u.cursor.idx, labels, unit, p.mappings);
+      if (!got || !got.rows.length || u.cursor.left === undefined || u.cursor.left < 0) {
+        tip.hidden = true;
+        return;
+      }
+      clear(tip);
+      tip.appendChild(el('div', 'chart-tip-time', tipTime(got.time)));
+      for (var r = 0; r < got.rows.length && r < 12; r++) {
+        var row = el('div', 'chart-tip-row');
+        row.appendChild(el('span', 'swatch s' + (got.rows[r].i % COLOURS.length)));
+        row.appendChild(el('span', 'chart-tip-label', got.rows[r].label));
+        row.appendChild(el('span', 'chart-tip-value', got.rows[r].text));
+        tip.appendChild(row);
+      }
+      if (got.rows.length > 12) tip.appendChild(el('div', 'chart-tip-more', '+' + (got.rows.length - 12) + ' more'));
+      tip.hidden = false;
+      // Beside the cursor, on whichever side has room; set through the CSSOM (no inline markup).
+      var left = u.over.offsetLeft + u.cursor.left + 14;
+      if (left + tip.offsetWidth > holder.clientWidth) left = u.over.offsetLeft + u.cursor.left - tip.offsetWidth - 14;
+      tip.style.left = Math.max(0, left) + 'px';
+      tip.style.top = (u.over.offsetTop + 4) + 'px';
+    };
+  }
+
   function drawSeries(section, body, p) {
     var pal = palette();
     var unit = section.getAttribute('data-panel-unit') || p.unit || '';
@@ -241,7 +298,9 @@
     }
     var holder = el('div', 'chart');
     body.appendChild(holder);
-    var chart = new root.uPlot(opts, alignSeries(p.series), holder);
+    var data = alignSeries(p.series);
+    opts.hooks = {setCursor: [hoverTip(holder, p, unit, data)]};
+    var chart = new root.uPlot(opts, data, holder);
     section.__nmasChart = chart;
     var foot = el('div', 'panel-foot');
     for (i = 0; i < p.series.length && i < 12; i++) {
@@ -413,6 +472,6 @@
   }
 
   root.NMAS_PANELS = {statText: statText, palette: palette, duration: duration, emptyWords: emptyWords, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
-                      chartHeight: chartHeight,
+                      chartHeight: chartHeight, hoverRows: hoverRows,
                       footWords: footWords, emptyWords: emptyWords, emptyHover: emptyHover, scan: scan};
 })(typeof window !== 'undefined' ? window : this);
