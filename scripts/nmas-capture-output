@@ -127,7 +127,9 @@ def store_write(event: str, args: tuple, store: str) -> str:
 def store_state(store: str) -> dict:
     """``{path: (mtime_ns, size)}`` for every file under the store."""
     state = {}
-    for dirpath, _dirs, files in os.walk(store):
+    for dirpath, dirs, files in os.walk(store):
+        if dirpath == store and LOCKS in dirs:
+            dirs.remove(LOCKS)    # C674: the session slots are a lock, never the store's
         for name in files:
             path = os.path.join(dirpath, name)
             try:

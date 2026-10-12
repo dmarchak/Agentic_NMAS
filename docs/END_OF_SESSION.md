@@ -1,5 +1,115 @@
 # End of session: where Phase 7 stands
 
+## MORNING REPORT: the overnight run, 2026-10-12 (03:20 to about 08:10 UTC; 21:20 to 02:10 UTC−6)
+
+**Every item on your list is done or waits only on you**, except the AI agent's 7.8 family,
+moved last (logged). Every commit went through the gate, was pushed with CI green before the
+next, and each green release was deployed with `nmas-deploy --wait` and checked on the host.
+No network device's configuration was changed. Nothing ran on s3 or between 08:30 and 09:10 UTC.
+
+**Per item: built, deployed, checked**
+
+1. **Your last message's items:** C681, dhcpcd on every lab host pinned to its lease, proved
+   on h1 first (renewed ::107 under the same IAID across a restart) and rolled out to h2 to h4;
+   C700, the routing modules ask with a 2 s timeout and walk only state (10 to 12 requests a
+   scrape, was 55 to 66; **its 24 h timeout reading is due 2026-10-13 05:06 UTC**); C695 (a)
+   written into the walk; C703 registered; C696 checked (8.8.8.8 leaves toward r5, which
+   advertises it; 192.0.2.1 drops: no route); `docs/PUBLIC_RELEASE.md` with the roadmap note.
+2. **7.8 removals, one family per commit**, each proved unreached (grep and the app's url_map)
+   before it went and 404 on the host after its deploy: list data, refresh hostnames, renames,
+   the legacy store and migration, bulk reload with the break-glass preview route (**two
+   families in one commit**, logged), inventory order with the vendored SortableJS, the
+   monitoring stack panel with the integrations' `monitor()`, Configure (about 160 kB off
+   today's index), the legacy collectors' routes with today's Monitoring tab, the topology
+   service's routes and panel, today's Topology tab with vis-network, reachability. CUTOVER.md's
+   "Removed at 7.8" names each. **Left:** the AI agent's family (largest; next), `/devices/regions`
+   (goes with today's index), the topology service unit (a host step), and the families blocked
+   on today's device page and template editor (Backups, device files, bulk file actions, TFTP,
+   quick actions).
+3. **C667: nothing left to build.** Boards A to C are built, deployed and compared (three
+   fidelity records); a save, a pin and a removal by you close it (sitting 2 step 13).
+4. **The Logs tail (C675): nothing left to build**; compared and walked earlier.
+5. **C673: prepared, the commit yours.** The intent editor's own preview, run on the host,
+   gives exactly `passive-interface GigabitEthernet0/0` under `router rip`, against intent and
+   the device. **My commit of the intent was refused by the session's permission check; I did
+   not retry it**, so sitting 2 step 3 is your Edit, Preview, Commit and Deploy, as written.
+6. **C691, Snap to grid: board E drawn and signed off (canvas v115), built (08e5382), compared
+   at 1440, 1280 and 390, deployed**, and the host draws it. Your drag closes it (sitting 2
+   step 16).
+7. **Findings closed without you:** C702 (a script's commit lost its s3-archive hook at exit:
+   the hooks now join before shutdown; proved on the host's interpreter), C698 (a connect whose
+   SSH transport never came up is tried once more, never for authentication), C672
+   (SETTINGS.md's false reason corrected), C674 (the capture tool no longer calls a session
+   lock or an unchanged key a write; e3269cc, deployed, and a capture of `show clock` on s1
+   on the host exited 0; it also showed the slot's lock listed as changed by the app, fixed in
+   the report's own commit).
+8. **The host health check (07:18 UTC): healthy.** The only failed unit is `openipmi.service`,
+   which failed before too. Every service, timer, container and endpoint is up. The records
+   database listens on 127.0.0.1:5433 only. Prometheus has 39 targets, 0 down, and all nine
+   devices sent syslog in the last 15 minutes. **Needs attention: empty**, all 24 sources read.
+
+**Decisions I made for you** (each a line in STANDING_APPROVAL_LOG.md): board E's design (a
+toolbar switch in the address, a 40-unit grid, only what is moved snaps, off by default);
+keeping board A's toolbar order where board E drew another; two 7.8 families in one commit;
+the AI agent's family after items 6 to 8. Smaller, in the commits: SortableJS and vis-network
+removed with their last pages; tests that used removed routes as examples moved to
+`POST /remote/auto-push` and `git_status`; C698's retry pause 2 s and its two error texts; C674
+excluding `ssh_slots/` and judging an open by whether the file changed.
+
+**Skipped, and why:** the C673 intent commit (refused by the permission check, yours in the
+walk); the AI agent's family (largest, after the rest); the topology service unit (needs a host
+step, with the service's Settings card, as one family); CLAUDE.md's citation below (yours).
+
+**Findings:** opened C704 (v2 Devices has no sortable columns, which drag-reorder's removal
+assumed), C705 (the Grafana card's `grafana_device_dashboard_url` has no reader), C703 (the
+edges' "always" defaults, a design note); closed C672, C674, C698, C702 (and C699, C701 earlier
+in the night). **174 open.**
+
+**CLAUDE.md, yours to paste** (the rule "Any operation that restarts devices declares its
+planned-restart window", whose cited tests for the Reload's window went with today's bulk
+reload): replace
+
+```
+  [the late refusal, the correction and the Reload's window: tests/test_restarts.py,
+  tests/test_acknowledge.py; that every restarting operation declares one: not mechanised]
+```
+
+with
+
+```
+  [the late refusal and the correction: tests/test_restarts.py, tests/test_acknowledge.py;
+  the Reload's window: tests/test_reload_v2.py; that every restarting operation declares one:
+  not mechanised]
+```
+
+**The walk: one list, in ordered sittings, below ("THE WALK, IN ORDERED SITTINGS").**
+
+- **Sitting 1** is read only, steps 1 to 14. Tonight adds today's thinner pages (13) and Snap
+  to grid's switch (14).
+- **Sitting 2** is single-device and single-record writes:
+  - C673's confirm is step 3, s1's RIP passive on Gi0/0.
+  - C695's confirms are step 15, the r3 and r4 peering /31s into OSPF, passive; the proof I
+    run after is written there.
+  - The C691 drag is step 16.
+- **Sitting 3** is fleet-wide writes.
+- **Sitting 4** is the Reload, on r6 only.
+- **Sitting 5** is a first boot through Discovered.
+
+Each step names its expected result and its undo.
+
+**The rest of Phase 7, estimated** (from tonight's rate: thirteen 7.8 families and four findings in
+about five hours):
+
+- **The AI agent's family:** one long session. It covers the 26 routes, the chat panel on every
+  page, three tabs, the collectors and `modules/topology.py`.
+- **The topology service unit:** under an hour, with your host step.
+- **The template-editor-blocked families:** they need today's template editor retired first.
+- **Your walk:** about three hours across the five sittings. Sittings 2 and 4 must avoid
+  08:30 to 09:10 UTC.
+
+So: about two more agent sessions, plus your walk, before 7.8 closes and cutover's last
+condition (no PLANNED row) holds.
+
 ## OVERNIGHT RUN 2026-10-12 (from 05:25 UTC; 23:25 UTC−6): status, kept current per item
 
 Rules as given: no network-device config changes (intent changes prepared with their previews,
@@ -40,7 +150,8 @@ release deployed and checked on the host.
    in the walk, as the step already said.
 6. **C691 snap to grid: board E drawn and signed off (canvas v115), built, compared** (next
    commit); the walk: a drag with the switch on.
-7. Findings closable without the operator (C698, C702 first): not started.
+7. **Findings closable without the operator: C702 (9307392, proved on the host), C698
+   (95825e0), C672 (f721864, docs), C674 (e3269cc) closed.**
 8. **The host health check: DONE 07:18 UTC, read only, on 963eb8e.** Failed units: only
    `openipmi.service` (failed before, 2026-10-09's check too). Active: flask-app, Prometheus,
    Grafana, the three Kea services, Docker, nmas-topology, Alloy; the ZTP responder socket
@@ -343,6 +454,14 @@ step that does not show what it says, and tell the agent the step's number. Time
 11. **DHCP › Subnets and Exclusions**: board C's columns (gateway against intent, DNS, lease
     times, held by Mercury); ZTP's subnet shows the discovery pools; Exclusions empty.
 12. **History › Query › saved views**: board A's list (empty until sitting 2 step 13).
+13. **Today's pages after tonight's 7.8 removals (2026-10-12)**: today's index (`/`) shows seven
+    tabs, Devices, Ansible, NetBox, Agent, Approvals, Git and Logs (Topology, Configure and
+    Monitoring are gone, and the device list has no drag-reorder or Reload Devices button);
+    today's device page has no "SSH Connected" badge. Every v2 page is unchanged. Expect no
+    console error and no broken control on what is left. Nothing to undo.
+14. **Topology with Snap to grid on** (`/v2/topology`, press **Snap to grid** beside Reset
+    layout): a faint dot every 40 units appears and the button shows pressed; press it again and
+    the dots go. Nothing is saved by the switch. Nothing to undo.
 
 ### Sitting 2: single-device and single-record writes (each previewed; you confirm)
 
@@ -468,6 +587,12 @@ first in sitting 2).
        `ping 198.51.100.1 repeat 5 source Loopback0` 5/5, and the same for 198.51.100.3.
     Undo: Intent › Edit to remove the two lines, commit; the deploy preview offers them as a
     Mode B removal with your reason.
+16. **C691, Snap to grid** (closes it): Topology at a desktop width with **Snap to grid** on;
+    drag one device (e.g. s2) a little: a dashed ring marks the dot it will land on; let go.
+    Expect it to land on that dot, the map redrawn with the switch still on, the line under the
+    map naming you as the last to arrange it, and the move on History (Topology layouts). Undo:
+    drag it back (it lands on a dot), or **Reset layout** (withdraws every person's moves, for
+    everyone).
 
 ### Sitting 3: fleet-wide writes (each previewed; you confirm)
 

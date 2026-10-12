@@ -126,6 +126,16 @@ class TestTheStoreIsWatched:
         code, lines = _script().store_report({key: (1, 44)}, {key: (1, 44)}, [key], [])
         assert code == 0 and "DEFECT" not in " ".join(lines)
 
+    def test_the_before_and_after_leaves_the_session_slots_out(self, tmp_path):
+        """Measured on the host after C674's first fix: the capture's own slot lock appeared in
+        "changed during the run", attributed to the app."""
+        (tmp_path / "ssh_slots" / "192.0.2.1").mkdir(parents=True)
+        (tmp_path / "ssh_slots" / "192.0.2.1" / "0.lock").write_text("")
+        (tmp_path / "lists").mkdir()
+        (tmp_path / "lists" / "x.json").write_text("{}")
+        state = _script().store_state(str(tmp_path))
+        assert list(state) == [str(tmp_path / "lists" / "x.json")], state
+
     def test_the_session_slots_are_a_lock_not_the_store(self):
         """C674: every SSH session takes a slot, a flock on ssh_slots/<address>/<n>.lock."""
         mod = _script()
