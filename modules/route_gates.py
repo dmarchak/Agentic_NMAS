@@ -254,6 +254,9 @@ GATES = {
                                        "moved a device, for everyone, recorded (C661)"),
     "topology_v2.positions_reset": _g(K, "withdraws the network's arranged Topology layout, "
                                         "recorded (C661)"),
+    "topology_v2.path_run": _g(R, "traces the path packets take from a device to an address "
+                                  "(board D): each hop's forwarding answer read through the "
+                                  "reads engine and shown to the person, every read recorded"),
     "credential_profiles_v2.save": _g(K,"saves a credential profile from Credentials › "
                                          "Profiles, recorded (who, which, the fields set)"),
     "credential_profiles_v2.delete": _g(K, "deletes a credential profile from Credentials › "

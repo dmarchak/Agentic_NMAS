@@ -107,10 +107,23 @@ select its link on the map.
 
 ## A path {#path}
 
-**Path…** asks for two devices and draws every equal-cost shortest path between them over the
-physical links that are up, each hop with its ports. It is a claim about the graph, never about
-forwarding: what a packet takes is the routing table's. A path across islands says why there is
-none.
+**Path…** traces the path packets take from a device to an address, read from each routed hop's
+own forwarding table, never worked out from the cabling. **From** offers the devices that take
+part in routing; **To** offers each outside peer's peering addresses (an ISP's router, by the
+address each of your edge routers peers with) and each routing device's loopback. **Trace the
+path** reads the first device, follows the next hop its answer names to the device holding
+that address, and reads that one, until the packet is delivered or the trace stops; the button
+says which devices it is reading until the answer arrives. How it works:
+[A path trace](path-trace).
+
+The card names each branch (equal-cost next hops split traffic per flow, so a trace can have
+several), each hop's forwarding answer and the next hop, and how the branch ends: delivered,
+dropped (a device with no route), not read (a device that did not answer or another operation
+holds; what follows is not known, never guessed), a loop, leaving the network (a next hop no
+device of the network holds), or a bound (more than 8 branches or 16 hops). On the map a
+delivered branch is drawn on, one that is not in red to where it stops; the switches between two
+routed hops are dashed, since a trace reads layer 3 only. Every read is on History › Reads.
+**Clear the path** takes it off the map; **Trace again** reads it afresh.
 
 ## Take out a device (what-if) {#what-if}
 

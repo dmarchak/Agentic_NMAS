@@ -421,3 +421,20 @@ def test_topology(tmp_path, monkeypatch):
                widths=((390, 2.0),))
         _shoot("topology-phone-map", "", lambda w: "/v2/topology?list=Lab&tab=map", served,
                widths=((390, 2.0),))
+        # Board D (C693, C694): r1 to r5's peering with r3, traced over the captured answers.
+        from modules import path_trace as P
+        from tests.test_path_trace import _reader
+        net = _value()["networks"]["Lab"]
+        got = P.trace("r1", "198.51.100.1", P.owners(net["nodes"], net["layers"]["bgp"]),
+                      _reader("198.51.100.1"),
+                      {n for n, v in net["nodes"].items() if v.get("managed")})
+        P._write("Lab", {"id": "d" * 32, "state": "done", "source": "r1",
+                         "dest": "198.51.100.1", "actor": "test-person@example.invalid",
+                         "dest_words": "r5 (outside, AS 65002): 198.51.100.1, r3's peering",
+                         "reading": [], "read": ["r1", "r3", "r4"], "runs": ["r-1", "r-2"],
+                         "branches": got["branches"], "delivered": got["delivered"],
+                         "started_at": time.time() - 20, "finished_at": time.time() - 15})
+        path = f"a=r1&b=198.51.100.1&trace={'d' * 32}"
+        _shoot("topology-path", "TopoPathTrace.dc.html",
+               lambda w: f"/v2/topology?list=Lab&{path}", served,
+               widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))

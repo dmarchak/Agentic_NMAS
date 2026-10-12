@@ -300,15 +300,107 @@ def test_a_down_link_is_thick_red_chipped_and_names_its_end(web):
     assert "r1 Gi2 ↔ s3 Gi1/0" in att and "link down at r1" in att
 
 
-def test_a_path_trace_lists_every_shortest_path_with_its_ports(web):
-    html = _get(web, "&a=r1&b=r4")
-    panel = _section(html, "topo-trace-h")
-    assert "never about forwarding" in panel and "r1 Gi2 to s3 Gi1/0" in panel
-    assert html.count("topo-onpath") >= 3
+def _fake_reads(monkeypatch, answers=None):
+    """The reads engine answering from the captured `show ip cef` answers (C693's fixture),
+    recording what it was asked; every other step of the trace is the real one."""
+    from tests.test_path_trace import _fx
+    answers = answers or _fx()["answers"]
+    asked = []
+
+    def run(list_name, hosts, commands, actor, **kw):
+        asked.append((list(hosts), commands, actor, kw.get("purpose")))
+        return {"id": f"run-{len(asked)}", "results": {
+            h: {"state": "answered", "answers": [{"command": c, "state": "answered",
+                                                  "answer": answers[h][c]} for c in commands]}
+            for h in hosts}}
+    monkeypatch.setattr("modules.nsot.reads.run", run)
+    return asked
 
 
-def test_a_path_across_islands_says_why_there_is_none(web):
-    assert "r6 has no link carrying traffic" in _get(web, "&a=r1&b=r6")
+def _trace_post(web, a="r1", b="198.51.100.1", hx=True):
+    from modules.nsot import capture_job
+    r = web["client"].post("/v2/topology/path", data={"list": "Lab", "a": a, "b": b},
+                           headers={"HX-Request": "true"} if hx else {})
+    for job in list(capture_job._jobs):
+        capture_job.wait(job, 10)
+    return r
+
+
+def test_path_offers_the_routing_devices_and_r5_by_each_peering(web):
+    form = _get(web)
+    to = re.search(r'<select id="topo-b"[^>]*>(.*?)</select>', form, re.S).group(1)
+    assert '<option value="198.51.100.1">r5 (outside, AS 65002): 198.51.100.1, r3&#39;s peering' \
+        in to
+    assert '<option value="198.51.100.3">r5 (outside, AS 65002): 198.51.100.3, r4&#39;s peering' \
+        in to
+    frm = re.search(r'<select id="topo-a"[^>]*>(.*?)</select>', form, re.S).group(1)
+    assert "<option>r1</option>" in frm and "<option>r6</option>" not in frm
+    assert 'hx-post="/v2/topology/path"' in form and "Trace the path" in form
+
+
+def test_a_trace_is_the_path_packets_take_read_hop_by_hop(web, monkeypatch):
+    asked = _fake_reads(monkeypatch)
+    r = _trace_post(web)
+    assert r.status_code == 200
+    there = r.headers["HX-Push-Url"]
+    assert there.startswith("/v2/topology?list=Lab&a=r1&b=198.51.100.1&trace=")
+    assert [h for h, *_ in asked] == [["r1"], ["r3", "r4"]]
+    assert asked[0][1:] == (["show ip cef 198.51.100.1"], "test-person@example.invalid",
+                            "Path: r1 to 198.51.100.1")
+    html = _get(web, "&" + there.split("?", 1)[1].split("&", 1)[1])
+    card = _section(html, "topo-trace-h")
+    assert ("r1 to r5 (outside, AS 65002): 198.51.100.1, r3&#39;s peering: 2 equal-cost "
+            "branches, 1 delivers, 1 does not") in card
+    assert "1 of 2 branches not delivered" in card
+    assert "dropped at r4: no route to 198.51.100.1" in card and "delivered to r5" in card
+    assert "across s3, s4 <span class=\"faint\">(layer 2, not read)</span>" in card
+    assert "0.0.0.0/0, next hop 10.255.3.14 (r4) out Gi2" in card
+    assert "198.51.100.1/32 attached to Gi2: r5&#39;s address" in card
+    assert "r3 to r5, cabled directly" in card
+    assert "Read <time" in card and "from r1, r3, r4 (2 reads" in card
+    # The map: the delivered branch on, the dropped one in red, the switched hops dashed.
+    assert html.count("topo-pathglow topo-path-on") == 3
+    assert html.count("topo-pathglow topo-path-drop") == 2
+    assert html.count("topo-path-l2") == 4
+    assert 'topo-onpath topo-onpath-drop" data-node="r4"' in html.replace(
+        " topo-outside", "").replace(" topo-spof", "")
+    # The region listens for the trace while one is shown, and Trace again carries it.
+    assert "nmas:topology from:body, nmas:path_trace from:body" in html
+    assert "Trace again" in card
+
+
+def test_a_running_trace_is_busy_on_its_button(web, monkeypatch):
+    from modules import path_trace
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(web["dir"]))
+    path_trace._write("Lab", {"id": "a" * 32, "state": "running", "source": "r1",
+                              "dest": "198.51.100.1", "dest_words": "198.51.100.1",
+                              "reading": ["r3", "r4"], "read": ["r1"], "runs": [],
+                              "branches": [], "started_at": 1760000000.0})
+    html = _get(web, f"&a=r1&b=198.51.100.1&trace={'a' * 32}")
+    assert '<button type="button" class="btn btn-small" data-op="path-trace" disabled aria-busy="true">Tracing… ' \
+           'reading r3, r4</button>' in html
+    assert "Reading r3, r4 now" in _section(html, "topo-trace-h")
+    assert "Trace again" not in html
+
+
+def test_a_refused_trace_names_both_sides_and_asks_nothing(web, monkeypatch):
+    asked = _fake_reads(monkeypatch)
+    r = _trace_post(web, a="r6")
+    body = r.get_data(as_text=True)
+    assert r.status_code == 400 and not asked
+    assert ("Not traced:</strong> From is &#39;r6&#39;, which is not one of this network&#39;s "
+            "routing devices (r1, r2, r3, r4, s1, s2, s3, s4). Nothing was asked") in body
+    assert not (web["dir"] / "paths").exists()
+
+
+def test_a_trace_id_with_no_record_and_an_unreadable_one_say_so(web):
+    html = _get(web, f"&trace={'b' * 32}")
+    assert "There is no recorded trace" in _section(html, "topo-trace-h")
+    (web["dir"] / "paths").mkdir()
+    (web["dir"] / "paths" / ("c" * 32 + ".json")).write_text("{")
+    html = _get(web, f"&trace={'c' * 32}")
+    assert "The trace's record cannot be read" in _section(html, "topo-trace-h")
+    assert "There is no recorded trace" in _section(_get(web, "&trace=../x"), "topo-trace-h")
 
 
 def test_a_what_if_names_who_loses_the_rest(web):

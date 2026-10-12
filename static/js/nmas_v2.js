@@ -58,7 +58,9 @@
               // A History › Query view saved, pinned or removed (C667).
               'saved_views',
               // A device asked anew, was picked or went quiet on the ZTP segment (board L).
-              'ztp_discovery'];
+              'ztp_discovery',
+              // A Topology path trace read a hop, or finished (board D, C693).
+              'path_trace'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -329,6 +331,7 @@
   function relayDhcp() { relay('dhcp'); }
   function relaySavedViews() { relay('saved_views'); }
   function relayDiscovery() { relay('ztp_discovery'); }
+  function relayPathTrace() { relay('path_trace'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -414,6 +417,7 @@
     NMAS.subscribe('dhcp', 'v2Dhcp', relayDhcp);
     NMAS.subscribe('saved_views', 'v2SavedViews', relaySavedViews);
     NMAS.subscribe('ztp_discovery', 'v2Discovery', relayDiscovery);
+    NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

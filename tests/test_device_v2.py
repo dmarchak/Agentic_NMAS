@@ -647,6 +647,8 @@ class TestTheShippedScripts:
                                                     "/v2/templates?list=Lab",
                                                     "/v2/credentials/profiles?list=Lab",
                                                     "/v2/topology?list=Lab",
+                                                    # A path trace shown (board D, C693).
+                                                    "/v2/topology?list=Lab&trace=" + "e" * 32,
                                                     "/v2/logs?list=Lab",
                                                     "/v2/dhcp?list=Lab",
                                                     "/v2/onboard/discovered?list=Lab",
@@ -681,7 +683,9 @@ class TestTheShippedScripts:
         # pinned or removed elsewhere, C667).
         # +1 2026-10-11: ztp_discovery (Onboard devices › Discovered redraws when a device
         # asks anew, is picked or goes quiet, board L).
-        assert len(keys) == 39
+        # +1 2026-10-12: path_trace (Topology redraws a shown path trace as each hop is read
+        # and when it ends, board D, C693).
+        assert len(keys) == 40
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

@@ -13,7 +13,8 @@ Compared again 2026-10-11 (C661: the operator, "User should be able to move devi
 Walked on the host 2026-10-11 (335c0ee, deployed 03:25 UTC): the reader's first read laid the map out by springs (its layout carries a frame, no bands; 11 nodes), drawn from that stored document at 1440 and 390. The walk found the first view read 93% on a map taller than its box (the zoom measured by widths alone), hiding Labels Auto; fixed with C668 (the zoom against the true fit; the phone's readable floor only under 700 px), drawn again: 100%, every chip and port. Compared again for C668 (a selected link's card closes; the cards smaller). Compared again for C669 (2026-10-11: a saved layout that cannot be read is said under the map and Reset layout sets it aside; nothing the boards draw moved).
 Templates compared: templates/v2/topology.html, templates/v2/_topology_map.html
 Compared again 2026-10-12 (C687): the map's summary moved from an SVG `<title>` to its `aria-label`, so the browser no longer draws its own tooltip over a link's card; nothing drawn on the board moved.
-Templates sha256: `0cc9803cc87de94947fd6162f4599eac6eb11727945c87b4e3d281c137a0c824`
+Compared again 2026-10-12 (C693, C694): board D, `TopoPathTrace.dc.html` (canvas version 114, signed off under the Phase 7 mode), beside the page at 1440, 1280 and 390, a trace of r1 to r5's peering with r3 drawn from the captured `show ip cef` answers (`topology-path` in tests/test_board_shots.py). Its regions are in the section "Path… (board D)" below; the rest of the page did not move, except that the Path… popover now opens from its left edge (it opened off the page once Path… wrapped to the toolbar's second row).
+Templates sha256: `bb6dcd5148b0b2597d50f7f620fe31a205ebb7f3f6a6be6c2dc5d77441601617`
 
 A verdict is **same**, **deviation** (a difference with its approval log line and its reason: data,
 not design, or the operator's own decision), or **later** (a later step of the plan).
@@ -63,3 +64,18 @@ not design, or the operator's own decision), or **later** (a later step of the p
 | Entries | full-width rows: both ends' icons, "r4 Gi4 ↔ r5 eth2", what is wrong | the same | **same** |
 | Sheet | the selected link: ends with icons; Link, BGP, OSPF; r4's Neighbours, Show on the map | the same, held at the bottom; its grab closes it | **same** |
 | Map tab | "Map: drag to pan, pinch to zoom. Devices are moved on a wider screen." (redrawn for C661) | the same words; the map starts readable (at least 0.6 px a map unit, centred) and pans and pinches; 100% fits the whole | **same** |
+
+## Path… (board D, TopoPathTrace)
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The question | a card: From (r1), To (r5 by each peering address, then loopbacks), Trace the path, How does this work? | the same, at the top of the trace's card while one is shown (the Path… popover otherwise); To offers r5's two peering addresses with their AS and each routing device's loopback | **same** |
+| Busy | "Tracing… read r1, r3" on the button; the result replaces the card | "Tracing… reading r3, r4" on the button, disabled, until the record says done; the card says what it is reading | **same** |
+| Heading | "r1 to r5 (198.51.100.1): two equal-cost branches, one delivers, one drops" | "r1 to r5 (outside, AS 65002): 198.51.100.1, r3's peering: 2 equal-cost branches, 1 delivers, 1 does not" (the destination as To named it; numbers as figures) | **deviation** (log: C693: board D's wordings follow the data) |
+| Chip | "1 of 2 branches dropped", warn colour | "1 of 2 branches not delivered", danger colour (a branch can also end not read, in a loop or leaving the network) | **deviation** (log: C693: board D's wordings follow the data) |
+| Why it splits | r1's table splits traffic between two next hops, equal cost; per flow | the same, without "its OSPF default route": `show ip cef` does not name the protocol | **deviation** (log: C693: board D's wordings follow the data) |
+| Table | Branch, Hop, its forwarding answer, To the next hop; each branch's hops; the branch's end on its last row | the same columns; each hop's answer is its own branch's next hop and the device holding it; "across s3, s4 (layer 2, not read)" or "r3 to r5, cabled directly"; the branch's end on a row of its own, red when not delivered | **same** |
+| Footer | read time, the devices, the reads on History › Reads; what the map draws | the same, the link opening the trace's last read | **same** |
+| Actions | Clear the path · Trace again | the same, as buttons in a row, How does this work? beside Trace again | **same** |
+| The map | (not drawn on the board; its words) the delivered branch on, the dropped one red to where it stops, the switches dashed | the same: accent glow on the delivered branch's links, danger on the dropped one's, dashed between routed hops, each hop's device ringed in its branch's colour | **same** |
+| Phone (390) | not drawn | the card above the tabs' content, the form wrapping, the table in its scroller | **same** as the desktop's regions |

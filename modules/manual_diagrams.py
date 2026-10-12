@@ -1119,6 +1119,30 @@ def logging_path():
     ])
 
 
+def path_trace():
+    return svg(470, (
+        "A path trace: From and To are checked before any device is asked; the first device is "
+        "asked show ip cef for the destination through the reads engine, held while read and "
+        "recorded; each next hop its answer names is followed to the device holding that "
+        "address, which is read next, equal-cost next hops branching; a branch stops when the "
+        "packet is delivered, dropped, not readable, in a loop, leaves the network, or reaches a "
+        "bound; the trace is recorded with each read, and Topology draws it."), [
+        lanes(20, 464),
+        doc("box", 14, 40, 186, 36, "From and To", "checked first"), num(14, 40, 1),
+        t(14, 92, "refused: no device asked", "sm"),
+        band(110, 150, "The trace · a job, hop by hop"),
+        device(262, 128, 118, 110, "Each hop", "show ip cef", top=True),
+        *rows([(146, "read", 2, "Held, then read", "a step's devices together"),
+               (196, None, 3, "Its next hops followed", "to the device holding each")]),
+        doc("box", 14, 276, 186, 40, "Each branch ends", "delivered, dropped, not read"),
+        num(14, 276, 4),
+        t(14, 334, "a loop, leaves, or a bound", "sm"),
+        store(14, 352, 186, 40, "The trace's record", "with each read"), num(14, 352, 5),
+        t(14, 414, "Topology draws it; History shows the reads.", "sm"),
+        t(14, 444, "No device's configuration is changed.", "sm"),
+    ])
+
+
 def privileged():
     return svg(520, (
         "Run a privileged command: the plan refuses a command that is not offered or not yet "
@@ -1399,6 +1423,7 @@ DIAGRAMS = {
     "dhcp-exclusion": dhcp_exclusion,
     "show-commands": show_commands,
     "logging-path": logging_path,
+    "path-trace": path_trace,
     "privileged": privileged,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,

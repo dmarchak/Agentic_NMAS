@@ -27,16 +27,16 @@ def _list_name() -> str:
         listref.active().name
 
 
-def _ctx(**extra) -> dict:
+def _ctx(values=None, **extra) -> dict:
     from modules import topology_page
     from modules.preview_confirm import confirm_part
 
-    v = topology_page.view(_list_name(), request.args)
+    v = topology_page.view(_list_name(), request.args if values is None else values)
     return dict({"t": v, "may": confirm_part(request, "configure")}, **extra)
 
 
-def _region(code: int = 200, **extra):
-    return _strict(render_template("v2/_topology_map.html", **_ctx(**extra)), code)
+def _region(code: int = 200, values=None, **extra):
+    return _strict(render_template("v2/_topology_map.html", **_ctx(values, **extra)), code)
 
 
 def _result(op: dict):
@@ -118,6 +118,43 @@ def positions_save():
     if not got["ok"]:
         return _region(409, op={"state": "refused", "refused": got["error"]})
     return _result(dict(got, state="moved", device=moved))
+
+
+@bp.route("/path", methods=["POST"])
+def path_run():
+    """Path… (board D): trace the path packets take from a device to an address, as the
+    verified person, as a job reading each hop's forwarding table through the reads engine
+    (each read recorded). Refused now, naming what it compared, with nothing asked; else the
+    region drawn with the trace's record, which redraws as `path_trace` is announced."""
+    from flask import redirect, url_for
+
+    from modules import identity, path_trace, topology_page
+
+    list_name = _list_name()
+    st = topology_page.stored()
+    net = ((st.get("value") or {}).get("networks") or {}).get(list_name) or {}
+    nodes, bgp = net.get("nodes") or {}, (net.get("layers") or {}).get("bgp") or []
+    a, b = (request.form.get("a") or "").strip(), (request.form.get("b") or "").strip()
+    words = next((d["words"] for d in path_trace.destinations(nodes, bgp) if d["value"] == b),
+                 b)
+    got = path_trace.start(list_name, a, b, words, identity.request_actor(),
+                           nodes=nodes, bgp=bgp)
+    values = {k: request.form.get(k) for k in topology_page.ASKS
+              if request.form.get(k) is not None}
+    values.update(a=a, b=b, trace=got.get("trace", ""))
+    s = topology_page.ask(values)
+    there = url_for("topology_v2.page") + topology_page.qs(list_name, s)
+    if not request.headers.get("HX-Request"):
+        if "refused" in got:
+            from routes.v2 import _page
+            return _page("v2/topology.html", active_nav="topology", list_name=list_name,
+                         **_ctx(values, path_refused=got["refused"]))
+        return redirect(there)
+    if "refused" in got:
+        return _region(400, values, path_refused=got["refused"])
+    resp = _region(200, values)
+    resp.headers["HX-Push-Url"] = there
+    return resp
 
 
 @bp.route("/positions/reset", methods=["POST"])

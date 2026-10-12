@@ -3,8 +3,9 @@
 mockups canvas, signed off 2026-10-04 in their fourth pass, NSOT_STAGE7_PLAN 15.8 and 15.9).
 
 Nothing here reads a device or Prometheus: the reader (`readers/topology_graph.py`) did, and this
-draws what it stored, with its time. A path trace and a what-if are searches over that stored
-graph, computed when a person asks: never per device, never a read.
+draws what it stored, with its time. A what-if is a search over that stored graph, computed when
+a person asks. A path is the trace's record (modules/path_trace.py, Topology board D): the job
+read each hop; this draws what it recorded.
 
 **What the boards draw, and so what this computes** (docs/fidelity/topology.md compares them
 region by region):
@@ -105,7 +106,8 @@ ASKS = {"p": None,          # the protocols toggled on, comma-separated; absent:
         "z": "100",         # zoom, one of ZOOMS
         "weak": "1",        # weak points tagged on the map
         "sel": "",          # the selected link's id
-        "a": "", "b": "",   # a path from a to b
+        "a": "", "b": "",   # Path…'s From (a device) and To (an address)
+        "trace": "",        # the path trace's record id (board D)
         "out": "",          # a device taken out (what-if)
         "q": "",            # find on the map
         "f": "",            # filter the attention list
@@ -588,12 +590,11 @@ def view(list_name: str, values) -> dict:
     out["critical"] = an.get("critical") or []
     out["list_groups"] = _list_groups(nodes, phys)
     out["fleet"] = fleet
-    if s["a"] and s["b"]:
-        trace = path_trace(phys, s["a"], s["b"])
-        if trace.get("ok"):
-            trace["hop_words"] = [[_ports(phys, p[i], p[i + 1]) for i in range(len(p) - 1)]
-                                  for p in trace["paths"]]
-        out["trace"] = trace
+    from modules import path_trace
+    out["path_from"] = path_trace.sources(nodes)
+    out["path_to"] = path_trace.destinations(nodes, layers.get("bgp") or [])
+    if s["trace"]:
+        out["trace"] = trace_view(list_name, s["trace"], phys, nodes)
     if s["out"]:
         out["what_if"] = what_if(phys, nodes, s["out"])
     out["matches"] = _search(nodes, phys, s["q"]) if s["q"] else []
@@ -636,40 +637,39 @@ def _attention(links: list, weak: list, s: dict) -> dict:
             "filtered": bool(needle) or s["show"] != "all"}
 
 
-def _layer_graph(links: list):
-    import networkx as nx
-    g = nx.MultiGraph()
-    for l in links:
-        if l.get("state") in ("up", "unknown"):
-            g.add_edge(l["a"], l["b"])
-    return g
+def trace_view(list_name: str, trace_id: str, phys: list, nodes: dict) -> dict:
+    """Path…'s card and the map's lit links from the trace's record (board D): ``{state, ...}``
+    with *state* ``running``, ``done``, ``failed``, ``unknown`` (no record by that id) or
+    ``unreadable`` (a record that cannot be read: a different state from absent)."""
+    from modules import path_trace
 
-
-def path_trace(links: list, a: str, b: str) -> dict:
-    """Every equal-cost shortest path from *a* to *b* in the physical graph, by hop count: a
-    claim about the GRAPH, never about forwarding (the brief, Q8)."""
-    import networkx as nx
-
-    g = _layer_graph(links)
-    if a not in g or b not in g:
-        missing = [d for d in (a, b) if d not in g]
-        return {"ok": False, "why": f"{', '.join(missing)} has no link carrying traffic, so no "
-                                    "path is drawn"}
     try:
-        paths = sorted(nx.all_shortest_paths(g, a, b))
-    except nx.NetworkXNoPath:
-        return {"ok": False, "why": f"no path joins {a} and {b}: they are in different islands"}
-    edges = {tuple(sorted(p[i:i + 2])) for p in paths for i in range(len(p) - 1)}
-    return {"ok": True, "paths": paths, "hops": len(paths[0]) - 1, "edges": sorted(edges),
-            "nodes": sorted({n for p in paths for n in p})}
-
-
-def _ports(phys: list, a: str, b: str) -> str:
-    for l in phys:
-        if {l["a"], l["b"]} == {a, b}:
-            ends = {l["a"]: l["port_a"], l["b"]: l["port_b"]}
-            return f"{label(a)} {ends[a] or '?'} to {label(b)} {ends[b] or '?'}"
-    return f"{label(a)} to {label(b)}"
+        rec = path_trace.get(list_name, trace_id)
+    except ValueError:
+        rec = None
+    if rec is None:
+        return {"state": "unknown", "id": trace_id, "keep": path_trace.KEEP}
+    if "unreadable" in rec:
+        return {"state": "unreadable", "id": trace_id, "why": rec["unreadable"]}
+    view_ = dict(rec)
+    view_["lit"] = path_trace.drawn(rec, phys, nodes)
+    ends = [b["end"] for b in rec.get("branches") or []]
+    view_["n"] = len(ends)
+    view_["not_delivered"] = sum(1 for e in ends if e != "delivered")
+    view_["all_ok"] = bool(ends) and not view_["not_delivered"]
+    import datetime
+    at = rec.get("finished_at") or rec.get("started_at")
+    view_["read_iso"] = (datetime.datetime.fromtimestamp(at, datetime.timezone.utc)
+                         .strftime("%Y-%m-%dT%H:%M:%SZ") if at else "")
+    for b in view_.get("branches") or []:
+        b["end_words"] = path_trace.END_WORDS.get(b.get("end"), b.get("end"))
+        for h in b["hops"]:
+            if h.get("to"):
+                edges = path_trace.l2_path(phys, h["device"], h.get("iface") or "", h["to"],
+                                           path_trace.switches(nodes))
+                inner = sorted({n for e in edges for n in e} - {h["device"], h["to"]})
+                h["across"], h["cabled"] = inner, bool(edges)
+    return view_
 
 
 def _list_groups(nodes: dict, phys: list) -> list:
@@ -852,7 +852,8 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
     geo = dict(geo, positions={k: tuple(v) for k, v in geo["positions"].items()})
     pos, height, width = geo["positions"], geo["height"], geo["width"]
     trace = view_.get("trace") or {}
-    on_path = {tuple(e) for e in trace.get("edges") or []} if trace.get("ok") else set()
+    lit = trace.get("lit") or {}
+    on_path = lit.get("edges") or {}
     wi = view_.get("what_if") or {}
     gone, lost = wi.get("device"), set(wi.get("lost") or [])
     # Labels are drawn unless Off: Auto's are hidden by the browser while the map is zoomed out
@@ -959,11 +960,11 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                           pa_x=round(pax), pa_y=round(pay),
                           pb_x=round(pbx), pb_y=round(pby),
                           chip_list=chips, card_x=round(cx), card_y=round(cy), card_h=card_h,
-                          path=tuple(sorted((l["a"], l["b"]))) in on_path,
+                          path=on_path.get("|".join(sorted((l["a"], l["b"])))),
                           sel=l["id"] == s["sel"], labels=labels,
                           gone=gone in (l["a"], l["b"])))
     matches = set(view_.get("matches") or [])
-    on_trace = set(trace.get("nodes") or [])
+    on_trace = lit.get("nodes") or {}
     out_nodes = []
     for name in sorted(pos):
         n = nodes.get(name) or {}
@@ -974,7 +975,7 @@ def _svg(nodes, phys, links, weak, s, view_, bgp=()) -> dict:
                           "managed": n.get("managed", False), "outside": n.get("outside", False),
                           "answering": n.get("answering", True) or not n.get("managed"),
                           "l3": cls == "l3switch", "tags": tags.get(name, []),
-                          "match": name in matches, "path": name in on_trace,
+                          "match": name in matches, "path": on_trace.get(name, ""),
                           "gone": name == gone, "lost": name in lost,
                           "island": any(t["cls"] == "isl" for t in tags.get(name, [])),
                           "spof": any(t["cls"] == "spof" for t in tags.get(name, [])),

@@ -89,6 +89,8 @@ VOCABULARY = {
     "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
     "logs": "the fleet's syslog counted per day (the Logs view's reader, C652)",
     "dhcp": "the network's Kea: subnets, reservations and leases (the DHCP reader, C529)",
+    "path_trace": "a Topology path trace (board D): a hop read, or the trace finished, its "
+                  "record ready to read by id",
     "ztp_discovery": "the devices asking on the ZTP segment that the tool does not know (the "
                      "discovery reader, board L)",
     "saved_views": "History › Query's saved views: their titles, who saved them, pinned or not "
@@ -133,6 +135,7 @@ ANNOUNCERS = {
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
     # modules/nsot/template_coverage.py: a coverage check's end (Templates › Coverage).
     "template-coverage": ("templates",),
+    "path-trace": ("path_trace",),             # modules/path_trace.py: a level read, and its end
     # routes/adopt_v2.py: an adoption's end (the inventory row, its first golden, NetBox).
     "adopt": ("inventory", "goldens", "netbox", "remote"),
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
@@ -171,6 +174,7 @@ DECLARED = {
     "topology_v2.expected_withdraw": ("topology",),
     "topology_v2.positions_save": ("topology",),
     "topology_v2.positions_reset": ("topology",),
+    "topology_v2.path_run": ("path_trace", "reads"),
     # C529 step 2: a reservation written to Kea and recorded in the network's repository.
     "dhcp_v2.reservation_confirm": ("dhcp",),
     "dhcp_v2.subnet_confirm": ("dhcp",),

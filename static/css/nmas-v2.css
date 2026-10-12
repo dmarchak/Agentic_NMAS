@@ -1318,9 +1318,10 @@ select { max-width: 100%; }
 .topo-pop > summary { list-style: none; cursor: pointer; }
 .topo-pop > summary::-webkit-details-marker { display: none; }
 .topo-pop[open] > summary { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
-.topo-popform { position: absolute; z-index: 6; right: 0; top: calc(100% + 4px); display: flex; gap: 8px; align-items: center;
+.topo-popform { position: absolute; z-index: 6; left: 0; top: calc(100% + 4px); display: flex; gap: 8px; align-items: center;
   flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
-  box-shadow: var(--shadow); padding: 10px 12px; font-size: 13px; width: max-content; max-width: 90vw; }
+  box-shadow: var(--shadow); padding: 10px 12px; font-size: 13px; width: max-content;
+  max-width: min(640px, calc(100vw - 32px)); }
 .topo-tabs, .topo-narrow, .topo-narrow-inline { display: none; }
 .topo-body { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
 .topo-pane-map { flex: 999 1 680px; min-width: 0; }
@@ -1356,6 +1357,19 @@ select { max-width: 100%; }
 .topo-line.topo-gone { stroke-opacity: .25; }
 .topo-glow { fill: none; stroke: var(--accent); stroke-width: 14; stroke-linecap: round; stroke-opacity: .2; }
 .topo-pathglow { stroke-opacity: .35; stroke-width: 10; }
+/* Topology board D (C693): a delivered branch in the accent, one that is not in danger; the
+   switches between routed hops dashed, since layer 2 is not read. */
+.topo-pathglow.topo-path-drop { stroke: var(--danger); }
+.topo-pathglow.topo-path-l2 { stroke-dasharray: 14 10; stroke-linecap: butt; }
+.topo-onpath-drop .topo-ic { stroke: var(--danger); }
+.topo-trace-table td { vertical-align: top; }
+.topo-trace-drop { color: var(--danger); }
+.topo-inline { display: inline-flex; gap: 4px; align-items: center; }
+.topo-trace-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.topo-trace-acts form { margin: 0; }
+.topo-cardform { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--line-2); }
+.topo-cardform select { font: inherit; font-size: 13px; padding: 6px 9px; max-width: 100%; }
 .topo-leader { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 2 2; }
 .topo-anchor { fill: var(--ink-3); }
 .topo-port { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-2); text-anchor: middle;

@@ -19,7 +19,17 @@
 <input type="hidden" name="list" value="{{ t.list }}">
 {%- for k, v in t.s.items() if k not in skip and v not in (none, '') %}{% if k == 'p' %}<input type="hidden" name="p" value="{{ v | join(',') }}">{% else %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
 {%- endmacro -%}
-<div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body" hx-swap="outerHTML">
+{%- macro path_form(t, tr, sfx='', cls='topo-popform') -%}
+    <form method="post" action="{{ url_for('topology_v2.path_run') }}" hx-post="{{ url_for('topology_v2.path_run') }}" hx-target="#topo" hx-swap="outerHTML" class="{{ cls }}">
+      {{- hidden_state(t, ('a', 'b', 'sel', 'trace')) }}
+      <label for="topo-a{{ sfx }}">From</label>
+      <select id="topo-a{{ sfx }}" name="a"><option value="">a device…</option>{% for d in t.path_from %}<option{% if d == t.s.a %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
+      <label for="topo-b{{ sfx }}">to</label>
+      <select id="topo-b{{ sfx }}" name="b"><option value="">an address…</option>{% for d in t.path_to %}<option value="{{ d.value }}"{% if d.value == t.s.b %} selected{% endif %}>{{ d.words }}</option>{% endfor %}</select>
+      <span class="op-act">{% if tr.state == 'running' %}<button type="button" class="btn btn-small" data-op="path-trace" disabled aria-busy="true">Tracing… reading {{ tr.reading | join(', ') }}</button>{{ how('path-trace', compact=True, op='a path trace') }}{% else %}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}{% endif %}</span>
+    </form>
+{%- endmacro -%}
+<div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body{{ ', nmas:path_trace from:body' if t.s.trace }}" hx-swap="outerHTML">
 <svg class="topo-defs" width="0" height="0" aria-hidden="true"><defs>{{ t.symbols | safe }}</defs></svg>
 {%- if op.state == 'refused' %}
 <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<p><strong>Not changed:</strong> {{ op.refused }}.</p></div>
@@ -99,16 +109,10 @@
     {{- go(t, {'z': t.zooms[[zi + 1, t.zooms | length - 1] | min], 'tab': 'map'}, '+', 'seg-btn', none, 'Zoom in', 'in') }}
   </div>
   {{ go(t, {'weak': '0' if t.s.weak == '1' else '1', 'tab': 'map'}, 'Weak points', 'btn btn-small topo-wide' ~ (' on' if t.s.weak == '1'), t.s.weak == '1') }}
-  <details class="topo-pop topo-wide" data-keep="topo-path"{% if t.s.a or t.s.b %} open{% endif %}>
+  {%- set tr = t.trace or {} %}
+  <details class="topo-pop topo-wide" data-keep="topo-path{{ '-shown' if t.trace or path_refused }}"{% if (t.s.a or t.s.b) and not t.trace and not path_refused %} open{% endif %}>
     <summary class="btn btn-small">Path…</summary>
-    <form method="get" action="{{ page }}" hx-get="{{ region }}" hx-target="#topo" hx-swap="outerHTML" class="topo-popform">
-      {{- hidden_state(t, ('a', 'b', 'sel')) }}
-      <label for="topo-a">From</label>
-      <select id="topo-a" name="a"><option value="">a device…</option>{% for d in t.fleet %}<option{% if d == t.s.a %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
-      <label for="topo-b">to</label>
-      <select id="topo-b" name="b"><option value="">a device…</option>{% for d in t.fleet %}<option{% if d == t.s.b %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
-      <span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"><span class="op-idle">Show the path</span><span class="op-busy">Tracing…</span></button>{{ how('topology', 'path', compact=True, op='a path trace') }}</span>
-    </form>
+    {{ path_form(t, tr) }}
   </details>
   <details class="topo-pop topo-wide" data-keep="topo-whatif"{% if t.s.out %} open{% endif %}>
     <summary class="btn btn-small">Take out a device (what-if)…</summary>
@@ -121,6 +125,52 @@
   </details>
 </div>
 
+{%- if path_refused %}
+<section class="card topo-panel" aria-labelledby="topo-trace-h">
+  {{ path_form(t, tr, '-c', 'topo-cardform') }}
+  <h2 id="topo-trace-h">Path: not traced</h2>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not traced:</strong> {{ path_refused }}. Nothing was asked of any device.</p></div>
+</section>
+{%- elif t.trace %}
+<section class="card topo-panel" id="topo-trace" aria-labelledby="topo-trace-h"{% if tr.state == 'running' %} aria-busy="true"{% endif %}>
+  {{ path_form(t, tr, '-c', 'topo-cardform') }}
+  {%- if tr.state == 'unknown' %}
+  <h2 id="topo-trace-h">Path</h2>
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<p>There is no recorded trace {{ tr.id }} on {{ t.list }}: only the latest {{ tr.keep }} are kept. Trace it again from Path….</p></div>
+  {%- elif tr.state == 'unreadable' %}
+  <h2 id="topo-trace-h">Path</h2>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>The trace's record cannot be read: {{ tr.why }}. Nothing is drawn rather than a path that may be wrong.</p></div>
+  {%- else %}
+  <h2 id="topo-trace-h">{{ tr.source }} to {{ tr.dest_words }}{% if tr.state == 'done' and tr.n %}: {% if tr.n == 1 %}one path, {{ 'delivered' if tr.all_ok else tr.branches[0].end }}{% else %}{{ tr.n }} equal-cost branches, {{ tr.delivered }} deliver{{ 's' if tr.delivered == 1 }}{% if tr.not_delivered %}, {{ tr.not_delivered }} do{{ 'es' if tr.not_delivered == 1 }} not{% endif %}{% endif %}{% endif %}</h2>
+  {%- if tr.state == 'running' %}
+  <p class="op-wait">Reading {{ tr.reading | join(', ') }} now: <span class="mono">show ip cef {{ tr.dest }}</span>. Each hop's answer decides the next; the path appears here when the last arrives.</p>
+  {%- elif tr.state == 'failed' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The trace failed:</strong> {{ tr.error }}. What was read is on History › Reads.</p></div>
+  {%- else %}
+  <p>{% if tr.not_delivered %}{{ badge(tr.not_delivered ~ ' of ' ~ tr.n ~ ' branch' ~ ('es' if tr.n != 1) ~ ' not delivered', 'danger') }}{% else %}{{ badge('delivered', 'ok') }}{% endif %}</p>
+  {%- if tr.n > 1 %}<p class="small">{{ tr.source }}'s forwarding table splits traffic for {{ tr.dest }} between equal-cost next hops; the device chooses per flow, so some flows take each branch.</p>{% endif %}
+  <div class="table-wrap"><table class="table topo-trace-table">
+    <thead><tr><th scope="col">Branch</th><th scope="col">Hop</th><th scope="col">Its forwarding answer for {{ tr.dest }}</th><th scope="col">To the next hop</th></tr></thead>
+    <tbody>
+    {%- for b in tr.branches %}
+    {%- for h in b.hops %}
+    <tr>
+      {%- if loop.first %}<td rowspan="{{ b.hops | length + 1 }}">{{ badge(b.end_words, 'ok' if b.end == 'delivered' else 'danger') }}</td>{% endif %}
+      <td class="mono">{{ h.device }}</td>
+      <td class="mono small">{{ h.words }}</td>
+      <td class="small">{% if h.across %}across {{ h.across | join(', ') }} <span class="faint">(layer 2, not read)</span>{% elif h.to and h.cabled %}{{ h.device }} to {{ h.to }}, cabled directly{% elif h.to %}<span class="faint">the cabling from {{ h.device }} to {{ h.to }} is not known</span>{% endif %}</td>
+    </tr>
+    {%- endfor %}
+    <tr><td colspan="3" class="small{{ ' topo-trace-drop' if b.end != 'delivered' }}">{{ b.words }}</td></tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  <p class="faint small">Read {{ stamp(tr.read_iso) }} from {{ tr.read | join(', ') }} ({{ tr.runs | length }} read{{ 's' if tr.runs | length != 1 }}{% if tr.runs %}, on <a href="{{ url_for('reads_v2.show_commands_result', run_id=tr.runs[-1], list=t.list) }}">History › Reads</a>{% endif %}). On the map: a delivered branch drawn on, one that is not in red to where it stops; the switches between routed hops dashed, since layer 2 is not read.</p>
+  {%- endif %}
+  {%- endif %}
+  <div class="topo-trace-acts">{{ go(t, {'a': '', 'b': '', 'trace': ''}, 'Clear the path') }}{% if tr.state in ('done', 'failed') %}<form class="topo-inline" method="post" action="{{ url_for('topology_v2.path_run') }}" hx-post="{{ url_for('topology_v2.path_run') }}" hx-target="#topo" hx-swap="outerHTML">{{ hidden_state(t, ('trace', 'sel')) }}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"><span class="op-idle">Trace again</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}</form>{% endif %}</div>
+</section>
+{%- endif %}
 <div class="topo-body">
 <section class="topo-pane topo-pane-map" aria-label="The map">
 {%- if t.collapsed %}
@@ -137,7 +187,7 @@
 <div class="topo-scroll" data-topo-view="{{ t.list }}">
 <svg class="topo-map topo-z{{ g.z }} topo-labels-{{ t.s.labels }}{{ ' topo-far' if g.z | int < 100 }}{{ ' topo-ports-on' if t.s.ports == 'on' else ' topo-ports-off' if t.s.ports == 'off' else ' topo-ports-auto' }}" viewBox="0 0 {{ g.width }} {{ g.height }}" data-width="{{ g.width }}" data-height="{{ g.height }}" data-z="{{ g.z }}" role="img" aria-label="{{ t.list }}: {{ t.summary.devices }} devices and {{ t.summary.links }} links; {{ c.bad }} down or a neighbour missing, {{ c.warn }} not as intended, {{ c.unread }} not read">
   {%- for l in g.links %}
-  {%- if l.sel or l.path %}<path class="topo-glow{{ ' topo-pathglow' if l.path and not l.sel }}" d="{{ l.d }}"></path>{% endif %}
+  {%- if l.sel or l.path %}<path class="topo-glow{% if l.path and not l.sel %} topo-pathglow topo-path-{{ l.path.cls }}{{ ' topo-path-l2' if l.path.l2 }}{% endif %}" d="{{ l.d }}"></path>{% endif %}
   <path class="topo-line topo-{{ l.cls }}{{ ' topo-ronly' if l.routing_only }}{{ ' topo-gone' if l.gone }}" d="{{ l.d }}" data-a="{{ l.a }}" data-b="{{ l.b }}"></path>
   {%- endfor %}
   {%- if g.labels %}
@@ -148,7 +198,7 @@
   {%- endfor %}
   {%- endif %}
   {%- for n in g.nodes %}
-  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath' if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}" data-node="{{ n.name }}" data-x="{{ n.x }}" data-y="{{ n.y }}">
+  <g class="topo-n topo-c-{{ n.cls }}{{ ' topo-spof' if n.spof }}{{ ' topo-island' if n.island }}{{ ' topo-outside' if n.outside }}{{ ' topo-onpath topo-onpath-' ~ n.path if n.path }}{{ ' topo-match' if n.match }}{{ ' topo-gone' if n.gone }}{{ ' topo-lost' if n.lost }}" data-node="{{ n.name }}" data-x="{{ n.x }}" data-y="{{ n.y }}">
     {%- if n.managed %}<a href="{{ url_for('device_v2.device', name=n.name, list=t.list) }}">{% endif %}
     <title>{{ n.label }}: {{ t.classes[n.cls] }}{% if n.role and n.cls not in ('router', 'switch', 'l3switch') %} ({{ n.role }}){% endif %}{% if n.manager %}, this host, where Mercury runs{% endif %}{% for tag in n.tags %}. {{ tag.words }}{% endfor %}</title>
     <rect class="topo-ic" x="{{ n.x - 17 }}" y="{{ n.y - 17 }}" width="34" height="34" rx="8"></rect>
@@ -196,16 +246,6 @@
 </section>
 
 <aside class="topo-aside">
-{%- if t.trace %}
-<section class="card topo-panel" aria-labelledby="topo-trace-h">
-  <h2 id="topo-trace-h">Path from {{ t.s.a }} to {{ t.s.b }}</h2>
-  {%- if t.trace.ok %}
-  <p class="small">Every shortest path over the physical links, by hop count: {{ t.trace.paths | length }} of {{ t.trace.hops }} hop{{ 's' if t.trace.hops != 1 }}, drawn on the map. A claim about the graph, never about forwarding: what a packet takes is the routing table's.</p>
-  <ol class="small">{% for hops in t.trace.hop_words %}<li>{{ hops | join(' · ') }}</li>{% endfor %}</ol>
-  {%- else %}<p class="small">{{ t.trace.why }}.</p>{% endif %}
-  {{ go(t, {'a': '', 'b': ''}, 'Clear the path') }}
-</section>
-{%- endif %}
 {%- if t.what_if %}
 <section class="card topo-panel" aria-labelledby="topo-wi-h">
   <h2 id="topo-wi-h">Taking out {{ t.s.out }}</h2>
