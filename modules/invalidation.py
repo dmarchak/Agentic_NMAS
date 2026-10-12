@@ -184,7 +184,6 @@ DECLARED = {
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items
     "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # the same apply
-    "golden.migrate_apply": _COMMIT,
     "golden.restore_apply": ("device_state", "intent", "baselines", "drift",
                              "approvals", "rolled_back") + _COMMIT,
     "remote.acknowledge": ("remote",),
@@ -395,7 +394,6 @@ DECLARED = {
     "onboard_v2.bootstrap": Nothing("reveals the bootstrap config in place and records the "
                                     "reveal; no screen draws the reveal record"),
     "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
-    "golden.migrate_plan": Nothing("the migration's dry run; it writes nothing by design"),
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),

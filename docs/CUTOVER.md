@@ -48,7 +48,6 @@ and built.
 | Remote | `/remote/push`, `/remote/verify`, `/remote/status` | BUILT | History's header (Push now, Verify; no real run yet) and `/v2/history/remote` |
 | Remote, auto-push | `/remote/auto-push` | BUILT (C631, 2026-10-10; not run on the host) | History › Remote set-up…: Turn on automatic pushing, offered after a successful push |
 | Remote, connect and the rest | `/remote/verify-write`, `/preview`, `/acknowledge`, `/adopt` | BUILT (C631, 2026-10-10; not run on the host) | History › Remote set-up…: Connect, Run the write probe, What a first push publishes and its typed Acknowledge, each a verified person's (`routes/remote_v2.py`). They were to stay CLI-only through a command that never existed; a host command cannot carry the verified person they need |
-| Legacy golden store, migration | `/golden/legacy_store`, `/golden/migrate/plan`, `/golden/migrate/apply` | REMOVE, 7.8 | Its retirement condition (`legacy_only_goldens()` empty) has held on the host since 2026-09-28 |
 | Persist, rotate, retire | `/persist/*` (2), `/rotate/*` (3), `/retire/*` (2) | BUILT, walked | The device page's Actions: Persist (C359), Rotate (C370), Retire (r5); the routes go with today's pages |
 | Seed, revert, retry | `/templatize/seed/*` (2), `/templatize/revert/*` (2), `/templatize/retry/*` (2), `/templatize/rolled-back/retries` | BUILT | Device Actions; seed walked, revert and retry not yet run |
 | Intent editing | `/templatize/committed/<host>`, `/templatize/committed/<host>/preview`, `/templatize/committed` | BUILT (board H's Document mode; not run on the host, C444) | The Intent tab's Edit (`/v2/device/<name>/intent/*`), one code path with today's routes (`modules/nsot/intent_edit.py`); Fields mode (board J) is not built |
@@ -134,6 +133,17 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   (`repo.save_golden` runs `apply_pending_renames` first), so nothing is stranded. The two
   inventory helpers only these routes used (`sync_device_names_to_repo`, `pending_renames`)
   went with them; the manifest's own `pending_renames` stays.
+- **The legacy golden store's report and the one-shot migration** (/golden/legacy_store,
+  /golden/migrate/plan, /golden/migrate/apply), 2026-10-12: the store's retirement condition
+  (`legacy_only_goldens()` empty) has held on the host since 2026-09-28, and the migration ran
+  on every network. Today's Git tab drew both cards; its loader now reads the baselines alone
+  and says when they cannot be read. The survival check retire uses for a device's file in the
+  old store moved from `routes/golden.py` to `modules/nsot/retire.py` (`legacy_survives`), its
+  only remaining user (a product module no longer imports a route file). Kept: the store's
+  read-only fallback in the readers and `modules/nsot/migrate.py`, which two scripts use
+  (`nsot_verify_migration.py`, `nsot_adopt_marker.py`). Proved before removal: none of the
+  five paths is in the app's url_map, and nothing in templates, scripts, routes, modules or
+  tests names them.
 
 ## Legacy actions that are not routes
 

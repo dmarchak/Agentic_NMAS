@@ -262,7 +262,6 @@ GATES = {
                                            "Profiles, recorded"),
     "add_quick_action": _g(K, "stores a canned command"),
     "delete_quick_action": _g(K, "deletes a canned command"),
-    "golden.migrate_apply": _g(K, "one-shot migration of the golden store"),
 
     # ---- reveal: device configuration or secrets leave the device --------
     "bulk_tftp_download": _g(R, "copies files OFF devices to a TFTP server the form names"),
@@ -291,7 +290,6 @@ GATES = {
     "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (the same job as golden.capture_preview); records nothing"),
     "golden.capture_preview": _g(N, "reads each device's running config and computes a "
                                     "capture preview; records nothing"),
-    "golden.migrate_plan": _g(N, "a dry run"),
     "onboard.plan": _g(N, "builds a plan; creates nothing"),
     "templates_v2.coverage_check": _g(N, "measures how much of each device's golden its "
                                          "template reproduces, as a job; reads git, keeps the "

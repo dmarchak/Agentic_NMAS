@@ -129,7 +129,6 @@ def _bodies(v):
         "device_v2.capture_start": (200, ("form", {"list": LIST}),
                                     "starts the same job reading r1 NOW; FOLLOWED to its card "
                                     "(JOB_RESULTS): the golden diff and the intent departure"),
-        "golden.migrate_plan": (200, ("json", {}), "a dry run over the legacy store"),
         "golden.restore_preview": (200, ("json", {"ref": v["_first_golden"],
                                                   "devices": ["r1"]}),
                                    "the first golden against HEAD: a program that adds its "

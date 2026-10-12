@@ -228,14 +228,6 @@ RENDERS = {
         _get("/golden/history/r1"),
         {GR1: ("showGoldenHistory",)},
         ((GR1, "showGoldenHistory", "d"),)),
-    "GET /golden/legacy_store": Render(
-        lambda mp, tmp: P.golden_panel(mp, tmp, "/golden/legacy_store"),
-        {GR3: ("loadGoldenRepoPanel", "_gLegacyStoreCard")},
-        ((GR3, "loadGoldenRepoPanel", "lRes"), (GR3, "_gLegacyStoreCard", "l"))),
-    "GET /golden/migrate/plan": Render(
-        _get("/golden/migrate/plan"),
-        {GR3: ("loadGoldenRepoPanel", "_migrationCard")},
-        ((GR3, "loadGoldenRepoPanel", "mRes"), (GR3, "_migrationCard", "m"))),
     "POST /onboard/plan": Render(
         # With a mask, so the plan renders a config and the program part has
         # lines (without one the fixture reached only the render refusal).
@@ -382,9 +374,6 @@ UNDRAWN = {
         ("hostname", "the request's own echo; the dialog is titled from the "
                      "caller's argument"),
         ("list", LIST)],
-    "GET /golden/legacy_store": [
-        ("in_repo", "the complement of only_legacy, which is drawn; 7.5 draws both"),
-        ("list", LIST)],
     # Carried since before 2026-09-28 and never EXAMINED: the fixture had no
     # baseline tag until the panel's own fixture reached one.
     "GET /golden/baselines": [
@@ -402,11 +391,6 @@ UNDRAWN = {
          "draws them"),
         ("subject", "the tag's subject; the row is named by its tag"),
         ("list", "the list the withdrawal record belongs to; the panel is that list's")],
-    "GET /golden/migrate/plan": [
-        ("candidates devices marker merge_count staged_files",
-         "the migration has run on every list; the card says only whether it "
-         "has, and 7.8 removes the card"),
-        ("list", LIST)],
     "GET /identity/posture": [
         ("action actor_kind", "per-gate detail (what a gate guards, which "
                               "actor kind); the panel draws value and origin. "
@@ -573,9 +557,6 @@ EMPTY_IN_FIXTURE = {
                                       "card has never been drawn from a real item"),
     "GET /golden/history/<host> history": (R_, "no golden commit for the device in "
                                                "the fixture; 7.3's History draws it"),
-    "GET /golden/migrate/plan devices": (R_, "nothing to migrate in the fixture"),
-    "GET /golden/migrate/plan merges": (R_, "no duplicate to merge in the fixture"),
-    "GET /golden/migrate/plan staged_files": (S_, _STRINGS),
     "GET /identity/posture service_allowed_operations": (S_, _STRINGS),
     "GET /identity/posture settings_read_failure": (R_, "the settings file reads; the "
                                                         "failure record is never exhibited"),
@@ -771,7 +752,8 @@ EMPTY_IN_FIXTURE = {
 # 34 -> 38: C506 phase 4 (2026-10-06): the receipt's expected effects and interfaces, empty
 # because the fixtures' runs compare no interface by name; reached in tests/test_verify_checks.py.
 # 38 -> 37: 7.8 (2026-10-12): /golden/renames left, and its `pending` with it.
-EMPTY_RECORDS_CEILING = 37
+# 37 -> 35: 7.8 (2026-10-12): /golden/migrate/plan left, and its `devices` and `merges` with it.
+EMPTY_RECORDS_CEILING = 35
 
 
 def _empty_paths(obj, path=""):
@@ -850,7 +832,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 127  # +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 119  # -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

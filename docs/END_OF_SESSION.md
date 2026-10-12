@@ -1,5 +1,25 @@
 # End of session: where Phase 7 stands
 
+## OVERNIGHT RUN 2026-10-12 (from 05:25 UTC; 23:25 UTC−6): status, kept current per item
+
+Rules as given: no network-device config changes (intent changes prepared with their previews,
+the confirm in the walk); read-only device commands through Mercury; lab-host changes allowed;
+never s3; nothing on devices 08:30 to 09:10 UTC; CI green before each commit; each green
+release deployed and checked on the host.
+
+1. **Last message's items: DONE** (the status block below): C681 dhcpcd on every lab host (h1
+   proved first), C700 installed (its 24 h reading due 2026-10-13 05:06 UTC), C695 (a) in the
+   walk (sitting 2 step 15) and C703 registered, C696 checked (8.8.8.8 leaves toward r5 because
+   r5 advertises it; 192.0.2.1 drops: no route), PUBLIC_RELEASE.md with the roadmap note.
+2. **7.8 removals, in progress:** list data (e7f82f9), refresh hostnames (4daf00d), renames
+   (5c49896) committed and deployed or deploying; the legacy store and migration next.
+3. C667: to check against boards A to C (built in earlier runs: 7f56d12, 2e45ab9, 482ad26).
+4. The Logs tail: to check (C675 built and walked in an earlier run, db2e5f0).
+5. C673 intent preview: not started.
+6. C691 snap to grid: not started.
+7. Findings closable without the operator (C698, C702 first): not started.
+8. The host health check: not started.
+
 ## STATUS: 2026-10-12, your picks (from 04:35 UTC; 22:35 UTC−6)
 
 - **C681 (a), dhcpcd: DONE and proved.** On h1: the first start renewed ::107 under IAID

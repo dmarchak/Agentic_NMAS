@@ -94,7 +94,6 @@ KNOWN_UNREACHABLE = {
     "GET /ai/report/<path:filename>": (D, "serves report files, and the AI tools that wrote them went in P.3 step 8; no caller"),
     "GET /drift/settings": (D, "a duplicate read: the drift panel takes its interval and toggle from /drift/status"),
     "GET /device_lists": (D, "the list of lists as JSON: the page renders it server-side; on the audit's CUT list"),
-    "POST /golden/migrate/plan": (D, "the same dry-run READ as GET, with a JSON body; nothing sends it"),
     "POST /templates/preview/<path:hostname>": (D, "the same capture-only READ as GET, with a JSON body; nothing sends it"),
     # The six the GUI doc called "the AI agent's NetBox reads, need no UI".
     # Measured: nothing in the repository calls them, the agent included (it
@@ -117,7 +116,7 @@ KNOWN_UNREACHABLE = {
 # 37 -> 32 (2026-10-12): the credential profile JSON routes and /inventory/dependents removed
 # (7.8; Credentials › Profiles is their home).
 # 32 -> 26 (2026-10-12): /list/variables (4) and /list/compliance_policy (2) removed (7.8).
-CEILING = 24
+CEILING = 23
 
 
 @pytest.fixture(scope="module")

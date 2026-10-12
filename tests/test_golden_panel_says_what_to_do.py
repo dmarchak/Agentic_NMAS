@@ -177,17 +177,22 @@ class TestAWithdrawnBaseline:
         assert len(sha) == 40 and w["tag"] == "baseline/20260927T154517Z"
 
 
-class TestTheLegacyStoreSaysWhatToDo:
-    def test_each_file_carries_its_state_and_one_action(self, lab):
-        d = lab["client"].get("/golden/legacy_store").get_json()
-        by = {e["hostname"]: e for e in d["only_legacy"]}
-        assert by["r5"]["state"] == "retired"
-        assert by["r5"]["action"].endswith(f"rm {os.path.join(lab['legacy'], 'r5.cfg')}")
+class TestTheLegacySurvivalCheck:
+    """What a legacy file's removal would lose, said with where it survives (C176): the one
+    check retire uses for a device's file in the deprecated store. Its route and card left at
+    7.8 (2026-10-12); the check moved to `modules/nsot/retire.py` with its only user."""
+
+    def _surv(self, lab, host):
+        from modules.nsot import retire
+        return retire.legacy_survives("lab", host, os.path.join(lab["legacy"], f"{host}.cfg"))
+
+    def test_a_file_whose_golden_holds_it_survives_and_says_where(self, lab):
         # What survives, where, and what is lost: the operator's removal rule.
+        s = self._surv(lab, "r5")
         sha = lab["shas"]["r5_golden"][:7]
-        assert "survives in the repository as golden/r5.cfg" in by["r5"]["action"]
-        assert f"git show {sha}" in by["r5"]["action"]
-        assert "loses nothing but the copy" in by["r5"]["action"]
+        assert s["state"] == "survives"
+        assert "survives in the repository as golden/r5.cfg" in s["words"]
+        assert f"git show {sha}" in s["words"] and "loses nothing but the copy" in s["words"]
 
     def test_the_migrations_verbatim_backup_is_the_survival_it_names_first(self, lab):
         """The host's case: the migration committed each legacy file verbatim."""
@@ -200,27 +205,18 @@ class TestTheLegacyStoreSaysWhatToDo:
         R.git(lab["repo"], "add", "-f", "--", ".nsot/migration-backup/golden_configs-r5.cfg")
         R.git(lab["repo"], "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-q",
               "-m", "migration: backup")
-        by = {e["hostname"]: e for e in
-              lab["client"].get("/golden/legacy_store").get_json()["only_legacy"]}
-        assert "survives VERBATIM" in by["r5"]["action"]
-        assert "golden_configs-r5.cfg" in by["r5"]["action"] and "rm " in by["r5"]["action"]
+        s = self._surv(lab, "r5")
+        assert s["state"] == "survives" and "survives VERBATIM" in s["words"]
+        assert "golden_configs-r5.cfg" in s["words"]
 
-    def test_a_file_whose_lines_are_nowhere_else_is_kept_not_deleted(self, lab):
+    def test_a_file_whose_lines_are_nowhere_else_is_lost_if_deleted(self, lab):
         with open(os.path.join(lab["legacy"], "r5.cfg"), "a", encoding="utf-8") as fh:
             fh.write("snmp-server location only-here\n")
-        by = {e["hostname"]: e for e in
-              lab["client"].get("/golden/legacy_store").get_json()["only_legacy"]}
-        assert "differs from all 1 committed version(s)" in by["r5"]["action"]
-        assert "Keep a copy" in by["r5"]["action"] and "rm " not in by["r5"]["action"]
-        assert by["r9"]["state"] == "unknown" and "nothing here says it is safe" in by["r9"]["action"]
-
-    def test_a_device_still_managed_is_captured_not_deleted(self, lab, monkeypatch):
-        monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [
-            *INVENTORY, {"hostname": "r9", "ip": "203.0.113.9"}])
-        by = {e["hostname"]: e for e in
-              lab["client"].get("/golden/legacy_store").get_json()["only_legacy"]}
-        assert by["r9"]["state"] == "managed" and "Capture it" in by["r9"]["action"]
-        assert "rm " not in by["r9"]["action"]
+        s = self._surv(lab, "r5")
+        assert s["state"] == "lost"
+        assert "differs from all 1 committed version(s)" in s["words"]
+        r9 = self._surv(lab, "r9")
+        assert r9["state"] == "lost" and "never held golden/r9.cfg" in r9["words"]
 
 
 def _js(fn_names):
@@ -359,23 +355,6 @@ class TestANoticeSaysWhatToDoOrIsNotDrawn:
     """The operator's addendum to the presentation rule (2026-09-28): "can be
     retired" stated a conclusion and stopped. Scheduled work is a plan item
     (7.8), never a notice."""
-
-    def _card(self, payload):
-        import dukpy
-        from tests.payload_render import lift, shipped
-        src = shipped("partials__golden_repo.3.js")
-        js = lift(shipped("partials__golden_repo.1.js"), "_gEsc") + "\n" + lift(src, "_gLegacyStoreCard")
-        return dukpy.evaljs(js + "\n_gLegacyStoreCard(" + json.dumps(payload) + ")")
-
-    def test_a_retirable_store_draws_nothing(self):
-        assert self._card({"ok": True, "legacy_files": 8, "only_legacy": [],
-                           "retirable": True}) == ""
-
-    def test_a_store_holding_a_sole_copy_draws_each_action(self, lab):
-        payload = lab["client"].get("/golden/legacy_store").get_json()
-        html = self._card(payload)
-        assert 'data-legacy-state="retired"' in html and "rm " in html
-        assert 'data-legacy-state="unknown"' in html and "Find out what it was" in html
 
     def test_the_removal_is_a_plan_item(self):
         plan = open(os.path.join(ROOT, "docs", "NSOT_STAGE7_PLAN.md"), encoding="utf-8").read()

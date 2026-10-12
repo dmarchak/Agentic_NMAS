@@ -34,21 +34,21 @@ async function loadGoldenRepoPanel() {
   const host = document.getElementById('goldenRepoPanel');
   if (!host || !_gList()) return;
   try {
-    // Renames are no longer shown or synced here (7.8): a pending rename is committed alone by
-    // the next golden save.
-    const [bRes, mRes, lRes] = await Promise.all([
-      fetch('/golden/baselines').then(r => r.json()),
-      fetch('/golden/migrate/plan').then(r => r.json()),
-      fetch('/golden/legacy_store').then(r => r.json()),
-    ]);
+    // Renames, the legacy store's card and the one-shot migration are no longer here (7.8): a
+    // pending rename is committed alone by the next golden save, and the legacy store's
+    // retirement condition has held since 2026-09-28.
+    const bRes = await fetch('/golden/baselines').then(r => r.json());
+    if (!bRes.ok) {
+      // A failed read is said, never drawn as an empty table.
+      host.innerHTML = '<div class="text-danger small">The baselines could not be read: '
+        + _gEsc(bRes.error || 'no reason given') + '</div>';
+      return;
+    }
 
     const baselines = bRes.baselines || [];   // all of them: the table collapses, never cuts
     window._gBaselineCache = baselines;
-    const needsMigration = mRes.ok && mRes.device_count > 0 && !mRes.already_migrated;
 
     host.innerHTML = `
-      ${needsMigration ? _migrationCard(mRes) : ''}
-      ${_gLegacyStoreCard(lRes)}
       <div class="card border-light-subtle">
         <div class="card-body py-2 px-3">
           <h6 class="text-primary fw-semibold mb-2">Baselines
@@ -58,119 +58,6 @@ async function loadGoldenRepoPanel() {
         </div>
       </div>`;
   } catch (e) { console.error('loadGoldenRepoPanel', e); }
-}
-
-/* The deprecated store's RETIREMENT CONDITION, on screen.
- *
- * `golden_configs/` has been read-only since the migration, and until Stage
- * 3.3 it was also what every reader enumerated -- so the nine devices were
- * covered by accident rather than by design. Two things still consult it: the
- * last link of `_find_golden_config_file`'s chain, and the legacy-only
- * entries in `repo.list_goldens()`.
- *
- * When nothing lives there that the manifest does not know, both can go. The
- * card says so in those words, because "deprecated" with no exit criterion is
- * a thing nobody ever gets to delete.
- */
-function _gLegacyStoreCard(l) {
-  if (!l || !l.ok) return '';
-  if (!l.legacy_files) return '';              // already gone: say nothing
-  const only = l.only_legacy || [];
-  // Retirable is SCHEDULED WORK, not a thing for the reader to do: the
-  // directory and the header-scan fallback are removed in 7.8 (the plan
-  // holds it). A notice either tells the reader what to do or does not
-  // appear (the operator, 2026-09-28), so this draws nothing.
-  if (l.retirable) return '';
-  return `
-    <div class="card border-warning-subtle mb-3">
-      <div class="card-body py-2 px-3">
-        <h6 class="text-warning-emphasis fw-semibold mb-1">
-          Legacy golden store still holds ${only.length} device(s)
-        </h6>
-        <p class="text-muted small mb-1">
-          These are in <code>golden_configs/</code> and not in the repository
-          manifest, so they resolve through the deprecated header scan. The
-          directory can be retired once this list is empty; what to do for each:
-        </p>
-        <ul class="small mb-0">
-          ${only.map(d => `<li data-legacy-state="${_gEsc(d.state || '')}"><code>${_gEsc(d.hostname)}</code>
-             <span class="text-muted">(${_gEsc(d.device_ip)} · ${_gEsc(d.file)})</span>
-             <div>${_gEsc(d.action || 'No action is recorded for this device.')}</div></li>`).join('')}
-        </ul>
-      </div>
-    </div>`;
-}
-
-function _migrationCard(m) {
-  const merges = m.merges || [];
-  return `
-    <div class="card border-warning-subtle mb-3">
-      <div class="card-body py-2 px-3">
-        <h6 class="text-warning-emphasis fw-semibold mb-2">
-          Configuration repository migration available
-        </h6>
-        <p class="small mb-2">
-          ${m.device_count} device(s) would move into the versioned <code>golden/</code>
-          layout. <strong>This is a preview — nothing has been changed.</strong>
-        </p>
-        ${merges.length ? `
-          <div class="alert alert-warning py-2 px-3 small">
-            <strong>${merges.length} duplicate device(s) would be merged.</strong>
-            Without merging, one device would end up with two golden files.
-            <div class="table-responsive mt-2">
-              <table class="table table-sm mb-0"><thead><tr>
-                <th>Keeping</th><th>Merging in</th><th>Why</th><th>Content differs</th>
-              </tr></thead><tbody>
-                ${merges.map(mg => `<tr>
-                  <td class="font-monospace small">${_gEsc(mg.winner.file)}
-                    <span class="text-muted">(${_gEsc(mg.winner.modified)})</span></td>
-                  <td class="font-monospace small">${mg.losers.map(l =>
-                      `${_gEsc(l.file)} <span class="text-muted">(${_gEsc(l.modified)})</span>`).join('<br>')}</td>
-                  <td class="small">${_gEsc(mg.reason)}</td>
-                  <td>${mg.content_differed
-                        ? '<span class="badge bg-warning text-dark">yes</span>'
-                        : '<span class="badge bg-secondary">identical</span>'}</td>
-                </tr>`).join('')}
-              </tbody></table>
-            </div>
-            <div class="form-text mb-0">
-              Nothing is deleted — merged-away copies are kept under
-              <code>.nsot/migration-backup/</code>.
-            </div>
-          </div>` : ''}
-        ${m.case_insensitive_fs ? `
-          <p class="small text-muted">
-            This filesystem folds case, so files differing only by case are already
-            the same file. Reported for accuracy rather than merged.
-          </p>` : ''}
-        <div class="form-check mb-2">
-          <input class="form-check-input" type="checkbox" id="goldenMigrateConfirm"
-                 onchange="document.getElementById('goldenMigrateBtn').disabled = !this.checked">
-          <label class="form-check-label small" for="goldenMigrateConfirm">
-            I have reviewed this report and want to migrate.
-          </label>
-        </div>
-        <button class="btn btn-warning btn-sm" id="goldenMigrateBtn" disabled
-                onclick="applyGoldenMigration()">Migrate repository</button>
-      </div>
-    </div>`;
-}
-
-async function applyGoldenMigration() {
-  const btn = document.getElementById('goldenMigrateBtn');
-  btn.disabled = true;
-  try {
-    const r = await fetch('/golden/migrate/apply', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirm: true}),
-    });
-    const d = await r.json();
-    showToast(d.ok
-      ? `Migrated ${d.migrated.length} device(s)`
-        + (d.merges.length ? `, merged ${d.merges.length} duplicate(s)` : '')
-      : `Migration failed: ${d.error}`, d.ok ? 'success' : 'danger');
-    loadGoldenRepoPanel();
-  } catch (e) { showToast(e.message, 'danger'); btn.disabled = false; }
 }
 
 // `unOnboard` is empty on the first pass. If the operator opts in for devices

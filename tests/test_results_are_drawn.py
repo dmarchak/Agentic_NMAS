@@ -330,7 +330,6 @@ GREEN_TOASTS = {
     ("static/js/gen/partials__security_posture.1.js", "is now set explicitly"): "one ratification, ok checked",
     ("static/js/gen/partials__netbox_safety_modal.1.js", "Import started for"): "says STARTED; the outcome is the sync card's (C85)",
     ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
-    ("static/js/gen/partials__golden_repo.3.js", "Migrated ${d.migrated.length}"): "the one-shot migration, ok checked",
     ("templates/partials/onboard_wizard.html", ".cfg downloaded"): "a file download",
 }
 
