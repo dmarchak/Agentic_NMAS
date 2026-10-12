@@ -17,9 +17,14 @@ release deployed and checked on the host.
    edited while the first's gate ran; deployed 05:57), inventory order (249f0e6, deployed
    06:06; C704 found: v2 Devices has no column sort), the monitoring stack panel with the
    integrations' `monitor()` (c6fba50, deployed 06:15; C705 found: the Grafana URL setting
-   has no reader), Configure (eb64d5e), the legacy collectors' routes with today's Monitoring
-   tab (next commit; the receivers go with the AI agent). Next: today's Topology tab
-   (/topology/*, /topology_data), then reachability, then the AI agent's family.
+   has no reader), Configure (eb64d5e, deployed 06:28), the legacy collectors' routes with
+   today's Monitoring tab (76e5b83, deployed 06:41; the receivers go with the AI agent), the
+   topology service's routes and panel (9cddf61, deployed 06:51), today's Topology tab with
+   vis-network (54138a4, deployed 07:03), reachability (963eb8e). **Left:** the AI agent's
+   family (the largest; taken after items 6 to 8, logged), `/devices/regions` (goes with
+   today's index), the topology service unit (a host step), and the families blocked on
+   today's device page and template editor (Backups, device files, bulk file actions, TFTP,
+   quick actions).
 3. **C667: checked 06:15 UTC, nothing left to build.** Every part the message names is built,
    deployed and walked read-only on the host (7f56d12, 2e45ab9, 482ad26), and each is in a
    fidelity record against its board: board A in `docs/fidelity/history-query.md` (Saved by
@@ -33,7 +38,8 @@ release deployed and checked on the host.
    preview on the host gives the one line against intent and device. The agent's intent commit
    was refused by the session's permission check (not retried): the commit is the operator's
    in the walk, as the step already said.
-6. C691 snap to grid: not started.
+6. **C691 snap to grid: board E drawn and signed off (canvas v115), built, compared** (next
+   commit); the walk: a drag with the switch on.
 7. Findings closable without the operator (C698, C702 first): not started.
 8. The host health check: not started.
 

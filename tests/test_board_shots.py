@@ -438,3 +438,6 @@ def test_topology(tmp_path, monkeypatch):
         _shoot("topology-path", "TopoPathTrace.dc.html",
                lambda w: f"/v2/topology?list=Lab&{path}", served,
                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+        # Board E (C691): Snap to grid on.
+        _shoot("topology-snap", "TopoSnap.dc.html", lambda w: "/v2/topology?list=Lab&snap=1",
+               served, widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))

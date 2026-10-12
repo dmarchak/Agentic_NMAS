@@ -93,6 +93,7 @@
     {%- for k, w in [('auto', 'Auto'), ('on', 'On'), ('off', 'Off')] %}{{ go(t, {'labels': k, 'tab': 'map'}, w, 'seg-btn' ~ (' on' if t.s.labels == k), t.s.labels == k) }}{% endfor %}
   </div>
   {{ go(t, {'labels': {'auto': 'on', 'on': 'off', 'off': 'auto'}[t.s.labels], 'tab': 'map'}, 'Labels: ' ~ t.s.labels, 'btn btn-small topo-narrow-inline') }}
+  {{ go(t, {'snap': '0' if t.s.snap == '1' else '1', 'tab': 'map'}, 'Snap to grid', 'btn btn-small topo-wide' ~ (' on' if t.s.snap == '1'), t.s.snap == '1') }}
   {%- if t.arranged.state in ('ok', 'unreadable') %}
   <form class="topo-wide" method="post" action="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-post="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-target="#topo" hx-swap="outerHTML">
     <input type="hidden" name="list" value="{{ t.list }}">
@@ -185,7 +186,8 @@
   {%- if t.arranged.state == 'ok' %} <span class="topo-faint">Arranged by {{ t.arranged.by }}, {{ stamp(t.arranged.at) }}; a device added since is placed near its neighbours.</span>
   {%- elif t.arranged.state == 'unreadable' %} <span class="topo-warn-t">The saved layout cannot be read ({{ t.arranged.error }}): the map is laid out by the cabling; a move is refused until Reset layout sets it aside (kept, under a dated name).</span>{% endif %}</p>
 <div class="topo-scroll" data-topo-view="{{ t.list }}">
-<svg class="topo-map topo-z{{ g.z }} topo-labels-{{ t.s.labels }}{{ ' topo-far' if g.z | int < 100 }}{{ ' topo-ports-on' if t.s.ports == 'on' else ' topo-ports-off' if t.s.ports == 'off' else ' topo-ports-auto' }}" viewBox="0 0 {{ g.width }} {{ g.height }}" data-width="{{ g.width }}" data-height="{{ g.height }}" data-z="{{ g.z }}" role="img" aria-label="{{ t.list }}: {{ t.summary.devices }} devices and {{ t.summary.links }} links; {{ c.bad }} down or a neighbour missing, {{ c.warn }} not as intended, {{ c.unread }} not read">
+<svg class="topo-map topo-z{{ g.z }} topo-labels-{{ t.s.labels }}{{ ' topo-far' if g.z | int < 100 }}{{ ' topo-ports-on' if t.s.ports == 'on' else ' topo-ports-off' if t.s.ports == 'off' else ' topo-ports-auto' }}" viewBox="0 0 {{ g.width }} {{ g.height }}" data-width="{{ g.width }}" data-height="{{ g.height }}" data-z="{{ g.z }}"{% if t.s.snap == '1' %} data-snap="{{ t.grid }}"{% endif %} role="img" aria-label="{{ t.list }}: {{ t.summary.devices }} devices and {{ t.summary.links }} links; {{ c.bad }} down or a neighbour missing, {{ c.warn }} not as intended, {{ c.unread }} not read">
+  {%- if t.s.snap == '1' %}<defs><pattern id="topo-grid" width="{{ t.grid }}" height="{{ t.grid }}" patternUnits="userSpaceOnUse"><circle class="topo-grid-dot" cx="0" cy="0" r="1.6"></circle></pattern></defs><rect class="topo-grid" x="0" y="0" width="{{ g.width + 400 }}" height="{{ g.height + 400 }}" fill="url(#topo-grid)"></rect><circle class="topo-snapmark" cx="0" cy="0" r="23" visibility="hidden"></circle>{% endif %}
   {%- for l in g.links %}
   {%- if l.sel or l.path %}<path class="topo-glow{% if l.path and not l.sel %} topo-pathglow topo-path-{{ l.path.cls }}{{ ' topo-path-l2' if l.path.l2 }}{% endif %}" d="{{ l.d }}"></path>{% endif %}
   <path class="topo-line topo-{{ l.cls }}{{ ' topo-ronly' if l.routing_only }}{{ ' topo-gone' if l.gone }}" d="{{ l.d }}" data-a="{{ l.a }}" data-b="{{ l.b }}"></path>

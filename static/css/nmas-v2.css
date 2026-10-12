@@ -1348,6 +1348,9 @@ select { max-width: 100%; }
 .topo-moving .topo-anchor, .topo-moving .topo-card { display: none; }
 @media (pointer: fine) and (min-width: 701px) { .topo-n, .topo-n a { cursor: move; } }
 .topo-n.topo-saving { opacity: .55; }
+/* Snap to grid (board E, C691): the grid's dots, and the outline where a dragged device will land. */
+.topo-grid-dot { fill: var(--line); }
+.topo-snapmark { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 .topo-moveform { display: none; }
 .topo-how { margin: 8px 12px 6px; color: var(--ink-2); }
 .topo-warn-t { color: var(--warn); }

@@ -287,6 +287,42 @@ def test_ports_labels_and_zoom(web):
     assert "topo-far" not in _get(web, "&labels=on&z=75").split('class="topo-map')[1][:60]
 
 
+def _snap_button(html):
+    return re.search(r'<a class="btn btn-small topo-wide( on)?" href="([^"]*)"[^>]*'
+                     r'aria-pressed="(true|false)"[^>]*>Snap to grid</a>', html)
+
+
+def test_snap_to_grid_is_a_switch_off_by_default(web):
+    """C691, board E: Snap to grid is a toolbar switch in the page's address, off by default; on,
+    the map carries its step and draws the grid and the landing outline; off, neither."""
+    off = _get(web)
+    btn = _snap_button(off)
+    assert btn and btn.group(3) == "false" and "snap=1" in btn.group(2), btn
+    assert "data-snap" not in off and "topo-grid" not in off and "topo-snapmark" not in off
+    on = _get(web, "&snap=1")
+    btn = _snap_button(on)
+    assert btn and btn.group(1) == " on" and btn.group(3) == "true", btn
+    assert "snap=" not in btn.group(2), "turning it off leaves the default out of the link"
+    assert 'data-snap="40"' in on and 'id="topo-grid" width="40" height="40"' in on
+    assert 'class="topo-snapmark"' in on and 'visibility="hidden"' in on
+    # A saved move redraws the map with the switch kept: the move form posts the question.
+    move = re.search(r'<form id="topo-move"[^>]*action="([^"]*)"', on).group(1)
+    assert "snap=1" in move
+    # Anything but "1" is off, never an error.
+    assert "data-snap" not in _get(web, "&snap=yes")
+
+
+def test_snap_lands_on_the_nearest_grid_point_never_the_edge():
+    """The pure rule the drop and Alt-arrow use, executed from the shipped script."""
+    import dukpy
+    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "static", "js", "nmas_topology.js"), encoding="utf-8").read()
+    got = dukpy.evaljs("var window = {};\n" + src + "\n[window.NMAS_TOPOLOGY.snapTo(57, 40),"
+                       " window.NMAS_TOPOLOGY.snapTo(61, 40), window.NMAS_TOPOLOGY.snapTo(80, 40),"
+                       " window.NMAS_TOPOLOGY.snapTo(5, 40), window.NMAS_TOPOLOGY.snapTo(-90, 40)]")
+    assert got == [40, 80, 80, 40, 40], got
+
+
 def test_a_down_link_is_thick_red_chipped_and_names_its_end(web):
     res, up = _capture()
     for row in res["r1"]["ifOperStatus"]:
@@ -754,6 +790,43 @@ def test_drag_pan_and_zoom_in_a_browser(web):
         assert view(b) != before
         again = json.loads((web["dir"] / "topology_layout.json").read_text())
         assert again == stored
+
+
+def test_a_drag_with_the_grid_on_lands_on_a_grid_point_in_a_browser(web):
+    """C691, board E, with a real pointer at 1440: with Snap to grid on, the outline marks the
+    landing point while r1 is dragged, and the drop saves r1 on a grid point (both coordinates
+    multiples of 40); the redrawn map keeps the switch on."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+
+    def element(b, css):
+        return b._call("POST", f"/session/{b.session}/element", {"using": "css selector",
+                                                                  "value": css})
+
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+        b.go(srv.url("/v2/topology?list=Lab&snap=1"))
+        b.wait_for("return window.NMAS_TOPOLOGY && document.querySelector('svg.topo-map')")
+        b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+            "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+            "actions": [{"type": "pointerMove", "origin": element(b, '[data-node="r1"] .topo-ic'),
+                         "x": 0, "y": 0},
+                        {"type": "pointerDown", "button": 0},
+                        {"type": "pointerMove", "origin": "pointer", "x": 57, "y": 23,
+                         "duration": 200}]}]})
+        assert b.js("return document.querySelector('.topo-snapmark')"
+                    ".getAttribute('visibility')") == "visible"
+        b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+            "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+            "actions": [{"type": "pointerUp", "button": 0}]}]})
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return document.body.textContent.indexOf('Arranged by') >= 0")
+        x, y = json.loads((web["dir"] / "topology_layout.json").read_text())["positions"]["r1"]
+        assert x % 40 == 0 and y % 40 == 0, (x, y)
+        assert b.js("return document.querySelector('svg.topo-map').getAttribute('data-snap')") \
+            == "40"
 
 
 def test_a_map_taller_than_its_box_opens_whole_at_100_with_its_labels(web):

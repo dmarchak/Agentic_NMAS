@@ -70,7 +70,8 @@ The toolbar: **Protocols** chooses which protocols' chips and states are drawn (
 RIP / RIPng; EIGRP and IS-IS are drawn unpressed and do not press, since Mercury does not read
 them); **Ports** shows or hides the port names (on at the desktop, off at phone width); **Labels**
 Auto shows ports and chips at 100% and closer and hides them zoomed out, On always, Off never;
-**Reset layout** (see below); **−, 100%, +** zoom about the middle, 100% fitting the whole map;
+**Snap to grid** and **Reset layout** (see below); **−, 100%, +** zoom about the middle, 100%
+fitting the whole map;
 **Weak points** tags single points of failure and islands on the map. **Find** rings a device
 whose name, role, address or port matches; it never hides anything.
 
@@ -88,6 +89,12 @@ The map fills the window; a large network does not fit on one screen, so you mov
   the save answers, and the line under the map says who arranged it and when. Each move is
   recorded on History (Topology layouts), with your name and the device; a device's own History
   lists its moves. At phone width you pan and zoom; devices are moved on a wider screen.
+- **Snap to grid** lines devices up evenly. While it is on, the map shows a faint dot every 40
+  map units; as you drag a device, a dashed outline marks the dot nearest to it, and when you let
+  go it lands there (Alt and an arrow move it one dot, Shift three). Only what you move snaps:
+  turning it on moves nothing, and a layout saved before keeps every place until that device is
+  moved. The switch is yours, kept in the page's address like Ports and Weak points, never in the
+  network's layout; it is off until you press it.
 - A device added since the layout was saved is **placed near its neighbours**; no device anyone
   placed moves.
 - **Reset layout** withdraws every person's moves: the map is laid out by the cabling again, for

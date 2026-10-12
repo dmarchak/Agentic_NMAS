@@ -54,6 +54,9 @@ TOGGLE_WORDS = {"ospf": "OSPF", "ospfv3": "OSPFv3", "bgp": "BGP", "ripng": "RIP 
 NOT_READ = ("EIGRP", "IS-IS")
 #: The zoom steps; 100 fits the map to its box (the board's "100%").
 ZOOMS = (50, 75, 100, 150, 200)
+#: Snap to grid's step in map units (board E, C691): a device symbol is 34 across, so
+#: neighbouring grid points never put two symbols in contact.
+GRID = 40
 #: Above this many fleet devices the map is not drawn; the attention list still names every
 #: link that needs review (the brief, Q12; the board's large-fleet inset).
 COLLAPSE_ABOVE = 150
@@ -105,6 +108,7 @@ ASKS = {"p": None,          # the protocols toggled on, comma-separated; absent:
         "labels": "auto",   # auto (shown at Fit and closer), on, off
         "z": "100",         # zoom, one of ZOOMS
         "weak": "1",        # weak points tagged on the map
+        "snap": "0",        # snap a moved device to the grid (board E, C691): the viewer's, never the layout's
         "sel": "",          # the selected link's id
         "a": "", "b": "",   # Path…'s From (a device) and To (an address)
         "trace": "",        # the path trace's record id (board D)
@@ -129,6 +133,7 @@ def ask(values) -> dict:
     s["labels"] = s["labels"] if s["labels"] in ("auto", "on", "off") else "auto"
     s["z"] = s["z"] if s["z"].isdigit() and int(s["z"]) in ZOOMS else "100"
     s["weak"] = "0" if s["weak"] == "0" else "1"
+    s["snap"] = "1" if s["snap"] == "1" else "0"
     s["show"] = s["show"] if s["show"] in ("all", "bad", "warn", "unread", "weak") else "all"
     s["tab"] = s["tab"] if s["tab"] in ("att", "dev", "map") else "att"
     return s
@@ -551,7 +556,7 @@ def view(list_name: str, values) -> dict:
     out = {"list": list_name, "s": s, "qs": lambda over=None: qs(list_name, s, over),
            "state": st["state"], "value_at": st["value_at"], "failed": st["failed"],
            "proto_words": PROTO_WORDS, "toggle_words": TOGGLE_WORDS, "not_read": NOT_READ,
-           "zooms": ZOOMS, "since_text": _since_text,
+           "zooms": ZOOMS, "grid": GRID, "since_text": _since_text,
            "line_words": LINE_WORDS, "group_words": GROUP_WORDS, "classes": CLASSES,
            "manager": MANAGER, "label": label, "symbols": symbols(), "icon_of": {}}
     if st["state"] != "ok":

@@ -8,6 +8,8 @@
      zooms only); Alt and an arrow key move a focused device. On the drop, every device's place is
      written into the move form (#topo-move) and posted: the network's layout, for everyone,
      recorded; the device is busy on itself until the answer redraws the map;
+   - Snap to grid (board E, C691; the map carries data-snap while it is on): a dragged device's
+     landing point is outlined, and on the drop it lands on the nearest grid point;
    - Labels Auto: the labels hide while the map is zoomed out (svg.topo-far);
    - the view (pan and zoom) is kept, per network, across the region's redraws.
    Strict CSP: no inline handler, attributes only. */
@@ -104,6 +106,37 @@
   }
 
   /* ------------------------------------------------------------------ a device moved */
+
+  /* PURE: snap to grid (board E, C691): a place's nearest grid point, *step* map units apart,
+     never nearer the map's edge than one step. */
+  function snapTo(v, step) {
+    return Math.max(step, Math.round(v / step) * step);
+  }
+
+  /* The grid's step while Snap to grid is on (the map carries it), else 0. */
+  function gridOf(svg) {
+    return parseFloat(svg.getAttribute('data-snap') || 0) || 0;
+  }
+
+  /* While a device is dragged with the grid on: the outline where it will land. */
+  function markLanding(svg, g) {
+    var mark = svg.querySelector('.topo-snapmark'), step = gridOf(svg);
+    if (!mark || !step) return;
+    var p = placeOf(g);
+    mark.setAttribute('cx', String(snapTo(p[0], step)));
+    mark.setAttribute('cy', String(snapTo(p[1], step)));
+    mark.setAttribute('visibility', 'visible');
+  }
+
+  /* On the drop with the grid on: the device lands on the nearest grid point. */
+  function land(svg, g) {
+    var mark = svg.querySelector('.topo-snapmark'), step = gridOf(svg);
+    if (mark) mark.setAttribute('visibility', 'hidden');
+    if (!step) return;
+    var p = placeOf(g);
+    shift(svg, g, snapTo(p[0], step) - parseFloat(g.getAttribute('data-x')),
+          snapTo(p[1], step) - parseFloat(g.getAttribute('data-y')));
+  }
 
   function placeOf(g) {
     return [parseFloat(g.getAttribute('data-x')) + parseFloat(g.getAttribute('data-dx') || 0),
@@ -210,6 +243,7 @@
     if (press.node) {
       var p = toMap(press.svg, evt.clientX, evt.clientY);
       shift(press.svg, press.node, press.d0[0] + p.x - press.start[0], press.d0[1] + p.y - press.start[1]);
+      markLanding(press.svg, press.node);
       return;
     }
     // A pan: the view moves by the pointer's travel, in map units at the view's own scale.
@@ -227,7 +261,10 @@
     press.box.classList.remove('topo-panning');
     if (press.moved) {
       swallowClick = true;
-      if (press.node) save(press.svg, press.node);
+      if (press.node) {
+        land(press.svg, press.node);
+        save(press.svg, press.node);
+      }
     }
     press = null;
   }
@@ -290,7 +327,8 @@
     setView(box, view);
   }
 
-  /* Alt and an arrow key move a focused device 20 units (60 with Shift); saved on each step. */
+  /* Alt and an arrow key move a focused device 20 units (60 with Shift), or with the grid on one
+     grid point (three with Shift), landing on the grid; saved on each step. */
   function onKey(evt) {
     if (!evt.altKey || !canMove('keyboard')) return;
     var d = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[evt.key];
@@ -298,9 +336,11 @@
     var svg = g && g.closest('svg.topo-map');
     if (!svg) return;
     evt.preventDefault();
-    var step = evt.shiftKey ? 60 : 20;
+    var grid = gridOf(svg);
+    var step = (grid || 20) * (evt.shiftKey ? 3 : 1);
     shift(svg, g, parseFloat(g.getAttribute('data-dx') || 0) + d[0] * step,
           parseFloat(g.getAttribute('data-dy') || 0) + d[1] * step);
+    land(svg, g);
     save(svg, g);
   }
 
@@ -341,5 +381,5 @@
     root.document.addEventListener('htmx:afterSwap', ready);
   }
   root.NMAS_TOPOLOGY = {zoomAt: zoomAt, initial: initial, firstView: firstView, scaleOf: scaleOf,
-                        layoutJson: layoutJson, straight: straight};
+                        layoutJson: layoutJson, straight: straight, snapTo: snapTo};
 }(typeof window !== 'undefined' ? window : this));

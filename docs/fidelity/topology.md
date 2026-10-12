@@ -15,7 +15,8 @@ Templates compared: templates/v2/topology.html, templates/v2/_topology_map.html
 Compared again 2026-10-12 (C687): the map's summary moved from an SVG `<title>` to its `aria-label`, so the browser no longer draws its own tooltip over a link's card; nothing drawn on the board moved.
 Compared again 2026-10-12 (C693, C694): board D, `TopoPathTrace.dc.html` (canvas version 114, signed off under the Phase 7 mode), beside the page at 1440, 1280 and 390, a trace of r1 to r5's peering with r3 drawn from the captured `show ip cef` answers (`topology-path` in tests/test_board_shots.py). Its regions are in the section "Path… (board D)" below; the rest of the page did not move, except that the Path… popover now opens from its left edge (it opened off the page once Path… wrapped to the toolbar's second row).
 Compared again 2026-10-12 (C696): a branch handed to a device outside the network (r1 to 8.8.8.8, both edges handing it to r5) was coloured with the drops; board D names "leaves the network … where Mercury's knowledge ends" without a colour. It is now its own outcome: grey on the map and the card, a neutral "leaves the network" chip, counted apart in the heading ("2 leave the network toward r5"). Board D's drawn case (one branch delivered, one dropped) did not move.
-Templates sha256: `3ea5b3331559dbaf55760b10fd21c9d482092a2ca9fc3fa2b3659d3a9e430204`
+Compared again 2026-10-12 (C691): board E, `TopoSnap.dc.html` (canvas version 115, signed off under the Phase 7 mode), beside the page with Snap to grid on, at 1440, 1280 and 390 (the section below). Nothing drawn before moved.
+Templates sha256: `07fcb9594755258c74e4f2433a64bf8dc7cbcd1c09922f769168e001e4955d8e`
 
 A verdict is **same**, **deviation** (a difference with its approval log line and its reason: data,
 not design, or the operator's own decision), or **later** (a later step of the plan).
@@ -80,3 +81,16 @@ not design, or the operator's own decision), or **later** (a later step of the p
 | Actions | Clear the path · Trace again | the same, as buttons in a row, How does this work? beside Trace again | **same** |
 | The map | (not drawn on the board; its words) the delivered branch on, the dropped one red to where it stops, the switches dashed | the same: accent glow on the delivered branch's links, danger on the dropped one's, dashed between routed hops, each hop's device ringed in its branch's colour | **same** |
 | Phone (390) | not drawn | the card above the tabs' content, the form wrapping, the table in its scroller | **same** as the desktop's regions |
+
+## Snap to grid (board E, TopoSnap)
+
+Shots `topology-snap-{board,page}-{1440,1280,390}.png`, the page at `/v2/topology?list=Lab&snap=1`.
+
+| Region | Board | Built | Verdict |
+|---|---|---|---|
+| The switch | "Snap to grid", pressed, beside Reset layout | "Snap to grid", pressed (accent, `aria-pressed="true"`), immediately before Reset layout; a link like Ports and Weak points, so it works without script and the address keeps it | **same** |
+| The rest of the toolbar | Ports, Labels, zoom, Weak points, then Snap to grid and Reset layout | board A's toolbar as built (Labels, Snap to grid, Reset layout, the zoom at the right, Weak points wrapping), unchanged | **deviation** (log: C691: board E redraws board A's toolbar in another order) |
+| The grid | a faint dot every 40 units over the map | a dot every 40 map units under the links and devices, in the line colour, drawn only while the switch is on | **same** |
+| The landing outline | a dashed ring at the nearest dot, the dragged device beside it | a dashed accent ring at the nearest grid point while a device is dragged, hidden otherwise; on the drop the device lands in it (`tests/test_topology_v2.py`, the browser test, saves r1 on multiples of 40) | **same** |
+| The words under the board | On, Only what you move snaps, Off, Yours not the network's | the manual's Arranging the map (`docs/manual/screens/topology.md`) says each; the page itself adds no prose, as the toolbar's other switches | **same** |
+| Phone (390) | no switch: the phone pans and zooms only | no switch (`topo-wide`) | **same** |
