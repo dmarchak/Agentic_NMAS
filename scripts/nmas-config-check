@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Check a network's config repository: no device, no secret, no data directory (C725).
+
+    nmas-config-check <config_repo>                     # the whole repository
+    nmas-config-check <config_repo> --report report.json
+    nmas-config-check <config_repo> --touched host_vars/r1.yml templates/cisco_ios/base.j2
+    nmas-config-check <config_repo> --verbose           # every pass and note too
+
+The one check (`modules/nsot/config_check.py`), run here, by the config repository's GitHub
+Actions workflow (`deploy/config-repo/nmas-config-check.yml`) against a bare checkout, and by
+Mercury before it commits a golden, intent, profile, template or DHCP change. Checks: `yaml`
+(every intent, the profile, the DHCP records, the bindings), `templates` (each parses), `render`
+(every device's intent through its bound template, with its profile; secrets as the mask),
+`intent-match` (each golden against its rendered intent: reported, never failed), `lint` (the
+bytes a deploy refuses; the lines it asks an authorisation for, noted) and `secrets` (no value
+in a secret position in any file but the goldens).
+
+**Runs isolated:** `NMAS_DATA_DIR` is pointed at an empty temporary folder before Mercury's
+modules are imported, so nothing reads or writes a `data/` directory or a key; a run on the
+host checks exactly what GitHub checks. Every line it prints is masked by position.
+
+Exit: 0 every check passed; 1 a check failed; 2 the repository could not be read.
+"""
+
+import sys
+
+sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import shutil  # noqa: E402
+import tempfile  # noqa: E402
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CHECKOUT = os.path.dirname(HERE)
+sys.path.insert(0, CHECKOUT)
+from modules.app_interpreter import adopt  # noqa: E402
+adopt(__name__)
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("repo", help="the config repository (a list's config_repo, or a checkout)")
+    parser.add_argument("--report", help="write the machine-readable JSON report here")
+    parser.add_argument("--touched", nargs="*", default=None,
+                        help="scope to these repository paths and the devices they affect")
+    parser.add_argument("--verbose", action="store_true", help="print every pass and note")
+    args = parser.parse_args(argv)
+
+    repo = os.path.abspath(args.repo)
+    if not os.path.isdir(repo):
+        print(f"nmas-config-check: {repo} is not a folder", file=sys.stderr)
+        return 2
+
+    isolated = tempfile.mkdtemp(prefix="nmas-config-check-")
+    os.environ["NMAS_DATA_DIR"] = isolated
+    os.environ.setdefault("NMAS_HEADLESS", "1")
+    try:
+        import logging
+        logging.basicConfig(level=logging.ERROR, format="%(levelname)s %(name)s: %(message)s")
+        from modules.nsot import config_check
+
+        report = config_check.run(repo, touched=args.touched)
+        report["repository"] = os.path.basename(repo.rstrip(os.sep))
+        print(config_check.human(report, verbose=args.verbose))
+        if args.report:
+            with open(args.report, "w", encoding="utf-8") as fh:
+                json.dump(report, fh, indent=2, sort_keys=True)
+                fh.write("\n")
+        return 0 if report["ok"] else 1
+    finally:
+        shutil.rmtree(isolated, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

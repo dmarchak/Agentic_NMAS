@@ -89,9 +89,24 @@ runs in 08:30 to 09:10 UTC (the nightly backup), and nothing is staged on s3.
 
 ### 1.2b Passwords changed automatically on a regular basis
 
-*(Filled in once scheduled rotation is built: the policy on Credentials › Profiles, a
-credential's age and due date, Rotate due devices now, the record on History, the break-glass
-row.)*
+1. **Credentials › Profiles.** The Rotation policy column. Say: "Each credential profile
+   carries a rotation policy; Mercury rotates the devices that follow it when their password is
+   older than the policy allows."
+2. On the profile row the demo device follows: **Rotation policy…** → on a schedule, every
+   **1** day, from 0 until 24 (UTC), at most **1** device → **Set the policy**. Say: "Changing a
+   policy needs a verified person, and it is recorded."
+3. The **Scheduled rotation** card: each device's credential age and next due date. Say: "A
+   timer checks every five minutes; it never runs in the nightly backup window, never on a
+   device another operation holds or one restarting, and it stops at the first failure."
+4. **Rotate due devices now…** → read the preview (the device it takes, and those it leaves
+   with why) → **Rotate 1 device**. The one stepper runs: plan, rotate, verify, record,
+   persist. Say: "The same rotation a person runs from the device page, one device at a time."
+5. **History**: the row "Scheduled rotation (policy set by …)". Then the device's **Overview**:
+   its Credential line, rotated just now, next due tomorrow. Say: "Recorded like a manual
+   rotation, and the next one is already due tomorrow."
+6. **Needs attention**: "…'s break-glass record is out of date since …: export it again".
+   Say: "After any rotation the offline break-glass copy is stale, so Mercury asks for a new
+   export."
 
 ### Part 2 extra credit: 2FA
 

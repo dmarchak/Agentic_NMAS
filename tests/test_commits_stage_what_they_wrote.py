@@ -46,8 +46,12 @@ def lab(tmp_path, monkeypatch):
     save_golden(LIST, [GoldenItem("s1", "hostname s1\ninterface Vlan1\n", "203.0.113.21",
                                   platform="cisco_ios")],
                 source="capture", actor="t", allow_new=True, baseline=False)
+    from modules.nsot.hostvars import to_yaml
+    from modules.nsot.parsers import get_parser
     with open(os.path.join(repo, "host_vars", "s1.yml"), "w", encoding="utf-8") as fh:
-        fh.write("hostname: s1\ninterfaces: []\n")
+        # The parser's whole document: an intent the templates cannot render is refused at
+        # commit (C725), and a hand-typed two-key one does not render.
+        fh.write(to_yaml(get_parser("cisco_ios").parse("hostname s1\n")))
     assert save_host_vars(LIST, ["s1"], actor="t")["ok"]
     for rel, text in (("host_vars/s1.yml", "description: an unreviewed edit\n"),
                       ("golden/s1.cfg", "banner motd ^an unreviewed edit^\n")):

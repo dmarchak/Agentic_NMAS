@@ -74,6 +74,9 @@ def _adopt_scrub_plan() -> str:
 #: Every masking entry point, called through its own shape, with the planted URL.
 ENTRY_POINTS = {
     "modules/redact.py:redact_positional": lambda: redact.redact_positional(PLANTED),
+    # The config check's every printed line (C725): positional without the store, both with.
+    "modules/nsot/config_check.py:mask": lambda: (
+        __import__("modules.nsot.config_check", fromlist=["_Run"])._Run(".", False).mask(PLANTED)),
     "modules/redact.py:redact_text": lambda: redact.redact_text(PLANTED, values={}),
     "modules/redact.py:redact_payload": lambda: repr(redact.redact_payload(
         {"a": [PLANTED, (PLANTED,)]}, values={})),

@@ -1438,6 +1438,21 @@ def commit(repo: str, message: str, *, list_name: str = "", paths=(), allow_empt
     sha is read under it, so it is this commit's and never a later one's (R24).
     """
     _require_lock(repo, "a commit")
+    # THE CONFIG CHECK, before git commits (C725): a golden, intent, profile, template or
+    # DHCP change is checked by `scripts/nmas-config-check`'s own code, scoped to what this
+    # commit touches, and refused naming the check, the file and the line. Here because every
+    # commit in a list's repository comes through this function. A check that cannot run
+    # refuses too: it cannot say the change is sound.
+    from modules.nsot import config_check
+    try:
+        refused = config_check.precommit(repo, paths, list_name=list_name)
+    except Exception as exc:                   # noqa: BLE001 - named in the refusal
+        log.exception("repo: the config check could not run in %s", repo)
+        refused = (f"refused: the config check (scripts/nmas-config-check) could not run: "
+                   f"{type(exc).__name__}: {exc}")
+    if refused:
+        log.warning("repo: commit refused in %s: %s", repo, refused)
+        return 1, "", refused
     config_args = [a for kv in git_config for a in ("-c", kv)]
     flags = ["--allow-empty"] if allow_empty else []
     tail = ["--", *paths] if paths else []

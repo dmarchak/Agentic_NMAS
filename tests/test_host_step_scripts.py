@@ -44,7 +44,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # 7.8: the retired topology service's unit and link removed (2026-10-12).
             "topology-service-removal.sh",
             # C722: a `device` label at Loki's ingest, set by Alloy from the line (2026-10-12).
-            "c722-device-label.sh"}
+            "c722-device-label.sh",
+            # C725: the config repository's workflow and its pin of Mercury (2026-10-12).
+            "c725-config-pipeline.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

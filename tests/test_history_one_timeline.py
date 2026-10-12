@@ -70,7 +70,10 @@ def planted(lab):  # noqa: F811
     _commit(repo, "profile: proposed\n\nSource: profile\nActor: operator@example.com",
             "profile/monitoring.yml")
     from modules.nsot import hostvars
-    hostvars.write_committed(repo, {"hostname": "r4", "interfaces": []})
+    # The parser's whole document: an intent the templates cannot render is refused at
+    # commit (C725), and a hand-typed two-key one does not render.
+    from modules.nsot.parsers import get_parser
+    hostvars.write_committed(repo, get_parser("cisco_ios").parse("hostname r4\n"))
     assert R.save_host_vars("Lab", ["r4"], actor="alex@example.com", source="extraction")["ok"]
     for i, d in enumerate(("r3", "r4", "r3")):
         assert receipts.write("Lab", [{"id": f"x{i}", "at": _now(i), "action": "deploy",

@@ -338,6 +338,43 @@ def test_a_policy_needs_a_verified_person(data):
     assert rec["policy"] == got["words"]
 
 
+def test_a_policy_limited_to_named_devices_covers_only_those(data):
+    """A pilot set (the walk, 2026-10-12: every lab device follows `default`, and s3 must never
+    be rotated unattended): named devices only; the rest say so and are never due."""
+    _profile()
+    got = SR.set_policy("role:router", {"state": "on", "days": "1", "devices": "r2, r3"},
+                        actor=SETTER, verified="access", person=True)
+    assert got["ok"] and got["policy"]["devices"] == ["r2", "r3"]
+    assert got["words"].endswith("at most 5 a run, only r2, r3")
+    states = {s["device"]: s for s in _states(pols={"role:router": got["policy"]})}
+    assert states["r3"]["due"] and not states["r1"]["due"]
+    assert "names other devices (r2, r3), not this one" in states["r1"]["words"]
+    bad = SR.set_policy("role:router", {"state": "on", "devices": "r2; rm"}, actor=SETTER,
+                        verified="access", person=True)
+    assert not bad["ok"] and "is not a device name" in bad["error"]
+
+
+def test_a_credential_s_age_reads_the_repository_s_rotation_commits(monkeypatch):
+    """The rotation record began after the first rotations (on the host, 2026-10-12, it held
+    s1's and r2's while the repository held every device's from 2026-09-21): the age is the
+    newest of the record's and the repository's."""
+    log_out = ("1790000000\t2026-09-21T18:35:49+00:00\tcredential: r3 rotated to a "
+               "device-generated type-9 secret\n"
+               "1780000000\t2026-05-28T00:00:00+00:00\tcredential: r3 rotated to a "
+               "device-generated type-9 secret\n"
+               "1790000500\t2026-09-21T18:44:09+00:00\tgolden: baseline 2 device(s)\n")
+    monkeypatch.setattr("modules.nsot.repo.git", lambda repo, *a: (0, log_out, ""))
+    monkeypatch.setattr("modules.nsot.listref.resolve",
+                        lambda name: type("R", (), {"repo_dir": "/nowhere"})())
+    assert SR.committed_rotations("Lab") == {"r3": (1790000000, "2026-09-21T18:35:49+00:00")}
+    monkeypatch.setattr(SR, "last_rotations", lambda: {"r2": (1795000000, "x")})
+    states = {s["device"]: s for s in SR.device_states(
+        1795000000 + 3600, lists=["Lab"], devices_of=lambda _l: DEVICES,
+        pols={"role:router": _policy(days=1)}, profile_names={"role:router"})}
+    assert not states["r3"]["never"] and states["r3"]["rotated_at"].startswith("2026-09-21")
+    assert states["r1"]["never"] and not states["r2"]["due"]
+
+
 def test_a_bad_policy_is_refused_naming_the_field(data):
     _profile()
     got = SR.set_policy("role:router", {"state": "on", "days": "0"}, actor=SETTER,

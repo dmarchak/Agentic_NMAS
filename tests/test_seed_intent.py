@@ -228,15 +228,20 @@ class TestTheApply:
 
         h = _target(_preview(lab))["select_data"]["hash"]
         path = os.path.join(lab["repo"], "host_vars", "r2.yml")
+        # The parser's whole document: an intent the templates cannot render is refused at
+        # commit (C725), and a hand-typed three-key one does not render.
+        from modules.nsot.hostvars import to_yaml
+        from modules.nsot.parsers import get_parser
+        full = to_yaml(get_parser("cisco_iosxe").parse("hostname r2\n"))
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write("hostname: r2\ninterfaces: []\nrouting: {}\n")
+            fh.write(full)
         assert save_host_vars(LIST, ["r2"], actor="t", paths=["host_vars/r2.yml"])["ok"]
         head = _git(lab["repo"], "rev-parse", "HEAD")
         _code, out = _apply(lab, {"r2": h})
         target = out["result"]["targets"][0]
         assert target["outcome"] == "refused" and "full committed intent now" in target["reason"]
         assert _git(lab["repo"], "rev-parse", "HEAD") == head
-        assert open(path, encoding="utf-8").read() == "hostname: r2\ninterfaces: []\nrouting: {}\n"
+        assert open(path, encoding="utf-8").read() == full
 
     def test_a_held_device_is_refused_by_the_lock(self, lab):
         """Held from ANOTHER thread: the lock is re-entrant for its holder."""

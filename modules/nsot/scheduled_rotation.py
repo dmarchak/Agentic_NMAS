@@ -37,6 +37,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
 
@@ -51,6 +52,8 @@ ANNOUNCE_KEYS = ("rotation", "credentials")
 KIND = "scheduled rotation"
 DEFAULT_DAYS = 30
 DEFAULT_MAX = 5
+#: A device name as an inventory holds it (a policy's "only these devices").
+_DEVICE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
 #: The nightly backup window, UTC (CLAUDE.md, standing facts): no run inside it.
 BACKUP_WINDOW = ((8, 30), (9, 10))
 #: The timer's tick. The preferred window is whole hours, so five minutes is at most a
@@ -138,8 +141,9 @@ def policy_words(p) -> str:
     start, end = int(p.get("window_start", 0)), int(p.get("window_end", 24))
     window = ("any hour" if start == end or (start == 0 and end == 24)
               else f"{start:02d}:00 to {end:02d}:00 UTC")
+    only = f", only {', '.join(p['devices'])}" if p.get("devices") else ""
     return (f"every {days} day{'s' if days != 1 else ''}, {window}, at most "
-            f"{int(p.get('max_per_run', DEFAULT_MAX))} a run")
+            f"{int(p.get('max_per_run', DEFAULT_MAX))} a run{only}")
 
 
 def set_policy(profile: str, form: dict, *, actor: str, verified: str,
@@ -179,6 +183,15 @@ def set_policy(profile: str, form: dict, *, actor: str, verified: str,
                   "max_per_run": number("max_per_run", DEFAULT_MAX, 1, 1000)}
     except ValueError as exc:
         return {"ok": False, "error": f"{exc}: nothing was changed"}
+    # Only these devices (a pilot set): names, by comma or space; none = every device the
+    # profile covers.
+    devices = sorted({d for d in re.split(r"[\s,]+", str(form.get("devices") or "")) if d})
+    bad = [d for d in devices if not _DEVICE_NAME.match(d)]
+    if bad:
+        return {"ok": False, "error": f"{', '.join(bad)} is not a device name: nothing was "
+                                      "changed"}
+    if devices:
+        policy["devices"] = devices
     policy.update(set_by=actor, set_at=_iso(time.time()), verified=verified)
     merged = dict(policies())
     merged[profile] = policy
@@ -220,6 +233,40 @@ def last_rotations() -> dict:
     return out
 
 
+#: A rotation's commit subject (credential_rotation._commit): the device is its second word.
+_ROTATION_SUBJECT = re.compile(r"^credential: (?P<device>\S+) rotated ")
+
+
+def committed_rotations(list_name: str) -> dict:
+    """``{device: (epoch, iso)}``: each device's newest rotation COMMIT in *list_name*'s config
+    repository. The rotation record (`last_rotations`) began after the first rotations: on
+    2026-10-12 it held s1's and r2's while the repository held every device's from 2026-09-21,
+    so a device read only from the record said "never rotated by Mercury" falsely. One `git
+    log` a network; {} when the repository cannot be read (the record alone then answers)."""
+    from modules.nsot import listref
+    from modules.nsot.repo import git
+
+    try:
+        rc, out, _err = git(listref.resolve(list_name).repo_dir, "log",
+                            "--format=%ct\t%cI\t%s", "--grep=^credential: .* rotated ")
+    except Exception as exc:                            # noqa: BLE001
+        log.warning("scheduled rotation: %s's rotation commits could not be read: %s",
+                    list_name, exc)
+        return {}
+    if rc != 0:
+        return {}
+    found = {}
+    for line in (out or "").splitlines():
+        try:
+            ct, iso, subject = line.split("\t", 2)
+        except ValueError:
+            continue
+        m = _ROTATION_SUBJECT.match(subject)
+        if m and int(ct) > found.get(m.group("device"), (0, ""))[0]:
+            found[m.group("device")] = (int(ct), iso)
+    return found
+
+
 def _age_words(seconds: float) -> str:
     days = seconds / 86400
     if days >= 1:
@@ -242,9 +289,11 @@ def device_states(now=None, *, lists=None, devices_of=None, rotations=None,
     names = (set(profile_names) if profile_names is not None
              else {p["name"] for p in credentials.list_profiles()})
     pols = policies() if pols is None else pols
+    read_commits = rotations is None                  # a caller's *rotations* is the whole truth
     rotations = last_rotations() if rotations is None else rotations
     out = []
     for list_name in (sorted(listref._registry()) if lists is None else lists):
+        committed = committed_rotations(list_name) if read_commits else {}
         try:
             rows = (devices_of(list_name) if devices_of else
                     load_saved_devices(listref.resolve(list_name).csv_path))
@@ -259,13 +308,21 @@ def device_states(now=None, *, lists=None, devices_of=None, rotations=None,
             profile = governing_profile(dev, names)
             pol = pols.get(profile) if profile else None
             on = bool(pol and pol.get("state") == "on")
-            at, iso = rotations.get(host, (None, ""))
+            # A policy limited to named devices (a pilot set) covers only those.
+            outside = bool(on and pol.get("devices") and host not in pol["devices"])
+            on = on and not outside
+            at, iso = max(rotations.get(host, (None, "")), committed.get(host, (None, "")),
+                          key=lambda r: r[0] or 0)
             s = {"list": list_name, "device": host, "profile": profile, "policy": pol or {},
                  "policy_words": policy_words(pol), "on": on, "rotated_at": iso,
                  "never": at is None,
                  "age_words": ("never rotated by Mercury" if at is None
                                else f"rotated {_age_words(now - at)} ago")}
-            if not on:
+            if outside:
+                s.update(due=False, due_at="", words=(
+                    f"{profile}'s rotation policy names other devices "
+                    f"({', '.join(pol['devices'])}), not this one"))
+            elif not on:
                 s.update(due=False, due_at="", words=(
                     "no profile covers it, so no rotation policy" if not profile else
                     f"{profile}'s rotation policy is off"))

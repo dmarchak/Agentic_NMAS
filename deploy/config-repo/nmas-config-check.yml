@@ -1,0 +1,114 @@
+# The config repository's check (C725; Obj 2.1: a configuration change triggers a test).
+#
+# Installed into a list's config repository as .github/workflows/nmas-config-check.yml by
+# scripts/host-steps/c725-config-pipeline.sh, beside .nsot/nmas-pin, which names the Mercury
+# release the check comes from:
+#
+#     repository=<account>/Agentic_NMAS
+#     sha=<the 40-hex commit of that public repository>
+#
+# On every push and pull request touching what Mercury checks before it commits (golden/,
+# host_vars/, templates/, profiles/, dhcp/), plus the pin and this file, it checks out the
+# config repository and the PINNED Mercury commit (a public repository: no token is needed),
+# installs the pinned lock exactly, and runs scripts/nmas-config-check: the same code Mercury
+# ran before committing. The JSON report is uploaded as the run's artifact.
+name: nmas-config-check
+
+on:
+  push:
+    paths:
+      - "golden/**"
+      - "host_vars/**"
+      - "templates/**"
+      - "profiles/**"
+      - "dhcp/**"
+      - ".nsot/nmas-pin"
+      - ".github/workflows/nmas-config-check.yml"
+  pull_request:
+    paths:
+      - "golden/**"
+      - "host_vars/**"
+      - "templates/**"
+      - "profiles/**"
+      - "dhcp/**"
+      - ".nsot/nmas-pin"
+      - ".github/workflows/nmas-config-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nmas-config-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    # The check itself: 0.25 s for one device (r2's real repository, measured 2026-10-12), so
+    # seconds for a fleet. The install dominates and is not measured on GitHub yet: 10 minutes
+    # bounds a cold pip cache until the first runs give a number to set it from.
+    timeout-minutes: 10
+    steps:
+      - name: Check out the config repository
+        uses: actions/checkout@v4
+        with:
+          path: config
+          persist-credentials: false
+
+      - name: Read the pinned Mercury commit (.nsot/nmas-pin)
+        id: pin
+        run: |
+          pin=config/.nsot/nmas-pin
+          if [ ! -f "$pin" ]; then
+            echo "::error file=.nsot/nmas-pin::no pin: this repository does not name the Mercury commit to check with"
+            exit 1
+          fi
+          repository=$(sed -n 's/^repository=//p' "$pin" | tr -d '[:space:]')
+          sha=$(sed -n 's/^sha=//p' "$pin" | tr -d '[:space:]')
+          if ! printf '%s' "$repository" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
+            echo "::error file=.nsot/nmas-pin::repository is '$repository', not owner/name"
+            exit 1
+          fi
+          if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error file=.nsot/nmas-pin::sha is '$sha', not a 40-hex commit"
+            exit 1
+          fi
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out Mercury at the pinned commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pin.outputs.repository }}
+          ref: ${{ steps.pin.outputs.sha }}
+          path: nmas
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            nmas/requirements.txt
+            nmas/requirements*.lock
+
+      # --require-hashes --no-deps: exactly the lock's files, as the host's venv installs them;
+      # requirements.txt only where a pinned release predates the lock.
+      - name: Install the pinned release's requirements
+        run: |
+          if [ -f nmas/requirements.lock ]; then
+            python -m pip install --require-hashes --no-deps -r nmas/requirements.lock
+          else
+            python -m pip install -r nmas/requirements.txt
+          fi
+
+      - name: Run the config check
+        run: python nmas/scripts/nmas-config-check config --report nmas-config-check.json
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nmas-config-check
+          path: nmas-config-check.json
+          if-no-files-found: warn
