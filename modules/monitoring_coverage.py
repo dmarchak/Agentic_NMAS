@@ -489,6 +489,23 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
     rows, covered = [], 0
     signatures = {}                                # each template library's, once (C566)
     known = platform_facts.facts()                 # ONE stored read for the grid (C426)
+    # Every golden read once, first: a device's IP SLA cell is credited by a probe that runs
+    # on ANOTHER device (C717: s1 and s4 read "no probes" while r1's ip sla 3 and r2's ip
+    # sla 2 measured them), by the rule the IP SLA page uses (`ip_sla_policy.measured_paths`).
+    reads = {}
+    for _ref, dev in devices:
+        host = (dev.get("hostname") or "").strip()
+        if host and host not in reads:
+            try:
+                reads[host] = (golden(ref, host), None)
+            except Exception as exc:                    # noqa: BLE001
+                reads[host] = (None, exc)
+    from modules.nsot import ip_sla_policy
+    from modules.neighbours import committed_intents
+    all_intents, _err = committed_intents(ref.repo_dir)
+    sla_paths = ip_sla_policy.measured_paths(
+        ip_sla_policy.running_probes({h: t for h, (t, _e) in reads.items() if t}),
+        all_intents or {})
     for _ref, dev in devices:
         host = (dev.get("hostname") or "").strip()
         if not host:
@@ -498,11 +515,11 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
         row = {"host": host, "platform": platform, "role": role, "cells": {}, "gaps": [],
                "supplies": [], "not_reporting": [], "selectable": False, "checked": False,
                "why_not": ""}
-        try:
-            text = golden(ref, host)
+        text, exc = reads[host]
+        if exc is None:
             row["golden"] = "ok" if text else "none"
-        except Exception as exc:                        # noqa: BLE001
-            text, row["golden"] = None, "unreadable"
+        else:
+            row["golden"] = "unreadable"
             row["error"] = f"{type(exc).__name__}: {exc}"
         try:
             intent = hostvars.read_committed(ref.repo_dir, host)
@@ -538,6 +555,11 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
                 cell = {"state": "gap", "words": (f"missing — {n} probe{'s' if n != 1 else ''} "
                                                   "committed to its intent, not yet sent")}
                 row["supplies"].append(key)
+            elif key == "ip_sla" and (by := ip_sla_policy.measured_from(host, sla_paths)):
+                # Measured from the other end, by design (a router probes the switch, sparing
+                # its CPU): covered, and said where (C717).
+                cell = {"state": "ok", "measured_from": by["prober"],
+                        "words": f"measured from {by['prober']} (ip sla {by['id']})"}
             elif key == "ip_sla":
                 cell = {"state": "unused", "words": _ip_sla_words(doc)}
             elif key not in want:

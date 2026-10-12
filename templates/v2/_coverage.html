@@ -87,7 +87,7 @@
             </th>
             {%- for col in c.columns %}{% set cell = d.cells[col.key] %}{% set at = d.host ~ ' · ' ~ col.words ~ ': ' %}
             {%- if cell.state == 'ok' %}
-            <td class="gc" data-state="ok" title="{{ at }}configured{% if cell.reporting %}; {{ cell.reporting.words }}{% endif %}"><span class="sr-only">configured</span><span class="m-ok" aria-hidden="true">{{ icon('check', 14) }}</span></td>
+            <td class="gc" data-state="ok"{% if cell.measured_from %} data-measured-from="{{ cell.measured_from }}"{% endif %} title="{{ at }}{{ cell.words if cell.measured_from else 'configured' }}{% if cell.reporting %}; {{ cell.reporting.words }}{% endif %}"><span class="sr-only">{{ cell.words if cell.measured_from else 'configured' }}</span><span class="m-ok" aria-hidden="true">{{ icon('check', 14) }}</span></td>
             {%- elif cell.state == 'not_reporting' %}
             <td class="gc" data-state="not_reporting"><a class="nr-link" href="{{ url_for('device_v2.device', name=d.host, tab=cell.where) }}" title="{{ at }}{{ cell.words }}. Opens {{ d.host }} › {{ cell.where | capitalize }} to find why: a deploy does not fix this" aria-label="{{ d.host }} {{ col.words }} {{ cell.words }}; find why on its {{ cell.where | capitalize }} tab"><span class="m-nr" aria-hidden="true">!</span></a></td>
             {%- elif col.key == 'ip_sla' and cell.state == 'unused' %}

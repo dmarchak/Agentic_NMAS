@@ -91,6 +91,55 @@ def existing_probes(intents: dict) -> list:
     return out
 
 
+_SLA_OP = re.compile(r"^ip sla (\d+)\s*$")
+
+
+def running_probes(texts: dict) -> list:
+    """``[(prober, id, target address)]`` for every icmp-echo operation in each device's
+    configuration *texts* (``{host: text}``, the goldens): the probes that run, where
+    `existing_probes` reads the ones intent commits."""
+    out = []
+    for host, text in sorted((texts or {}).items()):
+        op = None
+        for line in (text or "").splitlines():
+            m = _SLA_OP.match(line)
+            if m:
+                op = m.group(1)
+                continue
+            if op and line.startswith(" "):
+                e = _ECHO.match(line)
+                if e:
+                    out.append((host, op, e.group(1)))
+                continue
+            op = None
+    return out
+
+
+def measured_paths(probes: list, intents: dict) -> dict:
+    """``{frozenset((prober, other)): {"prober", "id", "with"}}``: the path each probe
+    measures, keyed by its two ends (the target's owner by committed intent, else its
+    address). A probe between two devices measures their path from either end, so a switch
+    whose router probes it is measured (the operator, 2026-10-01). The ONE rule the IP SLA
+    page (which paths not to add again) and Coverage (which device is measured, C717) share."""
+    out = {}
+    for prober, op_id, addr in probes:
+        other = _owner(addr, intents) or addr
+        out.setdefault(frozenset((prober, other)), {"prober": prober, "id": str(op_id),
+                                                    "with": other})
+    return out
+
+
+def probe_words(p: dict) -> str:
+    return f"{p['prober']}'s ip sla {p['id']}"
+
+
+def measured_from(host: str, paths: dict):
+    """The probe on ANOTHER device that measures *host*'s path (``{"prober", "id", "with"}``),
+    or None: what Coverage credits a device with when its own config runs no probe."""
+    found = [v for k, v in paths.items() if host in k and v["prober"] != host]
+    return sorted(found, key=lambda v: (v["prober"], v["id"]))[0] if found else None
+
+
 def gateway(hv: dict) -> str:
     """The global table's static default route's next hop, or ""."""
     for r in (hv or {}).get("static_routes") or []:
@@ -277,16 +326,16 @@ def suggest(intents: dict, devices: dict, section: dict, chosen: list) -> dict:
     policy = (section or {}).get("policy") or "none"
     probes = existing_probes(intents)
     from modules.neighbours import expected
-    paths, nets_of, load = {}, {}, {}
-    for prober, op_id, addr in probes:
+    measured = measured_paths(probes, intents)
+    paths = {k: probe_words(v) for k, v in measured.items()}
+    nets_of, load = {}, {}
+    for prober, _op_id, _addr in probes:
         load[prober] = load.get(prober, 0) + 1
-        other = _owner(addr, intents) or addr
-        key = frozenset((prober, other))
-        paths[key] = f"{prober}'s ip sla {op_id}"
+    for key, v in measured.items():
         # The network an existing probe measures: the one its two ends share
         # (so a probe already on a segment covers that segment).
-        shared = [e.get("network") for e in expected(intents, prober)
-                  if e.get("peer") == other and e.get("proto") == "ospf"]
+        shared = [e.get("network") for e in expected(intents, v["prober"])
+                  if e.get("peer") == v["with"] and e.get("proto") == "ospf"]
         if shared:
             nets_of[key] = shared[0]
     next_id = {}
@@ -324,12 +373,14 @@ def suggest(intents: dict, devices: dict, section: dict, chosen: list) -> dict:
                     f"its path to {target_dev or addr} is already measured by {paths[key]}, "
                     "from one end or the other")})
                 continue
-            same_net = next((v for k, v in paths.items()
-                             if host in k and nets_of.get(k) == net), None)
+            same_net = next((k for k in paths if host in k and nets_of.get(k) == net), None)
             if same_net:
+                # Named from the end that probes it (C717: "measured from s4 by r2's ip sla 2"
+                # read backwards).
+                v = measured[same_net]
                 skipped.append({"device": host, "why": (
-                    f"{net} is already measured from {host} by {same_net}: on a shared segment "
-                    "one probe covers it")})
+                    f"{net} is already measured from {v['prober']} ({probe_words(v)}, to "
+                    f"{v['with']}): on a shared segment one probe covers it")})
                 continue
             target_switch = is_switch(devices.get(target_dev) or {})[0] if target_dev else True
             if switch and target_dev and not target_switch and target_dev in intents:

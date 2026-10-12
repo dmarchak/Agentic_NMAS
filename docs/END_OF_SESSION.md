@@ -36,15 +36,24 @@ flow writes a probe as the device prints it, no frequency at the default, and a 
 sends IP SLA lines now fails verify unless the device equals its rendered intent, both ways).
 Both deployed; on the host the `upstream` suggestions for s1, s4 and r6 carry no frequency line.
 
+**Your walk, the evening of 2026-10-12 (as you reported it):**
+- **C711's proof:** the IP SLA batch on r1 and r2 (s1 measured from r1's `ip sla 3`, s4 from
+  r2's `ip sla 2`) both verified. **IOS-XE does NOT print `frequency 60`** (measured: the new
+  both-ways verify passed), so C713's rule holds on both platforms. r6 not probed: your choice
+  (it would probe s3).
+- **s2's intent fix** (` frequency 60` removed) committed.
+- **Save All: baseline EARNED.**
+- Found: Coverage did not credit s1 and s4 (C717, fixed), r6 needs a "Decline…" (C718, open),
+  the s4 sentence read backwards (C717, fixed); asked why r6's suggestion was s3's loopback
+  (C719: the static route's next hop belongs to s3; the hop itself would be the closer target).
+
 **Waiting on you:**
-1. **s2's one-off correction is to intent, not the device:** s2 › Intent › Edit, delete
-   ` frequency 60` under `ip sla 1`, Commit (nothing to deploy: s2 already runs the default and
-   prints no line). Then Save All for the baseline.
-2. **C711's proof, held by you until C713:** Monitoring › IP SLA, set `upstream`, add the three
-   probes. All three land on IOS-XE routers, where printing the default is unmeasured; if a
-   router prints `frequency 60`, verify now fails and rolls back naming it.
-3. **The AI agent's family:** the answer is in the session reply of 2026-10-12 ~20:05 UTC
-   (one v2 gap: approving or rejecting approval-queue items).
+1. **C718's board** (Decline… for IP SLA) once drawn, and **C719**: the next hop itself as the
+   static-route step's target, and whether the gateway step follows.
+2. **The AI agent's family:** the answer is in the session reply of 2026-10-12 ~20:05 UTC
+   (one v2 gap: approving or rejecting approval-queue items). Held until the steppers are done,
+   as you asked.
+3. **Sitting 3 (fleet writes)** exercises the pages converted to the one stepper (in progress).
 4. As before: C700's 24 h reading is due 2026-10-13 05:06 UTC (23:06 UTC−6 tonight); C695 and
    C673's confirms are in the walk.
 

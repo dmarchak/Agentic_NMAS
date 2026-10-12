@@ -89,8 +89,26 @@ class TestTheSuggestions:
         out = _suggest(fleet, ["s3"])
         assert out["suggestions"] == []
         (k,) = out["skipped"]
-        assert k["device"] == "s3" and "already measured from s3 by s3's ip sla 1" in k["why"]
+        # s3 and r1 probe each other (r1's ip sla 2, s3's ip sla 1): the pair is measured
+        # twice, and the reason names the first probe, from the end that runs it.
+        assert k["device"] == "s3" and "already measured from r1 (r1's ip sla 2, to s3)" in \
+            k["why"], k["why"]
         assert "one probe covers it" in k["why"]
+
+    def test_a_segment_measured_from_the_router_is_said_from_the_router(self, fleet):
+        """C717: the walk's s4 read "already measured from s4 by r2's ip sla 2", backwards:
+        r2 probes s4. With r2's probe to s4 committed, s4's own suggestion names r2."""
+        import copy
+        intents, devices = fleet
+        intents = copy.deepcopy(intents)
+        intents["r2"]["ip_sla"].append({"id": "2", "settings": [
+            " icmp-echo 10.255.1.24 source-interface Loopback0"]})
+        from modules.nsot import ip_sla_policy as P
+        out = P.suggest(intents, devices, {"policy": "peers"}, ["s4"])
+        assert out["suggestions"] == []
+        (k,) = out["skipped"]
+        assert k["why"].startswith("10.255.3.0/24 is already measured from r2 (r2's ip sla 2, "
+                                   "to s4)"), k["why"]
 
     def test_the_same_pair_is_measured_once_from_either_end(self, fleet):
         # r5 shares two sessions with r3 (IPv4 and IPv6): one probe, and the
@@ -522,6 +540,30 @@ class TestCoverageLinksHere:
         assert "1 device(s) run no probe (s4)" in page
         assert "/v2/monitoring/ip-sla?list=Lab&device=s4" in page
         assert "review the suggested probes on the IP SLA page" in page
+
+    def test_a_device_measured_from_the_other_end_is_covered(self, lab, monkeypatch):
+        """C717 (the operator's walk): s1 and s4 read "no probe" while the IP SLA page said
+        r1's ip sla 3 and r2's ip sla 2 measure them. r2's golden runs a probe to s4's
+        loopback: s4's cell is covered, says from where, and s4 is not listed as running none."""
+        from modules.nsot import listref
+        from modules.nsot.repo import GoldenItem, save_golden
+        r2 = _cfg("r2").replace(
+            "ip sla schedule 1 life forever start-time now",
+            "ip sla schedule 1 life forever start-time now\nip sla 2\n"
+            " icmp-echo 10.255.1.24 source-interface Loopback0\n"
+            "ip sla schedule 2 life forever start-time now")
+        assert save_golden("Lab", [GoldenItem("r2", r2, "203.0.113.12", platform="cisco_iosxe")],
+                           source="capture", actor="t", allow_new=True, baseline=False)["ok"]
+        assert _policy(lab).status_code == 200
+        monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [
+            {"hostname": "r2", "ip": "203.0.113.12", "platform": "cisco_iosxe"},
+            {"hostname": "s4", "ip": "203.0.113.24", "platform": "cisco_ios"}])
+        page = html_mod.unescape(lab["client"].get("/v2/monitoring/coverage/table")
+                                 .get_data(as_text=True))
+        assert 'data-measured-from="r2"' in page
+        assert "s4 · IP SLA: measured from r2 (ip sla 2)" in page
+        assert "run no probe (s4)" not in page
 
 
 class TestTheShippedClient:
