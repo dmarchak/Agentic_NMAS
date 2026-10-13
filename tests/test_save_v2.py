@@ -626,12 +626,15 @@ class TestInARealBrowser:
             b.wait_for(f"return {CARD} && {CARD}.querySelector('.op-confirm') && {SETTLED}", 15)
             b.click("#save-op .op-confirm")
             assert reached.wait(20), "the run never reached r2's read-back"
-            # The card redraws on the device's own step (device_progress), never a timer.
+            # The card redraws on the device's own step (device_progress), never a timer. It
+            # may first show the step before (C751: under the full suite's load the card drawn
+            # before the announcement arrived answered first), so wait for the step itself.
             got = b.wait_for(
                 "var r=document.querySelector('.run-row-running[data-row=r2]');"
                 "var c=r && r.querySelector('.run-step-running .run-words');"
                 "var m=document.querySelector('.run-final');"
-                "return c && m && [c.textContent.trim(), m.textContent.replace(/\\s+/g,' ')]", 15)
+                "return c && m && c.textContent.trim().indexOf('Read back') === 0 && "
+                "[c.textContent.trim(), m.textContent.replace(/\\s+/g,' ')]", 15)
             assert got[0].startswith("Read back"), got
             assert "waits for every device's turn" in got[1], got
             assert b.js("return !!document.querySelector('#save-op input[name=q]')") is False

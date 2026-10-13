@@ -358,9 +358,12 @@ def stepper(steps, progress, *, detours=None, now=None, starts=False) -> list:
             noted = last if index.get(last) == i else ""
             said = (waits.get(noted) or next(iter(waits.values()), "")
                     if isinstance(waits, dict) else waits)
+            # C741: an operation that notes a step as it BEGINS (`starts`) noted the running
+            # step itself, so it is not "last done"; only a finished part of the step is.
+            done_part = "" if starts else noted
             rows.append({"key": key, "words": words, "state": "running", "since": _iso(started),
                          "took_s": round(max(0.0, now - started)), "waits": said,
-                         "last": noted})
+                         "last": done_part})
         else:
             rows.append({"key": key, "words": words, "state": "waiting"})
     return rows

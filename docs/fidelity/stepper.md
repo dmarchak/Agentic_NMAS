@@ -31,8 +31,13 @@ the phone, the hover on the desk) ends "(last done: read_back)", the running ste
 name said as done, and the counts line says "1 waiting their turn" where the board says "its
 turn". The phone page's full shot is 488 px wide because that is Firefox's narrowest window; the
 page is held to 390 as a column, not scrolling sideways.
+Retaken 2026-10-13 for C741's fix (`test_stepper` at 1440, 1280 and 390): the counts line says
+"1 waiting its turn" (one row its turn, several their turn, as the board), and the running
+step's note says what it waits on with no "(last done: ...)" of its own name; a finished part
+of a step noted as it ends is said in words ("last done: original session"). Nothing the macro
+lays out moved; every region's verdict stands.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
-Templates sha256: `a0a1a5729910baf16a183c7c6046dff5fa16a275b9b0634d673c3ef9dfd12ace`
+Templates sha256: `23207f334328ebbd276e902e3118741cbcd97b29d3cbe61785c2523b7604f9d1`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

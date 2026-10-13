@@ -308,6 +308,21 @@ class TestTheModel:
         assert [t["group"] for t in c["tally"]] == ["done", "running", "waiting", "failed"]
         assert c["grouped"] is False and c["single"] is False
 
+    def test_the_counts_line_agrees_with_its_number(self):
+        """C741: "1 waiting their turn" read wrong; one row waits its turn, several theirs."""
+        from modules import run_stepper as RS
+        one = RS.card(self._rows(["waiting", "done", "done"]), label="x")
+        words = {t["group"]: t["words"] for t in one["tally"]}
+        assert words["waiting"] == "waiting its turn"
+        two = RS.card(self._rows(["waiting", "waiting", "done"]), label="x",
+                      group_words={"done": "through their turn, waiting for the commit"})
+        words = {t["group"]: t["words"] for t in two["tally"]}
+        assert words["waiting"] == "waiting their turn"
+        assert words["done"] == "through its turn, waiting for the commit"
+        # The groups at scale keep the plural heading: a heading names the group, not a count.
+        assert [g["words"] for g in two["groups"] if g["name"] == "waiting"] == [
+            "waiting their turn"]
+
     def test_from_25_rows_it_groups_and_a_search_filters_rows_never_counts(self):
         from modules import run_stepper as RS
         c = RS.card(self._rows(["waiting"] * 24 + ["running"]), label="x", q="d24")

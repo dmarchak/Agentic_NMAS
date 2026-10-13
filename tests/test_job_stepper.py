@@ -148,6 +148,26 @@ class TestTheStepper:
         assert rows[7]["took_s"] == 30 and "settle window" in rows[7]["waits"]
         assert rows[3]["took_s"] == 5, "read before ran from its start to the compare's"
 
+    def test_a_step_noted_as_it_starts_is_never_its_own_last_done(self):
+        """C741: an operation noting each step as it BEGINS (the deploy, `starts`) notes the
+        running step itself; the card said "Verify ... (last done: verify)"."""
+        from modules import pipeline
+        from modules import run_stepper as RS
+        rows = DA.stepper(pipeline.STEPS, _trail(("netbox_query", 1001), ("template_render", 1002),
+                                                 ("ci_gate", 1003), ("pre_snapshot", 1004),
+                                                 ("config_diff", 1009), ("deploy", 1010),
+                                                 ("post_snapshot", 1014), ("verify", 1020)),
+                          now=1050.0, starts=True)
+        assert rows[7]["state"] == "running" and rows[7]["last"] == ""
+        note = RS.from_stepper(rows)[7]["note"]
+        assert note.startswith("waits on ") and "last done" not in note
+        # Noted as it ENDS (a rotation), the finished part is said, in words.
+        rows = DA.stepper(RO.STEPS, _trail(("preflight", 1002), ("confirmation", 1004),
+                                           ("generate", 1005), ("stage", 1005.5),
+                                           ("invalidate_redaction_cache", 1006),
+                                           ("original_session", 1010)), now=1012.0)
+        assert RS.from_stepper(rows)[2]["note"].endswith("(last done: original session)")
+
     def test_a_quick_verify_says_it_reads_back_never_settle_windows(self):
         """The operator, 2026-10-08: the words match the verify chosen. A program of management
         lines only is QUICK, noted `verify_quick` by the pipeline (one classifier,
@@ -223,7 +243,9 @@ class TestEveryJobCard:
                             r'aria-current="step">(.*?)</li>', html, re.S)
         assert current and current.group(1) == "send"
         assert "waits on a held session to the device" in current.group(2)
-        assert "last done: original_session" in current.group(2)
+        # C741: the finished part in words, never its code name.
+        assert "last done: original session" in current.group(2)
+        assert "original_session" not in current.group(2)
         assert 'data-run-since="' in current.group(2), "its time, kept current by the page"
         assert html.count("run-step run-step-done") == 2
         assert 'nmas:device_progress from:body' in html

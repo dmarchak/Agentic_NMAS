@@ -18,6 +18,7 @@ tests/test_one_stepper.py holds that no operation page draws progress any other 
 """
 
 import logging
+import re
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,14 @@ def step(key: str, words: str, state: str, *, took_s=None, note: str = "",
             "since": since}
 
 
+def _for_count(words: str, n: int) -> str:
+    """A group's words for its count: one row waits ITS turn, several wait THEIR turn (C741:
+    "1 waiting their turn" where board C605 says "its")."""
+    if n != 1:
+        return words
+    return re.sub(r"\btheir\b", "its", re.sub(r"\bthem\b", "it", words))
+
+
 def from_stepper(rows: list) -> list:
     """`device_actions.stepper`'s rows as this card's steps (its running step's note is what
     it waits on, and the last thing it did)."""
@@ -55,7 +64,8 @@ def from_stepper(rows: list) -> list:
         if s.get("state") == "running":
             note = f"waits on {s['waits']}" if s.get("waits") else ""
             if s.get("last"):
-                note += f" (last done: {s['last']})"
+                # A finished part of the running step, in words (C741: never its code name).
+                note += f" (last done: {s['last'].replace('_', ' ')})"
         out.append(step(s.get("key", ""), s.get("words", ""), s.get("state", "waiting"),
                         took_s=s.get("took_s"), note=note, since=s.get("since", "")))
     return out
@@ -158,7 +168,8 @@ def card(rows: list, *, label: str, final: dict = None, q: str = "", search: tup
     # failed (red when any did). Done, running, waiting and failed always said (a zero is an
     # answer); a partial or a not-reached only when there is one.
     kinds = {g: k for g, _w, k in GROUPS}
-    tally = [{"group": g, "n": counts[g], "words": words[g], "kind": kinds[g]}
+    tally = [{"group": g, "n": counts[g], "words": _for_count(words[g], counts[g]),
+              "kind": kinds[g]}
              for g in TALLY_ORDER if counts[g] or g not in ("partial", "not_reached")]
     through = counts["done"] + counts["partial"] + counts["failed"] + counts["not_reached"]
     return {"rows": shown, "total": total, "counts": counts, "tally": tally, "label": label,

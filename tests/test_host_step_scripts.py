@@ -291,7 +291,6 @@ def test_the_records_password_is_prompted_hidden_and_reaches_only_stdin_and_the_
 UNEXPORTED_EXCUSED = {
     ("c729-key-disk.sh", "C729_DEFERRAL_LIFTED"):
         "set by the operator in the step's own environment when lifting the deferral",
-    ("phase7-mode-on.sh", "CHECKOUT"): "C747: works only when run from inside the checkout",
 }
 
 

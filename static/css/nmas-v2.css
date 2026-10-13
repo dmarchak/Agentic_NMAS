@@ -137,7 +137,6 @@ a { color: var(--accent); }
 .nav-head { padding: 18px 10px 6px; font-size: 11px; letter-spacing: 0.08em; color: var(--side-ink-2); font-weight: 600; }
 .nav-rule { height: 1px; background: var(--side-rule); margin: 8px 6px; }
 .sidebar .grow { min-height: 12px; }
-.spike-note { font-size: 11px; color: var(--side-ink-2); padding: 0 10px; margin: 0 0 6px; }
 .count { background: var(--danger); color: var(--on-danger); border-radius: 10px; font-size: 11px; font-weight: 600; padding: 1px 7px; }
 .count-zero { background: var(--side-on); color: var(--side-ink-2); }
 /* The worst row's level (the operator, 2026-10-02): critical red (the default), a warning

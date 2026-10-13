@@ -15,6 +15,8 @@
 # Nothing else is touched. phase7-mode-off.sh ends the mode.
 . "$(dirname "$0")/lib.sh"
 
+# A check runs in a child shell: it sees only what is exported (C747, C748).
+export CHECKOUT
 export MD="$CHECKOUT/CLAUDE.md"
 export FLAG="$CHECKOUT/.claude/phase7-mode"
 export HOOK="$CHECKOUT/scripts/hooks/claude-no-host-writes"
