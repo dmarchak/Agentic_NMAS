@@ -56,7 +56,6 @@ from modules.config import (
     PING_INTERVAL,
     SECRET_KEY_FILE,
     TFTP_ROOT,
-    TFTP_SERVER_IP,
     FILE_TRANSFER_METHOD,
     FLASK_HOST,
     FLASK_PORT,
@@ -493,7 +492,6 @@ def index():
         devices=devices,
         device_lists=device_lists,
         current_list=current_list_name,
-        tftp_server=TFTP_SERVER_IP,
         no_api_key=no_api_key
     )
 
@@ -522,7 +520,6 @@ def manage_device(ip):
             files=file_list,
             selected_fs=selected_fs,
             active_tab=active_tab,
-            tftp_server=TFTP_SERVER_IP,
             no_api_key=not bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
         )
     except Exception as e:
@@ -599,7 +596,6 @@ def run_command(ip):
             output=output,
             filename=session["last_filename"],
             active_tab="utilities",
-            tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
         flash(
@@ -792,45 +788,6 @@ def select_device_list_route():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/save_tftp_server", methods=["POST"])
-def save_tftp_server():
-    """Save TFTP server address to user settings."""
-    global TFTP_SERVER_IP
-    try:
-        data = request.get_json()
-        tftp_server = data.get("tftp_server", "").strip() if data else ""
-
-        if not tftp_server:
-            return jsonify({"status": "error", "message": "TFTP server address is required"}), 400
-
-        # Validate IP address format (basic check)
-        try:
-            parts = tftp_server.split(".")
-            if len(parts) == 4 and all(0 <= int(p) <= 255 for p in parts):
-                pass  # Valid IPv4
-            else:
-                return jsonify({"status": "error", "message": "Invalid IP address format"}), 400
-        except (ValueError, AttributeError):
-            return jsonify({"status": "error", "message": "Invalid IP address format"}), 400
-
-        # Save to user settings
-        if set_user_setting("tftp_server_ip", tftp_server):
-            # Update the module-level variable for current session
-            import modules.config as config_module
-            config_module.TFTP_SERVER_IP = tftp_server
-            TFTP_SERVER_IP = tftp_server
-
-            app.logger.info(f"TFTP server address saved: {tftp_server}")
-            return jsonify({
-                "status": "success",
-                "message": f"TFTP server address saved: {tftp_server}"
-            })
-        else:
-            return jsonify({"status": "error", "message": "Failed to save settings"}), 500
-
-    except Exception as e:
-        app.logger.error(f"Failed to save TFTP server: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # Default values for all workflow flags (all on, except require_approval)
@@ -875,7 +832,6 @@ def _settings_payload() -> dict:
     from modules.settings_schema import DEFAULTS as _SETTING_DEFAULTS
     payload = {
         "anthropic_api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY", "")),
-        "tftp_server_ip":    TFTP_SERVER_IP,
         # NetBox — token never returned in cleartext; UI uses token_set flag.
         "netbox_url":         nbcfg.get("url", ""),
         "netbox_token_set":   bool(nbcfg.get("token")),
@@ -915,7 +871,6 @@ def save_settings():
 
 
 def _save_settings(data: dict, errors: list):
-    global TFTP_SERVER_IP
     import modules.config as config_module
 
 
@@ -942,20 +897,6 @@ def _save_settings(data: dict, errors: list):
                                "jenkins_api_key", "jenkins_token")):
         errors.append("Jenkins was removed (P.4, docs/NSOT_CI.md); its settings "
                       "are no longer stored. Reload the page.")
-
-    # ── TFTP server IP ────────────────────────────────────────────────────
-    tftp = data.get("tftp_server_ip", "").strip()
-    if tftp:
-        try:
-            parts = tftp.split(".")
-            if not (len(parts) == 4 and all(0 <= int(p) <= 255 for p in parts)):
-                errors.append("Invalid TFTP server IP address format.")
-            else:
-                set_user_setting("tftp_server_ip", tftp)
-                config_module.TFTP_SERVER_IP = tftp
-                TFTP_SERVER_IP = tftp
-        except Exception as exc:
-            errors.append(f"TFTP setting failed: {exc}")
 
     # ── NetBox ────────────────────────────────────────────────────────────
     # Any NetBox field, alone: the form sends only what changed (R17), so the write switch

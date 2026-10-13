@@ -270,7 +270,6 @@ DECLARED = {
     "netbox_test_connection": ("settings",),
     # Settings, posture and the collectors.
     "save_settings": ("settings",),
-    "save_tftp_server": ("settings",),
     "settings_integrations.general_settings": ("settings",),
     "settings_integrations.save_integration": ("settings",),
     "settings_v2.group_switch": ("settings",),

@@ -52,7 +52,7 @@ SCOPES: dict = {
     **{k: (NETWORK, k) for k in (
         "verify_settle_windows", "deploy_max_workers", "deploy_verify_failure_limit",
         "nsot_device_tag_retention", "nsot_config_read_timeout", "netbox_excluded_vrfs",
-        "tftp_server_ip", "settings_not_applicable", "reads_answer_cap_kib",
+        "settings_not_applicable", "reads_answer_cap_kib",
         "reads_max_workers", "reads_retention_days")},
     # ── Host-wide ─────────────────────────────────────────────────────────────────────────
     **_group(HOST, "netbox_connection", "netbox_url", "netbox_token", "netbox_auth_scheme",
@@ -97,6 +97,9 @@ SCOPES: dict = {
     # The topology service, retired at 7.8 (2026-10-12): OBSERVE › Topology replaced it.
     **_group(RETIRING, "topology_service", "topology_service_url", "topology_service_type",
              "topology_service_token", "topology_service_verify_tls"),
+    # The TFTP setting, retired at 7.8 (D16, 2026-10-13): its last readers, the device and bulk
+    # file routes, left the same day; declared for one release, as Oxidized's keys are.
+    **_group(RETIRING, "tftp_setting", "tftp_server_ip"),
     # ── Already dead, recorded (never split) ─────────────────────────────────────────────
     **_group(DEAD, "dead", "jenkins_step_shell", "wf_run_jenkins",
              "netbox_remove_on_list_delete", "oxidized_rest_url", "grafana_embed_mode",
@@ -115,7 +118,6 @@ GROUP_LABELS: dict = {
     "deploy_verify_failure_limit": "Deploy failure limit",
     "nsot_device_tag_retention": "Golden tags kept", "nsot_config_read_timeout":
     "Configuration read timeout", "netbox_excluded_vrfs": "NetBox excluded VRFs",
-    "tftp_server_ip": "TFTP server address",
     "reads_answer_cap_kib": "Show commands: answer cap (KiB)",
     "reads_max_workers": "Show commands: devices read at once",
     "reads_retention_days": "Show commands: answers kept (days)",

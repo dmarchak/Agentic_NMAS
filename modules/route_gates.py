@@ -224,7 +224,6 @@ GATES = {
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
     "identity.ratify_setting": _g(K, "records a decision about a gate", "ratify_setting"),
     "drift_settings_post": _g(K, "switches the drift checker and its interval"),
-    "save_tftp_server": _g(K, "writes the TFTP server setting"),
     "ai_set_provider": _g(K, "switches the AI provider"),
     "ai_agent_timers_post": _g(K, "changes when the background agent runs"),
     "ai_agent_pause": _g(K, "pauses the background agent"),

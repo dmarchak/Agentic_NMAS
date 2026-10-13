@@ -452,7 +452,6 @@ HISTORY = {
     "drift_settings_post": NOT_A_DEVICE,
     "identity.ratify_setting": NOT_A_DEVICE,
     "save_settings": NOT_A_DEVICE,
-    "save_tftp_server": NOT_A_DEVICE,
     "select_device_list_route": NOT_A_DEVICE,
     "settings_integrations.general_settings": NOT_A_DEVICE,
     "settings_integrations.save_integration": NOT_A_DEVICE,

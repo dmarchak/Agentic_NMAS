@@ -65,7 +65,6 @@ and built.
 | Break-glass export | `/breakglass/export` | STAYS (its preview route removed 2026-10-12, 7.8) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
 | Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
-| TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | No reader is left: the device and bulk file routes left 2026-10-13 (its input on today's device page with them); its own input and Save on today's device table stay until it goes. It points at nothing on this installation |
 | App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
 | In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
 | Version | `/health/version` | BUILT | Help › About |
@@ -81,6 +80,13 @@ and built.
 Each family leaves the table above in the commit that removes it, named here with that commit's
 date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest change first).
 
+- **The TFTP setting** (/save_tftp_server), 2026-10-13 (D16; restore point tag
+  `pre-remove/tftp-setting`; C616): its last readers, the device and bulk file routes, left the
+  same day. Today's device table lost its TFTP server row and script, today's Settings its
+  Network section (the one field), and the integrations payload the field; `tftp_server_ip` is
+  RETIRING (declared one release, as Oxidized's keys). **`tftp_root` stays**: it is also the
+  `NMAS_TFTP_ROOT` environment setting CLAUDE.md names, so it leaves with the operator's
+  CLAUDE.md change (C616).
 - **Bulk file actions** (/bulk_tftp_upload, /bulk_tftp_download, /bulk_download_config,
   /bulk_delete_file), 2026-10-13 (D16; restore point tag `pre-remove/bulk-file-actions`): as
   device files. Today's device table lost its upload, download, config-download and delete

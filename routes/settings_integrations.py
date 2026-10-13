@@ -120,7 +120,7 @@ def general_settings():
     """
     keys = (
         "flask_host", "flask_port", "auto_open_browser",
-        "tftp_root", "tftp_server_ip",
+        "tftp_root",
         "collector_trap_enabled", "collector_netflow_enabled",
         "collector_syslog_enabled",
         "monitoring_identity_mode", "monitoring_identity_field",

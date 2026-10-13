@@ -219,33 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
 
-  window.saveTftpServer = function() {
-    const tftpServer = document.getElementById('bulkTftpServer').value.trim();
-
-    if (!tftpServer) {
-      showToast('Please enter a TFTP server address', 'warning');
-      return;
-    }
-
-    fetch('/save_tftp_server', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tftp_server: tftpServer })
-    })
-    .then(resp => resp.json())
-    .then(data => {
-      if (data.status === 'success') {
-        showToast(data.message, 'success');
-      } else {
-        showToast(data.message || 'Failed to save TFTP server', 'danger');
-      }
-    })
-    .catch(err => {
-      console.error('Save TFTP server failed:', err);
-      showToast('Failed to save TFTP server address', 'danger');
-    });
-  };
-
   // P.3 step 3 (D5): the guarded restore preview at HEAD, scoped to the
   // selected devices. It used to POST to an unguarded replay that pushed the
   // whole golden line by line: no plan, no hash, no rollback.

@@ -27,19 +27,6 @@
     </div>
     <small class="text-muted mt-2 d-block" id="configHint" style="display: none;">For multiple config commands, separate with semicolons (e.g., hostname R1; interface gi0/0; description WAN)</small>
 
-    <hr class="my-3">
-    <h6 class="mb-2">TFTP server (the TFTP setting; its transfers left at 7.8)</h6>
-    <div class="row g-2 mb-3">
-      <div class="col-md-6">
-        <label class="form-label mb-1 small fw-bold">TFTP Server Address</label>
-        <div class="input-group input-group-sm">
-          <input type="text" class="form-control" id="bulkTftpServer" value="{{ tftp_server }}" placeholder="TFTP Server IP">
-          <button class="btn btn-outline-success" type="button" onclick="saveTftpServer()" title="Save as default">
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
     <div class="row g-2">
       <!-- Restore Golden Config -->
       <div class="col-md-6">

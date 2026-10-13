@@ -576,7 +576,6 @@ TFTP_ROOT = _env_or_setting("NMAS_TFTP_ROOT", "tftp_root", _DEFAULT_TFTP_ROOT)
 
 # TFTP server IP — no default address: a hardcoded one is wrong on every network
 # but the one it came from. Set it in Settings.
-TFTP_SERVER_IP = get_user_setting("tftp_server_ip", "")
 
 
 def ensure_tftp_root() -> str:

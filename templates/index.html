@@ -603,7 +603,6 @@
         <nav class="mb-3 small" aria-label="Settings sections">
           <span class="text-muted me-1">Jump to:</span>
           <a class="me-2" href="#setAiProvider">AI</a>
-          <a class="me-2" href="#setNetwork">Network</a>
           <a class="me-2" href="#setNetbox">NetBox</a>
           <a class="me-2" href="#setIntegrations">Integrations</a>
           <a class="me-2" href="#setSecurity">Security</a>
@@ -681,22 +680,6 @@
                 <tbody><tr><td colspan="6" class="text-muted">Loading…</td></tr></tbody>
               </table>
             </div>
-          </div>
-        </div>
-
-        <hr>
-
-        <!-- Network -->
-        <h6 id="setNetwork" class="text-primary fw-semibold mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M14.763.075A.5.5 0 0 1 15 .5v15a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5V14h-1v1.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V10a.5.5 0 0 1 .342-.474L6 7.64V4.5a.5.5 0 0 1 .276-.447l8-4a.5.5 0 0 1 .487.022M6 8.694 1 10.36V15h5zM7 15h2v-1.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 .5.5V15h1V1.309z"/></svg>
-          Network
-        </h6>
-        <div class="row g-3">
-          <div class="col-md-5">
-            <label class="form-label fw-semibold">TFTP Server IP</label>
-            <input type="text" class="form-control" id="settingsTftpIp"
-                   placeholder="192.168.0.1">
-            <div class="form-text">Used for bulk file transfer operations.</div>
           </div>
         </div>
 
@@ -937,7 +920,6 @@ window.saveSettings = function() {
     ai_enabled:            document.getElementById('settingsAiEnabled').checked,
     background_agent_enabled:
       document.getElementById('settingsBackgroundAgentEnabled').checked,
-    tftp_server_ip:        document.getElementById('settingsTftpIp').value.trim(),
     wf_read_first:         document.getElementById('wfReadFirst').checked,
     wf_auto_backup:        document.getElementById('wfAutoBackup').checked,
     wf_update_vars:        document.getElementById('wfUpdateVars').checked,
