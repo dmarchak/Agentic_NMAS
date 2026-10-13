@@ -21,6 +21,8 @@ the run.
 
 import calendar
 import json
+import os
+import threading
 import time
 
 import pytest
@@ -314,6 +316,101 @@ def test_never_two_runs_at_once(data, monkeypatch):
     assert _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)["state"] == "done"
 
 
+# ------------------------------------------- every due device, one after another (2026-10-13)
+
+def _three_due():
+    """r3 never rotated, r1 40 days, r2 5 days: all due under a 1-day policy with no cap, the
+    queue oldest password first."""
+    return _states(pols={"role:router": _policy(days=1, most=None)})
+
+
+class Pushes:
+    """The post-commit hooks' one spy: what was PUSHED (a held repository fires once, at the
+    run's end)."""
+
+    def __init__(self, monkeypatch):
+        from modules.nsot import hooks
+        self.seen, self.done = [], threading.Event()
+        monkeypatch.setattr(hooks, "ensure_default_hooks", lambda: None)
+        monkeypatch.setattr(hooks, "_hooks", [{"name": "spy", "timeout": 5,
+                                                "func": self._spy}])
+
+    def _spy(self, ctx):
+        self.seen.append(ctx)
+        self.done.set()
+        return {"ok": True}
+
+    def wait(self):
+        self.done.wait(5)                     # the hooks fire on a thread: bounded, 5 s
+        return self.seen
+
+
+class CommittingRotations(Rotations):
+    """Rotations that also COMMIT as the rotation's own commit publishes: one context a
+    device into the list's repository, its golden tag beside it."""
+
+    def __call__(self, list_name, host, **kw):
+        from modules.config import list_data_path
+        from modules.nsot import credential_rotation as cr, hooks
+        out = super().__call__(list_name, host, **kw)
+        if out["state"] == cr.ROTATED_PERSISTED:
+            hooks.run_post_commit({"repo": os.path.join(list_data_path(list_name), "config_repo"),
+                                   "sha": f"sha-{host}", "tags": [f"golden/{host}/t"],
+                                   "devices": [host], "list_name": list_name})
+        return out
+
+
+def test_three_due_and_the_second_fails(data, monkeypatch):
+    """First recorded, second reverted (as today), third not started, the halt raised, and
+    the first's commit pushed at the stop."""
+    pushes = Pushes(monkeypatch)
+    rot = CommittingRotations(fail={"r1"})
+    got = _run(monkeypatch, _three_due(), trigger="request", actor=SETTER, rotate=rot)
+    assert [c["device"] for c in rot.calls] == ["r3", "r1"]
+    assert [r["device"] for r in got["rotated"]] == ["r3"]
+    assert got["state"] == "stopped" and got["failed"]["device"] == "r1"
+    assert [n["device"] for n in got["not_reached"]] == ["r2"]
+    assert SR.halted(SR.runs()["rows"]) is not None
+    (pushed,) = pushes.wait()
+    assert pushed["devices"] == ["r3"] and pushed["tags"] == ["golden/r3/t"]
+
+
+def test_all_due_rotated_one_after_another_and_pushed_once(data, monkeypatch):
+    pushes = Pushes(monkeypatch)
+    rot = CommittingRotations()
+    got = _run(monkeypatch, _three_due(), trigger="request", actor=SETTER, rotate=rot)
+    assert got["state"] == "done"
+    assert [r["device"] for r in got["rotated"]] == ["r3", "r1", "r2"]   # oldest first
+    (pushed,) = pushes.wait()                                            # ONE push
+    assert pushed["devices"] == ["r1", "r2", "r3"] and pushed["sha"] == "sha-r2"
+    assert pushed["tags"] == ["golden/r3/t", "golden/r1/t", "golden/r2/t"]
+
+
+def test_a_cap_of_two_with_three_due_leaves_the_third_due(data, monkeypatch):
+    states = _states(pols={"role:router": _policy(days=1, most=2)})
+    rot = Rotations()
+    got = _run(monkeypatch, states, trigger="request", actor=SETTER, rotate=rot)
+    assert [r["device"] for r in got["rotated"]] == ["r3", "r1"]
+    assert [w["device"] for w in got["waiting"]] == ["r2"]
+    assert "limit of 2 a run" in got["waiting"][0]["why"]
+
+
+def test_a_person_s_run_while_the_timer_holds_the_policy_is_refused(data, monkeypatch):
+    rot = Rotations()
+    with SR.RunLock("the timer", "scheduled"):
+        got = _run(monkeypatch, _three_due(), trigger="request", actor=SETTER, rotate=rot)
+    assert got["state"] == "refused" and rot.calls == []
+    assert "the timer" in got["error"], got["error"]
+
+
+def test_a_blank_cap_is_no_cap_and_says_so(data):
+    _profile()
+    got = SR.set_policy("role:router", {"state": "on", "days": "1", "max_per_run": ""},
+                        actor=SETTER, verified="access", person=True)
+    assert got["ok"] and "max_per_run" not in got["policy"], got
+    assert "every due device a run" in got["words"]
+
+
 # ---------------------------------------------------------------------------- the policy
 
 def _profile(name="role:router"):
@@ -345,7 +442,7 @@ def test_a_policy_limited_to_named_devices_covers_only_those(data):
     got = SR.set_policy("role:router", {"state": "on", "days": "1", "devices": "r2, r3"},
                         actor=SETTER, verified="access", person=True)
     assert got["ok"] and got["policy"]["devices"] == ["r2", "r3"]
-    assert got["words"].endswith("at most 5 a run, only r2, r3")
+    assert got["words"].endswith("every due device a run, only r2, r3")
     states = {s["device"]: s for s in _states(pols={"role:router": got["policy"]})}
     assert states["r3"]["due"] and not states["r1"]["due"]
     assert "names other devices (r2, r3), not this one" in states["r1"]["words"]
@@ -447,17 +544,23 @@ def test_the_commit_s_source_is_a_workflow_name_the_repository_accepts():
     assert device_list.SOURCE_WORDS[SR.SOURCE] == "a scheduled rotation"
 
 
-def test_a_halt_stands_until_a_later_run_finishes_clean(monkeypatch):
-    """The operator, 2026-10-13: settling the failed device another way (s1's recovery, its
-    rotation committed) leaves the halt standing; a person's clean run clears it."""
+def test_a_halt_clears_once_the_failed_device_s_rotation_is_committed(monkeypatch):
+    """The host, 2026-10-13: s1's credential was recovered into the store (no commit), so the
+    halt stood; it clears when s1's rotation is COMMITTED after the stop, never on the store
+    alone, and a later clean run still clears it as before."""
     stop = {"run": "1", "trigger": "scheduled", "state": "stopped",
             "finished": "2026-10-12T23:56:40Z",
             "failed": {"device": "s1", "list": "Lab", "stage": "commit"}}
-    monkeypatch.setattr(SR, "committed_rotations",
-                        lambda name: {"s1": (SR._epoch("2026-10-13T00:40:00Z"), "")})
-    assert SR.halted([stop]) is stop, "a settle elsewhere is not a clean run"
+    commits = {}
+    monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
+    assert SR.halted([stop]) is stop                                   # nothing committed
+    commits["s1"] = (SR._epoch("2026-10-12T20:00:00Z"), "")
+    assert SR.halted([stop]) is stop                                   # committed BEFORE it
     assert SR.halted([stop, {"run": "2", "state": "refused"}]) is stop   # refused is no run
-    assert SR.halted([stop, {"run": "2", "state": "done"}]) is None      # a clean run after
+    commits["s1"] = (SR._epoch("2026-10-13T01:00:06Z"), "")
+    assert SR.halted([stop]) is None                                   # settled after it
+    commits.clear()
+    assert SR.halted([stop, {"run": "2", "state": "done"}]) is None    # a clean run after
 
 
 def test_a_scheduled_run_after_midnight_does_not_take_a_second_device(data, monkeypatch):

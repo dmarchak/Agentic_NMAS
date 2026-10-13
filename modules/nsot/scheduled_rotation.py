@@ -142,8 +142,9 @@ def policy_words(p) -> str:
     window = ("any hour" if start == end or (start == 0 and end == 24)
               else f"{start:02d}:00 to {end:02d}:00 UTC")
     only = f", only {', '.join(p['devices'])}" if p.get("devices") else ""
-    return (f"every {days} day{'s' if days != 1 else ''}, {window}, at most "
-            f"{int(p.get('max_per_run', DEFAULT_MAX))} a run{only}")
+    cap = (f"at most {int(p['max_per_run'])} a run" if p.get("max_per_run")
+           else "every due device a run")
+    return f"every {days} day{'s' if days != 1 else ''}, {window}, {cap}{only}"
 
 
 def set_policy(profile: str, form: dict, *, actor: str, verified: str,
@@ -179,8 +180,10 @@ def set_policy(profile: str, form: dict, *, actor: str, verified: str,
     try:
         policy = {"state": state, "days": number("days", DEFAULT_DAYS, 1, 3650),
                   "window_start": number("window_start", 0, 0, 23),
-                  "window_end": number("window_end", 24, 0, 24),
-                  "max_per_run": number("max_per_run", DEFAULT_MAX, 1, 1000)}
+                  "window_end": number("window_end", 24, 0, 24)}
+        # "At most N a run" is optional: blank takes every due device, one after another.
+        if str(form.get("max_per_run") or "").strip():
+            policy["max_per_run"] = number("max_per_run", 1, 1, 1000)
     except ValueError as exc:
         return {"ok": False, "error": f"{exc}: nothing was changed"}
     # Only these devices (a pilot set): names, by comma or space; none = every device the
@@ -395,12 +398,22 @@ def last_decisive(rows=None):
 
 
 def halted(rows=None):
-    """The stopped run that halts the timer, or None: the last run that ran, when it stopped on
-    a failure. It halts until a later run finishes clean, a person's Rotate due devices now
-    among them; settling the failed device another way (a recovery, a device-page rotation)
-    leaves it standing (the operator, 2026-10-13: the halt is cleared by a person's run)."""
+    """The stopped run that halts the timer, or None. A run that stopped on a failure halts it
+    until a later run finishes clean, or until the device it failed on has a ROTATION COMMIT
+    after the stop: settled through Mercury's rotation, recorded with its trailers (the
+    operator, 2026-10-13, superseding the same day's "only a person's run": the goal became an
+    unattended run, and a person's run would take the queue itself). A recovery into the store
+    alone commits nothing, so it settles nothing."""
     last = last_decisive(rows)
-    return last if last and last.get("state") == "stopped" else None
+    if not last or last.get("state") != "stopped":
+        return None
+    f = last.get("failed") or {}
+    stopped_at = _epoch(last.get("finished") or "") or 0
+    if f.get("device") and f.get("list"):
+        at, _iso_ = committed_rotations(f["list"]).get(f["device"], (0, ""))
+        if at > stopped_at:
+            return None
+    return last
 
 
 # ------------------------------------------------------------------ the lock
@@ -468,8 +481,8 @@ def select(states: list, now=None, *, scheduled: bool, ran_today=()) -> tuple:
         if scheduled and s["profile"] in ran_today:
             waiting.append(dict(s, why=f"{s['profile']}'s scheduled run ran in the last 24 hours"))
             continue
-        limit = int(pol.get("max_per_run", DEFAULT_MAX))
-        if taken.get(s["profile"], 0) >= limit:
+        limit = pol.get("max_per_run")        # blank: every due device, one after another
+        if limit and taken.get(s["profile"], 0) >= int(limit):
             waiting.append(dict(s, why=f"past {s['profile']}'s limit of {limit} a run: the "
                                        "next run takes it"))
             continue
@@ -487,9 +500,19 @@ def selection_hash(chosen: list) -> str:
 def preview(now=None) -> dict:
     """"Rotate due devices now"'s preview: the due devices it takes and those it leaves, the
     hash to confirm. Reads files only; asks no device."""
+    from modules.nsot import device_ops
+
     now = _now(now)
     states = device_states(now)
     chosen, waiting = select(states, now, scheduled=False)
+    # The queue in its order (oldest password first), each device that would be skipped NOW
+    # named with why: the run checks again when its turn comes.
+    for c in chosen:
+        h = device_ops.holder(c["list"], c["device"])
+        why = (f"held by another operation: {device_ops.describe(h)}" if h
+               else restarting(c["list"], c["device"], now))
+        if why:
+            c["now"] = f"{why}: skipped when its turn comes unless that has ended"
     return {"chosen": chosen, "waiting": waiting, "hash": selection_hash(chosen),
             "backup_window": in_backup_window(now),
             "covered": sum(1 for s in states if s["on"]), "total": len(states)}
@@ -620,6 +643,7 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
         record.update(state="refused", error=str(exc), finished=_iso(clock()))
         _append(record)
         return dict(record, ok=False)
+    hold = None
     try:
         prior = runs()["rows"]
         if trigger == "scheduled":
@@ -633,7 +657,7 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
         today = started - 86400            # a scheduled run per policy in any 24 h (C724)
         ran_today = {p for r in prior if r.get("trigger") == "scheduled"
                      and (_epoch(r.get("started", "")) or 0) > today
-                     and r.get("state") in DECISIVE for p in r.get("policies") or []}
+                     and r.get("state") == "done" for p in r.get("policies") or []}
         states = device_states(started)
         chosen, waiting = select(states, started, scheduled=trigger == "scheduled",
                                  ran_today=ran_today)
@@ -653,6 +677,13 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
                           device=s["device"], group="waiting", detail="waiting its turn")
         if not chosen:
             return finish("nothing_due")
+        # One commit and golden tag a device, ONE push for the run, at its end or its stop
+        # (the operator, 2026-10-13): the repositories' post-commit hooks held until then.
+        from modules.config import list_data_path
+        from modules.nsot import hooks
+        hold = hooks.held([os.path.join(list_data_path(lst_), "config_repo")
+                           for lst_ in {c["list"] for c in chosen}])
+        hold.__enter__()
         for i, s in enumerate(chosen):
             key, lst, host = f"{s['list']}/{s['device']}", s["list"], s["device"]
             if in_backup_window(clock()):
@@ -716,6 +747,8 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
             return finish("stopped", f"{host} failed at {stage}: the run stopped")
         return finish("done")
     finally:
+        if hold is not None:
+            hold.__exit__(None, None, None)            # the run's one push
         lock.__exit__(None, None, None)
 
 
@@ -766,8 +799,17 @@ def run_card(run_id: str) -> dict:
         else:
             steps = []
         rows.append(RS.row(host, group, steps, detail=r.get("detail", "")))
+    # The run in one line (the operator, 2026-10-13): "device 2 of 3: r1, verify".
+    order = got.get("order") or []
+    headline = ""
+    for i, row_ in enumerate(rows, 1):
+        if row_["group"] == "running":
+            step_now = next((s["words"] for s in row_["steps"] if s["state"] == "running"),
+                            row_.get("detail") or "starting")
+            headline = f"device {i} of {len(order)}: {row_['name']}, {step_now}"
     card = RS.card(rows, label="Rotate due devices", key="scheduled-rotation")
     return {"card": card, "skipped": skipped, "state": got.get("state", "running"),
+            "headline": headline,
             "error": got.get("error", ""), "finished": got.get("finished", ""),
             "running": got.get("state") in ("starting", "running")}
 
@@ -834,7 +876,7 @@ def tick(now=None) -> dict:
     today = now - 86400                    # a scheduled run per policy in any 24 h (C724)
     ran_today = {p for r in runs()["rows"] if r.get("trigger") == "scheduled"
                  and (_epoch(r.get("started", "")) or 0) > today
-                 and r.get("state") in DECISIVE for p in r.get("policies") or []}
+                 and r.get("state") == "done" for p in r.get("policies") or []}
     chosen, _w = select(states, now, scheduled=True, ran_today=ran_today)
     if not chosen:
         return {"ok": True, "state": "idle"}

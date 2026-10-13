@@ -8,7 +8,9 @@ archive or push failure is logged and surfaced on the integration badge, but it
 can never block or roll back a commit that has already happened.
 """
 
+import contextlib
 import logging
+import os
 import threading
 
 log = logging.getLogger(__name__)
@@ -94,8 +96,47 @@ def _report_empty_registry(context: dict) -> None:
         log.error("hooks: empty registry and could not report it: %s", exc)
 
 
+#: Repositories whose hooks are held for one run (C724, the operator, 2026-10-13: a rotation
+#: run commits once a device and pushes once, at its end or on its stop): the real path ->
+#: the held contexts. In this process only, like the run that holds them.
+_held: dict = {}
+
+
+@contextlib.contextmanager
+def held(repos):
+    """Hold the post-commit hooks of *repos* (paths) for the block: each commit's context is
+    kept, and on leaving, however it is left, the hooks fire ONCE per repository for its last
+    commit, carrying every held commit's tags and devices. Anything else this process commits
+    to those repositories meanwhile is pushed with it."""
+    keys = sorted({os.path.realpath(r) for r in repos if r})
+    with _lock:
+        for k in keys:
+            _held.setdefault(k, [])
+    try:
+        yield
+    finally:
+        for k in keys:
+            with _lock:
+                ctxs = _held.pop(k, [])
+            if ctxs:
+                from modules.nsot.repo import publish     # the one caller of the hooks
+
+                last = ctxs[-1]
+                publish(last.get("repo", ""), last.get("sha", ""),
+                        list_name=last.get("list_name", ""), source=last.get("source", ""),
+                        actor=last.get("actor", ""),
+                        tags=[t for c in ctxs for t in c.get("tags") or []],
+                        devices=sorted({d for c in ctxs for d in c.get("devices") or []}))
+
+
 def run_post_commit(context: dict) -> None:
-    """Fire every hook on a background thread. Returns immediately."""
+    """Fire every hook on a background thread. Returns immediately (a held repository's
+    context is kept for `held`'s exit instead)."""
+    with _lock:
+        key = os.path.realpath(context.get("repo") or "") if context.get("repo") else ""
+        if key in _held:
+            _held[key].append(context)
+            return
     ensure_default_hooks()
     with _lock:
         hooks = list(_hooks)

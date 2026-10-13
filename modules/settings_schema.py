@@ -729,14 +729,16 @@ SCHEMA: dict = {
             "type": "object",
             "additionalProperties": {
                 "type": "object",
-                "required": ["state", "days", "window_start", "window_end", "max_per_run",
-                             "set_by", "set_at"],
+                # max_per_run optional: absent, a run takes every due device, one after
+                # another (the operator, 2026-10-13); devices: a pilot set, absent = all.
+                "required": ["state", "days", "window_start", "window_end", "set_by", "set_at"],
                 "properties": {
                     "state": {"enum": ["on", "off"]},
                     "days": {"type": "integer", "minimum": 1, "maximum": 3650},
                     "window_start": {"type": "integer", "minimum": 0, "maximum": 23},
                     "window_end": {"type": "integer", "minimum": 0, "maximum": 24},
                     "max_per_run": {"type": "integer", "minimum": 1, "maximum": 1000},
+                    "devices": {"type": "array", "items": _STR},
                     "set_by": _STR, "set_at": _STR, "verified": _STR,
                 },
             },

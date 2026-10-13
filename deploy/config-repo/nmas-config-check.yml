@@ -16,6 +16,10 @@ name: nmas-config-check
 
 on:
   push:
+    # A tag push ignores path filters, so every golden save (a commit and its tag) ran twice
+    # (the operator, 2026-10-13): branch pushes only.
+    tags-ignore:
+      - "**"
     paths:
       - "golden/**"
       - "host_vars/**"
