@@ -350,7 +350,8 @@ STAGE_WORDS = {
     "post_snapshot": ("Read after", "the running configuration read again"),
     # The verify the program gets, as the stage notes it (`_verify_note`): the words say what
     # it waits on, never settle windows for a quick read-back (the operator, 2026-10-08).
-    "verify": ("Verify", {"verify": "each protocol's settle window, and BGP's hold time",
+    "verify": ("Verify", {"verify": "each protocol's settle window, BGP's hold time, and each "
+                                    "new line read back",
                           "verify_quick": "each new line read back (a quick verify: the "
                                           "change touches management sections only, so no "
                                           "protocol settle window is waited)"}),
@@ -1755,20 +1756,27 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # A line the device does not show did not land as sent: verify does
         # not pass, and nothing is rolled back for it (the push itself raised
         # nothing, so what to undo is not known from here).
+        # Quick or full (C732, the operator's B9, 2026-10-13): the configuration after the push
+        # is read either way (stage 8.5 records it), so the read-back costs no device read, and
+        # a full program's line that did not land is as unseen without it as a quick one's.
+        # Measured before: every host device's golden matched its rendered intent, so no line
+        # intent renders reads back in another form.
         read_back = None
-        if scope["scope"] == verify_scope.QUICK or ctx.read_back_all:
-            post_cfg = post.get("running_config") or ""
-            if not post_cfg:
-                cant_read.append("new lines: `show running-config`: "
-                                 + (post.get("running_config_error") or "nothing was read"))
-            else:
-                read_back = verify_scope.read_back(ctx.rendered_commands.get(ip) or [], post_cfg)
-                if ctx.read_back_all and read_back.get("missing"):
-                    # One program, rolled back as one (A2): a template that did not land is a
-                    # verify failure, never a device left with part of its templates.
-                    issues.append(f"{len(read_back['missing'])} sent line(s) did not read back: "
-                                  + "; ".join(read_back["missing"][:5])
-                                  + (" …" if len(read_back["missing"]) > 5 else ""))
+        sent = (ctx.rendered_commands or {}).get(ip) or []
+        post_cfg = post.get("running_config") or ""
+        if not sent:
+            pass                                    # nothing sent: nothing to read back
+        elif not post_cfg:
+            cant_read.append("new lines: `show running-config`: "
+                             + (post.get("running_config_error") or "nothing was read"))
+        else:
+            read_back = verify_scope.read_back(sent, post_cfg)
+            if ctx.read_back_all and read_back.get("missing"):
+                # One program, rolled back as one (A2): a template that did not land is a
+                # verify failure, never a device left with part of its templates.
+                issues.append(f"{len(read_back['missing'])} sent line(s) did not read back: "
+                              + "; ".join(read_back["missing"][:5])
+                              + (" …" if len(read_back["missing"]) > 5 else ""))
 
         # ── A scoped deploy that sends IP SLA lines leaves the device's IP SLA operations
         # equal to its rendered intent's, both ways (C713: s2's ` frequency 60` was sent,
@@ -1794,7 +1802,8 @@ def _stage_verify(ctx: PipelineContext) -> None:
                        and not (read_back or {}).get("missing")),
             # Quick or full, and why, from the program (verify_scope).
             "verify_scope": {"scope": scope["scope"], "why": scope["why"]},
-            # A quick verify's read-back of each new line; None for a full one.
+            # Each new line read back, quick or full (C732); None when the configuration after
+            # the push could not be read (named under `unreadable`).
             "read_back": read_back,
             # C713: the IP SLA operations against rendered intent, both ways; None when this
             # deploy sends no IP SLA line in a scope that checks it.

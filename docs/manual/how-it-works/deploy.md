@@ -161,9 +161,10 @@ the run ends. Its stages, in the order the code declares them:
    and fails only if it persists; a count still rising is reported as not yet converged. The
    route table must keep 90% of its routes, re-read for up to 90 s; BGP is read once more no earlier than its configured hold time after the push
    (180 s when none is set), except for a program that touches only management sections
-   (terminal lines, logging, SNMP, NTP, banners, users), where each new line is read back from
-   the configuration instead. Removals must read back gone, and re-created IP SLA operations as
-   intent defines them. A failure triggers a rollback. A protocol intent declares that the
+   (terminal lines, logging, SNMP, NTP, banners, users), which no session depends on. Every
+   new line is read back from the configuration read after the push, whatever the program
+   touches. Removals must read back gone, and re-created IP SLA operations as intent defines
+   them. A failure triggers a rollback. A protocol intent declares that the
    device was not running before and is still not up, a read that could not be trusted, or a
    new line not read back makes verify not pass, without a rollback: undoing the change cannot
    fix those.

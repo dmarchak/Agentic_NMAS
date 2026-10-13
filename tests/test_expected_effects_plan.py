@@ -14,7 +14,7 @@ import pytest
 
 from modules import pipeline
 from modules.nsot import expected_effects as fx
-from tests.test_bgp_hold_watch import _summary, world  # noqa: F401 (the fixture)
+from tests.test_bgp_hold_watch import _summary, landed, world  # noqa: F401 (the fixture)
 from tests.test_device_deploy_v2 import _get, deploy  # noqa: F401 (the fixture)
 from tests.test_device_deploy_v2 import lab  # noqa: F401
 
@@ -103,6 +103,7 @@ class TestVerifyHonoursThem:
     def test_a_session_the_plan_expected_to_drop_is_not_a_failure(self, world):  # noqa: F811
         ctx, clock = world(_summary("Idle"))
         ctx.rendered_commands = {"x": ["interface Loopback1", " shutdown", "exit"]}
+        landed(ctx)                             # the program landed (C732 reads it back)
         ctx.expected_effects = {"x": {"adjacencies_drop": [
             {"proto": "bgp", "address": "198.51.100.1", "why": "sourced from Loopback1"}]}}
         pipeline._stage_verify(ctx)

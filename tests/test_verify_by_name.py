@@ -22,7 +22,7 @@ import pytest
 
 from modules import pipeline
 from modules.nsot import expected_effects as fx
-from tests.test_bgp_hold_watch import _summary, world  # noqa: F401 (the fixture)
+from tests.test_bgp_hold_watch import _summary, landed, world  # noqa: F401 (the fixture)
 
 FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "operational")
 R3_INTERFACES = open(os.path.join(
@@ -87,6 +87,7 @@ def run(world, monkeypatch):  # noqa: F811
     def build(program, before, after, later=None):
         ctx, clock = world(_summary())
         ctx.rendered_commands = {"x": program}
+        landed(ctx)                             # the program landed (C732 reads it back)
         ctx.pre_snapshots["x"]["interfaces"] = {"states": before,
                                                 "up_count": list(before.values()).count("up")}
         ctx.post_snapshots["x"]["interfaces"] = {"states": after,

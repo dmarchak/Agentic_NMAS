@@ -77,8 +77,9 @@ Each device runs the deploy's pipeline, its stages in the order the code declare
 8. **Verify** (`verify`). Read: the two snapshots and the new lines read back. Sent:
    nothing, unless verify fails and the rollback sends the undo. Recorded: the verdict. A
    program that touches only management sections (logging, SNMP, NTP, users, terminal
-   lines, banners, the TFTP and SSH source interfaces) gets the quick verify: each new line read back, no wait for BGP's hold
-   time. LLDP, CDP, telemetry or the heartbeat's applet get the full one.
+   lines, banners, the TFTP and SSH source interfaces) gets the quick verify: no wait for BGP's hold
+   time. LLDP, CDP, telemetry or the heartbeat's applet get the full one. Either way, each new
+   line is read back.
 9. **Save** (`save_startup`). Sent: `write memory`, only once verify passed. Recorded: whether
    it saved.
 10. **The golden** (`save_golden`). Read: the configuration after the change. Sent: nothing.

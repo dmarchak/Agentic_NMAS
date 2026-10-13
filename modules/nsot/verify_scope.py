@@ -11,8 +11,8 @@ BGP session, so that wait proved nothing about it.
 it sends. When EVERY section is one of the management families below, verify
 is QUICK: the device answers on a new session (the post-change read is
 always a fresh login, C272), the tool can still log in (that same login), and
-each new line is read back from the device's configuration. BGP's hold-time
-watch is skipped. Every other check still runs once (neighbour, route and
+each new line is read back from the device's configuration (a FULL verify reads
+them back too since C732, 2026-10-13). BGP's hold-time watch is skipped. Every other check still runs once (neighbour, route and
 interface counts, and a drop is still waited out), because a management
 change that drops a neighbour is exactly what verify exists to catch.
 Anything else, or anything not recognised, is FULL: interfaces, ACLs, route
@@ -80,7 +80,8 @@ def classify(commands: list) -> dict:
         return {"scope": FULL, "sections": sections, "forwarding": other,
                 "why": (f"it changes {named}, which can affect forwarding or is not a "
                         "management section: neighbours, routes and interfaces are "
-                        "watched, and BGP is read again after its hold time")}
+                        "watched, BGP is read again after its hold time, and each new "
+                        "line is read back")}
     families = list(dict.fromkeys(family(s) for s in sections))
     return {"scope": QUICK, "sections": sections, "forwarding": [],
             "why": (f"every line is management ({', '.join(families)}): the device is read "
@@ -89,8 +90,8 @@ def classify(commands: list) -> dict:
 
 
 def read_back(commands: list, running: str) -> dict:
-    """Each new line of a QUICK program, looked for in *running* under its
-    section. ``{"missing": [...], "skipped": [{line, why}], "checked": n}``.
+    """Each new line of a program, quick or full (C732), looked for in *running*
+    under its section. ``{"missing": [...], "skipped": [{line, why}], "checked": n}``.
 
     Skipped, each with its reason: a `no` line (its effect is an absence or
     the device's default, and Mode B's removals are verified on their own);

@@ -114,7 +114,21 @@ class TestThePipelineRunsTheScopedVerify:
         pipeline._stage_verify(ctx)
         v = ctx.verify_result["x"]
         assert clock.slept == [170.0] and v["bgp_watch"]["state"] == "converged"
-        assert v["verify_scope"]["scope"] == "full" and v["read_back"] is None
+        # C732: a full program's new lines are read back too, from the same read.
+        assert v["verify_scope"]["scope"] == "full"
+        assert v["read_back"]["checked"] == 1, v["read_back"]   # the one leaf, description x
+
+    def test_a_full_line_that_did_not_read_back_fails_verify_and_rolls_nothing_back(self, world):
+        """C732 (the operator's B9, 2026-10-13): a full program's line the device does not
+        show did not land as sent; verify does not pass and names it, and nothing is rolled
+        back for it, the quick rule."""
+        ctx, clock = world(_summary(), config=MERGED)
+        ctx.rendered_commands = {"x": ["interface Loopback9", " description not-there",
+                                       "exit"]}
+        pipeline._stage_verify(ctx)                      # no PipelineStageError: no rollback
+        v = ctx.verify_result["x"]
+        assert v["verify_scope"]["scope"] == "full" and v["ok"] is False and v["issues"] == []
+        assert v["read_back"]["missing"] == ["interface Loopback9 > description not-there"]
 
     def test_a_quick_line_that_did_not_read_back_fails_verify_and_rolls_nothing_back(self, world):
         ctx, clock = world(_summary(), config=R3)

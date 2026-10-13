@@ -96,6 +96,19 @@ def world(monkeypatch):
     return build
 
 
+def landed(ctx, ip="x"):
+    """The read after the push as a device that took the program shows it: the sent lines in
+    its configuration, before its `end`. Verify reads every sent line back (C732), so a test
+    whose program is meant to have landed says so here."""
+    program = [l for l in (ctx.rendered_commands or {}).get(ip) or [] if l.strip() != "exit"]
+    config = ctx.post_snapshots[ip].get("running_config") or ""
+    head, sep, tail = config.rpartition("\nend")
+    body = "\n".join(program)
+    ctx.post_snapshots[ip]["running_config"] = (head + "\n" + body + sep + tail if sep
+                                                else config + body + "\n")
+    return ctx
+
+
 class TestTheHoldTime:
     def test_r3s_real_config_is_the_ios_default_on_both_peers(self):
         h = bgp_hold_times(R3)
