@@ -67,7 +67,7 @@ Every rotation and every persist writes a row (each step's name, outcome and rea
 
 ## After a rotation
 
-The break-glass record holds the old password, so the result's next step is a new break-glass export. Until it is exported again, Needs attention has a row for each rotated device saying the record is out of date for it (a rotation from the device page and a scheduled one alike).
+The break-glass record holds the old password, so the result's next step is a new break-glass export. Until it is exported again, Needs attention has one row for the network's record, naming every device rotated since its export (a rotation from the device page and a scheduled one alike).
 
 ## On a schedule {#scheduled}
 

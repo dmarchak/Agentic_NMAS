@@ -3034,8 +3034,10 @@ def rotate_preview(plan: dict, *, busy: str, request) -> dict:
                                    "failed verify reverts, on the held session",
                                    "record: the credential store and devices.csv, and the "
                                    "golden and intent in one commit, as you",
+                                   # C760: the boot-file chain went with C663; the persist
+                                   # is the device's save and its read-back, nothing more.
                                    "persist: save on the device and read the startup config "
-                                   "back, then the boot-file chain"]}],
+                                   "back"]}],
                     "none": "Nothing is sent: " + (plan.get("error") or "refused")},
         "operands": [
             {"name": "list", "value": plan.get("list_name") or not_read(plan)},

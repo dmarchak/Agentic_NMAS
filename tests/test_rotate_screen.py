@@ -287,3 +287,32 @@ class TestTheDevicePageOffersIt:
         page = open(os.path.join(ROOT, "templates", "device.html")).read()
         assert 'onclick="openRotate(this.dataset.hostname)"' in page
         assert "js/nmas_rotate.js" in open(os.path.join(ROOT, "templates", "base.html")).read()
+
+
+def shown_strings_naming(text: str, phrase: str) -> list:
+    """The string literals of *text* (Python, parsed, so comments are not read) that name
+    *phrase*."""
+    import ast
+    return [n.value for n in ast.walk(ast.parse(text))
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and phrase in n.value]
+
+
+class TestNoScreenNamesTheRemovedBootFileChain:
+    """C760: the rotation preview's order note ended "then the boot-file chain", which C663
+    removed; the persist is the device's save and its read-back. No string a module can show,
+    and no v2 template, names it (comments about the removal may)."""
+
+    def test_no_module_string_or_template_names_it(self):
+        from tests.source_index import tracked
+        found = [p for p in tracked("modules", "routes", suffix=".py")
+                 if shown_strings_naming(open(p, encoding="utf-8").read(), "boot-file chain")]
+        found += [p for p in tracked(os.path.join("templates", "v2"))
+                  if "boot-file chain" in open(p, encoding="utf-8").read()]
+        assert len(tracked("modules", "routes", suffix=".py")) > 100, "the scan's population"
+        assert found == []
+
+    def test_the_scan_finds_the_old_note_and_skips_a_comment(self):
+        old = '"persist: save on the device and read the startup config back, then the boot-file chain"'
+        assert shown_strings_naming(f"x = [{old}]\n", "boot-file chain")
+        assert shown_strings_naming("# the boot-file chain went with C663\nx = 1\n",
+                                    "boot-file chain") == []
