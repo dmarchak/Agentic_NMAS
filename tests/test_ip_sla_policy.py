@@ -140,15 +140,16 @@ class TestTheSuggestions:
     def test_upstream_has_an_answer_for_each_of_s1_s4_and_r6(self, fleet):
         """C711: the gateway policy named nothing for s1, s4 and r6. Upstream: s1 by its RIP
         peer, s4 by its OSPF peer, r6 (no protocol, no global default) by its static route's
-        next hop, s3's address, probed at s3's identity address from r6; r6's management
-        VRF's default is never one."""
+        next hop, probed at the hop's own address (C719: s3's Vlan99, 10.255.0.1, never s3's
+        loopback), s3 named as its owner; r6's management VRF's default is never one."""
         intents, devices = _with_r6(fleet)
         from modules.nsot import ip_sla_policy as P
         out = P.suggest(intents, devices, {"policy": "upstream"}, ["s1", "s4", "r6"])
         assert out["skipped"] == []
         assert [(s["on"], s["target"], s["target_device"]) for s in out["suggestions"]] == [
             ("r1", "10.255.1.21", "s1"), ("r2", "10.255.1.24", "s4"),
-            ("r6", P.router_address(intents["s3"]), "s3")]
+            ("r6", "10.255.0.1", "s3")]
+        assert P.router_address(intents["s3"]) != "10.255.0.1"     # the loopback it was
 
     def test_upstream_takes_a_static_default_first(self, fleet):
         intents, devices = _with_r6(fleet)

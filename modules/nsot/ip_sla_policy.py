@@ -224,8 +224,12 @@ def targets(intents: dict, host: str, policy: str) -> tuple:
                 return found, ""
         hop, _words = static_hop(hv)
         if hop:
-            owner = _owner(hop, intents)
-            return [(owner, router_address(intents[owner]) if owner else hop, "static")], ""
+            # The hop's OWN address (C719, the operator's word 2026-10-13): a device whose only
+            # path is a static route depends on that next hop, and probing its owner's loopback
+            # measured the hop plus the owner's routing, one hop wider than the dependency. The
+            # owner is still named, for the link. (`gateway` keeps the owner's identity
+            # address: a default gateway may be a VRRP address or a router with other paths.)
+            return [(_owner(hop, intents), hop, "static")], ""
         return [], ("its committed intent names nothing it depends on: no static default route, "
                     "no routing peer and no static route in the global table")
     if policy == "gateway":
