@@ -43,10 +43,11 @@ def load_key() -> bytes:
 
     # Two callers, one producer: `secrets_store._get_fernet()` is the other caller,
     # deliberately, to avoid importing this module's device-list side effects. Both go
-    # through `config.read_or_create_key`, owner-only and created once across processes (R30).
-    from modules.config import read_or_create_key
+    # through `config.read_or_create_fernet_key`, owner-only, created once across processes
+    # (R30), and never for a store something was sealed in (C729).
+    from modules.config import read_or_create_fernet_key
 
-    return read_or_create_key(KEY_FILE, Fernet.generate_key)
+    return read_or_create_fernet_key()
 
 
 fernet = Fernet(load_key())

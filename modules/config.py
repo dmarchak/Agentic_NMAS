@@ -135,7 +135,46 @@ def set_env_line(path: str, name: str, value: str) -> None:
         write_atomic(path, "".join(kept) + f"{name}={value}\n")
 
 
-def read_or_create_key(path: str, generate) -> bytes:
+class KeyRefused(RuntimeError):
+    """The application key is absent where a new one would orphan what the old one sealed."""
+
+
+def key_creation_refusal(path: str) -> str:
+    """Why a new application key must NOT be made at *path*, or "" (C729).
+
+    Absent and creatable are different states. A key is made only for a store nothing was
+    sealed in: a new key opens none of the old values, and `secrets_store.decrypt_value` reads
+    an unopenable value as "", so a store restored without its key, or a key disk that did not
+    mount, would otherwise come up looking empty rather than locked. Measured from the stores
+    themselves (`breakglass.live_ciphertexts`, the break-glass check's reading), never declared;
+    an unreadable store has not been checked and refuses too."""
+    if os.path.islink(path):
+        return (f"{path} is a link to {os.readlink(path)}, which does not exist, so the key it "
+                "points at is not here")
+    from modules.breakglass import live_ciphertexts
+    from modules.secrets_store import _PREFIX
+
+    found = live_ciphertexts(os.path.dirname(path), _PREFIX)
+    sealed = {n: len(t) for n, t in found.items() if n != "_unreadable"}
+    if sealed:
+        return (f"there is no key at {path}, and {sum(sealed.values())} encrypted value(s) in "
+                f"{', '.join(sorted(sealed))} were sealed with one; a new key would open none of "
+                "them")
+    if found.get("_unreadable"):
+        return (f"there is no key at {path}, and {', '.join(found['_unreadable'])} could not be "
+                "read, so whether a key sealed values there is unknown")
+    return ""
+
+
+def read_or_create_fernet_key() -> bytes:
+    """The application key, created only for a store nothing was sealed in (C729). The one
+    producer for `device.load_key()` and `secrets_store._get_fernet()`."""
+    from cryptography.fernet import Fernet
+
+    return read_or_create_key(KEY_FILE, Fernet.generate_key, refuse=key_creation_refusal)
+
+
+def read_or_create_key(path: str, generate, refuse=None) -> bytes:
     """The key file's bytes, creating it ONCE across processes (CONCURRENCY_AUDIT R30).
 
     Check-then-create raced on a fresh store: two processes that both found no key each
@@ -145,12 +184,19 @@ def read_or_create_key(path: str, generate) -> bytes:
     bytes"). The key is written whole to an owner-only temporary file beside it and LINKED
     into place, which fails when the key exists: exactly one process's key is ever the key,
     and no reader sees part of one. A process that loses discards its own and reads the
-    winner's. The one producer for `device.load_key()` and `secrets_store._get_fernet()`."""
+    winner's. *refuse(path)*, when given, names why no key may be made here (raised as
+    `KeyRefused`, and nothing is written)."""
     import tempfile
 
     if os.path.exists(path):
         secure_file(path)                    # created before this existed, quite possibly 0644
     else:
+        reason = refuse(path) if refuse else ""
+        if reason:
+            log.critical("config: no key created: %s. Put the key back (nmas-breakglass "
+                         "restore-key <record> --out %s) before starting.", reason, path)
+            raise KeyRefused(f"no key created: {reason}. Put the key back (nmas-breakglass "
+                             f"restore-key <record> --out {path}) before starting.")
         directory = os.path.dirname(path) or "."
         os.makedirs(directory, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=directory, prefix=".key-")   # owner-only (0600)
