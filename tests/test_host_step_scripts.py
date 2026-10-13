@@ -54,7 +54,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # D15: the AI family's data archived (masked, the key sealed), then deleted (2026-10-13).
             "d15-ai-archive.sh",
             # D16: a removed family's data archived (masked), then deleted by checksum.
-            "d16-archive.sh"}
+            "d16-archive.sh",
+            # D16: Oxidized's containers and store retired: archived masked, router.db shredded.
+            "d16-oxidized-retire.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

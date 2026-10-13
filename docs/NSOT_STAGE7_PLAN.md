@@ -3006,7 +3006,7 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 | 10 The sidebar | partly | The v2 sidebar matches, but Topology is absent and five items open today's pages; then the 37 findability questions walked on the built screens |
 | 11 Scale | partly | v2 Devices does fixed reads at any size (tested at 60); the 900-device selection screens are 7.10's |
 | 12 Behaviour | holding | Checked at close: no control changed what it does outside its stage |
-| 13 Controls drawn from `may` | not met | A test that no gated control is drawn without `may`, and every v2 action drawn from it (NSOT_AUTHORIZATION section 7) |
+| 13 Controls drawn from `may` | met 2026-10-13 (C738) | Every gated control in templates/v2 draws `gate()` (`preview_confirm.control_gate`, from `may`); tests/test_controls_consult_may.py fails on one that does not |
 | 14 A writeup entry per sub-task | partly | Entries for 7.3's remaining parts, 7.D's screens (Devices, History, Monitoring, Coverage, Update, the manual) and P.9 (d) |
 | 15 The manual stays true | met so far | Holds for every built v2 screen (`tests/test_manual.py`, the click test); each new screen adds its page |
 | 16 No duplicated function | partly | Today's pages duplicate the v2 screens until 7.8; the brief's inventory empties then |
