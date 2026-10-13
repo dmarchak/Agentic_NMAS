@@ -50,7 +50,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # C729: the application key on a disk of its own, outside the VM image (2026-10-13).
             "c729-key-disk.sh",
             # C734: the sealed values in each store, counted read-only (2026-10-13).
-            "c734-sealed-store-counts.sh"}
+            "c734-sealed-store-counts.sh",
+            # D15: the AI family's data archived (masked, the key sealed), then deleted (2026-10-13).
+            "d15-ai-archive.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
