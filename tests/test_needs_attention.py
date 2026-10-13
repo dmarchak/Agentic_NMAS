@@ -334,7 +334,18 @@ class TestDriftAsASource:
         assert drifted["level"] == "danger" and drifted["devices"] == ["r2"]
         assert drifted["operands"]["diff_lines"] > 0
         assert drifted["operands"]["coverage"] == "checked 2 of 4"
-        assert drifted["action"]["label"].startswith("From its Device page")
+        # Both answers on the row (the operator's overnight list, item 7): Capture and Deploy.
+        assert drifted["action"]["label"].startswith("Capture what the device holds")
+        assert (drifted["action"]["open"], drifted["action"]["device"]) == ("drift", "r2")
+        from flask import render_template
+        import app as APP
+        with APP.app.test_request_context("/v2/"):
+            html = render_template("v2/_attention.html", a={
+                "ok": True, "rows": [drifted], "sources": [], "headline": "1", "counts": {},
+                "badge": {"n": 1, "level": "danger"}})
+        lst = drifted["action"]["list"]
+        assert f'href="/v2/device/r2?list={lst}&amp;op=capture">Capture r2…</a>' in html, html
+        assert f'href="/v2/device/r2?list={lst}&amp;op=deploy">Deploy intent to r2…</a>' in html
         # The check saw drift at a time; since when it has differed is not
         # recorded, so since stays empty rather than claiming the run time.
         assert drifted["since"] is None and "not recorded" in drifted["cause"]

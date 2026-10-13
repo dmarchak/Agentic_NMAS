@@ -38,7 +38,9 @@ reader that finishes announces it, and the page redraws in place.
 Oxidized is retired (2026-10-08), and its freshness check with it: nothing here compares
 Oxidized's copy. A change made on a device outside Mercury is raised by the drift check, which reads each
 device's running configuration against its golden on the interval set for it (four hours
-unless changed).
+unless changed). A drifted device's row carries both answers: **Capture** records what the device
+holds as its golden (the change was wanted), and **Deploy intent** puts its committed intent back
+(it was not); each opens its card on the device's page, with its preview and confirm.
 
 **An operation re-reads what it changed, at once.** Each reader runs on its own interval, and
 an operation that changes what a reader reports runs that reader again as soon as it is done:

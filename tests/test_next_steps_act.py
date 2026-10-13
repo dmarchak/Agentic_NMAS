@@ -71,6 +71,9 @@ OPENERS = {
     # and its Needs attention row).
     "persist": ("document.querySelector('#device-op h2') && /Persist r2/"
                 ".test(document.querySelector('#device-op h2').textContent)"),
+    # The v2 device page's Capture card (C739: a drift row's Capture…).
+    "capture_card": ("document.querySelector('#device-op h2') && /Capture r2/"
+                     ".test(document.querySelector('#device-op h2').textContent)"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,
@@ -175,6 +178,9 @@ class TestEachOpenerActsInARealBrowser:
         # The template editor's Approve… (cutover blocker 5), as its link loads it.
         ("template_approve", "/v2/templates?list=Lab&approve=cisco_iosxe/base.j2"),
         ("persist", "/v2/device/r2?op=persist"),
+        # A drift row's two answers (C739), as their links load them.
+        ("capture_card", "/v2/device/r2?op=capture&list=Lab"),
+        ("deploy_card", "/v2/device/r2?op=deploy&list=Lab"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):
         if query.startswith("/"):

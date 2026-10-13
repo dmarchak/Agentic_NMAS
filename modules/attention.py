@@ -606,8 +606,8 @@ DRIFT_STALE_INTERVALS = 2
 #: A drifted device's action when nothing is queued for it: both remedies
 #: are on its Device page (7.1 steps 4 and 5). A queued drift item, when
 #: there is one, attaches and its action replaces this.
-_DRIFT_ACTION = {"label": "From its Device page: Capture the running config as the "
-                          "golden, or Restore from the golden"}
+_DRIFT_ACTION = {"label": "Capture what the device holds as its golden, or deploy its intent "
+                          "back to it"}
 
 
 def drift_source(status=None, now=None) -> dict:
@@ -671,7 +671,12 @@ def drift_source(status=None, now=None) -> dict:
             f"the running config differs from the committed golden by "
             f"{d.get('diff_lines', '?')} diff line(s), seen by the drift check at "
             f"{_iso(last_ts) or 'an unrecorded time'}; since when it has differed "
-            "is not recorded", _DRIFT_ACTION, "danger", devices=[d["hostname"]],
+            "is not recorded",
+            # Both answers on the row, each opening its card on the device page (the operator's
+            # overnight list, item 7: before the AI family and its approval queue go, a drift
+            # is answered here): Capture accepts what the device holds, Deploy puts intent back.
+            dict(_DRIFT_ACTION, open="drift", device=d["hostname"], list=lst),
+            "danger", devices=[d["hostname"]],
             operands={"diff_lines": d.get("diff_lines"), "coverage": coverage})
     for d in last.get("skipped") or []:
         no_golden = d.get("reason") == "no golden config saved"
