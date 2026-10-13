@@ -87,12 +87,15 @@ it." The other three decisions took the recommended option under the Phase 7 mod
 |---|---|---|---|---|
 | Pool | 4 h | 2 h | 50% / 80% of each lease, computed | Kea's global lifetime, inherited by every subnet |
 | Reserved | 7 d | 3.5 d | the same shares | the class `mercury-reserved`, `member('KNOWN')` |
-| Management (the ZTP subnet) | 7 d | n/a (IPv4) | the same shares | the subnet's own, through Subnets › Edit… |
+| Management (the ZTP subnet) | 7 d | n/a (IPv4) | the same shares | the reserved class: every device there is reserved, or discovery's (below) |
 | ZTP discovery | 300 s, unchanged | n/a | Kea's own | board L's classes |
 
 Two findings changed the shape from section 4:
 - **Measured, every lifetime is global:** no subnet in Mercury's files sets its own. So the pool
-  lifetime is the global one, and only the management subnet needs an edit.
+  lifetime is the global one, and no subnet needs an edit. The management (ZTP) subnet is
+  onboarding's (Subnets › Edit refuses it), and needs none: its only pools are the discovery
+  classes', so a reserved device takes the reserved class's 7 days and an unreserved one 300 s.
+  The step's verify refuses a pool there that serves any client.
 - **Kea's global level set fixed renew and rebind timers.** These beat the computed ones, and a
   7-day reserved lease would have renewed at the pool's 2 hours. They are removed, and Kea
   computes both timers for every lease (`calculate-tee-times`, 0.5 / 0.8).

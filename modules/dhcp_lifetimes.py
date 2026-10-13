@@ -11,9 +11,12 @@ Three kinds, three places Kea holds them:
   class's lifetime beats every subnet's (measured on Kea 2.4.1 for the discovery classes,
   dhcp_discovery), so one class covers every reserved client in every subnet with nothing added
   to each reservation. The discovery classes test ``not member('KNOWN')``, so the two never meet.
-- **The management segment** (the ZTP subnet, where a device's path to Mercury is) sets its own
-  lifetime, 7 days, through DHCP > Subnets > Edit (board C's write path): a lapse there cuts
-  Mercury off the device, so a week rides out a Kea outage.
+- **The management segment** (the ZTP subnet, where a device's path to Mercury is): every
+  client there takes a class's lifetime, so its 7 days need no edit of the subnet (which is
+  onboarding's, and Subnets › Edit refuses it): a reserved device `mercury-reserved`'s 7 days,
+  an unreserved one discovery's 300 s, since its only pools are the discovery classes'
+  (measured 2026-10-13; the step's verify refuses a pool there that serves any client). A lapse
+  there cuts Mercury off the device, so a week rides out a Kea outage.
 
 Renew and rebind are Kea's to compute, 50% and 80% of each lease's own lifetime
 (``calculate-tee-times``; IPv6 from the preferred lifetime): fixed timers would send a 7-day
@@ -36,7 +39,6 @@ RESERVED_TEST = "member('KNOWN')"
 DAY = 86400
 RESERVED_VALID = 7 * DAY
 POOL_VALID = 4 * 3600
-MANAGEMENT_VALID = 7 * DAY
 #: IPv6's preferred lifetime: half the valid one, so a renumbering deprecates an address before
 #: it ends; T1 and T2 are then computed from it (Kea's rule for IPv6).
 PREFERRED_SHARE = 0.5

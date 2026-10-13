@@ -8,8 +8,10 @@
 #      moves into Mercury's own file (nmas/classes4.json, classes6.json) through an include, the
 #      discovery classes carried over unchanged and the class `mercury-reserved` added
 #      (`member('KNOWN')`: every reserved client, 7 days; IPv6 preferred 3.5 days);
-#   2. the management (ZTP) subnet's own lifetime, 7 days, through board C's write path (Kea's
-#      own check, reload, read back, recorded);
+#   2. the management (ZTP) subnet is left as it is: it is onboarding's (Subnets › Edit refuses
+#      it), and every client there already takes a class's lifetime, a reserved device
+#      `mercury-reserved`'s 7 days and an unreserved one discovery's 300 s, since its only pools
+#      are the discovery classes'; verify checks that no pool there serves any client;
 #   3. proof that nothing else moved: a snapshot of Kea's running configuration, every
 #      reservation and every lease, both families, before and after.
 # A fresh dated copy of Kea's configuration is taken first; a failure puts it back and reloads.
@@ -33,8 +35,7 @@ plan "run as the operator's own user, not root" \
      "both candidates pass Kea's own check" \
      "the installed files are the tested candidates" \
      "Kea runs the lifetimes, both families" \
-     "the management subnet's 7 days are written through Mercury's write path" \
-     "Kea runs the lifetimes and the management subnet's 7 days" \
+     "every client of the management (ZTP) subnet takes a class's lifetime" \
      "only the lifetimes, timers and the reserved class moved; every reservation and lease as before"
 
 not_root
@@ -55,9 +56,8 @@ step "what the step will do (the plan)" "$TOOL plan"
 check "both candidates pass Kea's own check" rc0 0 "$TOOL candidates"
 
 ON_FAIL="sudo install -m 644 -o root -g root '$COPY/etc-kea/kea-dhcp4.conf' '$KEA/kea-dhcp4.conf' && \
-         sudo install -m 644 -o root -g root '$COPY/etc-kea/kea-dhcp6.conf' '$KEA/kea-dhcp6.conf' && \
-         sudo cat '$COPY/etc-kea/nmas/subnets4.json' > '$KEA/nmas/subnets4.json' && $TOOL reload"
-ON_FAIL_WHAT="Kea's two main files and Mercury's IPv4 subnet file put back from the dated copy, and Kea reloaded"
+         sudo install -m 644 -o root -g root '$COPY/etc-kea/kea-dhcp6.conf' '$KEA/kea-dhcp6.conf' && $TOOL reload"
+ON_FAIL_WHAT="Kea's two main files put back from the dated copy, and Kea reloaded"
 for svc in dhcp4 dhcp6; do
     step "install the tested candidate over Kea's $svc configuration" \
         "c='$KEA/nmas/.lifetimes-candidate-$svc.conf'; if [ -f \"\$c\" ]; then \
@@ -71,9 +71,8 @@ check "the installed files are the tested candidates" rc0 0 \
 step "Kea reloads both families" "$TOOL reload"
 check "Kea runs the lifetimes, both families" eq 2 \
     "$TOOL verify | grep -cE '^IPv[46]: Kea runs the lifetimes: on$' || true"
-check "the management subnet's 7 days are written through Mercury's write path" rc0 0 \
-    "$TOOL management"
-check "Kea runs the lifetimes and the management subnet's 7 days" rc0 0 "$TOOL verify"
+check "every client of the management (ZTP) subnet takes a class's lifetime" rc0 0 \
+    "$TOOL verify"
 check "only the lifetimes, timers and the reserved class moved; every reservation and lease as before" \
     rc0 0 "$SNAP snapshot '$WORK/after.json' && sudo cp '$WORK/after.json' '$COPY/after.json' && \
      $TOOL expected '$WORK/before.json' '$WORK/after.json'"

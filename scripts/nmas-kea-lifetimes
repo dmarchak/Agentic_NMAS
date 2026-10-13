@@ -3,11 +3,11 @@
 `scripts/host-steps/e19-dhcp-lifetimes.sh`. Run as the app's user; Kea's main configuration is
 root's, so the host step installs the candidates this writes.
 
-    nmas-kea-lifetimes plan                 # each family's change, and the management subnet's
+    nmas-kea-lifetimes plan                 # each family's change
     nmas-kea-lifetimes candidates           # write the classes files and the candidates; test
     nmas-kea-lifetimes reload               # config-reload, both families
-    nmas-kea-lifetimes verify               # Kea runs the lifetimes, both families
-    nmas-kea-lifetimes management           # the ZTP subnet's 7 days, through board C's path
+    nmas-kea-lifetimes verify               # Kea runs the lifetimes, both families, and every
+                                            # client of the management (ZTP) subnet takes a class's
     nmas-kea-lifetimes expected <a> <b>     # two snapshots (nmas-kea-subnet-files snapshot):
                                             # only the lifetimes, timers and classes moved
 
@@ -19,7 +19,6 @@ Exit 0 done or as expected, 1 refused, failed or different, 2 Kea could not be a
 """
 
 import argparse
-import getpass
 import json
 import os
 import sys
@@ -30,9 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from modules.app_interpreter import adopt  # noqa: E402
 adopt(__name__)
 
-REASON = ("E19: the management segment's lease lifetime, 7 days (the one-time host step, "
-          "scripts/host-steps/e19-dhcp-lifetimes.sh; the operator's decisions 2026-10-13)")
-SVC = {"IPv4": ("dhcp4", "kea-dhcp4"), "IPv6": ("dhcp6", "kea-dhcp6")}
+SVC ={"IPv4": ("dhcp4", "kea-dhcp4"), "IPv6": ("dhcp6", "kea-dhcp6")}
 #: The keys the step may move in Kea's running configuration: the global ones it sets or
 #: removes, those Kea derives from them, and the classes (checked by name below).
 MOVES = {"valid-lifetime", "preferred-lifetime", "renew-timer", "rebind-timer",
@@ -42,12 +39,6 @@ MOVES = {"valid-lifetime", "preferred-lifetime", "renew-timer", "rebind-timer",
 
 def candidate_path(main: str, family: str) -> str:
     return os.path.join(os.path.dirname(main), "nmas", f".lifetimes-candidate-{SVC[family][0]}.conf")
-
-
-def management_values(seg_id) -> dict:
-    from modules import dhcp_lifetimes as L
-    return {"op": "edit", "family": "IPv4", "id": str(seg_id),
-            "valid": f"{L.MANAGEMENT_VALID // L.DAY} d"}
 
 
 def expected(a: dict, b: dict, ztp_id) -> list:
@@ -89,8 +80,7 @@ def expected(a: dict, b: dict, ztp_id) -> list:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("what", choices=("plan", "candidates", "reload", "verify", "management",
-                                     "expected"))
+    ap.add_argument("what", choices=("plan", "candidates", "reload", "verify", "expected"))
     ap.add_argument("args", nargs="*")
     args = ap.parse_args(argv)
 
@@ -146,10 +136,14 @@ def main(argv=None) -> int:
             bad += r["state"] != "on"
         sub = next((s for s in configs["IPv4"].get("subnet4") or [] if s.get("id") == seg["id"]),
                    {})
-        ok = sub.get("valid-lifetime") == L.MANAGEMENT_VALID
-        print(f"the management subnet {seg['id']} ({seg['prefix']}): valid-lifetime "
-              f"{sub.get('valid-lifetime')}" + ("" if ok else f", not {L.MANAGEMENT_VALID}"))
-        return 1 if bad or not ok else 0
+        free = [p.get("pool", "") for p in sub.get("pools") or [] if not p.get("client-class")]
+        print(f"the management (ZTP) subnet {seg['id']} ({seg['prefix']}): "
+              + ("every client takes a class's lifetime: a reserved device "
+                 f"{L.RESERVED}'s 7 days, an unreserved one discovery's 300 s"
+                 if not free else
+                 f"REFUSED: pool(s) {', '.join(free)} serve any client at the subnet's own "
+                 "lifetime"))
+        return 1 if bad or free else 0
     plans = {}
     for family in SVC:
         main_ = D.main_config(DEFAULT_LIST, family)
@@ -165,12 +159,9 @@ def main(argv=None) -> int:
         if refused:
             return 1
     if args.what == "plan":
-        values = management_values(seg["id"])
-        p = S.plan(DEFAULT_LIST, values, kea=kea)
-        print(f"the management subnet {seg['id']} ({seg['prefix']}): "
-              + ("REFUSED: " + p["refused"] if not p["ok"] else p["title"]))
-        for sign, line in p.get("change") or []:
-            print(f"  {sign} {line}")
+        print(f"the management (ZTP) subnet {seg['id']} ({seg['prefix']}): unchanged; its "
+              f"reserved devices take {L.RESERVED}'s 7 days, its unreserved ones discovery's "
+              "300 s")
         return 0
     if args.what == "candidates":
         bad = 0
@@ -188,24 +179,7 @@ def main(argv=None) -> int:
                   f"{SVC[family][1]} -t {'PASS' if ok else 'FAIL'}: {detail}")
             bad += not ok
         return 1 if bad else 0
-    # management: previewed, then applied bound to that preview, through board C's write path.
-    values = management_values(seg["id"])
-    sub = next((s for s in configs["IPv4"].get("subnet4") or [] if s.get("id") == seg["id"]), {})
-    if sub.get("valid-lifetime") == L.MANAGEMENT_VALID:
-        print(f"the management subnet {seg['id']}: already {L.MANAGEMENT_VALID} s, nothing to do")
-        return 0
-    p = S.plan(DEFAULT_LIST, values, kea=kea)
-    if not p["ok"]:
-        print(f"the management subnet: REFUSED: {p['refused']}")
-        return 1
-    print(f"the management subnet: {p['title']}")
-    got = S.apply_edit(DEFAULT_LIST, values, p["hash"], actor=f"{getpass.getuser()} (host shell)",
-                       reason=REASON, kea=kea)
-    print(f"  written: {got['outcome'] or 'no'}; read back: {got['read_back'] or '-'}; "
-          f"recorded: {got['commit'] or '-'}"
-          + (f"; rolled back: {got['rolled_back']}" if got["rolled_back"] else "")
-          + (f"; ERROR: {got['error']}" if got["error"] else ""))
-    return 0 if got["ok"] else 1
+    return 1
 
 
 if __name__ == "__main__":

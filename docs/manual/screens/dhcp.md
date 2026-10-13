@@ -32,9 +32,10 @@ A client class can carry its own lease time, and it beats the subnet's: the note
 names each such class, whom it serves and its lifetimes. `mercury-reserved` serves every client
 with a reservation, in every subnet: 7 days (IPv6 preferred 3.5 days), so a reserved host rides
 out a week of Kea being down. A pool address takes Kea's global lifetime, 4 hours (IPv6
-preferred 2 hours), so a client that leaves frees its address within hours. The management
-(ZTP) subnet sets its own, 7 days, because a lapse there cuts Mercury off the device. The
-discovery classes give an unreserved device on the ZTP segment 5 minutes. A client learns a new
+preferred 2 hours), so a client that leaves frees its address within hours. On the management
+(ZTP) subnet every client takes a class's lifetime: a reserved device the reserved class's 7
+days, because a lapse there cuts Mercury off the device, and an unreserved one the discovery
+classes' 5 minutes. A client learns a new
 lifetime at its next renewal, so a change reaches a long-held lease only when it renews. One
 host step put these in place (`scripts/host-steps/e19-dhcp-lifetimes.sh`), proving nothing else
 moved, as the subnet move below did.
