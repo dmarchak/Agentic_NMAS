@@ -17,7 +17,11 @@ name: nmas-config-check
 on:
   push:
     # A tag push ignores path filters, so every golden save (a commit and its tag) ran twice
-    # (the operator, 2026-10-13): branch pushes only.
+    # (the operator, 2026-10-13): branch pushes only. BOTH filters are named: a push trigger
+    # naming tags-ignore alone runs for no branch push at all (2026-10-13, 2bd43c2 and the
+    # rotation run's push started nothing).
+    branches:
+      - "**"
     tags-ignore:
       - "**"
     paths:
@@ -37,6 +41,8 @@ on:
       - "dhcp/**"
       - ".nsot/nmas-pin"
       - ".github/workflows/nmas-config-check.yml"
+  # By hand, from the Actions tab: the same check over the repository as it stands.
+  workflow_dispatch:
 
 permissions:
   contents: read

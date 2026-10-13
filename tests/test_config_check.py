@@ -230,6 +230,11 @@ def test_the_workflow_runs_on_the_governed_paths():
     want = {f"{g}**" for g in GOVERNED}
     for event in ("push", "pull_request"):
         assert want <= set(on[event]["paths"]), on[event]
+    # Branch pushes run, tag pushes do not: GitHub runs a push trigger naming ONLY tags or
+    # tags-ignore for no branch push at all (2026-10-13: the rotation run's push started
+    # nothing), so both filters are named.
+    assert on["push"]["branches"] == ["**"] and on["push"]["tags-ignore"] == ["**"]
+    assert "workflow_dispatch" in on, "the check can be run by hand"
 
 
 def test_the_workflow_checks_out_the_pinned_mercury_and_runs_the_script():
