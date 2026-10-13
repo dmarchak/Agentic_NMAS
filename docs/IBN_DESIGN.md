@@ -634,6 +634,20 @@ The numbers the operator changed (all in `docs/PHASE8_PLAN.md` section 7):
 - **Ranking:** natural language → PromQL or LogQL first, then alert correlation; the rest as
   proposed.
 
+**Queued later the same day (the operator, 2026-10-13; no build now): pre-change verification.**
+- **Batfish is the default gate for routing-affecting changes** (decision 6, confirmed).
+- **Plus a single-node twin for high-risk change classes:** startup configuration, credentials
+  and AAA, and platform upgrades. A throwaway C8000v or vIOS in containerlab is booted with the
+  candidate configuration, checked, and torn down (Lab Part 1's throwaway-node method).
+- **Sized against the hosts' RAM, measured 2026-10-13 (read-only):**
+  - the lab host: 80 GB, 52 GB available, 24 cores;
+  - a running C8000v uses about 4.0 GiB and two busy cores; a vIOS about 386 MiB;
+  - so a twin of either fits on the lab host beside the fleet;
+  - a one-host public install (the NMAS host here: 16 GB, 11.8 GB available, 4 cores) fits one
+    C8000v twin at a time, or a vIOS easily, and needs hardware virtualisation inside the VM.
+- **Not measured yet:** a twin's boot-to-ready time, which bounds how long a gated change
+  waits. The lab's C8000v and vIOS boots give the first figures.
+
 ## 10. AI engineering standards (binding on every AI feature)
 
 The operator's Phase 8 charter (2026-10-13) makes these binding. `docs/PHASE8_PLAN.md` applies

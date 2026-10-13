@@ -116,6 +116,8 @@ or sealed: operations that need a credential refuse by name ("the secrets manage
 answered 503: sealed"); nothing falls back silently to a stale local copy. Production runs three
 nodes (integrated Raft storage) with auto-unseal through a KMS or HSM; the lab runs one node,
 with the unseal shares typed by the operator after a restart (a secret value: the operator's).
+**Decided 2026-10-13 (section 9):** OpenBao on Mercury's own host, unsealed by hand on a GUI
+page by default; while sealed, the credential-free features keep working.
 
 **Masking without listing every secret.** `redact.known_secret_values()` today decrypts every
 credential into an in-memory table so it can mask by value; under least privilege the web role
@@ -167,7 +169,7 @@ class KeyBackend:
 
 | Backend | Master key held by | Rotation | Dependency |
 |---|---|---|---|
-| **systemd-creds (default)** | the host's TPM2: an AES-256 key sealed with `systemd-creds encrypt --with-key=tpm2`, delivered to the unit by `LoadCredentialEncrypted=` into its private credentials directory | a new sealed key, a new `kid` | none (systemd 250 or later; the host runs 255 on Ubuntu 24.04, measured 2026-10-13) |
+| **systemd-creds (optional; NOT the default, decided 2026-10-13, section 9)** | the host's TPM2: an AES-256 key sealed with `systemd-creds encrypt --with-key=tpm2`, delivered to the unit by `LoadCredentialEncrypted=` into its private credentials directory | a new sealed key, a new `kid` | none (systemd 250 or later; the host runs 255 on Ubuntu 24.04, measured 2026-10-13) |
 | **OpenBao / Vault Transit** | the manager (an `aes256-gcm96` key) | native: `transit/keys/<k>/rotate`, and `transit/rewrap` rewraps without Mercury seeing a DEK | the manager (section 3) |
 | **Cloud KMS** | AWS KMS, Google Cloud KMS or Azure Key Vault | native (`ReEncrypt` and equivalents; the encryption context is the AAD) | the provider's SDK (AWS through `boto3`, already on the host) |
 | **PKCS#11** | an HSM (YubiHSM 2, a network HSM; SoftHSM2 in tests) | a new key object, a new `kid` | a PKCS#11 binding (a new licence) |
@@ -303,3 +305,26 @@ large. (R3) the Transit, cloud KMS and PKCS#11 backends: medium each.
 3. The lab's vTPM, and the measurement of whether the nightly image carries its state.
 4. Sealed export alone, or a Shamir recovery key, for break-glass.
 5. How long a retired master-key version is kept (at least the backups' retention).
+
+### Decided, 2026-10-13 (the operator; queued, no build before Phase 7 closes)
+
+These replace sections 3, 5 and 9 where they differ; the rest of the design stands.
+
+- **The manager: OpenBao, on the SAME host as Mercury,** another container in the same stack.
+  No extra hosts and no hypervisor connections; a one-host install for the public release.
+  Decisions 1 and 2 above are answered. OpenBao's licence (MPL-2.0) is the operator's to confirm
+  when the build starts, with any client binding's.
+- **The root of trust: manual unseal by default.** In the lab, one key or 2-of-3 shares, kept off
+  the host next to the break-glass record. **Optional auto-unseal** where the installer finds a
+  real TPM, an HSM or a cloud KMS.
+- **A TPM is NOT the default.** The NMAS VM has none (measured, section 5), and a hypervisor's
+  vTPM state goes into the same backups as the disk it would protect. Section 5's
+  "systemd-creds (default)" is therefore one optional backend, not the default; decision 3
+  above falls away for the lab.
+- **While sealed, Mercury keeps working where it needs no credential:** monitoring, logs,
+  History, Needs attention and the NetBox views. Device operations wait, refused by name (section
+  3's "Availability"). Needs attention shows **"Credentials are locked: unseal"**, and the GUI
+  has an **unseal page**: the operator types the key or shares there, never at a terminal.
+- **Measured for sizing, 2026-10-13:** the NMAS host has 16 GB RAM (11.8 GB available) and
+  4 cores; one OpenBao node fits beside the app's containers.
+- Still open: decision 4 (break-glass format) and decision 5 (retired key versions).
