@@ -75,7 +75,6 @@ and built.
 | Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
-| Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
 | Topology service | (no route of today's; its two routes and panel removed 2026-10-12) | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the service itself REMOVED at 7.8 (2026-10-12: the renderer from the repository, the unit and link by its host step, `topology-service-removal.sh`), and its integration with it (C714: no client, no probe, no Settings card; its keys `retiring` for one release) | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
 | AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages. The in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`, started by `app.py`) and `modules/collector_config.py` go with it: since the legacy collectors' routes left (2026-10-12) the agent's tools are their only readers |
 
@@ -84,6 +83,11 @@ and built.
 Each family leaves the table above in the commit that removes it, named here with that commit's
 date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest change first).
 
+- **Quick actions** (/add_quick_action, /delete_quick_action), 2026-10-13 (D16; restore point
+  tag `pre-remove/quick-actions`): the terminal's companions, the terminal gone since R39. Today's
+  device page's Quick actions section, its script and style, `modules/quick_actions.py` and
+  `config.QUICK_ACTIONS_FILE` went with them. The store, `quick_actions.json`, is archived to the
+  bucket (`scripts/host-steps/d16-archive.sh`) and deleted only after its read-back matches.
 - **NetBox queries** (the six /netbox/query routes), 2026-10-11: no page called them, and the
   device page's NetBox tab reads NetBox itself. Their one helper only they used,
   `netbox_client.netbox_get_ip`, went with them.

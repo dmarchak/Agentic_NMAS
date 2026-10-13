@@ -149,7 +149,7 @@ class TestThePopulation:
         pairs = _pairs(reach)
         assert pairs["POST /deploy/apply"] is True
         assert pairs["GET /onboard/pending"] is True
-        assert pairs["POST /add_quick_action"] is True          # url_for, device page
+        assert pairs["POST /run_command/<ip>"] is True          # url_for, device page
         assert pairs["POST /drift/settings"] is True            # a mixed path, write half
         assert pairs["POST /templatize/bulk/apply"] is False     # bulk intent: no page yet
         assert pairs["POST /inventory/source/<path:list_name>"] is False  # its GET half is no proof

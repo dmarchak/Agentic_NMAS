@@ -449,8 +449,6 @@ HISTORY = {
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
     "inventory.set_source": NOT_A_DEVICE,
-    "add_quick_action": NOT_A_DEVICE,
-    "delete_quick_action": NOT_A_DEVICE,
     "ai_agent_pause": NOT_A_DEVICE,
     "ai_agent_resume": NOT_A_DEVICE,
     "ai_agent_timers_post": NOT_A_DEVICE,

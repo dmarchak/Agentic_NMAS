@@ -71,7 +71,6 @@ from modules.config import (
 from modules.connection import session_reaper, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
 from modules import route_gates
 from modules.identity import request_actor
-from modules.quick_actions import load_quick_actions, save_quick_actions
 from modules.utils import make_device_filename
 from modules.commands import run_device_command
 from modules.backups import (
@@ -454,7 +453,6 @@ def handle_exception(error):
     return _error_response(error, 500, None)
 
 # Reintroduce persistent connections container for status checks
-# QUICK_ACTIONS_FILE provided by modules.config
 
 connections = {}  # ip -> Netmiko connection (status-only)
 lock = threading.Lock()
@@ -523,7 +521,6 @@ def manage_device(ip):
             filesystems=filesystems,
             files=file_list,
             selected_fs=selected_fs,
-            quick_actions=load_quick_actions().get("global", []),
             active_tab=active_tab,
             tftp_server=TFTP_SERVER_IP,
             no_api_key=not bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
@@ -602,7 +599,6 @@ def run_command(ip):
             output=output,
             filename=session["last_filename"],
             active_tab="utilities",
-            quick_actions=load_quick_actions().get("global", []),
             tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
@@ -741,7 +737,6 @@ def upload_file(ip):
             output=output,
             filename=None,
             active_tab="files",
-            quick_actions=load_quick_actions().get("global", []),
             tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
@@ -812,7 +807,6 @@ def delete_file(ip):
             output=output,
             filename=None,
             active_tab="files",
-            quick_actions=load_quick_actions().get("global", []),
             tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
@@ -874,7 +868,6 @@ def download_device_file(ip):
             output=output,
             filename=None,
             active_tab="files",
-            quick_actions=load_quick_actions().get("global", []),
             tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
@@ -907,7 +900,6 @@ def refresh_files(ip):
             output="",
             filename=None,
             active_tab="files",
-            quick_actions=load_quick_actions().get("global", []),
             tftp_server=TFTP_SERVER_IP,
         )
     except Exception as e:
@@ -1309,50 +1301,6 @@ def _save_settings(data: dict, errors: list):
 
 
 
-
-
-# Quick actions: add/delete (GLOBAL, no IP param)
-@app.route("/add_quick_action", methods=["POST"])
-def add_quick_action():
-    # Add a new quick action to quick_actions.json
-    data = request.get_json()
-    command = data.get("command")
-    label = data.get("label")
-
-    if not command or not label:
-        return jsonify({"status": "error", "message": "Missing command or label"}), 400
-
-    actions = load_quick_actions()
-    if "global" not in actions:
-        actions["global"] = []
-
-    # prevent duplicates
-    if not any(
-        a["command"] == command and a["label"] == label for a in actions["global"]
-    ):
-        actions["global"].append({"command": command, "label": label})
-        save_quick_actions(actions)
-
-    return jsonify({"status": "success"})
-
-
-@app.route("/delete_quick_action", methods=["POST"])
-def delete_quick_action():
-    # Delete a quick action from quick_actions.json
-    data = request.get_json()
-    command = data.get("command")
-    label = data.get("label")
-
-    actions = load_quick_actions()
-    if "global" in actions:
-        actions["global"] = [
-            a
-            for a in actions["global"]
-            if not (a["command"] == command and a["label"] == label)
-        ]
-        save_quick_actions(actions)
-
-    return jsonify({"status": "success"})
 
 
 

@@ -180,22 +180,6 @@
        role="tabpanel"
        aria-labelledby="utilities-tab">
 
-    <!-- Quick actions -->
-    <hr>
-    <h4>Quick actions <small class="text-muted">(shared across all devices)</small></h4>
-    <div class="row row-cols-2 row-cols-md-3 g-3 mb-4" id="quickActionsContainer">
-      {% for action in quick_actions %}
-      <div class="col quick-action" data-command="{{ action.command }}" data-label="{{ action.label }}">
-        <div class="position-relative d-inline-block w-100">
-          <button type="button" class="btn btn-outline-primary w-100 quick-action-btn"
-                  data-url="{{ url_for('run_command', ip=device['ip']) }}"
-                  data-command="{{ action.command }}" data-filesystem="{{ selected_fs }}">{{ action.label }}</button>
-          <span class="delete-action" title="Delete quick action" aria-label="Delete">&times;</span>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-
     <!-- Custom Command -->
     <hr>
     <h4>Send a custom command</h4>
@@ -216,13 +200,6 @@
         <button type="submit" class="btn btn-outline-primary w-100" id="runCommandBtn">
           <span class="btn-text">Run Command</span>
           <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-        </button>
-      </div>
-      <div class="col-md-2">
-        <button type="button"
-                id="saveQuickActionBtn"
-                class="btn btn-outline-success w-100">
-          Save as Quick Action
         </button>
       </div>
     </form>
@@ -347,87 +324,6 @@
   </div>
 
   <script>
-  // Intercept quick-action button clicks and call /run_command via fetch
-  document.addEventListener('click', function (e) {
-    const btn = e.target.closest('.quick-action-btn');
-    if (!btn) return;
-    e.preventDefault();
-    const url = btn.dataset.url;
-    if (!url) return;
-    // POST (B16): a command reaches a device only through a request a link
-    // cannot make, and the gate requires a person.
-    const form = new FormData();
-    form.append('command', btn.dataset.command || '');
-    form.append('filesystem', btn.dataset.filesystem || '');
-
-    // Simple spinner state
-    const origText = btn.innerHTML;
-    btn.innerHTML = '⏳ Running...';
-    btn.disabled = true;
-
-    fetch(url, {
-      method: 'POST',
-      body: form,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      credentials: 'same-origin',
-    })
-      .then(async (resp) => {
-        if (!resp.ok) {
-          // C570: a command that is not a read is refused; say the server's reason.
-          let why = '';
-          try { why = (await resp.json()).error || ''; } catch (_) { why = ''; }
-          throw new Error(why || ('refused (HTTP ' + resp.status + ')'));
-        }
-        const data = await resp.json();
-        showQuickActionOutput(data.output, data.filename);
-      })
-      .catch((err) => {
-        showQuickActionOutput('ERROR: ' + String(err), null);
-      })
-      .finally(() => {
-        btn.innerHTML = origText;
-        btn.disabled = false;
-      });
-  });
-
-  function showQuickActionOutput(output, filename) {
-    // Remove any previous output (server-rendered or previous AJAX)
-    const serverRendered = document.getElementById('serverRenderedOutput');
-    if (serverRendered) serverRendered.remove();
-    const prev = document.getElementById('quickActionOutputCard');
-    if (prev) prev.remove();
-
-    const customForm = document.getElementById('customCommandForm');
-    const container = document.getElementById('quickActionsContainer');
-    const card = document.createElement('div');
-    card.id = 'quickActionOutputCard';
-    card.className = 'card mb-4';
-    let downloadHtml = '';
-    if (filename) {
-      downloadHtml = `<a href="{{ url_for('download_file') }}" class="btn btn-outline-primary mb-3">⬇️ Download</a>`;
-    }
-    card.innerHTML = `
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Command output</span>
-        <button class="btn btn-sm btn-outline-secondary copy-btn" data-target="quickActionOutput" title="Copy to clipboard">
-          📋 Copy
-        </button>
-      </div>
-      <div class="card-body">
-        ${downloadHtml}
-        <pre class="bg-body-secondary border p-3" id="quickActionOutput">${escapeHtml(output)}</pre>
-      </div>
-    `;
-    // Insert after the custom command form so the form remains above output
-    if (customForm && customForm.parentNode) {
-      customForm.parentNode.insertBefore(card, customForm.nextSibling);
-    } else {
-      container.parentNode.insertBefore(card, container.nextSibling);
-    }
-
-    // Attach copy handler to the new button
-    attachCopyHandlers();
-  }
 
   function escapeHtml(s) {
     if (!s) return '';
@@ -603,27 +499,6 @@
   </div>
 </div>
 
-<!-- Styles for hover-delete on quick actions -->
-<style>
-.quick-action .delete-action {
-  position: absolute;
-  top: 0.25rem;
-  right: 0.5rem;
-  color: #b00020;
-  font-weight: bold;
-  cursor: pointer;
-  display: none;
-  user-select: none;
-}
-.quick-action:hover .delete-action {
-  display: inline;
-}
-.quick-action .quick-action-btn {
-  padding-right: 2rem;
-}
-
-</style>
-
 {# Bootstrap's CSS and bundle come from base.html, ONCE: a second bundle here
    registered every data-API handler twice. #}
 
@@ -701,96 +576,6 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast('Failed to save TFTP server address', 'danger');
     });
   };
-
-  // --- Quick Actions: global persistence via backend routes (GLOBAL endpoints) ---
-  const saveBtn = document.getElementById("saveQuickActionBtn");
-  const input = document.getElementById("customCommandInput");
-  const container = document.getElementById("quickActionsContainer");
-  const selectedFs = "{{ selected_fs }}";
-
-  function attachDeleteHandler(colEl) {
-    const deleteBtn = colEl.querySelector(".delete-action");
-    if (!deleteBtn) return;
-    deleteBtn.addEventListener("click", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const cmd = colEl.getAttribute("data-command");
-      const label = colEl.getAttribute("data-label");
-
-      if (!confirm(`Delete quick action "${label}"?`)) return;
-
-      try {
-        const resp = await fetch(`{{ url_for('delete_quick_action') }}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: cmd, label })
-        });
-        const data = await resp.json();
-        if (resp.ok && data.status === "success") {
-          colEl.remove();
-        } else {
-          alert(data.message || "Failed to delete quick action.");
-        }
-      } catch (err) {
-        console.error("Delete quick action failed:", err);
-        alert("Network error while deleting quick action.");
-      }
-    });
-  }
-
-  document.querySelectorAll("#quickActionsContainer .quick-action").forEach(attachDeleteHandler);
-
-  if (saveBtn && input && container) {
-    saveBtn.addEventListener("click", async () => {
-      const cmd = (input.value || "").trim();
-      if (!cmd) {
-        alert("Please enter a command first.");
-        return;
-      }
-
-      const label = prompt("Enter a name for this quick action:");
-      if (!label) return;
-
-      try {
-        const resp = await fetch(`{{ url_for('add_quick_action') }}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            command: cmd,
-            label: label,
-            filesystem: selectedFs
-          })
-        });
-        const data = await resp.json();
-        if (resp.ok && data.status === "success") {
-          const col = document.createElement("div");
-          col.className = "col quick-action";
-          col.setAttribute("data-command", cmd);
-          col.setAttribute("data-label", label);
-
-          col.innerHTML = `
-            <div class="position-relative d-inline-block w-100">
-              <button type="button" class="btn btn-outline-primary w-100 quick-action-btn"></button>
-              <span class="delete-action" title="Delete quick action" aria-label="Delete">&times;</span>
-            </div>
-          `;
-          const qa = col.querySelector('.quick-action-btn');
-          qa.textContent = label;
-          qa.dataset.url = "{{ url_for('run_command', ip=device['ip']) }}";
-          qa.dataset.command = cmd;
-          qa.dataset.filesystem = selectedFs;
-          container.appendChild(col);
-          attachDeleteHandler(col);
-        } else {
-          alert(data.message || "Failed to add quick action.");
-        }
-      } catch (err) {
-        console.error("Add quick action failed:", err);
-        alert("Network error while adding quick action.");
-      }
-    });
-  }
 
   // ========================================================================
   // Backups Tab Functionality

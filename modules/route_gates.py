@@ -258,8 +258,6 @@ GATES = {
     "credential_profiles_v2.policy_save": _g(K, "sets a credential profile's scheduled "
                                               "rotation policy (C724), a verified person's, "
                                               "recorded (who, when, what)"),
-    "add_quick_action": _g(K, "stores a canned command"),
-    "delete_quick_action": _g(K, "deletes a canned command"),
 
     # ---- reveal: device configuration or secrets leave the device --------
     "bulk_tftp_download": _g(R, "copies files OFF devices to a TFTP server the form names"),

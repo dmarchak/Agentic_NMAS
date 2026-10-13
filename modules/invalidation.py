@@ -84,7 +84,6 @@ VOCABULARY = {
     "agent": "the background agent: status, log, timers",
     "chat": "the AI chat transcript",
     "playbooks": "AI playbooks",
-    "quick_actions": "quick actions",
     "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
     "logs": "the fleet's syslog counted per day (the Logs view's reader, C652)",
     "dhcp": "the network's Kea: subnets, reservations and leases (the DHCP reader, C529)",
@@ -335,8 +334,6 @@ DECLARED = {
     "bulk_download_config": ("files",),
     "bulk_tftp_download": ("files",),
     # The rest of the page's own state.
-    "add_quick_action": ("quick_actions",),
-    "delete_quick_action": ("quick_actions",),
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),

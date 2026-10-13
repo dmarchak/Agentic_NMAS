@@ -234,7 +234,6 @@ secure_dir(LISTS_DIR)
 DEFAULT_DEVICES_FILE = os.path.join(DATA_DIR, "Devices.csv")
 DEVICES_FILE = DEFAULT_DEVICES_FILE  # For backwards compatibility
 DEVICE_LISTS_CONFIG = os.path.join(DATA_DIR, "device_lists.json")
-QUICK_ACTIONS_FILE = os.path.join(DATA_DIR, "quick_actions.json")
 KEY_FILE = os.path.join(DATA_DIR, "key.key")
 SECRET_KEY_FILE = os.path.join(DATA_DIR, "secret.key")
 USER_SETTINGS_FILE = os.path.join(DATA_DIR, "user_settings.json")
