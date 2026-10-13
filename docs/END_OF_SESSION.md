@@ -1,5 +1,53 @@
 # End of session: where Phase 7 stands
 
+## AFTERNOON, 2026-10-13 (16:20 to 18:50 UTC): the operator's answers, worked
+
+The host runs c40d9440 (deployed 18:43:57 UTC, CI #740).
+
+**Done and walked:**
+- **C743 and C744** (1136827d): the two archive FAILs were false.
+  - Masking was not idempotent: a second pass turned `secret 9 <redacted>` and
+    `snmp-server host … version 2c <redacted>` into placeholders. Measured on both objects
+    (counts only), nothing was unmasked.
+  - Fixed, and an archive is now scanned BEFORE it leaves the host (`put_archive`).
+  - c734's stray backslash fixed; the host runs Python 3.12.3, so the version was never the
+    cause. Every host step's Python is now compiled by a test.
+- **C745 registered:** masking does not know OSPF, BGP or SNMPv3 key shapes. Neither first
+  archive held any.
+- **E19 (C740, closed):** pool 4 h, reserved 7 d by the class `mercury-reserved`, management
+  7 d (every ZTP-subnet client takes a class's lifetime), computed timers at 50%/80%.
+  - Host step PASS 9 of 9.
+  - h1's renewed lease measures 604800 / 302400.
+- **C718 (closed):** Decline… and Undo decline…, built from the approved board and compared
+  with it at 1440 and 390. r6's IP SLA declined on the host in the operator's words (commit
+  7790304e); Coverage and the IP SLA page read it as declined.
+- **C681 (closed):** 2001:db8:20::100 deleted after the interface check.
+- **Break-glass and Save All:** confirmed from the records. The export was current, 16:33:25
+  UTC, 9 devices, intact. The baselines are 03:08 and 03:24 UTC from `save_all`. Dropped from
+  the waiting list.
+- **The ten "partly" acceptance criteria:** reread against the code, and the table in
+  NSOT_STAGE7_PLAN updated. 1, 2 and 16 close at cutover; 3, 4, 5, 6, 10, 11 and 14 each name
+  what is left.
+- **Canvas v127:**
+  - E3 and F3 (and their phone boards) replace E2 and F2, for sign-off.
+  - A, B and C have the live shell.
+  - C718 is marked approved, and the stale FOR SIGN-OFF titles are fixed.
+
+**Waiting on the operator, in order:**
+1. **The archive steps, one at a time.** Step 1 is `c743-delete-archive-objects.sh` (a
+   delete-capable MinIO key, typed hidden). Then c734's counts, the D15 archive and its
+   delete, and Oxidized's archive and its delete, each with what PASS looks like.
+2. **Sign-off on E3 and F3.** Measured for them: only `network_syslog` reaches Loki (no
+   traps); Loki keeps 2 y and allows 30 d an ask; Prometheus keeps 90 d.
+3. **Boards still waiting:** C589 AdjacencyTransient; C537/C538's TopBarDesktop, TopBarPhone,
+   Reattach, FinishJob and BatchExpected.
+4. **CLAUDE.md:** remove `` `NMAS_TFTP_ROOT` `` from Environment. Not in the file yet; the code
+   removal follows the paste.
+5. **s3's manual rotation:** planned with the operator after the Oxidized retire, break-glass
+   export first.
+6. **Next, by the operator's order:** D15's removal after its archive, Backups (C632 first),
+   then today's pages.
+
 ## MORNING REPORT: THE OVERNIGHT RUN, 2026-10-13 (05:20 to 09:35 UTC; 23:20 to 03:35 UTC−6)
 
 ### Deployed and walked on the host

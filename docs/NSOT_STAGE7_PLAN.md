@@ -2994,22 +2994,22 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 
 | # | State | What would meet it |
 |---|---|---|
-| 1 Reachability | partly | The allowlist is at 49; homing the PLANNED rows and 7.8's removals empty it to the deliberate non-GUI routes |
-| 2 No curl-only task | partly | Screens for the 8 NO_GUI actions (template revoke and bindings, bulk intent apply, freshness authorise, remote adopt, and the rest in `tests/test_results_are_drawn.py`) |
-| 3 Nine concepts | partly | 4 live, 5 pending (`tests/test_concepts_are_taught.py`): each lands with its screen (7.4 to 7.6) |
-| 4 Payloads drawn | partly | The check passes with its floors; its UNDRAWN list (ceiling 110) shrinks to its exemptions as screens draw their fields |
-| 5 Invalidation | partly | Maps complete, live contract built; the host case of the device list after Verify (run A1) |
-| 6 One pattern | partly | Bulk intent through the component (7.4); the legacy confirm paths go with 7.8 |
+| 1 Reachability | closes at cutover (reread 2026-10-13) | The allowlist is 21 (ceiling 21, `tests/test_route_reachability.py`), down from 49. 11 are today's JSON routes whose task now has its own v2 route; the other 10 are on 7.8's removal list. The 6 deliberate non-GUI routes have their own list. All 21 close when today's pages are removed. The reasons on the 11 still name 7.4/7.6 homes |
+| 2 No curl-only task | closes at cutover (reread 2026-10-13) | `NO_GUI` holds 4 (revoke_approval, save_bindings, bulk_apply, remote.adopt), each now with a v2 screen; `PENDING` holds 13 of today's handlers, 4 of them AI (Stage 8). Several v2 homes are built but not yet run on the host |
+| 3 Nine concepts | partly (reread 2026-10-13) | Still 4 live, 5 pending, and the 4 live ones render through today's JS only: templates/v2 has no `data-concept` marker. Left: v2 draws all nine, and the harness is pointed at v2 screens before today's pages go |
+| 4 Payloads drawn | partly (reread 2026-10-13) | `UNDRAWN` holds 114 keys over 22 routes (ceiling 114). Its `RENDERS` registry measures only today's JavaScript renderers. Left: extend the check to v2's render context, then shrink the list |
+| 5 Invalidation | partly (reread 2026-10-13) | `NOT_YET` holds 9. Five close at 7.8 (backups, bulk_ops, agent, chat, playbooks); four need v2 subscribers (active_list, lists, posture, breakglass). The host case of the device list after Verify (run A1) is not measured |
+| 6 One pattern | partly (reread 2026-10-13) | `RETROFIT_PENDING` is empty and bulk intent is on v2. The no-second-implementation test reads only today's files. Left: a v2 test that every preview and confirm is drawn one way; 8 browser `confirm()` calls go at cutover |
 | 7 Needs attention, every source | met, except Stage 8 | The agent's triage reports are Stage 8's, by design |
 | 8 Grafana, natively | met | Restated 2026-10-02 (section 10); the device and fleet dashboards and the logs are drawn and every state said. Its one gap is P.8's per-network dashboards |
 | 9 CI has no destination | met | The CI verdict is on About, the Update page and a Needs attention row; no CI tab |
-| 10 The sidebar | partly | The v2 sidebar matches, but Topology is absent and five items open today's pages; then the 37 findability questions walked on the built screens |
-| 11 Scale | partly | v2 Devices does fixed reads at any size (tested at 60); the 900-device selection screens are 7.10's |
+| 10 The sidebar | partly (reread 2026-10-13) | Topology is in it and no item opens today's pages (the gaps list is empty, ceiling 0). Left: the 37 findability questions walked on the built screens; a test pinning the order (today only the labels); the stale footer note ("Other items open today's screens") |
+| 11 Scale | partly (reread 2026-10-13) | `EXCUSED` holds 4 v2 pages drawing every device (Devices, its table, Coverage and its table; C450, 7.4's Devices board). `tests/test_scale.py` measures only today's `/`: it moves to v2 before `/` goes |
 | 12 Behaviour | holding | Checked at close: no control changed what it does outside its stage |
 | 13 Controls drawn from `may` | met 2026-10-13 (C738) | Every gated control in templates/v2 draws `gate()` (`preview_confirm.control_gate`, from `may`); tests/test_controls_consult_may.py fails on one that does not |
-| 14 A writeup entry per sub-task | partly | Entries for 7.3's remaining parts, 7.D's screens (Devices, History, Monitoring, Coverage, Update, the manual) and P.9 (d) |
+| 14 A writeup entry per sub-task | partly (reread 2026-10-13) | NSOT_WRITEUP.md's last entry is 2026-10-10. No entry yet for: P.11 Topology, Show commands (C548), Ask (C547), Logs (C652), DHCP on v2 (C529), Remote set-up (C631), the monitoring profile (C566), C738's gates, the 7.8 removals of 2026-10-11 to 13, P.9 (d), Update, v2 Monitoring. 7.3 and 7.D still read open |
 | 15 The manual stays true | met so far | Holds for every built v2 screen (`tests/test_manual.py`, the click test); each new screen adds its page |
-| 16 No duplicated function | partly | Today's pages duplicate the v2 screens until 7.8; the brief's inventory empties then |
+| 16 No duplicated function | closes at cutover (reread 2026-10-13) | `KNOWN_DUPLICATES` holds 1 ("typed": `commands._run` and `bulk_ops._run_single_enable_command`), reached only from today's `/bulk_execute`; the brief's D1 to D24 live on today's pages |
 
 ### The order for the rest, and why
 
