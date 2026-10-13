@@ -20,6 +20,10 @@ path.
   r2 stays due for the recording's Rotate due devices now, which also clears the row.
   **After the operator's recording: set the `default` policy to every 30 days (only r2, s1),
   as the operator asked.**
+  **s1, 00:44 UTC:** a settle through the fixed code (the scheduled run's call, from the host
+  shell) reverted at verify (C726, UNKNOWN): s1 is on its working credential, its golden still
+  lacks the rotated secret (the drift row stands), the halt stands for the recording's Rotate
+  due devices now, which takes r2 (a person's run is not held by the 24-hour rule).
 - **C725, the config pipeline** (b0869a1, e1289df): `scripts/nmas-config-check` (no device, no
   secret) before every Mercury commit of intent, profiles, templates or DHCP, and GitHub Actions
   in the config repository on every push and pull request. Host step run: 7 of 7 PASS; the
