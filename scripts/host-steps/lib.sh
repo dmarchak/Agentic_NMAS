@@ -17,6 +17,7 @@ SCRIPT_NAME=$(basename "$0")
 CHECKOUT=$(cd "$(dirname "$0")/../.." && pwd)
 _PLAN=()
 _PASSED=()
+_NOT_ASKED=()
 _FAILED=""
 REDACT=""
 
@@ -32,14 +33,25 @@ plan() {
     _PLAN=("$@")
 }
 
+# not_asked "name" "why": a planned check this run does not ask (it belongs to the script's other
+# mode). The summary says NOT ASKED, never PASS, and the result counts it apart (C757: the
+# Oxidized archive run reported "the deletion found the archive" and "nothing of Oxidized is
+# left" as PASS though it deleted nothing, because a check echoed "not asked" to itself).
+not_asked() {
+    echo "NOT ASKED  $1 ($2)"
+    _NOT_ASKED+=("$1")
+}
+
 summary() {
-    local n state any_fail=0
+    local n state any_fail=0 asked
     echo
     echo "== SUMMARY: $SCRIPT_NAME"
     for n in "${_PLAN[@]}"; do
         state="NOT RUN"
         if printf '%s\n' "${_PASSED[@]+"${_PASSED[@]}"}" | grep -qxF -- "$n"; then
             state="PASS"
+        elif printf '%s\n' "${_NOT_ASKED[@]+"${_NOT_ASKED[@]}"}" | grep -qxF -- "$n"; then
+            state="NOT ASKED"
         elif [ "$n" = "$_FAILED" ]; then
             state="FAIL"
             any_fail=1
@@ -49,7 +61,10 @@ summary() {
     if [ -n "$_FAILED" ] && [ "$any_fail" = 0 ]; then
         echo "  FAIL     $_FAILED"
     fi
-    if [ -z "$_FAILED" ]; then
+    asked=$(( ${#_PLAN[@]} - ${#_NOT_ASKED[@]} ))
+    if [ -z "$_FAILED" ] && [ "${#_NOT_ASKED[@]}" -gt 0 ]; then
+        echo "== RESULT: PASS (${#_PASSED[@]} of $asked checks asked; ${#_NOT_ASKED[@]} not asked in this mode)"
+    elif [ -z "$_FAILED" ]; then
         echo "== RESULT: PASS (${#_PASSED[@]} of ${#_PLAN[@]} checks)"
     else
         echo "== RESULT: FAIL at: $_FAILED"

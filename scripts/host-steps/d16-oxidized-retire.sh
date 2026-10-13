@@ -127,19 +127,25 @@ else
     step "find the archive by its checksum" \
         'cd "$CHECKOUT" && sudo -u "$RUNAS" env PYTHONDONTWRITEBYTECODE=1 DIR="$DIR" MODE="$MODE" WANT="$WANT" "$PY" "$DIR/archive.py"'
 fi
-check "the archive holds no value Mercury would mask, checked before upload" re "^(0|not asked)$" \
-    'if [ "$MODE" = archive ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"; else echo "not asked"; fi'
-check "the archive is written and read back with the same sha256, the copy scanned again" re "^(same|not asked)$" \
-    'if [ "$MODE" = archive ]; then python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"; else echo "not asked"; fi'
-check "the deletion found the archive by its checksum" re "(archives/oxidized/|^not asked$)" \
-    'if [ "$MODE" = delete ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"found\"])"; else echo "not asked"; fi'
-if [ "$MODE" = delete ]; then
+# Each check is asked only in its own mode; the other mode's are NOT ASKED, never PASS (C757).
+if [ "$MODE" = archive ]; then
+    check "the archive holds no value Mercury would mask, checked before upload" eq "0" \
+        'python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"'
+    check "the archive is written and read back with the same sha256, the copy scanned again" eq "same" \
+        'python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"'
+    not_asked "the deletion found the archive by its checksum" "the --delete run's"
+    not_asked "nothing of Oxidized is left" "the --delete run's: this run deletes nothing"
+else
+    not_asked "the archive holds no value Mercury would mask, checked before upload" "the archive run's"
+    not_asked "the archive is written and read back with the same sha256, the copy scanned again" "the archive run's"
+    check "the deletion found the archive by its checksum" re "archives/oxidized/" \
+        'python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"found\"])"'
     step "remove the two exited containers" 'docker rm oxidized oxidized-pre-c143'
     step "shred router.db and every copy of it" \
         'find "$STORE" -maxdepth 1 -name "*router.db*" -type f -exec shred -u {} +'
     step "remove the store" 'rm -rf "$STORE"'
+    check "nothing of Oxidized is left" eq "gone" \
+        '[ ! -e "$STORE" ] && [ -z "$(docker ps -a --format "{{.Names}}" | grep "^oxidized")" ] && echo gone || echo left'
 fi
-check "nothing of Oxidized is left" re "^(gone|not asked)$" \
-    'if [ "$MODE" = delete ]; then [ ! -e "$STORE" ] && [ -z "$(docker ps -a --format "{{.Names}}" | grep "^oxidized")" ] && echo gone || echo left; else echo "not asked"; fi'
 rm -rf "$DIR"
 summary

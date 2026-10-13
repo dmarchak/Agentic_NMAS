@@ -97,6 +97,45 @@ summary
     assert "PASS  three" not in out, "it stopped at the first failure"
 
 
+def test_a_check_another_mode_asks_is_not_asked_never_pass(tmp_path):
+    """C757: the Oxidized archive run reported its delete-mode checks PASS (each echoed "not
+    asked" to itself and matched it), though it deleted nothing. `not_asked` records them NOT
+    ASKED, and the result counts them apart from the checks that passed."""
+    got = _run_planted(tmp_path, """
+plan "asked here" "the other mode's"
+check "asked here" eq "a" 'echo a'
+not_asked "the other mode's" "the --delete run's"
+summary
+""")
+    assert got.returncode == 0, got.stdout
+    out = got.stdout
+    assert re.search(r"NOT ASKED\s+the other mode's\n", out), out
+    assert not re.search(r"PASS\s+the other mode's", out), out
+    assert "== RESULT: PASS (1 of 1 checks asked; 1 not asked in this mode)" in out
+
+
+def test_no_check_answers_not_asked_to_itself():
+    """The class C757 found: a check whose command echoes "not asked" and whose wanted value
+    accepts it passes in a mode that never asked it. Every such check is `not_asked` now."""
+    for name in SCRIPTS:
+        text = open(os.path.join(FOLDER, name), encoding="utf-8").read()
+        assert not re.search(r"echo [\"']not asked[\"']", text), name
+        assert not re.search(r"\bcheck\s+\"[^\"]*\"\s+\w+\s+\"[^\"]*not asked", text), name
+
+
+def test_the_oxidized_step_destroys_only_in_its_delete_branch():
+    """C757's question: did the archive run delete anything? It could not: the container
+    removal, the shredding and the store's removal sit only in the branch `--delete` selects."""
+    text = open(os.path.join(FOLDER, "d16-oxidized-retire.sh"), encoding="utf-8").read()
+    tail = text[text.index("# Each check is asked only in its own mode"):]
+    archive, delete = tail.split("\nelse\n", 1)
+    assert archive.startswith("# Each check") and 'if [ "$MODE" = archive ]; then' in archive
+    delete = delete.split("\nfi\n", 1)[0]
+    for destroy in ("docker rm oxidized", "shred -u", 'rm -rf "$STORE"'):
+        assert destroy in delete and destroy not in archive, destroy
+    assert text.count("docker rm oxidized") == 1 and text.count('rm -rf "$STORE"') == 1
+
+
 def test_a_failed_step_stops_before_the_checks(tmp_path):
     got = _run_planted(tmp_path, """
 plan "after"
@@ -162,7 +201,8 @@ def test_each_script_sources_the_library_plans_every_check_and_summarises(name):
     plan = re.search(r"^plan ((?:\"[^\"]+\"\s*\\?\s*)+)", text, re.M)
     assert plan, f"{name} declares no plan"
     planned = re.findall(r'"([^"]+)"', plan.group(1))
-    checked = re.findall(r'^check "([^"]+)"', text, re.M)
+    # A check inside a mode's branch is indented; the other mode's is `not_asked` (C757).
+    checked = re.findall(r'^\s*(?:check|not_asked) "([^"]+)"', text, re.M)
     stops = re.findall(r'_stop "([^"]+)"', text)
     if "not_root" in text:
         checked.append("run as the operator's own user, not root")

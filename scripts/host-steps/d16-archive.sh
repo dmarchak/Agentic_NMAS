@@ -123,11 +123,18 @@ else
     step "find the archive by its checksum, then delete what it holds" \
         'cd "$CHECKOUT" && "$PY" "$DIR/archive.py"'
 fi
-check "the archive holds no value Mercury would mask, checked before upload" re "^(0|not asked)$" \
-    'if [ "$MODE" = archive ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"; else echo "not asked"; fi'
-check "the archive is written and read back with the same sha256, the copy scanned again" re "^(same|not asked)$" \
-    'if [ "$MODE" = archive ]; then python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"; else echo "not asked"; fi'
-check "the deletion found the archive by its checksum" re "(archives/|^not asked$)" \
-    'if [ "$MODE" = delete ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"found\"])"; else echo "not asked"; fi'
+# Each check is asked only in its own mode; the other mode's are NOT ASKED, never PASS (C757).
+if [ "$MODE" = archive ]; then
+    check "the archive holds no value Mercury would mask, checked before upload" eq "0" \
+        'python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"'
+    check "the archive is written and read back with the same sha256, the copy scanned again" eq "same" \
+        'python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"'
+    not_asked "the deletion found the archive by its checksum" "the --delete run's"
+else
+    not_asked "the archive holds no value Mercury would mask, checked before upload" "the archive run's"
+    not_asked "the archive is written and read back with the same sha256, the copy scanned again" "the archive run's"
+    check "the deletion found the archive by its checksum" re "archives/" \
+        'python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"found\"])"'
+fi
 rm -rf "$DIR"
 summary

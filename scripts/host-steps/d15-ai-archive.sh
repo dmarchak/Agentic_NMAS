@@ -157,10 +157,10 @@ check "the archive holds no value Mercury would mask, checked before upload" eq 
         'python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"'
 check "the archive is written and read back with the same sha256, the copy scanned again" eq "same" \
         'python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"'
-check "the deletion found the archive by its checksum" eq "not asked" 'echo "not asked"'
+not_asked "the deletion found the archive by its checksum" "the --delete run's"
 else
-check "the archive holds no value Mercury would mask, checked before upload" eq "not asked" 'echo "not asked"'
-check "the archive is written and read back with the same sha256, the copy scanned again" eq "not asked" 'echo "not asked"'
+not_asked "the archive holds no value Mercury would mask, checked before upload" "the archive run's"
+not_asked "the archive is written and read back with the same sha256, the copy scanned again" "the archive run's"
     step "find the archive by its checksum, then delete what it holds" \
         'cd "$CHECKOUT" && "$PY" "$DIR/archive.py"'
 check "the deletion found the archive by its checksum" re "ai-family/" \
