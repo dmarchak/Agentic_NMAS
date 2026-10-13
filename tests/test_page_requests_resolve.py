@@ -33,8 +33,9 @@ def requests():
 def test_the_scan_finds_the_population(requests):
     _A, found = requests
     # 119 on 2026-10-13, after Quick actions' two requests left with their family (7.8, D16);
-    # the floor falls as today's pages shrink, never below what a removal explains.
-    assert len(found) >= 115, len(found)
+    # 111 the same day after Device files and Bulk file actions; the floor falls as today's
+    # pages shrink, never below what a removal explains.
+    assert len(found) >= 108, len(found)
     assert ("/deploy/plan", "POST") in found           # a positive anchor
 
 

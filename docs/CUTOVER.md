@@ -65,13 +65,12 @@ and built.
 | Break-glass export | `/breakglass/export` | STAYS (its preview route removed 2026-10-12, 7.8) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
 | Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
-| TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | Its only readers are the bulk file routes below (the device file routes left 2026-10-13, and its input on today's device page with them), and it points at nothing on this installation |
+| TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | No reader is left: the device and bulk file routes left 2026-10-13 (its input on today's device page with them); its own input and Save on today's device table stay until it goes. It points at nothing on this installation |
 | App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
 | In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
 | Version | `/health/version` | BUILT | Help › About |
 | Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8, after today's template editor | Section 6a's prerequisite (no render reads a backup): the v2 intent editor and bulk intent render against the committed golden only since 2026-10-11 (C683); today's template preview and refresh-capture still read the backup store (C632), and go with today's template editor, the last prerequisite. Today's device page also names these routes by `url_for` |
 | Bulk read-only commands | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | BUILT (C548; not yet walked on the host) | Show commands (`/v2/show-commands`): devices by name, role or network, commands from the allowlist, results grouped and compared |
-| Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Topology service | (no route of today's; its two routes and panel removed 2026-10-12) | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the service itself REMOVED at 7.8 (2026-10-12: the renderer from the repository, the unit and link by its host step, `topology-service-removal.sh`), and its integration with it (C714: no client, no probe, no Settings card; its keys `retiring` for one release) | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
@@ -82,6 +81,12 @@ and built.
 Each family leaves the table above in the commit that removes it, named here with that commit's
 date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest change first).
 
+- **Bulk file actions** (/bulk_tftp_upload, /bulk_tftp_download, /bulk_download_config,
+  /bulk_delete_file), 2026-10-13 (D16; restore point tag `pre-remove/bulk-file-actions`): as
+  device files. Today's device table lost its upload, download, config-download and delete
+  cards and their script; the bulk worker its four file modes and their `_execute_*` senders.
+  The TFTP server input and its Save stay on the table until the TFTP setting's own removal.
+  No data of their own on this host.
 - **Device files** (/device/<ip>/refresh_files, /upload, /download_file, /delete_file,
   /download), 2026-10-13 (D16; restore point tag `pre-remove/device-files`): no arbitrary file
   transfer (the operator, 2026-10-02); ZTP delivery and image management (P.13) replace them.

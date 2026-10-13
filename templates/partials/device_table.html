@@ -27,9 +27,8 @@
     </div>
     <small class="text-muted mt-2 d-block" id="configHint" style="display: none;">For multiple config commands, separate with semicolons (e.g., hostname R1; interface gi0/0; description WAN)</small>
 
-    <!-- Bulk File Transfer Section -->
     <hr class="my-3">
-    <h6 class="mb-2">File Transfer (TFTP)</h6>
+    <h6 class="mb-2">TFTP server (the TFTP setting; its transfers left at 7.8)</h6>
     <div class="row g-2 mb-3">
       <div class="col-md-6">
         <label class="form-label mb-1 small fw-bold">TFTP Server Address</label>
@@ -38,62 +37,6 @@
           <button class="btn btn-outline-success" type="button" onclick="saveTftpServer()" title="Save as default">
             Save
           </button>
-        </div>
-      </div>
-    </div>
-    <div class="row g-2 mb-2">
-      <!-- Upload file to devices -->
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-body p-2">
-            <label class="form-label mb-1 small fw-bold">Upload file to selected devices</label>
-            <div class="input-group input-group-sm">
-              <input type="file" class="form-control" id="bulkUploadFile">
-              <button class="btn btn-success" onclick="bulkUploadFile()">Upload</button>
-            </div>
-            <small class="text-muted">Uploads to flash: on each device</small>
-          </div>
-        </div>
-      </div>
-      <!-- Download file from devices -->
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-body p-2">
-            <label class="form-label mb-1 small fw-bold">Download file from selected devices</label>
-            <div class="input-group input-group-sm">
-              <input type="text" class="form-control" id="bulkDownloadFilename" placeholder="e.g., vlan.dat">
-              <button class="btn btn-info" onclick="bulkDownloadFile()">Download</button>
-            </div>
-            <small class="text-muted">Downloads from flash: to TFTP server</small>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="row g-2 mb-2">
-      <!-- Quick config downloads -->
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-body p-2">
-            <label class="form-label mb-1 small fw-bold">Quick Config Download</label>
-            <div class="btn-group btn-group-sm w-100">
-              <button class="btn btn-outline-info" onclick="bulkDownloadConfig('startup')">Download Startup Configs</button>
-              <button class="btn btn-outline-info" onclick="bulkDownloadConfig('running')">Download Running Configs</button>
-            </div>
-            <small class="text-muted">Downloads configs to TFTP server with device hostname prefix</small>
-          </div>
-        </div>
-      </div>
-      <!-- Delete file from devices -->
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-body p-2">
-            <label class="form-label mb-1 small fw-bold">Delete file from selected devices</label>
-            <div class="input-group input-group-sm">
-              <input type="text" class="form-control" id="bulkDeleteFilename" placeholder="e.g., old-config.bak">
-              <button class="btn btn-danger" onclick="bulkDeleteFile()">Delete</button>
-            </div>
-            <small class="text-muted">Deletes file from flash: on each device</small>
-          </div>
         </div>
       </div>
     </div>

@@ -79,8 +79,6 @@ VOCABULARY = {
     "device_state": "what a device runs: anything read live from it",
     "breakglass": "the break-glass export log, its intact checks and its drills (job health's "
                   "break-glass rows read them)",
-    "device_files": "a device's filesystem listing",
-    "files": "files on this host from device transfers",
     "agent": "the background agent: status, log, timers",
     "chat": "the AI chat transcript",
     "playbooks": "AI playbooks",
@@ -325,10 +323,6 @@ DECLARED = {
     "bulk_execute": ("device_state",),
     "backup_config": ("backups",),
     "delete_backup_route": ("backups",),
-    "bulk_delete_file": ("device_files",),
-    "bulk_tftp_upload": ("device_files",),
-    "bulk_download_config": ("files",),
-    "bulk_tftp_download": ("files",),
     # The rest of the page's own state.
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.

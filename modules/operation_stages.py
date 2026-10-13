@@ -312,9 +312,6 @@ STAGES = {
     # ---- Legacy device routes, removed or replaced at cutover
     "run_command": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
     "bulk_execute": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
-    "bulk_tftp_upload": Stages(LEGACY, LEGACY, LEGACY, LEGACY, LEGACY),
-    "bulk_delete_file": Stages(LEGACY, LEGACY, LEGACY, "n/a: a deleted file cannot be restored",
-                               LEGACY),
 }
 
 #: The gaps, counted: the test pins this number, so it can only go down.
@@ -373,8 +370,6 @@ HISTORY = {
     "update.step_done": NOT_A_DEVICE,
     "run_command": NO_RECORD,
     "bulk_execute": NO_RECORD,
-    "bulk_tftp_upload": NO_RECORD,
-    "bulk_delete_file": NO_RECORD,
     "ai_chat": ("MISSING: the assistant's device tools keep no per-device record; removed "
                 "by P.3 step 8"),
     "ai_agent_run": ("MISSING: the agent's device tools keep no per-device record; removed "
@@ -499,5 +494,6 @@ WRITTEN_ELSEWHERE = {
 }
 
 #: The history gaps, counted: only down (12 -> 9, 2026-10-12: the three credential profile JSON
-#: routes removed at 7.8; 9 -> 7, 2026-10-13: Device files' upload and delete removed at 7.8).
-HISTORY_MISSING_CEILING = 7
+#: routes removed at 7.8; 9 -> 7, 2026-10-13: Device files' upload and delete removed at 7.8;
+#: 7 -> 5 the same day: Bulk file actions' upload and delete).
+HISTORY_MISSING_CEILING = 5

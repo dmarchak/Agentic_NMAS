@@ -281,8 +281,6 @@ PAGE_RECORD = {
 PENDING = {
     # -- drawn in place, gone when the window closes or the page moves on --
     "bulk_execute": "the bulk results modal, until closed",
-    "bulk_delete_file": "the bulk results modal, until closed",
-    "bulk_tftp_upload": "the bulk results modal, until closed",
     "run_command": "the device page re-rendered with the output",
     "ai_chat": "the chat stream (Stage 8 decides what the agent's record is)",
     "templatize.edit_committed": "the editor's status line names the commit",
@@ -340,7 +338,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 15, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 15 since Device files left (7.8, D16, 2026-10-13)
+CEILINGS = {"PENDING": 13, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
 
 
 def _population():
@@ -480,7 +478,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 18, len(calls)          # the scan can see them
+        assert len(calls) >= 15, len(calls)          # the scan can see them (18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

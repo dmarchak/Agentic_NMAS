@@ -209,32 +209,8 @@ class BulkOperationManager:
                             output = conn.send_config_set(
                                 config_commands, read_timeout=60, cmd_verify=False
                             )
-                        elif command_mode == "tftp_upload":
-                            # TFTP upload - handle interactive prompts
-                            # command format: "tftp_server|filename"
-                            parts = command.split("|")
-                            tftp_server = parts[0]
-                            filename = parts[1]
-                            output = self._execute_tftp_upload(conn, tftp_server, filename)
-                        elif command_mode == "tftp_download":
-                            # TFTP download - handle interactive prompts
-                            # command format: "tftp_server|filename|dest_filename"
-                            parts = command.split("|")
-                            tftp_server = parts[0]
-                            filename = parts[1]
-                            dest_filename = parts[2] if len(parts) > 2 else filename
-                            output = self._execute_tftp_download(conn, tftp_server, filename, dest_filename, device)
-                        elif command_mode == "config_download":
-                            # Config download - download startup or running config
-                            # command format: "tftp_server|config_type"
-                            parts = command.split("|")
-                            tftp_server = parts[0]
-                            config_type = parts[1]
-                            output = self._execute_config_download(conn, tftp_server, config_type, device)
-                        elif command_mode == "delete_file":
-                            # Delete file from flash:
-                            # command is just the filename
-                            output = self._execute_delete_file(conn, command)
+                        # The file modes (tftp_upload, tftp_download, config_download,
+                        # delete_file) left with Bulk file actions at 7.8 (D16, 2026-10-13).
                         elif command_mode == "remove_static_routes":
                             # Remove all non-VRF static routes
                             output = self._execute_remove_static_routes(conn)
@@ -279,60 +255,6 @@ class BulkOperationManager:
         # Mark operation as complete
         with self.lock:
             self.active_operations[operation_id]["status"] = "completed"
-
-    def _execute_tftp_upload(self, conn, tftp_server: str, filename: str) -> str:
-        """Execute TFTP upload with interactive prompt handling."""
-        # Match the working device page logic exactly
-        output = conn.send_command_timing("copy tftp: flash:")
-        output += conn.send_command_timing(tftp_server)
-        output += conn.send_command_timing(filename)
-        output += conn.send_command_timing(filename)
-        output += conn.send_command_timing("\n")
-        return output
-
-    def _execute_tftp_download(self, conn, tftp_server: str, filename: str, dest_filename: str, device: Dict) -> str:
-        """Execute TFTP download with interactive prompt handling."""
-        # Use device hostname to create unique filename on TFTP server
-        hostname = device.get("hostname", device.get("ip", "device"))
-        remote_filename = f"{hostname}_{dest_filename}"
-
-        output = conn.send_command_timing("copy flash: tftp:")
-        output += conn.send_command_timing(filename)
-        output += conn.send_command_timing(tftp_server)
-        output += conn.send_command_timing(remote_filename)
-        output += conn.send_command_timing("\n")
-        return output
-
-    def _execute_config_download(self, conn, tftp_server: str, config_type: str, device: Dict) -> str:
-        """Execute config download (startup or running) to TFTP server."""
-        hostname = device.get("hostname", device.get("ip", "device"))
-
-        if config_type == "running":
-            # copy running-config tftp:
-            remote_filename = f"{hostname}_running-config"
-            output = conn.send_command_timing("copy running-config tftp:", delay_factor=2)
-        else:
-            # copy startup-config tftp:
-            remote_filename = f"{hostname}_startup-config"
-            output = conn.send_command_timing("copy startup-config tftp:", delay_factor=2)
-
-        # Respond to "Address or name of remote host" prompt
-        output += conn.send_command_timing(tftp_server, delay_factor=2)
-        # Respond to "Destination filename" prompt
-        output += conn.send_command_timing(remote_filename, delay_factor=2)
-        # Confirm any additional prompts
-        output += conn.send_command_timing("\n", delay_factor=2)
-        return output
-
-    def _execute_delete_file(self, conn, filename: str) -> str:
-        """Execute delete file from flash: with confirmation handling."""
-        # delete flash:filename
-        output = conn.send_command_timing(f"delete flash:{filename}")
-        # Confirm the filename prompt
-        output += conn.send_command_timing("\n")
-        # Confirm the delete prompt [confirm]
-        output += conn.send_command_timing("\n")
-        return output
 
     def _execute_remove_static_routes(self, conn) -> str:
         """Remove all static routes from device config, preserving VRF routes."""

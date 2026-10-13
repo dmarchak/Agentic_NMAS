@@ -94,27 +94,12 @@ class TestBulkOperation:
                                                "command_mode": "enable"})
         assert r.status_code == 200 and len(bulk_calls) == 1
 
-    @pytest.mark.parametrize("route, data", [
-        ("/bulk_tftp_download", {"filename": "x.bin\nreload"}),
-        ("/bulk_tftp_download", {"filename": "x.bin", "tftp_server": "192.0.2.10\nreload"}),
-        ("/bulk_download_config", {"tftp_server": "192.0.2.10 reload"}),
-        ("/bulk_delete_file", {"filename": "../x.bin"}),
-    ])
-    def test_a_spliced_field_is_one_token(self, client, contacts, bulk_calls, route, data):
-        r = client.post(route, data={"device_ips[]": [IP], **data})
-        assert r.status_code == 400 and r.get_json()["message"].startswith("Refused: "), \
-            r.get_json()
-        assert bulk_calls == [] and contacts == []
-
-    def test_a_bulk_upload_named_with_a_path_writes_nothing(self, client, contacts, bulk_calls,
-                                                            tmp_path, monkeypatch):
-        import app as A
-        monkeypatch.setattr(A, "ensure_tftp_root", lambda: str(tmp_path / "tftp"))
-        r = client.post("/bulk_tftp_upload", data={
-            "device_ips[]": [IP], "file": (io.BytesIO(b"x"), "../evil.bin")},
-            content_type="multipart/form-data")
-        assert r.status_code == 400 and "filename" in r.get_json()["message"]
-        assert not (tmp_path / "evil.bin").exists() and bulk_calls == [] and contacts == []
+    @pytest.mark.parametrize("route", ["/bulk_tftp_download", "/bulk_download_config",
+                                       "/bulk_delete_file", "/bulk_tftp_upload"])
+    def test_the_bulk_file_routes_are_gone(self, client, contacts, bulk_calls, route):
+        """Bulk file actions left at 7.8 (D16, 2026-10-13): nothing reaches a device."""
+        r = client.post(route, data={"device_ips[]": [IP], "filename": "x.bin"})
+        assert r.status_code in (404, 405) and bulk_calls == [] and contacts == []
 
 
 class TestTheFileRoutesAreGone:
@@ -152,10 +137,6 @@ class TestTheShapes:
 CHECKED = {
     "run_command": "readonly_commands.refusal, before any device",
     "bulk_execute": "readonly_commands.refusal_for over every ;-part, before any device",
-    "bulk_tftp_upload": "cli_tokens: filename (no path), server",
-    "bulk_tftp_download": "cli_tokens: filename, server",
-    "bulk_download_config": "cli_tokens: server; config_type one of two words",
-    "bulk_delete_file": "cli_tokens: filename",
 }
 SENDERS = {"run_device_command", "send_command", "send_command_timing", "send_config_set",
            "execute_bulk_command", "with_temp_connection", "get_persistent_connection",
@@ -185,7 +166,7 @@ def _routes_that_send_request_text():
 
 def test_every_route_sending_request_text_is_checked():
     found = _routes_that_send_request_text()
-    assert len(found) >= 8, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files (2026-10-13)
+    assert len(found) >= 4, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files, 4 since Bulk file actions (2026-10-13)
     unchecked = sorted(set(found) - set(CHECKED) - set(NOT_REQUEST_TEXT))
     assert not unchecked, (
         "a route reads the request and sends to a device with no declared check: "

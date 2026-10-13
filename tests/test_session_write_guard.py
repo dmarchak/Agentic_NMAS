@@ -277,10 +277,6 @@ def test_the_steps_that_take_long_report_progress():
 #: because their caller holds it. Each with its caller. Only shrinks.
 HELD_BY_CALLER = {
     "modules/bulk_ops.py:_run_single_enable_command": "the bulk worker, per device",
-    "modules/bulk_ops.py:_execute_tftp_upload": "the bulk worker, per device",
-    "modules/bulk_ops.py:_execute_tftp_download": "the bulk worker, per device",
-    "modules/bulk_ops.py:_execute_config_download": "the bulk worker, per device",
-    "modules/bulk_ops.py:_execute_delete_file": "the bulk worker, per device",
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
     "scripts/nmas-tier2-probe:measure": "the probe's main(), which holds the device for the run",
     "modules/commands.py:_run": "run_device_command's body (C272); its callers: /run_command holds a non-read",
@@ -390,7 +386,7 @@ def test_every_writer_takes_the_hold_or_names_the_caller_that_does():
     import ast
 
     sites = _writer_sites()
-    assert len(sites) >= 30, len(sites)
+    assert len(sites) >= 17, len(sites)   # 19 since the file routes left at 7.8 (D16, 2026-10-13)
     unheld = []
     for rel, chain, text, line in sites:
         if f"{rel}:*" in HELD_BY_CALLER:
@@ -404,9 +400,9 @@ def test_every_writer_takes_the_hold_or_names_the_caller_that_does():
         unheld.append(f"{rel}:{line} {text!r}")
     assert unheld == [], unheld
     names = {f"{rel}:{f.name}" for rel, chain, _t, _l in sites for f in chain}
-    # Anchors (Device files' own routes left at 7.8, 2026-10-13; the bulk ones remain).
-    assert "modules/bulk_ops.py:_execute_delete_file" in names
-    assert "modules/bulk_ops.py:_execute_tftp_upload" in names
+    # Anchors (the file routes, single and bulk, left at 7.8, 2026-10-13).
+    assert "modules/bulk_ops.py:_run_single_enable_command" in names
+    assert "modules/commands.py:_run" in names
     ghosts = sorted((set(HELD_BY_CALLER) | set(KNOWN_UNHELD)) - names)
     assert ghosts == [], f"named but sending nothing now: {ghosts}"
 

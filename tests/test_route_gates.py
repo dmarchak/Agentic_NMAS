@@ -101,12 +101,11 @@ class TestEveryMutatingEndpointIsDeclared:
         ("deploy.apply", "confirm"),
         ("golden.restore_apply", "confirm"),
         ("bulk_execute", "confirm"),
-        ("bulk_tftp_upload", "confirm"),
         ("ai_approval_approve", "approve"),
         ("templatize.bulk_apply", "approve"),
         ("save_settings", "configure"),
         ("identity.ratify_setting", "configure"),
-        ("bulk_download_config", "reveal"),
+        ("reads_v2.ask_run", "reveal"),
         ("remote.push", "publish_remote"),
         ("deploy.plan", "not_device"),
     ])
@@ -196,7 +195,7 @@ REFUSED_WITHOUT_IDENTITY = [
     "/deploy/apply",
     "/golden/restore/apply",
     "/ai/approvals/xyz/approve",
-    "/bulk_tftp_upload",
+    "/bulk_execute",
     "/settings",
     "/templatize/bulk/apply",
 ]
