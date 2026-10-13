@@ -428,6 +428,76 @@ def test_the_scan_finds_the_first_runs_bug():
     assert unexported(spliced) == []
 
 
+# --- each mode gives the private folder away before running as the user (C758) ---------------
+
+def mode_lines(text: str, mode: str) -> list:
+    """``[(line number, text)]`` of the lines a run in *mode* executes, following the script's
+    multi-line `if [ "$MODE" = X ]; then … else … fi` branches (any other multi-line `if` keeps
+    both branches; heredoc bodies are skipped)."""
+    out, stack, heredoc = [], [], None
+    for n, line in enumerate(text.splitlines(), 1):
+        if heredoc:
+            heredoc = None if line.strip() == heredoc else heredoc
+            continue
+        m = re.search(r"<<'?(\w+)'?\s*$", line)
+        stripped = line.strip()
+        cond = re.match(r'if \[ "\$MODE" = (\w+) \]; then$', stripped)
+        if cond or (stripped.startswith("if ") and stripped.endswith("then")):
+            stack.append([cond.group(1) if cond else None, False])
+        elif stripped == "else" and stack:
+            stack[-1][1] = True
+        elif stripped == "fi" and stack:
+            stack.pop()
+        elif all(c is None or (c == mode) != in_else for c, in_else in stack):
+            out.append((n, line))
+        if m:
+            heredoc = m.group(1)
+    return out
+
+
+def folder_order(text: str, mode: str):
+    """(the first line giving "$DIR" away by chown, the first `sudo -u` line naming "$DIR"), in
+    *mode*'s run; None where there is none."""
+    lines = mode_lines(text, mode)
+    chown = next((n for n, l in lines if re.search(r'\bchown\b[^\']*"\$DIR"', l)), None)
+    # The sudo'd command ends at the next quote, `)`, `|`, `;` or `&` (venv-1-build's
+    # `diff <(sudo -u … "$LOCK") <("$DIR/…")` names "$DIR" outside it).
+    runas = next((n for n, l in lines if re.search(r"\bsudo -u \S+[^')|;&]*\$DIR", l)), None)
+    return chown, runas
+
+
+def test_each_mode_gives_the_folder_away_before_running_as_the_user():
+    """C758: the Oxidized step's --delete run could not open archive.py, because its private
+    folder (mktemp, root's, 700) was given to the operator's user only in the archive mode's
+    copy step. In every mode, a chown of "$DIR" comes before the first `sudo -u` reading it."""
+    for name in SCRIPTS:
+        text = open(os.path.join(FOLDER, name), encoding="utf-8").read()
+        if not re.search(r"\bsudo -u \S+[^')|;&\n]*\$DIR", text):
+            continue
+        modes = set(re.findall(r'if \[ "\$MODE" = (\w+) \]; then', text)) or {"only"}
+        modes |= {"delete"} if "--delete" in text else set()
+        for mode in modes:
+            chown, runas = folder_order(text, mode)
+            if runas is not None:
+                assert chown is not None and chown < runas, (name, mode, chown, runas)
+
+
+def test_the_folder_scan_finds_the_first_delete_runs_bug():
+    """The planted case: the step as the first --delete run met it, the chown in the archive
+    branch only."""
+    planted = ('DIR=$(mktemp -d)\n'
+               'if [ "$MODE" = archive ]; then\n'
+               '    step "copy" \'cp -a "$STORE" "$DIR/store" && chown -R "$RUNAS" "$DIR"\'\n'
+               '    step "build" \'sudo -u "$RUNAS" env DIR="$DIR" "$PY" "$DIR/archive.py"\'\n'
+               'else\n'
+               '    step "find" \'sudo -u "$RUNAS" env DIR="$DIR" "$PY" "$DIR/archive.py"\'\n'
+               'fi\n')
+    assert folder_order(planted, "archive") == (3, 4)
+    assert folder_order(planted, "delete") == (None, 6)
+    fixed = planted.replace("if [", 'step "give" \'chown -R "$RUNAS" "$DIR"\'\nif [', 1)
+    assert folder_order(fixed, "delete") == (2, 7)
+
+
 # --- sudo resets the environment (C755) -------------------------------------------------------
 
 def sudo_env_reads(text: str) -> list:

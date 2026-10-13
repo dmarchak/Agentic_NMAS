@@ -33,10 +33,12 @@ export PYTHONDONTWRITEBYTECODE=1 CHECKOUT PY STORE MODE WANT DIR RUNAS
 plan "run as root through sudo, by the operator's own user" \
      "this is the NMAS host: flask-app.service and its interpreter" \
      "Oxidized's containers are not running" \
+     "the private folder is the operator's user's, before anything runs as that user" \
      "the archive holds no value Mercury would mask, checked before upload" \
      "the archive is written and read back with the same sha256, the copy scanned again" \
      "the deletion found the archive by its checksum" \
-     "nothing of Oxidized is left"
+     "nothing of Oxidized is left" \
+     "no file named like router.db is left anywhere on the host"
 
 check "run as root through sudo, by the operator's own user" re "^0 [a-z_][a-z0-9_-]*$" \
     'echo "$(id -u) $RUNAS"'
@@ -117,6 +119,14 @@ else:
     print(f"found: {found or 'nothing with sha256 ' + want}")
 PY
 
+# Both modes run archive.py as the operator's user (sudo -u), so the folder is theirs before
+# either does (C758: the first --delete run could not open archive.py in a root-owned 700
+# folder; only the archive mode's copy step had chowned it).
+step "the private folder given to the operator's user (both modes)" \
+    'chown -R "$RUNAS" "$DIR" && chmod 700 "$DIR"'
+check "the private folder is the operator's user's, before anything runs as that user" eq "readable" \
+    'sudo -u "$RUNAS" test -r "$DIR/archive.py" && echo readable || echo "not readable by $RUNAS"'
+
 if [ "$MODE" = archive ]; then
     step "copy the store to a private folder the operator's user reads" \
         'cp -a "$STORE" "$DIR/store" && mkdir "$DIR/history" && for g in "$DIR"/store/*.git; do git --git-dir="$g" log --all -p > "$DIR/history/$(basename "$g")"; done && chown -R "$RUNAS" "$DIR"'
@@ -135,17 +145,23 @@ if [ "$MODE" = archive ]; then
         'python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"'
     not_asked "the deletion found the archive by its checksum" "the --delete run's"
     not_asked "nothing of Oxidized is left" "the --delete run's: this run deletes nothing"
+    not_asked "no file named like router.db is left anywhere on the host" "the --delete run's"
 else
     not_asked "the archive holds no value Mercury would mask, checked before upload" "the archive run's"
     not_asked "the archive is written and read back with the same sha256, the copy scanned again" "the archive run's"
     check "the deletion found the archive by its checksum" re "archives/oxidized/" \
         'python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"found\"])"'
     step "remove the two exited containers" 'docker rm oxidized oxidized-pre-c143'
+    # router.db, its four dated copies and .router.db.nmas-lock (measured 2026-10-13: these six,
+    # all in the store, and none elsewhere on the host, in Docker's storage or the git store);
+    # each is named as it is shredded.
     step "shred router.db and every copy of it" \
-        'find "$STORE" -maxdepth 1 -name "*router.db*" -type f -exec shred -u {} +'
+        'find "$STORE" -maxdepth 1 -name "*router.db*" -type f -print -exec shred -u {} +'
     step "remove the store" 'rm -rf "$STORE"'
     check "nothing of Oxidized is left" eq "gone" \
         '[ ! -e "$STORE" ] && [ -z "$(docker ps -a --format "{{.Names}}" | grep "^oxidized")" ] && echo gone || echo left'
+    check "no file named like router.db is left anywhere on the host" eq "0" \
+        'find / \( -path /proc -o -path /sys -o -path /run \) -prune -o -name "*router.db*" -print 2>/dev/null | wc -l'
 fi
 rm -rf "$DIR"
 summary
