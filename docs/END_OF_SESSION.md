@@ -113,7 +113,27 @@ The host runs c40d9440 (deployed 18:43:57 UTC, CI #740).
    the record exported 2026-10-13T22:30:50Z", and Needs attention holds no row.
 
    The records also show an earlier device-page rotation of s3 at 16:16:49 UTC, persisted at
-   16:17:15, so the 09-21 password was already retired then.
+   16:17:15, so the 09-21 password was already retired then. **The operator confirmed: they ran
+   it (question closed, 2026-10-13).**
+6. **D15's leftover stores (C1), step 1: PASS 2026-10-13, the operator's run.**
+   - The archive is `s3://mercury/archives/ai-leftovers/20261013T232939Z.tar.gz`, sha256
+     `ae94441010925cf3b913d732b73bc7fb23387c5dd3a414d156822076e30768e0`.
+   - It reported 5 of 5 checks asked, PASS, and the delete check NOT ASKED.
+   - **Its `--delete` waits until the AI family's code is gone** (that code recreates
+     `chat_histories/` on every restart). Then run:
+     `cd ~/python/Agentic_NMAS && bash scripts/host-steps/d16-archive.sh ai-leftovers --delete
+     ae94441010925cf3b913d732b73bc7fb23387c5dd3a414d156822076e30768e0 lists/default/topology_cache.json
+     lists/default/change_log.json lists/default/network_kb.json lists/default/compliance_policy.json
+     lists/default/variables.json lists/default/playbooks chat_histories`.
+7. **Lab 7 first (the operator, 2026-10-13):** "Unit Testing and Code Coverage", due Monday
+   2026-10-19 at night, with the code done by Saturday. After it, in order:
+   1. the AI family's shared pieces move out;
+   2. the removal, tagged `pre-remove/ai-family`;
+   3. the ai-leftovers `--delete` above;
+   4. Backups (C632 first);
+   5. today's pages;
+   6. the stable trap-label host step, before F3 is built;
+   7. C753's replicator key and replica root rotation.
 6. **Next, by the operator's order:** D15's removal after its archive, Backups (C632 first),
    then today's pages.
 
