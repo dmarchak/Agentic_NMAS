@@ -1,5 +1,40 @@
 # End of session: where Phase 7 stands
 
+## PHASE 7 LIST, A AND B DONE, 2026-10-13 (03:30 to about 05:00 UTC; 21:30 to 23:00 UTC−6)
+
+**Deployed and walked on the host (running d21c450 since 04:45:49 UTC):**
+- **A, rotation follow-ups:** C727 (the run's clock moves), C728 (a held run's one publish
+  names every commit; the golden-event and Prometheus hooks read them all), C726 (a verify
+  login's failure logged with its kind; a timeout is tried once more after 30 s before any
+  revert), the halt's words (both ways it clears), the policy cell (8 in its scope, 1 outside,
+  read on the host). A blank "at most" stores no cap (the live 5 was carried by the 02:53 save,
+  whose field showed the stored 5).
+- **A7, the key (C729, open):** MinIO holds no key; the nightly VM image holds the key beside
+  the stores. Built: no key is ever made for a sealed store (a missing key, or a link to a key
+  disk that did not mount, refuses by name and the app does not start); the host step
+  `scripts/host-steps/c729-key-disk.sh`. Not run: it is the operator's (below).
+- **B8 (C731, closed):** the config check judges goldens (save_golden's rule, also on a
+  goldens-only commit), a top-level intent key holding something no template names, and
+  password hashes by shape. Host: 59 pass, 0 fail. The config repository's pin moved to
+  d21c450 (commit fcd17ab, pushed), so GitHub runs the same checks.
+- **B9 (C732, closed):** a full deploy reads back every line it sent (no extra read); a line
+  not read back makes verify not pass, no rollback.
+
+**Waiting on the operator (replaces the list below):**
+1. **C729, the key disk:** on the hypervisor,
+   `qm set <vmid> --scsi1 <storage>:1,backup=0,serial=nmas-key,discard=on,iothread=1,ssd=1`
+   (the NMAS VM and its pool are named in the session, not here), then on the NMAS host
+   `sudo bash <checkout>/scripts/host-steps/c729-key-disk.sh`. It refuses without an intact
+   break-glass export of the current key, so the break-glass export (item 4) comes first.
+2. **The rotation policy:** now every 7 days with "at most 5"; clear the field and save if no
+   cap is wanted.
+3. **The config check's run on GitHub** for fcd17ab (the pin move): one run, green.
+4. **Break-glass export and Save All**, as planned.
+5. **The orphan lease** 2001:db8:20::100: delete on the operator's word (C681).
+
+**Next, in order:** C12 (Neighbours: RIP and RIPng), C13 (C718 Decline, C719), C14
+(platform defaults in comparisons), E18, D15, D16, C11, E17, E19.
+
 ## AFTER THE RECORDING, 2026-10-13 (about 03:30 UTC): the freeze lifted
 
 The operator recorded the Labs 4 and 5 Part 2 video and lifted the freeze.
