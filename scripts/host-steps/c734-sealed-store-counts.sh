@@ -39,7 +39,8 @@ print("   unreadable: " + (", ".join(found.get("_unreadable") or []) or "none"))
 if sys.argv[1:] == ["verdict"]:
     with open(KEY_FILE, "rb") as fh:
         check = b.check_key_opens(fh.read().strip(), found)
-    print(f"{check[\"verdict\"]} ({check[\"opened\"]} of {check[\"total\"]})")
+    verdict, opened, total = check["verdict"], check["opened"], check["total"]
+    print(f"{verdict} ({opened} of {total})")
 '
 export COUNT
 step "count the sealed values in each store (counts and names only)" 'cd "$CHECKOUT" && "$PY" -c "$COUNT"'

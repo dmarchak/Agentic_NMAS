@@ -114,6 +114,8 @@ NOT_FREE_TEXT = {
     "routes/settings_v2.py:diag_redaction": "draws the Diagnostics card's redaction "
         "measurement; it masks nothing",
     "modules/secrets_store.py:mask": "draws dots for a set field; it is given a setting's key",
+    "modules/integrations/s3_archive.py:unmasked_members": "names the archive members that "
+        "redact.redact_text would still change; it masks nothing, it asks the one masker (C743)",
     "modules/nsot/credential_rotation.py:masked_commands": "builds the masked rotation "
         "commands from a username and a privilege",
     "modules/nsot/credential_rotation.py:masked_command": "the same, one command",

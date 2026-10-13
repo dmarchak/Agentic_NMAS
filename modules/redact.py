@@ -73,7 +73,14 @@ PLACEHOLDER = "<redacted:{label}>"
 #: the line without protecting anything. A config keyword named with nothing
 #: after it is a mention, not a setting, and the next token belongs to someone
 #: else.
-_VALUE = r"((?![\[\]|<>(){}])\S+)"
+#
+#: A value MAY be a placeholder already there (C743, 2026-10-13). Refusing every `<` made a
+#: second pass backtrack: on `secret 9 <redacted:x>` the optional type number was given up and
+#: `9` taken as the value, and on `snmp-server host <ip> version 2c <redacted:x>` the optional
+#: clauses were given up and `version` taken. The greedy match now lands on the placeholder,
+#: which `_replace` leaves alone, so masking twice changes nothing; the archive steps' check
+#: (mask again, compare) reported a leak on every typed secret line until then.
+_VALUE = r"((?![\[\]|>(){}])(?!<(?!(?:redacted|missing-secret)[:>]))\S+)"
 
 #: Each entry captures (prefix, secret, suffix); only the middle is replaced.
 _POSITIONAL = (

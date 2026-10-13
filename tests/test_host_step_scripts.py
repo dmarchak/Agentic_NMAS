@@ -56,7 +56,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # D16: a removed family's data archived (masked), then deleted by checksum.
             "d16-archive.sh",
             # D16: Oxidized's containers and store retired: archived masked, router.db shredded.
-            "d16-oxidized-retire.sh"}
+            "d16-oxidized-retire.sh",
+            # C743: the two first archive objects deleted, every version, with a typed key.
+            "c743-delete-archive-objects.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
@@ -165,6 +167,20 @@ def test_each_script_sources_the_library_plans_every_check_and_summarises(name):
     assert not set(planned) - set(checked), f"{name}: planned checks it never makes"
     assert text.rstrip().endswith("summary"), f"{name} does not end with its summary"
     assert os.access(os.path.join(FOLDER, name), os.X_OK)
+
+
+def test_the_delete_key_is_prompted_hidden_and_reaches_only_one_commands_environment():
+    """C743's delete step: the MinIO key that may delete is typed hidden, never an argument or
+    echoed, masked in what a check prints, and handed to Python only in the environment of the
+    command that uses it (`MINIO_SECRET="$SECRET"`), which pops it before anything prints."""
+    text = open(os.path.join(FOLDER, "c743-delete-archive-objects.sh"), encoding="utf-8").read()
+    assert re.search(r'read -r -s -p "[^"]*" SECRET', text), "prompted, input hidden"
+    assert not re.search(r"\$[1-9@*]", text), "no argument is read"
+    assert not re.search(r'echo[^\n]*\$\{?SECRET', text), "never echoed"
+    assert 'REDACT=$SECRET' in text
+    assert re.findall(r'\$\{?SECRET\b', text) == ["$SECRET", "$SECRET", "$SECRET"], \
+        "the secret is named only where it is checked, masked and handed over"
+    assert 'os.environ.pop("MINIO_SECRET")' in text
 
 
 def test_the_secret_is_prompted_hidden_never_an_argument_never_printed():

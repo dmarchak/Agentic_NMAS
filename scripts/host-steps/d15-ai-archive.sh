@@ -29,8 +29,8 @@ export DIR
 plan "run as the operator's own user, not root" \
      "this is the NMAS host: flask-app.service and its interpreter" \
      "the bucket answers (Mercury's own Test, read-only)" \
-     "the archive is written and read back with the same sha256" \
-     "the archive holds no value Mercury would mask" \
+     "the archive holds no value Mercury would mask, checked before upload" \
+     "the archive is written and read back with the same sha256, the copy scanned again" \
      "the deletion found the archive by its checksum"
 
 not_root
@@ -53,7 +53,7 @@ import time
 sys.path.insert(0, os.getcwd())
 from modules import redact  # noqa: E402
 from modules.config import DATA_DIR  # noqa: E402
-from modules.integrations.s3_archive import S3ArchiveIntegration  # noqa: E402
+from modules.integrations.s3_archive import Refused, S3ArchiveIntegration  # noqa: E402
 from modules.secrets_store import encrypt_value  # noqa: E402
 
 STORES = ["chat_histories", "global_kb.json", "checkpoints", "agent_activity.json",
@@ -82,7 +82,7 @@ def key_line():
 
 
 if mode == "archive":
-    buf, counts, unmasked = io.BytesIO(), {}, 0
+    buf, counts = io.BytesIO(), {}
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for name in STORES:
             for path in files(os.path.join(DATA_DIR, name)):
@@ -109,24 +109,17 @@ if mode == "archive":
         info = tarfile.TarInfo("ARCHIVE.json")
         info.size = len(note)
         tar.addfile(info, io.BytesIO(note))
-    body = buf.getvalue()
-    digest = hashlib.sha256(body).hexdigest()
     key = s3.key("archives", "ai-family", f"{stamp}.tar.gz")
-    s3.put(key, body, metadata={"sha256": digest, "source": "d15-ai-archive"})
-    back = s3.client().get_object(Bucket=s3.bucket, Key=key)["Body"].read()
-    got = hashlib.sha256(back).hexdigest()
-    # The read-back copy, re-scanned: no member changes under masking again.
-    with tarfile.open(fileobj=io.BytesIO(back), mode="r:gz") as tar:
-        for m in tar.getmembers():
-            if m.name == "ARCHIVE.json" or m.name.endswith(".sealed"):
-                continue
-            text = tar.extractfile(m).read().decode("utf-8")
-            if redact.redact_text(text) != text:
-                unmasked += 1
-    open(os.path.join(out, "result"), "w").write(json.dumps(
-        {"key": key, "sha256": digest, "read_back": got, "unmasked": unmasked}))
+    try:
+        # Scanned before anything is written: a failing archive never leaves the host (C743).
+        r = s3.put_archive(key, buf.getvalue(), metadata={"source": "d15-ai-archive"})
+    except Refused as exc:
+        open(os.path.join(out, "result"), "w").write(json.dumps({"unmasked": len(exc.members)}))
+        print("NOT uploaded: masking would still change", ", ".join(exc.members))
+        sys.exit(0)
+    open(os.path.join(out, "result"), "w").write(json.dumps(dict(r, unmasked=0)))
     print("stores archived:", json.dumps(counts))
-    print(f"archive: s3://{s3.bucket}/{key}  sha256 {digest}  read back {got}")
+    print(f"archive: s3://{s3.bucket}/{key}  sha256 {r['sha256']}  read back {r['read_back']}")
     print("the provider key:", "sealed in ARCHIVE.json" if sealed else "none in .env")
 else:
     found = None
@@ -160,14 +153,14 @@ PY
 if [ "$MODE" = archive ]; then
     step "build the masked archive, seal the key, upload, read back" \
         'cd "$CHECKOUT" && "$PY" "$DIR/archive.py"'
-check "the archive is written and read back with the same sha256" eq "same" \
-        'python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] else \"different\")"'
-check "the archive holds no value Mercury would mask" eq "0" \
+check "the archive holds no value Mercury would mask, checked before upload" eq "0" \
         'python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"'
+check "the archive is written and read back with the same sha256, the copy scanned again" eq "same" \
+        'python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"'
 check "the deletion found the archive by its checksum" eq "not asked" 'echo "not asked"'
 else
-check "the archive is written and read back with the same sha256" eq "not asked" 'echo "not asked"'
-check "the archive holds no value Mercury would mask" eq "not asked" 'echo "not asked"'
+check "the archive holds no value Mercury would mask, checked before upload" eq "not asked" 'echo "not asked"'
+check "the archive is written and read back with the same sha256, the copy scanned again" eq "not asked" 'echo "not asked"'
     step "find the archive by its checksum, then delete what it holds" \
         'cd "$CHECKOUT" && "$PY" "$DIR/archive.py"'
 check "the deletion found the archive by its checksum" re "ai-family/" \

@@ -18,9 +18,13 @@ the version moves. An absent library, an unset endpoint and an unreachable serve
 different answers, each named, never a raise into a request.
 """
 
+import hashlib
+import io
 import logging
+import tarfile
 import time
 
+from modules import redact
 from modules.integrations.base import IntegrationClient
 
 log = logging.getLogger(__name__)
@@ -39,6 +43,37 @@ QUIET_LOGGERS = ("boto3", "botocore", "s3transfer")
 
 class Unavailable(RuntimeError):
     """No client could be built; the message says which of the three reasons."""
+
+
+class Refused(RuntimeError):
+    """An archive was not written: *members* name what Mercury's masking would still change
+    (names only, never a value)."""
+
+    def __init__(self, members: list):
+        self.members = list(members)
+        super().__init__(f"{len(self.members)} member(s) hold a value Mercury would mask: "
+                         + ", ".join(self.members))
+
+
+def unmasked_members(body: bytes) -> list:
+    """The members of the gzip tarball *body* that Mercury's masking would still change, by
+    name, every member read (a sealed one is a token masking leaves alone). A member that is
+    not UTF-8 text is named too: it cannot be shown to be masked. Sound only because masking
+    twice changes nothing (C743): before that, every typed secret line already masked read as
+    a value."""
+    out = []
+    with tarfile.open(fileobj=io.BytesIO(body), mode="r:gz") as tar:
+        for m in tar.getmembers():
+            if not m.isfile():
+                continue
+            try:
+                text = tar.extractfile(m).read().decode("utf-8")
+            except UnicodeDecodeError:
+                out.append(m.name)
+                continue
+            if redact.redact_text(text) != text:
+                out.append(m.name)
+    return out
 
 
 class S3ArchiveIntegration(IntegrationClient):
@@ -60,9 +95,12 @@ class S3ArchiveIntegration(IntegrationClient):
         prefix = (self._setting("s3_prefix", "") or "").strip("/")
         return "/".join(p.strip("/") for p in (prefix, *parts) if p and p.strip("/"))
 
-    def client(self):
+    def client(self, credentials: tuple = None):
         """The one client: endpoint, credentials from the secrets backend, region, and TLS
-        verification as set (C355). Raises `Unavailable` naming why none can be built."""
+        verification as set (C355). Raises `Unavailable` naming why none can be built.
+        *credentials* ``(access_key, secret_key)``: another key on the same endpoint, typed by
+        the operator for what Mercury's own key may not do (a host step's delete, C743); never
+        stored, and Mercury's code never passes it."""
         if not self.is_configured():
             raise Unavailable("not configured: set its endpoint and bucket in Settings "
                               "(Integrations, S3 archive)")
@@ -77,8 +115,9 @@ class S3ArchiveIntegration(IntegrationClient):
                               "docs/NSOT_PHASE4_MINIO.md section 4)") from None
         return boto3.client(
             "s3", endpoint_url=self.url,
-            aws_access_key_id=self._secret("s3_access_key"),
-            aws_secret_access_key=self._secret("s3_secret_key"),
+            aws_access_key_id=credentials[0] if credentials else self._secret("s3_access_key"),
+            aws_secret_access_key=(credentials[1] if credentials
+                                   else self._secret("s3_secret_key")),
             region_name=self._setting("s3_region", "") or "us-east-1",
             verify=self.verify_tls,
             # MinIO serves buckets by path, never as a host name.
@@ -89,6 +128,23 @@ class S3ArchiveIntegration(IntegrationClient):
         fields without boto3's ``x-amz-meta-`` prefix. Raises on failure."""
         (client or self.client()).put_object(Bucket=self.bucket, Key=key, Body=data,
                                              Metadata=dict(metadata or {}))
+
+    def put_archive(self, key: str, body: bytes, metadata: dict = None) -> dict:
+        """Write the masked tarball *body* at *key*, the one path a removed family's archive
+        leaves the host by (C743): it is scanned BEFORE anything is written, and `Refused`
+        names the members masking would still change, so a failing archive never reaches the
+        bucket; then written, read back, and the copy read back scanned again.
+        ``{"key", "sha256", "read_back", "unmasked_after"}``: the two checksums and the count
+        of members of the copy that masking would change."""
+        flagged = unmasked_members(body)
+        if flagged:
+            raise Refused(flagged)
+        digest = hashlib.sha256(body).hexdigest()
+        client = self.client()
+        self.put(key, body, metadata={**(metadata or {}), "sha256": digest}, client=client)
+        back = client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        return {"key": key, "sha256": digest, "read_back": hashlib.sha256(back).hexdigest(),
+                "unmasked_after": len(unmasked_members(back))}
 
     def status(self) -> dict:
         """The status bar's and the integrations reader's answer, every cycle: whether the

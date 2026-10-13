@@ -168,3 +168,47 @@ def test_the_answers_past_retention_use_the_one_client(server, monkeypatch):
     put("reads/Lab/run-1.json", b"{}")
     assert server.objects == {"reads/Lab/run-1.json": b"{}"}
     assert server.built["verify"] is True
+
+
+def _tarball(members: dict) -> bytes:
+    import tarfile
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+class TestAnArchiveLeavesTheHostOnlyMasked:
+    """C743 (2026-10-13): the archive steps scanned the copy AFTER it was uploaded, so a failing
+    archive was already in the bucket; and the scan read every typed secret line already masked
+    as a value. Now the one path scans first and refuses by member name."""
+
+    MASKED = {"log.txt": b"username admin secret 9 <redacted:user_password>\n"
+                         b"snmp-server host 192.0.2.1 version 2c <redacted:snmp_community>\n",
+              "store.json.sealed": b"gAAAAABexampletoken=="}
+
+    def test_a_masked_archive_is_written_read_back_and_scanned_again(self, server):
+        body = _tarball(self.MASKED)
+        r = S3.S3ArchiveIntegration().put_archive("archives/x/1.tar.gz", body,
+                                                  metadata={"source": "test"})
+        assert server.objects["archives/x/1.tar.gz"] == body
+        assert r["sha256"] == r["read_back"] and r["unmasked_after"] == 0
+        assert server.metadata["archives/x/1.tar.gz"] == {"source": "test",
+                                                          "sha256": r["sha256"]}
+
+    def test_a_value_masking_would_change_is_refused_before_any_write(self, server):
+        body = _tarball(dict(self.MASKED, **{"notes.txt": b"enable secret 5 $1$ab$cdefgh\n"}))
+        with pytest.raises(S3.Refused) as got:
+            S3.S3ArchiveIntegration().put_archive("archives/x/2.tar.gz", body)
+        assert got.value.members == ["notes.txt"]
+        assert "$1$ab$cdefgh" not in str(got.value)
+        assert server.objects == {} and "put" not in server.calls
+
+    def test_a_member_that_is_not_text_is_refused(self, server):
+        body = _tarball(dict(self.MASKED, **{"blob.bin": b"\xff\xfe\x00"}))
+        with pytest.raises(S3.Refused) as got:
+            S3.S3ArchiveIntegration().put_archive("archives/x/3.tar.gz", body)
+        assert got.value.members == ["blob.bin"]

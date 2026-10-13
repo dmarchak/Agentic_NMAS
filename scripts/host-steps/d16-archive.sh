@@ -26,8 +26,8 @@ export FAMILY MODE WANT PATHS DIR
 plan "run as the operator's own user, not root" \
      "this is the NMAS host: flask-app.service and its interpreter" \
      "a family and at least one path are named" \
-     "the archive is written and read back with the same sha256" \
-     "the archive holds no value Mercury would mask" \
+     "the archive holds no value Mercury would mask, checked before upload" \
+     "the archive is written and read back with the same sha256, the copy scanned again" \
      "the deletion found the archive by its checksum"
 
 not_root
@@ -48,7 +48,7 @@ import time
 sys.path.insert(0, os.getcwd())
 from modules import redact  # noqa: E402
 from modules.config import DATA_DIR  # noqa: E402
-from modules.integrations.s3_archive import S3ArchiveIntegration  # noqa: E402
+from modules.integrations.s3_archive import Refused, S3ArchiveIntegration  # noqa: E402
 
 family, mode, want, out = (os.environ[k] for k in ("FAMILY", "MODE", "WANT", "DIR"))
 names = os.environ["PATHS"].split()
@@ -68,7 +68,7 @@ def files(path):
 
 
 if mode == "archive":
-    buf, counts, unmasked, skipped = io.BytesIO(), {}, 0, 0
+    buf, counts, skipped = io.BytesIO(), {}, 0
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for path in paths:
             for f in files(path):
@@ -86,19 +86,17 @@ if mode == "archive":
     if skipped:
         print(f"{skipped} binary file(s) cannot be masked: refused, nothing written")
         sys.exit(1)
-    body = buf.getvalue()
-    digest = hashlib.sha256(body).hexdigest()
     key = f"{prefix}/{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.tar.gz"
-    s3.put(key, body, metadata={"sha256": digest, "source": "d16-archive"})
-    back = s3.client().get_object(Bucket=s3.bucket, Key=key)["Body"].read()
-    with tarfile.open(fileobj=io.BytesIO(back), mode="r:gz") as tar:
-        for m in tar.getmembers():
-            text = tar.extractfile(m).read().decode("utf-8")
-            unmasked += redact.redact_text(text) != text
-    json.dump({"sha256": digest, "read_back": hashlib.sha256(back).hexdigest(),
-               "unmasked": unmasked}, open(os.path.join(out, "result"), "w"))
+    try:
+        # Scanned before anything is written: a failing archive never leaves the host (C743).
+        r = s3.put_archive(key, buf.getvalue(), metadata={"source": "d16-archive"})
+    except Refused as exc:
+        json.dump({"unmasked": len(exc.members)}, open(os.path.join(out, "result"), "w"))
+        print("NOT uploaded: masking would still change", ", ".join(exc.members))
+        sys.exit(0)
+    json.dump(dict(r, unmasked=0), open(os.path.join(out, "result"), "w"))
     print("archived:", json.dumps(counts))
-    print(f"archive: s3://{s3.bucket}/{key}  sha256 {digest}")
+    print(f"archive: s3://{s3.bucket}/{key}  sha256 {r['sha256']}")
 else:
     found = None
     for page in s3.client().get_paginator("list_objects_v2").paginate(Bucket=s3.bucket,
@@ -125,10 +123,10 @@ else
     step "find the archive by its checksum, then delete what it holds" \
         'cd "$CHECKOUT" && "$PY" "$DIR/archive.py"'
 fi
-check "the archive is written and read back with the same sha256" re "^(same|not asked)$" \
-    'if [ "$MODE" = archive ]; then python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] else \"different\")"; else echo "not asked"; fi'
-check "the archive holds no value Mercury would mask" re "^(0|not asked)$" \
+check "the archive holds no value Mercury would mask, checked before upload" re "^(0|not asked)$" \
     'if [ "$MODE" = archive ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"; else echo "not asked"; fi'
+check "the archive is written and read back with the same sha256, the copy scanned again" re "^(same|not asked)$" \
+    'if [ "$MODE" = archive ]; then python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"; else echo "not asked"; fi'
 check "the deletion found the archive by its checksum" re "(archives/|^not asked$)" \
     'if [ "$MODE" = delete ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"found\"])"; else echo "not asked"; fi'
 rm -rf "$DIR"

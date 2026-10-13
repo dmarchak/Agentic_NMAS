@@ -33,8 +33,8 @@ export PYTHONDONTWRITEBYTECODE=1 CHECKOUT PY STORE MODE WANT DIR RUNAS
 plan "run as root through sudo, by the operator's own user" \
      "this is the NMAS host: flask-app.service and its interpreter" \
      "Oxidized's containers are not running" \
-     "the archive is written and read back with the same sha256" \
-     "the archive holds no value Mercury would mask" \
+     "the archive holds no value Mercury would mask, checked before upload" \
+     "the archive is written and read back with the same sha256, the copy scanned again" \
      "the deletion found the archive by its checksum" \
      "nothing of Oxidized is left"
 
@@ -56,7 +56,7 @@ import time
 
 sys.path.insert(0, os.getcwd())
 from modules import redact  # noqa: E402
-from modules.integrations.s3_archive import S3ArchiveIntegration  # noqa: E402
+from modules.integrations.s3_archive import Refused, S3ArchiveIntegration  # noqa: E402
 from modules.secrets_store import encrypt_value  # noqa: E402
 
 out, copy, mode, want = os.environ["DIR"], os.path.join(os.environ["DIR"], "store"), \
@@ -94,21 +94,17 @@ if mode == "archive":
                            errors="replace").read()
             add(name + ".history.txt", redact.redact_text(history).encode())
             counts["masked"] += 1
-    body = buf.getvalue()
-    digest = hashlib.sha256(body).hexdigest()
     key = f"{prefix}/{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.tar.gz"
-    s3.put(key, body, metadata={"sha256": digest, "source": "d16-oxidized-retire"})
-    back = s3.client().get_object(Bucket=s3.bucket, Key=key)["Body"].read()
-    unmasked = 0
-    with tarfile.open(fileobj=io.BytesIO(back), mode="r:gz") as tar:
-        for m in tar.getmembers():
-            if not m.name.endswith(".sealed"):
-                text = tar.extractfile(m).read().decode("utf-8", errors="replace")
-                unmasked += redact.redact_text(text) != text
-    json.dump({"sha256": digest, "read_back": hashlib.sha256(back).hexdigest(),
-               "unmasked": unmasked}, open(os.path.join(out, "result"), "w"))
+    try:
+        # Scanned before anything is written: a failing archive never leaves the host (C743).
+        r = s3.put_archive(key, buf.getvalue(), metadata={"source": "d16-oxidized-retire"})
+    except Refused as exc:
+        json.dump({"unmasked": len(exc.members)}, open(os.path.join(out, "result"), "w"))
+        print("NOT uploaded: masking would still change", ", ".join(exc.members))
+        sys.exit(0)
+    json.dump(dict(r, unmasked=0), open(os.path.join(out, "result"), "w"))
     print("archived:", json.dumps(counts))
-    print(f"archive: s3://{s3.bucket}/{key}  sha256 {digest}")
+    print(f"archive: s3://{s3.bucket}/{key}  sha256 {r['sha256']}")
 else:
     found = ""
     for page in s3.client().get_paginator("list_objects_v2").paginate(Bucket=s3.bucket,
@@ -131,10 +127,10 @@ else
     step "find the archive by its checksum" \
         'cd "$CHECKOUT" && sudo -u "$RUNAS" env PYTHONDONTWRITEBYTECODE=1 DIR="$DIR" MODE="$MODE" WANT="$WANT" "$PY" "$DIR/archive.py"'
 fi
-check "the archive is written and read back with the same sha256" re "^(same|not asked)$" \
-    'if [ "$MODE" = archive ]; then python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] else \"different\")"; else echo "not asked"; fi'
-check "the archive holds no value Mercury would mask" re "^(0|not asked)$" \
+check "the archive holds no value Mercury would mask, checked before upload" re "^(0|not asked)$" \
     'if [ "$MODE" = archive ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"unmasked\"])"; else echo "not asked"; fi'
+check "the archive is written and read back with the same sha256, the copy scanned again" re "^(same|not asked)$" \
+    'if [ "$MODE" = archive ]; then python3 -c "import json; r=json.load(open(\"$DIR/result\")); print(\"same\" if r[\"sha256\"]==r[\"read_back\"] and r[\"unmasked_after\"]==0 else \"different\")"; else echo "not asked"; fi'
 check "the deletion found the archive by its checksum" re "(archives/oxidized/|^not asked$)" \
     'if [ "$MODE" = delete ]; then python3 -c "import json; print(json.load(open(\"$DIR/result\"))[\"found\"])"; else echo "not asked"; fi'
 if [ "$MODE" = delete ]; then

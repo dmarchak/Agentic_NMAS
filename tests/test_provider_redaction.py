@@ -307,6 +307,48 @@ class TestPositionalRedaction:
         assert "Str0ngC0mmunityValue" not in out      # value-based, in prose
 
 
+class TestMaskingTwiceChangesNothing:
+    """C743 (2026-10-13): the archive steps check an archive by masking each member again and
+    comparing. The second pass backtracked past an optional clause to the token before the
+    placeholder (`secret 9 <redacted:x>` became `secret <redacted:x> <redacted:x>`, and
+    `snmp-server host <ip> version 2c <redacted:x>` lost `version`), so two archives with
+    nothing unmasked failed, and every log line masked twice was corrupted the same way."""
+
+    FLEET = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
+
+    @pytest.mark.parametrize("line", [
+        "username admin privilege 15 secret 9 $9$abcdefgh$ijklmnopqrstuv",
+        "enable secret 5 $1$abcd$efghijklmnop",
+        " password 7 0822455D0A16",
+        "key-string 7 104D000A0618",
+        "tacacs-server key 7 060506324F41",
+        "snmp-server host 192.0.2.1 version 2c examplecomm",
+        "snmp-server host 192.0.2.1 traps version 2c examplecomm",
+        "snmp-server host 192.0.2.1 vrf mgmt informs version 3 priv exampleuser",
+    ])
+    def test_each_secret_shape(self, line):
+        once = redact.redact_text(line, values={})
+        assert "<redacted:" in once, once
+        assert redact.redact_text(once, values={}) == once
+
+    def test_every_real_capture(self):
+        """The fleet's captured configs, masked once, are unchanged by a second mask. The floor:
+        the first mask changes lines in every capture, typed secrets among them."""
+        names = sorted(n for n in os.listdir(self.FLEET) if not n.startswith("."))
+        assert len(names) >= 9, names
+        for name in names:
+            with open(os.path.join(self.FLEET, name), encoding="utf-8") as fh:
+                text = fh.read()
+            once = redact.redact_text(text, values={})
+            assert once != text, f"{name}: the first mask changed nothing"
+            assert redact.redact_text(once, values={}) == once, name
+
+    def test_a_mention_is_still_not_a_value(self):
+        """Letting a placeholder be the value must not let other `<…>` text in."""
+        assert (redact.redact_text("snmp-server community <string> RO", values={})
+                == "snmp-server community <string> RO")
+
+
 class TestDeviceCredentialsAreDecryptedNotCiphertext:
     """`decrypt_value()` returns anything unprefixed unchanged.
 
