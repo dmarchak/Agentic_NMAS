@@ -23,7 +23,13 @@ C753, C754, the bind step, Phase 8's decisions recorded).
   `replicator` key on the replica (C753). Writing that step was refused to the agent by the
   auto-mode classifier as a secret-store write, so it is the operator's to allow or to write.
 
-**Bind and firewall (C749's follow-up):** `scripts/host-steps/minio-bind.sh`.
+**Bind and firewall (C749's follow-up): DONE, run by the agent 20:51 UTC, PASS 13 of 13**
+(the host runs 4e88889b).
+- From the lab host, 9000 and 9001 now refuse, and ufw logs each attempt as `[UFW BLOCK]`.
+- The console is reached through an SSH tunnel: `ssh -L 9001:127.0.0.1:9001 <nmas-host>`.
+- Two earlier runs stopped and undid themselves: C755 (sudo reset the environment) and C756
+  (the listener check ran before the console bound its port). Both are fixed.
+- The step: `scripts/host-steps/minio-bind.sh`.
 - Measured first:
   - every client of 9000 is this host over loopback, or Loki on docker0;
   - ufw's incoming default is ALLOW;
