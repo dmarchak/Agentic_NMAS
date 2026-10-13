@@ -81,8 +81,11 @@ check "ufw holds the three rules, the allow first" eq "ALLOW-9000 DENY-9000 DENY
 step "MinIO restarted" 'sudo systemctl restart minio'
 check "MinIO answers after its restart" rc0 "" \
     'for i in $(seq 1 30); do curl -sf "http://127.0.0.1:9000/minio/health/live" && exit 0; sleep 1; done; exit 1'
+# The console binds after the API answers (C756: read 1 s after the health check, 9001 had no
+# listener yet; MinIO's own log said "WebUI: http://127.0.0.1:9001"). Read until it holds, at most
+# 15 s, then say what was last seen.
 check "the console listens on loopback only, the API on every address" eq "9000:* 9001:127.0.0.1" \
-    'sudo ss -ltnp | awk "/\"minio\"/ {print \$4}" | python3 -c "import sys; got = {}; [got.setdefault(a.rsplit(\":\", 1)[1], set()).add(a.rsplit(\":\", 1)[0]) for a in sys.stdin.read().split()]; c = sorted(got.get(\"9001\", [])); print(\"9000:\" + (\"*\" if \"*\" in got.get(\"9000\", set()) else \",\".join(sorted(got.get(\"9000\", [])))) + \" 9001:\" + \",\".join(c))"'
+    'for i in $(seq 1 15); do got=$(sudo ss -ltnp | awk "/\"minio\"/ {print \$4}" | python3 -c "import sys; got = {}; [got.setdefault(a.rsplit(\":\", 1)[1], set()).add(a.rsplit(\":\", 1)[0]) for a in sys.stdin.read().split()]; c = sorted(got.get(\"9001\", [])); print(\"9000:\" + (\"*\" if \"*\" in got.get(\"9000\", set()) else \",\".join(sorted(got.get(\"9000\", [])))) + \" 9001:\" + \",\".join(c))"); [ "$got" = "9000:* 9001:127.0.0.1" ] && break; sleep 1; done; echo "$got"'
 check "Mercury's own key still answers" eq "True" \
     'cd "$CHECKOUT" && "$PY" -c "from modules.integrations.s3_archive import S3ArchiveIntegration as S; print(S().test_connection(write=False).get(\"ok\"))"'
 check "Thanos still reads its bucket" rc0 "" \
