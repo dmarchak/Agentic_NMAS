@@ -1214,25 +1214,29 @@ def breakglass_rows(exports=None, current=None, intact=None, drills=None,
             except Exception as exc:                  # noqa: BLE001
                 log.warning("breakglass rows: the rotation record could not be read: %s", exc)
                 rotated_at = {}
-        for r in stale:
-            since = (rotated_at or {}).get(r["device"]) if r["state"] == "differs" else ""
-            rows.append({"unit": f"breakglass:{list_name}/{r['device']}", "what": what,
-                         "device": r["device"], "list": list_name, "state": "breakglass_stale",
+        if stale:
+            # ONE row for the record (the operator, 2026-10-13): one file, one cause, one action;
+            # its devices listed inside it, since = the earliest rotation after the export.
+            devices = sorted(r["device"] for r in stale)
+            sinces = sorted(s for s in ((rotated_at or {}).get(r["device"]) for r in stale
+                                        if r["state"] == "differs") if s)
+            missing = sorted(r["device"] for r in stale if r["state"] != "differs")
+            older = ", ".join(r["device"] for r in stale if r["state"] == "differs") or "none"
+            rows.append({"unit": f"breakglass:{list_name}", "what": what,
+                         "devices": devices, "list": list_name, "state": "breakglass_stale",
                          "max_age_minutes": 0,
-                         "headline": (f"{r['device']}'s break-glass record is out of date "
-                                      + (f"since {since}" if since else
-                                         "(it holds an older credential)" if
-                                         r["state"] == "differs" else "(it has no entry for it)")
-                                      + ": export it again"),
-                         "action": {"label": "Export the break-glass record again: it cannot "
-                                             "recover this device as it stands. Verify the "
-                                             "copy on the machine that keeps it (C221): this "
-                                             "host logs the export, never where the file went",
+                         "headline": (f"The break-glass record is out of date: "
+                                      f"{len(devices)} device{'s' if len(devices) != 1 else ''} "
+                                      f"rotated since the last export ({', '.join(devices)})"
+                                      + (f", since {sinces[0]}" if sinces else "")),
+                         "action": {"label": "Export it on Credentials…: as it stands it cannot "
+                                             "recover the devices named. Verify the copy on the "
+                                             "machine that keeps it (C221): this host logs the "
+                                             "export, never where the file went",
                                     "open": "breakglass_export", "list": list_name,
                                     "command": export_cmd.replace("<list>", list_name)},
-                         "detail": (f"the record {made} "
-                                    + ("holds an older credential: rotated since"
-                                       if r["state"] == "differs" else "has no entry for it")
+                         "detail": (f"the record {made} holds an older credential for {older}"
+                                    + (f" and no entry for {', '.join(missing)}" if missing else "")
                                     + f" (written to {last.get('path', '?')})")})
         if not stale:
             rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "ok",

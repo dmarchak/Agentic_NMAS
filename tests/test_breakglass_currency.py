@@ -128,18 +128,29 @@ class TestJobHealthTracksIt:
         return {"state": "ok", "by_list": {"default": {
             "at": at, "list": "default", "path": "/media/x.bg", "devices": digests}}}
 
-    def test_a_rotation_since_the_export_is_a_stale_row_per_device(self):
-        rows = self._rows(self._export(bg.digests_of(RECORD)), {"default": _now_digests()})
-        by = {r["unit"]: r for r in rows}
-        assert by["breakglass:default/s1"]["state"] == "breakglass_stale"
-        assert "rotated since" in by["breakglass:default/s1"]["detail"]
-        assert by["breakglass:default/r2"]["state"] == "breakglass_stale"
-        assert "no entry" in by["breakglass:default/r2"]["detail"]
-        assert "breakglass:default/r1" not in by, "a current device is not a row"
-        assert "breakglass:default/bp-ztp-a" not in by, "a device that left is history"
+    def test_devices_rotated_since_the_export_are_ONE_row_naming_them(self):
+        """The operator, 2026-10-13: one record, one cause, one action, so ONE row for the
+        record, its devices named inside it (Needs attention had one Critical row each)."""
+        (row,) = self._rows(self._export(bg.digests_of(RECORD)), {"default": _now_digests()})
+        assert row["unit"] == "breakglass:default" and row["state"] == "breakglass_stale"
+        assert row["devices"] == ["r2", "s1"], "r1 is current; bp-ztp-a left: history"
+        assert row["headline"].startswith(
+            "The break-glass record is out of date: 2 devices rotated since the last export "
+            "(r2, s1)")
+        assert "older credential for s1" in row["detail"] and "no entry for r2" in row["detail"]
+        assert row["action"]["label"].startswith("Export it on Credentials…")
         # The interpreter the app runs, never a shell's python3 (Phase 4 section 8).
-        assert by["breakglass:default/s1"]["action"]["command"].startswith(
+        assert row["action"]["command"].startswith(
             f"{sys.executable} scripts/nmas-breakglass export --list default --out /dev/shm/")
+
+    def test_an_export_clears_it_and_one_more_rotation_is_one_row_naming_one(self):
+        (r,) = self._rows(self._export(_now_digests()), {"default": _now_digests()})
+        assert r["state"] == "ok"
+        later = dict(_now_digests())
+        later["r1"] = "a-new-digest"
+        (row,) = self._rows(self._export(_now_digests()), {"default": later})
+        assert row["state"] == "breakglass_stale" and row["devices"] == ["r1"]
+        assert "1 device rotated since the last export (r1)" in row["headline"]
 
     def test_all_current_is_one_ok_row_naming_the_count(self):
         (r,) = self._rows(self._export(_now_digests()), {"default": _now_digests()})
@@ -165,7 +176,7 @@ class TestJobHealthTracksIt:
     def test_needs_attention_draws_the_stale_state_loud_and_named(self):
         from modules.attention import _JOB_STATES
         words, level = _JOB_STATES["breakglass_stale"]
-        assert level == "danger" and "older credential" in words
+        assert level == "danger" and "cannot recover a device rotated since" in words
 
 
 class TestTheRotationNamesTheRecord:

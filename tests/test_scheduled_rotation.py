@@ -666,8 +666,8 @@ def test_after_a_rotation_the_break_glass_row_says_since_when(data, monkeypatch)
         current={"default": new}, intact={}, drills={"rows": []}, all_exports={"rows": []},
         now=1_790_000_100.0)
     (row,) = [r for r in rows if r["state"] == "breakglass_stale"]
-    assert row["headline"] == f"s1's break-glass record is out of date since {when}: export " \
-                              "it again"
+    assert row["headline"] == ("The break-glass record is out of date: 1 device rotated since "
+                               f"the last export (s1), since {when}")
     assert row["action"]["open"] == "breakglass_export"
 
 

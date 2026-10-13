@@ -402,8 +402,8 @@ _JOB_STATES = {
     "mismatch": ("does not match what was declared", "warning"),
     "not_run": ("has never run on this host", "warning"),
     "not_monitored": ("is not configured for an integration the network uses", "warning"),
-    "breakglass_stale": ("is not recoverable from the break-glass record: it holds an "
-                         "older credential", "danger"),
+    "breakglass_stale": ("is out of date: it cannot recover a device rotated since its export",
+                         "danger"),
     "breakglass_not_intact": ("break-glass record's last download did not arrive intact",
                               "danger"),
     "breakglass_drill_overdue": ("break-glass record has not been opened offline for 90 days",

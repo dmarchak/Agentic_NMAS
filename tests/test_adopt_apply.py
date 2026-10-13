@@ -625,7 +625,7 @@ class TestTheBreakGlassRowNamesTheNewDevice:
                                         "path": "x", "devices": {"r1": "d1"}}}},
             current={LIST: {"r1": "d1", HOST: "d2"}})
         stale, = [r for r in rows if r["state"] == "breakglass_stale"]
-        assert stale["device"] == HOST and "has no entry for it" in stale["detail"]
+        assert stale["devices"] == [HOST] and f"no entry for {HOST}" in stale["detail"]
         assert stale["action"]["open"] == "breakglass_export"
 
 

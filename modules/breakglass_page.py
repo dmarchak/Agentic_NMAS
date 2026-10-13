@@ -80,7 +80,7 @@ def record(list_name: str, cached=None, exports=None, intact=None) -> dict:
         return out
     stale = [j for j in mine if j.get("state") == "breakglass_stale"]
     if stale:
-        out["stale"] = sorted(j.get("device", "") for j in stale)
+        out["stale"] = sorted({d for j in stale for d in (j.get("devices") or [j.get("device", "")])})
         out.update(state="stale", words=(
             f"The record cannot recover {', '.join(out['stale'])}: rotated since it was "
             f"exported ({_iso(last.get('at'))})"))
