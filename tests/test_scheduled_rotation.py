@@ -192,6 +192,30 @@ def test_a_run_that_reaches_the_backup_window_stops_there(data, monkeypatch):
     assert "backup window" in got["error"]
 
 
+def test_the_run_s_own_clock_moves_and_stops_at_the_backup_window(data, monkeypatch):
+    """C727: the run's clock was frozen at the tick that started it (the host, 2026-10-13: the
+    run's finish read its start), so with no clock passed in, a run reaching 08:30 UTC would
+    not stop. Here the wall clock moves two minutes a rotation, from 08:28:30."""
+    wall = {"t": 1_000_000.0}
+    monkeypatch.setattr(SR.time, "time", lambda: wall["t"])
+
+    class Slow(Rotations):
+        def __call__(self, list_name, host, **kw):
+            wall["t"] += 120
+            return super().__call__(list_name, host, **kw)
+
+    rot = Slow()
+    start = _at("2026-10-12T08:28:30Z")
+    states = _states()
+    monkeypatch.setattr(SR, "device_states", lambda now=None, **_k: states)
+    got = SR.run(trigger="request", actor=SETTER, now=start, rotate=rot, plan=_plan,
+                 checks=CLEAN)
+    assert [c["device"] for c in rot.calls] == ["r3"]
+    assert [n["device"] for n in got["not_reached"]] == ["r1"]
+    assert "backup window" in got["error"]
+    assert got["finished"] != got["started"], "the run's finish is its own time"
+
+
 # ---------------------------------------------------------------------------- checks before each
 
 def test_a_held_device_is_skipped_and_the_rest_run(data, monkeypatch):

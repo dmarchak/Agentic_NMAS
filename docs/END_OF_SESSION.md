@@ -1,5 +1,35 @@
 # End of session: where Phase 7 stands
 
+## AFTER THE RECORDING, 2026-10-13 (about 03:30 UTC): the freeze lifted
+
+The operator recorded the Labs 4 and 5 Part 2 video and lifted the freeze.
+
+**Proven tonight on the host:**
+- **The unattended rotation (C724, closed):** the timer's run at 01:41 to 01:47 UTC rotated
+  r3, r4, r6, s2 and s4 with no person, each commit `Source: scheduled_rotation`,
+  `Actor-Verified: none`, one push for the run. Nothing due after it.
+- **The config pipeline (C725):** Mercury's pre-commit check over the whole repository passes
+  (9 devices, Intent-Match 9 of 9, 1.7 s); the workflow's trigger fixed (acd67f2: `branches`
+  beside `tags-ignore`; `tags-ignore` alone ran no branch push) and installed (4264c22).
+- **DHCP:** h1's four orphaned IPv6 leases deleted with Kea's lease6-del (02:00 UTC); h1
+  holds ::107 alone. ::104 predated the IAID pin.
+- Deployed: f90e90c (one break-glass row), acd67f2 (the workflow), 4f09006 (the stepper's
+  steps wrap). The run's frozen clock (C727) fixed after, in this commit's release.
+
+**Waiting on the operator:**
+1. **The rotation policy:** set `default` to every 30 days (the operator's plan after the
+   recording) and clear "at most" again (the live cap is 5: the blank was saved before the
+   release that reads blank as no cap). A policy is a person's to set.
+2. **One more orphan lease:** 2001:db8:20::100 (a generated DUID left by the agent's slip on h2
+   during the dhcpcd pinning; no reservation names it; h2 holds ::101). Delete it the same way
+   on the operator's word; C681 closes then.
+3. **The config check's run on GitHub for 4264c22:** one run, green, was not yet confirmed.
+4. **Break-glass export and Save All** for a fresh baseline (the operator's plan).
+
+**Open from tonight:** C726 (a host-shell rotation of s1 refused at verify; the 00:44 fleet-wide
+SNMP drop makes load the likely cause, unproven), C728 (a held push's hooks see one commit),
+and the fact-check's corrections to the write-up (given in the session, not filed).
+
 ## NIGHT, 2026-10-12 to 13 (22:30 to about 00:30 UTC): the Labs 4 and 5 Part 2 deadline
 
 **FREEZE in force** (the operator): no AI-family removal, no stepper conversion, no query

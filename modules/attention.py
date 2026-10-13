@@ -229,8 +229,10 @@ CLEARS = {
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
     ("scheduled_rotation", "stopped"): (("resolves",), "a later run (Rotate due devices now on "
-                                        "Credentials › Profiles) finishes without a failure; "
-                                        "until then the timer starts no scheduled run"),
+                                        "Credentials › Profiles) finishes without a failure, "
+                                        "or the failed device's rotation is committed (its "
+                                        "device page's Rotate); until then the timer starts "
+                                        "no scheduled run"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -1994,7 +1996,8 @@ def records_source(cached=None) -> dict:
 def scheduled_rotation_source(found=None) -> dict:
     """The scheduled credential rotation's last run that ran (`scheduled_rotation.runs`): one
     that STOPPED on a failure is a CRITICAL row naming the device and the stage, standing
-    until a later run finishes clean (the timer starts none while it stands). A file read,
+    until a later run finishes clean or the failed device's rotation is committed after the
+    stop (`scheduled_rotation.halted`; the timer starts none while it stands). A file read,
     never a device."""
     from modules.nsot import scheduled_rotation as SR
 

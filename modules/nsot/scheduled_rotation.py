@@ -24,7 +24,8 @@ What it refuses, and what it skips (each with its reason, kept in the run's reco
 * a device off its intent (its committed golden differs from what its intent renders), or one
   whose plan cannot be made (unreachable, its account line unreadable), is skipped;
 * the FIRST failure stops the run: a CRITICAL Needs attention row names the device and the
-  stage, and the timer starts no scheduled run until a later run (a person's) finishes clean;
+  stage, and the timer starts no scheduled run until a later run finishes clean (a person's)
+  or the failed device's rotation is committed after the stop (`halted`);
 * never two runs at once, across processes (an exclusive `flock`, refused by name).
 
 Credential age is the rotation record's (`credential_rotation.rotation_records_as_known`):
@@ -612,7 +613,10 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
     from modules.nsot import credential_rotation as cr
     from modules.nsot import device_ops, rotate_op
 
-    clock = clock or (lambda: _now(now))
+    # The run's clock MOVES from its start (C727: it read the tick's moment throughout, so the
+    # run's finish was its start and a run reaching 08:30 UTC would not have stopped).
+    t0 = time.time()
+    clock = clock or (lambda: _now(now) + (time.time() - t0))
     plan = plan or rotate_op.plan
     rotate = rotate or rotate_op.run
     checks = checks or {}
@@ -652,8 +656,9 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
                 f = last.get("failed") or {}
                 return finish("refused", (
                     f"the last run stopped on {f.get('device', '?')} at {f.get('stage', '?')} "
-                    f"({last.get('finished')}): the timer starts no run until a person runs "
-                    "Rotate due devices now on Credentials › Profiles"))
+                    f"({last.get('finished')}): the timer starts no run until a later run "
+                    "finishes clean (Rotate due devices now on Credentials › Profiles) or "
+                    f"{f.get('device', '?')}'s rotation is committed (its device page's Rotate)"))
         today = started - 86400            # a scheduled run per policy in any 24 h (C724)
         ran_today = {p for r in prior if r.get("trigger") == "scheduled"
                      and (_epoch(r.get("started", "")) or 0) > today
