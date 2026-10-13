@@ -322,6 +322,7 @@ def device_states(now=None, *, lists=None, devices_of=None, rotations=None,
             at, iso = max(rotations.get(host, (None, "")), committed.get(host, (None, "")),
                           key=lambda r: r[0] or 0)
             s = {"list": list_name, "device": host, "profile": profile, "policy": pol or {},
+                 "outside": outside,
                  "policy_words": policy_words(pol), "on": on, "rotated_at": iso,
                  "never": at is None,
                  "age_words": ("never rotated by Mercury" if at is None
@@ -837,7 +838,12 @@ def page_view(now=None) -> dict:
         if not s["profile"]:
             continue
         p = by_profile.setdefault(s["profile"], {"devices": 0, "due": 0, "never": 0,
-                                                 "next_due": ""})
+                                                 "next_due": "", "outside": 0})
+        # The policy's devices are its SCOPE (the operator, 2026-10-13: the cell said 9 where
+        # the scope named 8); a device the profile covers outside it is counted apart.
+        if s.get("outside"):
+            p["outside"] += 1
+            continue
         p["devices"] += 1
         p["due"] += 1 if s["due"] else 0
         p["never"] += 1 if s["never"] else 0
@@ -861,7 +867,7 @@ def page_view(now=None) -> dict:
             "due": sum(1 for s in states if s["due"]), "total": len(states),
             "covered": sum(1 for s in states if s["on"]), "error": error,
             "runs_error": got.get("error", ""), "last": last,
-            "stopped": bool(decisive and decisive.get("state") == "stopped"),
+            "stopped": halted(got["rows"]) is not None,      # the same rule as the timer
             "backup_window": in_backup_window(now), "now": _iso(now)}
 
 

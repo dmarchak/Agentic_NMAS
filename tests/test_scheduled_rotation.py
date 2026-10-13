@@ -475,6 +475,19 @@ def test_a_policy_limited_to_named_devices_covers_only_those(data):
     assert not bad["ok"] and "is not a device name" in bad["error"]
 
 
+def test_the_policy_cell_counts_its_scope_and_names_the_rest(data, monkeypatch):
+    """The operator, 2026-10-13: the cell said "9 devices" where the scope named 8 (s3 left
+    out). The devices in the scope are counted; the profile's others are counted apart."""
+    pol = dict(_policy(days=1), devices=["r1", "r2"])
+    states = _states(pols={"role:router": pol})
+    monkeypatch.setattr(SR, "device_states", lambda now=None, **_k: states)
+    monkeypatch.setattr(SR, "policies", lambda: {"role:router": pol})
+    monkeypatch.setattr("modules.credentials.list_profiles",
+                        lambda: [{"name": "role:router"}, {"name": "role:switch"}])
+    p = SR.page_view(NOW)["profiles"]["role:router"]
+    assert p["devices"] == 2 and p["outside"] == 1, p               # r1, r2 in; r3 outside
+
+
 def test_a_credential_s_age_reads_the_repository_s_rotation_commits(monkeypatch, tmp_path):
     """The rotation record began after the first rotations (on the host, 2026-10-12, it held
     s1's and r2's while the repository held every device's from 2026-09-21): the age is the

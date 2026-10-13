@@ -588,16 +588,16 @@ def golden_hook(context: dict, run=None) -> dict:
     keeper. Waking on every golden commit, never deciding eligibility here:
     the regeneration writes only files whose content moved, and one owner
     decides eligibility (`generate`)."""
-    import subprocess
+    from modules.nsot.hooks import changed_paths
 
     repo, sha = context.get("repo") or "", context.get("sha") or ""
     if not repo or not sha:
         return {"ok": True, "message": "no commit to read"}
-    p = (run or subprocess.run)(["git", "-C", repo, "diff-tree", "--no-commit-id", "--name-only",
-                                 "-r", "--root", sha], capture_output=True, text=True, timeout=15)
-    if p.returncode != 0:
-        return {"ok": False, "error": f"git diff-tree {sha[:10]} exited {p.returncode}"}
-    goldens = [x for x in p.stdout.split() if x.startswith("golden/")]
+    # Every commit the context carries: a held run's one publish names all of them (C728).
+    paths, error = changed_paths(context, run=run)
+    if error:
+        return {"ok": False, "error": error}
+    goldens = [x for x in paths if x.startswith("golden/")]
     if not goldens:
         return {"ok": True, "message": "no golden changed"}
     inventory_changed(f"{context.get('list_name') or 'a list'}: commit {sha[:10]} changed "

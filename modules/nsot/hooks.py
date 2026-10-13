@@ -126,7 +126,29 @@ def held(repos):
                         list_name=last.get("list_name", ""), source=last.get("source", ""),
                         actor=last.get("actor", ""),
                         tags=[t for c in ctxs for t in c.get("tags") or []],
-                        devices=sorted({d for c in ctxs for d in c.get("devices") or []}))
+                        devices=sorted({d for c in ctxs for d in c.get("devices") or []}),
+                        # Every held commit (C728: a hook reading only the last commit saw one
+                        # golden where the run committed five).
+                        shas=[s for c in ctxs for s in (c.get("shas") or [c.get("sha")]) if s])
+
+
+def changed_paths(context: dict, run=None) -> tuple:
+    """``(paths, error)``: the files changed by the commit(s) a hook's *context* carries, every
+    held commit's (``shas``, C728) or its one (``sha``), in order, each once. The one reading
+    a hook makes of what a commit changed."""
+    import subprocess
+
+    repo = context.get("repo") or ""
+    shas = [s for s in (context.get("shas") or [context.get("sha")]) if s]
+    paths = []
+    for sha in shas:
+        p = (run or subprocess.run)(["git", "-C", repo, "diff-tree", "--no-commit-id",
+                                     "--name-only", "-r", "--root", sha],
+                                    capture_output=True, text=True, timeout=15)
+        if p.returncode != 0:
+            return paths, f"git diff-tree {sha[:10]} exited {p.returncode}"
+        paths += [x for x in p.stdout.split() if x not in paths]
+    return paths, ""
 
 
 def run_post_commit(context: dict) -> None:

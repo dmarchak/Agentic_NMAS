@@ -10,6 +10,7 @@ path the product writes, so the two cannot drift apart.
 import json
 import os
 import re
+import time
 
 import pytest
 
@@ -121,6 +122,41 @@ class TestAGoldenCommittedWritesItsEvent:
         body = json.loads((data / "events" / "golden-committed" / "Default").read_text())
         assert body["devices"] == ["r1"] and body["commit"] == sha and body["list"] == "Default"
         assert not (data / "events" / "baseline-earned" / "Default").exists()
+
+    def test_a_held_run_s_one_publish_names_every_commit_s_goldens(self, data, repo,
+                                                                   monkeypatch):
+        """C728 (the host, 2026-10-13): a rotation run commits once a device and publishes
+        once; the hook read only the last commit and said "1 golden(s)" for five. Through
+        hooks.held and repo.publish, the context carries every commit (`shas`)."""
+        from modules.nsot import hooks
+        monkeypatch.setattr(hooks, "ensure_default_hooks", lambda: None)
+        first = _git(repo, "rev-parse", "HEAD")                              # r1's golden
+        (repo / "golden" / "r2.cfg").write_text("hostname r2\n")
+        _git(repo, "add", "-A")
+        _git(repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit",
+             "-qm", "r2")
+        second = _git(repo, "rev-parse", "HEAD")
+        seen = []
+        with hooks._lock:                                                      # noqa: SLF001
+            saved = list(hooks._hooks)                                         # noqa: SLF001
+        try:
+            hooks._hooks[:] = [{"name": "spy", "timeout": 5,                   # noqa: SLF001
+                                "func": lambda ctx: seen.append(ctx) or {"ok": True}}]
+            with hooks.held([str(repo)]):
+                for sha in (first, second):
+                    hooks.run_post_commit({"repo": str(repo), "sha": sha,
+                                           "list_name": "Default"})
+            deadline = time.time() + 5                                         # bounded wait
+            while not seen and time.time() < deadline:
+                time.sleep(0.05)
+        finally:
+            hooks._hooks[:] = saved                                            # noqa: SLF001
+        (ctx,) = seen
+        assert ctx.get("shas") == [first, second] and ctx["sha"] == second, ctx
+        got = BE.golden_hook(ctx)
+        assert got["message"].startswith("2 golden(s)"), got
+        body = json.loads((data / "events" / "golden-committed" / "Default").read_text())
+        assert body["devices"] == ["r1", "r2"]
 
     def test_a_commit_that_changed_no_golden_writes_nothing(self, data, repo):
         (repo / "notes.txt").write_text("y\n")

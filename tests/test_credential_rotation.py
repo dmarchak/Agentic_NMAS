@@ -718,6 +718,38 @@ class TestTheFiveStates:
                     if k["password"] != ORIGINAL_PLAINTEXT]
         assert len(with_new) == 1, "one refusal, one attempt"
 
+    def test_a_login_that_timed_out_is_tried_once_more_before_any_revert(self, wired):
+        """C726 (s1, 2026-10-13 00:44 UTC, during a fleet-wide stall): paramiko raises the same
+        AuthenticationException for "Authentication timeout." as for a refused password, and
+        the rotation reverted on it. A timeout is no verdict: one more proving login after the
+        wait, and the rotation stands when it succeeds."""
+        from netmiko.exceptions import NetmikoAuthenticationException
+        real, calls = wired["router"].login, {"n": 0}
+
+        def _slow_once(**kwargs):
+            if kwargs.get("password") != ORIGINAL_PLAINTEXT:
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise NetmikoAuthenticationException(
+                        "Authentication to device failed.\n\nCommon causes of this problem "
+                        "are:\n1. Invalid username and password\n\nAuthentication timeout.")
+            return real(**kwargs)
+
+        wired["router"].login = _slow_once
+        result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
+        assert calls["n"] == 2, "a timeout is tried once more"
+        assert result["state"] == cr.ROTATED_PENDING_PERSIST
+
+    @pytest.mark.parametrize("name, text, kind", [
+        ("NetmikoAuthenticationException", "Authentication to device failed.\n\n"
+         "Authentication timeout.", "timeout"),
+        ("NetmikoAuthenticationException", "Authentication to device failed.\n\n"
+         "Authentication failed.", "refused"),
+        ("NetmikoTimeoutException", "TCP connection to device failed.", "timeout"),
+        ("InvalidToken", "", "other")])
+    def test_a_refusal_and_a_timeout_are_told_apart(self, name, text, kind):
+        assert cr.login_failure_kind(name, text) == kind
+
     def test_a_rejected_push_changes_nothing(self, wired):
         wired["session"] = _Session(fail_on=["algorithm-type scrypt"],
                                     router=wired["router"])

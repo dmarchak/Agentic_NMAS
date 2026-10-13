@@ -1404,7 +1404,7 @@ def list_of_repo(repo: str) -> str:
 
 
 def publish(repo: str, sha: str, *, list_name: str = "", source: str = "",
-            actor: str = "", tags=None, devices=None) -> None:
+            actor: str = "", tags=None, devices=None, shas=None) -> None:
     """Hand a commit to the post-commit hooks (push, archive). Returns at once.
 
     Called by :func:`commit`, and directly ONLY by a caller that commits with
@@ -1414,9 +1414,13 @@ def publish(repo: str, sha: str, *, list_name: str = "", source: str = "",
     """
     from modules.nsot.hooks import run_post_commit
 
-    run_post_commit({"list_name": list_name or list_of_repo(repo), "repo": repo,
-                     "sha": sha, "source": source, "actor": actor,
-                     "tags": list(tags or []), "devices": list(devices or [])})
+    context = {"list_name": list_name or list_of_repo(repo), "repo": repo,
+               "sha": sha, "source": source, "actor": actor,
+               "tags": list(tags or []), "devices": list(devices or [])}
+    if shas:
+        # A held run's one publish (hooks.held): every commit it made, the last being *sha*.
+        context["shas"] = list(shas)
+    run_post_commit(context)
 
 
 def commit(repo: str, message: str, *, list_name: str = "", paths=(), allow_empty=False,

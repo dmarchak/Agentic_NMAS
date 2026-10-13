@@ -48,16 +48,16 @@ def path(list_name: str, events: str = EVENTS) -> str:
 def golden_hook(context: dict, run=None) -> dict:
     """The post-commit hook: write the golden-committed event when the commit changed a golden
     (``golden/<device>.cfg``), naming each device. Logged and returned, never blocking."""
-    import subprocess
+    from modules.nsot.hooks import changed_paths
 
     repo, sha = context.get("repo") or "", context.get("sha") or ""
     if not repo or not sha:
         return {"ok": True, "message": "no commit to read"}
-    p = (run or subprocess.run)(["git", "-C", repo, "diff-tree", "--no-commit-id", "--name-only",
-                                 "-r", "--root", sha], capture_output=True, text=True, timeout=15)
-    if p.returncode != 0:
-        return {"ok": False, "error": f"git diff-tree {sha[:10]} exited {p.returncode}"}
-    devices = sorted(os.path.basename(x)[:-4] for x in p.stdout.split()
+    # Every commit the context carries: a held run's one publish names all of them (C728).
+    paths, error = changed_paths(context, run=run)
+    if error:
+        return {"ok": False, "error": error}
+    devices = sorted(os.path.basename(x)[:-4] for x in paths
                      if x.startswith("golden/") and x.endswith(".cfg"))
     if not devices:
         return {"ok": True, "message": "no golden changed"}

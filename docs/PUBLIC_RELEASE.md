@@ -168,3 +168,27 @@ Release adds a second factor for PEOPLE and keeps Mercury's own access key-based
 
 **Size:** large (the integration, the profile's AAA section with its fallback and repair route,
 key-based service login, the secret's rotation, and a lab OTP server to prove it).
+
+---
+
+## g. The key that opens every stored secret, and the break-glass record's cost (not started)
+
+The operator, 2026-10-13: registered here for after Phase 7.
+
+- **A TPM-bound key.** Today `data/key.key` is a file the service reads at start (owner-only,
+  0600), so anything that can read the service user's files, or an image of the disk, holds
+  the key beside the secrets it opens. Release seals the key to the host's TPM (systemd-creds
+  or tpm2-tools), unsealed for the service at start, so a copied disk or backup image does not
+  open the store; the break-glass record (`modules/breakglass.py`, which escrows the key) stays
+  the recovery path when the TPM or the host is lost. Until then the lab's interim is to keep the
+  key off the nightly VM image (a separate virtual disk excluded from the backup), proposed
+  2026-10-13.
+- **The break-glass record's scrypt cost to N=2^17.** The record is an offline target, so its
+  passphrase derivation should cost more than N=2^15 (about 100 ms on a laptop today):
+  N=2^17 (r=8, p=1) is about four times that and 128 MiB of memory (so `maxmem` rises above
+  it), still under a second. A record written at the old cost must still open: the envelope
+  already records its cost (`breakglass.py`, the `scrypt` field), but the reader derives with
+  the module's constant (`_SCRYPT`), so the reader changes to take the envelope's.
+
+**Size:** medium (the TPM path with a fallback for a host without one; the scrypt change is
+small, its compatibility test the main part).

@@ -736,6 +736,21 @@ _LOCAL_FAULT = ("InvalidToken", "TypeError", "NameError", "AttributeError",
                 "ValueError", "UnsendableCommand", "NonPrintableContent")
 
 
+def login_failure_kind(name: str, text: str) -> str:
+    """``refused``, ``timeout`` or ``other`` for a login that failed (C726). paramiko raises the
+    SAME AuthenticationException for a refused password ("Authentication failed.") and for a
+    device too busy to answer in time ("Authentication timeout."), and netmiko appends that
+    original text to its own NetmikoAuthenticationException: the text tells them apart. A
+    timeout is no verdict about the password."""
+    if "Authentication timeout" in text or name in (
+            "NetmikoTimeoutException", "NetMikoTimeoutException", "socket.timeout",
+            "TimeoutError"):
+        return "timeout"
+    if name in _AUTH_REFUSED:
+        return "refused"
+    return "other"
+
+
 def classify_failure(name: str) -> dict:
     """Did the DEVICE produce this, or did this process?
 
@@ -832,9 +847,14 @@ def verify_new_credential(device: dict, username: str, password: str, *,
         except Exception as exc:              # noqa: BLE001
             name = type(exc).__name__
             verdict = classify_failure(name)
+            kind = login_failure_kind(name, str(exc))
+            # Into the app log, not only the caller (C726: a refusal at 00:44 was unexplained
+            # because its words went to the process that ran it).
+            log.warning("rotate: verify login to %s %s (%s): %s", device.get("hostname", "?"),
+                        kind, name, " ".join(str(exc).split())[-160:])
             return {"ok": False, "attempted": verdict["attempted"],
                     "recognised": verdict["recognised"], "error_type": name,
-                    "error": f"{name}: {exc}"[:200], "stage": "connect"}
+                    "error": f"{name}: {exc}"[:200], "stage": "connect", "kind": kind}
 
         # Past here we are authenticated, so every failure is the device
         # answering — established by where we are, not by the exception's
@@ -865,6 +885,10 @@ def verify_new_credential(device: dict, username: str, password: str, *,
 #: Indirection so a retry test does not spend six real seconds sleeping.
 _SLEEP = time.sleep
 
+#: The wait before the one more proving login after a TIMEOUT (C726): about 2.5x the 12 s the
+#: in-app verify of s1 took from open to close on 2026-10-13 00:59 UTC, with the fleet quiet.
+VERIFY_TIMEOUT_RETRY_S = 30
+
 
 def verify_with_retry(device: dict, username: str, password: str, *,
                       secret: str = None, attempts: int = 3, sleep=None) -> dict:
@@ -877,9 +901,20 @@ def verify_with_retry(device: dict, username: str, password: str, *,
     """
     sleep = sleep or _SLEEP
     last = {"ok": False, "attempted": False, "error": "not run"}
+    timed_out_once = False
     for attempt in range(attempts):
         last = verify_new_credential(device, username, password,
                                      secret=secret)
+        if (not last["ok"] and last.get("kind") == "timeout" and not timed_out_once):
+            # A login that TIMED OUT is no verdict on the password (C726: a starved vIOS
+            # under a fleet-wide stall): one more proving login after a short wait, before
+            # the caller reverts. The held session is still open, so waiting costs nothing.
+            timed_out_once = True
+            log.warning("rotate: verify login timed out; one more try in %d s",
+                        VERIFY_TIMEOUT_RETRY_S)
+            sleep(VERIFY_TIMEOUT_RETRY_S)
+            last = verify_new_credential(device, username, password, secret=secret)
+            last = {**last, "retried_after_timeout": True}
         if last["ok"] or last.get("attempted"):
             return {**last, "tries": attempt + 1}
         log.warning("rotate: verify could not run (%s) — retrying %d/%d",
