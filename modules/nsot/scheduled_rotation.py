@@ -395,21 +395,12 @@ def last_decisive(rows=None):
 
 
 def halted(rows=None):
-    """The stopped run that halts the timer, or None. A run that stopped on a failure halts it
-    until a later run finishes clean, or until the device it failed on has a ROTATION COMMIT
-    after the stop: settled through Mercury's rotation, recorded with its trailers (the host,
-    2026-10-13: s1's credential was recovered into the store, which settles nothing in the
-    repository, so only its commit counts)."""
+    """The stopped run that halts the timer, or None: the last run that ran, when it stopped on
+    a failure. It halts until a later run finishes clean, a person's Rotate due devices now
+    among them; settling the failed device another way (a recovery, a device-page rotation)
+    leaves it standing (the operator, 2026-10-13: the halt is cleared by a person's run)."""
     last = last_decisive(rows)
-    if not last or last.get("state") != "stopped":
-        return None
-    f = last.get("failed") or {}
-    stopped_at = _epoch(last.get("finished") or "") or 0
-    if f.get("device") and f.get("list"):
-        at, _iso_ = committed_rotations(f["list"]).get(f["device"], (0, ""))
-        if at > stopped_at:
-            return None
-    return last
+    return last if last and last.get("state") == "stopped" else None
 
 
 # ------------------------------------------------------------------ the lock

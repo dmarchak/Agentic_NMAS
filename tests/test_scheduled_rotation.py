@@ -447,22 +447,17 @@ def test_the_commit_s_source_is_a_workflow_name_the_repository_accepts():
     assert device_list.SOURCE_WORDS[SR.SOURCE] == "a scheduled rotation"
 
 
-def test_a_halt_clears_once_the_failed_device_s_rotation_is_committed(monkeypatch):
-    """The host, 2026-10-13: s1's credential was recovered into the store (no commit), so the
-    halt stood; it clears when s1's rotation is COMMITTED after the stop, never on the store
-    alone, and a later clean run still clears it as before."""
+def test_a_halt_stands_until_a_later_run_finishes_clean(monkeypatch):
+    """The operator, 2026-10-13: settling the failed device another way (s1's recovery, its
+    rotation committed) leaves the halt standing; a person's clean run clears it."""
     stop = {"run": "1", "trigger": "scheduled", "state": "stopped",
             "finished": "2026-10-12T23:56:40Z",
             "failed": {"device": "s1", "list": "Lab", "stage": "commit"}}
-    commits = {}
-    monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
-    assert SR.halted([stop]) is stop                                   # nothing committed
-    commits["s1"] = (SR._epoch("2026-10-12T20:00:00Z"), "")
-    assert SR.halted([stop]) is stop                                   # committed BEFORE it
-    commits["s1"] = (SR._epoch("2026-10-13T00:40:00Z"), "")
-    assert SR.halted([stop]) is None                                   # settled after it
-    commits.clear()
-    assert SR.halted([stop, {"run": "2", "state": "done"}]) is None    # a clean run after
+    monkeypatch.setattr(SR, "committed_rotations",
+                        lambda name: {"s1": (SR._epoch("2026-10-13T00:40:00Z"), "")})
+    assert SR.halted([stop]) is stop, "a settle elsewhere is not a clean run"
+    assert SR.halted([stop, {"run": "2", "state": "refused"}]) is stop   # refused is no run
+    assert SR.halted([stop, {"run": "2", "state": "done"}]) is None      # a clean run after
 
 
 def test_a_scheduled_run_after_midnight_does_not_take_a_second_device(data, monkeypatch):
