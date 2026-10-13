@@ -386,3 +386,37 @@ def test_the_scan_finds_the_first_runs_bug():
     assert unexported("\n".join([fixed[0], fixed[2], fixed[1]])) == []
     spliced = "check \"x\" eq 1 'echo \"pkg='\"$PSYCOPG\"'\"'\n"
     assert unexported(spliced) == []
+
+
+# --- sudo resets the environment (C755) -------------------------------------------------------
+
+def sudo_env_reads(text: str) -> list:
+    """``[line]``: each line where a process started by `sudo` reads the ENVIRONMENT, which sudo
+    resets: Python's `os.environ` or `os.getenv` inside a `sudo … python3` command, or a
+    `sudo bash -c` / `sudo sh -c` whose script names a `$VAR`. minio-bind.sh's first run on the
+    host read its wanted MINIO_OPTS this way (KeyError, 2026-10-13); a value goes in as an
+    argument, which sudo passes through."""
+    out = []
+    for n, line in enumerate(text.splitlines(), 1):
+        for m in re.finditer(r"\bsudo\b(?:\s+-[A-Za-z]+(?:\s+\S+)?)*\s+(\S+)", line):
+            prog, cmd = m.group(1), re.split(r"\s(?:&&|\|\||\|)\s", line[m.end():], 1)[0]
+            if (re.search(r"python3?$", prog) and re.search(r"os\.environ|os\.getenv", cmd)) or (
+                    prog in ("bash", "sh") and re.search(r"-c\s+['\"].*\$\{?[A-Za-z_]", cmd)):
+                out.append(n)
+    return out
+
+
+def test_no_process_started_by_sudo_reads_the_environment():
+    found = {name: sudo_env_reads(open(os.path.join(FOLDER, name), encoding="utf-8").read())
+             for name in SCRIPTS}
+    assert {k: v for k, v in found.items() if v} == {}
+
+
+def test_the_sudo_scan_finds_the_first_runs_bug():
+    """The planted case: minio-bind.sh's step as first run on the host."""
+    planted = ("step \"x\" \\\n"
+               "    'sudo python3 -c \"import os, re, sys; p = sys.argv[1]; t = os.environ[\\\"W\\\"]\" \"$F\"'\n")
+    assert sudo_env_reads(planted) == [2]
+    assert sudo_env_reads(planted.replace('os.environ[\\"W\\"]', "sys.argv[2]")) == []
+    assert sudo_env_reads("    'sudo bash -c \"echo $X\"'\n") == [1]
+    assert sudo_env_reads("    'sudo cp -a \"$A\" \"$B\"'\n") == []

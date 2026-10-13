@@ -1,5 +1,53 @@
 # End of session: where Phase 7 stands
 
+## EVENING, 2026-10-13 (19:00 to about 21:00 UTC; 13:00 to 15:00 UTC−6)
+
+**Committed and pushed:** fb815743 (C741, C746, C747, C751; CI #742 green) and eae5c6c2 (C752,
+C753, C754, the bind step, Phase 8's decisions recorded).
+
+**The alias `dr` (the operator's URGENT item): nothing scheduled used it.**
+- `dr` was the operator's mc alias for the replica MinIO, LXC 103 `minio-dr` on the
+  hypervisor. The rotation removed it because the replica's own root user is also named
+  `minioadmin` (its password is not the default). That was the script's defect (C752, fixed).
+- Searched on all three hosts: crontabs, cron.d, systemd timers, scripts and units, `MC_HOST_`
+  variables, shell histories and rclone. Nothing names `dr`.
+  - The 08:30 UTC nightly job is the hypervisor's VM backup (VMs 100 and 102, to local
+    storage). It touches no MinIO.
+  - The hourly lake archive uses its own user, `lake-archive`, not the root.
+  - rclone's only remote is B2.
+- What does use the replica's credentials is this MinIO's own bucket replication (`loki`,
+  `raw-telemetry`, `thanos` → dr).
+  - It kept working after the rotation: 27 `loki` objects were written on each side since the
+    19:42:24 UTC restart, and the newest object is identical on both.
+- **Waiting on the operator:** moving each replication target onto a least-privilege
+  `replicator` key on the replica (C753). Writing that step was refused to the agent by the
+  auto-mode classifier as a secret-store write, so it is the operator's to allow or to write.
+
+**Bind and firewall (C749's follow-up):** `scripts/host-steps/minio-bind.sh`.
+- Measured first:
+  - every client of 9000 is this host over loopback, or Loki on docker0;
+  - ufw's incoming default is ALLOW;
+  - both ports answered from the lab host.
+- The step:
+  - the console goes to 127.0.0.1:9001;
+  - ufw allows 9000 in on docker0, then denies 9000 and 9001 otherwise (logged);
+  - an undo is built in.
+
+**"bucket versioning: unreadable with this key" (the operator's question):** that read is made
+with Mercury's OWN key, never the typed one. Mercury's policy (`mercury-rw`) holds no
+`s3:GetBucketVersioning`. The wording named the wrong key (C754, fixed). Versions were always
+listed, because `ListBucket` allows it.
+
+**The archive objects (C754):**
+- The two objects the C743 step named are gone: no version and no delete marker.
+- The bucket holds `ai-family/20261013T161220Z` (16:12:21 UTC). It is clean under the fixed
+  check: 39 files, 0 holding a maskable value.
+- The C743 step now names that object.
+
+**Phase 8:** the operator's decisions are recorded in IBN_DESIGN section 9 and PHASE8_PLAN
+section 9, and applied to the class table, the catalog gate, section 7's numbers, 8.0's
+prerequisite (E18), Translate's scope and the ranking.
+
 ## AFTERNOON, 2026-10-13 (16:20 to 18:50 UTC): the operator's answers, worked
 
 The host runs c40d9440 (deployed 18:43:57 UTC, CI #740).

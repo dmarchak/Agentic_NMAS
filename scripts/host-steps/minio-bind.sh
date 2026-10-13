@@ -68,10 +68,10 @@ step "a dated copy of MinIO's environment file (root's, mode 700)" \
     'sudo install -d -m 700 "$COPY" && sudo cp -a "$ENVFILE" "$COPY/"'
 check "the dated copy reads back the same as the original" rc0 "" 'sudo cmp "$ENVFILE" "$COPY/minio"'
 
-ON_FAIL='sudo cp -p "$COPY/minio" "$ENVFILE"; for r in "$RULE_CONSOLE" "$RULE_API" "$RULE_LOKI"; do eval "sudo ufw delete ${r% comment *}" >/dev/null 2>&1; done; sudo systemctl restart minio; sudo ufw status | grep -cE "900[01]" | sed "s/^/ufw rules for 9000 or 9001 left: /"'
+ON_FAIL='sudo cp -p "$COPY/minio" "$ENVFILE"; for r in "$RULE_CONSOLE" "$RULE_API" "$RULE_LOKI"; do eval "sudo ufw delete ${r% comment *}" >/dev/null 2>&1; done; sudo systemctl restart minio; echo "ufw rules for 9000 or 9001 left: $(sudo ufw status | grep -cE "900[01]" || true)"'
 ON_FAIL_WHAT="MinIO's environment file put back, this step's ufw rules deleted, MinIO restarted"
 step "MINIO_OPTS: the console on 127.0.0.1:9001" \
-    'sudo python3 -c "import os, re, sys; p = sys.argv[1]; st = os.stat(p); t = open(p).read(); n = re.subn(r\"(?m)^MINIO_OPTS=.*$\", \"MINIO_OPTS=\" + os.environ[\"WANT_AFTER\"], t); assert n[1] == 1, n[1]; tmp = p + \".tmp\"; open(tmp, \"w\").write(n[0]); os.chown(tmp, st.st_uid, st.st_gid); os.chmod(tmp, st.st_mode & 0o7777); os.replace(tmp, p)" "$ENVFILE"'
+    'sudo python3 -c "import os, re, sys; p, want = sys.argv[1], sys.argv[2]; st = os.stat(p); t = open(p).read(); n = re.subn(r\"(?m)^MINIO_OPTS=.*$\", lambda m: \"MINIO_OPTS=\" + want, t); assert n[1] == 1, n[1]; tmp = p + \".tmp\"; open(tmp, \"w\").write(n[0]); os.chown(tmp, st.st_uid, st.st_gid); os.chmod(tmp, st.st_mode & 0o7777); os.replace(tmp, p)" "$ENVFILE" "$WANT_AFTER"'
 check "MINIO_OPTS puts the console on loopback" eq "$WANT_AFTER" \
     'sudo grep -E "^MINIO_OPTS=" "$ENVFILE" | cut -d= -f2-'
 step "ufw: 9000 from docker0 allowed, then 9000 and 9001 denied (logged)" \
