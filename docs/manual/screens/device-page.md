@@ -116,8 +116,13 @@ person's. {{product}}'s recorded writes to it are listed.
 ## Neighbours {#neighbours}
 
 The routing adjacencies the network's committed intent implies for this device, against what
-Prometheus last read from its routing tables: up, down with its state, unexpected, or not
-measured. It opens no session to the device.
+Prometheus last read from its routing tables (OSPF, OSPFv3, BGP): up, down with its state,
+unexpected, or not measured. RIP and RIPng keep no neighbour table, so their rows come from
+what the device hears, as the RIP reader last read it (every 5 minutes, two show commands on
+each device whose intent runs RIP): up when this device hears the neighbour, not heard (and
+whether the neighbour still hears this device), a speaker intent does not explain as
+unexpected, and not measured when the reader could not read the device or its last read is
+older than its promise. Opening the tab opens no session to the device.
 
 **Reported** is when the device's routing table was read. A protocol counts as measured when
 any of its scrapes in the last 5 minutes answered, so one failed scrape does not blank it; but

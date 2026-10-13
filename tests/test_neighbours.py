@@ -254,6 +254,65 @@ class TestALastGoodValueSaysWhen:
         assert "r1 Gi2 reports it INIT (as of 03:36 UTC, its last good scrape)" in cause
 
 
+class TestRipFromTheReader:
+    """C12 (the operator's Phase 7 list): RIP and RIPng on Neighbours, from the RIP reader's
+    answer for r1, r2, s1 and s2 parsed from their real show output (tests/fixtures/topology/
+    rip/), through Topology's own adjacency code."""
+
+    def _protos(self, host, rip=None, error=""):
+        from modules import neighbours as N
+        from tests.test_topology_graph import _intents as topo_intents, _rip
+        got = N.rip_protocols(topo_intents(), host, _rip() if rip is None else rip, error)
+        return {p["proto"]: p for p in got}
+
+    def test_each_end_hears_the_other_as_measured(self):
+        p = self._protos("r1")
+        assert [(r["peer"], r["address"], r["via"], r["state"]) for r in p["rip"]["rows"]] == [
+            ("s1", "10.255.2.11", "GigabitEthernet3", "up")]
+        assert [(r["peer"], r["state"]) for r in p["ripng"]["rows"]] == [("s1", "up")]
+        s1 = self._protos("s1")
+        assert [(r["peer"], r["via"]) for r in s1["ripng"]["rows"]] == [
+            ("r1", "GigabitEthernet0/2"), ("s2", "Vlan10"), ("s2", "Vlan20"), ("s2", "Vlan30")]
+        assert all(r["at_iso"] == "2026-10-11T06:40:00Z" for r in s1["rip"]["rows"])
+
+    def test_a_device_that_runs_no_rip_draws_none(self):
+        assert self._protos("r3") == {}
+
+    def test_a_neighbour_no_longer_heard_is_not_seen_and_says_who_still_hears(self):
+        from tests.test_topology_graph import _rip
+        rip = _rip()
+        rip["s1"] = dict(rip["s1"], rip=[])
+        row = self._protos("s1", rip)["rip"]["rows"][0]
+        assert (row["peer"], row["state"], row["words"]) == ("r1", "not_seen",
+                                                             "not heard; r1 hears s1")
+
+    def test_an_unread_device_is_not_measured_with_its_reason(self):
+        from tests.test_topology_graph import _rip
+        rip = _rip()
+        rip["s1"] = {"rip": None, "ripng": None, "error": "could not ask: TimeoutError"}
+        p = self._protos("s1", rip)["rip"]
+        assert p["measured"] is False and "could not ask: TimeoutError" in p["why"]
+        assert [r["state"] for r in p["rows"]] == ["unknown"]
+
+    def test_a_stale_answer_is_not_measured_naming_when(self):
+        p = self._protos("r1", rip={}, error="RIP: last read at 2026-10-11T06:40:00Z, more "
+                                             "than 750 s ago; drawn as not read")["rip"]
+        assert p["measured"] is False and "drawn as not read" in p["why"]
+
+    def test_a_source_intent_does_not_explain_is_unexpected(self):
+        """s1's RIP on its management port (C673): a speaker there, at an address no intent
+        holds, is heard and said, never dropped."""
+        from tests.test_topology_graph import _rip
+        rip = _rip()
+        rip["s1"] = dict(rip["s1"], rip=list(rip["s1"]["rip"]) + [
+            {"gateway": "192.0.2.77", "last_update": "00:00:05"}])
+        rows = self._protos("s1", rip)["rip"]["rows"]
+        odd = [r for r in rows if r["state"] == "unexpected"]
+        assert [(r["peer"], r["address"], r["managed"]) for r in odd] == [
+            ("", "192.0.2.77", False)]
+        assert "not implied by intent" in odd[0]["words"]
+
+
 class TestTheFleetIsReadInFixedCalls:
     def test_two_git_calls_whatever_the_size(self, tmp_path, monkeypatch):
         """The scale rule: the whole fleet's intent in one ls-tree and one
@@ -375,7 +434,7 @@ class TestThePage:
         for proto in ("OSPF", "OSPFv3", "BGP"):
             assert f'<h3 class="nb-proto">{proto}</h3>' in html
         assert '<a href="/v2/device/r4?list=Lab">r4</a>' in html
-        assert "nothing here opens a session to the device" in html
+        assert "Opening this tab opens no session to the device" in html
         # Four instant queries, each filtered to the device.
         assert len(page.asked) == 4 and all('device="r3"' in q for q in page.asked)
 
@@ -397,9 +456,23 @@ class TestThePage:
         _r, html = page("/v2/device/r3?tab=neighbours")
         assert 'hx-get="/v2/device/r3/neighbours?list=Lab"' in html and 'id="neighbours"' in html
 
-    def test_a_rip_device_says_rip_keeps_no_table(self, page):
+    def test_a_rip_device_draws_rip_and_ripng_from_the_reader(self, page, monkeypatch):
+        """C12: s1's RIP and RIPng tables, from the RIP reader's stored answer (the real
+        captures), through the real route; the tab itself opens no session (the fixture's
+        `open_ssh` raises)."""
+        from modules.readers import topology_graph
+        from tests.test_topology_graph import _rip
+        monkeypatch.setattr(topology_graph, "rip_answer", lambda clock=None: ({"Lab": _rip()}, ""))
         _r, html = page("/v2/device/s1/neighbours")
-        assert "s1 runs RIP, which keeps no neighbour table this page reads." in html
+        assert '<h3 class="nb-proto">RIP</h3>' in html and '<h3 class="nb-proto">RIPng</h3>' in html
+        assert "hears r1 at 10.255.2.10" in html and "hears s2 at FE80::" in html
+        assert "keeps no neighbour table this page reads" not in html
+
+    def test_rip_unread_is_not_measured_never_none(self, page):
+        """No stored RIP answer (the reader has not run here): s1's RIP is not measured, its
+        expected neighbour unknown, never "no neighbours"."""
+        _r, html = page("/v2/device/s1/neighbours")
+        assert "not measured: the RIP reader has not read s1 yet" in html
 
     def test_prometheus_not_configured_is_said(self, page, monkeypatch):
         from modules.integrations.prometheus import PrometheusIntegration

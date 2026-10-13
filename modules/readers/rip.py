@@ -176,13 +176,15 @@ def read(population_fn=None, read_fn=None, clock=time.time) -> dict:
 READER = reader_job.register(reader_job.Reader(
     name=NAME,
     what=("what RIP and RIPng hear, read from the devices whose intent configures them (two "
-          "read-only show commands each), for Topology's RIP layers and second witness"),
+          "read-only show commands each), for Topology's RIP layers and second witness and "
+          "the device page's Neighbours"),
     endpoints=("each RIP or RIPng device, over SSH: " + ", ".join(COMMANDS.values()),),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("RIP's update timer is 30 s and its invalid timer 180 s: a lost neighbour "
                     "is seen within two reads"),
     read=read,
-    invalidates=("topology",),
+    # Topology's RIP layers, and the device page's Neighbours tab (C12).
+    invalidates=("topology", "adjacencies"),
     remedy="a device that cannot be read is named with its reason; fix its access",
     window="the moment each device was read",
 ))

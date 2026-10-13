@@ -17,11 +17,14 @@ the device: it adds no session to a device (the operator's rule for s3,
 2026-10-01). Whether a protocol is measured at all is read from `up` for its
 job: a protocol nothing scrapes is "not measured", never "no neighbours".
 
+**RIP and RIPng** keep no neighbour table a MIB walk reads, so they come from the
+RIP reader's stored answer (`readers/rip`: what each RIP device hears, read every
+five minutes) through Topology's own adjacency code (`rip_protocols`, C12).
+
 What it cannot say, stated rather than implied: an adjacency is ONE side's
-report; a peer outside management is observed from this side only; RIP keeps
-no neighbour table this reads; and intent implies an adjacency only where the
-subnet and the network statements say so (a neighbour statement, a virtual
-link or a demand circuit is not modelled here).
+report; a peer outside management is observed from this side only; and intent
+implies an adjacency only where the subnet and the network statements say so (a
+neighbour statement, a virtual link or a demand circuit is not modelled here).
 """
 
 import ipaddress
@@ -429,25 +432,148 @@ def compare(intents: dict, host: str, results: dict, up: dict, now: float = None
     return {"protocols": protos, "counts": counts}
 
 
+#: RIP and RIPng, from the RIP reader (`readers/rip`), never Prometheus: RIP keeps no
+#: neighbour table a MIB walk reads, so the reader asks the devices that run it (two
+#: read-only show commands each, every five minutes) and this tab draws its stored answer.
+RIP_WORDS = {"rip": "RIP", "ripng": "RIPng"}
+
+
+def _peer_address(hv: dict, network: str) -> str:
+    """*hv*'s interface address inside *network* (the peer's end of a shared subnet), or ""."""
+    try:
+        net = ipaddress.ip_network(network)
+    except ValueError:
+        return ""
+    for iface in (hv or {}).get("interfaces") or []:
+        for addr in [iface.get("ipv4", "")] + list(iface.get("ipv6") or []):
+            ip = _v4(addr) if addr and ":" not in addr else None
+            if ip is None and addr:
+                try:
+                    ip = ipaddress.ip_interface(addr)
+                except ValueError:
+                    continue
+            if ip is not None and ip.ip in net:
+                return str(ip.ip)
+    return ""
+
+
+def rip_protocols(intents: dict, host: str, rip: dict, error: str = "") -> list:
+    """*host*'s RIP and RIPng entries in `compare`'s shape (C12, the operator's Phase 7 list),
+    from the RIP reader's answer for its network (*rip*, `topology_graph.rip_answer`'s value:
+    ``{device: {"rip", "ripng", "error", "read_at"}}``; *error* its reason when absent or
+    stale). The adjacencies are Topology's own (`topology_graph.rip_links`), one path for both
+    screens; each row is *host*'s side: ``up`` when *host* hears the peer, ``not_seen`` when its
+    read answered and it does not, ``unknown`` when it was not read. A source *host* hears that
+    no adjacency explains (a speaker outside management, or on an interface intent does not run
+    RIP on) is ``unexpected``. Only a protocol *host*'s intent runs is drawn."""
+    from modules.readers.rip import runs
+    from modules.readers.topology_graph import rip_links
+
+    wants = runs(intents.get(host) or {})
+    run = {"rip": wants["rip"], "ripng": bool(wants["ripng"])}
+    if not any(run.values()):
+        return []
+    links = rip_links(intents, sorted(intents), rip or {})
+    mine = (rip or {}).get(host) or {}
+    owners = addresses(intents)
+    out = []
+    for layer, words in RIP_WORDS.items():
+        if not run[layer]:
+            continue
+        measured = mine.get(layer) is not None
+        why = ""
+        if not measured:
+            why = (f"not measured: {error}" if error else
+                   f"not measured: the RIP reader could not read {host} ({mine['error']})"
+                   if mine.get("error") else
+                   f"not measured: the RIP reader has not read {host} yet")
+        at = mine.get("read_at", "") if measured else ""
+        entry = {"proto": layer, "words": words, "rows": [], "measured": measured, "why": why,
+                 "source": "reader"}
+        explained = set()
+        for link in links.get(layer) or []:
+            if host not in (link["a"], link["b"]) or not link["intended"]:
+                continue
+            peer = link["b"] if link["a"] == host else link["a"]
+            row = {"proto": layer, "peer": peer, "managed": True, "rid": "",
+                   "address": _peer_address(intents.get(peer), link["network"]),
+                   "via": link["ports"].get(host, ""), "network": link["network"]}
+            heard = link["words_by"].get(host)
+            if heard:
+                row.update(state="up", words=heard)
+            elif measured:
+                row.update(state="not_seen", words=(
+                    f"not heard; {peer} hears {host}" if peer in link["words_by"]
+                    else "not heard"))
+            else:
+                row.update(state="unknown", words="not measured")
+            if at:
+                row["at_iso"] = at
+            explained.add(peer)
+            entry["rows"].append(row)
+        if layer == "rip":
+            heard = [(s.get("gateway", ""), s.get("last_update", "?"))
+                     for s in mine.get("rip") or []]
+        else:
+            heard = [(h.get("address", ""), h.get("interface", ""))
+                     for h in mine.get("ripng") or []]
+        for addr, extra in heard:
+            try:
+                peer = owners.get(ipaddress.ip_address(addr), "")
+            except ValueError:
+                peer = ""
+            if peer and (peer in explained or layer == "ripng"):
+                continue
+            if layer == "ripng" and any(r["state"] == "up" and r["via"] == extra
+                                        for r in entry["rows"]):
+                continue                    # a link-local hop an adjacency already places
+            entry["rows"].append({
+                "proto": layer, "peer": peer, "managed": bool(peer), "rid": "",
+                "address": addr, "via": extra if layer == "ripng" else "",
+                "state": "unexpected", "up": True, "at_iso": at,
+                "words": (f"heard, last update {extra} before the read" if layer == "rip"
+                          else f"heard on {extra}") + ", not implied by intent"})
+        out.append(entry)
+    return out
+
+
+def _with_rip(view: dict, intents: dict, host: str, list_name: str) -> dict:
+    """*view* with *host*'s RIP and RIPng entries appended and counted (never raises)."""
+    try:
+        from modules.readers.topology_graph import rip_answer
+        lists, error = rip_answer()
+        entries = rip_protocols(intents, host, lists.get(list_name) or {}, error)
+    except Exception as exc:                          # noqa: BLE001 - said, never raised
+        log.warning("neighbours: RIP for %s could not be drawn: %s", host, exc)
+        view["errors"].append(f"RIP could not be read: {exc}")
+        return view
+    counts = view.setdefault("counts", {})
+    for e in entries:
+        for row in e["rows"]:
+            if row["state"] in ("up", "down", "not_seen", "unexpected"):
+                counts[row["state"]] = counts.get(row["state"], 0) + 1
+    view["protocols"] = list(view.get("protocols") or []) + entries
+    return view
+
+
 def for_device(ref, dev: dict) -> dict:
     """The Neighbours tab's view for one device: committed intent (two git
-    reads) and four Prometheus instant queries filtered to the device. Never
-    raises; every source that could not be read is said."""
+    reads), four Prometheus instant queries filtered to the device, and the RIP
+    reader's stored answer for RIP and RIPng (C12). Never raises; every source
+    that could not be read is said."""
     from modules.integrations.prometheus import PrometheusIntegration
 
     host = dev.get("hostname", "")
-    view = {"device": host, "errors": [], "protocols": [], "counts": {}, "configured": True,
-            "rip": False}
+    view = {"device": host, "errors": [], "protocols": [], "counts": {}, "configured": True}
     intents, err = committed_intents(ref.repo_dir)
     if err:
         view["errors"].append(err)
-    view["rip"] = bool(((intents.get(host) or {}).get("routing") or {}).get("rip"))
     if host not in intents:
         view["no_intent"] = True
     prom = PrometheusIntegration()
     if not prom.is_configured():
         view["configured"] = False
-        return view
+        return _with_rip(view, intents, host, ref.name)
     results, up = {}, {}
     label = host.replace("\\", "\\\\").replace('"', '\\"')
     for metric in [m for _j, m in SERIES.values()] + ["up"]:
@@ -470,7 +596,7 @@ def for_device(ref, dev: dict) -> dict:
         else:
             results[metric] = rows
     if view["errors"] and not results and not up:
-        return view
+        return _with_rip(view, intents, host, ref.name)
     import time
     view.update(compare(intents, host, results, up, now=time.time()))
-    return view
+    return _with_rip(view, intents, host, ref.name)
