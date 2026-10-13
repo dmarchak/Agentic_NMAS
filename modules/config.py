@@ -567,30 +567,8 @@ AUTO_OPEN_BROWSER = False if _HEADLESS else bool(
     _env_or_setting("NMAS_AUTO_OPEN_BROWSER", "auto_open_browser", True)
 )
 
-# File transfer settings
-# The historical default was the Windows path "C:/TFTP-Root". Combined with the
-# import-time makedirs below, that created a literal directory named "C:" in the
-# project root on Linux.
-_DEFAULT_TFTP_ROOT = "C:/TFTP-Root" if IS_WINDOWS else "/srv/tftp"
-TFTP_ROOT = _env_or_setting("NMAS_TFTP_ROOT", "tftp_root", _DEFAULT_TFTP_ROOT)
-
-# TFTP server IP — no default address: a hardcoded one is wrong on every network
-# but the one it came from. Set it in Settings.
-
-
-def ensure_tftp_root() -> str:
-    """Create the TFTP root on first use and return it.
-
-    Deliberately not done at import time: importing a config module should not
-    create directories, least of all from a path belonging to another OS.
-    """
-    try:
-        os.makedirs(TFTP_ROOT, exist_ok=True)
-    except OSError as exc:
-        import logging
-        logging.getLogger(__name__).warning(
-            "config: could not create TFTP root '%s': %s", TFTP_ROOT, exc)
-    return TFTP_ROOT
+# The TFTP root (`NMAS_TFTP_ROOT`, the `tftp_root` setting) left with its last readers, the
+# device and bulk file routes (D16, 2026-10-13; restore point tag pre-remove/tftp-root).
 
 # File transfer method: 'tftp' or 'scp'
 # SCP is more reliable and secure but requires SCP to be enabled on the device

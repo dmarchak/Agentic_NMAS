@@ -33,19 +33,13 @@ class TestTftpRoot:
         else:
             assert default.startswith("/")
 
-    def test_ensure_tftp_root_is_explicit(self, monkeypatch, tmp_path):
-        from modules import config
-        target = tmp_path / "tftp"
-        monkeypatch.setattr(config, "TFTP_ROOT", str(target))
-        assert not target.exists()
-        assert config.ensure_tftp_root() == str(target)
-        assert target.is_dir()
-
-    def test_ensure_tftp_root_survives_unwritable_path(self, monkeypatch):
-        """An unusable TFTP path must warn, not raise."""
-        from modules import config
-        monkeypatch.setattr(config, "TFTP_ROOT", "/proc/nonexistent/tftp")
-        assert config.ensure_tftp_root() == "/proc/nonexistent/tftp"
+    def test_the_tftp_root_left_with_its_readers(self):
+        """The TFTP root (`NMAS_TFTP_ROOT`, `tftp_root`) left with the device and bulk file
+        routes, its last readers (D16, 2026-10-13; tag pre-remove/tftp-root). The setting is
+        RETIRING for one release; nothing in the app reads or creates the folder."""
+        from modules import config, settings_scope
+        assert not hasattr(config, "TFTP_ROOT") and not hasattr(config, "ensure_tftp_root")
+        assert settings_scope.SCOPES["tftp_root"][0] == settings_scope.RETIRING
 
     def test_no_hardcoded_tftp_server_ip(self):
         """The old default was one specific lab's address."""

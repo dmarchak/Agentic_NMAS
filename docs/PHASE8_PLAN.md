@@ -289,6 +289,11 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | 8 | Not yet decided: the CLAUDE.md block is the operator's to paste. |
 | 9 | Not yet decided: the owner of each feature. |
 
+**Noted 2026-10-13 (the operator, with D15's removal):** today's Approvals screen leaves with the
+AI family; a drift row points to its own Capture and Deploy (C739), and `approval_queue` stays
+internally. **The AI change-request queue (8.0) therefore needs its own approvals view,
+designed fresh then** (a board first), not today's screen revived.
+
 The rest of IBN_DESIGN section 9, decided the same day: per-policy authority yes; auto-fix
 only management-plane configuration (logging hosts, SNMP, NTP, IP SLA probes), never routing,
 interface state, ACLs, AAA or credentials, or s3 and the management path; Translate's first

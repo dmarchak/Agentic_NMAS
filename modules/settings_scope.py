@@ -68,7 +68,7 @@ SCOPES: dict = {
     **_group(HOST, "platforms", "platform_map", "platform_default_netmiko_type"),
     # C724: keyed by credential profile, which is the installation's (as the profiles are).
     **_group(HOST, "credential_rotation", "credential_rotation_policies"),
-    **_group(HOST, "web_server", "flask_host", "flask_port", "auto_open_browser", "tftp_root"),
+    **_group(HOST, "web_server", "flask_host", "flask_port", "auto_open_browser"),
     **_group(HOST, "ai", "ai_enabled", "background_agent_enabled"),
     **_group(HOST, "workflow", "wf_auto_backup", "wf_read_first", "wf_require_approval",
              "wf_save_golden", "wf_update_vars"),
@@ -99,7 +99,7 @@ SCOPES: dict = {
              "topology_service_token", "topology_service_verify_tls"),
     # The TFTP setting, retired at 7.8 (D16, 2026-10-13): its last readers, the device and bulk
     # file routes, left the same day; declared for one release, as Oxidized's keys are.
-    **_group(RETIRING, "tftp_setting", "tftp_server_ip"),
+    **_group(RETIRING, "tftp_setting", "tftp_server_ip", "tftp_root"),
     # ── Already dead, recorded (never split) ─────────────────────────────────────────────
     **_group(DEAD, "dead", "jenkins_step_shell", "wf_run_jenkins",
              "netbox_remove_on_list_delete", "oxidized_rest_url", "grafana_embed_mode",

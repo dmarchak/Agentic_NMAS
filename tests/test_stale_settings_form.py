@@ -113,11 +113,11 @@ class TestTheGeneralBlock:
         stale = client.get("/settings/integrations/general").get_json()["settings"]
         fresh = client.get("/settings/integrations/general").get_json()["settings"]
         assert client.post("/settings/integrations/general",
-                           json={"tftp_root": "/srv/a", "loaded": fresh}).get_json()["ok"]
+                           json={"flask_host": "127.0.0.1", "loaded": fresh}).get_json()["ok"]
         r = client.post("/settings/integrations/general",
-                        json={"tftp_root": "/srv/b", "loaded": stale})
-        assert r.status_code == 409 and r.get_json()["moved"] == ["tftp_root"]
-        assert _stored("tftp_root") == "/srv/a"
+                        json={"flask_host": "0.0.0.0", "loaded": stale})
+        assert r.status_code == 409 and r.get_json()["moved"] == ["flask_host"]
+        assert _stored("flask_host") == "127.0.0.1"
 
     def test_the_block_sends_only_what_changed(self):
         js = shipped("partials__settings_integrations.1.js")

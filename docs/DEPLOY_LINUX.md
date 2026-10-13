@@ -253,7 +253,6 @@ WorkingDirectory=/home/nmas/agentic-nmas
 Environment="NMAS_HEADLESS=1"
 Environment="NMAS_HOST=127.0.0.1"
 Environment="NMAS_PORT=5000"
-Environment="NMAS_TFTP_ROOT=/srv/tftp"
 ExecStart=/home/nmas/agentic-nmas/.venv/bin/python app.py
 Restart=on-failure
 RestartSec=5

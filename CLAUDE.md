@@ -35,7 +35,7 @@ A Flask application that manages, automates and monitors Cisco IOS and IOS-XE de
 rendered through templates, previewed as an exact program, confirmed by hash, pushed merge-only,
 verified, rolled back on failure, and recorded. Single host; identity comes from an access
 proxy's verified assertion. **Stack:** Python 3.10+ (CI 3.12.3), Flask, Flask-SocketIO, Netmiko,
-the Anthropic API, NetBox, Grafana/Prometheus/Loki, Oxidized, Kea. The v2 interface
+NetBox, Grafana/Prometheus/Loki, Kea. The v2 interface
 (`templates/v2/`, vendored htmx and Alpine, strict CSP) replaces today's Bootstrap pages at
 cutover. Jenkins was removed in P.4.
 
@@ -327,9 +327,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 
 ## Module map (compact; full map in docs/ARCHITECTURE.md)
 
-- **Legacy core:** `app.py` (routes, SocketIO; new routes go in `routes/`), `modules/ai_assistant.py`,
-  `agent_runner.py` (off until Stage 8), `netbox_client.py` (three write chokepoints), `topology.py`,
-  `pipeline.py` (the 9-stage deploy every deploy and restore runs), `configure.py`, collectors.
+- **Legacy core:** `app.py` (routes, SocketIO; new routes go in `routes/`), `netbox_client.py`
+  (three write chokepoints), `pipeline.py` (the 9-stage deploy every deploy and restore runs),
+  `configure.py`.
 - **Stores and safety:** `settings_schema.py`, `secrets_store.py`, `credentials.py`, `filestore.py`,
   `netbox_guard.py`, `netbox_authz.py`, `outbound.py`, `redact.py`, `identity.py`, `route_gates.py`,
   `csp.py`, `readonly_commands.py`, `connection.py` (`open_ssh`), `config_read.py`, `fanout.py`,
@@ -370,9 +370,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Identity:** a verified access assertion AND a trusted peer; no localhost exemption.
 - **Redaction** at the provider boundary, on every log handler, and on every response carrying
   config. The approval queue resolves nothing without a person.
-- **Environment:** `NMAS_HOST`, `NMAS_PORT` (5000), `NMAS_HEADLESS=1`, `NMAS_TFTP_ROOT`; deployment is
-  headless Ubuntu (docs/DEPLOY_LINUX.md). The AI agent changes no device (read-only allowlist);
-  Stage 8 makes it a responder that proposes and never confirms.
+- **Environment:** `NMAS_HOST`, `NMAS_PORT` (5000), `NMAS_HEADLESS=1`; deployment is
+  headless Ubuntu (docs/DEPLOY_LINUX.md). Phase 8 brings AI back as a responder that proposes
+  and never confirms (docs/PHASE8_PLAN.md).
 
 ## Running the App
 
@@ -496,4 +496,3 @@ pytest                    # unconfined; says so in its header
   surfaced or documented in docs/SETTINGS.md. [tests/test_settings_write_path.py]
 - Return `{"ok": bool, "error": str, ...}`; module-level `log = logging.getLogger(__name__)`;
   `pathlib`/`os.path`; every integration call logs and surfaces its failure. [not mechanised]
-- `.env` holds `ANTHROPIC_API_KEY` (plaintext by design, gitignored).

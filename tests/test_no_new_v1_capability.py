@@ -28,7 +28,7 @@ FUNCTIONS_CEILING = 384   # 2026-10-12: applyDeviceRegions and refreshDeviceRegi
 #: Fields a person can fill on today's pages: form elements in its templates, and the
 #: settings fields its scripts draw from a spec (`{key: '<setting>', ...}`), less the
 #: recorded exceptions below. Measured 2026-10-03 (261 elements and 68 spec fields).
-FIELDS_CEILING = 122   # 2026-10-13: the TFTP setting left (7.8, D16). Before: 2026-10-13: Bulk file actions left (7.8, D16). Before: 2026-10-13: Device files left (7.8, D16). Before: 2026-10-12: the topology service's Settings card left (7.8). Before: today's Topology tab left (7.8). Before: the topology service panel's interval left (7.8). Before: the Monitoring tab's forms left (7.8). Before: the Configure tab's forms left (7.8). Before: 2026-10-08: the Oxidized settings card left (Phase 3). Before: 2026-10-04: the KB's dynamic form left with it
+FIELDS_CEILING = 121   # 2026-10-13: the TFTP root field left (7.8, D16). Before: 2026-10-13: the TFTP setting left (7.8, D16). Before: 2026-10-13: Bulk file actions left (7.8, D16). Before: 2026-10-13: Device files left (7.8, D16). Before: 2026-10-12: the topology service's Settings card left (7.8). Before: today's Topology tab left (7.8). Before: the topology service panel's interval left (7.8). Before: the Monitoring tab's forms left (7.8). Before: the Configure tab's forms left (7.8). Before: 2026-10-08: the Oxidized settings card left (Phase 3). Before: 2026-10-04: the KB's dynamic form left with it
 
 #: RECORDED EXCEPTIONS to the rule, each a v1 settings field by its key, with its reason and
 #: where it goes at cutover. A field is excepted only by the operator's decision.

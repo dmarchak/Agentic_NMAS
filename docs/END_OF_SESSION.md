@@ -99,10 +99,21 @@ The host runs c40d9440 (deployed 18:43:57 UTC, CI #740).
    - Loki keeps 2 y and allows 30 d an ask; Prometheus keeps 90 d.
 3. **Boards still waiting:** C589 AdjacencyTransient; C537/C538's TopBarDesktop, TopBarPhone,
    Reattach, FinishJob and BatchExpected.
-4. **CLAUDE.md:** remove `` `NMAS_TFTP_ROOT` `` from Environment. Not in the file yet; the code
-   removal follows the paste.
-5. **s3's manual rotation:** planned with the operator after the Oxidized retire, break-glass
-   export first.
+4. **CLAUDE.md:** DONE 2026-10-13. The operator pasted the Environment line (and the D15
+   lines), and the TFTP root's code left in the same commit (tag `pre-remove/tftp-root`).
+5. **s3's manual rotation: CLOSED 2026-10-13.** Run by the operator, step by step:
+   - a break-glass export first (22:13:01 UTC, intact);
+   - the console fallback tested (`s3>` straight after the banner; no `enable` secret on s3,
+     and `line con 0` has no settings);
+   - the rotation from s3's device page at 22:28:56 UTC, verified, recorded, and persisted in
+     the same job at 22:29:58;
+   - a new export at 22:30:50, intact; the 22:13 record retired.
+
+   Read back by the agent: the break-glass card says "Every device's credential in use is in
+   the record exported 2026-10-13T22:30:50Z", and Needs attention holds no row.
+
+   The records also show an earlier device-page rotation of s3 at 16:16:49 UTC, persisted at
+   16:17:15, so the 09-21 password was already retired then.
 6. **Next, by the operator's order:** D15's removal after its archive, Backups (C632 first),
    then today's pages.
 
@@ -158,7 +169,7 @@ before each).
    addresses 1 day valid / 12 h preferred through the client class `mercury-reserved`, pools 4 h
    / 2 h, management 7 days, discovery's 300 s unchanged. Measured: every lease today lasts 365
    days.
-7. **A CLAUDE.md line, to retire the TFTP root:** its last readers left with the file families
+7. **(DONE 2026-10-13, item 4 above.) A CLAUDE.md line, to retire the TFTP root:** its last readers left with the file families
    tonight (app.py imports `TFTP_ROOT` and `ensure_tftp_root` and uses neither). In Key
    architecture › Environment, replace
    `` `NMAS_HOST`, `NMAS_PORT` (5000), `NMAS_HEADLESS=1`, `NMAS_TFTP_ROOT`; `` with

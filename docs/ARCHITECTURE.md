@@ -1845,8 +1845,6 @@ Development is Windows 11; the deployment target is headless Ubuntu. See
 | Bind host | `NMAS_HOST` | `0.0.0.0` |
 | Port | `NMAS_PORT` | `5000` |
 | Auto-open browser | `NMAS_HEADLESS=1` disables | on |
-| TFTP root | `NMAS_TFTP_ROOT` | `C:/TFTP-Root` on Windows, `/srv/tftp` elsewhere |
-
-`config.py` no longer creates the TFTP root at import time. Call
-`config.ensure_tftp_root()` at the point of use instead.
+The TFTP root (`NMAS_TFTP_ROOT`, `tftp_root`) left on 2026-10-13 with its last readers, the
+device and bulk file routes (D16; tag `pre-remove/tftp-root`).
 

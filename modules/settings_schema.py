@@ -100,6 +100,8 @@ DEFAULTS: dict = {
     "auto_open_browser": True,
 
     # ── File transfer ───────────────────────────────────────────────────────
+    # RETIRING (settings_scope; restore point pre-remove/tftp-root): nothing reads it since the
+    # file routes left (D16); declared one release so a rollback finds it.
     "tftp_root":      _default_tftp_root(),
 
     # ── Keys the Settings form has always written, now declared ────────────

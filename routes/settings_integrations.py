@@ -115,12 +115,11 @@ def integration_status():
 def general_settings():
     """Settings that are not tied to one integration.
 
-    Server bind, browser auto-open, TFTP, collector toggles,
+    Server bind, browser auto-open, collector toggles,
     monitoring identity mapping, and the PromQL query templates.
     """
     keys = (
         "flask_host", "flask_port", "auto_open_browser",
-        "tftp_root",
         "collector_trap_enabled", "collector_netflow_enabled",
         "collector_syslog_enabled",
         "monitoring_identity_mode", "monitoring_identity_field",

@@ -84,9 +84,12 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   `pre-remove/tftp-setting`; C616): its last readers, the device and bulk file routes, left the
   same day. Today's device table lost its TFTP server row and script, today's Settings its
   Network section (the one field), and the integrations payload the field; `tftp_server_ip` is
-  RETIRING (declared one release, as Oxidized's keys). **`tftp_root` stays**: it is also the
-  `NMAS_TFTP_ROOT` environment setting CLAUDE.md names, so it leaves with the operator's
-  CLAUDE.md change (C616).
+  RETIRING (declared one release, as Oxidized's keys). **`tftp_root` stayed** until the
+  operator's CLAUDE.md change (C616), then left the same day (restore point tag
+  `pre-remove/tftp-root`): `config.TFTP_ROOT` and `ensure_tftp_root()` (app.py imported both
+  and used neither), today's Settings field "TFTP root" and its payload key; `tftp_root` is
+  RETIRING beside `tftp_server_ip`. Proved before removal: nothing read either (the host's
+  unit sets no `NMAS_TFTP_ROOT`, and `/srv/tftp` does not exist on the host).
 - **Bulk file actions** (/bulk_tftp_upload, /bulk_tftp_download, /bulk_download_config,
   /bulk_delete_file), 2026-10-13 (D16; restore point tag `pre-remove/bulk-file-actions`): as
   device files. Today's device table lost its upload, download, config-download and delete
