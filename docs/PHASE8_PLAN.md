@@ -48,6 +48,17 @@ the deterministic core unchanged and Mercury fully usable offline.**
    - a change asked for by a role without propose permission changes nothing and is offered as
      a change request;
    - separation of duties is a per-network setting, off by default.
+6. **The model is an untrusted component** (IBN_DESIGN section 13; the operator's decision 14).
+   A fully compromised model can do nothing the person could not already do:
+   - identity only from the verified Access assertion (verified server-side today:
+     `identity.identify`);
+   - tools fixed per role before the call, each re-checking `may` as the person and auditing
+     denials;
+   - approval only by confirm;
+   - output validated by schema, then authorisation, then the change gates;
+   - no acting tools against network data;
+   - no external links or internet tools;
+   - a red-team eval set whose any non-zero result blocks the release.
 
 ## 3. The AI feature card
 
@@ -117,7 +128,7 @@ service (CLAUDE.md), so CI cannot call a model. Evals run two ways:
 
 | Sub-phase | Builds | Exit criteria (measured on the host) |
 |---|---|---|
-| **8.0 Foundations** (no user-facing AI) | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (multi-provider, a per-network switch, cost caps, a local-model option); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
+| **8.0 Foundations** (no user-facing AI) | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (multi-provider, a per-network switch, cost caps, a local-model option); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
 | **8.1 Assure** | the deterministic verifier model and compliance status first (history on E18); then, where cards justify it, natural-language questions → PromQL or LogQL read back by the E3/F3 builder before running, and alert correlation over deterministically grouped alerts | the verifiers' statuses on the host match the readers'; each AI feature past its observe threshold, or killed |
 | **8.2 Respond, observe** | the golden state rule's maintainer (IBN_DESIGN section 11): no baseline, no autonomy; convergence of the deviating lines only; the operational catalog; holds, windows and Capture-or-Revert for attributed drift; its state on Needs attention and each device page (a board first). All in observe mode ("would have converged"), on the deterministic policy engine (rotation's pattern). Plus AI root-cause proposals for novel deviations, approved by a person; incident record drafts; AI classification of deliberate vs unexplained drift, with evidence | each class's false-positive rate measured over its period; no convergence would have touched a secret line, the management path or routing; root-cause proposals' confirmed-true rate measured |
 | **8.3 Respond, enabled per class** | convergence and catalog classes enabled once observe mode meets the threshold; a verified action re-earns the baseline; AI selection only among actions that leave the golden state unchanged, if decision 9 is confirmed, after its own observe period | each enabled class within its rate and with no rail breached for its period |
@@ -216,6 +227,10 @@ Each line is the card's summary. Every number is a proposal for the operator (se
   from the asking person's role (TOOLS_BY_ROLE), every call runs on their behalf, approval is
   only the GUI's confirm by hash, and reveal is never an AI tool (IBN_DESIGN section 12).
   [to be mechanised in 8.0]
+- **The model is an untrusted component:** identity only from the verified session; tools fixed
+  per role, each re-checking `may` as the person; no AI output approves; no AI tool reaches the
+  internet; a red-team eval with any non-zero result blocks a release (IBN_DESIGN section 13).
+  [to be mechanised in 8.0]
 - **Deterministic first:** an AI feature's card shows why a rule, query, template or builder
   cannot do it; if one can, build that. [not mechanised]
 - **Offline parity:** every workflow works with the AI gateway off. [to be mechanised in 8.0]
@@ -251,8 +266,10 @@ Each line is the card's summary. Every number is a proposal for the operator (se
       three attempts in 24 hours, or an injection flag);
    5. separation of duties per network, off by default;
    6. the change-request board.
-5. **Providers and a local model:** which hosted providers; whether a local model is required.
-6. **The ranking:** which of section 6's candidates proceed to boards and cards first
+5. **Decision 14 of IBN_DESIGN, prompt-injection defence:** its eight items. The release gate:
+   any non-zero red-team result blocks a release.
+6. **Providers and a local model:** which hosted providers; whether a local model is required.
+7. **The ranking:** which of section 6's candidates proceed to boards and cards first
    (proposed: 1 and 2, in 8.1).
-7. **The CLAUDE.md block:** paste it (the operator's file), or change it.
-8. **The owner of each feature.**
+8. **The CLAUDE.md block:** paste it (the operator's file), or change it.
+9. **The owner of each feature.**

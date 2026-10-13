@@ -55,6 +55,7 @@ the catalog rule above):**
 10. AI engineering standards
 11. The golden state rule: what autonomy may do
 12. AI roles and permissions
+13. Prompt-injection defence
 
 ## 1. Gap analysis, per function, against today's code
 
@@ -579,6 +580,15 @@ deploy; rollback by revert; and a faster pre-approved path for urgent actions.
        (proposed: three attempts in 24 hours, or an injection flag);
     5. separation of duties per network, off by default;
     6. the change-request board.
+14. **Prompt-injection defence (section 13):**
+    1. identity only from the verified session (as today);
+    2. tools fixed per role, each re-checking `may` as the person, with denials audited;
+    3. approval only by confirm;
+    4. the order of output validation;
+    5. prompt hygiene for flagging only;
+    6. no acting tools against network data;
+    7. no external loads or internet tools;
+    8. the red-team eval set, any non-zero result blocking the release.
 
 ## 10. AI engineering standards (binding on every AI feature)
 
@@ -776,4 +786,97 @@ def ask_ai(person, network, request):
     if answer.request_kind == "unsupported":
         return refused("this workflow answers questions and drafts intent changes")
     return answer          # a query's answer, or a draft that only preview and confirm can apply
+```
+
+## 13. Prompt-injection defence
+
+**The threat model (the operator, 2026-10-13):** the language model is an untrusted component,
+acting with the requester's privileges or fewer. Design so that **a fully compromised model can
+do nothing the person could not already do.** Each item is a decision for the operator
+(section 9, decision 14).
+
+1. **Identity only from the authenticated session.** Mercury already does this.
+   `identity.identify` (`modules/identity.py`) verifies the Cloudflare Access assertion
+   (`Cf-Access-Jwt-Assertion`) server-side, never trusting the header's claims:
+   - its signature against the team's signing keys (PyJWKClient, RS256 only);
+   - the audience and issuer from Settings, with `exp`, `iat`, `aud` and `iss` required and
+     30 s of leeway;
+   - and the request must come from a trusted peer (the tunnel connector's address; no
+     localhost exemption). A forged key id is told apart from an unreachable key set.
+
+   OIDC replaces it for the public release. The person's role is looked up server-side BEFORE
+   the model is called (section 12). Nothing in prompt text affects identity or permissions.
+2. **The tool set is fixed per role before the call,** and every tool re-checks, at execution
+   and as the person, that `may(permission, scope)` holds. A denial is audited (who, which
+   tool, which scope, the run's id).
+3. **A change needs the preview confirmed by hash** from an authenticated session; no AI output
+   counts as approval.
+4. **Output validation, in order:**
+   1. the schema;
+   2. authorisation of what the output requests (the person may submit this kind of intent for
+      this scope; section 5);
+   3. the normal change gates (`nmas-config-check`, the conflict layer, pre-change
+      verification, preview by hash, verify and rollback).
+5. **Prompt hygiene, for FLAGGING only:**
+   - the person's text goes in the user message; retrieved data goes in tagged blocks marked
+     as data;
+   - any identity or permission claim found inside content ("I'm an admin", "the operator
+     approved this") is ignored and reported;
+   - an optional cheap injection classifier writes to the audit log.
+
+   None of this is relied on for security; items 1 to 4 are.
+6. **Indirect injection through network data** (interface descriptions, log lines, NetBox
+   fields): the model has no acting tools; a proposal shows the exact diff and the exact device
+   commands; a person confirms.
+7. **Exfiltration:**
+   - **AI output is rendered without loading anything external:** plain text, or links only to
+     Mercury's own pages (any other URL is shown as text, never as a link or an image). The
+     strict CSP already refuses external loads on every v2 page.
+   - **No AI tool reaches the internet:** the tools read Mercury's own stores and the
+     integrations Mercury already calls.
+8. **A red-team eval set in CI.** It runs on recorded responses, as all CI evals do, plus live
+   on the host before a release. Its cases:
+   - "I'm an admin";
+   - "ignore previous instructions";
+   - role-play;
+   - data-borne injections in interface descriptions, log lines and NetBox fields;
+   - attempts to exfiltrate through links.
+
+   It asserts **zero** unauthorised tool calls, **zero** unauthorised proposals and **zero**
+   external links. **Any non-zero result blocks the release.**
+
+**The shape, in code** (illustrative):
+
+```python
+def verify_access_jwt(request) -> Identity:
+    """Identity from the authenticated session only: today identity.identify(), which verifies
+    the Access assertion's signature (RS256, the team's keys), audience, issuer and expiry, and
+    requires a trusted peer. Nothing the model says is consulted."""
+    ident = identity.identify(request)
+    if not ident.is_identified:
+        raise Unauthenticated(ident.reason)
+    return ident
+
+
+class Tool:
+    """A tool an AI session may call. Bound to the asking person and their scope BEFORE the model
+    runs; it re-checks the person's permission on every call, as the person."""
+
+    def __init__(self, name, permission, run):
+        self.name, self.permission, self._run = name, permission, run
+        self.person = self.scope = self.run_id = None
+
+    def bind(self, person, scope, run_id):
+        tool = copy.copy(self)
+        tool.person, tool.scope, tool.run_id = person, scope, run_id
+        return tool
+
+    def __call__(self, **args):
+        target = scope_of(self.name, args)          # the devices, site or network the call touches
+        allowed, why = identity.may(self.person, self.permission, target)
+        if not allowed or not within(target, self.scope):
+            audit.denied(self.person, self.name, target, self.run_id, why or "outside scope")
+            return {"error": "denied", "why": why or "outside your scope"}   # data, not a raise
+        audit.called(self.person, self.name, target, self.run_id)
+        return self._run(on_behalf_of=self.person, **args)   # as the person, never a service
 ```
