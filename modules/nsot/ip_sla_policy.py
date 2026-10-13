@@ -279,9 +279,9 @@ def cost_words(platform: str, frequency: int, probes: int = 1) -> str:
 
 #: The device's own frequency for an operation that sets none, which it then does not print
 #: (C713). Measured on vIOS: s2's `ip sla 1` was sent with ` frequency 60` and its running
-#: config shows no frequency line; on IOS-XE the same default is not yet measured, and the
-#: scoped deploy's verify (`compare`) fails, naming the line, if it reads back otherwise.
-DEVICE_DEFAULT_FREQUENCY = 60
+#: config shows no frequency line. Owned by `platform_defaults` (C14), the one table every
+#: comparison asks.
+from modules.nsot.platform_defaults import DEVICE_DEFAULT_FREQUENCY  # noqa: E402
 
 
 def operation(platform: str, op_id: int, target: str, source: str, frequency: int) -> dict:
@@ -304,11 +304,14 @@ def compare(intended: str, running: str) -> dict:
     in intent. Both empty: the device IS its rendered intent here. What a scoped deploy that
     sends IP SLA lines verifies afterwards (C713), both ways, since a line the device prints
     differently fails as surely as one that never landed."""
+    from modules.nsot import platform_defaults
     from modules.nsot.profile_apply import _keyed
 
     def leaves(text):
+        # A default the device does not print is left out of both sides (C14).
         return {(tuple(" ".join(c.split()) for c in chain), " ".join(line.split()))
-                for chain, line in _keyed(text) if is_ip_sla_line(chain, line)}
+                for chain, line in _keyed(platform_defaults.strip(text))
+                if is_ip_sla_line(chain, line)}
 
     def shown(k):
         return " > ".join(list(k[0]) + [k[1]])

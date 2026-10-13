@@ -392,8 +392,11 @@ def canonical_lines(text: str) -> list:
     # it, every unrenderable line in the capture reads as a difference from a
     # render that could never have contained it. `strip_for_diff` then
     # normalises for comparison and drops bare `!` separators.
-    stripped = normalize.strip_for_diff(
-        "\n".join(normalize.strip_for_roundtrip(text or "")))
+    # Then the lines a device holds without printing at their default (C14,
+    # `platform_defaults`): left out of both sides, so intent that states one is not "ahead".
+    from modules.nsot import platform_defaults
+    stripped = normalize.strip_for_diff(platform_defaults.strip(
+        "\n".join(normalize.strip_for_roundtrip(text or ""))))
     sections = _sections("\n".join(stripped))
     out = []
     for path in sorted(sections):

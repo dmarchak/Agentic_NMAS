@@ -189,7 +189,7 @@ def classify_diff(target_config: str, running_config: str) -> dict:
     Only ``residue`` is untouched by the push, so only ``residue`` may be
     reported as "will not be removed".
     """
-    from modules.nsot import ifnames
+    from modules.nsot import ifnames, platform_defaults
 
     def _index(text):
         precise, broad, verbatim, negations, prefixes = {}, {}, set(), {}, {}
@@ -228,6 +228,10 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         if (chain_key, canonical) in run_verbatim:
             continue
         current = _counterpart(chain_key, canonical, run_index)
+        if current is None and platform_defaults.hidden(leaf.chain, line):
+            # At the device's default, which it does not print (C14): satisfied, never sent
+            # again on every deploy. A counterpart printing another value is still a replace.
+            continue
         if current is None:
             add.append(line)
         else:

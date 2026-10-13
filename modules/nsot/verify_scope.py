@@ -97,7 +97,7 @@ def read_back(commands: list, running: str) -> dict:
     the device's default, and Mode B's removals are verified on their own);
     a line in a secret's position (the device stores it transformed, `secret
     0` as `secret 9`); a banner (the device prints its own delimiter)."""
-    from modules.nsot import ifnames
+    from modules.nsot import ifnames, platform_defaults
     from modules.nsot.deploy import config_leaves, program_leaves
     from modules.redact import redact_positional
 
@@ -119,6 +119,10 @@ def read_back(commands: list, running: str) -> dict:
         elif family(top) == "banners":
             skipped.append({"line": shown, "why": "a banner reads back in the device's "
                                                   "own delimiter"})
+        elif platform_defaults.hidden(leaf.chain, line) and \
+                key(leaf.chain, leaf.line) not in held:
+            # Printed only when not at its default (C14): absent is its default, not a miss.
+            skipped.append({"line": shown, "why": platform_defaults.hidden(leaf.chain, line)})
         else:
             checked += 1
             if key(leaf.chain, leaf.line) not in held:

@@ -175,18 +175,35 @@ class TestThePipelineRunsTheScopedVerify:
 
     def test_an_ip_sla_deploy_fails_verify_when_the_device_is_not_its_rendered_intent(
             self, world):
+        """A frequency NOT at the default (30 s) that the device does not show did not land:
+        no hidden default excuses it (C14 leaves out only the default's own line)."""
+        sent = [l.replace("frequency 60", "frequency 30") for l in self.SLA_SENT]
         ctx, clock = world(_summary(), config=R3 + "\n" + self.SLA_AS_PRINTED)
-        ctx.rendered_commands = {"x": self.SLA_SENT}
-        ctx.expect_ip_sla = {"x": R3 + "\n" + "\n".join(l for l in self.SLA_SENT
-                                                        if l != "exit") + "\n"}
+        ctx.rendered_commands = {"x": sent}
+        ctx.expect_ip_sla = {"x": R3 + "\n" + "\n".join(l for l in sent if l != "exit") + "\n"}
         with pytest.raises(pipeline.PipelineStageError):
             pipeline._stage_verify(ctx)
         v = ctx.verify_result["x"]
         assert v["ok"] is False
-        assert v["ip_sla_against_intent"] == {"missing": ["ip sla 9 > frequency 60"],
+        assert v["ip_sla_against_intent"] == {"missing": ["ip sla 9 > frequency 30"],
                                               "extra": []}
-        assert ("IP SLA: intent's `ip sla 9 > frequency 60` is not on the device after the "
+        assert ("IP SLA: intent's `ip sla 9 > frequency 30` is not on the device after the "
                 "push") in v["issues"]
+        assert v["read_back"]["missing"] == ["ip sla 9 > frequency 30"]
+
+    def test_the_default_frequency_sent_and_not_printed_passes(self, world):
+        """C14: s2's own case (C713). ` frequency 60` sent, the device prints no frequency
+        line: that IS its default, so the IP SLA comparison and the read-back agree it landed,
+        the read-back naming why it skipped the line."""
+        ctx, clock = world(_summary(), config=R3 + "\n" + self.SLA_AS_PRINTED)
+        ctx.rendered_commands = {"x": self.SLA_SENT}
+        ctx.expect_ip_sla = {"x": R3 + "\n" + "\n".join(l for l in self.SLA_SENT
+                                                        if l != "exit") + "\n"}
+        pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert v["ok"] is True and v["ip_sla_against_intent"] == {"missing": [], "extra": []}
+        assert [s["line"] for s in v["read_back"]["skipped"]] == ["ip sla 9 > frequency 60"]
+        assert "default" in v["read_back"]["skipped"][0]["why"]
 
     def test_an_ip_sla_deploy_whose_device_is_its_rendered_intent_passes(self, world):
         ctx, clock = world(_summary(), config=R3 + "\n" + self.SLA_AS_PRINTED)

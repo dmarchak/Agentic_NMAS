@@ -460,10 +460,12 @@ class TestTheProbeIsWhatTheDevicePrints:
     captured as one text, and a scoped deploy whose device does not then equal its rendered
     intent fails verify."""
 
-    def test_s2_as_sent_and_as_printed_differ_by_the_default_frequency(self):
+    def test_s2_as_sent_and_as_printed_are_equal_the_default_unprinted(self):
+        """C14: s2's real pair differ only by ` frequency 60`, the default s2 does not print:
+        equal (C713 read it as missing, and failed a deploy that had landed)."""
         from modules.nsot import ip_sla_policy as P
         got = P.compare("\n".join(S2_SENT), "\n".join(S2_PRINTED))
-        assert got == {"missing": ["ip sla 1 > frequency 60"], "extra": []}
+        assert got == {"missing": [], "extra": []}
 
     def test_the_suggestion_for_s2_is_what_s2_prints(self):
         from modules.nsot import ip_sla_policy as P
@@ -511,9 +513,25 @@ class TestTheProbeIsWhatTheDevicePrints:
         assert P.compare(ctx.expect_ip_sla[ip], after) == {"missing": [], "extra": []}
 
     def test_a_suggestion_the_device_prints_otherwise_is_caught(self, lab, monkeypatch):
-        """The control: the suggestion's old form (a frequency at the default written out).
-        The flow carries it to the program, the device prints it otherwise, and the
-        comparison verify runs names the line."""
+        """The control: a frequency the device prints otherwise (the suggestion at 30 s, and
+        the device, modelled on s2's measured pair, dropping that line). The comparison verify
+        runs names the line; only the default's own line is excused (C14), never this."""
+        from modules.nsot import ip_sla_policy as P
+
+        def thirty(platform, op_id, target, source, frequency):
+            echo = f" icmp-echo {target}" + (f" source-interface {source}" if source else "")
+            return {"id": str(op_id), "settings": [echo, "  frequency 30"]}
+        monkeypatch.setattr(P, "operation", thirty)
+        ctx, ip = self._apply_context(lab, monkeypatch)
+        program = [l for l in ctx.confirmed_commands[ip] if "frequency 30" not in l]
+        after = _cfg("r2") + "\n" + _as_printed(program)
+        got = P.compare(ctx.expect_ip_sla[ip], after)
+        assert got["missing"] == [
+            "ip sla 2 > icmp-echo 10.255.1.24 source-interface Loopback0 > frequency 30"], got
+
+    def test_the_old_form_at_the_default_now_converges(self, lab, monkeypatch):
+        """C14: the suggestion's old form (` frequency 60` written out) compares equal to what
+        the device prints, as it should: the device holds exactly its default."""
         from modules.nsot import ip_sla_policy as P
 
         def old_form(platform, op_id, target, source, frequency):
@@ -522,9 +540,7 @@ class TestTheProbeIsWhatTheDevicePrints:
         monkeypatch.setattr(P, "operation", old_form)
         ctx, ip = self._apply_context(lab, monkeypatch)
         after = _cfg("r2") + "\n" + _as_printed(ctx.confirmed_commands[ip])
-        got = P.compare(ctx.expect_ip_sla[ip], after)
-        assert got["missing"] == [
-            "ip sla 2 > icmp-echo 10.255.1.24 source-interface Loopback0 > frequency 60"], got
+        assert P.compare(ctx.expect_ip_sla[ip], after) == {"missing": [], "extra": []}
 
 
 class TestCoverageLinksHere:
