@@ -17,7 +17,7 @@ What it refuses, and what it skips (each with its reason, kept in the run's reco
 
 * never inside the nightly backup window, 08:30 to 09:10 UTC (the whole run; a run that
   reaches it stops, the rest not reached);
-* the timer runs a policy only inside its preferred window, once a UTC day; a person's "Rotate
+* the timer runs a policy only inside its preferred window, once in any 24 hours; a person's "Rotate
   due devices now" runs every due device now (outside the preferred window too);
 * a device another operation holds (`device_ops`), or one mid-restart (a planned-restart
   window covering now, or a restart recorded in the last 10 minutes), is skipped;
@@ -440,7 +440,7 @@ def select(states: list, now=None, *, scheduled: bool, ran_today=()) -> tuple:
     """``(chosen, waiting)``: the due devices this run takes, oldest credential first (never
     rotated first), at most each policy's ``max_per_run``; and the due ones it leaves, each
     with why. A scheduled run takes a policy only inside its preferred window and only once a
-    UTC day (*ran_today*: the profiles a scheduled run already took today)."""
+    24 hours (*ran_today*: the profiles a scheduled run took in the last 24 hours, C724)."""
     now = _now(now)
     due = sorted((s for s in states if s.get("due")),
                  key=lambda s: (not s["never"], _epoch(s["rotated_at"]) or 0,
@@ -453,7 +453,7 @@ def select(states: list, now=None, *, scheduled: bool, ran_today=()) -> tuple:
                                        f"({policy_words(pol)})"))
             continue
         if scheduled and s["profile"] in ran_today:
-            waiting.append(dict(s, why=f"{s['profile']}'s scheduled run already ran today"))
+            waiting.append(dict(s, why=f"{s['profile']}'s scheduled run ran in the last 24 hours"))
             continue
         limit = int(pol.get("max_per_run", DEFAULT_MAX))
         if taken.get(s["profile"], 0) >= limit:
@@ -617,9 +617,9 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
                     f"the last run stopped on {f.get('device', '?')} at {f.get('stage', '?')} "
                     f"({last.get('finished')}): the timer starts no run until a person runs "
                     "Rotate due devices now on Credentials › Profiles"))
-        today = time.strftime("%Y-%m-%d", time.gmtime(started))
+        today = started - 86400            # a scheduled run per policy in any 24 h (C724)
         ran_today = {p for r in prior if r.get("trigger") == "scheduled"
-                     and str(r.get("started", "")).startswith(today)
+                     and (_epoch(r.get("started", "")) or 0) > today
                      and r.get("state") in DECISIVE for p in r.get("policies") or []}
         states = device_states(started)
         chosen, waiting = select(states, started, scheduled=trigger == "scheduled",
@@ -818,9 +818,9 @@ def tick(now=None) -> dict:
     if not pols or in_backup_window(now) or not any(in_window(p, now) for p in pols.values()):
         return {"ok": True, "state": "idle"}
     states = device_states(now)
-    today = time.strftime("%Y-%m-%d", time.gmtime(now))
+    today = now - 86400                    # a scheduled run per policy in any 24 h (C724)
     ran_today = {p for r in runs()["rows"] if r.get("trigger") == "scheduled"
-                 and str(r.get("started", "")).startswith(today)
+                 and (_epoch(r.get("started", "")) or 0) > today
                  and r.get("state") in DECISIVE for p in r.get("policies") or []}
     chosen, _w = select(states, now, scheduled=True, ran_today=ran_today)
     if not chosen:

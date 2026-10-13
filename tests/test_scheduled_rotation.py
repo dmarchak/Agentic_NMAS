@@ -8,7 +8,7 @@ the run.
 
 - the timer picks exactly the due devices: older than the policy, or never rotated by
   Mercury; not a device whose profile's policy is off, nor one no profile covers;
-- the preferred window, the per-run limit (oldest first), and once a UTC day;
+- the preferred window, the per-run limit (oldest first), and once in any 24 hours;
 - never in the nightly backup window (08:30 to 09:10 UTC), and a run that reaches it stops;
 - a held device, one mid-restart (a planned window) and one off its intent are skipped with
   the reason, and the rest still run;
@@ -143,7 +143,7 @@ def test_the_preferred_window_and_once_a_day():
     assert len(SR.select(states, outside, scheduled=False)[0]) == 2
     # Once a UTC day for a scheduled run.
     chosen, waiting = SR.select(states, inside, scheduled=True, ran_today={"role:router"})
-    assert chosen == [] and "already ran today" in waiting[0]["why"]
+    assert chosen == [] and "ran in the last 24 hours" in waiting[0]["why"]
 
 
 def test_a_window_past_midnight_wraps():
@@ -431,6 +431,23 @@ def test_the_timer_runs_only_when_a_policy_is_due_in_its_window(data, monkeypatc
     assert ran == []
     SR.tick(NOW)
     assert ran == [{"trigger": "scheduled", "now": NOW}]
+
+
+def test_a_scheduled_run_after_midnight_does_not_take_a_second_device(data, monkeypatch):
+    """The host, 2026-10-12: the timer took s1 at 23:56 UTC; under "once a UTC day" its tick
+    after 00:00 would have taken r2 too. One scheduled run per policy in any 24 hours."""
+    ran = []
+    monkeypatch.setattr(SR, "run", lambda **kw: ran.append(kw) or {"state": "done"})
+    states = _states()
+    monkeypatch.setattr(SR, "device_states", lambda now=None, **_k: states)
+    monkeypatch.setattr(SR, "policies", lambda: {"role:router": _policy()})
+    monkeypatch.setattr(SR, "runs", lambda: {"rows": [{
+        "trigger": "scheduled", "started": "2026-10-12T23:56:17Z", "state": "done",
+        "policies": ["role:router"]}]})
+    assert SR.tick(_at("2026-10-13T00:05:41Z"))["state"] == "idle" and ran == []
+    assert SR.tick(_at("2026-10-13T23:50:00Z"))["state"] == "idle" and ran == []
+    SR.tick(_at("2026-10-13T23:57:00Z"))
+    assert len(ran) == 1, "24 hours after the last, the next scheduled run"
 
 
 def test_rotate_due_now_runs_as_a_job_through_rotate_op(data, monkeypatch):

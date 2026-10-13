@@ -92,9 +92,11 @@ runs in 08:30 to 09:10 UTC (the nightly backup), and nothing is staged on s3.
 1. **Credentials › Profiles.** The Rotation policy column. Say: "Each credential profile
    carries a rotation policy; Mercury rotates the devices that follow it when their password is
    older than the policy allows."
-2. On the profile row the demo device follows: **Rotation policy…** → on a schedule, every
-   **1** day, from 0 until 24 (UTC), at most **1** device → **Set the policy**. Say: "Changing a
-   policy needs a verified person, and it is recorded."
+2. On the `default` row: **Rotation policy…**. Show the policy already set (every **1** day,
+   from 0 until 24 UTC, at most **1** device, only **r2, s1**; set before recording, so the
+   timer has already rotated s1 on its own). Say: "Changing a policy needs a verified person
+   and is recorded; this one is limited to two pilot devices, and the timer already rotated
+   s1 unattended." Show s1's row on History.
 3. The **Scheduled rotation** card: each device's credential age and next due date. Say: "A
    timer checks every five minutes; it never runs in the nightly backup window, never on a
    device another operation holds or one restarting, and it stops at the first failure."
@@ -116,8 +118,27 @@ runs in 08:30 to 09:10 UTC (the nightly backup), and nothing is staged on s3.
 
 ### 2.1 Configuration changes automatically trigger a test
 
-*(Filled in once the pipeline is built: a refused bad change in Mercury, a good one committed,
-its GitHub Actions run passing, a bad push failing.)*
+Use **r4** for this part, never r2 or s1. A refused edit stays on disk until it is fixed, and
+those two are the rotation's.
+
+1. **Devices › r4 › Intent › Edit.** In the YAML, misspell one interface key (`description:` →
+   `descripton:`) → **Commit to r4's intent**. Mercury refuses, naming the check, the file and
+   the line ("nothing reads 'descripton' …"). Say: "Every change to the config repository is
+   tested before Mercury commits it: the same check the pipeline runs."
+2. Fix the key in the same box → **Commit to r4's intent**: committed, and pushed. Say: "The
+   corrected change passes and is published."
+3. **GitHub, the config repository › Actions › nmas-config-check**: the run that push started,
+   green, its report attached. Say: "On every push GitHub Actions checks out Mercury at the
+   pinned commit and runs the same check: YAML and schema, every device's intent rendered
+   through its template, each golden round-tripped, no plaintext secret."
+4. **A push that fails:** on GitHub, edit `host_vars/r4.yml` on a NEW BRANCH (never main) with
+   the same typo → open a pull request. Its check goes red; open it to show the FAIL line with
+   the file and line, then close the pull request and delete the branch. Say: "A change that
+   bypasses Mercury is caught on GitHub the same way."
+
+Rehearse step 1 once before recording: if Mercury's intent editor catches the typo itself
+before the commit, its words differ from the pipeline's. Either way the change is refused
+before it is committed.
 
 ### Part 2: health checks, config changes, troubleshooting
 
