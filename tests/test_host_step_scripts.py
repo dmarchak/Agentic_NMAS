@@ -62,7 +62,7 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # E19: the lease lifetimes: Kea's globals and classes, the management subnet's.
             "e19-dhcp-lifetimes.sh",
             # C749: MinIO's default root replaced; Thanos and archive cleanups on keys of their own.
-            "minio-root-rotate.sh"}
+            "minio-root-rotate.sh", "minio-bind.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
@@ -204,13 +204,64 @@ def test_the_minio_root_rotation_never_shows_a_secret():
         assert not re.search(rf'(?:\bmc\b|python3|"\$PY")[^\n|&;]*"\${var}"', text), \
             f"{var} an argument"
     assert re.search(r'read -r -s -p "\$2 \(hidden\): " a', text), "prompted, input hidden"
+    # The function parameters of `ask` and `policy_of` (C752), never the script's arguments.
     assert not re.search(r"\$[1-9@*]", text.replace('"$2 (hidden)', "").replace(
-        'printf -v "$1"', "")), "no argument is read"
+        'printf -v "$1"', "").replace('mc admin user info lab "$1" --json', "")), \
+        "no argument is read"
     policy = re.search(r"mercury-cleanup.json\" <<JSON\n(.*?)\nJSON", text, re.S).group(1)
     doc = _json.loads(policy.replace("$BUCKET", "mercury"))
     [stmt] = doc["Statement"]
     assert sorted(stmt["Action"]) == ["s3:DeleteObject", "s3:DeleteObjectVersion"]
     assert stmt["Resource"] == ["arn:aws:s3:::mercury/*"]
+
+
+def test_the_minio_root_rotation_removes_only_this_minios_aliases(tmp_path):
+    """C752: the first run removed `dr`, an alias of the REPLICA, because its root user is also
+    named minioadmin. Only aliases naming this MinIO (its endpoint, or loopback on its port) with
+    the old root user are removed; and a policy is attached unless the user's policy FIELD names
+    it (grepping the info text matched the user's own name, so mercury-cleanup's was skipped)."""
+    import json as _json
+    import subprocess
+    import sys
+
+    text = open(os.path.join(FOLDER, "minio-root-rotate.sh"), encoding="utf-8").read()
+    mine = re.search(r"cat > \"\$DIR/mine.py\" <<'PY'\n(.*?)\nPY\n", text, re.S).group(1)
+    (tmp_path / "mine.py").write_text(mine)
+    aliases = [{"alias": "lab", "URL": "http://192.0.2.11:9000", "accessKey": "minioadmin"},
+               {"alias": "dr", "URL": "http://192.0.2.21:9000", "accessKey": "minioadmin"},
+               {"alias": "here", "URL": "http://localhost:9000", "accessKey": "minioadmin"},
+               {"alias": "local", "URL": "http://localhost:9000", "accessKey": ""},
+               {"alias": "otherport", "URL": "http://192.0.2.11:9100", "accessKey": "minioadmin"}]
+    got = subprocess.run([sys.executable, str(tmp_path / "mine.py")],
+                         input="\n".join(_json.dumps(a) for a in aliases), text=True,
+                         capture_output=True, check=True,
+                         env={"ENDPOINT": "192.0.2.11:9000", "OLD_USER": "minioadmin",
+                              "PATH": os.environ["PATH"]}).stdout.split()
+    assert got == ["lab", "here"]
+    assert not re.search(r"user info lab \w[\w-]* \| grep", text), "a policy decided by grep"
+    assert text.count('[ "$(policy_of ') == 2
+
+
+def test_the_minio_bind_step_closes_only_what_it_opens_and_undoes_itself():
+    """C749's follow-up: the console on loopback, the API kept on every address (its clients name
+    this host's LAN address), ufw's allow for docker0 added BEFORE the denies (ufw matches in
+    order), both denies logged, and the undo deletes exactly the rules it added (ufw delete takes
+    the rule without its comment), puts the file back and restarts MinIO. No secret is read."""
+    text = open(os.path.join(FOLDER, "minio-bind.sh"), encoding="utf-8").read()
+    assert "WANT_AFTER='\"--address :9000 --console-address 127.0.0.1:9001\"'" in text
+    apply = re.search(r'eval "sudo ufw \$RULE_LOKI" && eval "sudo ufw \$RULE_API" && '
+                      r'eval "sudo ufw \$RULE_CONSOLE"', text)
+    assert apply, "the allow first, then the two denies"
+    assert re.search(r'RULE_API="deny log 9000/tcp ', text)
+    assert re.search(r'RULE_CONSOLE="deny log 9001/tcp ', text)
+    assert re.search(r'RULE_LOKI="allow in on docker0 from \$DOCKNET to any port 9000 proto tcp ',
+                     text)
+    undo = re.search(r"^ON_FAIL='(.*)'$", text, re.M).group(1)
+    assert 'sudo ufw delete ${r% comment *}' in undo
+    assert '"$RULE_CONSOLE" "$RULE_API" "$RULE_LOKI"' in undo
+    assert 'sudo cp -p "$COPY/minio" "$ENVFILE"' in undo and "systemctl restart minio" in undo
+    assert not re.search(r"read -r -s", text), "this step asks for no secret"
+    assert not re.search(r"set_keys|MINIO_ROOT_(USER|PASSWORD)=", text), "no key touched"
 
 
 def test_the_secret_is_prompted_hidden_never_an_argument_never_printed():

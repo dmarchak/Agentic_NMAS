@@ -13,7 +13,7 @@
 #   5. the proof: the new root answers, the old root is refused, Mercury's own key still answers,
 #      Thanos still reads its bucket, the cleanup key deletes a probe of Mercury's and can neither
 #      read an object nor delete in Thanos's bucket;
-#   6. every mc alias holding the old root user removed (mc kept it in plaintext).
+#   6. every mc alias naming this MinIO with the old root user removed (mc kept it in plaintext).
 # Any failure after step 3 starts puts both files back from the copy and restarts MinIO and
 # Thanos (ON_FAIL).
 #
@@ -51,7 +51,7 @@ plan "run as the operator's own user, not root" \
      "Thanos still reads its bucket" \
      "the cleanup key deletes a probe of Mercury's, every version" \
      "the cleanup key can neither read an object nor delete in Thanos's bucket" \
-     "no mc alias holds the old root user"
+     "no mc alias of this MinIO holds the old root user"
 
 not_root
 check "this is the NMAS host: minio.service, flask-app.service, mc" eq "yes" \
@@ -95,12 +95,19 @@ cat > "$DIR/mercury-cleanup.json" <<JSON
  "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
  "Resource": ["arn:aws:s3:::$BUCKET/*"]}]}
 JSON
+# policy_of USER: the policy attached to USER on lab, from mc's JSON field (C752: grepping the
+# text for a policy named like its user always matched the user's own name, so mercury-cleanup's
+# attach was skipped on the first run). Exported, so a step's command can use it.
+policy_of() {
+    mc admin user info lab "$1" --json | python3 -c "import sys, json; print(json.load(sys.stdin).get('policyName') or '')"
+}
+export -f policy_of
 step "the two policies" \
     'mc admin policy create lab thanos-bucket "$DIR/thanos-bucket.json" >/dev/null && mc admin policy create lab mercury-cleanup "$DIR/mercury-cleanup.json" >/dev/null'
 step "the users thanos and mercury-cleanup (keys on mc's standard input), each its one policy" \
     'printf "%s\n%s\n" thanos "$THANOS_PW" | mc admin user add lab >/dev/null && printf "%s\n%s\n" mercury-cleanup "$CLEANUP_PW" | mc admin user add lab >/dev/null \
-     && { mc admin user info lab thanos | grep -q thanos-bucket || mc admin policy attach lab thanos-bucket --user thanos >/dev/null; } \
-     && { mc admin user info lab mercury-cleanup | grep -q mercury-cleanup || mc admin policy attach lab mercury-cleanup --user mercury-cleanup >/dev/null; }'
+     && { [ "$(policy_of thanos)" = thanos-bucket ] || mc admin policy attach lab thanos-bucket --user thanos >/dev/null; } \
+     && { [ "$(policy_of mercury-cleanup)" = mercury-cleanup ] || mc admin policy attach lab mercury-cleanup --user mercury-cleanup >/dev/null; }'
 check "thanos and mercury-cleanup exist, each holding only its policy" eq "thanos-bucket mercury-cleanup" \
     'echo "$(mc admin user info lab thanos --json | python3 -c "import sys,json; print(json.load(sys.stdin).get(\"policyName\"))") $(mc admin user info lab mercury-cleanup --json | python3 -c "import sys,json; print(json.load(sys.stdin).get(\"policyName\"))")"'
 
@@ -200,10 +207,27 @@ check "the cleanup key can neither read an object nor delete in Thanos's bucket"
     'cd "$CHECKOUT" && printf "%s" "$CLEANUP_PW" | "$PY" "$DIR/cleanup_check.py"'
 
 ON_FAIL=""
-step "remove every mc alias holding the old root user (mc keeps keys in plaintext)" \
-    'for a in $(mc alias list --json | python3 -c "import sys, json, os; [print(d[\"alias\"]) for d in map(json.loads, filter(str.strip, sys.stdin)) if d.get(\"accessKey\") == os.environ[\"OLD_USER\"]]"); do mc alias remove "$a" >/dev/null && echo "removed alias $a"; done; true'
-check "no mc alias holds the old root user" eq "0" \
-    'mc alias list --json | python3 -c "import sys, json, os; print(sum(1 for d in map(json.loads, filter(str.strip, sys.stdin)) if d.get(\"accessKey\") == os.environ[\"OLD_USER\"]))"'
+# Only aliases naming THIS MinIO (its endpoint, or loopback on its port): the first run removed
+# `dr` too, an alias of the replica, whose own root is also named minioadmin (C752). mine.py
+# prints each such alias holding the old root user.
+cat > "$DIR/mine.py" <<'PY'
+"""The mc aliases that name this MinIO and hold the old root user, one per line."""
+import json
+import os
+import sys
+from urllib.parse import urlsplit
+
+host, _, port = os.environ["ENDPOINT"].rpartition(":")
+here = {(host, port), ("localhost", port), ("127.0.0.1", port), ("::1", port)}
+for d in map(json.loads, filter(str.strip, sys.stdin)):
+    u = urlsplit(d.get("URL") or d.get("url") or "")
+    if (u.hostname, str(u.port or "")) in here and d.get("accessKey") == os.environ["OLD_USER"]:
+        print(d["alias"])
+PY
+step "remove every mc alias naming this MinIO with the old root user (mc keeps keys in plaintext)" \
+    'for a in $(mc alias list --json | python3 "$DIR/mine.py"); do mc alias remove "$a" >/dev/null && echo "removed alias $a"; done; true'
+check "no mc alias of this MinIO holds the old root user" eq "0" \
+    'mc alias list --json | python3 "$DIR/mine.py" | wc -l'
 unset NEW_PW THANOS_PW CLEANUP_PW
 rm -rf "$DIR"
 echo "== the dated copy: $COPY. Keep the new root password where the break-glass record is kept."

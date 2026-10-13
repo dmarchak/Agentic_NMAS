@@ -19,9 +19,16 @@
 #     bash <checkout>/scripts/host-steps/c743-delete-archive-objects.sh
 . "$(dirname "$0")/lib.sh"
 
+#
+# C754, measured 2026-10-13 ~20:05 UTC with Mercury's own key (read-only): neither object named
+# above is in the bucket any more, in any version or as a delete marker. What is there is
+# archives/ai-family/20261013T161220Z.tar.gz (written 16:12:21 UTC, after the failed runs; 39
+# files, 0 holding a value Mercury would mask under the fixed check), with
+# archives/quick-actions/20261013T075929Z.tar.gz (the earlier passing archive, kept). The step
+# now names the one stale object; the D15 archive is rebuilt with the fixed builder first.
 PY=${NMAS_PY:-/opt/mercury-venv/bin/python}
-# key=the sha256 prefix it must carry (the two first runs' printed checksums).
-OBJECTS="archives/ai-family/20261013T161055Z.tar.gz=8b47fbf1 archives/oxidized/20261013T161059Z.tar.gz=99444884"
+# key=the sha256 prefix it must carry (measured as above).
+OBJECTS="archives/ai-family/20261013T161220Z.tar.gz=f707b2be"
 DIR=$(mktemp -d)
 chmod 700 "$DIR"
 export PYTHONDONTWRITEBYTECODE=1 CHECKOUT PY OBJECTS DIR
@@ -30,8 +37,8 @@ plan "run as the operator's own user, not root" \
      "this is the NMAS host: flask-app.service and its interpreter" \
      "a key was typed" \
      "each object is the one named, by its checksum's prefix" \
-     "every version and delete marker of both objects is deleted" \
-     "neither object is in the bucket, in any version"
+     "every version and delete marker of the object is deleted" \
+     "the object is not in the bucket, in any version"
 
 not_root
 check "this is the NMAS host: flask-app.service and its interpreter" eq "yes" \
@@ -65,11 +72,15 @@ s3 = S3ArchiveIntegration()
 # s3:DeleteObject and s3:DeleteObjectVersion (mercury-cleanup, C749) is enough.
 c = s3.client()
 d = s3.client(credentials=(os.environ.pop("MINIO_ACCESS"), os.environ.pop("MINIO_SECRET")))
+# C754: this read is Mercury's own key's (never the typed one), whose policy (mercury-rw) holds
+# no s3:GetBucketVersioning; the first runs said "unreadable with this key" right after the
+# operator typed the root's, naming the wrong key. Versions are listed either way (ListBucket).
 try:
     print("bucket versioning:", c.get_bucket_versioning(Bucket=s3.bucket).get("Status")
           or "never enabled")
 except Exception as exc:  # noqa: BLE001
-    print("bucket versioning: unreadable with this key:", type(exc).__name__)
+    print("bucket versioning: not readable with Mercury's own key (its policy holds no "
+          "s3:GetBucketVersioning):", type(exc).__name__, "; every version is listed regardless")
 
 
 def versions(key):
@@ -110,14 +121,14 @@ PY
 
 RUN='cd "$CHECKOUT" && MINIO_ACCESS="$ACCESS" MINIO_SECRET="$SECRET" "$PY" "$DIR/delete.py"'
 export RUN
-step "list both objects' versions and read each one's checksum" "$RUN identify"
+step "list the object's versions and read each one's checksum" "$RUN identify"
 check "each object is the one named, by its checksum's prefix" eq "True" \
     'python3 -c "import json; print(all(json.load(open(\"$DIR/identify\")).values()))"'
-step "delete every version and delete marker of both" "$RUN delete"
-check "every version and delete marker of both objects is deleted" eq "True" \
+step "delete every version and delete marker of it" "$RUN delete"
+check "every version and delete marker of the object is deleted" eq "True" \
     'python3 -c "import json; print(all(n > 0 for n in json.load(open(\"$DIR/delete\")).values()))"'
-step "list both objects again" "$RUN gone"
-check "neither object is in the bucket, in any version" eq "0" \
+step "list the object again" "$RUN gone"
+check "the object is not in the bucket, in any version" eq "0" \
     'python3 -c "import json; print(sum(json.load(open(\"$DIR/gone\")).values()))"'
 unset ACCESS SECRET
 rm -rf "$DIR"

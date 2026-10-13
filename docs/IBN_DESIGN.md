@@ -2,7 +2,8 @@
 
 **The operator's design task, 2026-10-13: doc only, no build. Registered FUTURE / After Phase 7
 (C750), beside the credential store redesign (C733), which it depends on for masking.** Nothing
-here changes Mercury until the operator's decisions in section 9 are made, phase by phase.
+here changes Mercury until the operator's decisions in section 9 are made, phase by phase. **The
+operator made them on 2026-10-13 (section 9, "Decided"); still no build before Phase 7 closes.**
 
 An intent-based networking (IBN) platform does four things:
 
@@ -20,10 +21,13 @@ every section:
 > confirmed by hash, verify and rollback. AI never writes device configuration, never decides
 > compliance, and never invents an action.
 
-**Proposed revision, for the operator to confirm (section 9, decision 9):**
+**The revision, confirmed by the operator 2026-10-13 (section 9, decision 9), observe mode
+first:**
 - AI may SELECT an action from a pre-approved catalog of deterministic remediations, within a
-  policy's limits (its classes, its devices, never the management path), above a confidence
-  threshold, under rate caps and the kill switch, with verify and rollback.
+  policy's limits (its classes, its devices, never the management path), once observe mode
+  has MEASURED its agreement with a person (at least 95% over at least 100 selections), under
+  rate caps and the kill switch, with verify and rollback. Its self-reported confidence is
+  logged for analysis only and never decides.
 - It never invents an action or a parameter outside the catalog.
 - This replaces "AI never remediates on its own", and supports the closed-loop pattern where
   AI is the decision-maker among pre-approved choices (section 3).
@@ -298,16 +302,22 @@ a person's confirm except for rotation.
 **A deviation taxonomy and remediation classes.** A deviation is a verifier that does not hold.
 Its class says what may be done about it:
 
+Decided by the operator, 2026-10-13 (decision 2): **management-plane configuration only** may
+ever auto-fix (logging hosts, SNMP, NTP, IP SLA probes); never routing, interface state, ACLs,
+AAA or credentials, or the management path (in this lab, s3 and the path it carries).
+
 | Class | Examples | May ever auto-fix? |
 |---|---|---|
-| Monitoring lines missing | a logging host, an SNMP community or view, an NTP server, the heartbeat applet, a monitoring template's lines absent from the running config | yes, once observe mode measures it safe |
+| Monitoring lines missing | a logging host, an SNMP community or view, an NTP server absent from the running config | yes, once observe mode measures it safe (decision 2) |
+| Other monitoring template lines | the heartbeat applet, any other template line that is not a logging host, SNMP or NTP | no: not in decision 2's list; a person |
 | A probe missing | an IP SLA operation intent declares, absent | yes, as above |
 | Drift that adds | lines on the device that intent does not hold (a hand change) | no: a person decides whether to capture it as intent or remove it |
 | Drift that removes | intent's lines missing from the device | only for classes already allowed (above); never for the rest |
 | Routing | an adjacency down, a route missing, BGP not established | never: always a person |
-| Interfaces | a port down, a description changed, a VLAN | never |
+| Interface state | a port down, a description changed, a VLAN | never |
+| ACLs | an access list's lines, an interface's access-group | never |
+| AAA and credentials | AAA lines, accounts, a rotation's failure | never (rotation has its own halt) |
 | The management path | anything on the path Mercury reaches devices by (the management interface, vty, credentials, the route to the manager), and anything on the switch that carries it (s3 in this lab) | never |
-| Credentials | a rotation's failure | never (rotation has its own halt) |
 
 **Observe mode first, for every class.**
 - A policy starts in observe mode. It records each fix it *would have made* ("would have fixed
@@ -344,7 +354,9 @@ Its class says what may be done about it:
   - the entry is in the catalog;
   - every parameter is inside the policy's limits (its classes, its devices, never the
     management path);
-  - `confidence` is at or above the policy's threshold;
+  - the policy's AI tier is enabled, which it is only after observe mode measured at least
+    95% agreement with a person over at least 100 selections (the operator, 2026-10-13: no
+    self-reported confidence gate; `confidence` is logged for analysis and never decides);
   - the rails above hold (grace, hold, rate caps, windows, kill switch).
 - **Anything else goes to a person** as a proposal.
 - **The run is the catalog operation's own,** with its preview computed, its verify and its
@@ -590,6 +602,38 @@ deploy; rollback by revert; and a faster pre-approved path for urgent actions.
     7. no external loads or internet tools;
     8. the red-team eval set, any non-zero result blocking the release.
 
+### Decided, 2026-10-13 (the operator)
+
+| # | Decision |
+|---|---|
+| 1 | **Per-policy authority: yes.** |
+| 2 | **Auto-fix classes: management-plane configuration only** (logging hosts, SNMP, NTP, IP SLA probes); never routing, interface state, ACLs, AAA or credentials, or s3 and the management path (section 3's table, as decided). |
+| 3 | **The rails: approved**, with `docs/PHASE8_PLAN.md` section 7's changes (below). |
+| 4 | **Providers: Anthropic first, behind the provider-agnostic client;** a local model optional, later. |
+| 5 | **Translate's first scope: management-plane services** (logging, SNMP, NTP and the like), not a routing statement. |
+| 6 | **Batfish: yes, for routing-affecting changes;** Mercury's own IOS checks stay for every change. Its licence (Apache-2.0) is accepted with the decision. |
+| 7 | **Loki's `severity` label and a stable trap label: yes, as a host step.** |
+| 8 | **History on E18: yes; E18 becomes a Phase 8.0 prerequisite.** |
+| 9 | **AI catalog selection: yes, observe mode first.** Gated on MEASURED agreement in observe mode (at least 95% over at least 100 selections); self-reported confidence is logged for analysis only and never decides. |
+| 10 | **Intent scopes: network, site, device role.** |
+| 11 | **Voice: deferred.** |
+| 12 | **The golden state rule and its seven sub-rules: approved** (section 11). |
+| 13 | **AI roles and permissions: approved** (section 12). |
+| 14 | **Prompt-injection defence and the red-team gate: approved** (section 13). |
+
+The numbers the operator changed (all in `docs/PHASE8_PLAN.md` section 7):
+- **No self-reported confidence gate** (the ≥ 0.9 gate is dropped); catalog selection is gated on
+  measured agreement in observe mode, 95% over 100.
+- **Respond's threshold stays** (100 "would have fixed" events over 30 days), and **lab-only
+  drift drills** feed observe mode: deliberate, known deviations on non-critical devices, each
+  labelled a drill and never counted as production evidence.
+- **Golden cases:** labelled replayed or synthesised cases are allowed, with **at least 10 real
+  cases per feature**.
+- **Exact model versions are pinned;** any model change re-runs the full eval suite.
+- **Tool calls: 8 by default;** a feature may raise it only where its eval shows the need.
+- **Ranking:** natural language → PromQL or LogQL first, then alert correlation; the rest as
+  proposed.
+
 ## 10. AI engineering standards (binding on every AI feature)
 
 The operator's Phase 8 charter (2026-10-13) makes these binding. `docs/PHASE8_PLAN.md` applies
@@ -619,7 +663,8 @@ them feature by feature.
   validator's error, then degrades gracefully: the workflow continues without AI and says so.
 - Every finding cites evidence references, and a deterministic check confirms that each one
   was actually fetched in this run; a finding citing something never fetched is dropped.
-- Every schema carries `needs_human`, `confidence` and `open_questions`.
+- Every schema carries `needs_human`, `confidence` and `open_questions`. `confidence` is
+  logged for analysis only; no gate reads it (the operator, 2026-10-13).
 
 **Tools are narrow, typed and read-only.**
 - The reads: `query_prometheus`, `query_loki`, `get_intent`, `get_drift`, `netbox_lookup`, and
