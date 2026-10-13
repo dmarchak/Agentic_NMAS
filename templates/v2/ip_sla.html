@@ -17,6 +17,8 @@
 </div>
 {% include "v2/_monitoring_tabs.html" %}
 <div class="tab-body">
+{#- C718: Decline… and Undo decline… answer here, in place. -#}
+<div id="decline-card"></div>
 <section class="card ipsla" id="ipsla-policy">
   <h2 class="apply-h">The policy</h2>
   {%- if error and not policy %}
@@ -62,7 +64,7 @@
        data-label="Commit the ticked probes to intent, then preview sending them" data-busy="Committing to intent…">
     {%- for g in plan.by_on %}
     <fieldset class="apply-superseded" id="ipsla-{{ g.on }}">
-      <legend>On {{ g.on }}: expected cost {{ g.cost }}</legend>
+      <legend>On {{ g.on }}: expected cost {{ g.cost }} <button type="button" class="btn btn-small" data-op="decline-section" hx-get="{{ url_for('v2.decline_card', list=list_name, device=g.on, section='ip_sla') }}" hx-target="#decline-card" hx-swap="outerHTML">Decline…</button>{{ how('decline-section', compact=True, op='a decline') }}</legend>
       {%- for s in g.rows %}
       <div class="apply-line">
         <input type="checkbox" name="pick" value="{{ s.key }}" id="pick-{{ s.key }}" checked>
@@ -85,7 +87,7 @@ ip sla schedule {{ s.schedule }}</pre>
   {%- if plan.skipped %}
   <h2 class="apply-h">Not suggested</h2>
   <ul class="apply-not" id="ipsla-skipped">
-    {%- for k in plan.skipped %}<li><strong>{{ k.device }}</strong>: {{ k.why }}</li>{% endfor %}
+    {%- for k in plan.skipped %}<li><strong>{{ k.device }}</strong>: {% if k.declined %}{{ badge('Declined', 'muted') }} {% endif %}{{ k.why }}{% if k.declined %} · <button type="button" class="btn btn-small" data-op="decline-section" hx-get="{{ url_for('v2.decline_card', list=list_name, device=k.device, section='ip_sla', undo=1) }}" hx-target="#decline-card" hx-swap="outerHTML">Undo decline…</button>{{ how('decline-section', compact=True, op='a decline') }}{% endif %}</li>{% endfor %}
   </ul>
   {%- endif %}
   {%- endif %}

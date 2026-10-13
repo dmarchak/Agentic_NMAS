@@ -1,0 +1,70 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- C718: Decline… and Undo decline… (board C603's C718 page, APPROVED 2026-10-13; boards B and
+    D). A person chooses not to fill a gap Coverage shows, with a reason, recorded in the
+    device's committed intent as a `profile_exclude` entry with who and when
+    (`modules/nsot/decline.py`). The card answers in place of #decline-card, on Coverage and on
+    the IP SLA page. Nothing is sent to the device. -#}
+{%- set e = d.e or {} -%}
+{%- set close = url_for('v2.decline_card', close=1) -%}
+{%- if d.state == 'preview' %}
+<section class="op-card" id="decline-card" aria-labelledby="decline-title">
+  <div class="op-hd"><h2 id="decline-title">{% if d.undo %}Undo the decline of {{ d.words }} on {{ d.device }}{% else %}Decline {{ d.words }} on {{ d.device }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('decline-section') }}<button type="button" class="btn" hx-get="{{ close }}" hx-target="#decline-card" hx-swap="outerHTML">Cancel</button></div></div>
+  {%- if not d.undo %}
+  <form class="op-part" hx-get="{{ url_for('v2.decline_card') }}" hx-trigger="input changed delay:500ms from:find textarea" hx-target="#decline-card" hx-swap="outerHTML">
+    <h3>Why</h3><div>
+    <input type="hidden" name="list" value="{{ d.list }}"><input type="hidden" name="device" value="{{ d.device }}">
+    <input type="hidden" name="section" value="{{ d.section }}"><input type="hidden" name="at" value="{{ e.at }}">
+    <label class="op-reason">Your reason, recorded with the decline and shown wherever {{ d.device }}'s {{ d.words }} is drawn (three words or more)
+      <textarea name="reason" rows="2" maxlength="300" autocomplete="off">{{ e.reason }}</textarea></label></div>
+  </form>
+  {%- endif %}
+  <div class="op-part"><h3>The intent change</h3><div>
+    <p><span class="mono">host_vars/{{ d.device }}.yml</span>, one commit as you</p>
+    <pre class="op-diff">{% for l in e.diff %}<span class="{{ 'op-add' if l.startswith('+') else 'op-del' if l.startswith('-') else '' }}">{{ l }}</span>
+{% endfor %}</pre>
+    {%- if d.undo %}
+    <p>Nothing is sent to {{ d.device }}. Afterwards its {{ d.words }} reads as not in intent again, with Add to intent… and Decline….</p>
+    <p class="muted small">The decline's commit stays in history; this is a second commit, as you.</p>
+    {%- else %}
+    <p>Nothing is sent to {{ d.device }}: its configuration does not change, so there is no program, no hold and no verify. The decline lives in {{ d.device }}'s committed intent, where the profile and Coverage already read exclusions.</p>
+    {%- endif %}</div></div>
+  {%- if e.checks %}
+  <div class="op-part"><h3>Checks</h3><div><ul class="op-checks">
+    {%- for s, w in e.checks %}<li>{{ badge(s, 'ok' if s == 'pass' else 'danger') }} {{ w }}</li>{% endfor %}</ul></div></div>
+  {%- endif %}
+  <form class="op-ft" hx-post="{{ url_for('v2.decline_confirm') }}" hx-target="#decline-card" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ d.list }}"><input type="hidden" name="device" value="{{ d.device }}">
+    <input type="hidden" name="section" value="{{ d.section }}"><input type="hidden" name="at" value="{{ e.at }}">
+    <input type="hidden" name="reason" value="{{ e.reason }}"><input type="hidden" name="hash" value="{{ e.hash }}">
+    {%- if d.undo %}<input type="hidden" name="undo" value="1">{% endif %}
+    <p class="op-note">{{ d.confirm.statement }} Bound to {{ d.device }}'s intent as previewed: if it moves before you confirm, nothing is committed.</p>
+    {%- if not e.ready %}
+    <p class="op-wait">Not ready to record: {{ e.blocked }}.</p>
+    {%- elif d.confirm.may %}
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="decline-section" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">{% if d.undo %}Remove the decline from {{ d.device }}'s intent{% else %}Record the decline in {{ d.device }}'s intent{% endif %}</span><span class="op-busy">Committing…</span></button>{{ how('decline-section', compact=True, op='a decline') }}</span>
+    {%- endif %}
+  </form>
+</section>
+{%- elif d.state == 'result' %}
+{%- set o = d.out %}
+{%- set ok = o.outcome in ('declined', 'undone') %}
+<section class="op-card {{ 'op-ok' if ok else 'op-danger' }}" id="decline-card" aria-labelledby="decline-title" role="status">
+  <div class="op-hd"><h2 id="decline-title">{% if o.outcome == 'declined' %}{{ d.words }} declined on {{ d.device }}{% elif o.outcome == 'undone' %}The decline of {{ d.words }} on {{ d.device }} is undone{% else %}Nothing was committed{% endif %}</h2>
+    <div class="op-hd-actions"><button type="button" class="btn" hx-get="{{ close }}" hx-target="#decline-card" hx-swap="outerHTML">Close</button></div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    {%- if o.outcome == 'declined' %}
+    <p>Recorded in {{ d.device }}'s intent as {{ o.entry.by }}, commit <span class="mono">{{ (o.save.commit or '')[:8] }}</span>: "{{ o.entry.reason }}". {{ d.device }}'s {{ d.words }} now reads Declined on Coverage and the IP SLA page, never as a gap.</p>
+    {%- elif o.outcome == 'undone' %}
+    <p>Removed from {{ d.device }}'s intent, commit <span class="mono">{{ (o.save.commit or '')[:8] }}</span>. Its {{ d.words }} reads as not in intent again; the decline's commit stays in history.</p>
+    {%- else %}
+    <p>{{ o.reason }}</p>
+    {%- endif %}</div></div>
+</section>
+{%- else %}
+<section class="op-card op-danger" id="decline-card" aria-labelledby="decline-title" role="status">
+  <div class="op-hd"><h2 id="decline-title">Couldn't {{ 'undo the decline' if d.undo else 'decline' }}: nothing was committed</h2>
+    <div class="op-hd-actions"><button type="button" class="btn" hx-get="{{ close }}" hx-target="#decline-card" hx-swap="outerHTML">Close</button></div></div>
+  <div class="op-part"><h3>Why</h3><div><p>{{ d.error }}</p></div></div>
+</section>
+{%- endif %}

@@ -361,6 +361,15 @@ def suggest(intents: dict, devices: dict, section: dict, chosen: list) -> dict:
         if host not in intents:
             skipped.append({"device": host, "why": f"{host} has no committed intent"})
             continue
+        # C718: a person declined IP SLA on this device; nothing is suggested for it (and so
+        # nothing can be committed: the apply recomputes these suggestions).
+        from modules.nsot.decline import declines
+        d = declines(intents.get(host) or {}).get("ip_sla")
+        if d:
+            skipped.append({"device": host, "declined": d, "why": (
+                f"declined{' by ' + d['by'] if d['by'] else ''}"
+                f"{', ' + d['at'][:10] if d['at'] else ''}: \"{d['reason']}\"")})
+            continue
         found, why = targets(intents, host, policy)
         if not found:
             skipped.append({"device": host, "why": why})

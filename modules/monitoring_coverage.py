@@ -546,8 +546,17 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
             elif have.get(key) is None:
                 cell = {"state": "unknown", "words": lldp_why}
             elif section in (view.get("excluded") or {}):
-                cell = {"state": "excluded",
-                        "words": f"excluded — {view['excluded'][section]}"}
+                # C718: a person's decline names who and when; an older exclusion only its
+                # reason. Neither is a gap: the summary counts a decline as declined.
+                from modules.nsot.decline import declines
+                d = declines(intent or {}).get(section) or {}
+                if d.get("by"):
+                    cell = {"state": "declined", "declined": d,
+                            "words": (f"declined by {d['by']}, {d['at'][:16].replace('T', ' ')} "
+                                      f"UTC: \"{d['reason']}\"")}
+                else:
+                    cell = {"state": "excluded",
+                            "words": f"excluded — {view['excluded'][section]}"}
             elif key == "ip_sla" and _ip_sla_pending(intent, text):
                 # Committed to its intent and not on the device: missing, and the combined
                 # deploy sends it (artboard A2), never "no probes yet".
@@ -626,7 +635,21 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
             "not_rendered": sum(1 for r in rows for c in r["cells"].values()
                                 if c["state"] == "not_rendered"),
             "ip_sla_missing": [r["host"] for r in rows
-                               if (r["cells"].get("ip_sla") or {}).get("state") == "unused"]}
+                               if (r["cells"].get("ip_sla") or {}).get("state") == "unused"],
+            # C718: each section a person declined, with who, when and why (board C's rows):
+            # one row per device and SECTION, though a section may draw several columns
+            # (syslog's heartbeat).
+            "declined": list({(r["host"], _SECTION_OF_COLUMN.get(k, k)): {
+                "host": r["host"], "section": _SECTION_OF_COLUMN.get(k, k),
+                "section_words": _decline_words(_SECTION_OF_COLUMN.get(k, k)),
+                "words": c["words"], **c["declined"]}
+                for r in rows for k, c in r["cells"].items()
+                if c["state"] == "declined"}.values())}
+
+
+def _decline_words(section: str) -> str:
+    from modules.nsot.decline import WORDS
+    return WORDS.get(section, section)
 
 
 def _nothing_to_apply(row: dict, doc: dict) -> str:

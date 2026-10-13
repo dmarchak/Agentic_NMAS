@@ -10,6 +10,9 @@
 </div>
 {% include "v2/_monitoring_tabs.html" %}
 <div class="tab-body">
+{#- C718: Decline… and Undo decline… open their card here, outside the table that redraws on
+    every intent change, so the card's answer stays in sight after its own commit. -#}
+<div id="decline-card"></div>
 {% include "v2/_coverage.html" %}
 </div>
 {% endblock %}

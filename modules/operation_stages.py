@@ -221,6 +221,11 @@ STAGES = {
         "modules.nsot.profile_propose.apply"),
     "v2.ip_sla_commit": Stages(
         "v2.ip_sla", "fingerprint", NO_DEVICE, FORWARD, "modules.nsot.ip_sla_policy.apply"),
+    # C718: Decline… and Undo decline…, one device's intent only.
+    "v2.decline_confirm": Stages(
+        "v2.decline_card", "hash", NO_DEVICE,
+        "n/a: a failed commit puts the file back; a decline is undone by Undo decline…",
+        "modules.nsot.decline.apply"),
     "v2.ip_sla_policy_set": Stages(
         "v2.ip_sla", "profile_hash", NO_DEVICE, FORWARD, "modules.nsot.ip_sla_policy.set_policy"),
     # ---- Templates
@@ -393,6 +398,7 @@ HISTORY = {
     "device_v2.seed_confirm": ("intent",),
     "device_v2.retire_confirm": ("n/a: a retired device has no History tab; its address shows its retired record, read from the retire commit (C185)"),
     "v2.ip_sla_commit": ("intent",),
+    "v2.decline_confirm": ("intent",),
     "retire.apply": ("n/a: a retired device has no page to hold a History tab; its record is "
                      "the retire commit, read by the legacy golden history (C185)"),
     "netbox_safety.apply_import": ("n/a: a NetBox object's record, kept per object with its "

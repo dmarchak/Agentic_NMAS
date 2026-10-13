@@ -742,6 +742,28 @@ def seed():
     ])
 
 
+def decline_section():
+    return svg(330, (
+        "Declining a monitoring section on one device, with a reason (C718). The preview is the "
+        "intent change: one profile_exclude entry with the section, your reason, you and the "
+        "time. You confirm its hash; at apply the device is held, the change computed again and "
+        "refused if it moved, and exactly that device's intent file is committed as you. "
+        "Coverage and the IP SLA page then read it as declined, never as a gap. Nothing is "
+        "sent; Undo decline is the same with the entry removed."), [
+        lanes(20, 324),
+        doc("intent", 14, 40, 186, 40, "Intent now", "the section not in it"), num(14, 40, 1),
+        _down(107, 82, 102),
+        doc("intent", 14, 104, 186, 40, "Intent, declined", "+ section, reason, by, at"),
+        num(14, 104, 2),
+        person(14, 160, 186, 30, "You confirm its hash"), num(14, 160, 3),
+        _down(107, 192, 212),
+        repo(14, 214, 186, 46, "One commit", "host_vars/<device>, as you"), num(14, 214, 4),
+        store(14, 272, 186, 34, "Coverage, IP SLA", "read it as declined"),
+        device(240, 60, 140, 44, "The device", "not contacted", off=True),
+        nosend(310, 160, ("nothing is sent", "intent only")),
+    ])
+
+
 def adopt():
     return svg(540, (
         "Adopting a device the tool did not build. The preview reads the device with the "
@@ -1406,6 +1428,7 @@ DIAGRAMS = {
     "persist": persist,
     "save": save,
     "seed": seed,
+    "decline-section": decline_section,
     "adopt": adopt,
     "retire": retire,
     "monitoring-templates": monitoring_templates,

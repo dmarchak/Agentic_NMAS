@@ -876,7 +876,34 @@ def _coverage() -> dict:
     from modules import monitoring_coverage
     from modules.nsot import listref
 
-    return monitoring_coverage.fleet(listref.active())
+    ref = listref.active()
+    c = monitoring_coverage.fleet(ref)
+    c["not_covered"] = _not_covered(ref, c)
+    return c
+
+
+def _not_covered(ref, c: dict) -> list:
+    """C718's board A: each device whose IP SLA is not in its intent, and why, in the IP SLA
+    page's own words (its suggestion for the device, or why it suggests none), so the row can
+    offer Add to intent… and Decline… beside it. One computation from committed intent."""
+    from modules.nsot import ip_sla_policy
+
+    hosts = c.get("ip_sla_missing") or []
+    if not hosts:
+        return []
+    try:
+        p = ip_sla_policy.plan(ref, hosts)
+    except ip_sla_policy.Refused as exc:
+        return [{"host": h, "section": "ip_sla", "why": str(exc), "suggested": False}
+                for h in hosts]
+    out = []
+    for h in hosts:
+        mine = [s for s in p.get("suggestions") or [] if s.get("on") == h]
+        skipped = [s["why"] for s in p.get("skipped") or [] if s.get("device") == h]
+        why = ("; ".join(s["why"] for s in mine) if mine else
+               "; ".join(skipped) or "the policy suggests no probe for it")
+        out.append({"host": h, "section": "ip_sla", "why": why, "suggested": bool(mine)})
+    return out
 
 
 @bp.route("/monitoring/coverage", methods=["GET"])
@@ -1426,6 +1453,69 @@ def _ip_sla_ctx(req) -> dict:
             ctx["commit_body"] = {"list": name, "devices": chosen,
                                   "fingerprint": got["fingerprint"]}
     return ctx
+
+
+def _decline_ctx(req, values) -> dict:
+    """The decline card's context (C718's board B and D): the list it carries, the entry
+    (`decline.entry`, a read), and who would confirm."""
+    from modules import identity
+    from modules.nsot import decline, listref
+    from modules.nsot.intent_ops import public
+    from modules.preview_confirm import confirm_part
+
+    name = (values.get("list") or "").strip() or listref.active().name
+    device = (values.get("device") or "").strip()
+    section = (values.get("section") or "").strip()
+    undo = values.get("undo") == "1"
+    if not listref.exists(name):
+        return {"state": "refused", "list": name, "device": device, "section": section,
+                "undo": undo, "error": f"no network named {name!r}: nothing was committed"}
+    ident = identity.identify(req)
+    e = decline.entry(name, device, section, reason=values.get("reason", ""),
+                      actor=ident.actor if ident.is_identified else "",
+                      at=(values.get("at") or "").strip(), undo=undo)
+    return {"state": "refused" if e["error"] else "preview", "list": name, "device": device,
+            "section": section, "undo": undo, "e": public(e), "error": e["error"],
+            "confirm": confirm_part(req, "approve"),
+            "words": decline.WORDS.get(section, section)}
+
+
+@bp.route("/monitoring/decline", methods=["GET"])
+def decline_card():
+    """Decline… or Undo decline… (C718, board B and D): the reason, the intent change it
+    records and its checks, bound by hash. A READ: nothing is written; typing the reason asks
+    again. `close=1` answers the empty slot (Cancel)."""
+    if request.args.get("close") == "1":
+        return _strict('<div id="decline-card"></div>')
+    return _strict(render_template("v2/_decline.html", d=_decline_ctx(request, request.args)))
+
+
+@bp.route("/monitoring/decline/confirm", methods=["POST"])
+def decline_confirm():
+    """Record the confirmed decline (or its undo) in the device's intent as the verified
+    person: computed again under the device's hold and refused if it moved; one intent commit
+    (`decline.apply`). Nothing is sent to the device."""
+    from modules import identity
+    from modules.nsot import decline, listref
+
+    f = request.form
+    name = (f.get("list") or "").strip()
+    d = {"list": name, "device": (f.get("device") or "").strip(),
+         "section": (f.get("section") or "").strip(), "undo": f.get("undo") == "1"}
+    d["words"] = decline.WORDS.get(d["section"], d["section"])
+    if not listref.exists(name):
+        d.update(state="refused", error=f"no network named {name!r}: nothing was committed")
+        return _strict(render_template("v2/_decline.html", d=d)), 400
+    if not (f.get("hash") or "").strip():
+        d.update(state="refused", error="the confirm carried no preview hash: nothing was "
+                                        "committed; open Decline… again")
+        return _strict(render_template("v2/_decline.html", d=d)), 400
+    out = decline.apply(name, d["device"], d["section"], (f.get("hash") or "").strip(),
+                        actor=identity.identify(request).actor or "",
+                        reason=f.get("reason", ""), at=(f.get("at") or "").strip(),
+                        undo=d["undo"])
+    d.update(state="result", out=out)
+    return _strict(render_template("v2/_decline.html", d=d))
 
 
 @bp.route("/monitoring/ip-sla", methods=["GET"])

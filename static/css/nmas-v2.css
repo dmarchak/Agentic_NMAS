@@ -721,6 +721,19 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .nr-link:hover .m-nr, .nr-link:focus-visible .m-nr { background: var(--warn-mark); color: var(--surface); }
 .cov-legend { display: flex; gap: 6px 20px; flex-wrap: wrap; align-items: center; margin: 10px 0 0; font-size: 12px; }
 .cov-grid tbody th { border-bottom: 1px solid var(--line-2); color: var(--ink); font-size: 13px; }
+/* C718's board A and C: a gap a person may decline, and what was declined, with why. */
+.cov-decline { margin-top: 14px; }
+.cov-decline td, .cov-decline th { vertical-align: top; }
+.cov-decline .why { display: block; font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+.cov-fix { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+@media (max-width: 640px) {
+  .cov-decline thead { display: none; }
+  .cov-decline tr { display: block; padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+  .cov-decline th, .cov-decline td { display: block; border: 0; padding: 3px 0; }
+}
+#decline-card:not(:empty) { margin-bottom: 14px; }
+#decline-card textarea { width: 100%; box-sizing: border-box; min-height: 64px; font: inherit;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
 
 /* Monitoring > Coverage's batch Apply (P.9 d2): the preview, the rollout
    order, each device's program, and the job's progress and result. */

@@ -61,6 +61,14 @@ Each cell is an icon. Hover over it to see why:
   to Templates, where the shipped version is brought in.
 - **Blank:** not applicable to the device or its platform.
 
+Under the grid, **What is not covered, and why** lists each device whose IP SLA is not in its
+intent, with the IP SLA page's own words for it: the probe it would suggest, or why it suggests
+none. **Add to intent…** opens the IP SLA page for the device; **Decline…** records that you
+choose not to fill the gap, with your reason, in the device's intent (How it works: Decline a
+monitoring section on one device). A declined section is drawn **Declined**,
+with who, when and why, and **Undo decline…**. The summary counts it as declined, never as
+covered or missing, and the IP SLA page suggests nothing for it.
+
 IP SLA's ring links to the IP SLA page for that device, where probes are suggested. The last
 column, Mgmt sources, is the profile's management section: `ip tftp source-interface` and
 `ip ssh source-interface` on the management interface, configured when the golden holds both.

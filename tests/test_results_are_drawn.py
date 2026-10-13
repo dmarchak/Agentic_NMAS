@@ -176,6 +176,11 @@ PAGE_RECORD = {
     "templates_v2.bring": ("templates/v2/_template_op.html",
                            ("op.state == 'brought'", "r.commit", "r.revoked"),
                             "templates_v2.page"),
+    # C718: Decline… and Undo decline… answer in place, outside the table that redraws; the
+    # record is the device's intent commit, read on its History.
+    "v2.decline_confirm": ("templates/v2/_decline.html",
+                           ('id="decline-card"', "o.outcome", "o.save.commit"),
+                           "device_v2.history"),
     "device_v2.revert_confirm": ("templates/v2/_revert.html",
                                  ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     # Retire on v2 (board 12): the result in place; its record is what the device's address

@@ -30,7 +30,9 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.
-COMPONENTS = {"_run_stepper.html": "stepper.md"}
+COMPONENTS = {"_run_stepper.html": "stepper.md",
+              # C718's Decline… and Undo decline… (canvas page C603, approved 2026-10-13).
+              "_decline.html": "decline.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

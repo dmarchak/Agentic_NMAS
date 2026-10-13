@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp, how -%}
+{%- from "v2/_macros.html" import icon, stamp, how, badge -%}
 {#- Monitoring > Coverage, the REDRAW (artboard A, signed off 2026-10-02; NSOT_GUI_BRIEF 14.3).
     Every cell's state is decided by modules/monitoring_coverage.fleet(); this draws it as an
     icon, its why on hover and in words for a screen reader: a tick for configured, a quiet
@@ -24,7 +24,9 @@
   <p class="cov-head" id="cov-summary">{{ full | length }} of {{ c.total }} devices fully covered
     <span class="muted">· {{ n_gaps }} template{{ 's' if n_gaps != 1 }} missing on {{ gapped | length }} device{{ 's' if gapped | length != 1 }}
     {%- if c.not_reporting %} · <strong class="cov-nr-count">{{ c.not_reporting }} not reporting</strong> on {{ c.not_reporting_devices }}{% endif %}
-    {%- if unreadable %} · {{ unreadable | length }} golden{{ 's' if unreadable | length != 1 }} could not be read{% endif %}</span></p>
+    {%- if unreadable %} · {{ unreadable | length }} golden{{ 's' if unreadable | length != 1 }} could not be read{% endif %}
+    {%- if c.not_covered %} · {{ c.not_covered | length }} not in intent (add to intent, or decline){% endif %}
+    {%- if c.declined %} · {{ c.declined | length }} declined{% endif %}</span></p>
   {%- endif %}
   {%- if c.reporting_unknown %}
   <p class="muted cov-profile" id="cov-reporting-unknown">{{ icon('info') }} For some configured templates, {{ c.reporting_unknown }}.</p>
@@ -128,6 +130,24 @@
   {%- if c.ip_sla_missing and c.profile.committed %}
   <p class="cov-actions" id="cov-ipsla">IP SLA: {{ c.ip_sla_missing | length }} device(s) run no probe ({{ c.ip_sla_missing | join(', ') }}). A probe's target is chosen per device: they are suggested from the profile's policy on their own page, and once committed, deployed from here with the device's other missing templates.
     <a class="btn" data-op="monitoring-templates" href="{{ url_for('v2.ip_sla', list=c.list, device=c.ip_sla_missing) }}">Suggest IP SLA probes for them…</a>{{ how('monitoring-templates', compact=True, op='an IP SLA probe') }}</p>
+  {%- endif %}
+  {#- C718's board A: a gap a person can fill, or choose not to, with why; board C: what a
+      person declined, with who, when and why, and Undo decline…. Neither is ever a gap. -#}
+  {%- if c.not_covered or c.declined %}
+  <div class="table-wrap"><table class="table cov-decline" id="cov-decline">
+    <thead><tr><th scope="col">Device</th><th scope="col">What is not covered, and why</th><th scope="col">Fix it here</th></tr></thead>
+    <tbody>
+    {%- for g in c.not_covered %}
+    <tr data-device="{{ g.host }}"><th scope="row"><a href="{{ url_for('device_v2.device', name=g.host) }}">{{ g.host }}</a></th>
+      <td>{{ badge('Not in intent', 'warn') }} <strong>IP SLA</strong> <span class="why">{{ g.why }}. {{ g.host }}'s intent has none.</span></td>
+      <td class="cov-fix">{% if g.suggested %}<a class="btn btn-small" data-op="monitoring-templates" href="{{ url_for('v2.ip_sla', list=c.list, device=g.host) }}">Add to intent…</a>{{ how('monitoring-templates', compact=True, op='an IP SLA probe') }}{% endif %}<button type="button" class="btn btn-small" data-op="decline-section" hx-get="{{ url_for('v2.decline_card', list=c.list, device=g.host, section=g.section) }}" hx-target="#decline-card" hx-swap="outerHTML">Decline…</button>{{ how('decline-section', compact=True, op='a decline') }}</td></tr>
+    {%- endfor %}
+    {%- for x in c.declined %}
+    <tr data-device="{{ x.host }}" data-declined="{{ x.section }}"><th scope="row"><a href="{{ url_for('device_v2.device', name=x.host) }}">{{ x.host }}</a></th>
+      <td>{{ badge('Declined', 'muted') }} <strong>{{ x.section_words }}</strong> <span class="why">Declined by {{ x.by }}, {{ x.at[:16] | replace('T', ' ') }} UTC: "{{ x.reason }}". Not a gap: the summary counts it as declined, never as covered or missing.</span></td>
+      <td class="cov-fix"><button type="button" class="btn btn-small" data-op="decline-section" hx-get="{{ url_for('v2.decline_card', list=c.list, device=x.host, section=x.section, undo=1) }}" hx-target="#decline-card" hx-swap="outerHTML">Undo decline…</button>{{ how('decline-section', compact=True, op='a decline') }}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
   {%- endif %}
   {%- endif %}
 </section>

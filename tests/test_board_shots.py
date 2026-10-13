@@ -494,3 +494,56 @@ def test_stepper(lab, monkeypatch):            # noqa: F811 (Save's lab, importe
 
 
 from tests.test_save_v2 import lab  # noqa: E402,F401 (test_stepper's lab: Save's own)
+
+
+def test_decline(tmp_path, monkeypatch):
+    """C718 (board C603's C718 page, `CoverageDecline.dc.html`, approved 2026-10-13) beside
+    Coverage as built: r2's real intent (tests/test_decline's lab), a section declined through
+    the real apply (board C's row), r2's IP SLA as a row not in intent (board A: the row the IP
+    SLA page's suggestion fills; planted, the lab having no IP SLA policy), then the Decline…
+    card opened as its button opens it, its reason typed (board B). 1440 and phone width."""
+    from tests import browser
+    from tests import test_decline as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import monitoring_coverage as MC
+    from modules.nsot import decline, listref
+    import routes.v2 as V
+
+    lab_ = T.make_lab(tmp_path, monkeypatch)
+    ref = listref.resolve(T.LIST)
+    # Mgmt sources: a section r2's golden does not configure, so its decline draws (board C).
+    e = decline.entry(T.LIST, T.HOST, "management", reason=T.WHY, actor="operator@example.com")
+    assert decline.apply(T.LIST, T.HOST, "management", e["hash"], actor="operator@example.com",
+                         reason=T.WHY, at=e["at"])["outcome"] == "declined"
+
+    def coverage():
+        c = MC.fleet(ref, devices=[(ref, dict(lab_["device"]))],
+                     report=(None, "", "no reporting reader in this shot"))
+        c["not_covered"] = [{"host": T.HOST, "section": "ip_sla", "suggested": True, "why": (
+            "The profile's policy (upstream) suggests a probe of r2's static route's next "
+            "hop, 192.0.2.1")}]
+        return c
+
+    monkeypatch.setattr(V, "_coverage", coverage)
+    import app as A
+    reason = T.WHY.replace(" ", "+").replace(";", "%3B").replace("'", "%27")
+    card = f"/v2/monitoring/decline?list={T.LIST}&device={T.HOST}&section=ip_sla&reason={reason}"
+    with browser.Served(A.app) as served, _Boards() as boards:
+        for width, scale in ((1440, 1.0), (390, 2.0)):
+            prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+            with browser.Browser(prefs=prefs) as b:
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 1000})
+                b.go(boards.url("CoverageDecline.dc.html"))
+                _full(b, os.path.join(OUT, f"decline-board-{width}.png"))
+                b.go(served.url("/v2/monitoring/coverage"))
+                if width < 480:
+                    b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
+                         f"document.body.style.maxWidth = '{width}px'; return 1")
+                _full(b, os.path.join(OUT, f"decline-page-{width}.png"))
+                b.js("htmx.ajax('GET', arguments[0], {target: '#decline-card', "
+                     "swap: 'outerHTML'}); return 1", served.url(card))
+                b.wait_for("return !!document.querySelector('#decline-card .op-confirm')")
+                _full(b, os.path.join(OUT, f"decline-card-page-{width}.png"))
