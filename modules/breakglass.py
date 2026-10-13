@@ -230,10 +230,34 @@ def escrowed_key(payload: dict) -> bytes:
 #: supplies it, so this module need not import the store that owns it); the
 #: CSV stores hold bare tokens in two named columns. Live files only: a
 #: `.bak` copy is not what the running application decrypts.
+#:
+#: THE ONE REGISTRY (C734, 2026-10-13): the writers sealed values in five places and this
+#: list named three, so the check below, and the startup guard that reads it
+#: (`config.key_creation_refusal`), measured "every stored value" over a subset. Every
+#: writer is in `WRITERS` with its store, held equal to the program's callers of
+#: `encrypt_value` and of the key's own `encrypt` (tests/test_breakglass.py's scan).
 JSON_STORES = ("user_settings.json", "credential_profiles.json",
                "jenkins_checks.json")
+#: A network's own settings (`list_settings`, the `SECRET_KEYS` it sets): the same prefix.
+JSON_STORE_GLOBS = (os.path.join("lists", "*", "settings.json"),)
 CSV_STORE_GLOB = os.path.join("lists", "*", "devices.csv")
 CSV_SECRET_COLUMNS = ("password", "secret")
+#: A rotation's parked password (`credential_rotation.stage_plaintext`), one bare token a file.
+TOKEN_FILE_GLOBS = (os.path.join("lists", "*", "config_repo", ".nsot", "staging",
+                                 "credential", "*.enc"),)
+#: Each module that seals a value, and where the value goes: a store above, or "memory" (a
+#: device dict sealed for one call, in the shape a stored row has, never written).
+WRITERS = {
+    "modules/secrets_store.py": "user_settings.json",
+    "modules/credentials.py": "credential_profiles.json",
+    "modules/list_settings.py": JSON_STORE_GLOBS[0],
+    "modules/device.py": CSV_STORE_GLOB,
+    "modules/nsot/credential_rotation.py": CSV_STORE_GLOB + " and " + TOKEN_FILE_GLOBS[0],
+    "modules/nsot/onboard.py": CSV_STORE_GLOB + " (and memory: phase two's device row)",
+    "scripts/nmas-credential-dedupe": CSV_STORE_GLOB,
+    "modules/nsot/adopt.py": "memory",
+    "modules/inventory/netbox_source.py": "memory",
+}
 
 
 def _strings(node):
@@ -255,8 +279,10 @@ def live_ciphertexts(data_dir: str, prefix: str) -> dict:
     read has not been checked.
     """
     found, unreadable = {}, []
-    for name in JSON_STORES:
-        path = os.path.join(data_dir, name)
+    json_paths = [os.path.join(data_dir, n) for n in JSON_STORES] + sorted(
+        p for g in JSON_STORE_GLOBS for p in glob.glob(os.path.join(data_dir, g)))
+    for path in json_paths:
+        name = os.path.relpath(path, data_dir)
         if not os.path.exists(path):
             continue
         try:
@@ -279,6 +305,16 @@ def live_ciphertexts(data_dir: str, prefix: str) -> dict:
             continue
         if tokens:
             found[name] = tokens
+    for path in sorted(p for g in TOKEN_FILE_GLOBS for p in glob.glob(os.path.join(data_dir, g))):
+        name = os.path.relpath(path, data_dir)
+        try:
+            with open(path, encoding="ascii") as handle:
+                token = handle.read().strip()
+        except (OSError, UnicodeDecodeError):
+            unreadable.append(name)
+            continue
+        if token:
+            found[name] = [token]
     if unreadable:
         found["_unreadable"] = unreadable
     return found

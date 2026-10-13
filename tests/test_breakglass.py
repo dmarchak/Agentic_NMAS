@@ -350,6 +350,7 @@ class TestTheCliNeverTakesAPassphraseOnTheCommandLine:
 from cryptography.fernet import Fernet  # noqa: E402
 
 PREFIX = "enc:v1:"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _enc(key: bytes, value: str) -> str:
@@ -465,6 +466,72 @@ class TestTheKeyIsProvenByOpeningWhatIsStored:
         key = Fernet.generate_key()
         check = bg.check_key_opens(b"garbage", bg.live_ciphertexts(_data_dir(tmp_path, key), PREFIX))
         assert check["verdict"] == "wrong_key"
+
+
+class TestEveryStoreIsOneRegistry:
+    """C734 (2026-10-13): the writers sealed values in five places and the check read three.
+    A network's own settings and a rotation's parked password are stores too, for the key
+    check and for the startup guard that reads the same collector."""
+
+    def _two_more(self, data, key):
+        f = Fernet(key)
+        os.makedirs(os.path.join(data, "lists", "edge"), exist_ok=True)
+        with open(os.path.join(data, "lists", "edge", "settings.json"), "w") as fh:
+            json.dump({"values": {"netbox_token": PREFIX + f.encrypt(b"t").decode(),
+                                  "netbox_url": "https://netbox.example"}}, fh)
+        staging = os.path.join(data, "lists", "edge", "config_repo", ".nsot", "staging",
+                               "credential")
+        os.makedirs(staging)
+        with open(os.path.join(staging, "r9.enc"), "w") as fh:
+            fh.write(f.encrypt(b"parked").decode())
+        return data
+
+    def test_a_networks_settings_and_a_parked_password_are_collected(self, tmp_path):
+        key = Fernet.generate_key()
+        data = self._two_more(_data_dir(tmp_path, key), key)
+        stores = bg.live_ciphertexts(data, PREFIX)
+        assert len(stores[os.path.join("lists", "edge", "settings.json")]) == 1
+        assert len(stores[os.path.join("lists", "edge", "config_repo", ".nsot", "staging",
+                                       "credential", "r9.enc")]) == 1
+        check = bg.check_key_opens(key, stores)
+        assert check["verdict"] == "opens" and (check["opened"], check["total"]) == (8, 8)
+
+    def test_the_startup_guard_refuses_a_store_sealed_only_there(self, tmp_path):
+        """The old list read neither, so a key would have been made over them."""
+        from modules.config import key_creation_refusal
+        data = str(tmp_path / "data")
+        os.makedirs(data)
+        self._two_more(data, Fernet.generate_key())
+        got = key_creation_refusal(os.path.join(data, "key.key"))
+        assert "2 encrypted value(s)" in got and "settings.json" in got and "r9.enc" in got
+
+    def test_every_sealing_writer_is_in_the_registry(self):
+        """An exact inventory, by parsing: every call of `encrypt_value(...)` or
+        `fernet.encrypt(...)` in the program and its scripts is in a module `WRITERS` names
+        (with its store), and every module named still seals. Floor: nine writers."""
+        import ast
+        from tests.source_index import tracked
+        found = set()
+        files = tracked("modules", "routes", "scripts")
+        files = [p for p in files if p.endswith(".py") or (
+            "scripts" in p and open(p, "rb").read(64).startswith(b"#!") and
+            b"python" in open(p, "rb").readline())]
+        for path in files:
+            try:
+                tree = ast.parse(open(path, encoding="utf-8").read())
+            except (SyntaxError, UnicodeDecodeError):
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                fn = node.func
+                if (isinstance(fn, ast.Name) and fn.id == "encrypt_value") or (
+                        isinstance(fn, ast.Attribute) and fn.attr == "encrypt"
+                        and isinstance(fn.value, ast.Name) and fn.value.id == "fernet"):
+                    found.add(os.path.relpath(path, ROOT).replace(os.sep, "/"))
+        assert len(found) >= 9, sorted(found)
+        assert found == set(bg.WRITERS), (sorted(found - set(bg.WRITERS)),
+                                          sorted(set(bg.WRITERS) - found))
 
 
 class TestRestoreNeverReplacesAKey:
