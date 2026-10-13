@@ -18,7 +18,29 @@ every section:
 > **AI proposes; deterministic code decides.** Every AI output passes the same gates as a
 > person's change: the intent schema, `nmas-config-check`, pre-change verification, a preview
 > confirmed by hash, verify and rollback. AI never writes device configuration, never decides
-> compliance, and never remediates on its own.
+> compliance, and never invents an action.
+
+**Proposed revision, for the operator to confirm (section 9, decision 9):**
+- AI may SELECT an action from a pre-approved catalog of deterministic remediations, within a
+  policy's limits (its classes, its devices, never the management path), above a confidence
+  threshold, under rate caps and the kill switch, with verify and rollback.
+- It never invents an action or a parameter outside the catalog.
+- This replaces "AI never remediates on its own", and supports the closed-loop pattern where
+  AI is the decision-maker among pre-approved choices (section 3).
+
+Until confirmed, the stricter rule stands.
+
+**The golden state rule governs all autonomy (section 11; the operator's decision 12, refining
+the catalog rule above):**
+- **The current earned baseline is the golden state.**
+- **Autonomous action is limited to two things:**
+  1. converging devices back to the golden state;
+  2. a short, explicit catalog of operational recovery actions that leave the golden state
+     unchanged.
+
+  This holds whoever takes the action: the deterministic engine, or AI choosing.
+- **Anything that would change the golden state is a change,** and needs a person's approval.
+  An approved, verified change earns the next baseline.
 
 **Contents:**
 1. Gap analysis
@@ -31,6 +53,7 @@ every section:
 8. The intent translation pipeline
 9. The operator's decisions
 10. AI engineering standards
+11. The golden state rule: what autonomy may do
 
 ## 1. Gap analysis, per function, against today's code
 
@@ -307,6 +330,27 @@ Its class says what may be done about it:
 - **Full audit:** each fix is a commit and a receipt naming the policy, the deviation's
   evidence, the program sent, verify's result, and the policy's authority.
 
+**AI selecting from a catalog (the proposed revision; decision 9).**
+- **The catalog:** a fixed list of deterministic remediations, each a named operation Mercury
+  already runs, with typed parameters bounded by policy. Examples: "deploy the monitoring
+  profile's missing section to device D"; "commit the suggested IP SLA probe for D"; "re-run
+  capture on D".
+- **The AI's role:** given a deviation's evidence, it returns the catalog entry and parameters
+  it would choose, with `confidence` and its evidence references (section 10). That is all it
+  returns.
+- **Deterministic code decides whether the choice may run:**
+  - the entry is in the catalog;
+  - every parameter is inside the policy's limits (its classes, its devices, never the
+    management path);
+  - `confidence` is at or above the policy's threshold;
+  - the rails above hold (grace, hold, rate caps, windows, kill switch).
+- **Anything else goes to a person** as a proposal.
+- **The run is the catalog operation's own,** with its preview computed, its verify and its
+  rollback, and it is recorded naming the AI's choice and the policy's authority.
+- **Observe mode applies here too:** the AI's selections are logged as "would have chosen",
+  beside the deterministic rule's choice where one exists, and the rate at which a person agrees
+  is measured before the tier is enabled.
+
 **Risks, and what answers each:**
 - **Legitimate manual or emergency drift:** the grace period and the device hold; drift that
   adds is never auto-fixed; a person can mark a device "in maintenance" (an acknowledgement
@@ -352,6 +396,29 @@ profiles that inherit. Translate adds a level above it:
 - **Each network intent statement carries its verifier** (section 2), so Translate and Assure
   meet: what is stated is what is proven.
 
+**The policy-conflict layer, its own validation step before activation.**
+- **Precedence is deterministic:** a more specific scope beats a broader one (a device over a
+  role, a site, the network); an explicit deny or allow is never inferred; equal scope and
+  equal specificity is a conflict, never an order.
+- **Conflict detection** compiles every intent that touches the same object and refuses the
+  change when two disagree. Example: "block video" and "allow video for the AV team" on the AV
+  team's ports; the rule above says the narrower scope wins only when the operator has stated
+  that order.
+- **A conflict is shown with the intent it clashes with:** both statements, who committed each,
+  the objects they share. It is never resolved silently. The person resolves it by narrowing
+  one intent or stating an explicit precedence, itself an intent that is reviewed and recorded.
+
+**Intent authorisation: the intent interface is a northbound API.**
+- **Per-scope permissions:** which person (or service identity) may submit which KIND of intent
+  (monitoring, routing, access policy), for which devices, roles and sites. They are enforced in
+  code on top of Mercury's `may` and the access proxy's verified identity. A refusal names the
+  person, the intent's kind, its scope and the permission it lacked.
+- **One gate for every entry point:** the same permission check runs whether the intent comes
+  from the editor, the API, the natural-language pipeline (section 8) or, later, voice.
+- **The prompt-injection threat model covers the operator's own sentence** as well as retrieved
+  data (section 8): a sentence asking for more than its author may submit is refused by the
+  permission check, whatever the model returns.
+
 ## 6. Phase order
 
 Each phase depends on the one before it. **Assure → Respond in observe mode → Respond per
@@ -377,7 +444,7 @@ decides. Every AI output is a proposal that passes the gates a person's would.
 | Translate | natural language → the structured intent model (section 8); explaining any intent in words; inferring higher-level intent from configs ("these nine routers peer OSPF on every core link"); drafting templates for a new platform | the schema, the compiler, validation, the person's confirm; a template draft counts only when its round trip passes |
 | Activate | change summaries ("this commit adds a logging host on 9 devices"); proposals for a drain or a no-reload revert, through preview and verify | preview by hash and verify |
 | Assure | natural-language questions → PromQL or LogQL, which History › Query's builder (E3, F3) reads back before it runs; correlation ("3 alerts began together: a likely common cause"); log summaries; verifier drafts for review | the builder's read-back and its bounds; a person accepts a verifier draft, and it is shown able to fail |
-| Respond | a likely root cause and proposed fixes for a novel problem, approved by a person; a suggested remediation class; an incident record; a proposed new pipeline check whenever a problem slipped through | a person; never the automatic tier |
+| Respond | a likely root cause and proposed fixes for a novel problem, approved by a person; a suggested remediation class; an incident record; a proposed new pipeline check whenever a problem slipped through | a person; the automatic tier only by selecting from the catalog, if decision 9 is confirmed |
 
 ### Gaps that need deterministic redesign, not AI
 
@@ -430,7 +497,9 @@ archived by D15) is removed at 7.8.
 ### Where AI lands in the phase order
 
 - **Early in Assure:** natural-language query through E3/F3's read-back, and correlation.
-- **Middle:** Respond's proposals for a person; never its automatic tier.
+- **Middle:** Respond's proposals for a person. In the automatic tier only if decision 9 is
+  confirmed, and then only by selecting from the catalog (section 3), after its own observe
+  mode.
 - **Late:** Translate, once the intent model, compiler and validation exist for it to propose
   into.
 
@@ -438,10 +507,10 @@ archived by D15) is removed at 7.8.
 
 | Step | What happens | Exists today | New |
 |---|---|---|---|
-| 1. Input | plain-language intent; when ambiguous, the model asks a question and never guesses | Ask the device's typed reads, a person's reason fields | the request card, the clarifying turn |
-| 2. Prompt construction (Python) | the intent model's schema; the affected devices' current intent from Git; NetBox's facts (roles, sites, interfaces, addresses); platform capabilities; a few examples from the repository; masked; only the context the request needs | committed intent readers (`hostvars.read_committed`), NetBox client, `redact_text` | the context selector, the examples, C733's index |
-| 3. LLM translation | constrained to the intent model's JSON schema (structured output); it outputs intent, never device configuration or Jinja (template drafting is a separate workflow gated by round trip) | none | the gateway, the schema |
-| 4. Validation | the schema; semantics (references exist in NetBox, no conflict with other intent, guardrails such as never the management path or s3); `nmas-config-check`; pre-change simulation (Batfish); the device-level diff and blast radius. On failure one bounded retry with the error fed back, then back to the operator | `nmas-config-check`, the render, `deploy.classify_diff`, the management-path rules | semantic checks, Batfish, the retry |
+| 1. Input | plain-language intent, from an authenticated person; when ambiguous, the model asks a question and never guesses. A later input layer: voice, speech-to-text in front of the same pipeline, for queries and commands, from an authenticated session, with a mandatory spoken and written read-back before any confirm (low priority; the design leaves room) | Ask the device's typed reads, a person's reason fields | the request card, the clarifying turn, voice later |
+| 2. Prompt construction (Python) | the intent model's schema; the affected devices' current intent from Git; NetBox's facts (roles, sites, interfaces, addresses); platform capabilities; 2 or 3 REAL input → output examples drawn from the config repository's history (a commit's intent change and the words that asked for it); masked; only the context the request needs, sized by the feature's measured minimum (section 10) | committed intent readers (`hostvars.read_committed`), NetBox client, `redact_text` | the context selector, the example selector, C733's index |
+| 3. LLM translation | constrained to the intent model's JSON schema (structured output), with an explicit error contract: `{"error": "could not parse"}` and `{"error": "ambiguous", "clarification_needed": "…"}`, each surfaced to the operator in their own words, never retried silently. It outputs intent, never device configuration or Jinja (template drafting is a separate workflow gated by round trip) | none | the gateway, the schema, the error shapes |
+| 4. Validation | the schema; **intent authorisation** (the person may submit this kind of intent for these devices and sites; section 5); semantics (references exist in NetBox, guardrails such as never the management path or s3); **the policy-conflict layer** (precedence, conflicts shown with the intent they clash with; section 5); `nmas-config-check`; pre-change simulation (Batfish); the device-level diff and blast radius. On failure one bounded retry with the error fed back, then back to the operator | `nmas-config-check`, the render, `deploy.classify_diff`, the management-path rules, `may` | authorisation per scope, the conflict layer, semantic checks, Batfish, the retry |
 | 5. Confirmation | the operator's words; a plain-language read-back GENERATED FROM THE STRUCTURED OUTPUT (not the model's own description); the intent diff; the exact device commands; validation results; the risk. Approved by hash: exactly that artifact runs (the model is not deterministic) | preview and confirm by hash, the program masked | the read-back generator |
 | 6. Execution | commit the intent to the config repository (its pipeline and GitHub Actions run on it), then deploy, verify, roll back | `save_host_vars`, the pipeline, the config repository's workflow | none |
 | 7. Verification that the intent holds | Assure's verifiers prove the network now behaves as stated; roll back if not | verify (configuration) | the statement's verifier (behaviour) |
@@ -456,6 +525,24 @@ archived by D15) is removed at 7.8.
 - **Containment:** a request whose context holds instruction-shaped text is still validated
   the same way. The worst an injection can do is propose something validation refuses or a
   person declines.
+- **The operator's own sentence is untrusted too:** it may ask for more than its author may
+  submit, or carry text pasted from elsewhere. Intent authorisation (section 5) is checked on
+  the structured output, so the model's compliance with an injected instruction gains nothing.
+
+**Validation in the pipeline, mapped to Mercury.** The pattern is: the model's output becomes a
+reviewed git change; the change passes syntax, semantics and behaviour checks; an approval gate;
+deploy; rollback by revert; and a faster pre-approved path for urgent actions.
+
+| Stage of the pattern | Mercury today | New |
+|---|---|---|
+| LLM output → a reviewed git change | an intent change is a commit to the config repository (`save_host_vars`, `repo.commit`) with `Actor:`, `Actor-Verified:` and `Source:` | the translation record's id in the commit's trailers |
+| Syntax checks | the intent schema; `nmas-config-check`'s yaml, templates and render checks; `assert_printable` | the intent model's JSON schema |
+| Semantics checks | `nmas-config-check`'s intent-match, lint and secrets checks; NetBox references | the conflict layer; authorisation per scope |
+| Behaviour checks | verify after deploy; the adjacencies and other readers | Batfish before deploy; the statement's verifier after |
+| The approval gate | preview and confirm by hash as a verified person; the config repository's GitHub Action | none |
+| Deploy | the pipeline, merge-only, with stages 6 to 8 rolled back on failure | Activate's canary then fleet |
+| Rollback by revert | Revert (`intent_ops.revert_apply`): an intent commit reverted, then deployed | an automatic revert when a statement's verifier fails after deploy |
+| The faster pre-approved path for urgent actions | scheduled rotation: a policy's authority, no per-change confirm | Respond's catalog (section 3), under a policy and its rails |
 
 ## 9. The operator's decisions, before any build
 
@@ -474,6 +561,15 @@ archived by D15) is removed at 7.8.
    the trap's OID parsed.
 8. **Where the history lives:** confirm that Assure's history waits on E18 (the records
    database) rather than a second store.
+9. **The Respond rule's revision:** whether AI may SELECT from a pre-approved catalog of
+   deterministic remediations within a policy's limits (the principle's proposed revision,
+   section 3). Until confirmed, AI never remediates on its own.
+10. **Intent authorisation:** the kinds of intent and the scopes each person or service may
+    submit (section 5).
+11. **Voice:** whether to keep room for it, and when (proposed: after Translate's first phase,
+    low priority).
+12. **The golden state rule (section 11):** the rule, and each of its seven sub-rules, one by
+    one.
 
 ## 10. AI engineering standards (binding on every AI feature)
 
@@ -489,6 +585,13 @@ them feature by feature.
   with the per-request material last.
 - Low temperature for translation and classification.
 - "Ask, don't guess" is a field of the output schema, not a hope.
+- **Few-shot and an error contract** on every translation prompt:
+  - 2 or 3 real input → output examples drawn from the config repository's history;
+  - the explicit error shapes `{"error": "could not parse"}` and
+    `{"error": "ambiguous", "clarification_needed": "…"}`, each surfaced to the operator.
+- **Minimum context, found by test:** each feature's eval suite finds and records the smallest
+  context that still produces correct output, by removing context blocks until the score drops.
+  That number becomes the feature's context budget, re-measured when the prompt changes.
 
 **Responses are constrained and validated.**
 - Every response uses the provider's schema-constrained output (a tool-use schema or
@@ -517,3 +620,72 @@ them feature by feature.
 - Masking before every prompt (section 7; C733's index, C745's shapes).
 - Everything retrieved is untrusted data (section 8's threat model).
 - Every prompt and response is recorded in History with who asked.
+
+## 11. The golden state rule: what autonomy may do
+
+**The operator's principle (2026-10-13), governing every autonomous action. It refines section
+3's catalog rule. The rule and each sub-rule below are the operator's to confirm (section 9,
+decision 12); until then, nothing acts on its own but scheduled rotation.**
+
+**THE RULE.**
+- **The current earned baseline is the golden state** (`baseline/<ts>`, earned by measurement:
+  `golden_state.judge_device`, the declared protocols up).
+- **Autonomous action is limited to two things:**
+  - **(a)** converging devices back to the golden state;
+  - **(b)** a short, explicit catalog of operational recovery actions that leave the golden
+    state unchanged.
+
+  This holds whoever takes the action: the deterministic engine, or AI choosing from the
+  catalog.
+- **Anything that would change the golden state is a change,** and needs a person's approval.
+  An approved, verified change earns the next baseline.
+
+It answers Respond's hardest question, "fix it back to what?". Autonomy restores what was
+measured to work; it never decides what the network should become.
+
+**The sub-rules, each a decision for the operator:**
+
+1. **No current earned baseline, no autonomy.** A device (or network) with no earned baseline,
+   or with one its intent has moved past, gets a Needs attention row ("no golden state:
+   autonomy off until a baseline is earned"), and nothing acts on it.
+2. **Policy-authorised actions re-earn the baseline automatically once verified.** Rotation now,
+   the remediation catalog later: a verified action earns the next baseline, recorded with the
+   policy's authority. **Secret lines are never restored from an older baseline:** the C75 guard
+   (a restore never changes an account the device holds; C79, never adds one back) applies to
+   every convergence, so a rotated credential is never reverted to its predecessor.
+3. **Config convergence re-applies only the deviating lines,** never a whole-device reload or a
+   whole-config replace:
+   - the program is computed as a deploy's (merge-only, the authorised lines), previewed and
+     recorded;
+   - then verified, and rolled back on failure, exactly as a person's deploy.
+4. **Operational deviations are not config drift.** A neighbour down, a link down, an
+   err-disabled port: the configuration matches the golden state, and the network does not.
+   Only catalog actions apply (for example, bouncing an err-disabled port whose cause has
+   cleared); anything else goes to a person.
+5. **Deliberate human drift is protected:**
+   - **a grace period:** a deviation must persist before convergence;
+   - **a "change in progress" hold** any person can set on a device or a scope, with a reason
+     and an end time;
+   - **maintenance windows,** in which nothing converges.
+
+   A deviation attributed to a named person (AAA accounting, or a syslog `%SYS-5-CONFIG_I`
+   naming the user) becomes a **Capture-or-Revert decision** for a person, never a silent
+   revert. AI may classify a deviation as deliberate or unexplained, citing its evidence;
+   deterministic code decides what happens.
+6. **Scope limits:** anything whose revert could cut Mercury off goes to a person: the
+   management path (s3 in this lab), routing protocols, the vty and credential lines. The one
+   exception, decided per class: run LAST, with a safe fallback (the repair route CLAUDE.md
+   requires for a change to the path to a device).
+7. **The lifecycle in the GUI:** Change → Earn baseline → Maintain → Change. The maintainer's
+   state is visible on Needs attention and on each device's page (a board first):
+   - **on:** maintaining, its baseline named;
+   - **held:** a change in progress, by whom, until when;
+   - **no baseline:** autonomy off, and why;
+   - **observe mode:** "would have converged", not acting.
+
+**How it fits sections 3 and 4.**
+- **Respond's auto-fix classes** become convergence (sub-rule 3) plus the operational catalog
+  (sub-rule 4).
+- **Activate** is the approved change that earns the next baseline.
+- **AI's selection** (decision 9) chooses only among catalog actions and convergences that
+  leave the golden state unchanged.
