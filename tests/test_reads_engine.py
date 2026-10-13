@@ -32,10 +32,14 @@ class Session:
     """A device session at the engine's seam: answers from the captures, every command
     recorded, the most sessions open at once measured."""
 
-    def __init__(self, delay=0.0, fail=(), answers=None):
+    def __init__(self, delay=0.0, fail=(), answers=None, gather=0):
+        """*gather*: each session stays open until that many are open at once, or *delay*
+        passes, so the most open at once is reached by waiting for it, never by how fast a
+        loaded machine starts threads (CI #735 saw 3 of 4 with a 0.2 s sleep)."""
         self.sent, self.open_now, self.peak = [], 0, 0
         self.delay, self.fail, self.answers = delay, set(fail), answers or ANSWERS
-        self.mu = threading.Lock()
+        self.gather = gather
+        self.mu = threading.Condition()
 
     def __call__(self, dev, fn):
         if dev["hostname"] in self.fail:
@@ -43,8 +47,13 @@ class Session:
         with self.mu:
             self.open_now += 1
             self.peak = max(self.peak, self.open_now)
+            self.mu.notify_all()
+            if self.gather and self.peak < self.gather:
+                # Once that many were open together, no later session waits for it again.
+                self.mu.wait_for(lambda: self.peak >= self.gather, timeout=self.delay)
         try:
-            time.sleep(self.delay)
+            if not self.gather:
+                time.sleep(self.delay)
             return fn(self)
         finally:
             with self.mu:
@@ -136,12 +145,14 @@ class TestARun:
             redact_text(ANSWERS["show running-config"]).encode()).hexdigest()
 
     def test_the_concurrency_bound_holds(self, lab):
+        # Each session waits for a third to open (0.5 s at most): under a bound of 2 none does.
         lab["settings"]["reads_max_workers"] = 2
-        s = Session(delay=0.2)
+        s = Session(delay=0.5, gather=3)
         _run(["r1", "r2", "r3", "s1"], ["show ip interface"], session=s)
         assert s.peak == 2, s.peak
+        # Each waits for all four (10 s at most; they open within milliseconds when allowed).
         lab["settings"]["reads_max_workers"] = 4
-        s = Session(delay=0.2)
+        s = Session(delay=10, gather=4)
         _run(["r1", "r2", "r3", "s1"], ["show ip interface"], session=s)
         assert s.peak == 4, s.peak                  # the control: the bound is the setting
 

@@ -24,6 +24,13 @@ bar's and the counts line's verdicts stand), and `at_step` a `device` flag (a Ne
 subject is a list, drawn unlinked). Update draws the macro's markup and its script sets each
 step's state as the updater reports it (the app restarts part way, so no redraw can); the
 classes it sets are the macro's own.
+Retaken 2026-10-13 (the operator's overnight list, item 12; `test_stepper` at 1440, 1280 and 390,
+the templates unchanged since the hash below): every region's verdict stands. One defect in
+the words, not the layout, registered as C741: the running step's note (drawn under the step on
+the phone, the hover on the desk) ends "(last done: read_back)", the running step's own code
+name said as done, and the counts line says "1 waiting their turn" where the board says "its
+turn". The phone page's full shot is 488 px wide because that is Firefox's narrowest window; the
+page is held to 390 as a column, not scrolling sideways.
 Templates compared: templates/v2/_run_stepper.html, modules/run_stepper.py, static/js/nmas_stepper.js
 Templates sha256: `a0a1a5729910baf16a183c7c6046dff5fa16a275b9b0634d673c3ef9dfd12ace`
 
