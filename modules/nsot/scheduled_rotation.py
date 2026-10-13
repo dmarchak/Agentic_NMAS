@@ -45,7 +45,7 @@ log = logging.getLogger(__name__)
 
 SETTING = "credential_rotation_policies"
 #: The commit's ``Source:`` slug for a scheduled rotation's record.
-SOURCE = "scheduled-rotation"
+SOURCE = "scheduled_rotation"           # a workflow name: repo.SOURCE_SLUG
 #: Announced when a run ends or a device in it finishes (`invalidation.ANNOUNCERS`).
 ANNOUNCER = "scheduled-rotation"
 ANNOUNCE_KEYS = ("rotation", "credentials")

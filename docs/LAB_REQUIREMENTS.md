@@ -93,22 +93,27 @@ runs in 08:30 to 09:10 UTC (the nightly backup), and nothing is staged on s3.
    carries a rotation policy; Mercury rotates the devices that follow it when their password is
    older than the policy allows."
 2. On the `default` row: **Rotation policy…**. Show the policy already set (every **1** day,
-   from 0 until 24 UTC, at most **1** device, only **r2, s1**; set before recording, so the
-   timer has already rotated s1 on its own). Say: "Changing a policy needs a verified person
-   and is recorded; this one is limited to two pilot devices, and the timer already rotated
-   s1 unattended." Show s1's row on History.
-3. The **Scheduled rotation** card: each device's credential age and next due date. Say: "A
-   timer checks every five minutes; it never runs in the nightly backup window, never on a
-   device another operation holds or one restarting, and it stops at the first failure."
-4. **Rotate due devices now…** → read the preview (the device it takes, and those it leaves
-   with why) → **Rotate 1 device**. The one stepper runs: plan, rotate, verify, record,
-   persist. Say: "The same rotation a person runs from the device page, one device at a time."
-5. **History**: the row "Scheduled rotation (policy set by …)". Then the device's **Overview**:
-   its Credential line, rotated just now, next due tomorrow. Say: "Recorded like a manual
-   rotation, and the next one is already due tomorrow."
-6. **Needs attention**: "…'s break-glass record is out of date since …: export it again".
-   Say: "After any rotation the offline break-glass copy is stale, so Mercury asks for a new
-   export."
+   any hour, at most **1** a run, only **r2, s1**). Say: "Changing a policy needs a verified
+   person and is recorded; this one is limited to two pilot devices."
+3. The **Scheduled rotation** card: s1 "rotated … ago, next due tomorrow"; r2 "due now". Say:
+   "A timer checks every five minutes and takes one device a day under this policy; it rotated
+   s1 on its own at 23:56 UTC. It never runs in the nightly backup window, never on a device
+   another operation holds or one restarting."
+4. **Needs attention**: the CRITICAL row "Scheduled credential rotation stopped: s1 failed at commit". Say:
+   "Its first unattended run rotated s1 and then could not record it, so it stopped and raised
+   this. s1 was recovered with Mercury's own recovery and persisted; the timer starts nothing
+   more until a person's run finishes cleanly." (The cause, a malformed commit label, is fixed;
+   this is the stop-at-first-failure rule working.)
+5. **Credentials › Profiles › Rotate due devices now…** → the preview takes **r2** (and says
+   why it leaves s1) → **Rotate 1 device**. The one stepper runs: plan, rotate, verify,
+   record, persist. Say: "The same rotation a person runs from the device page, one device at
+   a time; this clean run also clears the stopped row."
+6. **History**: the row "Scheduled rotation (policy set by …)" for r2. Then **Devices › r2 ›
+   Overview**: its Credential line, rotated just now, next due tomorrow. Say: "Recorded like a
+   manual rotation, and the next one is due in a day."
+7. **Needs attention**: the CRITICAL row is gone; "r2's break-glass record is out of date since
+   …: export it again" is there. Say: "After any rotation the offline break-glass copy is
+   stale, so Mercury asks for a new export."
 
 ### Part 2 extra credit: 2FA
 

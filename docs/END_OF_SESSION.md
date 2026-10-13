@@ -1,5 +1,37 @@
 # End of session: where Phase 7 stands
 
+## NIGHT, 2026-10-12 to 13 (22:30 to about 00:30 UTC): the Labs 4 and 5 Part 2 deadline
+
+**FREEZE in force** (the operator): no AI-family removal, no stepper conversion, no query
+builder, no 7.8 removals until the operator says the submission is in; only fixes for the demo
+path.
+
+**Built, deployed and walked on the host:**
+- **C724, scheduled credential rotation** (8e8c799, b0869a1, b6a2951 and the slug fix): a policy
+  per credential profile (every N days, a window, at most K a run, optionally only named
+  devices), a timer (every 5 min, one scheduled run per policy in any 24 hours), Rotate due
+  devices now, credential age and due date on Credentials and the device page, records,
+  a CRITICAL row on the first failure, the break-glass staleness row.
+  **The policy set by the operator:** `default`, every 1 day, any hour, at most 1, only r2, s1.
+  **The first unattended run** rotated s1 at 23:56 UTC and its record's commit was refused (a
+  malformed Source slug, fixed); it stopped as designed and raised the CRITICAL row. s1 was
+  recovered (nmas-rotation-recover: recorded; nmas-persist-native: PERSISTED). Mercury logged
+  in to s1 throughout. The timer starts nothing more until a person's run finishes cleanly:
+  r2 stays due for the recording's Rotate due devices now, which also clears the row.
+  **After the operator's recording: set the `default` policy to every 30 days (only r2, s1),
+  as the operator asked.**
+- **C725, the config pipeline** (b0869a1, e1289df): `scripts/nmas-config-check` (no device, no
+  secret) before every Mercury commit of intent, profiles, templates or DHCP, and GitHub Actions
+  in the config repository on every push and pull request. Host step run: 7 of 7 PASS; the
+  real repository passes every check (9 devices, Intent-Match 9 of 9, 1.6 s); the workflow and
+  pin committed (239ca19) and pushed; **the operator saw its first Actions run green.**
+- `docs/LAB_REQUIREMENTS.md`: the objectives and the demo script, in recording order.
+- `docs/PUBLIC_RELEASE.md` section f: device-login 2FA, registered, not built.
+
+**Held until the submission is in:** C722's host step (it restarts Alloy on the logs demo's
+path; Needs attention lists it as owed until then). Reading the Actions verdict into Mercury
+needs the operator's read-only token (Actions and Checks: read), not tonight.
+
 ## EVENING, 2026-10-12 (about 20:05 to 23:30 UTC; 14:05 to 17:30 UTC−6)
 
 **The one stepper is done (C716 closed).** Every operation page draws its progress through the

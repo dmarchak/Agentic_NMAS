@@ -67,7 +67,7 @@ def _golden_history(repo: str) -> tuple:
 #: A save's `Source:` in words, for "measured by ...". Anything else reads as its slug.
 SOURCE_WORDS = {"save_all": "Save All", "capture": "a capture", "pipeline": "a deploy",
                 "save": "a Save", "restore": "a restore", "rotation": "a rotation",
-                "scheduled-rotation": "a scheduled rotation",
+                "scheduled_rotation": "a scheduled rotation",
                 "onboarding": "onboarding",
                 "adopt": "adoption", "approval": "an approval", "manual": "a save",
                 "repair": "a repair", "extraction": "an extraction", "ai": "the agent"}

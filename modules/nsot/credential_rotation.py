@@ -1241,7 +1241,7 @@ def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
            actor: str = "", actor_kind: str = "", device: dict = None,
            capture: str = "", record: str = "csv", source: str = "rotation") -> dict:
     """Rotate one device. Returns one of the five states. *source* is the commit's
-    ``Source:`` slug (a scheduled rotation's is ``scheduled-rotation``, C724).
+    ``Source:`` slug (a scheduled rotation's is ``scheduled_rotation``, C724).
 
     The ordering is the lockout defence, and every line of it is load-bearing:
 

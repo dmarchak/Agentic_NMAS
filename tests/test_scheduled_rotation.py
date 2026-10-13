@@ -240,7 +240,7 @@ def test_each_rotation_is_the_device_page_path_named_as_scheduled(data, monkeypa
     got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot)
     assert got["state"] == "done" and [r["device"] for r in got["rotated"]] == ["r3", "r1"]
     for c in rot.calls:
-        assert c["actor"] == SETTER and c["source"] == "scheduled-rotation"
+        assert c["actor"] == SETTER and c["source"] == "scheduled_rotation"
         assert c["via"] == f"scheduled rotation (policy set by {SETTER})"
         assert c["fingerprint"] == f"fp-{c['device']}" and c["actor_kind"] == "policy"
     rot2 = Rotations()
@@ -258,10 +258,10 @@ def test_rotate_op_run_passes_the_words_to_the_record_and_the_commit(monkeypatch
     monkeypatch.setattr(cr, "rotate", lambda l, h, **kw: seen.append(kw) or
                         {"state": cr.REVERTED})
     rotate_op.run("Lab", "r1", actor=SETTER, fingerprint="fp", via="scheduled rotation (x)",
-                  actor_kind="policy", source="scheduled-rotation")
+                  actor_kind="policy", source="scheduled_rotation")
     rotate_op.run("Lab", "r1", actor=SETTER, fingerprint="fp")
     assert (seen[0]["via"], seen[0]["actor_kind"], seen[0]["source"]) == \
-        ("scheduled rotation (x)", "policy", "scheduled-rotation")
+        ("scheduled rotation (x)", "policy", "scheduled_rotation")
     assert (seen[1]["via"], seen[1]["actor_kind"], seen[1]["source"]) == \
         ("device page", "person", "rotation")
 
@@ -431,6 +431,16 @@ def test_the_timer_runs_only_when_a_policy_is_due_in_its_window(data, monkeypatc
     assert ran == []
     SR.tick(NOW)
     assert ran == [{"trigger": "scheduled", "now": NOW}]
+
+
+def test_the_commit_s_source_is_a_workflow_name_the_repository_accepts():
+    """The host, 2026-10-12 23:56 UTC: s1 was rotated on the device and its commit refused,
+    "source 'scheduled-rotation' is not a workflow name", because every test stubbed the
+    commit. The slug is held to the repository's own rule, and the words for it exist."""
+    from modules import device_list
+    from modules.nsot import repo
+    assert repo.SOURCE_SLUG.match(SR.SOURCE), SR.SOURCE
+    assert device_list.SOURCE_WORDS[SR.SOURCE] == "a scheduled rotation"
 
 
 def test_a_scheduled_run_after_midnight_does_not_take_a_second_device(data, monkeypatch):
