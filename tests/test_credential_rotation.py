@@ -2433,3 +2433,43 @@ class TestAFailedRecordKeepsTheOnlyCopy:
                                           "at": "2026-09-27T23:00:00Z"}])
         assert rows[0]["state"] == "not_recorded"
         assert "not_recorded" not in job_health.OK_STATES
+
+
+def test_nothing_runs_oxidizeds_router_db_helper():
+    """The operator's overnight list, item 2 (2026-10-13): rotation must not write Oxidized's
+    router.db. It has not since Oxidized's retirement (Phase 3 step 2, 2026-10-08; measured on
+    the host: the file last changed 2026-10-06, before six rotations since). Held here by
+    parsing: the helper's installed path or name appears only where it is declared
+    (`credential_rotation.HELPER_INSTALLED`) and listed (`host_helpers`, which reports the
+    installed copy for removal), never in a call."""
+    import ast
+    from tests.source_index import tracked
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    allowed = {("modules/nsot/credential_rotation.py", "assign"),
+               ("modules/host_helpers.py", "listing")}
+    uses, scanned = [], 0
+    for path in tracked("modules", "routes", "app.py", suffix=".py"):
+        rel = os.path.relpath(path, root).replace(os.sep, "/")
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        scanned += 1
+        parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+        for node in ast.walk(tree):
+            hit = (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                   and "nmas-oxidized-cred" in node.value) or (
+                isinstance(node, (ast.Name, ast.Attribute))
+                and getattr(node, "id", getattr(node, "attr", "")) == "HELPER_INSTALLED")
+            if not hit:
+                continue
+            up = parents.get(node)
+            while up is not None and not isinstance(up, (ast.Call, ast.Assign, ast.Dict,
+                                                         ast.Expr)):
+                up = parents.get(up)
+            kind = ("call" if isinstance(up, ast.Call) else "assign"
+                    if isinstance(up, ast.Assign) else "listing" if isinstance(up, ast.Dict)
+                    else "text")
+            if kind != "text":
+                uses.append((rel, kind))
+    assert scanned > 100, scanned
+    assert ("modules/nsot/credential_rotation.py", "assign") in uses
+    assert set(uses) <= allowed, sorted(set(uses) - allowed)
