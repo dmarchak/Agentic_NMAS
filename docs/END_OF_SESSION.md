@@ -128,7 +128,7 @@ before each).
 | 8, D16 Quick actions | c8d02a66 | #728 | 07:59:01 | the routes gone; today's device page renders without the section; then the store archived and deleted (below) |
 | 9 and 10, boards and E19 | cd148a78 | #729 | with 7111fec0 | docs and the canvas only |
 | 8, D16 Device files, Bulk file actions, the TFTP setting | 12df1839, cb9ac2ec, 7111fec0 | #730/#731, #732/#733, #734 | 09:29:03, with 7065fff7 | the 12 removed routes (the file, bulk, TFTP and quick-action routes) answer 404, where the same walk before the deploy read 403 (refused at the gate) or 302; today's index and a device page render (200), the device page has no file tab and no TFTP mention; the index's three TFTP mentions are the TFTP root's field, kept (parked 7); `/v2/` 200; no app errors since the restart |
-| 8, Oxidized's host step (script only) | 90bd8dbd | #735 RED (a test's race, below) | with 7065fff7 | not run (parked, below) |
+| 8, Oxidized's host step | 90bd8dbd; fixed by 1136827d, b418d11f (C757), 46599b01 (C758) | #735 RED, then #747 | 46599b01, 21:47:31 | **CLOSED 2026-10-13 (the operator's run):** archive `s3://mercury/archives/oxidized/20261013T210823Z.tar.gz` (sha256 be1dd23b…), PASS 7 of 7; then `--delete`, PASS 7 of 7 asked (2 not asked): both containers removed, the six router.db-named files shredded, /opt/oxidized removed, none left on the host. The archive is the only copy |
 | 12, the stepper retakes; C742 (the red run's fix) | 7065fff7 | #736 | 09:29:03 | the shots compared (below) |
 
 ### Parked for the operator, in the order to take them
@@ -188,7 +188,8 @@ before each).
   BUILT row), but the AI family and Backups "go with today's pages", and each needs its
   archive first. So today's pages come out after 2 above and Backups' archive, in one commit
   tagged `pre-remove/todays-pages`.
-- **Oxidized:** its code left at Phase 3; its containers and store wait on 3 above.
+- **Oxidized:** its code left at Phase 3; its containers and store were removed 2026-10-13
+  (the D16 row above, closed).
 
 ### What went wrong, and the state it was left in
 
@@ -228,7 +229,7 @@ Neither is one of Stage 7's 16 acceptance criteria, and neither is a CUTOVER con
 1. **Cutover:**
    - the AI family and Backups (each after its archive);
    - then today's pages;
-   - Oxidized's host remains (3 above).
+   - Oxidized's host remains (3 above): done 2026-10-13, the D16 row closed.
 2. **Acceptance:** criterion 13 is met as of tonight. Rows 1 to 6, 10, 11, 14 and 16 read
    "partly" in a table that predates much of the work. Several of them (1 reachability, 6 one
    pattern, 16 no duplicated function) close by construction when today's pages go. Each is to
