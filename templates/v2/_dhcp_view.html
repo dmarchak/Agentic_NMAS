@@ -60,7 +60,7 @@
         {%- if gw.state == 'ra' %}<span class="faint">{{ gw.words }}</span>{% for r in gw.ra %}<br><span class="small">{{ r.device }} {{ r.iface }}: M {{ 'set' if r.managed else 'not set' }}, O {{ 'set' if r.other else 'not set' }}</span>{% else %}<br><span class="small faint">no router in intent advertises on it</span>{% endfor %}
         {%- else %}<span class="mono">{{ gw.kea or '—' }}</span>{% if gw.inherited %} <span class="faint">(global)</span>{% endif %}<br><span class="small{% if gw.state in ('differs', 'missing') %} dh-warn{% else %} faint{% endif %}"{% if gw.where %} title="intent: {{ gw.where | join(', ') }}"{% endif %}>{{ gw.words }}</span>{% endif %}</td>
       <td class="mono">{% for d in x.dns.servers %}{{ d }}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">none</span>{% endfor %}{% if x.dns.inherited %} <span class="faint">(global)</span>{% endif %}</td>
-      <td>{{ g.duration(x.times.valid) }} · {{ g.duration(x.times.preferred) }} · {{ g.duration(x.times.renew) }} · {{ g.duration(x.times.rebind) }}{% if x.same_as_global %} <span class="faint">the same as Kea's global</span>{% endif %}</td>
+      <td>{{ g.duration(x.times.valid) }} · {{ g.duration(x.times.preferred) }} · {{ g.tee_words(x) }}{% if x.same_as_global %} <span class="faint">the same as Kea's global</span>{% endif %}</td>
       <td>{% if x.ztp %}{{ x.used }} asking{% elif x.size %}{{ x.used }} of {{ x.size }}{% else %}{{ x.used }}{% endif %}</td>
       <td class="small">{% if x.held %}{{ g.held_words[x.held] }}{% else %}<span class="faint">not known: Kea's file is not on this host</span>{% endif %}</td>
       <td>{% if x.held == 'mercury' %}<a class="btn btn-small" href="{{ url_for('dhcp_v2.subnet_preview', list=g.list, family=x.family, id=x.id) }}" hx-get="{{ url_for('dhcp_v2.subnet_preview', list=g.list, family=x.family, id=x.id) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-subnet" aria-label="Edit {{ x.prefix }}">Edit…</a>{{ how('dhcp-subnet', compact=True, op='a subnet') }} <a class="btn btn-small" href="{{ url_for('dhcp_v2.subnet_preview', list=g.list, op='remove', family=x.family, id=x.id) }}" hx-get="{{ url_for('dhcp_v2.subnet_preview', list=g.list, op='remove', family=x.family, id=x.id) }}" hx-target="#dhcp" hx-swap="outerHTML" data-op="dhcp-subnet" aria-label="Remove {{ x.prefix }}">Remove…</a>{{ how('dhcp-subnet', compact=True, op='a subnet') }}{% endif %}</td>
@@ -68,6 +68,10 @@
     {%- else %}<tr><td colspan="8" class="faint">Kea serves no subnet that was read.</td></tr>{% endfor %}
     </tbody>
   </table></div>
+  {%- set lc = g.families | map(attribute='lifetime_classes') | sum(start=[]) %}
+  {%- if lc %}
+  <p class="note small" data-lifetime-classes>A client class's lease time beats its subnet's: {% for c in lc %}<span class="mono">{{ c.name }}</span> ({{ c.family }}, {{ c.who }}) {{ g.duration(c.valid) }}{% if c.preferred %} · preferred {{ g.duration(c.preferred) }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.</p>
+  {%- endif %}
   {%- if g.subnets and g.subnets | selectattr('held', 'equalto', 'kea-file') | list %}
   <p class="note small">Kea's subnets are written by hand in Kea's own files today. Before Mercury's first change to them, one host step moves every subnet and its reservations into Mercury's own files, unchanged, with Kea's running configuration compared before and after (board C). From then on Mercury writes only its own files and applies them with <span class="mono">config-reload</span>.</p>
   {%- elif g.subnets and g.subnets | rejectattr('held') | list %}

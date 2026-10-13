@@ -58,7 +58,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # D16: Oxidized's containers and store retired: archived masked, router.db shredded.
             "d16-oxidized-retire.sh",
             # C743: the two first archive objects deleted, every version, with a typed key.
-            "c743-delete-archive-objects.sh"}
+            "c743-delete-archive-objects.sh",
+            # E19: the lease lifetimes: Kea's globals and classes, the management subnet's.
+            "e19-dhcp-lifetimes.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.

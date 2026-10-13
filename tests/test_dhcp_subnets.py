@@ -383,12 +383,29 @@ class TestTheSubnetPlan:
         assert not any(n.startswith("10.10.10.102") for n in p["leases"]), "inside the pool"
         assert ("pass", "the gateway equals intent's VRRP address (10.10.10.1)") in p["checks"]
 
-    def test_a_lifetime_sets_both_timers_and_says_who_it_applies_to(self, moved):
-        p = S.plan("Lab", dict(EDIT, pool="", valid="1 d"), kea=moved["kea"])
-        assert ("+", "valid-lifetime: 86400") in p["change"]
-        assert ("+", "renew-timer: 43200") in p["change"] and ("+", "rebind-timer: 75600") in \
-            p["change"]
+    def test_a_lifetime_has_kea_compute_both_timers_and_says_who_it_applies_to(self, moved):
+        """E19 (the operator, 2026-10-13: "T1/T2 at 50%/80%"): Kea computes renew and rebind
+        from each lease's own lifetime, so a reserved client's longer class lifetime renews at
+        its own half, never at the pool's."""
+        p = S.plan("Lab", dict(EDIT, pool="", valid="4 h"), kea=moved["kea"])
+        assert ("+", "valid-lifetime: 14400") in p["change"]
+        assert ("+", "calculate-tee-times: true") in p["change"]
+        assert ("+", "t1-percent: 0.5") in p["change"] and ("+", "t2-percent: 0.8") in p["change"]
+        assert not [c for c in p["change"] if c[0] == "+" and "-timer" in c[1]], p["change"]
         assert any("applies to leases granted or renewed after" in n for n in p["leases"])
+
+    def test_a_lifetime_removes_the_subnet_s_fixed_timers(self, moved):
+        """A subnet written with fixed timers (as Mercury wrote them before E19) loses them, or
+        they would beat the computed ones."""
+        path = moved["files"]["dhcp4"]
+        subnets = S.load(open(path, encoding="utf-8").read())
+        for s in subnets:
+            s.update({"renew-timer": 15768000, "rebind-timer": 27594000})
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(S.dump(subnets))
+        p = S.plan("Lab", dict(EDIT, pool="", valid="4 h"), kea=SubnetKea(moved["files"]))
+        assert ("-", "renew-timer: 15768000") in p["change"], p["change"]
+        assert ("-", "rebind-timer: 27594000") in p["change"], p["change"]
 
     def test_a_gateway_other_than_intent_s_is_said(self, moved):
         p = S.plan("Lab", dict(EDIT, pool="", gateway="10.10.10.254"), kea=moved["kea"],

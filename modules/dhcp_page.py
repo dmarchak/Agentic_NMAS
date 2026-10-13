@@ -147,6 +147,27 @@ def pool_size(pools: list) -> int:
     return total
 
 
+def class_who(name: str) -> str:
+    """Which clients a lifetime class serves, in words (E19's reserved class, board L's
+    discovery classes); another class says its test is Kea's."""
+    from modules import dhcp_lifetimes
+    from modules.dhcp_discovery import CLASS_WORDS
+    if name == dhcp_lifetimes.RESERVED:
+        return "every client with a reservation, in every subnet"
+    return CLASS_WORDS.get(name, "the clients its test in Kea's configuration matches")
+
+
+def tee_words(sub: dict) -> str:
+    """Renew and rebind as the page draws them: Kea's fixed timers, or the shares it computes
+    from each lease's own lifetime (E19)."""
+    t = sub.get("tee") or {}
+    times = sub.get("times") or {}
+    if t.get("computed") and times.get("renew") is None and times.get("rebind") is None:
+        return (f"renew at {round((t.get('t1') or 0) * 100)}% · rebind at "
+                f"{round((t.get('t2') or 0) * 100)}% of each lease")
+    return f"{duration(times.get('renew'))} · {duration(times.get('rebind'))}"
+
+
 def _families(value: dict) -> list:
     return [(svc, f) for svc, f in (value.get("families") or {}).items()]
 
@@ -157,7 +178,7 @@ def view(list_name: str, values, now: float = None) -> dict:
     now = time.time() if now is None else now
     out = {"list": list_name, "s": s, "qs": lambda over=None: qs(list_name, s, over),
            "tabs": TABS, "shows": SHOWS, "duration": duration, "pool_words": pool_words,
-           "held_words": HELD}
+           "held_words": HELD, "tee_words": tee_words}
     st = stored(list_name)
     out.update(state=st["state"], why=st.get("why", ""), failed=st.get("failed", ""),
                value_at=st.get("value_at", ""))
@@ -170,7 +191,10 @@ def view(list_name: str, values, now: float = None) -> dict:
                          "error": f.get("error", ""), "read_at": f.get("read_at", ""),
                          "version": f.get("version", ""),
                          "known": f.get("subnets") is not None,
-                         "elsewhere": f.get("reservations_elsewhere") or []})
+                         "elsewhere": f.get("reservations_elsewhere") or [],
+                         "lifetime_classes": [dict(c, who=class_who(c["name"]),
+                                                   family=f.get("words", svc))
+                                              for c in f.get("lifetime_classes") or []]})
         for sub in f.get("subnets") or []:
             subnets.append(dict(sub, svc=svc))
         for lease in f.get("leases") or []:

@@ -24,8 +24,22 @@ One that has never been read is said so, never drawn as empty.
 One row per subnet, as Kea runs it: its prefix, Kea's id for it, its pools, and its lease times
 (valid, preferred, renew and rebind; "–" where Kea has none, as IPv4 has no preferred lifetime).
 "The same as Kea's global" says a subnet's times equal the server's; Kea reports a subnet's
-times filled in from the global ones, so the page never claims more than that. **In use** is the
-active leases against the size of the pools. ZTP's subnet is marked: it has no pool and answers
+times filled in from the global ones, so the page never claims more than that. Where Kea
+computes renew and rebind from each lease's own lifetime (`calculate-tee-times`), the cell says
+the shares, "renew at 50% · rebind at 80% of each lease", rather than two fixed times.
+
+A client class can carry its own lease time, and it beats the subnet's: the note under the table
+names each such class, whom it serves and its lifetimes. `mercury-reserved` serves every client
+with a reservation, in every subnet: 7 days (IPv6 preferred 3.5 days), so a reserved host rides
+out a week of Kea being down. A pool address takes Kea's global lifetime, 4 hours (IPv6
+preferred 2 hours), so a client that leaves frees its address within hours. The management
+(ZTP) subnet sets its own, 7 days, because a lapse there cuts Mercury off the device. The
+discovery classes give an unreserved device on the ZTP segment 5 minutes. A client learns a new
+lifetime at its next renewal, so a change reaches a long-held lease only when it renews. One
+host step put these in place (`scripts/host-steps/e19-dhcp-lifetimes.sh`), proving nothing else
+moved, as the subnet move below did.
+
+**In use** is the active leases against the size of the pools. ZTP's subnet is marked: it has no pool and answers
 only the reservations onboarding writes.
 
 Under each pool's range is what the pool is for: the description kept with it in Kea (in the

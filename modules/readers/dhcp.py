@@ -32,6 +32,17 @@ FAMILIES = (("dhcp4", "Dhcp4", "subnet4", "lease4-get-all", "IPv4"),
             ("dhcp6", "Dhcp6", "subnet6", "lease6-get-all", "IPv6"))
 TIMES = (("valid", "valid-lifetime"), ("preferred", "preferred-lifetime"),
          ("renew", "renew-timer"), ("rebind", "rebind-timer"))
+TEE = (("computed", "calculate-tee-times"), ("t1", "t1-percent"), ("t2", "t2-percent"))
+
+
+def lifetime_classes(config: dict) -> list:
+    """Each client class that sets a lease lifetime (E19's reserved class, board L's
+    discovery classes): ``{"name", "valid", "preferred", "test"}``. A class's lifetime beats
+    every subnet's, so the page says which clients take which."""
+    return [{"name": c.get("name", ""), "valid": c.get("valid-lifetime"),
+             "preferred": c.get("preferred-lifetime"), "test": c.get("test", "")}
+            for c in config.get("client-classes") or []
+            if isinstance(c, dict) and c.get("valid-lifetime") is not None]
 #: Kea's lease states (lease_cmds): 0 default (active), 1 declined, 2 expired-reclaimed.
 LEASE_STATES = {0: "active", 1: "declined", 2: "expired-reclaimed"}
 
@@ -122,6 +133,10 @@ def subnets(config: dict, family: str, sub_key: str, ztp_ids=()) -> list:
                     "times": {name: s.get(key) for name, key in TIMES},
                     "global_times": glob, "reservations": reservations(s.get("reservations"),
                                                                        family),
+                    # E19: renew and rebind as shares Kea computes from each lease's own
+                    # lifetime, inherited as Kea inherits them (subnet, network, global).
+                    "tee": {name: s.get(key, net.get(key, config.get(key)))
+                            for name, key in TEE},
                     # Board C's columns: the subnet's own options, and the global ones it
                     # inherits where it sets none (C529 step 3).
                     "options": _options(s.get("option-data")),
@@ -281,6 +296,7 @@ def read_family(kea, svc: str, root: str, sub_key: str, lease_cmd: str, words: s
     ids = ztp_ids if ztp_ids is not None else (_ztp_ids(config) if svc == "dhcp4" else [])
     return {"ok": True, "words": words, "version": version.strip(),
             "subnets": subnets(config, words, sub_key, ids),
+            "lifetime_classes": lifetime_classes(config),
             "global_reservations": reservations(config.get("reservations"), words),
             "reservations_elsewhere": held_elsewhere(config),
             "leases": leases(got[lease_cmd].get("leases"), words),

@@ -96,6 +96,41 @@ def test_subnets_as_kea_runs_them(web):
     assert "no pool: ZTP answers only its reservations" in html and "0 asking" in html
 
 
+def _e19(svc, result):
+    """The capture as Kea answers after E19's host step (a minimal edit: the fixed timers gone
+    from the global level and every subnet, the computed shares set, the classes added)."""
+    from modules import dhcp_lifetimes as LT
+    family = "IPv4" if svc == "dhcp4" else "IPv6"
+    entry = result[0] if isinstance(result, list) else result
+    root = entry["arguments"]["Dhcp4" if family == "IPv4" else "Dhcp6"]
+    for scope in [root] + list(root.get(LT.SUBNET_KEYS[family]) or []):
+        for key in ("renew-timer", "rebind-timer"):
+            scope.pop(key, None)
+        scope.update({"calculate-tee-times": True, "t1-percent": 0.5, "t2-percent": 0.8})
+    root["client-classes"] = list(root.get("client-classes") or []) + [LT.reserved_class(family)]
+    return result
+
+
+def test_computed_timers_and_the_classes_lifetimes_are_said(web):
+    """E19: once Kea computes renew and rebind, the cell says the shares, never a blank; the
+    note under the table names each lifetime class and whom it serves."""
+    _store(_value(kea=FakeKea(plant=_e19)))
+    html = _get(web)
+    assert "365 d · – · renew at 50% · rebind at 80% of each lease" in html
+    assert "365 d · 365 d · renew at 50% · rebind at 80% of each lease" in html
+    assert "182.5 d" not in html
+    note = html[html.index("data-lifetime-classes"):]
+    note = note[:note.index("</p>")]
+    assert ("<span class=\"mono\">mercury-reserved</span> (IPv4, every client with a "
+            "reservation, in every subnet) 7 d") in note
+    assert ("<span class=\"mono\">mercury-reserved</span> (IPv6, every client with a "
+            "reservation, in every subnet) 7 d · preferred 3.5 d") in note
+
+
+def test_no_lifetime_class_draws_no_note(web):
+    assert "data-lifetime-classes" not in _get(web)
+
+
 def _subnet(value, prefix):
     """The reader value's subnet *prefix* (wherever the families keep it)."""
     stack = [value]

@@ -26,6 +26,13 @@ import re
 log = logging.getLogger(__name__)
 
 FILES = {"IPv4": ("subnet4", "subnets4.json"), "IPv6": ("subnet6", "subnets6.json")}
+#: Renew and rebind as shares of each lease's own lifetime (the operator, 2026-10-13, E19:
+#: "T1/T2 at 50%/80%"), so Kea computes them (`calculate-tee-times`) for whatever lifetime a
+#: lease is given: the pool's, or the `mercury-reserved` class's longer one. Fixed timers would
+#: send a 7-day reserved lease back every 2 hours, the pool's renew. IPv6 computes them from
+#: the preferred lifetime, IPv4 from the valid one (Kea's rule).
+T1_PERCENT, T2_PERCENT = 0.5, 0.8
+TIMERS = ("renew-timer", "rebind-timer")
 
 
 def subnets_file(main: str, family: str) -> str:
@@ -449,8 +456,10 @@ def _settings(s, after: dict, before: dict, family: str, prefix: str, config: di
     valid = lifetime(s["valid"], "the valid lifetime")
     if valid is not None:
         after["valid-lifetime"] = valid
-        after["renew-timer"] = valid // 2
-        after["rebind-timer"] = valid * 7 // 8
+        for timer in TIMERS:
+            after.pop(timer, None)
+        after.update({"calculate-tee-times": True, "t1-percent": T1_PERCENT,
+                      "t2-percent": T2_PERCENT})
     if family == "IPv6":
         preferred = lifetime(s["preferred"], "the preferred lifetime")
         if preferred is not None:

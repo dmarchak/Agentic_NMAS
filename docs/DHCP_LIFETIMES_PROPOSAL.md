@@ -76,7 +76,38 @@ A client learns a new lifetime at its next renew, which today is up to six month
 4. The walk: renewals per hour and pool occupancy read from Kea's counters for a day, and the
    orphan lease that remains (2001:db8:20::100) expiring on its own within a day.
 
-## 6. The operator's decisions
+## Decided and built (2026-10-13)
+
+The operator: "pool 4 h, reserved 7 days (not 1: a reserved host gets the same address anyway,
+and 1 day drops lab hosts in a Kea outage over 24 h), management 7 days; T1/T2 at 50%/80%. Build
+it." The other three decisions took the recommended option under the Phase 7 mode
+(docs/STANDING_APPROVAL_LOG.md, E19 decisions 2 to 4):
+
+| Kind | Valid | Preferred (IPv6) | Renew / rebind | Where Kea holds it |
+|---|---|---|---|---|
+| Pool | 4 h | 2 h | 50% / 80% of each lease, computed | Kea's global lifetime, inherited by every subnet |
+| Reserved | 7 d | 3.5 d | the same shares | the class `mercury-reserved`, `member('KNOWN')` |
+| Management (the ZTP subnet) | 7 d | n/a (IPv4) | the same shares | the subnet's own, through Subnets › Edit… |
+| ZTP discovery | 300 s, unchanged | n/a | Kea's own | board L's classes |
+
+Two findings changed the shape from section 4:
+- **Measured, every lifetime is global:** no subnet in Mercury's files sets its own. So the pool
+  lifetime is the global one, and only the management subnet needs an edit.
+- **Kea's global level set fixed renew and rebind timers.** These beat the computed ones, and a
+  7-day reserved lease would have renewed at the pool's 2 hours. They are removed, and Kea
+  computes both timers for every lease (`calculate-tee-times`, 0.5 / 0.8).
+
+The client classes move into Mercury's own files (`nmas/classes4.json`, `classes6.json`) by
+include, as the subnets did, with the discovery classes carried over unchanged. Built as:
+- `modules/dhcp_lifetimes.py` and `scripts/nmas-kea-lifetimes`;
+- the one-time host step `scripts/host-steps/e19-dhcp-lifetimes.sh`, with a dated copy and a
+  before/after proof that only these moved;
+- Subnets › Edit… writes computed timers from now on.
+
+The class's lifetime on IPv6, and the positive `member('KNOWN')` test, are measured on the walk:
+a reserved lab host renews, and Kea's lease must read 7 days.
+
+## 6. The operator's decisions (as proposed)
 
 1. The four rows' numbers (or other ones).
 2. Reserved lifetimes by client class (this proposal), or per reservation.
