@@ -1,5 +1,142 @@
 # End of session: where Phase 7 stands
 
+## MORNING REPORT: THE OVERNIGHT RUN, 2026-10-13 (05:20 to 09:35 UTC; 23:20 to 03:35 UTC−6)
+
+### Deployed and walked on the host
+
+Every commit was gated, pushed and green on CI before its deploy; each deploy was `nmas-deploy
+--wait`, outside 08:30 to 09:10 UTC, with no rotation or device operation running (checked
+before each).
+
+| Item | Commit | CI | Deployed (UTC) | The host walk showed |
+|---|---|---|---|---|
+| C12 (C735), Neighbours draws RIP and RIPng | 1fd8c20e | green | 05:42:16 | RIP and RIPng neighbours drawn up from the RIP reader's stored answer |
+| 1, C734, the five sealed stores | e3b86d4a | #719 | 06:08:52 | the app came up through the widened startup guard, no key refusal in the journal; the deployed registry holds all five stores |
+| 2, rotation writes no router.db | beace862 | #720 | 06:20:10 | router.db last written 2026-10-06 19:57 UTC, before rotation's last runs; the containers exited for 4 to 5 days. Rotation no longer runs the helper (a test holds it) |
+| 3, C719, r6's target | c1d08e5a | #721 | 06:32:10 | r6's suggested target is 10.255.0.1 (s3's Vlan99), no longer 10.255.1.23 |
+| 4, C736, RIP on Needs attention | 03b436d6 | #722 | 06:43:02 | the adjacencies reader run once: 64 adjacencies on 9 devices, RIP and RIPng among them, none failing, none unmeasured, no rows |
+| 5, C737 (C14), hidden defaults | ee1a7a76 | #723 | 06:56:22 | the config check over Default: Intent-Match 9 of 9, nothing newly failing |
+| 6, C738, criterion 13 | 00a650e3 | #724 | 07:17:22 | Settings › Installation and History served, gated controls drawn from `may`, the refused ones naming their reason |
+| 7, D15 step 1, C739 | 4364e76d | #725 | 07:37:19 | the live drift source holds 0 rows (9 of 9 clean); the v2 page served with the drift row's two links |
+| 7, D15 step 2 (script only) | 356bbc4c | #726/#727 | with c8d02a66 | a host step, not run (parked, below) |
+| 8, D16 Quick actions | c8d02a66 | #728 | 07:59:01 | the routes gone; today's device page renders without the section; then the store archived and deleted (below) |
+| 9 and 10, boards and E19 | cd148a78 | #729 | with 7111fec0 | docs and the canvas only |
+| 8, D16 Device files, Bulk file actions, the TFTP setting | 12df1839, cb9ac2ec, 7111fec0 | #730/#731, #732/#733, #734 | 09:29:03, with 7065fff7 | the 12 removed routes (the file, bulk, TFTP and quick-action routes) answer 404, where the same walk before the deploy read 403 (refused at the gate) or 302; today's index and a device page render (200), the device page has no file tab and no TFTP mention; the index's three TFTP mentions are the TFTP root's field, kept (parked 7); `/v2/` 200; no app errors since the restart |
+| 8, Oxidized's host step (script only) | 90bd8dbd | #735 RED (a test's race, below) | with 7065fff7 | not run (parked, below) |
+| 12, the stepper retakes; C742 (the red run's fix) | 7065fff7 | #736 | 09:29:03 | the shots compared (below) |
+
+### Parked for the operator, in the order to take them
+
+1. **C734's count (read-only, a minute):** `bash ~/python/Agentic_NMAS/scripts/host-steps/c734-sealed-store-counts.sh`
+   on the NMAS host, as your own user (it refuses root). You asked for this one parked. It prints the number of sealed values per store, never a value. If a store
+   holds sealed values the registry did not expect, that is a new finding.
+2. **D15, the AI family's archive:** `bash ~/python/Agentic_NMAS/scripts/host-steps/d15-ai-archive.sh`,
+   as your own user. It masks every text file of the AI stores, seals the provider config and the
+   `ANTHROPIC_API_KEY` with the application key (never plaintext), uploads to
+   `archives/ai-family/`, reads it back and checks its sha256. Then run it with `--delete <that sha256>`
+   to delete the stores and the key's `.env` line. **Then the AI family's code can be removed**
+   (it was not, because the archive comes first). The agent could not run it: the hook refuses
+   reading those stores, and the key is a secret.
+3. **Oxidized's retirement:** `sudo bash ~/python/Agentic_NMAS/scripts/host-steps/d16-oxidized-retire.sh`
+   (archive: text masked, Oxidized's config files sealed, the git store's history as masked
+   text, router.db and its four copies left out), then `--delete <its sha256>`, which removes the
+   two exited containers (`oxidized`, `oxidized-pre-c143`), shreds router.db and every copy
+   (`shred -u`), and removes /opt/oxidized. Needs root: the store is the container user's and
+   router.db is 0600.
+4. **Board sign-off, C718's Decline / Not applicable** (canvas v123, `CoverageDecline.dc.html`):
+   approve or mark up; it is built once approved.
+5. **Board sign-off, E2 and F2, History › Query** (canvas v124, `QueryBuilderMetrics.dc.html`,
+   `QueryBuilderLogs.dc.html`, the history-q page): drawn with the real caps (1000 points per
+   series, 200 series, 200 log lines, 30 days). Not built.
+6. **E19's decisions** (C740, docs/DHCP_LIFETIMES_PROPOSAL.md, section on decisions): reserved
+   addresses 1 day valid / 12 h preferred through the client class `mercury-reserved`, pools 4 h
+   / 2 h, management 7 days, discovery's 300 s unchanged. Measured: every lease today lasts 365
+   days.
+7. **A CLAUDE.md line, to retire the TFTP root:** its last readers left with the file families
+   tonight (app.py imports `TFTP_ROOT` and `ensure_tftp_root` and uses neither). In Key
+   architecture › Environment, replace
+   `` `NMAS_HOST`, `NMAS_PORT` (5000), `NMAS_HEADLESS=1`, `NMAS_TFTP_ROOT`; `` with
+   `` `NMAS_HOST`, `NMAS_PORT` (5000), `NMAS_HEADLESS=1`; ``. After that, `tftp_root` and
+   `NMAS_TFTP_ROOT` leave the code in one commit.
+8. **C733's five decisions** (docs/CREDENTIAL_STORE_REDESIGN.md section 9): after Phase 7, not
+   urgent.
+9. **Still waiting from before:**
+   - the rotation policy: every 7 days, at most 5; clear the field if you want no cap;
+   - the orphan lease 2001:db8:20::100 (C681): delete it on your word;
+   - break-glass export and Save All.
+
+### Removed tonight
+
+| Family | Restore tag (the last commit with it) | Data |
+|---|---|---|
+| Quick actions | `pre-remove/quick-actions` (356bbc4c) | archived `s3://mercury/archives/quick-actions/20261013T075929Z.tar.gz`, sha256 `804eca43aa73ab12e323c9a18c0a14f1d39859ef49c6cec40c4fcb5b24cc9fa3`. Read back identical, nothing in it Mercury would mask, then the store deleted by that checksum |
+| Device files | `pre-remove/device-files` (cd148a78) | none of its own |
+| Bulk file actions | `pre-remove/bulk-file-actions` (12df1839) | none of its own |
+| The TFTP setting | `pre-remove/tftp-setting` (cb9ac2ec) | `tftp_server_ip` stays declared RETIRING for one release (a rollback finds it); no file |
+
+**Not removed tonight, and why:**
+- **The AI family (D15):** waits on its archive (parked, 2 above).
+- **Backups:** waits on today's template editor (C632). Its store is one the agent may not
+  read, so its archive is a host step too.
+- **Today's pages (`/`, `/device/<ip>`):** CUTOVER's condition holds (no PLANNED or PARTLY
+  BUILT row), but the AI family and Backups "go with today's pages", and each needs its
+  archive first. So today's pages come out after 2 above and Backups' archive, in one commit
+  tagged `pre-remove/todays-pages`.
+- **Oxidized:** its code left at Phase 3; its containers and store wait on 3 above.
+
+### What went wrong, and the state it was left in
+
+- **One commit was stacked on a running CI:** c8d02a66 was committed while 356bbc4c's CI was
+  still running. Both came back green, so nothing was left broken, but it broke "CI green
+  before the next". After that, every commit waited for its CI.
+- **CI #735 went red on 90bd8dbd (the Oxidized script).** A concurrency test timed its control
+  with sleeps, and a loaded runner read 3 sessions at once where 4 were allowed; the commit
+  touched no code that test runs. New work stopped. It was fixed forward in 7065fff7 (C742,
+  opened and closed): the test now waits for its overlap. It is shown able to fail both ways,
+  and the deploy waited for that commit's CI.
+- **C700's 24-hour reading came late:** it was read and closed tonight (cd148a78): r1 had 1
+  failure (p99 4.1 s), s3 had 5 (p99 6.7 s).
+- **Hook refusals, none worked around:**
+  - the inventory script named `checkpoints`;
+  - the LISTS_DIR counting script;
+  - a read of Proxmox's backup jobs;
+  - a heredoc into python, redone through the Edit tool.
+
+  Each refused read became a parked host step or was dropped.
+- **The acceptance table in NSOT_STAGE7_PLAN still said "not met" for criterion 13.**
+  Corrected tonight. Its other rows predate a lot of the work since, and need a reread at
+  Phase 7's close.
+
+### Item 11: do E17 (C556) and E18 belong to Phase 7's definition of done?
+
+**No, neither does.**
+- **E17 (C556)** is tier "NetBox Phase 1", bucket B. It blocks NetBox owning devices, not Stage
+  7.
+- **E18** is Phase 4 step 2 (docs/NSOT_PHASE4_RECORDS_POSTGRES.md, approved 2026-10-08). It
+  would close C159, C156, C237, C360, C361, C364, C365 and C368, all tier "Phase 4".
+
+Neither is one of Stage 7's 16 acceptance criteria, and neither is a CUTOVER condition.
+
+### Phase 7's definition of done: still open
+
+1. **Cutover:**
+   - the AI family and Backups (each after its archive);
+   - then today's pages;
+   - Oxidized's host remains (3 above).
+2. **Acceptance:** criterion 13 is met as of tonight. Rows 1 to 6, 10, 11, 14 and 16 read
+   "partly" in a table that predates much of the work. Several of them (1 reachability, 6 one
+   pattern, 16 no duplicated function) close by construction when today's pages go. Each is to
+   be reread against the code at close.
+3. **The writeup:** 7.8's entry is owed when 7.8 closes (today's pages gone). Tonight's
+   removals, C734 to C742 and the D15 and D16 host steps go into it then. The notebook's last
+   entry is 2026-10-10.
+4. **Item 12** (the stepper's board-fidelity retakes, desktop and phone): done. The shots
+   were retaken at 1440, 1280 and 390, and every region's verdict in docs/fidelity/stepper.md
+   stands. One wording defect was registered as C741 (C, not fixed, by the sweep rule): the
+   running step's note says "(last done: read_back)", naming the step that is running as done,
+   by its code name. On the phone the full shot is 488 px wide, but that is Firefox's narrowest
+   window, not the page scrolling sideways.
+
 ## PHASE 7 LIST, A AND B DONE, 2026-10-13 (03:30 to about 05:00 UTC; 21:30 to 23:00 UTC−6)
 
 **Deployed and walked on the host (running d21c450 since 04:45:49 UTC):**
