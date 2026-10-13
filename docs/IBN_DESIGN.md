@@ -54,6 +54,7 @@ the catalog rule above):**
 9. The operator's decisions
 10. AI engineering standards
 11. The golden state rule: what autonomy may do
+12. AI roles and permissions
 
 ## 1. Gap analysis, per function, against today's code
 
@@ -570,6 +571,14 @@ deploy; rollback by revert; and a faster pre-approved path for urgent actions.
     low priority).
 12. **The golden state rule (section 11):** the rule, and each of its seven sub-rules, one by
     one.
+13. **AI roles and permissions (section 12):**
+    1. the three roles and their scopes (network, site, device role);
+    2. on-behalf-of execution with no AI identity stronger than the person;
+    3. approval only through the GUI's confirm by hash;
+    4. the request kinds, the change-request offer, and the security row's threshold
+       (proposed: three attempts in 24 hours, or an injection flag);
+    5. separation of duties per network, off by default;
+    6. the change-request board.
 
 ## 10. AI engineering standards (binding on every AI feature)
 
@@ -689,3 +698,82 @@ measured to work; it never decides what the network should become.
 - **Activate** is the approved change that earns the next baseline.
 - **AI's selection** (decision 9) chooses only among catalog actions and convergences that
   leave the golden state unchanged.
+
+## 12. AI roles and permissions
+
+**The principle (the operator, 2026-10-13): the AI never enforces permissions; deterministic
+code does.** Capability comes by role: the tools an AI session receives depend on who is
+asking, decided before the model is called. Each item below is a decision for the operator
+(section 9, decision 13).
+
+1. **Roles from sign-in.** Today the access proxy's verified identity (Cloudflare Access); for
+   the public release, OIDC (Authentik, Active Directory groups). Each role is scoped by
+   network, site and device role:
+   - **viewer:** read-only questions;
+   - **engineer:** reads, and changes to intent through `propose_*` drafts;
+   - **admin / approver:** approves changes, policies and remediation classes.
+
+   Roles sit on top of Mercury's `may` and its gate kinds (`modules/route_gates.py`). A role
+   never widens what `may` allows.
+2. **Every tool call runs as the asking person** (on-behalf-of), filtered to that person's
+   scope. The AI has no service identity stronger than the person: a viewer's session reads
+   only what that viewer may read. **Reveal of masked lines stays a GUI action** with its own
+   permission (`reveal`, a verified person); no AI tool reveals.
+3. **Approval is never conversational.** Only the GUI's preview confirmed by hash, by a
+   verified person, approves. No AI tool approves, and no text a model returns is read as
+   approval.
+4. **Request kind, decided by the schema and checked by code.**
+   - **The schema:** the response carries `request_kind`: `query`, `change` or `unsupported`.
+   - **A change from a role without propose permission** for that scope:
+     - nothing changes;
+     - the person is offered **"submit as a change request"**: a draft in an approver's
+       queue, the approval queue rebuilt on preview and confirm;
+     - the attempt is recorded in History.
+   - **Repeated or injection-like attempts** (proposed: three in 24 hours, or a validator's
+     injection flag) raise a **security row** on Needs attention.
+   - **`unsupported`** is refused, saying what the workflow does.
+   - **A misclassification cannot cause a change:**
+     - if the model calls a change a `query`, a viewer's session holds no `propose_*` tool, so
+       no draft can exist;
+     - every change path needs a `propose_*` draft AND the GUI's confirm by hash;
+     - if it calls a query a `change`, the person is offered a change request they need not
+       file.
+   - **The deterministic check reads the ROLE's tool list, never the model's classification.**
+5. **Separation of duties** is a per-network setting, off by default: a single admin may propose
+   and approve. An enterprise can require that a change's approver is not its proposer; the
+   confirm then refuses the proposer by name.
+6. **A board first:** the change-request flow. A viewer asks; the request is flagged as a
+   change; the request is filed; it lands in an approver's queue; the approver approves or
+   declines, through the preview confirmed by hash.
+
+**The shape, in code** (illustrative; names follow section 10's tools):
+
+```python
+# The tools a session receives, by the asking person's role. Read tools are scope-filtered; the
+# only writing tools are propose_*, returning drafts into preview and confirm. No tool approves
+# and none reveals a masked line.
+READ = ["query_prometheus", "query_loki", "get_intent", "get_drift", "netbox_lookup",
+        "show_command"]                                   # show_command: the read-only allowlist
+TOOLS_BY_ROLE = {
+    "viewer":   READ,
+    "engineer": READ + ["propose_intent_change", "propose_verifier"],
+    "approver": READ + ["propose_intent_change", "propose_verifier"],  # approval is the GUI's
+}
+
+
+def ask_ai(person, network, request):
+    """One named workflow's entry ("ask the network"), never a general chat."""
+    role, scope = roles.resolve(person, network)          # from sign-in; deterministic
+    if role is None:
+        return refused(f"{person.actor} has no role on {network}")
+    tools = [bind(t, on_behalf_of=person, scope=scope) for t in TOOLS_BY_ROLE[role]]
+    answer = gateway.run(feature="ask", request=mask(request), tools=tools,
+                         schema=AskAnswer)                # request_kind, evidence_refs, ...
+    history.record(person, network, request, answer)      # every prompt and response
+    if answer.request_kind == "change" and "propose_intent_change" not in TOOLS_BY_ROLE[role]:
+        attempts.record(person, network, answer)          # three in 24 h: a security row
+        return offer_change_request(person, network, request)
+    if answer.request_kind == "unsupported":
+        return refused("this workflow answers questions and drafts intent changes")
+    return answer          # a query's answer, or a draft that only preview and confirm can apply
+```
