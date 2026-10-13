@@ -37,8 +37,12 @@ The host runs c40d9440 (deployed 18:43:57 UTC, CI #740).
 1. **The archive steps, one at a time.** Step 1 is `c743-delete-archive-objects.sh` (a
    delete-capable MinIO key, typed hidden). Then c734's counts, the D15 archive and its
    delete, and Oxidized's archive and its delete, each with what PASS looks like.
-2. **Sign-off on E3 and F3.** Measured for them: only `network_syslog` reaches Loki (no
-   traps); Loki keeps 2 y and allows 30 d an ask; Prometheus keeps 90 d.
+2. **Sign-off on E3 and F3.** Measured for them:
+   - Syslog reaches Loki as `network_syslog`, and SNMP traps as
+     `loki.source.journal.snmptrapd`. A first read with Loki's short default window saw only
+     syslog; it was corrected the same day.
+   - Loki has no `severity` label.
+   - Loki keeps 2 y and allows 30 d an ask; Prometheus keeps 90 d.
 3. **Boards still waiting:** C589 AdjacencyTransient; C537/C538's TopBarDesktop, TopBarPhone,
    Reattach, FinishJob and BatchExpected.
 4. **CLAUDE.md:** remove `` `NMAS_TFTP_ROOT` `` from Environment. Not in the file yet; the code
