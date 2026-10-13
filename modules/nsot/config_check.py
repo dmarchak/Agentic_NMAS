@@ -5,7 +5,7 @@ ONE check, run in two places: `scripts/nmas-config-check` (on a laptop, on the h
 config repository's GitHub Actions workflow, `deploy/config-repo/nmas-config-check.yml`, against
 a bare checkout), and Mercury's own `repo.commit()`, which runs it on what a commit touches
 BEFORE committing and refuses on a failure (:func:`precommit`: only what can fail is computed
-there, and a commit of goldens alone, which can fail nothing, is not checked).
+there; a commit of goldens alone runs the golden check alone).
 
 It needs NO device, NO secret and NO ``data/`` directory: it reads the repository's files as
 they are on disk (a checkout's working tree; in Mercury, the tree the commit is about to take),
@@ -15,8 +15,14 @@ program's own code, so a pass here is the program's own answer:
 ``yaml``
     every intent (``host_vars/*.yml``) through the intent editor's checks
     (`intent_edit.validate`: YAML, its own device's name, unknown interface keys, the syslog
-    block, descriptions), the profile (`profile.problems`), the DHCP records (each writer's
-    shape) and ``templates/bindings.yml`` (`templates_repo.load_bindings`).
+    block, descriptions), a top-level key holding something that no template in the device's
+    closure names and Mercury does not read (`template_reads`, `MERCURY_KEYS`), the profile
+    (`profile.problems`), the DHCP records (each writer's shape) and ``templates/bindings.yml``
+    (`templates_repo.load_bindings`).
+``golden``
+    each golden is one configuration of its device, by `save_golden`'s own rule
+    (`config_read.problems`, not strict): no second `end`, prompt, echoed command or second
+    `hostname`.
 ``templates``
     every template parses (`templates_repo.check_syntax`).
 ``render``
@@ -37,7 +43,13 @@ program's own code, so a pass here is the program's own answer:
     legitimate intent, authorised per deploy with a reason.
 ``secrets``
     no value in a secret position (`redact.replace_positional_values`, the one definition of
-    "secret position") in any file but the goldens, and no ``secrets:`` mapping in an intent.
+    "secret position") in any file but the goldens, no password hash by its shape anywhere
+    (`_HASH`), and no ``secrets:`` mapping in an intent. A secret's VALUE outside any position
+    (a password typed into a description) is found only where the values are: Mercury, which
+    masks by every value it holds and checks intent against the credential store
+    (`hostvars.assert_no_secret_values`). A bare checkout has no values, by design; and
+    nothing a push made by hand puts on the remote reaches a device, since Mercury publishes
+    to the remote and never takes from it.
     Goldens are EXCLUDED by design: they hold the device's own lines verbatim (redact.py's
     docstring: masking them would make ``golden/`` depend on ``data/key.key``). Every line this
     module prints is masked by position (and, in Mercury, by every value it holds).
@@ -58,7 +70,7 @@ log = logging.getLogger(__name__)
 #: `paths`). `tests/test_config_check.py` holds the workflow's paths equal to these.
 GOVERNED = ("golden/", "host_vars/", "templates/", "profiles/", "dhcp/")
 
-CHECKS = ("yaml", "templates", "render", "intent-match", "lint", "secrets")
+CHECKS = ("yaml", "golden", "templates", "render", "intent-match", "lint", "secrets")
 
 #: The DHCP records and the shape each writer gives them (modules/dhcp_*.py, `RECORD`).
 DHCP_RECORDS = ("dhcp/exclusions.yml", "dhcp/reservations.yml", "dhcp/subnets.yml")
@@ -69,6 +81,12 @@ MAX_SCAN_BYTES = 2_000_000
 
 #: A Jinja expression, statement or comment on one line.
 _JINJA = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}")
+
+#: A crypt-format password hash, by shape: IOS type 5 (`$1$`), 8 (`$8$`), 9 (`$9$`) and the
+#: `$5$` and `$14$` forms, each `$<id>$<salt>$<hash>`. The value scan needs the credential
+#: store's values; this needs none (B8, measured 2026-10-13: no host intent or template holds
+#: one).
+_HASH = re.compile(r"\$(?:1|5|8|9|14)\$[./A-Za-z0-9]{2,}\$[./A-Za-z0-9]{8,}")
 
 
 class _Run:
@@ -86,10 +104,13 @@ class _Run:
                              "files": sorted(set(files or ([file] if file else [])))})
 
     def mask(self, text: str) -> str:
+        """By position (and in Mercury by every value held), then any password hash by its
+        shape: a hash outside a secret position (a comment a template renders, quoted by a
+        note) is masked by nothing else."""
         from modules import redact
         if self.mask_values:
-            return redact.redact_text(text or "")
-        return redact.redact_positional(text or "")
+            return _HASH.sub("<hash>", redact.redact_text(text or ""))
+        return _HASH.sub("<hash>", redact.redact_positional(text or ""))
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +232,28 @@ def _check_intent(run: _Run, rel: str) -> dict:
     return doc
 
 
+def _check_golden(run: _Run, rel: str) -> None:
+    """One golden, by the rule `save_golden` applies to every golden it writes
+    (`config_read.problems`, not strict): no second `end`, prompt, echoed command or second
+    `hostname`, the evidence of a stitched or foreign text. Presence (an `end`, a `hostname`)
+    stays the reader's that produced the text, as it is in Mercury. In Mercury this is the
+    same verdict `save_golden` already reached; on a push made by hand it is the only one."""
+    from modules import config_read
+
+    device = os.path.basename(rel).rsplit(".", 1)[0]
+    text = _read(run.repo, rel)
+    if text is None:
+        run.add("golden", "fail", "the file could not be read as UTF-8 text", rel,
+                device=device)
+        return
+    found = config_read.problems(text, device, strict=False)
+    for problem in found:
+        run.add("golden", "fail", f"not one configuration of its device: {problem}", rel,
+                device=device)
+    if not found:
+        run.add("golden", "pass", "one configuration of its device", rel, device=device)
+
+
 def _parsed_or_none(text: str):
     import yaml
     try:
@@ -313,6 +356,53 @@ def _check_templates(run: _Run, rels: list) -> bool:
     return True
 
 
+#: Top-level intent keys Mercury itself reads, rendered or not (B8: a key outside these and
+#: outside every name the device's template reads renders nothing, silently). Each names its
+#: reader. Surveyed 2026-10-13: every literal key read off an intent-shaped variable in
+#: `modules/`, less those the shipped templates name; a key Mercury starts reading joins here.
+MERCURY_KEYS = {
+    "hostname": "the document's own device (this check, `hostvars`)",
+    "platform": "the dialect when the inventory has none (`_platform`)",
+    "secret_refs": "the names of the device's secrets (`hostvars`, the render's `secret()`)",
+    "unmodeled": "the lines no parser models, carried verbatim (`roundtrip`)",
+    "unmodeled_ack": "a person's acknowledgement of the unmodeled lines (`intent_match`)",
+    "profile_exclude": "the profile sections this device declines, each with a reason "
+                       "(`profile.effective`)",
+    "bootstrap": "onboarding's intent before any full intent (`onboard`, "
+                 "`hostvars.is_bootstrap_only`)",
+}
+
+
+def template_reads(root: str, platform: str, name: str) -> set:
+    """Every name the template *name* (and each template it includes, imports or extends)
+    could read from intent: each attribute and constant subscript taken anywhere, and each
+    constant argument of a ``.get(...)``. A name read off any object counts, so a key is
+    called unread only when NO template in the closure names it at all (the lenient side:
+    this check never refuses a key a template reads)."""
+    from jinja2 import Environment, FileSystemLoader, meta, nodes
+
+    env = Environment(loader=FileSystemLoader([os.path.join(root, platform), root]))
+    names, seen, todo = set(), set(), [name]
+    while todo:
+        current = todo.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        source = env.loader.get_source(env, current)[0]
+        tree = env.parse(source)
+        for node in tree.find_all((nodes.Getattr, nodes.Getitem, nodes.Call)):
+            if isinstance(node, nodes.Getattr):
+                names.add(node.attr)
+            elif isinstance(node, nodes.Getitem) and isinstance(node.arg, nodes.Const):
+                names.add(str(node.arg.value))
+            elif (isinstance(node, nodes.Call) and isinstance(node.node, nodes.Getattr)
+                  and node.node.attr == "get" and node.args
+                  and isinstance(node.args[0], nodes.Const)):
+                names.add(str(node.args[0].value))
+        todo += [t for t in meta.find_referenced_templates(tree) if t]
+    return names
+
+
 def _platform(entry: dict, intent: dict) -> str:
     from modules.nsot.platform import is_dialect, platform_for_device
     for candidate in ((entry or {}).get("platform"), (intent or {}).get("platform")):
@@ -347,6 +437,25 @@ def _check_device(run: _Run, device: str, intent: dict, entry: dict, profile_doc
     if src["from"] == "library":
         files += [f"templates/{r}" for r in approval.template_closure(run.repo,
                                                                       src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug("config_check: %s's template reads unreadable: %s", device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
     if profile_doc:
         files.append(profile.PROFILE_REL)
     effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
@@ -452,6 +561,13 @@ def _check_secrets(run: _Run, rels: list) -> None:
                 run.add("secrets", "fail", f"a value in a secret position ({', '.join(real)}): "
                         f"{redact.redact_positional(line.strip())}. Commit a secret "
                         "reference; the value belongs in the credential store", rel, n)
+            elif _HASH.search(plain):
+                # A hash where no keyword marks a secret (a YAML value, a comment): found by
+                # its SHAPE, which needs no value, so it runs on a bare checkout (B8).
+                found += 1
+                shown = redact.redact_positional(_HASH.sub("<hash>", line.strip()))
+                run.add("secrets", "fail", f"a password hash ({shown}): Commit a secret "
+                        "reference; the value belongs in the credential store", rel, n)
         if not found and (rel.startswith(GOVERNED) and not rel.startswith("golden/")):
             run.add("secrets", "pass", "no value in a secret position", rel)
 
@@ -493,7 +609,9 @@ def run(repo: str, *, touched=None, inventory=None, mask_values: bool = False,
         for t in touched:
             if t.startswith("host_vars/"):
                 named.add(os.path.basename(t)[:-4])
-            elif t.startswith("golden/"):
+            elif t.startswith("golden/") and notes:
+                # A golden reaches its device's render only for Intent-Match, a note: with
+                # *notes* off (Mercury's pre-commit) it is checked alone (B8), never rendered.
                 named |= {n for n, e in manifest.items() if e.get("golden") == t}
                 named.add(os.path.basename(t).rsplit(".", 1)[0])
 
@@ -513,6 +631,10 @@ def run(repo: str, *, touched=None, inventory=None, mask_values: bool = False,
     for rel in DHCP_RECORDS:
         if rel in present and in_scope(rel):
             _check_dhcp(out, rel)
+    for rel in files:
+        if rel.startswith("golden/") and rel.endswith(".cfg") and rel.count("/") == 1 \
+                and in_scope(rel):
+            _check_golden(out, rel)
 
     # 2. Templates.
     templates = [r for r in files if r.startswith("templates/") and in_scope(r)]
@@ -657,11 +779,11 @@ def precommit(repo: str, paths=(), list_name: str = "") -> str:
     yet), and it counts a failure only when it is attributed to a touched
     file, so a commit is never refused for a fault it did not make."""
     touched = touched_paths(repo, paths)
-    # A golden can fail nothing here: it records the device verbatim (no secret scan) and its
-    # Intent-Match is a note, which `save_golden`'s own trailer already computes. So a commit
-    # of goldens alone is not checked (measured: checking each one doubled the suite's time).
-    if not [t for t in touched if not t.startswith("golden/")]:
+    if not touched:
         return ""
+    # A commit of goldens alone is checked too (B8, the operator, 2026-10-13), by the golden
+    # check only: with notes off a golden names no device to render (rendering each one
+    # doubled the suite's time, measured 2026-10-12), and its Intent-Match is a note.
 
     def rows():
         try:

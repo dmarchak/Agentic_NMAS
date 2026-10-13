@@ -214,6 +214,102 @@ def test_a_template_edit_that_breaks_a_bound_device_is_refused(lab):
 
 
 # ---------------------------------------------------------------------------
+# B8 (the operator, 2026-10-13): goldens, top-level keys, password hashes by shape
+# ---------------------------------------------------------------------------
+
+def _stitched(lab):
+    """r2's golden with a second configuration after the first, as a hand push could make."""
+    golden = os.path.join(lab["repo"], "golden", "r2.cfg")
+    with open(golden, "a", encoding="utf-8") as fh:
+        fh.write("hostname r9\ninterface Loopback9\nend\n")
+    return golden
+
+
+def test_a_golden_holding_two_configurations_fails_by_save_goldens_rule(lab, tmp_path):
+    _stitched(lab)
+    got = _script(lab["repo"], tmp_path=tmp_path)
+    assert got.returncode == 1, got.stdout
+    fails = [f for f in _fail_lines(got.stdout) if " golden " in f]
+    assert fails and "golden/r2.cfg" in fails[0] and "2 `end` lines" in got.stdout, got.stdout
+
+
+def test_a_good_golden_passes_and_departing_from_intent_is_still_a_note(lab, tmp_path):
+    report = tmp_path / "r.json"
+    assert _script(lab["repo"], "--report", str(report), tmp_path=tmp_path).returncode == 0
+    golden = [r for r in json.loads(report.read_text())["results"] if r["check"] == "golden"]
+    assert [(r["status"], r["file"]) for r in golden] == [("pass", "golden/r2.cfg")], golden
+
+
+def test_a_commit_of_goldens_alone_is_checked_and_renders_nothing(lab, monkeypatch):
+    """Mercury's pre-commit, through the real commit path, on a golden committed alone: the
+    golden check refuses it, and no device is rendered to do so."""
+    from modules.nsot import repo as R, roundtrip
+
+    _stitched(lab)
+    rendered = []
+    real = roundtrip.render
+    monkeypatch.setattr(roundtrip, "render", lambda *a, **k: rendered.append(1) or real(*a, **k))
+    before = _head(lab["repo"])
+    with R.repo_lock(lab["repo"]):
+        staged = R.stage_exactly(lab["repo"], ["golden/r2.cfg"])
+        rc, _sha, err = R.commit(lab["repo"], "a hand edit\n", paths=staged, publish_now=False)
+    assert rc != 0 and "- golden: golden/r2.cfg" in err, err
+    assert _head(lab["repo"]) == before and rendered == []
+
+
+def test_a_top_level_key_nothing_reads_fails_and_an_empty_one_passes(lab, tmp_path):
+    def add(text, key, value):
+        doc = yaml.safe_load(text)
+        doc[key] = value
+        return yaml.safe_dump(doc, sort_keys=True, default_flow_style=False, width=10000)
+
+    _edit_intent(lab, lambda t: add(t, "ntp_sever", ["192.0.2.123"]))
+    want = next(n for n, l in enumerate(open(lab["intent"]).read().splitlines(), 1)
+                if l.startswith("ntp_sever:"))
+    got = _script(lab["repo"], tmp_path=tmp_path)
+    assert got.returncode == 1, got.stdout
+    assert any(f"yaml         host_vars/r2.yml line {want}" in f and "'ntp_sever'" in f
+               for f in _fail_lines(got.stdout)), got.stdout
+    _edit_intent(lab, lambda t: add(add(t, "ntp_sever", []), "spare_settings", {}))
+    got = _script(lab["repo"], tmp_path=tmp_path)
+    assert got.returncode == 0, got.stdout          # empty: renders nothing either way
+
+
+def test_the_keys_the_template_names_and_mercurys_own_are_read():
+    from modules.nsot import config_check, roundtrip
+    reads = config_check.template_reads(roundtrip.TEMPLATE_ROOT, "cisco_iosxe", "base.j2")
+    assert {"interfaces", "vrfs", "source_interfaces"} <= reads, sorted(reads)[:20]
+    assert set(config_check.MERCURY_KEYS) == {"hostname", "platform", "secret_refs",
+                                              "unmodeled", "unmodeled_ack", "profile_exclude",
+                                              "bootstrap"}
+
+
+def test_a_profile_exclusion_is_mercurys_own_key_and_commits(lab):
+    """`profile_exclude` renders nothing and is read by the profile (the gate's first run of
+    C731 refused it in tests/test_coverage_page.py: the key list had missed it)."""
+    from modules.nsot import hostvars
+    from modules.nsot.repo import save_host_vars
+
+    r2 = hostvars.read_committed(lab["repo"], "r2")
+    r2["profile_exclude"] = [{"section": "snmp", "reason": "polled by the carrier's NMS"}]
+    hostvars.write_committed(lab["repo"], r2)
+    assert save_host_vars(LIST, ["r2"], actor="t")["ok"]
+
+
+def test_a_password_hash_anywhere_fails_by_its_shape_and_is_never_printed(lab, tmp_path):
+    value = "$9$AAAAAAAAAAAAAA$" + "B" * 43
+    path = os.path.join(lab["repo"], "templates", "cisco_iosxe", "base.j2")
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(f"! kept from the old router: {value}\n")
+    got = _script(lab["repo"], "--report", str(tmp_path / "r.json"), tmp_path=tmp_path)
+    assert got.returncode == 1, got.stdout
+    fails = [f for f in _fail_lines(got.stdout) if " secrets " in f]
+    assert fails and "templates/cisco_iosxe/base.j2" in fails[0] and "password hash" in fails[0]
+    assert value not in got.stdout + got.stderr
+    assert value not in (tmp_path / "r.json").read_text()
+
+
+# ---------------------------------------------------------------------------
 # The config repository's workflow
 # ---------------------------------------------------------------------------
 
