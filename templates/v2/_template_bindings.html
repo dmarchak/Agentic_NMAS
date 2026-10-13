@@ -35,7 +35,7 @@
     <label class="ie-why">Why, in one line (the commit's subject)
       <input type="text" name="summary" autocomplete="off" required></label>
     {%- if b.may.may %}
-    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"><span class="op-idle">Commit the bindings</span><span class="op-busy">Committing…</span></button>{{ how('edit-template', 'bindings', compact=True, op='bindings') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit the bindings</span><span class="op-busy">Committing…</span></button>{{ how('edit-template', 'bindings', compact=True, op='bindings') }}</span>
     <p class="op-note">{{ b.may.statement }} Bound to the bindings as previewed: if they change before you confirm, nothing is written.</p>
     {%- else %}
     <p class="op-note">{{ b.may.statement }} Nothing can be committed from here.</p>

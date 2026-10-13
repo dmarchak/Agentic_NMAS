@@ -33,7 +33,7 @@
     <input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}"><input type="hidden" name="source" value="{{ to.source }}">
     {%- for k, v in to.filters.items() %}<input type="hidden" name="filter_{{ k }}" value="{{ v }}">{% endfor %}
     <input type="hidden" name="credential_list" value="{{ to.credential_list }}"><input type="hidden" name="refresh_interval" value="{{ to.refresh_interval }}">
-    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Save the source</span><span class="op-busy">Saving…</span></button>{{ how('settings-switch', 'source', op='changing the inventory source') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save the source</span><span class="op-busy">Saving…</span></button>{{ how('settings-switch', 'source', op='changing the inventory source') }}</span>
   </form>
   <div class="set-foot"><a class="btn btn-small" href="{{ url_for('settings_v2.network', list_name=s.network, tab='network') }}" hx-get="{{ url_for('settings_v2.network_source', list_name=s.network) }}" hx-target="#network-source" hx-swap="outerHTML">Cancel</a></div>
   {%- else %}

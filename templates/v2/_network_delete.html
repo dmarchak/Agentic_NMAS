@@ -26,7 +26,7 @@
     <label for="f-net-typed">To delete it, type its name</label>
     <div><input id="f-net-typed" name="typed" type="text" autocomplete="off" required placeholder="{{ pv.name }}"></div>
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-danger btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Delete {{ pv.name }}</span><span class="op-busy">Deleting…</span></button>{{ how('settings-switch', 'delete', op='deleting a network') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-danger btn-small" data-op="settings-switch" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Delete {{ pv.name }}</span><span class="op-busy">Deleting…</span></button>{{ how('settings-switch', 'delete', op='deleting a network') }}</span>
     </div>
   </form>
   <div class="set-foot"><a class="btn btn-small" href="{{ url_for('settings_v2.network', list_name=pv.name, tab='network') }}" hx-get="{{ url_for('settings_v2.network_delete_card', list_name=pv.name) }}" hx-target="#network-delete" hx-swap="outerHTML">Cancel</a></div>

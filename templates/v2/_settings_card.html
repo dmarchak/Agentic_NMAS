@@ -64,9 +64,9 @@
     {%- endfor %}
     <p class="muted small set-form-note">An empty field keeps what is stored. {% if is_default %}Every network that inherits {{ c.label }} reads what is saved here.{% else %}Saved in {{ list_name }}'s own settings (owner-only, a secret encrypted); Default's are not touched.{% endif %} Recorded with your name, the fields' names and never their values.</p>
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings-switch', 'save', compact=True, op='saving a group') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('settings-switch', 'save', compact=True, op='saving a group') }}</span>
       {%- if c.testable %}
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="settings-switch" hx-post="{{ url_for('settings_v2.group_test', list_name=list_name, group=g) }}" hx-target="#card-{{ g }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests the saved values, not what is typed: Save first"><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('settings-switch', 'test', compact=True, op='testing a connection') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="settings-switch" hx-post="{{ url_for('settings_v2.group_test', list_name=list_name, group=g) }}" hx-target="#card-{{ g }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests the saved values, not what is typed: Save first"{{ gate('configure') }}><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('settings-switch', 'test', compact=True, op='testing a connection') }}</span>
       {%- endif %}
     </div>
   </form>

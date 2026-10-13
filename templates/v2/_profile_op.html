@@ -39,7 +39,7 @@
     <p class="op-note">{{ op.may.statement }} Bound to this proposal and the committed profile. One commit, "profile: …", as you.</p>
     <form class="op-act" method="post" action="{{ url_for('v2.profile_propose_commit') }}" hx-post="{{ url_for('v2.profile_propose_commit') }}" hx-target="#profile-region" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ q.list }}"><input type="hidden" name="hash" value="{{ q.hash }}">
-      <button type="submit" class="btn btn-primary op-confirm" data-op="monitoring-templates" hx-disabled-elt="this"><span class="op-idle">Commit the profile ({{ q.changes | length }} section{{ '' if q.changes | length == 1 else 's' }} {{ 'changed' if q.changes | selectattr('state', 'equalto', 'changed') | list else 'added' }})</span><span class="op-busy">Committing…</span></button>{{ how('monitoring-templates', 'propose', compact=True, op='proposing the profile') }}
+      <button type="submit" class="btn btn-primary op-confirm" data-op="monitoring-templates" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit the profile ({{ q.changes | length }} section{{ '' if q.changes | length == 1 else 's' }} {{ 'changed' if q.changes | selectattr('state', 'equalto', 'changed') | list else 'added' }})</span><span class="op-busy">Committing…</span></button>{{ how('monitoring-templates', 'propose', compact=True, op='proposing the profile') }}
     </form>
     {%- elif q.changed %}
     <p class="op-note">{{ op.may.statement }} Nothing can be committed from here.</p>

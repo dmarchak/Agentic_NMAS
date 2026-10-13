@@ -9,7 +9,7 @@
   <form class="set-inline" method="post" action="{{ url_for('settings_v2.install_ratify') }}"
         hx-post="{{ url_for('settings_v2.install_ratify') }}" hx-target="#install-access" hx-swap="outerHTML">
     {%- for k in keys %}<input type="hidden" name="keys" value="{{ k }}">{% endfor %}
-    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this" title="Writes the value already in force for {{ keys | join(', ') }}: it changes nothing"><span class="op-idle">Record this decision</span><span class="op-busy">Recording…</span></button>{{ how('installation-settings', 'record', op='recording ' ~ label) }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this" title="Writes the value already in force for {{ keys | join(', ') }}: it changes nothing"{{ gate('configure') }}><span class="op-idle">Record this decision</span><span class="op-busy">Recording…</span></button>{{ how('installation-settings', 'record', op='recording ' ~ label) }}</span>
   </form>
   {%- endif %}
 {%- endmacro -%}

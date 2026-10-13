@@ -6,7 +6,7 @@
 <form class="hq-save-form" method="post" action="{{ url_for('v2.history_view_save') }}" hx-post="{{ url_for('v2.history_view_save') }}" hx-target="#hq-save" hx-swap="outerHTML" autocomplete="off">
   <input type="hidden" name="address" value="{{ op.address }}">
   <label><span class="muted small">Title</span><input type="text" name="title" value="{{ op.title or '' }}" maxlength="80" required></label>
-  <span class="op-act"><button type="submit" class="btn btn-primary btn-small" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button></span>
+  <span class="op-act"><button type="submit" class="btn btn-primary btn-small" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button></span>
   {%- if op.refused %}<span class="small set-result" role="alert">{{ icon('warn', 14) }} Not saved: {{ op.refused }}.</span>{% endif %}
 </form>
 {%- elif op.state == 'saved' %}

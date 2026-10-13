@@ -32,7 +32,7 @@
           <td><select name="dialect" aria-label="Config dialect for {{ r.slug }}">{% if not r.dialect %}<option value="" selected>none Mercury knows</option>{% endif %}{% for d in pm.dialects %}<option{% if d == r.dialect %} selected{% endif %}>{{ d }}</option>{% endfor %}</select></td>
           <td><select name="transport" aria-label="Delivers by, {{ r.slug }}">{% for t in pm.transports %}<option{% if t == r.transport %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></td>
           <td><label class="set-switch"><input type="checkbox" name="netconf" value="{{ r.slug }}"{% if r.netconf %} checked{% endif %}> supported</label></td>
-          <td><button type="submit" class="btn btn-small" name="remove" value="{{ r.slug }}" data-op="installation-settings" hx-disabled-elt="this">Remove</button>{{ how('installation-settings', 'platforms', compact=True, op='removing a platform') }}</td>
+          <td><button type="submit" class="btn btn-small" name="remove" value="{{ r.slug }}" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}>Remove</button>{{ how('installation-settings', 'platforms', compact=True, op='removing a platform') }}</td>
         </tr>
         {%- endfor %}
         <tr>
@@ -41,7 +41,7 @@
           <td><select name="new_dialect" aria-label="New platform config dialect">{% for d in pm.dialects %}<option>{{ d }}</option>{% endfor %}</select></td>
           <td><select name="new_transport" aria-label="New platform delivers by">{% for t in pm.transports %}<option>{{ t }}</option>{% endfor %}</select></td>
           <td><label class="set-switch"><input type="checkbox" name="new_netconf" value="on"> supported</label></td>
-          <td><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this">Add</button>{{ how('installation-settings', 'platforms', compact=True, op='adding a platform') }}</td>
+          <td><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}>Add</button>{{ how('installation-settings', 'platforms', compact=True, op='adding a platform') }}</td>
         </tr>
         </tbody>
       </table>
@@ -51,7 +51,7 @@
         <div><select id="f-default-driver" name="default_driver"><option value=""{% if not pm.default_driver %} selected{% endif %}>none: skip an unmapped platform</option>{% for d in pm.drivers %}<option{% if d == pm.default_driver %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
           <span class="set-origin">set, it trades a skip for a guess</span></div>
         <div class="set-foot set-form-note">
-          <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Preview changes</span><span class="op-busy">Previewing…</span></button>{{ how('installation-settings', 'platforms', op='changing the platform map') }}</span>
+          <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Preview changes</span><span class="op-busy">Previewing…</span></button>{{ how('installation-settings', 'platforms', op='changing the platform map') }}</span>
           <span class="muted small">"Delivers by netconf" also needs NETCONF on for the installation: every delivery is SSH today.</span>
         </div>
       </div>

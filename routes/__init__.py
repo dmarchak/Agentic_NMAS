@@ -39,6 +39,11 @@ def register_blueprints(app) -> list:
     from modules import invalidation
     invalidation.install(app)
 
+    # Every gated control draws its state from `may` (Stage 7 acceptance criterion 13):
+    # `{{ gate('<kind>') }}` in the control's tag, its route's own gate kind.
+    from modules import preview_confirm
+    app.jinja_env.globals["gate"] = preview_confirm.control_gate
+
     # A Content-Security-Policy on every HTML page (C88 (c)): the belt to
     # escaping's braces, bounding where injected script can send data and
     # what it can load; it cannot stop inline script running.

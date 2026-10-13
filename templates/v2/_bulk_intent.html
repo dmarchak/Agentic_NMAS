@@ -78,7 +78,7 @@
     {{ carried() }}<input type="hidden" name="summary" value="{{ f.summary }}"><input type="hidden" name="hash" value="{{ c.hash }}">{{ change_rows(False) }}
     <div class="set-foot set-form-note">
       {%- if c.accepted and c.may.may %}
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="bulk-intent" hx-disabled-elt="this"><span class="op-idle">Commit the change to {{ c.accepted }} device{{ 's' if c.accepted != 1 }}' intent</span><span class="op-busy">Committing…</span></button>{{ how('bulk-intent', compact=True, op='a bulk change') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="bulk-intent" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit the change to {{ c.accepted }} device{{ 's' if c.accepted != 1 }}' intent</span><span class="op-busy">Committing…</span></button>{{ how('bulk-intent', compact=True, op='a bulk change') }}</span>
       <span class="muted small">{{ c.may.statement }} One commit, "{{ f.summary }}". Bound to this preview ({{ c.hash }}): it is computed again and nothing is committed if it moved. Nothing is sent to a device.</span>
       {%- elif c.accepted %}<span class="muted small">{{ c.may.statement }} Nothing can be committed from here.</span>
       {%- else %}<span class="muted small">No device can take this change, so there is nothing to commit.</span>{% endif %}

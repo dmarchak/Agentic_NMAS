@@ -57,7 +57,7 @@
     <label class="op-reason">Why reload {{ c.host }}? (recorded with the reload{% if p.departs %}, and as acknowledging that it departs from its golden or intent{% endif %})
       <input type="text" name="reason" autocomplete="off" required maxlength="200"></label>
     <p class="op-note">Bound to this read ({{ p.fingerprint }}): the run reads {{ c.host }} again and sends nothing if it moved. The planned-restart window is declared before anything is sent.</p>
-    <span class="op-act"><button type="submit" class="btn btn-danger op-confirm" data-op="reload" hx-disabled-elt="this"><span class="op-idle">Reload {{ c.host }} (up to {{ (p.bound_s / 60) | round(0, 'ceil') | int }} minutes out)</span><span class="op-busy">Starting the reload…</span></button>{{ how('reload', compact=True, op='reload') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-danger op-confirm" data-op="reload" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Reload {{ c.host }} (up to {{ (p.bound_s / 60) | round(0, 'ceil') | int }} minutes out)</span><span class="op-busy">Starting the reload…</span></button>{{ how('reload', compact=True, op='reload') }}</span>
     {%- else %}
     <p class="op-note">Not available: {% for g in p.failing %}{{ g.name }} ({{ g.detail }}){{ '; ' if not loop.last }}{% else %}{{ c.may.statement }}{% endfor %}. Nothing is sent.</p>
     <span class="op-act"><button type="button" class="btn" data-op="reload" hx-get="{{ url_for('device_v2.reload_card', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Read it again</button>{{ how('reload', compact=True, op='reload') }}</span>

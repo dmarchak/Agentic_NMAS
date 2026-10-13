@@ -33,7 +33,7 @@
     {%- endif %}
     <div class="set-foot set-form-note">
       {%- if pv.confirm.may %}
-      <span class="op-act"><button type="submit" class="btn {{ 'btn-danger' if op == 'remove' else 'btn-primary' }} btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">{{ 'Remove' if op == 'remove' else 'Import' }}</span><span class="op-busy">{{ 'Removing…' if op == 'remove' else 'Starting the import…' }}</span></button>{{ how('netbox-import', 'remove-apply' if op == 'remove' else 'apply', op='confirming') }}</span>
+      <span class="op-act"><button type="submit" class="btn {{ 'btn-danger' if op == 'remove' else 'btn-primary' }} btn-small" data-op="netbox-import" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">{{ 'Remove' if op == 'remove' else 'Import' }}</span><span class="op-busy">{{ 'Removing…' if op == 'remove' else 'Starting the import…' }}</span></button>{{ how('netbox-import', 'remove-apply' if op == 'remove' else 'apply', op='confirming') }}</span>
       {%- endif %}
       <span class="muted small">{{ pv.confirm.statement }} The plan is recomputed at your confirm; if NetBox moved, nothing is written.</span>
     </div>

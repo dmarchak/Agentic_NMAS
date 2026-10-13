@@ -39,7 +39,7 @@
     </div></div>
     {%- if c.state == 'read_failed' %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The before-state could not be read:</strong> {{ c.why }} Nothing was sent.</p></div>{% endif %}
     <div class="op-ft"><p class="op-note">Reads what it would affect, through the reads engine (recorded); changes nothing yet.</p>
-      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="privileged" hx-disabled-elt="this"><span class="op-idle">Preview</span><span class="op-busy">Starting the read…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="privileged" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Preview</span><span class="op-busy">Starting the read…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
   </form>
 
   {%- elif c.state == 'reading' %}
@@ -62,9 +62,9 @@
     <div class="op-part"><h3>Reason</h3><div><label class="sc-f">Why (three words or more, recorded with the change)<input type="text" name="reason" required minlength="5" autocomplete="off"></label></div></div>
     <div class="op-ft"><p class="op-note">Bound to plan {{ p.hash }}: if {{ c.host }}'s address or the command moves before you confirm, nothing is sent. The device is held while it runs.</p>
       {%- if c.changes_nothing %}
-      <span class="op-act"><button type="submit" class="btn" data-op="privileged" hx-disabled-elt="this"><span class="op-idle">Run undebug all anyway (records it)</span><span class="op-busy">Sending…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
+      <span class="op-act"><button type="submit" class="btn" data-op="privileged" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Run undebug all anyway (records it)</span><span class="op-busy">Sending…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
       {%- else %}
-      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="privileged" hx-disabled-elt="this"><span class="op-idle">Run <span class="mono">{{ p.command }}</span> on {{ c.host }}</span><span class="op-busy">Sending…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="privileged" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Run <span class="mono">{{ p.command }}</span> on {{ c.host }}</span><span class="op-busy">Sending…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
       {%- endif %}
   </form>
 

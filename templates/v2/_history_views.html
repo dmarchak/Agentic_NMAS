@@ -17,12 +17,12 @@
     {%- if op.state == 'removing' and op.id == v.id %}
     <form class="hq-view-acts" method="post" action="{{ url_for('v2.history_view_remove', view_id=v.id) }}" hx-post="{{ url_for('v2.history_view_remove', view_id=v.id) }}" hx-target="#hq-views" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ list_name }}">
       <span class="small">Removes the saved link only; the history it asks is untouched.</span>
-      <span class="op-act"><button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Remove</span><span class="op-busy">Removing…</span></button></span>
+      <span class="op-act"><button type="submit" class="btn btn-small" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Remove</span><span class="op-busy">Removing…</span></button></span>
       <a class="btn btn-small" href="{{ url_for('v2.history_views', list=list_name) }}" hx-get="{{ url_for('v2.history_views', list=list_name) }}" hx-target="#hq-views" hx-swap="outerHTML">Keep</a>
     </form>
     {%- else %}
     <div class="hq-view-acts">
-      <form method="post" action="{{ url_for('v2.history_view_pin', view_id=v.id) }}" hx-post="{{ url_for('v2.history_view_pin', view_id=v.id) }}" hx-target="#hq-views" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ list_name }}"><input type="hidden" name="pinned" value="{{ '0' if v.pinned else '1' }}"><span class="op-act">{% if v.pinned %}<button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Unpin</span><span class="op-busy">Unpinning…</span></button>{% else %}<button type="submit" class="btn btn-small" hx-disabled-elt="this"><span class="op-idle">Pin</span><span class="op-busy">Pinning…</span></button>{% endif %}</span></form>
+      <form method="post" action="{{ url_for('v2.history_view_pin', view_id=v.id) }}" hx-post="{{ url_for('v2.history_view_pin', view_id=v.id) }}" hx-target="#hq-views" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ list_name }}"><input type="hidden" name="pinned" value="{{ '0' if v.pinned else '1' }}"><span class="op-act">{% if v.pinned %}<button type="submit" class="btn btn-small" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Unpin</span><span class="op-busy">Unpinning…</span></button>{% else %}<button type="submit" class="btn btn-small" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Pin</span><span class="op-busy">Pinning…</span></button>{% endif %}</span></form>
       <a class="btn btn-small" href="{{ url_for('v2.history_view_remove_form', id=v.id, list=list_name) }}" hx-get="{{ url_for('v2.history_view_remove_form', id=v.id, list=list_name) }}" hx-target="#hq-views" hx-swap="outerHTML">Remove…</a>
     </div>
     {%- endif %}

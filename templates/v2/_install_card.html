@@ -62,7 +62,7 @@
     {%- if k.writes %}
     <span class="set-label">Writes allowed</span>
     <div><span class="set-inline">{%- if k.writes.on %}{{ badge('on', 'ok') }}
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_writes_off') }}" hx-target="#card-netbox" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'writes-off', compact=True, op='turning NetBox writes off') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_writes_off') }}" hx-target="#card-netbox" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'writes-off', compact=True, op='turning NetBox writes off') }}</span>
       {%- else %}{{ badge('off', 'neutral') }}{% endif %}</span>
       {%- if k.writes.on %}
       <span class="set-origin">the master switch for every network's NetBox writes; turned on by confirming an authorised NetBox write, never from this card</span>
@@ -71,9 +71,9 @@
       {%- endif %}</div>
     {%- endif %}
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'save', op='saving ' ~ named) }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'save', op='saving ' ~ named) }}</span>
       {%- if s.integration %}
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_test', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('installation-settings', 'test', compact=True, op='testing ' ~ named) }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.install_test', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"{{ gate('configure') }}><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('installation-settings', 'test', compact=True, op='testing ' ~ named) }}</span>
       {%- endif %}
       {%- if s.note %}<span class="muted small">{{ s.note }}</span>{% endif %}
     </div>

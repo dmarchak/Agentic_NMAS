@@ -78,6 +78,41 @@ def confirm_part(request, action: str = "confirm") -> dict:
             if not allowed else f"You are confirming as {ident.actor or 'an unverified caller'}."}
 
 
+def control_gate(kind: str):
+    """A gated control's state, from `may` (Stage 7 acceptance criterion 13): nothing when
+    the viewer may perform *kind* (the route's gate kind, `route_gates`), else the attributes
+    that draw the control DISABLED WITH ITS REASON (NSOT_AUTHORIZATION.md section 7: never
+    hidden, never greyed without why). The same functions the gate calls, once per request
+    and kind. Used in the control's own tag with no space before it, since it brings its own:
+    ``<button type="submit"{{ gate('confirm') }}>``, so a person's page is byte for byte what
+    it was."""
+    from html import escape
+
+    class Markup(str):
+        """Already-escaped HTML: Jinja's autoescape honours `__html__`."""
+
+        def __html__(self):
+            return str(self)
+
+    try:
+        from flask import g, request
+        cache = g.setdefault("nmas_gate", {})
+        if kind not in cache:
+            from modules import identity
+            ident = identity.identify(request)
+            allowed, reason = identity.may(ident, kind)
+            cache[kind] = (allowed, reason or "no verified person")
+        allowed, reason = cache[kind]
+    except RuntimeError:                          # outside a request: nobody to ask
+        allowed, reason = False, "no request, so no verified person"
+    if allowed:
+        return Markup("")
+    # The reason is DRAWN, on the control itself (`button[data-refused]::after` in
+    # nmas-v2.css), never only on hover; no `title`, which a control may already carry.
+    words = f"Not available to you: {reason}"
+    return Markup(f' disabled aria-disabled="true" data-refused="{escape(words)}"')
+
+
 def _why_not(target: dict, what_not: list) -> str:
     """Why a target cannot be selected, in words: its failing gates, else
     what part 2 says about it. A target that cannot be selected and says

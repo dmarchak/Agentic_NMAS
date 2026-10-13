@@ -20,7 +20,7 @@
     <div><input id="f-records-password" name="records_db_password" type="password" value="" autocomplete="new-password" aria-describedby="records-password-rule">
       <span class="set-origin" id="records-password-rule">{{ r.rule_words }}</span></div>
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('records-database', 'replace', compact=True, op='replacing the password') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('records-database', 'replace', compact=True, op='replacing the password') }}</span>
       <span class="muted small">Replaced here first, Mercury would stop reaching its records until the server matched. The secret is stored in the secrets store and never shown again.</span>
     </div>
   </form>

@@ -85,7 +85,7 @@
     <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="capture"
             hx-post="{{ url_for('device_v2.capture_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
             {%- if c.acknowledge %} hx-include="#capture-reason"{% endif %}
-            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "hash": c.hash, "back": c.back} | tojson }}'><span class="op-idle">Record {{ c.host }}'s golden</span><span class="op-busy">Reading {{ c.host }} again and recording…</span></button>{{ how('capture', compact=True, op='capture') }}</span>
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "hash": c.hash, "back": c.back} | tojson }}'{{ gate('approve') }}><span class="op-idle">Record {{ c.host }}'s golden</span><span class="op-busy">Reading {{ c.host }} again and recording…</span></button>{{ how('capture', compact=True, op='capture') }}</span>
     {%- elif c.read and not c.changed and not c.failing %}
     <p class="op-note">Nothing to confirm: {{ c.host }} matches its golden, so nothing would be recorded.</p>
     {%- else %}

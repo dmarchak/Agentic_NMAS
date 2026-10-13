@@ -34,7 +34,7 @@
     {%- for g in s.groups %}{% for d in g.devices %}<input type="hidden" name="device" value="{{ d.host }}">{% endfor %}{% endfor %}
     <a class="btn" href="{{ url_for('v2.devices') }}">Back</a>
     {%- if s.save and s.may.may %}
-    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="save" hx-disabled-elt="this"><span class="op-idle">Save {{ s.save | length }} device{{ 's' if s.save | length != 1 }}</span><span class="op-busy">Making the plan again and starting…</span></button>{{ how('save', compact=True, op='Save') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="save" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Save {{ s.save | length }} device{{ 's' if s.save | length != 1 }}</span><span class="op-busy">Making the plan again and starting…</span></button>{{ how('save', compact=True, op='Save') }}</span>
     <span class="muted small">{{ s.may.statement }} Bound to plan {{ s.hash }}: if a device's address, driver, account, hold or reachability moves first, nothing is sent.{% if s.fleet %} Every device of {{ s.list }}: the commit may earn a baseline.{% endif %}</span>
     {%- elif s.save %}
     <span class="muted">{{ s.may.statement }}</span>

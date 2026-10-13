@@ -21,7 +21,7 @@
     <div><select id="f-drift-interval" name="interval_s">{% for s, words in dr.choices %}<option value="{{ s }}"{% if s == dr.interval_s %} selected{% endif %}>{{ words }}</option>{% endfor %}</select>
       <span class="set-origin">one schedule for every network</span></div>
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'drift', op='the drift schedule') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('installation-settings', 'drift', op='the drift schedule') }}</span>
     </div>
   </form>
   <div class="table-wrap">
@@ -41,9 +41,9 @@
         <span class="op-act"><button type="button" class="btn btn-small" hx-post="{{ url_for('settings_v2.diag_drift_check', network=n.name) }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Check now</span><span class="op-busy">Starting…</span></button></span>
         {%- endif %}
         {%- if n.state == 'disabled' %}
-        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='on') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Turn on</span><span class="op-busy">Turning on…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks on') }}</span>
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='on') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn on</span><span class="op-busy">Turning on…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks on') }}</span>
         {%- elif n.state in ('idle', 'running') %}
-        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='off') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks off') }}</span>
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='off') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn off</span><span class="op-busy">Turning off…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks off') }}</span>
         {%- endif %}
       </td>
     </tr>

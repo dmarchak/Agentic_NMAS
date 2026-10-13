@@ -1028,6 +1028,10 @@ select { max-width: 100%; }
 .htmx-request > .op-idle { display: none; }
 .htmx-request > .op-busy { display: inline; }
 .op-confirm[disabled] { opacity: .7; cursor: progress; }
+/* A gated control the viewer may not use (criterion 13, `preview_confirm.gate`): disabled,
+   and its reason drawn on it, never hidden and never only on hover. */
+button[data-refused] { cursor: not-allowed; opacity: 1; }
+button[data-refused]::after { content: " (" attr(data-refused) ")"; font-weight: 400; white-space: normal; }
 /* A menu row stays open and busy on itself until its card arrives (C399). */
 .menu-item.htmx-request, .menu-item[aria-busy="true"] { cursor: progress; background: var(--hover); }
 .menu-item.htmx-request::after, .menu-item[aria-busy="true"]::after { content: ""; width: 10px; height: 10px;

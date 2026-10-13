@@ -56,7 +56,7 @@
     <div><input id="f-ad-why" name="reason" type="text" autocomplete="off"><span class="set-origin">recorded with the adoption</span></div>
     <div class="set-foot set-form-note">
       {%- if may.may %}
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="adopt" hx-disabled-elt="this"><span class="op-idle">Adopt {{ f.hostname }}</span><span class="op-busy">Starting the adoption…</span></button>{{ how('adopt', compact=True, op='adopt') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="adopt" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Adopt {{ f.hostname }}</span><span class="op-busy">Starting the adoption…</span></button>{{ how('adopt', compact=True, op='adopt') }}</span>
       <span class="muted small">{{ may.statement }} Bound to this read ({{ p.fingerprint[:12] }}): the apply reads it again and stops if it moved.</span>
       {%- else %}<span class="muted small">{{ may.statement }} Nothing can be adopted from here.</span>{% endif %}
     </div>

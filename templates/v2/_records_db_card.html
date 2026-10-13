@@ -53,8 +53,8 @@
     <span class="set-label">Stores on it</span>
     <div>{% if r.stores %}{{ r.stores | join(', ') }} <span class="muted small">· the rest still on files</span>{% else %}<span class="muted">none yet: every store on its files</span>{% endif %}</div>
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('records-database', 'save', op='saving the records database') }}</span>
-      <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_test') }}" hx-target="#records-db" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('records-database', 'test', compact=True, op='testing the records database') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save</span><span class="op-busy">Saving…</span></button>{{ how('records-database', 'save', op='saving the records database') }}</span>
+      <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_test') }}" hx-target="#records-db" hx-swap="outerHTML" hx-disabled-elt="this" title="Tests what is saved, not what is typed: Save first"{{ gate('configure') }}><span class="op-idle">Test</span><span class="op-busy">Testing…</span></button>{{ how('records-database', 'test', compact=True, op='testing the records database') }}</span>
       <span class="muted small">Save works with the database down or the password wrong: the change is recorded in the installation's settings record, a file, as you, never in the database it configures.{% if not c.host or not c.password_set %} Test needs a host and a password.{% endif %}</span>
     </div>
   </form>

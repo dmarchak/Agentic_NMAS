@@ -57,7 +57,7 @@
     <label class="op-reason">Why (recorded with the change, in its commit)<input type="text" name="why" value="{{ xop.why or '' }}" autocomplete="off" required maxlength="200"></label>
     <p class="op-note">Applied through the subnet's write: Kea's own check, <span class="mono">config-reload</span>, read back (refused unless exactly this subnet's pools changed), recorded as one commit in <span class="mono">dhcp/exclusions.yml</span> and <span class="mono">dhcp/subnets.yml</span>. {{ may.statement }} Bound to this preview.</p>
     {%- if may.may %}
-    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-exclusion" hx-disabled-elt="this"><span class="op-idle">{{ 'Remove the exclusion' if s.op == 'remove' else 'Exclude ' ~ s.range }}</span><span class="op-busy">Testing, writing, reloading Kea, reading back…</span></button>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}</span>
+    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-exclusion" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">{{ 'Remove the exclusion' if s.op == 'remove' else 'Exclude ' ~ s.range }}</span><span class="op-busy">Testing, writing, reloading Kea, reading back…</span></button>{{ how('dhcp-exclusion', compact=True, op='an exclusion') }}</span>
     {%- endif %}
   </form>
   {%- endif %}

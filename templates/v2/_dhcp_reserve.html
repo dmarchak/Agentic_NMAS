@@ -71,7 +71,7 @@
     <label class="op-reason">Why (recorded with the change, in its commit)<input type="text" name="reason" value="{{ op.reason or '' }}" autocomplete="off" required maxlength="200"></label>
     <p class="op-note">Recorded on confirm: a commit in the network's repository, <span class="mono">dhcp/reservations.yml</span>, as you, with your reason; Kea's read-back is in the result. {{ may.statement }} Bound to this preview: if Kea or Mercury's file moves before you confirm, nothing is written.</p>
     {%- if may.may %}
-    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-reservation" hx-disabled-elt="this"><span class="op-idle">{% if s.op == 'remove' %}Remove {{ name }}'s reservation{% elif s.op == 'edit' %}Change {{ name }}'s reservation{% else %}Reserve {{ s.address }} for {{ name }}{% endif %}</span><span class="op-busy">Writing, reloading Kea, reading back…</span></button>{{ how('dhcp-reservation', compact=True, op='a reservation') }}</span>
+    <span class="op-act"><button type="button" class="btn" hx-get="{{ back }}" hx-target="#dhcp" hx-swap="outerHTML">Cancel</button><button type="submit" class="btn btn-primary op-confirm" data-op="dhcp-reservation" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">{% if s.op == 'remove' %}Remove {{ name }}'s reservation{% elif s.op == 'edit' %}Change {{ name }}'s reservation{% else %}Reserve {{ s.address }} for {{ name }}{% endif %}</span><span class="op-busy">Writing, reloading Kea, reading back…</span></button>{{ how('dhcp-reservation', compact=True, op='a reservation') }}</span>
     {%- endif %}
   </form>
   {%- endif %}

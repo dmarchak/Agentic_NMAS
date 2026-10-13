@@ -26,7 +26,7 @@
       <select id="topo-a{{ sfx }}" name="a"><option value="">a device…</option>{% for d in t.path_from %}<option{% if d == t.s.a %} selected{% endif %}>{{ d }}</option>{% endfor %}</select>
       <label for="topo-b{{ sfx }}">to</label>
       <select id="topo-b{{ sfx }}" name="b"><option value="">an address…</option>{% for d in t.path_to %}<option value="{{ d.value }}"{% if d.value == t.s.b %} selected{% endif %}>{{ d.words }}</option>{% endfor %}</select>
-      <span class="op-act">{% if tr.state == 'running' %}<button type="button" class="btn btn-small" data-op="path-trace" disabled aria-busy="true">Tracing… reading {{ tr.reading | join(', ') }}</button>{{ how('path-trace', compact=True, op='a path trace') }}{% else %}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}{% endif %}</span>
+      <span class="op-act">{% if tr.state == 'running' %}<button type="button" class="btn btn-small" data-op="path-trace" disabled aria-busy="true">Tracing… reading {{ tr.reading | join(', ') }}</button>{{ how('path-trace', compact=True, op='a path trace') }}{% else %}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Trace the path</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}{% endif %}</span>
     </form>
 {%- endmacro -%}
 <div id="topo" class="topo topo-tab-{{ t.s.tab }}" hx-get="{{ region }}{{ t.qs() }}" hx-trigger="nmas:topology from:body{{ ', nmas:path_trace from:body' if t.s.trace }}" hx-swap="outerHTML">
@@ -97,7 +97,7 @@
   {%- if t.arranged.state in ('ok', 'unreadable') %}
   <form class="topo-wide" method="post" action="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-post="{{ url_for('topology_v2.positions_reset') }}{{ t.qs() }}" hx-target="#topo" hx-swap="outerHTML">
     <input type="hidden" name="list" value="{{ t.list }}">
-    <span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this" title="{% if t.arranged.state == 'ok' %}Withdraw every person's moves: the map is laid out by the cabling again, for everyone (recorded on History){% else %}The saved layout cannot be read: Reset sets it aside under a dated name (kept) and the map is laid out by the cabling, for everyone (recorded on History){% endif %}"><span class="op-idle">Reset layout</span><span class="op-busy">Resetting…</span></button>{{ how('topology', 'arrange', compact=True, op='a layout reset') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this" title="{% if t.arranged.state == 'ok' %}Withdraw every person's moves: the map is laid out by the cabling again, for everyone (recorded on History){% else %}The saved layout cannot be read: Reset sets it aside under a dated name (kept) and the map is laid out by the cabling, for everyone (recorded on History){% endif %}"{{ gate('configure') }}><span class="op-idle">Reset layout</span><span class="op-busy">Resetting…</span></button>{{ how('topology', 'arrange', compact=True, op='a layout reset') }}</span>
   </form>
   {%- else %}
   <span class="btn btn-small topo-wide" aria-disabled="true" title="Nobody has moved a device on {{ t.list }}: the map is laid out by the cabling">Reset layout</span>
@@ -169,7 +169,7 @@
   <p class="faint small">Read {{ stamp(tr.read_iso) }} from {{ tr.read | join(', ') }} ({{ tr.runs | length }} read{{ 's' if tr.runs | length != 1 }}{% if tr.runs %}, on <a href="{{ url_for('reads_v2.show_commands_result', run_id=tr.runs[-1], list=t.list) }}">History › Reads</a>{% endif %}). On the map: a delivered branch drawn on, one leaving the network in grey to where it leaves, one that stops short in red to where it stops; the switches between routed hops dashed, since layer 2 is not read.</p>
   {%- endif %}
   {%- endif %}
-  <div class="topo-trace-acts">{{ go(t, {'a': '', 'b': '', 'trace': ''}, 'Clear the path') }}{% if tr.state in ('done', 'failed') %}<form class="topo-inline" method="post" action="{{ url_for('topology_v2.path_run') }}" hx-post="{{ url_for('topology_v2.path_run') }}" hx-target="#topo" hx-swap="outerHTML">{{ hidden_state(t, ('trace', 'sel')) }}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"><span class="op-idle">Trace again</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}</form>{% endif %}</div>
+  <div class="topo-trace-acts">{{ go(t, {'a': '', 'b': '', 'trace': ''}, 'Clear the path') }}{% if tr.state in ('done', 'failed') %}<form class="topo-inline" method="post" action="{{ url_for('topology_v2.path_run') }}" hx-post="{{ url_for('topology_v2.path_run') }}" hx-target="#topo" hx-swap="outerHTML">{{ hidden_state(t, ('trace', 'sel')) }}<button type="submit" class="btn btn-small" data-op="path-trace" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Trace again</span><span class="op-busy">Tracing…</span></button>{{ how('path-trace', compact=True, op='a path trace') }}</form>{% endif %}</div>
 </section>
 {%- endif %}
 <div class="topo-body">
@@ -308,7 +308,7 @@
           <label for="topo-reason">Why it is apart on purpose</label>
           <div><input id="topo-reason" name="reason" type="text" value="{{ op.reason }}" required placeholder="its own lab, cabled apart"><span class="set-origin">drawn instead of the warning; recorded with your name</span></div>
           <div class="set-foot set-form-note">
-            {%- if may.may %}<span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="topology" hx-disabled-elt="this"><span class="op-idle">Mark {{ w.device }} as expected</span><span class="op-busy">Recording…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span>
+            {%- if may.may %}<span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="topology" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Mark {{ w.device }} as expected</span><span class="op-busy">Recording…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span>
             <span class="muted small">{{ may.statement }}</span>
             {%- else %}<span class="muted small">{{ may.statement }} Nothing can be declared from here.</span>{% endif %}
           </div>
@@ -324,7 +324,7 @@
     <summary>{{ t.group_words.apart }} ({{ at.groups.apart | length }})</summary>
     {%- for w in at.groups.apart %}
     <div class="topo-ent topo-weak"><span class="mono">{{ w.device }} {{ badge('expected', 'neutral') }}</span><span class="topo-what">{{ w.why }}. Declared apart on purpose: {{ w.expected.reason }} ({{ w.expected.by }}, {{ stamp(w.expected.at) }}).</span>
-      <form class="topo-inline" method="post" action="{{ url_for('topology_v2.expected_withdraw') }}" hx-post="{{ url_for('topology_v2.expected_withdraw') }}" hx-target="#topo" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ w.device }}"><span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"><span class="op-idle">Withdraw</span><span class="op-busy">Withdrawing…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span></form>
+      <form class="topo-inline" method="post" action="{{ url_for('topology_v2.expected_withdraw') }}" hx-post="{{ url_for('topology_v2.expected_withdraw') }}" hx-target="#topo" hx-swap="outerHTML"><input type="hidden" name="list" value="{{ t.list }}"><input type="hidden" name="device" value="{{ w.device }}"><span class="op-act"><button type="submit" class="btn btn-small" data-op="topology" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Withdraw</span><span class="op-busy">Withdrawing…</span></button>{{ how('topology', 'islands', compact=True, op='an expected island') }}</span></form>
     </div>
     {%- endfor %}
   </details>

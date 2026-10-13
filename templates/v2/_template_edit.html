@@ -35,7 +35,7 @@
       <input type="text" name="summary" value="{{ c.summary }}" autocomplete="off" required></label>
     {%- if c.confirm.may %}
     <span class="op-act"><span class="muted small">{% if c.revokes %}Commits it as you, and revokes the approval of {% for t in c.revokes %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %} in the same commit.{% else %}Commits it as you; no approval stands over it.{% endif %} Nothing is sent to any device.</span>
-      <button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"><span class="op-idle">Commit {{ c.path }}</span><span class="op-busy">Committing…</span></button>{{ how('edit-template', compact=True, op='editing a template') }}</span>
+      <button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit {{ c.path }}</span><span class="op-busy">Committing…</span></button>{{ how('edit-template', compact=True, op='editing a template') }}</span>
     {%- else %}
     <p class="op-note">{{ c.confirm.statement }} Nothing can be committed from here.</p>
     {%- endif %}

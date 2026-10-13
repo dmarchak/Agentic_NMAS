@@ -16,7 +16,7 @@
   <form class="set-foot set-form-note" method="post" action="{{ url_for('settings_v2.network_create') }}"
         hx-post="{{ url_for('settings_v2.network_create') }}" hx-target="#network-create" hx-swap="outerHTML">
     <input type="hidden" name="name" value="{{ pv.name }}"><input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
-    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">Create {{ pv.name }}</span><span class="op-busy">Creating…</span></button>{{ how('settings-switch', 'create', op='creating a network') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="settings-switch" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Create {{ pv.name }}</span><span class="op-busy">Creating…</span></button>{{ how('settings-switch', 'create', op='creating a network') }}</span>
     <a class="btn btn-small" href="{{ url_for('settings_v2.network_new') }}" hx-get="{{ url_for('settings_v2.network_new') }}" hx-target="#network-create" hx-swap="outerHTML">Change the name</a>
   </form>
   {%- else %}

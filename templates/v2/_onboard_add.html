@@ -21,7 +21,7 @@
     <input type="hidden" name="shown" value="{{ pv.shown }}"><input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
     <div class="set-foot set-form-note">
       {%- if pv.preview.confirm.may and (pv.preview.targets[0].selectable if pv.preview.targets else false) %}
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="onboard" hx-disabled-elt="this"><span class="op-idle">Create {{ f.hostname }}</span><span class="op-busy">Creating…</span></button>{{ how('onboard', 'phase-one-create-nothing-is-sent-to-any-device', op='Create') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="onboard" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Create {{ f.hostname }}</span><span class="op-busy">Creating…</span></button>{{ how('onboard', 'phase-one-create-nothing-is-sent-to-any-device', op='Create') }}</span>
       {%- endif %}
       <button type="submit" class="btn btn-small" name="edit" value="1" formaction="{{ url_for('onboard_v2.preview') }}" hx-post="{{ url_for('onboard_v2.preview') }}" hx-target="#onboard-add" hx-swap="outerHTML">Change the fields</button>
       <span class="muted small">{{ pv.preview.confirm.statement }} Create rebuilds the plan and refuses, naming what moved, if it is not this one.</span>

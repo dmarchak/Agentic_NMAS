@@ -34,7 +34,7 @@
       <input type="text" name="summary" value="{{ c.summary }}" autocomplete="off" required></label>
     {%- if c.confirm.may %}
     <span class="op-act"><span class="muted small">Commits the document as you, with its reason. Nothing is sent to {{ host }}.</span>
-      <button type="submit" class="btn btn-primary op-confirm" data-op="edit-intent" hx-disabled-elt="this"><span class="op-idle">Commit to {{ host }}'s intent</span><span class="op-busy">Committing…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
+      <button type="submit" class="btn btn-primary op-confirm" data-op="edit-intent" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit to {{ host }}'s intent</span><span class="op-busy">Committing…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
     {%- else %}
     <p class="op-note">{{ c.confirm.statement }} Nothing can be committed from here.</p>
     {%- endif %}

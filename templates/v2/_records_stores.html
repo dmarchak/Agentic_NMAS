@@ -59,7 +59,7 @@
         hx-post="{{ url_for('settings_v2.records_store_apply', direction=pv.direction) }}" hx-target="#records-stores" hx-swap="outerHTML">
     <input type="hidden" name="fingerprint" value="{{ pv.fingerprint }}">
     {%- if pv.db.ok and not wrong and not unparsable %}
-    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"><span class="op-idle">{% if back %}Move back{% elif total %}Move {{ total }} line{{ '' if total == 1 else 's' }}{% else %}Switch to the database (no lines to copy){% endif %}</span><span class="op-busy">{{ 'Moving back…' if back else 'Moving…' }}</span></button>{{ how('records-database', 'back' if back else 'move', op='moving back' if back else 'moving a store') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="records-database" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">{% if back %}Move back{% elif total %}Move {{ total }} line{{ '' if total == 1 else 's' }}{% else %}Switch to the database (no lines to copy){% endif %}</span><span class="op-busy">{{ 'Moving back…' if back else 'Moving…' }}</span></button>{{ how('records-database', 'back' if back else 'move', op='moving back' if back else 'moving a store') }}</span>
     {%- endif %}
     <button type="button" class="btn btn-small" hx-get="{{ url_for('settings_v2.records_stores') }}" hx-target="#records-stores" hx-swap="outerHTML">Cancel</button>
     <span class="muted small">Bound to these counts: if a deploy finishes before you confirm, it is refused and you preview again. The files are kept{{ '' if back else ', read-only, for a release' }}.</span>

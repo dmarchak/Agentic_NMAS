@@ -55,7 +55,7 @@
     <p class="op-note">{{ c.effect }} Bound to plan <span class="mono">{{ c.hash }}</span>: if the plan moves before you confirm, nothing is done.</p>
     <span class="op-act"><button type="button" class="btn btn-danger op-confirm" data-op="retire"
             hx-post="{{ url_for('device_v2.retire_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
-            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "hash": c.hash, "reason": c.reason} | tojson }}'><span class="op-idle">{{ c.button or ('Retire ' ~ c.host) }}</span><span class="op-busy">Planning again and retiring, step by step…</span></button>{{ how('retire', compact=True, op='retirement') }}</span>
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "hash": c.hash, "reason": c.reason} | tojson }}'{{ gate('approve') }}><span class="op-idle">{{ c.button or ('Retire ' ~ c.host) }}</span><span class="op-busy">Planning again and retiring, step by step…</span></button>{{ how('retire', compact=True, op='retirement') }}</span>
     {%- elif c.breakglass_failing %}
     <p class="op-note">Refused until the break-glass record holds {{ c.host }}'s current credential: retiring removes the only other copy. Nothing is queued.</p>
     {%- else %}

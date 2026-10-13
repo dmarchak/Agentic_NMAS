@@ -2907,6 +2907,11 @@ read through one function, and P.8 moves it without the reader changing.
     client-side role check, and that a refused control renders its reason.
     Its control fails when a button is drawn without consulting `may`
     ([NSOT_AUTHORIZATION.md](NSOT_AUTHORIZATION.md) section 7).
+    **Met 2026-10-13 (C738):** every gated control in templates/v2 (82 when converted)
+    carries `{{ gate('<kind>') }}`, its route's own kind, drawn from `identity.may` by
+    `preview_confirm.control_gate`: disabled with its reason drawn on it when refused, nothing
+    for a person. tests/test_controls_consult_may.py fails on a control without it or with
+    another kind.
 14. **Every sub-task has its writeup entry** (the operator, 2026-09-29):
     [NSOT_WRITEUP.md](NSOT_WRITEUP.md) holds one entry per sub-task (what it
     was, how it was built, its findings by ID, how each was resolved, its

@@ -39,7 +39,7 @@
     <form class="op-act" method="post" action="{{ url_for('templates_v2.approve') }}" hx-post="{{ url_for('templates_v2.approve') }}" hx-target="#templates" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="path" value="{{ c.template }}">
       <input type="hidden" name="fingerprint" value="{{ c.fingerprint }}"><input type="hidden" name="seen" value="{{ c.seen }}">
-      <button type="submit" class="btn btn-primary op-confirm" data-op="approve-template" hx-disabled-elt="this"><span class="op-idle">Approve {{ c.template }}</span><span class="op-busy">Approving…</span></button>{{ how('approve-template', compact=True, op='approving a template') }}</form>
+      <button type="submit" class="btn btn-primary op-confirm" data-op="approve-template" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Approve {{ c.template }}</span><span class="op-busy">Approving…</span></button>{{ how('approve-template', compact=True, op='approving a template') }}</form>
     {%- elif c.can_approve %}
     <p class="op-note">{{ op.may.statement }} Nothing can be approved from here.</p>
     {%- else %}
@@ -76,7 +76,7 @@
   <div class="op-ft">
     {%- if op.may.may %}
     <p class="op-note">{{ op.may.statement }} Nothing is sent to any device.</p>
-    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="approve-template" hx-disabled-elt="this"><span class="op-idle">Revoke the approval</span><span class="op-busy">Revoking…</span></button>{{ how('approve-template', 'revoke', compact=True, op='revoking an approval') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="approve-template" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Revoke the approval</span><span class="op-busy">Revoking…</span></button>{{ how('approve-template', 'revoke', compact=True, op='revoking an approval') }}</span>
     {%- else %}
     <p class="op-note">{{ op.may.statement }} Nothing can be revoked from here.</p>
     {%- endif %}
@@ -145,7 +145,7 @@
     <form class="op-act" method="post" action="{{ url_for('templates_v2.bring') }}" hx-post="{{ url_for('templates_v2.bring') }}" hx-target="#templates" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ b.list }}"><input type="hidden" name="path" value="{{ b.path }}">
       <input type="hidden" name="copy_blob" value="{{ b.copy_blob }}"><input type="hidden" name="shipped_blob" value="{{ b.shipped_blob }}">
-      <button type="submit" class="btn btn-primary op-confirm" data-op="bring-template" hx-disabled-elt="this"><span class="op-idle">Commit the shipped {{ b.path }}</span><span class="op-busy">Committing…</span></button>{{ how('bring-template', compact=True, op='bringing in a shipped template') }}
+      <button type="submit" class="btn btn-primary op-confirm" data-op="bring-template" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Commit the shipped {{ b.path }}</span><span class="op-busy">Committing…</span></button>{{ how('bring-template', compact=True, op='bringing in a shipped template') }}
     </form>
     {%- elif b.offered %}
     <p class="op-note">{{ op.may.statement }} Nothing can be committed from here.</p>
@@ -202,7 +202,7 @@
   <form class="op-ft" method="post" action="{{ url_for('templates_v2.seed') }}" hx-post="{{ url_for('templates_v2.seed') }}" hx-target="#templates" hx-swap="outerHTML">
     <input type="hidden" name="list" value="{{ op.list }}"><input type="hidden" name="signature" value="{{ op.signature }}">
     {%- if op.may.may %}
-    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"><span class="op-idle">Seed the library</span><span class="op-busy">Seeding…</span></button>{{ how('edit-template', 'seed', compact=True, op='seeding') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="edit-template" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Seed the library</span><span class="op-busy">Seeding…</span></button>{{ how('edit-template', 'seed', compact=True, op='seeding') }}</span>
     <p class="op-note">{{ op.may.statement }}</p>
     {%- else %}<p class="op-note">{{ op.may.statement }} Nothing can be seeded from here.</p>{% endif %}
   </form>

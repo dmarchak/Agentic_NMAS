@@ -18,7 +18,7 @@
     <label for="f-{{ k.name }}-secret">New {{ s.secret[1] | lower }}</label>
     <div><input id="f-{{ k.name }}-secret" name="{{ s.secret[0] }}" class="mono" type="password" value="" autocomplete="new-password"></div>
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('installation-settings', 'replace', compact=True, op='replacing the ' ~ s.secret[1] | lower) }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Replace and Test</span><span class="op-busy">Replacing…</span></button>{{ how('installation-settings', 'replace', compact=True, op='replacing the ' ~ s.secret[1] | lower) }}</span>
       <span class="muted small">Replace and Test stores it as a secret, records who and when (never the value), then tests the connection with it.</span>
     </div>
   </form>
