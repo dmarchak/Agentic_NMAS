@@ -250,6 +250,31 @@ def test_the_workflow_checks_out_the_pinned_mercury_and_runs_the_script():
     assert upload["with"]["path"] == "nmas-config-check.json" and upload.get("if") == "always()"
 
 
+def test_a_scheduled_rotation_commits_through_the_real_commit_path(lab):
+    """The host, 2026-10-12 23:56 UTC: the first unattended rotation (s1) was refused at its
+    commit ("source 'scheduled-rotation' is not a workflow name") and no test had seen it, since
+    every rotation test stubbed `_commit`. Here the rotation's OWN commit runs for real, with
+    the words a scheduled run passes (`scheduled_rotation.SOURCE`, the policy's setter as
+    actor): save_golden's source rule, repo.commit's config check and the trailers."""
+    from modules.nsot import credential_rotation as cr
+    from modules.nsot import scheduled_rotation as SR
+
+    captured = open(R2, encoding="utf-8").read()
+    before = _head(lab["repo"])
+    out = cr._commit(LIST, lab["repo"], "r2", {"ip": "203.0.113.12", "hostname": "r2"},
+                     "admin", 15, "N3wR0tatedValue", "$9$planted", captured + "!\n",
+                     "setter@example.invalid", record="override", source=SR.SOURCE)
+    assert out["ok"], out
+    assert _head(lab["repo"]) != before, "the rotation committed nothing"
+    msg = subprocess.run(["git", "-C", lab["repo"], "log", "-1", "--format=%B"],
+                         capture_output=True, text=True).stdout
+    assert msg.startswith("credential: r2 rotated to a device-generated type-9 secret"), msg
+    assert f"Source: {SR.SOURCE}" in msg and "Actor: setter@example.invalid" in msg, msg
+    files = subprocess.run(["git", "-C", lab["repo"], "show", "--name-only", "--format=",
+                            "HEAD"], capture_output=True, text=True).stdout.split()
+    assert "golden/r2.cfg" in files, files
+
+
 @pytest.mark.parametrize("url", ["https://github.com/o/n.git", "https://<token>@github.com/o/n",
                                  "git@github-alias:o/n.git",
                                  # the NMAS host's origin is an ssh alias (measured 2026-10-12)

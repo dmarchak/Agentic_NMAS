@@ -2011,7 +2011,7 @@ def scheduled_rotation_source(found=None) -> dict:
                              checked="no scheduled rotation run is recorded")
     rows = []
     f = last.get("failed") or {}
-    if last.get("state") == "stopped" and f:
+    if SR.halted(got["rows"]) and f:
         rows.append(row(
             source="scheduled_rotation", kind="stopped", key=f"run:{last.get('run')}",
             level="danger", devices=[f.get("device", "?")], since=_ts(last.get("finished")),

@@ -43,8 +43,9 @@ runs in 08:30 to 09:10 UTC (the nightly backup), and nothing is staged on s3.
    goldens, intent and templates, with who did it and which operation."
 2. Open one commit (a Save All). Say: "One Save All is one commit across the fleet, so history
    is network-wide snapshots."
-3. **History › Query**, the Remote card: **Push now** (or show the last push). Say: "The
-   repository is pushed to a private GitHub repository, scanned for secrets first."
+3. **History › Timeline**, the **Remote** card: its last push (Push now appears only when a
+   commit is waiting). Say: "The repository is pushed to a private GitHub repository, scanned
+   for secrets first."
 
 ### 1.4 Golden configs with timestamp
 

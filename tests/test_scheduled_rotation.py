@@ -354,7 +354,7 @@ def test_a_policy_limited_to_named_devices_covers_only_those(data):
     assert not bad["ok"] and "is not a device name" in bad["error"]
 
 
-def test_a_credential_s_age_reads_the_repository_s_rotation_commits(monkeypatch):
+def test_a_credential_s_age_reads_the_repository_s_rotation_commits(monkeypatch, tmp_path):
     """The rotation record began after the first rotations (on the host, 2026-10-12, it held
     s1's and r2's while the repository held every device's from 2026-09-21): the age is the
     newest of the record's and the repository's."""
@@ -364,9 +364,13 @@ def test_a_credential_s_age_reads_the_repository_s_rotation_commits(monkeypatch)
                "device-generated type-9 secret\n"
                "1790000500\t2026-09-21T18:44:09+00:00\tgolden: baseline 2 device(s)\n")
     monkeypatch.setattr("modules.nsot.repo.git", lambda repo, *a: (0, log_out, ""))
-    monkeypatch.setattr("modules.nsot.listref.resolve",
-                        lambda name: type("R", (), {"repo_dir": "/nowhere"})())
+    (tmp_path / "config_repo" / ".git").mkdir(parents=True)
+    monkeypatch.setattr("modules.config.list_data_path", lambda name: str(tmp_path))
     assert SR.committed_rotations("Lab") == {"r3": (1790000000, "2026-09-21T18:35:49+00:00")}
+    monkeypatch.setattr("modules.config.list_data_path", lambda name: str(tmp_path / "none"))
+    assert SR.committed_rotations("Absent") == {}, "an absent repository is read as none"
+    assert not (tmp_path / "none").exists(), "a read created a list"
+    monkeypatch.setattr("modules.config.list_data_path", lambda name: str(tmp_path))
     monkeypatch.setattr(SR, "last_rotations", lambda: {"r2": (1795000000, "x")})
     states = {s["device"]: s for s in SR.device_states(
         1795000000 + 3600, lists=["Lab"], devices_of=lambda _l: DEVICES,
@@ -441,6 +445,24 @@ def test_the_commit_s_source_is_a_workflow_name_the_repository_accepts():
     from modules.nsot import repo
     assert repo.SOURCE_SLUG.match(SR.SOURCE), SR.SOURCE
     assert device_list.SOURCE_WORDS[SR.SOURCE] == "a scheduled rotation"
+
+
+def test_a_halt_clears_once_the_failed_device_s_rotation_is_committed(monkeypatch):
+    """The host, 2026-10-13: s1's credential was recovered into the store (no commit), so the
+    halt stood; it clears when s1's rotation is COMMITTED after the stop, never on the store
+    alone, and a later clean run still clears it as before."""
+    stop = {"run": "1", "trigger": "scheduled", "state": "stopped",
+            "finished": "2026-10-12T23:56:40Z",
+            "failed": {"device": "s1", "list": "Lab", "stage": "commit"}}
+    commits = {}
+    monkeypatch.setattr(SR, "committed_rotations", lambda name: commits)
+    assert SR.halted([stop]) is stop                                   # nothing committed
+    commits["s1"] = (SR._epoch("2026-10-12T20:00:00Z"), "")
+    assert SR.halted([stop]) is stop                                   # committed BEFORE it
+    commits["s1"] = (SR._epoch("2026-10-13T00:40:00Z"), "")
+    assert SR.halted([stop]) is None                                   # settled after it
+    commits.clear()
+    assert SR.halted([stop, {"run": "2", "state": "done"}]) is None    # a clean run after
 
 
 def test_a_scheduled_run_after_midnight_does_not_take_a_second_device(data, monkeypatch):

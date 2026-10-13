@@ -243,12 +243,16 @@ def committed_rotations(list_name: str) -> dict:
     2026-10-12 it held s1's and r2's while the repository held every device's from 2026-09-21,
     so a device read only from the record said "never rotated by Mercury" falsely. One `git
     log` a network; {} when the repository cannot be read (the record alone then answers)."""
-    from modules.nsot import listref
+    from modules.config import list_data_path
     from modules.nsot.repo import git
 
+    # A read creates no list (C51): the path WITHOUT creating it, and none read when absent.
+    repo = os.path.join(list_data_path(list_name), "config_repo")
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return {}
     try:
-        rc, out, _err = git(listref.resolve(list_name).repo_dir, "log",
-                            "--format=%ct\t%cI\t%s", "--grep=^credential: .* rotated ")
+        rc, out, _err = git(repo, "log", "--format=%ct\t%cI\t%s",
+                            "--grep=^credential: .* rotated ")
     except Exception as exc:                            # noqa: BLE001
         log.warning("scheduled rotation: %s's rotation commits could not be read: %s",
                     list_name, exc)
@@ -388,6 +392,24 @@ def last_decisive(rows=None):
     """The last run that ran (done, stopped on a failure, or found nothing due), or None."""
     rows = runs()["rows"] if rows is None else rows
     return next((r for r in reversed(rows) if r.get("state") in DECISIVE), None)
+
+
+def halted(rows=None):
+    """The stopped run that halts the timer, or None. A run that stopped on a failure halts it
+    until a later run finishes clean, or until the device it failed on has a ROTATION COMMIT
+    after the stop: settled through Mercury's rotation, recorded with its trailers (the host,
+    2026-10-13: s1's credential was recovered into the store, which settles nothing in the
+    repository, so only its commit counts)."""
+    last = last_decisive(rows)
+    if not last or last.get("state") != "stopped":
+        return None
+    f = last.get("failed") or {}
+    stopped_at = _epoch(last.get("finished") or "") or 0
+    if f.get("device") and f.get("list"):
+        at, _iso_ = committed_rotations(f["list"]).get(f["device"], (0, ""))
+        if at > stopped_at:
+            return None
+    return last
 
 
 # ------------------------------------------------------------------ the lock
@@ -610,8 +632,8 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
     try:
         prior = runs()["rows"]
         if trigger == "scheduled":
-            last = last_decisive(prior)
-            if last and last.get("state") == "stopped":
+            last = halted(prior)
+            if last:
                 f = last.get("failed") or {}
                 return finish("refused", (
                     f"the last run stopped on {f.get('device', '?')} at {f.get('stage', '?')} "
