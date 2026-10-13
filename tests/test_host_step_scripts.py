@@ -60,7 +60,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # C743: the two first archive objects deleted, every version, with a typed key.
             "c743-delete-archive-objects.sh",
             # E19: the lease lifetimes: Kea's globals and classes, the management subnet's.
-            "e19-dhcp-lifetimes.sh"}
+            "e19-dhcp-lifetimes.sh",
+            # C749: MinIO's default root replaced; Thanos and archive cleanups on keys of their own.
+            "minio-root-rotate.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
@@ -185,6 +187,32 @@ def test_the_delete_key_is_prompted_hidden_and_reaches_only_one_commands_environ
     assert 'os.environ.pop("MINIO_SECRET")' in text
 
 
+def test_the_minio_root_rotation_never_shows_a_secret():
+    """C749: the new root password and the two users' secrets are typed hidden, twice, never an
+    argument or echoed; they reach mc on its standard input or in MC_HOST_ built from standard
+    input, and the two files through set_keys.py's standard input. The cleanup key's policy is
+    DeleteObject and DeleteObjectVersion on Mercury's bucket, and nothing else."""
+    import json as _json
+
+    text = open(os.path.join(FOLDER, "minio-root-rotate.sh"), encoding="utf-8").read()
+    for var, words in (("NEW_PW", "The new root password"),
+                       ("THANOS_PW", "The secret for the user thanos"),
+                       ("CLEANUP_PW", "The secret for the user mercury-cleanup")):
+        assert f'ask {var} "{words}"' in text
+        assert not re.search(rf'echo[^\n]*\$\{{?{var}\b', text), f"{var} echoed"
+        # Within one command (never past && ; or |): printf is a builtin, never in the process list.
+        assert not re.search(rf'(?:\bmc\b|python3|"\$PY")[^\n|&;]*"\${var}"', text), \
+            f"{var} an argument"
+    assert re.search(r'read -r -s -p "\$2 \(hidden\): " a', text), "prompted, input hidden"
+    assert not re.search(r"\$[1-9@*]", text.replace('"$2 (hidden)', "").replace(
+        'printf -v "$1"', "")), "no argument is read"
+    policy = re.search(r"mercury-cleanup.json\" <<JSON\n(.*?)\nJSON", text, re.S).group(1)
+    doc = _json.loads(policy.replace("$BUCKET", "mercury"))
+    [stmt] = doc["Statement"]
+    assert sorted(stmt["Action"]) == ["s3:DeleteObject", "s3:DeleteObjectVersion"]
+    assert stmt["Resource"] == ["arn:aws:s3:::mercury/*"]
+
+
 def test_the_secret_is_prompted_hidden_never_an_argument_never_printed():
     text = open(os.path.join(FOLDER, "minio-4c.sh"), encoding="utf-8").read()
     assert re.search(r'read -r -s -p "[^"]*" SECRET', text), "prompted, input hidden"
@@ -254,3 +282,57 @@ def test_the_records_password_is_prompted_hidden_and_reaches_only_stdin_and_the_
                    encoding="utf-8").read()
     assert '- "127.0.0.1:5433:5432"' in compose
     assert re.search(r"image: postgres:18-alpine@sha256:[0-9a-f]{64}\n", compose)
+
+
+# --- A command runs in a CHILD shell (C748) -------------------------------------------------
+
+#: `(script, variable)` a step's or check's command names without exporting it first, each with
+#: why it is not a bug, or the finding that holds it. Only shrinks.
+UNEXPORTED_EXCUSED = {
+    ("c729-key-disk.sh", "C729_DEFERRAL_LIFTED"):
+        "set by the operator in the step's own environment when lifting the deferral",
+    ("phase7-mode-on.sh", "CHECKOUT"): "C747: works only when run from inside the checkout",
+}
+
+
+def unexported(text: str) -> list:
+    """``[(line, variable)]``: each `$VAR` a step's or check's single-quoted command names that
+    no `export` before that line (or the command itself) provides. The library runs every
+    command in `bash -c`, a child that sees only exported variables: the C743 delete step's
+    first run read its typed key as empty this way (2026-10-13)."""
+    special = {"HOME", "USER", "PATH", "PWD", "SUDO_USER", "IFS", "RANDOM", "UID", "EUID"}
+    exported, out = set(), []
+    for n, line in enumerate(text.splitlines(), 1):
+        for m in re.finditer(r"(?:^|;)\s*export\s+([^;]*)", line):
+            exported |= {t.split("=")[0] for t in m.group(1).split() if not t.startswith("-")}
+        m = re.match(r"\s*(?:step|check)\s+\"[^\"]*\"\s+(?:\w+\s+\S+\s+)?'(.*)", line)
+        if not m:
+            continue
+        # A value spliced in by the outer shell ('…'"$X"'…') is expanded before the child runs.
+        cmd = re.sub(r"'\"\$\{?\w+[^\"]*\"'", "", m.group(1))
+        local = set(re.findall(r"\b([A-Za-z_]\w*)=", cmd)) | set(
+            re.findall(r"\bfor\s+([A-Za-z_]\w*)\s+in\b", cmd))
+        for name in sorted(set(re.findall(r"\$\{?([A-Za-z_]\w*)", cmd))
+                           - exported - local - special):
+            out.append((n, name))
+    return out
+
+
+def test_every_command_names_only_exported_variables():
+    found = {(name, var) for name in SCRIPTS
+             for _n, var in unexported(open(os.path.join(FOLDER, name), encoding="utf-8").read())}
+    assert found - set(UNEXPORTED_EXCUSED) == set(), sorted(found - set(UNEXPORTED_EXCUSED))
+    assert set(UNEXPORTED_EXCUSED) - found == set(), "an excuse with nothing to excuse"
+
+
+def test_the_scan_finds_the_first_runs_bug():
+    """The planted case: the C743 step as first run, its typed key read in a check before it
+    was exported."""
+    planted = ("read -r -p \"Access key: \" ACCESS\n"
+               "check \"a key was typed\" eq \"yes\" '[ -n \"$ACCESS\" ] && echo yes || echo no'\n"
+               "export ACCESS\n")
+    assert unexported(planted) == [(2, "ACCESS")]
+    fixed = planted.splitlines()
+    assert unexported("\n".join([fixed[0], fixed[2], fixed[1]])) == []
+    spliced = "check \"x\" eq 1 'echo \"pkg='\"$PSYCOPG\"'\"'\n"
+    assert unexported(spliced) == []

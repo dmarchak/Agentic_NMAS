@@ -37,11 +37,14 @@ not_root
 check "this is the NMAS host: flask-app.service and its interpreter" eq "yes" \
     'systemctl cat flask-app.service >/dev/null 2>&1 && [ -x "$PY" ] && echo yes || echo no'
 
-echo "A MinIO key that may delete in Mercury's bucket (the root user, or a key with"
-echo "s3:DeleteObject and s3:DeleteObjectVersion on it). Mercury's own key cannot."
+echo "A MinIO key that may delete in Mercury's bucket: mercury-cleanup (minio-root-rotate.sh"
+echo "makes it, with only s3:DeleteObject and s3:DeleteObjectVersion), or the root user."
+echo "Mercury's own key cannot delete; it lists and reads here."
 read -r -p "Access key: " ACCESS
 read -r -s -p "Secret key (hidden): " SECRET; echo
 REDACT=$SECRET
+# A check runs in a child shell: it sees only what is exported (the first run's FAIL, 2026-10-13).
+export ACCESS SECRET
 check "a key was typed" eq "yes" '[ -n "$ACCESS" ] && [ -n "$SECRET" ] && echo yes || echo no'
 
 cat > "$DIR/delete.py" <<'PY'
@@ -58,7 +61,10 @@ from modules.integrations.s3_archive import S3ArchiveIntegration  # noqa: E402
 phase, out = sys.argv[1], os.environ["DIR"]
 objects = dict(o.split("=", 1) for o in os.environ["OBJECTS"].split())
 s3 = S3ArchiveIntegration()
-c = s3.client(credentials=(os.environ.pop("MINIO_ACCESS"), os.environ.pop("MINIO_SECRET")))
+# Mercury's own key lists and reads; the typed key only deletes, so a key holding nothing but
+# s3:DeleteObject and s3:DeleteObjectVersion (mercury-cleanup, C749) is enough.
+c = s3.client()
+d = s3.client(credentials=(os.environ.pop("MINIO_ACCESS"), os.environ.pop("MINIO_SECRET")))
 try:
     print("bucket versioning:", c.get_bucket_versioning(Bucket=s3.bucket).get("Status")
           or "never enabled")
@@ -92,7 +98,7 @@ for key, prefix in objects.items():
         result[key] = ok
     elif phase == "delete":
         for vid, _marker in vs:
-            c.delete_object(Bucket=s3.bucket, Key=key, VersionId=vid)
+            d.delete_object(Bucket=s3.bucket, Key=key, VersionId=vid)
         print(f"{key}: deleted {len(vs)} version(s) and marker(s)")
         result[key] = len(vs)
     else:
@@ -103,7 +109,7 @@ json.dump(result, open(os.path.join(out, phase), "w"))
 PY
 
 RUN='cd "$CHECKOUT" && MINIO_ACCESS="$ACCESS" MINIO_SECRET="$SECRET" "$PY" "$DIR/delete.py"'
-export ACCESS SECRET RUN
+export RUN
 step "list both objects' versions and read each one's checksum" "$RUN identify"
 check "each object is the one named, by its checksum's prefix" eq "True" \
     'python3 -c "import json; print(all(json.load(open(\"$DIR/identify\")).values()))"'
