@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# DEFERRED (the operator, 2026-10-13): "C729 is deferred; don't run it". Folded into the
+# credential store redesign (docs/CREDENTIAL_STORE_REDESIGN.md, C733). Its first check refuses
+# unless C729_DEFERRAL_LIFTED=yes, which only the operator's word sets.
+#
 # C729 (docs/OPEN_FINDINGS.md; the operator, 2026-10-13: "I'd rather the backup never holds both
 # halves"): the application key moves off the disk the nightly VM image copies, onto a disk of
 # its own that the hypervisor leaves out of every image (the disk's backup=0), and data/key.key
@@ -20,7 +24,8 @@ export PYTHONDONTWRITEBYTECODE=1
 MOUNT=/var/lib/nmas-key
 FP='import sys; sys.path.insert(0, sys.argv[1]); from modules.breakglass import key_fingerprint; print(key_fingerprint(open(sys.argv[2], "rb").read()))'
 
-plan "run as root" \
+plan "the operator has lifted C729's deferral" \
+     "run as root" \
      "an intact break-glass export holds this key" \
      "exactly one disk carries the serial nmas-key" \
      "the disk is blank or already the key disk" \
@@ -31,6 +36,7 @@ plan "run as root" \
      "Mercury reads the same key through the link" \
      "no key file is left in the data directory"
 
+check "the operator has lifted C729's deferral" eq "yes" 'echo "${C729_DEFERRAL_LIFTED:-no}"'
 check "run as root" eq "0" 'id -u'
 
 # Where the key is (config.KEY_FILE, read as the checkout's owner), and who reads it: the key

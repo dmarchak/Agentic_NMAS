@@ -21,11 +21,10 @@
   not read back makes verify not pass, no rollback.
 
 **Waiting on the operator (replaces the list below):**
-1. **C729, the key disk:** on the hypervisor,
-   `qm set <vmid> --scsi1 <storage>:1,backup=0,serial=nmas-key,discard=on,iothread=1,ssd=1`
-   (the NMAS VM and its pool are named in the session, not here), then on the NMAS host
-   `sudo bash <checkout>/scripts/host-steps/c729-key-disk.sh`. It refuses without an intact
-   break-glass export of the current key, so the break-glass export (item 4) comes first.
+1. **C729 is DEFERRED (the operator, 2026-10-13), risk accepted:** folded into the credential
+   store redesign (C733, docs/CREDENTIAL_STORE_REDESIGN.md, after Phase 7). Its host step
+   refuses unless the deferral is lifted; the startup guard stays. The redesign's five
+   decisions (its section 9) are the operator's, after Phase 7.
 2. **The rotation policy:** now every 7 days with "at most 5"; clear the field and save if no
    cap is wanted.
 3. **The config check's run on GitHub** for fcd17ab (the pin move): one run, green.
