@@ -65,12 +65,11 @@ and built.
 | Break-glass export | `/breakglass/export` | STAYS (its preview route removed 2026-10-12, 7.8) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
 | Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
-| TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | Its only readers are the device file routes below, and it points at nothing on this installation |
+| TFTP setting | `/save_tftp_server` | REMOVE, 7.8 (C616) | Its only readers are the bulk file routes below (the device file routes left 2026-10-13, and its input on today's device page with them), and it points at nothing on this installation |
 | App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
 | In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
 | Version | `/health/version` | BUILT | Help › About |
 | Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8, after today's template editor | Section 6a's prerequisite (no render reads a backup): the v2 intent editor and bulk intent render against the committed golden only since 2026-10-11 (C683); today's template preview and refresh-capture still read the backup store (C632), and go with today's template editor, the last prerequisite. Today's device page also names these routes by `url_for` |
-| Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02): ZTP delivery in onboarding and image management (P.13) replace them. ZTP is served by Mercury's own responder, which none of these routes touches (C616, checked 2026-10-09); `tftp_root` and `tftp_server_ip` leave with them |
 | Bulk read-only commands | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | BUILT (C548; not yet walked on the host) | Show commands (`/v2/show-commands`): devices by name, role or network, commands from the allowlist, results grouped and compared |
 | Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
@@ -83,6 +82,13 @@ and built.
 Each family leaves the table above in the commit that removes it, named here with that commit's
 date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest change first).
 
+- **Device files** (/device/<ip>/refresh_files, /upload, /download_file, /delete_file,
+  /download), 2026-10-13 (D16; restore point tag `pre-remove/device-files`): no arbitrary file
+  transfer (the operator, 2026-10-02); ZTP delivery and image management (P.13) replace them.
+  Today's device page's File Management tab went with them, with its TFTP server input and the
+  command output's Download link (the last output's download was `/download`). They kept no
+  data of their own on this host. `tftp_root` and `tftp_server_ip` leave with the bulk file
+  routes, their last readers.
 - **Quick actions** (/add_quick_action, /delete_quick_action), 2026-10-13 (D16; restore point
   tag `pre-remove/quick-actions`): the terminal's companions, the terminal gone since R39. Today's
   device page's Quick actions section, its script and style, `modules/quick_actions.py` and

@@ -133,18 +133,6 @@
       Utilities
     </button>
   </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if tab == 'files' %}active{% endif %}"
-            id="files-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#files"
-            type="button"
-            role="tab"
-            aria-controls="files"
-            aria-selected="{{ 'true' if tab == 'files' else 'false' }}">
-      File Management
-    </button>
-  </li>
   <!-- Backups tab -->
   <li class="nav-item" role="presentation">
     <button class="nav-link {% if tab == 'backups' %}active{% endif %}"
@@ -214,110 +202,8 @@
         </button>
       </div>
       <div class="card-body">
-        {% if filename %}
-          <a href="{{ url_for('download_file') }}"
-             class="btn btn-outline-primary mb-3">⬇️ Download</a>
-        {% endif %}
         <!-- Only Flask-rendered output; no Socket.IO wiring here -->
         <pre class="bg-body-secondary border p-3" id="utilityOutput">{{ output }}</pre>
-      </div>
-    </div>
-    {% endif %}
-  </div>
-
-  <!-- File Management Tab -->
-  <div class="tab-pane fade {% if tab == 'files' %}show active{% endif %}"
-       id="files"
-       role="tabpanel"
-       aria-labelledby="files-tab">
-
-    <hr>
-    <h4>📁 File management</h4>
-    <p class="text-muted">Manage files on the selected device. Choose a file system to upload, delete, or refresh.</p>
-
-    <!-- Filesystem Dropdown -->
-    <div class="row mb-3">
-      <div class="col-md-6">
-        <label for="fsDropdown" class="form-label fw-bold">File system</label>
-        <select id="fsDropdown" class="form-select" name="filesystem" required>
-          {% for fs in filesystems %}
-            <option value="{{ fs }}" {% if fs == selected_fs %}selected{% endif %}>{{ fs }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label for="tftpServerInput" class="form-label fw-bold">TFTP Server Address</label>
-        <div class="input-group">
-          <input type="text" class="form-control" id="tftpServerInput" value="{{ tftp_server }}" placeholder="TFTP Server IP">
-          <button class="btn btn-outline-success" type="button" onclick="saveTftpServer()" title="Save as default">
-            💾 Save
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Hidden refresh form -->
-    <form id="fsChangeForm" method="post" action="{{ url_for('refresh_files', ip=device['ip']) }}">
-      <input type="hidden" name="filesystem" id="fsChangeInput" value="{{ selected_fs }}">
-    </form>
-
-    <div class="row g-4 mb-4">
-      <!-- Upload -->
-      <div class="col-md-4">
-        <h5>⬆️ Upload file</h5>
-        <form method="post" action="{{ url_for('upload_file', ip=device['ip']) }}" enctype="multipart/form-data">
-          <input type="hidden" id="uploadFsInput" name="filesystem" value="{{ selected_fs }}">
-          <input type="hidden" id="uploadTftpInput" name="tftp_server" value="{{ tftp_server }}">
-          <input type="file" class="form-control mb-2" name="file" required>
-          <button class="btn btn-outline-primary w-100">Upload</button>
-        </form>
-      </div>
-
-      <!-- Download -->
-      <div class="col-md-4">
-        <h5>⬇️ Download file</h5>
-        <form method="post" action="{{ url_for('download_device_file', ip=device['ip']) }}">
-          <input type="hidden" id="downloadFsInput" name="filesystem" value="{{ selected_fs }}">
-          <input type="hidden" id="downloadTftpInput" name="tftp_server" value="{{ tftp_server }}">
-          <select class="form-select mb-2" name="filename" id="downloadFileSelect" required>
-            {% for f in files %}
-              <option value="{{ f }}">{{ f }}</option>
-            {% endfor %}
-          </select>
-          <button class="btn btn-outline-info w-100">Download to TFTP</button>
-        </form>
-      </div>
-
-      <!-- Delete -->
-      <div class="col-md-4">
-        <h5>🗑️ Delete file</h5>
-        <form method="post" action="{{ url_for('delete_file', ip=device['ip']) }}">
-          <input type="hidden" id="deleteFsInput" name="filesystem" value="{{ selected_fs }}">
-          <select class="form-select mb-2" name="filename" required>
-            {% for f in files %}
-              <option value="{{ f }}">{{ f }}</option>
-            {% endfor %}
-          </select>
-          <button class="btn btn-outline-danger w-100">Delete</button>
-        </form>
-      </div>
-    </div>
-
-    <!-- Command Output (Files) -->
-    {% if output and tab == 'files' %}
-    <div class="card mb-4" id="serverRenderedOutput">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Command output</span>
-        <button class="btn btn-sm btn-outline-secondary copy-btn" data-target="filesOutput" title="Copy to clipboard">
-          📋 Copy
-        </button>
-      </div>
-      <div class="card-body">
-        {% if filename %}
-          <a href="{{ url_for('download_file') }}"
-             class="btn btn-outline-primary mb-3">⬇️ Download</a>
-        {% endif %}
-        <pre class="bg-body-secondary border p-3" id="filesOutput">{{ output }}</pre>
       </div>
     </div>
     {% endif %}
@@ -506,77 +392,6 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  // --- File system sync for File Management tab ---
-  const fsDropdown = document.getElementById("fsDropdown");
-  const fsChangeInput = document.getElementById("fsChangeInput");
-  const fsChangeForm = document.getElementById("fsChangeForm");
-  const uploadFsInput = document.getElementById("uploadFsInput");
-  const downloadFsInput = document.getElementById("downloadFsInput");
-  const deleteFsInput = document.getElementById("deleteFsInput");
-
-  // --- TFTP Server sync ---
-  const tftpServerInput = document.getElementById("tftpServerInput");
-  const uploadTftpInput = document.getElementById("uploadTftpInput");
-  const downloadTftpInput = document.getElementById("downloadTftpInput");
-
-  function syncFsInputs() {
-    if (!fsDropdown) return;
-    const val = fsDropdown.value;
-    if (uploadFsInput) uploadFsInput.value = val;
-    if (downloadFsInput) downloadFsInput.value = val;
-    if (deleteFsInput) deleteFsInput.value = val;
-    if (fsChangeInput) fsChangeInput.value = val;
-  }
-
-  function syncTftpInputs() {
-    if (!tftpServerInput) return;
-    const val = tftpServerInput.value.trim();
-    if (uploadTftpInput) uploadTftpInput.value = val;
-    if (downloadTftpInput) downloadTftpInput.value = val;
-  }
-
-  if (fsDropdown) {
-    fsDropdown.addEventListener("change", () => {
-      syncFsInputs();
-      if (fsChangeForm) fsChangeForm.submit(); // posts to refresh_files route
-    });
-    syncFsInputs();
-  }
-
-  if (tftpServerInput) {
-    tftpServerInput.addEventListener("input", syncTftpInputs);
-    tftpServerInput.addEventListener("change", syncTftpInputs);
-    syncTftpInputs();
-  }
-
-  // Save TFTP server address to user settings
-  window.saveTftpServer = function() {
-    const tftpServer = document.getElementById('tftpServerInput').value.trim();
-
-    if (!tftpServer) {
-      showToast('Please enter a TFTP server address', 'warning');
-      return;
-    }
-
-    fetch('/save_tftp_server', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tftp_server: tftpServer })
-    })
-    .then(resp => resp.json())
-    .then(data => {
-      if (data.status === 'success') {
-        showToast(data.message, 'success');
-      } else {
-        showToast(data.message || 'Failed to save TFTP server', 'danger');
-      }
-    })
-    .catch(err => {
-      console.error('Save TFTP server failed:', err);
-      showToast('Failed to save TFTP server address', 'danger');
-    });
-  };
-
   // ========================================================================
   // Backups Tab Functionality
   // ========================================================================

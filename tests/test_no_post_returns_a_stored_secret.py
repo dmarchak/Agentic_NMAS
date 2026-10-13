@@ -66,7 +66,6 @@ def _bodies(v):
                         "committed intent renders a community the device does not hold: "
                         "the program adds one, and the device's is residue"),
         "backup_config": (302, ("form", {}), "a form post that redirects; no body"),
-        "refresh_files": (302, ("form", {}), "a form post that redirects; no body"),
         "drift_check_trigger": (200, ("json", {}), "schedules a run; returns a message"),
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "

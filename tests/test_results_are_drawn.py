@@ -284,8 +284,6 @@ PENDING = {
     "bulk_delete_file": "the bulk results modal, until closed",
     "bulk_tftp_upload": "the bulk results modal, until closed",
     "run_command": "the device page re-rendered with the output",
-    "delete_file": "the device page re-rendered",
-    "upload_file": "the device page re-rendered",
     "ai_chat": "the chat stream (Stage 8 decides what the agent's record is)",
     "templatize.edit_committed": "the editor's status line names the commit",
     "remote.push": "the remote panel's output box",
@@ -325,7 +323,6 @@ GREEN_TOASTS = {
     ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create/delete, TFTP server, bulk STARTED): the per-device outcome is the bulk modal's",
     ("static/js/gen/index.1.js", "Bulk operation finished"): "level from the failed and succeeded counts (C121)",
     ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
-    ("templates/device.html", "showToast(data.message, 'success')"): "one TFTP server setting",
     ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
     ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
     ("templates/index.html", "'Settings saved'"): "saved with no errors (warnings have their own)",
@@ -343,7 +340,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 17, "FALSE_GREEN": 0, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 15, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 15 since Device files left (7.8, D16, 2026-10-13)
 
 
 def _population():

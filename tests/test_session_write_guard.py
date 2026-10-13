@@ -404,7 +404,9 @@ def test_every_writer_takes_the_hold_or_names_the_caller_that_does():
         unheld.append(f"{rel}:{line} {text!r}")
     assert unheld == [], unheld
     names = {f"{rel}:{f.name}" for rel, chain, _t, _l in sites for f in chain}
-    assert "app.py:delete_file" in names and "app.py:upload_file" in names
+    # Anchors (Device files' own routes left at 7.8, 2026-10-13; the bulk ones remain).
+    assert "modules/bulk_ops.py:_execute_delete_file" in names
+    assert "modules/bulk_ops.py:_execute_tftp_upload" in names
     ghosts = sorted((set(HELD_BY_CALLER) | set(KNOWN_UNHELD)) - names)
     assert ghosts == [], f"named but sending nothing now: {ghosts}"
 

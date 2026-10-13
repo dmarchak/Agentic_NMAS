@@ -117,28 +117,15 @@ class TestBulkOperation:
         assert not (tmp_path / "evil.bin").exists() and bulk_calls == [] and contacts == []
 
 
-class TestTheFileRoutes:
-    @pytest.mark.parametrize("route, data", [
-        ("delete_file", {"filename": "x.bin\nreload", "filesystem": "flash:"}),
-        ("delete_file", {"filename": "x.bin", "filesystem": "flash:\nreload\n"}),
-        ("download_file", {"filename": "x.bin", "filesystem": "flash:",
-                           "tftp_server": "192.0.2.10\nwrite erase"}),
-        ("download_file", {"filename": "a b.bin", "filesystem": "flash:"}),
-    ])
-    def test_a_spliced_field_is_refused_before_any_device(self, client, contacts, route, data):
-        client.post(f"/device/{IP}/{route}", data=data)
-        with client.session_transaction() as s:
-            said = " ".join(m for _c, m in s.get("_flashes", []))
-        assert "Refused: " in said and "Nothing was sent" in said, said
-        assert contacts == [] and FakeConn.sent == []
+class TestTheFileRoutesAreGone:
+    """Device files left at 7.8 (D16, 2026-10-13): the routes that spliced a filename into a
+    device command no longer exist, so nothing reaches a device through them."""
 
-    def test_an_upload_named_with_a_path_is_refused(self, client, contacts):
-        client.post(f"/device/{IP}/upload", data={
-            "file": (io.BytesIO(b"x"), "../../evil.bin"), "filesystem": "flash:"},
-            content_type="multipart/form-data")
-        with client.session_transaction() as s:
-            said = " ".join(m for _c, m in s.get("_flashes", []))
-        assert "Refused: filename" in said and contacts == []
+    @pytest.mark.parametrize("route", ["delete_file", "download_file", "upload",
+                                       "refresh_files"])
+    def test_the_route_is_gone(self, client, contacts, route):
+        r = client.post(f"/device/{IP}/{route}", data={"filename": "x.bin"})
+        assert r.status_code in (404, 405) and contacts == [] and FakeConn.sent == []
 
 
 class TestTheShapes:
@@ -165,14 +152,10 @@ class TestTheShapes:
 CHECKED = {
     "run_command": "readonly_commands.refusal, before any device",
     "bulk_execute": "readonly_commands.refusal_for over every ;-part, before any device",
-    "delete_file": "cli_tokens: filename, filesystem",
-    "upload_file": "cli_tokens: filename (no path), filesystem, server",
-    "download_device_file": "cli_tokens: filename, filesystem, server",
     "bulk_tftp_upload": "cli_tokens: filename (no path), server",
     "bulk_tftp_download": "cli_tokens: filename, server",
     "bulk_download_config": "cli_tokens: server; config_type one of two words",
     "bulk_delete_file": "cli_tokens: filename",
-    "refresh_files": "get_device_context: a requested filesystem is used only if the device listed it",
 }
 SENDERS = {"run_device_command", "send_command", "send_command_timing", "send_config_set",
            "execute_bulk_command", "with_temp_connection", "get_persistent_connection",
@@ -202,7 +185,7 @@ def _routes_that_send_request_text():
 
 def test_every_route_sending_request_text_is_checked():
     found = _routes_that_send_request_text()
-    assert len(found) >= 12, found               # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12)
+    assert len(found) >= 8, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files (2026-10-13)
     unchecked = sorted(set(found) - set(CHECKED) - set(NOT_REQUEST_TEXT))
     assert not unchecked, (
         "a route reads the request and sends to a device with no declared check: "

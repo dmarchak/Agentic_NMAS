@@ -67,10 +67,8 @@ KNOWN_DUPLICATES = {
     # ("save_startup",) LEFT this list 2026-10-05 (C501): the push and the rollback no longer
     # save (the push saved before verify, so a failed change reached startup), and the
     # deploy's save after verify calls `persist_on_device`, the one home.
-    ("delete", "file"): {"app.py:delete_file", "modules/bulk_ops.py:_execute_delete_file"},
-    ("copy", "file", "tftp"): {"app.py:download_device_file",
-                               "modules/bulk_ops.py:_execute_tftp_download"},
-    ("copy", "tftp", "file"): {"app.py:upload_file", "modules/bulk_ops.py:_execute_tftp_upload"},
+    # ("delete", "file"), ("copy", "file", "tftp") and ("copy", "tftp", "file") LEFT this list
+    # 2026-10-13: Device files left at 7.8 (D16); the bulk file routes are their one home now.
     ("typed",): {"modules/commands.py:_run",
                  "modules/bulk_ops.py:_run_single_enable_command"},
 }

@@ -114,8 +114,6 @@ GATES = {
                           "allowlist or none runs (C570; config mode cut in P.3 step 2)"),
     "bulk_tftp_upload": _g(C, "copies a file ONTO devices' flash (copy tftp: flash:)"),
     "bulk_delete_file": _g(C, "deletes files from devices' flash"),
-    "upload_file": _g(C, "copies a file onto a device's flash"),
-    "delete_file": _g(C, "deletes a file from a device's flash"),
     "rotate.apply": _g(C, "rotates a device's login credential: the device then accepts only the new password"),
     "device_v2.restore_confirm": _g(C, "re-applies a moment (its golden now, an older golden or a baseline) to one device from the v2 device page (7.3; THE restore plan and apply, run as a job, in the list its preview was drawn in, C396), merge-only, every line needing a reason (a dangerous line, an account added back) with its stated reason in the hash"),
     "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; the same plan and apply as deploy.apply and the batch apply, run as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
@@ -262,7 +260,6 @@ GATES = {
     # ---- reveal: device configuration or secrets leave the device --------
     "bulk_tftp_download": _g(R, "copies files OFF devices to a TFTP server the form names"),
     "bulk_download_config": _g(R, "copies running or startup config to a TFTP server the form names"),
-    "download_device_file": _g(R, "copies a file off a device to a TFTP server the form names"),
     "breakglass.export": _g(R, "every device's credential and the application key, sealed and sent to the browser"),
     "device_v2.golden_reveal": _g(R, "one golden version of a device, unmasked, drawn in place on History (decided 2026-10-05: a person, recorded)", "golden_config"),
     "onboard_v2.bootstrap": _g(R, "a pending device's bootstrap config, its one-time credential in "
@@ -340,7 +337,6 @@ GATES = {
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),
     "backup_config": _g(N, "reads a device into a new local backup"),
     "compare_backups_route": _g(N, "compares two backups"),
-    "refresh_files": _g(N, "lists a device's flash"),
     "bulk_clear": _g(N, "clears a finished operation's on-screen result"),
     "ai_stop": _g(N, "stops a running request; refusing a stop is the unsafe direction"),
     "ai_clear": _g(N, "clears the caller's chat history"),

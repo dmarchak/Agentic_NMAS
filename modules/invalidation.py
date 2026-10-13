@@ -325,12 +325,8 @@ DECLARED = {
     "bulk_execute": ("device_state",),
     "backup_config": ("backups",),
     "delete_backup_route": ("backups",),
-    "upload_file": ("device_files",),
-    "delete_file": ("device_files",),
-    "refresh_files": ("device_files",),
     "bulk_delete_file": ("device_files",),
     "bulk_tftp_upload": ("device_files",),
-    "download_device_file": ("files",),
     "bulk_download_config": ("files",),
     "bulk_tftp_download": ("files",),
     # The rest of the page's own state.
