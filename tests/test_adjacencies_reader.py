@@ -44,10 +44,13 @@ def fleet(monkeypatch):
             "population": lambda: [("Lab", SimpleNamespace(repo_dir="/nowhere"), sorted(intents))]}
 
 
-def _read(fleet, cap, previous=None, at=T0):
+def _read(fleet, cap, previous=None, at=T0, rip=None):
+    """*rip*: the RIP reader's answer, by default r1, r2, s1 and s2's REAL reads (all heard)."""
     from modules.readers import adjacencies
+    from tests.test_topology_graph import _rip
+    answer = ({"Lab": _rip() if rip is None else rip}, "")
     return adjacencies.read(previous=previous or {}, clock=lambda: at, source=_source(cap),
-                            population=fleet["population"])
+                            population=fleet["population"], rip=lambda: answer)
 
 
 def _rows(value, at=T0):
@@ -142,6 +145,49 @@ class TestWhatCannotBeJudged:
                             lambda self, path, **p: {"ok": False, "error": "Could not connect"})
         with pytest.raises(RuntimeError, match="Prometheus could not be asked for ospfNbrState"):
             adjacencies.read(previous={}, population=fleet["population"])
+
+    def _rip_lost(self, read_at):
+        """s1 stops hearing r1 on RIP (r1 still hears s1), as of the read at *read_at*."""
+        from tests.test_topology_graph import _rip
+        rip = _rip()
+        rip["s1"] = dict(rip["s1"], rip=[], read_at=read_at)
+        return rip
+
+    def test_a_rip_neighbour_not_heard_on_two_reads_is_a_row(self, fleet):
+        """Item 4 of the operator's overnight list (2026-10-13): RIP and RIPng raise a row
+        like OSPF and BGP, after two of the RIP reader's reads, not two of this reader's
+        minutes: the same RIP answer read again a minute later is not a second look."""
+        first = _read(fleet, _capture(), rip=self._rip_lost("2026-10-13T06:00:00Z"))
+        k = next(k for k, e in first["adjacencies"].items() if e["protocol"] == "RIP")
+        assert first["adjacencies"][k]["reads"] == 1
+        again = _read(fleet, _capture(), previous=first, at=T0 + 60,
+                      rip=self._rip_lost("2026-10-13T06:00:00Z"))
+        assert again["adjacencies"][k]["reads"] == 1
+        assert not [r for r in _rows(again, at=T0 + 60)["rows"] if r["kind"] == "link"]
+        second = _read(fleet, _capture(), previous=again, at=T0 + 300,
+                       rip=self._rip_lost("2026-10-13T06:05:00Z"))
+        rows = [r for r in _rows(second, at=T0 + 300)["rows"] if r["kind"] == "link"]
+        assert [r["what"] for r in rows] == ["RIP between r1 and s1 is not up"]
+        assert "s1 GigabitEthernet0/2: not heard; r1 hears s1" in rows[0]["cause"]
+        assert "Not heard on 2 of its reads, five minutes apart" in rows[0]["cause"]
+        assert rows[0]["action"]["href"] == "/v2/device/r1?tab=neighbours"
+
+    def test_a_rip_neighbour_heard_again_clears(self, fleet):
+        first = _read(fleet, _capture(), rip=self._rip_lost("2026-10-13T06:00:00Z"))
+        assert _read(fleet, _capture(), previous=first, at=T0 + 300)["adjacencies"] == {}
+
+    def test_rip_is_judged_without_prometheus(self, fleet):
+        from modules.readers import adjacencies
+        lost = ({"Lab": self._rip_lost("2026-10-13T06:00:00Z")}, "")
+        first = adjacencies.read(previous={}, source=lambda: (False, {}, {}),
+                                 population=fleet["population"], rip=lambda: lost)
+        assert [e["protocol"] for e in first["adjacencies"].values()] == ["RIP"]
+        assert first["configured"] is False
+
+    def test_rip_unread_is_unmeasured_never_up(self, fleet):
+        v = _read(fleet, _capture(), rip={})
+        un = {(u["device"], u["protocol"]) for u in v["unmeasured"]}
+        assert ("s1", "RIP") in un and ("r1", "RIPng") in un
 
     def test_not_configured_says_so(self, fleet):
         from modules.readers import adjacencies

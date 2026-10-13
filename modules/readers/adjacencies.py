@@ -89,7 +89,7 @@ def _key(list_name: str, host: str, row: dict) -> str:
     return f"{list_name}|{row['proto']}|{host}|{row.get('address', '')}"
 
 
-def read(previous=None, clock=time.time, source=None, population=None) -> dict:
+def read(previous=None, clock=time.time, source=None, population=None, rip=None) -> dict:
     from modules.neighbours import committed_intents, compare
 
     if previous is None:
@@ -99,18 +99,24 @@ def read(previous=None, clock=time.time, source=None, population=None) -> dict:
     from modules import integration_groups as IG
 
     configured, results, up = (source or (lambda: IG.merged("prometheus", prometheus_all)))()
-    if not configured:
-        return {"configured": False, "adjacencies": {}, "unmeasured": [], "errors": [],
-                "checked": 0, "devices": 0}
+    # RIP and RIPng, which Prometheus does not measure, from the RIP reader's stored answer
+    # through the Neighbours tab's own code (C735's item 4, the operator's overnight list): read
+    # whether or not Prometheus is configured.
+    from modules.neighbours import rip_protocols
+    rip_lists, rip_error = (rip or _rip_answer)()
     now = clock()
     seen, unmeasured, errors, checked, devices = {}, [], [], 0, 0
     for list_name, ref, hosts in (population or lists)():
         intents, err = committed_intents(ref.repo_dir)
         if err:
             errors.append(f"{list_name}: {err}")
+        rip = rip_lists.get(list_name) or {}
         for host in hosts:
             devices += 1
-            view = compare(intents, host, results.get(host, {}), up.get(host, {}), now=now)
+            view = compare(intents, host, results.get(host, {}), up.get(host, {}), now=now) \
+                if configured else {"protocols": []}
+            view["protocols"] = list(view["protocols"]) + rip_protocols(
+                intents, host, rip, rip_error)
             for p in view["protocols"]:
                 if not p["measured"] and any(r["state"] == "unknown" for r in p["rows"]):
                     unmeasured.append({"list": list_name, "device": host, "protocol": p["words"],
@@ -123,7 +129,11 @@ def read(previous=None, clock=time.time, source=None, population=None) -> dict:
                     k = _key(list_name, host, r)
                     e = seen.setdefault(k, {"list": list_name, "protocol": p["words"],
                                             "devices": [], "managed": bool(r.get("managed")),
-                                            "network": r.get("network", ""), "sides": []})
+                                            "network": r.get("network", ""), "sides": [],
+                                            "source": p.get("source", "prometheus")})
+                    if p.get("source") == "reader":
+                        # The RIP reader's read this side was judged on: a read counts once.
+                        e["read_at"] = max(e.get("read_at", ""), r.get("at_iso", ""))
                     if host not in e["devices"]:
                         e["devices"].append(host)
                     if r.get("managed") and r.get("peer") and r["peer"] not in e["devices"]:
@@ -136,11 +146,23 @@ def read(previous=None, clock=time.time, source=None, population=None) -> dict:
     prev = previous.get("adjacencies") or {}
     for k, e in seen.items():
         before = prev.get(k) or {}
-        e["reads"] = int(before.get("reads") or 0) + 1
+        if e["source"] == "reader":
+            # Two RIP READS, not two of this reader's minutes: the RIP reader reads every five
+            # minutes, so a minute-apart re-read of the same answer is not a second look.
+            fresh = e.get("read_at", "") != before.get("read_at", "")
+            e["reads"] = int(before.get("reads") or 0) + (1 if fresh or not before else 0)
+        else:
+            e["reads"] = int(before.get("reads") or 0) + 1
         e["since"] = before.get("since") or _iso(now)
         e["devices"] = sorted(e["devices"])
-    return {"configured": True, "adjacencies": seen, "unmeasured": unmeasured,
+    return {"configured": configured, "adjacencies": seen, "unmeasured": unmeasured,
             "errors": errors, "checked": checked, "devices": devices}
+
+
+def _rip_answer() -> tuple:
+    """The RIP reader's answer while current (`topology_graph.rip_answer`)."""
+    from modules.readers.topology_graph import rip_answer
+    return rip_answer()
 
 
 READER = reader_job.register(reader_job.Reader(
@@ -148,7 +170,9 @@ READER = reader_job.register(reader_job.Reader(
     what="whether every routing adjacency committed intent implies is up (C38)",
     endpoints=("Prometheus: GET /api/v1/query for ospfNbrState, ospfv3NbrState, "
                "cbgpPeer2State and up{job=~\"ospf|ospfv3|bgp\"} (the whole fleet)",
-               "this host: each list's committed host_vars at HEAD"),
+               "this host: each list's committed host_vars at HEAD",
+               "this host: the RIP reader's stored answer (RIP and RIPng, which Prometheus "
+               "does not measure)"),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("the routing jobs' scrape interval (60 s since 2026-10-01): a faster read "
                     "would only re-read the same sample, and a failure is raised after "

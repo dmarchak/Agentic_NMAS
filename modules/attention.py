@@ -2628,7 +2628,7 @@ def adjacency_source(cached=None) -> dict:
                              error=f"not read yet: {why}")
     v = good.get("value") or {}
     value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
-    if not v.get("configured"):
+    if not v.get("configured") and not v.get("adjacencies"):
         return source_result("adjacencies", label, read_at=started, took_ms=took,
                              value_at=value_at, stale_after_seconds=promise, reader="adjacencies",
                              checked="no Prometheus configured: what the devices report about "
@@ -2640,11 +2640,14 @@ def adjacency_source(cached=None) -> dict:
             continue
         devs = a.get("devices") or []
         # A side judged on a failed scrape's last good value says when it was read (C690).
+        rip = a.get("source") == "reader"
         sides = "; ".join(
-            f"{s['device']}{(' ' + s['via']) if s.get('via') else ''} reports "
-            + ("it " + s["words"] if s["state"] == "down" else "no such neighbour")
-            + (f" (as of {s['as_of'][11:16]} UTC, its last good scrape)" if s.get("as_of")
-               else "")
+            (f"{s['device']}{(' ' + s['via']) if s.get('via') else ''}: {s.get('words')}"
+             if rip else
+             f"{s['device']}{(' ' + s['via']) if s.get('via') else ''} reports "
+             + ("it " + s["words"] if s["state"] == "down" else "no such neighbour")
+             + (f" (as of {s['as_of'][11:16]} UTC, its last good scrape)" if s.get("as_of")
+                else ""))
             for s in a.get("sides") or [])
         if a.get("managed") and len(devs) == 2:
             what = f"{a['protocol']} between {devs[0]} and {devs[1]} is not up"
@@ -2653,8 +2656,11 @@ def adjacency_source(cached=None) -> dict:
             what = (f"{a['protocol']} from {devs[0] if devs else '?'} to {addr or 'a peer'} "
                     "(outside management) is not up")
         cause = (f"Committed intent implies this adjacency ({a.get('network') or a['protocol']}); "
-                 f"{sides}, as Prometheus last scraped them. Held for {a.get('reads')} reads a "
-                 "minute apart, so it is not a deploy's settle window")
+                 + (f"{sides}, as the RIP reader read what each device hears. Not heard on "
+                    f"{a.get('reads')} of its reads, five minutes apart, so it is not a "
+                    "deploy's settle window" if rip else
+                    f"{sides}, as Prometheus last scraped them. Held for {a.get('reads')} reads "
+                    "a minute apart, so it is not a deploy's settle window"))
         first = devs[0] if devs else ""
         rows.append(row(source="adjacencies", kind="link", key=key, level="danger", what=what, devices=devs,
                         since=_ts(a.get("since")), cause=cause,
