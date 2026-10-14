@@ -389,6 +389,9 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = ()) -> dict:
     a person names to mutate whole tonight, changed or not. The scope is *root*'s
     tests/coverage_scope.py, the coverage tool's."""
     scope = _load("coverage_scope", os.path.join(root, "tests", "coverage_scope.py"))
+    # The record names a COMMIT: a name like HEAD would move under it (a laptop run stored
+    # "HEAD" itself, 2026-10-14).
+    head = git("rev-parse", "--verify", f"{head}^{{commit}}", root=root).strip()
     base = state.get("commit") or git("rev-parse", f"{head}~1", root=root).strip()
     diff = git("diff", "-U0", f"{base}..{head}", "--", "modules", root=root)
 

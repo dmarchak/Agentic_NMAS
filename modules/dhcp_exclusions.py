@@ -159,10 +159,23 @@ def plan(list_name: str, values, kea=None, intent=None, record=None) -> dict:
         p["refused"] = str(exc)
         return p
     p["hash"] = hashlib.sha256(json.dumps(
-        {k: p[k] for k in ("kind", "family", "id", "before", "after", "version", "record")},
+        {**{k: p[k] for k in ("kind", "family", "id", "before", "after", "version")},
+         "record": _unstamped(p["record"])},
         sort_keys=True, default=str).encode("utf-8")).hexdigest()
     p["ok"] = True
     return p
+
+
+def _unstamped(record):
+    """The record as the confirm binds it: every exclusion less its `at` and `by` stamps. The
+    plan stamps a new exclusion with the clock, and the confirm recomputes the plan, so a stamp
+    in the hash refused every confirm made in a later second than its preview (C770: CI caught
+    the race; a person's confirm always loses it). The record written carries the apply's own
+    time."""
+    if not record:
+        return record
+    return dict(record, exclusions=[{k: v for k, v in e.items() if k not in ("at", "by")}
+                                    for e in record.get("exclusions") or []])
 
 
 def _plan(list_name, s, p, kea, intent, record, D, S) -> None:

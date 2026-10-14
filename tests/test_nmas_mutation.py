@@ -153,6 +153,11 @@ class TestThePlan:
         with pytest.raises(ValueError, match="no counted function"):
             M.plan({"commit": head}, head, root=root, also=["modules/net.py::size"])
 
+    def test_the_record_names_a_commit_never_a_moving_name(self, history):
+        root, head = history
+        assert M.plan({"commit": head}, "HEAD", root=root)["head"] == head
+        assert M.plan({}, "main", root=root)["head"] == head
+
     def test_nothing_changed_and_nothing_kept_is_nothing_to_mutate(self, history):
         root, head = history
         p = M.plan({"commit": head}, head, root=root)

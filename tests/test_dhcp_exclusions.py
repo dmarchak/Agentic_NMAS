@@ -112,6 +112,26 @@ class TestTheApply:
             "lab test rig, fixed addresses"
 
 
+    def test_a_confirm_in_a_later_second_than_its_preview_still_applies(self, moved,
+                                                                        monkeypatch):
+        """C770: the plan stamps a new exclusion with the clock, and the confirm recomputes the
+        plan; with the stamp in the hash, every confirm a second after its preview was refused
+        "what the preview showed has changed" (CI #760 lost the race; a person always does).
+        The clock is made to move between them; the record written carries the confirm's
+        time."""
+        clock = iter(["2026-10-14T04:00:00Z", "2026-10-14T04:00:07Z"])
+        monkeypatch.setattr(E.time, "strftime", lambda fmt, t=None: next(clock))
+        monkeypatch.setattr(E, "read_committed", lambda list_name: EMPTY)
+        p = E.plan("Lab", RIG, kea=moved["kea"])
+        recorded = []
+        got = S.apply_edit("Lab", RIG, p["hash"], actor="p", reason="keep the rig out",
+                           kea=moved["kea"], run_test=_ok_test, planner=E.plan,
+                           record=lambda l, plan, **k: recorded.append(plan) or
+                           {"ok": True, "commit": "abc"})
+        assert got["ok"], got["error"]
+        assert recorded[0]["record"]["exclusions"][0]["at"] == "2026-10-14T04:00:07Z"
+
+
 def _value():
     """The DHCP reader's value as the page gets it: one subnet with its pool, and intent giving
     an interface a static address inside it (a router's port on the client VLAN)."""
