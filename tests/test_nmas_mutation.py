@@ -143,7 +143,8 @@ class TestThePlan:
                       qualname="changed")
         p = M.plan({"commit": base, "functions": {"modules/net.py::changed": rec,
                                                   "modules/gone.py::x": rec}}, head, root=root)
-        assert p["dropped"] == ["modules/gone.py::x", "modules/net.py::changed"]
+        assert p["dropped"] == ["modules/net.py::changed"]
+        assert p["gone"] == ["modules/gone.py::x"], "deleted, not changed: said apart (D15)"
         assert ("modules/net.py", "changed") in p["planned"] and p["kept"] == {}
         assert "modules.net.x_changed__mutmut_*" in M.patterns(p)
 
@@ -1187,6 +1188,32 @@ class TestAMovedFunctionIsSaid:
                          "finished": {"modules/old.py::kept": {"hash": h}}}, head, root=root,
                         also=["modules/new.py::kept"])
         assert ("modules/new.py", "kept") in forced["planned"] and not forced["skipped_moved"]
+
+    def test_a_recorded_function_that_no_longer_exists_is_dropped_and_said(self, moved):
+        """The AI family's removal (D15, 2026-10-14): a function the record names, unfinished or
+        finished, that is gone at head is dropped from the record and named in the summary,
+        never an error. The control: one whose text only changed is dropped as changed, not
+        called gone."""
+        root, head = moved
+        base = self._base(root, head)
+        stays = M.function_hash(M.git("show", f"{head}:modules/old.py", root=root), "stays")
+        state = {"commit": base,
+                 "functions": {"modules/old.py::edited": {"hash": "an old hash", "results": {},
+                                                          "open": []},
+                               "modules/old.py::stays": {"hash": "not its hash now",
+                                                         "results": {}, "open": []}},
+                 "finished": {"modules/gone.py::f": {"hash": "x"},
+                              "modules/old.py::stays": {"hash": stays}}}
+        p = M.plan(state, head, root=root)
+        assert p["gone"] == ["modules/gone.py::f", "modules/old.py::edited"]
+        assert p["dropped"] == ["modules/old.py::stays"], "changed, not gone"
+        assert p["finished_before"] == {"modules/old.py::stays": {"hash": stays}}
+        nxt = M.next_state(head, [], {}, [], {}, finished_before=p["finished_before"])
+        assert "modules/gone.py::f" not in nxt["finished"]
+        text = "\n".join(M.gone_lines(p))
+        assert "Gone since the record (2)" in text and "a removal, not a failure" in text
+        assert "- `modules/gone.py::f`" in text and "- `modules/old.py::edited`" in text
+        assert M.gone_lines({"gone": [], "head": head}) == []
 
     def test_the_summary_says_which_moved(self, moved):
         root, head = moved

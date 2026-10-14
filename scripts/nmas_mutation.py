@@ -948,13 +948,33 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
     planned = [tuple(k.split("::", 1)) for k in kept]
     planned += [f for f in fresh if key(f) not in kept]
     hashes = {key(f): function_hash(read(f[0]), f[1]) for f in planned}
+    # GONE: a function the record names (unfinished, or finished) that no longer exists at head,
+    # deleted rather than changed (the AI family's removal, D15). Dropped from the record and
+    # said in the night's summary, never an error (the operator, 2026-10-14).
+    recorded = sorted(set(state.get("functions") or {}) | set(state.get("finished") or {}))
+    gone = [k for k in recorded
+            if not function_hash(read(k.partition("::")[0]), k.partition("::")[2])]
+    finished_before = {k: v for k, v in (state.get("finished") or {}).items() if k not in gone}
     return {"base": base, "head": head, "planned": planned, "names": names, "kept": kept,
             "hashes": hashes, "moved": moved_from([f for f in planned if key(f) not in kept],
                                                   hashes, base, root),
             "carried": carried, "skipped_moved": skipped,
-            "finished_before": state.get("finished") or {},
+            "finished_before": finished_before,
             "previous_debt_entries": state.get("debt_entries"),
-            "dropped": sorted(k for k in (state.get("functions") or {}) if k not in kept)}
+            "gone": gone,
+            "dropped": sorted(k for k in (state.get("functions") or {})
+                              if k not in kept and k not in gone)}
+
+
+def gone_lines(p: dict) -> list:
+    """The summary's lines for the record's functions that no longer exist (`plan`'s `gone`):
+    dropped from the record, named, never a failure."""
+    gone = p.get("gone") or []
+    if not gone:
+        return []
+    return [f"Gone since the record ({len(gone)}): these functions no longer exist at "
+            f"{p['head'][:9]}, so the record drops them (a removal, not a failure):", "",
+            *[f"- `{k}`" for k in gone], ""]
 
 
 def moved_from(planned: list, hashes: dict, base: str, root: str = ROOT) -> dict:

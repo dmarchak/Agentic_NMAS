@@ -135,7 +135,9 @@ def cmd_plan(a) -> int:
     for k in p["dropped"]:
         if k in p.get("carried", {}).values():
             continue
-        print(f"  {k}: the record's results dropped (its text changed, or it is gone)")
+        print(f"  {k}: the record's results dropped (its text changed)")
+    for k in p.get("gone", []):
+        print(f"  {k}: gone at head: dropped from the record")
     if not p["planned"]:
         # Nothing to mutate: the debt is still reported, and its growth still turns the night
         # red; the record keeps what it knew (the finished functions' hashes).
@@ -145,7 +147,8 @@ def cmd_plan(a) -> int:
         if a.summary:
             with open(a.summary, "a", encoding="utf-8") as fh:
                 fh.write(M.summary(p["base"], p["head"], [], {}, [], 0))
-                fh.write("\n" + "\n".join(M.debt_lines([], debt, prev)) + "\n")
+                fh.write("\n" + "\n".join(M.gone_lines(p) + M.debt_lines([], debt, prev))
+                         + "\n")
                 if grew:
                     fh.write(f"**The debt list grew** from {prev} to {now}: red this night.\n")
         if a.state:
@@ -337,6 +340,7 @@ def cmd_report(a) -> int:
             extra += [f"**The debt list grew** from {prev_debt} to {debt_now} since the last "
                       "night: red this night; an addition is a person's, made on purpose "
                       "(`nmas-mutation debt add --reason …`), and seen once.", ""]
+    extra += M.gone_lines(p)
     carried, skipped = p.get("carried") or {}, p.get("skipped_moved") or {}
     if carried or skipped:
         extra += [f"Moved, their text unchanged, known from an earlier night ({len(carried)} "

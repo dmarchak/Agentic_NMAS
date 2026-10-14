@@ -1,4 +1,1055 @@
 {
  "about": "Known open VERDICT survivors (scripts/nmas_mutation.py, 'The debt'): a night is red on a survivor not listed here, or when this list grows. Added to only by `nmas-mutation debt add --from-report <report.json> --reason ...`, never by a night; a killed survivor's entry is removed. Each function keeps its path, qualname and text hash (a move is followed by the hash).",
- "functions": {}
+ "functions": {
+  "modules.drift_interval.save": {
+   "path": "modules/drift_interval.py",
+   "qualname": "save",
+   "hash": "ff9e3579f3cdebeea622e0ffc9b46f4e4b63103c60a3999a0cd459e22db0236a",
+   "survivors": [
+    {
+     "was": "json.dump(stored, fh, indent=2)",
+     "now": "json.dump(stored, fh, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "json.dump(stored, fh, indent=2)",
+     "now": "json.dump(stored, fh, indent=3)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "json.dump(stored, fh, indent=2)",
+     "now": "json.dump(stored, fh, indent=None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(_path(), \"w\", encoding=\"utf-8\") as fh:",
+     "now": "with open(_path(), \"w\", ) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(_path(), \"w\", encoding=\"utf-8\") as fh:",
+     "now": "with open(_path(), \"w\", encoding=\"UTF-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(_path(), \"w\", encoding=\"utf-8\") as fh:",
+     "now": "with open(_path(), \"w\", encoding=None) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._find_golden_config_file": {
+   "path": "modules/goldens.py",
+   "qualname": "_find_golden_config_file",
+   "hash": "f235233e99d4e688f7cb7b321c8748f7c986724bd2c1a9e65737dc3a4cf22687",
+   "survivors": [
+    {
+     "was": "_LEGACY_SCAN_WARNED.add(device_ip)",
+     "now": "_LEGACY_SCAN_WARNED.add(None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "_ident, entry = _m.find_by_ip(repo, device_ip)",
+     "now": "_ident, entry = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "_ident, entry = _m.find_by_ip(repo, device_ip)",
+     "now": "_ident, entry = _m.find_by_ip(None, device_ip)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "_ident, entry = _m.find_by_ip(repo, device_ip)",
+     "now": "_ident, entry = _m.find_by_ip(device_ip)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "_ident, entry = _m.find_by_ip(repo, device_ip)",
+     "now": "_ident, entry = _m.find_by_ip(repo, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "_ident, entry = _m.find_by_ip(repo, device_ip)",
+     "now": "_ident, entry = _m.find_by_ip(repo, None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(None, identity)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(identity)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(repo, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(repo, None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip)",
+     "now": "identity = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip)",
+     "now": "identity = _identity_for_ip(None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if legacy and device_ip not in _LEGACY_SCAN_WARNED:",
+     "now": "if legacy and device_ip in _LEGACY_SCAN_WARNED:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if legacy and device_ip not in _LEGACY_SCAN_WARNED:",
+     "now": "if legacy or device_ip not in _LEGACY_SCAN_WARNED:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if os.path.exists(path):",
+     "now": "if os.path.exists(None):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "legacy = _legacy_header_scan(device_ip)",
+     "now": "legacy = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "legacy = _legacy_header_scan(device_ip)",
+     "now": "legacy = _legacy_header_scan(None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = _m.golden_path_for(repo, entry)",
+     "now": "path = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = _m.golden_path_for(repo, entry)",
+     "now": "path = _m.golden_path_for(None, entry)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = _m.golden_path_for(repo, entry)",
+     "now": "path = _m.golden_path_for(entry)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = _m.golden_path_for(repo, entry)",
+     "now": "path = _m.golden_path_for(repo, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = _m.golden_path_for(repo, entry)",
+     "now": "path = _m.golden_path_for(repo, None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "repo = _nsot_repo_dir()",
+     "now": "repo = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._get_golden_configs_dir": {
+   "path": "modules/goldens.py",
+   "qualname": "_get_golden_configs_dir",
+   "hash": "158c1bce62e8a94d0aaae5750acd699fb6724aba2d74015cb2f228d5e81d847a",
+   "survivors": [
+    {
+     "was": "os.makedirs(path, exist_ok=True)",
+     "now": "os.makedirs(path, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "os.makedirs(path, exist_ok=True)",
+     "now": "os.makedirs(path, exist_ok=False)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "os.makedirs(path, exist_ok=True)",
+     "now": "os.makedirs(path, exist_ok=None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = os.path.join(get_current_list_data_dir(), \"golden_configs\")",
+     "now": "path = os.path.join(\"golden_configs\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = os.path.join(get_current_list_data_dir(), \"golden_configs\")",
+     "now": "path = os.path.join(get_current_list_data_dir(), \"GOLDEN_CONFIGS\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = os.path.join(get_current_list_data_dir(), \"golden_configs\")",
+     "now": "path = os.path.join(get_current_list_data_dir(), \"XXgolden_configsXX\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "path = os.path.join(get_current_list_data_dir(), \"golden_configs\")",
+     "now": "path = os.path.join(get_current_list_data_dir(), )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._legacy_header_scan": {
+   "path": "modules/goldens.py",
+   "qualname": "_legacy_header_scan",
+   "hash": "b621f27588e569046319f59c8938c4bc35aef0ce2e2fba08e0d5d95f19907149",
+   "survivors": [
+    {
+     "was": "continue",
+     "now": "break",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "for fname in sorted(os.listdir(gdir)):",
+     "now": "for fname in sorted(None):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "for fname in sorted(os.listdir(gdir)):",
+     "now": "for fname in sorted(os.listdir(None)):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(None, fname)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(fname)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(gdir, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(gdir, None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "gdir = _get_golden_configs_dir()",
+     "now": "gdir = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "header = fh.readline()",
+     "now": "header = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if f\"({device_ip})\" in header:",
+     "now": "if f\"({device_ip})\" not in header:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not fname.endswith(\".cfg\"):",
+     "now": "if fname.endswith(\".cfg\"):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not fname.endswith(\".cfg\"):",
+     "now": "if not fname.endswith(\".CFG\"):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not fname.endswith(\".cfg\"):",
+     "now": "if not fname.endswith(\"XX.cfgXX\"):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not fname.endswith(\".cfg\"):",
+     "now": "if not fname.endswith(None):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not os.path.isdir(gdir):",
+     "now": "if not os.path.isdir(None):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not os.path.isdir(gdir):",
+     "now": "if os.path.isdir(gdir):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(None, encoding=\"utf-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(encoding=\"utf-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, ) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, encoding=\"UTF-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, encoding=\"XXutf-8XX\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, encoding=None) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._migrate_golden_configs": {
+   "path": "modules/goldens.py",
+   "qualname": "_migrate_golden_configs",
+   "hash": "7083dcddac88426c90888775b5cd5cbc2de7207b6327f111bc4b67fc035fce78",
+   "survivors": [
+    {
+     "was": "continue",
+     "now": "break",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "first = fh.readline()",
+     "now": "first = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "for fname in list(os.listdir(gdir)):",
+     "now": "for fname in list(os.listdir(None)):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(None, fname)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(fname)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(gdir, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fpath = os.path.join(gdir, fname)",
+     "now": "fpath = os.path.join(gdir, None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "gdir = _get_golden_configs_dir()",
+     "now": "gdir = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "hostname = m.group(1).strip()",
+     "now": "hostname = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "hostname = m.group(1).strip()",
+     "now": "hostname = m.group(2).strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "hostname = m.group(1).strip()",
+     "now": "hostname = m.group(None).strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not ip_pattern.match(fname):",
+     "now": "if ip_pattern.match(fname):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not ip_pattern.match(fname):",
+     "now": "if not ip_pattern.match(None):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not m:",
+     "now": "if m:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not os.path.exists(new_path):",
+     "now": "if not os.path.exists(None):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "if not os.path.exists(new_path):",
+     "now": "if os.path.exists(new_path):",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "ip_pattern = _re3.compile(r\"^\\d+_\\d+_\\d+_\\d+\\.cfg$\")",
+     "now": "ip_pattern = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "ip_pattern = _re3.compile(r\"^\\d+_\\d+_\\d+_\\d+\\.cfg$\")",
+     "now": "ip_pattern = _re3.compile(r\"XX^\\d+_\\d+_\\d+_\\d+\\.cfg$XX\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "ip_pattern = _re3.compile(r\"^\\d+_\\d+_\\d+_\\d+\\.cfg$\")",
+     "now": "ip_pattern = _re3.compile(r\"^\\d+_\\d+_\\d+_\\d+\\.CFG$\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", first)",
+     "now": "m = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", first)",
+     "now": "m = _re3.search(None, first)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", first)",
+     "now": "m = _re3.search(first)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", first)",
+     "now": "m = _re3.search(r\"XX\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)XX\", first)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", first)",
+     "now": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", first)",
+     "now": "m = _re3.search(r\"\u2014\\s*(.+?)\\s*\\((\\d[\\d.]+)\\)\", None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "new_path = os.path.join(gdir, f\"{safe}.cfg\")",
+     "now": "new_path = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "new_path = os.path.join(gdir, f\"{safe}.cfg\")",
+     "now": "new_path = os.path.join(None, f\"{safe}.cfg\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "new_path = os.path.join(gdir, f\"{safe}.cfg\")",
+     "now": "new_path = os.path.join(f\"{safe}.cfg\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "new_path = os.path.join(gdir, f\"{safe}.cfg\")",
+     "now": "new_path = os.path.join(gdir, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "new_path = os.path.join(gdir, f\"{safe}.cfg\")",
+     "now": "new_path = os.path.join(gdir, None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "os.rename(fpath, new_path)",
+     "now": "os.rename(None, new_path)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "os.rename(fpath, new_path)",
+     "now": "os.rename(fpath, )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "os.rename(fpath, new_path)",
+     "now": "os.rename(fpath, None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "os.rename(fpath, new_path)",
+     "now": "os.rename(new_path)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "safe     = _safe_device_name(hostname)",
+     "now": "safe     = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "safe     = _safe_device_name(hostname)",
+     "now": "safe     = _safe_device_name(None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(None, encoding=\"utf-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(encoding=\"utf-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, ) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, encoding=\"UTF-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, encoding=\"XXutf-8XX\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open(fpath, encoding=\"utf-8\") as fh:",
+     "now": "with open(fpath, encoding=None) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._nsot_migrated": {
+   "path": "modules/goldens.py",
+   "qualname": "_nsot_migrated",
+   "hash": "548fc2fa1eb5d96f8c27f16e3e1eb339332f6eb56c2c35ab62ca75fae633d447",
+   "survivors": [
+    {
+     "was": "return False",
+     "now": "return True",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return read_marker(_nsot_repo_dir()) is not None",
+     "now": "return read_marker(None) is not None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return read_marker(_nsot_repo_dir()) is not None",
+     "now": "return read_marker(_nsot_repo_dir()) is None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._nsot_repo_dir": {
+   "path": "modules/goldens.py",
+   "qualname": "_nsot_repo_dir",
+   "hash": "dd807d9f5cae500c7238d1e80720158031a4ce310d25e0af5a86e0bfc0e75434",
+   "survivors": [
+    {
+     "was": "return os.path.join(get_current_list_data_dir(), \"config_repo\")",
+     "now": "return os.path.join(\"config_repo\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return os.path.join(get_current_list_data_dir(), \"config_repo\")",
+     "now": "return os.path.join(None, \"config_repo\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return os.path.join(get_current_list_data_dir(), \"config_repo\")",
+     "now": "return os.path.join(get_current_list_data_dir(), \"CONFIG_REPO\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return os.path.join(get_current_list_data_dir(), \"config_repo\")",
+     "now": "return os.path.join(get_current_list_data_dir(), \"XXconfig_repoXX\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return os.path.join(get_current_list_data_dir(), \"config_repo\")",
+     "now": "return os.path.join(get_current_list_data_dir(), )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return os.path.join(get_current_list_data_dir(), \"config_repo\")",
+     "now": "return os.path.join(get_current_list_data_dir(), None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._safe_device_name": {
+   "path": "modules/goldens.py",
+   "qualname": "_safe_device_name",
+   "hash": "279e6fce28fe6573a135f8c81099d9b5148cd5753dcce0033f26e3ea72c6c725",
+   "survivors": [
+    {
+     "was": "name = _re2.sub(r\"[^\\w\\-]\", \"_\", name)",
+     "now": "name = _re2.sub(r\"XX[^\\w\\-]XX\", \"_\", name)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "name = _re2.sub(r\"[^\\w\\-]\", \"_\", name)",
+     "now": "name = _re2.sub(r\"[^\\w\\-]\", \"XX_XX\", name)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return name or \"unknown\"",
+     "now": "return name or \"UNKNOWN\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "return name or \"unknown\"",
+     "now": "return name or \"XXunknownXX\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.netbox_client._scan_device_from_golden": {
+   "path": "modules/netbox_client.py",
+   "qualname": "_scan_device_from_golden",
+   "hash": "4b951cb62bdb0d2917e92fa7d4e7879d99e3209c96e7240e11d1f091145a56aa",
+   "survivors": [
+    {
+     "was": "\"app_role\": app_role,",
+     "now": "\"APP_ROLE\": app_role,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"app_role\": app_role,",
+     "now": "\"XXapp_roleXX\": app_role,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"error\":    (f\"golden refused: {record['refused']}\" if record[\"refused\"]",
+     "now": "\"error\":    (f\"golden refused: {record['refused']}\" if (record[\"refused\"]) or True",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"hostname\": csv_hostname or ip,",
+     "now": "\"HOSTNAME\": csv_hostname or ip,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"hostname\": csv_hostname or ip,",
+     "now": "\"XXhostnameXX\": csv_hostname or ip,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"hostname\": csv_hostname or ip,",
+     "now": "\"hostname\": csv_hostname and ip,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"ip\":              ip,",
+     "now": "\"IP\":              ip,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"ip\":              ip,",
+     "now": "\"XXipXX\":              ip,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"ip\":       ip,",
+     "now": "\"IP\":       ip,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"ip\":       ip,",
+     "now": "\"XXipXX\":       ip,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
+     "now": "\"MGMT_PREFIX_LEN\": dev.get(\"prefix_len\") or 0,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
+     "now": "\"XXmgmt_prefix_lenXX\": dev.get(\"prefix_len\") or 0,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
+     "now": "\"mgmt_prefix_len\": dev.get(\"PREFIX_LEN\") or 0,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
+     "now": "\"mgmt_prefix_len\": dev.get(\"XXprefix_lenXX\") or 0,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
+     "now": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") and 0,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
+     "now": "\"mgmt_prefix_len\": dev.get(None) or 0,",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
+     "now": "app_role = (dev.get(\"ROLE\") or \"router\").strip().lower()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
+     "now": "app_role = (dev.get(\"XXroleXX\") or \"router\").strip().lower()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
+     "now": "app_role = (dev.get(\"role\") or \"ROUTER\").strip().lower()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
+     "now": "app_role = (dev.get(\"role\") or \"XXrouterXX\").strip().lower()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
+     "now": "app_role = (dev.get(\"role\") or \"router\").strip().upper()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
+     "now": "app_role = (dev.get(None) or \"router\").strip().lower()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
+     "now": "app_role = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "csv_hostname = dev.get(\"hostname\", \"\").strip()",
+     "now": "csv_hostname = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "csv_hostname = dev.get(\"hostname\", \"\").strip()",
+     "now": "csv_hostname = dev.get(\"HOSTNAME\", \"\").strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "csv_hostname = dev.get(\"hostname\", \"\").strip()",
+     "now": "csv_hostname = dev.get(\"XXhostnameXX\", \"\").strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "csv_hostname = dev.get(\"hostname\", \"\").strip()",
+     "now": "csv_hostname = dev.get(\"hostname\", \"XXXX\").strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "csv_hostname = dev.get(\"hostname\", \"\").strip()",
+     "now": "csv_hostname = dev.get(\"hostname\", ).strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "csv_hostname = dev.get(\"hostname\", \"\").strip()",
+     "now": "csv_hostname = dev.get(\"hostname\", None).strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "csv_hostname = dev.get(\"hostname\", \"\").strip()",
+     "now": "csv_hostname = dev.get(None, \"\").strip()",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "def _scan_device_from_golden(dev: dict, list_name: str = \"\") -> dict:",
+     "now": "def _scan_device_from_golden(dev: dict, list_name: str = \"XXXX\") -> dict:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "else \"No golden config saved: capture the device first\"),",
+     "now": "else \"NO GOLDEN CONFIG SAVED: CAPTURE THE DEVICE FIRST\"),",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "else \"No golden config saved: capture the device first\"),",
+     "now": "else \"XXNo golden config saved: capture the device firstXX\"),",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "else \"No golden config saved: capture the device first\"),",
+     "now": "else \"no golden config saved: capture the device first\"),",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(\"HOSTNAME\", \"\") or \"\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(\"XXhostnameXX\", \"\") or \"\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(\"hostname\", \"\") and \"\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(\"hostname\", \"\") or \"XXXX\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(\"hostname\", \"XXXX\") or \"\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(\"hostname\", ) or \"\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(\"hostname\", None) or \"\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "golden_hostname = facts.pop(\"hostname\", \"\") or \"\"",
+     "now": "golden_hostname = facts.pop(None, \"\") or \"\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "hostname = csv_hostname or golden_hostname or ip",
+     "now": "hostname = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "hostname = csv_hostname or golden_hostname or ip",
+     "now": "hostname = csv_hostname and golden_hostname or ip",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "hostname = csv_hostname or golden_hostname or ip",
+     "now": "hostname = csv_hostname or golden_hostname and ip",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "ip       = dev.get(\"ip\", \"\")",
+     "now": "ip       = dev.get(\"ip\", \"XXXX\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "ip       = dev.get(\"ip\", \"\")",
+     "now": "ip       = dev.get(\"ip\", )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "ip       = dev.get(\"ip\", \"\")",
+     "now": "ip       = dev.get(\"ip\", None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "protocol_tags   = _parse_protocol_tags_from_config(golden)",
+     "now": "protocol_tags   = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "record = _golden_record(ip, list_name)        # its OWN list's golden (C498)",
+     "now": "record = _golden_record(ip, )        # its OWN list's golden (C498)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "record = _golden_record(ip, list_name)        # its OWN list's golden (C498)",
+     "now": "record = _golden_record(ip, None)        # its OWN list's golden (C498)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "record = {\"text\": dev[\"preview_config\"], \"refused\": \"\"}",
+     "now": "record = {\"text\": dev[\"preview_config\"], \"REFUSED\": \"\"}",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "record = {\"text\": dev[\"preview_config\"], \"refused\": \"\"}",
+     "now": "record = {\"text\": dev[\"preview_config\"], \"XXrefusedXX\": \"\"}",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "record = {\"text\": dev[\"preview_config\"], \"refused\": \"\"}",
+     "now": "record = {\"text\": dev[\"preview_config\"], \"refused\": \"XXXX\"}",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "routing_context = _parse_routing_context_from_config(golden)",
+     "now": "routing_context = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "vlans           = _parse_vlans_from_config(golden)",
+     "now": "vlans           = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "vrfs            = _parse_vrfs_from_config(golden)",
+     "now": "vrfs            = None",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.pipeline._record_pre_change": {
+   "path": "modules/pipeline.py",
+   "qualname": "_record_pre_change",
+   "hash": "5597511bc3f2e1330aab0a6fb9b5a154b4b0a566b53b113b587616ef9b0176e9",
+   "survivors": [
+    {
+     "was": "+ text.strip() + \"\\n\")",
+     "now": "+ text.strip() + \"XX\\nXX\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "f\"! Captured: {time.strftime('%Y-%m-%d %H:%M:%S')}\\n!\\n\"",
+     "now": "f\"! Captured: {time.strftime('%Y-%M-%D %H:%M:%S')}\\n!\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "f\"! Captured: {time.strftime('%Y-%m-%d %H:%M:%S')}\\n!\\n\"",
+     "now": "f\"! Captured: {time.strftime('%y-%m-%d %h:%m:%s')}\\n!\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "f\"! Captured: {time.strftime('%Y-%m-%d %H:%M:%S')}\\n!\\n\"",
+     "now": "f\"! Captured: {time.strftime('XX%Y-%m-%d %H:%M:%SXX')}\\n!\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', '')})\\n\"",
+     "now": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('')})\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', '')})\\n\"",
+     "now": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('IP', '')})\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', '')})\\n\"",
+     "now": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('XXipXX', '')})\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', '')})\\n\"",
+     "now": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', 'XXXX')})\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', '')})\\n\"",
+     "now": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', )})\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', '')})\\n\"",
+     "now": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', None)})\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get('ip', '')})\\n\"",
+     "now": "fh.write(f\"! Pre-change snapshot \u2014 {host} ({dev.get(None, '')})\\n\"",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"\")",
+     "now": "host = dev.get(\"hostname\") or dev.get(\"\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"\")",
+     "now": "host = dev.get(\"hostname\") or dev.get(\"IP\", \"\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"\")",
+     "now": "host = dev.get(\"hostname\") or dev.get(\"XXipXX\", \"\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"\")",
+     "now": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"XXXX\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"\")",
+     "now": "host = dev.get(\"hostname\") or dev.get(\"ip\", )",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"\")",
+     "now": "host = dev.get(\"hostname\") or dev.get(\"ip\", None)",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "host = dev.get(\"hostname\") or dev.get(\"ip\", \"\")",
+     "now": "host = dev.get(\"hostname\") or dev.get(None, \"\")",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open_secure(path, \"w\", encoding=\"utf-8\") as fh:",
+     "now": "with open_secure(path, \"w\", ) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open_secure(path, \"w\", encoding=\"utf-8\") as fh:",
+     "now": "with open_secure(path, \"w\", encoding=\"UTF-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open_secure(path, \"w\", encoding=\"utf-8\") as fh:",
+     "now": "with open_secure(path, \"w\", encoding=None) as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "with open_secure(path, \"w\", encoding=\"utf-8\") as fh:",
+     "now": "with open_secure(path, encoding=\"utf-8\") as fh:",
+     "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  }
+ }
 }
