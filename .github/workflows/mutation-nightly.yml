@@ -69,6 +69,45 @@ jobs:
           python -m pip install --no-deps -r requirements-test.txt
           python -m pip install --no-deps -r requirements-mutation.txt
 
+      # The setup ci.yml's tests stand on, step for step (its comments say why each is there):
+      # a test that skips here for want of one kills no mutant, and the night would read a
+      # missing setup as a weak test. tests/test_ci_workflow.py holds every setup step of
+      # ci.yml's test job, its `run` word for word, to have a twin here, and the tests' own
+      # environment (NMAS_REQUIRE_PG) to be the mutate step's (the operator, 2026-10-14: the
+      # first GitHub night had none of PostgreSQL, promtool or NMAS_REQUIRE_PG).
+      - name: The runner's environment (information, not a gate)
+        run: python scripts/nmas-env-facts --annotate || true
+
+      - name: Where PyPI's metadata disagrees with the host (information, not a gate)
+        run: python -m pip check || true
+
+      - name: promtool for the PromQL tests (unpacked, not installed)
+        run: |
+          d=$(mktemp -d) && cd "$d"
+          sudo apt-get update -qq
+          apt-get download promtool 2>/dev/null || apt-get download prometheus
+          mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
+          dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
+          "$HOME/.local/share/nmas-promtool/usr/bin/promtool" --version
+
+      - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq --no-install-recommends libpq5
+          deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
+          sudo apt-get install -y -qq --no-install-recommends $deps
+          d=$(mktemp -d) && cd "$d" && apt-get download postgresql-18
+          mkdir -p "$HOME/.local/share/nmas-pg"
+          dpkg -x ./*.deb "$HOME/.local/share/nmas-pg"
+          bin=$(ls -d "$HOME"/.local/share/nmas-pg/usr/lib/postgresql/18/bin)
+          if ldd "$bin/postgres" "$bin/initdb" | grep "not found"; then
+            echo "::error::the unpacked PostgreSQL lacks a library (above)"; exit 1
+          fi
+          "$bin/postgres" --version | tee /dev/stderr | grep -q " 18\." \
+            || { echo "::error::the unpacked server is not PostgreSQL 18"; exit 1; }
+          python -c "import psycopg; print('psycopg', psycopg.__version__, 'libpq', psycopg.pq.version())"
+
       - name: Allow a network namespace for the tests (this VM only)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
@@ -123,6 +162,8 @@ jobs:
       - name: Mutate, within the budget, confined to loopback
         id: mutate
         if: steps.plan.outputs.work == 'yes'
+        env:
+          NMAS_REQUIRE_PG: "1"
         run: |
           set +e
           timeout "${MUTATION_BUDGET_MINUTES}m" unshare -rn sh -c '

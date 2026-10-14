@@ -18,6 +18,14 @@ and CI's checkout is the index); an untracked or ignored file never is.
 tests/test_source_index.py holds the shape: no test walks the checkout's source
 except through `tracked()` or a walk that says why on its own line.
 
+A COPY of the checkout has no index of its own. mutmut runs the tests in its copy,
+`mutants/`, a folder the checkout ignores, so `git -C mutants ls-files` asked the
+checkout and listed nothing, and every scan over `tracked()` there saw an empty
+population (the first GitHub mutation night, 2026-10-14: `test_config_read` found 0 of
+its 9 configs). `NMAS_COPY_OF=<checkout>` (scripts/nmas-mutation sets it) says this
+tree is a copy of that checkout: its index is the copy's, keeping what the copy holds.
+And the checkout's own listing coming back empty is refused, never scanned.
+
 No side effects on import.
 """
 
@@ -50,6 +58,22 @@ def _listing(root):
         raise RuntimeError(f"{' '.join(cmd)} exited {r.returncode}: "
                            f"{r.stderr.decode(errors='replace').strip()}")
     return tuple(p for p in r.stdout.decode("utf-8", errors="surrogateescape").split("\0") if p)
+
+
+def _index_of(root):
+    """The paths that stand for *root*'s index: its own, or, for this tree when it is a
+    copy of a checkout (`NMAS_COPY_OF`), that checkout's. Refused when the answer for this
+    tree is empty: a checkout always holds files, so an empty listing is a copy no one
+    named, and every scan over it would pass."""
+    copy_of = os.environ.get("NMAS_COPY_OF", "")
+    this = os.path.realpath(root) == os.path.realpath(ROOT)
+    paths = _listing(os.path.abspath(copy_of) if copy_of and this else root)
+    if this and not paths:
+        raise RuntimeError(
+            f"git lists no file in {root}'s index: a copy of the checkout (mutmut's "
+            "`mutants/`, a folder the checkout ignores) has none of its own. Name the "
+            "checkout it copies: NMAS_COPY_OF=<checkout>")
+    return paths
 
 
 def track_all(root):
@@ -85,7 +109,7 @@ def tracked(*folders, suffix=None, recursive=True, root=None):
             raise ValueError(f"{f!r} is outside {root!r}")
         wanted.append(rel.replace(os.sep, "/").strip("/"))
     out = []
-    for p in _listing(root):
+    for p in _index_of(root):
         if suffix is not None and not p.endswith(suffix):
             continue
         if folders:

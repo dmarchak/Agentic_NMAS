@@ -487,7 +487,7 @@ def outcome(planned: list, results: dict, mutmut_exit: int) -> dict:
         return {"done": [], "left": list(planned), "empty": [],
                 "error": f"mutmut exited {mutmut_exit}, not {FINISHED} (finished) or "
                          f"{OUT_OF_TIME} (the budget ran out): its setup or clean run failed, so "
-                         "no result stands; the log above it says why"}
+                         "no result stands"}
     seen, unchecked = set(), set()
     for m, s in results.items():
         seen.add(function_of(m))
@@ -522,20 +522,56 @@ def next_state(head: str, planned: list, results: dict, open_mutants: list,
     return {"commit": head, "functions": functions}
 
 
+#: The lines of a failed mutmut run that say why: pytest's failures and their assertion lines,
+#: its short summary, mutmut's own refusal, and an exception's last line.
+_CAUSE = re.compile(r"^(FAILED |ERROR |E {2,}\S|=+ short test summary info =+$|"
+                    r"failed to collect stats|.*runner returned \d|nmas-test: REFUSED|"
+                    r"!+ stopping after|\d+ (failed|errors?)\b.* in [\d.]+s|"
+                    r"[A-Za-z_.]*(Error|Exception)(: .*)?$)")
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def failure_excerpt(text: str, limit: int = 30) -> list:
+    """What a failed mutmut run said about why, in its order, each line once, at most *limit*
+    lines (the summary quotes them; the whole output is kept beside it): never "the log above
+    says why" (the operator, 2026-10-14: the first GitHub night's summary named no cause)."""
+    out = []
+    for raw in re.split(r"[\r\n]+", _ANSI.sub("", text or "")):
+        line = raw.rstrip()
+        if line and _CAUSE.match(line) and line not in out:
+            out.append(line)
+    return out[:limit]
+
+
 def summary(base: str, head: str, planned: list, verdict_: dict, left: list,
-            budget_minutes: int, error: str = "", empty: list = (), extra: list = ()) -> str:
+            budget_minutes: int, error: str = "", empty: list = (), extra: list = (),
+            cause: list = (), moved: dict = None) -> str:
     """The job summary (Markdown). *extra*: lines said first (the canary, the scope, what the
-    record carried in)."""
+    record carried in). *cause*: a failed run's own lines (`failure_excerpt`). *moved*:
+    `{path::qualname: where it was}` for planned functions only moved, their text unchanged."""
     lines = [f"## Mutation testing: functions changed {base[:9]}..{head[:9]}", ""]
     if not planned:
         return "\n".join(lines + ["Nothing to mutate: no automation function changed, and "
                                   "the record holds none unfinished or with an open survivor.",
                                   ""])
     lines += list(extra)
+    moved = moved or {}
+
+    def planned_line(p, q):
+        was = moved.get(key((p, q)))
+        return f"- `{p}` {q}" + (f" (moved from `{was}`, its text unchanged)" if was else "")
+
+    if moved:
+        lines += [f"Moved, their text unchanged ({len(moved)} of {len(planned)}): mutated in "
+                  "full, because the record keys a function by its path and name and the "
+                  "tests that reach it moved with it.", ""]
     if error:
-        lines += [f"**The run failed:** {error}.", "",
-                  f"Planned ({len(planned)}); the record is left as it was:", ""]
-        return "\n".join(lines + [f"- `{p}` {q}" for p, q in planned]) + "\n"
+        lines += [f"**The run failed:** {error}.", ""]
+        if cause:
+            lines += ["What it said (its whole output is in the report's artifact):", "",
+                      "```", *cause, "```", ""]
+        lines += [f"Planned ({len(planned)}); the record is left as it was:", ""]
+        return "\n".join(lines + [planned_line(p, q) for p, q in planned]) + "\n"
     lines += ["Logging calls' arguments are never mutated. A survivor is VERDICT when its change "
               "can decide pass or fail, a check's level, whom a result blames, or whether a "
               "secret or an unsendable line is caught; MESSAGE when it changes only the words "
@@ -639,8 +675,31 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = ()) -> dict:
     planned += [f for f in fresh if key(f) not in kept]
     hashes = {key(f): function_hash(read(f[0]), f[1]) for f in planned}
     return {"base": base, "head": head, "planned": planned, "names": names, "kept": kept,
-            "hashes": hashes,
+            "hashes": hashes, "moved": moved_from([f for f in planned if key(f) not in kept],
+                                                  hashes, base, root),
             "dropped": sorted(k for k in (state.get("functions") or {}) if k not in kept)}
+
+
+def moved_from(planned: list, hashes: dict, base: str, root: str = ROOT) -> dict:
+    """`{path::qualname: where it was at base}` for each planned function whose text, hash for
+    hash, was another module's function of the same name at *base*: moved, not changed (the
+    operator, 2026-10-14: the AI family's shared pieces moved out). Said, not skipped: the
+    record keys a function by path and name, and the tests that reach it moved with it."""
+    out = {}
+    for f in planned:
+        leaf = f[1].rsplit(".", 1)[-1]
+        r = subprocess.run(["git", "-C", root, "grep", "-l", "-F", "-e", f"def {leaf}(", base,
+                            "--", "*.py"], capture_output=True, text=True)
+        for hit in r.stdout.split("\n"):
+            path = hit.split(":", 1)[1] if ":" in hit else ""
+            if not path or path == f[0]:
+                continue
+            was = subprocess.run(["git", "-C", root, "show", f"{base}:{path}"],
+                                 capture_output=True, text=True).stdout
+            if hashes.get(key(f)) and function_hash(was, f[1]) == hashes[key(f)]:
+                out[key(f)] = f"{path}::{f[1]}"
+                break
+    return out
 
 
 def patterns(p: dict) -> list:

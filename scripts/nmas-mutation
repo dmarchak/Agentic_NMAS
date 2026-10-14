@@ -50,11 +50,23 @@ def _mutmut(*args) -> str:
                           capture_output=True, text=True).stdout
 
 
-def _mutmut_run(names, env=None) -> int:
-    """One `mutmut run`, serial (docs/TESTING.md: parallel children share the test store)."""
+def _mutmut_run(names, log, env=None) -> int:
+    """One `mutmut run`, serial (docs/TESTING.md: parallel children share the test store). The
+    tests run in mutmut's copy, `mutants/`, which has no git index of its own:
+    `NMAS_COPY_OF` names the checkout it copies (tests/source_index.py; the first GitHub
+    night found 0 of 9 configs there). Its output goes to the log as it comes and is kept
+    whole in *log*, so a failure's own lines can reach the summary."""
     print(f"nmas-mutation: mutmut run over {len(names)} name(s)", flush=True)
-    return subprocess.run([sys.executable, "-m", "mutmut", "run", "--max-children", "1", *names],
-                          cwd=M.ROOT, env=env).returncode
+    env = dict(os.environ if env is None else env, NMAS_COPY_OF=M.ROOT)
+    proc = subprocess.Popen([sys.executable, "-m", "mutmut", "run", "--max-children", "1",
+                             *names], cwd=M.ROOT, env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, errors="replace")
+    with open(log, "w", encoding="utf-8") as fh:
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            fh.write(line)
+    return proc.wait()
 
 
 def cmd_plan(a) -> int:
@@ -80,7 +92,9 @@ def cmd_plan(a) -> int:
     for path, q in p["planned"]:
         k = M.key((path, q))
         why = (f"kept by the record: {len(p['names'][k])} mutant(s) left or open"
-               if k in p["kept"] else "changed since the covered commit: every mutant")
+               if k in p["kept"] else
+               f"moved from {p['moved'][k]}, its text unchanged: every mutant"
+               if k in p.get("moved", {}) else "changed since the covered commit: every mutant")
         print(f"  {path}: {q} ({why})")
     for k in p["dropped"]:
         print(f"  {k}: the record's results dropped (its text changed, or it is gone)")
@@ -111,14 +125,23 @@ def cmd_run(a) -> int:
     # Tonight's results only: an earlier run's copy would read as tonight's.
     record = {"runs": [], "removed_an_earlier_copy": M.fresh_workspace()}
 
+    def log_of(n):
+        return os.path.join(a.out, f"mutmut-run-{n}.log")
+
     def done(name, code):
-        record["runs"].append({"run": name, "exit": code})
+        path = log_of(len(record["runs"]) + 1)
+        ran = os.path.exists(path)
+        record["runs"].append({"run": name, "exit": code,
+                               "log": os.path.basename(path) if ran else ""})
+        if ran and code not in (M.FINISHED, M.OUT_OF_TIME):
+            with open(path, encoding="utf-8") as fh:
+                record["failure"] = M.failure_excerpt(fh.read())
         M.save(os.path.join(a.out, "run.json"), record)
         return code
 
     # 1. The canary in the test's process; mutmut collects its statistics here, and each test
     #    records its tier (tests/conftest.py).
-    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_PROCESS)],
+    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_PROCESS)], log_of(1),
                        env=dict(os.environ, NMAS_TEST_TIERS=tiers_dir))
     if done("the canary, in process", code):
         return code
@@ -134,7 +157,7 @@ def cmd_run(a) -> int:
     M.save(STATS, stats)
     print(f"nmas-mutation: {len(spawning)} test(s) start a child; "
           f"{record['associations_added']} test association(s) added", flush=True)
-    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_CHILD)])
+    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_CHILD)], log_of(2))
     if done("the canary, in a child", code):
         return code
     # The canary must be dead before the night's mutants mean anything.
@@ -164,7 +187,8 @@ def cmd_run(a) -> int:
                                                                 for f in p["planned"]})
     print(f"nmas-mutation: {len(tonight)} mutant(s) tonight; "
           f"{len(record['logging_not_run'])} in logging calls not run", flush=True)
-    return done("the night", _mutmut_run(tonight)) if tonight else done("the night", 0)
+    return (done("the night", _mutmut_run(tonight, log_of(3))) if tonight
+            else done("the night", 0))
 
 
 def cmd_report(a) -> int:
@@ -207,7 +231,9 @@ def cmd_report(a) -> int:
         f"{len(ran_record.get('logging_not_run') or [])} in logging calls never mutated.", ""]
     with open(a.summary, "a", encoding="utf-8") as fh:
         fh.write(M.summary(p["base"], p["head"], planned, v, out["left"], a.budget, error,
-                           out["empty"], extra))
+                           out["empty"], extra,
+                           cause=ran_record.get("failure") or [] if out["error"] else [],
+                           moved=p.get("moved")))
     M.save(os.path.join(os.path.dirname(a.plan), "report.json"),
            {"plan": p, "mutmut_exit": a.mutmut_exit, "error": error, "results": results,
             "verdict": v, **{k: out[k] for k in ("done", "left", "empty")}})

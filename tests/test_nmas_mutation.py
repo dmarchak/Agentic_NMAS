@@ -5,6 +5,7 @@ output (captured 2026-10-14 in tests/fixtures/mutation/), when the measurement i
 the night fails, and what it leaves for the next night. mutmut itself is dev-only and never
 installed here; the workflow is checked as a file."""
 import fnmatch
+import importlib.machinery
 import importlib.util
 import os
 import shutil
@@ -582,3 +583,196 @@ class TestTheWorkflow:
             pins = [l.strip() for l in fh if l.strip() and not l.startswith("#")]
         assert "mutmut==3.8.0" in pins
         assert all("==" in p and p.count("==") == 1 for p in pins), pins
+
+
+# ── The first GitHub night (2026-10-14): what it lacked, and what its summary did not say ────
+
+CI_WORKFLOW = os.path.join(ROOT, ".github", "workflows", "ci.yml")
+
+#: ci.yml's test-job setup the night does not repeat, each with why (anything else must have a
+#: twin in the night, its `run` word for word).
+NOT_FOR_THE_NIGHT = {
+    "A folder for each test's tier": "the coverage measurement's; nmas-mutation run makes its own",
+}
+#: The variables ci.yml's tests step sets that the night does not, each with why.
+NOT_THE_NIGHTS_ENV = {
+    "COVERAGE_CORE": "coverage's tracer; the night measures no coverage",
+    "COVERAGE_FILE": "coverage's data file",
+    "NMAS_TEST_TIERS": "set by nmas-mutation run itself, for its first mutmut run",
+    "NMAS_TEST_TIMEOUT": "nmas-test's bound; the night is bounded by its budget",
+}
+
+
+def setup_gaps(ci: dict, night: dict) -> list:
+    """What ci.yml's tests stand on that the night lacks: each setup step of the test job (every
+    step before its tests step) with no twin in the night's job (the same `run`, the same
+    action), the install's commands not all in the night's install, a different interpreter,
+    and each variable of the tests step not on the mutate step."""
+    steps = ci["jobs"]["test"]["steps"]
+    tests_at = next(i for i, s in enumerate(steps) if str(s.get("name", "")).startswith("Tests"))
+    mine = night["jobs"]["mutate"]["steps"]
+    runs = {s["run"] for s in mine if "run" in s}
+    uses = {s["uses"] for s in mine if "uses" in s}
+    install = "\n".join(s["run"] for s in mine if str(s.get("name", "")).startswith("Install"))
+    gaps = []
+    for s in steps[:tests_at]:
+        name = s.get("name") or s.get("uses")
+        if name in NOT_FOR_THE_NIGHT:
+            continue
+        if "uses" in s:
+            if s["uses"] not in uses:
+                gaps.append(f"{name}: no step uses {s['uses']}")
+            want = (s.get("with") or {}).get("python-version")
+            have = [(t.get("with") or {}).get("python-version") for t in mine
+                    if t.get("uses") == s["uses"]]
+            if want and want not in have:
+                gaps.append(f"{name}: python-version {want}, the night's {have}")
+        elif str(name).startswith("Install"):
+            lost = [ln for ln in s["run"].splitlines() if ln.strip() and ln.strip() not in install]
+            if lost:
+                gaps.append(f"{name}: the night does not run {lost}")
+        elif s["run"] not in runs:
+            gaps.append(f"{name}: no step of the night runs it")
+    mutate_env = next(s for s in mine if s.get("id") == "mutate").get("env") or {}
+    for k, v in (steps[tests_at].get("env") or {}).items():
+        if k not in NOT_THE_NIGHTS_ENV and str(mutate_env.get(k)) != str(v):
+            gaps.append(f"{k}={v} on ci.yml's tests step; the mutate step has {mutate_env.get(k)}")
+    return gaps
+
+
+class TestTheNightStandsOnCIsSetup:
+    """The first GitHub night ran its tests without PostgreSQL, promtool or NMAS_REQUIRE_PG,
+    which ci.yml's tests stand on: a test skipped for want of one kills no mutant (the operator,
+    2026-10-14: the two workflows had drifted). Now each setup step of ci.yml's test job needs a
+    twin in the night."""
+
+    def docs(self):
+        with open(CI_WORKFLOW, encoding="utf-8") as a, open(WORKFLOW, encoding="utf-8") as b:
+            return yaml.safe_load(a), yaml.safe_load(b)
+
+    def test_every_setup_step_cis_tests_stand_on_is_the_nights_too(self):
+        ci, night = self.docs()
+        steps = ci["jobs"]["test"]["steps"]
+        assert len([s for s in steps if "run" in s]) >= 8                      # the floor
+        assert setup_gaps(ci, night) == []
+
+    def test_each_exception_names_a_step_or_variable_ci_has(self):
+        ci, _night = self.docs()
+        steps = ci["jobs"]["test"]["steps"]
+        assert set(NOT_FOR_THE_NIGHT) <= {s.get("name") for s in steps}
+        env = next(s for s in steps if str(s.get("name", "")).startswith("Tests"))["env"]
+        assert set(NOT_THE_NIGHTS_ENV) <= set(env)
+
+    def test_a_planted_setup_step_and_variable_are_found(self):
+        """Controls: a step ci.yml gains, the night's PostgreSQL step lost, and the variable the
+        tests require taken off the mutate step: each named."""
+        ci, night = self.docs()
+        tests_at = next(i for i, s in enumerate(ci["jobs"]["test"]["steps"])
+                        if str(s.get("name", "")).startswith("Tests"))
+        ci["jobs"]["test"]["steps"].insert(tests_at, {"name": "A new tool", "run": "install x"})
+        night["jobs"]["mutate"]["steps"] = [s for s in night["jobs"]["mutate"]["steps"]
+                                            if not str(s.get("name", "")).startswith("PostgreSQL")]
+        next(s for s in night["jobs"]["mutate"]["steps"] if s.get("id") == "mutate")["env"] = {}
+        gaps = setup_gaps(ci, night)
+        assert any(g.startswith("A new tool:") for g in gaps), gaps
+        assert any(g.startswith("PostgreSQL 18") for g in gaps), gaps
+        assert any(g.startswith("NMAS_REQUIRE_PG=1") for g in gaps), gaps
+
+
+class TestAFailedRunSaysWhy:
+    """The first GitHub night's summary said only "the log above it says why" (the operator,
+    2026-10-14). Its real output (tests/fixtures/mutation/night-2026-10-14-clean-run-failed.txt,
+    the runner's timestamps stripped) holds the cause, and the summary now quotes it."""
+
+    def test_the_excerpt_is_the_failing_test_and_mutmuts_refusal(self):
+        got = M.failure_excerpt(_fixture("night-2026-10-14-clean-run-failed.txt"))
+        assert ("FAILED tests/test_config_read.py::TestTheJudgement::"
+                "test_every_real_config_is_one_configuration - assert 0 >= 9") in got
+        assert "failed to collect stats. runner returned 1" in got
+        assert "1 failed, 92 passed in 742.06s (0:12:22)" in got
+        assert not any(l.startswith(".....") or "Running stats" in l for l in got), got
+        assert len(got) <= 30
+
+    def test_the_summary_quotes_it_and_never_points_elsewhere(self):
+        cause = M.failure_excerpt(_fixture("night-2026-10-14-clean-run-failed.txt"))
+        out = M.outcome([PROBE], {}, 1)
+        text = M.summary("a" * 40, "b" * 40, [PROBE], M.verdict({}, {}, []), out["left"], 120,
+                         out["error"], cause=cause)
+        assert "What it said" in text and "```\n" in text
+        assert "test_every_real_config_is_one_configuration - assert 0 >= 9" in text
+        assert "log above" not in text
+
+    def test_the_run_keeps_mutmuts_output_and_names_the_copys_checkout(self, tmp_path,
+                                                                       monkeypatch):
+        """Each mutmut run's output is written whole to its log as it comes, and the tests in
+        mutmut's copy are told the checkout it copies (NMAS_COPY_OF)."""
+        loader = importlib.machinery.SourceFileLoader(
+            "nmas_mutation_cli_under_test", os.path.join(ROOT, "scripts", "nmas-mutation"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        cli = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli)
+        seen = {}
+
+        class FakeMutmut:
+            def __init__(self, argv, cwd, env, **kw):
+                seen.update(argv=argv, env=env)
+                self.stdout = iter(["FAILED tests/test_x.py::test_y - assert 0\n",
+                                    "failed to collect stats. runner returned 1\n"])
+
+            def wait(self):
+                return 1
+
+        monkeypatch.setattr(cli.subprocess, "Popen", FakeMutmut)
+        log = tmp_path / "mutmut-run-1.log"
+        assert cli._mutmut_run(["x"], str(log), env={"KEEP": "1"}) == 1
+        assert seen["env"]["NMAS_COPY_OF"] == cli.M.ROOT and seen["env"]["KEEP"] == "1"
+        assert "--max-children" in seen["argv"]
+        assert M.failure_excerpt(log.read_text()) == [
+            "FAILED tests/test_x.py::test_y - assert 0",
+            "failed to collect stats. runner returned 1"]
+
+
+@pytest.fixture
+def moved(tmp_path):
+    """A real history: `kept` moves to another module unchanged, `edited` moves and changes."""
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t",
+                        "-c", "user.email=t@example.invalid", *args],
+                       check=True, capture_output=True)
+    os.makedirs(tmp_path / "tests")
+    shutil.copy(os.path.join(ROOT, "tests", "coverage_scope.py"), tmp_path / "tests")
+    os.makedirs(tmp_path / "modules")
+    body = "def kept(x):\n    return x + 1\n\n\ndef edited(x):\n    return x * 2\n"
+    (tmp_path / "modules/old.py").write_text(body + "\n\ndef stays():\n    return 0\n")
+    git("init", "-q", "-b", "main")
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    (tmp_path / "modules/old.py").write_text("def stays():\n    return 0\n")
+    (tmp_path / "modules/new.py").write_text(body.replace("x * 2", "x * 3"))
+    git("add", "-A")
+    git("commit", "-qm", "two")
+    head = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], check=True,
+                          capture_output=True, text=True).stdout.strip()
+    return str(tmp_path), head
+
+
+class TestAMovedFunctionIsSaid:
+    """Tonight's shared pieces moved module, their text unchanged (the operator, 2026-10-14).
+    The record keys a function by path and name, so a moved one is mutated in full, and the
+    plan and the summary say it moved rather than call it changed."""
+
+    def test_a_function_moved_unchanged_is_named_with_where_it_was(self, moved):
+        root, head = moved
+        p = M.plan({}, head, root=root)
+        assert set(p["planned"]) == {("modules/new.py", "kept"), ("modules/new.py", "edited")}
+        assert p["moved"] == {"modules/new.py::kept": "modules/old.py::kept"}
+
+    def test_the_summary_says_which_moved(self, moved):
+        root, head = moved
+        p = M.plan({}, head, root=root)
+        planned = [tuple(f) for f in p["planned"]]
+        text = M.summary(p["base"], p["head"], planned, M.verdict({}, {}, []), [], 120,
+                         "mutmut exited 1", moved=p["moved"])
+        assert "Moved, their text unchanged (1 of 2)" in text
+        assert "`modules/new.py` kept (moved from `modules/old.py::kept`" in text
+        assert "`modules/new.py` edited\n" in text + "\n"

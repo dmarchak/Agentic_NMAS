@@ -1,0 +1,315 @@
+nmas-mutation: mutmut run over 1 name(s)
+
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+⠏ Generating mutants
+⠋ Generating mutants
+⠙ Generating mutants
+⠹ Generating mutants
+⠸ Generating mutants
+⠼ Generating mutants
+⠴ Generating mutants
+⠦ Generating mutants
+⠧ Generating mutants
+⠇ Generating mutants
+    done in 1013329ms (9 files mutated, 0 ignored, 0 unmodified)
+
+⠙ Running stats     
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+⠴ Running stats
+⠦ Running stats
+⠧ Running stats
+⠇ Running stats
+⠏ Running stats
+⠋ Running stats
+⠙ Running stats
+⠹ Running stats
+⠸ Running stats
+⠼ Running stats
+........................................................................ [  2%]
+....................F
+=================================== FAILURES ===================================
+_________ TestTheJudgement.test_every_real_config_is_one_configuration _________
+Traceback (most recent call last):
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/runner.py", line 361, in from_call
+    result: TResult | None = func()
+                             ^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/runner.py", line 250, in <lambda>
+    lambda: runtest_hook(item=item, **kwds),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/logging.py", line 865, in pytest_runtest_call
+    yield
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/capture.py", line 900, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/skipping.py", line 268, in pytest_runtest_call
+    return (yield)
+            ^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/runner.py", line 184, in pytest_runtest_call
+    item.runtest()
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/python.py", line 1707, in runtest
+    self.ihook.pytest_pyfunc_call(pyfuncitem=self)
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 167, in _multicall
+    raise exception
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/python.py", line 167, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<home>/work/Agentic_NMAS/Agentic_NMAS/mutants/tests/test_config_read.py", line 40, in test_every_real_config_is_one_configuration
+    assert len(FLEET) >= 9
+AssertionError: assert 0 >= 9
+ +  where 0 = len([])
+##[error]toolcache/Python/3.12.3/x64/lib/python3.12/site-packages/pluggy/_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.12.3/x64/lib/python3.12/site-packages/_pytest/python.py", line 167, in pytest_pyfunc_call
+    result = testfunction(**testargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<home>/work/Agentic_NMAS/Agentic_NMAS/mutants/tests/test_config_read.py", line 40, in test_every_real_config_is_one_configuration
+    assert len(FLEET) >= 9
+AssertionError: assert 0 >= 9
+ +  where 0 = len([])
+=========================== short test summary info ============================
+FAILED tests/test_config_read.py::TestTheJudgement::test_every_real_config_is_one_configuration - assert 0 >= 9
+ +  where 0 = len([])
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 92 passed in 742.06s (0:12:22)
+nmas-test timing: 93 test(s); the last finished 742 s after the session started, and the session ended 0 s after that (742 s in all; the bound is 300 s)
+##[notice]nmas-test timing: 93 test(s); the last finished 742 s after the session started, and the session ended 0 s after that (742 s in all; the bound is 300 s)
+failed to collect stats. runner returned 1
+
+nmas-mutation run exit 1

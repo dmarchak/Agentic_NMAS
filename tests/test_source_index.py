@@ -404,6 +404,53 @@ class TestTracked:
         assert not [p for p in rel if p.startswith((".git/", ".claude/worktrees/"))]
 
 
+@pytest.fixture
+def copy(planted, monkeypatch):
+    """mutmut's shape: a copy of the checkout in a folder the checkout ignores (`mutants/`),
+    holding some of its files and one of its own, and this module's ROOT inside the copy (as
+    tests/source_index.py's own copy there computes it)."""
+    (planted / ".gitignore").write_text("ignored.py\nmutants/\n")
+    dest = planted / "mutants"
+    (dest / "modules").mkdir(parents=True)
+    for rel in ("app.py", "modules/a.py"):
+        (dest / rel).write_text("x\n")
+    (dest / "modules" / "own.py").write_text("x\n")                # in no index
+    monkeypatch.setattr(source_index, "ROOT", str(dest))
+    monkeypatch.delenv("NMAS_COPY_OF", raising=False)
+    return dest
+
+
+class TestACopyOfTheCheckout:
+    """The first GitHub mutation night (2026-10-14): in mutmut's copy every scan over
+    `tracked()` saw nothing (`test_config_read` found 0 of its 9 configs), because git, asked
+    in an ignored folder, answered for the checkout around it."""
+
+    def _rel(self, root, paths):
+        return [os.path.relpath(p, root).replace(os.sep, "/") for p in paths]
+
+    def test_unnamed_it_is_refused_never_an_empty_population(self, copy):
+        assert subprocess.run(["git", "-C", str(copy), "ls-files"], capture_output=True,
+                              text=True, check=True).stdout == ""     # what the night met
+        with pytest.raises(RuntimeError, match="NMAS_COPY_OF"):
+            source_index.tracked()
+
+    def test_named_it_lists_the_checkouts_index_where_the_copy_holds_the_file(self, copy,
+                                                                             planted,
+                                                                             monkeypatch):
+        monkeypatch.setenv("NMAS_COPY_OF", str(planted))
+        got = source_index.tracked()
+        assert self._rel(copy, got) == ["app.py", "modules/a.py"]
+        assert all(p.startswith(str(copy) + os.sep) for p in got)
+        # modules/nsot/b.py: in the index, not copied; modules/own.py: copied, in no index.
+        assert "modules/nsot/b.py" not in self._rel(copy, got)
+        assert "modules/own.py" not in self._rel(copy, got)
+
+    def test_another_root_keeps_its_own_index(self, copy, planted, monkeypatch):
+        monkeypatch.setenv("NMAS_COPY_OF", str(planted))
+        assert self._rel(planted, source_index.tracked(root=planted)) == [
+            "app.py", "modules/a.py", "modules/nsot/b.py", "templates/x.html"]
+
+
 # -- the shape ----------------------------------------------------------------------
 
 PLANT = '''
