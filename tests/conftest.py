@@ -190,6 +190,13 @@ def pytest_sessionstart(session):
     session.nmas_home_before = home_guard.snapshot()
     _register_stack_dump(session)
     session.config._nmas_t0 = __import__("time").time()
+    # C776: the roots of earlier runs that were killed (their lock's owner gone) are removed,
+    # by the session that owns the workers, never by a worker.
+    factory = getattr(session.config, "_tmp_path_factory", None)
+    if factory is not None and not hasattr(session.config, "workerinput"):
+        from tests import tmp_roots
+        base = str(factory.getbasetemp())
+        tmp_roots.prune_dead_roots(os.path.dirname(base), current=base)
 
 
 def pytest_sessionfinish(session, exitstatus):
