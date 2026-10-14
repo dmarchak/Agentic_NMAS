@@ -467,6 +467,22 @@ class TestTheRecord:
             "modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_1"]
 
 
+class TestEveryNightStartsEmpty:
+    def test_an_earlier_runs_copy_is_removed_before_the_night(self, tmp_path):
+        """Its results would read as tonight's: a scope broken by a function that did not run,
+        a canary passed on old kills (two nights walked in one copy, 2026-10-14)."""
+        old = tmp_path / "mutants" / "modules"
+        old.mkdir(parents=True)
+        (old / "x.py.meta").write_text('{"exit_code_by_key": {"m.x_f__mutmut_1": 1}}')
+        assert M.fresh_workspace(str(tmp_path)) is True
+        assert not (tmp_path / "mutants").exists()
+        assert M.fresh_workspace(str(tmp_path)) is False, "nothing to remove"
+        cli = open(os.path.join(ROOT, "scripts", "nmas-mutation"), encoding="utf-8").read()
+        run = cli[cli.index("def cmd_run"):cli.index("def cmd_report")]
+        first_mutmut = run.index("_mutmut_run(")
+        assert -1 < run.index("M.fresh_workspace()") < first_mutmut, "before mutmut runs"
+
+
 class TestTheEquivalentList:
     def test_every_entry_names_a_function_both_lines_and_a_reason(self):
         assert len(EQ.EQUIVALENT) >= 20, "the population: the first pass's and the first night's"

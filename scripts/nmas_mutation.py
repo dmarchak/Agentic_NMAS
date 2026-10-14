@@ -420,6 +420,20 @@ def only_functions(results: dict, functions: list) -> dict:
     return {m: s for m, s in results.items() if function_of(m) in wanted}
 
 
+def fresh_workspace(root: str = ROOT) -> bool:
+    """Remove mutmut's working copy (`mutants/`, gitignored scratch) before a night, so every
+    result read afterwards is TONIGHT's: a copy kept from an earlier run carries its results,
+    which read as tonight's to the scope check, and could pass the canary on old kills (found
+    walking two nights in one copy, 2026-10-14; GitHub's runner starts empty). True when
+    there was one to remove."""
+    import shutil
+    path = os.path.join(root, "mutants")
+    if not os.path.isdir(path):
+        return False
+    shutil.rmtree(path)
+    return True
+
+
 def canary_error(results: dict) -> str:
     """"" when every canary mutant was killed; otherwise the measurement is broken, and why."""
     canary = only_functions(results, [CANARY_IN_PROCESS, CANARY_IN_CHILD])

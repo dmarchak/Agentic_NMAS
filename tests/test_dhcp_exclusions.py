@@ -95,6 +95,44 @@ class TestThePlan:
             p["survives"][0]
 
 
+class TestWhatThePreviewIsAndWhatItsConfirmBinds:
+    """The plan's shape is what the page and the one write path read; its hash is what the
+    confirm checks (the nightly's first night on C770's code, 2026-10-14: a renamed key, a
+    default no longer empty, the hash or the record left out of it, all survived)."""
+
+    def test_a_refused_plan_is_the_whole_shape_with_the_refusal_said(self):
+        values = dict(RIG, op="bogus")
+        p = E.plan("Lab", values)
+        assert p == {"ok": False, "refused": "'bogus' is not add or remove",
+                     "ask": E.ask(values), "op": "edit", "family": "IPv4", "id": None,
+                     "prefix": "", "title": "", "change": [], "checks": [], "leases": [],
+                     "survives": [], "ack": False, "before": None, "after": None, "path": "",
+                     "version": "", "hash": "", "subject": "", "exclusion": None,
+                     "record": None, "kind": "bogus"}
+
+    def test_the_confirm_binds_every_exclusion_less_its_stamps_and_the_rest_of_the_record(self):
+        rec = {"exclusions": [{"range": "10.10.10.120", "reason": "rig", "at": "t", "by": "p"},
+                              {"range": "10.10.10.130", "reason": "r7"}],
+               "pools": {"IPv4:10": "10.10.10.100 - 10.10.10.200"}}
+        assert E._unstamped(rec) == {
+            "exclusions": [{"range": "10.10.10.120", "reason": "rig"},
+                           {"range": "10.10.10.130", "reason": "r7"}],
+            "pools": {"IPv4:10": "10.10.10.100 - 10.10.10.200"}}
+        assert E._unstamped(None) is None and E._unstamped({}) == {}
+
+    def test_a_plan_is_hashed_whole_its_reason_included_and_read_from_its_own_list(
+            self, moved, monkeypatch):
+        asked = []
+        monkeypatch.setattr(E, "read_committed",
+                            lambda list_name: asked.append(list_name) or EMPTY)
+        p = E.plan("Lab", RIG, kea=moved["kea"])
+        assert p["ok"] and p["refused"] == "" and asked == ["Lab"]
+        assert len(p["hash"]) == 64 and int(p["hash"], 16) >= 0
+        assert E.plan("Lab", RIG, kea=moved["kea"])["hash"] == p["hash"], "the same plan"
+        other = E.plan("Lab", dict(RIG, reason="another reason"), kea=moved["kea"])
+        assert other["ok"] and other["hash"] != p["hash"], "the reason is confirmed"
+
+
 class TestTheApply:
     def test_it_goes_through_the_subnet_write_and_its_own_record(self, moved, monkeypatch):
         monkeypatch.setattr(E, "read_committed", lambda list_name: EMPTY)

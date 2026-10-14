@@ -80,6 +80,35 @@ EQUIVALENT = [
             "or True \\",),
            "with no profile, profile.effective returns the intent unchanged (sections_for of no "
            "document is empty): applying it or not gives the same intent"),
+    # ── dhcp_exclusions.plan: the first night's preview on the laptop (2026-10-14, C770's
+    # code); its real survivors are killed by tests/test_dhcp_exclusions.py's
+    # TestWhatThePreviewIsAndWhatItsConfirmBinds.
+    *_each("modules.dhcp_exclusions.plan",
+           '"record": _unstamped(p["record"])},',
+           ('"XXrecordXX": _unstamped(p["record"])},', '"RECORD": _unstamped(p["record"])},'),
+           "the record is still hashed, under another key: the confirm binds the same content"),
+    *_each("modules.dhcp_exclusions.plan",
+           'sort_keys=True, default=str).encode("utf-8")).hexdigest()',
+           ('sort_keys=False, default=str).encode("utf-8")).hexdigest()',
+            'sort_keys=None, default=str).encode("utf-8")).hexdigest()',
+            'default=str).encode("utf-8")).hexdigest()'),
+           "key order: the preview and its confirm build the hashed dict down one code path, in "
+           "one order, so both hash the same bytes"),
+    *_each("modules.dhcp_exclusions.plan",
+           'sort_keys=True, default=str).encode("utf-8")).hexdigest()',
+           ('sort_keys=True, default=str).encode("UTF-8")).hexdigest()',),
+           "the same codec by another name"),
+    *_each("modules.dhcp_exclusions.plan",
+           'sort_keys=True, default=str).encode("utf-8")).hexdigest()',
+           ('sort_keys=True, default=None).encode("utf-8")).hexdigest()',
+            'sort_keys=True, ).encode("utf-8")).hexdigest()'),
+           "never called: every hashed value is JSON already (Kea's JSON, the record's strings; "
+           "the one value YAML could read as a datetime, an exclusion's `at`, is left out by "
+           "_unstamped)"),
+    *_each("modules.dhcp_exclusions.plan",
+           "_plan(list_name, s, p, kea, intent, record, D, S)",
+           ("_plan(list_name, s, p, kea, None, record, D, S)",),
+           "_plan never reads its `intent` argument"),
     # ── reachability.probe: the nightly run's first walk (2026-10-14), serial; its real
     # survivors (the bounds, the address, a sub-millisecond answer) are killed by
     # tests/test_reachability_reader.py's TestTheProbe.

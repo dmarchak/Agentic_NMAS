@@ -108,7 +108,8 @@ def cmd_run(a) -> int:
         p = json.load(fh)
     tiers_dir = os.path.join(os.path.abspath(a.out), "tiers")
     os.makedirs(tiers_dir, exist_ok=True)
-    record = {"runs": []}
+    # Tonight's results only: an earlier run's copy would read as tonight's.
+    record = {"runs": [], "removed_an_earlier_copy": M.fresh_workspace()}
 
     def done(name, code):
         record["runs"].append({"run": name, "exit": code})
