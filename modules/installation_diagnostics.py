@@ -6,7 +6,7 @@ healthy, and what is it doing. Four cards, each a read except the drift card's c
   attention row (`attention.redaction_source`).
 - **Drift checks**: one schedule for every network (`drift_check_interval`), and each
   network's on or off, last and next run, with Check now. The same functions today's drift
-  routes call (one home per action): `agent_timers.save` and `rearm`, `set_disabled`,
+  routes call (one home per action): `drift_interval.save` and `rearm`, `set_disabled`,
   `trigger`. Each change is recorded in the installation's settings record.
 - **In flight**: every network's held devices and running operations, and what finished in
   the last half hour (`modules/in_flight`).
@@ -67,10 +67,11 @@ def drift() -> dict:
 
 
 def save_drift_interval(raw, actor: str, verified: str) -> dict:
-    """The drift schedule's Save (DRIFT_STEPS): one of DRIFT_CHOICES, written to the agent's
-    timers and re-armed (as today's /drift/settings does), recorded."""
+    """The drift schedule's Save (DRIFT_STEPS): one of DRIFT_CHOICES, written to the drift
+    schedule's store (modules/drift_interval) and re-armed (as today's /drift/settings does),
+    recorded."""
+    from modules import drift_interval
     from modules import installation_settings as I
-    from modules.agent_timers import save as save_timers
     from modules.drift_check import _get_interval, get_checker
 
     try:
@@ -82,7 +83,7 @@ def save_drift_interval(raw, actor: str, verified: str) -> dict:
                         + ", ".join(words for _s, words in DRIFT_CHOICES))
     if int(_get_interval()) == interval:
         return {"ok": True, "nothing": True, "recorded": True}
-    save_timers({"drift_check_interval": interval})                               # write
+    drift_interval.save(interval)                                                 # write
     get_checker().rearm()
     entry = I._record({"kind": "drift_interval", "card": "drift", "actor": actor,  # record
                        "actor_verified": verified, "fields": ["drift_check_interval"]})

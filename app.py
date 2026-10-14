@@ -1720,8 +1720,8 @@ def drift_settings_post():
     reverts the control. That is what the operator saw when the toggle could
     not be saved at all.
     """
+    from modules import drift_interval
     from modules.drift_check import _is_disabled, get_checker
-    from modules.agent_timers import save as save_timers
     data     = request.get_json(silent=True) or {}
     checker  = get_checker()
     from modules.drift_check import network_for
@@ -1731,7 +1731,7 @@ def drift_settings_post():
     try:
         if "interval_s" in data:
             interval_s = int(data["interval_s"])
-            save_timers({"drift_check_interval": interval_s})
+            drift_interval.save(interval_s)
             saved["interval_s"] = interval_s
             # Every network's next run is rebuilt from its last run and the new interval.
             checker.rearm()

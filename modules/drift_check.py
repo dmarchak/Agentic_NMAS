@@ -19,7 +19,7 @@ For each device that has a saved golden config, the checker:
   4. If drift is found, calls ``approval_queue.add_approval()``
      (deduplication built into approval_queue prevents flooding)
 
-The interval (seconds) is read from ``agent_timers`` each cycle so it can be
+The interval (seconds) is read from ``drift_interval`` each cycle so it can be
 changed without restarting the server.  Default: 4 hours.
 """
 
@@ -310,8 +310,8 @@ def _clean(text: str) -> list[str]:
 
 def _get_interval() -> float:
     try:
-        from modules.agent_timers import get as _get_timer
-        return float(_get_timer("drift_check_interval") or _DEFAULT_INTERVAL)
+        from modules import drift_interval
+        return float(drift_interval.get() or _DEFAULT_INTERVAL)
     except Exception:
         return _DEFAULT_INTERVAL
 
@@ -666,7 +666,7 @@ class DriftChecker:
     decides nothing here.
 
     Runs independently of the AI assistant -- the scheduler thread is always alive while the
-    app is running; the interval is read from agent_timers (one interval, every network)."""
+    app is running; the interval is read from drift_interval (one interval, every network)."""
 
     def __init__(self) -> None:
         self._stop    = threading.Event()

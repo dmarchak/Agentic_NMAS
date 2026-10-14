@@ -36,7 +36,7 @@ def client(tmp_path, monkeypatch):
                         lambda name: str(tmp_path / "lab"))
     monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
     monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
-    monkeypatch.setattr("modules.agent_timers.save", lambda d: None)
+    monkeypatch.setattr("modules.drift_interval.save", lambda seconds: int(seconds))
 
     import app as nmas
 
