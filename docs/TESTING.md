@@ -121,6 +121,45 @@ measurement and committed: never by the job itself.
   the run's job summary, uploads `coverage-report` (the HTML and JSON) as an artifact, and fails
   on the ratchet.
 
+### Mutation testing: are the tests any good?
+
+Coverage says a line ran under a test; it cannot say the test would notice the line being
+wrong. **Mutation testing** changes the code one small way at a time (a `<` for a `<=`, a
+constant, a dropped argument), runs the tests that reach it, and counts the **mutants** the tests
+**kill** (some test fails) against those that **survive** (every test still passes). A survivor
+is either a missing assertion (a behaviour nobody pins) or an **equivalent mutant**, a change no
+behaviour can observe (a debug message's words).
+
+The tool is mutmut (dev-only: not in the runtime requirements, not in the gate, never run per
+push), run on the laptop in a scratch worktree, inside the same loopback-only namespace as the
+suite, with CI's interpreter and mutmut in its own folder on `PYTHONPATH`.
+
+**The first pass (2026-10-14)**, on two automation modules, each against its own tests:
+
+| Function | Mutants | Killed | Survived |
+|---|---|---|---|
+| `dhcp_subnets.pool_span` (the pool helper) | 30 | 30 | 0 |
+| `dhcp_subnets._pools_of` | 15 | 15 | 0 |
+| `hostvars._looks_hashed` (hash detection) | 24 | 24 | 0 |
+| `hostvars.assert_printable` (the ASCII rule) | 15 | 15 | 0 |
+| `hostvars.assert_no_secret_values` | 48 | 45 | 3 |
+| **All** | **132** | **129 (97.7%)** | **3** |
+
+The three survivors, triaged: one was a missing assertion, the refusal's words naming the
+secret_ref to commit (`test_write_committed_refuses_a_resolved_value` now asserts them, and that
+the value is never printed), and is killed now (130 of 132, 98.5%); two are equivalent, the
+arguments and the text of a `log.debug` line, recorded with their reason in
+`tests/mutation_equivalent.py`, the hand-kept list of equivalent mutants.
+
+**How to triage a survivor:** read its diff (`mutmut show <name>`). If some behaviour a person
+relies on changed and no test failed, write the test that pins it (a docstring naming the
+behaviour) and run the mutant again to see it killed. If no behaviour can observe the change, add
+it to `tests/mutation_equivalent.py` with the function, the line before and after, and a one-line
+reason. Never chase an equivalent mutant with a test.
+
+A nightly run in GitHub Actions, on the functions changed since the last run, follows after the
+Lab 7 recording (the operator's sequencing).
+
 ## Size and organisation
 
 *Dated: measured 2026-09-26. Today's figures come from the coverage tool's report (above, and

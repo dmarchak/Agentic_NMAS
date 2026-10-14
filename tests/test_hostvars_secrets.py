@@ -150,11 +150,19 @@ class TestCommittedIntentNeverHoldsASecretValue:
         assert store["lab:s1:user_admin_secret"] not in text
 
     def test_write_committed_refuses_a_resolved_value(self, tmp_path, store):
+        """The refusal says where the value is and the ref to commit instead (the store's key
+        less its network, as host_vars names it), and never prints the value. Its words were
+        unasserted until Lab 7's mutation pass (2026-10-14) changed which part of the key they
+        name and no test failed."""
         from modules.nsot import hostvars
-        with pytest.raises(hostvars.SecretLeak):
+        value = store["lab:s1:user_admin_secret"]
+        with pytest.raises(hostvars.SecretLeak) as exc:
             hostvars.write_committed_text(
-                str(tmp_path), "s1",
-                f"hostname: s1\nbanner: {store['lab:s1:user_admin_secret']}\n")
+                str(tmp_path), "s1", f"hostname: s1\nbanner: {value}\n")
+        words = str(exc.value)
+        assert "line 2, in field 'banner'" in words
+        assert "Commit the secret_ref ('s1:user_admin_secret') instead" in words
+        assert value not in words
 
     def test_write_committed_refuses_a_secrets_mapping(self, tmp_path, store):
         from modules.nsot import hostvars
