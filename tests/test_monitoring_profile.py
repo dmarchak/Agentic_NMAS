@@ -201,3 +201,45 @@ class TestTheProfilesSecret:
         assert hostvars.hydrate_secrets(refs, "r6", "Default")["secrets"] == {"snmp_community_ro": "network-value-1"}
         assert hostvars.hydrate_secrets(refs, "r2", "Default")["secrets"] == {"snmp_community_ro": "r2-override-1"}
         assert credentials.profile_secret_key("Default", "snmp_community_ro").endswith(":@profile:snmp_community_ro")
+
+
+class TestTcpAccepts:
+    """IP connectivity to a monitoring connector (Lab 7's "IP connectivity"): whether `host:port`
+    accepts a TCP connection, and the words the profile page shows either way. Accepting and
+    refusing are real loopback sockets; a timeout and a name that does not resolve are the
+    injected transport's, since no loopback socket produces them."""
+
+    def test_a_listening_port_accepts(self):
+        import socket
+        from modules.integrations.monitoring_profile import tcp_accepts
+        with socket.socket() as srv:
+            srv.bind(("127.0.0.1", 0))
+            srv.listen(1)
+            addr = f"127.0.0.1:{srv.getsockname()[1]}"
+            assert tcp_accepts(addr) == (True, f"{addr} accepts a connection")
+
+    def test_a_closed_port_is_refused_naming_it(self):
+        import socket
+        from modules.integrations.monitoring_profile import tcp_accepts
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]          # bound, never listening: refused
+            ok, words = tcp_accepts(f"127.0.0.1:{port}")
+        assert ok is False and words == f"127.0.0.1:{port}: Connection refused"
+
+    @pytest.mark.parametrize("error, words", [
+        (TimeoutError("timed out"), "192.0.2.5:514: timed out"),
+        (__import__("socket").gaierror(-2, "Name or service not known"),
+         "192.0.2.5:514: Name or service not known"),
+    ])
+    def test_a_timeout_or_an_unresolved_name_is_down_with_its_reason(self, error, words):
+        from modules.integrations.monitoring_profile import tcp_accepts
+
+        def fails(*a, **kw):
+            raise error
+        assert tcp_accepts("192.0.2.5:514", connect=fails) == (False, words)
+
+    def test_a_port_that_is_not_a_number_is_refused_not_raised(self):
+        from modules.integrations.monitoring_profile import tcp_accepts
+        ok, words = tcp_accepts("192.0.2.5:syslog")
+        assert ok is False and "invalid literal" in words

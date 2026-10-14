@@ -48,10 +48,15 @@ def sntp_answers(host: str, timeout: float = PROBE_TIMEOUT_S, port: int = 123) -
                                       else f"{host}: answered but unsynchronised (stratum {stratum})")
 
 
-def tcp_accepts(addr: str, timeout: float = PROBE_TIMEOUT_S) -> tuple:
+def tcp_accepts(addr: str, timeout: float = PROBE_TIMEOUT_S, connect=None) -> tuple:
+    """`(accepts, words)` for `host:port`: whether it accepts a TCP connection, and the words
+    that say so or name the error. *connect* is the transport (`socket.create_connection` when
+    None, looked up at the call), so a test can stand a timeout or a name that does not resolve
+    in for the network."""
+    connect = connect or socket.create_connection
     host, _, port = addr.rpartition(":")
     try:
-        with socket.create_connection((host, int(port)), timeout=timeout):
+        with connect((host, int(port)), timeout=timeout):
             return True, f"{addr} accepts a connection"
     except (OSError, ValueError) as exc:
         return False, f"{addr}: {getattr(exc, 'strerror', None) or exc}"
