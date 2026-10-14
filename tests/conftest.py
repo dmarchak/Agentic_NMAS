@@ -37,8 +37,23 @@ _CHECKOUT_DATA_DIR = os.path.join(
 # version then moved NMAS_DATA_DIR mid-session (measured 2026-09-26). The
 # owner pid makes the second execution adopt the store instead; a subprocess
 # has its own pid and never runs this file anyway.
-if os.environ.get("NMAS_TEST_STORE_OWNER") == str(os.getpid()):
+def _store_already_ours() -> bool:
+    """This process already runs on a test store an earlier SESSION made (a tool that calls
+    pytest.main more than once, or forks a worker after one, as mutmut does, 2026-10-14): the
+    store's owner is set and `modules.config` was imported with exactly that store. Never true
+    in a fresh process, so the guard below still stops a config imported before this file."""
+    cfg = sys.modules.get("modules.config")
+    return bool(os.environ.get("NMAS_TEST_STORE_OWNER") and cfg is not None
+                and os.environ.get("NMAS_DATA_DIR")
+                and os.path.realpath(getattr(cfg, "DATA_DIR", "")) ==
+                os.path.realpath(os.environ["NMAS_DATA_DIR"]))
+
+
+if os.environ.get("NMAS_TEST_STORE_OWNER") == str(os.getpid()) or _store_already_ours():
     _TEST_DATA_DIR = os.environ["NMAS_DATA_DIR"]
+    # A later session in this process image: the last session's end removed the store; this
+    # one gets it back.
+    os.makedirs(_TEST_DATA_DIR, exist_ok=True)
 else:
     _TEST_DATA_DIR = tempfile.mkdtemp(prefix="nmas-test-data-")
     os.environ["NMAS_DATA_DIR"] = _TEST_DATA_DIR
@@ -66,7 +81,8 @@ _NETWORK_STATE = network_guard.confinement()
 # Every process a test starts, by construction, on every machine (C46): see
 # network_guard.SpawnGuard. Its own directory, never inside the test store,
 # which some tests delete and restore mid-session.
-if network_guard.spawn_guard() is None:
+if network_guard.spawn_guard() is None or not os.path.isdir(network_guard.spawn_guard().root):
+    # Or a second session in this process, whose last session's end removed the guard's folder.
     network_guard.install_spawn_guard(tempfile.mkdtemp(prefix="nmas-test-spawn-"))
 
 

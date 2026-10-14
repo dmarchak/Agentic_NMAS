@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # C725 (docs/OPEN_FINDINGS.md): the config repository's pipeline. Installs into a list's config
 # repository, through Mercury's own commit path (`repo.commit`, under the repository lock, with
-# `stage_exactly`) and its own push (`remote.push`), two files:
+# `stage_exactly`) and its own push (`remote.push`), three files:
 #   .github/workflows/nmas-config-check.yml   this checkout's deploy/config-repo/nmas-config-check.yml
 #   .nsot/nmas-pin                            repository=<owner>/<name> and sha=<this checkout's HEAD>
+#   docs/TESTING.md                           this checkout's deploy/config-repo/TESTING.md (Lab 7)
 # so every push touching golden/, host_vars/, templates/, profiles/ or dhcp/ runs, on GitHub,
 # the check Mercury runs before it commits (scripts/nmas-config-check), from the release the
 # host runs. Before installing, the check is run once over the repository as it stands
@@ -35,12 +36,14 @@ import os
 import shutil
 import sys
 
-checkout, list_name, repo, workflow, pin, actor = sys.argv[1:7]
+checkout, list_name, repo, workflow, pin, actor, testing = sys.argv[1:8]
 sys.path.insert(0, checkout)
 from modules import redact  # noqa: E402
 from modules.nsot import remote, repo as R  # noqa: E402
 
-FILES = {".github/workflows/nmas-config-check.yml": workflow, ".nsot/nmas-pin": pin}
+FILES = {".github/workflows/nmas-config-check.yml": workflow, ".nsot/nmas-pin": pin,
+         # Lab 7 (2026-10-14): what the check proves and how to read a run, for this repository.
+         "docs/TESTING.md": testing}
 with R.repo_lock(repo):
     for rel, src in FILES.items():
         os.makedirs(os.path.dirname(os.path.join(repo, rel)), exist_ok=True)
@@ -48,7 +51,7 @@ with R.repo_lock(repo):
     staged = R.stage_exactly(repo, list(FILES))
     _rc, status, _e = R.git(repo, "status", "--porcelain", "--", *FILES)
     if not status.strip():
-        print("already installed: both files are committed as they are")
+        print("already installed: every file is committed as it is")
         sha = ""
     else:
         rc, sha, err = R.commit(repo, "pipeline: the config check on every push (C725)\n\n"
@@ -70,7 +73,8 @@ plan "run as the operator's own user, not root" \
      "the pinned commit is on GitHub (public, no token)" \
      "the workflow is committed at HEAD as shipped" \
      "the pin is committed at HEAD" \
-     "the config repository's working tree holds no change to either file"
+     "the testing document is committed at HEAD as shipped" \
+     "the config repository's working tree holds no change to any of them"
 
 not_root
 check "the list's config repository is a git repository with a commit" rc0 "" \
@@ -82,14 +86,16 @@ check "the pinned commit is on GitHub (public, no token)" eq "200" \
 
 step "run the check over the repository as it stands (read-only; its result is printed, never a stop)" \
     "'$PY' '$CHECKOUT/scripts/nmas-config-check' '$REPO' --report '$DIR/report.json' | tail -12 || true"
-step "install the workflow and the pin, commit them as $ACTOR, push" \
-    "cd '$CHECKOUT' && '$PY' '$DIR/install.py' '$CHECKOUT' '$LIST' '$REPO' '$CHECKOUT/deploy/config-repo/nmas-config-check.yml' '$DIR/nmas-pin' '$ACTOR'"
+step "install the workflow, the pin and the testing document, commit them as $ACTOR, push" \
+    "cd '$CHECKOUT' && '$PY' '$DIR/install.py' '$CHECKOUT' '$LIST' '$REPO' '$CHECKOUT/deploy/config-repo/nmas-config-check.yml' '$DIR/nmas-pin' '$ACTOR' '$CHECKOUT/deploy/config-repo/TESTING.md'"
 
 check "the workflow is committed at HEAD as shipped" eq "$(git hash-object "$CHECKOUT/deploy/config-repo/nmas-config-check.yml")" \
     "git -C '$REPO' rev-parse HEAD:.github/workflows/nmas-config-check.yml"
 check "the pin is committed at HEAD" eq "$(git hash-object "$DIR/nmas-pin")" \
     "git -C '$REPO' rev-parse HEAD:.nsot/nmas-pin"
-check "the config repository's working tree holds no change to either file" eq "" \
-    "git -C '$REPO' status --porcelain -- .github/workflows/nmas-config-check.yml .nsot/nmas-pin"
+check "the testing document is committed at HEAD as shipped" eq "$(git hash-object "$CHECKOUT/deploy/config-repo/TESTING.md")" \
+    "git -C '$REPO' rev-parse HEAD:docs/TESTING.md"
+check "the config repository's working tree holds no change to any of them" eq "" \
+    "git -C '$REPO' status --porcelain -- .github/workflows/nmas-config-check.yml .nsot/nmas-pin docs/TESTING.md"
 echo "   The first run starts with this push (the pin and the workflow are in its paths): the config repository's Actions tab, workflow nmas-config-check."
 summary
