@@ -60,6 +60,21 @@ EQUIVALENT = [
            "the text is read only to find the line an unread key starts on, and the stand-in "
            "for an unreadable file has no such line either: no line, as for ''"),
     *_each("modules.nsot.config_check._check_device",
+           'f"({src[\'from\']}): {exc}", rel, None, device=device, files=files)',
+           ('f"({src[\'from\']}): {exc}", rel, device=device, files=files)',),
+           "the `None` dropped is the `line` argument, whose default is None"),
+    *_each("modules.nsot.config_check._check_device",
+           'else f"through the built-in {src[\'template\']} ({src.get(\'why\', \'\')})")',
+           ('else f"through the built-in {src[\'template\']} ({src.get(\'why\', None)})")',
+            'else f"through the built-in {src[\'template\']} ({src.get(\'why\', )})")',
+            'else f"through the built-in {src[\'template\']} ({src.get(\'why\', \'XXXX\')})")'),
+           "a default never read: templates_repo.render_source gives every built-in source "
+           "its `why`, and this line is reached only for a built-in source"),
+    *_each("modules.nsot.config_check._check_device",
+           "dangerous = []", ("dangerous = None",),
+           "set only when the authorisation patterns are unavailable, and read only by "
+           "`if dangerous:`, where [] and None are both false"),
+    *_each("modules.nsot.config_check._check_device",
            "effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \\",
            ("effective = profile.effective(intent, profile_doc, platform, role) if (profile_doc) "
             "or True \\",),

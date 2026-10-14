@@ -530,6 +530,83 @@ def test_intent_match_reads_the_golden_its_entry_names_else_the_devices_own(lab)
     assert own[-1]["file"] == "golden/r2.cfg" and own[-1]["status"] == "pass"
 
 
+def test_keys_nothing_reads_fail_against_the_intent_and_its_templates(lab):
+    """Every unread key named, the line of the first, blamed on the intent AND the templates
+    its render reaches (a template edit that leaves a key unread is that edit's failure)."""
+    _edit_intent(lab, lambda t: t + "spare_thing: 1\nntp_sever:\n- 192.0.2.123\n")
+    from modules.nsot import hostvars
+    intent = hostvars.read_committed(lab["repo"], "r2")
+    intent.update({"spare_thing": 1, "ntp_sever": ["192.0.2.123"]})
+    line = next(n for n, l in enumerate(open(lab["intent"], encoding="utf-8").read()
+                                        .splitlines(), 1) if l.startswith("ntp_sever:"))
+    from modules.nsot import config_check
+    run = config_check._Run(lab["repo"], mask_values=False, notes=False)
+    config_check._check_device(run, "r2", intent, {"platform": "cisco_iosxe"}, None, "", {})
+    fails = [r for r in run.results if r["check"] == "yaml"]
+    assert fails == [{
+        "check": "yaml", "status": "fail", "file": "host_vars/r2.yml", "line": line,
+        "device": "r2",
+        "message": "nothing reads 'ntp_sever', 'spare_thing': no template "
+                   "templates/cisco_iosxe/base.j2 renders through names it, and Mercury does "
+                   "not read it, so it renders nothing, silently",
+        "files": ["host_vars/r2.yml", "templates/_common.j2", "templates/bindings.yml",
+                  "templates/cisco_iosxe/base.j2"]}]
+
+
+def test_an_unread_key_that_starts_no_line_is_still_named_without_a_line(lab):
+    """A quoted key (`"ntp_sever": ...`) starts no line with `ntp_sever:`: the failure stands,
+    its line unknown, never a crash."""
+    from modules.nsot import config_check, hostvars
+    _edit_intent(lab, lambda t: t + '"ntp_sever":\n- 192.0.2.123\n')
+    intent = hostvars.read_committed(lab["repo"], "r2")
+    intent["ntp_sever"] = ["192.0.2.123"]
+    run = config_check._Run(lab["repo"], mask_values=False, notes=False)
+    config_check._check_device(run, "r2", intent, {"platform": "cisco_iosxe"}, None, "", {})
+    fails = [r for r in run.results if r["check"] == "yaml"]
+    assert len(fails) == 1 and fails[0]["line"] is None and "'ntp_sever'" in fails[0]["message"]
+
+
+def test_a_template_whose_reads_cannot_be_read_flags_no_key(lab, monkeypatch):
+    """Unknown reads mean unknown, never "reads nothing": no key is failed as unread (the render
+    below names what is wrong)."""
+    from modules.nsot import config_check
+    monkeypatch.setattr(config_check, "template_reads",
+                        lambda *a: (_ for _ in ()).throw(OSError("unreadable")))
+    report = config_check.run(lab["repo"], notes=False)
+    assert report["ok"] and not _fails(report, "yaml"), report["results"]
+
+
+def test_a_device_whose_template_is_not_in_the_library_renders_through_the_built_in(lab):
+    """And says so, with why: a deploy refuses on approval, which is asked of the library."""
+    from modules.nsot import hostvars
+    os.remove(os.path.join(lab["repo"], "templates", "cisco_iosxe", "base.j2"))
+    got = _check(lab, "r2", hostvars.read_committed(lab["repo"], "r2"),
+                 {"platform": "cisco_iosxe"})
+    assert got[0] == _rec("render", "pass", "host_vars/r2.yml", "r2",
+                          "renders through the built-in cisco_iosxe/base.j2 "
+                          "(cisco_iosxe/base.j2 is not in this network's template library)",
+                          ["host_vars/r2.yml", "templates/bindings.yml"])
+
+
+@pytest.mark.parametrize("count, tail", [(5, "line 4"), (6, "line 4; and 1 more")])
+def test_five_dangerous_lines_are_all_named_and_a_sixth_is_counted(lab, monkeypatch, count,
+                                                                   tail):
+    from modules.nsot import authorisation, config_check
+    monkeypatch.setattr(authorisation, "flagged",
+                        lambda lines: [f"line {n}" for n in range(count)])
+    lint = _records(config_check.run(lab["repo"], notes=True)["results"], "lint")
+    assert lint[0]["message"].endswith(f"reason for: line 0; line 1; line 2; line 3; {tail}")
+
+
+def test_a_match_with_nothing_masked_says_only_that_it_matches(lab, monkeypatch):
+    from modules.nsot import config_check, roundtrip
+    monkeypatch.setattr(roundtrip, "change_rows",
+                        lambda golden, rendered: {"removed": [], "added": [], "masked": 0})
+    match = _records(config_check.run(lab["repo"], notes=True)["results"], "intent-match")
+    assert match == [_rec("intent-match", "pass", "golden/r2.cfg", "r2",
+                          "the golden matches its rendered intent")]
+
+
 def test_a_password_hash_anywhere_fails_by_its_shape_and_is_never_printed(lab, tmp_path):
     value = "$9$AAAAAAAAAAAAAA$" + "B" * 43
     path = os.path.join(lab["repo"], "templates", "cisco_iosxe", "base.j2")
