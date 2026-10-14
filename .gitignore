@@ -83,6 +83,10 @@ deploy/grafana/provisioning/alerting/nmas-telemetry.yaml
 # Coverage data from a local run of the CI command (pytest-cov)
 .coverage
 .coverage.*
+# Each test's tier, recorded beside it (NMAS_TEST_TIERS: CI's tests step writes tiers-<shard>/ into
+# the checkout while the suite runs, and a test id can hold a planted path; C777)
+/tiers-*/
+/tiers/
 
 # The nightly mutation run's working files (scripts/nmas-mutation; never committed)
 /mutants/

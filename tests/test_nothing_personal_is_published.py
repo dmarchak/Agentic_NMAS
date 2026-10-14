@@ -222,6 +222,26 @@ class TestThePopulationIsWhatWillBePublished:
         found = {p for p, t in texts.items() for f in scan(p, t) if f[2] == "email"}
         assert found == {"new_in_this_commit.md", "staged.md"}
 
+    def test_the_tier_records_a_ci_run_writes_beside_the_suite_are_not_published(self,
+                                                                                 tmp_path):
+        """C777 (CI #775): CI's tests step writes each test's tier into tiers-<shard>/ in the
+        checkout while the suite runs, and a test id holding a planted home path failed this
+        scan whenever the scan ran after it. The checkout's own .gitignore keeps them out."""
+        repo = str(tmp_path)
+        run = lambda *a: subprocess.run(["git", "-C", repo, *a], check=True,  # noqa: E731
+                                        capture_output=True)
+        run("init", "-q")
+        with open(os.path.join(ROOT, ".gitignore"), encoding="utf-8") as fh:
+            (tmp_path / ".gitignore").write_text(fh.read())
+        record = '{"test": "tests/test_x.py::test_y[<home>/x]", "tier": "unit"}\n'
+        for folder in ("tiers-a", "tiers"):
+            (tmp_path / folder).mkdir()
+            (tmp_path / folder / "tiers-gw0-1.jsonl").write_text(record)
+        (tmp_path / "control.jsonl").write_text(record)                # the same, not ignored
+        texts = published_files(repo)
+        assert "control.jsonl" in texts
+        assert not [p for p in texts if p.startswith(("tiers-a/", "tiers/"))], sorted(texts)
+
 
 class TestTheScanCanFail:
     """Controls: each rule is shown finding a planted case, and not finding
