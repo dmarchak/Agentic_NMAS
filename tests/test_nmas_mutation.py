@@ -7,6 +7,7 @@ installed here; the workflow is checked as a file."""
 import fnmatch
 import importlib.machinery
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -147,6 +148,33 @@ class TestThePlan:
         assert p["gone"] == ["modules/gone.py::x"], "deleted, not changed: said apart (D15)"
         assert ("modules/net.py", "changed") in p["planned"] and p["kept"] == {}
         assert "modules.net.x_changed__mutmut_*" in M.patterns(p)
+
+    def test_known_debt_at_its_listed_text_is_not_run_again(self, history):
+        """The operator, 2026-10-14: an open survivor on the debt list, its function's text the
+        one it was listed at, is NOT run again; only unchecked mutants are, and a function with
+        none is not planned at all. The control: the same record, the debt listed at another
+        text, runs the open survivor again."""
+        root, head = history
+        m = "modules.net.x_untouched__mutmut_"
+        h = M.function_hash(V2, "untouched")
+        rec = _record({m + "1": "killed", m + "2": "survived", m + "3": "not checked"},
+                      open_=[m + "2"])
+        debt = {"functions": {"modules.net.untouched": {
+            "path": "modules/net.py", "qualname": "untouched", "hash": h,
+            "survivors": [{"was": "a", "now": "b", "reason": "r"}]}}}
+        state = {"commit": head, "functions": {"modules/net.py::untouched": rec}}
+        p = M.plan(state, head, root=root, debt=debt)
+        assert M.patterns(p) == [m + "3"], "only the unchecked mutant runs"
+        done = dict(rec, results={m + "1": "killed", m + "2": "survived"})
+        q = M.plan({"commit": head, "functions": {"modules/net.py::untouched": done}}, head,
+                   root=root, debt=debt)
+        assert q["planned"] == [] and q["debt_not_rerun"] == ["modules/net.py::untouched"]
+        assert "Known debt not run again (1 function(s))" in "\n".join(M.not_rerun_lines(q))
+        moved_on = {"functions": {"modules.net.untouched": dict(
+            debt["functions"]["modules.net.untouched"], hash="the text it was listed at")}}
+        r = M.plan({"commit": head, "functions": {"modules/net.py::untouched": done}}, head,
+                   root=root, debt=moved_on)
+        assert M.patterns(r) == [m + "2"], "listed at another text: run again"
 
     def test_a_function_a_person_names_is_mutated_whole(self, history):
         root, head = history
@@ -919,6 +947,16 @@ SURVIVOR_12 = ("if response and response > 0:", "if response or response > 0:")
 SURVIVOR_31 = ("with connect((ip, 22), timeout=2):", "with connect((ip, 22), ):")
 
 
+def _cli():
+    """scripts/nmas-mutation as a module."""
+    loader = importlib.machinery.SourceFileLoader(
+        "nmas_mutation_cli_debt", os.path.join(ROOT, "scripts", "nmas-mutation"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    cli = importlib.util.module_from_spec(spec)
+    loader.exec_module(cli)
+    return cli
+
+
 def _debt(*survivors, fn=PROBE_FN, h="h1"):
     return {"functions": {fn: {"path": "modules/readers/reachability.py", "qualname": "probe",
                                "hash": h, "survivors": [{"was": w, "now": n, "reason": "r"}
@@ -961,6 +999,68 @@ class TestTheDebt:
             "both open VERDICT survivors counted, one of them on the debt list"
         assert "### New open VERDICT survivors (1)" in text
         assert "### Known debt met tonight (1)" in text
+
+    def test_code_changed_after_it_was_listed_makes_its_survivors_new(self):
+        """The operator, 2026-10-14: "new" means a survivor in code changed after the debt was
+        listed. Given the function's text hash, an entry counts only at that hash."""
+        debt = _debt(SURVIVOR_12, h="h1")
+        assert M.on_debt(debt, PROBE_FN, *SURVIVOR_12, "h1"), "the text it was listed at"
+        assert not M.on_debt(debt, PROBE_FN, *SURVIVOR_12, "h2"), "changed since: new"
+        assert M.debt_unchanged(debt, PROBE_FN, "h1") and not M.debt_unchanged(debt, PROBE_FN,
+                                                                                "h2")
+
+    def test_the_baseline_sweep_never_fails_a_night_and_only_at_its_text(self):
+        """The operator's approval (2026-10-14), for night #4's sweep only: a survivor off the
+        list in a sweep function still at its listed text is `sweep`, never `new`; the same
+        survivor once the text changed is new (the rule hardens)."""
+        results = {f"{PROBE_MUT}__mutmut_31": "survived"}
+        shows = {f"{PROBE_MUT}__mutmut_31": _fixture("show-probe-31.txt")}
+        sweep = {PROBE_FN: "h1"}
+        at = M.verdict(results, shows, [], {}, {"functions": {}}, {PROBE_FN: "h1"}, sweep)
+        assert [s["mutant"] for s in at["sweep"]] == [f"{PROBE_MUT}__mutmut_31"]
+        assert at["new"] == []
+        moved_on = M.verdict(results, shows, [], {}, {"functions": {}}, {PROBE_FN: "h2"}, sweep)
+        assert moved_on["sweep"] == [] and len(moved_on["new"]) == 1
+        text = M.summary("a" * 40, "b" * 40, [PROBE], at, [], 120, known=196)
+        assert "**196 known, 0 new**, 1 found finishing the baseline sweep" in text
+        assert "### Found finishing the baseline sweep (1)" in text
+        assert "| `modules.readers.reachability.probe` | 1 | 0 | 1 |" in text
+
+    def test_the_sweeps_additions_are_not_growth_and_only_its_reason_adds_them(self, tmp_path):
+        """Entries with the sweep's reason never turn a night red as growth; `debt add` with
+        that reason adds only the sweep's survivors, and any other reason only new ones."""
+        debt = _debt(SURVIVOR_12)
+        debt["functions"][PROBE_FN]["survivors"].append(
+            {"was": SURVIVOR_31[0], "now": SURVIVOR_31[1], "reason": M.SWEEP_REASON})
+        assert (M.debt_entries(debt), M.debt_entries(debt, counted=True)) == (2, 1)
+        cli = _cli()
+        swept = {"mutant": f"{PROBE_MUT}__mutmut_31", "function": PROBE_FN,
+                 "was": SURVIVOR_31[0], "now": SURVIVOR_31[1]}
+        new = {"mutant": f"{PROBE_MUT}__mutmut_12", "function": PROBE_FN,
+               "was": SURVIVOR_12[0], "now": SURVIVOR_12[1]}
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({"plan": {"head": "HEAD"}, "error": "",
+                                      "verdict": {"new": [new], "sweep": [swept]}}))
+        listed = tmp_path / "debt.json"
+        listed.write_text(json.dumps({"functions": {}}))
+        args = ["debt", "add", "--from-report", str(report), "--file", str(listed)]
+        assert cli.main(args + ["--reason", M.SWEEP_REASON]) == 0
+        got = json.loads(listed.read_text())["functions"][PROBE_FN]["survivors"]
+        assert [(s["was"], s["reason"]) for s in got] == [(SURVIVOR_31[0], M.SWEEP_REASON)]
+        assert cli.main(args + ["--reason", "accepted on purpose"]) == 0
+        got = json.loads(listed.read_text())["functions"][PROBE_FN]["survivors"]
+        assert sorted(s["was"] for s in got) == sorted([SURVIVOR_12[0], SURVIVOR_31[0]])
+
+    def test_the_sweep_file_names_real_functions(self):
+        """Night #4's 20 left-over functions, each named by its path and qualname and a counted
+        function at HEAD (a deleted one would be a stale approval)."""
+        with open(M.SWEEP_FILE, encoding="utf-8") as fh:
+            funcs = json.load(fh)["functions"]
+        assert len(funcs) == 20 and set(M.load_sweep()) == set(funcs)
+        for name, f in funcs.items():
+            assert M.dotted((f["path"], f["qualname"])) == name
+            with open(os.path.join(ROOT, f["path"]), encoding="utf-8") as fh:
+                assert M.function_hash(fh.read(), f["qualname"]), name
 
     def test_the_list_grows_only_with_a_reason_and_never_twice_for_one_survivor(self):
         debt = {"functions": {}}

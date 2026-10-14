@@ -37,6 +37,7 @@ EXEMPT = {
     "scripts/nmas-stage-guard": "the laptop's gate",
     "scripts/nmas-host": "the laptop's reach to the hosts",
     "scripts/nmas-ci-log": "the laptop's CI reader",
+    "scripts/nmas-ci-dispatch": "the laptop's Actions dispatcher (the operator's token is the laptop's)",
     "scripts/nmas-host-step-check": "the commit-msg hook's and CI's",
     "scripts/nmas-coverage": "CI's coverage job and the laptop's (Lab 7)",
     "scripts/nmas-mutation": "the nightly mutation workflow's and the laptop's (Lab 7)",

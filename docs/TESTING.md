@@ -143,6 +143,15 @@ measurement and committed: never by the job itself.
   functions differ, unit or every tier (370 s per test with branches, 221 s by tier, on the
   laptop). A function a unit test reaches only through another test's leftovers moves with
   xdist's order under either scheme (C782; one support function, outside the ratchet).
+- **How many shards: four, kept (the operator, 2026-10-14, closing C773).** Measured on CI's
+  runners, created to last job done, one run each: per test with branches, 4 shards, 12.6 min
+  (#780); by tier, 4 shards, **7.8 min** (#781, the target met); by tier, 6 shards, 6.5 min;
+  by tier, 8 shards, 5.0 min (the last two on experiment branches from 869a5cb3, deleted
+  after). Files are already placed by recorded seconds (`scripts/nmas-shards`,
+  `tests/shard_weights.json`), so pytest-split would add nothing. The gate runs CI's commands
+  argument for argument on the laptop (C349), and 8 shards there are 32 processes, more than
+  the laptop held the same morning; **6 or 8 shards is the option if the gate moves off the
+  laptop.**
 
 ### Mutation testing: are the tests any good?
 
@@ -354,8 +363,18 @@ planned other functions. So:
   one without a reason. A night is red only on a VERDICT survivor NOT on the list, on the list
   having grown since the last night's record (red once: an addition is seen), or on a broken
   canary or scope; the summary reports the debt every night (its size, its change since the
-  last night, the survivors met, the functions holding most), and a debt survivor stays open
-  in the record, run again each night, so a test that kills one is seen.
+  last night, the survivors met, the functions holding most) and leads with **"N known, M
+  new"**. **Known debt is not run again while its function's text is the one it was listed
+  at** (the operator, 2026-10-14): only a function's unchecked mutants run, one with none left
+  is not planned, and the summary names it ("Known debt not run again"); the budget goes to
+  what is unchecked or changed. **"New" is decided by text:** an entry counts only at the hash
+  its function was listed at, so a survivor in code changed afterwards is new and turns the
+  night red. **The baseline sweep** (`tests/mutation_sweep.json`, the operator's approval for
+  night #4's 20 left-over functions only): a survivor found finishing them, still at their
+  listed text, is reported as found finishing the sweep, never failing the night, and added
+  with `debt add --reason "baseline sweep of moved code"`, which adds only those; such entries
+  are not counted as the list growing. Once the sweep's functions are finished, or changed, it
+  holds nothing a night can find.
 - **Moved, not changed**: a function whose text hash the record or the debt list already holds
   under another name is moved. The record's results for it carry over, renamed (the same text
   makes the same mutants, numbered the same), and only what was left or open runs; one the
@@ -895,6 +914,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_session_end_guard.py` | (2026-10-01, CI run #241) A non-daemon thread alive at the session's end is named with its target, a daemon one is not, and one finishing within the grace is not; the live server the browser tests use stops bounded with its socket.io sessions closed, against a real long-poll session (engineio's own `disconnect()` blocks for ever waiting for a client to drain, measured building it) |
 | `test_suite_bound.py` | (C343, 2026-10-02: a probe skips conftest's whole-program import, `NMAS_PROBE_RUN`, so its start does not grow with the program; a probe asserting the app was not imported, its control the opt-out removed.) the suite's bound (NMAS_TEST_TIMEOUT, 300 s, from the measured serial time) through the REAL runner over a test that hangs: rc 124, the hanging test and its line named, a finished test not named; a run that finishes is never reported as a timeout |
 | `test_coverage_tiers.py` | C773 (2026-10-14): a push's by-tier measurement (tests/coverage_tiers.py) through a nested pytest run with sys.monitoring over a planted module: a unit test's run phase is `unit|run`, what only a fixture reached is no test's, a test that starts a process is `other|run`; the tool reads such data as "by tier", a label as its own tier, says which data it used and names the nightly drill-down (or "none found"), and a push's page says the tests by name are the nightly's. Controls: the plugin not registered, setup's lines not cleared, every test unit, the labels unknown to the tool. The workflows' split is `TestAPushMeasuresByTierAndTheNightPerTest` in test_ci_workflow.py |
+| `test_nmas_ci_dispatch.py` | The operator's Actions read-and-write token (2026-10-14) through `scripts/nmas-ci-dispatch`, curl replaced by a recorder: the token is in curl's stdin config and in no argument; a JSON body with quotes and backslashes survives the config; nothing printed carries it; a file others can read, a missing one, and a 401 or 403 are each said naming the file; the expiry is said when near; a dispatch finds the run it made (a workflow_dispatch run created after the request). Control: the token on curl's command line fails the aimed test |
 | `test_store_outlives_sessions.py` | C780 (2026-10-14): two pytest sessions in one nested process (as mutmut's statistics and clean runs are) both find the process's store with the key it holds and the spawn guard's folder with its shims, the same ones; when the process exits both are gone; a killed process's store and spawn folder (`.owner` naming a pid above `kernel.pid_max`) are removed at a run's start and a live one's, an unowned one and another folder are left; this process's own carry its pid. Controls: the session's end removing the store again (the two-session test fails), nothing removed at exit (it fails), the pruning finding nothing |
 | `test_tmp_roots.py` | C776 (2026-10-14): a killed run's pytest root (its lock's owner gone) is removed when the next run starts, through the real conftest in a nested run; a root whose owner lives (another shard), one with no lock or an unreadable one, this run's own, and a folder not named `pytest-<n>` are left; a dead owner planted as a pid above `kernel.pid_max`. Controls: the owner never gone (all three fail), the conftest's call removed (the nested run's test fails) |
 | `test_nmas_test_interpreter.py` | (the operator, 2026-10-14: an ordinary terminal ran the suite on 3.14) `scripts/nmas-test`'s interpreter, through the REAL script with stand-in interpreters reporting a chosen version: with no `PYTHON`, CI's environment is chosen and named; without it, a `python3` of another version is refused naming both versions, `scripts/nmas-ci-env` and `PYTHON=`, and pytest never starts; a `python3` of CI's version runs; a `PYTHON` given is honoured and said to be not CI's. CI's version is read from `ci.yml` as YAML, independent of the script's `sed`. Controls: the refusal removed (the refusal test fails); the CI-environment default removed (the default test fails) |

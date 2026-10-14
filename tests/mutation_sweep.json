@@ -1,0 +1,25 @@
+{
+ "about": "The baseline sweep (the operator, 2026-10-14, for this sweep only): night #4's 20 left-over functions (run 38615953823, b0c76806), each at its text hash. A night that finishes their unchecked mutants reports a new VERDICT survivor in one of them, still at this hash, as found finishing the sweep; it never fails the night, and is added to tests/mutation_debt.json by `nmas-mutation debt add --from-report <report.json> --reason \"baseline sweep of moved code\"`. A function whose text changes leaves the sweep (its survivors are new); once these are finished the list holds nothing a night can find, and the rule is the debt list's alone.",
+ "functions": {
+  "modules.bgp_summary.parse_bgp_summary": {"path": "modules/bgp_summary.py", "qualname": "parse_bgp_summary", "hash": "e2e2e603938796fecda2ad3fcec47fe777c797e61968613d58788dc1913414e6"},
+  "modules.dhcp_exclusions._unstamped": {"path": "modules/dhcp_exclusions.py", "qualname": "_unstamped", "hash": "f54f555f95cdf9221d9dd52e2d6e57be4bcd4ed1190485a3fdc7c33cc6db403d"},
+  "modules.dhcp_exclusions.plan": {"path": "modules/dhcp_exclusions.py", "qualname": "plan", "hash": "1a31d5d1c8a38ca7d0c850d524de5a8e1413ee63c7b3441946c357de5917fc1e"},
+  "modules.drift_check._get_interval": {"path": "modules/drift_check.py", "qualname": "_get_interval", "hash": "444003c52be21a0bc2b0942e48a49fc097a07d2ddfde50535982d393eb556198"},
+  "modules.drift_check._run_drift_check": {"path": "modules/drift_check.py", "qualname": "_run_drift_check", "hash": "57e0dd7c723ee91512efcaebfc7e77d1ecce7ef45b3651fcef0e9bbdd0d9be89"},
+  "modules.drift_interval._clamp": {"path": "modules/drift_interval.py", "qualname": "_clamp", "hash": "6cdecc346f9edd92853ff0da0a1a0d3726c39ddfe604dfbc8e901c6aaa2219a9"},
+  "modules.drift_interval._path": {"path": "modules/drift_interval.py", "qualname": "_path", "hash": "9063f3b7a0ccb83d158bbd629e8ff49d592cc1c986a88661f7072b7ec21f943e"},
+  "modules.drift_interval._stored": {"path": "modules/drift_interval.py", "qualname": "_stored", "hash": "9dc66799d6f210ce74432a60c47470111dc01268cb99e9779ccaf7f25b9b30d0"},
+  "modules.drift_interval.get": {"path": "modules/drift_interval.py", "qualname": "get", "hash": "50b55ab1efa50d8fcb96b1163f77665740a004f4cfa92a807792cbb5da7caf4a"},
+  "modules.drift_interval.save": {"path": "modules/drift_interval.py", "qualname": "save", "hash": "ff9e3579f3cdebeea622e0ffc9b46f4e4b63103c60a3999a0cd459e22db0236a"},
+  "modules.goldens._find_golden_config_file": {"path": "modules/goldens.py", "qualname": "_find_golden_config_file", "hash": "f235233e99d4e688f7cb7b321c8748f7c986724bd2c1a9e65737dc3a4cf22687"},
+  "modules.goldens._golden_record": {"path": "modules/goldens.py", "qualname": "_golden_record", "hash": "733789dec8e6cbb745dc0e090ef842a2914c96057038b4afefb8fcafe5928109"},
+  "modules.goldens._identity_for_ip": {"path": "modules/goldens.py", "qualname": "_identity_for_ip", "hash": "dd191e21d865fd07b4325f935ad7daa79b46999d68625ee3d42e73079212edc1"},
+  "modules.goldens._list_golden_configs": {"path": "modules/goldens.py", "qualname": "_list_golden_configs", "hash": "a837116f21c20396751d32bf91c5841365eea7c78fe9eb1d214c9c09832b96ad"},
+  "modules.goldens._load_golden_config_file": {"path": "modules/goldens.py", "qualname": "_load_golden_config_file", "hash": "dc5a30cf4abe01944c5f067b799163139d525b39707788122c9d3c20c7ab1007"},
+  "modules.goldens._migrate_golden_configs": {"path": "modules/goldens.py", "qualname": "_migrate_golden_configs", "hash": "7083dcddac88426c90888775b5cd5cbc2de7207b6327f111bc4b67fc035fce78"},
+  "modules.netbox_client._scan_device_from_golden": {"path": "modules/netbox_client.py", "qualname": "_scan_device_from_golden", "hash": "4b951cb62bdb0d2917e92fa7d4e7879d99e3209c96e7240e11d1f091145a56aa"},
+  "modules.nsot.onboard.create_netbox_record": {"path": "modules/nsot/onboard.py", "qualname": "create_netbox_record", "hash": "4dd7350f464596e0ee931cf1f91bbce8a4eddd9a9c9c065c312e6bd438171cdb"},
+  "modules.pipeline._parse_bgp_summary": {"path": "modules/pipeline.py", "qualname": "_parse_bgp_summary", "hash": "2d0d9c4a6bdbd9cd135855181fd7e3a0992357847717fc722133e6728f942fad"},
+  "modules.pipeline._record_pre_change": {"path": "modules/pipeline.py", "qualname": "_record_pre_change", "hash": "5597511bc3f2e1330aab0a6fb9b5a154b4b0a566b53b113b587616ef9b0176e9"}
+ }
+}

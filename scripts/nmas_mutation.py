@@ -494,22 +494,62 @@ def load_debt(path: str = None) -> dict:
     return debt
 
 
-def debt_entries(debt: dict) -> int:
-    return sum(len(f.get("survivors", [])) for f in debt.get("functions", {}).values())
+#: The baseline sweep (the operator, 2026-10-14): night #4's 20 left-over functions, each at its
+#: text hash, whose survivors are added to the debt list with this reason by the deliberate
+#: `debt add` as the sweep finishes them, never failing a night. Only for that sweep: a function
+#: whose text changes leaves it, and once its functions are finished it holds nothing.
+SWEEP_FILE = os.path.join(ROOT, "tests", "mutation_sweep.json")
+SWEEP_REASON = "baseline sweep of moved code"
+
+
+def load_sweep(path: str = None) -> dict:
+    """`{dotted: hash}` of the baseline sweep's functions; empty when there is no file."""
+    path = path or SWEEP_FILE
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as fh:
+        return {name: f["hash"] for name, f in json.load(fh).get("functions", {}).items()}
+
+
+def debt_entries(debt: dict, counted: bool = False) -> int:
+    """How many survivors the list holds; *counted*: only those whose growth turns a night red,
+    every one but the baseline sweep's (SWEEP_REASON, the operator's approval)."""
+    return sum(1 for f in debt.get("functions", {}).values() for s in f.get("survivors", [])
+               if not (counted and (s.get("reason") or "").strip() == SWEEP_REASON))
 
 
 def on_debt(debt: dict, function: str, was: str, now: str, function_hash_: str = "") -> bool:
     """Whether the survivor (*function*, *was*, *now*) is on the list: under the function's own
-    name, or, when it moved (its text unchanged), under the name the same hash was listed by."""
+    name, or, when it moved (its text unchanged), under the name the same hash was listed by.
+    Given the function's text hash, an entry counts only at that hash (the operator,
+    2026-10-14): code changed after it was listed makes its survivors NEW, not known."""
     entries = []
     funcs = debt.get("functions", {})
-    if function in funcs:
+    if function in funcs and (not function_hash_ or not funcs[function].get("hash")
+                              or funcs[function]["hash"] == function_hash_):
         entries.append(funcs[function])
     if function_hash_:
         entries += [f for name, f in funcs.items()
                     if name != function and f.get("hash") == function_hash_]
     return any(s["was"].strip() == was and s["now"].strip() == now
                for f in entries for s in f.get("survivors", []))
+
+
+def debt_unchanged(debt: dict, function: str, function_hash_: str) -> bool:
+    """Whether *function* holds known debt at its current text (*function_hash_*): its open
+    survivors are then not run again (the operator, 2026-10-14); a changed text runs them."""
+    f = debt.get("functions", {}).get(function)
+    return bool(f and f.get("survivors") and function_hash_ and f.get("hash") == function_hash_)
+
+
+def tally_line(v: dict, known: int = None) -> str:
+    """The night's headline: the known debt (*known*: the list's size, run tonight or not;
+    else the debt met tonight), and the new survivors, the ones that fail it."""
+    sweep = len(v.get("sweep", []))
+    known = len(v.get("debt", [])) if known is None else known
+    return (f"**{known} known, {len(v.get('new', []))} new**"
+            + (f", {sweep} found finishing the baseline sweep (to be added to the debt list, "
+               "the operator's approval)" if sweep else "") + ".")
 
 
 def add_to_debt(debt: dict, survivors: list, reason: str, hash_of) -> int:
@@ -587,16 +627,20 @@ def is_equivalent(function: str, was: str, now: str, equivalent: list) -> str:
 
 
 def verdict(results: dict, shows: dict, equivalent: list, kinds: dict = None,
-            debt: dict = None, hash_of_function: dict = None) -> dict:
+            debt: dict = None, hash_of_function: dict = None, sweep: dict = None) -> dict:
     """Per function: mutants, killed, survived (no test failed: `SURVIVING`); the survivors
     split into known equivalents (listed apart, with their reason) and OPEN ones, each VERDICT
     or MESSAGE by *kinds* (`{mutant: kind}`, `classify_file`; a mutant it does not name is
     VERDICT). An open VERDICT survivor on the *debt* list (`on_debt`, followed through a move
     by *hash_of_function*, `{dotted: hash}`) is `debt`; only the rest (`new`) fail the night;
-    MESSAGE ones are `message`. *shows*: `{mutant: mutmut show text}` for the survivors."""
-    per, new, message, known, owed = {}, [], [], [], []
+    MESSAGE ones are `message`. *shows*: `{mutant: mutmut show text}` for the survivors.
+    *sweep*: the baseline sweep (`load_sweep`, `{dotted: hash}`): an open VERDICT survivor off
+    the list in one of its functions, still at that hash, is `sweep` (found finishing #4's
+    sweep, added by the deliberate `debt add`; never failing the night)."""
+    per, new, message, known, owed, swept = {}, [], [], [], [], []
     debt = debt or {"functions": {}}
     hash_of_function = hash_of_function or {}
+    sweep = sweep or {}
     for mutant, status in sorted(results.items()):
         fn = function_of(mutant)
         p = per.setdefault(fn, {"mutants": 0, "killed": 0, "survived": 0, "equivalent": 0,
@@ -619,12 +663,16 @@ def verdict(results: dict, shows: dict, equivalent: list, kinds: dict = None,
             elif on_debt(debt, fn, was, now, hash_of_function.get(fn, "")):
                 p["debt"] += 1
                 owed.append(entry)
+            elif fn in sweep and sweep[fn] == hash_of_function.get(fn):
+                p["sweep"] = p.get("sweep", 0) + 1
+                swept.append(entry)
             else:
                 p["verdict"] += 1
                 new.append(entry)
         else:
             p["other"] += 1
-    return {"functions": per, "new": new, "message": message, "known": known, "debt": owed}
+    return {"functions": per, "new": new, "message": message, "known": known, "debt": owed,
+            "sweep": swept}
 
 
 def only_functions(results: dict, functions: list) -> dict:
@@ -778,15 +826,18 @@ def failure_excerpt(text: str, limit: int = 30) -> list:
 
 def summary(base: str, head: str, planned: list, verdict_: dict, left: list,
             budget_minutes: int, error: str = "", empty: list = (), extra: list = (),
-            cause: list = (), moved: dict = None) -> str:
+            cause: list = (), moved: dict = None, known: int = None) -> str:
     """The job summary (Markdown). *extra*: lines said first (the canary, the scope, what the
     record carried in). *cause*: a failed run's own lines (`failure_excerpt`). *moved*:
     `{path::qualname: where it was}` for planned functions only moved, their text unchanged."""
     lines = [f"## Mutation testing: functions changed {base[:9]}..{head[:9]}", ""]
     if not planned:
-        return "\n".join(lines + ["Nothing to mutate: no automation function changed, and "
-                                  "the record holds none unfinished or with an open survivor.",
-                                  ""])
+        return "\n".join(lines + [tally_line({}, known), "",
+                                  "Nothing to mutate: no automation function changed, and the "
+                                  "record holds none unfinished (known debt at its listed text "
+                                  "is not run again).", ""])
+    if not error:
+        lines += [tally_line(verdict_, known), ""]
     lines += list(extra)
     moved = moved or {}
 
@@ -818,7 +869,8 @@ def summary(base: str, head: str, planned: list, verdict_: dict, left: list,
         killable = p["mutants"] - p["equivalent"]
         score = f"{100.0 * p['killed'] / killable:.1f}%" if killable else "—"
         owed = p.get("debt", 0)
-        open_verdict = p.get("verdict", p["survived"] - p["equivalent"]) + owed
+        open_verdict = p.get("verdict", p["survived"] - p["equivalent"]) + owed \
+            + p.get("sweep", 0)
         at_stake = p["killed"] + open_verdict
         vscore = f"{100.0 * p['killed'] / at_stake:.1f}%" if at_stake else "—"
         lines.append(f"| `{fn}` | {p['mutants']} | {p['killed']} | {open_verdict} | {owed} "
@@ -833,9 +885,16 @@ def summary(base: str, head: str, planned: list, verdict_: dict, left: list,
     lines += [item(s) for s in verdict_["new"]] \
         or ["- none: every mutant that can change a verdict was killed, is a known equivalent, "
             "or is known debt"]
+    swept = verdict_.get("sweep", [])
+    if swept:
+        lines += ["", f"### Found finishing the baseline sweep ({len(swept)}): in night #4's "
+                  "left-over functions at their text then; added to the debt list with the "
+                  f"reason \"{SWEEP_REASON}\" (`nmas-mutation debt add`, the operator's approval "
+                  "for this sweep only), never failing the night", ""]
+        lines += [item(s) for s in swept]
     owed = verdict_.get("debt", [])
-    lines += ["", f"### Known debt met tonight ({len(owed)}): open, run again every night, "
-              "never failing it (tests/mutation_debt.json)", ""]
+    lines += ["", f"### Known debt met tonight ({len(owed)}): open, in functions with unchecked "
+              "mutants left, never failing the night (tests/mutation_debt.json)", ""]
     lines += [item(s) for s in owed] or ["- none"]
     lines += ["", f"### Open MESSAGE survivors ({len(verdict_.get('message', []))}): words only; "
               "listed and kept open, never failing the night", ""]
@@ -897,13 +956,21 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
                            text=True)
         return r.stdout if r.returncode == 0 else None
 
-    kept, names = {}, {}
+    kept, names, not_rerun = {}, {}, []
     for k, rec in (state.get("functions") or {}).items():
         path, _, qualname = k.partition("::")
         if rec.get("hash") and function_hash(read(path), qualname) == rec["hash"]:
+            # Known debt at the text it was listed at is NOT run again (the operator,
+            # 2026-10-14): only the function's unchecked mutants are; one with none left is
+            # not planned at all, its survivors held by the debt list.
+            again = not debt_unchanged(debt or {}, dotted((path, qualname)), rec["hash"])
+            left = sorted(m for m, s in rec["results"].items()
+                          if s == "not checked" or (again and m in rec.get("open", [])))
+            if not left:
+                not_rerun.append(k)
+                continue
             kept[k] = rec
-            names[k] = sorted(m for m, s in rec["results"].items()
-                              if s == "not checked" or m in rec.get("open", []))
+            names[k] = left
     fresh = changed_functions(changed_lines(diff), read, scope.classify)
     # MOVED, not changed (the operator, 2026-10-14): a fresh function whose text hash the
     # record or the debt list already holds under another name. The record's results for it
@@ -961,9 +1028,21 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
             "carried": carried, "skipped_moved": skipped,
             "finished_before": finished_before,
             "previous_debt_entries": state.get("debt_entries"),
-            "gone": gone,
+            "gone": gone, "debt_not_rerun": sorted(not_rerun),
             "dropped": sorted(k for k in (state.get("functions") or {})
-                              if k not in kept and k not in gone)}
+                              if k not in kept and k not in gone and k not in not_rerun)}
+
+
+def not_rerun_lines(p: dict) -> list:
+    """The summary's lines for the functions the plan did not run because all they hold is known
+    debt at the text it was listed at (`plan`'s `debt_not_rerun`): the budget goes to what is
+    unchecked or changed."""
+    held = p.get("debt_not_rerun") or []
+    if not held:
+        return []
+    return [f"Known debt not run again ({len(held)} function(s)): their text is the one their "
+            "survivors were listed at, and nothing in them is unchecked:", "",
+            *[f"- `{k}`" for k in held], ""]
 
 
 def gone_lines(p: dict) -> list:

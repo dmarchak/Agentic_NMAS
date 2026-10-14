@@ -19,8 +19,10 @@ docs only).
    `chat_histories/` is gone only then).
 3. **CLAUDE.md, two passages:** DONE (the operator's paste, committed with the placeholder
    test's deletion).
-4. **Dispatching mutation-nightly:** nothing here can (no `gh`, and the only token is
-   Actions-read; `test_it_runs_nightly_and_by_hand_never_on_a_push` pins the triggers). Night
+4. **Dispatching mutation-nightly:** now the agent's, with the operator's dispatch token
+   (`~/.config/nmas/gh-dispatch-token`, Actions read and write, this repository only;
+   **expires 2026-10-21 21:40:49 UTC**, read from GitHub's answer) through
+   `scripts/nmas-ci-dispatch`, which hands it to curl on stdin only. Night
    #4 (38615953823) was the first VALID night: canary 11 of 11, scope passed, 308 mutants,
    record saved (`mutation-state-38615953823`), red on 203 VERDICT survivors, 20 functions
    left over. Its survivors seeded the debt list (196 entries, 10 functions). The next night

@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Dispatch, re-run, cancel and read this repository's Actions runs with the operator's
+fine-grained Actions read-and-write token (the operator, 2026-10-14: scoped to this repository
+alone, seven days).
+
+    nmas-ci-dispatch dispatch WORKFLOW [--ref main] [--input NAME=VALUE ...] [--wait-start]
+                                         start WORKFLOW (its file name, e.g.
+                                         mutation-nightly.yml); with --wait-start, wait for
+                                         the run it made and print its id and URL
+    nmas-ci-dispatch rerun RUN_ID [--failed]   run it again (only its failed jobs: --failed)
+    nmas-ci-dispatch cancel RUN_ID             cancel it
+    nmas-ci-dispatch status RUN_ID             its status, conclusion and URL
+    nmas-ci-dispatch runs WORKFLOW [--limit N] the workflow's latest runs
+
+The token: ~/.config/nmas/gh-dispatch-token (or NMAS_DISPATCH_TOKEN_FILE). Read from that file
+and nowhere else, refused when the file or its directory can be read by anyone but its owner,
+and handed to curl only inside a config read from curl's STANDARD INPUT (`curl -K -`): never on
+a command line (which `ps` shows), never printed, logged or committed, never in gh's or git's
+configuration. Requests go to https://api.github.com only. A 401 or 403 says plainly that the
+token in that file was refused (missing, expired, or without Actions write), naming the file.
+Its expiry is read from GitHub's answer on every call, and fewer than WARN_DAYS left is said.
+
+Exit: 0 ok; 1 the token file refused or the token refused by GitHub; 2 GitHub could not be
+asked, or answered something else.
+"""
+
+import argparse
+import datetime
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+
+API = "https://api.github.com"
+TOKEN_FILE = os.path.expanduser("~/.config/nmas/gh-dispatch-token")
+WARN_DAYS = 2
+EXIT_TOKEN, EXIT_GITHUB = 1, 2
+#: The run a dispatch made appears within seconds; asked every 5 s for up to 90 s (measured:
+#: run #4's dispatch showed in the runs list within about 10 s, 2026-10-14).
+START_POLL_S, START_BOUND_S = 5, 90
+
+
+def _repo_slug() -> str:
+    """<account>/<repo> from this checkout's `origin` (never written into a tracked file)."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    url = subprocess.run(["git", "-C", here, "remote", "get-url", "origin"],
+                         capture_output=True, text=True).stdout.strip()
+    m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
+    return m.group(1) if m else ""
+
+
+class Refused(Exception):
+    """The token file, or GitHub's answer to the token: said plainly, never with the token."""
+
+
+def token_path() -> str:
+    return os.environ.get("NMAS_DISPATCH_TOKEN_FILE") or TOKEN_FILE
+
+
+def read_token(path: str = None) -> str:
+    """The token, from its file only; refused when the file or its directory is readable by
+    anyone but its owner, or when it is missing or empty."""
+    path = path or token_path()
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        raise Refused(f"no token file at {path}: the dispatch token is the operator's "
+                      "(Actions read and write, this repository only)") from None
+    for what, mode in ((path, st.st_mode), (os.path.dirname(path) or ".",
+                                            os.stat(os.path.dirname(path) or ".").st_mode)):
+        if mode & (stat.S_IRWXG | stat.S_IRWXO):
+            raise Refused(f"{what} can be read by others (mode {stat.S_IMODE(mode):o}); "
+                          "it must be the owner's alone (chmod 600 on the file, 700 on its "
+                          "folder)")
+    with open(path, encoding="utf-8") as fh:
+        token = fh.read().strip()
+    if not token:
+        raise Refused(f"the token file {path} is empty")
+    return token
+
+
+def _quote(value: str) -> str:
+    """A value for curl's config file: double-quoted, with backslash and quote escaped."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def curl_config(method: str, url: str, token: str, body=None) -> str:
+    """The config curl reads from its standard input: the URL, the method, the headers (the
+    token's among them) and the body. Nothing here reaches a command line."""
+    lines = [f"url = {_quote(url)}", f"request = {_quote(method)}",
+             f"header = {_quote('Authorization: Bearer ' + token)}",
+             f"header = {_quote('Accept: application/vnd.github+json')}",
+             f"header = {_quote('X-GitHub-Api-Version: 2022-11-28')}",
+             f"user-agent = {_quote('nmas-ci-dispatch')}"]
+    if body is not None:
+        lines += [f"header = {_quote('Content-Type: application/json')}",
+                  f"data = {_quote(json.dumps(body))}"]
+    return "\n".join(lines) + "\n"
+
+
+def call(method: str, path: str, body=None, token: str = None, run=None) -> tuple:
+    """(status, parsed body or text, headers) for one API call. The token goes to curl through
+    its standard input only; the argument list names no secret."""
+    token = token if token is not None else read_token()
+    run = run or subprocess.run              # at call time: a patched run is the one used
+    with tempfile.TemporaryDirectory(prefix="nmas-ci-dispatch-") as d:
+        out, hdr = os.path.join(d, "body"), os.path.join(d, "headers")
+        argv = ["curl", "-sS", "--max-time", "60", "-K", "-", "-o", out, "-D", hdr,
+                "-w", "%{http_code}"]
+        r = run(argv, input=curl_config(method, API + path, token, body), capture_output=True,
+                text=True)
+        if r.returncode != 0:
+            raise Refused(f"curl could not ask GitHub ({r.returncode}): "
+                          f"{(r.stderr or '').strip()[:300]}")
+        status = int((r.stdout or "0").strip() or 0)
+        text = open(out, encoding="utf-8").read() if os.path.exists(out) else ""
+        headers = open(hdr, encoding="utf-8").read() if os.path.exists(hdr) else ""
+    if status in (401, 403):
+        raise Refused(f"GitHub refused the token in {token_path()} (HTTP {status}): it is "
+                      "missing, expired, or without Actions read and write on this "
+                      "repository. A new one is the operator's.")
+    try:
+        parsed = json.loads(text) if text.strip() else None
+    except ValueError:
+        parsed = text
+    return status, parsed, headers
+
+
+def expiry_warning(headers: str, now: datetime.datetime = None) -> str:
+    """'' with WARN_DAYS or more left; else when it expires and what to do."""
+    m = re.search(r"(?im)^github-authentication-token-expiration:\s*(.+?)\s*$", headers or "")
+    if not m:
+        return ""
+    raw = m.group(1)
+    try:
+        when = datetime.datetime.strptime(raw.replace(" UTC", " +0000"),
+                                          "%Y-%m-%d %H:%M:%S %z")
+    except ValueError:
+        return f"the dispatch token's expiry reads {raw!r}, which this cannot parse"
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    left = (when - now).days
+    if left >= WARN_DAYS:
+        return ""
+    return (f"the dispatch token in {token_path()} expires {when:%Y-%m-%d %H:%M} UTC "
+            f"({max(left, 0)} day(s) left): a new one is the operator's")
+
+
+def _check(status: int, want, what: str, parsed):
+    if status not in want:
+        msg = parsed.get("message") if isinstance(parsed, dict) else str(parsed)[:300]
+        raise RuntimeError(f"{what}: GitHub answered {status}: {msg}")
+
+
+def runs(repo: str, workflow: str, limit: int = 5, **kw) -> list:
+    status, parsed, headers = call("GET", f"/repos/{repo}/actions/workflows/{workflow}/runs"
+                                   f"?per_page={limit}", **kw)
+    _check(status, (200,), f"the runs of {workflow}", parsed)
+    return (parsed or {}).get("workflow_runs") or [], headers
+
+
+def dispatch(repo: str, workflow: str, ref: str, inputs: dict, wait_start: bool = False,
+             clock=time.time, sleep=time.sleep, **kw) -> dict:
+    """Start WORKFLOW at REF; with *wait_start*, the run it made (the newest workflow_dispatch
+    run created at or after the request, to the second)."""
+    asked = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    body = {"ref": ref, **({"inputs": inputs} if inputs else {})}
+    status, parsed, headers = call("POST", f"/repos/{repo}/actions/workflows/{workflow}/"
+                                   "dispatches", body, **kw)
+    _check(status, (204,), f"dispatching {workflow} at {ref}", parsed)
+    out = {"dispatched": workflow, "ref": ref, "asked_at": asked.isoformat(), "headers": headers}
+    if not wait_start:
+        return out
+    end = clock() + START_BOUND_S
+    while clock() < end:
+        found, _h = runs(repo, workflow, 10, **kw)
+        for r in found:
+            made = datetime.datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+            if r.get("event") == "workflow_dispatch" and made >= asked:
+                out.update(id=r["id"], url=r["html_url"], run_number=r.get("run_number"))
+                return out
+        sleep(START_POLL_S)
+    raise RuntimeError(f"dispatched {workflow} at {ref} ({status}), but no run it made appeared "
+                       f"within {START_BOUND_S} s; read `runs {workflow}`")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    d = sub.add_parser("dispatch")
+    d.add_argument("workflow")
+    d.add_argument("--ref", default="main")
+    d.add_argument("--input", action="append", default=[], metavar="NAME=VALUE")
+    d.add_argument("--wait-start", action="store_true")
+    r = sub.add_parser("rerun")
+    r.add_argument("run_id", type=int)
+    r.add_argument("--failed", action="store_true")
+    c = sub.add_parser("cancel")
+    c.add_argument("run_id", type=int)
+    s = sub.add_parser("status")
+    s.add_argument("run_id", type=int)
+    ls = sub.add_parser("runs")
+    ls.add_argument("workflow")
+    ls.add_argument("--limit", type=int, default=5)
+    a = ap.parse_args(argv)
+    repo = _repo_slug()
+    if not repo:
+        print("nmas-ci-dispatch: this checkout's origin names no GitHub repository",
+              file=sys.stderr)
+        return EXIT_GITHUB
+    headers = ""
+    try:
+        if a.cmd == "dispatch":
+            inputs = dict(i.split("=", 1) for i in a.input)
+            out = dispatch(repo, a.workflow, a.ref, inputs, a.wait_start)
+            headers = out.pop("headers")
+            print(json.dumps(out))
+        elif a.cmd in ("rerun", "cancel"):
+            path = (f"/repos/{repo}/actions/runs/{a.run_id}/"
+                    + ("rerun-failed-jobs" if a.cmd == "rerun" and a.failed else
+                       "rerun" if a.cmd == "rerun" else "cancel"))
+            status, parsed, headers = call("POST", path)
+            _check(status, (201, 202), f"{a.cmd} of run {a.run_id}", parsed)
+            print(f"{a.cmd} of run {a.run_id}: accepted ({status})")
+        elif a.cmd == "status":
+            status, parsed, headers = call("GET", f"/repos/{repo}/actions/runs/{a.run_id}")
+            _check(status, (200,), f"run {a.run_id}", parsed)
+            print(f"run {a.run_id} #{parsed.get('run_number')}: {parsed.get('status')} "
+                  f"{parsed.get('conclusion')} {parsed.get('event')} "
+                  f"{(parsed.get('head_sha') or '')[:9]} {parsed.get('html_url')}")
+        else:
+            found, headers = runs(repo, a.workflow, a.limit)
+            for x in found:
+                print(f"#{x.get('run_number')} {x['id']} {x.get('event')} {x.get('status')} "
+                      f"{x.get('conclusion')} {(x.get('head_sha') or '')[:9]} "
+                      f"{x.get('created_at')}")
+    except Refused as exc:
+        print(f"nmas-ci-dispatch: {exc}", file=sys.stderr)
+        return EXIT_TOKEN
+    except RuntimeError as exc:
+        print(f"nmas-ci-dispatch: {exc}", file=sys.stderr)
+        return EXIT_GITHUB
+    warn = expiry_warning(headers)
+    if warn:
+        print(f"nmas-ci-dispatch: {warn}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

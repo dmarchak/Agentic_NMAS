@@ -138,16 +138,20 @@ def cmd_plan(a) -> int:
         print(f"  {k}: the record's results dropped (its text changed)")
     for k in p.get("gone", []):
         print(f"  {k}: gone at head: dropped from the record")
+    for k in p.get("debt_not_rerun", []):
+        print(f"  {k}: known debt at its listed text: not run again")
     if not p["planned"]:
         # Nothing to mutate: the debt is still reported, and its growth still turns the night
         # red; the record keeps what it knew (the finished functions' hashes).
         debt = M.load_debt()
-        prev, now = p.get("previous_debt_entries"), M.debt_entries(debt)
+        prev, now = p.get("previous_debt_entries"), M.debt_entries(debt, counted=True)
         grew = prev is not None and now > prev
         if a.summary:
             with open(a.summary, "a", encoding="utf-8") as fh:
-                fh.write(M.summary(p["base"], p["head"], [], {}, [], 0))
-                fh.write("\n" + "\n".join(M.gone_lines(p) + M.debt_lines([], debt, prev))
+                fh.write(M.summary(p["base"], p["head"], [], {}, [], 0,
+                                   known=M.debt_entries(debt)))
+                fh.write("\n" + "\n".join(M.gone_lines(p) + M.not_rerun_lines(p)
+                                            + M.debt_lines([], debt, prev))
                          + "\n")
                 if grew:
                     fh.write(f"**The debt list grew** from {prev} to {now}: red this night.\n")
@@ -316,8 +320,9 @@ def cmd_report(a) -> int:
                                                           "mutation_equivalent.py"))
     debt = M.load_debt()
     hash_of_function = {M.dotted(f): p["hashes"].get(M.key(f), "") for f in planned}
-    v = M.verdict(results, shows, eq_mod.EQUIVALENT, kinds, debt, hash_of_function)
-    prev_debt, debt_now = p.get("previous_debt_entries"), M.debt_entries(debt)
+    v = M.verdict(results, shows, eq_mod.EQUIVALENT, kinds, debt, hash_of_function,
+                  M.load_sweep())
+    prev_debt, debt_now = p.get("previous_debt_entries"), M.debt_entries(debt, counted=True)
     debt_grew = prev_debt is not None and debt_now > prev_debt
     ran = sum(1 for m, s in tonight.items() if s != "not checked")
     extra = [] if error else [
@@ -340,7 +345,7 @@ def cmd_report(a) -> int:
             extra += [f"**The debt list grew** from {prev_debt} to {debt_now} since the last "
                       "night: red this night; an addition is a person's, made on purpose "
                       "(`nmas-mutation debt add --reason …`), and seen once.", ""]
-    extra += M.gone_lines(p)
+    extra += M.gone_lines(p) + M.not_rerun_lines(p)
     carried, skipped = p.get("carried") or {}, p.get("skipped_moved") or {}
     if carried or skipped:
         extra += [f"Moved, their text unchanged, known from an earlier night ({len(carried)} "
@@ -354,7 +359,7 @@ def cmd_report(a) -> int:
         fh.write(M.summary(p["base"], p["head"], planned, v, out["left"], a.budget, error,
                            out["empty"], extra,
                            cause=ran_record.get("failure") or [] if out["error"] else [],
-                           moved=p.get("moved")))
+                           moved=p.get("moved"), known=M.debt_entries(debt)))
     M.save(os.path.join(os.path.dirname(a.plan), "report.json"),
            {"plan": p, "mutmut_exit": a.mutmut_exit, "error": error, "results": results,
             "verdict": v, **{k: out[k] for k in ("done", "left", "empty")}})
@@ -364,7 +369,8 @@ def cmd_report(a) -> int:
     # Every open kind stays in the record and runs again each night (a test that kills a debt
     # survivor is seen); only a VERDICT survivor off the debt list, or the list grown, fails it.
     M.save(a.state_out, M.next_state(p["head"], planned, results,
-                                     [s["mutant"] for s in v["new"] + v["message"] + v["debt"]],
+                                     [s["mutant"] for s in v["new"] + v["message"] + v["debt"]
+                                      + v["sweep"]],
                                      p["hashes"], finished_before=p.get("finished_before"),
                                      debt_count=debt_now))
     for s in v["new"]:
@@ -399,8 +405,11 @@ def cmd_debt(a) -> int:
         return M.function_hash(M.git("show", f"{head}:{path}"), qualname)
 
     debt = M.load_debt(a.file)
+    # The sweep's reason adds only what the night found finishing the baseline sweep (the
+    # operator's approval, 2026-10-14, for that sweep alone); any other reason, only NEW ones.
+    which = "sweep" if (a.reason or "").strip() == M.SWEEP_REASON else "new"
     try:
-        added = M.add_to_debt(debt, report["verdict"]["new"], a.reason, hash_of)
+        added = M.add_to_debt(debt, report["verdict"].get(which, []), a.reason, hash_of)
     except ValueError as e:
         print(f"nmas-mutation: refused: {e}", file=sys.stderr)
         return 2
