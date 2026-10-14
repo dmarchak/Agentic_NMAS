@@ -208,6 +208,14 @@ The NetBox sync reads golden configs as the source of truth — no live SSH sess
 4. All devices, interfaces, IP addresses, VPN tunnels, and static routes are pushed automatically.
 5. To clean up, click **Remove** in the NetBox panel — this deletes the list's region, site, VRF, and all associated records from NetBox.
 
+## Testing
+
+The suite runs offline: every test, unit or not, is refused any network connection, and a run
+that touches the checkout's `data/` fails. `scripts/nmas-test` runs it; `scripts/nmas-coverage`
+reports which automation functions the unit tests reach, and CI gates on that report as a
+ratchet. How to run both, the test tiers, how coverage is counted and how to read the report:
+[docs/TESTING.md](docs/TESTING.md).
+
 ## Security Notes
 
 - All device passwords and enable secrets are encrypted at rest using Fernet symmetric encryption. The key lives at `data/key.key` — protect it.

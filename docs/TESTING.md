@@ -11,7 +11,120 @@ the list by hash. Most of what the tests protect is some version of *the tool
 never does something nobody approved, and never claims something it did not
 establish.*
 
+## Unit tests and the coverage tool (Lab 7, 2026-10-14)
+
+### Running them
+
+```bash
+scripts/nmas-test                       # the suite, offline and confined (args go to pytest)
+scripts/nmas-test tests/test_roundtrip.py -k fixed_point     # one file, one test
+scripts/nmas-coverage scope             # every module's category; fails on an unplaced one
+scripts/nmas-coverage asserts           # the tests that assert nothing; fails on a new one
+# The coverage run (what CI's four jobs do, each its shard), then the report:
+NMAS_TEST_TIERS=<folder> COVERAGE_FILE=<file> scripts/nmas-test -n 4 \
+    --cov=modules --cov=routes --cov=app --cov-report= --cov-context=test --cov-branch
+scripts/nmas-coverage report --data <combined file> --tiers <folder> --html coverage.html
+scripts/nmas-coverage baseline --data <combined file> --tiers <folder>   # moves the baseline
+```
+
+### The offline rule, and its guard
+
+**Every test runs offline, unit or not.** The guard is three layers (C46, tests/network_guard.py):
+- in the test process, a connection to anything but loopback raises `NetworkRefused`;
+- every process a test starts gets a `sitecustomize` that refuses the same, refusing shims for
+  ssh, curl and the like, and local-only git; an attempt fails the test that made it, by name;
+- `scripts/nmas-test` runs the suite in a namespace with only a loopback interface, and a run
+  that should be confined and is not stops.
+
+`tests/test_network_guard.py` plants the bad tests and shows each layer catching them (for
+example `test_the_c46_case_cannot_reach_the_live_nmas`). No test needs a credential: fixtures
+use obviously fake values the publication scan accepts. Live-lab checks are not tests and never
+run here or in CI.
+
+### The tiers
+
+A test's tier is measured by what it **did**, never declared by its folder or a marker
+(tests/conftest.py records it when `NMAS_TEST_TIERS` is set):
+
+| Tier | What the test did | Why |
+|---|---|---|
+| **unit** | ran Mercury's code in its own process | the code under test is in the test's process, offline. **The Flask-client tests are unit tests:** Flask's test client calls the app in the same process, with no socket and no server, so a route test is a unit test of the route's code with the app's wiring. A local tool the code itself calls (Mercury commits through `git`) does not change the tier. |
+| **spawns** | started a Python interpreter or a program of this checkout | that code runs in a child process, whose lines coverage cannot credit to the test |
+| **browser** | drove a browser session (tests/browser.py) | a real Firefox renders the page; the code runs in the served app's threads |
+
+The coverage tool's **headline is the unit tier** (the lab's question: which code do unit tests
+reach?). A second column counts every offline tier; where they differ, the gap is the finding:
+those functions are reached only through a child process or a browser.
+
+### The scope: what "automation code" is
+
+The package structure decides (`tests/coverage_scope.py`, `RULES`): `modules/nsot/`,
+`modules/readers/`, `modules/inventory/`, `modules/integrations/` and every other module in
+`modules/` are **automation**; `routes/` and `app.py` are **support** (the web layer). Only the
+exceptions are listed (`EXCEPTIONS`), each with its reason: support modules in `modules/` (page
+models, settings, identity), and **retiring** modules (the AI family, the in-app receivers, today's
+Backups), shown in their own section and kept out of the totals. A module no rule or exception
+places fails the tool, and so does an exception for a file that is not there
+(`TestThisRepository` in tests/test_nmas_coverage.py, run by every gate).
+
+### How function coverage is counted, and why
+
+coverage.py measures every line with a **context per test** (`--cov-context=test`); each module
+is parsed with `ast` (scripts/pydefs.py, the same walker the duplicate-definition check uses) to
+list its functions; **a function is covered when at least one line of its body ran while a unit
+test ran** (the `|run` phase: a fixture's setup does not count). The `def` line and decorators run
+at import and never count.
+
+Why "executed by a test" and not "a test mentions its name": name-matching overcounts. A test
+that imports a function, names it in a string or a parametrize id, or tests another function of
+the same name would count it covered without running it; and a function reached only through its
+caller (most of them) would read as untested. Execution is the fact; a name is a guess.
+
+The counting rules (scripts/pydefs.py; each pinned by `TestTheCountingRules`):
+- nested functions and closures count with the function that encloses them (they run only when
+  it does); lambdas are never counted;
+- listed but not counted, with the reason in the report: properties and their setters (read like
+  attributes), `@overload` signatures and `@abstractmethod`s and Protocol methods (declarations),
+  stubs (a body of only a docstring, `pass`, `...` or `raise NotImplementedError`), and anything
+  under `if TYPE_CHECKING:` or `if __name__ == "__main__":`.
+
+Beside the function figure: **line coverage** of the unit tier, and **branch coverage** over every
+tier, so a function "covered" by one line is visibly unlike one exercised through. And the tests
+that **assert nothing** (no `assert`, no `pytest.raises`, no assertion through a helper in tests/):
+such a test executes lines and checks none, so the gate fails on a new one.
+
+### Reading the report
+
+The terminal table and the HTML page lead with the top line (functions reached by unit tests,
+and by any tier), then **the modules with no unit test at all** (the lab's "BGP_Cfg has none"),
+then every automation module lowest first: functions covered of total, unit %, all-tier %, unit
+line %, all-tier branch %. In the HTML each module opens to its functions: covered by a unit
+test, by another tier only, or not reached, with the unit tests that reach each one.
+
+### The ratchet, and moving the baseline
+
+`tests/coverage_baseline.json` holds each automation module's unit function figure and the list
+of tests that assert nothing (empty: the ten found were fixed, 2026-10-14). CI's coverage job fails
+when an automation module's unit function coverage falls below its baseline, when a new automation
+module arrives with no unit test, or when a new test asserts nothing. There is no absolute
+threshold. **The baseline moves only by `scripts/nmas-coverage baseline`**, run by a person on a
+measurement and committed: never by the job itself.
+
+### Where it runs
+
+- **The local gate** (scripts/nmas-gate) runs CI's four shards as today, without per-test
+  contexts: measured on shard a alone, 125 s without them and 195 s with (and 81 MB of data per
+  shard). The tool's fast checks run in it as ordinary tests: the scope complete, no new
+  assertion-free test (tests/test_nmas_coverage.py).
+- **CI** (.github/workflows/ci.yml): each of the four `test` jobs measures per test into its own
+  data file and records its tiers; the **`coverage` job** combines the four, writes the report to
+  the run's job summary, uploads `coverage-report` (the HTML and JSON) as an artifact, and fails
+  on the ratchet.
+
 ## Size and organisation
+
+*Dated: measured 2026-09-26. Today's figures come from the coverage tool's report (above, and
+each CI run's job summary): on 2026-10-14, 512 test files and 8,990 test functions.*
 
 - **3,942 tests in 137 files** (median 19 per file). They come from 3,552 test
   functions, some run with several inputs.
@@ -479,7 +592,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_run_results.py` | 7.1: Verify and Abandon recorded in `onboarding_runs.jsonl` (0600, masked on the way in, absent vs unreadable), each result drawn FROM the recorded row as the verified person; a record that could not be written is part of the result (planted as a directory: `open_secure` creates missing parents, so a missing one would be written); a dry-run abandon records nothing; the pending banner reads back each row's last run and, for a run that took its device off the list, "finished recently"; an unreadable record is drawn as that |
 | `test_session_end_guard.py` | (2026-10-01, CI run #241) A non-daemon thread alive at the session's end is named with its target, a daemon one is not, and one finishing within the grace is not; the live server the browser tests use stops bounded with its socket.io sessions closed, against a real long-poll session (engineio's own `disconnect()` blocks for ever waiting for a client to drain, measured building it) |
 | `test_suite_bound.py` | (C343, 2026-10-02: a probe skips conftest's whole-program import, `NMAS_PROBE_RUN`, so its start does not grow with the program; a probe asserting the app was not imported, its control the opt-out removed.) the suite's bound (NMAS_TEST_TIMEOUT, 300 s, from the measured serial time) through the REAL runner over a test that hangs: rc 124, the hanging test and its line named, a finished test not named; a run that finishes is never reported as a timeout |
-| `test_no_duplicate_definitions.py` | C90's sibling: no module or class body defines a name twice (a second `def` silently replaces the first; in a test class it drops a test), across the program, scripts and tests (floor 300 files); a property's setter is the one exemption, anchored on the real one |
+| `test_no_duplicate_definitions.py` | C90's sibling: no module or class body defines a name twice (a second `def` silently replaces the first; in a test class it drops a test), across the program, scripts and tests (floor 300 files); a property's setter and the definition after `@overload` are the exemptions, anchored on the real one; the definitions come from `scripts/pydefs.py`, the walker the coverage tool shares |
+| `test_nmas_coverage.py` | Lab 7's coverage tool (`scripts/nmas_coverage.py`): the lab's example (3 of 6 functions tested is 50%, the module imported inside a test so def lines cannot count), a module no test reaches named, a module no rule places and a stale exception failing; the tiers' two columns; the counting rules (nested, property, overload, abstract, Protocol, stub, lambda, TYPE_CHECKING, `__main__`); the ratchet's three failures; the assertion check following helpers; this repository's scope complete and no new assertion-free test |
 | `test_removal_reads_before_it_forgets.py` | C130: a NetBox removal forgets a record entry only for an object NetBox answered 404 for, and a preview forgets nothing; an object that could not be read (a 500) is `failed`, neither deleted nor forgotten, and the preview names it first, fails its read gate and cannot be confirmed; a clean preview stays confirmable (the floor) |
 | `test_import_preview_is_what_happens.py` | C134, C135: through the real sync against FakeNetBox, an import PREVIEW writes no sync status and leaves the last real import's record byte-identical (a real import still records, the control); a dry-run PATCH returns the object as NetBox holds it with the payload over it (so no phantom `tags` write), and the preview names what each update CHANGES, says "changes nothing" for a re-send, and counts changes apart from re-sends |
 | `test_netbox_holds_no_secret.py` | C95 (a): over the nine REAL fleet configs, through the import's own builders, no credential-slot value reaches NetBox's `local_context_data` (read with a pattern independent of `redact.py`, the lines kept and masked), and the structured SNMP communities keep their permission and carry no value; a floor on the slots to mask |

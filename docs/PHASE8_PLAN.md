@@ -289,6 +289,12 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | 8 | Not yet decided: the CLAUDE.md block is the operator's to paste. |
 | 9 | Not yet decided: the owner of each feature. |
 
+**Noted 2026-10-14 (Lab 7):** the function-coverage report (`scripts/nmas-coverage`: per
+automation module, unit and all-tier function coverage with line and branch beside it, and the
+tests that reach each function) has no GUI page; it lives in the CLI, the Actions job summary
+and an HTML artifact. It is a candidate tile for the Toolbox (C762) later, reading the last CI
+run's report, not running the suite.
+
 **Noted 2026-10-13 (the operator, with D15's removal):** today's Approvals screen leaves with the
 AI family; a drift row points to its own Capture and Deploy (C739), and `approval_queue` stays
 internally. **The AI change-request queue (8.0) therefore needs its own approvals view,

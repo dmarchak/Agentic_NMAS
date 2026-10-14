@@ -1,5 +1,7 @@
 # CI-only tools, not on the deployment host. Installed with --no-deps beside
-# requirements.lock, so they cannot move a host version. Coverage is REPORTED,
-# never gated (NSOT_PLAN, course labs).
+# requirements.lock, so they cannot move a host version. Coverage gates only as a
+# RATCHET (Lab 7, 2026-10-14): an automation module's function coverage may not fall
+# below its committed baseline, and no absolute threshold (scripts/nmas_coverage.py;
+# docs/TESTING.md, "The coverage tool").
 pytest-cov==7.1.0
 coverage==7.16.1

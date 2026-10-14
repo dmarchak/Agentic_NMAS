@@ -271,6 +271,11 @@ class SpawnGuard:
         self.log = os.path.join(root, "attempts.tsv")
         self.current = ""
         self.spawned = 0
+        #: Of those, the ones that run OUR code in another process (a Python interpreter, or a
+        #: program of this checkout such as scripts/nmas-config-check): the test tiers call such a
+        #: test "spawns" (tests/conftest.py). A tool the code under test calls (git, openssl)
+        #: does not count: that test's code still runs in its own process.
+        self.spawned_ours = 0
         self.fakes_under = ""          # pytest's basetemp, set at session start
         self.checkout_data = ""        # the checkout's data/, which no child may write
         os.makedirs(self.shims, exist_ok=True)
@@ -329,7 +334,38 @@ def _guarded_popen_init(self, args, *rest, **kw):
         else:
             kw["env"] = _guard.child_env(kw.get("env"))
         _guard.spawned += 1
+        if runs_our_code(args):
+            _guard.spawned_ours += 1
     return _real_popen_init(self, args, *rest, **kw)
+
+
+_CHECKOUT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def runs_our_code(args) -> bool:
+    """Whether a child started with *args* runs this checkout's code: a Python interpreter, or
+    a program inside the checkout (directly, or through `bash`/`sh`/`env`)."""
+    import shlex
+    import sys as _sys
+
+    try:
+        argv = shlex.split(args) if isinstance(args, str) else [str(a) for a in args]
+    except (TypeError, ValueError):
+        return False
+    while argv and (os.path.basename(argv[0]) in ("env", "bash", "sh", "nice", "timeout")
+                    or "=" in argv[0] or argv[0].startswith("-") or argv[0].isdigit()):
+        argv = argv[1:]
+    if not argv:
+        return False
+    prog = argv[0]
+    if os.path.basename(prog).startswith("python") or prog == _sys.executable:
+        return True
+    if os.sep not in prog:
+        return False
+    for full in (os.path.abspath(prog), os.path.join(_CHECKOUT, prog)):
+        if full.startswith(_CHECKOUT + os.sep) and os.path.exists(full):
+            return True
+    return False
 
 
 def install_spawn_guard(root):

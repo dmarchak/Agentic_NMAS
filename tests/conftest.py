@@ -146,10 +146,10 @@ def _test_tier(request):
         return
     from tests.browser import Browser
     guard = network_guard.spawn_guard()
-    spawned, calls = guard.spawned, Browser.calls
+    spawned, calls = guard.spawned_ours, Browser.calls
     yield
     tier = ("browser" if Browser.calls > calls else
-            "spawns" if guard.spawned > spawned else "unit")
+            "spawns" if guard.spawned_ours > spawned else "unit")
     worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
     with open(os.path.join(out, f"tiers-{worker}-{os.getpid()}.jsonl"), "a",
               encoding="utf-8") as fh:

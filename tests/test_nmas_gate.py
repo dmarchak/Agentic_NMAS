@@ -157,23 +157,33 @@ def _ci_suite_args():
     return cmd.split()[1:], dict(re.findall(r"(\w+): \"?([\w.]+)\"?", env.split("env:")[1]))
 
 
+#: What CI passes and the gate deliberately does not (Lab 7, 2026-10-14, the operator's split):
+#: the per-test measurement the coverage job reads. Measured on shard a alone: 125 s without,
+#: 195 s with; the gate keeps its time, and the tests it runs are the same tests.
+CI_ONLY_ARGS = ("--cov-context=test", "--cov-branch")
+CI_ONLY_ENV = ("COVERAGE_FILE", "NMAS_TEST_TIERS")
+
+
 def test_the_default_suite_is_cis_command():
     """The gate's suite is CI's, read from the workflow itself (it pinned "-n 2" as CI's while
     CI ran `-n auto`, 2026-10-03): every argument CI passes, in CI's environment, with CI's
-    runner's worker count for `auto`. Only the coverage REPORT differs (a terminal table)."""
+    runner's worker count for `auto`. Only the coverage REPORT differs (a terminal table), and
+    the per-test measurement CI alone takes (CI_ONLY_ARGS, CI_ONLY_ENV)."""
     gate = _gate_module()
     args, env = _ci_suite_args()
     assert len(args) >= 8 and env, (args, env)
+    assert set(CI_ONLY_ARGS) <= set(args), "the exemption names what CI really passes"
     suite = gate.SUITE.split()
     for a in args:
         if a == "auto":
             assert suite[suite.index("-n") + 1] == str(gate.CI_WORKERS)
         elif a.startswith("--cov-report"):
             assert any(s.startswith("--cov-report") for s in suite)
-        else:
+        elif a not in CI_ONLY_ARGS:
             assert a in suite, (a, gate.SUITE)
     for k, v in env.items():
-        assert f"{k}={v}" in gate.SUITE, (k, v)
+        if k not in CI_ONLY_ENV:
+            assert f"{k}={v}" in gate.SUITE, (k, v)
 
 
 def test_each_job_is_a_gate_command():

@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""nmas-coverage: which automation code the tests reach, function by function (docs/TESTING.md,
+"The coverage tool"; the logic is scripts/nmas_coverage.py).
+
+    nmas-coverage scope                       every module's category; fails on an unclassified
+                                              module or a stale exception
+    nmas-coverage asserts                     the tests that assert nothing; fails on a new one
+    nmas-coverage report --data D --tiers T   the report from a combined coverage data file with
+                                              per-test contexts (--cov-context=test) and the tier
+                                              records (NMAS_TEST_TIERS); options --json, --html,
+                                              --summary (Markdown, for GITHUB_STEP_SUMMARY), and
+                                              --check (the ratchet: exit 1 on a failure)
+    nmas-coverage baseline --data D --tiers T writes tests/coverage_baseline.json from the run:
+                                              the ONLY way the baseline moves
+
+The coverage run itself is the suite with contexts, for example:
+    NMAS_TEST_TIERS=<folder> scripts/nmas-test -n 4 --cov=modules --cov=routes --cov=app \\
+        --cov-context=test --cov-branch --cov-report=
+"""
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import nmas_coverage as C  # noqa: E402
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="nmas-coverage", description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("scope")
+    sub.add_parser("asserts")
+    for name in ("report", "baseline"):
+        p = sub.add_parser(name)
+        p.add_argument("--data", required=True, help="a combined coverage data file")
+        p.add_argument("--tiers", required=True, help="the folder of tier records")
+        if name == "report":
+            p.add_argument("--json")
+            p.add_argument("--html")
+            p.add_argument("--summary")
+            p.add_argument("--check", action="store_true")
+    args = ap.parse_args(argv)
+
+    if args.cmd == "scope":
+        placed = C.classify_all(C.measured_files(), C.load_scope())
+        counts = {}
+        for _path, (category, _why) in placed["files"].items():
+            counts[category] = counts.get(category, 0) + 1
+        print("modules by category: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+        for p in placed["unclassified"]:
+            print(f"UNCLASSIFIED: {p} (no rule or exception in tests/coverage_scope.py places it)")
+        for p in placed["stale"]:
+            print(f"STALE: {p} (an exception for a file that is not there)")
+        return 1 if placed["unclassified"] or placed["stale"] else 0
+
+    if args.cmd == "asserts":
+        found = C.assertion_free(C.scope_tests())
+        known = set(_baseline().get("assertion_free", []))
+        new = [t for t in found if t not in known]
+        print(f"tests that assert nothing: {len(found)} ({len(found) - len(new)} baselined)")
+        for t in new:
+            print(f"NEW: {t}")
+        return 1 if new else 0
+
+    report = C.measure(args.data, args.tiers)
+    if args.cmd == "baseline":
+        with open(C.BASELINE, "w", encoding="utf-8") as fh:
+            json.dump(C.baseline_of(report), fh, indent=1, sort_keys=True)
+            fh.write("\n")
+        print(f"wrote {os.path.relpath(C.BASELINE, C.ROOT)}")
+        return 0
+    failures = C.ratchet(report, _baseline()) + [
+        f"{p}: no rule or exception places it" for p in report["unclassified"]] + [
+        f"{p}: an exception for a file that is not there" for p in report["stale_exceptions"]]
+    print(C.table(report))
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as fh:
+            json.dump(report, fh, indent=1)
+    if args.html:
+        with open(args.html, "w", encoding="utf-8") as fh:
+            fh.write(C.html_report(report, failures))
+    if args.summary:
+        with open(args.summary, "a", encoding="utf-8") as fh:
+            fh.write(C.summary_markdown(report, failures))
+    if failures:
+        print("\nTHE RATCHET:\n" + "\n".join(f"  {f}" for f in failures))
+    return 1 if (args.check and failures) else 0
+
+
+def _baseline() -> dict:
+    try:
+        with open(C.BASELINE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return {}
+
+
+if __name__ == "__main__":
+    sys.exit(main())

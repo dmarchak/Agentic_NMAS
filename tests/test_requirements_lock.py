@@ -34,7 +34,13 @@ IMPORT_TO_DIST = {
     "networkx": "networkx",
 }
 #: Local packages and paths, not distributions.
-LOCAL = {"modules", "routes", "tests", "app", "telnetlib", "conftest", "fixtures"}
+LOCAL = {"modules", "routes", "tests", "app", "telnetlib", "conftest", "fixtures",
+         # scripts/' own helper modules, imported by its tools (Lab 7, 2026-10-14)
+         "nmas_coverage", "pydefs"}
+#: The tools of CI's coverage job and the laptop, never the host's: each import, the ONLY file
+#: that may make it, pinned exactly in requirements-ci.txt instead of the host's lock
+#: (test_each_ci_tool_is_pinned_exactly_in_the_ci_requirements).
+CI_TOOLS = {"coverage": "scripts/nmas_coverage.py"}
 #: The command uv records in the lock's header: the lock is compiled, never edited.
 COMMAND = ("uv pip compile requirements.txt --override requirements-overrides.txt "
            "--generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu "
@@ -50,19 +56,23 @@ def static_imports(root=ROOT):
     scripts/: what git tracks), at any depth of its code."""
     paths = [p for p in tracked("app.py", "modules", "routes", "scripts", root=root)
              if p.endswith(".py") or ("/scripts/" in p and "." not in os.path.basename(p))]
-    found = set()
+    found = {}
     for path in paths:
         try:
             with open(path, encoding="utf-8") as fh:
                 tree = ast.parse(fh.read())
         except (SyntaxError, UnicodeDecodeError, OSError):
             continue
+        rel = os.path.relpath(path, root)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                found |= {a.name.split(".")[0] for a in node.names}
+                for a in node.names:
+                    found.setdefault(a.name.split(".")[0], set()).add(rel)
             elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-                found.add(node.module.split(".")[0])
-    return sorted(n for n in found if n not in sys.stdlib_module_names and n not in LOCAL)
+                found.setdefault(node.module.split(".")[0], set()).add(rel)
+    return sorted(n for n, where in found.items()
+                  if n not in sys.stdlib_module_names and n not in LOCAL
+                  and not (n in CI_TOOLS and where == {CI_TOOLS[n]}))
 
 
 def _lock_text():
@@ -104,6 +114,16 @@ def test_every_import_is_authored_and_pinned_exactly():
     dists = {_norm(IMPORT_TO_DIST[n]) for n in static_imports()}
     assert sorted(dists - authored) == [], "imported, not a line of requirements.txt"
     assert sorted(dists - set(pins)) == [], "imported, not in the lock: recompile"
+
+
+def test_each_ci_tool_is_pinned_exactly_in_the_ci_requirements():
+    """A CI tool's import is outside the host's lock only because requirements-ci.txt pins it
+    exactly, and only its one file imports it (a second importer would be the host's)."""
+    ci = {_norm(r.name): r for r in _authored("requirements-ci.txt")}
+    for name, only in CI_TOOLS.items():
+        req = ci.get(_norm(name))
+        assert req is not None and str(req.specifier).startswith("=="), (name, req)
+        assert os.path.exists(os.path.join(ROOT, only)), only
 
 
 def test_the_lock_is_compiled_from_the_authored_input_never_edited():

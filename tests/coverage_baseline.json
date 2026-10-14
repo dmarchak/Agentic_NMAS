@@ -1,0 +1,633 @@
+{
+ "assertion_free": [],
+ "modules": {
+  "modules/arrival_watch.py": {
+   "covered_unit": 5,
+   "functions": 8
+  },
+  "modules/breakglass.py": {
+   "covered_unit": 30,
+   "functions": 30
+  },
+  "modules/breakglass_export.py": {
+   "covered_unit": 7,
+   "functions": 7
+  },
+  "modules/bulk_ops.py": {
+   "covered_unit": 4,
+   "functions": 8
+  },
+  "modules/cli_tokens.py": {
+   "covered_unit": 1,
+   "functions": 2
+  },
+  "modules/commands.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/config_git.py": {
+   "covered_unit": 5,
+   "functions": 10
+  },
+  "modules/config_read.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/configure.py": {
+   "covered_unit": 0,
+   "functions": 20
+  },
+  "modules/connection.py": {
+   "covered_unit": 29,
+   "functions": 31
+  },
+  "modules/credential_changes.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/credentials.py": {
+   "covered_unit": 23,
+   "functions": 23
+  },
+  "modules/deploy_job.py": {
+   "covered_unit": 6,
+   "functions": 6
+  },
+  "modules/device.py": {
+   "covered_unit": 31,
+   "functions": 33
+  },
+  "modules/device_reload.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/device_serials.py": {
+   "covered_unit": 5,
+   "functions": 5
+  },
+  "modules/dhcp_discovery.py": {
+   "covered_unit": 12,
+   "functions": 13
+  },
+  "modules/dhcp_exclusions.py": {
+   "covered_unit": 10,
+   "functions": 11
+  },
+  "modules/dhcp_lifetimes.py": {
+   "covered_unit": 8,
+   "functions": 8
+  },
+  "modules/dhcp_reservations.py": {
+   "covered_unit": 26,
+   "functions": 27
+  },
+  "modules/dhcp_subnets.py": {
+   "covered_unit": 30,
+   "functions": 32
+  },
+  "modules/drained.py": {
+   "covered_unit": 11,
+   "functions": 16
+  },
+  "modules/drift_check.py": {
+   "covered_unit": 31,
+   "functions": 35
+  },
+  "modules/fanout.py": {
+   "covered_unit": 2,
+   "functions": 2
+  },
+  "modules/heartbeat_windows.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/integrations/__init__.py": {
+   "covered_unit": 2,
+   "functions": 2
+  },
+  "modules/integrations/base.py": {
+   "covered_unit": 10,
+   "functions": 11
+  },
+  "modules/integrations/kea.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/integrations/monitoring_profile.py": {
+   "covered_unit": 7,
+   "functions": 7
+  },
+  "modules/integrations/netbox.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/integrations/nsot_git.py": {
+   "covered_unit": 2,
+   "functions": 2
+  },
+  "modules/integrations/proxmox.py": {
+   "covered_unit": 11,
+   "functions": 13
+  },
+  "modules/integrations/s3_archive.py": {
+   "covered_unit": 10,
+   "functions": 10
+  },
+  "modules/inventory/__init__.py": {
+   "covered_unit": 18,
+   "functions": 19
+  },
+  "modules/inventory/netbox_source.py": {
+   "covered_unit": 6,
+   "functions": 6
+  },
+  "modules/inventory/role_kind.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/inventory/source_config.py": {
+   "covered_unit": 8,
+   "functions": 8
+  },
+  "modules/inventory_edit.py": {
+   "covered_unit": 10,
+   "functions": 10
+  },
+  "modules/monitoring_coverage.py": {
+   "covered_unit": 22,
+   "functions": 22
+  },
+  "modules/neighbours.py": {
+   "covered_unit": 23,
+   "functions": 23
+  },
+  "modules/netbox_authz.py": {
+   "covered_unit": 9,
+   "functions": 11
+  },
+  "modules/netbox_cascade.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/netbox_client.py": {
+   "covered_unit": 86,
+   "functions": 110
+  },
+  "modules/netbox_context_mask.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/netbox_guard.py": {
+   "covered_unit": 54,
+   "functions": 56
+  },
+  "modules/netbox_jobs.py": {
+   "covered_unit": 11,
+   "functions": 11
+  },
+  "modules/netbox_ops.py": {
+   "covered_unit": 9,
+   "functions": 10
+  },
+  "modules/network_source.py": {
+   "covered_unit": 8,
+   "functions": 8
+  },
+  "modules/nsot/__init__.py": {
+   "covered_unit": 0,
+   "functions": 0
+  },
+  "modules/nsot/adopt.py": {
+   "covered_unit": 31,
+   "functions": 34
+  },
+  "modules/nsot/approval.py": {
+   "covered_unit": 21,
+   "functions": 21
+  },
+  "modules/nsot/approve_op.py": {
+   "covered_unit": 9,
+   "functions": 10
+  },
+  "modules/nsot/archive.py": {
+   "covered_unit": 7,
+   "functions": 7
+  },
+  "modules/nsot/authorisation.py": {
+   "covered_unit": 10,
+   "functions": 10
+  },
+  "modules/nsot/baseline_event.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/nsot/blast_radius.py": {
+   "covered_unit": 5,
+   "functions": 6
+  },
+  "modules/nsot/bootstrap_config.py": {
+   "covered_unit": 7,
+   "functions": 7
+  },
+  "modules/nsot/bulk_intent.py": {
+   "covered_unit": 13,
+   "functions": 13
+  },
+  "modules/nsot/capture_job.py": {
+   "covered_unit": 5,
+   "functions": 5
+  },
+  "modules/nsot/command_sets.py": {
+   "covered_unit": 5,
+   "functions": 5
+  },
+  "modules/nsot/config_check.py": {
+   "covered_unit": 21,
+   "functions": 27
+  },
+  "modules/nsot/context.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/nsot/convergence.py": {
+   "covered_unit": 5,
+   "functions": 5
+  },
+  "modules/nsot/credential_rotation.py": {
+   "covered_unit": 52,
+   "functions": 54
+  },
+  "modules/nsot/decline.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/nsot/deploy.py": {
+   "covered_unit": 45,
+   "functions": 45
+  },
+  "modules/nsot/device_environment.py": {
+   "covered_unit": 5,
+   "functions": 5
+  },
+  "modules/nsot/device_ops.py": {
+   "covered_unit": 28,
+   "functions": 29
+  },
+  "modules/nsot/expected_effects.py": {
+   "covered_unit": 22,
+   "functions": 22
+  },
+  "modules/nsot/golden_state.py": {
+   "covered_unit": 7,
+   "functions": 7
+  },
+  "modules/nsot/hooks.py": {
+   "covered_unit": 9,
+   "functions": 11
+  },
+  "modules/nsot/hostvars.py": {
+   "covered_unit": 54,
+   "functions": 54
+  },
+  "modules/nsot/ifnames.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/nsot/intent_edit.py": {
+   "covered_unit": 16,
+   "functions": 16
+  },
+  "modules/nsot/intent_match.py": {
+   "covered_unit": 7,
+   "functions": 7
+  },
+  "modules/nsot/intent_ops.py": {
+   "covered_unit": 13,
+   "functions": 13
+  },
+  "modules/nsot/ip_sla_policy.py": {
+   "covered_unit": 29,
+   "functions": 29
+  },
+  "modules/nsot/listref.py": {
+   "covered_unit": 9,
+   "functions": 10
+  },
+  "modules/nsot/logging_path.py": {
+   "covered_unit": 17,
+   "functions": 17
+  },
+  "modules/nsot/manifest.py": {
+   "covered_unit": 25,
+   "functions": 25
+  },
+  "modules/nsot/migrate.py": {
+   "covered_unit": 11,
+   "functions": 12
+  },
+  "modules/nsot/normalize.py": {
+   "covered_unit": 21,
+   "functions": 21
+  },
+  "modules/nsot/onboard.py": {
+   "covered_unit": 59,
+   "functions": 62
+  },
+  "modules/nsot/parsers/__init__.py": {
+   "covered_unit": 1,
+   "functions": 1
+  },
+  "modules/nsot/parsers/base.py": {
+   "covered_unit": 55,
+   "functions": 58
+  },
+  "modules/nsot/parsers/cisco_ios.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/nsot/parsers/cisco_iosxe.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/nsot/persist_op.py": {
+   "covered_unit": 5,
+   "functions": 5
+  },
+  "modules/nsot/platform.py": {
+   "covered_unit": 10,
+   "functions": 10
+  },
+  "modules/nsot/platform_defaults.py": {
+   "covered_unit": 2,
+   "functions": 2
+  },
+  "modules/nsot/privileged.py": {
+   "covered_unit": 18,
+   "functions": 18
+  },
+  "modules/nsot/profile.py": {
+   "covered_unit": 21,
+   "functions": 22
+  },
+  "modules/nsot/profile_apply.py": {
+   "covered_unit": 7,
+   "functions": 7
+  },
+  "modules/nsot/profile_propose.py": {
+   "covered_unit": 21,
+   "functions": 21
+  },
+  "modules/nsot/reads.py": {
+   "covered_unit": 27,
+   "functions": 27
+  },
+  "modules/nsot/receipts.py": {
+   "covered_unit": 18,
+   "functions": 18
+  },
+  "modules/nsot/record_exceptions.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/nsot/recreate.py": {
+   "covered_unit": 12,
+   "functions": 12
+  },
+  "modules/nsot/reload_op.py": {
+   "covered_unit": 15,
+   "functions": 17
+  },
+  "modules/nsot/remote.py": {
+   "covered_unit": 40,
+   "functions": 42
+  },
+  "modules/nsot/removal.py": {
+   "covered_unit": 25,
+   "functions": 25
+  },
+  "modules/nsot/render_artifact.py": {
+   "covered_unit": 11,
+   "functions": 12
+  },
+  "modules/nsot/repo.py": {
+   "covered_unit": 80,
+   "functions": 81
+  },
+  "modules/nsot/restore.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/nsot/retire.py": {
+   "covered_unit": 22,
+   "functions": 22
+  },
+  "modules/nsot/rotate_op.py": {
+   "covered_unit": 3,
+   "functions": 5
+  },
+  "modules/nsot/roundtrip.py": {
+   "covered_unit": 20,
+   "functions": 20
+  },
+  "modules/nsot/save_op.py": {
+   "covered_unit": 10,
+   "functions": 10
+  },
+  "modules/nsot/scheduled_rotation.py": {
+   "covered_unit": 37,
+   "functions": 40
+  },
+  "modules/nsot/sections.py": {
+   "covered_unit": 2,
+   "functions": 2
+  },
+  "modules/nsot/seed.py": {
+   "covered_unit": 8,
+   "functions": 8
+  },
+  "modules/nsot/startup_check.py": {
+   "covered_unit": 4,
+   "functions": 6
+  },
+  "modules/nsot/startup_source.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/nsot/template_bindings.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/nsot/template_bring.py": {
+   "covered_unit": 5,
+   "functions": 5
+  },
+  "modules/nsot/template_coverage.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/nsot/template_edit.py": {
+   "covered_unit": 6,
+   "functions": 6
+  },
+  "modules/nsot/template_write.py": {
+   "covered_unit": 1,
+   "functions": 1
+  },
+  "modules/nsot/templates_repo.py": {
+   "covered_unit": 26,
+   "functions": 26
+  },
+  "modules/nsot/tftp_once.py": {
+   "covered_unit": 2,
+   "functions": 3
+  },
+  "modules/nsot/verify_scope.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/nsot/ztp.py": {
+   "covered_unit": 27,
+   "functions": 30
+  },
+  "modules/nsot/ztp_responder.py": {
+   "covered_unit": 14,
+   "functions": 17
+  },
+  "modules/path_trace.py": {
+   "covered_unit": 19,
+   "functions": 19
+  },
+  "modules/pipeline.py": {
+   "covered_unit": 53,
+   "functions": 56
+  },
+  "modules/platform_maps.py": {
+   "covered_unit": 13,
+   "functions": 15
+  },
+  "modules/prometheus_targets.py": {
+   "covered_unit": 25,
+   "functions": 28
+  },
+  "modules/reader_job.py": {
+   "covered_unit": 26,
+   "functions": 26
+  },
+  "modules/reader_wakes.py": {
+   "covered_unit": 4,
+   "functions": 4
+  },
+  "modules/readers/__init__.py": {
+   "covered_unit": 0,
+   "functions": 0
+  },
+  "modules/readers/adjacencies.py": {
+   "covered_unit": 6,
+   "functions": 6
+  },
+  "modules/readers/app_pushed.py": {
+   "covered_unit": 10,
+   "functions": 11
+  },
+  "modules/readers/baseline_usability.py": {
+   "covered_unit": 3,
+   "functions": 3
+  },
+  "modules/readers/ci_verdict.py": {
+   "covered_unit": 6,
+   "functions": 6
+  },
+  "modules/readers/coverage_reporting.py": {
+   "covered_unit": 22,
+   "functions": 23
+  },
+  "modules/readers/credential_health.py": {
+   "covered_unit": 15,
+   "functions": 15
+  },
+  "modules/readers/dhcp.py": {
+   "covered_unit": 18,
+   "functions": 19
+  },
+  "modules/readers/grafana_alerts.py": {
+   "covered_unit": 13,
+   "functions": 13
+  },
+  "modules/readers/grafana_dashboards.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/readers/integration_health.py": {
+   "covered_unit": 2,
+   "functions": 2
+  },
+  "modules/readers/job_health_reader.py": {
+   "covered_unit": 1,
+   "functions": 1
+  },
+  "modules/readers/logs_summary.py": {
+   "covered_unit": 10,
+   "functions": 16
+  },
+  "modules/readers/logs_tail.py": {
+   "covered_unit": 4,
+   "functions": 5
+  },
+  "modules/readers/netbox_secrets.py": {
+   "covered_unit": 1,
+   "functions": 1
+  },
+  "modules/readers/platform_facts.py": {
+   "covered_unit": 6,
+   "functions": 7
+  },
+  "modules/readers/reachability.py": {
+   "covered_unit": 5,
+   "functions": 8
+  },
+  "modules/readers/records_check.py": {
+   "covered_unit": 1,
+   "functions": 1
+  },
+  "modules/readers/remote_publication.py": {
+   "covered_unit": 10,
+   "functions": 10
+  },
+  "modules/readers/restarts.py": {
+   "covered_unit": 2,
+   "functions": 4
+  },
+  "modules/readers/rip.py": {
+   "covered_unit": 6,
+   "functions": 7
+  },
+  "modules/readers/topology_graph.py": {
+   "covered_unit": 31,
+   "functions": 33
+  },
+  "modules/readers/ztp_discovery.py": {
+   "covered_unit": 5,
+   "functions": 7
+  },
+  "modules/readonly_commands.py": {
+   "covered_unit": 17,
+   "functions": 17
+  },
+  "modules/redact.py": {
+   "covered_unit": 24,
+   "functions": 25
+  },
+  "modules/restarts.py": {
+   "covered_unit": 16,
+   "functions": 17
+  },
+  "modules/secrets_store.py": {
+   "covered_unit": 9,
+   "functions": 9
+  },
+  "modules/topology_expected.py": {
+   "covered_unit": 6,
+   "functions": 6
+  }
+ }
+}
