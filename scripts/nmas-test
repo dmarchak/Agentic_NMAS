@@ -112,11 +112,38 @@ for a in "$@"; do
     *) args+=("$a") ;;
   esac
 done
-PY="${PYTHON:-python3}"
+# THE INTERPRETER IS CI'S (the operator, 2026-10-14: from a terminal whose python3 was 3.14 the
+# suite ran on 3.14 without a word, while the gate and CI run the version ci.yml pins). A
+# PYTHON given is honoured (the gate and nmas-deploy pass theirs) and said when it is not
+# CI's version; otherwise CI's environment (scripts/nmas-ci-env's venv), else python3 only when
+# it IS CI's version; anything else refuses, naming both versions and the fix.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ci_py="$(sed -n 's/.*python-version: *"\([0-9.]*\)".*/\1/p' "$here/.github/workflows/ci.yml" 2>/dev/null | head -1)"
+ci_env="$HOME/.local/share/nmas-py312/bin/python"
+if [ -n "${PYTHON:-}" ]; then
+  PY="$PYTHON"; how="PYTHON"
+elif [ -x "$ci_env" ]; then
+  PY="$ci_env"; how="CI's environment, scripts/nmas-ci-env"
+else
+  PY="python3"; how="python3 on PATH"
+fi
+have="$("$PY" -c 'import platform; print(platform.python_version())' 2>/dev/null)"
+if [ -z "${PYTHON:-}" ] && [ -n "$ci_py" ] && [ "$have" != "$ci_py" ]; then
+  echo "nmas-test: REFUSED: $PY ($how) is Python ${have:-that would not start}; CI runs $ci_py (.github/workflows/ci.yml)." >&2
+  echo "  Build CI's environment once: scripts/nmas-ci-env <a Python $ci_py> (docs/TESTING.md, \"CI's interpreter here\")," >&2
+  echo "  or name an interpreter: PYTHON=<python> scripts/nmas-test ..." >&2
+  exit 2
+fi
+if [ -n "$ci_py" ] && [ "$have" != "$ci_py" ]; then
+  py_line="nmas-test: python: $PY (${have:-unknown}, $how; not CI's $ci_py)"
+else
+  py_line="nmas-test: python: $PY (${have:-unknown}, $how)"
+fi
 
 why="$(unshare -rn true 2>&1)"
 if [ $? -eq 0 ]; then
   echo "nmas-test: network: CONFINED (a loopback-only network namespace, as uid $(id -u))"
+  echo "$py_line"
   run unshare -rn sh -c '
     ip link set lo up || { echo "nmas-test: could not bring loopback up" >&2; exit 2; }
     uid="$1"; gid="$2"; py="$3"; shift 3
@@ -128,9 +155,12 @@ fi
 why="${why:-unshare failed with no message}"
 if [ "$allow" -eq 1 ]; then
   echo "nmas-test: network: NOT CONFINED: no network namespace here ($why). Processes the suite starts CAN reach the network; the test process itself still refuses non-loopback connects."
+  echo "$py_line"
   run "$PY" -m pytest "${args[@]}"
 fi
 echo "nmas-test: REFUSED: no network namespace can be made here: $why" >&2
-echo "  Processes the suite starts could reach the network. To run anyway, and" >&2
-echo "  have the run say so: scripts/nmas-test --allow-unconfined ..." >&2
+echo "  Processes the suite starts could reach the network. On Ubuntu 24.04 an ordinary" >&2
+echo "  terminal needs a one-time AppArmor profile, or VS Code's terminal (docs/TESTING.md," >&2
+echo "  \"From an ordinary terminal\"). To run anyway, and have the run say so:" >&2
+echo "  scripts/nmas-test --allow-unconfined ..." >&2
 exit 2

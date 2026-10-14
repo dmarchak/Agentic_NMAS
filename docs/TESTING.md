@@ -27,6 +27,10 @@ scripts/nmas-coverage report --data <combined file> --tiers <folder> --html cove
 scripts/nmas-coverage baseline --data <combined file> --tiers <folder>   # moves the baseline
 ```
 
+It runs CI's interpreter or refuses, naming it. From a terminal other than VS Code's on Ubuntu
+24.04, it needs a one-time AppArmor profile to make its network namespace: "From an ordinary
+terminal (Ubuntu 24.04)" below.
+
 ### The offline rule, and its guard
 
 **Every test runs offline, unit or not.** The guard is three layers (C46, tests/network_guard.py):
@@ -483,6 +487,64 @@ made it, by name (C46).
 `requirements-test.txt` pins the test tools the host AND CI install
 (`pytest-xdist`): the runner that decides test order must be one version.
 
+### From an ordinary terminal (Ubuntu 24.04)
+
+**The interpreter.** With no `PYTHON` given, `scripts/nmas-test` runs CI's environment,
+`~/.local/share/nmas-py312/bin/python` (built once by `scripts/nmas-ci-env`, the next section).
+Without that environment, it runs `python3` only if that is the version `ci.yml` pins, and
+otherwise refuses, naming both versions and the command that builds the right one. Its second
+line names the interpreter it ran. `PYTHON=<python>` still chooses one (the gate and
+`nmas-deploy` pass theirs), and that line says when it is not CI's version. A terminal whose
+`python3` is 3.14 used to run the suite on 3.14 without a word (the operator, 2026-10-14).
+
+**The namespace.** From a GNOME Terminal the run refuses with `no network namespace can be
+made here: unshare: write failed /proc/self/uid_map: Operation not permitted`, while the
+same command in VS Code's terminal runs confined. The cause, measured 2026-10-14:
+- Ubuntu 24.04 sets `kernel.apparmor_restrict_unprivileged_userns=1`. A process with the
+  AppArmor label `unconfined` that makes a user namespace gets one without capabilities, so
+  `unshare -rn` cannot write its uid map.
+- VS Code's own profile (`/etc/apparmor.d/code`: `profile vscode … flags=(unconfined) {
+  userns, }`) grants user namespaces, and everything VS Code starts inherits the label
+  `vscode (unconfined)`, its integrated terminal included. A GNOME Terminal's shell is plain
+  `unconfined`.
+- Reproduced without changing anything: `systemd-run --user --wait --pipe bash -c 'unshare
+  -rn true'` (label `unconfined`) fails with the same message; the same command from VS
+  Code's terminal succeeds.
+
+Two ways to run it confined, neither of them `--allow-unconfined`:
+1. **Nothing installed:** run it in VS Code's integrated terminal (Terminal › New Terminal).
+2. **Any terminal: a profile like VS Code's, for this script.** It is a system change, so it
+   is the operator's to run (with `sudo`), once per checkout path. Replace `<checkout>` with the
+   checkout's absolute path:
+
+   ```bash
+   sudo tee /etc/apparmor.d/nmas-test > /dev/null <<'EOF'
+   # Gives scripts/nmas-test, and what it starts, user namespaces, as VS Code's profile does.
+   abi <abi/5.0>,
+   include <tunables/global>
+
+   profile nmas-test <checkout>/scripts/nmas-test flags=(unconfined) {
+     userns,
+     include if exists <local/nmas-test>
+   }
+   EOF
+   sudo apparmor_parser -r /etc/apparmor.d/nmas-test
+   ```
+
+   PASS: `sudo aa-status | grep nmas-test` lists the profile, and `scripts/nmas-test
+   tests/test_claude_md.py` from a GNOME Terminal prints `nmas-test: network: CONFINED`,
+   then the interpreter line, then the tests. Undo: `sudo apparmor_parser -R
+   /etc/apparmor.d/nmas-test && sudo rm /etc/apparmor.d/nmas-test`.
+
+   What it grants: anything run through that one path may make user namespaces, which VS
+   Code already grants everything it starts. The script lives in a folder the operator can
+   write, so the profile gives the operator nothing they could not already get by opening VS
+   Code; it widens nothing for another user. The profile names the script's own path, the path a
+   person executes; that AppArmor attaches it to a `#!` script there is NOT yet measured on
+   this laptop, because the agent changes no system setting. If `aa-status` lists the profile but the run still
+   refuses, the attachment did not take; say so, and the profile goes on a root-owned copy of
+   `unshare` that the script calls instead.
+
 ### CI's interpreter here
 
 **The records tests' real PostgreSQL (Phase 4, option a).** `tests/pg_instance.py` starts a
@@ -757,6 +819,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_run_results.py` | 7.1: Verify and Abandon recorded in `onboarding_runs.jsonl` (0600, masked on the way in, absent vs unreadable), each result drawn FROM the recorded row as the verified person; a record that could not be written is part of the result (planted as a directory: `open_secure` creates missing parents, so a missing one would be written); a dry-run abandon records nothing; the pending banner reads back each row's last run and, for a run that took its device off the list, "finished recently"; an unreadable record is drawn as that |
 | `test_session_end_guard.py` | (2026-10-01, CI run #241) A non-daemon thread alive at the session's end is named with its target, a daemon one is not, and one finishing within the grace is not; the live server the browser tests use stops bounded with its socket.io sessions closed, against a real long-poll session (engineio's own `disconnect()` blocks for ever waiting for a client to drain, measured building it) |
 | `test_suite_bound.py` | (C343, 2026-10-02: a probe skips conftest's whole-program import, `NMAS_PROBE_RUN`, so its start does not grow with the program; a probe asserting the app was not imported, its control the opt-out removed.) the suite's bound (NMAS_TEST_TIMEOUT, 300 s, from the measured serial time) through the REAL runner over a test that hangs: rc 124, the hanging test and its line named, a finished test not named; a run that finishes is never reported as a timeout |
+| `test_nmas_test_interpreter.py` | (the operator, 2026-10-14: an ordinary terminal ran the suite on 3.14) `scripts/nmas-test`'s interpreter, through the REAL script with stand-in interpreters reporting a chosen version: with no `PYTHON`, CI's environment is chosen and named; without it, a `python3` of another version is refused naming both versions, `scripts/nmas-ci-env` and `PYTHON=`, and pytest never starts; a `python3` of CI's version runs; a `PYTHON` given is honoured and said to be not CI's. CI's version is read from `ci.yml` as YAML, independent of the script's `sed`. Controls: the refusal removed (the refusal test fails); the CI-environment default removed (the default test fails) |
 | `test_no_duplicate_definitions.py` | C90's sibling: no module or class body defines a name twice (a second `def` silently replaces the first; in a test class it drops a test), across the program, scripts and tests (floor 300 files); a property's setter and the definition after `@overload` are the exemptions, anchored on the real one; the definitions come from `scripts/pydefs.py`, the walker the coverage tool shares |
 | `test_nmas_mutation.py` | Lab 7's nightly mutation run (`scripts/nmas_mutation.py`, the workflow), without mutmut: a real diff's changed lines; a night's plan from a real git history (the counted automation functions changed, each whole; a property, a route and a deleted module left out), and from the record (a kept function runs only what is left and its open survivors, by name; one whose text changed starts afresh; `--also`); the function hash; the test files a night runs, by parsed imports (an import inside string data is not one); mutmut's real names and results (captured 2026-10-14); the tests that start a child added to each planned function's; a child under the statistics run recording nothing; a listed equivalent known by function and lines, any other survivor open, "no tests" surviving; the canary (all killed, or MEASUREMENT BROKEN) and the scope (SCOPE BROKEN); a failed mutmut run, an out-of-time night, a function with no mutant; merging the record's results, and what the next record keeps; the equivalent list's shape; the workflow nightly and by hand only, its one budget, serial, confined, bytecode written, the record kept after every standing night, and mutmut never in the host's, the gate's or a push's requirements |
 | `test_mutation_canary.py` | the nightly mutation run's canary (`tests/mutation_canary.py`): both functions pinned so that every mutant fails a test, `in_child` reached only through a child process by its dotted name |
