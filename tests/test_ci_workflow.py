@@ -231,6 +231,22 @@ class TestAPushMeasuresByTierAndTheNightPerTest:
         assert len([s for s in before if "run" in s]) >= 7 and missing == [], missing   # 7 today
         assert night["jobs"]["test"]["strategy"] == ci["jobs"]["test"]["strategy"]
 
+    def test_the_nights_tests_take_cis_actions_with_their_options(self):
+        """C786 (the first nightly coverage run, 2026-10-14): the night checked out shallow
+        where CI checks out the whole history (`fetch-depth: 0`), so the tests that read the
+        shipped templates' history skipped there (8 in shard b) and what only they reach went
+        unmeasured. The run-step comparison above never looked at a `uses:` step's options."""
+        ci, night = self._docs()
+        ci_steps = ci["jobs"]["test"]["steps"]
+        before = ci_steps[:ci_steps.index(_tests_step(ci))]
+        night_uses = [(s["uses"], s.get("with") or {}) for s in night["jobs"]["test"]["steps"]
+                      if "uses" in s]
+        wanted = [(s["uses"], s.get("with") or {}) for s in before if "uses" in s]
+        assert len(wanted) >= 2, wanted                        # checkout and setup-python today
+        missing = [w for w in wanted if w not in night_uses]
+        assert missing == [], f"CI's actions the night lacks, or takes with other options: " \
+                              f"{missing}"
+
     def test_the_push_names_the_drilldown(self):
         ci, _night = self._docs()
         steps = ci["jobs"]["coverage"]["steps"]
