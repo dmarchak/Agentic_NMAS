@@ -117,9 +117,11 @@ measurement and committed: never by the job itself.
   shard). The tool's fast checks run in it as ordinary tests: the scope complete, no new
   assertion-free test (tests/test_nmas_coverage.py).
 - **CI** (.github/workflows/ci.yml): each of the four `test` jobs measures per test into its own
-  data file and records its tiers; the **`coverage` job** combines the four, writes the report to
-  the run's job summary, uploads `coverage-report` (the HTML and JSON) as an artifact, and fails
-  on the ratchet.
+  data file and records its tiers; the **`coverage` job** combines the four, states the line
+  coverage of every test over the four COMBINED (`coverage report --format=total` on the
+  combined file, over `modules/`, `routes/` and `app.py`; never one shard's), writes the report
+  to the run's job summary, uploads `coverage-report` (the HTML and JSON) as an artifact, and
+  fails on the ratchet.
 
 ### Mutation testing: are the tests any good?
 

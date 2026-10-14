@@ -162,3 +162,19 @@ def test_a_failed_test_is_annotated_under_actions(tmp_path):
                          cwd=root, env=env, capture_output=True, text=True, timeout=120)
     lines = [l for l in out.stdout.splitlines() if l.startswith("::error title=")]
     assert any("test_it_fails" in l and "planted failure" in l for l in lines), out.stdout[-2000:]
+
+
+def test_the_coverage_job_reports_line_coverage_over_the_four_shards_combined():
+    """One line figure, from the COMBINED data (never one shard's), over the measured code, in
+    the log and the job summary: after the combine, before the report."""
+    doc, _ = _load(os.path.join(ROOT, ".github", "workflows", "ci.yml"))
+    steps = doc["jobs"]["coverage"]["steps"]
+    names = [s.get("name", "") for s in steps]
+    combine = names.index("Combine them")
+    total = names.index("Line coverage, every test, the four shards combined")
+    assert combine < total < names.index("The report and the ratchet")
+    run = steps[total]["run"]
+    assert "--data-file=.coverage " in run and "--format=total" in run
+    assert "--include='modules/*,routes/*,app.py'" in run and "GITHUB_STEP_SUMMARY" in run
+    assert "coverage combine --keep --data-file=.coverage measured/.coverage.*" in \
+        steps[combine]["run"]

@@ -252,6 +252,15 @@ jobs:
           done
           echo "tier records: $(cat tiers/*.jsonl | wc -l)"
 
+      # One figure over the four shards COMBINED (never one shard's): every test, every tier.
+      - name: Line coverage, every test, the four shards combined
+        run: |
+          total=$(python -m coverage report --data-file=.coverage --precision=1 \
+            --include='modules/*,routes/*,app.py' --format=total)
+          echo "Line coverage over modules/, routes/ and app.py, every test, the four shards combined: ${total}%"
+          printf '**Line coverage, every test, the four shards combined: %s%%** (modules/, routes/, app.py)\n\n' \
+            "$total" >> "$GITHUB_STEP_SUMMARY"
+
       - name: The report and the ratchet
         run: >
           python scripts/nmas-coverage report --data .coverage --tiers tiers
