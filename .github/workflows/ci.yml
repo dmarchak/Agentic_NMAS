@@ -166,7 +166,9 @@ jobs:
           --cov-context=test --cov-branch
           $(python scripts/nmas-shards ${{ matrix.shard }})
 
+      # Kept when a test failed too: the coverage job reports on a red run as well.
       - name: Keep this shard's measurement for the coverage job
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.shard }}
@@ -216,6 +218,9 @@ jobs:
   coverage:
     name: coverage (function, line and branch; the ratchet)
     needs: test
+    # On a red run too (a failing test is no reason to hide the report or the ratchet's
+    # verdict); not when the run was cancelled, when there is nothing to combine.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
