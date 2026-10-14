@@ -505,3 +505,22 @@ router bgp 65002
         out = roundtrip.configs_equivalent(self.AT_REF, shuffled)
         assert out["equal"] is True, (out["only_left"], out["only_right"])
         assert roundtrip.compare(self.AT_REF, shuffled)["reordered_sections"] == 0
+
+
+class TestAMissingVariableIsRefused:
+    """Template from YAML (Lab 7's "template from YAML"): intent rendered through the real
+    platform template is held to the golden by `TestRoundTripFidelity` above; this is the
+    other half. A value the template reads and the intent lacks must REFUSE the render, naming
+    the value (StrictUndefined, C568), never render an empty `hostname` line onto a device."""
+
+    def test_the_render_refuses_and_names_what_is_missing(self, device):
+        from jinja2 import UndefinedError
+        hv = get_parser(device["platform"]).parse(device["config"])
+        platform = hv.get("platform", device["platform"])
+        rendered = roundtrip.render(dict(hv), platform)
+        assert f"hostname {hv['hostname']}" in rendered.splitlines(), "the whole intent renders"
+        missing = {k: v for k, v in hv.items() if k != "hostname"}
+        with pytest.raises(UndefinedError) as exc:
+            roundtrip.render(missing, platform)
+        words = roundtrip.undefined_words(exc.value, missing, platform=platform)
+        assert "`hostname`" in words and "the intent does not hold it" in words, words

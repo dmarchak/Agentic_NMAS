@@ -209,6 +209,24 @@ class TestCommittedIntentIsWhatIsCommitted:
         assert doc["logging"]["settings"] == ["trap notifications"]
         assert "host_vars/r1.yml differs from its commit" in caplog.text
 
+    def test_a_device_with_no_committed_intent_reads_none(self, lab):
+        """File exists, the lab's example, on intent (Lab 7): no committed host_vars file means
+        None, which the deploy plan and onboarding read as "nobody has said what this device is
+        supposed to look like", never as an empty intent."""
+        from modules.nsot import hostvars
+
+        assert not os.path.exists(hostvars.committed_path(lab["repo"], "r9"))
+        assert hostvars.read_committed(lab["repo"], "r9") is None
+
+    def test_a_file_written_but_never_committed_is_not_intent(self, lab):
+        """The file exists on disk and git holds nothing at that path: still None (C104's other
+        half: what is deployed is what is committed, never a working file)."""
+        from modules.nsot import hostvars
+
+        path = hostvars.write_committed(lab["repo"], {"hostname": "r8"})
+        assert os.path.isfile(path)
+        assert hostvars.read_committed(lab["repo"], "r8") is None
+
     def test_the_editor_opens_what_is_committed(self, lab, intent, monkeypatch):
         import app as A
 

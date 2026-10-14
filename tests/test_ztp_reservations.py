@@ -484,3 +484,43 @@ class TestPostureRows:
                                 ztp=[{"unit": "ztp-posture:subnet-255", "state": "d4_violated",
                                       "what": "", "detail": "", "max_age_minutes": 0}])
         assert "ztp-posture:subnet-255" in out["not_ok"]
+
+
+class TestTheSubnetForAnAddress:
+    """IP validation on the ZTP path (Lab 7's "IP validation"): the Kea subnet whose CIDR holds
+    an address, from the lab's captured config. Exactly one or a refusal naming the count; an
+    address that is not one is refused before any subnet is read."""
+
+    @pytest.fixture
+    def dhcp4(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "kea",
+                            "dhcp4-config-get.json")
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        return (doc[0] if isinstance(doc, list) else doc)["arguments"]["Dhcp4"]
+
+    def test_each_captured_subnets_own_address_finds_it(self, dhcp4):
+        import ipaddress
+        subnets = dhcp4["subnet4"]
+        assert len(subnets) >= 3, "the population: the lab's three IPv4 subnets"
+        for s in subnets:
+            host = str(next(ipaddress.ip_network(s["subnet"]).hosts()))
+            found, shared = ztp.subnet_for_address(dhcp4, host)
+            assert (found["subnet"], shared) == (s["subnet"], None)
+
+    @pytest.mark.parametrize("address, words", [
+        ("192.0.2.10", "found 0"),                   # in no subnet
+        ("2001:db8:10::5", "found 0"),               # an IPv6 address against IPv4 subnets
+        ("10.10.10.256", "is not an address"),
+        ("", "is not an address"),
+        ("10.10.10.0/24", "is not an address"),      # a prefix is not an address
+    ])
+    def test_it_refuses_naming_why(self, dhcp4, address, words):
+        with pytest.raises(ztp.Refused, match=words):
+            ztp.subnet_for_address(dhcp4, address)
+
+    def test_two_subnets_holding_it_is_refused_not_a_guess(self, dhcp4):
+        overlapping = dict(dhcp4, **{"shared-networks": [
+            {"name": "planted", "subnet4": [{"id": 99, "subnet": "10.10.10.0/25"}]}]})
+        with pytest.raises(ztp.Refused, match="found 2"):
+            ztp.subnet_for_address(overlapping, "10.10.10.5")

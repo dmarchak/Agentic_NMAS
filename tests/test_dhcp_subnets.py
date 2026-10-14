@@ -608,3 +608,43 @@ class TestAddAndRemove:
         assert p["ok"], p["refused"]
         assert "(.)" not in p["leases"][0]
         assert "1 active lease(s) (aa:c1:ab:12:c6:03)" in p["leases"][0]
+
+
+class TestPoolSpanReadsWhatKeaWrites:
+    """IP validation where Mercury's IPAM really meets it (Lab 7's "IP validation"): a Kea pool,
+    as `config-get` and the conf files write one, read into its first and last address. The
+    forms are Kea's (the capture's `a-b`; `a - b`; the prefix form config-get reports for an
+    aligned range, measured 2026-10-11), IPv4 and IPv6; anything else is refused, never guessed."""
+
+    def _captured_pools(self, family):
+        name = "dhcp4-config-get.json" if family == 4 else "dhcp6-config-get.json"
+        with open(os.path.join(KEA, name), encoding="utf-8") as fh:
+            doc = json.load(fh)
+        args = (doc[0] if isinstance(doc, list) else doc)["arguments"]
+        key = ("Dhcp4", "subnet4") if family == 4 else ("Dhcp6", "subnet6")
+        return [p["pool"] for s in args[key[0]][key[1]] for p in s.get("pools") or []]
+
+    def test_every_captured_pool_reads_as_its_first_and_last(self):
+        import ipaddress
+        pools = self._captured_pools(4) + self._captured_pools(6)
+        assert len(pools) >= 5, "the population: the lab's v4 and v6 pools"
+        for text in pools:
+            first, last = S.pool_span(text)
+            assert (str(first), str(last)) == tuple(x.strip() for x in text.split("-"))
+            assert first.version == last.version and first <= last
+
+    @pytest.mark.parametrize("text, first, last", [
+        ("192.0.2.100 - 192.0.2.200", "192.0.2.100", "192.0.2.200"),
+        ("192.0.2.192/28", "192.0.2.192", "192.0.2.207"),
+        ("2001:db8:20::100-2001:db8:20::200", "2001:db8:20::100", "2001:db8:20::200"),
+        ("2001:db8:30::/120", "2001:db8:30::", "2001:db8:30::ff"),
+    ])
+    def test_each_form_kea_writes(self, text, first, last):
+        assert tuple(map(str, S.pool_span(text))) == (first, last)
+
+    @pytest.mark.parametrize("text", ["", "192.0.2.300-192.0.2.301", "192.0.2.1",
+                                      "not a pool", "192.0.2.1-192.0.2.2-192.0.2.3",
+                                      "2001:db8::zz-2001:db8::ff"])
+    def test_anything_else_is_refused_by_name(self, text):
+        with pytest.raises(ValueError):
+            S.pool_span(text)
