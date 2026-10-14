@@ -27,7 +27,7 @@ import ast
 import os
 import re
 
-from modules import topology
+from modules import bgp_summary, topology
 from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -49,11 +49,11 @@ class TestTopologyOnRealOutput:
             assert got == expected, host
 
     def test_bgp_the_one_reader_on_r3(self):
-        peers = topology.parse_bgp_summary(capture("r3", "show_ip_bgp_summary"))["peers"]
+        peers = bgp_summary.parse_bgp_summary(capture("r3", "show_ip_bgp_summary"))["peers"]
         assert [(p["neighbor"], p["established"]) for p in peers] == [("198.51.100.1", True)]
 
     def test_bgp_not_running_is_empty(self):
-        assert topology.parse_bgp_summary(capture("r1", "show_ip_bgp_summary")) == \
+        assert bgp_summary.parse_bgp_summary(capture("r1", "show_ip_bgp_summary")) == \
             {"local_as": "", "peers": []}
 
     def test_a_wrapped_ipv6_row_is_joined(self):
@@ -63,13 +63,13 @@ class TestTopologyOnRealOutput:
         text = capture("r3", "show_ip_bgp_summary")
         wrapped = text.replace("198.51.100.1    4", "2001:DB8::1\n                4")
         assert wrapped != text
-        peers = topology.parse_bgp_summary(wrapped)["peers"]
+        peers = bgp_summary.parse_bgp_summary(wrapped)["peers"]
         assert [(p["neighbor"], p["established"]) for p in peers] == [("2001:DB8::1", True)]
 
     def test_a_down_peer_is_configured_not_established(self):
         text = capture("r3", "show_ip_bgp_summary").replace(
             "4d13h           3", "never    Idle (Admin)")
-        peers = topology.parse_bgp_summary(text)["peers"]
+        peers = bgp_summary.parse_bgp_summary(text)["peers"]
         assert [(p["state"], p["established"]) for p in peers] == [("Idle (Admin)", False)]
 
     def test_lldp_names_every_system_the_device_names(self):
@@ -109,7 +109,7 @@ class TestNetBoxCableReadersOnRealOutput:
 
 
 class TestOneBgpReader:
-    def test_the_deploy_reads_through_topology(self):
+    def test_the_deploy_reads_through_the_one_reader(self):
         src = open(os.path.join(ROOT, "modules", "pipeline.py"), encoding="utf-8").read()
         fn = next(n for n in ast.walk(ast.parse(src))
                   if isinstance(n, ast.FunctionDef) and n.name == "_parse_bgp_summary")
@@ -118,14 +118,14 @@ class TestOneBgpReader:
 
     def test_no_third_reader(self):
         """Every function whose name says it reads a BGP summary, across the
-        program. The deploy's delegates; topology's is the reader."""
+        program. The deploy's delegates; modules/bgp_summary.py's is the reader."""
         found = []
         for path in tracked("modules", "routes", suffix=".py"):
             for n in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
                 if isinstance(n, ast.FunctionDef) and "bgp_summary" in n.name:
                     found.append((os.path.relpath(path, ROOT), n.name))
-        assert sorted(found) == [("modules/pipeline.py", "_parse_bgp_summary"),
-                                 ("modules/topology.py", "parse_bgp_summary")], found
+        assert sorted(found) == [("modules/bgp_summary.py", "parse_bgp_summary"),
+                                 ("modules/pipeline.py", "_parse_bgp_summary")], found
 
 
 class TestTheRotationReadsExactlyItsAccount:

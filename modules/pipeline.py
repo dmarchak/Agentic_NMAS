@@ -2628,7 +2628,7 @@ def _parse_rip_sources(show_ip_protocols: str):
 def _parse_bgp_summary(out: str) -> Optional[dict]:
     """Established and configured BGP peers, from THE one reader.
 
-    ``modules.topology.parse_bgp_summary`` reads the rows. This copy of the
+    ``modules.bgp_summary.parse_bgp_summary`` reads the rows. This copy of the
     job used to have its own pattern, which expected eight fields where the
     device prints ten and so counted nothing (C64), while topology's read the
     same output correctly: two readers of one output disagreeing. Returns
@@ -2637,7 +2637,7 @@ def _parse_bgp_summary(out: str) -> Optional[dict]:
     """
     if "BGP router identifier" not in (out or ""):
         return None
-    from modules.topology import parse_bgp_summary
+    from modules.bgp_summary import parse_bgp_summary
 
     peers = parse_bgp_summary(out)["peers"]
     return {"established": sum(1 for p in peers if p["established"]),

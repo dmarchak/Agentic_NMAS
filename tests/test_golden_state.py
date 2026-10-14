@@ -287,7 +287,7 @@ MANAGED = ("r1", "r2", "r3", "r4", "s1", "s2", "s3", "s4")   # r5 retired
 
 class TestBothBgpFamiliesOnRealOutput:
     def test_r3_and_r4_each_have_two_sessions_and_no_phantom(self):
-        from modules.topology import parse_bgp_summary
+        from modules.bgp_summary import parse_bgp_summary
 
         got = {h: [(p["neighbor"], p["address_family"], p["established"]) for p in
                    parse_bgp_summary(open(os.path.join(OPS, f"{h}__show_bgp_all_summary.txt"))
@@ -305,7 +305,7 @@ class TestBothBgpFamiliesOnRealOutput:
         is tested where the reset cannot help: r3's own "0 BGP route-map
         cache entries using 0 bytes of memory" line (ten fields, a digit
         first), placed inside a table after a real row."""
-        from modules.topology import parse_bgp_summary
+        from modules.bgp_summary import parse_bgp_summary
 
         text = open(os.path.join(OPS, "r3__show_ip_bgp_summary.txt")).read()
         junk = "0 BGP route-map cache entries using 0 bytes of memory"
