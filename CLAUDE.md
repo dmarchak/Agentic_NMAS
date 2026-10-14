@@ -268,7 +268,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Secrets are masked on the way OUT (goldens stay verbatim), audit records masked at rest, by
   position and by value; no credential value is printed, logged or returned.**
   [tests/test_no_get_returns_a_stored_secret.py, tests/test_no_post_returns_a_stored_secret.py,
-  tests/test_no_agent_tool_leaks_a_stored_secret.py, tests/test_provider_redaction.py] [why](docs/LESSONS.md#secrets-masked-on-the-way-out)
+  tests/test_provider_redaction.py] [why](docs/LESSONS.md#secrets-masked-on-the-way-out)
 - **Secret files are owner-only from creation (`config.open_secure`); anything kept that holds a
   credential is tracked against the credentials held now.** [tests/test_secret_file_modes.py;
   tests/test_breakglass_currency.py; tests/test_golden_panel_says_what_to_do.py] [why](docs/LESSONS.md#secret-files-and-kept-credentials)
@@ -379,8 +379,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Settings:** `data/user_settings.json` only through `write_settings()` (undeclared keys refused)
   under `config.settings_lock()`; a version bump seeds only what it declares; `ratify()` records.
 - **Identity:** a verified access assertion AND a trusted peer; no localhost exemption.
-- **Redaction** at the provider boundary, on every log handler, and on every response carrying
-  config. The approval queue resolves nothing without a person.
+- **Redaction** on every log handler and on every response carrying config (the provider
+  boundary left with the AI family; Phase 8's responder brings one back). The approval queue
+  resolves nothing without a person.
 - **Environment:** `NMAS_HOST`, `NMAS_PORT` (5000), `NMAS_HEADLESS=1`; deployment is
   headless Ubuntu (docs/DEPLOY_LINUX.md). Phase 8 brings AI back as a responder that proposes
   and never confirms (docs/PHASE8_PLAN.md).

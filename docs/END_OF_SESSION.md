@@ -17,9 +17,8 @@ docs only).
    removed page, `data/chat_histories/` not recreated after the restart.
 2. **The ai-leftovers `--delete`**, after that deploy (the code that recreated
    `chat_histories/` is gone only then).
-3. **CLAUDE.md, two passages** (the paste text is in the session report): the citation of
-   `tests/test_no_agent_tool_leaks_a_stored_secret.py` (kept as a skipped placeholder until
-   then, deleted in the commit after the paste) and "Redaction at the provider boundary".
+3. **CLAUDE.md, two passages:** DONE (the operator's paste, committed with the placeholder
+   test's deletion).
 4. **Dispatching mutation-nightly:** nothing here can (no `gh`, and the only token is
    Actions-read; `test_it_runs_nightly_and_by_hand_never_on_a_push` pins the triggers). Night
    #4 (38615953823) was the first VALID night: canary 11 of 11, scope passed, 308 mutants,

@@ -3509,8 +3509,9 @@ Dates, counts and statuses below are as they were written. Where a later entry o
   or `name = <value>`, and value redaction knows only the stores in its
   table. `get_monitoring_config` and `read_variables` handed the model
   stored values that way. `test_no_agent_tool_leaks_a_stored_secret.py`
-  drives EVERY tool through the real `run_chat()` loop with a fake provider
-  and searches what the provider would receive. The boundary test before it
+  drove EVERY tool through the real `run_chat()` loop with a fake provider
+  and searched what the provider would receive (removed with the AI family,
+  D15, 2026-10-14; in history at tag `pre-remove/ai-family`). The boundary test before it
   used hand-written output shapes, all in config syntax, so it could not
   exhibit the case. Its first control passed wrongly, served by the
   process-wide tool-result cache, which each drive now clears.
