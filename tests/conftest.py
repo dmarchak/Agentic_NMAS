@@ -49,13 +49,27 @@ def _store_already_ours() -> bool:
                 os.path.realpath(os.environ["NMAS_DATA_DIR"]))
 
 
+def _for_this_process(folder: str) -> str:
+    """C780: the store and the spawn guard's folder live as long as the PROCESS, not a session.
+    The program loads the store's key once per process (`modules.device`), so when a session's
+    end removed the store, the next session in the same process (mutmut's statistics run, then
+    its clean run) sealed values with a key no file held, and a child process refused the store.
+    The folder is marked as this process's (`.owner`), removed when this process exits (never by
+    a forked child, which inherits the handler), and, when a killed run never exits, by the next
+    run's start (tests/tmp_roots.py)."""
+    import atexit
+    from tests import tmp_roots
+    owner = os.getpid()
+    tmp_roots.own(folder)
+    atexit.register(lambda: os.getpid() == owner and shutil.rmtree(folder, ignore_errors=True))
+    return folder
+
+
 if os.environ.get("NMAS_TEST_STORE_OWNER") == str(os.getpid()) or _store_already_ours():
     _TEST_DATA_DIR = os.environ["NMAS_DATA_DIR"]
-    # A later session in this process image: the last session's end removed the store; this
-    # one gets it back.
     os.makedirs(_TEST_DATA_DIR, exist_ok=True)
 else:
-    _TEST_DATA_DIR = tempfile.mkdtemp(prefix="nmas-test-data-")
+    _TEST_DATA_DIR = _for_this_process(tempfile.mkdtemp(prefix="nmas-test-data-"))
     os.environ["NMAS_DATA_DIR"] = _TEST_DATA_DIR
     os.environ["NMAS_TEST_STORE_OWNER"] = str(os.getpid())
 
@@ -82,8 +96,10 @@ _NETWORK_STATE = network_guard.confinement()
 # network_guard.SpawnGuard. Its own directory, never inside the test store,
 # which some tests delete and restore mid-session.
 if network_guard.spawn_guard() is None or not os.path.isdir(network_guard.spawn_guard().root):
-    # Or a second session in this process, whose last session's end removed the guard's folder.
-    network_guard.install_spawn_guard(tempfile.mkdtemp(prefix="nmas-test-spawn-"))
+    # Its folder holds the refusing shims a child finds first on its PATH: for the process's
+    # life (C780), never removed between two sessions of one process.
+    network_guard.install_spawn_guard(
+        _for_this_process(tempfile.mkdtemp(prefix="nmas-test-spawn-")))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -197,6 +213,8 @@ def pytest_sessionstart(session):
         from tests import tmp_roots
         base = str(factory.getbasetemp())
         tmp_roots.prune_dead_roots(os.path.dirname(base), current=base)
+        # C780: the stores and spawn folders of processes that were killed before their exit.
+        tmp_roots.prune_dead_process_folders(tempfile.gettempdir())
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -210,8 +228,7 @@ def pytest_sessionfinish(session, exitstatus):
     import sys
     changed = tree_changes(getattr(session, "nmas_checkout_data_before", {}),
                            data_tree(_CHECKOUT_DATA_DIR))
-    shutil.rmtree(_TEST_DATA_DIR, ignore_errors=True)
-    shutil.rmtree(network_guard.spawn_guard().root, ignore_errors=True)
+    # The store and the spawn guard's folder are the process's, removed when it exits (C780).
     fail, message = store_guard.judge(
         changed, store_guard._watch.writes, _CHECKOUT_DATA_DIR,
         lambda: store_guard.processes_running_from(os.path.dirname(_CHECKOUT_DATA_DIR)))
