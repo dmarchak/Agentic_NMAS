@@ -21,6 +21,13 @@ on:
     - cron: "17 8 * * *"
   # By hand, from the Actions tab (the demo, or after a change worth checking at once).
   workflow_dispatch:
+    inputs:
+      functions:
+        description: >-
+          Functions to mutate whole tonight besides the night's own, space-separated,
+          each path::qualname (e.g. modules/nsot/config_check.py::_check_device); empty for none
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -72,12 +79,19 @@ jobs:
           key: mutation-state-${{ github.run_id }}
           restore-keys: mutation-state-
 
+      # The dispatch's `functions` reach the script through the environment, never pasted into
+      # it: each word becomes one --also argument, and the plan refuses a name it cannot find.
       - name: Plan the night
         id: plan
+        env:
+          ALSO_FUNCTIONS: ${{ inputs.functions }}
         run: |
           mkdir -p .mutation-state
+          set -f
+          set --
+          for f in $ALSO_FUNCTIONS; do set -- "$@" --also "$f"; done
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
-            --head "$GITHUB_SHA" --out mutation-out --summary "$GITHUB_STEP_SUMMARY"
+            --head "$GITHUB_SHA" --out mutation-out --summary "$GITHUB_STEP_SUMMARY" "$@"
           if [ -s mutation-out/patterns.txt ] && grep -q . mutation-out/patterns.txt; then
             echo "work=yes" >> "$GITHUB_OUTPUT"
           else

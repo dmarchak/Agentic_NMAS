@@ -186,14 +186,16 @@ nothing scores 100% coverage and 0% here. Each night:
 
 - **Scope, changed only:** the counted automation functions (the coverage tool's scope and
   counting rules, `tests/coverage_scope.py`, `scripts/pydefs.py`) whose lines changed since the
-  commit the last night covered (head's parent on the first night), read with `git diff -U0`,
+  commit the last night covered (on a night with no record, since the commit that added the
+  nightly workflow, so the first night is not an empty one), read with `git diff -U0`,
   and the functions the record keeps (below). Each function's mutants run against the test
   files whose code imports its module (parsed, never searched: a text search matched an import
   written inside a test's string data). mutmut writes every mutant of a FILE, so its progress
   counter counts the whole file (`x/2168` for `config_check.py`); only the planned functions'
   run, and the report checks it: a mutant of anything else having run is "SCOPE BROKEN" and
   fails the night. `nmas-mutation plan --also path::qualname` names a function to mutate whole,
-  changed or not.
+  changed or not; the Actions tab's Run workflow takes the same as its `functions` input
+  (space-separated), passed to the script through the environment.
 - **The canary first.** `tests/mutation_canary.py` holds two functions every night mutates
   beside the planned ones: `in_process`, reached only in a test's process, and `in_child`,
   reached only through a child process the test starts, as `config_check`'s tests reach the

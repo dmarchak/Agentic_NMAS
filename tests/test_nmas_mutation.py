@@ -153,6 +153,32 @@ class TestThePlan:
         with pytest.raises(ValueError, match="no counted function"):
             M.plan({"commit": head}, head, root=root, also=["modules/net.py::size"])
 
+    def test_a_first_night_begins_where_the_nightly_was_added(self, history):
+        """No record yet: everything since the commit that added the nightly workflow (so the
+        first night is not an empty one), else head's parent."""
+        root, head = history
+        wf = os.path.join(root, ".github", "workflows")
+        os.makedirs(wf)
+        with open(os.path.join(wf, "mutation-nightly.yml"), "w", encoding="utf-8") as fh:
+            fh.write("name: mutation-nightly\n")
+        for args in (("add", "-A"), ("commit", "-qm", "the nightly")):
+            subprocess.run(["git", "-C", root, "-c", "user.name=t", "-c",
+                            "user.email=t@example.invalid", *args], check=True,
+                           capture_output=True)
+        added = M.git("rev-parse", "HEAD", root=root).strip()
+        assert M.first_base(added, root) == head, "head itself added it: its parent"
+        for rel, text in (("modules/net.py", "\n\ndef later(x):\n    return x\n"),
+                          ("routes/page.py", "\n# a route's comment, the night after\n")):
+            with open(os.path.join(root, rel), "a", encoding="utf-8") as fh:
+                fh.write(text)
+            for args in (("add", "-A"), ("commit", "-qm", rel)):
+                subprocess.run(["git", "-C", root, "-c", "user.name=t", "-c",
+                                "user.email=t@example.invalid", *args], check=True,
+                               capture_output=True)
+        p = M.plan({}, "HEAD", root=root)
+        assert p["base"] == added, "not head's parent: two commits came after the nightly"
+        assert p["planned"] == [("modules/net.py", "later")]
+
     def test_the_record_names_a_commit_never_a_moving_name(self, history):
         root, head = history
         assert M.plan({"commit": head}, "HEAD", root=root)["head"] == head
@@ -483,6 +509,14 @@ class TestTheWorkflow:
         assert on["schedule"] == [{"cron": "17 8 * * *"}]
         cron_at = self.text().index('cron: "17 8 * * *"')
         assert "America/Denver" in self.text()[cron_at - 160:cron_at]
+
+    def test_a_dispatchs_functions_reach_the_plan_through_the_environment(self):
+        """Never `${{ inputs... }}` pasted into a script (an input is text a person typed)."""
+        doc = self.doc()
+        assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions"}
+        plan = next(s for s in doc["jobs"]["mutate"]["steps"] if s.get("id") == "plan")
+        assert plan["env"] == {"ALSO_FUNCTIONS": "${{ inputs.functions }}"}
+        assert "${{" not in plan["run"] and '--also "$f"' in plan["run"]
 
     def test_its_one_setting_is_the_budget_and_it_bounds_the_run(self):
         doc = self.doc()

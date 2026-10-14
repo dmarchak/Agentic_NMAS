@@ -568,9 +568,25 @@ def git(*args, root: str = ROOT) -> str:
                           check=True).stdout
 
 
+#: The nightly's own workflow: the commit that added it is where nights begin.
+WORKFLOW_REL = ".github/workflows/mutation-nightly.yml"
+
+
+def first_base(head: str, root: str = ROOT) -> str:
+    """Where a night with no record starts: the commit that added the nightly workflow, so the
+    first night covers everything changed since nights began; head's parent where that commit
+    is not head's ancestor (a repository without the workflow, or head itself adding it)."""
+    added = git("log", "--diff-filter=A", "--format=%H", head, "--", WORKFLOW_REL,
+                root=root).split()
+    if added and added[-1] != head:
+        return added[-1]
+    return git("rev-parse", f"{head}~1", root=root).strip()
+
+
 def plan(state: dict, head: str, root: str = ROOT, also: list = ()) -> dict:
-    """The night's plan: the base commit (the last covered, or head's parent on the first
-    night) and the functions to mutate, each read at head: those the record keeps whose hash is
+    """The night's plan: the base commit (the last covered, or on the first night the commit
+    that added the nightly workflow, `first_base`) and the functions to mutate, each read at
+    head: those the record keeps whose hash is
     unchanged (only their mutants not yet checked and their open survivors run: `names`), then
     the counted automation functions the diff touches (all their mutants). A kept function whose
     text changed is planned afresh, its old results dropped. *also*: functions (`path::qualname`)
@@ -580,7 +596,7 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = ()) -> dict:
     # The record names a COMMIT: a name like HEAD would move under it (a laptop run stored
     # "HEAD" itself, 2026-10-14).
     head = git("rev-parse", "--verify", f"{head}^{{commit}}", root=root).strip()
-    base = state.get("commit") or git("rev-parse", f"{head}~1", root=root).strip()
+    base = state.get("commit") or first_base(head, root)
     diff = git("diff", "-U0", f"{base}..{head}", "--", "modules", root=root)
 
     def read(path):

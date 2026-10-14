@@ -414,6 +414,122 @@ def test_the_platform_from_either_source_alone_still_renders(lab, monkeypatch, o
     assert len(fails) == 1 and fails[0]["device"] == "r2", report["results"]
 
 
+# ---------------------------------------------------------------------------
+# What the check reports, record by record (the mutation night's VERDICT survivors, 2026-10-14:
+# a note's level, its check, the file or device it blames, which approval it names)
+# ---------------------------------------------------------------------------
+
+def _rec(check, status, file, device, message, files=None):
+    return {"check": check, "status": status, "file": file, "device": device,
+            "message": message, "files": files or [file]}
+
+
+def _records(results, *checks):
+    return [{k: r[k] for k in ("check", "status", "file", "device", "message", "files")}
+            for r in results if r["check"] in checks]
+
+
+def test_the_lab_reports_exactly_these_records(lab):
+    """The render's pass names every file its render depends on; the template's approval is a
+    note against the template; Intent-Match passes against the golden, saying how many secret
+    values it did not compare."""
+    from modules.nsot import config_check
+    report = config_check.run(lab["repo"], notes=True)
+    assert _records(report["results"], "render", "lint", "intent-match") == [
+        _rec("render", "pass", "host_vars/r2.yml", "r2",
+             "renders through templates/cisco_iosxe/base.j2",
+             ["host_vars/r2.yml", "templates/_common.j2", "templates/bindings.yml",
+              "templates/cisco_iosxe/base.j2"]),
+        _rec("render", "note", "templates/cisco_iosxe/base.j2", "r2",
+             "templates/cisco_iosxe/base.j2 is NOT approved: a deploy refuses until it is"),
+        _rec("intent-match", "pass", "golden/r2.cfg", "r2",
+             "the golden matches its rendered intent (3 secret value(s) not compared)")]
+
+
+@pytest.mark.parametrize("answer, words", [
+    (lambda repo, rel: True, "templates/cisco_iosxe/base.j2 is approved"),
+    (lambda repo, rel: (_ for _ in ()).throw(OSError("unreadable")),
+     "templates/cisco_iosxe/base.j2 is of unknown approval (unreadable)"),
+])
+def test_the_templates_approval_is_said_whichever_it_is(lab, monkeypatch, answer, words):
+    from modules.nsot import approval, config_check
+    asked = []
+    monkeypatch.setattr(approval, "is_approved",
+                        lambda repo, rel: asked.append((repo, rel)) or answer(repo, rel))
+    report = config_check.run(lab["repo"], notes=True)
+    notes = [r for r in _records(report["results"], "render") if r["status"] == "note"]
+    assert notes == [_rec("render", "note", "templates/cisco_iosxe/base.j2", "r2", words)]
+    assert asked == [(os.path.abspath(lab["repo"]), "cisco_iosxe/base.j2")]
+
+
+def test_lines_a_deploy_asks_a_reason_for_are_noted_five_then_counted(lab, monkeypatch):
+    from modules.nsot import authorisation, config_check
+    seen = []
+    monkeypatch.setattr(authorisation, "flagged",
+                        lambda lines: seen.append(len(lines)) or [f"line {n}" for n in range(7)])
+    report = config_check.run(lab["repo"], notes=True)
+    assert seen and seen[0] > 10, "the render's lines, each"
+    assert [r for r in _records(report["results"], "lint")] == [_rec(
+        "lint", "note", "host_vars/r2.yml", "r2",
+        "7 line(s) a deploy sending them asks an authorisation with a reason for: "
+        "line 0; line 1; line 2; line 3; line 4; and 2 more")]
+    monkeypatch.setattr(authorisation, "flagged", lambda lines: ["only one"])
+    assert _records(config_check.run(lab["repo"], notes=True)["results"], "lint") == [_rec(
+        "lint", "note", "host_vars/r2.yml", "r2",
+        "1 line(s) a deploy sending them asks an authorisation with a reason for: only one")]
+
+
+def test_an_intent_that_departs_from_its_golden_shows_both_sides(lab, monkeypatch):
+    """The first three of each side, each `section / line`, or the section alone."""
+    from modules.nsot import config_check, roundtrip
+    _edit_intent(lab, lambda t: t.replace("hostname: r2", "hostname: r2x", 1))
+    report = config_check.run(lab["repo"], notes=True)
+    assert _records(report["results"], "intent-match") == [_rec(
+        "intent-match", "note", "golden/r2.cfg", "r2",
+        "differs (-1 +1): a `-` line is in the golden and not in intent, a `+` line in intent "
+        "and not in the golden: - (global) / hostname r2; + (global) / hostname r2x")]
+    monkeypatch.setattr(roundtrip, "change_rows", lambda golden, rendered: {
+        "removed": [("a", "1"), ("b", ""), ("c", "3"), ("d", "4")],
+        "added": [("e", ""), ("f", "6"), ("g", "7"), ("h", "8")], "masked": 0})
+    report = config_check.run(lab["repo"], notes=True)
+    assert _records(report["results"], "intent-match")[0]["message"].endswith(
+        "golden: - a / 1; - b; - c / 3; + e; + f / 6; + g / 7")
+
+
+def _check(lab, device, intent, entry=None):
+    from modules.nsot import config_check
+    run = config_check._Run(lab["repo"], mask_values=False, notes=True)
+    config_check._check_device(run, device, intent, entry or {}, None, "", {})
+    return [{k: r[k] for k in ("check", "status", "file", "device", "message", "files")}
+            for r in run.results]
+
+
+def test_a_bootstrap_intent_is_noted_and_never_rendered(lab):
+    assert _check(lab, "r9", {"hostname": "r9", "bootstrap": True}) == [_rec(
+        "render", "note", "host_vars/r9.yml", "r9",
+        "bootstrap intent (onboarding's): nothing to render yet")]
+
+
+def test_a_device_with_no_known_platform_is_noted_and_never_rendered(lab):
+    from modules.nsot import hostvars
+    intent = hostvars.read_committed(lab["repo"], "r2")
+    intent.pop("platform", None)
+    assert _check(lab, "r2", intent, {"platform": "an-unknown-os"}) == [_rec(
+        "render", "note", "host_vars/r2.yml", "r2",
+        "not rendered: no known platform (neither the inventory, its manifest entry nor its "
+        "intent names a config dialect)")]
+
+
+def test_intent_match_reads_the_golden_its_entry_names_else_the_devices_own(lab):
+    from modules.nsot import hostvars
+    intent = hostvars.read_committed(lab["repo"], "r2")
+    named = _check(lab, "r2", intent, {"platform": "cisco_iosxe", "golden": "golden/other.cfg"})
+    assert named[-1] == _rec("intent-match", "note", "golden/other.cfg", "r2",
+                             "no golden: nothing captured to compare")
+    own = _check(lab, "r2", intent, {"platform": "cisco_iosxe"})
+    assert own[-1]["file"] == "golden/r2.cfg" and own[-1]["status"] == "pass"
+
+
 def test_a_password_hash_anywhere_fails_by_its_shape_and_is_never_printed(lab, tmp_path):
     value = "$9$AAAAAAAAAAAAAA$" + "B" * 43
     path = os.path.join(lab["repo"], "templates", "cisco_iosxe", "base.j2")
