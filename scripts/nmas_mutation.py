@@ -96,6 +96,71 @@ def function_hash(source, qualname: str) -> str:
     return ""
 
 
+#: mutmut 3.8's own pragma: on a `def` or `class` header line it skips the whole node, which is
+#: then written into mutmut's copy as it is, with no trampoline (mutmut/mutation/pragma_handling.py).
+FENCE = "# pragma: no mutate block"
+
+
+def _header_lines(source: str) -> dict:
+    """`{def or class line: the line its header's colon ends on}` for every function and class,
+    by the source's tokens (a signature can span lines)."""
+    import io
+    import tokenize
+
+    out, start, depth = {}, None, 0
+    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        if tok.type == tokenize.NAME and tok.string in ("def", "class") and start is None:
+            start, depth = tok.start[0], 0
+        elif start is not None and tok.type == tokenize.OP:
+            if tok.string in "([{":
+                depth += 1
+            elif tok.string in ")]}":
+                depth -= 1
+            elif tok.string == ":" and depth == 0:
+                out[start] = tok.start[0]
+                start = None
+    return out
+
+
+def fence(source: str, planned: set) -> str:
+    """*source* with every function and class it holds fenced off from mutmut (`FENCE` appended
+    to its header line) except the *planned* qualnames and the classes that hold one, whose other
+    methods are fenced in turn. mutmut mutates every function of a file it is given: one changed
+    line in modules/pipeline.py planned every function of it, a copy of tens of megabytes that
+    every test's process compiled, a clean run of 2,315 s for 407 tests, and a source scan of an
+    unplanned function failing on mutmut's rewriting of it (the second GitHub night, 2026-10-14).
+    Only comments are added, so every line keeps its number."""
+    import ast
+
+    headers = _header_lines(source)
+    lines = source.splitlines(keepends=True)
+    marks = set()
+
+    def visit(body, prefix):
+        for node in body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            q = prefix + node.name
+            if q in planned:
+                continue
+            if isinstance(node, ast.ClassDef) and any(p.startswith(q + ".") for p in planned):
+                visit(node.body, q + ".")
+                continue
+            line = headers.get(node.lineno)
+            first = node.body[0].lineno
+            if line is not None and line < first:          # a one-line body is left as it is
+                marks.add(line)
+
+    lines_before = len(lines)
+    visit(ast.parse(source).body, "")
+    for line in marks:
+        text = lines[line - 1]
+        end = text[len(text.rstrip("\r\n")):]
+        lines[line - 1] = text.rstrip("\r\n") + "  " + FENCE + end
+    assert len(lines) == lines_before
+    return "".join(lines)
+
+
 def mangled(path: str, qualname: str) -> str:
     """mutmut 3's name for a function: `module.x_func`, or for a method `module.xǁClassǁmethod`
     (its statistics key, and its mutants' names less `__mutmut_<n>`)."""

@@ -732,6 +732,110 @@ class TestAFailedRunSaysWhy:
             "failed to collect stats. runner returned 1"]
 
 
+FENCE_SOURCE = '''import os
+
+
+@decorated
+def planned(x):
+    return x + 1
+
+
+def unplanned(a,
+              b: int = 1) -> dict:  # its own comment
+    return {"a": a}
+
+
+async def also_unplanned():
+    return 1
+
+
+def one_line(): return 2
+
+
+class Holder:
+    def kept(self):
+        return 1
+
+    def other(self):
+        return 2
+
+
+class Untouched:
+    def method(self):
+        return 3
+'''
+
+
+class TestTheFence:
+    """The second GitHub night (2026-10-14): two changed functions of modules/pipeline.py made
+    mutmut mutate all 56 (5,030 mutants, a 50.78 MB copy) and rewrite the unplanned ones a source
+    scan reads. Fenced, mutmut 3.8 made 77 mutants of the two planned, 0.24 MB, and wrote every
+    other function as it is (measured with mutmut's own mutate_file_contents; mutmut is dev-only,
+    so here the fence is checked as text)."""
+
+    def test_only_what_is_not_planned_is_fenced(self):
+        out = M.fence(FENCE_SOURCE, {"planned", "Holder.kept"})
+        lines = out.splitlines()
+        marked = [l for l in lines if l.endswith(M.FENCE)]
+        assert len(marked) == 4, marked
+        assert any(l.startswith("              b: int = 1) -> dict:") for l in marked), \
+            "a signature over two lines: its colon's line"
+        assert any(l.startswith("async def also_unplanned():") for l in marked)
+        assert any(l.startswith("    def other(self):") for l in marked)
+        assert any(l.startswith("class Untouched:") for l in marked)
+        assert not any(l.startswith(("def planned", "class Holder", "    def kept",
+                                     "def one_line")) and l.endswith(M.FENCE) for l in lines)
+
+    def test_only_comments_are_added(self):
+        out = M.fence(FENCE_SOURCE, {"planned"})
+        assert len(out.splitlines()) == len(FENCE_SOURCE.splitlines())
+        assert [l.replace("  " + M.FENCE, "") for l in out.splitlines()] == \
+            FENCE_SOURCE.splitlines()
+        import ast
+        assert ast.dump(ast.parse(out)) == ast.dump(ast.parse(FENCE_SOURCE))
+
+    def test_mutmuts_own_pragma_reading_takes_it_as_a_block(self):
+        """mutmut 3.8 reads `# pragma: … no mutate <token>` from a comment and acts on `block`
+        (mutmut/mutation/pragma_handling.py's _parse_pragma_token): the token after "no mutate"
+        is "block", here and after a comment of the line's own."""
+        line = "def f():  # its own comment  " + M.FENCE
+        tail = line.partition("no mutate")[-1].strip()
+        assert "# pragma:" in line and tail.lstrip(": ").split(",", 1)[0].split()[0] == "block"
+
+    def test_the_workflow_fences(self):
+        wf = open(WORKFLOW, encoding="utf-8").read()
+        plan = next(s["run"] for s in yaml.safe_load(wf)["jobs"]["mutate"]["steps"]
+                    if s.get("id") == "plan")
+        assert " --fence " in plan.replace("\\\n", " ")
+
+    def test_the_cli_fences_in_place_and_refuses_a_module_with_changes_of_its_own(
+            self, history, monkeypatch, tmp_path):
+        """Through the real CLI over a planted repository: a clean planned module is fenced;
+        one with uncommitted changes is refused (exit 2) and left as it was."""
+        root, head = history
+        loader = importlib.machinery.SourceFileLoader(
+            "nmas_mutation_cli_fence", os.path.join(ROOT, "scripts", "nmas-mutation"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        cli = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli)
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        monkeypatch.setattr(cli.M, "git", lambda *a, root=root: M.git(*a, root=root))
+        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(): M.plan(state, h, root=root,
+                                                                            also=also))
+        os.makedirs(os.path.join(root, "tests"), exist_ok=True)
+        args = ["plan", "--head", head, "--out", str(tmp_path / "out"), "--fence"]
+        net = os.path.join(root, "modules", "net.py")
+        (open(net, "a", encoding="utf-8")).write("# a change of its own\n")
+        before = open(net, encoding="utf-8").read()
+        assert cli.main(args) == 2
+        assert open(net, encoding="utf-8").read() == before, "a refused fence wrote nothing"
+        subprocess.run(["git", "-C", root, "checkout", "--", "modules/net.py"], check=True)
+        assert cli.main(args) == 0
+        text = open(net, encoding="utf-8").read()
+        assert "def untouched(x):  " + M.FENCE in text
+        assert "def changed(x):\n" in text, "a planned function is left as it is"
+
+
 @pytest.fixture
 def moved(tmp_path):
     """A real history: `kept` moves to another module unchanged, `edited` moves and changes."""

@@ -114,6 +114,25 @@ def cmd_plan(a) -> int:
                  + "pytest_add_cli_args =\n    -p\n    no:cacheprovider\n"
                  + "pytest_add_cli_args_test_selection =\n"
                  + "".join(f"    {t}\n" for t in tests + [M.CANARY_TESTS]))
+    if a.fence:
+        # Only the planned functions reach mutmut: every other function and class of a planned
+        # module is fenced off in place (M.fence). In place, so only in a checkout made for the
+        # night (the workflow's); the record's hashes are read from git, never from these files.
+        # Refused over a file with changes of its own, so what it rewrites is always in git.
+        dirty = M.git("status", "--porcelain", "--", *files).strip()
+        if dirty:
+            print(f"nmas-mutation: --fence refused: these planned modules hold uncommitted "
+                  f"changes, and fencing rewrites them in place:\n{dirty}", file=sys.stderr)
+            return 2
+        for path in files:
+            planned_here = {q for p_, q in p["planned"] if p_ == path}
+            with open(os.path.join(M.ROOT, path), encoding="utf-8") as fh:
+                source = fh.read()
+            fenced = M.fence(source, planned_here)
+            with open(os.path.join(M.ROOT, path), "w", encoding="utf-8") as fh:
+                fh.write(fenced)
+            print(f"  fenced {path}: {fenced.count(M.FENCE)} function(s) and class(es) not "
+                  f"mutated; {len(planned_here)} planned", flush=True)
     return 0
 
 
@@ -259,6 +278,9 @@ def main(argv=None) -> int:
     p.add_argument("--head", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--summary")
+    p.add_argument("--fence", action="store_true",
+                   help="fence every unplanned function of each planned module off from mutmut, "
+                        "IN PLACE: only in a checkout made for the night")
     p.add_argument("--also", action="append", default=[], metavar="PATH::QUALNAME",
                    help="a function to mutate whole tonight, changed or not")
     r = sub.add_parser("run")

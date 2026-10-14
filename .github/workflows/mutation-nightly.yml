@@ -120,6 +120,9 @@ jobs:
 
       # The dispatch's `functions` reach the script through the environment, never pasted into
       # it: each word becomes one --also argument, and the plan refuses a name it cannot find.
+      # --fence: mutmut is given only the planned functions; every other function of a planned
+      # module is fenced off in this checkout, which exists for the night alone (the second
+      # night planned two functions of pipeline.py and mutmut made 5,030 mutants of 56).
       - name: Plan the night
         id: plan
         env:
@@ -130,7 +133,7 @@ jobs:
           set --
           for f in $ALSO_FUNCTIONS; do set -- "$@" --also "$f"; done
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
-            --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md "$@"
+            --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md --fence "$@"
           # The summary in the job's log too (readable through the API, which returns no job
           # summary), and on the run's page.
           if [ -f mutation-out/summary.md ]; then
