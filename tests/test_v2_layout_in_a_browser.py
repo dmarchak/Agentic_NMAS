@@ -136,7 +136,7 @@ PAGES = ["/v2/", "/v2/devices", "/v2/netbox", "/v2/device/r2", "/v2/device/r2?ta
          "/v2/monitoring/coverage", "/v2/help/about", "/v2/update", "/v2/settings",
          "/v2/settings/installation", "/v2/help/records-database",
          "/v2/help/installation-settings",
-         "/v2/settings/installation?tab=ai", "/v2/settings/installation?tab=diagnostics",
+         "/v2/settings/installation?tab=diagnostics",
          "/v2/settings/installation?tab=access", "/v2/settings/installation?tab=platforms",
          "/v2/templates", "/v2/templates?bring=_common.j2", "/v2/monitoring/profile",
          "/v2/monitoring/profile?propose=1", "/v2/device/r2?tab=ask",

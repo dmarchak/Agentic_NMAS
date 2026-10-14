@@ -48,10 +48,8 @@ So each setting is in one of three states, visible in the posture panel:
 | `tftp_root`, `tftp_server_ip` | RETIRING (declared one release so a rollback finds them): their readers, today's device file and bulk file routes, left at 7.8 (D16, 2026-10-13; C616); `tftp_root`'s field and `NMAS_TFTP_ROOT` left the same day (tag `pre-remove/tftp-root`). |
 | `prometheus_*`, `grafana_*`, `loki_*`, `kea_*`, `s3_*`, `nsot_git_*` (the rest) | v2: Settings › Default and each network's cards; today's Settings → Integrations until cutover |
 | Every v2 Installation card's Save, Replace and Turn off | recorded in the installation's `settings_record.jsonl`: who, when, the card and the names of what changed, never a value |
-| `collector_*`, `monitoring_*`, `promql_*` | Settings → Monitoring |
-| `ai_enabled` | v2: Settings › Installation › AI and workflow, the assistant card (board F4, 2026-10-10), saved and recorded like every Installation card. |
-| **`background_agent_enabled`** | v2: the same tab draws its STATE only, off until Stage 8 (F4 decision D); set on in the file, the card says so and that it starts only at a restart (C623). Today's Settings → AI keeps its switch until cutover. |
-| `wf_*` | Today's Settings → AI only, until cutover: not drawn on v2 (F4 decision C), they change only the assistant's prompt text and retire with its rewrite (C30, Stage 8.5). |
+| `collector_*`, `monitoring_*`, `promql_*` | Settings → Monitoring (today's page). `collector_*` are RETIRING and read by nothing: the trap receiver and NetFlow collector they switched left with the AI family (D15, 2026-10-14); their switches leave with today's pages. |
+| `ai_enabled`, `background_agent_enabled`, `wf_read_first`, `wf_auto_backup`, `wf_update_vars`, `wf_require_approval` | **RETIRING with the AI family (D15, 2026-10-14), read by nothing.** The assistant, the background agent and the switches that only changed the assistant's prompt were removed (tag `pre-remove/ai-family`), with v2's AI and workflow tab and today's Settings → AI. The keys stay declared for one release (scope `retiring`), so a rollback finds them; `/settings` refuses them by name. Phase 8 brings AI back as a responder with its own settings (docs/PHASE8_PLAN.md). |
 | `require_identity_for_*`, `require_person_for_*`, `service_allowed_operations`, `cf_access_*` | v2: Settings › Installation › Access and identity (board F4, 2026-10-10), **read-only** (see below), with Record this decision, recorded in the installation's settings record (C625). Today's Settings → Security posture until cutover. |
 | `records_db_host`, `records_db_port`, `records_db_name`, `records_db_user`, `records_db_password` | v2: Settings › Installation › Connections, the Records database card (board F2, 2026-10-09). The installation's, never a network's (Phase 4, P4-2). Host empty: every store stays on its files, today's behaviour; the name, role and port default to what host step 6a makes (`mercury`, `mercury`, 5433). The password is a secret (`secrets_store.SECRET_KEYS`), shown only as set and changed by Replace…, after the server's by `scripts/host-steps/postgres-rotate.sh`. Save and Replace are recorded in the installation's `settings_record.jsonl`; the last Test's answer is kept in `records_db_test.json`. |
 | `credential_rotation_policies` | v2: Credentials › Profiles, each profile's **Rotation policy…** (C724, 2026-10-12): `{profile: {state, days, window_start, window_end, max_per_run, set_by, set_at, verified}}`, the scheduled credential rotation its devices follow (docs/manual/how-it-works/rotate.md, "On a schedule"). Empty (the default) is no policy: nothing rotates on a schedule, the behaviour before it existed. Set only by a verified person, and each change recorded in `credential_changes.jsonl` (History's Credential profiles source): who, when and the policy in words. |
@@ -62,13 +60,6 @@ So each setting is in one of three states, visible in the posture panel:
 today's Settings → Integrations as a **recorded exception** to the no-new-v1 rule, named with
 their reason in `tests/test_no_new_v1_capability.py`, and they move at cutover; a v2 Settings
 page waits on P.8.
-
-`background_agent_enabled` was added to the form in 3.2d. It had **no control
-at all**: `/settings` accepted it and nothing ever sent it. See the warning
-below. **It defaults to OFF since 2026-10-07 (C497):** the background agent is off until Stage 8
-(the charter: the agent proposes, never confirms), as ARCHITECTURE.md and CLAUDE.md said, where
-a fresh install once started it. An install that set it keeps its value, and a switch that
-cannot be read leaves the agent off.
 
 ---
 
@@ -125,7 +116,7 @@ Each with a reason. These are settable by editing
 | `clab_host`, `clab_configs_dir`, `clab_sync_script`, `clab_launch_patch`, `clab_labs`, `clab_declared_unmapped` | **Removed (C663, the operator's decision, 2026-10-11): the lab is test infrastructure, not the product.** The lab's startup sync reads its own map (`data/lab_targets/<network>.tsv`, beside the checkout, `lab/clab-sync/`). A host that stored them keeps the values in its file, read by nothing: the schema allows a stored key it does not declare (measured: a write and a ratify succeed beside them), and Mercury has no delete path for a settings key. |
 | `yang_push_script` | Path to the telemetry helper; same. **Its script was retired on 2026-09-26 (C31)**, so on the deployment host it is declared not applicable rather than left empty. |
 | `jenkins_step_shell` | **DEPRECATED and read by nothing** (P.4 removed Jenkins, and with it the pipeline generators that chose `bat` or `sh`). Its control is gone from Settings → Server; kept only because schema keys are never deleted. |
-| `wf_run_jenkins`, `wf_save_golden` | **DEPRECATED and read by nothing but the agent's prompt text** (P.4 removed Jenkins). They told the agent whether to run Jenkins after a push and whether to save a golden after CI passed. Their switches are gone from the form; kept only because schema keys are never deleted. Stage 8.5 removes them from the prompt. |
+| `wf_run_jenkins`, `wf_save_golden` | **DEPRECATED and read by nothing** (P.4 removed Jenkins; the agent's prompt, their last reader, left with the AI family, D15). They told the agent whether to run Jenkins after a push and whether to save a golden after CI passed. Their switches are gone from the form; kept only because schema keys are never deleted. |
 | `settings_not_applicable` | Guard-gating settings declared NOT APPLICABLE on this host, with who, when and why (C31). **Written only by `scripts/nmas-setting-not-applicable`**, on the host, like the identity gates: a declaration changes what a check means, so a browser session must not be able to make one. Job health reads it as `not_applicable`; a key both set and declared is a `contradiction`. |
 | `netbox_excluded_vrfs` | VRFs whose **addresses** the NetBox import does not model, **empty by default** (C663, 2026-10-11; it named one emulator's VRF until then, and a host relying on that ratified it first, `scripts/host-steps/c663-step2-pin-vrfs.sh`). It describes an emulator, not a preference: where every emulated node answers on the same internal management address, NetBox's global uniqueness makes importing them not representable rather than merely untidy (measured: one created, four refused with *"Duplicate IP address found in global table"*). A read that fails refuses, naming the setting, and the import names the device it was writing as failed: with an empty default there is no fallback that keeps a declared exclusion. |
 | `netbox_remove_on_list_delete` | **DEPRECATED and read by nothing** (C155, the operator's decision, 2026-09-28). Deleting a device list never deletes NetBox objects: removal has one home, the NetBox tab's previewed and confirmed Remove, and a list that still owns recorded objects is refused until they are removed. The switch was removed from Settings → NetBox, and its branch deleted NMAS-created objects with no preview and no confirmation token. Still declared. Removing the declaration would not break the host's file: the schema allows a stored key it does not declare (`additionalProperties`), so the stored value would stay in the file, read by nothing, and `write_settings()` and `ratify()` would still work (measured 2026-10-11, C672). Whether the deprecated keys' declarations go is the cutover's settings tidy. **Nothing to do on the host**: its default is `False` and nothing reads it. It is NOT declared not applicable: that record is for guard-gating settings whose default is EMPTY, and `nmas-setting-not-applicable` refuses this one, correctly ("has a non-empty default, so it is never unset; there is nothing to declare"). |
@@ -154,27 +145,12 @@ nothing there moved.
 
 ---
 
-## ⚠ Pause is not disable
-
-`pause_agent()` sets an **in-memory** `threading.Event`. It persists nothing,
-so a pause is lost on the next restart and the background agent resumes.
-
-`background_agent_enabled` is the persistent switch, defaults **True**, and
-until 3.2d had no control in the interface.
-
-The two look like one switch in the UI and only the invisible one survives a
-restart. **If the agent was "disabled" by the Agent tab's Pause button, it has
-been running again after every restart since.** That is worth checking against
-the Stage 8.4 premise, which assumes the background agent has been off
-throughout the NSoT work — it is the same shape as the drift scheduler's
-in-memory `next_ts`, where state that looked persistent was not.
-
----
-
 ## Settings that are not in the schema at all
 
-`anthropic_api_key` (`.env`) is written by `/settings` into **another
-store**. The four `jenkins_*` fields used to be written to
-`data/jenkins_checks.json`; since P.4 `/settings` refuses them by name.
+`anthropic_api_key` (`.env`) was written by `/settings` into **another
+store**; since the AI family's removal (D15, 2026-10-14) `/settings` refuses
+it by name, and D15's host step deleted the key's `.env` line. The four
+`jenkins_*` fields used to be written to `data/jenkins_checks.json`; since
+P.4 `/settings` refuses them by name.
 They are not schema keys, `write_settings()` does not touch them, and
 `SECRET_KEYS` deliberately does not list them — see [SECRETS.md](SECRETS.md).

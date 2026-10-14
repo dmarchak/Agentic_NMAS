@@ -31,6 +31,7 @@ the checker learns about and this sweep does not plant fails here.
 """
 
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -49,10 +50,12 @@ def _p(tag):
 
 
 #: store -> the values planted in it. Filled by `planted` below.
+#: The AI family's own stores (chat history, config cache, variables, tool cache) left with
+#: it (D15, 2026-10-14). The collector config and the trap buffer outlive their code as files
+#: an install may still hold, so they stay planted as that residue.
 STORES = ("env", "settings", "credential_profile", "device_override",
           "template_secret", "devices_csv", "collector_config", "golden",
-          "backup", "approval_queue", "chat_history", "config_cache",
-          "variables", "snmp_traps", "legacy_devices_csv", "tool_cache",
+          "backup", "approval_queue", "snmp_traps", "legacy_devices_csv",
           "legacy_golden")
 
 #: The checker's `secret` patterns, each mapped to the store planted for it.
@@ -116,9 +119,7 @@ def planted_stores():
     values = {}
     try:
         import app as A
-        from modules import (approval_queue, backups, collector_config,
-                             credentials, device, secrets_store)
-        from modules import ai_assistant as ai
+        from modules import approval_queue, backups, credentials, device, secrets_store
         from modules.nsot import repo as R
 
         A.app.test_client().get("/")
@@ -150,9 +151,10 @@ def planted_stores():
         # each device's own secret). An install that set one before still
         # holds it in the file, so it is planted as that residue, written
         # straight to the file, and no route may return it.
-        collector_config._save({**collector_config._load(),
-                                "snmp_community_ro": _p("CollRo"),
-                                "snmp_community_rw": _p("CollRw")})
+        coll = os.path.join(config.list_data_path(LIST), "collector_config.json")
+        with open(coll, "w", encoding="utf-8") as fh:
+            json.dump({"snmp_community_ro": _p("CollRo"),
+                       "snmp_community_rw": _p("CollRw")}, fh)
         values["collector_config"] = [_p("CollRo"), _p("CollRw")]
 
         R.save_golden(LIST, [R.GoldenItem("r1", _config_body("Gold"), DEVICE["ip"])],
@@ -167,28 +169,11 @@ def planted_stores():
                                     diff="+" + _config_body("Queue").replace("\n", "\n+"))
         values["approval_queue"] = [_p("QueueSec"), _p("QueueComm")]
 
-        ai._save_history_to_disk("main", [
-            {"role": "user", "content": "show me r1"},
-            {"role": "assistant", "content": [
-                {"type": "tool_use", "id": "t1", "name": "run_show_command",
-                 "input": {"command": "show running-config"}}]},
-            {"role": "user", "content": [
-                {"type": "tool_result", "tool_use_id": "t1",
-                 "content": _config_body("Chat")}]}])
-        ai._chat_histories.pop("main", None)
-        values["chat_history"] = [_p("ChatSec"), _p("ChatComm")]
-
-        ai._config_cache_save(DEVICE["ip"], "t", _config_body("Cache"))
-        values["config_cache"] = [_p("CacheSec"), _p("CacheComm")]
-
-        ai._save_variables({"snmp_ro_community": _p("Var")})
-        values["variables"] = [_p("Var")]
-        from modules import snmp_collector
-        trap = {"id": "planted", "source_ip": DEVICE["ip"], "community": _p("Trap"),
-                "version": "v2c", "summary": "planted trap", "varbinds": []}
-        with snmp_collector._trap_lock:
-            snmp_collector._traps.append(trap)
-        snmp_collector._save_trap(trap)
+        # The trap buffer's file, as the receiver (gone with the AI family, D15) left it.
+        with open(os.path.join(config.DATA_DIR, "snmp_traps.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump([{"id": "planted", "source_ip": DEVICE["ip"], "community": _p("Trap"),
+                        "version": "v2c", "summary": "planted trap", "varbinds": []}], fh)
         values["snmp_traps"] = [_p("Trap")]
         legacy = os.path.join(config.DATA_DIR, "Devices.csv")
         device.write_devices_csv([dict(DEVICE, hostname="legacy", device_type="cisco_ios",
@@ -196,12 +181,6 @@ def planted_stores():
                                        password=device.fernet.encrypt(_p("LegPw").encode()).decode(),
                                        secret="")], legacy)
         values["legacy_devices_csv"] = [_p("LegPw")]
-        # The agent's tool-result cache: in memory, holding tool output from
-        # BEFORE the provider boundary redacts it. Found by test order: an
-        # earlier test's cached result reached /ai/tool_cache_snapshot.
-        ai._tool_cache.clear()
-        ai._cache_set("get_running_config", {"device_ip": DEVICE["ip"]}, _config_body("Tc"))
-        values["tool_cache"] = [_p("TcSec"), _p("TcComm")]
         # The deprecated golden store (C77's sweep, 2026-09-27): read-only,
         # still read by `_find_golden_config_file()` for a device the manifest
         # does not know, and holding whole configs. Neither sweep planted it.
@@ -213,13 +192,6 @@ def planted_stores():
         yield values
     finally:
         mp.undo()
-        from modules import ai_assistant as ai
-        from modules import snmp_collector
-        with snmp_collector._trap_lock:
-            snmp_collector._traps[:] = [t for t in snmp_collector._traps if t.get("id") != "planted"]
-        ai._chat_histories.pop("main", None)
-        ai._config_cache.pop(DEVICE["ip"], None)
-        ai._tool_cache.clear()
         shutil.rmtree(store, ignore_errors=True)
         shutil.copytree(original, store)
         shutil.rmtree(original, ignore_errors=True)
@@ -364,8 +336,10 @@ class TestEveryFileTheCodeWritesIsClassified:
 
     def test_floor(self):
         names = self._writers()
-        assert {"user_settings.json", "credential_profiles.json",
-                "collector_config.json", "snmp_traps.json"} <= set(names), sorted(names)
+        # The collector config and the trap buffer left the list with their writers (the AI
+        # family, D15, 2026-10-14); they stay planted above as files an install may hold.
+        assert {"user_settings.json", "credential_profiles.json", "deploy_audit.jsonl",
+                "acknowledgements.jsonl"} <= set(names), sorted(names)
 
     def test_every_written_name_is_classified(self):
         import fnmatch

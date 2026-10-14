@@ -370,7 +370,6 @@ class TestVerifyReadsTheOperationBack:
 
 class TestRollbackRestoresTheOldDefinition:
     def _run(self, monkeypatch, readback):
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
 
@@ -402,7 +401,6 @@ class TestRollbackRestoresTheOldDefinition:
     # capture's read-back (kept as parsed operations, `failure_sla`) decides
     # which re-created operations the push reached.
     def _with_failure_read(self, monkeypatch, device_now, pre=S3):
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
         from modules.nsot.recreate import operations
@@ -432,7 +430,6 @@ class TestRollbackRestoresTheOldDefinition:
         """The seam: the read-back after a failed push records the device's
         IP SLA operations where the rollback reads them, and not in the
         failure state the result returns."""
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
         ctx = _ctx()

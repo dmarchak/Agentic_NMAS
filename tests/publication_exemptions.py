@@ -58,19 +58,9 @@ EXEMPT = {
     ('docs/PHASE2_DHCP.md', 'eeb1506b2887'): ('VRNETLAB', ('address',)),
     # docs/R6_PHASE1.md
     ('docs/R6_PHASE1.md', '2677c75621ed'): ('VRNETLAB', ('address',)),
-    # modules/ai_assistant.py
-    ('modules/ai_assistant.py', '35696ba8fb1d'): ('EXAMPLE', ('address',)),
-    ('modules/ai_assistant.py', '9fe2f79b7fde'): ('EXAMPLE', ('address',)),
-    ('modules/ai_assistant.py', 'ba463ca407c2'): ('EXAMPLE', ('address',)),
-    ('modules/ai_assistant.py', '7a2ecb6a5b8e'): ('EXAMPLE', ('address',)),
-    ('modules/ai_assistant.py', '283f8c3aca96'): ('EXAMPLE', ('address',)),
-    ('modules/ai_assistant.py', '62a692c54974'): ('EXAMPLE', ('address',)),
     # modules/netbox_client.py
     ('modules/netbox_client.py', 'b7806a81965b'): ('EXAMPLE', ('address',)),
     ('modules/netbox_client.py', '576e67ac5e4c'): ('EXAMPLE', ('address',)),
-    # modules/topology.py
-    ('modules/topology.py', '51693aea93bf'): ('EXAMPLE', ('address',)),
-    ('modules/topology.py', '3214ceaba330'): ('EXAMPLE', ('address',)),
     # scripts/nmas-deploy
     ('scripts/nmas-deploy', '3da57d97c7c9'): ('SSH_FORM', ('email',)),
     # scripts/nmas-netbox-census

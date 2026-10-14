@@ -65,12 +65,12 @@ class TestTheStoreIsElsewhere:
         assert os.path.realpath(config.DATA_DIR) == os.path.realpath(os.environ["NMAS_DATA_DIR"])
 
     def test_derived_paths_follow_it(self):
-        """The paths the modules used to compute for themselves."""
-        from modules import agent_runner, agent_timers, ai_assistant, ai_usage_log, config
+        """The paths the modules used to compute for themselves (most of them the AI
+        family's, which left with it, D15; the drift interval's store is the one that
+        stayed)."""
+        from modules import config, drift_interval
         root = os.path.realpath(config.DATA_DIR)
-        for path in (agent_runner._ACTIVITY_LOG_PATH, agent_timers._TIMERS_FILE,
-                     ai_assistant._HISTORIES_DIR, ai_assistant._GLOBAL_KB_FILE,
-                     ai_usage_log._LOG_FILE):
+        for path in (drift_interval._path(),):
             assert os.path.realpath(path).startswith(root + os.sep), path
 
     @pytest.mark.parametrize("tick", CLOCKS, ids=CLOCK_IDS)

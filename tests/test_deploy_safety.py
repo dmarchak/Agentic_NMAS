@@ -881,7 +881,6 @@ class TestRollbackIsExemptFromTheDangerousGate:
 
     def test_exempt_lines_are_recorded_not_silent(self):
         from modules.pipeline import _stage_rollback
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
 

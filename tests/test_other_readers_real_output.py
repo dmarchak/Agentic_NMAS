@@ -27,7 +27,7 @@ import ast
 import os
 import re
 
-from modules import bgp_summary, topology
+from modules import bgp_summary
 from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,14 +39,7 @@ def capture(host, slug):
         return fh.read()
 
 
-class TestTopologyOnRealOutput:
-    def test_ospf_detail_states_match_the_devices_state_lines(self):
-        for host in ("r3", "r1", "s3"):
-            text = capture(host, "show_ip_ospf_neighbor_detail")
-            expected = re.findall(r"State is (\S+?),", text)
-            assert len(expected) >= 5, host
-            got = [n["state"] for n in topology.parse_ospf_neighbors(text)]
-            assert got == expected, host
+class TestTheBgpReaderOnRealOutput:
 
     def test_bgp_the_one_reader_on_r3(self):
         peers = bgp_summary.parse_bgp_summary(capture("r3", "show_ip_bgp_summary"))["peers"]
@@ -72,40 +65,23 @@ class TestTopologyOnRealOutput:
         peers = bgp_summary.parse_bgp_summary(text)["peers"]
         assert [(p["state"], p["established"]) for p in peers] == [("Idle (Admin)", False)]
 
-    def test_lldp_names_every_system_the_device_names(self):
-        for host in ("r3", "r1", "s1", "s3"):
-            text = capture(host, "show_lldp_neighbors_detail")
-            expected = [n.split(".")[0] for n in re.findall(r"System Name: (\S+)", text)]
-            got = [n["device_id"] for n in topology.parse_lldp_neighbors(text)]
-            assert got == expected and expected, host
-
-    def test_cdp_where_it_runs_and_empty_where_it_does_not(self):
-        """The C8000vs run no CDP (`Total cdp entries displayed : 0`); the
-        switches do."""
-        assert topology.parse_cdp_neighbors(capture("r3", "show_cdp_neighbors_detail")) == []
-        got = topology.parse_cdp_neighbors(capture("s1", "show_cdp_neighbors_detail"))
-        assert [(n["device_id"], n["local_interface"]) for n in got] == \
-            [("s2", "GigabitEthernet0/3")]
-
-    def test_interfaces_brief_rows(self):
-        for host in ("r3", "s1"):
-            text = capture(host, "show_ip_interface_brief")
-            rows = [l for l in text.splitlines()[1:] if l.strip()]
-            assert len(topology.parse_ip_interfaces(text)) == len(rows), host
-
 
 class TestNetBoxCableReadersOnRealOutput:
-    def test_they_agree_with_topology_by_hostname(self):
+    def test_they_name_every_system_the_device_names(self):
         """The cable import keys on the HOSTNAME. The LLDP management address
         is the emulator's (s3 reports 10.0.0.15, which is also r1's and r3's
         own address), so a lookup by that address would have been wrong, and
-        none is made."""
+        none is made. The expectation is counted from the capture's own
+        `System Name` lines (it was topology's parser until that left with
+        the AI family, D15)."""
         from modules import netbox_client as nb
 
         for host in ("r3", "s1", "s3"):
             text = capture(host, "show_lldp_neighbors_detail")
+            expected = [n.split(".")[0] for n in re.findall(r"System Name: (\S+)", text)]
+            assert expected, host
             assert [n["remote_hostname"] for n in nb._parse_lldp_neighbors(text)] == \
-                [n["device_id"] for n in topology.parse_lldp_neighbors(text)], host
+                expected, host
 
 
 class TestOneBgpReader:

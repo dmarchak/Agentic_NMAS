@@ -120,7 +120,7 @@ def set_env_line(path: str, name: str, value: str) -> None:
 
     Locked across processes from its read to its write, and replaced whole (CONCURRENCY_AUDIT
     R17): an unlocked truncate let two writers lose each other's line, and a reader mid-write
-    saw none. Owner-only: `.env` holds the AI key in PLAINTEXT by design (docs/SECRETS.md), so
+    saw none. Owner-only: `.env` held the AI key in PLAINTEXT by design until D15 (docs/SECRETS.md), so
     its mode is all that protects it; the replacement is created 0600."""
     from modules.filestore import PathLock, write_atomic
 

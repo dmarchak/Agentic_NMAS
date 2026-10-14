@@ -167,29 +167,6 @@ class TestNoSecretReachesTheProvider:
         # And the tool outputs really did contain them before redaction.
         assert redact.contains_known_secret(messages) != []
 
-    def test_the_boundary_call_site_redacts_all_three_fields(self):
-        """system, messages and tools — a tool description can carry one too."""
-        import inspect
-
-        from modules import ai_assistant
-
-        source = inspect.getsource(ai_assistant)
-        start = source.index("beta.messages.create(")
-        window = source[start:start + 500]
-        for field in ("system=redact_payload", "messages=redact_payload",
-                      "tools=redact_payload"):
-            assert field in window, f"{field} missing at the provider boundary"
-
-    def test_there_is_only_one_provider_boundary(self):
-        """A second create() call would be a second place to forget."""
-        import inspect
-
-        from modules import ai_assistant
-
-        source = inspect.getsource(ai_assistant)
-        assert source.count("messages.create(") == 1, (
-            "more than one provider call site — redaction must cover each")
-
 
 class TestRedactionDegradesHonestly:
     def test_an_unreadable_store_logs_and_does_not_crash(self, monkeypatch, caplog):

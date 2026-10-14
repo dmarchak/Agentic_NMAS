@@ -2,8 +2,9 @@
 # Agentic Network Management
 # Device Manager web application
 
-# Load .env file if present (sets ANTHROPIC_API_KEY etc. without needing system env vars).
-# Use an absolute path (matching where /settings writes it) instead of relying on
+# Load .env file if present (an install's environment variables, without needing system env vars;
+# the AI key it once held left with the AI family, D15).
+# Use an absolute path (where /settings once wrote it) instead of relying on
 # load_dotenv()'s cwd-based search — under systemd, the process's working directory
 # isn't necessarily the repo root, so the auto-search can silently miss the file.
 try:
@@ -62,7 +63,6 @@ from modules.config import (
     AUTO_OPEN_BROWSER,
     set_user_setting,
     get_user_setting,
-    load_user_settings,
     save_user_settings,
 )
 from modules.connection import session_reaper, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
@@ -81,7 +81,6 @@ from modules.backups import (
     get_backup_stats
 )
 from modules.bulk_ops import bulk_manager
-from modules.topology import discover_topology, shorten_interface
 
 # Device status cache and ping worker setup
 #
@@ -316,7 +315,7 @@ if not app.debug:
     ))
     file_handler.setLevel(logging.INFO)
     # Attach at the ROOT logger, not just app.logger. Every module uses its own
-    # logging.getLogger(__name__) (modules.config_git, modules.ai_assistant, ...)
+    # logging.getLogger(__name__) (modules.config_git, modules.drift_check, ...)
     # which only propagates up to root, not to app.logger specifically -- without
     # this, every "check server logs" error message pointed at a file that never
     # actually contained the module's log.error() call. app.logger still
@@ -483,14 +482,11 @@ def index():
     # Get all device lists for the dropdown
     device_lists = get_device_lists()
 
-    no_api_key = not bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-
     return render_template(
         "index.html",
         devices=devices,
         device_lists=device_lists,
         current_list=current_list_name,
-        no_api_key=no_api_key
     )
 
 
@@ -518,7 +514,6 @@ def manage_device(ip):
             files=file_list,
             selected_fs=selected_fs,
             active_tab=active_tab,
-            no_api_key=not bool(os.environ.get("ANTHROPIC_API_KEY", "").strip()),
         )
     except Exception as e:
         flash(f"Failed to connect to {dev.get('hostname', ip)} ({ip}): {e}", "danger")
@@ -601,10 +596,6 @@ def run_command(ip):
             "danger",
         )
         return redirect(url_for("index"))
-
-
-
-
 
 
 # Download last output
@@ -760,23 +751,6 @@ def select_device_list_route():
 
         if success:
             app.logger.info(f"Selected device list: {list_name}")
-            # Reset the event monitor's build-state cache so the new list
-            # starts fresh and doesn't inherit stale Jenkins state from the
-            # previous list.
-            from modules.event_monitor import clear_events
-            clear_events()
-            # Reload per-list collector buffers so the monitoring tab shows
-            # only traps and flows belonging to the newly selected list.
-            try:
-                from modules.snmp_collector import switch_list as snmp_switch
-                snmp_switch()
-            except Exception as _e:
-                app.logger.debug("snmp switch_list: %s", _e)
-            try:
-                from modules.netflow_collector import switch_list as nf_switch
-                nf_switch()
-            except Exception as _e:
-                app.logger.debug("netflow switch_list: %s", _e)
             return jsonify({"status": "success", "message": f"Switched to '{list_name}'"})
         else:
             return jsonify({"status": "error", "message": f"List '{list_name}' not found"}), 404
@@ -786,31 +760,10 @@ def select_device_list_route():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-
-
-# Default values for all workflow flags (all on, except require_approval)
-_WF_DEFAULTS = {
-    "wf_read_first":       True,
-    "wf_auto_backup":      True,
-    "wf_update_vars":      True,
-    "wf_require_approval": False,
-}
-
-def _load_workflow_flags() -> dict:
-    """Return workflow flags from user settings, falling back to defaults."""
-    s = load_user_settings()
-    return {k: s.get(k, v) for k, v in _WF_DEFAULTS.items()}
-
-
-def _ai_enabled() -> bool:
-    """Master switch for AI — when False, chat and agent endpoints are blocked."""
-    return bool(load_user_settings().get("ai_enabled", True))
-
-
-@app.context_processor
-def _inject_ai_enabled():
-    """Inject ai_enabled into every template so it can be server-rendered."""
-    return {"ai_enabled": _ai_enabled()}
+#: The AI family's settings, removed (D15, 2026-10-14). A page older than the server can still
+#: send them: refused by name, as Jenkins's are, so the save says why nothing was stored.
+_AI_FAMILY_KEYS = ("anthropic_api_key", "ai_enabled", "background_agent_enabled",
+                   "wf_read_first", "wf_auto_backup", "wf_update_vars", "wf_require_approval")
 
 
 @app.route("/settings", methods=["GET"])
@@ -827,21 +780,14 @@ def _settings_payload() -> dict:
     # step 6). This returned the Anthropic key and both Jenkins secrets in
     # cleartext, ungated, to every opening of the Settings modal since
     # e729267 (2026-04-12). The NetBox token beside them was always a flag.
-    from modules.settings_schema import DEFAULTS as _SETTING_DEFAULTS
-    payload = {
-        "anthropic_api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY", "")),
+    return {
         # NetBox — token never returned in cleartext; UI uses token_set flag.
         "netbox_url":         nbcfg.get("url", ""),
         "netbox_token_set":   bool(nbcfg.get("token")),
         "netbox_verify_tls":  bool(nbcfg.get("verify_tls", True)),
         "netbox_auth_scheme": nbcfg.get("auth_scheme", "Bearer"),
         "netbox_allow_writes": bool(nbcfg.get("allow_writes", False)),
-        "ai_enabled":              _ai_enabled(),
-        "background_agent_enabled": bool(load_user_settings().get(
-            "background_agent_enabled", _SETTING_DEFAULTS["background_agent_enabled"])),
     }
-    payload.update(_load_workflow_flags())
-    return payload
 
 
 @app.route("/settings", methods=["POST"])
@@ -869,24 +815,11 @@ def save_settings():
 
 
 def _save_settings(data: dict, errors: list):
-    import modules.config as config_module
-
-
-    # ── Anthropic API key ─────────────────────────────────────────────────
-    api_key = data.get("anthropic_api_key", "").strip()
-    if api_key:
-        os.environ["ANTHROPIC_API_KEY"] = api_key
-        # Persist to .env so it survives restarts
-        env_path = os.path.join(os.path.dirname(__file__), ".env")
-        try:
-            from modules.config import set_env_line
-
-            set_env_line(env_path, "ANTHROPIC_API_KEY", api_key)
-            # Reset cached Anthropic client so it picks up the new key
-            import modules.ai_assistant as _ai_mod
-            _ai_mod._anthropic_client = None
-        except Exception as exc:
-            errors.append(f"API key saved to env but .env write failed: {exc}")
+    # ── The AI family: REMOVED (D15) ──────────────────────────────────────
+    if any(k in data for k in _AI_FAMILY_KEYS):
+        errors.append("The AI assistant, the background agent and their workflow switches "
+                      "were removed (D15); their settings are no longer stored. Reload the "
+                      "page.")
 
     # ── Jenkins: REMOVED (P.4) ────────────────────────────────────────────
     # A page older than the server (the edge caches HTML) can still send these.
@@ -921,48 +854,9 @@ def _save_settings(data: dict, errors: list):
         except Exception as exc:
             errors.append(f"NetBox settings failed: {exc}")
 
-    # ── AI master switch + background agent + workflow flags ──────────────
-    # Through `write_settings()`, the one path into user_settings.json: it
-    # refuses a key the schema has never heard of rather than storing it. All
-    # eight keys here were undeclared until 3.2a, which is how they came to be
-    # written by a hand-built dict in this function and known to nothing else.
-    try:
-        from modules.settings_schema import write_settings
-
-        updates = {}
-        if "ai_enabled" in data:
-            updates["ai_enabled"] = bool(data["ai_enabled"])
-        if "background_agent_enabled" in data:
-            updates["background_agent_enabled"] = bool(data["background_agent_enabled"])
-        for flag in _WF_DEFAULTS:
-            if flag in data:
-                updates[flag] = bool(data[flag])
-
-        if updates:
-            result = write_settings(updates)
-            if not result["ok"]:
-                errors.append(result["error"])
-            elif "background_agent_enabled" in updates:
-                # Pause/resume the running thread immediately, and only once
-                # the write succeeded — a thread resumed against a setting
-                # that did not persist comes back paused on the next restart.
-                try:
-                    from modules.agent_runner import pause_agent, resume_agent
-                    (resume_agent if updates["background_agent_enabled"]
-                     else pause_agent)()
-                except Exception as exc:       # noqa: BLE001
-                    errors.append(f"Background agent state not applied: {exc}")
-    except Exception as exc:
-        errors.append(f"Workflow flags failed: {exc}")
-
     if errors:
         return jsonify({"status": "partial", "errors": errors}), 207
     return jsonify({"status": "ok"})
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -1120,8 +1014,6 @@ def compare_backups_route():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-
-
 @app.route("/backup_stats")
 def backup_stats_route():
     """Get backup statistics."""
@@ -1225,16 +1117,6 @@ def bulk_clear(operation_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Subnet Discovery Routes
 # ---------------------------------------------------------------------------
@@ -1305,325 +1187,6 @@ def _run_subnet_discovery(op_id: str, hosts: list, username: str,
     op["status"] = "done"
 
 
-# ---------------------------------------------------------------------------
-# AI Assistant Routes
-# ---------------------------------------------------------------------------
-
-import json as _json
-from flask import Response, stream_with_context as _swc
-import modules.ai_assistant as _ai
-
-
-def _load_current_devices():
-    """Load devices from the currently active device list file."""
-    _, filepath = get_current_device_list()
-    return load_saved_devices(filepath)
-
-
-@app.route("/ai/providers")
-def ai_providers():
-    """Return all provider configs and which is active."""
-    return jsonify({"providers": _ai.list_providers()})
-
-
-@app.route("/ai/usage_summary")
-def ai_usage_summary():
-    """Aggregated spend/token totals from the persistent server-side usage
-    log (data/ai_usage_log.jsonl) -- durable across page reloads and
-    sessions, unlike the per-turn cost badge in the chat UI."""
-    from modules.ai_usage_log import summarize
-    days_param = request.args.get("days", "30")
-    try:
-        days = min(max(int(days_param), 1), 365)
-    except ValueError:
-        days = 30
-    return jsonify(summarize(days=days))
-
-
-@app.route("/ai/provider", methods=["POST"])
-def ai_set_provider():
-    """Switch the active AI provider."""
-    data     = request.get_json(silent=True) or {}
-    provider = data.get("provider", "").strip()
-    model    = data.get("model") or None
-    if not provider:
-        return jsonify({"error": "provider is required"}), 400
-    try:
-        _ai.set_active_provider(provider, model)
-        return jsonify({"status": "ok", "active": provider,
-                        "info": _ai.get_provider_info(provider)})
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-
-
-@app.route("/ai/device_context")
-def ai_device_context():
-    """Return a lightweight device inventory + online status snapshot for browser caching.
-    Also pre-warms SSH connections for all currently online devices in the background
-    so the first AI tool call hits the persistent pool immediately.
-    """
-    devices = _load_current_devices()
-    online_devices = [
-        d for d in devices if device_status_cache.get(d.get("ip", ""), False)
-    ]
-    result = [
-        {
-            "hostname":    d.get("hostname", ""),
-            "ip":          d.get("ip", ""),
-            "device_type": d.get("device_type") or "unknown",
-            "online":      bool(device_status_cache.get(d.get("ip", ""), False)),
-        }
-        for d in devices
-    ]
-
-    def _warm():
-        for dev in online_devices:
-            try:
-                get_persistent_connection(dev, connections, lock)
-            except Exception:
-                pass   # unreachable devices are skipped silently
-
-    threading.Thread(target=_warm, daemon=True).start()
-
-    return jsonify({"devices": result})
-
-
-@app.route("/ai/chat", methods=["POST"])
-def ai_chat():
-    """Stream an AI assistant response via Server-Sent Events."""
-    try:
-        data = request.get_json(silent=True) or {}
-        message           = (data.get("message") or "").strip()
-        context_ip        = data.get("context_ip") or None
-        session_id        = data.get("session_id") or "default"
-        device_context    = data.get("device_context") or None    # browser-cached snapshot
-        topology_context  = data.get("topology_context") or None  # browser-cached topology
-        attached_files    = data.get("attached_files") or []       # [{name, content}] uploaded by user
-        # Playbook replay is CUT (P.3 step 2): it pushed stored command lists
-        # over Netmiko in config mode, even with AI disabled. A request still
-        # naming one (a cached page) is REFUSED, never passed to the model as
-        # a message: the model still holds run_ansible_playbook until step 8.
-        if data.get("run_playbook_id"):
-            return jsonify({"error": (
-                "Running a playbook was removed (P.3). A configuration change "
-                "goes through intent: edit, plan, confirm.")}), 410
-        # Block AI chat when disabled.
-        if not _ai_enabled():
-            return jsonify({"error": "AI is disabled. Re-enable it in Settings."}), 503
-
-        if not message:
-            return jsonify({"error": "Message is required"}), 400
-
-        # Tell the background agent the user is active so it defers tasks
-        try:
-            from modules.agent_runner import notify_user_active
-            notify_user_active()
-        except Exception:
-            pass
-
-        import queue as _queue
-
-        # Run the agent in a background thread and drain events via a queue.
-        # This lets us send SSE keepalive pings while SSH tool calls block,
-        # preventing browsers from closing the connection on long-running tasks.
-        _SENTINEL = object()
-        event_queue = _queue.Queue()
-        # The person the turn acts for and their network, read HERE in the request: the read
-        # tools ask the reads engine as "the agent, for <person>" (C548, R5).
-        from modules import identity as _identity
-        from modules.config import get_current_list_name as _current_list
-        _chat_actor, _chat_list = _identity.request_actor(), _current_list()
-
-        def _agent_thread():
-            try:
-                if not _ai_enabled():
-                    event_queue.put({"type": "error",
-                                     "content": "AI disabled — re-enable in Settings."})
-                    event_queue.put(_SENTINEL)
-                    return
-                gen = _ai.run_chat(
-                    session_id=session_id,
-                    user_message=message,
-                    devices_loader=_load_current_devices,
-                    status_cache=device_status_cache,
-                    connections_pool=connections,
-                    pool_lock=lock,
-                    context_ip=context_ip,
-                    device_context=device_context,
-                    topology_context=topology_context,
-                    attached_files=attached_files if attached_files else None,
-                    workflow_flags=_load_workflow_flags(),
-                    actor=_chat_actor,
-                    list_name=_chat_list,
-                )
-                for event in gen:
-                    event_queue.put(event)
-            except Exception as e:
-                app.logger.error(f"AI stream error: {e}", exc_info=True)
-                event_queue.put({"type": "error", "content": str(e)})
-                event_queue.put({"type": "done"})
-            finally:
-                event_queue.put(_SENTINEL)
-
-        t = threading.Thread(target=_agent_thread, daemon=True)
-        t.start()
-
-        def generate():
-            while True:
-                try:
-                    # Wait up to 15 s for the next event.  If nothing arrives,
-                    # send a keepalive comment so the browser stays connected.
-                    event = event_queue.get(timeout=15)
-                except _queue.Empty:
-                    yield ": keepalive\n\n"
-                    continue
-
-                if event is _SENTINEL:
-                    break
-                yield f"data: {_json.dumps(event)}\n\n"
-
-        return Response(
-            _swc(generate()),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-    except Exception as e:
-        app.logger.error(f"AI chat route error: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/ai/topology_context")
-def ai_topology_context():
-    """Return a compact topology snapshot for browser caching.
-    Serves from the server-side topology cache when available so the browser
-    gets a response without triggering a full CDP discovery round.
-    """
-    # Try the on-disk topology cache first (avoids SSH round-trips).
-    topo = _ai._topology_cache_load()
-    if topo is None:
-        # Cache miss — run discovery now and store the result.
-        from modules.topology import discover_topology
-        from modules.connection import get_persistent_connection
-        devices = _load_current_devices()
-        topo = discover_topology(
-            devices=devices,
-            connection_factory=get_persistent_connection,
-            connections_pool=connections,
-            pool_lock=lock,
-            status_cache=device_status_cache,
-            max_workers=5,
-        )
-        _ai._topology_cache_save(topo)
-    return jsonify({"topology": topo})
-
-
-@app.route("/ai/stop", methods=["POST"])
-def ai_stop():
-    """Signal the AI agent loop for a session to stop after the current tool call."""
-    data = request.get_json(silent=True) or {}
-    session_id = data.get("session_id") or "default"
-    _ai.stop_session(session_id)
-    return jsonify({"status": "stopping"})
-
-
-@app.route("/ai/tool_cache_snapshot")
-def ai_tool_cache_snapshot():
-    """Return a snapshot of recently cached tool results for browser-side storage.
-    The browser caches these in localStorage so repeated questions about interface
-    status, routing tables, etc. can be answered without SSH round-trips."""
-    # Masked on the way out (register C56's sixth route, found 2026-09-27 by
-    # test order). The cache holds tool output BEFORE the provider boundary
-    # redacts it, and `get_running_config` is cached for 300 s, so for five
-    # minutes after the agent read a device this served its config raw to any
-    # GET, and the page copied it into localStorage.
-    from modules.redact import known_secret_values, redact_text
-    table = known_secret_values()
-    snapshot = {}
-    now = __import__("time").monotonic()
-    for key, (result, expires_at) in list(_ai._tool_cache.items()):
-        if expires_at > now:
-            snapshot[key] = {
-                "result":     redact_text(result[:2000], table),   # cap per-entry size
-                "expires_in": int(expires_at - now),
-            }
-    return jsonify({"cache": snapshot, "count": len(snapshot)})
-
-
-@app.route("/ai/history", methods=["GET"])
-def ai_history():
-    """Return the conversation history as simplified display items.
-
-    Items are either {"role": "user"|"assistant", "text": ...} or
-    {"role": "action", "id": ..., "label": ..., "content": ...} for a
-    tool call — reconstructed from the tool_use block (assistant message)
-    paired with its matching tool_result block (the following user
-    message), same label logic as the live tool_start event.
-    """
-    session_id = request.args.get("session_id") or "main"
-    raw = _ai.get_history(session_id)
-    out = []
-    pending_actions = {}  # tool_use_id -> action dict in `out`, mutated once its result arrives
-    for msg in raw:
-        role = msg.get("role")
-        if role not in ("user", "assistant"):
-            continue
-        content = msg.get("content", "")
-        if isinstance(content, str):
-            text = content.strip()
-            if text:
-                out.append({"role": role, "text": text})
-            continue
-        if not isinstance(content, list):
-            text = str(content).strip()
-            if text:
-                out.append({"role": role, "text": text})
-            continue
-
-        parts = []
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            btype = block.get("type")
-            if btype == "text":
-                parts.append(block.get("text", ""))
-            elif btype == "tool_use" and role == "assistant":
-                text = "\n".join(parts).strip()
-                if text:
-                    out.append({"role": "assistant", "text": text})
-                parts = []
-                action = {
-                    "role":    "action",
-                    "id":      block.get("id"),
-                    "label":   _ai._tool_label(block.get("name", ""), block.get("input") or {}),
-                    "content": None,
-                }
-                out.append(action)
-                if action["id"]:
-                    pending_actions[action["id"]] = action
-            elif btype == "tool_result" and role == "user":
-                action = pending_actions.pop(block.get("tool_use_id"), None)
-                if action is not None:
-                    action["content"] = block.get("content", "")
-        text = "\n".join(parts).strip()
-        if text:
-            out.append({"role": role, "text": text})
-    # Masked on the way out (register C56): a tool result carries whatever
-    # the tool read, `show running-config` included, and this returned it raw
-    # to any caller. It is the text the model saw, since the provider
-    # boundary redacts the same way.
-    from modules.redact import redact_payload
-    return jsonify(redact_payload(out))
-
-
-@app.route("/ai/clear", methods=["POST"])
-def ai_clear():
-    """Clear the AI conversation history for a session."""
-    data = request.get_json(silent=True) or {}
-    session_id = data.get("session_id") or "default"
-    _ai.clear_history(session_id)
-    return jsonify({"status": "cleared"})
-
-
 # `/ai/restart` and `/server/restart` are REMOVED (CONCURRENCY_AUDIT R5, 2026-10-02): each
 # ended the process seconds after answering, checking no held device, running job or
 # commit in progress, so one person could cut off another's deploy half-applied. Neither
@@ -1631,7 +1194,7 @@ def ai_clear():
 
 
 # ---------------------------------------------------------------------------
-# Drift check routes — pure Python, no AI required
+# Drift check routes (today's drift panel; they retire with today's pages)
 # ---------------------------------------------------------------------------
 
 @app.route("/drift/status")
@@ -1758,45 +1321,6 @@ def drift_settings_post():
     return jsonify({"ok": True, **saved})
 
 
-@app.route("/ai/playbooks")
-def ai_playbooks():
-    """Return the list of saved Ansible playbooks."""
-    return jsonify({"playbooks": _ai._load_playbook_index()})
-
-
-@app.route("/ai/playbooks/<playbook_id>", methods=["DELETE"])
-def ai_delete_playbook(playbook_id):
-    """Delete a saved playbook by id."""
-    idx = _ai._load_playbook_index()
-    pb  = next((p for p in idx if p["id"] == playbook_id), None)
-    if not pb:
-        return jsonify({"error": "not found"}), 404
-    # Remove YAML file
-    yml = os.path.join(_ai._get_playbooks_dir(), pb.get("file", ""))
-    try:
-        os.remove(yml)
-    except FileNotFoundError:
-        pass
-    idx = [p for p in idx if p["id"] != playbook_id]
-    _ai._save_playbook_index(idx)
-    return jsonify({"status": "deleted", "id": playbook_id})
-
-
-@app.route("/ai/report/<path:filename>")
-def ai_download_report(filename):
-    """Serve a saved network report as a Markdown file download."""
-    rpt_dir = _ai._get_reports_dir()
-    rpt_path = os.path.join(rpt_dir, os.path.basename(filename))
-    if not os.path.isfile(rpt_path):
-        return jsonify({"error": "Report not found"}), 404
-    return send_file(
-        rpt_path,
-        as_attachment=True,
-        download_name=os.path.basename(filename),
-        mimetype="text/markdown",
-    )
-
-
 # ---------------------------------------------------------------------------
 # NetBox source-of-truth sync
 # ---------------------------------------------------------------------------
@@ -1835,216 +1359,14 @@ def netbox_status():
     })
 
 
-@app.route("/ai/events")
-def ai_events():
-    """Return pending agent events from the background event monitor.
-
-    Query params:
-      ack=id1,id2,...  — acknowledge (hide) specific event IDs before returning
-    """
-    from modules.event_monitor import get_pending_events
-    ack_param = request.args.get("ack", "")
-    ack_ids   = [x.strip() for x in ack_param.split(",") if x.strip()]
-    events    = get_pending_events(ack_ids or None)
-    return jsonify({"events": events})
-
-
-@app.route("/ai/events/clear", methods=["POST"])
-def ai_events_clear():
-    """Clear all pending agent events (e.g. on list switch)."""
-    from modules.event_monitor import clear_events
-    clear_events()
-    return jsonify({"ok": True})
-
-
 # ---------------------------------------------------------------------------
 # Background agent routes
 # ---------------------------------------------------------------------------
-
-@app.route("/ai/agent_log")
-def ai_agent_log():
-    """Return the background agent's activity log (newest first).
-
-    **"AI is disabled" is a STATE, not an error, and it must not suppress the
-    history that explains why.**
-
-    This route used to return `{"entries": [], "status": {}}` with a 503 the
-    moment AI was off — so switching the agent off hid the 26 recorded
-    failures and the workspace-id error that were the reason for switching it
-    off. The health surface built specifically so a dead component could not
-    look quiet went silent exactly when its history mattered most, and an
-    operator finding it disabled next month would have learned nothing.
-
-    A **read** reports. Only an **action** refuses: `/ai/agent_run`,
-    `/ai/agent_pause`, `/ai/agent_resume` and the timer POST still return 503,
-    because a disabled agent must not be made to act.
-    """
-    from modules.agent_runner import get_activity_log, get_status
-
-    limit = min(int(request.args.get("limit", 50)), 200)
-    # `get_status()` reports both switches; this route does not compute a
-    # second copy. One producer.
-    status = get_status()
-    return jsonify({
-        "ok": True,
-        "status": status,
-        "entries": get_activity_log()[:limit],
-    })
-
-
-@app.route("/ai/agent_run", methods=["POST"])
-def ai_agent_run():
-    """Manually trigger a background agent task."""
-    if not _ai_enabled():
-        return jsonify({"error": "AI is disabled. Re-enable it in Settings."}), 503
-    from modules.agent_runner import trigger_task
-    data = request.get_json(silent=True) or {}
-    task = (data.get("task") or "").strip()
-    if not task:
-        return jsonify({"error": "task is required"}), 400
-    return jsonify(trigger_task(task))
-
-
-@app.route("/ai/agent_pause", methods=["POST"])
-def ai_agent_pause():
-    """Pause autonomous background processing."""
-    if not _ai_enabled():
-        return jsonify({"error": "AI is disabled"}), 503
-    from modules.agent_runner import pause_agent
-    pause_agent()
-    return jsonify({"ok": True, "paused": True})
-
-
-@app.route("/ai/agent_resume", methods=["POST"])
-def ai_agent_resume():
-    """Resume autonomous background processing."""
-    if not _ai_enabled():
-        return jsonify({"error": "AI is disabled"}), 503
-    from modules.agent_runner import resume_agent
-    resume_agent()
-    return jsonify({"ok": True, "paused": False})
-
-
-@app.route("/ai/agent_timers", methods=["GET"])
-def ai_agent_timers_get():
-    """Return current timer configuration for the UI."""
-    # A read: report the state, do not withhold the configuration because of
-    # it. See `ai_agent_log` for the reasoning.
-    from modules.agent_timers import get_ui_config
-    return jsonify({"ok": True, "ai_enabled": _ai_enabled(),
-                    "timers": get_ui_config()})
-
-
-@app.route("/ai/agent_timers", methods=["POST"])
-def ai_agent_timers_post():
-    """Save updated timer values. Accepts {key: value, ...}."""
-    if not _ai_enabled():
-        return jsonify({"ok": False, "error": "AI is disabled", "timers": []}), 503
-    from modules.agent_timers import save as save_timers
-    data = request.get_json(force=True) or {}
-    saved = save_timers(data)
-    return jsonify({"ok": True, "timers": saved})
 
 
 # ---------------------------------------------------------------------------
 # Approval queue routes
 # ---------------------------------------------------------------------------
-
-@app.route("/ai/approvals")
-def ai_approvals_list():
-    """Return pending approval requests (or all if ?all=1).
-
-    Drift-check approvals are Python-generated and must be accessible
-    regardless of AI state so the user can approve/reject config drift.
-    """
-    from modules.approval_queue import get_pending, get_all, get_pending_count
-    from modules.filestore import StoreUnreadable
-    show_all = request.args.get("all") == "1"
-    limit    = min(int(request.args.get("limit", 50)), 200)
-    try:
-        entries = get_all(limit) if show_all else get_pending()
-    except StoreUnreadable as exc:
-        # Never an empty list: "nothing is waiting" and "the queue could not be read"
-        # are different answers (CONCURRENCY_AUDIT R4).
-        return jsonify({"ok": False, "error": str(exc)}), 503
-    # Masked on the way out (register C56): a queued diff is device config,
-    # and this returned it raw. The diff is advisory context, never what is
-    # sent, so masking it costs the approver nothing.
-    from modules.redact import redact_payload
-    return jsonify({
-        "pending_count": get_pending_count(),
-        "entries":       redact_payload(entries),
-        "ai_enabled":    _ai_enabled(),
-    })
-
-
-@app.route("/ai/approvals/<entry_id>/approve", methods=["POST"])
-def ai_approval_approve(entry_id: str):
-    """Approve a queued action and execute it immediately.
-
-    Drift-check approvals execute via Python SSH — no AI needed.
-    """
-    from modules.approval_queue import resolve
-    from modules.identity import request_actor
-    # The VERIFIED person, so what the approval commits names them (C81).
-    result = resolve(entry_id, "approve", actor=request_actor())
-    if not result.get("ok"):
-        return jsonify(result), (503 if result.get("unreadable") else 404)
-    # Masked like the list's GET (C327): the entry carries the queued diff and the
-    # execution its `advisory_diff`, device config both, and these went out raw.
-    from modules.redact import redact_payload
-    return jsonify(redact_payload(result))
-
-
-@app.route("/ai/approvals/<entry_id>/reject", methods=["POST"])
-def ai_approval_reject(entry_id: str):
-    """Reject a queued action without executing it."""
-    from modules.approval_queue import resolve
-    from modules.identity import request_actor
-    result = resolve(entry_id, "reject", actor=request_actor())
-    if not result.get("ok"):
-        return jsonify(result), (503 if result.get("unreadable") else 404)
-    from modules.redact import redact_payload
-    return jsonify(redact_payload(result))         # the entry's diff, masked (C327)
-
-
-@app.route("/ai/approvals/approve_all", methods=["POST"])
-def ai_approval_approve_all():
-    """Hand every pending drift item to ONE capture preview (register C105).
-
-    Approve-all resolved every item at once, and each drift item read its
-    device and committed with no preview: many goldens changed by one click.
-    Every queued kind now ends in a confirmation, so this approves nothing by
-    itself. The drift items' devices go to the capture operation together,
-    where each device's capture is previewed and confirmed by its hash, and
-    an item closes only when its device is recorded. A revert is a restore
-    of one device, previewed per device, so it is named for individual review.
-    """
-    from modules.approval_queue import get_pending
-
-    from modules.filestore import StoreUnreadable
-    devices, approvals, individual = [], {}, []
-    try:
-        pending = get_pending()
-    except StoreUnreadable as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
-    for entry in pending:
-        host = entry.get("device_hostname") or entry.get("device_ip", "")
-        if entry.get("action_type") == "update_golden_config" and host:
-            if host not in approvals:
-                devices.append(host)
-            approvals.setdefault(host, []).append(entry["id"])
-        else:
-            individual.append({"id": entry["id"], "device": host,
-                               "action_type": entry.get("action_type", ""),
-                               "reason": "requires individual review"})
-    message = (f"{len(devices)} device(s) to capture from {sum(map(len, approvals.values()))} "
-               "drift item(s): nothing is recorded until you confirm each"
-               if devices else "No drift items to capture")
-    if individual:
-        message += f"; {len(individual)} item(s) require individual review"
-    return jsonify({"ok": True, "capture": {"devices": devices, "approvals": approvals},
-                    "individual": individual, "message": message})
 
 
 # /golden_configs/auto_create was REMOVED (2026-09-27, register C102): one
@@ -2094,27 +1416,6 @@ def git_commit_diff(commit_hash):
     return jsonify({"ok": True, **result})
 
 
-@app.route("/ai/debug_log")
-def ai_debug_log():
-    """Return the last N lines of data/ai_debug.log for in-browser diagnostics."""
-    from modules.config import DATA_DIR
-    log_path = os.path.join(DATA_DIR, "ai_debug.log")
-    lines_param = request.args.get("lines", "200")
-    try:
-        n = min(int(lines_param), 2000)
-    except ValueError:
-        n = 200
-    try:
-        with open(log_path, encoding="utf-8") as fh:
-            all_lines = fh.readlines()
-        tail = "".join(all_lines[-n:])
-        return tail, 200, {"Content-Type": "text/plain; charset=utf-8"}
-    except FileNotFoundError:
-        return "ai_debug.log not yet created (no AI requests made yet).\n", 404, {
-            "Content-Type": "text/plain; charset=utf-8"
-        }
-
-
 @app.route("/logs/server")
 def server_log():
     """Return the last N lines of logs/device_manager.log for in-browser
@@ -2133,15 +1434,15 @@ def server_log():
 
 
 # ---------------------------------------------------------------------------
-# Start background daemons — must be here so _load_current_devices is defined
+# Start background daemons
 # ---------------------------------------------------------------------------
 def _start_background_daemons():
     """Start every background service. Called ONLY when app.py runs as a
     program (`if __name__ == "__main__"`), never by importing it.
 
-    Importing used to start six threads (the ping worker, the event monitor,
-    the agent loop, the drift scheduler, and the SNMP and NetFlow listeners
-    on UDP 1162 and 9996). So the test suite, `nmas-verify-runbook` and
+    Importing used to start six threads (the ping worker, the AI family's
+    event monitor and agent loop, the drift scheduler, and its SNMP and
+    NetFlow listeners on UDP 1162 and 9996, removed with it). So the test suite, `nmas-verify-runbook` and
     `nmas-scale-report` each ran a second copy of the services: the tests'
     per-test guard blamed whichever test was running when a thread wrote,
     and a script run on the host would contend for the service's ports. A
@@ -2149,39 +1450,7 @@ def _start_background_daemons():
     """
     session_reaper(interval=PING_INTERVAL)
 
-    # Repair any corrupted chat histories on startup (orphaned tool_use blocks
-    # left by interrupted or max_tokens-truncated sessions cause 400 errors).
-    try:
-        from modules.ai_assistant import (
-            _HISTORIES_DIR, _sanitize_trailing_tool_use, _compress_for_disk,
-        )
-        import glob, json as _json
-        for _path in glob.glob(os.path.join(_HISTORIES_DIR, "*.json")):
-            try:
-                with open(_path, encoding="utf-8") as _fh:
-                    _hist = _json.load(_fh)
-                _repaired = _sanitize_trailing_tool_use(_hist)
-                if len(_repaired) != len(_hist):
-                    with open(_path, "w", encoding="utf-8") as _fh:
-                        _json.dump(_repaired, _fh, ensure_ascii=False)
-                    app.logger.info("Repaired chat history: %s", os.path.basename(_path))
-            except Exception:
-                pass
-    except Exception as _repair_exc:
-        app.logger.debug("History repair skipped: %s", _repair_exc)
-
-    from modules.event_monitor import start_monitor as _start_event_monitor
-    _start_event_monitor()
-
-    from modules.agent_runner import start_agent_loop as _start_agent_loop
-    _start_agent_loop(
-        devices_loader   = _load_current_devices,
-        status_cache     = device_status_cache,
-        connections_pool = {},
-        pool_lock        = threading.Lock(),
-    )
-
-    # Start standalone Python drift checker (independent of AI state)
+    # The drift checker
     try:
         from modules.drift_check import get_checker as _get_drift_checker
         _get_drift_checker().start()
@@ -2219,15 +1488,6 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Scheduled rotation timer did not start: %s", _e)
 
-    # Start SNMP trap receiver and NetFlow collector using per-list config
-    try:
-        from modules.collector_config import get_snmp_trap_port, get_netflow_port
-        from modules.snmp_collector import start_trap_receiver
-        from modules.netflow_collector import start_netflow_receiver
-        start_trap_receiver(port=get_snmp_trap_port())
-        start_netflow_receiver(port=get_netflow_port())
-    except Exception as _e:
-        app.logger.warning("Monitoring daemons: %s", _e)
 
 # Run the Flask app with Socket.IO
 if __name__ == "__main__":

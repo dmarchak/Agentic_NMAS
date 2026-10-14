@@ -216,7 +216,6 @@ class TestRollbackPutsTheLineBack:
     PUSHED = [GI03, " no description retired uplink", "exit"]
 
     def _run(self, monkeypatch, readback, pushed=None):
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
 

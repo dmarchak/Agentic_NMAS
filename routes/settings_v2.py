@@ -70,7 +70,7 @@ def installation():
         diag = {"st": RM.view()}
     return _page("v2/settings_installation.html", tab=tab, tabs=I.TABS, built=I.BUILT_TABS,
                  v=v, r=I.records_card() if tab == "connections" else None, cards=cards,
-                 a=I.agent_state() if tab == "ai" else None, **diag)
+                 **diag)
 
 
 def _records(status: int = 200, **ctx):

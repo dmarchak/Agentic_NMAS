@@ -76,14 +76,6 @@ def _drift(monkeypatch, ip, running):
     return drift_check.run_drift_check("test")
 
 
-def _agent_read(ip):
-    from modules import ai_assistant as ai
-    from tests.test_no_agent_tool_leaks_a_stored_secret import drive
-
-    tool = next(t for t in ai.TOOLS if t.get("name") == "read_golden_config")
-    return drive([tool])["read_golden_config"]
-
-
 class TestAnUncommittedEditIsIgnored:
     """The committed golden is what every consumer reads; the edit is named."""
 
@@ -115,11 +107,6 @@ class TestAnUncommittedEditIsIgnored:
         out = _scan_device_from_golden({"ip": lab["ip"], "hostname": "r1"})
         assert "error" not in out, out
         assert "HANDEDIT" not in json.dumps(out, default=str)
-
-    def test_the_agent_tool_returns_the_committed_golden(self, lab):
-        _hand_edit(lab["golden"])
-        text = _agent_read(lab["ip"])
-        assert HEAD_LINE in text and "HANDEDIT" not in text, text
 
 
 class TestAGoldenNothingCommittedIsRefusedByName:
@@ -158,10 +145,6 @@ class TestAGoldenNothingCommittedIsRefusedByName:
         out = _scan_device_from_golden({"ip": never, "hostname": "r9"})
         assert "golden/r9.cfg" in out["error"]
 
-    def test_the_agent_tool_says_refused(self, lab, never, monkeypatch):
-        monkeypatch.setitem(DEVICE, "ip", never)
-        text = _agent_read(never)
-        assert "refused" in text and "golden/r9.cfg" in text, text
 
     def test_it_is_not_enumerated(self, lab, never):
         assert {e["hostname"] for e in R.list_goldens("lab")} == {"r1"}
@@ -362,7 +345,6 @@ class TestTheDeployPlanNamesARefusal:
         _hand_edit(lab["golden"])                       # uncommitted: ignored
         head = R.git_raw(lab["repo"], "show", "HEAD:golden/r1.cfg")[1]
         assert D._captured_config(lab["repo"], "r1") == head
-
 
 
 def test_the_rule_counts_a_read_and_not_a_write():

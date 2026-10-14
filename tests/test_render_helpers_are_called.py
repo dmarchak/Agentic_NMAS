@@ -101,7 +101,7 @@ class TestEveryRenderHelperIsCalled:
         # pattern has drifted away from the thing it was built for.
         # (nbCascadeHtml, the third, was removed in 7.1: the cascade is drawn
         # by the preview component from the server's adapter now.)
-        for known in ("_gBaselineCoverage", "pendingBannerHtml", "agentHealthBanner"):
+        for known in ("_gBaselineCoverage", "pendingBannerHtml", "driftDetailHtml"):
             assert known in helpers, f"{known} is no longer recognised"
 
     def test_none_is_defined_and_never_used(self):

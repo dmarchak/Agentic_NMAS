@@ -33,8 +33,8 @@ golden a record:
 
 The page reloads on the Backups tab with a message naming the file, or the reason it failed.
 
-Two other paths write a backup the same way: **Refresh capture** on the Templates screen
-hands the device to this same button, and the AI assistant has a backup tool.
+One other path writes a backup the same way: **Refresh capture** on the Templates screen
+hands the device to this same button.
 
 ## History {#history}
 

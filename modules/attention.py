@@ -63,7 +63,8 @@ ROW_KINDS = {
                            "capture its golden, or clear what the reason names and run again"),
     ("drift", "unreachable"): ("a device could not be checked for drift",
                                "check it answers, then run a drift check"),
-    ("approvals", "pending"): ("an approval is waiting for a person", "review it"),
+    ("approvals", "pending"): ("an approval is waiting for a person",
+                               "capture the device's golden, or let it expire"),
     ("onboarding", "credential"): ("a pending device's staged credential cannot be found",
                                    "abandon it and onboard it again"),
     ("onboarding", "overdue"): ("a device onboarded long ago was never reached",
@@ -164,8 +165,9 @@ CLEARS = {
                            "or a golden is recorded for it (a capture answers the stored run)"),
     ("drift", "skipped"): (("resolves",), "a later drift check checks it"),
     ("drift", "unreachable"): (("resolves",), "a later drift check reaches it"),
-    ("approvals", "pending"): (("resolves", "time"), "a person approves or rejects it, or 48 h "
-                               "pass and it expires (expiry executes nothing)"),
+    ("approvals", "pending"): (("resolves", "time"), "a capture records the device's golden, "
+                               "which closes it, or 48 h pass and it expires (expiry executes "
+                               "nothing)"),
     ("onboarding", "credential"): (("resolves",), "the device is abandoned"),
     ("onboarding", "overdue"): (("resolves",), "Verify reaches it, or it is abandoned"),
     ("rollback", "record"): (("resolves",), "the rolled-back record can be read again"),
@@ -753,9 +755,12 @@ def approvals_source(read=None) -> dict:
             what=f"An approval is waiting: {e.get('description') or e.get('action_type')}",
             cause=(e.get("context") or "queued with no context recorded")
                   + "; nothing is done until a person approves it",
-            action={"label": "Review it in Approvals"
-                             + (": approving opens the capture preview"
-                                if e.get("action_type") in Q.CONFIRM_ENDING_ACTIONS else "")},
+            # Today's Approvals tab left with the AI family (D15): a capture closes the item,
+            # from the device's History tab; one naming no device can only expire.
+            action=({"label": f"Capture {host}'s golden from its History tab, which closes "
+                              "this; or let it expire",
+                     "href": f"/v2/device/{host}?tab=history"} if host else
+                    {"label": "Let it expire: it names no device to capture"}),
             level="warning", devices=[host] if host else [], since=e.get("created_ts"),
             clears_at=((e.get("created_ts") or 0) + Q.EXPIRY_HOURS * 3600
                        if e.get("created_ts") else None),

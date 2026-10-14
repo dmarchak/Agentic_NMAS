@@ -1,6 +1,6 @@
 # Agentic Network Management and Automation
 
-A Flask-based web application for managing, automating, and monitoring Cisco IOS network devices. It provides a unified interface for device inventory, remote SSH command execution, multi-device parallel operations, live terminal access, an AI-powered autonomous network agent (Claude), Jenkins CI/CD integration, topology visualization, SNMP/NetFlow/syslog monitoring, NetBox IPAM/DCIM sync, config generation, and config backup and drift detection.
+A Flask-based web application for managing, automating, and monitoring Cisco IOS network devices. It provides a unified interface for device inventory, remote SSH command execution, multi-device parallel operations, live terminal access, Jenkins CI/CD integration, topology visualization, SNMP/NetFlow/syslog monitoring, NetBox IPAM/DCIM sync, config generation, and config backup and drift detection.
 
 ## Features
 
@@ -16,25 +16,15 @@ A Flask-based web application for managing, automating, and monitoring Cisco IOS
 - Single-device command execution with automatic prompt/timing routing
 - Multi-line scripts in enable or configure-terminal mode
 - Multi-device parallel operations (enable commands, config sets, TFTP upload/download, flash file management, static-route removal)
-- Ansible playbook execution via the AI agent
 
-### AI Assistant
-- Autonomous network agent powered by Claude (Anthropic) with a rich tool set:
-  SSH commands, config push, golden config management, compliance checks, CI pipeline control, variable store read/write, backup, topology, SNMP/NetFlow queries, and more
-- Auto-continue: the agent keeps running tool calls until the task is complete without user intervention
-- Golden config baselines per device; drift detection compares running config against baseline
-- Config-push workflow: backup → push → Jenkins CI → save golden → update variables (no human approval needed when CI passes)
-- Human-in-the-loop approval queue for potentially destructive actions
-- File upload: attach configs, diffs, or any text file to the chat for context
-- Background autonomous mode: processes events (Jenkins failures, SNMP traps, config drift) while the user is idle
-- Configurable agent timing intervals (hot-reload, no restart needed)
-- Chunked report generation (`report_begin` / `report_append` / `report_finish`) to handle large multi-device reports without hitting token limits
-- All settings (API key, Jenkins, TFTP, NetBox) configurable via the UI Settings panel
+### AI
+The AI assistant, its background agent, the chat panel and the approval tab were removed on
+2026-10-14 (tag `pre-remove/ai-family`). Phase 8 brings AI back as a responder that proposes
+changes for a person to confirm and never confirms one (docs/PHASE8_PLAN.md).
 
 ### CI/CD Integration
 - Jenkins pipeline creation, scheduling, triggering, and result polling
 - Per-list pipeline registry with build history
-- Event monitor fires AI investigation tasks on build failures
 - Deleting a device list automatically removes all associated Jenkins pipelines
 
 ### Config Generation
@@ -67,20 +57,12 @@ A Flask-based web application for managing, automating, and monitoring Cisco IOS
 - Saved node positions and hidden-node state persisted per list
 
 ### Monitoring
-- SNMP v1/v2c trap receiver (UDP 1162) with ring buffer and AI-driven alert analysis
-- SNMP OID polling (GET/WALK) and device summary (uptime, interfaces)
-- NetFlow v5/v9 UDP collector (port 9996) with per-source traffic aggregates
-- Syslog event monitoring
-
-### Variables
-- Persistent key-value network fact store (`variables.json`) per device list
-- Auto-populated by regex extraction from running configs (no AI tokens needed for discovery)
-- AI agent reads variables before every config push and updates them automatically after
+- Syslog event monitoring (the in-app SNMP trap receiver and NetFlow collector left with the AI
+  family, 2026-10-14)
 
 ### History & Audit
 - Timestamped config backup with unified-diff comparison between any two backups
-- Golden config baselines used by the AI for drift detection and compliance
-- Agent activity log (last 100 background tasks) persisted across restarts
+- Golden config baselines for drift detection
 
 ## Project Structure
 
@@ -92,31 +74,22 @@ Claude_NMAS/
 ├── telnetlib.py                    # telnetlib shim (removed from Python 3.13+)
 ├── CLAUDE.md                       # Project instructions for Claude Code
 ├── modules/
-│   ├── ai_assistant.py             # AI agent core: tool definitions, run_chat(), golden configs
-│   ├── agent_runner.py             # Background autonomous agent daemon
-│   ├── agent_timers.py             # Configurable agent timing intervals
-│   ├── approval_queue.py           # Human-in-the-loop approval queue
+│   ├── approval_queue.py           # The drift check's queue of items a capture closes
 │   ├── backups.py                  # Config backup retrieval and storage
 │   ├── bulk_ops.py                 # Multi-device parallel operations
-│   ├── collector_config.py         # SNMP/NetFlow/syslog collector IP settings
 │   ├── commands.py                 # SSH command execution with prompt/timing routing
 │   ├── config.py                   # Paths, constants, user settings
 │   ├── configure.py                # Cisco IOS config generator (10 feature types) + Jenkins XML
 │   ├── connection.py               # Netmiko SSH connection pool and ping worker
 │   ├── device.py                   # Device CRUD, encryption, multi-list management
-│   ├── drift_check.py              # Scheduled golden-config drift checker (no AI tokens)
-│   ├── event_monitor.py            # Jenkins/drift/compliance event monitor
+│   ├── drift_check.py              # Scheduled golden-config drift checker
 │   ├── jenkins_runner.py           # Jenkins CI pipeline integration
 │   ├── netbox_client.py            # NetBox IPAM/DCIM sync (devices, IPs, tunnels, VRFs)
-│   ├── netflow_collector.py        # NetFlow v5/v9 UDP collector
 │   ├── quick_actions.py            # Quick action (command shortcut) persistence
-│   ├── snmp_collector.py           # SNMP trap receiver and OID polling
 │   ├── terminal.py                 # Live SSH terminal via Paramiko + SocketIO
-│   ├── topology.py                 # CDP/OSPF/BGP/tunnel topology discovery
-│   ├── utils.py                    # Shared utility helpers
-│   └── variable_discovery.py       # Regex-based network fact extraction
+│   └── utils.py                    # Shared utility helpers
 ├── templates/
-│   ├── base.html                   # Base layout, navigation, and AI chat panel
+│   ├── base.html                   # Base layout and navigation
 │   ├── index.html                  # Device list, topology, monitoring, and settings
 │   └── device.html                 # Per-device management page
 ├── static/
@@ -126,18 +99,15 @@ Claude_NMAS/
     ├── key.key                     # Fernet encryption key (auto-generated)
     ├── secret.key                  # Flask session secret (auto-generated)
     ├── device_lists.json           # Active list and list registry
-    ├── provider_config.json        # Active AI provider selection
     ├── jenkins_checks.json         # Jenkins server connection settings
-    ├── agent_activity.json         # Background agent task log
-    ├── agent_timers.json           # Agent timing interval overrides
+    ├── agent_timers.json           # The drift check's schedule (the file kept its old name)
     ├── user_settings.json          # User preference overrides (TFTP IP, NetBox URL/token, etc.)
     └── lists/
         └── {slug}/                 # Per-list data directory
             ├── devices.csv         # Encrypted device inventory
             ├── backups/            # Config backup files + index
-            ├── variables.json      # Network variable/fact store
             ├── golden_configs/     # Golden config baselines
-            ├── approval_queue.json # Pending AI action approvals
+            ├── approval_queue.json # The drift check's queued items
             └── jenkins_pipelines.json
 ```
 
@@ -149,7 +119,6 @@ Claude_NMAS/
 - Jenkins server (optional, for CI/CD pipeline features)
 - SNMP-enabled devices pointing traps at this host (optional)
 - NetBox instance (optional, for IPAM/DCIM sync)
-- An Anthropic API key for the AI assistant features
 
 ## Quick Start
 
@@ -167,36 +136,11 @@ Claude_NMAS/
 ## Configuration
 
 All settings are configurable from the **Settings** button on the home page, including:
-- **Anthropic API key** — saved to `.env` and takes effect immediately without a restart
 - **Jenkins** — server URL, username, API key, and webhook token
 - **TFTP server IP** — used for bulk file transfer operations
 - **NetBox** — instance URL and API token for IPAM/DCIM sync
 
-Alternatively, create a `.env` file in the project root:
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
 The `data/` directory and all subdirectories are created automatically on first run. The Fernet encryption key (`data/key.key`) is auto-generated on first run — **back this up**, as losing it makes stored credentials unrecoverable.
-
-## AI Assistant
-
-The AI assistant uses Claude (Anthropic) with a large tool set that lets it act autonomously on your network:
-
-- **Read-first**: checks golden configs and variable store before opening any SSH session
-- **SSH execution**: run any IOS command on any device in the list
-- **Config push workflow**: pre-change backup → push config → Jenkins CI → save golden config → update variables from golden config. CI pass = no human approval required.
-- **Golden configs**: save a device's running config as a verified baseline; detect drift automatically
-- **Variable store**: network facts (IPs, OSPF IDs, BGP AS numbers, etc.) persisted and reused across sessions
-- **Jenkins CI**: trigger pipelines, wait for results, auto-diagnose failures, roll back if needed
-- **Topology**: query CDP/OSPF/BGP/tunnel topology data
-- **SNMP/NetFlow**: inspect trap history and flow data
-- **File upload**: attach a config file, diff, or design doc to the chat for additional context
-- **Chunked reports**: large multi-device reports are written in sections to avoid API token limits
-
-The background agent mode processes events autonomously (Jenkins failures, SNMP traps, config drift) while the user is away, and pauses automatically when the user opens the chat.
-
-Potentially destructive actions (updating a golden config, reverting a device) are routed through the **approval queue** — the agent proposes the action and the user approves or rejects it from the UI.
 
 ## NetBox Integration
 
@@ -220,7 +164,7 @@ ratchet. How to run both, the test tiers, how coverage is counted and how to rea
 
 - All device passwords and enable secrets are encrypted at rest using Fernet symmetric encryption. The key lives at `data/key.key` — protect it.
 - There is no built-in authentication system. The app is intended for use on a trusted management workstation or network segment. Do not expose port 5000 to untrusted networks.
-- The `.env` file containing the Anthropic API key is excluded from version control via `.gitignore`.
+- The `.env` file is excluded from version control via `.gitignore`.
 - SSH connections use Paramiko/Netmiko with `AutoAddPolicy` for host keys — acceptable for a closed lab environment, but review before using on untrusted networks.
 
 ## Author

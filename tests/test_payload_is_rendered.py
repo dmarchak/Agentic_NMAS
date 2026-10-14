@@ -197,11 +197,6 @@ RENDERS = {
         # remotePublicationHtml draws `publication` (C223).
         {GR2: ("loadRemotePanel", "remotePublicationHtml"), GR3: ("_gLastPush",)},
         ((GR2, "loadRemotePanel", "s"),)),
-    "GET /ai/agent_log": Render(
-        _get("/ai/agent_log?limit=50"),
-        {I4: ("loadAgentTab", "agentBadgeState", "agentHealthBanner",
-              "_markAgentEntriesSeen", "_hasUnseenFailures")},
-        ((I4, "loadAgentTab", "data"),)),
     "GET /identity/posture": Render(
         _get("/identity/posture"),
         {"partials__security_posture.1.js": ("loadSecurityPosture",)},
@@ -266,10 +261,6 @@ RENDERS = {
         {"partials__inventory_source.1.js": ("loadInventorySource", "applyInventorySourceUI",
                                              "renderInventoryBanner")},
         (("partials__inventory_source.1.js", "loadInventorySource", "d"),)),
-    "GET /ai/approvals": Render(
-        _get("/ai/approvals"),
-        {I4: ("loadApprovalsTab", "_renderApprovalCard")},
-        ((I4, "loadApprovalsTab", "data"),)),
     "GET /settings/integrations/status": Render(
         # The reader stores a value first (the real reader over the real
         # registry, every integration unconfigured in the test store): the
@@ -279,10 +270,6 @@ RENDERS = {
          "nmas_status_bar.js": ("statusBarHtml",)},
         (("partials__settings_integrations.1.js", "loadIntegrationStatus", "d"),
          ("nmas_status_bar.js", "statusBarHtml", "d"))),
-    "GET /ai/agent_timers": Render(
-        _get("/ai/agent_timers"),
-        {I4: ("loadAgentTimers",)},
-        ((I4, "loadAgentTimers", "j"),)),
     "GET /onboard/platforms": Render(
         _get("/onboard/platforms"),
         {"partials__onboard_wizard.1.js": ("openOnboardWizard", "onboardPlatformOptions")},
@@ -334,16 +321,6 @@ UNDRAWN = {
          "the machine form of clears.when, which both pages draw (the redesign's Needs "
          "attention also offers Acknowledge, from acknowledge and event, which the adapter "
          "reads to hide an acknowledged row)")],
-    "GET /ai/agent_log": [
-        ("failed inconclusive interrupted last_run_at outcomes running "
-         "runs_since_ok same_error_count",
-         "the health breakdown behind the badge; the panel draws the streak "
-         "and the badge. The agent panel is rebuilt in 8.4, when it returns"),
-        ("ok", OK)],
-    "GET /ai/agent_timers": [
-        ("ai_enabled", "the timers draw the same whether AI is on or off; 8.4 "
-                       "decides what a disabled agent's timers say"),
-        ("ok", OK)],
     "GET /drift/status": [
         ("interval_h last_ts next_ts", "machine forms of values drawn as text "
                                        "(interval_s, last_at, next_at)"),
@@ -521,10 +498,6 @@ EMPTY_IN_FIXTURE = {
         S_, "this provider's lab commits no monitoring profile (P.9); the lines are "
             "reached through the real /deploy/plan and drawn by the shipped renderer in "
             "tests/test_monitoring_profile_plan.py"),
-    "GET /ai/agent_log entries": (R_, "no agent run in the fixture; the entry "
-                                     "fields the panel draws were never examined"),
-    "GET /ai/approvals entries": (R_, "no queued item in the fixture; the approval "
-                                      "card has never been drawn from a real item"),
     "GET /golden/history/<host> history": (R_, "no golden commit for the device in "
                                                "the fixture; 7.3's History draws it"),
     "GET /identity/posture service_allowed_operations": (S_, _STRINGS),
@@ -723,7 +696,8 @@ EMPTY_IN_FIXTURE = {
 # because the fixtures' runs compare no interface by name; reached in tests/test_verify_checks.py.
 # 38 -> 37: 7.8 (2026-10-12): /golden/renames left, and its `pending` with it.
 # 37 -> 35: 7.8 (2026-10-12): /golden/migrate/plan left, and its `devices` and `merges` with it.
-EMPTY_RECORDS_CEILING = 35
+# 35 -> 33: the AI family (D15, 2026-10-14): /ai/agent_log's entries and /ai/approvals' entries.
+EMPTY_RECORDS_CEILING = 33
 
 
 def _empty_paths(obj, path=""):
@@ -802,7 +776,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 114  # -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 103  # -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 15  # 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
 
 

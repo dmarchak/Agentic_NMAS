@@ -19,9 +19,7 @@
 # off (textfsm 1.1.3, future, pycparser), on their own, one variable at a time, and pip check
 # is clean after it (the operator, 2026-10-10). colorama is dropped in a change of its own.
 
-# AI integration (Anthropic API).
-anthropic==1.2.0
-# Loads .env at startup; ANTHROPIC_API_KEY and the like survive restarts.
+# Loads .env at startup. (anthropic left with the AI family, D15, 2026-10-14.)
 python-dotenv==1.2.3
 
 # Web framework and Socket.IO. Flask-SocketIO 5.3.6 with python-socketio 5.7.2 (the
@@ -36,11 +34,10 @@ Werkzeug==3.0.1
 netmiko==4.3.0
 ncclient==0.6.15
 
-# Network utilities, SNMP.
+# Network utilities. (pysnmp left with the AI family's trap receiver, D15, 2026-10-14.)
 ping3==4.0.4
 # Interface enumeration for the OOB collector's address detection.
 psutil==5.9.8
-pysnmp==4.4.12
 
 # Security. PyJWT validates the access proxy's assertion: PyJWKClient arrived in 2.0 and its
 # key-cache lifespan later, and an identity check that silently loses its verifier is worse

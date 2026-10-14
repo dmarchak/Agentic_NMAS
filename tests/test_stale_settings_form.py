@@ -40,21 +40,23 @@ def _stored(key):
 
 class TestTheSettingsModal:
     def test_a_field_another_person_moved_is_refused_and_the_rest_saved(self, client):
-        # The agent starts OFF (C497, 2026-10-07), so the other person turns it ON.
+        # The incident's own field (R17): NetBox writes start OFF, another person turns them
+        # ON, and this tab, opened before, saves another field and its stale switch. (It drove
+        # the background agent's switch until that left with the AI family, D15.)
         stale = client.get("/settings").get_json()               # this tab opens Settings
-        assert stale["background_agent_enabled"] is False
-        assert client.post("/settings", json={                   # another person turns the agent on
-            "background_agent_enabled": True,
+        assert stale["netbox_allow_writes"] is False
+        assert client.post("/settings", json={                   # another person turns writes on
+            "netbox_allow_writes": True,
             "loaded": client.get("/settings").get_json()}).status_code == 200
-        r = client.post("/settings", json={"background_agent_enabled": False,
-                                           "wf_read_first": False, "loaded": stale})
+        r = client.post("/settings", json={"netbox_allow_writes": False,
+                                           "netbox_verify_tls": False, "loaded": stale})
         body = r.get_json()
         assert r.status_code == 207 and body["status"] == "partial"
-        assert any(e.startswith("background_agent_enabled: not saved, because it changed after "
+        assert any(e.startswith("netbox_allow_writes: not saved, because it changed after "
                                 "you opened Settings: it was False when you opened it and is "
                                 "True now") for e in body["errors"]), body
-        assert _stored("background_agent_enabled") is True       # their decision stands
-        assert _stored("wf_read_first") is False                 # this person's change saved
+        assert _stored("netbox_allow_writes") is True            # their decision stands
+        assert _stored("netbox_verify_tls") is False             # this person's change saved
 
     def test_a_field_this_person_did_not_change_is_never_sent_so_never_reverts(self, client):
         save = lift(SETTINGS_JS, "saveSettings")
@@ -63,9 +65,9 @@ class TestTheSettingsModal:
         assert "window._settingsLoaded = s;" in lift(SETTINGS_JS, "openSettingsModal")
 
     def test_a_save_that_says_nothing_about_what_it_loaded_is_refused(self, client):
-        r = client.post("/settings", json={"wf_read_first": False})
+        r = client.post("/settings", json={"netbox_verify_tls": False})
         assert r.status_code == 400 and "did not say what it loaded" in r.get_json()["errors"][0]
-        assert _stored("wf_read_first") is None
+        assert _stored("netbox_verify_tls") is None
 
     def test_the_write_switch_alone_is_saved(self, client):
         """Sent alone (the other NetBox fields unchanged), it was dropped by a branch that
@@ -148,12 +150,6 @@ class TestTheEnvFile:
         lines = sorted(path.read_text(encoding="utf-8").splitlines())
         assert lines == ["A_KEY=59", "B_KEY=59", "KEPT=1"], lines
         assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
-
-    def test_the_route_writes_through_it(self):
-        from tests.astcheck import calls_in
-
-        import app as nmas
-        assert calls_in(nmas._save_settings, "set_env_line") == 1
 
 
 SETTINGS_JS = None

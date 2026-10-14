@@ -257,12 +257,12 @@ class TestAnApprovalCommitsItsApprover:
     """C81, then C105. Approving a drift item ("Update Golden Config")
     committed the device's golden as `Actor: ai-agent`, `Source: ai` (C81),
     then as the approving person with no preview (a second capture path in
-    the queue). It now hands off to the capture operation: the approve
-    commits nothing, and the capture it opens records the device as the
-    verified person and closes the item. Through the real routes, read back
-    from git."""
+    the queue). It then handed off to the capture operation; since the AI
+    family's removal (D15) there is no approve route, and the capture is how
+    an item closes: it records the device as the verified person and closes
+    the item. Through the real routes, read back from git."""
 
-    def test_approving_hands_off_and_the_capture_records_the_person(self, tmp_path,
+    def test_the_capture_records_the_person_and_closes_the_item(self, tmp_path,
                                                                      monkeypatch):
         import app as app_module
         import routes.golden as golden
@@ -291,20 +291,15 @@ class TestAnApprovalCommitsItsApprover:
             "update_golden_config", "drift on r2", ip, "r2", "", {}, "test")
         entry_id = entry["id"] if isinstance(entry, dict) else entry
         client = app_module.app.test_client()
-
-        resp = client.post(f"/ai/approvals/{entry_id}/approve")
-        assert resp.status_code == 200, resp.get_data(as_text=True)[:300]
-        handoff = resp.get_json()["execution"]["capture"]
-        assert handoff == {"devices": ["r2"], "approvals": {"r2": [entry_id]}}
-        assert subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
-                              capture_output=True, text=True).stdout == head, \
-            "approving committed something: it must only hand off"
         assert approval_queue.get_pending()[0]["id"] == entry_id
 
         pv = run_capture_preview(client, {"devices": ["r2"]}).get_json()
+        assert subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout == head, \
+            "the preview committed something"
         h = pv["preview"]["what"]["targets"][0]["select_data"]["hash"]
         out = client.post("/golden/capture/apply", json={
-            "confirmations": {"r2": h}, "approvals": handoff["approvals"]}).get_json()
+            "confirmations": {"r2": h}, "approvals": {"r2": [entry_id]}}).get_json()
         assert out["approvals"] == {"closed": [entry_id], "left_pending": []}, out
         msg = _last_message(repo)
         assert f"Actor: {TEST_PERSON}" in msg, msg

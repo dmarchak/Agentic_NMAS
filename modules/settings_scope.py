@@ -9,7 +9,7 @@ step changes no behaviour.
 Scopes:
 - ``network``: the key belongs to one network (a list); its *group* inherits together.
 - ``host``: one installation-wide value (identity, the web server, NetBox's connection, the
-  platform and role maps, Proxmox, the AI).
+  platform and role maps, Proxmox).
 - ``retiring``: read by nothing at run time; decided 2026-10-04 to retire after checking
   nothing outside the app reads it, each retirement recorded in CUTOVER (P.8 decision 3);
   Oxidized's keys joined them when Oxidized retired (Phase 3, P3-3).
@@ -69,9 +69,6 @@ SCOPES: dict = {
     # C724: keyed by credential profile, which is the installation's (as the profiles are).
     **_group(HOST, "credential_rotation", "credential_rotation_policies"),
     **_group(HOST, "web_server", "flask_host", "flask_port", "auto_open_browser"),
-    **_group(HOST, "ai", "ai_enabled", "background_agent_enabled"),
-    **_group(HOST, "workflow", "wf_auto_backup", "wf_read_first", "wf_require_approval",
-             "wf_save_golden", "wf_update_vars"),
     **_group(HOST, "git_author", "nsot_git_author_name", "nsot_git_author_email"),
     # Mercury's records database: one for the installation (P4-2), never a network's.
     **_group(HOST, "records_db", "records_db_host", "records_db_port", "records_db_name",
@@ -100,6 +97,12 @@ SCOPES: dict = {
     # The TFTP setting, retired at 7.8 (D16, 2026-10-13): its last readers, the device and bulk
     # file routes, left the same day; declared for one release, as Oxidized's keys are.
     **_group(RETIRING, "tftp_setting", "tftp_server_ip", "tftp_root"),
+    # The AI family, removed (D15, 2026-10-14): the assistant's switch, the background agent's
+    # and the workflow switches that only changed the assistant's prompt; declared for one
+    # release, as Oxidized's keys are.
+    **_group(RETIRING, "ai", "ai_enabled", "background_agent_enabled"),
+    **_group(RETIRING, "workflow", "wf_auto_backup", "wf_read_first", "wf_require_approval",
+             "wf_save_golden", "wf_update_vars"),
     # ── Already dead, recorded (never split) ─────────────────────────────────────────────
     **_group(DEAD, "dead", "jenkins_step_shell", "wf_run_jenkins",
              "netbox_remove_on_list_delete", "oxidized_rest_url", "grafana_embed_mode",

@@ -44,27 +44,15 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="ansible-tab" data-bs-toggle="tab" data-bs-target="#ansiblePane"
-            type="button" role="tab" aria-controls="ansiblePane" aria-selected="false">
-      Ansible
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
     <button class="nav-link" id="netbox-tab" data-bs-toggle="tab" data-bs-target="#netboxPane"
             type="button" role="tab" aria-controls="netboxPane" aria-selected="false">
       NetBox
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="agent-tab" data-bs-toggle="tab" data-bs-target="#agentPane"
-            type="button" role="tab" aria-controls="agentPane" aria-selected="false">
-      Agent <span id="agentBadge" class="badge bg-danger ms-1" style="display:none">!</span>
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="approvals-tab" data-bs-toggle="tab" data-bs-target="#approvalsPane"
-            type="button" role="tab" aria-controls="approvalsPane" aria-selected="false">
-      Approvals <span id="approvalsBadge" class="badge bg-warning text-dark ms-1" style="display:none">0</span>
+    <button class="nav-link" id="drift-tab" data-bs-toggle="tab" data-bs-target="#driftPane"
+            type="button" role="tab" aria-controls="driftPane" aria-selected="false">
+      Drift
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -168,27 +156,6 @@
 </div><!-- end Devices tab pane -->
 
 <!-- ================================================================== -->
-<!-- ANSIBLE TAB -->
-<!-- ================================================================== -->
-<div class="tab-pane fade" id="ansiblePane" role="tabpanel" aria-labelledby="ansible-tab">
-
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h2 class="text-primary mb-0">Ansible Playbooks</h2>
-  <button class="btn btn-outline-secondary btn-sm" onclick="loadPlaybooks()">Refresh</button>
-</div>
-
-<div id="ansiblePlaybookList">
-  <div class="text-center text-muted py-5">
-    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-    Loading playbooks&hellip;
-  </div>
-</div>
-
-</div><!-- end Ansible tab pane -->
-
-<!-- ================================================================== -->
-
-<!-- ================================================================== -->
 <!-- NETBOX TAB -->
 <!-- ================================================================== -->
 <div class="tab-pane fade" id="netboxPane" role="tabpanel" aria-labelledby="netbox-tab">
@@ -274,85 +241,11 @@
 </div><!-- end NetBox tab pane -->
 
 <!-- ================================================================== -->
-<!-- AGENT TAB -->
+<!-- DRIFT TAB: the approval queue's list and buttons left with the AI family (D15); the drift
+     panel stays until today's pages retire -->
 <!-- ================================================================== -->
-<div class="tab-pane fade" id="agentPane" role="tabpanel" aria-labelledby="agent-tab">
+<div class="tab-pane fade" id="driftPane" role="tabpanel" aria-labelledby="drift-tab">
 
-<!-- Shown when AI is disabled in Settings -->
-<div id="agentDisabledBanner" class="alert alert-warning d-flex align-items-center gap-3 d-none" role="alert">
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" class="flex-shrink-0">
-    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
-    <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.553.553 0 0 1-1.1 0z"/>
-  </svg>
-  <div class="flex-grow-1">
-    <strong>AI Agent Disabled</strong> — The background agent is not running. No automated checks or API calls are being made.
-  </div>
-  <button class="btn btn-sm btn-warning" onclick="openSettingsModal()">Enable in Settings</button>
-</div>
-
-<div class="d-flex align-items-center gap-2 mb-3">
-  <h2 class="text-primary mb-0 me-auto">Agent Activity</h2>
-  <span id="agentStatusBadge" class="badge bg-secondary">Loading…</span>
-  <button id="agentPauseBtn" class="btn btn-warning btn-sm" onclick="toggleAgentPause()">Pause</button>
-  <button class="btn btn-outline-secondary btn-sm" onclick="loadAgentTab()">Refresh</button>
-</div>
-
-<p class="text-muted small mb-3">
-  Tasks the AI agent has executed autonomously in the background — without any browser interaction.
-  Missing golden configs and config drift are handled automatically.
-</p>
-
-<!-- Agent Timer Configuration -->
-<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
-  <div class="card-body">
-    <div class="d-flex align-items-center mb-3">
-      <h6 class="text-primary mb-0 me-auto">Automation Timing</h6>
-      <button class="btn btn-outline-secondary btn-sm" onclick="loadAgentTimers()">Reset</button>
-    </div>
-    <p class="text-muted small mb-3">
-      Adjust how often the background agent performs each automated check.
-      Changes take effect immediately without restarting the server.
-    </p>
-    <div id="agentTimersPanel">
-      <div class="text-muted small">Loading…</div>
-    </div>
-    <div class="mt-3 d-flex gap-2">
-      <button class="btn btn-primary btn-sm" onclick="saveAgentTimers()">Save Timers</button>
-      <span id="agentTimersSaveStatus" class="text-muted small align-self-center"></span>
-    </div>
-  </div>
-</div>
-
-<!-- Manual task trigger -->
-<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
-  <div class="card-body">
-    <h6 class="text-primary mb-2">Trigger Background Task</h6>
-    <div class="d-flex gap-2">
-      <input id="agentTaskInput" type="text" class="form-control form-control-sm"
-             placeholder="Describe a task for the agent to run in the background…">
-      <button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="triggerAgentTask()">Run</button>
-    </div>
-  </div>
-</div>
-
-<div id="agentActivityLog"></div>
-
-</div><!-- end Agent tab pane -->
-
-<!-- ================================================================== -->
-<!-- APPROVALS TAB -->
-<!-- ================================================================== -->
-<div class="tab-pane fade" id="approvalsPane" role="tabpanel" aria-labelledby="approvals-tab">
-
-<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-  <h2 class="text-primary mb-0 me-auto">Pending Approvals</h2>
-  <label class="form-check-label text-muted small me-1" for="approvalsShowAll">Show resolved</label>
-  <input class="form-check-input me-2" type="checkbox" id="approvalsShowAll" onchange="loadApprovalsTab()">
-  <button id="approveAllBtn" class="btn btn-success btn-sm" onclick="approveAll()" style="display:none">Approve All</button>
-  <button class="btn btn-outline-secondary btn-sm" onclick="loadApprovalsTab()">Refresh</button>
-</div>
-
-<!-- Drift check panel — pure Python, works regardless of AI state -->
 <div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
   <div class="card-body py-2 px-3" id="driftPanel">
     <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -386,15 +279,7 @@
   </div>
 </div>
 
-<p class="text-muted small mb-3">
-  Approvals expire after <strong>48 hours</strong> if not acted on.
-</p>
-
-<div id="approvalsPanel">
-  <div class="text-muted small py-4 text-center">Loading…</div>
-</div>
-
-</div><!-- end Approvals tab pane -->
+</div><!-- end Drift tab pane -->
 
 <!-- ================================================================== -->
 <!-- GIT TAB -->
@@ -451,7 +336,6 @@
   <h2 class="text-primary mb-0 me-auto">Server Logs</h2>
   <select class="form-select form-select-sm" id="logsSource" style="width:auto">
     <option value="server">Server log (app.py + all modules)</option>
-    <option value="ai">AI debug log</option>
   </select>
   <select class="form-select form-select-sm" id="logsLines" style="width:auto">
     <option value="200">Last 200 lines</option>
@@ -525,19 +409,8 @@
   </div>
 </div>
 
-<!-- Embed full device data for polling and AI context caching -->
-<script id="device-data" type="application/json">
-  {{ devices | map(attribute='ip') | list | tojson | safe }}
-</script>
-<script id="device-full-data" type="application/json">
-  {{ devices | tojson | safe }}
-</script>
-
 <!-- Device List Management & Bulk Ops Scripts -->
 <script src="{{ url_for('static', filename='js/gen/index.1.js') }}"></script>
-
-<!-- The AI device cache, seeded from the page (its status polling left at 7.8) -->
-<script src="{{ url_for('static', filename='js/gen/index.2.js') }}"></script>
 
 {% endblock %}
 
@@ -566,124 +439,18 @@
 
       <div class="modal-body">
 
-        <!-- AI master switch -->
-        <div class="d-flex align-items-center justify-content-between p-3 mb-4 rounded"
-             style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25)">
-          <div>
-            <div class="fw-semibold">AI Assistant &amp; Agent</div>
-            <div class="text-muted small">When off, the AI assistant and background agent are completely disabled — no API calls are made.</div>
-          </div>
-          <div class="form-check form-switch flex-shrink-0 ms-3">
-            <input class="form-check-input" type="checkbox" id="settingsAiEnabled" role="switch" checked
-                   style="width:2.8em;height:1.4em">
-          </div>
-        </div>
-
-        {# `background_agent_enabled` is the PERSISTENT switch and had no
-           control: `/settings` accepted it and nothing ever sent it, so it
-           was settable by curl alone. The Agent tab's Pause button is a
-           different thing -- `pause_agent()` sets an in-memory Event and
-           persists nothing, so a pause is lost on the next restart and the
-           agent comes back running. Two controls that look like one switch,
-           and only the invisible one survives a restart. #}
-        <div class="d-flex justify-content-between align-items-center mt-2">
-          <div>
-            <span class="fw-semibold">Background agent</span>
-            <div class="text-muted small">
-              Runs autonomous tasks without anyone asking. This setting
-              <strong>persists</strong>; the Agent tab's Pause button does not
-              and is lost on restart.
-            </div>
-          </div>
-                  {# 3.2f, deliberately light. The modal already had section headings;
+        {# 3.2f, deliberately light. The modal already had section headings;
            what it lacked was any way to reach one without scrolling past
            twenty-three inputs. Stage 7 turns Settings into a real destination
            with its own structure, so building a full split here would be the
-           "arranged twice" this plan exists to avoid. #}
+           "arranged twice" this plan exists to avoid. The AI and Workflow
+           sections left with the AI family (D15). #}
         <nav class="mb-3 small" aria-label="Settings sections">
           <span class="text-muted me-1">Jump to:</span>
-          <a class="me-2" href="#setAiProvider">AI</a>
           <a class="me-2" href="#setNetbox">NetBox</a>
           <a class="me-2" href="#setIntegrations">Integrations</a>
           <a class="me-2" href="#setSecurity">Security</a>
-          <a class="me-2" href="#setWorkflow">Workflow</a>
         </nav>
-        <div class="form-check form-switch flex-shrink-0 ms-3">
-            <input class="form-check-input" type="checkbox" id="settingsBackgroundAgentEnabled"
-                   role="switch" checked style="width:2.8em;height:1.4em">
-          </div>
-        </div>
-
-        <hr>
-
-        <!-- AI / Anthropic -->
-        <h6 id="setAiProvider" class="text-primary fw-semibold mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1m0 1a6 6 0 1 1 0 12A6 6 0 0 1 8 2"/><path d="M8 4a.5.5 0 0 1 .5.5v3.793l2.146 2.147a.5.5 0 0 1-.708.707l-2.292-2.293A.5.5 0 0 1 7.5 8.5v-4A.5.5 0 0 1 8 4"/></svg>
-          AI Provider
-        </h6>
-        <div class="row g-3 mb-4">
-          <div class="col-12">
-            <label class="form-label fw-semibold">Anthropic API Key
-              <span class="text-muted fw-normal small ms-1">(saved to .env — survives restarts)</span>
-            </label>
-            <div class="input-group">
-              <input type="password" class="form-control" id="settingsAnthropicKey"
-                     placeholder="sk-ant-api03-…" autocomplete="off">
-              <button class="btn btn-outline-secondary" type="button" id="settingsToggleKey"
-                      onclick="toggleKeyVisibility()" title="Show/hide">
-                <svg id="settingsEyeIcon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
-                  <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
-                  <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
-                </svg>
-              </button>
-            </div>
-            <div class="form-text" id="settingsKeyStatus"></div>
-          </div>
-        </div>
-
-        <!-- AI Usage & Spend -->
-        <h6 id="setAiUsage" class="text-primary fw-semibold mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M4 11H2v3h2zm5-4H7v7h2zm5-5v12h-2V2zm-2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zm-5 6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zm-5 4a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1z"/></svg>
-          AI Usage &amp; Spend
-          <span class="text-muted fw-normal small ms-1">(server-side log — survives reloads)</span>
-        </h6>
-        <div class="row g-3 mb-4" id="usageSummaryBlock">
-          <div class="col-4 col-md-2">
-            <div class="text-muted small">Last 24h</div>
-            <div class="fw-semibold" id="usageToday">—</div>
-          </div>
-          <div class="col-4 col-md-2">
-            <div class="text-muted small">7 days</div>
-            <div class="fw-semibold" id="usage7d">—</div>
-          </div>
-          <div class="col-4 col-md-2">
-            <div class="text-muted small">30 days</div>
-            <div class="fw-semibold" id="usage30d">—</div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="text-muted small">Cache hit rate (30d)</div>
-            <div class="fw-semibold" id="usageCacheHitRate">—</div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="text-muted small">All-time spend</div>
-            <div class="fw-semibold" id="usageAllTime">—</div>
-          </div>
-          <div class="col-12">
-            <div class="table-responsive" style="max-height:160px;overflow-y:auto;">
-              <table class="table table-sm table-borderless mb-0 small" id="usageByProviderTable">
-                <thead>
-                  <tr class="text-muted">
-                    <th>Provider</th><th>Turns</th><th>Input</th><th>Output</th>
-                    <th>Cache read</th><th>Cost (30d)</th>
-                  </tr>
-                </thead>
-                <tbody><tr><td colspan="6" class="text-muted">Loading…</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <hr>
 
         <!-- NetBox -->
         <h6 class="text-primary fw-semibold mb-3">
@@ -729,58 +496,6 @@
         <div id="setSecurity"></div>
         {% include 'partials/security_posture.html' %}
 
-        <hr>
-
-        <!-- AI Workflow -->
-        <h6 id="setWorkflow" class="text-primary fw-semibold mb-3">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="me-1" viewBox="0 0 16 16"><path d="M6 12.796V3.204L11.481 8zm.659.753 5.48-4.796a1 1 0 0 0 0-1.506L6.66 2.451C6.011 1.885 5 2.345 5 3.204v9.592a1 1 0 0 0 1.659.753"/></svg>
-          AI Workflow
-        </h6>
-        <p class="text-muted small mb-3">Control which steps the AI agent performs automatically.</p>
-        <div class="d-flex flex-column gap-3">
-
-          <div class="d-flex align-items-start justify-content-between gap-3">
-            <div>
-              <div class="fw-semibold small">Read golden configs &amp; variables first</div>
-              <div class="text-muted" style="font-size:.8rem;">Check stored configs and variables before running live SSH commands.</div>
-            </div>
-            <div class="form-check form-switch flex-shrink-0 mt-1">
-              <input class="form-check-input" type="checkbox" id="wfReadFirst" role="switch">
-            </div>
-          </div>
-
-          <div class="d-flex align-items-start justify-content-between gap-3">
-            <div>
-              <div class="fw-semibold small">Auto-backup before config push</div>
-              <div class="text-muted" style="font-size:.8rem;">Save a timestamped backup before pushing any configuration changes.</div>
-            </div>
-            <div class="form-check form-switch flex-shrink-0 mt-1">
-              <input class="form-check-input" type="checkbox" id="wfAutoBackup" role="switch">
-            </div>
-          </div>
-
-          <div class="d-flex align-items-start justify-content-between gap-3">
-            <div>
-              <div class="fw-semibold small">Update variables from new golden config</div>
-              <div class="text-muted" style="font-size:.8rem;">Re-extract network facts into the variable store after saving a golden config.</div>
-            </div>
-            <div class="form-check form-switch flex-shrink-0 mt-1">
-              <input class="form-check-input" type="checkbox" id="wfUpdateVars" role="switch">
-            </div>
-          </div>
-
-          <div class="d-flex align-items-start justify-content-between gap-3">
-            <div>
-              <div class="fw-semibold small">Always require human approval</div>
-              <div class="text-muted" style="font-size:.8rem;">Route every config change through the approval queue — even when CI passes.</div>
-            </div>
-            <div class="form-check form-switch flex-shrink-0 mt-1">
-              <input class="form-check-input" type="checkbox" id="wfRequireApproval" role="switch">
-            </div>
-          </div>
-
-        </div>
-
       </div><!-- /modal-body -->
 
       <div class="modal-footer">
@@ -809,20 +524,6 @@ window.openSettingsModal = function() {
     .then(s => {
       // What this form loaded: the save sends only what changed, with these (R17).
       window._settingsLoaded = s;
-      // AI master switch
-      document.getElementById('settingsAiEnabled').checked = s.ai_enabled !== false;
-      const bgEl = document.getElementById('settingsBackgroundAgentEnabled');
-      if (bgEl) bgEl.checked = s.background_agent_enabled !== false;
-
-      // API key: show placeholder if already set, leave blank otherwise
-      const keyInput = document.getElementById('settingsAnthropicKey');
-      keyInput.value = '';
-      keyInput.placeholder = s.anthropic_api_key_set ? '••••••••  (already set — enter new key to change)' : 'sk-ant-api03-…';
-      document.getElementById('settingsKeyStatus').textContent =
-        s.anthropic_api_key_set ? '✓ API key is configured' : '⚠ No API key set — AI features will not work';
-      document.getElementById('settingsKeyStatus').className =
-        'form-text ' + (s.anthropic_api_key_set ? 'text-success' : 'text-warning');
-
       // NetBox
       document.getElementById('settingsNetboxUrl').value = s.netbox_url || '';
       const nbTokInput = document.getElementById('settingsNetboxToken');
@@ -843,69 +544,12 @@ window.openSettingsModal = function() {
           nbStatus.className = 'ms-2 small text-muted';
         }
       }
-
-      // Workflow toggles (default true except wf_require_approval)
-      document.getElementById('wfReadFirst').checked       = s.wf_read_first       !== false;
-      document.getElementById('wfAutoBackup').checked      = s.wf_auto_backup      !== false;
-      document.getElementById('wfUpdateVars').checked      = s.wf_update_vars      !== false;
-      document.getElementById('wfRequireApproval').checked = s.wf_require_approval === true;
     })
     .catch(() => showToast('Could not load settings', 'danger'));
-  loadUsageSummary();
   // Integrations panel (routes/settings_integrations.py)
   if (typeof loadIntegrationSettings === 'function') loadIntegrationSettings();
   if (typeof loadGeneralIntegrationSettings === 'function') loadGeneralIntegrationSettings();
   _settingsModal.show();
-};
-
-function _formatUsd(v) {
-  if (!v) return '$0.00';
-  if (v < 0.01) return '$' + v.toFixed(4);
-  return '$' + v.toFixed(2);
-}
-
-window.loadUsageSummary = function() {
-  Promise.all([1, 7, 30].map(d => fetch('/ai/usage_summary?days=' + d).then(r => r.json())))
-    .then(([d1, d7, d30]) => {
-      document.getElementById('usageToday').textContent   = _formatUsd(d1.window.cost_usd);
-      document.getElementById('usage7d').textContent      = _formatUsd(d7.window.cost_usd);
-      document.getElementById('usage30d').textContent     = _formatUsd(d30.window.cost_usd);
-      document.getElementById('usageAllTime').textContent = _formatUsd(d30.all_time.cost_usd);
-      document.getElementById('usageCacheHitRate').textContent =
-        d30.window.turns ? (d30.window.cache_hit_rate * 100).toFixed(1) + '%' : '—';
-
-      const tbody = document.querySelector('#usageByProviderTable tbody');
-      if (!d30.by_provider.length) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No AI usage logged yet.</td></tr>';
-        return;
-      }
-      tbody.innerHTML = d30.by_provider.map(p => `
-        <tr>
-          <td>${p.provider}</td>
-          <td>${p.turns}</td>
-          <td>${p.input.toLocaleString()}</td>
-          <td>${p.output.toLocaleString()}</td>
-          <td>${p.cache_read.toLocaleString()}</td>
-          <td>${_formatUsd(p.cost_usd)}</td>
-        </tr>
-      `).join('');
-    })
-    .catch(() => {
-      const tbody = document.querySelector('#usageByProviderTable tbody');
-      if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-danger">Could not load usage log.</td></tr>';
-    });
-};
-
-window.toggleKeyVisibility = function() {
-  const inp  = document.getElementById('settingsAnthropicKey');
-  const icon = document.getElementById('settingsEyeIcon');
-  if (inp.type === 'password') {
-    inp.type = 'text';
-    icon.innerHTML = '<path d="m10.79 12.912-1.614-1.615a3.5 3.5 0 0 1-4.474-4.474l-2.06-2.06C.938 6.278 0 8 0 8s3 5.5 8 5.5a7 7 0 0 0 2.79-.588M5.21 3.088A7 7 0 0 1 8 2.5c5 0 8 5.5 8 5.5s-.939 1.721-2.641 3.238l-2.062-2.062a3.5 3.5 0 0 0-4.474-4.474z"/><path d="M5.525 7.646a2.5 2.5 0 0 0 2.829 2.829zm4.95.708-2.829-2.83a2.5 2.5 0 0 1 2.829 2.829zm3.171 6-12-12 .708-.708 12 12z"/>';
-  } else {
-    inp.type = 'password';
-    icon.innerHTML = '<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>';
-  }
 };
 
 window.saveSettings = function() {
@@ -916,19 +560,7 @@ window.saveSettings = function() {
   spinner.classList.remove('d-none');
   btn.disabled = true;
 
-  const payload = {
-    ai_enabled:            document.getElementById('settingsAiEnabled').checked,
-    background_agent_enabled:
-      document.getElementById('settingsBackgroundAgentEnabled').checked,
-    wf_read_first:         document.getElementById('wfReadFirst').checked,
-    wf_auto_backup:        document.getElementById('wfAutoBackup').checked,
-    wf_update_vars:        document.getElementById('wfUpdateVars').checked,
-    wf_require_approval:   document.getElementById('wfRequireApproval').checked,
-  };
-
-  // Only send the API key if the user actually typed something
-  const apiKeyVal = document.getElementById('settingsAnthropicKey').value.trim();
-  if (apiKeyVal) payload.anthropic_api_key = apiKeyVal;
+  const payload = {};
 
   // NetBox — URL + TLS always sent; token only if user typed one
   payload.netbox_url        = document.getElementById('settingsNetboxUrl').value.trim();
@@ -964,10 +596,6 @@ window.saveSettings = function() {
       const errors = (data.errors || []).concat(gen && gen.ok === false ? [gen.error] : []);
       if (data.status === 'ok' || data.status === 'partial') {
         _settingsModal.hide();
-        // Propagate AI on/off state to panels immediately
-        if (typeof window.applyAiEnabled === 'function') {
-          window.applyAiEnabled(document.getElementById('settingsAiEnabled').checked);
-        }
         if (errors.length) {
           showToast('Settings saved with warnings: ' + errors.join('; '), 'warning');
         } else {
@@ -990,36 +618,6 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
   document.addEventListener('DOMContentLoaded', () => openSettingsModal());
 }
 
-// Extend applyAiEnabled (defined in base.html) to also handle the Agent tab banner
-(function () {
-  function _applyAgentBanner(enabled) {
-    const banner  = document.getElementById('agentDisabledBanner');
-    const controls = document.querySelectorAll('#agentPane button:not(#agentPauseBtn), #agentTaskInput');
-    if (banner) banner.classList.toggle('d-none', enabled);
-    controls.forEach(el => { el.disabled = !enabled; });
-  }
-
-  // Wrap applyAiEnabled to also handle the Agent tab banner and refresh AI-only tabs.
-  // base.html's script already ran and set window.applyAiEnabled before this runs.
-  const _baseApply = window.applyAiEnabled;
-  window.applyAiEnabled = function(enabled) {
-    if (typeof _baseApply === 'function') _baseApply(enabled);
-    _applyAgentBanner(enabled);
-    // Refresh AI-only tabs immediately so they show correct state (not stale content)
-    const agentTab     = document.getElementById('agent-tab');
-    const approvalsTab = document.getElementById('approvals-tab');
-    if (agentTab     && agentTab.classList.contains('active'))     loadAgentTab();
-    if (approvalsTab && approvalsTab.classList.contains('active')) loadApprovalsTab();
-    // Clear agent badge when disabling (drift approvals badge stays — still valid without AI)
-    if (!enabled) {
-      const agentBadgeEl = document.getElementById('agentBadge');
-      if (agentBadgeEl) agentBadgeEl.style.display = 'none';
-    }
-  };
-
-  // Apply server-rendered initial state immediately — no fetch, no flash.
-  window.applyAiEnabled({{ ai_enabled | tojson }});
-})();
 </script>
 
 <script>
@@ -1180,11 +778,8 @@ if (new URLSearchParams(window.location.search).get('open_settings') === '1') {
   let _logsAutoTimer = null;
 
   window.loadLogsTab = async function () {
-    const src   = document.getElementById('logsSource')?.value || 'server';
     const lines = document.getElementById('logsLines')?.value  || '500';
-    const url   = src === 'ai'
-      ? `/ai/debug_log?lines=${encodeURIComponent(lines)}`
-      : `/logs/server?lines=${encodeURIComponent(lines)}`;
+    const url   = `/logs/server?lines=${encodeURIComponent(lines)}`;
     const errEl = document.getElementById('logsError');
     const pre   = document.getElementById('logsContent');
     if (errEl) errEl.textContent = '';

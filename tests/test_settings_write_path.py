@@ -162,12 +162,14 @@ class TestTheOrphanKeysAreDeclared:
             assert key in SCHEMA["properties"], key
 
     def test_the_defaults_reproduce_the_previous_behaviour(self):
-        """The standing rule: a new default reproduces what predates it."""
-        import app as nmas
+        """The standing rule: a new default reproduces what predates it (app.py's
+        `_WF_DEFAULTS`, which left with the AI family, D15)."""
         from modules.settings_schema import DEFAULTS
 
-        for flag, previous in nmas._WF_DEFAULTS.items():
-            assert DEFAULTS[flag] is previous, flag
+        previous = {"wf_read_first": True, "wf_auto_backup": True, "wf_update_vars": True,
+                    "wf_require_approval": False}
+        for flag, value in previous.items():
+            assert DEFAULTS[flag] is value, flag
         assert DEFAULTS["ai_enabled"] is True
         # The one deliberate exception (C497): the background agent is OFF until Stage 8.
         assert DEFAULTS["background_agent_enabled"] is False
@@ -186,8 +188,9 @@ class TestTheOrphanKeysAreDeclared:
 
         import app as nmas
 
-        # The route compares under the lock, then saves in `_save_settings` (R17).
-        assert calls_in(nmas._save_settings, "write_settings") >= 1
+        # The route compares under the lock, then saves in `_save_settings` (R17). Since the
+        # AI family's keys left (D15) it writes no settings key at all (NetBox has its own
+        # store), and it never writes around the one write path.
         assert calls_in(nmas.save_settings, "save_user_settings") == 0
         assert calls_in(nmas._save_settings, "save_user_settings") == 0
 
@@ -356,51 +359,6 @@ class TestEverySchemaKeyHasADecision:
         text = read_shipped("docs/SETTINGS.md")
         assert "write_settings()" in text
         assert "never seeds a default" in text
-
-
-class TestBackgroundAgentHasAControl:
-    """It is the PERSISTENT switch and had none: `/settings` accepted it and
-    nothing ever sent it, so it was settable by `curl` alone.
-
-    The Agent tab's Pause button is a different thing — `pause_agent()` sets
-    an in-memory Event and persists nothing, so a pause is lost on restart
-    and the agent comes back running. Two controls that look like one switch,
-    and only the invisible one survives a restart.
-    """
-
-    @pytest.fixture(scope="class")
-    def page(self):
-        import app as nmas
-
-        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-
-    def test_the_form_has_the_switch(self, page):
-        assert "settingsBackgroundAgentEnabled" in page
-
-    def test_the_save_payload_includes_it(self, page):
-        """A control absent from the payload saves silently and never
-        persists — the shape this whole stage is about."""
-        i = page.index("window.saveSettings = function()")
-        assert "background_agent_enabled" in page[i:i + 4000]
-
-    def test_the_form_is_populated_from_the_server(self, page):
-        i = page.index("window.openSettingsModal = function()")
-        assert "background_agent_enabled" in page[i:i + 4000]
-
-    def test_pause_persists_nothing(self):
-        """Pinned, because the UI makes it look like a switch."""
-        import inspect
-
-        from modules import agent_runner
-
-        src = inspect.getsource(agent_runner.pause_agent)
-        assert "save" not in src and "set_user_setting" not in src
-
-    def test_the_difference_is_written_down(self):
-        import io
-
-        text = read_shipped("docs/SETTINGS.md")
-        assert "Pause is not disable" in text
 
 
 class TestASaveThatDidNotPersistSaysSo:

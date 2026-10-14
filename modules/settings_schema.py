@@ -105,6 +105,8 @@ DEFAULTS: dict = {
     "tftp_root":      _default_tftp_root(),
 
     # ── Keys the Settings form has always written, now declared ────────────
+    # RETIRING since the AI family's removal (D15, 2026-10-14): read by nothing, declared for
+    # one release so a rollback finds them (modules/settings_scope.py).
     # `/settings` wrote these straight through `save_user_settings()`, so they
     # lived in the same file as everything else while the schema -- which is
     # where types, validation and encryption-at-rest are declared -- had never
@@ -505,8 +507,7 @@ DEFAULTS: dict = {
     "jenkins_step_shell": "bat",         # bat | sh
 
     # ── Built-in collectors ─────────────────────────────────────────────────
-    # Ports already lived in modules/collector_config.py per list; only the
-    # enable/disable toggles are new, and both default on as before.
+    # RETIRING (form_only): the collectors they switched left with the AI family (D15).
     "collector_trap_enabled":    True,
     "collector_netflow_enabled": True,
     "collector_syslog_enabled":  True,

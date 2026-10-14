@@ -31,19 +31,9 @@ RULES = (
 #: path -> (category, why): the files the rules above would place wrongly.
 EXCEPTIONS = {
     # ── Retiring (decided removals) ─────────────────────────────────────────────────────────
-    "modules/ai_assistant.py": (RETIRING, "the AI family, D15 (removal after Lab 7)"),
-    "modules/agent_runner.py": (RETIRING, "the AI family, D15"),
-    "modules/ai_usage_log.py": (RETIRING, "the AI family, D15"),
-    "modules/event_monitor.py": (RETIRING, "the AI family, D15"),
-    "modules/variable_discovery.py": (RETIRING, "the AI family, D15"),
-    "modules/snmp_collector.py": (RETIRING, "the in-app trap receiver, D15 (snmptrapd is the path)"),
-    "modules/netflow_collector.py": (RETIRING, "the in-app NetFlow receiver, D15 (no device exports)"),
-    "modules/collector_config.py": (RETIRING, "the in-app receivers' settings, D15"),
-    "modules/topology.py": (RETIRING, "discover_topology, D15 (its parser moves first)"),
     "modules/backups.py": (RETIRING, "today's Backups page, C632 then removal"),
     # ── Support (the interface, settings and the app's own plumbing) ────────────────────────
     "modules/acknowledgements.py": (SUPPORT, "Needs attention's acknowledgements"),
-    "modules/agent_timers.py": (SUPPORT, "timer settings (the drift interval stays, D15)"),
     "modules/alert_bands.py": (SUPPORT, "the monitoring page's alert bands"),
     "modules/app_interpreter.py": (SUPPORT, "which Python the app runs on"),
     "modules/app_log.py": (SUPPORT, "the app's own log"),

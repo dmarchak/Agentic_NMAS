@@ -32,11 +32,6 @@ class TestTheCaseThatPassedBefore:
         out = rc.refusal("show running-config | redirect flash:x.txt")
         assert out.startswith("REFUSED") and "WRITES" in out, out
 
-    def test_the_agent_gets_the_same_answer(self):
-        from modules.ai_assistant import _read_only_refusal
-        assert _read_only_refusal([C61]).startswith("REFUSED")
-        assert _read_only_refusal(["show clock", C61]).startswith("REFUSED")
-
 
 class TestEverySpellingOfAWritingModifier:
     @pytest.mark.parametrize("cmd", [
@@ -147,8 +142,3 @@ class TestOneList:
         assert copies == ["modules/readonly_commands.py"], copies
         assert verbs >= {"show", "ping", "traceroute", "dir", "more"}
 
-    def test_the_agent_delegates(self):
-        src = open(os.path.join(ROOT, "modules", "ai_assistant.py"), encoding="utf-8").read()
-        fn = next(n for n in ast.walk(ast.parse(src))
-                  if isinstance(n, ast.FunctionDef) and n.name == "_read_only_refusal")
-        assert "refusal_for" in ast.unparse(fn)

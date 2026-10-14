@@ -7,75 +7,18 @@ fleet's real community, in a public repository. The code's default WAS the
 configuration. Now NMAS reads the device's own secret (the one intent renders
 from), per device, so the state between two devices' rotations is simply two
 devices holding different values. No fallback, anywhere.
+
+The resolver (`modules/collector_config.py`) and its one caller, the agent's SNMP poll, left
+with the AI family (D15, 2026-10-14), and their tests with them. What stays is the rule over
+every function: no parameter named for a community has a default.
 """
 
 import ast
 import os
 
-import pytest
-
 from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LIST = "Lab"
-
-
-@pytest.fixture
-def two_devices(monkeypatch, tmp_path):
-    """r1 still on the old value, s4 already rotated: the transitional state
-    a per-device rotation IS."""
-    from modules import collector_config, credentials, device
-
-    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
-    (tmp_path / "lab").mkdir()
-    monkeypatch.setattr(device, "get_device_lists",
-                        lambda: [{"name": LIST, "filename": "lab"}])
-    monkeypatch.setattr(device, "load_saved_devices", lambda path: [
-        {"hostname": "r1", "ip": "192.0.2.11"}, {"hostname": "s4", "ip": "192.0.2.24"}])
-    store = {credentials.template_secret_key(LIST, "r1", "snmp_community_ro"): "OLDCOMMUNITY1",
-             credentials.template_secret_key(LIST, "s4", "snmp_community_ro"): "NEWCOMMUNITY2"}
-    monkeypatch.setattr(credentials, "get_template_secret", lambda k: store.get(k, ""))
-    return collector_config
-
-
-class TestTheResolver:
-    def test_each_device_gets_its_own_value(self, two_devices):
-        cc = two_devices
-        assert cc.device_community(LIST, "r1") == "OLDCOMMUNITY1"
-        assert cc.device_community(LIST, "s4") == "NEWCOMMUNITY2"
-        assert cc.community_for_address(LIST, "192.0.2.24") == ("s4", "NEWCOMMUNITY2")
-
-    def test_a_device_with_no_secret_is_refused_never_defaulted(self, two_devices):
-        cc = two_devices
-        with pytest.raises(cc.NoCommunity) as exc:
-            cc.device_community(LIST, "r9")
-        assert "no default is ever used" in str(exc.value)
-
-    def test_an_address_no_device_holds_is_refused(self, two_devices):
-        cc = two_devices
-        with pytest.raises(cc.NoCommunity) as exc:
-            cc.community_for_address(LIST, "192.0.2.99")
-        assert "Nothing was polled" in str(exc.value)
-
-
-class TestTheCallers:
-    def test_the_agent_tool_never_hands_the_model_the_value(self, two_devices, monkeypatch):
-        """The success branch, which the leak sweep cannot reach (no test
-        device answers SNMP): it printed `community=<value>` in prose, which
-        positional redaction cannot see."""
-        from modules import ai_assistant as ai
-        from modules import snmp_collector
-
-        monkeypatch.setattr(snmp_collector, "snmp_get",
-                            lambda *a, **k: [("sysName", "s4")])
-        monkeypatch.setattr("modules.config.get_current_list_name", lambda: LIST)
-        from tests import test_no_agent_tool_leaks_a_stored_secret as sweep
-        monkeypatch.setitem(sweep.EXPLICIT, "snmp_poll",
-                            {"device_ip": "192.0.2.24", "oids": ["sysName"]})
-        tool = [t for t in ai.TOOLS if t.get("name") == "snmp_poll"]
-        out = sweep.drive(tool)["snmp_poll"]
-        assert "sysName" in out and "own community" in out, out
-        assert "NEWCOMMUNITY2" not in out and "community=" not in out
 
 
 class TestNoDefaultAnywhere:

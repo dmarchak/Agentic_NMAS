@@ -111,12 +111,3 @@ def test_bulk_enable_mode_still_reaches_the_route(monkeypatch):
     assert body.get("message") == "No valid devices found", body
 
 
-def test_playbook_replay_is_refused_and_never_reaches_the_model(monkeypatch):
-    import app as A
-    called = []
-    monkeypatch.setattr(A._ai, "run_chat", lambda **k: called.append(k) or iter(()))
-    resp = _client().post("/ai/chat", json={
-        "message": "▶ Run playbook: x", "run_playbook_id": "pb-1"})
-    assert resp.status_code == 410, resp.status_code
-    assert "Running a playbook was removed" in resp.get_json()["error"]
-    assert called == []

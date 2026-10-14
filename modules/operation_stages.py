@@ -299,21 +299,6 @@ STAGES = {
         "MISSING: NetBox is not read back after an import; write failures are counted (C8)",
         "n/a: NetBox writes are not transactional; recovery is the tested backup (P.2)",
         "modules.netbox_guard.record_modified"),
-    # ---- Decisions and the queue
-    "ai_approval_approve": Stages(
-        "n/a: approving hands off to the restore or capture preview, where the change is previewed",
-        "n/a: the handoff's own confirm binds the hash", NO_DEVICE,
-        "n/a: the handed-off operation rolls back", "modules.approval_queue.resolve"),
-    "ai_approval_reject": Stages(
-        "n/a: a rejection changes nothing", "n/a: nothing is previewed", NO_DEVICE, "n/a: nothing to undo",
-        "modules.approval_queue.resolve"),
-    "ai_agent_run": Stages(
-        "n/a: starts an agent run whose tools are read-only (P.3 step 8)", "n/a: nothing is previewed",
-        NO_DEVICE, "n/a: nothing to undo", "modules.agent_runner._append_activity"),
-    "ai_chat": Stages(
-        "n/a: a conversation whose tools are read-only (P.3 step 8)", "n/a: nothing is previewed",
-        NO_DEVICE, "n/a: nothing to undo",
-        "n/a: kept as the session's chat history, not an operation's record"),
     # ---- Legacy device routes, removed or replaced at cutover
     "run_command": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
     "bulk_execute": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
@@ -375,15 +360,9 @@ HISTORY = {
     "update.step_done": NOT_A_DEVICE,
     "run_command": NO_RECORD,
     "bulk_execute": NO_RECORD,
-    "ai_chat": ("MISSING: the assistant's device tools keep no per-device record; removed "
-                "by P.3 step 8"),
-    "ai_agent_run": ("MISSING: the agent's device tools keep no per-device record; removed "
-                     "by P.3 step 8"),
     # ---- approve: a decision a later device change acts on
     "golden.capture_apply": ("golden", "measured"),
     "device_v2.capture_confirm": ("golden", "measured"),
-    "ai_approval_approve": ("approvals",),
-    "ai_approval_reject": ("approvals",),
     "onboard.create": ("intent",),
     "onboard_v2.create": ("intent",),
     "templatize.seed_apply": ("intent",),
@@ -446,12 +425,6 @@ HISTORY = {
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
     "inventory.set_source": NOT_A_DEVICE,
-    "ai_agent_pause": NOT_A_DEVICE,
-    "ai_agent_resume": NOT_A_DEVICE,
-    "ai_agent_timers_post": NOT_A_DEVICE,
-    "ai_delete_playbook": NOT_A_DEVICE,
-    "ai_events_clear": NOT_A_DEVICE,
-    "ai_set_provider": NOT_A_DEVICE,
     "create_device_list_route": NOT_A_DEVICE,
     "delete_backup_route": NOT_A_DEVICE,
     "delete_device_list_route": NOT_A_DEVICE,
@@ -494,11 +467,15 @@ WRITTEN_ELSEWHERE = {
                "templates, a policy (every writer, through repo.commit())",
     "decisions": "a Save All's baseline decision, its commit's Baseline: trailer",
     "updates": "the app's updater (deploy/update), not a device",
+    "approvals": "the drift check queues an item (modules/drift_check.py) and a capture of the "
+                 "device closes it (golden.capture_apply); the approve and reject routes left "
+                 "with the AI family (D15)",
     "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
                      "reveal routes that read devices, Ask the device and Show commands",
 }
 
 #: The history gaps, counted: only down (12 -> 9, 2026-10-12: the three credential profile JSON
 #: routes removed at 7.8; 9 -> 7, 2026-10-13: Device files' upload and delete removed at 7.8;
-#: 7 -> 5 the same day: Bulk file actions' upload and delete).
-HISTORY_MISSING_CEILING = 5
+#: 7 -> 5 the same day: Bulk file actions' upload and delete; 5 -> 3, 2026-10-14: the assistant's
+#: chat and agent run, removed with the AI family, D15).
+HISTORY_MISSING_CEILING = 3

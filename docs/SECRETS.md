@@ -12,12 +12,12 @@ a claim, and this one was wrong.)
 |---|---|---|---|
 | `netbox_token`, `prometheus_password`, `grafana_token`, `loki_*`, `oxidized_password`, `kea_password`, `topology_service_token`, `nsot_git_token`, `s3_*`, `proxmox_token_secret` | `data/user_settings.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
 | `jenkins_api_key`, `jenkins_token` | `data/jenkins_checks.json` | **RETIRED store** (P.4): nothing reads or writes it. Encrypted if it was ever written after 2026-09-23 | the key + file mode; the checker names it until it is deleted |
-| `ANTHROPIC_API_KEY` | `.env` | **plaintext, by design** | file mode, and nothing else |
+| `ANTHROPIC_API_KEY` | `.env` | **no longer held**: the key left with the AI family (D15, 2026-10-14) and the D15 host step deleted its `.env` line; was plaintext, by design | file mode, and nothing else; the checker still checks `.env` for it |
 | Device credentials | `data/lists/<slug>/devices.csv` | **encrypted** (raw Fernet fields) | the key + file mode |
 | The Fernet key itself | `data/key.key` | — | file mode, and nothing else |
 | Credential profiles, device overrides, template secrets | `data/credential_profiles.json` | **encrypted** (`enc:v1:` Fernet) | the key + file mode |
-| SNMP communities (RO and RW) for the collectors | `data/lists/<slug>/collector_config.json` | **plaintext**: the same values are in every device's config and golden, which are plaintext by design (masking is outbound) | file mode (created `0600`, atomically, since register C55); **write-only on every route**, never returned to a browser or the model. Undeclared here and unclassified by the checker until 2026-09-27 |
-| Received SNMP traps, each carrying its community | `data/lists/<slug>/snmp_traps.json` (and a top-level `data/snmp_traps.json`) | **plaintext** | file mode; the community is masked on `GET /monitoring/snmp/traps` (C56). Unclassified until 2026-09-27, found by deriving the stores from the code's writers |
+| SNMP communities (RO and RW) for the collectors | `data/lists/<slug>/collector_config.json` | **plaintext**: the same values are in every device's config and golden, which are plaintext by design (masking is outbound) | file mode (created `0600`, atomically, since register C55); was **write-only on every route**, never returned to a browser or the model. Undeclared here and unclassified by the checker until 2026-09-27. No writer or reader since the AI family's removal (D15, 2026-10-14) took `modules/collector_config.py`; an install may still hold the file, and the checker still classifies it |
+| Received SNMP traps, each carrying its community | `data/lists/<slug>/snmp_traps.json` (and a top-level `data/snmp_traps.json`) | **plaintext** | file mode; the community was masked on `GET /monitoring/snmp/traps` (C56). Unclassified until 2026-09-27, found by deriving the stores from the code's writers. No writer since the trap receiver left with the AI family (D15, 2026-10-14); an install may still hold the file, and the checker still classifies it |
 | Device credentials, the pre-lists legacy file | `data/Devices.csv` | **encrypted** (raw Fernet fields), when it exists | the key + file mode. Nothing writes it since lists existed; declared so a leftover copy is checked |
 | **The B2 application key** (off-box NetBox dailies) | `~/.config/rclone/rclone.conf` | **plaintext** (rclone obscures, it does not encrypt) | file mode, and nothing else. The key has no `deleteFiles`, and whether it can HIDE is register B9 |
 | **Every imported device's golden (its credential lines) and SNMP communities** | NetBox, `local_context_data` on each device (`running_config`, `snmp.communities`), and so every P.2 NetBox backup | **plaintext**: measured 2026-09-27, all 10 devices, credential-slot lines unmasked | NetBox's own access control, and nothing else. Register C95 (a decision: mask on the way in, then re-import) |
@@ -29,7 +29,11 @@ applied **at creation**, by `config.open_secure()` and `config.secure_dir()`.
 
 ---
 
-## Why `ANTHROPIC_API_KEY` stays in `.env`, in plaintext
+## Why `ANTHROPIC_API_KEY` stayed in `.env`, in plaintext
+
+**Moot since 2026-10-14:** the key left with the AI family (D15); the D15 host step
+(`scripts/host-steps/d15-ai-archive.sh`) archived it sealed by the application key and
+deleted its `.env` line. The decision is kept below as history.
 
 **Decision, 2026-09-23.** It stays where it is.
 
@@ -154,7 +158,8 @@ which is why `config.open_secure()` exists and why the callers are:
 
 - `config.save_user_settings()` → `user_settings.json`
 - `secrets_store._get_fernet()` and `device.load_key()` → `key.key`
-- `app.save_settings()` → `.env`
+- `app.save_settings()` → `.env` (until the AI family's removal, D15, 2026-10-14: it wrote
+  the AI key there, and nothing writes `.env` now)
 
 `open_secure()` applies the mode **before** writing, via `os.open(..., 0o600)`.
 Creating at `0644` and chmod-ing afterwards leaves a window in which the

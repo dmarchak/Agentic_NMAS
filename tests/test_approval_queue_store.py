@@ -103,10 +103,6 @@ class TestAnUnreadableQueue:
         with pytest.raises(StoreUnreadable):
             Q.get_pending()
         from app import app
-        r = app.test_client().get("/ai/approvals")
-        assert r.status_code == 503 and "could not be read" in r.get_json()["error"]
-        a = app.test_client().post("/ai/approvals/x/approve")
-        assert a.status_code == 503
         d = app.test_client().get("/drift/status").get_json()
         assert d["pending_approvals"] is None and "could not be read" \
             in d["pending_approvals_error"]

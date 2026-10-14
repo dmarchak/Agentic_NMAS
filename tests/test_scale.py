@@ -45,9 +45,15 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
 #:
 #: 205,352 since 2026-10-12: today's Configure tab (its pane, two modals and inline script,
 #: about 160 kB) was removed at 7.8.
-FIXED_PAGE_BYTES = 205_352
-EXTRACTED_SCRIPT_BYTES = 284_662
-BYTES_PER_DEVICE = 2_239
+#:
+#: 76,444 fixed, 1,616 per device and 199,435 extracted since 2026-10-14: the AI family
+#: left (D15): base.html's AI panel, its CSS and script (about 2,000 lines), the Agent,
+#: Approvals and Ansible tabs, the settings modal's AI sections, and the page's embedded copy
+#: of every device (`device-full-data`, read only by the AI's device cache), which was most of
+#: the per-device cost.
+FIXED_PAGE_BYTES = 76_444
+EXTRACTED_SCRIPT_BYTES = 199_435
+BYTES_PER_DEVICE = 1_616
 TOLERANCE = 0.25
 
 
@@ -194,7 +200,9 @@ class TestThePageGrowsWithTheInventory:
         total = sum(_os.path.getsize(f)
                     for f in tracked("static/js/gen", suffix=".js", recursive=False,
                                      root="."))
-        assert total > 200_000, (
+        # The floor is the extraction's, not a size target: 150 kB, below the 199,435 left
+        # after the AI family's tabs (D15) and far above what one template's inline block was.
+        assert total > 150_000, (
             f"only {total} bytes are extracted — the inline script has "
             "returned to the templates")
         assert abs(total - EXTRACTED_SCRIPT_BYTES) < EXTRACTED_SCRIPT_BYTES * TOLERANCE

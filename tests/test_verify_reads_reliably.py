@@ -275,9 +275,6 @@ class TestTheDeployRefusesBeforeThePush:
                               connections_pool={}, pool_lock=threading.Lock(), config_id="t")
         monkeypatch.setattr("modules.connection.get_persistent_connection",
                             lambda *a, **k: device)
-        monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
-                            lambda *a, **k: capture("r3", "show ip ospf neighbor") and "cfg")
-        monkeypatch.setattr("modules.ai_assistant._save_pre_change_file", lambda *a, **k: None)
         pipeline._stage_pre_snapshot(ctx)
         return ctx
 

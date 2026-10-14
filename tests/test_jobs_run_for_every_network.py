@@ -100,25 +100,7 @@ class TestTheDriftScheduler:
 
 
 class TestTheOtherJobs:
-    def test_the_event_monitor_checks_every_network(self, twin, monkeypatch):  # noqa: F811
-        import modules.event_monitor as E
 
-        monkeypatch.setattr("modules.nsot.repo.list_goldens", lambda name: [])
-        E._events.clear()
-        _activate("Default")
-        E._check_missing_golden_configs()
-        lists = {(ev.get("metadata") or {}).get("list") for ev in E._events
-                 if ev["type"] == "missing_golden_configs"}
-        assert lists == {"Twin"}, "Twin (not active) is checked; Default has no devices"
-
-    def test_the_trap_and_flow_stores_are_the_installations(self, twin):  # noqa: F811
-        from modules import config, netflow_collector, snmp_collector
-
-        for name in ("Default", "Twin"):
-            _activate(name)
-            assert snmp_collector._trap_file().startswith(config.DATA_DIR)
-            assert netflow_collector._flow_file().startswith(config.DATA_DIR)
-            assert "lists" not in snmp_collector._trap_file()
 
     def test_rotation_preflight_finds_a_device_of_the_list_given(self, twin):  # noqa: F811
         """C496: it looked in the ACTIVE list's inventory."""

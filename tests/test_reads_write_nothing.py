@@ -23,8 +23,6 @@ import pytest
 
 #: route -> what it creates. The finding, not an allowance.
 KNOWN_WRITERS = {
-    "/ai/playbooks": "the playbooks directory",
-    "/ai/topology_context": "the topology cache",
     "/backup_stats": "the backups directory",
     "/templates": "the whole template library, seeded",
     # migrate() RUNS on every GET of this panel and WRITES when the stored

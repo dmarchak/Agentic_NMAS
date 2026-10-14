@@ -3,8 +3,8 @@
 {#- Board F (approved 2026-10-05) with boards F2 and F3 (signed off 2026-10-09) and F4 (signed
     off 2026-10-10): Settings › Installation, the installation's own settings for every
     network, no network selector. Every tab drawn: Connections, Access and identity, Platforms
-    and roles, Server, AI and workflow, Diagnostics; nothing here links to today's page. From
-    routes/settings_v2.installation. -#}
+    and roles, Diagnostics (AI and workflow left with the AI family, D15); nothing here links to
+    today's page. From routes/settings_v2.installation. -#}
 {% block title %}Settings · Installation · {{ brand.short }}{% endblock %}
 {% block main %}
 <div class="page-head">
@@ -38,9 +38,6 @@
 {%- endfor %}
 {%- if tab == 'connections' %}
 {% include "v2/_records_stores.html" %}
-{%- endif %}
-{%- if tab == 'ai' %}
-{% include "v2/_install_agent.html" %}
 {%- endif %}
 {%- if tab == 'diagnostics' %}
 {% include "v2/_diag_redaction.html" %}

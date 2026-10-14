@@ -740,27 +740,16 @@ class TestTheCards:
                           "netbox_allow_writes": "on"})
         assert get_setting("netbox_allow_writes") is False, "Save never arms writes"
 
-    def test_the_ai_tab_draws_the_assistant_switch_and_the_agent_s_state_only(self, networks):
-        """Board F4, decisions C and D: the assistant's switch, saved and recorded like every
-        card; no workflow switch; the background agent its state, never a control."""
+    def test_the_ai_tab_left_with_the_ai_family(self, networks):
+        """Board F4's AI and workflow tab (decisions C and D) left with the AI family (D15,
+        2026-10-14): no tab, no assistant or agent card, and an old `?tab=ai` link opens
+        Connections."""
         from modules import installation_settings as I
-        from modules.settings_schema import get_setting
+        assert "ai" not in dict(I.TABS) and "ai" not in I.BUILT_TABS
         _r, html = _get(networks, "/v2/settings/installation?tab=ai")
-        card, agent = _kcard(html, "assistant"), _kcard(html, "agent")
-        assert 'name="ai_enabled"' in card and "read-only allowlist" in card
-        assert "wf_" not in html, "decision C: the workflow switches are not drawn"
-        assert "off until Stage 8" in agent and "<button" not in agent and "<input" not in agent
-        assert 'data-todays-page' not in html.split('id="tab-body"')[1]
-        _r, html = _post(networks, "/v2/settings/installation/card/assistant/save", {})
-        assert get_setting("ai_enabled") is False and "Saved" in _kcard(html, "assistant")
-        assert I.changes(kinds=("card_save",))["rows"][0]["fields"] == ["ai_enabled"]
-
-    def test_an_agent_set_on_in_the_file_is_said_with_its_restart(self, networks):
-        from modules.settings_schema import write_settings
-        write_settings({"background_agent_enabled": True}, actor="test")
-        _r, html = _get(networks, "/v2/settings/installation?tab=ai")
-        agent = _kcard(html, "agent")
-        assert "set on in the settings file" in agent and "starts only when Mercury restarts" in agent
+        assert 'id="card-assistant"' not in html and 'id="card-agent"' not in html
+        assert 'id="card-netbox"' in html, "an unknown tab opens Connections"
+        assert "AI and workflow" not in html
 
     def test_settings_place_names_the_v2_card(self):
         from modules import installation_settings as I

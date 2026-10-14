@@ -34,8 +34,10 @@ def test_the_scan_finds_the_population(requests):
     _A, found = requests
     # 119 on 2026-10-13, after Quick actions' two requests left with their family (7.8, D16);
     # 111 the same day after Device files and Bulk file actions; the floor falls as today's
-    # pages shrink, never below what a removal explains.
-    assert len(found) >= 108, len(found)
+    # pages shrink, never below what a removal explains. 91 on 2026-10-14, after the AI
+    # family's requests left with it (D15: the AI panel's, the Agent, Approvals and Ansible
+    # tabs', the usage summary's and the AI debug log's).
+    assert len(found) >= 88, len(found)
     assert ("/deploy/plan", "POST") in found           # a positive anchor
 
 
@@ -54,5 +56,6 @@ def test_the_resolver_can_say_no():
     assert not rr.resolves(A, "/git/commit", "POST")
     assert not rr.resolves(A, "/device/192.0.2.1/delete", "POST")
     assert rr.resolves(A, "/git/commit/${hash}", "GET")
-    assert rr.resolves(A, "/ai/approvals/${id}/${action}", "POST")
-    assert not rr.resolves(A, "/ai/approvals/${id}/${action}", "DELETE")
+    assert rr.resolves(A, "/v2/settings/installation/diagnostics/drift/${n}/${to}", "POST")
+    assert not rr.resolves(A, "/v2/settings/installation/diagnostics/drift/${n}/${to}",
+                           "DELETE")

@@ -205,12 +205,12 @@ class TestTheExtras:
         _refused("send *")
         _refused("se log x")
 
-    def test_the_agent_reads_a_file_and_writes_nothing(self):
-        from modules.ai_assistant import _read_only_refusal
+    def test_an_agent_s_read_writes_nothing(self):
+        """The reads engine's agent mode (the assistant that used it left with the AI family,
+        D15; Phase 8's responder asks the same engine)."""
         from modules.nsot import reads
-        assert _read_only_refusal(["verify /md5 flash:x.bin"]) == ""
+        assert reads.refusal(["verify /md5 flash:x.bin"], 1, by="agent") == ""
         for cmd in ("send log 6 x", "terminal length 0"):
-            assert _read_only_refusal([cmd]).startswith("REFUSED"), cmd
             assert reads.refusal([cmd], 1, by="agent"), cmd
             assert reads.refusal([cmd], 1) == "", cmd
 

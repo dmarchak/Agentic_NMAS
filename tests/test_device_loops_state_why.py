@@ -64,9 +64,6 @@ SCANNED = {
     ("modules/connection.py", "open_ssh"): (
         "one_device", "C698: one device's connect tried a second time when its SSH transport "
                       "never came up, holding the same session slot; never a loop over devices"),
-    ("app.py", "ai_device_context._warm"): (
-        "sequential", "C202: every open goes through the persistent pool, which holds ONE "
-                      "lock across open_ssh, so concurrent opens would queue on it"),
     ("scripts/netmiko_timing_probe.py", "main"): (
         "one_device", "a timing probe comparing two modes on one device: overlapping "
                       "them would measure each against the other"),
@@ -178,9 +175,9 @@ class TestEverySerialDeviceLoopStatesWhy:
 
     def test_the_scan_finds_something(self):
         found, _ = scan()
-        assert ("app.py", "ai_device_context._warm") in found
+        assert ("modules/bulk_ops.py", "BulkOperationManager._execute_worker.worker") in found
         assert ("modules/pipeline.py", "_stage_rollback") in found
-        assert len(found) >= 11  # 11 since 2026-10-12: Configure's two loops left (7.8)
+        assert len(found) >= 10  # 10 since 2026-10-14: the AI device warm-up left (D15)
 
     def test_a_planted_serial_read_is_found(self):
         planted = ("def read_them(devices):\n"

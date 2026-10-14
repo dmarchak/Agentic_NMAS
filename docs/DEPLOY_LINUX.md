@@ -58,6 +58,7 @@ pip installs, and no venv. Two facts make a naive rebuild different:
   3.4.0 where the host runs 2.12.0, pysnmp 6.x where the host runs 4.4.12,
   jsonschema 4.20+ where the host runs 4.10.3, and a Flask-SocketIO /
   python-socketio pair that drops a Socket.IO message in the test client (C35).
+  (pysnmp, like anthropic, left `requirements.txt` with the AI family, D15, 2026-10-14.)
 - **pip refuses the host's own combination.** PyPI's netmiko 4.3.0 declares
   `textfsm>=1.1.3`, and the host runs textfsm 1.1.2 through Ubuntu, which works.
   And Ubuntu ships netmiko, pysnmp, scp and textfsm with NO Python dependency
@@ -157,12 +158,10 @@ Every fetch and every refusal is a row in `data/reveal_audit.jsonl`
 (`actor: ztp:<address>`, `kind: device`), with the served config's sha256
 and never its text.
 
-Create `.env` with the Anthropic API key (mode `600`, owned by `nmas`):
-
-```bash
-sudo -u nmas install -m 600 /dev/null /home/nmas/agentic-nmas/.env
-echo 'ANTHROPIC_API_KEY=sk-ant-...' | sudo -u nmas tee -a /home/nmas/agentic-nmas/.env
-```
+A new host creates no `.env` for an AI key: the Anthropic API key (`ANTHROPIC_API_KEY`, kept
+in `.env`, mode `600`) was removed with the AI family (D15, 2026-10-14), and the D15 host
+step (`scripts/host-steps/d15-ai-archive.sh --delete <sha256>`) archived the key sealed and
+deleted its `.env` line on the existing host.
 
 ### The startup-config credential check (register C53)
 
@@ -329,12 +328,10 @@ none of its own.
 
 ## Collector ports
 
-The built-in SNMP trap receiver (UDP 1162) and NetFlow collector (UDP 9996) use
-unprivileged ports by default, so no `CAP_NET_BIND_SERVICE` is needed. If an
-external collector already owns a port, turn the built-in one off in
-**Settings → Integrations → Built-in collectors** rather than changing code.
-
-Ports themselves are per-device-list settings in `modules/collector_config.py`.
+None. The built-in SNMP trap receiver (UDP 1162) and NetFlow collector (UDP 9996), with
+their per-list port settings (`modules/collector_config.py`), were removed with the AI
+family (D15, 2026-10-14): the app listens on no UDP port, and a host needs no firewall rule
+or capability for them.
 
 ## SSH algorithm compatibility
 

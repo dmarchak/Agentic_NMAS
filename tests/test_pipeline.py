@@ -686,7 +686,6 @@ class TestRollbackFiresOnAMidPushFailure:
         ctx.confirmed_commands = {"10.0.0.1": ["interface GigabitEthernet0/0",
                                                " shutdown", "exit"]}
         sent = []
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
 
@@ -754,7 +753,6 @@ class TestFailureStateIsCaptured:
     def _run_capture(self, running_after, pre="hostname R1\n"):
         """Captures over a FRESH connection, never the pooled one."""
         from modules.pipeline import _capture_failure_state
-        import modules.ai_assistant as A
         import modules.connection as C
 
         ctx = _ctx()
@@ -779,7 +777,6 @@ class TestFailureStateIsCaptured:
     def test_it_does_not_use_the_pooled_connection(self):
         """The pooled session is the one that just failed."""
         from modules.pipeline import _capture_failure_state
-        import modules.ai_assistant as A
         import modules.connection as C
 
         ctx = _ctx()
@@ -868,7 +865,6 @@ class TestFailureStateIsCaptured:
     def test_the_read_timeout_comes_from_settings(self):
         """Not a constant. A number that works on one lab is an assumption."""
         from modules.pipeline import _capture_failure_state
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.settings_schema as S
 
@@ -999,7 +995,6 @@ class TestARollbackSaysWhatItAchieved:
     PUSHED = ["interface GigabitEthernet0/0", " shutdown", "exit"]
 
     def _run(self, monkeypatch, *, pre=PRE, restore=None, readback=None):
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
 

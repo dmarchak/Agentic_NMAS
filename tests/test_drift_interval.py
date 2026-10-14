@@ -1,26 +1,27 @@
 """The drift checker's one schedule (modules/drift_interval.py), moved out of the AI agent's
 timers with no behaviour change: the same file and key, default and bounds, so nothing stored on
-the host moves, and the two read each other's writes until the agent's page goes."""
+the host moves. The agent's timers (modules/agent_timers.py) left with the AI family (D15,
+2026-10-14); the file they wrote is read as it stands."""
 import json
 import os
 
 import pytest
 
-from modules import agent_timers, drift_interval
+from modules import drift_interval
 
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
-    path = os.path.join(str(tmp_path), "agent_timers.json")
-    monkeypatch.setattr(agent_timers, "_TIMERS_FILE", path)
-    return path
+    return os.path.join(str(tmp_path), "agent_timers.json")
 
 
 class TestTheSchedule:
     def test_its_default_and_bounds_are_the_agents(self, store):
-        assert drift_interval.get() == agent_timers.DEFAULTS["drift_check_interval"] == 14400
-        assert drift_interval.BOUNDS == agent_timers.BOUNDS["drift_check_interval"]
+        """The agent's timers' default and bounds for this key (measured before they left)."""
+        assert drift_interval.get() == drift_interval.DEFAULT == 14400
+        assert drift_interval.BOUNDS == (300, 86400)
+        assert drift_interval._path() == store
 
     @pytest.mark.parametrize("stored, read", [(60, 300), (3600, 3600), (999999, 86400),
                                               ("not a number", 14400), (None, 14400)])
@@ -44,17 +45,14 @@ class TestTheSchedule:
 
 
 class TestNothingMoved:
-    """The host's stored value is read as before, and the agent's page (until the removal)
-    still reads and writes the same value."""
+    """The host's stored value is read as before: the file the agent's timers wrote, with its
+    other keys, is the schedule's."""
 
     def test_what_the_agents_timers_stored_is_the_schedule(self, store):
-        agent_timers.save({"drift_check_interval": 28800})
+        with open(store, "w", encoding="utf-8") as fh:
+            json.dump({"drift_check_interval": 28800, "user_idle_seconds": 90,
+                       "event_check_interval": 600}, fh)
         assert drift_interval.get() == 28800
-
-    def test_what_the_schedule_stores_the_agents_timers_read(self, store):
-        drift_interval.save(1800)
-        assert agent_timers.get("drift_check_interval") == 1800
-        assert agent_timers.load()["user_idle_seconds"] == agent_timers.DEFAULTS["user_idle_seconds"]
 
     def test_the_drift_checker_reads_its_schedule_here(self, store):
         from modules.drift_check import _get_interval

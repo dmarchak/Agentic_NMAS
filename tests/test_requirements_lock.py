@@ -23,13 +23,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: Import name -> distribution, for every third-party module the code imports. A new import
 #: not listed here is refused by test_every_third_party_import_is_mapped.
 IMPORT_TO_DIST = {
-    "anthropic": "anthropic", "cryptography": "cryptography",
+    "cryptography": "cryptography",
     "dotenv": "python-dotenv", "flask": "Flask", "flask_socketio": "Flask-SocketIO",
     "jinja2": "Jinja2", "jsonschema": "jsonschema", "jwt": "PyJWT",
     "boto3": "boto3", "botocore": "botocore", "psycopg": "psycopg",
     "minio": "minio", "ncclient": "ncclient", "netmiko": "netmiko",
     "paramiko": "paramiko", "ping3": "ping3", "psutil": "psutil",
-    "pysnmp": "pysnmp", "requests": "requests", "urllib3": "urllib3",
+    "requests": "requests", "urllib3": "urllib3",
     "werkzeug": "Werkzeug", "yaml": "PyYAML", "packaging": "packaging",
     "networkx": "networkx",
 }

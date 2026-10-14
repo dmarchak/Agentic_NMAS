@@ -52,9 +52,9 @@ def _save_golden_calls(relative):
     return calls
 
 
+#: The assistant (modules/ai_assistant.py) was the fourth; it left with the AI family (D15).
 PRODUCTION = ["app.py", "modules/pipeline.py", "modules/config_git.py",
-              "modules/ai_assistant.py", "modules/nsot/credential_rotation.py",
-              "routes/deploy.py"]
+              "modules/nsot/credential_rotation.py", "routes/deploy.py"]
 
 
 class TestTheDefaultDoesNotMint:
@@ -88,16 +88,9 @@ class TestTheDefaultDoesNotMint:
         assert not minting, f"unexpected minting call sites: {minting}"
 
 
-class TestTheAssistantCanNeverMint:
-    """The one caller that must never create an identity."""
-
-    def test_it_does_not_pass_allow_new(self):
-        for _line, explicit, value in _save_golden_calls("modules/ai_assistant.py"):
-            assert not (explicit and value is True)
-
-    def test_it_never_calls_adopt_identity(self):
-        source = _source("modules/ai_assistant.py")
-        assert "adopt_identity" not in source
+class TestAnUnknownDeviceIsNeverMinted:
+    """The assistant was the caller that must never create an identity; it left with the AI
+    family (D15). What stays is the behaviour every caller meets."""
 
     def test_an_unknown_device_is_refused_with_the_reason(self, tmp_path,
                                                           monkeypatch):

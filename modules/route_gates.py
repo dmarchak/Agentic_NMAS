@@ -123,13 +123,8 @@ GATES = {
     "device_v2.persist_confirm": _g(C, "saves the running config to startup on a device and reads it back, from the v2 device page (7.3; the same apply as persist.apply)"),
     "privileged_v2.confirm": _g(C, "sends one Tier 2 command (Run a privileged command…, NSOT_TIER2_PRIVILEGED) to a device, holding it, bound to the previewed plan and a stated reason; verified and recorded"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
-    "ai_chat": _g(C, "the assistant holds tools that push config until P.3 step 8 removes them"),
-    "ai_agent_run": _g(C, "runs the background agent, which holds device tools until P.3 step 8"),
 
     # ---- approve: a decision a later device change acts on ---------------
-    "ai_approval_approve": _g(A, "resolves an approval-queue item"),
-    "ai_approval_approve_all": _g(N, "builds a capture handoff for the drift items; records nothing (C105): the capture apply, gated approve, does"),
-    "ai_approval_reject": _g(A, "resolves an approval-queue item; a refusal is a decision too"),
     "templates.approve": _g(A, "approves a template for deployment"),
     "templates.revoke_approval": _g(A, "withdraws a template approval, with a recorded reason"),
     "templates.write_template": _g(A, "edits a template, which revokes every approval over it"),
@@ -225,12 +220,6 @@ GATES = {
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
     "identity.ratify_setting": _g(K, "records a decision about a gate", "ratify_setting"),
     "drift_settings_post": _g(K, "switches the drift checker and its interval"),
-    "ai_set_provider": _g(K, "switches the AI provider"),
-    "ai_agent_timers_post": _g(K, "changes when the background agent runs"),
-    "ai_agent_pause": _g(K, "pauses the background agent"),
-    "ai_agent_resume": _g(K, "resumes the background agent"),
-    "ai_delete_playbook": _g(K, "deletes a stored playbook"),
-    "ai_events_clear": _g(K, "clears the event record"),
     "delete_backup_route": _g(K, "deletes a backup"),
     "create_device_list_route": _g(K, "creates a device list"),
     "delete_device_list_route": _g(K, "deletes a device list"),
@@ -334,8 +323,6 @@ GATES = {
     "backup_config": _g(N, "reads a device into a new local backup"),
     "compare_backups_route": _g(N, "compares two backups"),
     "bulk_clear": _g(N, "clears a finished operation's on-screen result"),
-    "ai_stop": _g(N, "stops a running request; refusing a stop is the unsafe direction"),
-    "ai_clear": _g(N, "clears the caller's chat history"),
 }
 
 #: SocketIO events, which never reach ``before_request``. Empty since the break-glass

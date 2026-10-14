@@ -73,7 +73,7 @@ and built.
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Topology service | (no route of today's; its two routes and panel removed 2026-10-12) | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the service itself REMOVED at 7.8 (2026-10-12: the renderer from the repository, the unit and link by its host step, `topology-service-removal.sh`), and its integration with it (C714: no client, no probe, no Settings card; its keys `retiring` for one release) | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
-| AI agent | `/ai/*` (26) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns the agent as an on-call responder; the chat, agent, approvals, Ansible and usage screens go with today's pages. The in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`, started by `app.py`) and `modules/collector_config.py` go with it: since the legacy collectors' routes left (2026-10-12) the agent's tools are their only readers |
+| AI agent | (no route of today's; its 26 routes under /ai/ removed 2026-10-14, tag `pre-remove/ai-family`) | **REMOVED 2026-10-14** (D15, decided 2026-10-05, after its stores were archived) | Stage 8 redesigns the agent as an on-call responder (docs/PHASE8_PLAN.md). The chat panel, the Agent, Approvals queue, Ansible and usage screens, v2's AI and workflow tab, the in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`) and `modules/collector_config.py` went with it; the shared pieces stayed, moved out first (`modules/goldens.py`, `modules/bgp_summary.py`, `modules/drift_interval.py`). Today's drift panel stays, in a tab named Drift, until today's pages retire |
 
 ## Removed at 7.8
 
@@ -207,8 +207,8 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   `list_audit_entries`) went with them. Kept: `modules/configure.py`, whose generator the
   pipeline's render stage still imports, and the pipeline's audit files themselves (stage 9
   still writes them under the data directory, readable on the host; History's receipts are the
-  record a person reads). Today's Ansible tab (the playbook list, `/ai/playbooks`) is the AI
-  agent's family. Proved before removal: nothing outside the tab's own pane and script named
+  record a person reads). Today's Ansible tab (the playbook list, `/ai/playbooks`) was the AI
+  agent's family, and went with it (D15, 2026-10-14). Proved before removal: nothing outside the tab's own pane and script named
   its functions or ids, and no v2 page, job or script reaches the five paths; after it, none is
   in the url_map.
 - **The legacy collectors' routes** (/monitoring/config GET and POST, /monitoring/interfaces,
@@ -217,11 +217,13 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   review (2026-09-29); monitoring is Prometheus's, Loki's and Grafana's, drawn on
   `/v2/monitoring` and each device's Monitoring tab. Today's Monitoring tab, their one caller,
   went whole (its nav button, pane and script), and with it the `monitoring` invalidation key
-  (no writer left). The protection the routes carried stays where it now matters: a device's
-  SNMP community is still resolved only from its own secret (`collector_config.community_for_address`,
-  tested with the agent's tool in `tests/test_community_has_one_owner.py`). Kept, for today's
-  agent, their only reader now: the trap and NetFlow receivers `app.py` starts and the
-  collector configuration; they go with the AI agent's family (its row says so). Two tests
+  (no writer left). The protection the routes carried stayed where it then mattered: a device's
+  SNMP community was resolved only from its own secret (`collector_config.community_for_address`,
+  tested with the agent's tool in `tests/test_community_has_one_owner.py`). Kept then, for
+  today's agent, their only reader: the trap and NetFlow receivers `app.py` started and the
+  collector configuration; they went with the AI agent's family (D15, 2026-10-14; its row
+  says so), the resolver and its tests with them, and `tests/test_community_has_one_owner.py`
+  keeps only the rule that no community parameter has a default. Two tests
   that used `monitoring_config` as an example moved to another endpoint of the same shape
   (`settings_integrations.general_settings` for a GET-and-POST endpoint, `git_status` for a
   v1 navigation). Proved before removal: today's Monitoring tab was the only caller; after
@@ -254,8 +256,8 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   legacy CDP/LLDP, OSPF, BGP and tunnel views), `static/js/gen/index.3.js` (all of it the tab's)
   and the vendored vis-network it alone loaded (files, manifest and licence entries). The two
   routes that opened a session per device (link status, protocol link status) went with it.
-  Kept: `modules/topology.py`, whose `discover_topology` today's agent still calls; it goes
-  with the AI agent's family. Four invalidation-map tests that used the layout save as their
+  Kept then: `modules/topology.py`, whose `discover_topology` today's agent still called; it
+  went with the AI agent's family (D15, 2026-10-14). Four invalidation-map tests that used the layout save as their
   example mutating route now use `POST /remote/auto-push` (one key, a JSON answer), shown
   able to fail by moving that route's key. Proved before removal: nothing outside the tab's
   pane and script named its functions or ids; after it, no `/topology` path of today's is in

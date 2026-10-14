@@ -13,10 +13,9 @@ only a log, "AI is disabled" plausibly meant "nothing to say". Adding
 `health` to it changed what the route carries and nobody revisited the
 guard. A guard ages against its own payload.
 
-**A read reports; an action refuses.** `/ai/agent_run`, `/ai/agent_pause`,
-`/ai/agent_resume` and the timer POST still return 503 — a disabled agent
-must not be made to act. Fifteen of the eighteen short-circuiting routes are
-actions and are right as they stand.
+**A read reports; an action refuses.** The agent's routes, the instance above and its
+behavioural tests, left with the AI family (D15, 2026-10-14); the rule and the scan below
+stay for every GET route that names a degraded state.
 """
 
 import ast
@@ -24,7 +23,6 @@ import io
 import os
 import re
 
-import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,11 +33,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The scan is deliberately broader than "refuses": it finds every GET that
 #: *says something* about a degraded state, because from the AST a healthy
 #: report and a refusal look alike. Deciding which it is, is the point.
-#:
-#: `/ai/agent_log` and `/ai/agent_timers` are deliberately **absent**: they
-#: no longer mention a degraded state in a return at all, having been
-#: corrected to carry the status through. `TestTheAgentLogSurvivesBeingDisabled`
-#: covers them behaviourally, which is stronger than a classification.
 #:
 #: ``reports``  — carries status or accumulated history. It must survive the
 #:                degraded state, because the state is *what the operator
@@ -113,97 +106,3 @@ class TestEveryDegradedReadIsClassified:
             f"classified but no longer naming a degraded state: {ghosts} — "
             "either it was fixed (drop the entry; a behavioural test is "
             "stronger) or it was deleted")
-
-
-class TestTheAgentLogSurvivesBeingDisabled:
-    """The instance. Both switches off, and the history still arrives."""
-
-    @pytest.fixture
-    def disabled(self, monkeypatch):
-        from modules import agent_runner
-
-        entries = [{"id": "x", "started_at": "2026-08-28 23:26", "task": "t",
-                    "trigger": "missing_golden_configs", "tools_used": [],
-                    "tool_call_count": 0, "success": False,
-                    "errors": ["anthropic-workspace-id is required when "
-                               "authenticating with an identity-linked API key"],
-                    "cost_usd": 0.0, "summary": ""} for _ in range(26)]
-        monkeypatch.setattr(agent_runner, "_activity_log", entries)
-        monkeypatch.setattr("modules.config.load_user_settings",
-                            lambda: {"ai_enabled": False,
-                                     "background_agent_enabled": False})
-
-        import app as nmas
-
-        return nmas.app.test_client()
-
-    def test_it_answers_200_not_503(self, disabled):
-        assert disabled.get("/ai/agent_log?limit=2").status_code == 200
-
-    def test_the_entries_are_still_returned(self, disabled):
-        assert len(disabled.get("/ai/agent_log?limit=2").get_json()["entries"]) == 2
-
-    def test_the_streak_survives(self, disabled):
-        h = disabled.get("/ai/agent_log").get_json()["status"]["health"]
-        assert h["consecutive_failures"] == 26
-
-    def test_the_error_that_explains_it_survives(self, disabled):
-        h = disabled.get("/ai/agent_log").get_json()["status"]["health"]
-        assert "anthropic-workspace-id" in h["last_error"]
-
-    def test_same_error_survives(self, disabled):
-        h = disabled.get("/ai/agent_log").get_json()["status"]["health"]
-        assert h["same_error"] is True
-
-    def test_both_switches_are_reported_separately(self, disabled):
-        """"Not running" has a different fix for each, and an operator who
-        turns the wrong one back on has learned nothing from the panel."""
-        status = disabled.get("/ai/agent_log").get_json()["status"]
-        assert status["ai_enabled"] is False
-        assert status["enabled"] is False
-
-    def test_the_status_is_produced_once(self):
-        """`get_status()` reports both switches; the route must not compute a
-        second copy that can disagree with it."""
-        from tests.astcheck import code_of
-
-        import app as nmas
-
-        src = code_of(nmas.ai_agent_log)
-        assert src.count("_ai_enabled()") == 0
-
-
-class TestActionsStillRefuse:
-    """A read reports. An action refuses — a disabled agent must not be made
-    to act, and loosening that would be the opposite mistake."""
-
-    ROUTES = ["/ai/agent_run", "/ai/agent_pause", "/ai/agent_resume", "/ai/agent_timers"]
-
-    def _client(self, monkeypatch, tmp_path, ai_enabled):
-        """A REAL settings file, written by the real writer and read by the
-        route's own reader (register C34). The first version patched
-        `modules.config.load_user_settings`, but `app.py` bound that name at
-        import, so the patch never reached the route: these tests passed only
-        because this checkout's settings file said `ai_enabled: False`, and
-        failed on a clean store."""
-        from modules import config
-        monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(tmp_path / "user_settings.json"))
-        config.save_user_settings({"ai_enabled": ai_enabled})
-        import app as nmas
-        return nmas.app.test_client()
-
-    @pytest.mark.parametrize("route", ROUTES)
-    def test_the_action_routes_still_return_503(self, monkeypatch, tmp_path, route):
-        client = self._client(monkeypatch, tmp_path, ai_enabled=False)
-        assert client.post(route, json={}).status_code == 503
-
-    @pytest.mark.parametrize("route", ROUTES)
-    def test_enabled_they_do_not(self, monkeypatch, tmp_path, route):
-        """The floor: a test that answers 503 either way shows nothing. An
-        empty body triggers no task (`/ai/agent_run` answers 400), and the
-        pause is undone so it cannot leak into later tests."""
-        client = self._client(monkeypatch, tmp_path, ai_enabled=True)
-        try:
-            assert client.post(route, json={}).status_code != 503
-        finally:
-            client.post("/ai/agent_resume", json={})

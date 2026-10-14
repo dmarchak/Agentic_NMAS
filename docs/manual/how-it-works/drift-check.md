@@ -92,12 +92,11 @@ switched it off. Switching it back on schedules the next run one interval from t
 
 ## What the queue does with a drift item {#queue}
 
-- **Approving an item opens the capture preview** for that device: the device is read again
-  now, and nothing is recorded until you confirm (see [Capture and Save All](capture)). The
-  queued diff is what the check saw at the time; it is shown as context, never sent or
-  recorded.
-- **Approve all** opens one capture preview for every device with a drift item. It approves
-  nothing by itself.
+- **Capturing the device closes its item**: its Needs attention row opens the device's
+  History tab, where a capture reads the device again now and records nothing until you
+  confirm (see [Capture and Save All](capture)). The queued diff is what the check saw at the
+  time, context only, never sent or recorded. (Today's Approvals tab, with its Approve and
+  Approve all, left with the AI family on 2026-10-14.)
 - **An item is withdrawn** when a later run finds the device clean, or when a golden is
   recorded for the device (a capture, Save All or a deploy). Recording a golden also marks that
   device clean in the stored run, saying by what and when, without reading it again.

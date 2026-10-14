@@ -124,7 +124,6 @@ NOT_FREE_TEXT = {
     "modules/nsot/render_artifact.py:contains_mask": "a test for a mask, it masks nothing",
     "modules/nsot/render_artifact.py:assert_no_mask": "refuses a mask, it masks nothing",
     "modules/nsot/roundtrip.py:_masked_pair": "compares two lines, it masks nothing",
-    "modules/ai_assistant.py:_mask_to_cidr": "a netmask to a prefix length, not a secret",
     "modules/nsot/retire.py:_mask_facts": "says what retire does about NetBox's credentials",
     "modules/netbox_context_mask.py:mask_one": "writes NetBox through `masked`, tested above",
     "modules/nsot/profile_apply.py:_masked_rows": "a nested helper over redact_positional",
@@ -135,10 +134,6 @@ NOT_FREE_TEXT = {
     "modules/nsot/parsers/base.py:_redact_secret_echoes": "turns captured secret values into "
         "references inside INTENT, not masking for display; intent's own gap is C477",
     "modules/nsot/parsers/base.py:_redact": "the same, its inner helper (C477)",
-    "modules/ai_assistant.py:_sanitize_for_api": "drops orphaned tool results from a chat "
-        "history: the message structure, not its text",
-    "modules/ai_assistant.py:_sanitize_trailing_tool_use": "repairs unmatched tool calls in a "
-        "chat history: the structure, not the text",
     "modules/config_git.py:_sanitise_hostname": "a hostname made safe for a file name",
     "modules/netbox_guard.py:sanitise_modified": "rewrites NetBox's record through "
         "`_redact_leaves`, tested above",

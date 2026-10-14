@@ -40,8 +40,8 @@ SECRET_KEYS = (
     # them here would have encrypted nothing while making it LOOK covered (a
     # second store needs a second mechanism). See docs/SECRETS.md.
     #
-    # NOT anthropic_api_key either: it lives in `.env`, plaintext by design,
-    # and its file mode is the whole control.
+    # NOT anthropic_api_key either: it lived in `.env`, plaintext by design,
+    # its file mode the whole control, until it left with the AI family (D15).
     "netbox_token",
     "prometheus_password",
     "prometheus_bearer_token",

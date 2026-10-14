@@ -101,7 +101,7 @@ class TestEveryMutatingEndpointIsDeclared:
         ("deploy.apply", "confirm"),
         ("golden.restore_apply", "confirm"),
         ("bulk_execute", "confirm"),
-        ("ai_approval_approve", "approve"),
+        ("golden.capture_apply", "approve"),
         ("templatize.bulk_apply", "approve"),
         ("save_settings", "configure"),
         ("identity.ratify_setting", "configure"),
@@ -194,7 +194,7 @@ class TestTheTableAgreesWithEveryInRouteGate:
 REFUSED_WITHOUT_IDENTITY = [
     "/deploy/apply",
     "/golden/restore/apply",
-    "/ai/approvals/xyz/approve",
+    "/golden/capture/apply",
     "/bulk_execute",
     "/settings",
     "/templatize/bulk/apply",

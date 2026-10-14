@@ -60,7 +60,9 @@ class TestEverySettingsControlIsRead:
         the schema, so their fields are not in the markup this reads (26
         controls measured, 2026-09-29)."""
         ids, unread = _unread(_index())
-        assert len(ids) >= 20, f"the scan read the modal's controls ({len(ids)})"
+        # 17 since 2026-10-14: the AI, background agent, API key and workflow switches left
+        # with the AI family (D15).
+        assert len(ids) >= 15, f"the scan read the modal's controls ({len(ids)})"
         assert unread == [], f"controls nothing reads or saves: {unread}"
 
     def test_the_control_a_planted_unread_control_is_found(self):
@@ -69,10 +71,13 @@ class TestEverySettingsControlIsRead:
         _ids, unread = _unread(html)
         assert unread == ["plantedDeadSwitch"]
 
-    def test_the_removed_switch_is_gone_and_the_real_one_stays(self):
+    def test_the_removed_switches_are_gone(self):
+        """The duplicate agent switch, then every AI switch with the AI family (D15)."""
         html = _index()
-        assert 'id="bgAgentEnabled"' not in html
-        assert 'id="settingsBackgroundAgentEnabled"' in html
+        for gone in ("bgAgentEnabled", "settingsBackgroundAgentEnabled", "settingsAiEnabled",
+                     "settingsAnthropicKey", "wfReadFirst"):
+            assert f'id="{gone}"' not in html, gone
+        assert 'id="settingsNetboxUrl"' in html, "the floor: the scan reads the modal"
 
 
 class TestBootstrapLoadsOnce:

@@ -229,7 +229,6 @@
         }
         showToast(summary, previewConfirmResultLevel(ad.result));
         if (typeof loadGoldenRepoPanel === 'function') loadGoldenRepoPanel();
-        if (approvals && typeof loadApprovalsTab === 'function') loadApprovalsTab();
       });
     }
   }

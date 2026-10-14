@@ -84,14 +84,6 @@ class TestTheSurvey:
         assert "load_saved_devices" in src, \
             "the panel computes coverage without reading the inventory"
 
-    def test_event_monitor_iterates_the_inventory_not_the_artefact(self):
-        """The right way round, pinned so it stays that way."""
-        import inspect
-
-        from modules import event_monitor
-
-        src = inspect.getsource(event_monitor)
-        assert "for ip in device_ips if ip not in golden_ips" in src
 
     def test_baseline_earned_still_reads_the_current_inventory(self):
         import inspect

@@ -172,10 +172,6 @@ class TestTheKindIsNetBoxs:
         got = netbox_source.fetch_netbox_devices({})
         assert got["ok"] and got["kinds"]["kinds"] == {"core-router": "router"}
 
-    def test_the_hostname_guess_is_gone(self):
-        from modules import topology
-        assert not hasattr(topology, "_infer_role")
-
 
 class TestCredentialResolution:
     """Amendment 2: one designated list, never a scan, and always traceable."""
@@ -308,12 +304,6 @@ class TestStaleDevices:
         assert "no longer in NetBox" in msg
         assert "still available" in msg        # artifacts are kept
 
-    def test_ai_reports_stale_rather_than_not_found(self, stale_list, monkeypatch):
-        import modules.ai_assistant as ai
-        monkeypatch.setattr("modules.config.get_current_list_name", lambda: stale_list)
-        msg = ai._device_unavailable_message("203.0.113.9")
-        assert "no longer in NetBox" in msg
-        assert "not found" not in msg
 
     def test_approval_executor_refuses(self, stale_list, monkeypatch):
         from modules import approval_queue

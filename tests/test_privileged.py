@@ -348,7 +348,3 @@ def test_the_card_in_a_real_browser_stays_inside_itself(t2, width, state):
             browser.close_socketio_sessions()
 
 
-def test_the_agent_has_no_way_to_it():
-    """T2-3: the agent never RUNS Tier 2; no module the agent's tools import reaches it."""
-    src = open(os.path.join(ROOT, "modules", "ai_assistant.py"), encoding="utf-8").read()
-    assert "privileged" not in src

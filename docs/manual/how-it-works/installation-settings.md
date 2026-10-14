@@ -146,7 +146,8 @@ and shows each network's state, its last run and its next.
 
 1. `check`: the schedule must be one of the seven offered (30 minutes to 24 hours); a network
    turned off or on must exist. A refusal names what was sent and what is allowed.
-2. `write`: the schedule is written to the agent's timers and the checker re-arms; a network's
+2. `write`: the schedule is written to its store (`agent_timers.json`, the file the AI agent's
+   timers kept it in before they left) and the checker re-arms; a network's
    switch is written to its drift state with who and when.
 3. `record`: who, when and what changed are appended to the installation's settings record.
 

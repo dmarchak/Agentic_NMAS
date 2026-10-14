@@ -800,7 +800,6 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
     @pytest.mark.parametrize("rejection", REJECTIONS)
     def test_capture_then_rollback_run_for_each_pattern(self, rejection):
         """A rejected push must still be read back and undone."""
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
         from modules.pipeline import _capture_failure_state, _stage_rollback
@@ -850,7 +849,6 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
     @pytest.mark.parametrize("rejection", REJECTIONS)
     def test_a_line_that_DID_land_is_undone(self, rejection):
         """The other half: a partial push undoes the part that applied."""
-        import modules.ai_assistant as A
         import modules.connection as C
         import modules.pipeline as P
         from modules.pipeline import _capture_failure_state, _stage_rollback

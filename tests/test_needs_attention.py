@@ -463,7 +463,8 @@ class TestApprovalsAsASource:
         r = page["rows"][0]
         assert r["id"] == "drift:lab:drifted:r2" and len(r["attached"]) == 1
         assert r["attached"][0]["source"] == "approvals"
-        assert r["action"]["label"].startswith("Review it in Approvals")
+        assert r["action"]["label"].startswith("Capture r2's golden from its History tab")
+        assert r["action"]["href"] == "/v2/device/r2?tab=history"
         assert "1 thing(s)" in page["headline"]
         html = _panel(page)
         assert "Also: An approval is waiting" in html

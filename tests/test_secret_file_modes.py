@@ -102,19 +102,6 @@ class TestEveryStoreCreatesItsFileOwnerOnly:
         config.save_user_settings({"tftp_root": "/srv/tftp"})
         assert _mode(data_dir / "user_settings.json") == 0o600
 
-    def test_collector_config(self, tmp_path, monkeypatch):
-        """The collector config (register C55). It was written with
-        `open(path, "w")`: the process umask, and truncate in place. It held
-        both SNMP communities until C139 made each device's own secret their
-        one owner; an install that set one still holds it in this file."""
-        from modules import collector_config
-
-        monkeypatch.setattr(collector_config, "_config_path",
-                            lambda: str(tmp_path / "lists" / "lab" / "collector_config.json"))
-        collector_config.set_collector_ip("192.0.2.9")
-        path = tmp_path / "lists" / "lab" / "collector_config.json"
-        assert _mode(path) == 0o600
-        assert not list(path.parent.glob("*.tmp")), "the temp file is replaced, not left"
 
     def test_the_mode_is_applied_before_the_write(self, tmp_path):
         """Creating 0644 and chmod-ing after leaves a window in which the

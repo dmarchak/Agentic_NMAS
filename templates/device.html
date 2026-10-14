@@ -1,42 +1,5 @@
 {% extends "base.html" %}
 
-{% block extra_scripts %}
-<script>
-  /* Tell the AI panel which device we're currently viewing */
-  window.AI_CONTEXT_IP    = '{{ device["ip"] }}';
-  window.AI_CONTEXT_LABEL = '{{ device["hostname"] }}';
-
-  /* Device-specific suggestion prompts */
-  document.addEventListener('DOMContentLoaded', function () {
-    const suggestions = document.getElementById('aiSuggestions');
-    if (!suggestions) return;
-    suggestions.innerHTML = '';
-    const prompts = [
-      ['🩺 Diagnose this device', 'Diagnose {{ device["hostname"] }} ({{ device["ip"] }}). Check interface status, errors, and any issues you can find.'],
-      ['🔌 Show interfaces', 'Show all interfaces on {{ device["hostname"] }} ({{ device["ip"] }}) with their status and IP addresses.'],
-      ['🗺️ Show routing table', 'Show the IP routing table on {{ device["hostname"] }} ({{ device["ip"] }}).'],
-      ['📋 Show running config', 'Show the running configuration of {{ device["hostname"] }} ({{ device["ip"] }}).'],
-      ['💾 Backup config', 'Back up the running configuration of {{ device["hostname"] }} ({{ device["ip"] }}).'],
-    ];
-    prompts.forEach(function ([label, prompt]) {
-      const btn = document.createElement('button');
-      btn.className = 'ai-suggestion';
-      btn.setAttribute('data-prompt', prompt);
-      btn.textContent = label;
-      btn.addEventListener('click', function () {
-        document.getElementById('aiOpenBtn').click();
-        setTimeout(function () {
-          const input = document.getElementById('ai-input');
-          input.value = prompt;
-          input.dispatchEvent(new Event('input'));
-        }, 350);
-      });
-      suggestions.appendChild(btn);
-    });
-  });
-</script>
-{% endblock %}
-
 {% block content %}
 
 {# Determine active tab; default to utilities #}
@@ -107,12 +70,6 @@
             onclick="openRetire(this.dataset.hostname)"
             title="Take this device out of management: see every step, what retire does NOT do and each gate, then confirm. Its intent and golden stay in history; its credential must be in a break-glass export first">
       Retire…
-    </button>
-    <!-- Ask AI about this device -->
-    <button type="button" class="btn btn-outline-primary"
-            onclick="document.getElementById('aiOpenBtn').click();"
-            title="Open AI Assistant with context for this device">
-      ✦ Ask AI
     </button>
     <!-- Back to Devices -->
     <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">⬅️ Back to Devices</a>

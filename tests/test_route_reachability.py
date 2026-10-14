@@ -84,12 +84,8 @@ KNOWN_UNREACHABLE = {
     # (c) State that exists and is never shown.
     "GET /backup_stats": (C, "backup statistics, never drawn; removed in 7.8 unless Versions draws them"),
     # (d) Superseded, duplicate or dead.
-    "GET /ai/events": (D, "on the audit's CUT list; removed in 7.8"),
-    "POST /ai/events/clear": (D, "on the audit's CUT list with /ai/events; removed in 7.8"),
-    "GET /ai/tool_cache_snapshot": (D, "on the audit's CUT list; removed in 7.8"),
     "POST /bulk_clear/<operation_id>": (D, "on the audit's CUT list; removed in 7.8"),
     "POST /drift/check": (D, "the async drift run: the panel uses /drift/check/sync; on the audit's CUT list"),
-    "GET /ai/report/<path:filename>": (D, "serves report files, and the AI tools that wrote them went in P.3 step 8; no caller"),
     "GET /drift/settings": (D, "a duplicate read: the drift panel takes its interval and toggle from /drift/status"),
     "GET /device_lists": (D, "the list of lists as JSON: the page renders it server-side; on the audit's CUT list"),
     "POST /templates/preview/<path:hostname>": (D, "the same capture-only READ as GET, with a JSON body; nothing sends it"),
@@ -116,7 +112,9 @@ KNOWN_UNREACHABLE = {
 # 32 -> 26 (2026-10-12): /list/variables (4) and /list/compliance_policy (2) removed (7.8).
 # 26 -> 24 (2026-10-12): the list data routes (7.8); 24 -> 23: POST /golden/migrate/plan (7.8).
 # 23 -> 21 (2026-10-12): /configure/audit_latest and /configure/audit/<id> removed with Configure (7.8).
-CEILING = 21
+# 21 -> 17 (2026-10-14): /ai/events (GET and POST clear), /ai/tool_cache_snapshot and
+# /ai/report removed with the AI family (D15).
+CEILING = 17
 
 
 @pytest.fixture(scope="module")
@@ -231,8 +229,15 @@ class TestTailWordsAfterAConverter:
         assert path_references(with_tail, rule, True), "the control: the tail word is read"
 
     def test_an_assembled_url_still_reaches_its_route(self, reach):
-        """Control: `/ai/approvals/${id}/${action}` reaches both actions."""
-        for pair in ("POST /ai/approvals/<entry_id>/approve",
-                     "POST /ai/approvals/<entry_id>/reject",
-                     "POST /templatize/committed/<path:hostname>"):
-            assert reach[pair] is True, pair
+        """Control: a URL assembled from placeholders reaches each action its tail word names
+        nearby, in the shape of the approval card's `/ai/approvals/${id}/${action}` (it left
+        with the AI family, D15, and no page assembles one like it now): 'approve' a few
+        lines above, 'reject' about 2,500 characters away."""
+        from tests.route_references import path_references
+
+        corpus = ("act('approve');\nfetch(`/queue/${id}/${action}`, {method: 'POST'});\n"
+                  + " " * 2500 + "act('reject');")
+        for rule in ("/queue/<entry_id>/approve", "/queue/<entry_id>/reject"):
+            assert path_references(corpus, rule, True) == {"POST"}, rule
+        assert path_references(corpus, "/queue/<entry_id>/revert", True) == set()
+        assert reach["POST /templatize/committed/<path:hostname>"] is True

@@ -42,10 +42,12 @@ python app.py (__main__ only)
         │                       integration health, reachability (C92, replaced ping_worker),
         │                       and the rest in reader_job.DECLARED_MODULES
         ├─ the session reaper, the Prometheus targets keeper, the drift scheduler
-        ├─ event monitor
-        ├─ SNMP trap receiver and NetFlow collector (the legacy collector, removed at cutover)
-        └─ agent_runner         autonomous AI daemon, off until Stage 8
+        └─ the heartbeat, the scheduled rotation's timer
 ```
+
+The event monitor, the SNMP trap receiver (UDP 1162), the NetFlow collector (UDP 9996)
+and `agent_runner`, the background AI daemon, were removed with the AI family (D15,
+2026-10-14); nothing listens on a UDP port now.
 
 ## Data ownership
 
@@ -64,14 +66,16 @@ python app.py (__main__ only)
 ```
 data/lists/{slug}/
 ├── devices.csv              inventory; password/secret Fernet-encrypted
-├── variables.json           discovered network facts
 ├── golden_configs/          legacy, read-only (the store before Phase 2)
 ├── config_repo/             THE NSoT repository: golden/, host_vars/, templates/,
 │                            profiles/, .nsot/ (manifest, staging, rolled_back.json)
 ├── backups/
-├── approval_queue.json      human review for destructive AI actions
-└── collector_config.json    SNMP/NetFlow ports, communities (legacy collector)
+└── approval_queue.json      drift items, each closed by a capture, a withdrawal or 48 h expiry
 ```
+
+`variables.json` (the agent's discovered facts) and `collector_config.json` (the in-app
+collectors' ports and communities) have no writer or reader since the AI family's removal
+(D15, 2026-10-14); an install may still hold them as files.
 
 ## Principal flows
 
@@ -95,20 +99,12 @@ operations with the same preview, confirm, result and record. `/configure/apply`
 direct push (with "Jenkins verify" after it), was removed in P.3 and answers 404
 (`tests/test_p3_cuts.py`).
 
-### AI agent
+### AI agent (removed)
 
-```
-run_chat()                   modules/ai_assistant.py
-  → read-first               golden configs + variables before any SSH
-  → tool loop                until the task completes; a question it asks is for a
-                             person (no auto-continue since P.3 step 8)
-  → device commands          read-only allowlist only (modules/readonly_commands.py);
-                             every device-changing tool was removed in P.3 step 8
-  → destructive actions      queued in approval_queue.py; only a person resolves one
-```
-
-`agent_runner.py` runs the same machinery autonomously in the background and
-pauses when a user opens the chat panel.
+The AI family (`modules/ai_assistant.py`'s `run_chat()` tool loop over the read-only
+allowlist, and `agent_runner.py`, which ran it in the background) was removed with D15
+(2026-10-14; tag `pre-remove/ai-family` marks the last commit before it). Phase 8 brings AI
+back as a responder that proposes and never confirms (docs/PHASE8_PLAN.md).
 
 ### NetBox import (gated)
 
@@ -297,9 +293,10 @@ network devices. Built by [Author] as a capstone/school project. The app is
 a single-host management tool — not a multi-tenant SaaS — so there is no built-in
 auth system.
 
-**Stack:** Python 3.10+, Flask, Flask-SocketIO, Netmiko/Paramiko (SSH), Anthropic
-Claude API (AI agent), vis.js (topology), Bootstrap 5, NetBox (source of
-truth). Jenkins was removed in P.4 (docs/NSOT_CI.md).
+**Stack:** Python 3.10+, Flask, Flask-SocketIO, Netmiko/Paramiko (SSH), Bootstrap 5,
+NetBox (source of truth). Jenkins was removed in P.4 (docs/NSOT_CI.md); vis.js (today's
+topology tab) at 7.8; the Anthropic Claude API (the AI agent) with the AI family (D15,
+2026-10-14).
 
 The project is mid-way through a planned conversion into a Network Source of
 Truth (NSoT) framework. **[docs/NSOT_PLAN.md](docs/NSOT_PLAN.md) is the governing
@@ -307,20 +304,23 @@ spec for that work** — read it before starting any NSoT phase.
 
 ### Module map
 
-Line counts are accurate as of Phase 0 (2026-09-20). Everything listed is
-tracked in git.
+Line counts are accurate as of Phase 0 (2026-09-20). Everything listed was
+tracked in git then; a module removed with the AI family (D15, 2026-10-14) is marked so,
+and others have left since too.
 
 #### Core
 - **[app.py](app.py)** (5,301) — Flask routes and SocketIO handlers. Monolithic
   by design for pre-existing features; **new routes go in `routes/` instead**.
-- **[modules/ai_assistant.py](modules/ai_assistant.py)** (7,195) — AI agent core:
-  tool definitions, `run_chat()`, golden config management, read-first workflow
-- **[modules/agent_runner.py](modules/agent_runner.py)** (1,363) — background
-  autonomous agent daemon; pauses when the user opens chat
+- **`modules/ai_assistant.py`** (7,195) — AI agent core: tool definitions,
+  `run_chat()`, golden config management, read-first workflow. Removed with the AI
+  family (D15, 2026-10-14); its golden helpers moved to `modules/goldens.py` first
+- **`modules/agent_runner.py`** (1,363) — background autonomous agent daemon.
+  Removed with the AI family (D15, 2026-10-14)
 - **[modules/netbox_client.py](modules/netbox_client.py)** (3,231) — NetBox
   IPAM/DCIM client. Reads freely; **writes are gated** (see below)
-- **[modules/topology.py](modules/topology.py)** (1,207) — CDP/OSPF/BGP/DMVPN
-  discovery; vis.js graph with hub/spoke labels
+- **`modules/topology.py`** (1,207) — CDP/OSPF/BGP/DMVPN discovery; vis.js graph
+  with hub/spoke labels. Removed with the AI family (D15, 2026-10-14); OBSERVE ›
+  Topology reads the `topology-graph` reader (`modules/readers/topology_graph.py`)
 - **[modules/pipeline.py](modules/pipeline.py)** (1,159) — 9-stage
   `PipelineRunner` (NetBox query → render → CI gate → snapshot → diff → deploy →
   snapshot → verify/rollback → audit). **Wired in**: `routes/deploy.py`
@@ -334,13 +334,13 @@ tracked in git.
   for 10 feature types (its Jenkins script and XML generators went in P.4)
 
 #### Collectors and checks
-- **[modules/snmp_collector.py](modules/snmp_collector.py)** (763) — SNMP v1/v2c
-  trap receiver + OID polling
-- **[modules/netflow_collector.py](modules/netflow_collector.py)** (381)
+- **`modules/snmp_collector.py`** (763) — SNMP v1/v2c trap receiver + OID polling.
+  Removed with the AI family (D15, 2026-10-14)
+- **`modules/netflow_collector.py`** (381). Removed with the AI family (D15, 2026-10-14)
 - **[modules/drift_check.py](modules/drift_check.py)** (415) — drift checker
   needing no Claude API; diffs against golden config
-- **[modules/collector_config.py](modules/collector_config.py)** (238) — per-list
-  collector settings, including trap/NetFlow ports
+- **`modules/collector_config.py`** (238) — per-list collector settings, including
+  trap/NetFlow ports. Removed with the AI family (D15, 2026-10-14)
 
 #### NSoT / Phase 0–3c additions
 - **[modules/settings_schema.py](modules/settings_schema.py)** (314) — settings
@@ -448,8 +448,8 @@ tracked in git.
 - **[modules/readonly_commands.py](modules/readonly_commands.py)** — C61:
   the ONE read-only command allowlist, whole command: verb, every output
   modifier after a `|`, no URL, no target-less ping, no line editing. The
-  agent's tools use it; the lens, `/run_command` and `bulk_execute` adopt it
-  in 7.3
+  agent's tools used it (until the AI family's removal, D15, 2026-10-14); the lens,
+  `/run_command` and `bulk_execute` adopt it in 7.3
 - **[modules/nsot/authorisation.py](modules/nsot/authorisation.py)** — C140,
   C79: the ONE mechanism for a line that needs an authorisation (a dangerous
   line, or a secret a restore would add): its key, the reason's shape rule,
@@ -939,10 +939,12 @@ tracked in git.
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
 `backups.py`, `variable_discovery.py`, `event_monitor.py`,
 `terminal.py`, `commands.py`, `agent_timers.py`, `ai_usage_log.py`, `quick_actions.py`,
-`utils.py`, `config.py`
+`utils.py`, `config.py` (`variable_discovery.py`, `event_monitor.py`, `agent_timers.py`
+and `ai_usage_log.py` were removed with the AI family, D15, 2026-10-14)
 
 #### Templates
-`base.html` (2,442 — layout + AI chat panel), `index.html` (8,045 — main
+`base.html` (2,442 — layout + AI chat panel, the panel removed with the AI family, D15,
+2026-10-14), `index.html` (8,045 — main
 dashboard), `device.html` (1,239 — per-device page), and
 `templates/partials/` for new UI.
 
@@ -950,8 +952,9 @@ dashboard), `device.html` (1,239 — per-device page), and
 ### Key Architecture Decisions
 
 - **Data storage:** `data/lists/{slug}/` per device list — devices.csv
-  (Fernet-encrypted creds), variables.json, golden_configs/, backups/,
-  approval_queue.json, config_repo/
+  (Fernet-encrypted creds), golden_configs/, backups/, approval_queue.json,
+  config_repo/ (variables.json, the agent's, has had no writer since the AI family's
+  removal, D15, 2026-10-14)
 - **Migration is one-directional and runs once.** `config_repo/golden/` is the
   golden store; `golden_configs/` survives as a deprecated **read-only**
   fallback, consulted by `_find_golden_config_file()` only when the manifest has
@@ -978,10 +981,13 @@ dashboard), `device.html` (1,239 — per-device page), and
   CSV column (local lists) or the NetBox platform slug (NetBox lists), resolved
   through `platform_for_device()` and refreshed by `manifest.sync_platforms()`
   on every inventory change — not only at migration.
-- **AI read-first:** the agent checks golden configs and variables before opening
-  any SSH session
-- **Secrets are redacted at the provider boundary** (`modules/redact.py`),
-  immediately before `messages.create()` — `system`, `messages` and `tools`.
+- **AI read-first:** the agent checked golden configs and variables before opening
+  any SSH session (the agent was removed with the AI family, D15, 2026-10-14)
+- **Secrets were redacted at the provider boundary** (`modules/redact.py`),
+  immediately before `messages.create()` — `system`, `messages` and `tools`. Since the
+  AI family's removal (D15, 2026-10-14) nothing calls a provider, and the boundary
+  functions have no caller (register C783); `redact.py` still masks log handlers and
+  responses.
   Not at the golden reader: `show running-config`, backups, drift diffs and any
   free-form command carry the same values, so per-reader redaction is N places
   that must each remember and a new tool inherits the gap. Values are replaced
@@ -1009,20 +1015,23 @@ dashboard), `device.html` (1,239 — per-device page), and
   merge-only, verifies and saves the golden. The older "push, then Jenkins
   CI, and a CI pass auto-approves" described a Jenkins nothing configured,
   and P.4 removed it.
-- **Approval queue:** destructive AI actions go through `approval_queue.py`. Its store
+- **Approval queue** (`approval_queue.py`): since the AI family's removal (D15,
+  2026-10-14) only the drift check queues items (`update_golden_config`), and an item
+  closes by a capture of the device, by a withdrawal, or by 48 h expiry; no approve or
+  reject route remains, so `resolve()` has no caller outside the tests. Its store
   is one file per list, every read-modify-write under ONE cross-process lock with an atomic
   replace; an unreadable queue refuses every write and answers every read with its reason;
   reads write nothing (CONCURRENCY_AUDIT R4, 2026-10-02).
-  **Nothing resolves an item without a human**: the only callers of `resolve()`
-  are three HTTP routes, expiry marks items `expired` and never executes, and
-  neither `agent_runner` nor `event_monitor` nor any AI tool can approve — they
-  only *add*. `revert_to_golden` **hands off to the confirmed restore path**
-  instead of executing. It used to push a stored diff with no confirm hash, no
-  mask check, no sendability check, and an unbounded `no <command>` per added
-  line. Approving one now opens the restore preview for that device **at
+  Before D15, destructive AI actions were queued there, and **nothing resolved an item
+  without a human**: the only callers of `resolve()` were three HTTP routes, expiry marked
+  items `expired` and never executed, and neither `agent_runner` nor `event_monitor` nor
+  any AI tool could approve — they only *added*. `revert_to_golden` **handed off to the
+  confirmed restore path** instead of executing. It used to push a stored diff with no
+  confirm hash, no mask check, no sendability check, and an unbounded `no <command>` per
+  added line. Approving one opened the restore preview for that device **at
   HEAD** — a single-device revert *is* a Mode A re-apply of its HEAD golden —
-  and the operator confirms a program computed **now**, from the device as it
-  is now.
+  and the operator confirmed a program computed **now**, from the device as it
+  was then.
 - **Every queued kind now ends in a confirmation** (C105, 2026-09-27). A
   drift item's "record the running config as the golden" read the device
   and committed with NO preview on approve, one click per item, and drift
@@ -1030,17 +1039,19 @@ dashboard), `device.html` (1,239 — per-device page), and
   queue, the least guarded one. It hands off to the capture operation now
   (read now, previewed, confirmed by hash, recorded as the verified person
   with `Source: capture`), and the capture closes the item only for a
-  device it recorded. **Approve-all approves nothing by itself**: it opens
-  ONE capture preview for every drift item's device and names reverts for
-  individual review. It is `not_device` in the gate table, because it
-  records nothing; the capture apply, gated `approve`, does.
+  device it recorded. **Approve-all approved nothing by itself**: it opened
+  ONE capture preview for every drift item's device and named reverts for
+  individual review, `not_device` in the gate table because it recorded
+  nothing; the capture apply, gated `approve`, does. Approve and Approve-all
+  left with the AI family (D15, 2026-10-14): the capture is how an item closes.
 - **The queued diff never reaches a device.** It was computed when the drift
   was noticed, which is not when the operator is looking; a program the
   approver never read is what the confirm hash exists to prevent. It travels as
   **advisory context** ("what the agent saw"), is displayed above the fresh
   program labelled *not what will be sent*, and is echoed by the route and
   nothing else — a test asserts the only line mentioning it is the echo.
-- **Approving a confirm-ending item does not resolve it.** It stays pending
+- **Approving a confirm-ending item did not resolve it** (the approve route left with
+  the AI family, D15, 2026-10-14). It stayed pending
   with an "Awaiting confirmation" note, because marking it approved would have
   the queue claiming a change nobody has sent. `mark_done()` closes it when the
   restore succeeds, and **only** for devices that actually succeeded — an item
@@ -1050,9 +1061,10 @@ dashboard), `device.html` (1,239 — per-device page), and
 - **Connection pool:** Netmiko SSH connections reused via `modules/connection.py`;
   the reachability reader (C92) tracks answering / not answering over
   consecutive probes; `session_reaper` closes idle pooled sessions
-- **No auto-continue** (P.3 step 8): the agent loops tool calls until the task completes, and a
-  question it asks is for a person. It used to answer its own confirmation questions with a canned
-  "yes, continue"; only the continuation of a reply the token limit cut off remains
+- **No auto-continue** (P.3 step 8): the agent looped tool calls until the task completed, and a
+  question it asked was for a person. It used to answer its own confirmation questions with a canned
+  "yes, continue"; only the continuation of a reply the token limit cut off remained. The agent
+  was removed with the AI family (D15, 2026-10-14)
 - **telnetlib shim:** `telnetlib.py` in root — Python 3.13 removed it from stdlib
 
 #### NetBox write safety (Phase 0)
@@ -1113,9 +1125,10 @@ pre-existing list uses) or `netbox`, set per list in
 `data/lists/{slug}/source.json`. An absent file means `local`.
 
 - **`load_saved_devices()` is the single dispatch point.** It has ~79 call
-  sites across 11 modules; routing the decision through it means bulk ops, the
+  sites across 11 modules; routing the decision through it meant bulk ops, the
   terminal, backups, drift, topology, the connection pool and the AI tools all
-  work on a NetBox list without changes.
+  worked on a NetBox list without changes (the AI tools and `topology.py` left with
+  the AI family, D15, 2026-10-14).
 - **Dispatch never performs network I/O.** A background refresh queries NetBox
   and resolves + encrypts credentials once per refresh; dispatch serves finished
   dicts from memory. The adapter returns credentials **still Fernet-encrypted**,
@@ -1142,8 +1155,10 @@ to `""` and topology falls back to hostname inference. Set
 `platform_default_netmiko_type` to trade a platform skip for a warning.
 
 **Stale devices:** a device that vanishes from NetBox keeps its golden configs
-and backups but becomes **inert** — the approval executor, drift checker, and AI
-tools refuse to act on it, and its pooled SSH session is closed.
+and backups but becomes **inert** — the drift checker refuses to act on it, and its
+pooled SSH session is closed. (The approval executor and the AI tools refused too; the
+AI tools left with the AI family, D15, 2026-10-14, and the executor has had no route
+to it since.)
 
 #### Golden config repository (Phase 2)
 
@@ -1214,8 +1229,10 @@ tools refuse to act on it, and its pooled SSH session is closed.
   and annotated tags `golden/<device>/<UTC>` and `baseline/<UTC>`.
 - **An `Actor:` trailer is WHO is accountable, never WHAT ran.**
   `repo.ACTOR_CONVENTION`. Three kinds: a **person** (email, or the OS user
-  for a command run on the host); **`ai-agent`**, the exception that proves
-  the rule since it genuinely decides without anyone typing a command; and
+  for a command run on the host); **`ai-agent`**, the exception that proved
+  the rule since it genuinely decided without anyone typing a command (no commit
+  carries it since the AI family's removal, D15, 2026-10-14, though
+  `ACTOR_CONVENTION` still names it); and
   **`service:<client-id>`**, matching the identity layer's own prefix. A
   one-off script is none of these — nobody is accountable to a program — so
   it records the person in `Actor:` and names itself in a `Tool:` trailer.
@@ -1720,17 +1737,20 @@ default), **chosen** (written, differs).
 schema does not declare is refused rather than stored.** A validation failure
 writes nothing at all — a half-applied settings write is worse than a
 rejected one. Eight keys the Settings form had always written
-(`ai_enabled`, `background_agent_enabled`, six `wf_*`) were undeclared and are
-now in the schema; every default reproduces the value the code fell back to
-before.
+(`ai_enabled`, `background_agent_enabled`, six `wf_*`) were undeclared and were
+then put in the schema, every default reproducing the value the code fell back to
+before; since the AI family's removal (D15, 2026-10-14) nothing reads them, they stay
+declared as retiring for one release, and `/settings` refuses them by name.
 
 **Secrets are in more than one store** — see [docs/SECRETS.md](docs/SECRETS.md),
 whose table is the claim. `user_settings.json` holds the ones
 `secrets_store.SECRET_KEYS` covers (**a second store needs a second
 mechanism**: a name in that tuple encrypts only what is in that file);
-`.env` holds `ANTHROPIC_API_KEY` in **plaintext by design**, since
+`.env` held `ANTHROPIC_API_KEY` in **plaintext by design**, since
 encrypting it would have the app decrypt its own key at startup using a key
-in the same directory with the same mode. `data/jenkins_checks.json` is a
+in the same directory with the same mode; the key left with the AI family (D15,
+2026-10-14), its `.env` line deleted by the D15 host step
+(`scripts/host-steps/d15-ai-archive.sh --delete`). `data/jenkins_checks.json` is a
 **retired** store (P.4): nothing reads it, and `nmas-check-secret-storage`
 names it as a finding until it is deleted. The checker reports every store
 by name and never by value. `scripts/nmas-settings-diff` lists
@@ -1824,10 +1844,11 @@ silently stripping would store something other than what was supplied.
 
 **Every schema key is surfaced or documented file-only with a reason**
 ([docs/SETTINGS.md](docs/SETTINGS.md)), and a test fails on a key that is
-neither. **`pause_agent()` persists nothing** — it sets an in-memory Event, so
-a pause is lost on restart while `background_agent_enabled` (the persistent
-switch, which had no control until 3.2d) survives. Two controls that look like
-one switch, and only the invisible one survives a restart.
+neither. **`pause_agent()` persisted nothing** — it set an in-memory Event, so
+a pause was lost on restart while `background_agent_enabled` (the persistent
+switch, which had no control until 3.2d) survived. Two controls that looked like
+one switch, and only the invisible one survived a restart. `pause_agent()` left with
+the AI family (D15, 2026-10-14), and the switch is a retiring key nothing reads.
 
 Secrets (API tokens, passwords, access keys) are encrypted at rest with the
 existing Fernet key via `modules/secrets_store.py`. They are never logged, never

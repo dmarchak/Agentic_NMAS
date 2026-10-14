@@ -287,15 +287,11 @@ PENDING = {
     # -- drawn in place, gone when the window closes or the page moves on --
     "bulk_execute": "the bulk results modal, until closed",
     "run_command": "the device page re-rendered with the output",
-    "ai_chat": "the chat stream (Stage 8 decides what the agent's record is)",
     "templatize.edit_committed": "the editor's status line names the commit",
     "remote.push": "the remote panel's output box",
     "remote.auto_push": "the remote panel's output box",
     "remote.acknowledge": "the remote panel's output box",
     # -- a toast, gone in seconds --
-    "ai_agent_run": "nothing: the response is never read (the agent is off)",
-    "ai_approval_approve": "a toast; the commit an approval makes is never shown",
-    "ai_approval_reject": "a toast",
     "templates.approve": "a toast carrying the per-device evidence",
     "templates.write_template": "a toast",
     "remote.verify_write": "a toast, then the panel reloads",
@@ -320,9 +316,7 @@ FALSE_GREEN = {
 #: green and on no list: the class was not zero, the list was. Keyed by
 #: (file, a literal from the call); a scan finds them all, both ways.
 GREEN_TOASTS = {
-    ("static/js/gen/index.4.js", "Deleted \"${pbName}\""): "one playbook deleted after an HTTP ok",
     ("static/js/gen/index.4.js", "data.drifted > 0 ? 'warning'"): "level from drifted and errors",
-    ("static/js/gen/index.4.js", "Approved and executed"): "one item; failure and note have their own",
     ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create/delete, TFTP server, bulk STARTED): the per-device outcome is the bulk modal's",
     ("static/js/gen/index.1.js", "Bulk operation finished"): "level from the failed and succeeded counts (C121)",
     ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
@@ -343,7 +337,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 13, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
+CEILINGS = {"PENDING": 9, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
 
 
 def _population():
@@ -483,7 +477,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 15, len(calls)          # the scan can see them (18 before the file actions left at 7.8)
+        assert len(calls) >= 11, len(calls)          # the scan can see them (13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

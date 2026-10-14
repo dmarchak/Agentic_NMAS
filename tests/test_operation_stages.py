@@ -104,5 +104,5 @@ class TestTheControls:
 
     def test_a_stage_with_no_reason_is_found(self, app):
         stages = dict(S.STAGES)
-        stages["ai_chat"] = S.STAGES["ai_chat"]._replace(verify="n/a:")
-        assert "ai_chat.verify: says 'n/a:' with no reason" in problems(stages, app, population())
+        stages["run_command"] = S.STAGES["run_command"]._replace(verify="n/a:")
+        assert "run_command.verify: says 'n/a:' with no reason" in problems(stages, app, population())

@@ -53,11 +53,6 @@ def _head_golden():
 #: test, so a new computing POST cannot go unswept by being new.
 def _bodies(v):
     return {
-        "ai_clear": (200, ("json", {}), "clears the caller's history; returns a status"),
-        "ai_stop": (200, ("json", {}), "a stop flag; returns a status"),
-        "ai_approval_approve_all": (200, ("json", {}),
-                                    "a capture handoff built from the planted queue: "
-                                    "device names and item ids, never a diff (C105)"),
         "bulk_clear": (200, ("json", {}), "clears an on-screen result; returns a status"),
         "compare_backups_route": (200, ("form", {"file1": v["_backup_file"],
                                                  "file2": v["_backup_file_2"]}),
@@ -297,10 +292,6 @@ def _setup(v, mp, client):
     mp.setattr("modules.commands.run_device_command", lambda conn, cmd, *a, **k: running)
     v["device_read"] = [_p("RunSec"), _p("RunComm")]
     v["caller_supplied"] = [_p("OxiSec"), _p("OxiComm")]
-
-    # An SNMP read, faked: the route reads the stored community to make it.
-    mp.setattr("modules.snmp_collector.snmp_get",
-               lambda ip, oids, community, version=2: [{"oid": o, "value": "x"} for o in oids])
 
     # A NetBox to preview against, behind a URL nothing answers.
     from tests.fake_netbox import FakeNetBox

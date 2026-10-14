@@ -532,9 +532,11 @@ class TestRevertHandsOffToTheConfirmedPath:
         from modules import approval_queue
 
         called = {}
-        monkeypatch.setattr("modules.ai_assistant._save_golden_config_file",
+        monkeypatch.setattr("modules.nsot.repo.save_golden",
                             lambda *a, **k: called.setdefault("saved", True))
-        monkeypatch.setattr("modules.ai_assistant._get_running_config_for_golden",
+        monkeypatch.setattr("modules.connection.with_temp_connection",
+                            lambda *a, **k: called.setdefault("read", True))
+        monkeypatch.setattr("modules.connection.get_persistent_connection",
                             lambda *a, **k: called.setdefault("read", True))
         result = approval_queue._exec_update_golden(
             {"id": "q1", "device_ip": "203.0.113.1", "device_hostname": "R1"},
@@ -550,7 +552,7 @@ class TestRevertHandsOffToTheConfirmedPath:
         from modules import approval_queue
 
         called = {}
-        monkeypatch.setattr("modules.ai_assistant._save_golden_config_file",
+        monkeypatch.setattr("modules.nsot.repo.save_golden",
                             lambda *a, **k: called.setdefault("saved", True))
         result = approval_queue._exec_update_golden(
             {"device_ip": "203.0.113.1", "device_hostname": "R1"})
@@ -568,32 +570,6 @@ class TestApproveAllHandsOffToOneCapture:
 
         assert approval_queue.is_confirm_ending({"action_type": "revert_to_golden"})
         assert approval_queue.is_confirm_ending({"action_type": "update_golden_config"})
-
-    def test_approve_all_builds_the_handoff_and_resolves_nothing(self, monkeypatch):
-        import app as app_module
-        from modules import approval_queue
-
-        pending = [
-            {"id": "a1", "action_type": "update_golden_config",
-             "device_ip": "203.0.113.1", "device_hostname": "r1"},
-            {"id": "a3", "action_type": "update_golden_config",
-             "device_ip": "203.0.113.1", "device_hostname": "r1"},
-            {"id": "b2", "action_type": "revert_to_golden",
-             "device_ip": "203.0.113.2", "device_hostname": "r2"},
-        ]
-        resolved = []
-        monkeypatch.setattr(approval_queue, "get_pending", lambda: pending)
-        monkeypatch.setattr(approval_queue, "resolve",
-                            lambda *a, **k: resolved.append(a) or {"ok": True})
-
-        with app_module.app.test_request_context(json={}):
-            body = app_module.ai_approval_approve_all().get_json()
-
-        assert resolved == [], "approve-all resolved an item by itself"
-        assert body["capture"] == {"devices": ["r1"], "approvals": {"r1": ["a1", "a3"]}}
-        assert [x["device"] for x in body["individual"]] == ["r2"]
-        assert "nothing is recorded until you confirm" in body["message"]
-        assert "individual review" in body["message"]
 
 
 class TestTheQueuedDiffNeverReachesADevice:

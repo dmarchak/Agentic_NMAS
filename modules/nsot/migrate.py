@@ -26,7 +26,7 @@ Nothing is deleted. Losing copies move to ``.nsot/migration-backup/``.
 **One-directional.** ``golden_configs/`` is an input to the migration exactly
 once. After the marker exists, :func:`apply` refuses and ``_collect_candidates``
 stops reading that directory at all. The old store survives as a **read-only**
-fallback for one lookup — :func:`modules.ai_assistant._find_golden_config_file`
+fallback for one lookup — :func:`modules.goldens._find_golden_config_file`
 consults it only when the manifest has no entry for a device — and is never
 again a source of repo content.
 

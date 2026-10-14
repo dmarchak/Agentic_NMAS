@@ -74,9 +74,10 @@ class TestNoGetReturnsASecret:
     def test_the_modal_is_told_whether_each_secret_is_set(self, planted):
         import app as A
         body = A.app.test_client().get("/settings").get_json()
-        assert body["anthropic_api_key_set"] is True
-        assert "anthropic_api_key" not in body
+        assert body["netbox_token_set"] is True
+        assert "netbox_token" not in body
         assert not [k for k in body if k.startswith("jenkins")], "Jenkins is gone (P.4)"
+        assert not [k for k in body if k.startswith("anthropic")], "the AI family is gone (D15)"
 
 
 class TestTheSettingsFormAfterJenkins:
@@ -92,19 +93,31 @@ class TestTheSettingsFormAfterJenkins:
         assert r.status_code == 207
         assert any("Jenkins was removed" in e for e in body["errors"]), body
 
-    def test_a_form_without_them_is_not_refused(self, planted):
-        """The floor: the refusal is about the Jenkins fields, not every save."""
+    def test_the_ai_family_s_fields_are_refused_by_name(self, planted):
+        """D15: the same for the AI family's key and switches, so an old page's save says why
+        nothing was stored and the key never reaches `.env` again."""
         import app as A
-        r = A.app.test_client().post("/settings", json={"wf_read_first": True,
-                                                        "loaded": A._settings_payload()})
+        r = A.app.test_client().post("/settings", json={
+            "anthropic_api_key": PLANTED["anthropic"], "ai_enabled": True,
+            "loaded": A._settings_payload()})
+        body = r.get_json()
+        assert r.status_code == 207
+        assert any("were removed (D15)" in e for e in body["errors"]), body
+        assert PLANTED["anthropic"] not in r.get_data(as_text=True)
+
+    def test_a_form_without_them_is_not_refused(self, planted):
+        """The floor: the refusal is about the removed fields, not every save."""
+        import app as A
+        r = A.app.test_client().post("/settings", json={"loaded": A._settings_payload()})
         assert r.status_code == 200, r.get_json()
 
     def test_the_modal_sends_a_secret_only_if_typed(self):
         from tests.js_source import read_shipped
         page = read_shipped("templates/index.html")
-        assert "s.anthropic_api_key " not in page and "s.anthropic_api_key)" not in page
-        assert "if (apiKeyVal) payload.anthropic_api_key = apiKeyVal;" in page
+        assert "s.netbox_token " not in page and "s.netbox_token)" not in page
+        assert "if (nbTokVal) payload.netbox_token = nbTokVal;" in page
         assert "settingsJenkins" not in page and "payload.jenkins_" not in page
+        assert "anthropic" not in page
 
 
 # ---------------------------------------------------------------------------

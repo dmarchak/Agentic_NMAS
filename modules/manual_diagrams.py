@@ -311,41 +311,6 @@ def bulk_intent():
     ])
 
 
-def approvals():
-    return svg(540, (
-        "The approval queue. The drift check and the AI agent ADD items; nothing resolves one "
-        "without a person. Approving a drift item opens the capture preview, which reads the "
-        "device now; approving a revert item opens the restore preview at HEAD, which computes "
-        "the program now. The queued diff is context only and is never sent. You confirm the "
-        "preview's hash; the operation runs and records; the item closes only for the devices "
-        "it recorded. An item can also be withdrawn by a newer golden or expire after 48 hours, "
-        "running nothing."), [
-        lanes(20, 534),
-        band(20, 110, "Queued · nothing runs"),
-        svc(14, 44, 88, 30, "Drift check", ""), svc(110, 44, 90, 30, "AI agent", ""),
-        arrow("rec", 58, 76, 80, 96), arrow("rec", 155, 76, 130, 96),
-        store(14, 98, 186, 26, "Approval queue", ""),
-        device(240, 50, 140, 44, "The device", "not contacted", off=True),
-        band(136, 120, "Approve"),
-        person(14, 160, 186, 30, "You approve"), num(14, 160, 1),
-        t(14, 212, "Drift item: the capture preview.", "sm"),
-        t(14, 226, "Revert item: the restore preview,", "sm"),
-        t(14, 239, "at HEAD. The queued diff is context only.", "sm"),
-        nosend(310, 196, ("approving sends", "nothing")),
-        band(262, 196, "The operation, previewed now"),
-        device(262, 284, 118, 150, "The device", "", top=True),
-        *rows([
-            (304, "read", 2, "Read now", "capture: the device as it is"),
-            (344, None, 3, "Confirm the hash", "of the preview you read"),
-            (384, "send", 4, "Restore only:", "the confirmed program"),
-            (424, None, 5, "Recorded as you", "golden commit, receipt"),
-        ]),
-        band(464, 64, "Close"),
-        store(14, 482, 186, 36, "Item closed", "only for devices recorded"), num(14, 482, 6),
-        t(214, 504, "Or withdrawn, or expired:", "sm"), t(214, 517, "runs nothing", "sm"),
-    ])
-
-
 def drift():
     return svg(430, (
         "Three things the tool compares. Intent is what the device should run, committed by a "
@@ -1413,7 +1378,6 @@ DIAGRAMS = {
     "onboard": onboard,
     "revert-retry": revert_retry,
     "bulk-intent": bulk_intent,
-    "approvals": approvals,
     "drift": drift,
     "drift-check": drift_check,
     "netbox-import": netbox_import,

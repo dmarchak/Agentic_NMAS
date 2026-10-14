@@ -212,7 +212,6 @@ class TestTheNameLeavesTheScreens:
 #: internal names stay until Stage 10 renames them, with their host steps). Exact; only shrinks.
 KEPT_STRINGS = {
     ("app.py", "NMAS listening on "): "the console's start-up line, not a screen",
-    ("modules/ai_assistant.py", "[SOURCE OF TRUTH"): "the AI agent's prompt (Stage 8)",
     ("modules/config_git.py", "NMAS"): "the git author of the tool's commits, in every history",
     ("modules/settings_schema.py", "NMAS"): "the git author setting's default (the same)",
     ("modules/nsot/repo.py", "NMAS"): "the git author's fallback (the same; two literals)",
