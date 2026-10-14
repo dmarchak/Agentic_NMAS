@@ -469,9 +469,11 @@ must be testable, reproducible and explainable without a model.
 ### The AI layer's own design
 
 - **A multi-provider gateway:** one module through which every model call goes. It has a
-  per-network switch (off by default), cost caps per network and per day (a cap reached
-  refuses the next call, by name), and a local-model option for air-gapped installs. Which
-  providers, and whether a local model is required, are the operator's (section 9).
+  per-network switch (off by default) and cost caps per network and per day (a cap reached
+  refuses the next call, by name). Which providers is the operator's (section 9). **A
+  built-in local model ships with Mercury** (the operator, 2026-10-14), so AI works out of the
+  box, offline and air-gapped, beside the paid providers. It runs behind the same gateway and
+  rules (the subsection below; docs/PHASE8_PLAN.md section 10).
 - **Masking before every prompt:** the prompt is masked by C733's keyed-digest index (every
   secret Mercury holds, matched by digest) and by `redact_text`'s positional rules. C745's
   unknown credential shapes are closed first.
@@ -485,6 +487,54 @@ must be testable, reproducible and explainable without a model.
 - **Observe-mode evaluation before trust:** each AI feature runs alongside the deterministic
   path, its answers marked right or wrong, its accuracy measured and shown, before it is
   offered by default.
+
+### The built-in local model and the multi-model rule (the operator, 2026-10-14)
+
+**DECIDED:**
+- **Model origin: US-only.** The candidates are gpt-oss-20b (OpenAI), Gemma 4 26B MoE and E4B
+  (Google), and Granite 4.0-H-Tiny and H-Small (IBM). No other origin is offered, and there is
+  no setting to add one.
+- **One definition of every tool and one prompt structure for every model.**
+  - Each tool is one JSON Schema with its role binding (section 12), in one registry.
+  - The prompt structure is section 10's.
+  - **Adapters exist per API shape, never per model:** Anthropic Messages, and
+    OpenAI-compatible (OpenAI, Gemini's compatible endpoint, llama.cpp).
+  - Per-model differences live in a profile, which is data: the adapter, the context budget,
+    strict-schema support, parallel calls, the maximum tools per request, reasoning settings,
+    cost, origin.
+  - No per-model prompt forks: a model that fails the eval with the shared prompt gets fewer
+    features, not its own prompt.
+  - No third-party multi-LLM abstraction library: both adapters are Mercury's own, and
+    auditable.
+  - Only models that passed the eval are offered.
+
+**PROPOSED, pending the operator:**
+- **Engine:** llama.cpp's `llama-server`, as its own service, bound to 127.0.0.1, with no
+  egress. It is served through the OpenAI-compatible adapter as "Local (built-in)".
+- **Delivery:**
+  - never in the repository or an image;
+  - the first-run wizard downloads a pinned file (sha256, and `model.sig` for Granite), or
+    imports an operator-supplied one;
+  - offline after that.
+- **Tiers by a hardware check:** free RAM under the running stack, CPU features and a 30-second
+  speed test.
+  - A large tier (gpt-oss-20b or Gemma 4 26B MoE) where RAM allows.
+  - A small tier (Gemma 4 E4B or Granite 4.0-H-Tiny) on low RAM.
+  - Otherwise "AI off" with the reason shown, never a weaker model.
+- **Reliability:**
+  - JSON-schema constrained decoding for every tool call;
+  - tools preselected per request, up to the profile's maximum, from the role's tools only;
+  - a context budget from the profile.
+- **Isolation:**
+  - CPU and memory caps, one request at a time, unloaded when idle;
+  - it never starves Loki, Prometheus or Mercury.
+- **Release gate per model and version:** the task evaluation and the red-team set (section
+  13). Features turn on per model only where it passed, and the eval picks the local default.
+
+**The threat model is unchanged.** A local model is as untrusted as a hosted one (section 13).
+Its tools are the same role-bound tools, and it never changes permissions. Running locally
+removes one exfiltration path (no provider sees the prompt), but masking before every prompt
+still applies: History records the prompt, and a profile may later point at a hosted endpoint.
 
 ### What of the removed AI family is worth reusing
 
@@ -609,7 +659,7 @@ deploy; rollback by revert; and a faster pre-approved path for urgent actions.
 | 1 | **Per-policy authority: yes.** |
 | 2 | **Auto-fix classes: management-plane configuration only** (logging hosts, SNMP, NTP, IP SLA probes); never routing, interface state, ACLs, AAA or credentials, or s3 and the management path (section 3's table, as decided). |
 | 3 | **The rails: approved**, with `docs/PHASE8_PLAN.md` section 7's changes (below). |
-| 4 | **Providers: Anthropic first, behind the provider-agnostic client;** a local model optional, later. |
+| 4 | **Providers: Anthropic first, behind the provider-agnostic client;** a local model optional, later. *Amended 2026-10-14: a built-in local model ships with Mercury, US-origin only (below).* |
 | 5 | **Translate's first scope: management-plane services** (logging, SNMP, NTP and the like), not a routing statement. |
 | 6 | **Batfish: yes, for routing-affecting changes;** Mercury's own IOS checks stay for every change. Its licence (Apache-2.0) is accepted with the decision. |
 | 7 | **Loki's `severity` label and a stable trap label: yes, as a host step.** |
@@ -620,6 +670,14 @@ deploy; rollback by revert; and a faster pre-approved path for urgent actions.
 | 12 | **The golden state rule and its seven sub-rules: approved** (section 11). |
 | 13 | **AI roles and permissions: approved** (section 12). |
 | 14 | **Prompt-injection defence and the red-team gate: approved** (section 13). |
+
+**Decided, 2026-10-14 (the operator):**
+- **Model origin: US-only, operator's decision** (section 7, "The built-in local model and the
+  multi-model rule").
+- **The multi-model design rule:** one tool registry and one prompt structure, adapters per API
+  shape, per-model profiles as data, a curated list of only the models that passed the eval.
+- Pending: the engine, delivery, tiers, reliability, isolation and release gate
+  (docs/PHASE8_PLAN.md section 9, decision 12); each candidate model's licence (decision 13).
 
 The numbers the operator changed (all in `docs/PHASE8_PLAN.md` section 7):
 - **No self-reported confidence gate** (the ≥ 0.9 gate is dropped); catalog selection is gated on
@@ -688,6 +746,10 @@ them feature by feature.
 - Each run has budgets on tool calls, tokens and wall time. A tool's description is written as
   carefully as a prompt.
 - Every tool is exposed through one MCP server.
+- **One definition per tool, for every model:** a tool's JSON Schema and its role binding are
+  written once, in one registry, and every adapter imports them. No adapter, profile or prompt
+  defines a tool, and no prompt is written per model (the operator, 2026-10-14; the test is
+  named in docs/PHASE8_PLAN.md section 10.9).
 
 **Network knowledge is retrieved, never trained.**
 - No fine-tuning: NetBox, Git intent, Prometheus and Loki are read at question time.

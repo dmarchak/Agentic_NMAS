@@ -129,7 +129,7 @@ service (CLAUDE.md), so CI cannot call a model. Evals run two ways:
 
 | Sub-phase | Builds | Exit criteria (measured on the host) |
 |---|---|---|
-| **8.0 Foundations** (no user-facing AI; **E18, the records database, is its prerequisite**, decision 8) | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (provider-agnostic, Anthropic first, exact model versions pinned; a per-network switch, cost caps; a local model optional, later); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
+| **8.0 Foundations** (no user-facing AI; **E18, the records database, is its prerequisite**, decision 8) | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (provider-agnostic, Anthropic first, exact model versions pinned; a per-network switch, cost caps; the built-in local model behind the same gateway, section 10); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
 | **8.1 Assure** | the deterministic verifier model and compliance status first (history on E18); then, where cards justify it, natural-language questions → PromQL or LogQL read back by the E3/F3 builder before running, and alert correlation over deterministically grouped alerts | the verifiers' statuses on the host match the readers'; each AI feature past its observe threshold, or killed |
 | **8.2 Respond, observe** | the golden state rule's maintainer (IBN_DESIGN section 11): no baseline, no autonomy; convergence of the deviating lines only; the operational catalog; holds, windows and Capture-or-Revert for attributed drift; its state on Needs attention and each device page (a board first). All in observe mode ("would have converged"), on the deterministic policy engine (rotation's pattern). Plus AI root-cause proposals for novel deviations, approved by a person; incident record drafts; AI classification of deliberate vs unexplained drift, with evidence | each class's false-positive rate measured over its period; no convergence would have touched a secret line, the management path or routing; root-cause proposals' confirmed-true rate measured |
 | **8.3 Respond, enabled per class** | convergence and catalog classes enabled once observe mode meets the threshold; a verified action re-earns the baseline; AI selection only among actions that leave the golden state unchanged, if decision 9 is confirmed, after its own observe period | each enabled class within its rate and with no rail breached for its period |
@@ -186,7 +186,7 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | The gateway | AI off per network by default; a global monthly cap of $50 and $25 per network; per-feature monthly caps of $5 (features 1, 2, 3, 4, 8) and $10 (features 5, 6, 7, 9, 10) | lab scale; a cap reached refuses the next call, by name |
 | Per-use budgets | as section 6's table, enforced by the gateway (a use over its token budget stops and reports) | each card's measured minimum context times 1.5 will replace the table's estimate |
 | Agent loops | at most 8 tool calls by default, 60 s wall time and the feature's token budget per run; a feature may raise the 8 only where its eval shows the need (decided 2026-10-13) | a run that hits a cap stops and reports |
-| Model tiers | small by default (Claude Haiku 5.5); medium (Claude Sonnet 5.5) only where the eval shows the small tier misses its target; large (Claude Opus 5.5) never by default; **exact model versions pinned, and any model change re-runs the full eval suite** (decided 2026-10-13); Anthropic first behind the provider-agnostic client, a local model optional and later, its eval score shown beside the hosted one | the smallest that meets the target |
+| Model tiers | small by default (Claude Haiku 5.5); medium (Claude Sonnet 5.5) only where the eval shows the small tier misses its target; large (Claude Opus 5.5) never by default; **exact model versions pinned, and any model change re-runs the full eval suite** (decided 2026-10-13); Anthropic first behind the provider-agnostic client; the built-in local model (section 10) offered beside it, only where it passed the eval, its score shown beside the hosted one | the smallest that meets the target |
 | Evals | at least 30 golden cases per feature before observe mode; labelled replayed or synthesised cases allowed, with **at least 10 real cases per feature** (decided 2026-10-13); a prompt or model change merges only when the live score stays at or above target | measured, not argued |
 | Observe mode | at least 30 days AND the card's minimum uses (50 for frequent features, 20 for rare) | enough uses to measure a rate |
 | Kill | below the card's floor after its uses, or cost per accepted output above 2× budget, or (for features 4 and 7) one out-of-scope result reaching execution or confirm | removed, not left running |
@@ -194,6 +194,7 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | AI catalog selection (decision 9: yes, observe mode first) | at least 95% MEASURED agreement with a person over at least 100 observed selections before the tier is enabled; no self-reported confidence gate: confidence is logged for analysis only and never decides (decided 2026-10-13) | stricter than the deterministic classes |
 | Activate | a canary soaks 30 minutes with its verifiers holding before the fleet; one device at a time after it | rotation's pattern |
 | Context budgets | the measured minimum times 1.5 | headroom without waste |
+| The built-in model (PROPOSED, section 10) | a tier is admitted only if, with the model loaded at its profile's context, MemAvailable stays at or above 20% of the host's RAM (3.2 GiB on a 16 GiB host); the profile's context 8k tokens by default; CPU capped at all but one vCPU; one request at a time; unloaded after 10 minutes idle; cost per token zero, so the caps that bind are the latency budget and the one-at-a-time rule | the stack's measured swing over nine days was about 1.2 GiB (lowest 10.4 GiB available, highest daily mean 11.7 GiB), so a 20% reserve covers it about 2.6 times; the 8k context keeps the KV cache under 0.5 GiB on gpt-oss-20b (estimate, 10.8) |
 
 ## 8. Process
 
@@ -270,10 +271,18 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 5. **Decision 14 of IBN_DESIGN, prompt-injection defence:** its eight items. The release gate:
    any non-zero red-team result blocks a release.
 6. **Providers and a local model:** which hosted providers; whether a local model is required.
+   (Answered 2026-10-14: a built-in local model ships with Mercury; section 10.)
 7. **The ranking:** which of section 6's candidates proceed to boards and cards first
    (proposed: 1 and 2, in 8.1).
 8. **The CLAUDE.md block:** paste it (the operator's file), or change it.
 9. **The owner of each feature.**
+10. **The built-in model's origin** (section 10.2).
+11. **The multi-model design rule** (section 10.3).
+12. **The built-in local model's proposals (section 10):** the engine, model delivery, the
+    hardware tiers, reliability, isolation and the release gate, each marked PROPOSED there.
+13. **The licence of each candidate model** (a new third-party licence is the operator's):
+    gpt-oss-20b and Granite 4.0 are published under Apache-2.0; Gemma 4's terms are to be read
+    from Google's release before it is offered.
 
 ### Decided, 2026-10-13 (the operator)
 
@@ -288,6 +297,14 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | 7 | **The ranking: natural language → PromQL or LogQL first, then alert correlation; the rest as proposed** (section 6, reordered). |
 | 8 | Not yet decided: the CLAUDE.md block is the operator's to paste. |
 | 9 | Not yet decided: the owner of each feature. |
+
+### Decided, 2026-10-14 (the operator)
+
+| # | Decision |
+|---|---|
+| 6 (amended) | **A free local model ships with Mercury** ("Local (built-in)"), so AI works out of the box and offline, beside the paid providers; it replaces "a local model optional, later" (section 10). |
+| 10 | **Model origin: US-only, operator's decision.** The built-in model's candidates are gpt-oss-20b (OpenAI), Gemma 4 26B MoE and Gemma 4 E4B (Google), Granite 4.0-H-Tiny and Granite 4.0-H-Small (IBM). No other origin is offered, and there is no setting to add one (section 10.2). |
+| 11 | **The multi-model design rule:** one definition of every tool and one prompt structure for all models; an adapter per API shape (Anthropic Messages; OpenAI-compatible), never per model; per-model differences in a profile (data); no per-model prompt forks; no third-party multi-LLM abstraction library; a curated list of only the models that passed the eval (section 10.3). |
 
 **Noted 2026-10-14 (Lab 7):** the function-coverage report (`scripts/nmas-coverage`: per
 automation module, unit and all-tier function coverage with line and branch beside it, and the
@@ -306,3 +323,146 @@ interface state, ACLs, AAA or credentials, or s3 and the management path; Transl
 scope management-plane services; Batfish for routing-affecting changes, Mercury's IOS checks
 kept; Loki's severity label and a stable trap label as a host step; history on E18, which
 becomes an 8.0 prerequisite; voice deferred.
+
+## 10. The built-in local model (added 2026-10-14)
+
+**The operator's addition, 2026-10-14:** a free local model ships with Mercury, so AI works out of
+the box and offline, beside the paid providers. Every rule in sections 2 to 4 applies to it
+unchanged: the same features, cards, role-bound tools, masking, injection defences, red-team gate
+and records. The model never changes permissions. Offline parity (non-negotiable 3) still holds:
+with AI off, every workflow works. Each item below is marked **DECIDED** (the operator's, section
+9) or **PROPOSED** (pending the operator, section 9 decision 12).
+
+### 10.1 What the built-in model is for
+
+A model that runs on the NMAS host itself, with no account, no per-token cost and no egress after
+its file is in place. It is offered as "Local (built-in)" in the gateway's provider list, through
+the same OpenAI-compatible adapter as a hosted OpenAI-compatible provider (10.3).
+
+### 10.2 Model origin (DECIDED, the operator, 2026-10-14)
+
+- **Model origin: US-only, operator's decision.**
+- The candidates: gpt-oss-20b (OpenAI); Gemma 4 26B MoE and Gemma 4 E4B (Google); Granite
+  4.0-H-Tiny and Granite 4.0-H-Small (IBM).
+- No other origin is offered, and there is no setting to add one.
+- Each catalog entry carries an `origin` field; the wizard lists only entries whose `origin` is
+  `"US"` (test 1, 10.9).
+- *PROPOSED:* the pinned file comes from the model publisher's own release where one exists. A
+  quantisation made by someone else is a different artefact, and its entry names who made it.
+
+### 10.3 The multi-model design rule (DECIDED, the operator, 2026-10-14)
+
+- **One definition of every tool:** a JSON Schema with its role binding (`TOOLS_BY_ROLE`,
+  IBN_DESIGN section 12), in one registry. **One prompt structure for all models** (IBN_DESIGN
+  section 10: role, task, rules, output contract, tagged data blocks).
+- **An adapter per API shape, never per model:**
+  - Anthropic Messages;
+  - OpenAI-compatible: OpenAI, Gemini's OpenAI-compatible endpoint, and llama.cpp's
+    `llama-server` (the built-in model).
+- **Per-model differences live in a profile, which is data:** the adapter, the context budget,
+  strict-schema support, parallel tool calls, the maximum tools per request, reasoning settings,
+  cost, and origin.
+- **No per-model prompt forks.** A model that fails the eval with the shared prompt gets fewer
+  features, not its own prompt.
+- **No third-party multi-LLM abstraction library.** The two adapters are Mercury's own, and
+  auditable.
+- **The supported model list is curated:** only models that passed the eval (10.7) are offered.
+- Every adapter imports tools and prompts from the one registry (test 2, 10.9).
+
+### 10.4 The engine and model delivery (PROPOSED, pending the operator)
+
+- **Engine:** llama.cpp's `llama-server`, as its own service or container, bound to 127.0.0.1,
+  with no egress. Mercury reaches it through the OpenAI-compatible adapter as "Local (built-in)".
+- **Model delivery:** a model file is never in the repository or an image. The first-run wizard
+  either:
+  - downloads a pinned file and checks its sha256 (and the publisher's `model.sig` for Granite);
+    or
+  - imports a file the operator supplies, for an air-gapped install, with the same checks.
+
+  After that Mercury is fully offline. The download is the only network call, made by the
+  operator's action in the wizard.
+
+### 10.5 Hardware tiers, chosen by the wizard's hardware check (PROPOSED)
+
+The wizard measures free RAM (MemAvailable with the whole stack running), the CPU's features
+(AVX2, AVX-512, AMX) and its speed (a 30-second test of prompt and generation tokens per second),
+then offers one tier:
+
+| Tier | Candidates | Admitted when |
+|---|---|---|
+| Large | gpt-oss-20b (file about 13 GB), Gemma 4 26B MoE (about 16 GB), Granite 4.0-H-Small | the model's resident size, its KV cache at the profile's context and the server's own buffers fit, leaving the stack its reserve (section 7) |
+| Small | Gemma 4 E4B, Granite 4.0-H-Tiny | the same test, for the smaller file |
+| AI off | none | nothing fits; the wizard shows the measured numbers and the reason |
+
+If no small-tier candidate passes the eval, the small tier is "AI off" with the reason shown,
+never a weaker model.
+
+### 10.6 Reliability, isolation and the release gate (PROPOSED)
+
+- **Every tool call by JSON-schema constrained decoding** (`llama-server`'s grammar from the
+  tool's schema), so a call that parses is a call that fits the schema.
+- **Mercury preselects the tools for each request**, up to the profile's `max_tools`, from the
+  role's tools (never widening them).
+- **A context budget from the profile**, filled by 8.0's context selector (IBN_DESIGN section 8,
+  step 2; it does not exist yet: the removed AI family's context code is not carried forward).
+- **Isolation:** CPU and memory caps on the service; one request at a time (a second is refused
+  by name, naming the request that holds it); the model unloaded when idle. It must never starve
+  Loki, Prometheus or Mercury.
+- **The release gate, per model and version:** Mercury's own task evaluation (10.7) plus the
+  red-team set (IBN_DESIGN section 13, any non-zero result blocks). A feature card turns on for a
+  model only where that model passed that feature's cases, including the card's latency budget.
+  The eval result picks the local default.
+
+### 10.7 The evaluation (PROPOSED)
+
+Task cases are built from Mercury's real tools and data:
+1. parse show output;
+2. explain a drift;
+3. choose the right tool;
+4. refuse an out-of-role change;
+5. translate an intent into a catalog entry;
+6. decline to call a tool when none applies.
+
+They run against every candidate on the NMAS host's real hardware, through `llama-server`, at Q4,
+and against each paid model offered. Results are stored per model and version, so a vendor's
+model update re-runs them (section 7: any model change re-runs the full suite). In CI they run on
+recorded responses, as every eval does (section 4).
+
+### 10.8 The lab's NMAS host, measured 2026-10-14 (read-only)
+
+- **The host:** 4 vCPUs (a Haswell-generation Xeon: AVX2, FMA and F16C; no AVX-512, no
+  AVX-VNNI, no AMX); 15.6 GiB RAM; 3.8 GiB swap, unused.
+- **Free RAM with the whole stack running:** MemAvailable 11.3 GiB at 19:58 and 20:00 UTC. Over
+  nine days of 10-minute samples (sysstat, 6 to 14 October): lowest 10.4 GiB, daily means 10.9
+  to 11.7 GiB. CPU 15 to 19% busy on average, with no busy hour in the 10-minute averages.
+- **Today it fits the small tier only** (estimated: a small model's file, about 4 to 5 GB, plus
+  about 1 GiB of server and KV cache, inside about 7 GiB of usable headroom). The large tier needs
+  the VM at 32 GiB.
+- **Speed is unmeasured.** An order-of-magnitude estimate for 4 Haswell cores puts a 3,000-token
+  prompt at minutes on the large tier, and tens of seconds on the small one. That misses section
+  6's latency budgets (3 to 5 s) by a wide margin; the wizard's speed test settles it.
+- **The hypervisor** (the same CPU generation, so no AMX anywhere in the lab) has 125.8 GiB of
+  RAM. Its peak use over the week was 71.4 GiB. But the running guests' configured memory is
+  98.5 GiB, plus an 8 GiB ZFS cache. Adding 16 GiB to the NMAS VM would bring that to 122.5 GiB,
+  which is safe only while the stopped guests stay stopped, or with the lab VM's 80 GiB
+  allocation lowered (it peaked at 41 GiB). That is the operator's capacity decision.
+- **A single-node twin and the model share the same RAM** on a one-host install. A C8000v twin
+  (about 4 GiB, IBN_DESIGN section 9) and a large-tier model do not both fit in 16 GiB. With a
+  small-tier model loaded (about 5 to 6 GiB), a C8000v twin no longer fits beside it either
+  (about 7 GiB usable). A vIOS twin (about 0.4 GiB) does. Until the RAM grows, the two take
+  turns: the model is unloaded while a twin runs.
+
+### 10.9 The build's required tests (named now; written with the code)
+
+Neither the model catalog nor the tool registry exists yet, so neither test can be written yet.
+Each is a required test of the 8.0 build, and must be shown able to fail:
+
+1. **`tests/test_model_catalog_origin.py`:** every entry in the wizard's model catalog has
+   `origin == "US"`, and the wizard lists only those. Planted case: a catalog entry with another
+   origin fails the test. A population floor: the catalog has at least the five candidates in
+   10.2.
+2. **`tests/test_one_tool_registry.py`:** no tool or prompt is defined per model. Every adapter
+   imports its tool definitions and prompts from the one registry. Checked by parsing the
+   adapters and profiles: no tool schema, tool name list or prompt text defined in an adapter
+   module or a profile, and no profile key naming a prompt. A profile holds only the fields in
+   10.3. Planted case: a tool schema defined inside an adapter fails it.
