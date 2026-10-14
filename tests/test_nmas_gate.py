@@ -157,13 +157,14 @@ def _ci_suite_args():
     return cmd.split()[1:], dict(re.findall(r"(\w+): \"?([\w.]+)\"?", env.split("env:")[1]))
 
 
-#: What CI passes and the gate deliberately does not (Lab 7, 2026-10-14, the operator's split):
-#: the per-test measurement the coverage job reads. Measured on shard a alone: 125 s without,
-#: 195 s with; the gate keeps its time, and the tests it runs are the same tests.
-CI_ONLY_ARGS = ("--cov-context=test", "--cov-branch")
-#: NMAS_TEST_TIMEOUT too: CI's bound is 2.5x ITS measured step with the per-test measurement
-#: (587 s in run #752, so 1470 s); the gate's stays 740 s, derived for its run without it.
-CI_ONLY_ENV = ("COVERAGE_FILE", "NMAS_TEST_TIERS", "NMAS_TEST_TIMEOUT")
+#: What CI passes and the gate deliberately does not. Since C773 (2026-10-14) a push measures by
+#: tier with sys.monitoring and no per-test argument (the per-test measurement is the nightly
+#: coverage run's), so nothing: the gate runs CI's command argument for argument.
+CI_ONLY_ARGS = ()
+#: The coverage job's inputs (its data file, the tier records, the tier-labelled run phases:
+#: NMAS_COVERAGE_TIERS) and CI's own bound (2.5x ITS measured step, 1470 s); the gate reports no
+#: coverage, and its bound stays 740 s, derived for its own run.
+CI_ONLY_ENV = ("COVERAGE_FILE", "NMAS_TEST_TIERS", "NMAS_COVERAGE_TIERS", "NMAS_TEST_TIMEOUT")
 
 
 def test_the_default_suite_is_cis_command():

@@ -175,6 +175,23 @@ def load_tiers(folder: str) -> dict:
     return tiers
 
 
+#: The two contexts a push measures in place of one per test (tests/coverage_tiers.py, C773):
+#: every unit test's run phase, and every other test's.
+TIER_LABELS = {"unit": "unit", "other": "other"}
+
+
+def _tier_of(test: str, tiers: dict) -> str:
+    """A context's tier: its label on a push's tier-labelled data, else the test's record."""
+    return TIER_LABELS.get(test) or tiers.get(test, "unit")
+
+
+def data_kind(contexts) -> str:
+    """"by tier" when the data holds the push's tier labels (each run phase as `unit|run` or
+    `other|run`, lines only), else "per test" (a context per test, with branches: the
+    nightly's)."""
+    return "by tier" if set(contexts) & {"unit|run", "other|run"} else "per test"
+
+
 def _test_of(context: str) -> str:
     """The test a coverage context names (pytest-cov: `<node id>|run`), or "" for code that ran
     outside any test's run phase (a fixture's setup, a child process)."""
@@ -203,12 +220,12 @@ def module_report(path: str, source: str, by_line: dict, tiers: dict, statements
                 if t:
                     tests.add(t)
         child = any(ctx == "" for line in d.body_lines for ctx in by_line.get(line, ()))
-        unit = sorted(t for t in tests if tiers.get(t, "unit") == "unit")
+        unit = sorted(t for t in tests if _tier_of(t, tiers) == "unit")
         functions.append({"name": d.qualname, "line": d.lineno, "unit_tests": unit,
                           "other_tests": sorted(t for t in tests if t not in unit),
                           "covered_unit": bool(unit), "covered_any": bool(tests) or child})
     unit_lines = {line for line, ctxs in by_line.items()
-                  if any(_test_of(c) and tiers.get(_test_of(c), "unit") == "unit" for c in ctxs)}
+                  if any(_test_of(c) and _tier_of(_test_of(c), tiers) == "unit" for c in ctxs)}
     total = len(functions)
     cu = sum(f["covered_unit"] for f in functions)
     ca = sum(f["covered_any"] for f in functions)
@@ -260,7 +277,18 @@ def measure(data_file: str, tiers_dir: str, root: str = ROOT, files=None, scope=
     tests = sorted(p for p in (scope_tests(root)))
     return {"modules": modules, "unclassified": placed["unclassified"],
             "stale_exceptions": placed["stale"], "tiers": _tier_counts(tiers),
-            "assertion_free": assertion_free(tests, root)}
+            "assertion_free": assertion_free(tests, root),
+            "data": data_kind(data.measured_contexts())}
+
+
+def data_line(report: dict, drilldown: str = "") -> str:
+    """Which measurement a report stands on, and where the per-test drill-down is (C773: a push
+    measures by tier, the nightly per test)."""
+    if report.get("data") == "by tier":
+        return ("Data: each test's run phase by tier (sys.monitoring, lines only), this push. "
+                "The tests reaching each function, and branch coverage: the nightly coverage run"
+                + (f" ({drilldown})." if drilldown else " (none found)."))
+    return "Data: a context per test, with branches (the nightly coverage run's measurement)."
 
 
 def scope_tests(root: str = ROOT) -> list:
@@ -331,7 +359,7 @@ def _pct(v) -> str:
     return "—" if v is None else f"{v:.1f}%"
 
 
-def table(report: dict) -> str:
+def table(report: dict, drilldown: str = "") -> str:
     """The terminal table: the top line, the modules with no unit test, then every automation
     module, lowest first."""
     t = totals(report)
@@ -339,6 +367,7 @@ def table(report: dict) -> str:
            f"{t['covered_unit']} ({_pct(t['function_pct_unit'])}); every offline tier "
            f"{t['covered_any']} ({_pct(t['function_pct_any'])}).",
            f"Tests by tier: " + ", ".join(f"{k} {v}" for k, v in report["tiers"].items()),
+           data_line(report, drilldown),
            f"Modules with no unit test: {len(t['untested_modules'])}"]
     out += [f"  {p}" for p in t["untested_modules"]]
     out.append("")
@@ -359,13 +388,14 @@ def table(report: dict) -> str:
     return "\n".join(out)
 
 
-def summary_markdown(report: dict, failures: list) -> str:
+def summary_markdown(report: dict, failures: list, drilldown: str = "") -> str:
     """The Actions job summary (GITHUB_STEP_SUMMARY)."""
     t = totals(report)
     lines = ["## Function coverage of the automation code",
              f"**{t['covered_unit']} of {t['functions']} functions ({_pct(t['function_pct_unit'])})**"
              f" are reached by a unit test; {t['covered_any']} ({_pct(t['function_pct_any'])}) by "
-             f"any offline tier, across {t['modules']} modules.", ""]
+             f"any offline tier, across {t['modules']} modules.", "",
+             data_line(report, drilldown), ""]
     if failures:
         lines += ["### The ratchet failed", ""] + [f"- {f}" for f in failures] + [""]
     else:
@@ -386,12 +416,21 @@ def summary_markdown(report: dict, failures: list) -> str:
     return "\n".join(lines) + "\n"
 
 
-def html_report(report: dict, failures: list) -> str:
+def html_report(report: dict, failures: list, drilldown: str = "") -> str:
     """One static page: the top line, the ratchet, every module, and per module each function
     with the tests that reach it."""
     e = html.escape
     t = totals(report)
+    by_tier = report.get("data") == "by tier"
     rows = []
+
+    def reached_by(f):
+        # A push measures by tier: its tests' names are the nightly's (C773).
+        if by_tier:
+            return "by tier on this push; the tests by name: the nightly coverage run"
+        names = f["unit_tests"]
+        return e(", ".join(names[:5])) + (" …" if len(names) > 5 else "")
+
     for m in sorted(report["modules"].values(), key=lambda m: (
             {"automation": 0, "support": 1, "retiring": 2}.get(m["category"], 3),
             m["function_pct_unit"] if m["function_pct_unit"] is not None else 101, m["path"])):
@@ -399,7 +438,7 @@ def html_report(report: dict, failures: list) -> str:
             f"<tr class='{'ok' if f['covered_unit'] else ('other' if f['covered_any'] else 'no')}'>"
             f"<td>{e(f['name'])}</td><td>{f['line']}</td>"
             f"<td>{'unit' if f['covered_unit'] else ('other tier only' if f['covered_any'] else 'not reached')}</td>"
-            f"<td>{e(', '.join(f['unit_tests'][:5]))}{' …' if len(f['unit_tests']) > 5 else ''}</td></tr>"
+            f"<td>{reached_by(f)}</td></tr>"
             for f in m["function_list"])
         excl = "".join(f"<li>{e(x['name'])} (line {x['line']}): {e(x['why'])}</li>"
                        for x in m["excluded"])
@@ -425,6 +464,7 @@ tr.no td:nth-child(3){{color:#b00}} tr.other td:nth-child(3){{color:#a60}}
 <p><b>{t['covered_unit']} of {t['functions']} functions ({_pct(t['function_pct_unit'])})</b> are
 reached by a unit test; {t['covered_any']} ({_pct(t['function_pct_any'])}) by any offline tier, across
 {t['modules']} automation modules. Tests by tier: {e(', '.join(f'{k} {v}' for k, v in report['tiers'].items()))}.</p>
+<p>{e(data_line(report, drilldown))}</p>
 <h2>The ratchet</h2><ul>{fails}</ul>
 <h2>Modules with no unit test ({len(t['untested_modules'])})</h2>
 <ul>{''.join(f'<li><code>{e(p)}</code></li>' for p in t['untested_modules']) or '<li>none</li>'}</ul>

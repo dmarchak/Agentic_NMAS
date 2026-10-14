@@ -599,6 +599,7 @@ NOT_THE_NIGHTS_ENV = {
     "COVERAGE_CORE": "coverage's tracer; the night measures no coverage",
     "COVERAGE_FILE": "coverage's data file",
     "NMAS_TEST_TIERS": "set by nmas-mutation run itself, for its first mutmut run",
+    "NMAS_COVERAGE_TIERS": "a push's coverage measured by tier (C773); the night measures none",
     "NMAS_TEST_TIMEOUT": "nmas-test's bound; the night is bounded by its budget",
 }
 

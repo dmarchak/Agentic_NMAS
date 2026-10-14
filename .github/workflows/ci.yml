@@ -145,25 +145,28 @@ jobs:
       # on the suite (measured 2026-09-27, 747 tests: 10.7 s bare, 15.6 s
       # CTracer, 10.1 s SysMonitor, identical coverage figures). The tests
       # step is ~95% of a run. Line coverage only, which is what is reported.
-      # Lab 7 (2026-10-14): each shard measures per test (--cov-context=test) with branches, into
-      # its OWN data file (the four once raced for one .coverage), and records each test's tier
-      # (tests/conftest.py, NMAS_TEST_TIERS); the coverage job below combines the four. Measured
-      # on shard a alone: 125 s without contexts, 195 s with, so this runs here and not in the
-      # local gate (docs/TESTING.md, "Where it runs").
+      # Lab 7 (2026-10-14): each shard measures into its OWN data file (the four once raced for
+      # one .coverage) and records each test's tier (tests/conftest.py, NMAS_TEST_TIERS); the
+      # coverage job below combines the four. C773 (2026-10-14): each test's RUN PHASE is
+      # measured BY TIER (tests/coverage_tiers.py, NMAS_COVERAGE_TIERS), lines only, so
+      # sys.monitoring runs: a context per test, or branches, forces the C tracer, which took the
+      # tests step from about 5 to about 10 minutes a shard (measured on these runners: the
+      # tracer alone was the cost). Measured on one tree both ways: 0 of 4,263 functions differ;
+      # the tests reaching each function, and branches, are the nightly coverage run's.
       - name: A folder for each test's tier
         run: mkdir -p "tiers-${{ matrix.shard }}"
 
-      - name: Tests (R1, R4), confined to loopback, measured per test
+      - name: Tests (R1, R4), confined to loopback, measured by tier
         env:
           COVERAGE_CORE: sysmon
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
           NMAS_TEST_TIERS: ${{ github.workspace }}/tiers-${{ matrix.shard }}
+          NMAS_COVERAGE_TIERS: "1"
           NMAS_TEST_TIMEOUT: "1470"
           NMAS_REQUIRE_PG: "1"
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto
           --cov=modules --cov=routes --cov=app --cov-report=
-          --cov-context=test --cov-branch
           $(python scripts/nmas-shards ${{ matrix.shard }})
 
       # Kept when a test failed too: the coverage job reports on a red run as well.
@@ -173,7 +176,7 @@ jobs:
         with:
           name: coverage-${{ matrix.shard }}
           path: |
-            .coverage.${{ matrix.shard }}
+            .coverage.${{ matrix.shard }}*
             tiers-${{ matrix.shard }}/
           include-hidden-files: true
           retention-days: 7
@@ -216,7 +219,7 @@ jobs:
   # report in the job summary, the HTML report as an artifact, and the ratchet against
   # tests/coverage_baseline.json as the job's verdict.
   coverage:
-    name: coverage (function, line and branch; the ratchet)
+    name: coverage (function and line, by tier; the ratchet)
     needs: test
     # On a red run too (a failing test is no reason to hide the report or the ratchet's
     # verdict); not when the run was cancelled, when there is nothing to combine.
@@ -261,11 +264,28 @@ jobs:
           printf '**Line coverage, every test, the four shards combined: %s%%** (modules/, routes/, app.py)\n\n' \
             "$total" >> "$GITHUB_STEP_SUMMARY"
 
+      # C773: the per-test drill-down and branch figures are the nightly coverage run's; the
+      # report names its newest successful one and when it ran. Asked of the PUBLIC API (the
+      # repository is public), so this token stays contents: read; "" when it cannot be asked.
+      - name: Where the per-test drill-down is
+        id: drilldown
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          line=$(curl -sf --max-time 20 \
+            "https://api.github.com/repos/$REPO/actions/workflows/coverage-nightly.yml/runs?status=success&per_page=1" \
+            | python -c "import json,sys; r=(json.load(sys.stdin).get('workflow_runs') or [{}])[0]; print(f\"{r['created_at']}, {r['html_url']}\" if r else '')" \
+            2>/dev/null || true)
+          echo "drilldown: ${line:-none found}"
+          echo "line=${line}" >> "$GITHUB_OUTPUT"
+
       - name: The report and the ratchet
+        env:
+          DRILLDOWN: ${{ steps.drilldown.outputs.line }}
         run: >
           python scripts/nmas-coverage report --data .coverage --tiers tiers
           --json coverage.json --html coverage.html
-          --summary "$GITHUB_STEP_SUMMARY" --check
+          --summary "$GITHUB_STEP_SUMMARY" --check --drilldown "$DRILLDOWN"
 
       - name: Keep the report
         if: always()

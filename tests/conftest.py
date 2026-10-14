@@ -192,6 +192,11 @@ def pytest_configure(config):
     # This session's own id (C395), decided from the config, before xdist starts the workers
     # that inherit it: a pytest a test starts is a session of its own, never a worker.
     home_guard.start_run(is_worker=hasattr(config, "workerinput"))
+    # C773: CI's tests step measures each test's run phase by tier (tests/coverage_tiers.py).
+    if os.environ.get("NMAS_COVERAGE_TIERS") == "1":
+        from tests import coverage_tiers
+        if not config.pluginmanager.is_registered(coverage_tiers):
+            config.pluginmanager.register(coverage_tiers, "nmas_coverage_tiers")
 
 
 def pytest_report_header(config):

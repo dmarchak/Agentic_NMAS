@@ -1,0 +1,167 @@
+# The per-test coverage measurement, nightly (C773, the operator, 2026-10-14).
+#
+# A push measures each test's run phase BY TIER (ci.yml, tests/coverage_tiers.py), lines only,
+# so sys.monitoring runs and a push takes about half the time. What that cannot say is measured
+# here, once a night, on main: the tests that reach each function (a context per test,
+# `--cov-context=test`) and branch coverage (`--cov-branch`), both of which need coverage's C
+# tracer. Its report (coverage.html, coverage.json) is this run's `coverage-drilldown`
+# artifact; a push's report names the newest successful run of this workflow and its date.
+# Never on a push. The same four shards and setup as ci.yml's test job, step for step
+# (tests/test_ci_workflow.py holds them to it).
+name: coverage-nightly
+
+on:
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-nightly
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: test (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [browser1, browser2, a, b]
+    runs-on: ubuntu-24.04
+    # ci.yml's bound for the per-test measurement: run #752's tests step took 587 s, the step's
+    # bound 2.5x that (NMAS_TEST_TIMEOUT 1470 s), the job's that plus the setup, rounded up.
+    timeout-minutes: 26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.3"   # the host's interpreter
+          cache: pip
+          cache-dependency-path: |
+            requirements.lock
+            requirements-ci.txt
+            requirements-test.txt
+
+      - name: Install the host's versions, exactly
+        run: |
+          python -m pip install --require-hashes --no-deps -r requirements.lock
+          python -m pip install --no-deps -r requirements-ci.txt
+          python -m pip install --no-deps -r requirements-test.txt
+
+      - name: The runner's environment (information, not a gate)
+        run: python scripts/nmas-env-facts --annotate || true
+
+      - name: Where PyPI's metadata disagrees with the host (information, not a gate)
+        run: python -m pip check || true
+
+      - name: promtool for the PromQL tests (unpacked, not installed)
+        run: |
+          d=$(mktemp -d) && cd "$d"
+          sudo apt-get update -qq
+          apt-get download promtool 2>/dev/null || apt-get download prometheus
+          mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
+          dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
+          "$HOME/.local/share/nmas-promtool/usr/bin/promtool" --version
+
+      - name: PostgreSQL 18 for the records tests, from PGDG (libpq5 installed; the server unpacked)
+        run: |
+          sudo apt-get install -y -qq --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq --no-install-recommends libpq5
+          deps=$(apt-cache depends postgresql-18 | sed -n 's/^ *Depends: \(lib[^ <>]*\)$/\1/p' | sort -u)
+          sudo apt-get install -y -qq --no-install-recommends $deps
+          d=$(mktemp -d) && cd "$d" && apt-get download postgresql-18
+          mkdir -p "$HOME/.local/share/nmas-pg"
+          dpkg -x ./*.deb "$HOME/.local/share/nmas-pg"
+          bin=$(ls -d "$HOME"/.local/share/nmas-pg/usr/lib/postgresql/18/bin)
+          if ldd "$bin/postgres" "$bin/initdb" | grep "not found"; then
+            echo "::error::the unpacked PostgreSQL lacks a library (above)"; exit 1
+          fi
+          "$bin/postgres" --version | tee /dev/stderr | grep -q " 18\." \
+            || { echo "::error::the unpacked server is not PostgreSQL 18"; exit 1; }
+          python -c "import psycopg; print('psycopg', psycopg.__version__, 'libpq', psycopg.pq.version())"
+
+      - name: Allow a network namespace for the suite (this VM only)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: A folder for each test's tier
+        run: mkdir -p "tiers-${{ matrix.shard }}"
+
+      # A context per test, with branches: the C tracer, the measurement a push no longer takes.
+      - name: Tests (R1, R4), confined to loopback, measured per test
+        env:
+          COVERAGE_CORE: ctrace
+          COVERAGE_FILE: .coverage.${{ matrix.shard }}
+          NMAS_TEST_TIERS: ${{ github.workspace }}/tiers-${{ matrix.shard }}
+          NMAS_TEST_TIMEOUT: "1470"
+          NMAS_REQUIRE_PG: "1"
+        run: >
+          scripts/nmas-test -q -p no:cacheprovider -n auto
+          --cov=modules --cov=routes --cov=app --cov-report=
+          --cov-context=test --cov-branch
+          $(python scripts/nmas-shards ${{ matrix.shard }})
+
+      - name: Keep this shard's measurement
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: drilldown-${{ matrix.shard }}
+          path: |
+            .coverage.${{ matrix.shard }}*
+            tiers-${{ matrix.shard }}/
+          include-hidden-files: true
+          retention-days: 3
+
+  report:
+    name: the drill-down (each function's tests; branches)
+    needs: test
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.3"
+
+      - name: Install coverage, as the tests' jobs do
+        run: python -m pip install --no-deps -r requirements-ci.txt
+
+      - name: The four shards' measurements
+        uses: actions/download-artifact@v4
+        with:
+          pattern: drilldown-*
+          path: measured
+          merge-multiple: true
+
+      - name: Combine them
+        run: |
+          python -m coverage combine --keep --data-file=.coverage measured/.coverage.*
+          mkdir -p tiers
+          for d in measured/tiers-*/; do
+            for f in "$d"*.jsonl; do cp "$f" "tiers/$(basename "$d")-$(basename "$f")"; done
+          done
+          echo "tier records: $(cat tiers/*.jsonl | wc -l)"
+
+      - name: The report, per test, with branches
+        run: >
+          python scripts/nmas-coverage report --data .coverage --tiers tiers
+          --json coverage.json --html coverage.html --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the drill-down
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-drilldown
+          path: |
+            coverage.html
+            coverage.json
+          retention-days: 30

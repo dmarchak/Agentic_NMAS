@@ -20,7 +20,10 @@ scripts/nmas-test                       # the suite, offline and confined (args 
 scripts/nmas-test tests/test_roundtrip.py -k fixed_point     # one file, one test
 scripts/nmas-coverage scope             # every module's category; fails on an unplaced one
 scripts/nmas-coverage asserts           # the tests that assert nothing; fails on a new one
-# The coverage run (what CI's four jobs do, each its shard), then the report:
+# The coverage run as a push takes it (each test's run phase by tier, sys.monitoring, lines):
+NMAS_COVERAGE_TIERS=1 COVERAGE_CORE=sysmon NMAS_TEST_TIERS=<folder> COVERAGE_FILE=<file> \
+    scripts/nmas-test -n 4 --cov=modules --cov=routes --cov=app --cov-report=
+# ... or as the nightly takes it: per test, with branches (the tests reaching each function):
 NMAS_TEST_TIERS=<folder> COVERAGE_FILE=<file> scripts/nmas-test -n 4 \
     --cov=modules --cov=routes --cov=app --cov-report= --cov-context=test --cov-branch
 scripts/nmas-coverage report --data <combined file> --tiers <folder> --html coverage.html
@@ -120,12 +123,26 @@ measurement and committed: never by the job itself.
   contexts: measured on shard a alone, 125 s without them and 195 s with (and 81 MB of data per
   shard). The tool's fast checks run in it as ordinary tests: the scope complete, no new
   assertion-free test (tests/test_nmas_coverage.py).
-- **CI** (.github/workflows/ci.yml): each of the four `test` jobs measures per test into its own
-  data file and records its tiers; the **`coverage` job** combines the four, states the line
-  coverage of every test over the four COMBINED (`coverage report --format=total` on the
-  combined file, over `modules/`, `routes/` and `app.py`; never one shard's), writes the report
-  to the run's job summary, uploads `coverage-report` (the HTML and JSON) as an artifact, and
-  fails on the ratchet.
+- **CI, every push** (.github/workflows/ci.yml): each of the four `test` jobs measures each
+  test's RUN PHASE BY TIER (tests/coverage_tiers.py, `NMAS_COVERAGE_TIERS=1`: the contexts
+  `unit|run` and `other|run`) with sys.monitoring, lines only, into its own data file, and
+  records its tiers; the **`coverage` job** combines the four, states the line coverage of every
+  test over the four COMBINED (`coverage report --format=total` on the combined file, over
+  `modules/`, `routes/` and `app.py`; never one shard's), writes the report to the run's job
+  summary, uploads `coverage-report` (the HTML and JSON) as an artifact, and fails on the
+  ratchet. Its report says which data it used and names the newest nightly drill-down and its
+  date (`--drilldown`, read from the public API).
+- **The tests reaching each function, and branch coverage: nightly**
+  (.github/workflows/coverage-nightly.yml, 03:47 UTC and by hand). The same four shards and
+  setup as CI's (`TestAPushMeasuresByTierAndTheNightPerTest` holds them to it), measured per
+  test with branches, its report the `coverage-drilldown` artifact. Why the split (C773,
+  2026-10-14): a context per test, or branches, forces coverage's C tracer, which took a push's
+  tests step from about 5 to about 10 minutes a shard (measured on CI's runners: the C tracer
+  with lines only cost as much as with both; sys.monitoring cost about what no coverage did).
+  Measured on the same tree, the whole suite as CI's four shards both ways: 0 of 4,263
+  functions differ, unit or every tier (370 s per test with branches, 221 s by tier, on the
+  laptop). A function a unit test reaches only through another test's leftovers moves with
+  xdist's order under either scheme (C782; one support function, outside the ratchet).
 
 ### Mutation testing: are the tests any good?
 
@@ -879,6 +896,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_run_results.py` | 7.1: Verify and Abandon recorded in `onboarding_runs.jsonl` (0600, masked on the way in, absent vs unreadable), each result drawn FROM the recorded row as the verified person; a record that could not be written is part of the result (planted as a directory: `open_secure` creates missing parents, so a missing one would be written); a dry-run abandon records nothing; the pending banner reads back each row's last run and, for a run that took its device off the list, "finished recently"; an unreadable record is drawn as that |
 | `test_session_end_guard.py` | (2026-10-01, CI run #241) A non-daemon thread alive at the session's end is named with its target, a daemon one is not, and one finishing within the grace is not; the live server the browser tests use stops bounded with its socket.io sessions closed, against a real long-poll session (engineio's own `disconnect()` blocks for ever waiting for a client to drain, measured building it) |
 | `test_suite_bound.py` | (C343, 2026-10-02: a probe skips conftest's whole-program import, `NMAS_PROBE_RUN`, so its start does not grow with the program; a probe asserting the app was not imported, its control the opt-out removed.) the suite's bound (NMAS_TEST_TIMEOUT, 300 s, from the measured serial time) through the REAL runner over a test that hangs: rc 124, the hanging test and its line named, a finished test not named; a run that finishes is never reported as a timeout |
+| `test_coverage_tiers.py` | C773 (2026-10-14): a push's by-tier measurement (tests/coverage_tiers.py) through a nested pytest run with sys.monitoring over a planted module: a unit test's run phase is `unit|run`, what only a fixture reached is no test's, a test that starts a process is `other|run`; the tool reads such data as "by tier", a label as its own tier, says which data it used and names the nightly drill-down (or "none found"), and a push's page says the tests by name are the nightly's. Controls: the plugin not registered, setup's lines not cleared, every test unit, the labels unknown to the tool. The workflows' split is `TestAPushMeasuresByTierAndTheNightPerTest` in test_ci_workflow.py |
 | `test_store_outlives_sessions.py` | C780 (2026-10-14): two pytest sessions in one nested process (as mutmut's statistics and clean runs are) both find the process's store with the key it holds and the spawn guard's folder with its shims, the same ones; when the process exits both are gone; a killed process's store and spawn folder (`.owner` naming a pid above `kernel.pid_max`) are removed at a run's start and a live one's, an unowned one and another folder are left; this process's own carry its pid. Controls: the session's end removing the store again (the two-session test fails), nothing removed at exit (it fails), the pruning finding nothing |
 | `test_tmp_roots.py` | C776 (2026-10-14): a killed run's pytest root (its lock's owner gone) is removed when the next run starts, through the real conftest in a nested run; a root whose owner lives (another shard), one with no lock or an unreadable one, this run's own, and a folder not named `pytest-<n>` are left; a dead owner planted as a pid above `kernel.pid_max`. Controls: the owner never gone (all three fail), the conftest's call removed (the nested run's test fails) |
 | `test_nmas_test_interpreter.py` | (the operator, 2026-10-14: an ordinary terminal ran the suite on 3.14) `scripts/nmas-test`'s interpreter, through the REAL script with stand-in interpreters reporting a chosen version: with no `PYTHON`, CI's environment is chosen and named; without it, a `python3` of another version is refused naming both versions, `scripts/nmas-ci-env` and `PYTHON=`, and pytest never starts; a `python3` of CI's version runs; a `PYTHON` given is honoured and said to be not CI's. CI's version is read from `ci.yml` as YAML, independent of the script's `sed`. Controls: the refusal removed (the refusal test fails); the CI-environment default removed (the default test fails) |

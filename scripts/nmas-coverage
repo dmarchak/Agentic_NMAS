@@ -40,6 +40,9 @@ def main(argv=None) -> int:
             p.add_argument("--html")
             p.add_argument("--summary")
             p.add_argument("--check", action="store_true")
+            p.add_argument("--drilldown", default="", help="where the per-test drill-down is "
+                           "(the nightly coverage run: its date and page), said beside a push's "
+                           "figures")
     args = ap.parse_args(argv)
 
     if args.cmd == "scope":
@@ -73,16 +76,16 @@ def main(argv=None) -> int:
     failures = C.ratchet(report, _baseline()) + [
         f"{p}: no rule or exception places it" for p in report["unclassified"]] + [
         f"{p}: an exception for a file that is not there" for p in report["stale_exceptions"]]
-    print(C.table(report))
+    print(C.table(report, getattr(args, "drilldown", "")))
     if args.json:
         with open(args.json, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=1)
     if args.html:
         with open(args.html, "w", encoding="utf-8") as fh:
-            fh.write(C.html_report(report, failures))
+            fh.write(C.html_report(report, failures, args.drilldown))
     if args.summary:
         with open(args.summary, "a", encoding="utf-8") as fh:
-            fh.write(C.summary_markdown(report, failures))
+            fh.write(C.summary_markdown(report, failures, args.drilldown))
     if failures:
         print("\nTHE RATCHET:\n" + "\n".join(f"  {f}" for f in failures))
     return 1 if (args.check and failures) else 0

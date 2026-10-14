@@ -28,10 +28,15 @@ def _load(path):
         return yaml.safe_load(fh), fh.name
 
 
+def _on(doc) -> list:
+    """A workflow's triggers (YAML 1.1 reads `on` as True)."""
+    triggers = doc.get(True) or doc.get("on") or {}
+    return list(triggers) if isinstance(triggers, (dict, list)) else [triggers]
+
+
 def _on_push(path) -> bool:
     doc, _ = _load(path)
-    triggers = doc.get(True) or doc.get("on") or {}      # YAML 1.1 reads `on` as True
-    return "push" in (triggers if isinstance(triggers, (dict, list)) else [triggers])
+    return "push" in _on(doc)
 
 
 #: The per-push suite: every workflow a push triggers (by that property, not by name). The
@@ -178,3 +183,62 @@ def test_the_coverage_job_reports_line_coverage_over_the_four_shards_combined():
     assert "--include='modules/*,routes/*,app.py'" in run and "GITHUB_STEP_SUMMARY" in run
     assert "coverage combine --keep --data-file=.coverage measured/.coverage.*" in \
         steps[combine]["run"]
+
+
+def _tests_step(doc):
+    return next(s for s in doc["jobs"]["test"]["steps"]
+                if str(s.get("name", "")).startswith("Tests"))
+
+
+class TestAPushMeasuresByTierAndTheNightPerTest:
+    """C773 (2026-10-14): a push's tests step ran twice as long once it measured per test with
+    branches, which forces coverage's C tracer. A push now measures each test's run phase by tier
+    (tests/coverage_tiers.py) with sys.monitoring, lines only; the per-test drill-down and branch
+    figures are the nightly coverage run's, on the same shards and setup."""
+
+    def _docs(self):
+        wf = os.path.join(ROOT, ".github", "workflows")
+        return (_load(os.path.join(wf, "ci.yml"))[0],
+                _load(os.path.join(wf, "coverage-nightly.yml"))[0])
+
+    def test_a_push_measures_by_tier_with_sys_monitoring_and_no_per_test_argument(self):
+        ci, _night = self._docs()
+        step = _tests_step(ci)
+        assert step["env"]["COVERAGE_CORE"] == "sysmon"
+        assert step["env"]["NMAS_COVERAGE_TIERS"] == "1"
+        assert "--cov-context" not in step["run"] and "--cov-branch" not in step["run"], \
+            "either forces the C tracer"
+        keep = next(s for s in ci["jobs"]["test"]["steps"]
+                    if str(s.get("name", "")).startswith("Keep this shard"))
+        assert ".coverage.${{ matrix.shard }}*" in keep["with"]["path"], \
+            "the tier-labelled data files travel with the shard's"
+
+    def test_the_night_measures_per_test_with_branches_and_never_on_a_push(self):
+        _ci, night = self._docs()
+        assert set(_on(night)) == {"schedule", "workflow_dispatch"}
+        step = _tests_step(night)
+        assert "--cov-context=test" in step["run"] and "--cov-branch" in step["run"]
+        assert "NMAS_COVERAGE_TIERS" not in step["env"]
+        keep = night["jobs"]["report"]["steps"][-1]
+        assert keep["with"]["name"] == "coverage-drilldown"
+
+    def test_the_nights_tests_stand_on_cis_setup_step_for_step(self):
+        ci, night = self._docs()
+        ci_steps, n_steps = ci["jobs"]["test"]["steps"], night["jobs"]["test"]["steps"]
+        before = ci_steps[:ci_steps.index(_tests_step(ci))]
+        runs = {s["run"] for s in n_steps if "run" in s}
+        missing = [s.get("name") for s in before if "run" in s and s["run"] not in runs]
+        assert len([s for s in before if "run" in s]) >= 7 and missing == [], missing   # 7 today
+        assert night["jobs"]["test"]["strategy"] == ci["jobs"]["test"]["strategy"]
+
+    def test_the_push_names_the_drilldown(self):
+        ci, _night = self._docs()
+        steps = ci["jobs"]["coverage"]["steps"]
+        names = [s.get("name", "") for s in steps]
+        where = steps[names.index("Where the per-test drill-down is")]
+        assert "coverage-nightly.yml/runs?status=success" in where["run"]
+        assert "secrets." not in where["run"] and "token" not in where["run"].lower(), \
+            "the public API: this token stays contents: read"
+        report = steps[names.index("The report and the ratchet")]
+        assert '--drilldown "$DRILLDOWN"' in report["run"]
+        assert report["env"]["DRILLDOWN"] == "${{ steps.drilldown.outputs.line }}"
