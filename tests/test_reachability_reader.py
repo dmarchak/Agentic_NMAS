@@ -185,3 +185,49 @@ class TestTheReaperNoLongerProbes:
         with pytest.raises(Stop):
             started[0]()
         assert calls == ["reap"] and not hasattr(C, "ping_worker")
+
+
+class _Accepted:
+    """A connection a device accepted: the context manager `socket.create_connection` returns."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TestTheProbe:
+    """IP connectivity (Lab 7's "IP connectivity"): the reader's probe, ICMP first and then TCP 22,
+    with the device's answers standing in for the network (no packet leaves). Its claim names
+    the probe that answered, which the Devices page shows; a silent device is down, never an
+    error."""
+
+    def test_an_icmp_answer_is_enough_and_tcp_is_not_tried(self):
+        tried = []
+        got = RE.probe("192.0.2.10", ping=lambda ip, **kw: 12.5,
+                       connect=lambda *a, **kw: tried.append(a) or _Accepted())
+        assert got == (True, RE.CLAIM_ICMP) and tried == []
+
+    @pytest.mark.parametrize("icmp", [lambda ip, **kw: None, lambda ip, **kw: False])
+    def test_icmp_silent_then_ssh_accepts(self, icmp):
+        seen = []
+        got = RE.probe("192.0.2.10", ping=icmp,
+                       connect=lambda addr, **kw: seen.append(addr) or _Accepted())
+        assert got == (True, RE.CLAIM_TCP) and seen == [("192.0.2.10", 22)]
+
+    def test_icmp_not_permitted_falls_back_to_tcp(self):
+        """ping3 needs a raw socket; without the right it raises, and TCP decides."""
+        def no_raw_socket(ip, **kw):
+            raise PermissionError("Operation not permitted")
+        assert RE.probe("192.0.2.10", ping=no_raw_socket,
+                        connect=lambda *a, **kw: _Accepted()) == (True, RE.CLAIM_TCP)
+
+    @pytest.mark.parametrize("error", [TimeoutError("timed out"),
+                                       ConnectionRefusedError(111, "Connection refused"),
+                                       OSError(113, "No route to host")])
+    def test_a_device_that_answers_neither_is_down(self, error):
+        def fails(*a, **kw):
+            raise error
+        assert RE.probe("192.0.2.10", ping=lambda ip, **kw: None,
+                        connect=fails) == (False, RE.CLAIM_NONE)

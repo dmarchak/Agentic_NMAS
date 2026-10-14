@@ -68,18 +68,23 @@ def miss_threshold(list_name: str = "", hostname: str = "") -> int:
     return 3
 
 
-def probe(ip: str) -> tuple:
-    """(answered, claim). The claim says which probe answered."""
+def probe(ip: str, ping=None, connect=None) -> tuple:
+    """(answered, claim). The claim says which probe answered: ICMP first, then a TCP
+    connection to port 22. *ping* and *connect* are the transports (ping3's `ping` and
+    `socket.create_connection` when None, looked up at the call), so a test stands a device's
+    answers in for the network."""
     try:
-        from ping3 import ping
+        if ping is None:
+            from ping3 import ping
         response = ping(ip, timeout=2, unit="ms")
         if response and response > 0:
             return True, CLAIM_ICMP
     except Exception:                                   # noqa: BLE001
         log.debug("reachability: ICMP to %s not possible or failed", ip, exc_info=True)
     import socket
+    connect = connect or socket.create_connection
     try:
-        with socket.create_connection((ip, 22), timeout=2):
+        with connect((ip, 22), timeout=2):
             return True, CLAIM_TCP
     except Exception:                                   # noqa: BLE001
         return False, CLAIM_NONE
