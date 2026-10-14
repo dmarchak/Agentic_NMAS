@@ -11,6 +11,9 @@ operator's fine-grained Actions-read token (the operator, 2026-10-01).
     nmas-ci-log times [--limit N]         each completed run's jobs and their
                                           minutes, then each job's slowest run,
                                           one past TRIGGER_MINUTES said (C614)
+    nmas-ci-log run RUN_ID [--log JOB] [--artifact NAME --out DIR]
+                                          a run's jobs and artifacts; one job's
+                                          log; one artifact's files unpacked
 
 The token: ~/.config/nmas/github-actions-read.token (or NMAS_CI_TOKEN_FILE).
 It is read from that file and nowhere else, refused when the file or its
@@ -156,6 +159,25 @@ def _json(answer: Answer):
     return json.loads(answer.body.decode("utf-8"))
 
 
+def unzip_into(data: bytes, out: str) -> list:
+    """An artifact's zip (*data*) unpacked into *out*, which is made; returns the files' names.
+    The archive comes from elsewhere: a member naming a path outside *out* (absolute, or
+    climbing with ..) is refused, and nothing of the archive is written."""
+    import io
+    import zipfile
+
+    root = os.path.realpath(out)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        names = z.namelist()
+        for n in names:
+            target = os.path.realpath(os.path.join(root, n))
+            if os.path.isabs(n) or not (target == root or target.startswith(root + os.sep)):
+                raise RuntimeError(f"the artifact names a path outside {out}: {n!r}: refused")
+        os.makedirs(root, exist_ok=True)
+        z.extractall(root)
+    return [n for n in names if not n.endswith("/")]
+
+
 def runs(token, limit=10, opener=None):
     a = get(f"/repos/{REPO}/actions/runs?per_page={limit}", token, opener)
     return a, _json(a).get("workflow_runs", [])
@@ -207,6 +229,8 @@ def main(argv=None) -> int:
     u = sub.add_parser("run")
     u.add_argument("run_id")
     u.add_argument("--log", help="print this job's log (its name, e.g. 'coverage')")
+    u.add_argument("--artifact", help="save this artifact's files (its name) into --out")
+    u.add_argument("--out", help="the directory --artifact unpacks into")
     args = ap.parse_args(argv)
 
     try:
@@ -257,6 +281,20 @@ def main(argv=None) -> int:
             for a in arts:
                 print(f"  artifact {a['name']}: {a['size_in_bytes']} bytes, "
                       f"{run['html_url']}/artifacts/{a['id']}")
+            if args.artifact:
+                # The mutation night's report.json (the operator, 2026-10-14: its survivors seed
+                # the debt list from the run's own structured record, never from log text).
+                if not args.out:
+                    print("nmas-ci-log: --artifact needs --out DIR", file=sys.stderr)
+                    return 1
+                a = next((x for x in arts if x["name"] == args.artifact), None)
+                if a is None:
+                    print(f"nmas-ci-log: no artifact named {args.artifact}", file=sys.stderr)
+                    return 1
+                data = get(f"/repos/{REPO}/actions/artifacts/{a['id']}/zip", token,
+                           timeout=120).body
+                for n in unzip_into(data, args.out):
+                    print(f"  saved {os.path.join(args.out, n)}")
             if args.log:
                 job = next((j for j in jobs if j["name"].split(" ")[0] == args.log
                             or j["name"] == args.log), None)

@@ -104,7 +104,7 @@ def cmd_plan(a) -> int:
     if a.state and os.path.exists(a.state):
         with open(a.state, encoding="utf-8") as fh:
             state = json.load(fh)
-    p = M.plan(state, a.head, also=a.also)
+    p = M.plan(state, a.head, also=a.also, debt=M.load_debt())
     os.makedirs(a.out, exist_ok=True)
     files = sorted({path for path, _q in p["planned"]})
     sources = {}
@@ -121,20 +121,38 @@ def cmd_plan(a) -> int:
           f"{len(files)} module(s), {len(tests)} test file(s), {len(names)} mutmut name(s)")
     for path, q in p["planned"]:
         k = M.key((path, q))
-        why = (f"kept by the record: {len(p['names'][k])} mutant(s) left or open"
+        why = (f"moved from {p['carried'][k]}, its text unchanged: the record's results carried, "
+               f"{len(p['names'][k])} mutant(s) left or open"
+               if k in p.get("carried", {}) else
+               f"kept by the record: {len(p['names'][k])} mutant(s) left or open"
                if k in p["kept"] else
                f"moved from {p['moved'][k]}, its text unchanged: every mutant"
                if k in p.get("moved", {}) else "changed since the covered commit: every mutant")
         print(f"  {path}: {q} ({why})")
+    for k, was in sorted(p.get("skipped_moved", {}).items()):
+        print(f"  {k}: moved from {was}, its text unchanged, finished or on the debt list "
+              "before: not mutated again")
     for k in p["dropped"]:
+        if k in p.get("carried", {}).values():
+            continue
         print(f"  {k}: the record's results dropped (its text changed, or it is gone)")
     if not p["planned"]:
+        # Nothing to mutate: the debt is still reported, and its growth still turns the night
+        # red; the record keeps what it knew (the finished functions' hashes).
+        debt = M.load_debt()
+        prev, now = p.get("previous_debt_entries"), M.debt_entries(debt)
+        grew = prev is not None and now > prev
         if a.summary:
             with open(a.summary, "a", encoding="utf-8") as fh:
                 fh.write(M.summary(p["base"], p["head"], [], {}, [], 0))
+                fh.write("\n" + "\n".join(M.debt_lines([], debt, prev)) + "\n")
+                if grew:
+                    fh.write(f"**The debt list grew** from {prev} to {now}: red this night.\n")
         if a.state:
-            M.save(a.state, {"commit": p["head"], "functions": {}})
-        return 0
+            M.save(a.state, M.next_state(p["head"], [], {}, [], {},
+                                         finished_before=p.get("finished_before"),
+                                         debt_count=now))
+        return 1 if grew else 0
     sources_to_mutate = files + [M.CANARY_FILE]
     with open(os.path.join(M.ROOT, "setup.cfg"), "w", encoding="utf-8") as fh:
         fh.write("[mutmut]\nsource_paths =\n" + "".join(f"    {f}\n" for f in sources_to_mutate)
@@ -293,7 +311,11 @@ def cmd_report(a) -> int:
     shows = {m: _mutmut("show", m) for m, s in results.items() if s in M.SURVIVING}
     eq_mod = M._load("mutation_equivalent", os.path.join(M.ROOT, "tests",
                                                           "mutation_equivalent.py"))
-    v = M.verdict(results, shows, eq_mod.EQUIVALENT, kinds)
+    debt = M.load_debt()
+    hash_of_function = {M.dotted(f): p["hashes"].get(M.key(f), "") for f in planned}
+    v = M.verdict(results, shows, eq_mod.EQUIVALENT, kinds, debt, hash_of_function)
+    prev_debt, debt_now = p.get("previous_debt_entries"), M.debt_entries(debt)
+    debt_grew = prev_debt is not None and debt_now > prev_debt
     ran = sum(1 for m, s in tonight.items() if s != "not checked")
     extra = [] if error else [
         f"Canary: all {len(M.only_functions(everything, canary))} of its mutants killed, in the "
@@ -308,6 +330,22 @@ def cmd_report(a) -> int:
                   "mutant active, so cannot tell a mutant from the original (each reads the "
                   "program's source, which the copy rewrites):", "",
                   *[f"- `{t}`" for t in not_run], ""]
+    if not error:
+        # The debt, every night, never hidden (the operator, 2026-10-14).
+        extra += M.debt_lines(v["debt"], debt, prev_debt)
+        if debt_grew:
+            extra += [f"**The debt list grew** from {prev_debt} to {debt_now} since the last "
+                      "night: red this night; an addition is a person's, made on purpose "
+                      "(`nmas-mutation debt add --reason …`), and seen once.", ""]
+    carried, skipped = p.get("carried") or {}, p.get("skipped_moved") or {}
+    if carried or skipped:
+        extra += [f"Moved, their text unchanged, known from an earlier night ({len(carried)} "
+                  f"carried, {len(skipped)} not mutated again):", ""]
+        extra += [f"- `{k}` from `{old}`: its results carried; only what was left or open ran"
+                  for k, old in sorted(carried.items())]
+        extra += [f"- `{k}` from `{old}`: finished, or on the debt list, before: not mutated"
+                  for k, old in sorted(skipped.items())]
+        extra += [""]
     with open(a.summary, "a", encoding="utf-8") as fh:
         fh.write(M.summary(p["base"], p["head"], planned, v, out["left"], a.budget, error,
                            out["empty"], extra,
@@ -319,15 +357,53 @@ def cmd_report(a) -> int:
     if error:
         print(f"FAILED: {error}")
         return 1
-    # Both kinds stay open in the record and run again each night; only VERDICT fails it.
+    # Every open kind stays in the record and runs again each night (a test that kills a debt
+    # survivor is seen); only a VERDICT survivor off the debt list, or the list grown, fails it.
     M.save(a.state_out, M.next_state(p["head"], planned, results,
-                                     [s["mutant"] for s in v["new"] + v["message"]],
-                                     p["hashes"]))
+                                     [s["mutant"] for s in v["new"] + v["message"] + v["debt"]],
+                                     p["hashes"], finished_before=p.get("finished_before"),
+                                     debt_count=debt_now))
     for s in v["new"]:
         print(f"OPEN VERDICT SURVIVOR {s['mutant']}: {s['was']} -> {s['now']}")
     for s in v["message"]:
         print(f"open message survivor {s['mutant']}: {s['was']} -> {s['now']}")
-    return 1 if v["new"] else 0
+    print(f"known debt: {len(v['debt'])} met tonight; the list holds {debt_now}"
+          + (f" (grew from {prev_debt})" if debt_grew else ""))
+    return 1 if v["new"] or debt_grew else 0
+
+
+DEBT_ABOUT = ("Known open VERDICT survivors (scripts/nmas_mutation.py, 'The debt'): a night "
+              "is red on a survivor not listed here, or when this list grows. Added to only by "
+              "`nmas-mutation debt add --from-report <report.json> --reason ...`, never by a "
+              "night; a killed survivor's entry is removed. Each function keeps its path, "
+              "qualname and text hash (a move is followed by the hash).")
+
+
+def cmd_debt(a) -> int:
+    """`debt add`: the night's NEW open VERDICT survivors in *a.from_report* (a night's
+    report.json) onto the list, each with the reason given; the hash of each function is its
+    text at that night's head."""
+    with open(a.from_report, encoding="utf-8") as fh:
+        report = json.load(fh)
+    if report.get("error"):
+        print(f"nmas-mutation: refused: that night failed ({report['error']}), so no result "
+              "of it stands", file=sys.stderr)
+        return 2
+    head = report["plan"]["head"]
+
+    def hash_of(path, qualname):
+        return M.function_hash(M.git("show", f"{head}:{path}"), qualname)
+
+    debt = M.load_debt(a.file)
+    try:
+        added = M.add_to_debt(debt, report["verdict"]["new"], a.reason, hash_of)
+    except ValueError as e:
+        print(f"nmas-mutation: refused: {e}", file=sys.stderr)
+        return 2
+    M.save(a.file, {"about": DEBT_ABOUT, "functions": debt["functions"]})
+    print(f"nmas-mutation: {added} survivor(s) added; the debt list holds "
+          f"{M.debt_entries(debt)} in {len(debt['functions'])} function(s)")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -351,8 +427,14 @@ def main(argv=None) -> int:
     s.add_argument("--state-out", required=True)
     s.add_argument("--budget", type=int, default=120)
     s.add_argument("--mutmut-exit", type=int, required=True)
+    d = sub.add_parser("debt", help="the known-survivor list (tests/mutation_debt.json)")
+    d.add_argument("action", choices=["add"])
+    d.add_argument("--from-report", required=True, help="a night's report.json")
+    d.add_argument("--reason", required=True, help="why these are accepted as known debt")
+    d.add_argument("--file", default=M.DEBT_FILE)
     a = ap.parse_args(argv)
-    return {"plan": cmd_plan, "run": cmd_run, "report": cmd_report}[a.cmd](a)
+    return {"plan": cmd_plan, "run": cmd_run, "report": cmd_report,
+            "debt": cmd_debt}[a.cmd](a)
 
 
 if __name__ == "__main__":

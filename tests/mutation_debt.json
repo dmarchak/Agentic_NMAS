@@ -1,0 +1,4 @@
+{
+ "about": "Known open VERDICT survivors (scripts/nmas_mutation.py, 'The debt'): a night is red on a survivor not listed here, or when this list grows. Added to only by `nmas-mutation debt add --from-report <report.json> --reason ...`, never by a night; a killed survivor's entry is removed. Each function keeps its path, qualname and text hash (a move is followed by the hash).",
+ "functions": {}
+}

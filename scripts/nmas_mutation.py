@@ -457,6 +457,127 @@ def diff_lines(show: str) -> tuple:
     return (was[0] if was else "", now[0] if now else "")
 
 
+# ── The debt: known open VERDICT survivors (the operator, 2026-10-14) ──────────────────────────
+#
+# Code that was only moved (C781: the AI family's shared pieces, never tested directly) arrives
+# with hundreds of survivors at once, and a night red for weeks says nothing new. Like the
+# coverage ratchet's baseline, the debt is a committed list: each known open VERDICT survivor,
+# by function and the two lines, with the reason it was accepted. It grows only by
+# `nmas-mutation debt add` with a reason, never by a night; killing survivors shrinks it. A night
+# is red on a survivor NOT on it, on the list having grown since the last night, or on a broken
+# measurement; the debt it met is reported every night.
+
+DEBT_FILE = os.path.join(ROOT, "tests", "mutation_debt.json")
+
+
+def unmangle(function: str) -> tuple:
+    """`(path, qualname)` of mutmut's name for a function (`mangled`'s inverse)."""
+    module, _, name = function.rpartition(".")
+    if name.startswith("xǁ"):
+        qualname = ".".join(name[2:].split("ǁ"))
+    elif name.startswith("x_"):
+        qualname = name[2:]
+    else:
+        raise ValueError(f"{function!r} is not mutmut's name for a function")
+    return module.replace(".", "/") + ".py", qualname
+
+
+def load_debt(path: str = None) -> dict:
+    """The debt list (`{"functions": {dotted: {path, qualname, hash, survivors}}}`, from *path*,
+    by default DEBT_FILE as it is when called); empty when there is no file."""
+    path = path or DEBT_FILE
+    if not os.path.exists(path):
+        return {"functions": {}}
+    with open(path, encoding="utf-8") as fh:
+        debt = json.load(fh)
+    debt.setdefault("functions", {})
+    return debt
+
+
+def debt_entries(debt: dict) -> int:
+    return sum(len(f.get("survivors", [])) for f in debt.get("functions", {}).values())
+
+
+def on_debt(debt: dict, function: str, was: str, now: str, function_hash_: str = "") -> bool:
+    """Whether the survivor (*function*, *was*, *now*) is on the list: under the function's own
+    name, or, when it moved (its text unchanged), under the name the same hash was listed by."""
+    entries = []
+    funcs = debt.get("functions", {})
+    if function in funcs:
+        entries.append(funcs[function])
+    if function_hash_:
+        entries += [f for name, f in funcs.items()
+                    if name != function and f.get("hash") == function_hash_]
+    return any(s["was"].strip() == was and s["now"].strip() == now
+               for f in entries for s in f.get("survivors", []))
+
+
+def add_to_debt(debt: dict, survivors: list, reason: str, hash_of) -> int:
+    """Add each open VERDICT survivor (`{"mutant", "function", "was", "now"}`, as a night's
+    report holds them) not already listed, with *reason*, under its function's dotted name;
+    *hash_of(path, qualname)* gives a function's text hash. Returns how many were added.
+    Refused without a reason: the list grows only on purpose."""
+    if not (reason or "").strip():
+        raise ValueError("the debt list grows only with a reason (--reason)")
+    added = 0
+    for s in survivors:
+        fn = s["function"]
+        if on_debt(debt, fn, s["was"], s["now"]):
+            continue
+        path, qualname = unmangle(s["mutant"].rsplit("__mutmut_", 1)[0])
+        entry = debt["functions"].setdefault(fn, {"path": path, "qualname": qualname,
+                                                  "hash": hash_of(path, qualname),
+                                                  "survivors": []})
+        entry["survivors"].append({"was": s["was"], "now": s["now"], "reason": reason.strip()})
+        added += 1
+    for entry in debt["functions"].values():
+        entry["survivors"].sort(key=lambda s: (s["was"], s["now"]))
+    debt["functions"] = dict(sorted(debt["functions"].items()))
+    return added
+
+
+def debt_problems(debt: dict, root: str = ROOT) -> list:
+    """What is wrong with a debt list: an entry for a function that no longer exists at *root*
+    (the operator's rule: a deleted or renamed function's survivors leave with it), a name that
+    is not its path and qualname's, and a survivor without both lines or a reason."""
+    problems = []
+    for name, f in debt.get("functions", {}).items():
+        try:
+            with open(os.path.join(root, f["path"]), encoding="utf-8") as fh:
+                source = fh.read()
+        except OSError:
+            source = ""
+        if not function_hash(source, f.get("qualname", "")):
+            problems.append(f"{name}: no function {f.get('qualname')!r} in {f.get('path')}")
+        elif dotted((f["path"], f["qualname"])) != name:
+            problems.append(f"{name}: its path and qualname name "
+                            f"{dotted((f['path'], f['qualname']))}")
+        for s in f.get("survivors", []):
+            if not (s.get("was") and s.get("now") and (s.get("reason") or "").strip()):
+                problems.append(f"{name}: a survivor without both lines or a reason: {s}")
+    return problems
+
+
+def debt_lines(matched: list, debt: dict, previous: int = None, top: int = 5) -> list:
+    """The summary's debt section: what the list holds, its change since the last night, the
+    survivors it met tonight, and the functions holding the most."""
+    now = debt_entries(debt)
+    change = ("first counted tonight" if previous is None else
+              "unchanged since the last night" if previous == now else
+              f"{now - previous:+d} since the last night ({previous})")
+    per = {}
+    for name, f in debt.get("functions", {}).items():
+        per[name] = len(f.get("survivors", []))
+    biggest = sorted(per.items(), key=lambda kv: (-kv[1], kv[0]))[:top]
+    lines = [f"Known debt: {now} open VERDICT survivor(s) in {len(per)} function(s) on the "
+             f"list (tests/mutation_debt.json), {change}; {len(matched)} met tonight.", ""]
+    if biggest:
+        lines += ["| function | known survivors |", "|---|---|"]
+        lines += [f"| `{n}` | {c} |" for n, c in biggest]
+        lines += [""]
+    return lines
+
+
 def is_equivalent(function: str, was: str, now: str, equivalent: list) -> str:
     """The reason when (*function*, *was*, *now*) is in the hand-kept list, else ""."""
     for e in equivalent:
@@ -465,17 +586,21 @@ def is_equivalent(function: str, was: str, now: str, equivalent: list) -> str:
     return ""
 
 
-def verdict(results: dict, shows: dict, equivalent: list, kinds: dict = None) -> dict:
+def verdict(results: dict, shows: dict, equivalent: list, kinds: dict = None,
+            debt: dict = None, hash_of_function: dict = None) -> dict:
     """Per function: mutants, killed, survived (no test failed: `SURVIVING`); the survivors
     split into known equivalents (listed apart, with their reason) and OPEN ones, each VERDICT
     or MESSAGE by *kinds* (`{mutant: kind}`, `classify_file`; a mutant it does not name is
-    VERDICT). Only open VERDICT survivors (`new`) fail the night; MESSAGE ones are `message`.
-    *shows*: `{mutant: mutmut show text}` for the survivors."""
-    per, new, message, known = {}, [], [], []
+    VERDICT). An open VERDICT survivor on the *debt* list (`on_debt`, followed through a move
+    by *hash_of_function*, `{dotted: hash}`) is `debt`; only the rest (`new`) fail the night;
+    MESSAGE ones are `message`. *shows*: `{mutant: mutmut show text}` for the survivors."""
+    per, new, message, known, owed = {}, [], [], [], []
+    debt = debt or {"functions": {}}
+    hash_of_function = hash_of_function or {}
     for mutant, status in sorted(results.items()):
         fn = function_of(mutant)
         p = per.setdefault(fn, {"mutants": 0, "killed": 0, "survived": 0, "equivalent": 0,
-                                "verdict": 0, "message": 0, "other": 0})
+                                "verdict": 0, "message": 0, "other": 0, "debt": 0})
         p["mutants"] += 1
         if status == "killed":
             p["killed"] += 1
@@ -491,12 +616,15 @@ def verdict(results: dict, shows: dict, equivalent: list, kinds: dict = None) ->
             elif (kinds or {}).get(mutant) == "message":
                 p["message"] += 1
                 message.append(entry)
+            elif on_debt(debt, fn, was, now, hash_of_function.get(fn, "")):
+                p["debt"] += 1
+                owed.append(entry)
             else:
                 p["verdict"] += 1
                 new.append(entry)
         else:
             p["other"] += 1
-    return {"functions": per, "new": new, "message": message, "known": known}
+    return {"functions": per, "new": new, "message": message, "known": known, "debt": owed}
 
 
 def only_functions(results: dict, functions: list) -> dict:
@@ -591,21 +719,40 @@ def outcome(planned: list, results: dict, mutmut_exit: int) -> dict:
 # ── The record a night leaves for the next ────────────────────────────────────────────────────
 
 def next_state(head: str, planned: list, results: dict, open_mutants: list,
-               hashes: dict) -> dict:
+               hashes: dict, finished_before: dict = None, debt_count: int = None) -> dict:
     """What the next night starts from: this run's HEAD, and per function still unfinished or
-    holding an open survivor, its hash and every result so far (C769: a large function is
-    finished across nights, never restarted; an open survivor is run again each night until a
-    test kills it or a person lists it as equivalent)."""
+    holding an open survivor (the debt's included, so a test that kills one is seen), its hash
+    and every result so far (C769: a large function is finished across nights, never
+    restarted; an open survivor is run again each night until a test kills it or a person lists
+    it as equivalent). `finished`: the hash of every function finished with nothing open, this
+    night's and earlier ones' still at that hash, so a function MOVED with its text unchanged
+    is known as done (the operator, 2026-10-14). `debt_entries`: the debt list's size tonight,
+    against which the next night sees it grow."""
     open_by = {}
     for m in open_mutants:
         open_by.setdefault(function_of(m), []).append(m)
-    functions = {}
+    functions, finished = {}, dict(finished_before or {})
     for f in planned:
         res = only_functions(results, [f])
         if any(s == "not checked" for s in res.values()) or dotted(f) in open_by:
             functions[key(f)] = {"hash": hashes.get(key(f), ""), "results": res,
                                  "open": sorted(open_by.get(dotted(f), []))}
-    return {"commit": head, "functions": functions}
+            finished.pop(key(f), None)
+        elif hashes.get(key(f)):
+            finished[key(f)] = {"hash": hashes[key(f)]}
+    state = {"commit": head, "functions": functions, "finished": dict(sorted(finished.items()))}
+    if debt_count is not None:
+        state["debt_entries"] = debt_count
+    return state
+
+
+def renamed(names, old: tuple, new: tuple):
+    """mutmut's mutant names of function *old* as function *new*'s (its text unchanged, so the
+    same mutants, numbered the same: `function_hash`)."""
+    a, b = mangled(*old) + "__mutmut_", mangled(*new) + "__mutmut_"
+    if isinstance(names, dict):
+        return {(b + m[len(a):] if m.startswith(a) else m): s for m, s in names.items()}
+    return [b + m[len(a):] if m.startswith(a) else m for m in names]
 
 
 #: The lines of a failed mutmut run that say why: pytest's failures and their assertion lines,
@@ -664,25 +811,32 @@ def summary(base: str, head: str, planned: list, verdict_: dict, left: list,
               "a person reads (anything undecided is VERDICT). Score: killed over the mutants "
               "a test could kill (all, less known equivalents); VERDICT score: killed over "
               "killed and VERDICT survivors.", "",
-              "| function | mutants | killed | survived: VERDICT | survived: MESSAGE "
-              "| known equivalent | score | VERDICT score |",
-              "|---|---|---|---|---|---|---|---|"]
+              "| function | mutants | killed | survived: VERDICT | of which on the debt list "
+              "| survived: MESSAGE | known equivalent | score | VERDICT score |",
+              "|---|---|---|---|---|---|---|---|---|"]
     for fn, p in sorted(verdict_["functions"].items()):
         killable = p["mutants"] - p["equivalent"]
         score = f"{100.0 * p['killed'] / killable:.1f}%" if killable else "—"
-        at_stake = p["killed"] + p.get("verdict", p["survived"] - p["equivalent"])
+        owed = p.get("debt", 0)
+        open_verdict = p.get("verdict", p["survived"] - p["equivalent"]) + owed
+        at_stake = p["killed"] + open_verdict
         vscore = f"{100.0 * p['killed'] / at_stake:.1f}%" if at_stake else "—"
-        lines.append(f"| `{fn}` | {p['mutants']} | {p['killed']} "
-                     f"| {p.get('verdict', p['survived'] - p['equivalent'])} "
+        lines.append(f"| `{fn}` | {p['mutants']} | {p['killed']} | {open_verdict} | {owed} "
                      f"| {p.get('message', 0)} | {p['equivalent']} | {score} | {vscore} |")
 
     def item(s):
         return (f"- `{s['mutant']}`" + (" (no test reached it)" if s.get("status") == "no tests"
                                         else "") + f": `{s['was']}` → `{s['now']}`")
-    lines += ["", f"### Open VERDICT survivors ({len(verdict_['new'])}): the night fails until "
-              "each is killed by a test or listed as equivalent", ""]
+    lines += ["", f"### New open VERDICT survivors ({len(verdict_['new'])}), not on the debt list: "
+              "the night fails until each is killed by a test, listed as equivalent, or "
+              "accepted onto the debt list on purpose", ""]
     lines += [item(s) for s in verdict_["new"]] \
-        or ["- none: every mutant that can change a verdict was killed, or is a known equivalent"]
+        or ["- none: every mutant that can change a verdict was killed, is a known equivalent, "
+            "or is known debt"]
+    owed = verdict_.get("debt", [])
+    lines += ["", f"### Known debt met tonight ({len(owed)}): open, run again every night, "
+              "never failing it (tests/mutation_debt.json)", ""]
+    lines += [item(s) for s in owed] or ["- none"]
     lines += ["", f"### Open MESSAGE survivors ({len(verdict_.get('message', []))}): words only; "
               "listed and kept open, never failing the night", ""]
     lines += [item(s) for s in verdict_.get("message", [])] or ["- none"]
@@ -719,15 +873,17 @@ def first_base(head: str, root: str = ROOT) -> str:
     return git("rev-parse", f"{head}~1", root=root).strip()
 
 
-def plan(state: dict, head: str, root: str = ROOT, also: list = ()) -> dict:
+def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict = None) -> dict:
     """The night's plan: the base commit (the last covered, or on the first night the commit
     that added the nightly workflow, `first_base`) and the functions to mutate, each read at
     head: those the record keeps whose hash is
     unchanged (only their mutants not yet checked and their open survivors run: `names`), then
     the counted automation functions the diff touches (all their mutants). A kept function whose
-    text changed is planned afresh, its old results dropped. *also*: functions (`path::qualname`)
-    a person names to mutate whole tonight, changed or not. The scope is *root*'s
-    tests/coverage_scope.py, the coverage tool's."""
+    text changed is planned afresh, its old results dropped. A function MOVED, its text hash one
+    the record holds under another name, is kept with those results renamed (`carried`); one
+    the record finished, or the *debt* list holds, is not mutated again (`skipped_moved`).
+    *also*: functions (`path::qualname`) a person names to mutate whole tonight, changed or
+    not. The scope is *root*'s tests/coverage_scope.py, the coverage tool's."""
     scope = _load("coverage_scope", os.path.join(root, "tests", "coverage_scope.py"))
     # The record names a COMMIT: a name like HEAD would move under it (a laptop run stored
     # "HEAD" itself, 2026-10-14).
@@ -749,6 +905,36 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = ()) -> dict:
             names[k] = sorted(m for m, s in rec["results"].items()
                               if s == "not checked" or m in rec.get("open", []))
     fresh = changed_functions(changed_lines(diff), read, scope.classify)
+    # MOVED, not changed (the operator, 2026-10-14): a fresh function whose text hash the
+    # record or the debt list already holds under another name. The record's results for it
+    # are carried over, renamed (the same text makes the same mutants, numbered the same), and
+    # only what is left or open runs; one finished before, or one on the debt list, is not
+    # mutated again at all.
+    record_by_hash = {rec["hash"]: k for k, rec in (state.get("functions") or {}).items()
+                      if rec.get("hash") and k not in kept}
+    finished_by_hash = {v["hash"]: k for k, v in (state.get("finished") or {}).items()
+                        if v.get("hash")}
+    debt_by_hash = {f["hash"]: f"{f['path']}::{f['qualname']}"
+                    for f in (debt or {}).get("functions", {}).values() if f.get("hash")}
+    carried, skipped, still_fresh = {}, {}, []
+    for f in fresh:
+        h = function_hash(read(f[0]), f[1])
+        old = record_by_hash.get(h)
+        if key(f) not in kept and old and old != key(f):
+            o, rec = tuple(old.split("::", 1)), state["functions"][old]
+            moved = {"hash": h, "results": renamed(rec["results"], o, f),
+                     "open": renamed(rec.get("open", []), o, f)}
+            kept[key(f)] = moved
+            names[key(f)] = sorted(m for m, s in moved["results"].items()
+                                   if s == "not checked" or m in moved["open"])
+            carried[key(f)] = old
+            continue
+        was = finished_by_hash.get(h) or debt_by_hash.get(h)
+        if key(f) not in kept and was and was != key(f):
+            skipped[key(f)] = was
+            continue
+        still_fresh.append(f)
+    fresh = still_fresh
     for k in also:
         f = tuple(k.split("::", 1))
         if not function_hash(read(f[0]), f[1]):
@@ -757,12 +943,17 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = ()) -> dict:
             fresh.append(f)
         kept.pop(k, None)
         names.pop(k, None)
+        carried.pop(k, None)
+        skipped.pop(k, None)
     planned = [tuple(k.split("::", 1)) for k in kept]
     planned += [f for f in fresh if key(f) not in kept]
     hashes = {key(f): function_hash(read(f[0]), f[1]) for f in planned}
     return {"base": base, "head": head, "planned": planned, "names": names, "kept": kept,
             "hashes": hashes, "moved": moved_from([f for f in planned if key(f) not in kept],
                                                   hashes, base, root),
+            "carried": carried, "skipped_moved": skipped,
+            "finished_before": state.get("finished") or {},
+            "previous_debt_entries": state.get("debt_entries"),
             "dropped": sorted(k for k in (state.get("functions") or {}) if k not in kept)}
 
 

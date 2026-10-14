@@ -310,11 +310,11 @@ class TestTheVerdict:
         assert [s["mutant"] for s in v["known"]] == ["modules.readers.reachability.x_probe__mutmut_12"]
         assert v["functions"]["modules.readers.reachability.probe"] == {
             "mutants": 5, "killed": 1, "survived": 4, "equivalent": 1, "verdict": 2,
-            "message": 1, "other": 0}
+            "message": 1, "other": 0, "debt": 0}
         text = M.summary("a" * 40, "b" * 40, [PROBE], v, [], 120)
-        assert "| `modules.readers.reachability.probe` | 5 | 1 | 2 | 1 | 1 | 25.0% | 33.3% |" \
+        assert "| `modules.readers.reachability.probe` | 5 | 1 | 2 | 0 | 1 | 1 | 25.0% | 33.3% |" \
             in text
-        assert "### Open VERDICT survivors (2)" in text and "with connect((ip, 22), ):" in text
+        assert "### New open VERDICT survivors (2)" in text and "with connect((ip, 22), ):" in text
         assert "### Open MESSAGE survivors (1): words only" in text
         assert "x_probe__mutmut_40` (no test reached it)" in text
 
@@ -820,8 +820,8 @@ class TestTheFence:
         loader.exec_module(cli)
         monkeypatch.setattr(cli.M, "ROOT", root)
         monkeypatch.setattr(cli.M, "git", lambda *a, root=root: M.git(*a, root=root))
-        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(): M.plan(state, h, root=root,
-                                                                            also=also))
+        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None: M.plan(
+            state, h, root=root, also=also, debt=debt))
         os.makedirs(os.path.join(root, "tests"), exist_ok=True)
         args = ["plan", "--head", head, "--out", str(tmp_path / "out"), "--fence"]
         net = os.path.join(root, "modules", "net.py")
@@ -911,6 +911,206 @@ class TestTestsThatFailInTheCopy:
         assert record["failure"] == ["FAILED tests/test_y.py::test_2 - no"], "the retry's cause"
 
 
+PROBE_FN = "modules.readers.reachability.probe"          # a function's dotted name
+PROBE_MUT = "modules.readers.reachability.x_probe"      # mutmut's, before `__mutmut_<n>`
+SURVIVOR_12 = ("if response and response > 0:", "if response or response > 0:")
+SURVIVOR_31 = ("with connect((ip, 22), timeout=2):", "with connect((ip, 22), ):")
+
+
+def _debt(*survivors, fn=PROBE_FN, h="h1"):
+    return {"functions": {fn: {"path": "modules/readers/reachability.py", "qualname": "probe",
+                               "hash": h, "survivors": [{"was": w, "now": n, "reason": "r"}
+                                                        for w, n in survivors]}}}
+
+
+class TestTheDebt:
+    """Known open VERDICT survivors (the operator, 2026-10-14): code that was only moved (C781)
+    arrived with hundreds at once. The debt list is a committed baseline like the coverage
+    ratchet's: a night is red on a survivor not on it, or when it grows; it is reported every
+    night; it grows only on purpose."""
+
+    def test_mutmuts_names_are_read_back_to_a_path_and_a_qualname(self):
+        for f in (PROBE, ("modules/nsot/x.py", "Box.fill"), ("modules/a.py", "Outer.Inner.m")):
+            assert M.unmangle(M.mangled(*f)) == f
+        with pytest.raises(ValueError):
+            M.unmangle("modules.a.not_mangled")
+
+    def test_a_survivor_is_on_the_list_by_its_function_and_two_lines_or_by_its_hash_moved(self):
+        debt = _debt(SURVIVOR_12)
+        assert M.on_debt(debt, PROBE_FN, *SURVIVOR_12)
+        assert not M.on_debt(debt, PROBE_FN, *SURVIVOR_31), "another line of the same function"
+        moved = "modules.readers.elsewhere.probe"
+        assert not M.on_debt(debt, moved, *SURVIVOR_12)
+        assert M.on_debt(debt, moved, *SURVIVOR_12, "h1"), "moved, its text unchanged"
+        assert not M.on_debt(debt, moved, *SURVIVOR_12, "h2"), "moved and changed: not known"
+
+    def test_the_verdict_parts_known_debt_from_new(self):
+        results = {f"{PROBE_MUT}__mutmut_12": "survived", f"{PROBE_MUT}__mutmut_31": "survived",
+                   f"{PROBE_MUT}__mutmut_1": "killed"}
+        shows = {f"{PROBE_MUT}__mutmut_12": _fixture("show-probe-12.txt"),
+                 f"{PROBE_MUT}__mutmut_31": _fixture("show-probe-31.txt")}
+        v = M.verdict(results, shows, [], {}, _debt(SURVIVOR_12))
+        assert [s["mutant"] for s in v["debt"]] == [f"{PROBE_MUT}__mutmut_12"]
+        assert [s["mutant"] for s in v["new"]] == [f"{PROBE_MUT}__mutmut_31"]
+        per = v["functions"]["modules.readers.reachability.probe"]
+        assert (per["debt"], per["verdict"], per["killed"]) == (1, 1, 1)
+        text = M.summary("a" * 40, "b" * 40, [PROBE], v, [], 120)
+        assert "| `modules.readers.reachability.probe` | 3 | 1 | 2 | 1 | 0 | 0 |" in text, \
+            "both open VERDICT survivors counted, one of them on the debt list"
+        assert "### New open VERDICT survivors (1)" in text
+        assert "### Known debt met tonight (1)" in text
+
+    def test_the_list_grows_only_with_a_reason_and_never_twice_for_one_survivor(self):
+        debt = {"functions": {}}
+        new = [{"mutant": f"{PROBE_MUT}__mutmut_12", "function": PROBE_FN,
+                "was": SURVIVOR_12[0], "now": SURVIVOR_12[1]},
+               {"mutant": f"{PROBE_MUT}__mutmut_31", "function": PROBE_FN,
+                "was": SURVIVOR_31[0], "now": SURVIVOR_31[1]}]
+        with pytest.raises(ValueError, match="reason"):
+            M.add_to_debt(debt, new, "  ", lambda p, q: "h")
+        assert M.add_to_debt(debt, new, "moved, C781", lambda p, q: f"hash of {p}::{q}") == 2
+        assert M.add_to_debt(debt, new, "again", lambda p, q: "h") == 0
+        entry = debt["functions"][PROBE_FN]
+        assert (entry["path"], entry["qualname"]) == PROBE
+        assert entry["hash"] == "hash of modules/readers/reachability.py::probe"
+        assert [s["reason"] for s in entry["survivors"]] == ["moved, C781", "moved, C781"]
+        assert M.debt_entries(debt) == 2
+
+    def test_the_debt_is_reported_with_its_change_and_its_biggest_functions(self):
+        debt = _debt(SURVIVOR_12, SURVIVOR_31)
+        first = M.debt_lines([], debt, None)
+        assert first[0].startswith("Known debt: 2 open VERDICT survivor(s) in 1 function(s)")
+        assert "first counted tonight" in first[0]
+        assert "unchanged since the last night" in M.debt_lines([], debt, 2)[0]
+        assert "+1 since the last night (1)" in M.debt_lines([{}], debt, 1)[0]
+        assert "1 met tonight" in M.debt_lines([{}], debt, 1)[0]
+        assert f"| `{PROBE_FN}` | 2 |" in M.debt_lines([], debt, 2)
+
+    def test_the_record_keeps_open_debt_finished_hashes_and_the_lists_size(self):
+        tcp = ("modules/integrations/monitoring_profile.py", "tcp_accepts")
+        results = {f"{PROBE_MUT}__mutmut_12": "survived",
+                   "modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_1": "killed"}
+        state = M.next_state("c" * 40, [PROBE, tcp], results, [f"{PROBE_MUT}__mutmut_12"],
+                             {M.key(PROBE): "hp", M.key(tcp): "ht"},
+                             finished_before={"modules/old.py::gone": {"hash": "hg"}},
+                             debt_count=441)
+        assert list(state["functions"]) == [M.key(PROBE)], "the debt survivor runs again"
+        assert state["finished"] == {M.key(tcp): {"hash": "ht"},
+                                     "modules/old.py::gone": {"hash": "hg"}}
+        assert state["debt_entries"] == 441
+
+    @staticmethod
+    def _cli(name):
+        loader = importlib.machinery.SourceFileLoader(
+            name, os.path.join(ROOT, "scripts", "nmas-mutation"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        cli = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli)
+        return cli
+
+    def _night(self, tmp_path, monkeypatch, listed, previous):
+        """The real report step over a night with two open VERDICT survivors of probe (12, 31)
+        and one kill, *listed* of them on the debt list, the last night's list *previous*."""
+        import json
+        cli = self._cli("nmas_mutation_cli_debt_report")
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "plan.json").write_text(json.dumps({
+            "base": "a" * 40, "head": "b" * 40, "planned": [list(PROBE)], "kept": {},
+            "hashes": {M.key(PROBE): "h1"}, "moved": {}, "previous_debt_entries": previous}))
+        (out / "run.json").write_text(json.dumps({"kinds": {}}))
+        debt_file = tmp_path / "debt.json"
+        debt_file.write_text(json.dumps(_debt(*listed)))
+        monkeypatch.setattr(cli.M, "DEBT_FILE", str(debt_file))
+        results = "\n".join(f"    {m}: {s}" for m, s in {
+            **CANARY_KILLED, f"{PROBE_MUT}__mutmut_1": "killed",
+            f"{PROBE_MUT}__mutmut_12": "survived", f"{PROBE_MUT}__mutmut_31": "survived"}.items())
+        shows = {f"{PROBE_MUT}__mutmut_12": _fixture("show-probe-12.txt"),
+                 f"{PROBE_MUT}__mutmut_31": _fixture("show-probe-31.txt")}
+        monkeypatch.setattr(cli, "_mutmut", lambda *a: results if a[0] == "results"
+                            else shows.get(a[1], ""))
+
+        class A:
+            plan, summary = str(out / "plan.json"), str(tmp_path / "summary.md")
+            state_out, budget, mutmut_exit = str(tmp_path / "next.json"), 120, 0
+        code = cli.cmd_report(A())
+        return code, (tmp_path / "summary.md").read_text(), json.loads(
+            (tmp_path / "next.json").read_text())
+
+    def test_a_night_whose_open_survivors_are_all_known_is_green_and_says_so(
+            self, tmp_path, monkeypatch):
+        # Survivor 12 is a known EQUIVALENT (tests/mutation_equivalent.py), judged before the
+        # debt is asked; 31 is the debt met tonight.
+        code, text, state = self._night(tmp_path, monkeypatch, [SURVIVOR_12, SURVIVOR_31], 2)
+        assert code == 0
+        assert "Known debt: 2 open VERDICT survivor(s) in 1 function(s)" in text
+        assert "unchanged since the last night; 1 met tonight" in text
+        assert "### New open VERDICT survivors (0)" in text
+        assert "### Known debt met tonight (1)" in text
+        assert state["debt_entries"] == 2
+        assert state["functions"][M.key(PROBE)]["open"] == [f"{PROBE_MUT}__mutmut_31"], \
+            "the debt runs again each night"
+
+    def test_a_survivor_off_the_list_turns_the_night_red(self, tmp_path, monkeypatch):
+        code, text, _state = self._night(tmp_path, monkeypatch, [SURVIVOR_12], 1)  # 31 is new
+        assert code == 1 and "### New open VERDICT survivors (1)" in text
+
+    def test_the_list_grown_since_the_last_night_turns_it_red_once(self, tmp_path, monkeypatch):
+        code, text, state = self._night(tmp_path, monkeypatch, [SURVIVOR_12, SURVIVOR_31], 1)
+        assert code == 1 and "**The debt list grew** from 1 to 2" in text
+        assert state["debt_entries"] == 2, "the next night measures from here"
+
+    def test_debt_add_takes_a_nights_new_survivors_with_a_reason(self, tmp_path, capsys):
+        import json
+        cli = self._cli("nmas_mutation_cli_debt_add")
+        head = M.git("rev-parse", "HEAD").strip()
+        report = tmp_path / "report.json"
+        new = [{"mutant": f"{PROBE_MUT}__mutmut_12", "function": PROBE_FN,
+                "was": SURVIVOR_12[0], "now": SURVIVOR_12[1]}]
+        report.write_text(json.dumps({"error": "", "plan": {"head": head},
+                                      "verdict": {"new": new}}))
+        debt_file = tmp_path / "debt.json"
+        args = ["debt", "add", "--from-report", str(report), "--file", str(debt_file)]
+        assert cli.main(args + ["--reason", " "]) == 2 and not debt_file.exists()
+        assert cli.main(args + ["--reason", "moved, C781"]) == 0
+        saved = json.loads(debt_file.read_text())
+        entry = saved["functions"][PROBE_FN]
+        source = M.git("show", f"{head}:modules/readers/reachability.py")
+        assert entry["hash"] == M.function_hash(source, "probe") and entry["hash"]
+        assert entry["survivors"] == [{"was": SURVIVOR_12[0], "now": SURVIVOR_12[1],
+                                       "reason": "moved, C781"}]
+        assert "the list grows only" not in capsys.readouterr().out
+        failed = tmp_path / "failed.json"
+        failed.write_text(json.dumps({"error": "mutmut exited 1", "plan": {"head": head},
+                                      "verdict": {"new": new}}))
+        assert cli.main(["debt", "add", "--from-report", str(failed), "--file",
+                         str(tmp_path / "other.json"), "--reason", "r"]) == 2
+
+    def test_every_function_on_the_committed_list_exists_and_every_entry_has_a_reason(self):
+        """The operator's rule: an entry for a function that no longer exists is refused (a
+        killed, renamed or deleted function's survivors leave the list with it)."""
+        assert os.path.exists(M.DEBT_FILE), "tests/mutation_debt.json is committed"
+        assert M.debt_problems(M.load_debt()) == []
+
+    def test_a_listed_function_that_is_gone_a_wrong_name_and_no_reason_are_each_named(self):
+        """The check above, on planted entries: its control."""
+        planted = {"functions": {
+            "modules.goldens.no_such": {"path": "modules/goldens.py", "qualname": "no_such",
+                                        "hash": "h", "survivors": []},
+            "modules.goldens.wrong_name": {"path": "modules/goldens.py",
+                                           "qualname": "_identity_for_ip", "hash": "h",
+                                           "survivors": []},
+            "modules.goldens._nsot_repo_dir": {"path": "modules/goldens.py",
+                                               "qualname": "_nsot_repo_dir", "hash": "h",
+                                               "survivors": [{"was": "a", "now": "b",
+                                                              "reason": " "}]}}}
+        problems = M.debt_problems(planted)
+        assert len(problems) == 3, problems
+        assert any("goldens.no_such: no function 'no_such'" in p for p in problems)
+        assert any("goldens.wrong_name: its path and qualname name" in p for p in problems)
+        assert any("without both lines or a reason" in p for p in problems)
+
+
 @pytest.fixture
 def moved(tmp_path):
     """A real history: `kept` moves to another module unchanged, `edited` moves and changes."""
@@ -945,6 +1145,47 @@ class TestAMovedFunctionIsSaid:
         p = M.plan({}, head, root=root)
         assert set(p["planned"]) == {("modules/new.py", "kept"), ("modules/new.py", "edited")}
         assert p["moved"] == {"modules/new.py::kept": "modules/old.py::kept"}
+
+    def _base(self, root, head):
+        return M.git("rev-parse", f"{head}~1", root=root).strip()
+
+    def _kept_hash(self, root, head):
+        return M.function_hash(M.git("show", f"{head}:modules/new.py", root=root), "kept")
+
+    def test_a_move_the_record_knows_carries_its_results_renamed(self, moved):
+        """The operator, 2026-10-14: a function whose text hash the record holds under another
+        name is MOVED; its results carry over and only what was left or open runs."""
+        root, head = moved
+        old = "modules.old.x_kept__mutmut_"
+        state = {"commit": self._base(root, head), "functions": {"modules/old.py::kept": {
+            "hash": self._kept_hash(root, head),
+            "results": {old + "1": "killed", old + "2": "not checked", old + "3": "survived"},
+            "open": [old + "3"]}}}
+        p = M.plan(state, head, root=root)
+        assert p["carried"] == {"modules/new.py::kept": "modules/old.py::kept"}
+        new = "modules.new.x_kept__mutmut_"
+        assert p["kept"]["modules/new.py::kept"]["results"] == {
+            new + "1": "killed", new + "2": "not checked", new + "3": "survived"}
+        assert p["names"]["modules/new.py::kept"] == [new + "2", new + "3"]
+        assert ("modules/new.py", "edited") in p["planned"], "moved and changed: afresh"
+        assert M.patterns(p) == [new + "2", new + "3", "modules.new.x_edited__mutmut_*"]
+
+    def test_a_move_finished_before_or_on_the_debt_list_is_not_mutated_again(self, moved):
+        root, head = moved
+        base, h = self._base(root, head), self._kept_hash(root, head)
+        finished = M.plan({"commit": base, "functions": {},
+                           "finished": {"modules/old.py::kept": {"hash": h}}}, head, root=root)
+        assert finished["skipped_moved"] == {"modules/new.py::kept": "modules/old.py::kept"}
+        assert ("modules/new.py", "kept") not in finished["planned"]
+        debt = {"functions": {"modules.old.kept": {"path": "modules/old.py", "qualname": "kept",
+                                                   "hash": h, "survivors": []}}}
+        owed = M.plan({"commit": base, "functions": {}}, head, root=root, debt=debt)
+        assert owed["skipped_moved"] == {"modules/new.py::kept": "modules/old.py::kept"}
+        assert ("modules/new.py", "kept") not in owed["planned"]
+        forced = M.plan({"commit": base, "functions": {},
+                         "finished": {"modules/old.py::kept": {"hash": h}}}, head, root=root,
+                        also=["modules/new.py::kept"])
+        assert ("modules/new.py", "kept") in forced["planned"] and not forced["skipped_moved"]
 
     def test_the_summary_says_which_moved(self, moved):
         root, head = moved

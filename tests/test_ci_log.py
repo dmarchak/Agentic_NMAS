@@ -199,3 +199,29 @@ def test_the_failing_lines_are_what_a_reader_needs():
     got = CL.failing_lines(log)
     assert got == ["E       AssertionError: a different status",
                    "FAILED tests/test_x.py::T::t - AssertionError"]
+
+
+def _zip(members: dict) -> bytes:
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name, text in members.items():
+            z.writestr(name, text)
+    return buf.getvalue()
+
+
+def test_an_artifact_is_unpacked_into_its_folder(tmp_path):
+    """The mutation night's report.json, fetched to seed the debt list (2026-10-14)."""
+    out = tmp_path / "report"
+    names = CL.unzip_into(_zip({"mutation-out/report.json": "{}", "setup.cfg": "[x]"}), str(out))
+    assert sorted(names) == ["mutation-out/report.json", "setup.cfg"]
+    assert (out / "mutation-out" / "report.json").read_text() == "{}"
+
+
+@pytest.mark.parametrize("member", ["../outside.txt", "/etc/planted", "a/../../outside.txt"])
+def test_an_artifact_naming_a_path_outside_its_folder_is_refused_whole(tmp_path, member):
+    out = tmp_path / "report"
+    with pytest.raises(RuntimeError, match="outside"):
+        CL.unzip_into(_zip({"fine.txt": "x", member: "planted"}), str(out))
+    assert not out.exists(), "nothing of the archive is written"
+    assert not (tmp_path / "outside.txt").exists()
