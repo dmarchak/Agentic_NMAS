@@ -58,7 +58,7 @@ def _confirm(prompt: str) -> bool:
 
 def run_preview() -> int:
     """Build a render artifact for every device. Opens no session."""
-    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
+    from modules.goldens import _list_golden_configs, _load_golden_config_file
     from modules.config import get_current_list_name, get_list_data_dir
     from modules.device import get_current_device_list, load_saved_devices
     from modules.nsot import approval, templates_repo

@@ -62,7 +62,7 @@ def fleet(monkeypatch):
                         lambda p: list(inventory))
     # Drift reads the golden through _golden_record (C104: as committed,
     # with a refusal distinct from "no golden").
-    monkeypatch.setattr("modules.ai_assistant._golden_record",
+    monkeypatch.setattr("modules.goldens._golden_record",
                         lambda ip, list_name="": {"text": goldens.get(ip), "path": "", "commit": "",
                                     "source": "", "refused": ""})
     monkeypatch.setattr("modules.connection.get_persistent_connection",
@@ -246,7 +246,7 @@ class TestThe33bControlAgainstADeviceThatDidNotExistThen:
 
         legacy = [{"device_ip": d["ip"], "hostname": d["hostname"]}
                   for d in fleet["inventory"] if d["hostname"] != NEW]
-        monkeypatch.setattr("modules.ai_assistant._list_golden_configs",
+        monkeypatch.setattr("modules.goldens._list_golden_configs",
                             lambda: legacy)
 
         # What 3.3b replaced: the golden store as the population.
@@ -262,7 +262,7 @@ class TestThe33bControlAgainstADeviceThatDidNotExistThen:
         """The same fixture, the real code: 10 of 10."""
         fleet["onboard"]()
         fleet["capture"]()
-        monkeypatch.setattr("modules.ai_assistant._list_golden_configs",
+        monkeypatch.setattr("modules.goldens._list_golden_configs",
                             lambda: [])           # the legacy store is empty
         result = fleet["module"].run_drift_check("test")
         assert result["inventory"] == 10

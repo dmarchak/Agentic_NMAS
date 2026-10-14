@@ -1,6 +1,6 @@
 """One enumerator for golden configs.
 
-Stage 3.3's finding. `ai_assistant._list_golden_configs()` was
+Stage 3.3's finding. `goldens._list_golden_configs()` was
 
     gdir = _get_golden_configs_dir()          # data/lists/<slug>/golden_configs/
     for fname in sorted(os.listdir(gdir)):    # ...and nothing else
@@ -76,7 +76,7 @@ class TestTheRepoIsThePopulation:
     """The headline: a device with no legacy file is still a device."""
 
     def test_a_repo_only_device_is_enumerated(self, lab):
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         names = {e["hostname"] for e in _list_golden_configs()}
         assert names == {"r1", "r2"}, (
@@ -85,7 +85,7 @@ class TestTheRepoIsThePopulation:
 
     def test_an_empty_legacy_store_changes_nothing(self, lab):
         """The migration permits emptying it. Nothing may depend on it."""
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         for f in lab["legacy"].iterdir():
             f.unlink()
@@ -93,7 +93,7 @@ class TestTheRepoIsThePopulation:
         assert names == {"r1", "r2"}
 
     def test_the_ip_comes_from_the_manifest(self, lab):
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         by_name = {e["hostname"]: e for e in _list_golden_configs()}
         assert by_name["r2"]["device_ip"] == "203.0.113.2"
@@ -102,7 +102,7 @@ class TestTheRepoIsThePopulation:
         """`list_goldens` answers "has a golden", not "is known", and a golden
         is a COMMITTED file (C104): one on disk that no save committed, the
         state a failed save used to leave, is not one."""
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
         from modules.nsot import manifest as M
 
         with open(os.path.join(lab["repo"], "golden", "r9.cfg"), "w") as fh:
@@ -115,7 +115,7 @@ class TestTheRepoIsThePopulation:
     def test_a_committed_golden_deleted_only_from_disk_is_still_listed(self, lab):
         """HEAD is the golden; the working tree is ignored (C104). This test
         used to assert the opposite, which made a file on disk the authority."""
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         os.remove(os.path.join(lab["repo"], "golden", "r2.cfg"))
         names = {e["hostname"] for e in _list_golden_configs()}
@@ -133,7 +133,7 @@ class TestSavedAtIsTheCommitNotTheMtime:
     """
 
     def test_it_is_an_iso_commit_timestamp(self, lab):
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         saved = {e["hostname"]: e["saved_at"] for e in _list_golden_configs()}
         assert saved["r1"].startswith("20") and "T" in saved["r1"], saved
@@ -145,7 +145,7 @@ class TestSavedAtIsTheCommitNotTheMtime:
         enumerator, which read the LEGACY file's mtime -- a control that
         could not fail, testing a path the code under test never took.
         """
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         before = {e["hostname"]: e["saved_at"] for e in _list_golden_configs()}
         for path in (os.path.join(lab["repo"], "golden", "r1.cfg"),
@@ -195,7 +195,7 @@ class TestTheLegacyStoreIsNotDroppedSilently:
     """Retiring an enumerator must not lose a device on the day it changes."""
 
     def test_a_legacy_only_device_is_still_enumerated(self, lab):
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         (lab["legacy"] / "r9.cfg").write_text(
             LEGACY_HEADER.format(name="r9", ip="203.0.113.9") + "hostname r9\n",
@@ -205,7 +205,7 @@ class TestTheLegacyStoreIsNotDroppedSilently:
         assert by_name["r9"]["legacy"] is True
 
     def test_a_device_in_both_stores_is_reported_once(self, lab):
-        from modules.ai_assistant import _list_golden_configs
+        from modules.goldens import _list_golden_configs
 
         entries = [e for e in _list_golden_configs() if e["hostname"] == "r1"]
         assert len(entries) == 1
@@ -236,10 +236,10 @@ class TestEnumerationFailsLoudly:
     def test_a_broken_repo_logs_an_error(self, lab, monkeypatch, caplog):
         import logging
 
-        from modules import ai_assistant
+        from modules import goldens
 
         monkeypatch.setattr("modules.nsot.repo.list_goldens",
                             lambda name: (_ for _ in ()).throw(OSError("boom")))
         with caplog.at_level(logging.ERROR):
-            assert ai_assistant._list_golden_configs() == []
+            assert goldens._list_golden_configs() == []
         assert any("enumeration failed" in r.message for r in caplog.records)

@@ -49,10 +49,10 @@ def lab(tmp_path, monkeypatch, intent_matches):
     out = R.save_golden("lab", [R.GoldenItem("r1", f"{HEAD_LINE}\n!\nend\n", ip, platform="cisco_ios")],
                         allow_new=True)
     assert out["ok"], out
-    monkeypatch.setattr("modules.ai_assistant._nsot_repo_dir", lambda: repo)
-    monkeypatch.setattr("modules.ai_assistant._identity_for_ip", lambda ip, list_name="": "")
-    monkeypatch.setattr("modules.ai_assistant._migrate_golden_configs", lambda: None)
-    monkeypatch.setattr("modules.ai_assistant._legacy_header_scan", lambda ip: None)
+    monkeypatch.setattr("modules.goldens._nsot_repo_dir", lambda: repo)
+    monkeypatch.setattr("modules.goldens._identity_for_ip", lambda ip, list_name="": "")
+    monkeypatch.setattr("modules.goldens._migrate_golden_configs", lambda: None)
+    monkeypatch.setattr("modules.goldens._legacy_header_scan", lambda ip: None)
     R._WORKTREE_WARNED.clear()
     return {"repo": repo, "ip": ip, "golden": os.path.join(repo, "golden", "r1.cfg")}
 
@@ -88,7 +88,7 @@ class TestAnUncommittedEditIsIgnored:
     """The committed golden is what every consumer reads; the edit is named."""
 
     def test_the_resolver_reads_head_and_names_the_path(self, lab, caplog):
-        from modules.ai_assistant import _golden_record
+        from modules.goldens import _golden_record
 
         _hand_edit(lab["golden"])
         with caplog.at_level(logging.WARNING):
@@ -135,7 +135,7 @@ class TestAGoldenNothingCommittedIsRefusedByName:
         return "192.0.2.9"
 
     def test_the_resolver_refuses_naming_the_path(self, lab, never):
-        from modules.ai_assistant import _golden_record
+        from modules.goldens import _golden_record
 
         rec = _golden_record(never)
         assert rec["text"] is None
@@ -169,7 +169,7 @@ class TestAGoldenNothingCommittedIsRefusedByName:
 
 class TestAGoldenCommittedOutsideTheSavePathIsRefused:
     def test_a_hand_commit_is_refused_naming_path_and_commit(self, lab):
-        from modules.ai_assistant import _golden_record
+        from modules.goldens import _golden_record
 
         _hand_edit(lab["golden"])
         rc, _o, err = R.git(lab["repo"], "commit", "-q", "-am", "hand edit on the host")
@@ -181,7 +181,7 @@ class TestAGoldenCommittedOutsideTheSavePathIsRefused:
         assert "no Source: trailer" in rec["refused"]
 
     def test_the_control_a_save_path_commit_is_used(self, lab):
-        from modules.ai_assistant import _golden_record
+        from modules.goldens import _golden_record
 
         assert _golden_record(lab["ip"])["source"], "the fixture's own save carries Source:"
 
@@ -299,7 +299,7 @@ class TestThePopulation:
     readers. Each exception is named with its reason."""
 
     GOLDEN_OPENERS = {
-        ("modules/ai_assistant.py", "_golden_record"):
+        ("modules/goldens.py", "_golden_record"):
             "opens only the LEGACY store's file (golden_configs/, outside git, "
             "never written since the migration); repo goldens go through git",
         ("scripts/nsot_verify_migration.py", "verify"):
@@ -318,7 +318,7 @@ class TestThePopulation:
         # which is the one place that resolves a path to READ it.
         assert len(found) >= 4, sorted(found)
         assert ("modules/nsot/repo.py", "committed_golden_for") in found
-        assert ("modules/ai_assistant.py", "_golden_record") in found
+        assert ("modules/goldens.py", "_golden_record") in found
 
     def test_no_function_resolving_a_golden_opens_a_file(self):
         found = _functions_calling({"golden_path_for", "_find_golden_config_file"})

@@ -66,7 +66,7 @@ def _captured_record(repo: str, hostname: str) -> dict:
 
     import os as _os
 
-    from modules.ai_assistant import _golden_record, _list_golden_configs, _nsot_repo_dir
+    from modules.goldens import _golden_record, _list_golden_configs, _nsot_repo_dir
     # The legacy `golden_configs/` store is the ACTIVE list's: never the answer for another
     # list's repository (C498: it read another network's golden as this one's).
     if _os.path.abspath(repo) != _os.path.abspath(_nsot_repo_dir()):

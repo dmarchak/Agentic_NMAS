@@ -204,7 +204,7 @@ class TestPhaseTwoUpdatesThatRecord:
         from modules.nsot import onboard
         monkeypatch.setattr("modules.nsot.manifest.find_by_name",
                             lambda repo, name: ("uid:x", {"mgmt_ip": "192.0.2.6"}))
-        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
                             lambda ip, list_name: "hostname r6\n")
         monkeypatch.setattr("modules.nsot.hostvars.read_committed", lambda repo, h: {
             "bootstrap": {"environment": {"netbox_id": 12, "netbox_status": "planned"}}})
@@ -217,7 +217,7 @@ class TestPhaseTwoUpdatesThatRecord:
         from modules.nsot import onboard
         monkeypatch.setattr("modules.nsot.manifest.find_by_name",
                             lambda repo, name: ("uid:x", {"mgmt_ip": "192.0.2.6"}))
-        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
                             lambda ip, list_name: "hostname r6\n")
         monkeypatch.setattr("modules.nsot.hostvars.read_committed", lambda repo, h: {
             "bootstrap": {"environment": {"netbox_id": None}}})

@@ -72,7 +72,7 @@ class TestTheDriftScheduler:
         import modules.drift_check as D
 
         asked, queued = [], []
-        monkeypatch.setattr("modules.ai_assistant._golden_record",
+        monkeypatch.setattr("modules.goldens._golden_record",
                             lambda ip, list_name="": asked.append((ip, list_name)) or
                             {"text": "hostname tw-a\n", "path": "", "commit": "",
                              "source": "", "refused": ""})
@@ -130,15 +130,15 @@ class TestTheOtherJobs:
 
     def test_the_golden_lookup_reads_the_list_given(self, twin, monkeypatch):  # noqa: F811
         """C498: `_golden_record` read the active list's repository."""
-        from modules import ai_assistant
+        from modules import goldens
         from modules.nsot import listref
 
         seen = []
         monkeypatch.setattr("modules.nsot.manifest.find_by_ip",
                             lambda repo, ip: seen.append(repo) or ("", None))
-        monkeypatch.setattr(ai_assistant, "_migrate_golden_configs", lambda: None)
-        monkeypatch.setattr(ai_assistant, "_find_golden_config_file",
+        monkeypatch.setattr(goldens, "_migrate_golden_configs", lambda: None)
+        monkeypatch.setattr(goldens, "_find_golden_config_file",
                             lambda ip: pytest.fail("the active list's legacy store was read"))
         _activate("Default")
-        out = ai_assistant._golden_record("192.0.2.61", "Twin")
+        out = goldens._golden_record("192.0.2.61", "Twin")
         assert out["text"] is None and seen == [listref.resolve("Twin").repo_dir]

@@ -823,7 +823,7 @@ def _record_pre_change(ctx, dev: dict, text: str) -> None:
     holds the device's credentials). Nothing in the run reads it back: `_pre_change`
     is the run's own copy. A failed write is logged and changes nothing."""
     from modules.config import get_list_data_dir, open_secure
-    from modules.ai_assistant import _safe_device_name
+    from modules.goldens import _safe_device_name
     host = dev.get("hostname") or dev.get("ip", "")
     try:
         path = os.path.join(get_list_data_dir(_list_of(ctx)), "pre_change",

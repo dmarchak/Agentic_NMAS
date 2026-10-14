@@ -378,7 +378,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         """
         from modules.nsot.onboard import create_netbox_record
 
-        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
                             lambda ip, list_name="": "hostname bp1\n!\nend\n")
         out = create_netbox_record(
             repo, "bp1", "probe",
@@ -392,7 +392,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         would pass the test above and never create anything."""
         from modules.nsot.onboard import create_netbox_record
 
-        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
                             lambda ip, list_name="": "hostname bp1\n!\nend\n")
         monkeypatch.setattr("modules.netbox_guard.get_created",
                             lambda lst, endpoint="": {
@@ -410,7 +410,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         from modules.nsot import manifest as _m
         from modules.nsot.onboard import verify_and_promote
 
-        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
                             lambda ip, list_name="": "hostname bp1\n!\nend\n")
         monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
                             lambda *a, **k: {"ok": True, "failed": []})
@@ -431,7 +431,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         from modules.nsot import manifest as _m
         from modules.nsot.onboard import verify_and_promote
 
-        monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
+        monkeypatch.setattr("modules.goldens._load_golden_config_file",
                             lambda ip, list_name="": "hostname bp1\n!\nend\n")
         monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
                             lambda *a, **k: {"ok": False, "blocked": True,

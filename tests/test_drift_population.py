@@ -43,7 +43,7 @@ def fleet(monkeypatch):
                         lambda path: list(devices))
     # Drift reads the golden through _golden_record (C104: as committed,
     # with a refusal distinct from "no golden").
-    monkeypatch.setattr("modules.ai_assistant._golden_record",
+    monkeypatch.setattr("modules.goldens._golden_record",
                         lambda ip, list_name="": {"text": golden.get(ip), "path": "", "commit": "",
                                     "source": "", "refused": ""})
     monkeypatch.setattr("modules.connection.get_persistent_connection",
@@ -94,7 +94,7 @@ class TestTheLegacyStoreDoesNotDecideWhoIsChecked:
             self, fleet, monkeypatch):
         # The old enumerator's answer. If anything still consults it, r1 and
         # r2 drop out of the run entirely.
-        monkeypatch.setattr("modules.ai_assistant._list_golden_configs",
+        monkeypatch.setattr("modules.goldens._list_golden_configs",
                             lambda: [])
         r = fleet["module"].run_drift_check("test")
         assert r["inventory"] == 3

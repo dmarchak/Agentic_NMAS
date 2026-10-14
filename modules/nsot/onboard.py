@@ -1447,7 +1447,7 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
     # without one creates the scaffolding and nothing else, which is exactly
     # the state this function exists to stop producing.
     try:
-        from modules.ai_assistant import _load_golden_config_file
+        from modules.goldens import _load_golden_config_file
         from modules.nsot import manifest as _m
 
         _identity, entry = _m.find_by_name(repo, hostname)

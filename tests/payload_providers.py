@@ -550,7 +550,7 @@ def _drift_run(mp, tmp):
     csv_path = str(tmp / "drift-devices.csv")
     mp.setattr("modules.device.get_current_device_list", lambda: ("lab", csv_path))
     mp.setattr("modules.device.load_saved_devices", lambda path=None: list(devices))
-    mp.setattr("modules.ai_assistant._golden_record",
+    mp.setattr("modules.goldens._golden_record",
                lambda ip, list_name="": {"text": golden.get(ip), "path": "", "commit": "",
                            "source": "", "refused": ""})
     mp.setattr("modules.connection.get_persistent_connection", connect)

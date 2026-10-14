@@ -143,7 +143,7 @@ class TestTheRunReportsItsCoverageEveryTime:
                             lambda p: list(devices))
         # Drift reads the golden through _golden_record (C104: as committed,
         # with a refusal distinct from "no golden").
-        monkeypatch.setattr("modules.ai_assistant._golden_record",
+        monkeypatch.setattr("modules.goldens._golden_record",
                             lambda ip, list_name="": {"text": f"hostname r{ip.split(chr(46))[-1]}\n!\nend\n",
                                         "path": "", "commit": "",
                                         "source": "", "refused": ""})

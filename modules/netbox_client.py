@@ -3004,7 +3004,7 @@ def _scan_device_from_golden(dev: dict, list_name: str = "") -> dict:
     This is the only scanner; the SSH one was removed in Stage 3.3 because
     nothing called it.
     """
-    from modules.ai_assistant import _golden_record
+    from modules.goldens import _golden_record
 
     ip       = dev.get("ip", "")
     # CSV hostname is authoritative — it reflects the current name (manually set

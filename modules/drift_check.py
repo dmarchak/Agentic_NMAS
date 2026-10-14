@@ -439,7 +439,7 @@ def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> di
 
     Returns ``{ok, inventory, checked, drifted, clean, skipped, errors, ...}``.
     """
-    from modules.ai_assistant import _golden_record
+    from modules.goldens import _golden_record
     from modules.approval_queue import add_approval
     from modules.filestore import StoreUnreadable
     from modules.device import get_current_device_list, load_saved_devices
