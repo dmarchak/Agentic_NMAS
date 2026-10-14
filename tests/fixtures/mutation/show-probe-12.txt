@@ -1,0 +1,12 @@
+# modules.readers.reachability.x_probe__mutmut_12: survived
+--- modules/readers/reachability.py
++++ modules/readers/reachability.py
+@@ -7,7 +7,7 @@
+         if ping is None:
+             from ping3 import ping
+         response = ping(ip, timeout=2, unit="ms")
+-        if response and response > 0:
++        if response or response > 0:
+             return True, CLAIM_ICMP
+     except Exception:                                   # noqa: BLE001
+         log.debug("reachability: ICMP to %s not possible or failed", ip, exc_info=True)

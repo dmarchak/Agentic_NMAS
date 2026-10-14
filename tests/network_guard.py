@@ -312,6 +312,13 @@ class SpawnGuard:
             env["NMAS_TEST_CHECKOUT_DATA"] = self.checkout_data
         if self.fakes_under:
             env["NMAS_TEST_FAKES_UNDER"] = self.fakes_under
+        # Under mutmut's stats run (the nightly mutation run, docs/TESTING.md), a child's
+        # mutated functions record no hit: recording needs mutmut's configuration, which only
+        # the run's own folder holds (a test's child runs elsewhere and raised
+        # FileNotFoundError, failing the run: measured 2026-10-14), and a child's hits die with
+        # it anyway. In a mutant's run the child still runs the mutant.
+        if env.get("MUTANT_UNDER_TEST") == "stats":
+            env["MUTMUT_DEPENDENCY_DEPTH"] = "0"
         return env
 
     def attempts(self, start=0):

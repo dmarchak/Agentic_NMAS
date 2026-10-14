@@ -25,8 +25,8 @@ def _config(name):
 class TestHashDetection:
     @pytest.mark.parametrize("value", [
         "9 $9$abcdefghij", "5 $1$aB3x$K9mNpQ", "8 $8$xyz", "7 0822455D0A16",
-        "$9$bare", "$1$bare",
-    ])
+        "$9$bare", "$1$bare", "$5$bare", "$8$bare",   # each bare prefix (the serial mutation
+    ])                                                 # pass, 2026-10-14: $5$ and $8$ survived)
     def test_hashes_are_detected(self, value):
         assert hostvars._looks_hashed(value)
 
@@ -160,15 +160,23 @@ class TestCommittedIntentNeverHoldsASecretValue:
             hostvars.write_committed_text(
                 str(tmp_path), "s1", f"hostname: s1\nbanner: {value}\n")
         words = str(exc.value)
-        assert "line 2, in field 'banner'" in words
-        assert "Commit the secret_ref ('s1:user_admin_secret') instead" in words
+        assert words == ("s1: the resolved value of secret 'lab:s1:user_admin_secret' appears "
+                         "on line 2, in field 'banner'. Commit the secret_ref "
+                         "('s1:user_admin_secret') instead — the value belongs in the "
+                         "credential store.")
         assert value not in words
 
-    def test_write_committed_refuses_a_secrets_mapping(self, tmp_path, store):
+    @pytest.mark.parametrize("text", ["hostname: s1\nsecrets:\n  a: b\n",
+                                      "secrets:\n  a: b\nhostname: s1\n"])
+    def test_write_committed_refuses_a_secrets_mapping(self, tmp_path, store, text):
+        """On any line, the first included, in words that say where values and names live
+        (the serial mutation pass, 2026-10-14: a mapping on line 1, and the words, survived)."""
         from modules.nsot import hostvars
-        with pytest.raises(hostvars.SecretLeak):
-            hostvars.write_committed_text(
-                str(tmp_path), "s1", "hostname: s1\nsecrets:\n  a: b\n")
+        with pytest.raises(hostvars.SecretLeak) as exc:
+            hostvars.write_committed_text(str(tmp_path), "s1", text)
+        assert str(exc.value) == ("s1: committed host_vars must not contain a 'secrets' "
+                                  "mapping — values live in the credential store, names in "
+                                  "secret_refs")
 
     def test_a_clean_document_is_written(self, tmp_path, store):
         from modules.nsot import hostvars
@@ -302,6 +310,43 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
         assert open(path, encoding="utf-8").read() == text
 
 
+class TestEveryCheckableSecretOfTheDeviceIsChecked:
+    """The value check skips another device's secret and a short one, and must go on to the
+    next: a skip that ended the scan would let the leak after it through, a guard failing
+    open. Its floor is inclusive: a value exactly MIN_CHECKABLE_SECRET long is checked (the
+    serial mutation pass, 2026-10-14: `break` for either `continue`, and `<=` for `<`,
+    survived)."""
+
+    LEAKED = "Str0ngC0mmunityValue"
+
+    def _store(self, monkeypatch, values):
+        from modules import credentials
+        monkeypatch.setattr(credentials, "get_template_secret",
+                            lambda name: values.get(name, ""))
+        monkeypatch.setattr(credentials, "list_template_secrets",
+                            lambda: [{"name": n, "secret_kind": "plaintext",
+                                      "rotatable": True} for n in values])
+
+    @pytest.mark.parametrize("before", [{"lab:s2:snmp_community_ro": "AnotherDevicesValue"},
+                                        {"lab:s1:user_admin_name": "admin"}],
+                             ids=["another device's secret first", "a short secret first"])
+    def test_a_skipped_secret_does_not_end_the_check(self, tmp_path, monkeypatch, before):
+        from modules.nsot import hostvars
+        self._store(monkeypatch, {**before, "lab:s1:snmp_community_ro": self.LEAKED})
+        with pytest.raises(hostvars.SecretLeak):
+            hostvars.write_committed_text(str(tmp_path), "s1",
+                                          f"hostname: s1\nbanner: {self.LEAKED}\n")
+
+    def test_a_value_exactly_at_the_floor_is_checked(self, tmp_path, monkeypatch):
+        from modules.nsot import hostvars
+        value = "Ab3dEf7h"
+        assert len(value) == hostvars.MIN_CHECKABLE_SECRET
+        self._store(monkeypatch, {"lab:s1:snmp_community_ro": value})
+        with pytest.raises(hostvars.SecretLeak):
+            hostvars.write_committed_text(str(tmp_path), "s1",
+                                          f"hostname: s1\nbanner: {value}\n")
+
+
 class TestToYamlIsAFixedPointOverItsOwnOutput:
     """``to_yaml`` destroyed every ``secret_ref`` on a second pass.
 
@@ -384,6 +429,35 @@ class TestCommittedIntentMustBePrintableAscii:
                 str(tmp_path), "s4", "hostname: s4\ndescription: a — b\n")
         message = str(exc.value)
         assert "U+2014" in message and "column" in message
+
+    def test_the_refusal_names_the_line_and_its_column_and_what_to_type_instead(self, tmp_path):
+        """The whole refusal: the character on line 2 at the column an editor shows, never
+        a column counted across the lines before it (C767), and what to type instead (the
+        serial mutation pass, 2026-10-14: the words, and the newlines' handling, survived)."""
+        from modules.nsot import hostvars
+        with pytest.raises(hostvars.NonPrintableContent) as exc:
+            hostvars.write_committed_text(
+                str(tmp_path), "s4", "hostname: s4\ndescription: a — b\n")
+        assert str(exc.value) == (
+            "s4: host_vars contains 1 character(s) an IOS CLI cannot accept — '—' (U+2014) "
+            "at line 2, column 16. Use printable ASCII (0x20-0x7E); an em dash or a smart "
+            "quote desynchronises the device's line parser and truncates the command.")
+
+    def test_what_is_refused_is_every_non_printable_but_the_newlines(self):
+        """Where a character sits never decides whether it is refused: a tab, a carriage
+        return and a smart quote on any line are, a newline is not; past three, the rest
+        are counted."""
+        from modules.nsot import hostvars
+        hostvars.assert_printable("hostname: s4\n\ndescription: plain\n", "s4")
+        with pytest.raises(hostvars.NonPrintableContent) as exc:
+            hostvars.assert_printable("a\tb\r\nc\n“d”\n", "s4")
+        words = str(exc.value)
+        assert "contains 4 character(s)" in words
+        assert ("'\\t' (U+0009) at line 1, column 2, '\\r' (U+000D) at line 1, column 4, "
+                "'“' (U+201C) at line 3, column 1, and 1 more.") in words
+        with pytest.raises(hostvars.NonPrintableContent) as exc:     # exactly three: no "more"
+            hostvars.assert_printable("a\tb\r\nc\n“d\n", "s4")
+        assert "'“' (U+201C) at line 3, column 1. Use printable" in str(exc.value)
 
     def test_the_ascii_version_is_accepted(self, tmp_path):
         """The same description with an ASCII hyphen (not the en dash that corrupted one on

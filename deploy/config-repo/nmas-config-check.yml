@@ -132,11 +132,20 @@ jobs:
           print(f"{r['counts']['fail']} failure(s) over {r['scope']}, "
                 f"{len(r['devices'])} device(s). {r.get('intent_match_trailer', '')}\n")
           tc = r.get("templates")
-          if tc:
-              print(f"**Templates rendered by some device: {len(tc['rendered'])} of "
+          if tc and "bases" in tc:
+              short = lambda p: p[len("templates/"):] if p.startswith("templates/") else p
+              print(f"**Base templates rendered by some device: {len(tc['rendered'])} of "
                     f"{tc['total']}.**\n")
-              for t in tc["unrendered"]:
-                  print(f"- not rendered: `{t}`")
+              for base, devs in tc["bases"].items():
+                  print(f"- `{short(base)}`: " + (f"{len(devs)} device(s): {', '.join(devs)}"
+                                                 if devs else "**NOT RENDERED** by any device"))
+              for part, by in tc["partials"].items():
+                  print(f"- partial `{short(part)}`: " + (
+                      "imported by " + ", ".join(f"`{short(b)}`" for b in by) if by
+                      else "**NOT IMPORTED** by any template"))
+          elif tc:
+              print(f"**Templates rendered by some device: {len(tc['rendered'])} of "
+                    f"{tc['total']}** (a pinned release before partials were told apart).")
           else:
               print("Template coverage: not in this pinned release's report.")
           PY

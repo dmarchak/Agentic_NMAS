@@ -39,6 +39,7 @@ EXEMPT = {
     "scripts/nmas-ci-log": "the laptop's CI reader",
     "scripts/nmas-host-step-check": "the commit-msg hook's and CI's",
     "scripts/nmas-coverage": "CI's coverage job and the laptop's (Lab 7)",
+    "scripts/nmas-mutation": "the nightly mutation workflow's and the laptop's (Lab 7)",
     # Fed to `python3 -` on stdin by the agent: no file to re-run; standard library and
     # modules.redact only (standard library only, measured 2026-10-09).
     "scripts/nmas-config-read": "run from stdin",

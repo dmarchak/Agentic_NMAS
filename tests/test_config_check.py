@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import textwrap
 
 import pytest
 import yaml
@@ -296,6 +297,123 @@ def test_a_profile_exclusion_is_mercurys_own_key_and_commits(lab):
     assert save_host_vars(LIST, ["r2"], actor="t")["ok"]
 
 
+# ---------------------------------------------------------------------------
+# What must not PASS (Lab 7's mutation night on _check_device, 2026-10-14: each of these
+# survived, so a bad repository, or a commit, could have passed the check)
+# ---------------------------------------------------------------------------
+
+def _git(repo, *args):
+    subprocess.run(["git", "-C", repo, *args], check=True, capture_output=True)
+
+
+def _fails(report, check):
+    return [r for r in report["results"] if r["check"] == check and r["status"] == "fail"]
+
+
+def test_a_template_that_renders_a_byte_no_cli_accepts_fails_the_lint(lab):
+    """The intent is printable, so only a template can put an em dash into the render: the lint
+    fails, naming the line, against the intent and the template, so a commit touching just the
+    template is refused too (the night: the lint's status and its files survived)."""
+    from modules.nsot import config_check
+    path = os.path.join(lab["repo"], "templates", "cisco_iosxe", "base.j2")
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write("! managed — by Mercury\n")
+    for report in (config_check.run(lab["repo"], notes=False),
+                   config_check.run(lab["repo"], touched=["templates/cisco_iosxe/base.j2"],
+                                    notes=False)):
+        fails = _fails(report, "lint")
+        assert not report["ok"] and len(fails) == 1, report["results"]
+        assert fails[0]["device"] == "r2" and fails[0]["file"] == "host_vars/r2.yml"
+        assert "templates/cisco_iosxe/base.j2" in fails[0]["files"]
+        assert fails[0]["message"].startswith("the render of its intent has line ")
+        assert "U+2014" in fails[0]["message"]
+
+
+def test_a_binding_to_a_template_that_fails_is_refused_as_the_bindings_change(lab):
+    """A template committed and bound to nothing, then a device bound to it: the change touches
+    only templates/bindings.yml, and the render failure counts against it, naming the template
+    the device is bound to (the night: the bindings' attribution, the device's own binding and
+    the bound template's name all survived)."""
+    from modules.nsot import config_check, templates_repo
+    broken = os.path.join(lab["repo"], "templates", "cisco_iosxe", "broken.j2")
+    with open(broken, "w", encoding="utf-8") as fh:
+        fh.write("{% for v in vrfs.missing.deeper %}{{ v }}{% endfor %}\n")
+    _git(lab["repo"], "add", "templates/cisco_iosxe/broken.j2")
+    _git(lab["repo"], "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit",
+         "-qm", "an unbound template")
+    assert config_check.run(lab["repo"], notes=False)["ok"], "unbound: nothing renders it"
+    bindings = templates_repo.load_bindings(lab["repo"])
+    bindings["overrides"]["r2"] = "cisco_iosxe/broken.j2"
+    templates_repo.save_bindings(lab["repo"], bindings)
+    report = config_check.run(lab["repo"], touched=["templates/bindings.yml"], notes=False)
+    fails = _fails(report, "render")
+    assert not report["ok"] and len(fails) == 1, report["results"]
+    assert fails[0]["device"] == "r2"
+    assert "does not render through templates/cisco_iosxe/broken.j2" in fails[0]["message"]
+    assert "templates/bindings.yml" in fails[0]["files"]
+
+
+def _profile(lab, data):
+    """Commit profiles/monitoring.yml with one section for IOS-XE devices of the role `edge`."""
+    from modules.nsot import profile
+    path = os.path.join(lab["repo"], profile.PROFILE_REL)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump({"version": profile.VERSION, "sections": {"lldp": {
+            "platforms": ["cisco_iosxe"], "roles": ["edge"], "data": data}}}, fh)
+    _git(lab["repo"], "add", profile.PROFILE_REL)
+    _git(lab["repo"], "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit",
+         "-qm", "the profile")
+    return profile.PROFILE_REL
+
+
+def test_a_profile_that_breaks_a_render_is_refused_as_the_profiles_change(lab, monkeypatch):
+    """The profile is overlaid on each device's intent before it renders (the device's own value
+    wins, unless it is empty). A section for this device's platform and role whose data breaks
+    the render fails, and counts against a commit touching only the profile; a benign one
+    passes. r2's `tracks` is empty, and `_common.j2` loops over it (the night: the profile's
+    application, its arguments, and the profile file's attribution all survived)."""
+    from modules.nsot import config_check
+    entries = config_check._manifest_entries(lab["repo"])
+    monkeypatch.setattr(config_check, "_manifest_entries",
+                        lambda repo: {n: {**e, "role": "edge"} for n, e in entries.items()})
+    rel = _profile(lab, {"tracks": []})
+    good = config_check.run(lab["repo"], notes=False)
+    assert good["ok"], good["results"]
+    _profile(lab, {"tracks": 7})
+    for report in (config_check.run(lab["repo"], notes=False),
+                   config_check.run(lab["repo"], touched=[rel], notes=False)):
+        fails = _fails(report, "render")
+        assert not report["ok"] and len(fails) == 1, report["results"]
+        assert fails[0]["device"] == "r2" and rel in fails[0]["files"]
+    monkeypatch.setattr(config_check, "_manifest_entries",
+                        lambda repo: {n: {**e, "role": "core"} for n, e in entries.items()})
+    assert config_check.run(lab["repo"], notes=False)["ok"], "another role: not applied"
+
+
+@pytest.mark.parametrize("only", ["inventory", "intent"])
+def test_the_platform_from_either_source_alone_still_renders(lab, monkeypatch, only):
+    """A device's dialect comes from the inventory entry, else its intent: with it in only one
+    of them the device is still rendered, so its render failure is found, never "not rendered:
+    no known platform" (the night: dropping either source survived, since the lab names it in
+    both)."""
+    from modules.nsot import config_check
+    _edit_intent(lab, _unrenderable)
+    if only == "inventory":
+        _edit_intent(lab, lambda t: "\n".join(l for l in t.splitlines()
+                                              if not l.startswith("platform:")) + "\n")
+        assert "platform:" not in open(lab["intent"], encoding="utf-8").read()
+    else:
+        entries = config_check._manifest_entries(lab["repo"])
+        assert entries["r2"].get("platform") == "cisco_iosxe", "the lab names it in both"
+        monkeypatch.setattr(config_check, "_manifest_entries",
+                            lambda repo: {n: {k: v for k, v in e.items() if k != "platform"}
+                                          for n, e in entries.items()})
+    report = config_check.run(lab["repo"], notes=False)
+    fails = _fails(report, "render")
+    assert len(fails) == 1 and fails[0]["device"] == "r2", report["results"]
+
+
 def test_a_password_hash_anywhere_fails_by_its_shape_and_is_never_printed(lab, tmp_path):
     value = "$9$AAAAAAAAAAAAAA$" + "B" * 43
     path = os.path.join(lab["repo"], "templates", "cisco_iosxe", "base.j2")
@@ -388,20 +506,85 @@ def test_the_host_step_reads_owner_and_name_from_every_origin_form(url):
     assert got.stdout.strip() == "o/n", (url, got.stdout)
 
 
-def test_the_report_names_the_templates_no_device_renders(lab):
-    """The config repository's coverage (Lab 7): a whole-repository check says which of its
-    templates some device's render reached (the template and its imports) and which none did.
-    The lab has one IOS-XE device, so the IOS template is named unrendered. Information for a
-    person to judge (dead, or bound to a platform no device has), never a failure; a scoped
-    check, which renders only the devices a change touched, does not claim it."""
+def test_the_report_names_each_base_templates_devices_and_each_partials_importers(lab):
+    """The config repository's coverage (Lab 7): the BASE templates, each with the devices
+    that render it, the headline counting them only; the PARTIALS, each with what imports it.
+    The lab's one device is IOS-XE, so the IOS base is flagged NOT RENDERED, and `_common.j2`
+    is a partial both bases import, never "not rendered" (C768: it read so on the host).
+    Information, never a failure; a scoped check, which renders only the devices a change
+    touched, does not claim it."""
     from modules.nsot import config_check
     report = config_check.run(lab["repo"], notes=False)
     tc = report["templates"]
-    assert report["ok"] and tc["total"] == len(tc["rendered"]) + len(tc["unrendered"])
-    assert "templates/cisco_iosxe/base.j2" in tc["rendered"]
-    assert "templates/cisco_ios/base.j2" in tc["unrendered"]
-    line = next(l for l in config_check.human(report).splitlines()
-                if l.startswith("Templates rendered by some device:"))
-    assert f"{len(tc['rendered'])} of {tc['total']}" in line and "cisco_ios/base.j2" in line
+    assert report["ok"]
+    assert tc["bases"] == {"templates/cisco_ios/base.j2": [],
+                           "templates/cisco_iosxe/base.j2": ["r2"]}
+    assert tc["partials"] == {"templates/_common.j2": ["templates/cisco_ios/base.j2",
+                                                       "templates/cisco_iosxe/base.j2"]}
+    assert (tc["total"], tc["rendered"], tc["unrendered"], tc["unimported"]) == (
+        2, ["templates/cisco_iosxe/base.j2"], ["templates/cisco_ios/base.j2"], [])
+    human = config_check.human(report).splitlines()
+    at = human.index("Base templates rendered by some device: 1 of 2")
+    assert human[at + 1:at + 4] == [
+        "  cisco_ios/base.j2: NOT RENDERED by any device",
+        "  cisco_iosxe/base.j2: 1 device(s): r2",
+        "Partial _common.j2: imported by cisco_ios/base.j2, cisco_iosxe/base.j2"]
     scoped = config_check.run(lab["repo"], touched=["host_vars/r2.yml"], notes=False)
     assert scoped["templates"] is None
+
+
+def test_a_partial_nothing_imports_is_flagged_and_a_fleet_is_counted(tmp_path):
+    """A partial is one another template imports, or one named with a leading underscore;
+    an underscore file nothing imports is flagged, never miscounted as an unrendered base. A
+    base's devices are named up to NAMED_DEVICES and the rest counted."""
+    from modules.nsot import config_check
+    texts = {"templates/_common.j2": "{% macro m() %}x{% endmacro %}\n",
+             "templates/_orphan.j2": "{% macro o() %}y{% endmacro %}\n",
+             "templates/macros.j2": "{% macro n() %}z{% endmacro %}\n",
+             "templates/ios/base.j2": "{% import '_common.j2' as c %}\n"
+                                      "{%- include 'macros.j2' %}\n"}
+    for rel, text in texts.items():
+        os.makedirs(os.path.dirname(tmp_path / rel), exist_ok=True)
+        (tmp_path / rel).write_text(text)
+    fleet = [f"sw{n:03d}" for n in range(12)]
+    tc = config_check.template_coverage(str(tmp_path), sorted(texts),
+                                        {"templates/ios/base.j2": set(fleet)})
+    assert tc["partials"] == {"templates/_common.j2": ["templates/ios/base.j2"],
+                              "templates/_orphan.j2": [],
+                              "templates/macros.j2": ["templates/ios/base.j2"]}
+    assert tc["unimported"] == ["templates/_orphan.j2"] and tc["total"] == 1
+    lines = config_check.template_lines(tc)
+    assert lines[1] == ("  ios/base.j2: 12 device(s): " + ", ".join(fleet[:10])
+                        + ", and 2 more")
+    assert "Partial _orphan.j2: NOT IMPORTED by any template" in lines
+
+
+def test_the_job_summary_draws_the_template_section(tmp_path):
+    """The config repository's summary step, run as GitHub runs it (its Python, from the
+    workflow file) over a real report of the lab: the base templates with their devices and
+    the partial with its importers."""
+    import yaml
+    with open(WORKFLOW, encoding="utf-8") as fh:
+        steps = yaml.safe_load(fh)["jobs"]
+    run = next(s["run"] for job in steps.values() for s in job["steps"]
+               if s.get("name") == "The summary")
+    program = run.split("<<'PY'", 1)[1].split("\n", 1)[1].rsplit("\nPY", 1)[0]
+    report = {"ok": True, "counts": {"fail": 0}, "scope": "whole repository",
+              "devices": ["r2"], "intent_match_trailer": "Intent-Match: yes (1 of 1)",
+              "templates": {"total": 2, "rendered": ["templates/cisco_iosxe/base.j2"],
+                            "unrendered": ["templates/cisco_ios/base.j2"],
+                            "bases": {"templates/cisco_ios/base.j2": [],
+                                      "templates/cisco_iosxe/base.j2": ["r2"]},
+                            "partials": {"templates/_common.j2": [
+                                "templates/cisco_ios/base.j2",
+                                "templates/cisco_iosxe/base.j2"]},
+                            "unimported": []}}
+    (tmp_path / "nmas-config-check.json").write_text(json.dumps(report))
+    got = subprocess.run([sys.executable, "-c", textwrap.dedent(program)], cwd=tmp_path,
+                         capture_output=True, text=True, timeout=60)
+    assert got.returncode == 0, got.stderr
+    assert "**Base templates rendered by some device: 1 of 2.**" in got.stdout
+    assert "- `cisco_ios/base.j2`: **NOT RENDERED** by any device" in got.stdout
+    assert "- `cisco_iosxe/base.j2`: 1 device(s): r2" in got.stdout
+    assert ("- partial `_common.j2`: imported by `cisco_ios/base.j2`, `cisco_iosxe/base.j2`"
+            in got.stdout)

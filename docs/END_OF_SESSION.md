@@ -1,5 +1,25 @@
 # End of session: where Phase 7 stands
 
+## NIGHT, 2026-10-14 (00:00 to about 04:30 UTC; 18:00 to 22:30 UTC−6, 2026-10-13): Lab 7
+
+**Deployed:** 5e72a9ea (CI #759), then c725 on the NMAS host via LAN: 8 of 8 PASS, the config
+repository's commit 252a07ca (its workflow, pin and TESTING.md); its first run green (the
+operator). Its template line was wrong (C768, fixed in the next commit).
+
+**The nightly mutation run is built and walked on the laptop**, its canary, its record and the
+config check's survivors with it (docs/TESTING.md, "Mutation testing"). Corrected tonight: the
+first pass's 129 of 132 was a parallel artefact, 92 serially (C766). Found and fixed: C767 (the
+printable refusal's column; the message only), C768 (the template coverage), C769 (a large
+function never finishing across nights). The secret-check survivor was a missing TEST, never a
+code bug: nothing to re-scan.
+
+**Next, in order:** the gate and CI on this work; the deploy; c725 again (its summary should
+read 2 of 2 base templates, `_common.j2` imported by both, nothing flagged); the first
+`workflow_dispatch` of mutation-nightly on GitHub (it will plan this commit's changed
+functions, `_check_device` among them, and stay red on the config check's open survivors until
+each is killed or listed as equivalent: the system working); the CLAUDE.md lines given to the
+operator. Then the AI family's shared pieces (the operator's order).
+
 ## EVENING, 2026-10-13 (19:00 to about 21:00 UTC; 13:00 to 15:00 UTC−6)
 
 **Committed and pushed:** fb815743 (C741, C746, C747, C751; CI #742 green) and eae5c6c2 (C752,

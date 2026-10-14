@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""nmas-mutation: the nightly mutation run's three steps around mutmut (docs/TESTING.md,
+"Mutation testing"; .github/workflows/mutation-nightly.yml; the logic is scripts/nmas_mutation.py).
+
+    nmas-mutation plan --state S --head SHA --out DIR [--summary F] [--also PATH::QUALNAME]...
+        the functions to mutate tonight: those the record S keeps (unfinished, or holding an
+        open survivor) whose text is unchanged, then the automation functions changed since S's
+        commit (or HEAD~1 on the first night). Writes DIR/plan.json, DIR/patterns.txt (mutmut's
+        names) and ./setup.cfg (mutmut's configuration: the planned modules and the canary, and
+        the test files that import them). With nothing to mutate, writes "nothing to mutate" to
+        F and S's next record, and DIR/patterns.txt is empty.
+    nmas-mutation run --out DIR
+        mutmut, one mutant at a time, in three runs: the canary's in-process function (which
+        also collects mutmut's statistics and each test's tier); then, the tests that start a
+        child process added to every planned function's tests, the canary's in-child function;
+        then the night's mutants. Stops after a run that fails. Exit: 0, or the failing run's.
+    nmas-mutation report --plan DIR/plan.json --summary F --state-out S --mutmut-exit N
+                         [--budget MIN]
+        reads mutmut's results and each survivor's diff; checks the canary (every mutant
+        killed) and the scope (only planned functions ran); merges the record's kept results;
+        writes the summary to F, the report to DIR/report.json and, unless the measurement or
+        the run failed, the next record to S. Exit 1 when the measurement or the run failed, or
+        when an open survivor remains (not killed, not listed in tests/mutation_equivalent.py);
+        0 otherwise.
+"""
+import argparse
+import glob
+import json
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import nmas_mutation as M  # noqa: E402
+
+#: What mutmut copies beside the mutated modules: the whole program and its tests.
+ALSO_COPY = ("modules/", "routes/", "app.py", "telnetlib.py", "tests/", "scripts/", "templates/",
+             "static/", "deploy/", "docs/", "lab/", "pytest.ini", "requirements.txt",
+             "requirements.lock", "requirements-ci.txt", "requirements-test.txt",
+             "requirements-overrides.txt")
+STATS = os.path.join(M.ROOT, "mutants", "mutmut-stats.json")
+
+
+def _mutmut(*args) -> str:
+    return subprocess.run([sys.executable, "-m", "mutmut", *args], cwd=M.ROOT,
+                          capture_output=True, text=True).stdout
+
+
+def _mutmut_run(names, env=None) -> int:
+    """One `mutmut run`, serial (docs/TESTING.md: parallel children share the test store)."""
+    print(f"nmas-mutation: mutmut run over {len(names)} name(s)", flush=True)
+    return subprocess.run([sys.executable, "-m", "mutmut", "run", "--max-children", "1", *names],
+                          cwd=M.ROOT, env=env).returncode
+
+
+def cmd_plan(a) -> int:
+    state = {}
+    if a.state and os.path.exists(a.state):
+        with open(a.state, encoding="utf-8") as fh:
+            state = json.load(fh)
+    p = M.plan(state, a.head, also=a.also)
+    os.makedirs(a.out, exist_ok=True)
+    files = sorted({path for path, _q in p["planned"]})
+    sources = {}
+    for f in glob.glob(os.path.join(M.ROOT, "tests", "test_*.py")):
+        with open(f, encoding="utf-8") as fh:
+            sources[os.path.relpath(f, M.ROOT)] = fh.read()
+    tests = M.tests_for(files, sources)
+    p["tests"] = tests
+    names = M.patterns(p) if p["planned"] else []
+    M.save(os.path.join(a.out, "plan.json"), p)
+    with open(os.path.join(a.out, "patterns.txt"), "w", encoding="utf-8") as fh:
+        fh.write("".join(n + "\n" for n in names))
+    print(f"base {p['base'][:9]}, head {p['head'][:9]}: {len(p['planned'])} function(s) in "
+          f"{len(files)} module(s), {len(tests)} test file(s), {len(names)} mutmut name(s)")
+    for path, q in p["planned"]:
+        k = M.key((path, q))
+        why = (f"kept by the record: {len(p['names'][k])} mutant(s) left or open"
+               if k in p["kept"] else "changed since the covered commit: every mutant")
+        print(f"  {path}: {q} ({why})")
+    for k in p["dropped"]:
+        print(f"  {k}: the record's results dropped (its text changed, or it is gone)")
+    if not p["planned"]:
+        if a.summary:
+            with open(a.summary, "a", encoding="utf-8") as fh:
+                fh.write(M.summary(p["base"], p["head"], [], {}, [], 0))
+        if a.state:
+            M.save(a.state, {"commit": p["head"], "functions": {}})
+        return 0
+    sources_to_mutate = files + [M.CANARY_FILE]
+    with open(os.path.join(M.ROOT, "setup.cfg"), "w", encoding="utf-8") as fh:
+        fh.write("[mutmut]\nsource_paths =\n" + "".join(f"    {f}\n" for f in sources_to_mutate)
+                 + "also_copy =\n" + "".join(f"    {c}\n" for c in ALSO_COPY)
+                 # A list, one argument a line: one line "-p no:cacheprovider" reaches pytest
+                 # as ONE argument (measured 2026-10-14, mutmut's debug output).
+                 + "pytest_add_cli_args =\n    -p\n    no:cacheprovider\n"
+                 + "pytest_add_cli_args_test_selection =\n"
+                 + "".join(f"    {t}\n" for t in tests + [M.CANARY_TESTS]))
+    return 0
+
+
+def cmd_run(a) -> int:
+    with open(os.path.join(a.out, "plan.json"), encoding="utf-8") as fh:
+        p = json.load(fh)
+    with open(os.path.join(a.out, "patterns.txt"), encoding="utf-8") as fh:
+        names = [l.strip() for l in fh if l.strip()]
+    tiers_dir = os.path.join(os.path.abspath(a.out), "tiers")
+    os.makedirs(tiers_dir, exist_ok=True)
+    record = {"runs": []}
+
+    def done(name, code):
+        record["runs"].append({"run": name, "exit": code})
+        M.save(os.path.join(a.out, "run.json"), record)
+        return code
+
+    # 1. The canary in the test's process; mutmut collects its statistics here, and each test
+    #    records its tier (tests/conftest.py).
+    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_PROCESS)],
+                       env=dict(os.environ, NMAS_TEST_TIERS=tiers_dir))
+    if done("the canary, in process", code):
+        return code
+    # 2. A test that starts a child may reach any function there, and a child records nothing:
+    #    every such test joins each planned function's tests, and the canary's in-child one's.
+    coverage = M._load("nmas_coverage", os.path.join(M.ROOT, "scripts", "nmas_coverage.py"))
+    spawning = M.spawning_tests(coverage.load_tiers(tiers_dir))
+    with open(STATS, encoding="utf-8") as fh:
+        stats = json.load(fh)
+    functions = [M.mangled(*f) for f in p["planned"]] + [M.mangled(*M.CANARY_IN_CHILD)]
+    record["spawning_tests"] = spawning
+    record["associations_added"] = M.add_tests(stats, functions, spawning)
+    M.save(STATS, stats)
+    print(f"nmas-mutation: {len(spawning)} test(s) start a child; "
+          f"{record['associations_added']} test association(s) added", flush=True)
+    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_CHILD)])
+    if done("the canary, in a child", code):
+        return code
+    # The canary must be dead before the night's mutants mean anything.
+    broken = M.canary_error(M.parse_results(_mutmut("results", "--all", "true")))
+    if broken:
+        print(f"nmas-mutation: {broken}", flush=True)
+        return done("the canary's verdict", M.CANARY_BROKEN)
+    # 3. The night.
+    return done("the night", _mutmut_run(names)) if names else done("the night", 0)
+
+
+def cmd_report(a) -> int:
+    with open(a.plan, encoding="utf-8") as fh:
+        p = json.load(fh)
+    planned = [tuple(f) for f in p["planned"]]
+    everything = M.parse_results(_mutmut("results", "--all", "true")) if planned else {}
+    canary = [M.CANARY_IN_PROCESS, M.CANARY_IN_CHILD]
+    tonight = M.only_functions(everything, planned)
+    results = {}
+    for f in planned:
+        kept = (p["kept"].get(M.key(f)) or {}).get("results", {})
+        results.update(M.merge(kept, M.only_functions(tonight, [f])))
+    exit_ = M.FINISHED if a.mutmut_exit == M.CANARY_BROKEN else a.mutmut_exit
+    out = M.outcome(planned, results, exit_)
+    # mutmut failing is the cause when it did; otherwise the canary, then the scope.
+    error = out["error"] or M.canary_error(everything) or M.scope_error(everything,
+                                                                       planned + canary)
+    if error:
+        results = {}
+    shows = {m: _mutmut("show", m) for m, s in results.items() if s in M.SURVIVING}
+    eq_mod = M._load("mutation_equivalent", os.path.join(M.ROOT, "tests",
+                                                          "mutation_equivalent.py"))
+    v = M.verdict(results, shows, eq_mod.EQUIVALENT)
+    ran = sum(1 for m, s in tonight.items() if s != "not checked")
+    extra = [] if error else [
+        f"Canary: all {len(M.only_functions(everything, canary))} of its mutants killed, in the "
+        "test's process and through a child (the measurement works).", "",
+        f"Scope: {ran} mutant(s) ran tonight, all of the planned functions; "
+        f"{len(p['kept'])} function(s) carried in by the record.", ""]
+    with open(a.summary, "a", encoding="utf-8") as fh:
+        fh.write(M.summary(p["base"], p["head"], planned, v, out["left"], a.budget, error,
+                           out["empty"], extra))
+    M.save(os.path.join(os.path.dirname(a.plan), "report.json"),
+           {"plan": p, "mutmut_exit": a.mutmut_exit, "error": error, "results": results,
+            "verdict": v, **{k: out[k] for k in ("done", "left", "empty")}})
+    if error:
+        print(f"FAILED: {error}")
+        return 1
+    M.save(a.state_out, M.next_state(p["head"], planned, results,
+                                     [s["mutant"] for s in v["new"]], p["hashes"]))
+    for s in v["new"]:
+        print(f"OPEN SURVIVOR {s['mutant']}: {s['was']} -> {s['now']}")
+    return 1 if v["new"] else 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="nmas-mutation", description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("plan")
+    p.add_argument("--state")
+    p.add_argument("--head", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--summary")
+    p.add_argument("--also", action="append", default=[], metavar="PATH::QUALNAME",
+                   help="a function to mutate whole tonight, changed or not")
+    r = sub.add_parser("run")
+    r.add_argument("--out", required=True)
+    s = sub.add_parser("report")
+    s.add_argument("--plan", required=True)
+    s.add_argument("--summary", required=True)
+    s.add_argument("--state-out", required=True)
+    s.add_argument("--budget", type=int, default=120)
+    s.add_argument("--mutmut-exit", type=int, required=True)
+    a = ap.parse_args(argv)
+    return {"plan": cmd_plan, "run": cmd_run, "report": cmd_report}[a.cmd](a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

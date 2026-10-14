@@ -36,7 +36,7 @@ IMPORT_TO_DIST = {
 #: Local packages and paths, not distributions.
 LOCAL = {"modules", "routes", "tests", "app", "telnetlib", "conftest", "fixtures",
          # scripts/' own helper modules, imported by its tools (Lab 7, 2026-10-14)
-         "nmas_coverage", "pydefs"}
+         "nmas_coverage", "nmas_mutation", "pydefs"}
 #: The tools of CI's coverage job and the laptop, never the host's: each import, the ONLY file
 #: that may make it, pinned exactly in requirements-ci.txt instead of the host's lock
 #: (test_each_ci_tool_is_pinned_exactly_in_the_ci_requirements).

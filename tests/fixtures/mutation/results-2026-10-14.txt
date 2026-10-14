@@ -1,0 +1,62 @@
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_1: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_2: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_3: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_4: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_5: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_6: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_7: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_8: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_9: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_10: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_11: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_12: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_13: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_14: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_15: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_16: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_17: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_18: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_19: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_20: killed
+    modules.integrations.monitoring_profile.x_tcp_accepts__mutmut_21: killed
+    modules.readers.reachability.x_probe__mutmut_1: killed
+    modules.readers.reachability.x_probe__mutmut_2: killed
+    modules.readers.reachability.x_probe__mutmut_3: killed
+    modules.readers.reachability.x_probe__mutmut_4: killed
+    modules.readers.reachability.x_probe__mutmut_5: killed
+    modules.readers.reachability.x_probe__mutmut_6: killed
+    modules.readers.reachability.x_probe__mutmut_7: killed
+    modules.readers.reachability.x_probe__mutmut_8: killed
+    modules.readers.reachability.x_probe__mutmut_9: survived
+    modules.readers.reachability.x_probe__mutmut_10: killed
+    modules.readers.reachability.x_probe__mutmut_11: killed
+    modules.readers.reachability.x_probe__mutmut_12: survived
+    modules.readers.reachability.x_probe__mutmut_13: survived
+    modules.readers.reachability.x_probe__mutmut_14: killed
+    modules.readers.reachability.x_probe__mutmut_15: killed
+    modules.readers.reachability.x_probe__mutmut_16: killed
+    modules.readers.reachability.x_probe__mutmut_17: killed
+    modules.readers.reachability.x_probe__mutmut_18: survived
+    modules.readers.reachability.x_probe__mutmut_19: killed
+    modules.readers.reachability.x_probe__mutmut_20: killed
+    modules.readers.reachability.x_probe__mutmut_21: killed
+    modules.readers.reachability.x_probe__mutmut_22: survived
+    modules.readers.reachability.x_probe__mutmut_23: survived
+    modules.readers.reachability.x_probe__mutmut_24: killed
+    modules.readers.reachability.x_probe__mutmut_25: survived
+    modules.readers.reachability.x_probe__mutmut_26: killed
+    modules.readers.reachability.x_probe__mutmut_27: killed
+    modules.readers.reachability.x_probe__mutmut_28: killed
+    modules.readers.reachability.x_probe__mutmut_29: killed
+    modules.readers.reachability.x_probe__mutmut_30: killed
+    modules.readers.reachability.x_probe__mutmut_31: survived
+    modules.readers.reachability.x_probe__mutmut_32: killed
+    modules.readers.reachability.x_probe__mutmut_33: killed
+    modules.readers.reachability.x_probe__mutmut_34: killed
+    modules.readers.reachability.x_probe__mutmut_35: killed
+    modules.readers.reachability.x_miss_threshold__mutmut_1: not checked
+    modules.readers.reachability.x_miss_threshold__mutmut_2: not checked
+    modules.readers.reachability.x_miss_threshold__mutmut_3: not checked
+    modules.integrations.monitoring_profile.xǁMonitoringProfileIntegrationǁchecks__mutmut_1: not checked
+    modules.integrations.monitoring_profile.xǁMonitoringProfileIntegrationǁchecks__mutmut_2: not checked
+    modules.integrations.monitoring_profile.xǁMonitoringProfileIntegrationǁchecks__mutmut_3: not checked

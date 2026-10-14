@@ -1,0 +1,36 @@
+diff --git a/modules/integrations/monitoring_profile.py b/modules/integrations/monitoring_profile.py
+index e18117d3..5ca83a97 100644
+--- a/modules/integrations/monitoring_profile.py
++++ b/modules/integrations/monitoring_profile.py
+@@ -51 +51,6 @@ def sntp_answers(host: str, timeout: float = PROBE_TIMEOUT_S, port: int = 123) -
+-def tcp_accepts(addr: str, timeout: float = PROBE_TIMEOUT_S) -> tuple:
++def tcp_accepts(addr: str, timeout: float = PROBE_TIMEOUT_S, connect=None) -> tuple:
++    """`(accepts, words)` for `host:port`: whether it accepts a TCP connection, and the words
++    that say so or name the error. *connect* is the transport (`socket.create_connection` when
++    None, looked up at the call), so a test can stand a timeout or a name that does not resolve
++    in for the network."""
++    connect = connect or socket.create_connection
+@@ -54 +59 @@ def tcp_accepts(addr: str, timeout: float = PROBE_TIMEOUT_S) -> tuple:
+-        with socket.create_connection((host, int(port)), timeout=timeout):
++        with connect((host, int(port)), timeout=timeout):
+diff --git a/modules/readers/reachability.py b/modules/readers/reachability.py
+index 443dfb23..144e9f0a 100644
+--- a/modules/readers/reachability.py
++++ b/modules/readers/reachability.py
+@@ -71,2 +71,5 @@ def miss_threshold(list_name: str = "", hostname: str = "") -> int:
+-def probe(ip: str) -> tuple:
+-    """(answered, claim). The claim says which probe answered."""
++def probe(ip: str, ping=None, connect=None) -> tuple:
++    """(answered, claim). The claim says which probe answered: ICMP first, then a TCP
++    connection to port 22. *ping* and *connect* are the transports (ping3's `ping` and
++    `socket.create_connection` when None, looked up at the call), so a test stands a device's
++    answers in for the network."""
+@@ -74 +77,2 @@ def probe(ip: str) -> tuple:
+-        from ping3 import ping
++        if ping is None:
++            from ping3 import ping
+@@ -80,0 +85 @@ def probe(ip: str) -> tuple:
++    connect = connect or socket.create_connection
+@@ -82 +87 @@ def probe(ip: str) -> tuple:
+-        with socket.create_connection((ip, 22), timeout=2):
++        with connect((ip, 22), timeout=2):

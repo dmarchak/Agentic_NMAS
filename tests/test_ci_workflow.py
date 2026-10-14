@@ -28,6 +28,23 @@ def _load(path):
         return yaml.safe_load(fh), fh.name
 
 
+def _on_push(path) -> bool:
+    doc, _ = _load(path)
+    triggers = doc.get(True) or doc.get("on") or {}      # YAML 1.1 reads `on` as True
+    return "push" in (triggers if isinstance(triggers, (dict, list)) else [triggers])
+
+
+#: The per-push suite: every workflow a push triggers (by that property, not by name). The
+#: nightly mutation run is not one: no push starts it, it runs no suite, and its own checks are
+#: tests/test_nmas_mutation.py's. Every workflow, it included, still meets the checks above
+#: these: a read-only token, no other repository, the host's versions.
+SUITE_WORKFLOWS = [p for p in WORKFLOWS if _on_push(p)]
+
+
+def test_the_per_push_population_holds_ci():
+    assert any(p.endswith(os.sep + "ci.yml") for p in SUITE_WORKFLOWS), SUITE_WORKFLOWS
+
+
 def _walk(node):
     """Every (key, value) pair and every string, anywhere in the document."""
     if isinstance(node, dict):
@@ -93,7 +110,7 @@ def test_it_installs_the_hosts_versions_and_never_gates_on_coverage(path):
     assert "--cov-fail-under" not in raw and "fail_under" not in raw
 
 
-@pytest.mark.parametrize("path", WORKFLOWS)
+@pytest.mark.parametrize("path", SUITE_WORKFLOWS)
 def test_superseded_runs_are_cancelled_except_on_main_and_docs_are_skipped(path):
     """C440 (the operator, 2026-10-04): a run on main is never cancelled, since the Update
     button needs every commit's verdict (C436); a run on any other ref still is."""
@@ -104,7 +121,7 @@ def test_superseded_runs_are_cancelled_except_on_main_and_docs_are_skipped(path)
     assert "docs/**" in (triggers.get("push") or {}).get("paths-ignore", [])
 
 
-@pytest.mark.parametrize("path", WORKFLOWS)
+@pytest.mark.parametrize("path", SUITE_WORKFLOWS)
 def test_the_suite_runs_confined_and_never_unconfined(path):
     """C46: CI runs the suite through scripts/nmas-test, which requires the
     network namespace it creates. Parsed values, not the raw text."""
@@ -117,7 +134,7 @@ def test_the_suite_runs_confined_and_never_unconfined(path):
         assert "--allow-unconfined" not in run, run
 
 
-@pytest.mark.parametrize("path", WORKFLOWS)
+@pytest.mark.parametrize("path", SUITE_WORKFLOWS)
 def test_it_installs_the_test_tools_the_host_installs(path):
     """C45: the runner that schedules the tests is pinned once, for both."""
     raw = open(path, encoding="utf-8").read()

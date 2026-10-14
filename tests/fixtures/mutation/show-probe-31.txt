@@ -1,0 +1,12 @@
+# modules.readers.reachability.x_probe__mutmut_31: survived
+--- modules/readers/reachability.py
++++ modules/readers/reachability.py
+@@ -14,7 +14,7 @@
+     import socket
+     connect = connect or socket.create_connection
+     try:
+-        with connect((ip, 22), timeout=2):
++        with connect((ip, 22), ):
+             return True, CLAIM_TCP
+     except Exception:                                   # noqa: BLE001
+         return False, CLAIM_NONE

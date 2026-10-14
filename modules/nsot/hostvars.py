@@ -310,11 +310,20 @@ def assert_printable(text: str, hostname: str) -> None:
     """
     from modules.nsot import normalize
 
-    found = normalize.find_non_printable(text.replace("\n", ""))
+    # Line by line, so each place is the line and the column a person sees in an editor
+    # (C767: the newlines were stripped and the column counted across the whole file). What
+    # is refused is unchanged: every character outside 0x20-0x7E but the newlines.
+    found = [(lineno, column, char, code)
+             for lineno, line in enumerate(text.split("\n"), 1)
+             for column, char, code in normalize.find_non_printable(line)]
     if found:
+        where = ", ".join(f"{char!r} (U+{code:04X}) at line {lineno}, column {column}"
+                          for lineno, column, char, code in found[:3])
+        if len(found) > 3:
+            where += f", and {len(found) - 3} more"
         raise NonPrintableContent(
             f"{hostname}: host_vars contains {len(found)} character(s) an IOS "
-            f"CLI cannot accept — {normalize.describe_non_printable(found)}. "
+            f"CLI cannot accept — {where}. "
             "Use printable ASCII (0x20-0x7E); an em dash or a smart quote "
             "desynchronises the device's line parser and truncates the command.")
 

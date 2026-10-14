@@ -83,3 +83,9 @@ deploy/grafana/provisioning/alerting/nmas-telemetry.yaml
 # Coverage data from a local run of the CI command (pytest-cov)
 .coverage
 .coverage.*
+
+# The nightly mutation run's working files (scripts/nmas-mutation; never committed)
+/mutants/
+/setup.cfg
+/mutation-out/
+/.mutation-state/

@@ -223,6 +223,30 @@ class TestTheProbe:
         assert RE.probe("192.0.2.10", ping=no_raw_socket,
                         connect=lambda *a, **kw: _Accepted()) == (True, RE.CLAIM_TCP)
 
+    def test_each_probe_is_bounded_at_two_seconds(self):
+        """A silent address costs each probe its bound, never the kernel's connect timeout
+        (about two minutes with Linux's default SYN retries), and the reader probes the whole
+        fleet every cycle. The bound is pinned here, so a change to it is made here too (the
+        nightly mutation run's first find, 2026-10-14: dropping either bound survived)."""
+        asked = {}
+
+        def ping(ip, **kw):
+            asked["ping"] = (ip, kw)
+            return None
+
+        def connect(addr, **kw):
+            asked["connect"] = (addr, kw)
+            raise TimeoutError("timed out")
+        assert RE.probe("192.0.2.10", ping=ping, connect=connect) == (False, RE.CLAIM_NONE)
+        assert asked["ping"][0] == "192.0.2.10" and asked["ping"][1]["timeout"] == 2
+        assert asked["connect"] == (("192.0.2.10", 22), {"timeout": 2})
+
+    def test_a_lan_device_answering_in_under_a_millisecond_is_up_by_icmp(self):
+        """ping3 answers in milliseconds here; a device on the same segment answers in well
+        under one (the nightly mutation run, 2026-10-14: `> 1` for `> 0` survived)."""
+        assert RE.probe("192.0.2.10", ping=lambda ip, **kw: 0.4,
+                        connect=lambda *a, **kw: _Accepted()) == (True, RE.CLAIM_ICMP)
+
     @pytest.mark.parametrize("error", [TimeoutError("timed out"),
                                        ConnectionRefusedError(111, "Connection refused"),
                                        OSError(113, "No route to host")])

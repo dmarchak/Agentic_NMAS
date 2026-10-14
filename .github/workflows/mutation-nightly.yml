@@ -1,0 +1,139 @@
+# Nightly mutation testing of the CHANGED automation code (docs/TESTING.md, "Mutation testing";
+# the operator, 2026-10-14). Coverage says a test ran a line; this says whether a test would
+# notice the line being wrong. Each night: the automation functions changed since the commit the
+# last night covered, and those the record keeps (unfinished, or holding an open survivor),
+# mutated by mutmut, each mutant run against the test files that import its module; a canary
+# first. Never on a push or a pull request, never on the NMAS host, never in the gate.
+#
+# A night fails when an open survivor remains (a mutant no test killed, not in
+# tests/mutation_equivalent.py, the hand-kept list), or when the measurement or the run broke
+# (the canary survived, a mutant outside the plan ran, mutmut failed): GitHub's own
+# failed-workflow email is the notice; no issue is opened. The record is kept after every night
+# whose results stand, so a large function is finished across nights and an open survivor is
+# run again each night until a test kills it or a person lists it as equivalent (C769).
+name: mutation-nightly
+
+on:
+  schedule:
+    # 08:17 UTC = 02:17 America/Denver while daylight time holds (UTC−6), 01:17 in winter (UTC−7).
+    - cron: "17 8 * * *"
+  # By hand, from the Actions tab (the demo, or after a change worth checking at once).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-nightly
+  cancel-in-progress: false
+
+env:
+  # THE setting: how long a night may mutate. What does not fit is named in the summary and
+  # carried to the next night, first in line.
+  MUTATION_BUDGET_MINUTES: "120"
+
+jobs:
+  mutate:
+    runs-on: ubuntu-24.04
+    # The budget, plus about 20 minutes for the install, mutmut's own setup run and the report.
+    timeout-minutes: 145
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0             # the night diffs from the last covered commit
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.3"   # the host's interpreter, as CI
+          cache: pip
+          cache-dependency-path: |
+            requirements.lock
+            requirements-ci.txt
+            requirements-test.txt
+            requirements-mutation.txt
+
+      - name: Install the host's versions, CI's tools and mutmut, exactly
+        run: |
+          python -m pip install --require-hashes --no-deps -r requirements.lock
+          python -m pip install --no-deps -r requirements-ci.txt
+          python -m pip install --no-deps -r requirements-test.txt
+          python -m pip install --no-deps -r requirements-mutation.txt
+
+      - name: Allow a network namespace for the tests (this VM only)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: The last night's record (the commit it covered, and what it left over)
+        uses: actions/cache/restore@v4
+        with:
+          path: .mutation-state
+          key: mutation-state-${{ github.run_id }}
+          restore-keys: mutation-state-
+
+      - name: Plan the night
+        id: plan
+        run: |
+          mkdir -p .mutation-state
+          python scripts/nmas-mutation plan --state .mutation-state/state.json \
+            --head "$GITHUB_SHA" --out mutation-out --summary "$GITHUB_STEP_SUMMARY"
+          if [ -s mutation-out/patterns.txt ] && grep -q . mutation-out/patterns.txt; then
+            echo "work=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "work=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Confined as scripts/nmas-test confines the suite: a namespace with only loopback, brought
+      # up (a new namespace's loopback starts DOWN, and a test's own 127.0.0.1 listener then
+      # reads "Network is unreachable": measured 2026-10-14). ONE mutant at a time
+      # (--max-children 1): mutmut forks its children from a process that has already imported
+      # the tests' conftest, so parallel children share one test store and fail each other's
+      # tests, which mutmut counts as kills (measured 2026-10-14: in parallel a log.debug mutant
+      # was "killed" and 13 real survivors were hidden; serially, two runs agreed mutant for
+      # mutant). `nmas-mutation run` runs mutmut three times: the canary in process, then (the
+      # tests that start a child added to every planned function's tests) the canary in a child,
+      # then the night. Bytecode is WRITTEN here (no PYTHONDONTWRITEBYTECODE): mutmut's copy of a
+      # module holds every mutant of it (config_check.py: 2168, 7.5 MB, 7.7 s to compile), and a
+      # test's child process compiled it afresh each time, so one surviving mutant's tests took
+      # 107 s instead of 7 (measured 2026-10-14). The copy is scratch; no stale bytecode can
+      # reach the checkout.
+      # Its exit goes to the report: 0 finished, 124 the budget ran out, anything else a failed
+      # setup or clean run, which fails the night (no verdict stands on it).
+      - name: Mutate, within the budget, confined to loopback
+        id: mutate
+        if: steps.plan.outputs.work == 'yes'
+        run: |
+          set +e
+          timeout "${MUTATION_BUDGET_MINUTES}m" unshare -rn sh -c '
+            ip link set lo up || { echo "could not bring loopback up" >&2; exit 2; }
+            exec unshare --map-user='"$(id -u)"' --map-group='"$(id -g)"' \
+              env NMAS_REQUIRE_NETWORK_CONFINEMENT=1 \
+              python scripts/nmas-mutation run --out mutation-out'
+          code=$?
+          echo "nmas-mutation run exit $code"
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+
+      - name: The report
+        if: steps.plan.outputs.work == 'yes'
+        run: >
+          python scripts/nmas-mutation report --plan mutation-out/plan.json
+          --summary "$GITHUB_STEP_SUMMARY" --state-out .mutation-state/state.json
+          --budget "$MUTATION_BUDGET_MINUTES" --mutmut-exit "${{ steps.mutate.outputs.exit }}"
+
+      # Kept after every night whose results stand, open survivors and all: the report writes the
+      # record only then (a broken measurement or run leaves the restored one as it was).
+      - name: Keep the record for the next night
+        if: always() && hashFiles('.mutation-state/state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .mutation-state
+          key: mutation-state-${{ github.run_id }}
+
+      - name: Keep the full report
+        if: always() && steps.plan.outputs.work == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: |
+            mutation-out/
+            setup.cfg
+          retention-days: 30

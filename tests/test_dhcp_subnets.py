@@ -642,6 +642,21 @@ class TestPoolSpanReadsWhatKeaWrites:
     def test_each_form_kea_writes(self, text, first, last):
         assert tuple(map(str, S.pool_span(text))) == (first, last)
 
+    def test_a_prefix_written_with_host_bits_reads_as_its_network(self):
+        """A hand-typed prefix need not be aligned: 192.0.2.193/28 is the pool .192 to .207, as
+        Kea's own aligned form is, never a refusal (the serial mutation pass, 2026-10-14:
+        reading prefixes strictly survived)."""
+        assert tuple(map(str, S.pool_span("192.0.2.193/28"))) == ("192.0.2.192", "192.0.2.207")
+
+    def test_a_subnets_bad_pool_is_skipped_and_the_rest_still_read(self):
+        """One pool that does not read (or has no `pool` at all) costs only itself: the pools
+        after it are still read (the serial mutation pass, 2026-10-14: `break` for `continue`
+        survived)."""
+        subnet = {"pools": [{"pool": "not a pool"}, {"option-data": []},
+                            {"pool": "192.0.2.100 - 192.0.2.200"}]}
+        assert [tuple(map(str, s)) for s in S._pools_of(subnet)] == [
+            ("192.0.2.100", "192.0.2.200")]
+
     @pytest.mark.parametrize("text", ["", "192.0.2.300-192.0.2.301", "192.0.2.1",
                                       "not a pool", "192.0.2.1-192.0.2.2-192.0.2.3",
                                       "2001:db8::zz-2001:db8::ff"])

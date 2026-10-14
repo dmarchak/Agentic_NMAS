@@ -130,35 +130,138 @@ constant, a dropped argument), runs the tests that reach it, and counts the **mu
 is either a missing assertion (a behaviour nobody pins) or an **equivalent mutant**, a change no
 behaviour can observe (a debug message's words).
 
-The tool is mutmut (dev-only: not in the runtime requirements, not in the gate, never run per
-push), run on the laptop in a scratch worktree, inside the same loopback-only namespace as the
-suite, with CI's interpreter and mutmut in its own folder on `PYTHONPATH`.
+The tool is mutmut 3.8.0 (BSD-3; dev-only: not in the runtime requirements, not in the gate,
+never run per push; its pins are `requirements-mutation.txt`), run inside the same
+loopback-only namespace as the suite, with CI's interpreter.
 
-**The first pass (2026-10-14)**, on two automation modules, each against its own tests:
+**One mutant at a time, always (`--max-children 1`).** The suite's test store is chosen once
+per process image, when `tests/conftest.py` is imported, and a session's end removes it. mutmut
+forks its children from one process that has already imported the conftest, so parallel
+children share that one store, and the first to finish deletes it from under the rest: their
+tests fail, and mutmut counts every such failure as a kill. Measured 2026-10-14: in parallel,
+mutants that only change a `log.debug` call were "killed" and two runs disagreed; serially, two
+runs agreed mutant for mutant; and six SEPARATE processes running the same 192 tests at once
+all passed, so the tests share no fixed path, port or file (the gate's shards and xdist's
+workers are separate processes, each with its own store). It is mutmut's fork model meeting
+the harness's per-process store, not tests leaking into each other. A kill nobody can explain
+is the sign. The first pass's published figure was made in parallel and was wrong (C766); the
+table below is its serial re-run.
 
-| Function | Mutants | Killed | Survived |
-|---|---|---|---|
-| `dhcp_subnets.pool_span` (the pool helper) | 30 | 30 | 0 |
-| `dhcp_subnets._pools_of` | 15 | 15 | 0 |
-| `hostvars._looks_hashed` (hash detection) | 24 | 24 | 0 |
-| `hostvars.assert_printable` (the ASCII rule) | 15 | 15 | 0 |
-| `hostvars.assert_no_secret_values` | 48 | 45 | 3 |
-| **All** | **132** | **129 (97.7%)** | **3** |
+**A test's child process** (a test that runs one of Mercury's scripts) cannot record mutmut's
+statistics: recording needs mutmut's configuration, which only the run's own folder holds, and
+a child started elsewhere raised `FileNotFoundError` and failed the run (measured 2026-10-14,
+walking `config_check`). Under the statistics run the harness's spawn guard starts every child
+with `MUTMUT_DEPENDENCY_DEPTH=0`, so it records nothing (its hits would die with it anyway);
+under a mutant's run the child runs the mutant, so a test that spawns can still kill it.
 
-The three survivors, triaged: one was a missing assertion, the refusal's words naming the
-secret_ref to commit (`test_write_committed_refuses_a_resolved_value` now asserts them, and that
-the value is never printed), and is killed now (130 of 132, 98.5%); two are equivalent, the
-arguments and the text of a `log.debug` line, recorded with their reason in
-`tests/mutation_equivalent.py`, the hand-kept list of equivalent mutants.
+**The first pass (2026-10-14)**, on two automation modules, against their own test files
+(`tests/test_dhcp_subnets.py`, `tests/test_hostvars_secrets.py`), serially:
 
-**How to triage a survivor:** read its diff (`mutmut show <name>`). If some behaviour a person
-relies on changed and no test failed, write the test that pins it (a docstring naming the
-behaviour) and run the mutant again to see it killed. If no behaviour can observe the change, add
-it to `tests/mutation_equivalent.py` with the function, the line before and after, and a one-line
-reason. Never chase an equivalent mutant with a test.
+| Function | Mutants | Killed before | Killed after | Known equivalent | Left |
+|---|---|---|---|---|---|
+| `dhcp_subnets.pool_span` (the pool helper) | 30 | 25 | 27 | 3 | 0 |
+| `dhcp_subnets._pools_of` | 15 | 11 | 12 | 3 | 0 |
+| `hostvars._looks_hashed` (hash detection) | 24 | 18 | 20 | 4 | 0 |
+| `hostvars.assert_printable` (the ASCII rule) | 15 | 9 | 14 | 0 | 1 (C767, since fixed) |
+| `hostvars.assert_no_secret_values` | 48 | 29 | 38 | 10 | 0 |
+| **All** | **132** | **92 (69.7%)** | **111 (84.1%)** | **20** | **1** |
 
-A nightly run in GitHub Actions, on the functions changed since the last run, follows after the
-Lab 7 recording (the operator's sequencing).
+Over the 112 mutants a test could kill (all, less the 20 equivalents), the tests kill 111
+(99.1%). Of the 20 real survivors, 19 are now killed, each by a test naming it in its docstring.
+First among them: the secret check skips another device's secret, or one too short to check,
+with `continue`, and `break` in its place (ending the scan, so a leak listed after the skipped
+secret would pass: a guard failing open) survived every test. The CODE was always right (both
+skips have been `continue` since the loop was written, 081124c6); no test would have caught it
+being broken. The rest: the check's length floor, a `secrets:` mapping on line 1, the words of
+both refusals, `$5$` and `$8$` hashes, a prefix with host bits, a bad pool ending a subnet's
+read, the printable refusal's words. The one left was `assert_printable`'s column, counted
+across the whole file rather than within the line (C767): the message only, never what is
+refused. Fixed the same day (line by line, "line N, column M"); the rewritten function's 25
+mutants are all killed.
+
+**The nightly run** (`.github/workflows/mutation-nightly.yml`, 08:17 UTC, by hand from the
+Actions tab too; never on a push). Coverage says a test RAN a line; mutation testing says
+whether a test would NOTICE the line being wrong, so a test that calls a function and checks
+nothing scores 100% coverage and 0% here. Each night:
+
+- **Scope, changed only:** the counted automation functions (the coverage tool's scope and
+  counting rules, `tests/coverage_scope.py`, `scripts/pydefs.py`) whose lines changed since the
+  commit the last night covered (head's parent on the first night), read with `git diff -U0`,
+  and the functions the record keeps (below). Each function's mutants run against the test
+  files whose code imports its module (parsed, never searched: a text search matched an import
+  written inside a test's string data). mutmut writes every mutant of a FILE, so its progress
+  counter counts the whole file (`x/2168` for `config_check.py`); only the planned functions'
+  run, and the report checks it: a mutant of anything else having run is "SCOPE BROKEN" and
+  fails the night. `nmas-mutation plan --also path::qualname` names a function to mutate whole,
+  changed or not.
+- **The canary first.** `tests/mutation_canary.py` holds two functions every night mutates
+  beside the planned ones: `in_process`, reached only in a test's process, and `in_child`,
+  reached only through a child process the test starts, as `config_check`'s tests reach the
+  check through `scripts/nmas-config-check`. Every one of their mutants must be killed
+  (`tests/test_mutation_canary.py` pins them so). The run mutates them in their own two mutmut
+  runs before the night's mutants and stops if any survives: the night fails as "MEASUREMENT
+  BROKEN", never as survivors, and no result stands. Shown able to fail twice (2026-10-14):
+  children stripped of `MUTANT_UNDER_TEST` (the in-child mutants survived), and the tests that
+  start a child left out of the in-child function's tests (they read "no tests").
+- **A test's child.** A child process records nothing in mutmut's statistics (above), so mutmut
+  alone would never choose a test that reaches a function only through a child. The first run
+  records each test's tier (`tests/conftest.py`), and every test that started a child (tier
+  `spawns` or `browser`) is added to each planned function's tests before the night's mutants
+  run. Proven on `config_check._check_device` (2026-10-14): a mutant's own code, instrumented to
+  record the process running it, ran in 12 separate `nmas-config-check` children per test run.
+- **The budget** is the one setting, `MUTATION_BUDGET_MINUTES` (120): what it does not reach is
+  named in the summary, and its results so far are kept. The mutate step WRITES bytecode:
+  mutmut's copy of a module holds every mutant of it (`config_check.py`: 2168 mutants, 7.5 MB,
+  7.7 s to compile), and a test's child process recompiled it each time, so one survivor's tests
+  took 107 s, not 7.
+- **The record** is kept in the Actions cache after every night whose results stand: the commit
+  covered and, per function still unfinished or holding an open survivor, a hash of its text and
+  every result so far (C769). While a function's text is unchanged, the next night runs only its
+  mutants not yet checked and its open survivors, by name (mutmut numbers a function's mutants
+  from its text, with mutmut pinned), and merges the rest; a function whose text changed starts
+  afresh. So a large function is finished across nights, and an open survivor is run again
+  every night until a test kills it or a person lists it as equivalent. Walked 2026-10-14: a
+  night cut by its budget after 2 of 56 mutants, then a night from its record that ran exactly
+  the other 54 and gave the same table as one whole night.
+- **It fails** when an open survivor remains (a mutant no test killed, "no tests" included,
+  not in `tests/mutation_equivalent.py`), or when the measurement or the run broke (the canary,
+  the scope, mutmut's own exit 1: its setup or the clean run of the tests on unmutated code).
+  Nothing changed and nothing kept: green, "Nothing to mutate".
+- **Its first walk** (the laptop, 2026-10-14, the night's own steps over the two Lab 7 seam
+  commits, f40c9da6 and 1dc672ea): 56 mutants of `reachability.probe` and
+  `monitoring_profile.tcp_accepts`. Five real survivors, now killed (each probe's bound, the
+  address ping is asked about, a device answering in under a millisecond, an IPv6 address's
+  own colons), and 16 equivalents listed; then 0 new survivors, the night green. The walk is
+  also where two rules came from: loopback brought up in the namespace (without it a test's
+  own listener read "Network is unreachable" and mutmut exited 1), and one mutant at a time.
+
+**Reading the summary:** the canary's line (all its mutants killed: the measurement works), the
+scope's (how many mutants ran, all of the planned functions, and how many functions the record
+carried in), a table per function (mutants, killed, survived, of them known equivalents, and
+the score: killed over the mutants a test could kill), then the open survivors with their line
+before and after (each one keeps the night failing; "no test reached it" marks one no test
+ran), the known equivalents with their reasons, what the budget left (kept, resumed next night),
+and any function mutmut made no mutant of (nothing in it was tested that night). The artifact
+`mutation-report` holds `report.json` (every mutant's status), `run.json` (each mutmut run's
+exit, the tests that start a child) and the plan.
+
+**How to triage a survivor:** read its diff (the summary's lines, or `mutmut show <name>`). If
+some behaviour a person relies on changed and no test failed, write the test that pins it (a
+docstring naming the behaviour) and run the mutant again to see it killed. If no behaviour can
+observe the change, add it BY HAND to `tests/mutation_equivalent.py` with the function, the line
+before and after, and a one-line reason; an entry is matched by those, never by mutmut's
+number, which moves when the function changes. Never chase an equivalent mutant with a test.
+
+**To run a night on the laptop:** install `requirements-mutation.txt` `--no-deps` into its own
+folder and put it on `PYTHONPATH`, then run the workflow's three steps: `scripts/nmas-mutation
+plan --state <state.json> --head <sha> --out mutation-out [--also path::qualname]`,
+`scripts/nmas-mutation run --out mutation-out` inside `unshare -rn` with `ip link set lo up` (as
+the workflow), and `scripts/nmas-mutation report --plan mutation-out/plan.json --summary <file>
+--state-out <next.json> --mutmut-exit <its exit>`. Run it in a copy of the tree when you will
+edit while it runs: each mutmut run copies `tests/` afresh, so an edit mid-night mixes old and
+new tests in one measurement. Its working files (`setup.cfg`, `mutants/`, `mutation-out/`) are
+gitignored. The tool's own tests are `tests/test_nmas_mutation.py` (on mutmut's real output
+captured in `tests/fixtures/mutation/`) and the canary's `tests/test_mutation_canary.py`.
 
 ## Size and organisation
 
@@ -633,6 +736,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_session_end_guard.py` | (2026-10-01, CI run #241) A non-daemon thread alive at the session's end is named with its target, a daemon one is not, and one finishing within the grace is not; the live server the browser tests use stops bounded with its socket.io sessions closed, against a real long-poll session (engineio's own `disconnect()` blocks for ever waiting for a client to drain, measured building it) |
 | `test_suite_bound.py` | (C343, 2026-10-02: a probe skips conftest's whole-program import, `NMAS_PROBE_RUN`, so its start does not grow with the program; a probe asserting the app was not imported, its control the opt-out removed.) the suite's bound (NMAS_TEST_TIMEOUT, 300 s, from the measured serial time) through the REAL runner over a test that hangs: rc 124, the hanging test and its line named, a finished test not named; a run that finishes is never reported as a timeout |
 | `test_no_duplicate_definitions.py` | C90's sibling: no module or class body defines a name twice (a second `def` silently replaces the first; in a test class it drops a test), across the program, scripts and tests (floor 300 files); a property's setter and the definition after `@overload` are the exemptions, anchored on the real one; the definitions come from `scripts/pydefs.py`, the walker the coverage tool shares |
+| `test_nmas_mutation.py` | Lab 7's nightly mutation run (`scripts/nmas_mutation.py`, the workflow), without mutmut: a real diff's changed lines; a night's plan from a real git history (the counted automation functions changed, each whole; a property, a route and a deleted module left out), and from the record (a kept function runs only what is left and its open survivors, by name; one whose text changed starts afresh; `--also`); the function hash; the test files a night runs, by parsed imports (an import inside string data is not one); mutmut's real names and results (captured 2026-10-14); the tests that start a child added to each planned function's; a child under the statistics run recording nothing; a listed equivalent known by function and lines, any other survivor open, "no tests" surviving; the canary (all killed, or MEASUREMENT BROKEN) and the scope (SCOPE BROKEN); a failed mutmut run, an out-of-time night, a function with no mutant; merging the record's results, and what the next record keeps; the equivalent list's shape; the workflow nightly and by hand only, its one budget, serial, confined, bytecode written, the record kept after every standing night, and mutmut never in the host's, the gate's or a push's requirements |
+| `test_mutation_canary.py` | the nightly mutation run's canary (`tests/mutation_canary.py`): both functions pinned so that every mutant fails a test, `in_child` reached only through a child process by its dotted name |
 | `test_nmas_coverage.py` | Lab 7's coverage tool (`scripts/nmas_coverage.py`): the lab's example (3 of 6 functions tested is 50%, the module imported inside a test so def lines cannot count), a module no test reaches named, a module no rule places and a stale exception failing; the tiers' two columns; the counting rules (nested, property, overload, abstract, Protocol, stub, lambda, TYPE_CHECKING, `__main__`); the ratchet's three failures; the assertion check following helpers; this repository's scope complete and no new assertion-free test |
 | `test_removal_reads_before_it_forgets.py` | C130: a NetBox removal forgets a record entry only for an object NetBox answered 404 for, and a preview forgets nothing; an object that could not be read (a 500) is `failed`, neither deleted nor forgotten, and the preview names it first, fails its read gate and cannot be confirmed; a clean preview stays confirmable (the floor) |
 | `test_import_preview_is_what_happens.py` | C134, C135: through the real sync against FakeNetBox, an import PREVIEW writes no sync status and leaves the last real import's record byte-identical (a real import still records, the control); a dry-run PATCH returns the object as NetBox holds it with the payload over it (so no phantom `tags` write), and the preview names what each update CHANGES, says "changes nothing" for a re-send, and counts changes apart from re-sends |

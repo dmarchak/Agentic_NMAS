@@ -239,6 +239,29 @@ class TestTcpAccepts:
             raise error
         assert tcp_accepts("192.0.2.5:514", connect=fails) == (False, words)
 
+    def test_the_connection_is_bounded_and_the_port_follows_the_last_colon(self):
+        """The bound reaches the transport (the default, or the one given), and an IPv6
+        address keeps its own colons: the port is what follows the LAST one (the nightly
+        mutation run, 2026-10-14: dropping the bound, and `partition` for `rpartition`,
+        survived)."""
+        from modules.integrations import monitoring_profile as MP
+        asked = []
+
+        class _Open:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def connect(addr, **kw):
+            asked.append((addr, kw))
+            return _Open()
+        assert MP.tcp_accepts("192.0.2.5:514", connect=connect)[0] is True
+        assert MP.tcp_accepts("2001:db8::5:57000", timeout=0.5, connect=connect)[0] is True
+        assert asked == [(("192.0.2.5", 514), {"timeout": MP.PROBE_TIMEOUT_S}),
+                         (("2001:db8::5", 57000), {"timeout": 0.5})]
+
     def test_a_port_that_is_not_a_number_is_refused_not_raised(self):
         from modules.integrations.monitoring_profile import tcp_accepts
         ok, words = tcp_accepts("192.0.2.5:syslog")

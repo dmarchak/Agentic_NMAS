@@ -33,11 +33,18 @@ code of its own.
 
 ## The template coverage line
 
-A whole-repository check reports **which templates some device's render reached** (each device's
-template and every template it imports) and which none did:
-"Templates rendered by some device: N of M; not rendered: ...". It is information, never a
-failure: a template no device renders is either dead or bound to a platform no device has, and a
-person decides which.
+A whole-repository check reports the templates in two kinds:
+
+- **Base templates**, where a device's render starts: the headline counts these only ("Base
+  templates rendered by some device: N of M"), and each is listed with the devices that render
+  it. A base no device renders is flagged NOT RENDERED: dead, or bound to a platform no device
+  has.
+- **Partials**, imported or included by another template (or named with a leading underscore,
+  the convention for a file meant only to be imported, as `_common.j2`): never rendered
+  directly, each is listed with the templates that import it. A partial nothing imports is
+  flagged NOT IMPORTED.
+
+It is information, never a failure: a person judges each flag.
 
 ## Reading a run
 
