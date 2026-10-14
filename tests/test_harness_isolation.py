@@ -187,16 +187,18 @@ class TestAChangeIsAttributedNotAssumed:
     that as the suite's write and asserted the app does not run there
     (2026-09-26). The guard now attributes."""
 
-    _watch = None
+    _watches = {}
 
     @classmethod
     def _extra_watch(cls, root):
-        """One extra audit hook for this class (hooks cannot be removed), on a
-        directory of its own, never the checkout's data/."""
+        """One extra audit hook per ROOT (hooks cannot be removed), on a directory of its
+        own, never the checkout's data/. Per root, not per process (C787): mutmut runs several
+        pytest sessions in one process, each with its own temporary root, and a watch kept from
+        the first session watched a folder the second never wrote to."""
         from tests import store_guard
-        if cls._watch is None:
-            cls._watch = store_guard.install_write_watch(root)
-        return cls._watch
+        if root not in cls._watches:
+            cls._watches[root] = store_guard.install_write_watch(root)
+        return cls._watches[root]
 
     def test_the_test_processs_own_writes_are_seen(self, tmp_path_factory):
         import shutil
@@ -224,6 +226,25 @@ class TestAChangeIsAttributedNotAssumed:
         (root / "r.json").read_text()
         os.stat(root / "r.json")
         assert watch.writes[start:] == []
+
+    def test_a_second_session_in_one_process_still_sees_its_writes(self, tmp_path):
+        """C787 (mutation night #5, 2026-10-14): mutmut runs several pytest sessions in one
+        process, and this class's watch, kept from the first session, watched a folder the
+        second never wrote to, so mutmut's clean run failed and the night with it. Run here as
+        mutmut runs it: the class twice, in one child process."""
+        script = tmp_path / "two.py"
+        script.write_text(
+            "import sys, pytest\n"
+            "t = 'tests/test_harness_isolation.py::TestAChangeIsAttributedNotAssumed::'\n"
+            "names = ['test_the_test_processs_own_writes_are_seen', 'test_a_read_is_not_a_write']\n"
+            "codes = [int(pytest.main(['-q', '-p', 'no:cacheprovider', '-p', 'no:randomly',\n"
+            "                          *[t + n for n in names]])) for _ in range(2)]\n"
+            "print('CODES', codes)\n")
+        env = dict(os.environ)
+        env.pop("PYTEST_XDIST_WORKER", None)
+        out = subprocess.run([sys.executable, str(script)], cwd=ROOT, env=env,
+                             capture_output=True, text=True, timeout=300)
+        assert "CODES [0, 0]" in out.stdout, out.stdout[-1500:] + out.stderr[-500:]
 
     def test_the_app_is_found_by_its_argv_in_proc(self, tmp_path):
         from tests import store_guard
