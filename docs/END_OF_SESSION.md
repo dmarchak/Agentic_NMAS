@@ -1,5 +1,67 @@
 # End of session: where Phase 7 stands
 
+## OVERNIGHT, 2026-10-14 (04:30 to 10:30 UTC; 22:30 to 04:30 UTC−6): Lab 7 finished, the AI family's shared pieces moved
+
+**The host runs 1ce6228b** (deployed 10:10:36 UTC via LAN, CI #771, after the hold check:
+nothing in flight, rotation lock free). Earlier, 102eb0f7 at 04:59:26 UTC, then c725 again,
+PASS 8 of 8: the config repository's commit 70785db7, its summary "Base templates rendered by
+some device: 2 of 2", `_common.j2` imported by both, nothing flagged. That repository's
+Actions run is the operator's morning read.
+
+**Lab 7: every objective item is in the repository and CI.** The facts, measured on Lab 7's
+last commit (132324d7, CI #768): `~/Documents/nmas-reports/2026-10-14-lab7-fact-sheet.md` on
+the laptop. The demo branch's red run was walked (#765) and the branch deleted.
+
+**Committed and pushed:** 68c86aba (the nightly; #760 RED on C770, fixed forward in ec5d250e,
+#761), 102eb0f7 (VERDICT and MESSAGE survivors, #762), bb49dcfe (#763), 243a07c3
+(`_check_device` 404 of 404 killable, #764), 86b148b3 (CI's combined line coverage, #766),
+294f5401 (dhcp_exclusions' survivors killed or judged; C771 closed, #767), 132324d7 (the
+nightly's summary in its log, #768). Then the AI family's shared pieces, each moved with no
+behaviour change, one commit each:
+- d5e0e397: the golden-config helpers to `modules/goldens.py`. Its run #769 started no job
+  (C772).
+- 54410c08: the one BGP summary reader to `modules/bgp_summary.py`. #770 green, covering both.
+- 1ce6228b: the drift checker's schedule to `modules/drift_interval.py`, nothing stored
+  moving. #771 green.
+
+Walked on the host after the deploy: the drift schedule (1800 s) reads the same through the
+new module, the agent's timers and the drift checker, from the same file; topology's BGP
+reader is the one in `modules/bgp_summary.py`; the restarted `flask-app.service` journal shows
+no traceback.
+
+**The mutation nightly has not run on GitHub (C772, UNKNOWN).** The 08:17 UTC schedule made no
+run (none by 09:16 UTC, and no failed run for the workflow file either). The Actions-read token
+here cannot dispatch, so the first real night is the operator's **Run workflow** on
+mutation-nightly. PASS: the job's summary reads "Canary: all N of its mutants killed, in the
+test's process and through a child (the measurement works)" and "Scope: N mutant(s) ran
+tonight, all of the planned functions", then the table with its VERDICT and MESSAGE columns;
+the step "Keep the record for the next night" is green; the run is green unless it names a
+VERDICT survivor. Its plan holds every function changed since 68c86aba, the three moved homes
+among them (moved code is new by its path), so it may reach its budget and carry the rest to
+the next night. A second click (or the next schedule) then shows the record's pickup.
+
+**Judgement calls (the overnight rule: the most reasonable reading, recorded here):**
+- The three moves were held until 09:16 UTC so the first scheduled night would plan only what
+  Lab 7 changed; when it had not fired, they went ahead.
+- CI #769 failed with no job started (0 jobs, 0 check runs; `.github/` unchanged since #768;
+  GitHub's status operational). No code had failed and nothing here can re-run a run, so the
+  next move (54410c08, gated) was pushed as the forward run; #770 started normally and passed,
+  testing d5e0e397's tree plus that move. d5e0e397 itself was never deployed alone.
+- The drift schedule keeps its stored key and file (`agent_timers.json`,
+  `drift_check_interval`), so nothing on the host moves. Until the removal the AI page's
+  `/ai/agent_timers` also writes that key: two writers of one value, both clamping to the same
+  bounds, for as long as that page lives.
+- A first night with no record mutates everything changed since the commit that added the
+  workflow (`first_base`), not only the last commit.
+
+**Not started (the overnight rules):** the AI family's removal, the ai-leftovers `--delete`,
+C753, any rotation.
+
+**Next, in order:** the operator's three steps (the config repository's run; the CLAUDE.md
+lines in `~/Documents/nmas-reports/2026-10-14-claude-md-lines.md`; Run workflow on
+mutation-nightly, and a look at the repository's Actions page for C772); then the removal,
+tagged `pre-remove/ai-family`.
+
 ## NIGHT, 2026-10-14 (00:00 to about 04:30 UTC; 18:00 to 22:30 UTC−6, 2026-10-13): Lab 7
 
 **Deployed:** 5e72a9ea (CI #759), then c725 on the NMAS host via LAN: 8 of 8 PASS, the config
