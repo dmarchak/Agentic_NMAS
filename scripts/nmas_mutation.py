@@ -96,6 +96,27 @@ def function_hash(source, qualname: str) -> str:
     return ""
 
 
+def failing_tests(text: str) -> list:
+    """The test ids a pytest run's short summary names as FAILED or ERROR, in its order, each
+    once (the reason after " - " left off)."""
+    out = []
+    for raw in re.split(r"[\r\n]+", _ANSI.sub("", text or "")):
+        m = re.match(r"^(?:FAILED|ERROR) (.+?)(?: - .*)?$", raw.strip())
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+    return out
+
+
+def with_deselected(cfg: str, ids: list) -> str:
+    """mutmut's setup.cfg with `--deselect <id>` for each of *ids* among its pytest arguments
+    (one argument a line, as mutmut reads them)."""
+    head = "pytest_add_cli_args =\n"
+    if head not in cfg:
+        raise ValueError("no pytest_add_cli_args in mutmut's setup.cfg")
+    added = "".join(f"    --deselect\n    {i}\n" for i in ids)
+    return cfg.replace(head, head + added, 1)
+
+
 #: mutmut 3.8's own pragma: on a `def` or `class` header line it skips the whole node, which is
 #: then written into mutmut's copy as it is, with no trampoline (mutmut/mutation/pragma_handling.py).
 FENCE = "# pragma: no mutate block"

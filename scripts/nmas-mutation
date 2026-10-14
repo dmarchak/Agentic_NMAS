@@ -69,6 +69,36 @@ def _mutmut_run(names, log, env=None) -> int:
     return proc.wait()
 
 
+#: The bound on one run of the night's tests in mutmut's copy: 78 s measured on the laptop with
+#: four workers (2,725 tests, 2026-10-14), about 2.5 times a runner twice as slow.
+COPY_RUN_TIMEOUT_S = 400
+
+
+def _fails_in_the_copy(p, out) -> list:
+    """The night's tests that fail in mutmut's copy (`mutants/`, once mutmut has made it) with
+    no mutant active: run once, every failure collected (never stopping at the first, as
+    mutmut's own run does). Its whole output is kept in *out*/copy-run.log. Nothing when the
+    copy does not exist or the run did not end with failures (an error of the run itself is
+    the night's, reported as mutmut's)."""
+    mutants = os.path.join(M.ROOT, "mutants")
+    if not os.path.isdir(mutants):
+        return []
+    env = dict(os.environ, MUTANT_UNDER_TEST="", NMAS_COPY_OF=M.ROOT)
+    try:
+        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider",
+                            "-n", "auto", *p["tests"], M.CANARY_TESTS], cwd=mutants, env=env,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                           errors="replace", timeout=COPY_RUN_TIMEOUT_S)
+        text, code = r.stdout, r.returncode
+    except subprocess.TimeoutExpired as e:
+        text = (e.stdout or "") + f"\nnmas-mutation: the copy's run passed its {COPY_RUN_TIMEOUT_S} s bound"
+        code = None
+    with open(os.path.join(out, "copy-run.log"), "w", encoding="utf-8") as fh:
+        fh.write(text if isinstance(text, str) else text.decode("utf-8", "replace"))
+    print(f"nmas-mutation: the night's tests in mutmut's copy: exit {code}", flush=True)
+    return M.failing_tests(text) if code == 1 else []
+
+
 def cmd_plan(a) -> int:
     state = {}
     if a.state and os.path.exists(a.state):
@@ -147,8 +177,11 @@ def cmd_run(a) -> int:
     def log_of(n):
         return os.path.join(a.out, f"mutmut-run-{n}.log")
 
+    def next_log():
+        return log_of(len(record["runs"]) + 1)
+
     def done(name, code):
-        path = log_of(len(record["runs"]) + 1)
+        path = next_log()
         ran = os.path.exists(path)
         record["runs"].append({"run": name, "exit": code,
                                "log": os.path.basename(path) if ran else ""})
@@ -160,8 +193,28 @@ def cmd_run(a) -> int:
 
     # 1. The canary in the test's process; mutmut collects its statistics here, and each test
     #    records its tier (tests/conftest.py).
-    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_PROCESS)], log_of(1),
-                       env=dict(os.environ, NMAS_TEST_TIERS=tiers_dir))
+    first = [M.mutant_pattern(*M.CANARY_IN_PROCESS)]
+    tiers_env = dict(os.environ, NMAS_TEST_TIERS=tiers_dir)
+    code = _mutmut_run(first, next_log(), env=tiers_env)
+    if code not in (M.FINISHED, M.OUT_OF_TIME):
+        # A test that fails in mutmut's copy with no mutant active cannot tell a mutant from the
+        # original: it reads the program's source, which the copy rewrites (the second GitHub
+        # night, C778's walk: 2 of 2,725, each a scan of a planned module's definitions). They
+        # are measured each night, not listed, deselected, named, and the run is tried again.
+        failing = _fails_in_the_copy(p, a.out)
+        if failing:
+            done("the canary, in process (tests that fail in mutmut's copy found)", code)
+            record.pop("failure", None)
+            record["not_run_fail_in_the_copy"] = failing
+            cfg_path = os.path.join(M.ROOT, "setup.cfg")
+            with open(cfg_path, encoding="utf-8") as fh:
+                cfg = fh.read()
+            with open(cfg_path, "w", encoding="utf-8") as fh:
+                fh.write(M.with_deselected(cfg, failing))
+            M.save(os.path.join(a.out, "run.json"), record)
+            print(f"nmas-mutation: {len(failing)} test(s) fail in mutmut's copy itself and are "
+                  f"not run tonight: {', '.join(failing)}", flush=True)
+            code = _mutmut_run(first, next_log(), env=tiers_env)
     if done("the canary, in process", code):
         return code
     # 2. A test that starts a child may reach any function there, and a child records nothing:
@@ -176,7 +229,7 @@ def cmd_run(a) -> int:
     M.save(STATS, stats)
     print(f"nmas-mutation: {len(spawning)} test(s) start a child; "
           f"{record['associations_added']} test association(s) added", flush=True)
-    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_CHILD)], log_of(2))
+    code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_CHILD)], next_log())
     if done("the canary, in a child", code):
         return code
     # The canary must be dead before the night's mutants mean anything.
@@ -206,7 +259,7 @@ def cmd_run(a) -> int:
                                                                 for f in p["planned"]})
     print(f"nmas-mutation: {len(tonight)} mutant(s) tonight; "
           f"{len(record['logging_not_run'])} in logging calls not run", flush=True)
-    return (done("the night", _mutmut_run(tonight, log_of(3))) if tonight
+    return (done("the night", _mutmut_run(tonight, next_log())) if tonight
             else done("the night", 0))
 
 
@@ -248,6 +301,13 @@ def cmd_report(a) -> int:
         f"Scope: {ran} mutant(s) ran tonight, all of the planned functions; "
         f"{len(p['kept'])} function(s) carried in by the record; "
         f"{len(ran_record.get('logging_not_run') or [])} in logging calls never mutated.", ""]
+    not_run = ran_record.get("not_run_fail_in_the_copy") or []
+    if not_run:
+        # Said whether or not the night's results stand: a test it could not use is never silent.
+        extra += [f"Not run tonight ({len(not_run)}): they fail in mutmut's copy itself, with no "
+                  "mutant active, so cannot tell a mutant from the original (each reads the "
+                  "program's source, which the copy rewrites):", "",
+                  *[f"- `{t}`" for t in not_run], ""]
     with open(a.summary, "a", encoding="utf-8") as fh:
         fh.write(M.summary(p["base"], p["head"], planned, v, out["left"], a.budget, error,
                            out["empty"], extra,

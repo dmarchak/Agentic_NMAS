@@ -1,0 +1,4 @@
+=========================== short test summary info ============================
+FAILED tests/test_other_readers_real_output.py::TestOneBgpReader::test_no_third_reader
+FAILED tests/test_readers_use_what_is_committed.py::TestThePopulation::test_no_function_resolving_a_golden_opens_a_file
+2 failed, 2723 passed, 5 skipped in 78.35s (0:01:18)

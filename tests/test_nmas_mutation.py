@@ -836,6 +836,81 @@ class TestTheFence:
         assert "def changed(x):\n" in text, "a planned function is left as it is"
 
 
+class TestTestsThatFailInTheCopy:
+    """C778's walk (2026-10-14): with the fence, the night's tests ran in mutmut's copy and 2 of
+    2,725 failed there with no mutant active, each a scan of a planned module's definitions
+    meeting mutmut's generated copies of its functions. They are measured each night, deselected
+    for mutmut and named in the summary (tests/fixtures/mutation/copy-prepass-2026-10-14.txt is
+    that run's short summary)."""
+
+    def test_the_failing_ids_are_read_from_a_real_run(self):
+        assert M.failing_tests(_fixture("copy-prepass-2026-10-14.txt")) == [
+            "tests/test_other_readers_real_output.py::TestOneBgpReader::test_no_third_reader",
+            "tests/test_readers_use_what_is_committed.py::TestThePopulation::"
+            "test_no_function_resolving_a_golden_opens_a_file"]
+        assert M.failing_tests(_fixture("night-2026-10-14-clean-run-failed.txt")) == [
+            "tests/test_config_read.py::TestTheJudgement::"
+            "test_every_real_config_is_one_configuration"]
+
+    def test_an_id_with_spaces_and_a_reason_and_an_error(self):
+        text = ("FAILED tests/test_a.py::test_x[a b] - AssertionError: no\n"
+                "ERROR tests/test_b.py::test_y\nFAILED tests/test_a.py::test_x[a b]\n")
+        assert M.failing_tests(text) == ["tests/test_a.py::test_x[a b]", "tests/test_b.py::test_y"]
+
+    def test_each_is_deselected_among_mutmuts_pytest_arguments(self):
+        cfg = ("[mutmut]\nsource_paths =\n    modules/x.py\npytest_add_cli_args =\n    -p\n"
+               "    no:cacheprovider\npytest_add_cli_args_test_selection =\n    tests/test_x.py\n")
+        out = M.with_deselected(cfg, ["tests/test_x.py::test_a", "tests/test_x.py::test_b[1 2]"])
+        import configparser
+        c = configparser.ConfigParser()
+        c.read_string(out)
+        args = [l for l in c["mutmut"]["pytest_add_cli_args"].splitlines() if l]
+        assert args == ["--deselect", "tests/test_x.py::test_a", "--deselect",
+                        "tests/test_x.py::test_b[1 2]", "-p", "no:cacheprovider"]
+        assert c["mutmut"]["pytest_add_cli_args_test_selection"].split() == ["tests/test_x.py"]
+
+    def test_the_run_measures_the_copy_deselects_and_tries_again(self, tmp_path, monkeypatch):
+        """Through the real CLI's run step with mutmut stood in: the first mutmut run fails, the
+        copy's run names a test, which is deselected and recorded, and mutmut runs again (here
+        failing again, so the night stops there with its own cause)."""
+        import json
+        loader = importlib.machinery.SourceFileLoader(
+            "nmas_mutation_cli_copy", os.path.join(ROOT, "scripts", "nmas-mutation"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        cli = importlib.util.module_from_spec(spec)
+        loader.exec_module(cli)
+        root, out = tmp_path / "root", tmp_path / "out"
+        root.mkdir()
+        out.mkdir()
+        (root / "setup.cfg").write_text("[mutmut]\npytest_add_cli_args =\n    -p\n"
+                                        "    no:cacheprovider\n")
+        (out / "plan.json").write_text(json.dumps({"tests": ["tests/test_x.py"],
+                                                   "planned": []}))
+        monkeypatch.setattr(cli.M, "ROOT", str(root))
+        monkeypatch.setattr(cli.M, "fresh_workspace", lambda root=None: False)
+        runs = []
+
+        def fake_run(names, log, env=None):
+            runs.append(names)
+            with open(log, "w", encoding="utf-8") as fh:
+                fh.write(f"FAILED tests/test_y.py::test_{len(runs)} - no\n")
+            return 1
+        monkeypatch.setattr(cli, "_mutmut_run", fake_run)
+        monkeypatch.setattr(cli, "_fails_in_the_copy", lambda p, o: ["tests/test_x.py::test_scan"])
+
+        class A:
+            pass
+        a = A()
+        a.out = str(out)
+        assert cli.cmd_run(a) == 1
+        assert len(runs) == 2 and runs[0] == runs[1], "tried again, the same canary"
+        assert "--deselect\n    tests/test_x.py::test_scan\n" in (root / "setup.cfg").read_text()
+        record = json.loads((out / "run.json").read_text())
+        assert record["not_run_fail_in_the_copy"] == ["tests/test_x.py::test_scan"]
+        assert [r["log"] for r in record["runs"]] == ["mutmut-run-1.log", "mutmut-run-2.log"]
+        assert record["failure"] == ["FAILED tests/test_y.py::test_2 - no"], "the retry's cause"
+
+
 @pytest.fixture
 def moved(tmp_path):
     """A real history: `kept` moves to another module unchanged, `edited` moves and changes."""
