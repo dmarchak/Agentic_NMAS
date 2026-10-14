@@ -283,3 +283,88 @@ def test_a_session_that_cannot_start_leaves_nothing(monkeypatch):
     assert b.proc.poll() is not None, "its geckodriver stopped"
     assert not os.path.exists(b.tmp), "its folder removed"
     assert b.tmp not in browser.LEFT_BEHIND
+
+
+#: A test process holding a session on the planted geckodriver (whose "Firefox" writes into the
+#: session's folder for as long as it lives): it says where everything is, then waits to be
+#: ended, or ends its session itself.
+HOLDER = """
+import os, sys, time
+sys.path.insert(0, sys.argv[1])
+from tests import browser
+browser._geckodriver = lambda: sys.argv[2]
+b = browser.Browser()
+b.__enter__()
+with open(sys.argv[3], "w") as fh:
+    fh.write(f"{b.proc.pid} {b.tmp}")
+if sys.argv[4] == "exit":
+    b.__exit__(None, None, None)
+    sys.exit(0)
+time.sleep(600)
+"""
+
+
+def _gone(pid, group=False):
+    try:
+        (os.killpg if group else os.kill)(pid, 0)
+        return False
+    except ProcessLookupError:
+        return True
+
+
+@pytest.mark.parametrize("end", ["SIGTERM", "SIGKILL", "exit"])
+def test_a_browser_ends_with_its_test_process_however_it_ends(end, tmp_path):
+    """C775: a test process ended by a signal never ran `Browser.__exit__`, and its browser
+    (geckodriver and Firefox, in a group of their own) ran on: two were found 1.6 and 3.7 days
+    later. Ended by nmas-test's bound (SIGTERM), a SIGKILL (a lost xdist worker), or normally,
+    nothing of the session is left: its group, its Firefox, its folder."""
+    import signal
+    import time
+
+    fake = os.path.join(ROOT, "tests", "fixtures", "fake_geckodriver.py")
+    wrapper = tmp_path / "geckodriver"
+    wrapper.write_text(f"#!/bin/sh\nexec {sys.executable} {fake} \"$@\"\n")
+    wrapper.chmod(0o755)
+    ready, pidfile = tmp_path / "ready", tmp_path / "firefox.pid"
+    env = dict(os.environ, FAKE_GECKO_PIDFILE=str(pidfile), FAKE_GECKO_ANSWERS="1")
+    env.pop("PYTEST_XDIST_WORKER", None)
+    holder = subprocess.Popen([sys.executable, "-c", HOLDER, ROOT, str(wrapper), str(ready),
+                               end], env=env)
+    group = firefox = folder = None
+    try:
+        deadline = time.time() + 30
+        while not (ready.exists() and ready.read_text() and pidfile.exists()
+                   and pidfile.read_text()) and holder.poll() is None:
+            assert time.time() < deadline, "the session never started"
+            time.sleep(0.1)
+        group_s, folder = ready.read_text().split(" ", 1)
+        group, firefox = int(group_s), int(pidfile.read_text())
+        if end != "exit":
+            assert not _gone(firefox), "the planted Firefox runs while the session does"
+            holder.send_signal(getattr(signal, end))
+        holder.wait(timeout=30)
+        deadline = time.time() + 20                 # the watcher's sweep: TERM, then 5 s
+        while time.time() < deadline and not (_gone(group, True) and _gone(firefox)
+                                              and not os.path.exists(folder)):
+            time.sleep(0.1)
+        assert _gone(firefox), "its Firefox still runs"
+        assert _gone(group, True), "a process of its group still runs"
+        assert not os.path.exists(folder), "its folder is left"
+    finally:
+        # Whatever the code under test did, nothing of the plant outlives the test.
+        if holder.poll() is None:
+            holder.kill()
+        for pid, grp in ((group, True), (firefox, False)):
+            if pid and not _gone(pid, grp):
+                (os.killpg if grp else os.kill)(pid, signal.SIGKILL)
+        if folder:
+            browser.remove_folder(folder)
+
+
+def test_the_watcher_is_the_harnesss_own_never_a_spawn_of_program_code():
+    """Starting a browser does not make a test a "spawns" test (the coverage tiers): the
+    watcher runs no program code; a browser test is one by its session's calls."""
+    from tests import network_guard
+    assert not network_guard.runs_our_code([sys.executable, browser.WATCHER, "1", "/x", "g"])
+    assert network_guard.runs_our_code([sys.executable, os.path.join(ROOT, "scripts",
+                                                                      "nmas-coverage")])

@@ -21,8 +21,10 @@ snap-confined process cannot be stopped by the test that started it.
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -31,6 +33,9 @@ import urllib.request
 from tests import home_guard
 
 GECKODRIVER_CANDIDATES = ("/snap/firefox/current/usr/lib/firefox/geckodriver",)
+#: The session's watcher (C775): it leads the browser's process group and stops it when the
+#: test process that started it ends, however it ends.
+WATCHER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_watch.py")
 
 
 def _geckodriver():
@@ -233,9 +238,14 @@ class Browser:
         # Its own process group (C521): the Firefox it starts is in it, so stopping the group
         # stops that Firefox too, by identity. Terminating geckodriver alone orphaned a Firefox
         # whose session never answered (CI #473), and it kept writing into the folder.
-        self.proc = subprocess.Popen([_geckodriver(), "--port", str(self.port)], env=env,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                     start_new_session=True)
+        # The group's leader is tests/browser_watch.py (C775), which starts geckodriver and
+        # stops the group when THIS process ends however it ends: a test process ended by a
+        # SIGTERM, a SIGKILL or a lost xdist worker never ran __exit__, and its browser ran on
+        # for days. `self.proc` is the watcher; the group is its pid.
+        self.proc = subprocess.Popen(
+            [sys.executable, WATCHER, str(os.getpid()), self.tmp, _geckodriver(), "--port",
+             str(self.port)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
         self.session = ""
 
     def _call(self, method, path, body=None, timeout=60):
@@ -322,9 +332,14 @@ class Browser:
             if self.session:
                 self._call("DELETE", f"/session/{self.session}", timeout=20)
         finally:
-            self.proc.terminate()
+            # The group, not the watcher alone: geckodriver and Firefox get the SIGTERM, the
+            # watcher (which ignores it) sees geckodriver end, sweeps the rest and exits.
             try:
-                self.proc.wait(timeout=10)
+                os.killpg(self.proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                self.proc.wait(timeout=15)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
             stop_group(self.proc.pid)

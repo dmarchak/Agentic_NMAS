@@ -32,7 +32,21 @@ class Handler(BaseHTTPRequestHandler):
         # Its pid, where the test reads it: the test checks it is gone and stops it if not.
         with open(os.environ["FAKE_GECKO_PIDFILE"], "w") as fh:
             fh.write(str(child.pid))
+        if os.environ.get("FAKE_GECKO_ANSWERS"):
+            # C775: a session that starts, for a test that ends its test process each way.
+            self._answer(b'{"value": {"sessionId": "planted"}}')
+            return
         time.sleep(3600)
+
+    def do_DELETE(self):
+        self._answer(b'{"value": null}')
+
+    def _answer(self, body):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
 
 if __name__ == "__main__":

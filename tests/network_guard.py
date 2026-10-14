@@ -365,6 +365,11 @@ def runs_our_code(args) -> bool:
     if not argv:
         return False
     prog = argv[0]
+    # The real browser's watcher (tests/browser_watch.py, C775) is the harness's own: it runs no
+    # program code, and the test that starts it is a browser test by its session's calls.
+    if os.path.normpath(os.path.join(_CHECKOUT, "tests", "browser_watch.py")) in \
+            (os.path.normpath(os.path.join(_CHECKOUT, a)) for a in argv[1:2]):
+        return False
     if os.path.basename(prog).startswith("python") or prog == _sys.executable:
         return True
     if os.sep not in prog:
