@@ -223,10 +223,26 @@ nothing scores 100% coverage and 0% here. Each night:
   every night until a test kills it or a person lists it as equivalent. Walked 2026-10-14: a
   night cut by its budget after 2 of 56 mutants, then a night from its record that ran exactly
   the other 54 and gave the same table as one whole night.
-- **It fails** when an open survivor remains (a mutant no test killed, "no tests" included,
-  not in `tests/mutation_equivalent.py`), or when the measurement or the run broke (the canary,
-  the scope, mutmut's own exit 1: its setup or the clean run of the tests on unmutated code).
-  Nothing changed and nothing kept: green, "Nothing to mutate".
+- **What a mutant changes** (the operator's rule, 2026-10-14, so the night's red means
+  something), decided from mutmut's own copy of the module before anything runs, by parsing
+  each mutant against the original (`scripts/nmas_mutation.py`, `classify`):
+  - **logging:** the change lies inside a logging call's arguments (`log.debug(...)` and its
+    kin, continuation lines included). Never run, never counted (PIT's default). One rule in
+    one place, not a pragma per line; mutmut's own `do_not_mutate_patterns` matches single
+    lines and would miss a call's continuation lines, or hit an identical line elsewhere.
+  - **MESSAGE:** the change is confined to the text of a string literal that holds whitespace
+    (words a person reads), and that text holds no word-like string the module compares with
+    (`==`, `in`, `startswith`: config_check decides by `startswith("no golden")`, so its "no
+    golden: …" note is VERDICT).
+  - **VERDICT:** everything else: a check's name or level, pass or fail, whom a result blames
+    (a device, a file), a condition, a value's type, an expression inside an f-string; and
+    whatever the rule cannot decide.
+- **It fails** when an open VERDICT survivor remains (a mutant no test killed, "no tests"
+  included, not in `tests/mutation_equivalent.py`), or when the measurement or the run broke
+  (the canary, the scope, mutmut's own exit 1: its setup or the clean run of the tests on
+  unmutated code). MESSAGE survivors are listed and counted in their own section and kept open
+  in the record, re-run each night, and never turn the night red. Nothing changed and nothing
+  kept: green, "Nothing to mutate".
 - **Its first walk** (the laptop, 2026-10-14, the night's own steps over the two Lab 7 seam
   commits, f40c9da6 and 1dc672ea): 56 mutants of `reachability.probe` and
   `monitoring_profile.tcp_accepts`. Five real survivors, now killed (each probe's bound, the
@@ -237,10 +253,12 @@ nothing scores 100% coverage and 0% here. Each night:
 
 **Reading the summary:** the canary's line (all its mutants killed: the measurement works), the
 scope's (how many mutants ran, all of the planned functions, and how many functions the record
-carried in), a table per function (mutants, killed, survived, of them known equivalents, and
-the score: killed over the mutants a test could kill), then the open survivors with their line
-before and after (each one keeps the night failing; "no test reached it" marks one no test
-ran), the known equivalents with their reasons, what the budget left (kept, resumed next night),
+carried in, and how many logging mutants were never run), a table per function (mutants,
+killed, survived VERDICT, survived MESSAGE, known equivalents; the score, killed over the
+mutants a test could kill; and the VERDICT score, killed over killed and VERDICT survivors),
+then the open VERDICT survivors with their line before and after (each one keeps the night
+failing; "no test reached it" marks one no test ran), the open MESSAGE survivors (listed,
+never failing), the known equivalents with their reasons, what the budget left (kept, resumed next night),
 and any function mutmut made no mutant of (nothing in it was tested that night). The artifact
 `mutation-report` holds `report.json` (every mutant's status), `run.json` (each mutmut run's
 exit, the tests that start a child) and the plan.

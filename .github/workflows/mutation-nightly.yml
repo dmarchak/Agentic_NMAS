@@ -5,8 +5,10 @@
 # mutated by mutmut, each mutant run against the test files that import its module; a canary
 # first. Never on a push or a pull request, never on the NMAS host, never in the gate.
 #
-# A night fails when an open survivor remains (a mutant no test killed, not in
-# tests/mutation_equivalent.py, the hand-kept list), or when the measurement or the run broke
+# A night fails when an open VERDICT survivor remains (a mutant no test killed whose change can
+# decide a result, not in tests/mutation_equivalent.py, the hand-kept list; MESSAGE survivors,
+# words only, are listed and never fail it; a logging call's arguments are never mutated),
+# or when the measurement or the run broke
 # (the canary survived, a mutant outside the plan ran, mutmut failed): GitHub's own
 # failed-workflow email is the notice; no issue is opened. The record is kept after every night
 # whose results stand, so a large function is finished across nights and an open survivor is

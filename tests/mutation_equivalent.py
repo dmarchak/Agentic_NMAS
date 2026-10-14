@@ -6,14 +6,13 @@ An entry names the function, the line as it is (`was`), the line as the mutant h
 and why the change cannot be observed. mutmut's mutant numbers move whenever the function
 changes, so an entry is matched by the function and the two lines, never by a number. Several
 mutants of one line with one reason are written as one `_each` call; each is still its own
-entry."""
+entry. A logging call's arguments are never mutated at all (one rule, in
+scripts/nmas_mutation.py's `classify`), so no entry here is about one."""
 
 
 def _each(function: str, was: str, nows: tuple, why: str) -> list:
     return [{"function": function, "was": was, "now": now, "why": why} for now in nows]
 
-
-DEBUG = "a log.debug line: no behaviour reads a debug message"
 
 EQUIVALENT = [
     # ── The first pass (2026-10-14), re-run serially; its real survivors are killed by
@@ -47,36 +46,9 @@ EQUIVALENT = [
             "parts = text.split(None, 2)"),
            "these differ only for a value of three or more tokens, and an IOS hash is one "
            "token after its type: no stored value has the shape that tells them apart"),
-    *_each("modules.nsot.hostvars.assert_no_secret_values",
-           'log.debug("hostvars: %s is shorter than %d characters — not "',
-           ('log.debug("XXhostvars: %s is shorter than %d characters — not XX"',
-            "log.debug(None, name, MIN_CHECKABLE_SECRET)",
-            "log.debug(name, MIN_CHECKABLE_SECRET)",
-            'log.debug("HOSTVARS: %S IS SHORTER THAN %D CHARACTERS — NOT "'),
-           DEBUG),
-    *_each("modules.nsot.hostvars.assert_no_secret_values",
-           '"value-checked", name, MIN_CHECKABLE_SECRET)',
-           ('"value-checked", MIN_CHECKABLE_SECRET)',
-            '"value-checked", None, MIN_CHECKABLE_SECRET)',
-            '"value-checked", name, None)',
-            '"value-checked", name, )',
-            '"XXvalue-checkedXX", name, MIN_CHECKABLE_SECRET)',
-            '"VALUE-CHECKED", name, MIN_CHECKABLE_SECRET)'),
-           DEBUG),
     # ── config_check._check_device: the first full night (2026-10-14, laptop, serial, canary
     # killed). Its real survivors that let a bad repository pass are killed by the tests under
     # "What must not PASS" in tests/test_config_check.py; the rest stay open in the record.
-    *_each("modules.nsot.config_check._check_device",
-           'log.debug("config_check: %s\'s template reads unreadable: %s", device, exc)',
-           ("log.debug(None, device, exc)",
-            'log.debug("config_check: %s\'s template reads unreadable: %s", None, exc)',
-            'log.debug("config_check: %s\'s template reads unreadable: %s", device, None)',
-            "log.debug(device, exc)",
-            'log.debug("config_check: %s\'s template reads unreadable: %s", exc)',
-            'log.debug("config_check: %s\'s template reads unreadable: %s", device, )',
-            'log.debug("XXconfig_check: %s\'s template reads unreadable: %sXX", device, exc)',
-            'log.debug("CONFIG_CHECK: %S\'S TEMPLATE READS UNREADABLE: %S", device, exc)'),
-           DEBUG),
     *_each("modules.nsot.config_check._check_device",
            'for line in _unsendable_lines(rendered.replace(MASK, "x")):',
            ('for line in _unsendable_lines(rendered.replace(MASK, "XXxXX")):',
@@ -113,17 +85,4 @@ EQUIVALENT = [
            "if response and response > 0:", ("if response and response >= 0:",),
            "the two differ only at response == 0, where `response and` has already decided "
            "False"),
-    *_each("modules.readers.reachability.probe",
-           'log.debug("reachability: ICMP to %s not possible or failed", ip, exc_info=True)',
-           ('log.debug("reachability: ICMP to %s not possible or failed", ip, exc_info=None)',
-            'log.debug("reachability: ICMP to %s not possible or failed", ip, exc_info=False)',
-            'log.debug("reachability: ICMP to %s not possible or failed", ip, )',
-            'log.debug("XXreachability: ICMP to %s not possible or failedXX", ip, exc_info=True)',
-            'log.debug("reachability: icmp to %s not possible or failed", ip, exc_info=True)',
-            'log.debug("REACHABILITY: ICMP TO %S NOT POSSIBLE OR FAILED", ip, exc_info=True)',
-            "log.debug(None, ip, exc_info=True)",
-            'log.debug("reachability: ICMP to %s not possible or failed", None, exc_info=True)',
-            "log.debug(ip, exc_info=True)",
-            'log.debug("reachability: ICMP to %s not possible or failed", exc_info=True)'),
-           DEBUG),
 ]

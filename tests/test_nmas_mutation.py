@@ -266,22 +266,29 @@ class TestTheVerdict:
 
     def test_a_listed_equivalent_is_known_and_any_other_survivor_is_open(self):
         """Mutant 12 is in tests/mutation_equivalent.py (matched by function and lines, never
-        number); mutant 31 is not, and is the night's failure; a mutant no test reached
-        survives just the same, and says so."""
+        number); mutant 31 is not, and is the night's failure (VERDICT: no kind given); a
+        mutant no test reached survives just the same, and says so; a MESSAGE survivor is
+        listed apart and never fails the night."""
         results = {"modules.readers.reachability.x_probe__mutmut_12": "survived",
                    "modules.readers.reachability.x_probe__mutmut_31": "survived",
                    "modules.readers.reachability.x_probe__mutmut_40": "no tests",
+                   "modules.readers.reachability.x_probe__mutmut_50": "survived",
                    "modules.readers.reachability.x_probe__mutmut_1": "killed"}
         shows = {"modules.readers.reachability.x_probe__mutmut_12": _fixture("show-probe-12.txt"),
                  "modules.readers.reachability.x_probe__mutmut_31": _fixture("show-probe-31.txt")}
-        v = M.verdict(results, shows, EQ.EQUIVALENT)
+        kinds = {"modules.readers.reachability.x_probe__mutmut_50": "message"}
+        v = M.verdict(results, shows, EQ.EQUIVALENT, kinds)
         assert [s["mutant"].rsplit("_", 1)[1] for s in v["new"]] == ["31", "40"]
+        assert [s["mutant"].rsplit("_", 1)[1] for s in v["message"]] == ["50"]
         assert [s["mutant"] for s in v["known"]] == ["modules.readers.reachability.x_probe__mutmut_12"]
         assert v["functions"]["modules.readers.reachability.probe"] == {
-            "mutants": 4, "killed": 1, "survived": 3, "equivalent": 1, "other": 0}
+            "mutants": 5, "killed": 1, "survived": 4, "equivalent": 1, "verdict": 2,
+            "message": 1, "other": 0}
         text = M.summary("a" * 40, "b" * 40, [PROBE], v, [], 120)
-        assert "| `modules.readers.reachability.probe` | 4 | 1 | 3 | 1 | 33.3% |" in text
-        assert "### Open survivors (2)" in text and "with connect((ip, 22), ):" in text
+        assert "| `modules.readers.reachability.probe` | 5 | 1 | 2 | 1 | 1 | 25.0% | 33.3% |" \
+            in text
+        assert "### Open VERDICT survivors (2)" in text and "with connect((ip, 22), ):" in text
+        assert "### Open MESSAGE survivors (1): words only" in text
         assert "x_probe__mutmut_40` (no test reached it)" in text
 
     def test_the_same_lines_under_another_function_are_not_its_equivalent(self):
@@ -289,6 +296,51 @@ class TestTheVerdict:
         v = M.verdict(results, {"modules.readers.other.x_probe__mutmut_12":
                                 _fixture("show-probe-12.txt")}, EQ.EQUIVALENT)
         assert len(v["new"]) == 1 and not v["known"]
+
+
+class TestWhatAMutantChanges:
+    """The operator's rule (2026-10-14): a logging call's arguments are never mutated; a
+    survivor is MESSAGE when it changes only the words a person reads, VERDICT otherwise, and
+    whatever the rule cannot decide is VERDICT. On real mutants of config_check._check_device
+    (tests/fixtures/mutation/check_device_mutants.txt, cut verbatim from mutmut's copy)."""
+
+    def kinds(self):
+        with open(os.path.join(ROOT, "modules", "nsot", "config_check.py"),
+                  encoding="utf-8") as fh:
+            module = fh.read()
+        return M.classify_file(_fixture("check_device_mutants.txt"), module)
+
+    @pytest.mark.parametrize("n, kind, what", [
+        (81, "logging", "log.debug's format replaced by None"),
+        (18, "message", "the bootstrap note's sentence wrapped in XX"),
+        (19, "message", "the bootstrap note's sentence upper-cased"),
+        (16, "verdict", '"note", a level, wrapped in XX'),
+        (11, "verdict", "the note's message argument dropped"),
+        (374, "verdict", '"no golden: ..." wrapped: the module compares with "no golden"'),
+    ])
+    def test_a_real_mutant_is_classified_by_its_effect(self, n, kind, what):
+        assert self.kinds()[f"x__check_device__mutmut_{n}"] == kind, what
+
+    def test_a_logging_calls_continuation_line_is_logging(self):
+        orig = 'def f(x):\n    log.warning("a %s"\n                "b", x)\n    return x\n'
+        mutant = 'def g(x):\n    log.warning("a %s"\n                "b", None)\n    return x\n'
+        assert M.classify(orig, mutant) == "logging"
+        assert M.classify(orig, orig.replace("return x", "return None")) == "verdict"
+
+    def test_a_word_compared_elsewhere_keeps_a_sentence_verdict_and_punctuation_does_not(self):
+        orig = 'def f():\n    return add("no golden: nothing to compare")\n'
+        mutant = 'def g():\n    return add("XXno golden: nothing to compareXX")\n'
+        assert M.classify(orig, mutant, {":", "/"}) == "message"
+        assert M.classify(orig, mutant, {"no golden"}) == "verdict"
+        assert M.classify(orig, mutant.replace('"XXno golden: nothing to compareXX"', "None"),
+                          set()) == "verdict", "a type change is undecided: VERDICT"
+
+    def test_a_string_with_no_space_is_an_identifier_status_or_key_so_verdict(self):
+        """Even when nothing in the module compares with it: `"render"`, a check's name."""
+        orig = 'def f():\n    return add("render", "a sentence of words")\n'
+        assert M.classify(orig, orig.replace('"render"', '"XXrenderXX"'), set()) == "verdict"
+        assert M.classify(orig, orig.replace('"a sentence of words"',
+                                             '"A SENTENCE OF WORDS"'), set()) == "message"
 
 
 class TestTheMeasurementIsChecked:

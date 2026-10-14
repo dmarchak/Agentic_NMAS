@@ -183,6 +183,171 @@ def add_tests(stats: dict, functions: list, tests: list) -> int:
     return added
 
 
+# ── What a mutant changes: logging, MESSAGE or VERDICT ───────────────────────────────────────
+# The operator's rule (2026-10-14), so the night's red means something: a mutant inside a
+# logging call's arguments is never run (PIT's default); a survivor is MESSAGE when it changes
+# only the words of text a person reads, and VERDICT otherwise (pass or fail, a check's level,
+# which device or file is blamed, whether a secret or an unsendable line is caught). Decided
+# from the mutation itself, by parsing; whatever the rule cannot decide is VERDICT.
+
+#: The loggers a module writes to by name, and their methods.
+LOGGERS = ("log", "logger", "logging", "LOG", "_log")
+LOG_METHODS = ("debug", "info", "warning", "warn", "error", "exception", "critical", "log")
+
+
+def mutated_functions(mutated_source: str) -> dict:
+    """`{name: source}` of every function in mutmut's copy of a module whose name ends
+    `__mutmut_<n>` or `__mutmut_orig` (methods included, at any depth), each dedented."""
+    import ast
+    import textwrap
+    out = {}
+    lines = mutated_source.splitlines()
+    for node in ast.walk(ast.parse(mutated_source)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and "__mutmut_" in node.name:
+            start = min([node.lineno] + [d.lineno for d in node.decorator_list])
+            out[node.name] = textwrap.dedent("\n".join(lines[start - 1:node.end_lineno]))
+    return out
+
+
+def _log_lines(source: str) -> set:
+    """Line indexes (0-based) of *source* inside the argument list of a logging call."""
+    import ast
+    out = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr in LOG_METHODS and isinstance(node.func.value, ast.Name) \
+                and node.func.value.id in LOGGERS:
+            out.update(range(node.lineno - 1, node.end_lineno))
+    return out
+
+
+def _changed(orig: list, mutant: list) -> tuple:
+    """`(orig line indexes changed, [(orig line, mutant line)] when one line became one)`."""
+    import difflib
+    changed, pairs = set(), []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=orig, b=mutant,
+                                                       autojunk=False).get_opcodes():
+        if op == "equal":
+            continue
+        changed.update(range(i1, max(i2, i1 + 1)))
+        if op == "replace" and i2 - i1 == 1 and j2 - j1 == 1:
+            pairs.append((orig[i1], mutant[j1]))
+    return changed, pairs
+
+
+def _string_spans(line: str) -> list:
+    """`[(start, end, text)]` of the string literals (and f-strings' text parts) on one line."""
+    import io
+    import tokenize
+    spans = []
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(line + "\n").readline):
+            if tok.type == tokenize.STRING or tok.type in (
+                    getattr(tokenize, "FSTRING_MIDDLE", -1),):
+                spans.append((tok.start[1], tok.end[1], tok.string))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        pass                                     # a line of a longer statement: try harder
+    if not spans:
+        for m in re.finditer(r'(?<![\w])[rbfuRBFU]{0,2}("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')',
+                             line):
+            spans.append((m.start(), m.end(), m.group(0)))
+    return spans
+
+
+def compared_strings(module_source: str) -> set:
+    """The string literals a module COMPARES with (`==`, `!=`, `in`, `.startswith()`,
+    `.endswith()`, a dict or set of them): a message holding one of them can decide a result
+    (`startswith("no golden")` in config_check), so its words are never MESSAGE."""
+    import ast
+    out = set()
+    for node in ast.walk(ast.parse(module_source)):
+        targets = []
+        if isinstance(node, ast.Compare):
+            targets = [node.left, *node.comparators]
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr in ("startswith", "endswith", "find", "index", "count"):
+            targets = list(node.args)
+        for t in targets:
+            for sub in ast.walk(t):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub.value:
+                    out.add(sub.value)
+    return out
+
+
+def _body_start(lines: list) -> int:
+    """The index of the first line after a function's `def ...:` line(s)."""
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith(("def ", "async def ")):
+            for j in range(i, len(lines)):
+                if lines[j].rstrip().endswith(":"):
+                    return j + 1
+    return 0
+
+
+def classify(orig: str, mutant: str, compared: set = frozenset()) -> str:
+    """"logging", "message" or "verdict" for one mutant (*orig* and *mutant*: the whole
+    function's source before and after, `def` included, whose names differ and nothing else
+    does; *compared*: `compared_strings` of its module)."""
+    full_a, full_b = orig.splitlines(), mutant.splitlines()
+    ia, ib = _body_start(full_a), _body_start(full_b)
+    a, b = full_a[ia:], full_b[ib:]
+    changed, pairs = _changed(a, b)
+    if not changed:
+        return "verdict"
+    if changed <= {i - ia for i in _log_lines(orig)}:
+        return "logging"
+    if len(pairs) != 1 or len(changed) != 1:
+        return "verdict"
+    was, now = pairs[0]
+    import difflib
+    sm = difflib.SequenceMatcher(a=was, b=now, autojunk=False)
+    edits = [(i1, i2, j1, j2) for op, i1, i2, j1, j2 in sm.get_opcodes() if op != "equal"]
+    spans_was, spans_now = _string_spans(was), _string_spans(now)
+
+    def inside(spans, lo, hi):
+        return any(s <= lo and hi <= e for s, e, _t in spans)
+
+    hit = set()
+    for i1, i2, j1, j2 in edits:
+        if not (inside(spans_was, i1, max(i2, i1)) and inside(spans_now, j1, max(j2, j1))):
+            return "verdict"
+        hit.update(t for s, e, t in spans_was if s <= i1 and max(i2, i1) <= e)
+    for text in hit:
+        body = text.strip("rbfuRBFU").strip("'\"")
+        if not re.search(r"\s", body):
+            return "verdict"                      # an identifier, a status, a key, a path
+        if any(_holds(body, c) for c in compared):
+            return "verdict"                      # holds a string the module compares with
+    return "message"
+
+
+def _holds(body: str, compared: str) -> bool:
+    """Whether a message *body* holds *compared* as words (three characters or more, a letter
+    among them, at word boundaries): `"no golden"` in "no golden: nothing captured"; never a
+    lone ":" or "/", which every sentence holds and nothing decides by."""
+    if len(compared) < 3 or not re.search(r"[A-Za-z]", compared):
+        return False
+    return re.search(rf"(?<!\w){re.escape(compared)}(?!\w)", body) is not None
+
+
+def classify_file(mutated_source: str, module_source: str) -> dict:
+    """`{mutant: kind}` for every mutant in mutmut's copy of one module (*module_source*: the
+    module itself, for `compared_strings`). Mutant names are mutmut's (`module.x_f__mutmut_3`
+    without the module: the caller adds it)."""
+    funcs = mutated_functions(mutated_source)
+    compared = compared_strings(module_source)
+    out = {}
+    for name, src in funcs.items():
+        if name.endswith("__mutmut_orig"):
+            continue
+        orig = funcs.get(name.rsplit("__mutmut_", 1)[0] + "__mutmut_orig")
+        if orig is None:
+            out[name] = "verdict"
+            continue
+        out[name] = classify(orig, src, compared)
+    return out
+
+
 # ── What survived ─────────────────────────────────────────────────────────────────────────────
 
 _RESULT = re.compile(r"^\s*([\w.ǁ]+__mutmut_\d+): (\w[\w ]*)$")
@@ -214,15 +379,17 @@ def is_equivalent(function: str, was: str, now: str, equivalent: list) -> str:
     return ""
 
 
-def verdict(results: dict, shows: dict, equivalent: list) -> dict:
+def verdict(results: dict, shows: dict, equivalent: list, kinds: dict = None) -> dict:
     """Per function: mutants, killed, survived (no test failed: `SURVIVING`); the survivors
-    split into NEW (open: a failure) and known equivalents (listed apart, with their reason).
+    split into known equivalents (listed apart, with their reason) and OPEN ones, each VERDICT
+    or MESSAGE by *kinds* (`{mutant: kind}`, `classify_file`; a mutant it does not name is
+    VERDICT). Only open VERDICT survivors (`new`) fail the night; MESSAGE ones are `message`.
     *shows*: `{mutant: mutmut show text}` for the survivors."""
-    per, new, known = {}, [], []
+    per, new, message, known = {}, [], [], []
     for mutant, status in sorted(results.items()):
         fn = function_of(mutant)
         p = per.setdefault(fn, {"mutants": 0, "killed": 0, "survived": 0, "equivalent": 0,
-                                "other": 0})
+                                "verdict": 0, "message": 0, "other": 0})
         p["mutants"] += 1
         if status == "killed":
             p["killed"] += 1
@@ -230,12 +397,20 @@ def verdict(results: dict, shows: dict, equivalent: list) -> dict:
             p["survived"] += 1
             was, now = diff_lines(shows.get(mutant, ""))
             why = is_equivalent(fn, was, now, equivalent)
-            p["equivalent"] += bool(why)
-            (known if why else new).append({"mutant": mutant, "function": fn, "was": was,
-                                            "now": now, "why": why, "status": status})
+            entry = {"mutant": mutant, "function": fn, "was": was, "now": now, "why": why,
+                     "status": status}
+            if why:
+                p["equivalent"] += 1
+                known.append(entry)
+            elif (kinds or {}).get(mutant) == "message":
+                p["message"] += 1
+                message.append(entry)
+            else:
+                p["verdict"] += 1
+                new.append(entry)
         else:
             p["other"] += 1
-    return {"functions": per, "new": new, "known": known}
+    return {"functions": per, "new": new, "message": message, "known": known}
 
 
 def only_functions(results: dict, functions: list) -> dict:
@@ -347,21 +522,34 @@ def summary(base: str, head: str, planned: list, verdict_: dict, left: list,
         lines += [f"**The run failed:** {error}.", "",
                   f"Planned ({len(planned)}); the record is left as it was:", ""]
         return "\n".join(lines + [f"- `{p}` {q}" for p, q in planned]) + "\n"
-    lines += ["The score is killed over the mutants a test could kill (all, less the known "
-              "equivalents).", "",
-              "| function | mutants | killed | survived | of them known equivalent | score |",
-              "|---|---|---|---|---|---|"]
+    lines += ["Logging calls' arguments are never mutated. A survivor is VERDICT when its change "
+              "can decide pass or fail, a check's level, whom a result blames, or whether a "
+              "secret or an unsendable line is caught; MESSAGE when it changes only the words "
+              "a person reads (anything undecided is VERDICT). Score: killed over the mutants "
+              "a test could kill (all, less known equivalents); VERDICT score: killed over "
+              "killed and VERDICT survivors.", "",
+              "| function | mutants | killed | survived: VERDICT | survived: MESSAGE "
+              "| known equivalent | score | VERDICT score |",
+              "|---|---|---|---|---|---|---|---|"]
     for fn, p in sorted(verdict_["functions"].items()):
         killable = p["mutants"] - p["equivalent"]
         score = f"{100.0 * p['killed'] / killable:.1f}%" if killable else "—"
-        lines.append(f"| `{fn}` | {p['mutants']} | {p['killed']} | {p['survived']} "
-                     f"| {p['equivalent']} | {score} |")
-    lines += ["", f"### Open survivors ({len(verdict_['new'])}): the night fails until each is "
-              "killed by a test or listed as equivalent", ""]
-    lines += [f"- `{s['mutant']}`" + (" (no test reached it)" if s.get("status") == "no tests"
-                                      else "") + f": `{s['was']}` → `{s['now']}`"
-              for s in verdict_["new"]] \
-        or ["- none: every mutant was killed, or is a known equivalent"]
+        at_stake = p["killed"] + p.get("verdict", p["survived"] - p["equivalent"])
+        vscore = f"{100.0 * p['killed'] / at_stake:.1f}%" if at_stake else "—"
+        lines.append(f"| `{fn}` | {p['mutants']} | {p['killed']} "
+                     f"| {p.get('verdict', p['survived'] - p['equivalent'])} "
+                     f"| {p.get('message', 0)} | {p['equivalent']} | {score} | {vscore} |")
+
+    def item(s):
+        return (f"- `{s['mutant']}`" + (" (no test reached it)" if s.get("status") == "no tests"
+                                        else "") + f": `{s['was']}` → `{s['now']}`")
+    lines += ["", f"### Open VERDICT survivors ({len(verdict_['new'])}): the night fails until "
+              "each is killed by a test or listed as equivalent", ""]
+    lines += [item(s) for s in verdict_["new"]] \
+        or ["- none: every mutant that can change a verdict was killed, or is a known equivalent"]
+    lines += ["", f"### Open MESSAGE survivors ({len(verdict_.get('message', []))}): words only; "
+              "listed and kept open, never failing the night", ""]
+    lines += [item(s) for s in verdict_.get("message", [])] or ["- none"]
     lines += ["", f"### Known equivalent mutants ({len(verdict_['known'])})", ""]
     lines += [f"- `{s['mutant']}`: {s['why']}" for s in verdict_["known"]] or ["- none"]
     if empty:

@@ -1,0 +1,826 @@
+# mutmut 3.8.0 copy of modules/nsot/config_check.py, 2026-10-14: the original _check_device
+# and six of its mutants, verbatim (tests/test_nmas_mutation.py, TestWhatAMutantChanges).
+
+def x__check_device__mutmut_orig(run: _Run, device: str, intent: dict, entry: dict, profile_doc, role: str,
+                  approvals: dict) -> None:
+    """Render one device's intent; lint the render; compare it with the device's golden."""
+    from modules.nsot import approval, hostvars, profile, roundtrip, templates_repo
+    from modules.nsot.render_artifact import MASK, _unsendable_lines
+
+    rel = hostvars.committed_rel(device)
+    if hostvars.is_bootstrap_only(intent):
+        run.add("render", "note", "bootstrap intent (onboarding's): nothing to render yet",
+                rel, device=device)
+        return
+    platform = _platform(entry, intent)
+    if not platform:
+        # A NOTE: the platform is the inventory's fact (C452), which a bare checkout lacks,
+        # and the deploy refuses a device whose platform is unknown, by name.
+        run.add("render", "note", "not rendered: no known platform (neither the inventory, "
+                "its manifest entry nor its intent names a config dialect)", rel,
+                device=device)
+        return
+    src = templates_repo.render_source(run.repo, device, platform)
+    template_rel = f"templates/{src['template']}"
+    files = [rel, "templates/bindings.yml"]
+    if src["from"] == "library":
+        files += [f"templates/{r}" for r in approval.template_closure(run.repo,
+                                                                      src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug("config_check: %s's template reads unreadable: %s", device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
+    if profile_doc:
+        files.append(profile.PROFILE_REL)
+    effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
+        else intent
+    try:
+        rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
+                                    template_root=src["root"], template_name=src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the refusal names it
+        run.add("render", "fail", f"its intent does not render through {template_rel} "
+                f"({src['from']}): {exc}", rel, None, device=device, files=files)
+        return
+    where = (f"through {template_rel}" if src["from"] == "library"
+             else f"through the built-in {src['template']} ({src.get('why', '')})")
+    run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # The template this device's render starts at (Lab 7: the config repository's
+        # coverage). What it imports is read from the templates themselves, in
+        # template_coverage: the closure here once took the templates folder where it takes
+        # the repository, and no import counted (C768).
+        run.rendered_by.setdefault(template_rel, set()).add(device)
+    # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
+    for line in _unsendable_lines(rendered.replace(MASK, "x")):
+        run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
+                files=files)
+    if not run.notes:
+        return                                  # what follows only ever notes
+    if src["from"] == "library":
+        if src["template"] not in approvals:
+            try:
+                approvals[src["template"]] = approval.is_approved(run.repo, src["template"])
+            except Exception as exc:           # noqa: BLE001 - reported, never guessed
+                log.warning("config_check: approval of %s unreadable: %s", src["template"], exc)
+                approvals[src["template"]] = None
+        state = approvals[src["template"]]
+        run.add("render", "note",
+                f"{template_rel} is " + ({True: "approved",
+                                          False: "NOT approved: a deploy refuses until it is",
+                                          None: "of unknown approval (unreadable)"}[state]),
+                template_rel, device=device)
+
+    from modules.nsot import authorisation
+    try:
+        dangerous = authorisation.flagged(rendered.splitlines())
+    except Exception as exc:                   # noqa: BLE001
+        dangerous = []
+        log.warning("config_check: dangerous-line patterns unavailable: %s", exc)
+    if dangerous:
+        run.add("lint", "note", f"{len(dangerous)} line(s) a deploy sending them asks an "
+                "authorisation with a reason for: " + "; ".join(dangerous[:5])
+                + (f"; and {len(dangerous) - 5} more" if len(dangerous) > 5 else ""),
+                rel, device=device)
+
+    # intent-match: the golden against the render, masked values neutralised.
+    golden_rel = (entry or {}).get("golden") or f"golden/{hostvars._safe_hostname(device)}.cfg"
+    golden = _read(run.repo, golden_rel)
+    if golden is None:
+        run.add("intent-match", "note", "no golden: nothing captured to compare", golden_rel,
+                device=device)
+        return
+    rows = roundtrip.change_rows(golden, rendered)
+    removed, added = rows["removed"], rows["added"]
+    if not removed and not added:
+        run.add("intent-match", "pass", "the golden matches its rendered intent"
+                + (f" ({rows['masked']} secret value(s) not compared)" if rows["masked"]
+                   else ""), golden_rel, device=device)
+        return
+    shown = [f"- {s} / {l}" if l else f"- {s}" for s, l in removed[:3]] + \
+            [f"+ {s} / {l}" if l else f"+ {s}" for s, l in added[:3]]
+    run.add("intent-match", "note",
+            f"differs (-{len(removed)} +{len(added)}): a `-` line is in the golden and not in "
+            f"intent, a `+` line in intent and not in the golden: " + "; ".join(shown),
+            golden_rel, device=device)
+
+
+def x__check_device__mutmut_11(run: _Run, device: str, intent: dict, entry: dict, profile_doc, role: str,
+                  approvals: dict) -> None:
+    """Render one device's intent; lint the render; compare it with the device's golden."""
+    from modules.nsot import approval, hostvars, profile, roundtrip, templates_repo
+    from modules.nsot.render_artifact import MASK, _unsendable_lines
+
+    rel = hostvars.committed_rel(device)
+    if hostvars.is_bootstrap_only(intent):
+        run.add("render", "note", rel, device=device)
+        return
+    platform = _platform(entry, intent)
+    if not platform:
+        # A NOTE: the platform is the inventory's fact (C452), which a bare checkout lacks,
+        # and the deploy refuses a device whose platform is unknown, by name.
+        run.add("render", "note", "not rendered: no known platform (neither the inventory, "
+                "its manifest entry nor its intent names a config dialect)", rel,
+                device=device)
+        return
+    src = templates_repo.render_source(run.repo, device, platform)
+    template_rel = f"templates/{src['template']}"
+    files = [rel, "templates/bindings.yml"]
+    if src["from"] == "library":
+        files += [f"templates/{r}" for r in approval.template_closure(run.repo,
+                                                                      src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug("config_check: %s's template reads unreadable: %s", device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
+    if profile_doc:
+        files.append(profile.PROFILE_REL)
+    effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
+        else intent
+    try:
+        rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
+                                    template_root=src["root"], template_name=src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the refusal names it
+        run.add("render", "fail", f"its intent does not render through {template_rel} "
+                f"({src['from']}): {exc}", rel, None, device=device, files=files)
+        return
+    where = (f"through {template_rel}" if src["from"] == "library"
+             else f"through the built-in {src['template']} ({src.get('why', '')})")
+    run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # The template this device's render starts at (Lab 7: the config repository's
+        # coverage). What it imports is read from the templates themselves, in
+        # template_coverage: the closure here once took the templates folder where it takes
+        # the repository, and no import counted (C768).
+        run.rendered_by.setdefault(template_rel, set()).add(device)
+    # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
+    for line in _unsendable_lines(rendered.replace(MASK, "x")):
+        run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
+                files=files)
+    if not run.notes:
+        return                                  # what follows only ever notes
+    if src["from"] == "library":
+        if src["template"] not in approvals:
+            try:
+                approvals[src["template"]] = approval.is_approved(run.repo, src["template"])
+            except Exception as exc:           # noqa: BLE001 - reported, never guessed
+                log.warning("config_check: approval of %s unreadable: %s", src["template"], exc)
+                approvals[src["template"]] = None
+        state = approvals[src["template"]]
+        run.add("render", "note",
+                f"{template_rel} is " + ({True: "approved",
+                                          False: "NOT approved: a deploy refuses until it is",
+                                          None: "of unknown approval (unreadable)"}[state]),
+                template_rel, device=device)
+
+    from modules.nsot import authorisation
+    try:
+        dangerous = authorisation.flagged(rendered.splitlines())
+    except Exception as exc:                   # noqa: BLE001
+        dangerous = []
+        log.warning("config_check: dangerous-line patterns unavailable: %s", exc)
+    if dangerous:
+        run.add("lint", "note", f"{len(dangerous)} line(s) a deploy sending them asks an "
+                "authorisation with a reason for: " + "; ".join(dangerous[:5])
+                + (f"; and {len(dangerous) - 5} more" if len(dangerous) > 5 else ""),
+                rel, device=device)
+
+    # intent-match: the golden against the render, masked values neutralised.
+    golden_rel = (entry or {}).get("golden") or f"golden/{hostvars._safe_hostname(device)}.cfg"
+    golden = _read(run.repo, golden_rel)
+    if golden is None:
+        run.add("intent-match", "note", "no golden: nothing captured to compare", golden_rel,
+                device=device)
+        return
+    rows = roundtrip.change_rows(golden, rendered)
+    removed, added = rows["removed"], rows["added"]
+    if not removed and not added:
+        run.add("intent-match", "pass", "the golden matches its rendered intent"
+                + (f" ({rows['masked']} secret value(s) not compared)" if rows["masked"]
+                   else ""), golden_rel, device=device)
+        return
+    shown = [f"- {s} / {l}" if l else f"- {s}" for s, l in removed[:3]] + \
+            [f"+ {s} / {l}" if l else f"+ {s}" for s, l in added[:3]]
+    run.add("intent-match", "note",
+            f"differs (-{len(removed)} +{len(added)}): a `-` line is in the golden and not in "
+            f"intent, a `+` line in intent and not in the golden: " + "; ".join(shown),
+            golden_rel, device=device)
+
+
+def x__check_device__mutmut_16(run: _Run, device: str, intent: dict, entry: dict, profile_doc, role: str,
+                  approvals: dict) -> None:
+    """Render one device's intent; lint the render; compare it with the device's golden."""
+    from modules.nsot import approval, hostvars, profile, roundtrip, templates_repo
+    from modules.nsot.render_artifact import MASK, _unsendable_lines
+
+    rel = hostvars.committed_rel(device)
+    if hostvars.is_bootstrap_only(intent):
+        run.add("render", "XXnoteXX", "bootstrap intent (onboarding's): nothing to render yet",
+                rel, device=device)
+        return
+    platform = _platform(entry, intent)
+    if not platform:
+        # A NOTE: the platform is the inventory's fact (C452), which a bare checkout lacks,
+        # and the deploy refuses a device whose platform is unknown, by name.
+        run.add("render", "note", "not rendered: no known platform (neither the inventory, "
+                "its manifest entry nor its intent names a config dialect)", rel,
+                device=device)
+        return
+    src = templates_repo.render_source(run.repo, device, platform)
+    template_rel = f"templates/{src['template']}"
+    files = [rel, "templates/bindings.yml"]
+    if src["from"] == "library":
+        files += [f"templates/{r}" for r in approval.template_closure(run.repo,
+                                                                      src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug("config_check: %s's template reads unreadable: %s", device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
+    if profile_doc:
+        files.append(profile.PROFILE_REL)
+    effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
+        else intent
+    try:
+        rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
+                                    template_root=src["root"], template_name=src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the refusal names it
+        run.add("render", "fail", f"its intent does not render through {template_rel} "
+                f"({src['from']}): {exc}", rel, None, device=device, files=files)
+        return
+    where = (f"through {template_rel}" if src["from"] == "library"
+             else f"through the built-in {src['template']} ({src.get('why', '')})")
+    run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # The template this device's render starts at (Lab 7: the config repository's
+        # coverage). What it imports is read from the templates themselves, in
+        # template_coverage: the closure here once took the templates folder where it takes
+        # the repository, and no import counted (C768).
+        run.rendered_by.setdefault(template_rel, set()).add(device)
+    # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
+    for line in _unsendable_lines(rendered.replace(MASK, "x")):
+        run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
+                files=files)
+    if not run.notes:
+        return                                  # what follows only ever notes
+    if src["from"] == "library":
+        if src["template"] not in approvals:
+            try:
+                approvals[src["template"]] = approval.is_approved(run.repo, src["template"])
+            except Exception as exc:           # noqa: BLE001 - reported, never guessed
+                log.warning("config_check: approval of %s unreadable: %s", src["template"], exc)
+                approvals[src["template"]] = None
+        state = approvals[src["template"]]
+        run.add("render", "note",
+                f"{template_rel} is " + ({True: "approved",
+                                          False: "NOT approved: a deploy refuses until it is",
+                                          None: "of unknown approval (unreadable)"}[state]),
+                template_rel, device=device)
+
+    from modules.nsot import authorisation
+    try:
+        dangerous = authorisation.flagged(rendered.splitlines())
+    except Exception as exc:                   # noqa: BLE001
+        dangerous = []
+        log.warning("config_check: dangerous-line patterns unavailable: %s", exc)
+    if dangerous:
+        run.add("lint", "note", f"{len(dangerous)} line(s) a deploy sending them asks an "
+                "authorisation with a reason for: " + "; ".join(dangerous[:5])
+                + (f"; and {len(dangerous) - 5} more" if len(dangerous) > 5 else ""),
+                rel, device=device)
+
+    # intent-match: the golden against the render, masked values neutralised.
+    golden_rel = (entry or {}).get("golden") or f"golden/{hostvars._safe_hostname(device)}.cfg"
+    golden = _read(run.repo, golden_rel)
+    if golden is None:
+        run.add("intent-match", "note", "no golden: nothing captured to compare", golden_rel,
+                device=device)
+        return
+    rows = roundtrip.change_rows(golden, rendered)
+    removed, added = rows["removed"], rows["added"]
+    if not removed and not added:
+        run.add("intent-match", "pass", "the golden matches its rendered intent"
+                + (f" ({rows['masked']} secret value(s) not compared)" if rows["masked"]
+                   else ""), golden_rel, device=device)
+        return
+    shown = [f"- {s} / {l}" if l else f"- {s}" for s, l in removed[:3]] + \
+            [f"+ {s} / {l}" if l else f"+ {s}" for s, l in added[:3]]
+    run.add("intent-match", "note",
+            f"differs (-{len(removed)} +{len(added)}): a `-` line is in the golden and not in "
+            f"intent, a `+` line in intent and not in the golden: " + "; ".join(shown),
+            golden_rel, device=device)
+
+
+def x__check_device__mutmut_18(run: _Run, device: str, intent: dict, entry: dict, profile_doc, role: str,
+                  approvals: dict) -> None:
+    """Render one device's intent; lint the render; compare it with the device's golden."""
+    from modules.nsot import approval, hostvars, profile, roundtrip, templates_repo
+    from modules.nsot.render_artifact import MASK, _unsendable_lines
+
+    rel = hostvars.committed_rel(device)
+    if hostvars.is_bootstrap_only(intent):
+        run.add("render", "note", "XXbootstrap intent (onboarding's): nothing to render yetXX",
+                rel, device=device)
+        return
+    platform = _platform(entry, intent)
+    if not platform:
+        # A NOTE: the platform is the inventory's fact (C452), which a bare checkout lacks,
+        # and the deploy refuses a device whose platform is unknown, by name.
+        run.add("render", "note", "not rendered: no known platform (neither the inventory, "
+                "its manifest entry nor its intent names a config dialect)", rel,
+                device=device)
+        return
+    src = templates_repo.render_source(run.repo, device, platform)
+    template_rel = f"templates/{src['template']}"
+    files = [rel, "templates/bindings.yml"]
+    if src["from"] == "library":
+        files += [f"templates/{r}" for r in approval.template_closure(run.repo,
+                                                                      src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug("config_check: %s's template reads unreadable: %s", device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
+    if profile_doc:
+        files.append(profile.PROFILE_REL)
+    effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
+        else intent
+    try:
+        rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
+                                    template_root=src["root"], template_name=src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the refusal names it
+        run.add("render", "fail", f"its intent does not render through {template_rel} "
+                f"({src['from']}): {exc}", rel, None, device=device, files=files)
+        return
+    where = (f"through {template_rel}" if src["from"] == "library"
+             else f"through the built-in {src['template']} ({src.get('why', '')})")
+    run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # The template this device's render starts at (Lab 7: the config repository's
+        # coverage). What it imports is read from the templates themselves, in
+        # template_coverage: the closure here once took the templates folder where it takes
+        # the repository, and no import counted (C768).
+        run.rendered_by.setdefault(template_rel, set()).add(device)
+    # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
+    for line in _unsendable_lines(rendered.replace(MASK, "x")):
+        run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
+                files=files)
+    if not run.notes:
+        return                                  # what follows only ever notes
+    if src["from"] == "library":
+        if src["template"] not in approvals:
+            try:
+                approvals[src["template"]] = approval.is_approved(run.repo, src["template"])
+            except Exception as exc:           # noqa: BLE001 - reported, never guessed
+                log.warning("config_check: approval of %s unreadable: %s", src["template"], exc)
+                approvals[src["template"]] = None
+        state = approvals[src["template"]]
+        run.add("render", "note",
+                f"{template_rel} is " + ({True: "approved",
+                                          False: "NOT approved: a deploy refuses until it is",
+                                          None: "of unknown approval (unreadable)"}[state]),
+                template_rel, device=device)
+
+    from modules.nsot import authorisation
+    try:
+        dangerous = authorisation.flagged(rendered.splitlines())
+    except Exception as exc:                   # noqa: BLE001
+        dangerous = []
+        log.warning("config_check: dangerous-line patterns unavailable: %s", exc)
+    if dangerous:
+        run.add("lint", "note", f"{len(dangerous)} line(s) a deploy sending them asks an "
+                "authorisation with a reason for: " + "; ".join(dangerous[:5])
+                + (f"; and {len(dangerous) - 5} more" if len(dangerous) > 5 else ""),
+                rel, device=device)
+
+    # intent-match: the golden against the render, masked values neutralised.
+    golden_rel = (entry or {}).get("golden") or f"golden/{hostvars._safe_hostname(device)}.cfg"
+    golden = _read(run.repo, golden_rel)
+    if golden is None:
+        run.add("intent-match", "note", "no golden: nothing captured to compare", golden_rel,
+                device=device)
+        return
+    rows = roundtrip.change_rows(golden, rendered)
+    removed, added = rows["removed"], rows["added"]
+    if not removed and not added:
+        run.add("intent-match", "pass", "the golden matches its rendered intent"
+                + (f" ({rows['masked']} secret value(s) not compared)" if rows["masked"]
+                   else ""), golden_rel, device=device)
+        return
+    shown = [f"- {s} / {l}" if l else f"- {s}" for s, l in removed[:3]] + \
+            [f"+ {s} / {l}" if l else f"+ {s}" for s, l in added[:3]]
+    run.add("intent-match", "note",
+            f"differs (-{len(removed)} +{len(added)}): a `-` line is in the golden and not in "
+            f"intent, a `+` line in intent and not in the golden: " + "; ".join(shown),
+            golden_rel, device=device)
+
+
+def x__check_device__mutmut_19(run: _Run, device: str, intent: dict, entry: dict, profile_doc, role: str,
+                  approvals: dict) -> None:
+    """Render one device's intent; lint the render; compare it with the device's golden."""
+    from modules.nsot import approval, hostvars, profile, roundtrip, templates_repo
+    from modules.nsot.render_artifact import MASK, _unsendable_lines
+
+    rel = hostvars.committed_rel(device)
+    if hostvars.is_bootstrap_only(intent):
+        run.add("render", "note", "BOOTSTRAP INTENT (ONBOARDING'S): NOTHING TO RENDER YET",
+                rel, device=device)
+        return
+    platform = _platform(entry, intent)
+    if not platform:
+        # A NOTE: the platform is the inventory's fact (C452), which a bare checkout lacks,
+        # and the deploy refuses a device whose platform is unknown, by name.
+        run.add("render", "note", "not rendered: no known platform (neither the inventory, "
+                "its manifest entry nor its intent names a config dialect)", rel,
+                device=device)
+        return
+    src = templates_repo.render_source(run.repo, device, platform)
+    template_rel = f"templates/{src['template']}"
+    files = [rel, "templates/bindings.yml"]
+    if src["from"] == "library":
+        files += [f"templates/{r}" for r in approval.template_closure(run.repo,
+                                                                      src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug("config_check: %s's template reads unreadable: %s", device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
+    if profile_doc:
+        files.append(profile.PROFILE_REL)
+    effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
+        else intent
+    try:
+        rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
+                                    template_root=src["root"], template_name=src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the refusal names it
+        run.add("render", "fail", f"its intent does not render through {template_rel} "
+                f"({src['from']}): {exc}", rel, None, device=device, files=files)
+        return
+    where = (f"through {template_rel}" if src["from"] == "library"
+             else f"through the built-in {src['template']} ({src.get('why', '')})")
+    run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # The template this device's render starts at (Lab 7: the config repository's
+        # coverage). What it imports is read from the templates themselves, in
+        # template_coverage: the closure here once took the templates folder where it takes
+        # the repository, and no import counted (C768).
+        run.rendered_by.setdefault(template_rel, set()).add(device)
+    # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
+    for line in _unsendable_lines(rendered.replace(MASK, "x")):
+        run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
+                files=files)
+    if not run.notes:
+        return                                  # what follows only ever notes
+    if src["from"] == "library":
+        if src["template"] not in approvals:
+            try:
+                approvals[src["template"]] = approval.is_approved(run.repo, src["template"])
+            except Exception as exc:           # noqa: BLE001 - reported, never guessed
+                log.warning("config_check: approval of %s unreadable: %s", src["template"], exc)
+                approvals[src["template"]] = None
+        state = approvals[src["template"]]
+        run.add("render", "note",
+                f"{template_rel} is " + ({True: "approved",
+                                          False: "NOT approved: a deploy refuses until it is",
+                                          None: "of unknown approval (unreadable)"}[state]),
+                template_rel, device=device)
+
+    from modules.nsot import authorisation
+    try:
+        dangerous = authorisation.flagged(rendered.splitlines())
+    except Exception as exc:                   # noqa: BLE001
+        dangerous = []
+        log.warning("config_check: dangerous-line patterns unavailable: %s", exc)
+    if dangerous:
+        run.add("lint", "note", f"{len(dangerous)} line(s) a deploy sending them asks an "
+                "authorisation with a reason for: " + "; ".join(dangerous[:5])
+                + (f"; and {len(dangerous) - 5} more" if len(dangerous) > 5 else ""),
+                rel, device=device)
+
+    # intent-match: the golden against the render, masked values neutralised.
+    golden_rel = (entry or {}).get("golden") or f"golden/{hostvars._safe_hostname(device)}.cfg"
+    golden = _read(run.repo, golden_rel)
+    if golden is None:
+        run.add("intent-match", "note", "no golden: nothing captured to compare", golden_rel,
+                device=device)
+        return
+    rows = roundtrip.change_rows(golden, rendered)
+    removed, added = rows["removed"], rows["added"]
+    if not removed and not added:
+        run.add("intent-match", "pass", "the golden matches its rendered intent"
+                + (f" ({rows['masked']} secret value(s) not compared)" if rows["masked"]
+                   else ""), golden_rel, device=device)
+        return
+    shown = [f"- {s} / {l}" if l else f"- {s}" for s, l in removed[:3]] + \
+            [f"+ {s} / {l}" if l else f"+ {s}" for s, l in added[:3]]
+    run.add("intent-match", "note",
+            f"differs (-{len(removed)} +{len(added)}): a `-` line is in the golden and not in "
+            f"intent, a `+` line in intent and not in the golden: " + "; ".join(shown),
+            golden_rel, device=device)
+
+
+def x__check_device__mutmut_81(run: _Run, device: str, intent: dict, entry: dict, profile_doc, role: str,
+                  approvals: dict) -> None:
+    """Render one device's intent; lint the render; compare it with the device's golden."""
+    from modules.nsot import approval, hostvars, profile, roundtrip, templates_repo
+    from modules.nsot.render_artifact import MASK, _unsendable_lines
+
+    rel = hostvars.committed_rel(device)
+    if hostvars.is_bootstrap_only(intent):
+        run.add("render", "note", "bootstrap intent (onboarding's): nothing to render yet",
+                rel, device=device)
+        return
+    platform = _platform(entry, intent)
+    if not platform:
+        # A NOTE: the platform is the inventory's fact (C452), which a bare checkout lacks,
+        # and the deploy refuses a device whose platform is unknown, by name.
+        run.add("render", "note", "not rendered: no known platform (neither the inventory, "
+                "its manifest entry nor its intent names a config dialect)", rel,
+                device=device)
+        return
+    src = templates_repo.render_source(run.repo, device, platform)
+    template_rel = f"templates/{src['template']}"
+    files = [rel, "templates/bindings.yml"]
+    if src["from"] == "library":
+        files += [f"templates/{r}" for r in approval.template_closure(run.repo,
+                                                                      src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug(None, device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
+    if profile_doc:
+        files.append(profile.PROFILE_REL)
+    effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
+        else intent
+    try:
+        rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
+                                    template_root=src["root"], template_name=src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the refusal names it
+        run.add("render", "fail", f"its intent does not render through {template_rel} "
+                f"({src['from']}): {exc}", rel, None, device=device, files=files)
+        return
+    where = (f"through {template_rel}" if src["from"] == "library"
+             else f"through the built-in {src['template']} ({src.get('why', '')})")
+    run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # The template this device's render starts at (Lab 7: the config repository's
+        # coverage). What it imports is read from the templates themselves, in
+        # template_coverage: the closure here once took the templates folder where it takes
+        # the repository, and no import counted (C768).
+        run.rendered_by.setdefault(template_rel, set()).add(device)
+    # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
+    for line in _unsendable_lines(rendered.replace(MASK, "x")):
+        run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
+                files=files)
+    if not run.notes:
+        return                                  # what follows only ever notes
+    if src["from"] == "library":
+        if src["template"] not in approvals:
+            try:
+                approvals[src["template"]] = approval.is_approved(run.repo, src["template"])
+            except Exception as exc:           # noqa: BLE001 - reported, never guessed
+                log.warning("config_check: approval of %s unreadable: %s", src["template"], exc)
+                approvals[src["template"]] = None
+        state = approvals[src["template"]]
+        run.add("render", "note",
+                f"{template_rel} is " + ({True: "approved",
+                                          False: "NOT approved: a deploy refuses until it is",
+                                          None: "of unknown approval (unreadable)"}[state]),
+                template_rel, device=device)
+
+    from modules.nsot import authorisation
+    try:
+        dangerous = authorisation.flagged(rendered.splitlines())
+    except Exception as exc:                   # noqa: BLE001
+        dangerous = []
+        log.warning("config_check: dangerous-line patterns unavailable: %s", exc)
+    if dangerous:
+        run.add("lint", "note", f"{len(dangerous)} line(s) a deploy sending them asks an "
+                "authorisation with a reason for: " + "; ".join(dangerous[:5])
+                + (f"; and {len(dangerous) - 5} more" if len(dangerous) > 5 else ""),
+                rel, device=device)
+
+    # intent-match: the golden against the render, masked values neutralised.
+    golden_rel = (entry or {}).get("golden") or f"golden/{hostvars._safe_hostname(device)}.cfg"
+    golden = _read(run.repo, golden_rel)
+    if golden is None:
+        run.add("intent-match", "note", "no golden: nothing captured to compare", golden_rel,
+                device=device)
+        return
+    rows = roundtrip.change_rows(golden, rendered)
+    removed, added = rows["removed"], rows["added"]
+    if not removed and not added:
+        run.add("intent-match", "pass", "the golden matches its rendered intent"
+                + (f" ({rows['masked']} secret value(s) not compared)" if rows["masked"]
+                   else ""), golden_rel, device=device)
+        return
+    shown = [f"- {s} / {l}" if l else f"- {s}" for s, l in removed[:3]] + \
+            [f"+ {s} / {l}" if l else f"+ {s}" for s, l in added[:3]]
+    run.add("intent-match", "note",
+            f"differs (-{len(removed)} +{len(added)}): a `-` line is in the golden and not in "
+            f"intent, a `+` line in intent and not in the golden: " + "; ".join(shown),
+            golden_rel, device=device)
+
+
+def x__check_device__mutmut_374(run: _Run, device: str, intent: dict, entry: dict, profile_doc, role: str,
+                  approvals: dict) -> None:
+    """Render one device's intent; lint the render; compare it with the device's golden."""
+    from modules.nsot import approval, hostvars, profile, roundtrip, templates_repo
+    from modules.nsot.render_artifact import MASK, _unsendable_lines
+
+    rel = hostvars.committed_rel(device)
+    if hostvars.is_bootstrap_only(intent):
+        run.add("render", "note", "bootstrap intent (onboarding's): nothing to render yet",
+                rel, device=device)
+        return
+    platform = _platform(entry, intent)
+    if not platform:
+        # A NOTE: the platform is the inventory's fact (C452), which a bare checkout lacks,
+        # and the deploy refuses a device whose platform is unknown, by name.
+        run.add("render", "note", "not rendered: no known platform (neither the inventory, "
+                "its manifest entry nor its intent names a config dialect)", rel,
+                device=device)
+        return
+    src = templates_repo.render_source(run.repo, device, platform)
+    template_rel = f"templates/{src['template']}"
+    files = [rel, "templates/bindings.yml"]
+    if src["from"] == "library":
+        files += [f"templates/{r}" for r in approval.template_closure(run.repo,
+                                                                      src["template"])]
+    # A top-level key holding something that no template in the closure names, and Mercury
+    # does not read, renders nothing, silently (B8; the interface keys' rule, one level up). An
+    # empty value is the schema's own (`complete_schema` fills it), never a finding: measured
+    # on the host 2026-10-13, the switches' intent carries four keys their template never names,
+    # all four empty.
+    try:
+        reads = template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the render below names it
+        log.debug("config_check: %s's template reads unreadable: %s", device, exc)
+        reads = None
+    unread = sorted(k for k, v in intent.items()
+                    if v and reads is not None and k not in reads and k not in MERCURY_KEYS)
+    if unread:
+        text = _read(run.repo, rel) or ""
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.startswith(f"{unread[0]}:")), None)
+        run.add("yaml", "fail", f"nothing reads {', '.join(repr(k) for k in unread)}: no "
+                f"template {template_rel} renders through names it, and Mercury does not read "
+                "it, so it renders nothing, silently", rel, line, device=device, files=files)
+    if profile_doc:
+        files.append(profile.PROFILE_REL)
+    effective = profile.effective(intent, profile_doc, platform, role) if profile_doc \
+        else intent
+    try:
+        rendered = roundtrip.render(effective, platform, secret_lookup=lambda _n: MASK,
+                                    template_root=src["root"], template_name=src["name"])
+    except Exception as exc:                   # noqa: BLE001 - the refusal names it
+        run.add("render", "fail", f"its intent does not render through {template_rel} "
+                f"({src['from']}): {exc}", rel, None, device=device, files=files)
+        return
+    where = (f"through {template_rel}" if src["from"] == "library"
+             else f"through the built-in {src['template']} ({src.get('why', '')})")
+    run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # The template this device's render starts at (Lab 7: the config repository's
+        # coverage). What it imports is read from the templates themselves, in
+        # template_coverage: the closure here once took the templates folder where it takes
+        # the repository, and no import counted (C768).
+        run.rendered_by.setdefault(template_rel, set()).add(device)
+    # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
+    for line in _unsendable_lines(rendered.replace(MASK, "x")):
+        run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
+                files=files)
+    if not run.notes:
+        return                                  # what follows only ever notes
+    if src["from"] == "library":
+        if src["template"] not in approvals:
+            try:
+                approvals[src["template"]] = approval.is_approved(run.repo, src["template"])
+            except Exception as exc:           # noqa: BLE001 - reported, never guessed
+                log.warning("config_check: approval of %s unreadable: %s", src["template"], exc)
+                approvals[src["template"]] = None
+        state = approvals[src["template"]]
+        run.add("render", "note",
+                f"{template_rel} is " + ({True: "approved",
+                                          False: "NOT approved: a deploy refuses until it is",
+                                          None: "of unknown approval (unreadable)"}[state]),
+                template_rel, device=device)
+
+    from modules.nsot import authorisation
+    try:
+        dangerous = authorisation.flagged(rendered.splitlines())
+    except Exception as exc:                   # noqa: BLE001
+        dangerous = []
+        log.warning("config_check: dangerous-line patterns unavailable: %s", exc)
+    if dangerous:
+        run.add("lint", "note", f"{len(dangerous)} line(s) a deploy sending them asks an "
+                "authorisation with a reason for: " + "; ".join(dangerous[:5])
+                + (f"; and {len(dangerous) - 5} more" if len(dangerous) > 5 else ""),
+                rel, device=device)
+
+    # intent-match: the golden against the render, masked values neutralised.
+    golden_rel = (entry or {}).get("golden") or f"golden/{hostvars._safe_hostname(device)}.cfg"
+    golden = _read(run.repo, golden_rel)
+    if golden is None:
+        run.add("intent-match", "note", "XXno golden: nothing captured to compareXX", golden_rel,
+                device=device)
+        return
+    rows = roundtrip.change_rows(golden, rendered)
+    removed, added = rows["removed"], rows["added"]
+    if not removed and not added:
+        run.add("intent-match", "pass", "the golden matches its rendered intent"
+                + (f" ({rows['masked']} secret value(s) not compared)" if rows["masked"]
+                   else ""), golden_rel, device=device)
+        return
+    shown = [f"- {s} / {l}" if l else f"- {s}" for s, l in removed[:3]] + \
+            [f"+ {s} / {l}" if l else f"+ {s}" for s, l in added[:3]]
+    run.add("intent-match", "note",
+            f"differs (-{len(removed)} +{len(added)}): a `-` line is in the golden and not in "
+            f"intent, a `+` line in intent and not in the golden: " + "; ".join(shown),
+            golden_rel, device=device)
