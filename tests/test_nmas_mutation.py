@@ -555,7 +555,20 @@ class TestTheWorkflow:
         assert len(save) == 1
         assert save[0]["if"] == "always() && hashFiles('.mutation-state/state.json') != ''"
         report = next(s for s in steps if s.get("name") == "The report")
-        assert "--mutmut-exit" in report["run"]
+        assert '--mutmut-exit "$MUTMUT_EXIT"' in report["run"]
+        assert report["env"] == {"MUTMUT_EXIT": "${{ steps.mutate.outputs.exit }}"}
+
+    def test_each_summary_reaches_the_jobs_log_and_the_runs_page_and_the_report_decides(self):
+        """The API returns no job summary, so the night's summary is printed in the log too;
+        the report step's result is the report's own exit, never the printing's."""
+        steps = {s.get("name"): s for s in self.doc()["jobs"]["mutate"]["steps"]}
+        plan, report = steps["Plan the night"]["run"], steps["The report"]["run"]
+        assert "--summary mutation-out/summary.md" in plan
+        assert "--summary mutation-out/summary.md" in report
+        for run in (plan, report):
+            assert "cat mutation-out/summary.md\n" in run
+            assert 'cat mutation-out/summary.md >> "$GITHUB_STEP_SUMMARY"' in run
+        assert report.rstrip().endswith("exit $code") and "code=$?" in report
 
     def test_mutmut_is_never_the_hosts_the_gates_or_a_pushs(self):
         for rel in ("requirements.txt", "requirements.lock", "requirements-ci.txt",

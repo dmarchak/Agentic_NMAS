@@ -91,7 +91,13 @@ jobs:
           set --
           for f in $ALSO_FUNCTIONS; do set -- "$@" --also "$f"; done
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
-            --head "$GITHUB_SHA" --out mutation-out --summary "$GITHUB_STEP_SUMMARY" "$@"
+            --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md "$@"
+          # The summary in the job's log too (readable through the API, which returns no job
+          # summary), and on the run's page.
+          if [ -f mutation-out/summary.md ]; then
+            cat mutation-out/summary.md
+            cat mutation-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ -s mutation-out/patterns.txt ] && grep -q . mutation-out/patterns.txt; then
             echo "work=yes" >> "$GITHUB_OUTPUT"
           else
@@ -128,12 +134,20 @@ jobs:
           echo "nmas-mutation run exit $code"
           echo "exit=$code" >> "$GITHUB_OUTPUT"
 
+      # Its summary in the job's log and on the run's page; the step's result is the report's.
       - name: The report
         if: steps.plan.outputs.work == 'yes'
-        run: >
-          python scripts/nmas-mutation report --plan mutation-out/plan.json
-          --summary "$GITHUB_STEP_SUMMARY" --state-out .mutation-state/state.json
-          --budget "$MUTATION_BUDGET_MINUTES" --mutmut-exit "${{ steps.mutate.outputs.exit }}"
+        env:
+          MUTMUT_EXIT: ${{ steps.mutate.outputs.exit }}
+        run: |
+          set +e
+          python scripts/nmas-mutation report --plan mutation-out/plan.json \
+            --summary mutation-out/summary.md --state-out .mutation-state/state.json \
+            --budget "$MUTATION_BUDGET_MINUTES" --mutmut-exit "$MUTMUT_EXIT"
+          code=$?
+          cat mutation-out/summary.md
+          cat mutation-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $code
 
       # Kept after every night whose results stand, open survivors and all: the report writes the
       # record only then (a broken measurement or run leaves the restored one as it was).
