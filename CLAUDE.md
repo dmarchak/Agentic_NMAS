@@ -324,6 +324,17 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   script reaches its imports.** [tests/test_network_guard.py; tests/test_harness_isolation.py;
   tests/test_no_duplicate_dict_keys.py; tests/test_no_duplicate_definitions.py;
   tests/test_script_entry_points.py] [why](docs/LESSONS.md#test-isolation-and-scans)
+- **Coverage is counted by execution, per tier, and only ratchets up:** a function counts when a
+  unit-tier test ran a line of its body (Flask-client tests are unit; a test that starts our
+  code in a child or drives a browser is not); every module is placed by
+  `tests/coverage_scope.py` or the tool fails; a fall below `tests/coverage_baseline.json`, a
+  new automation module no unit test reaches, or a new test that asserts nothing fails CI; the
+  baseline moves only by `scripts/nmas-coverage baseline`. [tests/test_nmas_coverage.py; the
+  coverage job in .github/workflows/ci.yml]
+- **Mutation testing runs nightly on the changed automation functions, one mutant at a time,
+  after a canary that must die; only an open VERDICT survivor turns it red; an equivalent mutant
+  is listed by hand with its reason, never chased with a test.** [tests/test_nmas_mutation.py;
+  tests/test_mutation_canary.py; .github/workflows/mutation-nightly.yml]
 
 ## Module map (compact; full map in docs/ARCHITECTURE.md)
 
@@ -478,8 +489,9 @@ pytest                    # unconfined; says so in its header
 
 - **The gate runs CI's command in CI's interpreter** (`scripts/nmas-ci-env`, two workers,
   coverage; docs/TESTING.md). Failing CI runs: `scripts/nmas-ci-log` (never print its token).
-- **Bounds:** `NMAS_TEST_TIMEOUT` (300 s) names each process's test and stack when it fires;
-  `faulthandler_timeout = 45`; CI's job bound is 14 min (`timeout-minutes` in the workflow).
+- **Bounds:** `NMAS_TEST_TIMEOUT` names each process's test and stack when it fires (300 s by
+  default, 740 s in the gate, 1470 s in CI's tests step); `faulthandler_timeout = 120`; CI's
+  test jobs are bounded at 26 min (`timeout-minutes` in the workflow).
 - **No live network, three layers** (C46): the test process refuses non-loopback connects, every
   child is refused by construction, and `scripts/nmas-test` runs in a loopback namespace
   (`network: CONFINED`). **No live store:** a temporary `NMAS_DATA_DIR`, and a run fails if the
