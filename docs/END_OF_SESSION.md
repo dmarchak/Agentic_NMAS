@@ -1,5 +1,37 @@
 # End of session: where Phase 7 stands
 
+## EVENING, 2026-10-14 (to 21:10 UTC; 15:10 UTC−6): C773, the AI family removed, the first valid mutation night
+
+**The host still runs 1ce6228b.** Committed, pushed and green since: 869a5cb3 (C773 item 1,
+CI #781), 612e53e2 (D15, the AI family removed, #785; tag `pre-remove/ai-family` = 869a5cb3),
+4b808c73 (the mutation debt seeded, #786), 948200ae (Phase 8's built-in local model recorded,
+docs only).
+
+**Waiting on the operator, in order:**
+1. **The venv for the removal's lock** (anthropic and pysnmp left). `nmas-deploy --wait`
+   refuses until it is built and proved, and the hook refuses an agent's `git clone` on a lab
+   host, so it is the operator's step on the NMAS host:
+   `d=$(mktemp -d) && git clone -q --shared ~/python/Agentic_NMAS "$d/release" && git -C "$d/release" checkout -q 948200aeaa43 && bash "$d/release/scripts/host-steps/venv-1-build.sh"`
+   (nmas-deploy has already fetched 948200ae into the checkout). Then the deploy and its
+   walk are the agent's: the app starts, every v2 page loads with no 500, no link to a
+   removed page, `data/chat_histories/` not recreated after the restart.
+2. **The ai-leftovers `--delete`**, after that deploy (the code that recreated
+   `chat_histories/` is gone only then).
+3. **CLAUDE.md, two passages** (the paste text is in the session report): the citation of
+   `tests/test_no_agent_tool_leaks_a_stored_secret.py` (kept as a skipped placeholder until
+   then, deleted in the commit after the paste) and "Redaction at the provider boundary".
+4. **Dispatching mutation-nightly:** nothing here can (no `gh`, and the only token is
+   Actions-read; `test_it_runs_nightly_and_by_hand_never_on_a_push` pins the triggers). Night
+   #4 (38615953823) was the first VALID night: canary 11 of 11, scope passed, 308 mutants,
+   record saved (`mutation-state-38615953823`), red on 203 VERDICT survivors, 20 functions
+   left over. Its survivors seeded the debt list (196 entries, 10 functions). The next night
+   plans #4's 25 functions from the record (predicted locally: nothing fresh), re-runs the
+   196 known and continues the leftovers; a leftover mutant that survives is NEW.
+
+**C773:** a push measures by tier: 7.8 min wall (#781) against 12.6 (#780); 6 shards 6.5 min,
+8 shards 5.0 (experiment branches, deleted). Left: choosing the count without slowing the
+local gate (C349's parity). Registered today: C782, C783, C784.
+
 ## OVERNIGHT, 2026-10-14 (04:30 to 10:30 UTC; 22:30 to 04:30 UTC−6): Lab 7 finished, the AI family's shared pieces moved
 
 **The host runs 1ce6228b** (deployed 10:10:36 UTC via LAN, CI #771, after the hold check:
