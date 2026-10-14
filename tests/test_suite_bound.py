@@ -4,8 +4,8 @@ A timeout chosen "to be safe" converts every hang into its full length, and a
 bare "timed out" names nothing. So `scripts/nmas-test` bounds the run from a
 MEASUREMENT (300 s, 2.5x the 121 s serial run on the laptop) and, when the
 bound fires, prints the test each process was running and every thread's
-stack. The per-test bound is pytest.ini's `faulthandler_timeout` (45 s, 2.5x
-the slowest single item, a 17.3 s module setup), which dumps and does not stop.
+stack. The per-test bound is pytest.ini's `faulthandler_timeout` (120 s since
+2026-10-14, C647: at 45 s its dump took xdist workers down), which dumps and does not stop.
 
 This drives the REAL runner over a test that hangs, with a short bound, and
 reads what it prints: the hanging test and its line named, a test that had

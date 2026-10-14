@@ -73,10 +73,15 @@ class TestTheLock:
         assert "refused, not queued" in msg and "nothing was sent" in msg
 
     def test_it_is_free_again_when_the_holder_finishes(self):
+        """A finished hold leaves no holder: the next operation acquires it, and its release
+        frees it again."""
         with Holder("Lab", "r2"):
             pass
+        assert D.holder("Lab", "r2") is None
         D.acquire("Lab", "r2", "deploy", "a")
+        assert D.holder("Lab", "r2")["operation"] == "deploy"
         D.release("Lab", "r2")
+        assert D.holder("Lab", "r2") is None
 
     def test_the_holding_thread_may_nest(self):
         """Onboarding's phase two rotates inside its own hold."""
@@ -86,9 +91,12 @@ class TestTheLock:
         assert D.holder("Lab", "r2") is None
 
     def test_another_device_is_unaffected(self):
+        """One device's hold refuses only that device: r1 is held for a deploy while r2 is
+        held for a restore, each naming its own operation."""
         with Holder("Lab", "r2"):
             with D.hold("Lab", "r1", "deploy", "a"):
-                pass
+                assert D.holder("Lab", "r1")["operation"] == "deploy"
+                assert D.holder("Lab", "r2")["operation"] == "restore"
 
     def test_asking_who_holds_it_creates_nothing(self):
         from modules import config

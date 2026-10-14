@@ -10,15 +10,27 @@ scan finds it. Inside a test class it silently drops the earlier TEST.
 Scanned: every function and class defined directly in a module body or a
 class body, in the program, its scripts and its tests. A property's
 `@<name>.setter` / `.getter` / `.deleter` is the one legitimate repeat.
+
+The definitions come from `scripts/pydefs.py`, the one walker the coverage tool
+(scripts/nmas_coverage.py) counts functions with: one answer to "what does this
+module define".
 """
 
-import ast
+import importlib.util
 import os
 
 from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ACCESSORS = ("setter", "getter", "deleter")
+_SPEC = importlib.util.spec_from_file_location("pydefs", os.path.join(ROOT, "scripts",
+                                                                      "pydefs.py"))
+pydefs = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(pydefs)
+
+
+def duplicates(source: str, label: str = "") -> list:
+    """The shared walker's answer (`scripts/pydefs.duplicates`)."""
+    return pydefs.duplicates(source, label)
 
 
 def _files():
@@ -32,30 +44,6 @@ def _files():
                 out.append(f)
     return out
 
-
-def _is_accessor(node, name):
-    return any(isinstance(d, ast.Attribute) and d.attr in ACCESSORS
-               and isinstance(d.value, ast.Name) and d.value.id == name
-               for d in node.decorator_list)
-
-
-def duplicates(source: str, label: str = "") -> list:
-    tree = ast.parse(source)
-    found = []
-
-    def scan(body, where):
-        seen = {}
-        for n in body:
-            if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                continue
-            if n.name in seen and not _is_accessor(n, n.name):
-                found.append(f"{label}{where}{n.name}: lines {seen[n.name]} and {n.lineno}")
-            seen[n.name] = n.lineno
-            if isinstance(n, ast.ClassDef):
-                scan(n.body, f"{where}{n.name}.")
-
-    scan(tree.body, ":")
-    return found
 
 
 def test_no_name_is_defined_twice():

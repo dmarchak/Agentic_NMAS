@@ -10,6 +10,7 @@ Cleared before and after every test — cheap, and it makes each test's view of
 the store its own.
 """
 
+import json
 import os
 import shutil
 import sys
@@ -130,6 +131,29 @@ def _no_spawned_process_reaches_a_network(request, _fakes_live_under_pytests_tem
         pytest.fail("a process this test started did something no test may do (a "
                     "network, C46; or a write into the checkout's data/), and the harness "
                     f"recorded it: {tried[:5]}", pytrace=False)
+
+
+@pytest.fixture(autouse=True)
+def _test_tier(request):
+    """The test tiers (docs/TESTING.md, "The tiers"), by what a test DID, never by what its file
+    imports: **browser**, it called a browser session (tests/browser.py counts the calls);
+    **spawns**, it started a process (the spawn guard counts them); **unit**, neither: in-process
+    and offline, the Flask-client tests among them. Written only when `NMAS_TEST_TIERS` names a
+    folder (the coverage run, scripts/nmas_coverage.py), one JSON line per test."""
+    out = os.environ.get("NMAS_TEST_TIERS")
+    if not out:
+        yield
+        return
+    from tests.browser import Browser
+    guard = network_guard.spawn_guard()
+    spawned, calls = guard.spawned, Browser.calls
+    yield
+    tier = ("browser" if Browser.calls > calls else
+            "spawns" if guard.spawned > spawned else "unit")
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    with open(os.path.join(out, f"tiers-{worker}-{os.getpid()}.jsonl"), "a",
+              encoding="utf-8") as fh:
+        fh.write(json.dumps({"test": request.node.nodeid, "tier": tier}) + "\n")
 
 
 def pytest_configure(config):

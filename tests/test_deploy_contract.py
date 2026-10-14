@@ -465,8 +465,12 @@ class TestEveryReferencedHelperExists:
 
     @pytest.mark.parametrize("module_name", ROUTE_MODULES)
     def test_module_imports(self, module_name):
+        """A route module the deploy path names imports cleanly and registers a blueprint (a
+        module that imports but defines no `bp` would serve nothing)."""
         import importlib
-        importlib.import_module(module_name)
+        mod = importlib.import_module(module_name)
+        assert mod.__name__ == module_name
+        assert any(type(v).__name__ == "Blueprint" for v in vars(mod).values()), module_name
 
     @pytest.mark.parametrize("module_name", ROUTE_MODULES)
     def test_every_name_it_calls_is_defined(self, module_name):

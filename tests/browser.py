@@ -194,6 +194,10 @@ class Browser:
     #: not started in it is one that will not start, and its Firefox is stopped with its group
     #: (C521). A test lowers it to plant a session that never answers.
     START_TIMEOUT_S = 60
+    #: Calls to any session's driver in this process: the test tiers (tests/conftest.py) call a
+    #: test that made one a browser test, by what it did rather than by what its file imports
+    #: (a module's browser is often started before its first test).
+    calls = 0
 
     def __init__(self, prefs: dict = None, page_load: str = "normal"):
         #: WebDriver's pageLoadStrategy: "none" returns from a navigation at once, so a test can
@@ -235,6 +239,7 @@ class Browser:
         self.session = ""
 
     def _call(self, method, path, body=None, timeout=60):
+        Browser.calls += 1
         req = urllib.request.Request(
             f"http://127.0.0.1:{self.port}{path}", method=method,
             data=json.dumps(body).encode() if body is not None else None,

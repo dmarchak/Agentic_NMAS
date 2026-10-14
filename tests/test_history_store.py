@@ -55,7 +55,10 @@ class TestTheHistoryStore:
 
 class TestTheRangeIsServedNeverTrimmed:
     def test_within_the_live_store_needs_no_history(self, settings):
-        panels.check_range(90 * DAY, "prometheus", panels.stores(DATASOURCES, "Default"))
+        """90 days is inside the live store's retention: served (no refusal) with no history
+        store set."""
+        assert panels.check_range(90 * DAY, "prometheus",
+                                  panels.stores(DATASOURCES, "Default")) is None
 
     def test_past_it_with_no_history_is_refused_naming_the_setting(self, settings):
         with pytest.raises(panels.RangeRefused, match=r"the live store keeps 90 days, and no "
@@ -69,8 +72,10 @@ class TestTheRangeIsServedNeverTrimmed:
             panels.check_range(91 * DAY, "prometheus", st)
 
     def test_past_it_with_history_is_served(self, settings):
+        """Past the live store, a history store Grafana holds serves the range: no refusal."""
         settings["grafana_history_datasource_uid"] = "thanos-lake"
-        panels.check_range(400 * DAY, "prometheus", panels.stores(DATASOURCES, "Default"))
+        assert panels.check_range(400 * DAY, "prometheus",
+                                  panels.stores(DATASOURCES, "Default")) is None
 
     def test_the_live_retention_is_the_setting(self, settings):
         settings["metrics_live_retention_days"] = 30

@@ -241,10 +241,11 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
         return values
 
     def test_a_short_value_does_not_refuse_ordinary_config(self, tmp_path, short_secret):
+        """A stored secret too short to check never refuses ordinary YAML: written verbatim."""
         from modules.nsot import hostvars
-        hostvars.write_committed_text(
-            str(tmp_path), "s1",
-            "hostname: s1\nusers:\n- username admin privilege 15\n")
+        text = "hostname: s1\nusers:\n- username admin privilege 15\n"
+        path = hostvars.write_committed_text(str(tmp_path), "s1", text)
+        assert open(path, encoding="utf-8").read() == text
 
     def test_the_floor_is_documented_not_incidental(self):
         from modules.nsot import hostvars
@@ -254,9 +255,9 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
         """Str0ngC0mmunityValue inside Str0ngC0mmunityValueExtended is a
         different value, not this one."""
         from modules.nsot import hostvars
-        hostvars.write_committed_text(
-            str(tmp_path), "s1",
-            "hostname: s1\nbanner: Str0ngC0mmunityValueExtended\n")
+        text = "hostname: s1\nbanner: Str0ngC0mmunityValueExtended\n"
+        path = hostvars.write_committed_text(str(tmp_path), "s1", text)
+        assert open(path, encoding="utf-8").read() == text
 
     def test_a_whole_token_match_is_still_refused(self, tmp_path, long_secret):
         from modules.nsot import hostvars
@@ -288,9 +289,9 @@ class TestTheSecretCheckDoesNotRefuseLegitimateCommits:
     def test_another_devices_secret_is_not_checked(self, tmp_path, long_secret):
         """Refs are namespaced by device; s2's store entry is not s1's business."""
         from modules.nsot import hostvars
-        hostvars.write_committed_text(
-            str(tmp_path), "s2",
-            f"hostname: s2\nbanner: {long_secret['s1:snmp_community_ro']}\n")
+        text = f"hostname: s2\nbanner: {long_secret['s1:snmp_community_ro']}\n"
+        path = hostvars.write_committed_text(str(tmp_path), "s2", text)
+        assert open(path, encoding="utf-8").read() == text
 
 
 class TestToYamlIsAFixedPointOverItsOwnOutput:
@@ -377,10 +378,12 @@ class TestCommittedIntentMustBePrintableAscii:
         assert "U+2014" in message and "column" in message
 
     def test_the_ascii_version_is_accepted(self, tmp_path):
+        """The same description with an ASCII hyphen (not the en dash that corrupted one on
+        a device) is accepted and written verbatim."""
         from modules.nsot import hostvars
-        hostvars.write_committed_text(
-            str(tmp_path), "s4",
-            "hostname: s4\ndescription: mgmt identity - a b\n")
+        text = "hostname: s4\ndescription: mgmt identity - a b\n"
+        path = hostvars.write_committed_text(str(tmp_path), "s4", text)
+        assert open(path, encoding="utf-8").read() == text
 
     def test_write_committed_refuses_it_too(self, tmp_path):
         """Both entry points, not just the editor."""

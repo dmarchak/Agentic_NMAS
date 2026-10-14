@@ -379,8 +379,11 @@ class TestEndToEndDispatch:
         assert "NetBox" in str(exc.value)
 
     def test_csv_writes_still_work_on_a_local_list(self, netbox_list):
+        """The NetBox-sourced refusal is for NetBox lists only: a local list's CSV write passes
+        it (no refusal returned or raised)."""
         from modules.device import _refuse_if_netbox_sourced
-        _refuse_if_netbox_sourced(str(netbox_list / "locallist" / "devices.csv"), "add")
+        assert _refuse_if_netbox_sourced(str(netbox_list / "locallist" / "devices.csv"),
+                                         "add") is None
 
     def test_device_order_is_applied(self, netbox_list):
         from modules.device import load_saved_devices

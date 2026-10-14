@@ -335,9 +335,11 @@ running** (the operator, 2026-09-28). `scripts/nmas-test` stops the run at
 `NMAS_TEST_TIMEOUT` (300 s, 2.5x the serial run) and prints the test each
 process was running and every thread's stack (`tests/conftest.py` records it
 per process; `tests/test_suite_bound.py` drives a real hang).
-`faulthandler_timeout = 45` in `pytest.ini` (2.5x the slowest single item, a
-17.3 s module setup) dumps one slow test's stack without stopping the run. CI's
-job bound is 10 min (2.7x the slowest of the last seven jobs, 224 s).
+`faulthandler_timeout = 120` in `pytest.ini` dumps one slow test's stack without stopping
+the run: 45 s until 2026-10-14, when the dump itself was found taking xdist workers down
+(C647: a browser test past 45 s under the gate's load, its worker's output cut mid-dump,
+three times). 120 s is about 2.5x that test's loaded time. CI's job bound is 14 min
+(`timeout-minutes` in the workflow).
 `nmas-deploy --offline` reports a timeout as TIMED OUT with the running test,
 never as a test failure.
 
