@@ -386,3 +386,22 @@ def test_the_host_step_reads_owner_and_name_from_every_origin_form(url):
     expr = re.search(r"^REPOSITORY=\$\(git .* \| sed -E '(.*)'\)$", text, re.M).group(1)
     got = subprocess.run(["sed", "-E", expr], input=url + "\n", capture_output=True, text=True)
     assert got.stdout.strip() == "o/n", (url, got.stdout)
+
+
+def test_the_report_names_the_templates_no_device_renders(lab):
+    """The config repository's coverage (Lab 7): a whole-repository check says which of its
+    templates some device's render reached (the template and its imports) and which none did.
+    The lab has one IOS-XE device, so the IOS template is named unrendered. Information for a
+    person to judge (dead, or bound to a platform no device has), never a failure; a scoped
+    check, which renders only the devices a change touched, does not claim it."""
+    from modules.nsot import config_check
+    report = config_check.run(lab["repo"], notes=False)
+    tc = report["templates"]
+    assert report["ok"] and tc["total"] == len(tc["rendered"]) + len(tc["unrendered"])
+    assert "templates/cisco_iosxe/base.j2" in tc["rendered"]
+    assert "templates/cisco_ios/base.j2" in tc["unrendered"]
+    line = next(l for l in config_check.human(report).splitlines()
+                if l.startswith("Templates rendered by some device:"))
+    assert f"{len(tc['rendered'])} of {tc['total']}" in line and "cisco_ios/base.j2" in line
+    scoped = config_check.run(lab["repo"], touched=["host_vars/r2.yml"], notes=False)
+    assert scoped["templates"] is None

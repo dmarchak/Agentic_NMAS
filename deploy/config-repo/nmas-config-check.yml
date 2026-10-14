@@ -115,6 +115,32 @@ jobs:
       - name: Run the config check
         run: python nmas/scripts/nmas-config-check config --report nmas-config-check.json
 
+      # Lab 7 (2026-10-14): the verdict and the repository's template coverage (which templates
+      # some device's render reached) in the run's job summary. A pinned Mercury older than the
+      # report's "templates" key says so instead.
+      - name: The summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          try:
+              r = json.load(open("nmas-config-check.json", encoding="utf-8"))
+          except (OSError, ValueError):
+              print("## nmas-config-check\n\nNo report was written.")
+              raise SystemExit(0)
+          print(f"## nmas-config-check: {'PASS' if r['ok'] else 'FAIL'}\n")
+          print(f"{r['counts']['fail']} failure(s) over {r['scope']}, "
+                f"{len(r['devices'])} device(s). {r.get('intent_match_trailer', '')}\n")
+          tc = r.get("templates")
+          if tc:
+              print(f"**Templates rendered by some device: {len(tc['rendered'])} of "
+                    f"{tc['total']}.**\n")
+              for t in tc["unrendered"]:
+                  print(f"- not rendered: `{t}`")
+          else:
+              print("Template coverage: not in this pinned release's report.")
+          PY
+
       - name: Upload the report
         if: always()
         uses: actions/upload-artifact@v4

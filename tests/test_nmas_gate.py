@@ -161,7 +161,9 @@ def _ci_suite_args():
 #: the per-test measurement the coverage job reads. Measured on shard a alone: 125 s without,
 #: 195 s with; the gate keeps its time, and the tests it runs are the same tests.
 CI_ONLY_ARGS = ("--cov-context=test", "--cov-branch")
-CI_ONLY_ENV = ("COVERAGE_FILE", "NMAS_TEST_TIERS")
+#: NMAS_TEST_TIMEOUT too: CI's bound is 2.5x ITS measured step with the per-test measurement
+#: (587 s in run #752, so 1470 s); the gate's stays 740 s, derived for its run without it.
+CI_ONLY_ENV = ("COVERAGE_FILE", "NMAS_TEST_TIERS", "NMAS_TEST_TIMEOUT")
 
 
 def test_the_default_suite_is_cis_command():

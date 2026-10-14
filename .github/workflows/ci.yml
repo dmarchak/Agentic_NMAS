@@ -51,7 +51,10 @@ jobs:
     # setup before it, rounded up. Every run now annotates when its last test
     # finished and how long the session took to end after it, so the next
     # re-derivation reads both numbers from the public API.
-    timeout-minutes: 14
+    # RE-DERIVED 2026-10-14 (Lab 7's per-test measurement): run #752's tests step took 587 s
+    # (job b; jobs 10.2 to 10.8 min), so the step's bound is 2.5x that, 1470 s, and the job's
+    # that plus the setup, rounded up.
+    timeout-minutes: 26
     steps:
       - uses: actions/checkout@v4
         with:
@@ -155,7 +158,7 @@ jobs:
           COVERAGE_CORE: sysmon
           COVERAGE_FILE: .coverage.${{ matrix.shard }}
           NMAS_TEST_TIERS: ${{ github.workspace }}/tiers-${{ matrix.shard }}
-          NMAS_TEST_TIMEOUT: "740"
+          NMAS_TEST_TIMEOUT: "1470"
           NMAS_REQUIRE_PG: "1"
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto

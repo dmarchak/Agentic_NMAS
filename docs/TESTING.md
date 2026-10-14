@@ -451,8 +451,9 @@ per process; `tests/test_suite_bound.py` drives a real hang).
 `faulthandler_timeout = 120` in `pytest.ini` dumps one slow test's stack without stopping
 the run: 45 s until 2026-10-14, when the dump itself was found taking xdist workers down
 (C647: a browser test past 45 s under the gate's load, its worker's output cut mid-dump,
-three times). 120 s is about 2.5x that test's loaded time. CI's job bound is 14 min
-(`timeout-minutes` in the workflow).
+three times). 120 s is about 2.5x that test's loaded time. CI's tests step is bound at 1470 s
+and its job at 26 min (2.5x the 587 s step measured in run #752 with the per-test measurement;
+`timeout-minutes` in the workflow); the gate's suite stays bound at 740 s.
 `nmas-deploy --offline` reports a timeout as TIMED OUT with the running test,
 never as a test failure.
 

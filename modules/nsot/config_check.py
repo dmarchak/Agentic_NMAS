@@ -93,6 +93,8 @@ class _Run:
     def __init__(self, repo: str, mask_values: bool, notes: bool = True):
         self.repo = os.path.abspath(repo)
         self.results = []
+        #: The repository's templates some device's render reached (its closure).
+        self.rendered = set()
         self.mask_values = mask_values
         # False in Mercury's pre-commit: what can only ever be a note (approval, the lines a
         # deploy authorises, Intent-Match) is not computed, since it can never refuse.
@@ -470,6 +472,12 @@ def _check_device(run: _Run, device: str, intent: dict, entry: dict, profile_doc
     where = (f"through {template_rel}" if src["from"] == "library"
              else f"through the built-in {src['template']} ({src.get('why', '')})")
     run.add("render", "pass", f"renders {where}", rel, device=device, files=files)
+    if src["from"] == "library":
+        # Which of the repository's templates some device's render reached: its template and
+        # everything that template imports (Lab 7: the config repository's coverage).
+        from modules.nsot import approval
+        run.rendered.update(f"templates/{t}" for t in
+                            approval.template_closure(src["root"], src["template"]))
     # lint: the deploy's own refusals, on the render (the mask stands for a printable value).
     for line in _unsendable_lines(rendered.replace(MASK, "x")):
         run.add("lint", "fail", f"the render of its intent has {line}", rel, device=device,
@@ -678,8 +686,19 @@ def run(repo: str, *, touched=None, inventory=None, mask_values: bool = False,
     return {"ok": counts["fail"] == 0, "results": results, "counts": counts,
             "devices": devices, "intent_match": match,
             "intent_match_trailer": _trailer(match),
+            "templates": (template_coverage(files, out.rendered) if not scoped else None),
             "scope": "touched" if scoped else "whole repository", "touched": touched,
             "seconds": round(time.monotonic() - started, 2)}
+
+
+def template_coverage(files: list, rendered: set) -> dict:
+    """Which of the repository's templates some device's render reached (Lab 7, the config
+    repository's coverage): `{"total", "rendered", "unrendered"}`. Information, never a failure:
+    a template no device renders is dead, or bound to a platform no device has, and the summary
+    names it for a person to judge."""
+    templates = sorted(f for f in files if f.startswith("templates/") and f.endswith(".j2"))
+    return {"total": len(templates), "rendered": sorted(set(templates) & rendered),
+            "unrendered": sorted(set(templates) - rendered)}
 
 
 def _quiet_profile(repo: str):
@@ -734,6 +753,11 @@ def human(report: dict, verbose: bool = False) -> str:
         lines.append(f"{state:<5} {check:<12} {c['pass']} passed, {c['fail']} failed, "
                      f"{c['note']} noted")
     lines.append(report["intent_match_trailer"])
+    tc = report.get("templates")
+    if tc:
+        lines.append(f"Templates rendered by some device: {len(tc['rendered'])} of {tc['total']}"
+                     + (f"; not rendered: {', '.join(tc['unrendered'])}"
+                        if tc["unrendered"] else ""))
     lines.append(f"{'PASS' if report['ok'] else 'FAIL'}: {report['counts']['fail']} failure(s) "
                  f"over {report['scope']}, {len(report['devices'])} device(s), "
                  f"in {report['seconds']} s")

@@ -202,6 +202,11 @@ def main(argv=None) -> int:
     f.add_argument("--out", help="a directory to save each failed job's whole log in")
     t = sub.add_parser("times")
     t.add_argument("--limit", type=int, default=20)
+    # Lab 7 (2026-10-14): a run's jobs, minutes and artifacts, and one job's log by name (the
+    # coverage job's report is in its log and summary, whatever its conclusion).
+    u = sub.add_parser("run")
+    u.add_argument("run_id")
+    u.add_argument("--log", help="print this job's log (its name, e.g. 'coverage')")
     args = ap.parse_args(argv)
 
     try:
@@ -210,7 +215,7 @@ def main(argv=None) -> int:
         print(f"nmas-ci-log: {exc}", file=sys.stderr)
         return EXIT_TOKEN
     try:
-        first, items = runs(token, 30 if args.cmd == "failed" else args.limit)
+        first, items = runs(token, 30 if args.cmd == "failed" else getattr(args, "limit", 1))
         warn = expiry_warning(first.headers)
         if warn:
             print(f"nmas-ci-log: WARNING: {warn}", file=sys.stderr)
@@ -237,6 +242,31 @@ def main(argv=None) -> int:
             for name, (m, number) in sorted(slowest(rows).items()):
                 past = "  PAST THE TRIGGER" if m > TRIGGER_MINUTES else ""
                 print(f"  {name}: {m:.1f} in #{number}{past}")
+            return 0
+        if args.cmd == "run":
+            run = _json(get(f"/repos/{REPO}/actions/runs/{args.run_id}", token))
+            print(f"#{run['run_number']} {run['head_sha'][:7]} {run.get('conclusion') or run['status']}"
+                  f" {run['html_url']}")
+            jobs = _json(get(f"/repos/{REPO}/actions/runs/{args.run_id}/jobs", token))["jobs"]
+            for job in jobs:
+                m = job_minutes(job)
+                print(f"  job {job['name']}: {job.get('conclusion')}, "
+                      f"{'?' if m is None else f'{m:.1f}'} min, {job['html_url']}")
+            arts = _json(get(f"/repos/{REPO}/actions/runs/{args.run_id}/artifacts",
+                             token)).get("artifacts", [])
+            for a in arts:
+                print(f"  artifact {a['name']}: {a['size_in_bytes']} bytes, "
+                      f"{run['html_url']}/artifacts/{a['id']}")
+            if args.log:
+                job = next((j for j in jobs if j["name"].split(" ")[0] == args.log
+                            or j["name"] == args.log), None)
+                if job is None:
+                    print(f"nmas-ci-log: no job named {args.log}", file=sys.stderr)
+                    return 1
+                log = get(f"/repos/{REPO}/actions/jobs/{job['id']}/logs", token).body.decode(
+                    "utf-8", "replace")
+                for line in log.splitlines():
+                    print(re.sub(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s", "", line))
             return 0
         run_id = args.run_id or next((str(x["id"]) for x in items
                                       if x.get("conclusion") == "failure"), "")
