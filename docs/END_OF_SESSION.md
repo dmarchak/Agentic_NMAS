@@ -1,5 +1,85 @@
 # End of session: where Phase 7 stands
 
+## OVERNIGHT, 2026-10-15 (04:00 to about 08:30 UTC; 22:00 to 02:30 UTC−6): C791, four of today's page families removed, nights #8 and #9, C808 to C816
+
+**The host runs 18605333** (deployed 08:11:16 UTC by `nmas-deploy --to` after the hold check,
+CI #816; before it 2f173736 at 06:57:03, 1301d3f7 at 06:09:24, caa6021e at 05:29:55, 495afbec
+at 04:46:32, 4e75b972 at 04:16:43). Each was walked on the host by GETs through Flask's client:
+the last, `/` without the Settings modal, Logs tab or status bar (`nmas_in_flight.js` kept), seven
+removed routes 404, `/identity/status`, `/settings/integrations/status` and
+`/operations/in_flight` 200, both v2 settings pages' cards carrying `loaded`, Diagnostics' app
+log, `/v2/help/about` 200. **CI on main is green** (#816 on 18605333); 8fca3e14's #814 green.
+
+**What was done**, each commit pushed and gated:
+- **C791:** the gate refuses `--push` while CI on main is red, naming the run (`nmas-ci-log
+  main-ci`); `--fixes-red N` names the run a forward fix answers. Used once, for #812.
+- **C793:** an operation's card spans the device tab.
+- **C795:** the Update page draws the host steps its checks read done (a card of its own).
+- **Backups follow-ups 6, 7 and 9** (495afbec); TestNoBackupStore's two tests shown able to fail
+  in a scratch clone.
+- **Today's pages, four removals**, each tagged first (`pre-remove/v1-unreachable`,
+  `pre-remove/v1-bulk`, `pre-remove/v1-drift`, `pre-remove/v1-settings`), deployed and walked:
+  (1) the sixteen routes no page reached; (2) bulk commands and Restore Golden Config at HEAD
+  (C548 closed by measurement: 21 multi-device Show commands runs on the host); (3) the Drift
+  tab, with C807 (v2's drift card short of the tab in four ways) fixed in the change; (4) the
+  Settings modal, Logs tab and status bar, with C811 (v2's settings cards without R17's guard,
+  the NetBox Test without C468's, the top bar green past its promise, the Monitoring profile
+  without a Test) fixed in the change, and the integration clients' `get_config`/`save_config`
+  and `save_netbox_config` removed with their last caller.
+- **C808:** CI #812 went red on the coverage ratchet alone (`drift_check.py` 31 of 35 to 30 of
+  34: a covered function removed, uncovered 4 both sides); fixed forward by the baseline command
+  over #812's own shards. The fourth removal ran the ratchet BEFORE committing (CI's environment
+  locally) and found two real losses, closed by removing the dead code, then the same shape.
+- **C809:** night #9 failed its clean run on an order-dependent keeper test; fixed, replayed on
+  the laptop (clean run passed). **C810** (C): two whole shuffled orders of the night's 3,398
+  tests found nothing else; the shuffle finds C809 without its fix in 4 of 6 seeds.
+- **docs/ASSURE_FEATURES.md:** the seven Assure proposals (C799 to C801, C803 to C806), linked
+  from IBN_DESIGN's Assure section; no build.
+
+**The nights.** #8 (38677080468, d40f19f2): valid and green, "377 known, 0 new", its 27 sweep
+survivors added to the debt (404 entries in 15 functions). #9 (38690740461, 1301d3f7): failed,
+"Failed to run clean test" (C809), no result stands. **#10 (38702510441, 8fca3e14) dispatched
+07:59 UTC**, the first with C809's fix; its result is the next session's to read and handle
+by the loop's rules. The speed change (child tests only where the import closure reaches) is
+NOT built: measured, the closure holds every planned function (C796, a question below).
+
+**Waiting on the operator** (each on the NMAS host, as their own user, from
+`~/python/Agentic_NMAS`, outside 08:30 to 09:10 UTC):
+1. **Say "It is done" for the three steps without a check**, on Update (the rotation, the
+   ai-leftovers `--delete`, the Backups archive and `--delete`): each row's button. PASS: the
+   three leave "owed" and show under said done with your name. The agent did not record them.
+2. **C789 (proposed, not run):** `bash scripts/host-steps/c789-snmptrapd-at-boot.sh`
+   (sudo once). PASS: `== RESULT: PASS (5 of 5 checks)`. Undo is in the script's header. The
+   proof is the next boot's first trap naming its device.
+3. **C794 (proposal):** Loki's `limits_config: discover_log_levels: false`, so `severity` is
+   the one level; recommended, not prepared as a step until decided.
+4. **Walk v2's settings Save** (C811's guard; a write, so a verified person's): Settings ›
+   Installation, Save a card unchanged (PASS: "nothing changed"), then change one field and
+   Save (PASS: saved, the card redrawn with it); a Save from a card open since before 08:11 UTC
+   is refused, naming why.
+
+**Questions, each with the recommendation:**
+1. **C796:** narrow the child-process tests by MEASURED reach (which children run the planned
+   function) rather than the import closure, which narrows nothing? Recommended: yes.
+2. **C808:** the ratchet judges the uncovered count (must not rise) instead of the percentage,
+   and the gate runs it? Recommended: yes, both.
+3. **The today's-pages survey's ten** (unanswered): `/` 302 to `/v2/`; JSON routes go with their
+   callers; keep `/remote/push`, `/remote/verify`, `/attention/acknowledge`,
+   `/breakglass/export`; freeze the global active list; `/identity/status` and
+   `/settings/integrations/status` KEPT as diagnostics (`/health/version` went: only the status
+   bar called it); walks by the operator before commits 4, 8a and 8c (onboarding, a
+   several-device deploy, a template edit, NetBox, revert and retry); `logs` and `dhcp` in
+   `ON_TODAYS_APP` are stale; keep form-only keys one release; delete v1-only render tests;
+   a pre-remove tag per commit. Recommended: as listed.
+4. **C815:** retire `auto_open_browser` to the environment alone? Recommended: yes.
+5. **C813:** the records database card gets R17's guard? Recommended: yes, a follow-up.
+6. **C797:** VM_IMAGES's restore check names the wrong liveness route; rewrite step 4.
+7. **The PSIRT openVuln API key** for the CVE/EoL proposal (C806's common asks), when it is wanted.
+
+**Next:** F3 (History › Query's "Ask your own" logs builder, board QueryBuilderLogs3, approved
+with E3) and the remaining today's-pages removals (commits 4, 5, 7, 8, 9 wait on the walks and
+questions above).
+
 ## NIGHT, 2026-10-15 (to 04:00 UTC; 22:00 UTC−6): the run-id fix deployed, the loki-writer and trap-label steps, C781 to C784, today's Backups removed, night #6 valid
 
 **The host runs a8acc2a1** (deployed 02:41:02 UTC, CI #800; before it 7fc336f2 at 02:11:49
