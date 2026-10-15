@@ -1,0 +1,24 @@
+[
+ {
+  "ts": "1791567678475754000",
+  "labels": {
+   "detected_level": "unknown",
+   "host": "nmas",
+   "job": "loki.source.journal.snmptrapd",
+   "service_name": "loki.source.journal.snmptrapd",
+   "unit": "snmptrapd.service"
+  },
+  "line": "NET-SNMP version 5.9.4.pre2"
+ },
+ {
+  "ts": "1791567678493022000",
+  "labels": {
+   "detected_level": "unknown",
+   "host": "nmas",
+   "job": "loki.source.journal.snmptrapd",
+   "service_name": "loki.source.journal.snmptrapd",
+   "unit": "snmptrapd.service"
+  },
+  "line": "2026-10-09 17:41:18 <UNKNOWN> [UDP: [192.0.2.10]:51170->[192.0.2.11]:162]:\nDISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (12523) 0:02:05.23\tSNMPv2-MIB::snmpTrapOID.0 = OID: IF-MIB::linkUp\tIF-MIB::ifIndex.2 = INTEGER: 2\tIF-MIB::ifDescr.2 = STRING: GigabitEthernet2\tIF-MIB::ifType.2 = INTEGER: ethernetCsmacd(6)"
+ }
+]

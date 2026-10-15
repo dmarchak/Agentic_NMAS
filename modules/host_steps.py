@@ -213,8 +213,73 @@ def check_kea_discovery_range(root: str = ROOT, kea=None, addrs=None) -> dict:
     return {"state": "not_done", "detail": r["problem"] or "Kea runs no discovery range"}
 
 
+def _loki_first(query: str, ask=None, now: float = None) -> dict:
+    """Loki's first line matching *query* within its 30-day query limit: ``{"state": "found",
+    "at": epoch}``, ``{"state": "none"}``, or ``{"state": "unknown", "why"}`` when Loki is not
+    configured, did not answer, or answered something unreadable (never read as none).
+    *ask(query, start, end)* returns `LokiIntegration._get`'s answer, for tests."""
+    now = time.time() if now is None else now
+    start, end = int((now - 30 * 86400) * 1e9), int(now * 1e9)
+    if ask is None:
+        from modules.integrations.loki import LokiIntegration
+
+        loki = LokiIntegration()
+        if not loki.is_configured():
+            return {"state": "unknown", "why": "Loki is not configured here, so it cannot be "
+                                               "asked"}
+        r = loki._get("loki/api/v1/query_range", query=query, limit=1, start=start,  # noqa: SLF001
+                      end=end, direction="forward")
+    else:
+        r = ask(query, start, end)
+    if not r.get("ok"):
+        return {"state": "unknown",
+                "why": f"Loki did not answer: {r.get('error') or 'no reason given'}"}
+    try:
+        streams = (r["response"].json().get("data") or {}).get("result") or []
+    except (ValueError, AttributeError) as exc:
+        return {"state": "unknown", "why": f"Loki's answer could not be read: {exc}"}
+    stamps = [int(ns) for s in streams for ns, _l in s.get("values") or []]
+    return {"state": "found", "at": min(stamps) / 1e9} if stamps else {"state": "none"}
+
+
+def _labelled(found: dict, what: str, missing: str) -> dict:
+    if found["state"] == "unknown":
+        return {"state": "unknown", "detail": found["why"]}
+    if found["state"] == "none":
+        return {"state": "not_done", "detail": missing}
+    return {"state": "done", "detail": f"Loki's first {what} arrived "
+            + time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(found["at"]))}
+
+
+#: IBN decision 7's host step (scripts/host-steps/ibn7-severity-trap-label.sh): the labels Alloy
+#: sets at ingest, each asked of Loki by the selector a reader of it would use.
+SEVERITY_LABEL_QUERY = '{job="network_syslog", severity=~"[0-7]"}'
+TRAP_LABEL_QUERY = '{job="snmptrapd", trap_oid=~".+"}'
+
+
+def check_severity_label(root: str = ROOT, ask=None) -> dict:
+    """Done when Loki holds a syslog line carrying the `severity` label (a digit 0 to 7) Alloy
+    sets from the line's mnemonic; unknown when Loki is not configured or could not say."""
+    return _labelled(_loki_first(SEVERITY_LABEL_QUERY, ask=ask),
+                     "syslog line with a severity label",
+                     "Loki holds no syslog line with a severity label in the last 30 days: run "
+                     "scripts/host-steps/ibn7-severity-trap-label.sh on Mercury's host")
+
+
+def check_trap_label(root: str = ROOT, ask=None) -> dict:
+    """Done when Loki holds a trap with the stable `job="snmptrapd"` and a `trap_oid` label;
+    not done until a trap arrives after the step (a link going down and up on an unused lab
+    port sends two); unknown when Loki is not configured or could not say."""
+    return _labelled(_loki_first(TRAP_LABEL_QUERY, ask=ask),
+                     'trap with job="snmptrapd" and a trap_oid label',
+                     'Loki holds no trap with job="snmptrapd" and a trap_oid label in the last '
+                     "30 days: after ibn7-severity-trap-label.sh, the next trap proves it (a link "
+                     "going down and up on an unused lab port sends two)")
+
+
 CHECKS = {"topology-renderer-gone": check_topology_renderer_gone, "updater": check_updater,
           "device-label": check_device_label,
+          "severity-label": check_severity_label, "trap-label": check_trap_label,
           "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin,
           "kea-reservation-files": check_kea_reservation_files,
           "kea-subnet-files": check_kea_subnet_files,
