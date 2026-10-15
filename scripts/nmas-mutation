@@ -69,9 +69,11 @@ def _mutmut_run(names, log, env=None) -> int:
     return proc.wait()
 
 
-#: The bound on one run of the night's tests in mutmut's copy: 78 s measured on the laptop with
-#: four workers (2,725 tests, 2026-10-14), about 2.5 times a runner twice as slow.
-COPY_RUN_TIMEOUT_S = 400
+#: The bound on one run of the night's tests in mutmut's copy, measured ON THE RUNNER: 299 s on
+#: night #9 and 340 s on night #10 (3,405 tests, 17 functions planned; copy-run.log), so about
+#: 2.5 times the larger. 400 s, from a laptop run (78 s, 2,725 tests, 2026-10-14) and a runner
+#: guessed twice as slow, fired on night #11 (53 functions, 3,477 tests; C832).
+COPY_RUN_TIMEOUT_S = 850
 
 
 def _fails_in_the_copy(p, out) -> list:
@@ -91,7 +93,12 @@ def _fails_in_the_copy(p, out) -> list:
                            errors="replace", timeout=COPY_RUN_TIMEOUT_S)
         text, code = r.stdout, r.returncode
     except subprocess.TimeoutExpired as e:
-        text = (e.stdout or "") + f"\nnmas-mutation: the copy's run passed its {COPY_RUN_TIMEOUT_S} s bound"
+        # The partial output arrives as BYTES even with text=True (CPython's TimeoutExpired):
+        # night #11 crashed adding a str to it, so the bound's firing was never said (C832).
+        partial = e.stdout or b""
+        if isinstance(partial, bytes):
+            partial = partial.decode("utf-8", "replace")
+        text = partial + f"\nnmas-mutation: the copy's run passed its {COPY_RUN_TIMEOUT_S} s bound"
         code = None
     with open(os.path.join(out, "copy-run.log"), "w", encoding="utf-8") as fh:
         fh.write(text if isinstance(text, str) else text.decode("utf-8", "replace"))

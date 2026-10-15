@@ -899,6 +899,36 @@ class TestTestsThatFailInTheCopy:
                         "tests/test_x.py::test_b[1 2]", "-p", "no:cacheprovider"]
         assert c["mutmut"]["pytest_add_cli_args_test_selection"].split() == ["tests/test_x.py"]
 
+    def test_a_copy_run_past_its_bound_is_said_not_a_crash(self, tmp_path, monkeypatch):
+        """C832, night #11: the copy's run passed its bound and the harness died adding a str
+        to the partial output, which CPython's TimeoutExpired carries as BYTES even with
+        text=True. The bound's firing is written to copy-run.log and nothing is deselected."""
+        import subprocess as sp
+
+        cli = _cli()
+        root, out = tmp_path / "root", tmp_path / "out"
+        (root / "mutants").mkdir(parents=True)
+        out.mkdir()
+        monkeypatch.setattr(cli.M, "ROOT", str(root))
+
+        def past_the_bound(cmd, **kw):
+            raise sp.TimeoutExpired(cmd, kw.get("timeout"), output=b"....F partial \xff run\n")
+        monkeypatch.setattr(cli.subprocess, "run", past_the_bound)
+        try:
+            got = cli._fails_in_the_copy({"tests": ["tests/test_x.py"]}, str(out))
+        except TypeError as exc:
+            pytest.fail(f"the bound's firing crashed the harness: {exc}")
+        assert got == []
+        log = (out / "copy-run.log").read_text(encoding="utf-8")
+        assert log.startswith("....F partial � run\n")
+        assert f"the copy's run passed its {cli.COPY_RUN_TIMEOUT_S} s bound" in log
+
+    def test_the_copy_runs_bound_is_about_two_and_a_half_times_the_runner_s(self):
+        """The bound is read against the runner's measured copy runs (299 s and 340 s, nights #9
+        and #10), never a laptop's: about 2.5 times the larger."""
+        cli = _cli()
+        assert 2.2 * 340 <= cli.COPY_RUN_TIMEOUT_S <= 2.8 * 340
+
     def test_the_run_measures_the_copy_deselects_and_tries_again(self, tmp_path, monkeypatch):
         """Through the real CLI's run step with mutmut stood in: the first mutmut run fails, the
         copy's run names a test, which is deselected and recorded, and mutmut runs again (here
