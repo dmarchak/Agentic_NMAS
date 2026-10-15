@@ -298,3 +298,72 @@ class TestCIsInterpreterHoldsWhatCIInstalls:
         assert "boto3==1.34.46 is not installed" in r.stdout + r.stderr
         assert "the suite" not in (r.stdout + r.stderr).split("REFUSED")[0].split("3. ")[-1], \
             "it refuses before any suite runs"
+
+
+class TestNothingIsPushedOnARedCi:
+    """C791 (2026-10-15): three commits were pushed onto CI #791's red, the run never read.
+    With --push the gate first reads CI's newest verdict on main (`nmas-ci-log main-ci`,
+    replaced here by NMAS_GATE_CI_LOG) and refuses on red, naming the run, before anything is
+    staged; the commit fixing it forward names that run with --fixes-red."""
+
+    @pytest.fixture
+    def pushing(self, repo, tmp_path):
+        origin = tmp_path / "origin.git"
+        _git(tmp_path, "init", "-q", "--bare", str(origin))
+        _git(repo, "remote", "add", "origin", str(origin))
+        _git(repo, "push", "-q", "-u", "origin", "HEAD")
+        return origin
+
+    @staticmethod
+    def _verdict(state, n=791, rc=None):
+        line = ('{"state": "%s", "run": {"run_number": %d, "head_sha": "5e7c0632e", '
+                '"conclusion": "failure", "html_url": "https://ci.example/%d"}}' % (state, n, n))
+        return f"echo '{line}'; exit {rc if rc is not None else (0 if state == 'green' else 3)}"
+
+    def _run(self, repo, tmp_path, ci, *extra):
+        msg = tmp_path / "msg.txt"
+        msg.write_text("Docs: two\n")
+        env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]), NMAS_GATE_CI_LOG=ci)
+        return subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
+                               "--expect", "Docs:", "--push", *extra], capture_output=True,
+                              text=True, env=env)
+
+    def test_green_pushes(self, repo, tmp_path, pushing):
+        r = self._run(repo, tmp_path, self._verdict("green", 802))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "CI on main is green: #802" in r.stdout
+        assert _git(pushing, "log", "-1", "--format=%s") == "Docs: two"
+
+    def test_red_refuses_naming_the_run_and_stages_nothing(self, repo, tmp_path, pushing):
+        before = _commits(repo)
+        r = self._run(repo, tmp_path, self._verdict("red"))
+        out = r.stdout + r.stderr
+        assert r.returncode == 1
+        assert "REFUSED at CI on main: CI on main is red: #791" in out
+        assert "https://ci.example/791" in out and "--fixes-red 791" in out
+        assert "1. git add -A" not in out and _commits(repo) == before
+        assert _git(repo, "diff", "--cached", "--name-only") == ""
+        assert _git(pushing, "log", "-1", "--format=%s") == "base"
+
+    def test_the_fix_forward_names_that_very_run(self, repo, tmp_path, pushing):
+        r = self._run(repo, tmp_path, self._verdict("red"), "--fixes-red", "790")
+        assert r.returncode == 1 and "--fixes-red 790 names another run" in r.stdout
+        r = self._run(repo, tmp_path, self._verdict("red"), "--fixes-red", "791")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "fixes it forward" in r.stdout
+        assert _git(pushing, "log", "-1", "--format=%s") == "Docs: two"
+
+    def test_an_unreadable_verdict_refuses(self, repo, tmp_path, pushing):
+        r = self._run(repo, tmp_path, "echo 'nmas-ci-log: GitHub could not be asked' >&2; exit 2")
+        assert r.returncode == 1
+        assert "CI's verdict on main could not be read" in r.stdout
+        assert "GitHub could not be asked" in r.stdout
+
+    def test_without_push_ci_is_not_asked(self, repo, tmp_path):
+        msg = tmp_path / "msg.txt"
+        msg.write_text("Docs: two\n")
+        env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
+                   NMAS_GATE_CI_LOG="echo asked > " + str(tmp_path / "asked"))
+        r = subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
+                            "--expect", "Docs:"], capture_output=True, text=True, env=env)
+        assert r.returncode == 0 and not (tmp_path / "asked").exists()

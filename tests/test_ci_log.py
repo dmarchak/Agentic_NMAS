@@ -225,3 +225,35 @@ def test_an_artifact_naming_a_path_outside_its_folder_is_refused_whole(tmp_path,
         CL.unzip_into(_zip({"fine.txt": "x", member: "planted"}), str(out))
     assert not out.exists(), "nothing of the archive is written"
     assert not (tmp_path / "outside.txt").exists()
+
+
+def _runs(*runs):
+    import json as _json
+    return _Resp(_json.dumps({"workflow_runs": [
+        dict({"run_number": n, "head_sha": f"{n:040d}", "html_url": f"https://x/{n}", "id": n},
+             status=s, conclusion=c) for n, s, c in runs]}).encode())
+
+
+class TestCisVerdictOnMain:
+    """C791 (2026-10-15): the gate asks this before a push. CI's newest COMPLETED run on main
+    decides; a run still going has no verdict yet, and a cancelled one carries none."""
+
+    def test_it_asks_cis_workflow_on_main_only(self):
+        op = _Opener(_runs((9, "completed", "success")))
+        CL.main_verdict(TOKEN, opener=op)
+        (url, _h), = op.seen
+        assert "/actions/workflows/ci.yml/runs?branch=main" in url
+
+    def test_the_newest_completed_run_decides(self):
+        op = _Opener(_runs((12, "in_progress", None), (11, "completed", "cancelled"),
+                           (10, "completed", "failure"), (9, "completed", "success")))
+        v = CL.main_verdict(TOKEN, opener=op)
+        assert v["state"] == "red" and v["run"]["run_number"] == 10
+        assert v["run"]["html_url"] == "https://x/10"
+        op = _Opener(_runs((12, "in_progress", None), (11, "completed", "success"),
+                           (10, "completed", "failure")))
+        assert CL.main_verdict(TOKEN, opener=op)["state"] == "green"
+
+    def test_no_completed_run_is_none_never_green(self):
+        op = _Opener(_runs((3, "queued", None)))
+        assert CL.main_verdict(TOKEN, opener=op) == {"state": "none", "run": None}

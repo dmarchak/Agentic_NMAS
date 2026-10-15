@@ -183,6 +183,27 @@ def runs(token, limit=10, opener=None):
     return a, _json(a).get("workflow_runs", [])
 
 
+#: The workflow whose verdict on main a push waits on (C791): CI, never a mutation night or the
+#: nightly coverage run, which share the commits.
+CI_WORKFLOW = "ci.yml"
+#: `main-ci`'s exit when main's newest verdict is red.
+EXIT_RED = 3
+
+
+def main_verdict(token, opener=None) -> dict:
+    """CI's verdict on main: its newest COMPLETED run's (a run still going has none yet, and a
+    cancelled or skipped run carries none, so each is passed over). ``{"state": "green" |
+    "red" | "none", "run": {run_number, head_sha, conclusion, html_url, id} or None}``."""
+    a = get(f"/repos/{REPO}/actions/workflows/{CI_WORKFLOW}/runs?branch=main&per_page=20",
+            token, opener)
+    for run in _json(a).get("workflow_runs", []):
+        if run.get("status") != "completed" or run.get("conclusion") in ("cancelled", "skipped"):
+            continue
+        kept = {k: run.get(k) for k in ("run_number", "head_sha", "conclusion", "html_url", "id")}
+        return {"state": "green" if run.get("conclusion") == "success" else "red", "run": kept}
+    return {"state": "none", "run": None}
+
+
 def job_minutes(job: dict):
     """A finished job's minutes (started to completed), or None when either time is missing."""
     try:
@@ -231,6 +252,9 @@ def main(argv=None) -> int:
     u.add_argument("--log", help="print this job's log (its name, e.g. 'coverage')")
     u.add_argument("--artifact", help="save this artifact's files (its name) into --out")
     u.add_argument("--out", help="the directory --artifact unpacks into")
+    # C791 (2026-10-15): the gate asks this before a push, and refuses on red.
+    sub.add_parser("main-ci", help="CI's newest verdict on main, as one JSON line; exit 0 "
+                                   f"green, {EXIT_RED} red, {EXIT_GITHUB} none or unaskable")
     args = ap.parse_args(argv)
 
     try:
@@ -238,6 +262,14 @@ def main(argv=None) -> int:
     except TokenRefused as exc:
         print(f"nmas-ci-log: {exc}", file=sys.stderr)
         return EXIT_TOKEN
+    if args.cmd == "main-ci":
+        try:
+            v = main_verdict(token)
+        except RuntimeError as exc:
+            print(f"nmas-ci-log: {exc}", file=sys.stderr)
+            return EXIT_GITHUB
+        print(json.dumps(v))
+        return {"green": 0, "red": EXIT_RED}.get(v["state"], EXIT_GITHUB)
     try:
         first, items = runs(token, 30 if args.cmd == "failed" else getattr(args, "limit", 1))
         warn = expiry_warning(first.headers)

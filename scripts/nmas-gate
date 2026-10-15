@@ -22,12 +22,19 @@ everything after it:
   7. commit:        git commit -F, the hooks running as usual;
   8. push:          optional (--push), naming the pushed sha.
 
+  0. With --push, first: CI's newest verdict on main (`nmas-ci-log main-ci`). Red refuses,
+     naming the run, so nothing stacks on a red CI (C791: three commits did, 2026-10-15, the
+     run never read); the commit that fixes it forward says so with --fixes-red <run number>,
+     which must name that very run. A verdict that cannot be read refuses too, never a guess.
+
     scripts/nmas-gate --message MSG --expect "Subject prefix" [--browser] [--push]
+                      [--fixes-red N]
 
 Exit 0 committed; 1 refused at a step (named, with where its evidence is kept); 2 usage.
 For tests only, NMAS_GATE_SUITE and NMAS_GATE_BROWSER replace the two commands.
 """
 import argparse
+import json
 import os
 import re
 import shlex
@@ -75,8 +82,40 @@ PASSED_LINE = re.compile(r"^\d+ passed(, \d+ (skipped|deselected|xfailed|xpassed
 FAILED_ANY = re.compile(r"^(FAILED|ERROR) |\b\d+ (failed|errors?)\b", re.M)
 
 
+#: CI's verdict on main, as one JSON line (scripts/nmas-ci-log main-ci). For tests only,
+#: NMAS_GATE_CI_LOG replaces the command.
+CI_VERDICT = "{py} " + shlex.quote(os.path.join(HERE, "nmas-ci-log")) + " main-ci"
+
+
 def say(msg):
     print(f"nmas-gate: {msg}", flush=True)
+
+
+def red_ci(fixes_red):
+    """Why a push must wait on CI's verdict on main, or "" (step 0): red, unless *fixes_red*
+    names that very run; unreadable, always."""
+    cmd = os.environ.get("NMAS_GATE_CI_LOG") or CI_VERDICT.format(py=shlex.quote(sys.executable))
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    try:
+        v = json.loads((r.stdout.strip().splitlines() or [""])[-1])
+        state, run = v["state"], v.get("run") or {}
+    except (ValueError, KeyError, TypeError):
+        return (f"CI's verdict on main could not be read (nmas-ci-log main-ci exit {r.returncode}: "
+                f"{(r.stderr or r.stdout).strip()[-300:] or 'no output'}): a push waits until it can")
+    if state == "green":
+        say(f"0. CI on main is green: #{run.get('run_number')} on "
+            f"{str(run.get('head_sha'))[:8]}")
+        return ""
+    if state != "red":
+        return "CI has no completed run on main to judge by: a push waits for one"
+    named = (f"#{run.get('run_number')} on {str(run.get('head_sha'))[:8]} "
+             f"({run.get('conclusion')}, {run.get('html_url')})")
+    if fixes_red is not None and fixes_red == run.get("run_number"):
+        say(f"0. CI on main is RED, {named}; this commit fixes it forward (--fixes-red)")
+        return ""
+    return (f"CI on main is red: {named}. Fix it forward first; the commit that does says "
+            f"--fixes-red {run.get('run_number')}"
+            + (f" (--fixes-red {fixes_red} names another run)" if fixes_red is not None else ""))
 
 
 def refuse(step, why, evidence=None):
@@ -202,6 +241,8 @@ def main(argv=None):
     ap.add_argument("--expect", required=True, help="what its first line must start with")
     ap.add_argument("--browser", action="store_true", help="also run the browser tests, unconfined")
     ap.add_argument("--push", action="store_true", help="push after committing")
+    ap.add_argument("--fixes-red", type=int, default=None, metavar="N",
+                    help="this commit fixes CI's red run N on main forward (step 0)")
     ap.add_argument("--repo", default=None, help="the repository (default: this checkout)")
     ap.add_argument("--python", default=os.environ.get("NMAS_GATE_PYTHON", DEFAULT_PY),
                     help="CI's interpreter (default: the venv scripts/nmas-ci-env builds)")
@@ -221,6 +262,10 @@ def main(argv=None):
     if not first_line().startswith(a.expect):
         refuse("the message", f"its first line is {first_line()!r}, not one starting {a.expect!r}: "
                               "a failed write leaves the previous message in place")
+    if a.push:
+        why = red_ci(a.fixes_red)
+        if why:
+            refuse("CI on main", why)
 
     say("1. git add -A")
     git(repo, "add", "-A")
