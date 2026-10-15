@@ -91,8 +91,6 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | P7-25 | (8c) deploy wizard, onboarding, inventory source | removed | M–L | W1, W3 | — |
 | P7-26 | (8d) networks; the global active list frozen | removed | S | W2 | — |
 | P7-27 | (9) the pages: `/` (302 to `/v2/`), `/attention`, `index.html`, `base.html`, the last partials and scripts, vendored Bootstrap; `test_no_new_v1_capability` becomes "nothing outside templates/v2" | criteria 1, 2, 16 close; the v1 ceilings at 0 | M | all above | — |
-| **Tracking** | | | | | |
-| C836 | the readers' import deadlock: 4 of 5 clean restarts | 5 of 5, closed | S | deploys | — |
 
 **Rough total after the trim:** about 3 L (C850's `applyConfirm`, C537, P7-04 at its upper end),
 13 M and 14 S of agent work, plus three walk sittings (C650 inside them). The removals run as
@@ -175,3 +173,5 @@ blocks cutover or is a security issue (B).
   sections, targets s1's and s2's uncabled Gi0/1 (a description and its Mode B removal) and r6
   (the reload); nothing configured on s3 (Save All's `write memory` reaches it, flagged at step
   37). Found while writing it: C860 (into section 2) and C861 (the tail).
+- **C836 closed** (5 of 5 clean restarts; the fifth d0c88463's deploy, 23:19:27 UTC). The host
+  runs d0c88463, W1's release.
