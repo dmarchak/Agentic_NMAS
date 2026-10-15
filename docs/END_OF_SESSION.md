@@ -1,5 +1,80 @@
 # End of session: where Phase 7 stands
 
+## NIGHT, 2026-10-15 (to 04:00 UTC; 22:00 UTC−6): the run-id fix deployed, the loki-writer and trap-label steps, C781 to C784, today's Backups removed, night #6 valid
+
+**The host runs 7fc336f2** (deployed 02:11:49 UTC by `nmas-deploy --to`, CI #796, after the
+hold check: nothing in flight, the rotation lock free). The walk of 2c62ec42 (deployed 01:43:27):
+the three routes that answered 500 answer 404, a well-formed run id 200, all 4 run-id rules
+shaped; `data/chat_histories/` unchanged since 2026-10-13 21:29 UTC through both restarts.
+Later commits (d8a3d26e, ff5854ec, a8acc2a1) are pushed and deploy once their CI passes.
+
+**Waiting on the operator, in order** (each on the NMAS host, as their own user, from
+`~/python/Agentic_NMAS`, outside 08:30 to 09:10 UTC):
+1. **The ai-leftovers `--delete`** (clear: the walk is clean):
+   `bash scripts/host-steps/d16-archive.sh ai-leftovers --delete ae94441010925cf3b913d732b73bc7fb23387c5dd3a414d156822076e30768e0 lists/default/topology_cache.json lists/default/change_log.json lists/default/network_kb.json lists/default/compliance_policy.json lists/default/variables.json lists/default/playbooks chat_histories`
+   PASS: "the deletion found the archive by its checksum" PASS, `== RESULT: PASS` with the
+   archive-mode checks NOT ASKED.
+2. **The loki-writer rotation (C788):** `bash scripts/host-steps/c788-loki-writer-rotate.sh`.
+   It asks sudo once and MinIO's root password once (hidden). Up to about 30 minutes (Alloy's
+   pushes waited for up to 750 s, new objects up to 15 minutes). PASS:
+   `== RESULT: PASS (21 of 21 checks)`. A failure after MinIO's secret changes undoes itself
+   (old key, copied configuration, no env file, the container as it was); by hand later:
+   `bash scripts/host-steps/c788-loki-writer-undo.sh /var/backups/loki/writer-rotate-<stamp>`
+   (the step prints the folder). Afterwards the key is in `/etc/loki/loki-s3.env` (root, 600)
+   and in the container's environment, which `docker inspect loki` shows to root and the
+   docker group.
+3. **The trap-label step (IBN decision 7):** `bash scripts/host-steps/ibn7-severity-trap-label.sh`.
+   About 7 minutes (a 390 s wait). PASS:
+   `== RESULT: PASS (14 of 14 checks asked; 1 not asked in this mode)`, the one NOT ASKED the
+   trap's labels. On a failure it puts the previous config back and restarts Alloy.
+4. **The port flap**, after step 3: **s1 `GigabitEthernet0/1`** (unwired in rcn-lab1's
+   topology, up/up by SNMP, no configuration; not management, not s3). Through Mercury, s1's
+   device page, Intent, the `GigabitEthernet0/1` entry: (a) `shutdown: true`, Check, Preview
+   (`interface GigabitEthernet0/1` / `shutdown`, a dangerous line asking a reason), Confirm:
+   linkDown; (b) a minute later `shutdown: false` and `no_shutdown: true`, Preview, Confirm
+   (sends `no shutdown`): linkUp; (c) `no_shutdown: false`: the intent as it was, nothing
+   sent. Update's `[trap-label]` row then reads done; the agent then verifies the traps'
+   labels, the host field (C789) and severity on syslog with 0 unlabelled lines.
+5. **The Backups archive:** `bash scripts/host-steps/d16-archive.sh backups $(cd data && ls -d lists/*/backups backups 2>/dev/null)`;
+   its `--delete <sha256>` (same paths) once a8acc2a1 is deployed.
+
+**The Backups questions (the code is removed; the stored files are the operator's), each with
+the recommendation:**
+1. What is kept of the stored files? **The masked archive only, then `--delete`** (goldens are
+   the record; the raw files hold device credentials). Not recommended: an unmasked copy
+   encrypted off-box.
+2. Archive a store that is empty? **Yes**: an empty archive records that it was empty. (The
+   agent cannot count the files: the config-read hook refuses a program naming the store.)
+3. Which stores? **Every `lists/<slug>/backups` and the data root's legacy one**: the glob.
+4. A file that is not UTF-8 refuses the whole archive. **Handle that file by hand** if it
+   happens, not a change to the generic step.
+5. A startup-config snapshot in v2? **No**: persist and reload read startup live; FUTURE if wanted.
+6. v2's Retire screen says "its backups are kept" (`modules/nsot/retire.py`, the manual's retire
+   page) and `modules/preview_confirm.py` names backups. **Delete those words** in a follow-up.
+7. `modules/device.py`'s migration of a legacy backups folder. **Remove it** with the delete.
+8. The `wf_auto_backup` key (RETIRING). **Let it expire with the AI keys.**
+9. `docs/CONCURRENCY_AUDIT.md` still describes the removed module's locking. **Mark it
+   REMOVED** in the follow-up.
+
+**Mutation:** night #6 (38651956957, 42a11327) valid and green: "196 known, 0 new", 181 found
+finishing the sweep, canary 11 of 11, 277 planned mutants ran (mutmut's counter: 287 of 1,462,
+the canary's 11 among them), 17 functions left over, record `mutation-state-38651956957`. Its
+181 sweep survivors were added with the approved reason: **377 entries in 13 functions**
+(145e7039). Night #7 (38667040508, 2c62ec42) dispatched 01:41 UTC: that it continued from
+#6's record shows in its first progress line (near 287, not 0). Queued, the operator's speed
+request: the 12 child-process tests only for functions inside nmas-config-check's import
+closure (computed), the canary's child-only function kept, the per-survivor time measured
+before and after under `systemd-run --user`; it changes `scripts/nmas_mutation.py`, never
+touched while a night runs.
+
+**Commits this night, all pushed:** f6cb8b38 (C788 masking), 145e7039 (the debt, 377),
+5b8d445b (C788's steps), 2c62ec42 (C791: CI #791 to #794 were red on the coverage job only,
+fixed forward), 7fc336f2 (IBN decision 7), d8a3d26e (C781's tests), ff5854ec (C783, C784),
+a8acc2a1 (C632 and today's Backups; restore tag `pre-remove/c632`). Registered: C791 (B).
+Closed: C632, C335, C270, C783, C784; 188 open. Not shown able to fail:
+`TestNoBackupStore`'s two new tests (the control's edit was refused to the agent that wrote
+them).
+
 ## EVENING, 2026-10-14 (to 21:10 UTC; 15:10 UTC−6): C773, the AI family removed, the first valid mutation night
 
 **The host still runs 1ce6228b.** Committed, pushed and green since: 869a5cb3 (C773 item 1,
