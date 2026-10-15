@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Each restart of the app, and every reader whose read failed in the minutes after it: read
+from the app's log (`logs/device_manager.log` and its rotations), read-only. C836 (the operator,
+2026-10-15): readers deadlocked importing the integration clients after two restarts; this is
+how each later restart is checked, and how a recurrence names which reader failed on what.
+
+A restart is the log's "readers started" line (modules/reader_job.py `start`); a failure is a
+"reader NAME: the read failed (ERROR)" line within --window seconds of it (300 by default: the
+fastest reader runs at start, the slowest within a minute or two).
+
+    nmas-restart-readers [--log PATH] [--last N] [--window S]
+
+From the laptop, against the host (stdlib only, so the host's own python3 runs it):
+    scripts/nmas-host nmas -- python3 - --log <checkout>/logs/device_manager.log < scripts/nmas-restart-readers
+
+Prints one block per restart, newest last: its time, how many readers failed, and each
+failure's reader and error; a last line counts the restarts with none. Exit 0 always: it reports.
+"""
+import argparse
+import datetime
+import glob
+import os
+import re
+import sys
+
+STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ ")
+STARTED = re.compile(r"modules\.reader_job: readers started: ")
+FAILED = re.compile(r"modules\.reader_job: reader ([a-z0-9-]+): the read failed \((.*?)\); the last")
+
+
+def _when(line: str):
+    m = STAMP.match(line)
+    return datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") if m else None
+
+
+def lines_of(path: str) -> list:
+    """The log and its rotations, oldest first (`.N` rotations are older the larger N is)."""
+    rotated = sorted(glob.glob(path + ".*"),
+                     key=lambda p: -int(p.rsplit(".", 1)[1]) if p.rsplit(".", 1)[1].isdigit()
+                     else 0)
+    out = []
+    for p in [r for r in rotated if r.rsplit(".", 1)[1].isdigit()] + [path]:
+        if os.path.exists(p):
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                out.extend(fh)
+    return out
+
+
+def restarts(lines, window_s: int = 300) -> list:
+    """``[{"at": datetime, "failed": [(reader, error), ...]}]``, oldest first."""
+    found = []
+    for line in lines:
+        when = _when(line)
+        if when is None:
+            continue
+        if STARTED.search(line):
+            found.append({"at": when, "failed": []})
+            continue
+        m = FAILED.search(line)
+        if m and found and (when - found[-1]["at"]).total_seconds() <= window_s:
+            found[-1]["failed"].append((m.group(1), m.group(2)))
+    return found
+
+
+def report(found: list, last: int) -> str:
+    shown = found[-last:] if last else found
+    out = []
+    for r in shown:
+        out.append(f"{r['at']:%Y-%m-%d %H:%M:%S} UTC: {len(r['failed'])} reader(s) failed")
+        out += [f"    {name}: {error}" for name, error in r["failed"]]
+    clean = sum(1 for r in shown if not r["failed"])
+    out.append(f"{clean} of {len(shown)} restart(s) with no reader failing")
+    return "\n".join(out)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--log", default=os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(sys.argv[0] if sys.argv[0] != "-" else "."))), "logs",
+        "device_manager.log"))
+    ap.add_argument("--last", type=int, default=0, help="only the last N restarts")
+    ap.add_argument("--window", type=int, default=300, help="seconds after a restart")
+    a = ap.parse_args(argv)
+    print(report(restarts(lines_of(a.log), a.window), a.last))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -44,6 +44,9 @@ EXEMPT = {
     # Fed to `python3 -` on stdin by the agent: no file to re-run; standard library and
     # modules.redact only (standard library only, measured 2026-10-09).
     "scripts/nmas-config-read": "run from stdin",
+    # C836 (2026-10-15): the same, the host's own python3 reading the app's log; standard
+    # library only.
+    "scripts/nmas-restart-readers": "run from stdin",
     # A root-installed copy, run `/usr/bin/python3 -I`: it never imports the user-writable
     # checkout, so it cannot import the helper.
     "scripts/nmas-oxidized-cred": "a root-installed copy",
