@@ -62,7 +62,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # E19: the lease lifetimes: Kea's globals and classes, the management subnet's.
             "e19-dhcp-lifetimes.sh",
             # C749: MinIO's default root replaced; Thanos and archive cleanups on keys of their own.
-            "minio-root-rotate.sh", "minio-bind.sh"}
+            "minio-root-rotate.sh", "minio-bind.sh",
+            # C788: loki-writer's key rotated and moved out of Loki's storage URL, and its undo.
+            "c788-loki-writer-rotate.sh", "c788-loki-writer-undo.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
