@@ -65,8 +65,12 @@ red by the rule:** the clean run passed (C809's fix held), canary 11 of 11, "404
 new", all 38 in `device._migrate_to_folder_structure`, which no test reached (C824); each
 survivor ran the whole set, so the night reached 48 of 1,792 mutants. Fixed forward: nine tests
 kill 104 of its 106 mutants (the night's run step on the laptop, 307 s), the two left listed
-equivalent with the reason; the report then reads "404 known, 0 new". **Night #11 (38720380201)
-was dispatched on the fix at 10:27 UTC, after CI #818 passed; it ends about 12:35.** The speed change (child tests only where the import closure reaches) is
+equivalent with the reason; the report then reads "404 known, 0 new". **#11 (38720380201,
+20b2a9c0): failed in its harness, no result stands (C832):** its plan grew to 53 functions and
+the run in mutmut's copy passed its 400 s bound (a laptop's figure; the runner's were 299 s and
+340 s), and the bound's handler crashed on bytes. Fixed in 1a02cb2d (850 s, 2.5 times the
+runner's measured; the handler tested). **Night #12 (38726986751) was dispatched on 1a02cb2d at 11:23 UTC, after CI #820 passed; it
+ends about 13:30.** The speed change (child tests only where the import closure reaches) is
 NOT built: measured, the closure holds every planned function (C796, a question below).
 
 **Waiting on the operator** (each on the NMAS host, as their own user, from
@@ -110,7 +114,7 @@ NOT built: measured, the closure holds every planned function (C796, a question 
    builder rather than Code mode (recommended: yes, the boards make Builder the default); Pin
    to a device's page for saved views (recommended: its own item, not E3's).
 
-**Next:** night #11 (38720380201, dispatched 10:27 UTC on 20b2a9c0) read by the loop's rules,
+**Next:** night #12 read by the loop's rules,
 and the remaining today's-pages removals (commits 4, 5, 7, 8, 9 wait on the walks and questions
 above).
 
