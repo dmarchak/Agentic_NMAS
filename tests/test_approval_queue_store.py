@@ -100,10 +100,14 @@ class TestAnUnreadableQueue:
         open(path, "w").write("{torn")
         with pytest.raises(StoreUnreadable):
             Q.get_pending()
-        from app import app
-        d = app.test_client().get("/drift/status").get_json()
-        assert d["pending_approvals"] is None and "could not be read" \
-            in d["pending_approvals_error"]
+        # What a person sees: Needs attention's approvals source (today's /drift/status
+        # carried the count and its error until it left at 7.8, 2026-10-15). Unreadable is
+        # its own answer, never zero rows.
+        from modules import attention
+        src = attention.approvals_source()
+        assert src["state"] == "unreadable", src
+        (row,) = src["rows"]
+        assert row["kind"] == "unreadable" and "could not be read" in row["cause"], row
 
 
 class TestNothingApprovesAndExecutes:
@@ -116,7 +120,8 @@ class TestNothingApprovesAndExecutes:
         from modules import approval_queue as Q
         public = sorted(n for n, f in inspect.getmembers(Q, inspect.isfunction)
                         if f.__module__ == Q.__name__ and not n.startswith("_"))
-        assert public == ["add_approval", "get_all", "get_pending", "get_pending_count",
+        # get_pending_count left with /drift/status, its one caller (7.8, 2026-10-15).
+        assert public == ["add_approval", "get_all", "get_pending",
                           "mark_done", "read_list", "read_pending", "supersede_drift",
                           "withdraw"]
 

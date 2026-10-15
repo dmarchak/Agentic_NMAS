@@ -38,7 +38,8 @@ def test_the_scan_finds_the_population(requests):
     # family's requests left with it (D15: the AI panel's, the Agent, Approvals and Ansible
     # tabs', the usage summary's and the AI debug log's). 85 the same day, after today's
     # Backups' requests and the template preview's refresh-capture left with it (7.8, C632).
-    assert len(found) >= 82, len(found)
+    # 80 on 2026-10-15, after today's drift panel's requests left with its tab (7.8).
+    assert len(found) >= 80, len(found)
     assert ("/deploy/plan", "POST") in found           # a positive anchor
 
 

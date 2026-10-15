@@ -5,9 +5,9 @@ healthy, and what is it doing. Four cards, each a read except the drift card's c
   (built and filtered, never emitted, so the read writes nothing); unhealthy, it is also a Needs
   attention row (`attention.redaction_source`).
 - **Drift checks**: one schedule for every network (`drift_check_interval`), and each
-  network's on or off, last and next run, with Check now. The same functions today's drift
-  routes call (one home per action): `drift_interval.save` and `rearm`, `set_disabled`,
-  `trigger`. Each change is recorded in the installation's settings record.
+  network's on or off, last and next run, with Check now: the one home of these since today's
+  drift routes left at 7.8 (2026-10-15), over the checker's `drift_interval.save` and `rearm`,
+  `set_disabled`, `trigger`. Each change is recorded in the installation's settings record.
 - **In flight**: every network's held devices and running operations, and what finished in
   the last half hour (`modules/in_flight`).
 - **The app's log**: its last lines, filtered, read on request (`modules/app_log`).
@@ -15,7 +15,7 @@ healthy, and what is it doing. Four cards, each a read except the drift card's c
 
 import time
 
-#: The drift schedule's choices (today's page offers the same seven), seconds.
+#: The drift schedule's choices (the seven today's Drift tab offered until 7.8), seconds.
 DRIFT_CHOICES = ((1800, "30 minutes"), (3600, "1 hour"), (7200, "2 hours"),
                  (14400, "4 hours"), (28800, "8 hours"), (43200, "12 hours"),
                  (86400, "24 hours"))
@@ -25,6 +25,15 @@ DRIFT_STEPS = ("check", "write", "record")
 
 def _iso(epoch) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(epoch))) if epoch else ""
+
+
+def _holder_words(holder: dict) -> str:
+    """Who holds a network's drift run (the run lock's record): when, what started it, which
+    process. Each part said "not recorded" when the record lacks it, never guessed."""
+    h = holder or {}
+    return (f"started {h.get('started_at') or 'at a time not recorded'} by "
+            f"{h.get('triggered_by') or 'a starter not recorded'}, "
+            f"process {h.get('pid') or 'not recorded'}")
 
 
 def redaction() -> dict:
@@ -51,8 +60,10 @@ def drift() -> dict:
                          "why": f"{type(exc).__name__}: {exc}"})
             continue
         last = s.get("last_run") or {}
+        # A run another process holds says who (today's panel drew it on its badge's hover).
+        held = s.get("running_run") if s.get("state") == "running" else None
         rows.append({"name": name, "state": s.get("state", "unreadable"),
-                     "why": str(s.get("unreadable") or ""),
+                     "why": str(s.get("unreadable") or (_holder_words(held) if held else "")),
                      "disabled_by": s.get("disabled_by") or "",
                      "disabled_at": s.get("disabled_at") or "",
                      "last_iso": _iso(s.get("last_ts")),
@@ -68,8 +79,8 @@ def drift() -> dict:
 
 def save_drift_interval(raw, actor: str, verified: str) -> dict:
     """The drift schedule's Save (DRIFT_STEPS): one of DRIFT_CHOICES, written to the drift
-    schedule's store (modules/drift_interval) and re-armed (as today's /drift/settings does),
-    recorded."""
+    schedule's store (modules/drift_interval) and re-armed (as today's /drift/settings did
+    until 7.8), recorded."""
     from modules import drift_interval
     from modules import installation_settings as I
     from modules.drift_check import _get_interval, get_checker
@@ -114,13 +125,17 @@ def check_now(network: str) -> dict:
     schedule does it anyway, only later. Refused while one runs. The card redraws when the
     check records its result (the drift checker announces `drift`)."""
     from modules import installation_settings as I
-    from modules.drift_check import get_checker
+    from modules.drift_check import get_checker, running_now
 
     checker = get_checker()
     if network not in checker.networks():
         raise I.Refused(f"{network!r} is not a network: " + ", ".join(checker.networks()))
-    if checker.is_running(network):
-        raise I.Refused(f"a drift check of {network} is already running")
+    # A run in this process, or one another process holds (R19's run lock), refused naming it:
+    # today's Check now answered 409 naming the holder, and it left at 7.8 (2026-10-15).
+    elsewhere = running_now(network)
+    if checker.is_running(network) or elsewhere is not None:
+        raise I.Refused(f"a drift check of {network} is already running"
+                        + (f" ({_holder_words(elsewhere)})" if elsewhere else ""))
     checker.trigger(network)
     return {"ok": True, "network": network, "at_iso": _iso(time.time())}
 

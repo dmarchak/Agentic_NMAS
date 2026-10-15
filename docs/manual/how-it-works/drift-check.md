@@ -10,10 +10,11 @@ on [Drift](drift).
 
 ## The run, step by step
 
-The same run serves the schedule and the Drift panel's Check now button. A run is for ONE
-network, named, and the schedule runs every network on its own: each has its own next run
-(its last run plus the interval), its own on/off switch and its own record, whichever network
-the tool is showing. Check now and the Drift panel act on the network the page names.
+The same run serves the schedule and Check now, on the Drift checks card of Settings ›
+Installation › Diagnostics. A run is for ONE network, named, and the schedule runs every
+network on its own: each has its own next run (its last run plus the interval), its own on/off
+switch and its own record, whichever network the tool is showing. The card has a row per
+network, and its Check now and Turn off or Turn on act on that row's network.
 
 1. **Take the population from the inventory.** Read: the network's inventory, every device in
    it. Sent: nothing. Recorded: nothing. The inventory,
@@ -47,7 +48,8 @@ the tool is showing. Check now and the Drift panel act on the network the page n
    device lands in exactly one bucket, and a device that landed in none is reported as a
    defect in the checker, never dropped from the total.
 8. **Record the run.** Read: nothing. Sent: nothing. Recorded: the run's result and its time
-   in the list's drift state, which the Drift panel, Needs attention and the device page read.
+   in the list's drift state, which the Drift checks card, Needs attention and the device page
+   read.
 
 ## The buckets {#buckets}
 
@@ -66,29 +68,35 @@ self-signed certificate is named in the summary as not drift.
 
 ## Scheduling {#schedule}
 
-- **The interval** is one setting for the installation, 4 hours by default, set in the Drift
-  panel. Changing it reschedules the next run from now.
+- **The interval** is one setting for the installation, 4 hours by default, set by the Drift
+  checks card's Every and Save. Saving it rebuilds every network's next run from its last run
+  and the new interval, and the change is recorded with who made it.
 - **The first run** after the tool starts, on an install that has never run a check, is 5
   minutes after start. After that, the next run is the last run's time plus the interval, so
   the schedule survives a restart.
 - **The next run's time is kept in memory.** Editing the state file does not move it; Check
   now does.
-- **Check now** runs the check at once and answers with its result. It refuses while a run is
-  already in progress, by anyone and from any process (the scheduled run, another person's
-  Check now, a script), naming when it started and what started it; one run per list at a
-  time. The scheduled run tries again a minute later.
-- **An unreadable state file pauses the schedule.** The panel says "State unreadable" with
+- **Check now** starts the network's check at once, in the background, and the card redraws
+  when the run is recorded. It refuses while a run of that network is already in progress, by
+  anyone and from any process (the scheduled run, another person's Check now, a script),
+  naming when it started, what started it and which process; one run per network at a time.
+  A row whose run another process holds reads "checking now" and says who. A scheduled run
+  that finds one in progress tries again a minute later.
+- **An unreadable state file pauses the schedule.** The network's row reads "unreadable" with
   why; nothing is written over the file (a refused write keeps a copy beside it), and the
-  schedule resumes once the file is readable again or moved aside.
-- **The schedule checks the selected list.** Its state (last run, switched off or on) is kept
-  per device list, and each run checks the list selected at that moment.
+  schedule resumes once the file is readable again or moved aside. A run whose result cannot
+  be recorded is not shown as done: the row stays "unreadable".
+- **Each network is checked on its own.** Its state (last run, switched off or on) is kept per
+  network, and the schedule runs every network that is due, whichever network the tool is
+  showing.
 
 ## Switching it off is recorded {#disable}
 
-The Drift panel's switch turns the schedule off or on for the selected list. Switching it off
-records when and by whom (the verified person, when there is one), and the panel shows the note
-and the last run it saw. While it is off, Needs attention carries a row saying so, naming who
-switched it off. Switching it back on schedules the next run one interval from then.
+Each network's row on the Drift checks card has Turn off or Turn on. Switching it off records
+when and by whom (the verified person, when there is one), in the drift state and in the
+installation's settings record, and the row shows who and when. While it is off, Needs
+attention carries a row saying so, naming who switched it off, with a link to the card.
+Switching it back on schedules the next run one interval from then.
 
 ## What the queue does with a drift item {#queue}
 
@@ -112,7 +120,8 @@ the device page (see [Two ways to resolve drift](drift#resolve)).
   (unknown). It also draws the checker's own state: switched off, never run, a failed run, or
   a last run older than two intervals.
 - **The device page's Overview** shows the Drift row for that device from the same stored run.
-- **The Drift panel** shows the last run, its coverage and the schedule.
+- **The Drift checks card** (Settings › Installation › Diagnostics) shows each network's last
+  run, its summary with the coverage on hover, the next run and the schedule.
 
 No page reads a device to draw a drift row: every row comes from the stored run.
 
@@ -122,4 +131,5 @@ No page reads a device to draw a drift row: every row comes from the stored run.
 - It never compares with intent: a clean device can still depart from its intent.
 - It never resolves drift. Capture or restore is a person's choice, previewed and confirmed.
 - It does not record since when a device has differed, only when the check saw it.
-- It does not check device lists other than the one selected.
+- A run does not check devices outside the network it names; the schedule runs each network
+  on its own.

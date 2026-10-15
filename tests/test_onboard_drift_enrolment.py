@@ -14,21 +14,15 @@ Three things are proved here, and the third is the one that could not have
 been written in 3.3b:
 
 1. between inventory insert and first capture the device is **named** with
-   *"no golden config saved"* — on the panel, executed, not just in the
-   payload;
+   *"no golden config saved"* — on the screen, not just in the payload
+   (Needs attention's drift rows since today's drift panel left at 7.8,
+   2026-10-15);
 2. once captured, coverage reads **`checked N+1 of N+1`**;
 3. the 3.3b negative control, re-run **against a device that did not exist
    when 3.3b was written**.
 """
 
-import json
-import re
-
 import pytest
-
-from tests.js_source import with_loaded_scripts
-
-dukpy = pytest.importorskip("dukpy")
 
 NEW = "bp-onboard-c"
 
@@ -140,60 +134,57 @@ class TestBeforeTheFirstCaptureItIsNAMED:
         assert NEW in result["summary"]
 
 
-class TestThePanelNamesItToo:
-    """**On the panel, executed** — not just in the payload.
+class TestTheScreenNamesItToo:
+    """**On the screen, drawn** — not just in the payload.
 
-    Third renderer extracted for this reason, after the agent panel and the
-    onboarding wizard: a test against the payload cannot see a screen that
-    does not draw it.
+    A test against the payload cannot see a screen that does not draw it. Today's drift
+    panel (its `driftDetailHtml`, executed here) left at 7.8 (2026-10-15); the screen that
+    shows a run's findings is Needs attention: a row per device the run did not clear, and
+    the run's coverage under What was checked, drawn by the v2 template from the run.
     """
 
-    @pytest.fixture(scope="class")
-    def js(self):
-        import app as nmas
+    @staticmethod
+    def _html(result):
+        import time
 
-        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-        start = page.index("function driftDetailHtml(")
-        depth, i, seen = 0, page.index("{", start), False
-        while i < len(page):
-            if page[i] == "{":
-                depth += 1
-                seen = True
-            elif page[i] == "}":
-                depth -= 1
-                if seen and depth == 0:
-                    break
-            i += 1
-        return page[start:i + 1]
+        from flask import render_template
 
-    def _html(self, js, payload):
-        return dukpy.evaljs(js + f"\ndriftDetailHtml({json.dumps(payload)});")
+        import app as APP
+        from modules import attention as A
 
-    def test_the_uncaptured_device_is_on_screen(self, js, fleet):
+        now = time.time()
+        src = A.drift_source(lambda: {"list": "lab", "state": "idle", "disabled": False,
+                                      "last_run": result, "last_ts": now - 60}, now=now)
+        with APP.app.test_request_context("/v2/"):
+            html = render_template("v2/_attention.html", a={
+                "ok": True, "rows": src["rows"], "sources": [src], "headline": "",
+                "counts": {}, "badge": {"n": len(src["rows"]), "level": "warning"}})
+        return " ".join(html.split())
+
+    def test_the_uncaptured_device_is_on_screen(self, fleet):
         fleet["onboard"]()
         result = fleet["module"].run_drift_check("test")
-        html = self._html(js, {"last_run": result})
+        html = self._html(result)
         assert NEW in html
         assert "no golden config" in html
 
-    def test_the_coverage_is_on_screen(self, js, fleet):
+    def test_the_coverage_is_on_screen(self, fleet):
         fleet["onboard"]()
         result = fleet["module"].run_drift_check("test")
-        flat = re.sub(r"\s+", " ", self._html(js, {"last_run": result}))
-        assert "checked 9 of 10" in flat
+        assert "checked 9 of 10" in self._html(result)
 
-    def test_it_is_labelled_not_checked_rather_than_omitted(self, js, fleet):
+    def test_it_is_labelled_not_checked_rather_than_omitted(self, fleet):
         fleet["onboard"]()
         result = fleet["module"].run_drift_check("test")
-        assert "Not checked:" in self._html(js, {"last_run": result})
+        assert f"{NEW} was not checked for drift" in self._html(result)
 
-    def test_a_full_pass_shows_the_full_count(self, js, fleet):
+    def test_a_full_pass_shows_the_full_count(self, fleet):
         fleet["onboard"]()
         fleet["capture"]()
         result = fleet["module"].run_drift_check("test")
-        flat = re.sub(r"\s+", " ", self._html(js, {"last_run": result}))
-        assert "checked 10 of 10" in flat
-        assert "Not checked:" not in flat
+        html = self._html(result)
+        assert "checked 10 of 10" in html
+        assert "was not checked for drift" not in html
 
 
 class TestOnceCapturedCoverageIsComplete:

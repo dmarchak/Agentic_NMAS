@@ -564,8 +564,3 @@ def _drift_run(mp, tmp):
     D._save_state({"last_check_ts": _time.time(), "last_result": result},
                   get_current_list_name())
     return result
-
-
-def drift_status(mp, tmp):
-    _drift_run(mp, tmp)
-    return _ok(_client().get("/drift/status"))

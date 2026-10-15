@@ -398,16 +398,6 @@ def answer_by_golden(list_name: str, hosts, why: str) -> list:
         return []
 
 
-def network_for(req, data=None) -> str:
-    """The network a drift route acts on (C491): the one the request names (`?list=`, or
-    `list_name` in its body), else the active one. The scheduler runs every network on its
-    own; a route reads or changes ONE, named."""
-    from modules.config import get_current_list_name
-    from routes.list_param import named_list
-    return ((data or {}).get("list_name") or "").strip() or named_list(req) or \
-        get_current_list_name()
-
-
 def run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> dict:
     """One drift run of *list_name* (else the active list), and only one at a time per list
     across processes (CONCURRENCY_AUDIT R19): raises `DriftRunning` naming the run in

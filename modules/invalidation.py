@@ -233,9 +233,6 @@ DECLARED = {
     "onboard_v2.verify": ("pending", "inventory", "credentials", "netbox",
                           "device_state", "baselines") + _COMMIT,
     "onboard_v2.abandon": ("pending", "intent", "credentials", "remote"),
-    # Drift. The badge after a run is the third measured case.
-    "drift_check_sync": ("drift",),
-    "drift_settings_post": ("drift",),
     # NetBox.
     "netbox_safety.apply_import": ("netbox",),
     "netbox_safety.apply_import_all": ("netbox",),
@@ -268,6 +265,7 @@ DECLARED = {
     "settings_v2.platforms_apply": ("settings", "inventory"),
     "settings_v2.diag_drift_interval": ("drift",),
     "settings_v2.diag_drift_switch": ("drift",),
+    # The third measured case, a drift run's state (today's /drift/check/sync until 7.8).
     "settings_v2.diag_drift_check": ("drift",),
     "identity.ratify_setting": ("posture", "settings"),
     # A device and its files.

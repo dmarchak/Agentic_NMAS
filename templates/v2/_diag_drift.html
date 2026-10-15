@@ -34,11 +34,13 @@
       <td>{{ badge(STATE[n.state][0], STATE[n.state][1]) }}{% if n.state == 'disabled' and n.disabled_by %} <span class="muted small">by {{ n.disabled_by }}{% if n.disabled_at %} {{ n.disabled_at }}{% endif %}</span>{% endif %}{% if n.why %} <span class="muted small">{{ n.why }}</span>{% endif %}</td>
       {#- C666: how long ago, nothing more; what the run found is on hover (and a failed run says
           "failed", its words on hover). -#}
-      <td>{% if n.last_iso %}{{ stamp(n.last_iso, note=n.last_words) }}{% if not n.last_ok %} {{ badge('failed', 'warn', title=n.last_words) }}{% endif %}{% else %}<span class="muted">never</span>{% endif %}</td>
-      <td>{% if n.next_iso %}{{ stamp(n.next_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      {#- An unreadable state is not "never run" and its schedule is paused (R19): absent and
+          unreadable are different states (today's panel said "paused", until 7.8). -#}
+      <td>{% if n.last_iso %}{{ stamp(n.last_iso, note=n.last_words) }}{% if not n.last_ok %} {{ badge('failed', 'warn', title=n.last_words) }}{% endif %}{% elif n.state == 'unreadable' %}<span class="muted">unknown</span>{% else %}<span class="muted">never</span>{% endif %}</td>
+      <td>{% if n.state == 'unreadable' %}<span class="muted">paused</span>{% elif n.next_iso %}{{ stamp(n.next_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="set-row-acts">
         {%- if n.state in ('idle', 'disabled') %}
-        <span class="op-act"><button type="button" class="btn btn-small" hx-post="{{ url_for('settings_v2.diag_drift_check', network=n.name) }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Check now</span><span class="op-busy">Starting…</span></button></span>
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="drift-check" hx-post="{{ url_for('settings_v2.diag_drift_check', network=n.name) }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Check now</span><span class="op-busy">Starting…</span></button>{{ how('drift-check', compact=True, op='a drift check') }}</span>
         {%- endif %}
         {%- if n.state == 'disabled' %}
         <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='on') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn on</span><span class="op-busy">Turning on…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks on') }}</span>

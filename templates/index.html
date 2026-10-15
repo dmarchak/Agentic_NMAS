@@ -50,12 +50,6 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="drift-tab" data-bs-toggle="tab" data-bs-target="#driftPane"
-            type="button" role="tab" aria-controls="driftPane" aria-selected="false">
-      Drift
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
     <button class="nav-link" id="git-tab" data-bs-toggle="tab" data-bs-target="#gitPane"
             type="button" role="tab" aria-controls="gitPane" aria-selected="false">
       Git
@@ -212,47 +206,6 @@
 </div>
 
 </div><!-- end NetBox tab pane -->
-
-<!-- ================================================================== -->
-<!-- DRIFT TAB: the approval queue's list and buttons left with the AI family (D15); the drift
-     panel stays until today's pages retire -->
-<!-- ================================================================== -->
-<div class="tab-pane fade" id="driftPane" role="tabpanel" aria-labelledby="drift-tab">
-
-<div class="card mb-3" style="background:#1e293b;border:1px solid #334155">
-  <div class="card-body py-2 px-3" id="driftPanel">
-    <div class="d-flex align-items-center gap-3 flex-wrap">
-      <div class="d-flex align-items-center gap-2">
-        <span class="fw-semibold text-light small">Config Drift Check</span>
-        <span id="driftStatusBadge" class="badge bg-secondary small">—</span>
-      </div>
-      <span id="driftLastRun" class="text-muted small me-auto"></span>
-      <!-- Interval selector -->
-      <label class="text-muted small mb-0" for="driftIntervalSelect">Every</label>
-      <select id="driftIntervalSelect" class="form-select form-select-sm" style="width:auto" onchange="saveDriftSettings()">
-        <option value="1800">30 min</option>
-        <option value="3600">1 hour</option>
-        <option value="7200">2 hours</option>
-        <option value="14400" selected>4 hours</option>
-        <option value="28800">8 hours</option>
-        <option value="43200">12 hours</option>
-        <option value="86400">24 hours</option>
-      </select>
-      <!-- Disable toggle -->
-      <div class="form-check form-switch mb-0 d-flex align-items-center gap-1">
-        <input class="form-check-input" type="checkbox" id="driftEnabledToggle" checked onchange="saveDriftSettings()" style="cursor:pointer">
-        <label class="form-check-label text-muted small mb-0" for="driftEnabledToggle">Enabled</label>
-      </div>
-      <button id="driftCheckBtn" class="btn btn-outline-primary btn-sm" onclick="runDriftCheck()">
-        <span class="btn-text">Check Now</span>
-        <span class="spinner-border spinner-border-sm d-none ms-1" role="status"></span>
-      </button>
-    </div>
-    <div id="driftResultDetail" class="mt-2 small" style="display:none"></div>
-  </div>
-</div>
-
-</div><!-- end Drift tab pane -->
 
 <!-- ================================================================== -->
 <!-- GIT TAB -->

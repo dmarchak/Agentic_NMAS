@@ -414,7 +414,6 @@ HISTORY = {
                            "(heartbeat_rules.jsonl) has no History source yet"),
     "create_device_list_route": NOT_A_DEVICE,
     "delete_device_list_route": NOT_A_DEVICE,
-    "drift_settings_post": NOT_A_DEVICE,
     "identity.ratify_setting": NOT_A_DEVICE,
     "save_settings": NOT_A_DEVICE,
     "select_device_list_route": NOT_A_DEVICE,

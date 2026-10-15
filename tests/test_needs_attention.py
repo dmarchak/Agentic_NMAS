@@ -388,23 +388,28 @@ class TestDriftAsASource:
         keys = [r["id"] for r in res["rows"]]
         assert keys == ["drift:lab:stale", "drift:lab:drifted:r2"]
 
-    def test_the_drift_panel_draws_what_the_run_found(self, monkeypatch, tmp_path):
-        """C96: after a run the panel said there was one and not what it found."""
-        import app as nmas
-        from tests.js_source import with_loaded_scripts
-        from tests.payload_render import lift
+    def test_a_row_about_the_checker_opens_where_it_is_acted_on(self):
+        """Switched off, never run, failed, old, a device not checked or not reached: each
+        names Settings › Installation › Diagnostics and links it, where Check now and the
+        switch are (today's Drift tab, which these rows named with no link, left at 7.8 on
+        2026-10-15; C96's "what the run found" is the real-run test above, on this page)."""
+        import app as APP
 
-        # /drift/status counts the approval queue, which resolves a list path.
-        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
-        status = P.drift_status(monkeypatch, tmp_path)
-        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-        js = lift(page, "driftDetailHtml")
-        html = dukpy.evaljs(js + f"\ndriftDetailHtml({json.dumps(status)});")
-        assert "Drifted: r2" in html and "diff line(s)" in html
-        assert "triggered by manual" in html and status["last_run"]["timestamp"] in html
-        # Answer first (the operator's presentation rule, 2026-09-28): what is
-        # wrong before the accounting that is its evidence.
-        assert html.index("Drifted: r2") < html.index("checked ")
+        last = {"ok": True, "inventory": 3, "checked": 1, "clean": 1, "drifted_devices": [],
+                "skipped": [{"hostname": "r2", "reason": "the golden is refused"}],
+                "errors": [{"hostname": "r3", "reason": "timed out"}]}
+        sources = (A.drift_source(_status(disabled=True), now=NOW),
+                   A.drift_source(_status(last_run={"ok": False, "summary": "boom"},
+                                          last_ts=NOW - 60), now=NOW),
+                   A.drift_source(_status(last_run=last, last_ts=NOW - 10 ** 7), now=NOW))
+        rows = {r["kind"]: r for s in sources for r in s["rows"]}
+        assert set(rows) == {"disabled", "never", "failed", "stale", "skipped", "unreachable"}
+        for kind, r in rows.items():
+            assert r["action"].get("href") == "/v2/settings/installation?tab=diagnostics", kind
+            assert "Settings › Installation › Diagnostics" in r["action"]["label"], kind
+            assert "Drift panel" not in r["action"]["label"], kind
+        page = APP.app.test_client().get(rows["never"]["action"]["href"])
+        assert page.status_code == 200 and 'id="diag-drift"' in page.get_data(as_text=True)
 
 
 # ---------------------------------------------------------------------------

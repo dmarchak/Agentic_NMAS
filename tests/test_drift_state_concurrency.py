@@ -16,7 +16,10 @@ Measured here:
   the first (who started it, from which process), Check now answers 409 naming it, and the
   status shows the other process's run as running;
 - a run whose result cannot be recorded says so, never in the success colour;
-- the shipped panel draws an unreadable state and a refusal.
+- the Drift checks card (Settings › Installation › Diagnostics) draws an unreadable state, a
+  run another process holds with who, and a refusal naming it. Today's drift panel, whose
+  shipped JavaScript these executed, and its /drift/status and /drift/check/sync left at 7.8
+  (2026-10-15); the card is the screen that shows the same states now.
 """
 
 import json
@@ -101,14 +104,42 @@ class TestAnUnreadableStateIsNeverEmpty:
         assert json.load(open(lab["state"], encoding="utf-8"))["migrated_from"]
 
 
+@pytest.fixture
+def card(lab, monkeypatch):
+    """The Drift checks card (board F4) over the lab's one network, through the real routes:
+    `get()` draws it, `check()` presses its Check now; each returns (status, the R19lab row's
+    text without tags, the row's HTML)."""
+    import re
+
+    import app as nmas
+
+    D = lab["D"]
+    monkeypatch.setattr(D.DriftChecker, "networks", staticmethod(lambda: ["R19lab"]))
+    client = nmas.app.test_client()
+
+    def _row(r):
+        html = r.get_data(as_text=True)
+        m = re.search(r"<tr>\s*<td>R19lab</td>.*?</tr>", html, re.S)
+        assert m, html[:500]
+        return r.status_code, " ".join(re.sub(r"<[^>]+>", " ", m.group(0)).split()), m.group(0), html
+
+    base = "/v2/settings/installation/diagnostics/drift"
+    return {"get": lambda: _row(client.get(base)),
+            "check": lambda: _row(client.post(f"{base}/R19lab/check",
+                                              headers={"HX-Request": "true"}))}
+
+
+def _holding(tmp_path, lab):
+    """Another PROCESS holding R19lab's run lock, as the scheduled run does."""
+    return _child(tmp_path, "import time\nwith D._OneRun(D._run_lock_path('R19lab'),"
+                            " 'scheduled'):\n    print('held', flush=True)\n"
+                            "    time.sleep(30)\n", str(lab["dir"]))
+
+
 class TestOneRunAtATime:
-    def test_a_second_run_is_refused_naming_the_first(self, lab, tmp_path):
+    def test_a_second_run_is_refused_naming_the_first(self, lab, tmp_path, card, monkeypatch):
         D = lab["D"]
-        body = ("import time\n"
-                "with D._OneRun(D._run_lock_path('R19lab'), 'scheduled'):\n"
-                "    print('held', flush=True)\n"
-                "    time.sleep(30)\n")
-        child = _child(tmp_path, body, str(lab["dir"]))
+        child = _holding(tmp_path, lab)
         try:
             assert child.stdout.readline().strip() == "held"
             with pytest.raises(D.DriftRunning) as exc:
@@ -119,10 +150,14 @@ class TestOneRunAtATime:
             status = D.DriftChecker().status()
             assert status["state"] == "running" and status["running_run"]["pid"] == child.pid
 
-            import app as nmas
-            r = nmas.app.test_client().post("/drift/check/sync")
-            assert r.status_code == 409
-            assert r.get_json()["running_run"]["pid"] == child.pid
+            # Check now (the card's; today's /drift/check/sync until 7.8) refuses, naming it.
+            started = []
+            from modules.drift_check import get_checker
+            monkeypatch.setattr(get_checker(), "trigger", lambda name="": started.append(name))
+            code, _text, _row, html = card["check"]()
+            assert code == 409 and started == []
+            assert "already running" in html and f"process {child.pid}" in html
+            assert "by scheduled" in html
         finally:
             child.kill()
             child.wait(10)
@@ -136,96 +171,45 @@ class TestOneRunAtATime:
 
 
 class TestARunWhoseResultCannotBeRecorded:
-    def test_check_now_says_so(self, lab, monkeypatch):
+    def test_it_is_not_recorded_and_the_card_never_draws_it_done(self, lab, monkeypatch, card):
+        """Check now runs in the background (the scheduler's `run_one`): a result its state
+        cannot take is logged and not recorded, and the card draws the network unreadable,
+        in the danger colour, never the run's summary as its last run."""
         D = lab["D"]
         monkeypatch.setattr(D, "_run_drift_check",
                             lambda triggered_by="", list_name="": {"ok": True, "summary": "checked 1 of 1",
                                                      "drifted": 0})
         with open(lab["state"], "w", encoding="utf-8") as fh:
             fh.write("{torn")
-        import app as nmas
-        r = nmas.app.test_client().post("/drift/check/sync")
-        body = r.get_json()
-        assert r.status_code == 500 and body["ok"] is False
-        assert "not recorded" in body["error"] and body["summary"] == "checked 1 of 1"
+        result = D.DriftChecker().run_one("R19lab", "manual")
+        assert result["summary"] == "checked 1 of 1"
+        assert open(lab["state"], encoding="utf-8").read() == "{torn", "nothing written over it"
+        code, text, row, _html = card["get"]()
+        assert code == 200 and "unreadable" in text and "badge-danger" in row
+        assert "checked 1 of 1" not in row and "badge-ok" not in row
 
 
-def _sync(source):
-    """The shipped function with its asynchrony stripped, and ONLY that (the stub fetch
-    answers plainly), as test_agent_panel_renders does; no branch is touched."""
-    import re
-    stripped = re.sub(r"\bawait\s+", "", source.replace("async function", "function"))
-    assert stripped != source and "await " not in stripped
-    return stripped
+class TestTheCard:
+    """The Drift checks card over the states this module makes, through its real route."""
 
-
-class TestTheShippedPanel:
-    """`loadDriftStatus` and `runDriftCheck` EXECUTED in duktape against the routes' REAL
-    answers, with a stub page."""
-
-    DOM = ("var __els = {driftStatusBadge: {className: '', textContent: '', title: ''},"
-           " driftLastRun: {innerHTML: '', textContent: ''}};\n"
-           "function __el(id) { return __els[id] || null; }\n"
-           "var document = {getElementById: __el};\n"
-           "var console = {error: function () {}};\n"
-           "var __toasts = [];\n"
-           "function showToast(m, kind) { __toasts.push([m, kind]); }\n"
-           "function loadApprovalsTab() {}\n")
-
-    def _run(self, call, payload, status=200):
-        import dukpy
-
-        from tests.payload_render import lift, shipped
-        src = shipped("index.4.js")
-        js = (self.DOM + f"var __payload = {json.dumps(payload)};\n"
-              f"function fetch(u) {{ return {{ok: {str(status < 400).lower()}, "
-              f"status: {status}, json: function () {{ return __payload; }}}}; }}\n"
-              + lift(src, "_esc") + "\n" + _sync(lift(src, "loadDriftStatus")) + "\n"
-              + _sync(lift(src, "runDriftCheck")) + "\n" + call + ";\n"
-              "JSON.stringify({badge: __els.driftStatusBadge, last: __els.driftLastRun.innerHTML,"
-              " toasts: __toasts});")
-        return json.loads(dukpy.evaljs(js))
-
-    def test_an_unreadable_state_is_drawn_paused_never_not_run_yet(self, lab):
+    def test_an_unreadable_state_is_drawn_unreadable_never_not_run_yet(self, lab, card):
         with open(lab["state"], "w", encoding="utf-8") as fh:
             fh.write("{torn")
-        import app as nmas
-        payload = nmas.app.test_client().get("/drift/status").get_json()
-        assert payload["state"] == "unreadable"
-        got = self._run("loadDriftStatus()", payload)
-        assert got["badge"]["textContent"] == "State unreadable"
-        assert "bg-danger" in got["badge"]["className"]
-        assert "Scheduled checks paused" in got["last"] and "could not be read" in got["last"]
+        code, text, row, _html = card["get"]()
+        assert code == 200 and "unreadable" in text and "could not be read" in text
+        assert "badge-danger" in row
+        # Last run unknown, never "never"; the schedule paused, never a next run due.
+        assert "never" not in text and "unknown" in text and "paused" in text
+        assert "Check now" not in text, "nothing can be recorded, so nothing is offered"
 
-    def test_a_run_another_process_holds_is_drawn_running_with_who(self, lab, tmp_path):
-        D = lab["D"]
-        child = _child(tmp_path, "import time\nwith D._OneRun(D._run_lock_path('R19lab'),"
-                                 " 'scheduled'):\n    print('held', flush=True)\n"
-                                 "    time.sleep(30)\n", str(lab["dir"]))
+    def test_a_run_another_process_holds_is_drawn_running_with_who(self, lab, tmp_path, card):
+        child = _holding(tmp_path, lab)
         try:
             assert child.stdout.readline().strip() == "held"
-            import app as nmas
-            client = nmas.app.test_client()
-            payload = client.get("/drift/status").get_json()
-            refused = client.post("/drift/check/sync")
-            refusal = refused.get_json()
+            code, text, _row, _html = card["get"]()
         finally:
             child.kill()
             child.wait(10)
-        got = self._run("loadDriftStatus()", payload)
-        assert got["badge"]["textContent"] == "Running…"
-        assert "scheduled" in got["badge"]["title"] and str(child.pid) in got["badge"]["title"]
-        toasted = self._run("runDriftCheck()", refusal, status=refused.status_code)["toasts"]
-        assert toasted and "already running" in toasted[0][0] and toasted[0][1] == "warning"
-
-    def test_an_unrecorded_run_is_never_drawn_green(self, lab, monkeypatch):
-        D = lab["D"]
-        monkeypatch.setattr(D, "_run_drift_check",
-                            lambda triggered_by="", list_name="": {"ok": True, "summary": "checked 1 of 1",
-                                                     "drifted": 0})
-        with open(lab["state"], "w", encoding="utf-8") as fh:
-            fh.write("{torn")
-        import app as nmas
-        r = nmas.app.test_client().post("/drift/check/sync")
-        toasts = self._run("runDriftCheck()", r.get_json(), status=r.status_code)["toasts"]
-        assert toasts and toasts[0][1] == "danger" and "not recorded" in toasts[0][0]
+        assert code == 200 and "checking now" in text
+        assert "by scheduled" in text and f"process {child.pid}" in text
+        assert "Check now" not in text

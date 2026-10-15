@@ -611,6 +611,12 @@ DRIFT_STALE_INTERVALS = 2
 _DRIFT_ACTION = {"label": "Capture what the device holds as its golden, or deploy its intent "
                           "back to it"}
 
+#: Where a drift check is run and the schedule switched: Settings › Installation ›
+#: Diagnostics, its Drift checks card (board F4). Today's Drift tab, which these rows named
+#: until it left at 7.8 (2026-10-15), had no address.
+_DRIFT_HOME = "/v2/settings/installation?tab=diagnostics"
+_CHECK_NOW = "Run a drift check with Check now in Settings › Installation › Diagnostics"
+
 
 def drift_source(status=None, now=None) -> dict:
     """The LAST drift run for the list on screen, from its stored record
@@ -646,26 +652,27 @@ def drift_source(status=None, now=None) -> dict:
         add("disabled", f"Drift checking is switched off for {lst}",
             f"switched off by {by}; nothing compares the devices with their "
             "goldens until it is switched back on",
-            {"label": "Switch drift checking back on in the Drift panel"},
+            {"label": f"Turn {lst}'s drift checks on in Settings › Installation › Diagnostics",
+             "href": _DRIFT_HOME},
             "warning", since=_ts(st.get("disabled_at")))
     if not last:
         add("never", f"Drift has never been checked for {lst}",
             "no drift run is recorded for this list, so whether any device has "
             "drifted is unknown",
-            {"label": "Run a drift check from the Drift panel"}, "unknown")
+            {"label": _CHECK_NOW, "href": _DRIFT_HOME}, "unknown")
         return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
                              checked=f"list {lst}: no drift run recorded")
     if last.get("ok") is False:
         add("failed", f"The last drift check for {lst} failed",
             last.get("summary") or last.get("error") or "no reason recorded",
-            {"label": "Run a drift check from the Drift panel and read its reason"},
+            {"label": _CHECK_NOW + " and read its reason", "href": _DRIFT_HOME},
             "unknown", since=last_ts)
     elif last_ts and now - last_ts > DRIFT_STALE_INTERVALS * interval:
         add("stale", f"The last drift check for {lst} is old",
             f"it ran {int((now - last_ts) // 3600)} h ago, over "
             f"{DRIFT_STALE_INTERVALS} intervals of {int(interval // 60)} min: "
             "what it found describes the network as it was then",
-            {"label": "Run a drift check from the Drift panel"}, "warning",
+            {"label": _CHECK_NOW, "href": _DRIFT_HOME}, "warning",
             since=last_ts + DRIFT_STALE_INTERVALS * interval)
     coverage = f"checked {last.get('checked', 0)} of {last.get('inventory', 0)}"
     for d in last.get("drifted_devices") or []:
@@ -686,8 +693,8 @@ def drift_source(status=None, now=None) -> dict:
             d.get("reason") or "no reason recorded",
             {"label": "Capture its golden from its Device page, or with Save All's "
                       "no-golden scope"} if no_golden else
-            {"label": "Clear what the reason names, then run a drift check from the "
-                      "Drift panel", "known": False},
+            {"label": "Clear what the reason names, then " + _CHECK_NOW[0].lower()
+                      + _CHECK_NOW[1:], "href": _DRIFT_HOME, "known": False},
             "warning", devices=[d["hostname"]], operands={"coverage": coverage})
     for d in last.get("errors") or []:
         # During a boot the reachability reader saw the device go silent: said
@@ -697,8 +704,9 @@ def drift_source(status=None, now=None) -> dict:
         add(f"unreachable:{d['hostname']}", f"{d['hostname']} could not be checked for drift",
             (f"{booting[0].upper()}{booting[1:]}. The check said: " if booting else "")
             + (d.get("reason") or "no reason recorded"),
-            {"label": "Check the device answers (its status on Devices), then run a drift "
-                      "check from the Drift panel", "known": False},
+            {"label": "Check the device answers (its status on Devices), then "
+                      + _CHECK_NOW[0].lower() + _CHECK_NOW[1:], "href": _DRIFT_HOME,
+             "known": False},
             "unknown", devices=[d["hostname"]], operands={"coverage": coverage})
     return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
                          value_at=last_ts,

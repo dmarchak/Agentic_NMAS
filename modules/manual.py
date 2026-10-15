@@ -115,8 +115,9 @@ GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
 #: leaves this set in the commit that builds its screen in v2.
 #: Held to that by tests/test_manual.py: no page here has a v2 control (`data-op="<slug>"`).
 #: (C644, 2026-10-10: twelve operations built on v2 and the NetBox screen were still marked.)
+#: (2026-10-15: drift-check left with today's Drift tab; its Check now is Diagnostics'.)
 ON_TODAYS_APP = frozenset((
-    "drift-check", "logs", "dhcp",
+    "logs", "dhcp",
 ))
 
 #: Every sidebar destination (its label in ``templates/v2/base.html``) and the

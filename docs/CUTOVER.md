@@ -61,7 +61,6 @@ and built.
 | NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
 | Inventory source | `/inventory/source/<list>`, `/inventory/refresh/<list>` | BUILT (2026-10-10; not run on the host) | Every network's Settings › Network tab, Inventory source: its own list or NetBox through filters, a preview reading NetBox once with the new filters (how many devices, which skipped and why), a confirm bound to it, recorded; Refresh now for a NetBox network. Today's `/inventory/source/<list>` is its GET (the panel's read); its POST, which no page sent, was removed 2026-10-15 (7.8) |
 | Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | BUILT, P.8 (2026-10-10; not run on the host) | Choosing one: BUILT (board N, 2026-10-10; not run on the host): the top bar's Network picker, the choice each verified person's own (`routes/network_v2.py`), so `/select_device_list`'s one choice for everyone has no v2 equivalent by design. Create and delete: BUILT (2026-10-10; not run on the host): Settings' New network… and a network's Delete this network…, each previewed and recorded; a deleted network's folder is moved aside, never erased. Rename: never offered by today's pages (C639), not built. Today's `/device_lists` is its POST (create); its GET, the list of lists as JSON that no page called, was removed 2026-10-15 (7.8) |
-| Drift | `/drift/status`, `/drift/check/sync`, `/drift/settings` | BUILT, 7.7 (board F4, 2026-10-10) | Results are Needs attention rows; the schedule and Check now are Settings › Installation › Diagnostics. Removed 2026-10-15 (7.8), no page calling them: the async run (POST /drift/check) and the settings' duplicate GET; `/drift/settings` is its POST |
 | Break-glass export | `/breakglass/export` | STAYS (its preview route removed 2026-10-12, 7.8) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
 | Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
@@ -72,7 +71,7 @@ and built.
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Topology service | (no route of today's; its two routes and panel removed 2026-10-12) | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the service itself REMOVED at 7.8 (2026-10-12: the renderer from the repository, the unit and link by its host step, `topology-service-removal.sh`), and its integration with it (C714: no client, no probe, no Settings card; its keys `retiring` for one release) | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
-| AI agent | (no route of today's; its 26 routes under /ai/ removed 2026-10-14, tag `pre-remove/ai-family`) | **REMOVED 2026-10-14** (D15, decided 2026-10-05, after its stores were archived) | Stage 8 redesigns the agent as an on-call responder (docs/PHASE8_PLAN.md). The chat panel, the Agent, Approvals queue, Ansible and usage screens, v2's AI and workflow tab, the in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`) and `modules/collector_config.py` went with it; the shared pieces stayed, moved out first (`modules/goldens.py`, `modules/bgp_summary.py`, `modules/drift_interval.py`). Today's drift panel stays, in a tab named Drift, until today's pages retire |
+| AI agent | (no route of today's; its 26 routes under /ai/ removed 2026-10-14, tag `pre-remove/ai-family`) | **REMOVED 2026-10-14** (D15, decided 2026-10-05, after its stores were archived) | Stage 8 redesigns the agent as an on-call responder (docs/PHASE8_PLAN.md). The chat panel, the Agent, Approvals queue, Ansible and usage screens, v2's AI and workflow tab, the in-app SNMP trap and NetFlow receivers (`modules/snmp_collector.py`, `modules/netflow_collector.py`) and `modules/collector_config.py` went with it; the shared pieces stayed, moved out first (`modules/goldens.py`, `modules/bgp_summary.py`, `modules/drift_interval.py`). Today's drift panel stayed, in a tab named Drift, until it left at 7.8 (2026-10-15, under Removed at 7.8) |
 
 ## Removed at 7.8
 
@@ -329,6 +328,20 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   only opened the guarded preview through the index; that handoff (`_restoreHeadFromUrl` in
   `partials__golden_repo.3.js`, read from `?restore_head=&restore_ref=`) stays, because
   Restore from… (`nmas_restore_scope.js` `restoreFromUrl`) still sends the device there.
+- **Today's Drift tab** (/drift/status, POST /drift/check/sync, POST /drift/settings),
+  2026-10-15: Settings › Installation › Diagnostics, the Drift checks card (board F4), is
+  their home: one schedule for every network, each network's Turn off or Turn on with who and
+  when, and Check now; the results are Needs attention rows. The tab, its panel and
+  `index.4.js`'s drift section went with the routes, and so did their gate, invalidation and
+  operation-stage entries and the two helpers only they used (`drift_check.network_for`,
+  `approval_queue.get_pending_count`). The checker (`modules/drift_check.py`,
+  `modules/drift_interval.py`) is unchanged. Carried over first: Check now refuses a run
+  another process holds, naming it (the card had refused only its own process's), the card
+  says who holds a running check, and an unreadable network reads "unknown" and "paused",
+  never "never". Needs attention's drift rows, which named "the Drift panel" with no link,
+  now link the card. The manual's Check drift page left today's-app marking: v2's Check now
+  carries its link. Proved before removal: index.4.js's `loadDriftStatus`,
+  `saveDriftSettings` and `runDriftCheck` were the routes' only callers.
 
 ## Legacy actions that are not routes
 

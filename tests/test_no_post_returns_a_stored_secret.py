@@ -107,8 +107,6 @@ def _bodies(v):
         "settings_v2.records_store_preview": (404, ("form", {}),
                                               "the direction filled in ('zz') is neither move "
                                               "nor back: refused naming both, counting nothing"),
-        "drift_check_sync": (200, ("json", {}),
-                             "r1 read NOW differs from its golden: the drift carries both"),
         "golden.capture_preview": (202, ("json", {"devices": ["r1"]}),
                                    "starts a job reading r1 NOW; FOLLOWED to its result "
                                    "(JOB_RESULTS): the golden diff and the intent departure"),
@@ -192,8 +190,9 @@ def _bodies(v):
 
 
 #: Responses that draw stored config: the masked slot must be in them.
-#: `drift_check_sync` is not among them: it answers with counts and queues
-#: the diff as an approval item, which the GET sweep covers.
+#: The drift run (today's `drift_check_sync` until 7.8, 2026-10-15) was never among them: it
+#: answers with counts and queues the diff as an approval item, which the GET sweep covers;
+#: its result is held to no planted value by `TestTheDriftRun` below.
 REACHES = {"deploy.plan", "device_v2.capture_start",
            "golden.capture_preview", "golden.restore_preview",
            "templatize.preview_committed_edit"}
@@ -393,7 +392,7 @@ def swept():
     from modules import drift_check
 
     mp = pytest.MonkeyPatch()
-    # The drift routes run a real check, whose result the process-wide checker
+    # The drift run below is a real check, whose result the process-wide checker
     # holds in MEMORY. Restoring the store's files does not undo that, and a
     # later test read a drift run its own fixture never made (found by the
     # full suite: the payload check saw four fields of a run). The sweep gets
@@ -412,11 +411,22 @@ def swept():
             writes = {}
             anon = _drive(values, person=False)
             person = _drive(values, person=True, writes=writes)
+            # A known writer, through the same instrument (C134's store hash): the drift run
+            # Check now starts, r1 read NOW against its golden and the run recorded in the
+            # network's drift state. Today's /drift/check/sync was the population's one writer
+            # and the instrument's floor until it left at 7.8 (2026-10-15); no `not_device`
+            # POST left writes when driven, so the floor is this run, driven directly.
+            before = _store_state()
+            drift_result = drift_check.get_checker().run_one(LIST, "manual")
+            after = _store_state()
+            drift_run = {"result": json.dumps(drift_result, default=str),
+                         "writes": sorted(k for k in set(before) | set(after)
+                                          if before.get(k) != after.get(k))}
             # Today's template preview, a GET since its POST half left at 7.8 (2026-10-15),
             # read here because only this fixture seeds the templates it renders.
             got = A.app.test_client().get(f"/templates/preview/r1?list_name={LIST}")
             yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
-                   "person": person,
+                   "person": person, "drift_run": drift_run,
                    "template_preview": (got.status_code, got.get_data(as_text=True))}
     finally:
         mp.undo()
@@ -487,11 +497,10 @@ class TestNoPostReturnsAStoredSecret:
 
 #: `not_device` POSTs that may WRITE our own stores, each with its reason.
 #: Everything else in the population is a preview, a plan, a check or a read,
-#: and must leave the store byte-identical (C134's sweep, below).
-MAY_WRITE = {
-    "drift_check_sync": "runs the drift check NOW and records its run in drift_state.json; "
-                        "a check run, not a preview",
-}
+#: and must leave the store byte-identical (C134's sweep, below). Empty since 2026-10-15: its
+#: one member, `drift_check_sync` (a check run, recorded in drift_state.json), left at 7.8;
+#: v2's Check now starts the run in the background and writes nothing in the request.
+MAY_WRITE: dict = {}
 
 
 class TestNoPreviewWritesTheStore:
@@ -506,9 +515,9 @@ class TestNoPreviewWritesTheStore:
     body that reaches its state) is driven with the store hashed before and
     after, as a person. A route not in MAY_WRITE that changes any file fails.
     Measured the first time: every preview clean, and `drift_check_sync`, a
-    check run, the only writer. Positive control, run by hand: with C134's fix
-    removed, this names `netbox_safety.preview_import` writing
-    `netbox_sync_status.json`."""
+    check run, the only writer (it left at 7.8, 2026-10-15). Positive control,
+    run by hand: with C134's fix removed, this names
+    `netbox_safety.preview_import` writing `netbox_sync_status.json`."""
 
     def test_no_undeclared_route_writes_the_store(self, swept):
         writers = {k.split(":")[0]: v for k, v in swept["writes"].items() if v}
@@ -518,8 +527,20 @@ class TestNoPreviewWritesTheStore:
             "A preview must change nothing; declare a genuine writer with its reason.")
 
     def test_the_instrument_sees_a_write(self, swept):
-        """The floor: a store hash that saw nothing would pass the test above."""
-        assert swept["writes"].get("drift_check_sync"), "the drift run's record was not seen"
+        """The floor: a store hash that saw nothing would pass the test above. The known
+        writer is the drift run, through the same `_store_state` (the fixture)."""
+        assert any(w.endswith("drift_state.json") for w in swept["drift_run"]["writes"]), \
+            swept["drift_run"]["writes"]
+
+
+class TestTheDriftRun:
+    def test_its_result_carries_no_planted_value(self, swept):
+        """r1 read NOW against its golden, both holding planted values: the run's result
+        (what Diagnostics' card and Needs attention draw) carries counts and names, never a
+        stored value (today's /drift/check/sync answered with it until 7.8)."""
+        text = swept["drift_run"]["result"]
+        assert '"inventory"' in text, text[:300]
+        assert [s for v, s in swept["planted"].items() if v in text] == []
 
     def test_every_declared_writer_is_in_the_population(self):
         assert set(MAY_WRITE) <= set(_population()), set(MAY_WRITE) - set(_population())

@@ -100,8 +100,9 @@ class TestEveryRenderHelperIsCalled:
         # The five that motivated this sweep must be among them, or the
         # pattern has drifted away from the thing it was built for.
         # (nbCascadeHtml, the third, was removed in 7.1: the cascade is drawn
-        # by the preview component from the server's adapter now.)
-        for known in ("_gBaselineCoverage", "pendingBannerHtml", "driftDetailHtml"):
+        # by the preview component from the server's adapter now; driftDetailHtml
+        # left with today's drift panel at 7.8, 2026-10-15.)
+        for known in ("_gBaselineCoverage", "pendingBannerHtml"):
             assert known in helpers, f"{known} is no longer recognised"
 
     def test_none_is_defined_and_never_used(self):

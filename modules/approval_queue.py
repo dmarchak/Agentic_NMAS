@@ -217,10 +217,6 @@ def get_all(limit: int = 100) -> list:
     return list(reversed(_expire_old(_read())))[:limit]
 
 
-def get_pending_count(list_name: str = "") -> int:
-    return len(get_pending(list_name))
-
-
 # ---------------------------------------------------------------------------
 # Closing an item: a capture, a withdrawal
 # ---------------------------------------------------------------------------

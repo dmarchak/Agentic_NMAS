@@ -315,7 +315,6 @@ FALSE_GREEN = {
 #: green and on no list: the class was not zero, the list was. Keyed by
 #: (file, a literal from the call); a scan finds them all, both ways.
 GREEN_TOASTS = {
-    ("static/js/gen/index.4.js", "data.drifted > 0 ? 'warning'"): "level from drifted and errors",
     ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create and delete); the bulk run's STARTED and its finished toast left with today's bulk commands (7.8, 2026-10-15)",
     ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
     ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
@@ -477,7 +476,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 11, len(calls)          # the scan can see them (13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        assert len(calls) >= 10, len(calls)          # the scan can see them (10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

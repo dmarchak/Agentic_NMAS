@@ -90,12 +90,21 @@ class TestTheDriftScheduler:
         assert queued == ["Twin"], "the drift item goes to Twin's own queue"
 
     def test_the_routes_act_on_the_network_named(self, twin):  # noqa: F811
-        _activate("Default")
-        st = twin["client"].get("/drift/status?list=Twin").get_json()
-        assert st["list"] == "Twin"
-        r = twin["client"].post("/drift/settings", json={"disabled": True, "list_name": "Twin"})
-        assert r.get_json()["disabled"] is True and r.get_json()["list"] == "Twin"
+        """The Drift checks card (Settings › Installation › Diagnostics; today's /drift/status
+        and /drift/settings until 7.8) draws a row per network and switches the one named,
+        whichever is active."""
+        import re
+
         import modules.drift_check as D
+        _activate("Default")
+        card = twin["client"].get("/v2/settings/installation/diagnostics/drift")
+        rows = re.findall(r"<tr>\s*<td>([^<]+)</td>", card.get_data(as_text=True))
+        assert rows == ["Default", "Twin"], rows
+        r = twin["client"].post("/v2/settings/installation/diagnostics/drift/Twin/off",
+                                headers={"HX-Request": "true"})
+        import html
+        assert r.status_code == 200
+        assert "Twin's drift checks turned off" in html.unescape(r.get_data(as_text=True))
         assert D._is_disabled("Twin") and not D._is_disabled("Default")
 
 

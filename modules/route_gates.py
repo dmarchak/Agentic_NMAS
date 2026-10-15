@@ -214,7 +214,6 @@ GATES = {
     "settings_v2.records_store_preview": _g(N, "counts every network's receipts lines in the files and the records database for a move's preview; writes nothing"),
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
     "identity.ratify_setting": _g(K, "records a decision about a gate", "ratify_setting"),
-    "drift_settings_post": _g(K, "switches the drift checker and its interval"),
     "create_device_list_route": _g(K, "creates a device list"),
     "delete_device_list_route": _g(K, "deletes a device list"),
     "select_device_list_route": _g(K, "changes the active list, which every derived read and the ping worker follow"),
@@ -306,7 +305,6 @@ GATES = {
     "settings_integrations.test_integration": _g(N, "a connection test"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),
-    "drift_check_sync": _g(N, "the schedule does this anyway; it only happens earlier"),
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),
 }
 

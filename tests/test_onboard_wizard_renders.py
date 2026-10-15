@@ -229,8 +229,9 @@ class TestItIsAToolbarActionNotATab:
         # 12 until P.4 removed the Jenkins tab; 11 until 7.8 removed the History tab with
         # /list/change_log (2026-10-12).
         # 7 since 2026-10-12: Configure, Monitoring and Topology left (7.8); 5 since 2026-10-14:
-        # the Ansible and Agent tabs left with the AI family (D15), Approvals became Drift.
-        assert len(set(panes)) == 5, sorted(set(panes))
+        # the Ansible and Agent tabs left with the AI family (D15), Approvals became Drift; 4
+        # since 2026-10-15: the Drift tab left (7.8).
+        assert len(set(panes)) == 4, sorted(set(panes))
 
     def test_the_toolbar_button_exists(self, page):
         assert 'onclick="openOnboardWizard()"' in page

@@ -412,7 +412,10 @@ class TestTheIndexListsEverything:
         html = _client().get("/v2/help/onboard").get_data(as_text=True)
         nav = html.split('class="helpnav"', 1)[1].split("</nav>", 1)[0]
         assert nav.count("helpnav-mark") == len(manual.ON_TODAYS_APP)
-        assert re.search(r"Check drift</span><span class=\"helpnav-mark\"", nav)
+        # Check drift was the marked anchor until today's Drift tab left (7.8, 2026-10-15): its
+        # Check now is Settings › Installation › Diagnostics' (data-op="drift-check").
+        assert re.search(r"DHCP</span><span class=\"helpnav-mark\"", nav)
+        assert not re.search(r"Check drift</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Onboard a device</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Update the app</span><span class=\"helpnav-mark\"", nav)
 

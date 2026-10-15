@@ -132,7 +132,7 @@ class TestEveryMutatingRouteDeclares:
         for endpoint in ("deploy.apply", "golden.capture_apply",
                          "golden.restore_apply"):
             assert "remote" in I.keys_for(endpoint), endpoint
-        assert "drift" in I.keys_for("drift_check_sync")
+        assert "drift" in I.keys_for("settings_v2.diag_drift_check")   # /drift/check/sync until 7.8
 
 
 # ── the response carries it ─────────────────────────────────────────────────
@@ -209,7 +209,7 @@ class TestSubscriptions:
         subs = {(k, loader) for k, _, loader, _ in shipped_subscriptions()}
         assert ("inventory", "relayInventory") in subs
         assert ("remote", "loadRemotePanel") in subs
-        assert ("drift", "loadDriftStatus") in subs
+        assert ("drift", "relayDrift") in subs   # today's loadDriftStatus until 7.8
 
     def test_every_subscription_names_a_declared_key(self):
         """A panel subscribed to a key no route sends is a panel that never

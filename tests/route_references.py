@@ -190,7 +190,7 @@ def reachability(app_module, monkeypatch) -> dict:
 
     Whether a path MIXES a read and a write is decided per PATH, across
     every rule registered on it: `/drift/settings` was two rules, a GET and a
-    POST (its GET left at 7.8), and deciding it per rule made each look single-method, so the
+    POST (both left at 7.8), and deciding it per rule made each look single-method, so the
     page's GET counted as reaching the POST (found by the method-blind
     negative control, which should have failed and did not)."""
     text = corpus(app_module, monkeypatch)

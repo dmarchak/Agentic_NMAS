@@ -152,8 +152,9 @@ and shows each network's state, its last run and its next.
 3. `record`: who, when and what changed are appended to the installation's settings record.
 
 **Check now** starts a network's check in the background (the schedule would run it anyway,
-only later) and is refused while one runs; the card redraws when the check records its
-result, and what it found is on Needs attention.
+only later) and is refused while one runs, in this process or another, naming who started it;
+the card redraws when the check records its result, and what it found is on Needs attention.
+Each step of the run is on [Check drift](drift-check).
 
 ## Diagnostics: in flight {#in-flight}
 

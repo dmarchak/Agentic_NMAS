@@ -41,7 +41,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #:                feature is off. Refusing is correct; the refusal must still
 #:                say what to do about it.
 #: Empty since 2026-10-15: its last member, GET /drift/settings ("reports"), left at 7.8 (a
-#: duplicate read nothing called; /drift/status reports the same switch).
+#: duplicate read nothing called; the switch is drawn by Settings › Installation › Diagnostics'
+#: Drift checks card since /drift/status left too, 7.8).
 CLASSIFIED: dict = {}
 
 _STATE = re.compile(r"disabled|not configured|not_configured|unconfigured|"
