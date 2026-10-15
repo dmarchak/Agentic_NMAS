@@ -207,6 +207,133 @@
     }
    ]
   },
+  "modules.goldens._identity_for_ip": {
+   "path": "modules/goldens.py",
+   "qualname": "_identity_for_ip",
+   "hash": "dd191e21d865fd07b4325f935ad7daa79b46999d68625ee3d42e73079212edc1",
+   "survivors": [
+    {
+     "was": "_name, csv_path = get_current_device_list()",
+     "now": "_name, csv_path = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "csv_path = listref.resolve(list_name).csv_path",
+     "now": "csv_path = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "csv_path = listref.resolve(list_name).csv_path",
+     "now": "csv_path = listref.resolve(None).csv_path",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "def _identity_for_ip(device_ip: str, list_name: str = \"\") -> str:",
+     "now": "def _identity_for_ip(device_ip: str, list_name: str = \"XXXX\") -> str:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "for dev in load_saved_devices(csv_path):",
+     "now": "for dev in load_saved_devices(None):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if dev.get(\"ip\") == device_ip:",
+     "now": "if dev.get(\"IP\") == device_ip:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if dev.get(\"ip\") == device_ip:",
+     "now": "if dev.get(\"XXipXX\") == device_ip:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if dev.get(\"ip\") == device_ip:",
+     "now": "if dev.get(\"ip\") != device_ip:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if dev.get(\"ip\") == device_ip:",
+     "now": "if dev.get(None) == device_ip:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return \"\"",
+     "now": "return \"XXXX\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(None, dev.get(\"device_uid\", \"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"XX_netbox_idXX\"), dev.get(\"device_uid\", \"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_NETBOX_ID\"), dev.get(\"device_uid\", \"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), )",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), None)",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"DEVICE_UID\", \"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"XXdevice_uidXX\", \"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"XXXX\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", ))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", None))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"_netbox_id\"), dev.get(None, \"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(\"device_uid\", \"\"))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return identity_for(dev.get(\"_netbox_id\"), dev.get(\"device_uid\", \"\"))",
+     "now": "return identity_for(dev.get(None), dev.get(\"device_uid\", \"\"))",
+     "reason": "baseline sweep of moved code"
+    }
+   ]
+  },
   "modules.goldens._legacy_header_scan": {
    "path": "modules/goldens.py",
    "qualname": "_legacy_header_scan",
@@ -326,6 +453,38 @@
      "was": "with open(fpath, encoding=\"utf-8\") as fh:",
      "now": "with open(fpath, encoding=None) as fh:",
      "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._load_golden_config_file": {
+   "path": "modules/goldens.py",
+   "qualname": "_load_golden_config_file",
+   "hash": "dc5a30cf4abe01944c5f067b799163139d525b39707788122c9d3c20c7ab1007",
+   "survivors": [
+    {
+     "was": "def _load_golden_config_file(device_ip: str, list_name: str = \"\") -> Optional[str]:",
+     "now": "def _load_golden_config_file(device_ip: str, list_name: str = \"XXXX\") -> Optional[str]:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return _golden_record(device_ip, list_name)[\"text\"]",
+     "now": "return _golden_record(None, list_name)[\"text\"]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return _golden_record(device_ip, list_name)[\"text\"]",
+     "now": "return _golden_record(device_ip, )[\"text\"]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return _golden_record(device_ip, list_name)[\"text\"]",
+     "now": "return _golden_record(device_ip, None)[\"text\"]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "return _golden_record(device_ip, list_name)[\"text\"]",
+     "now": "return _golden_record(list_name)[\"text\"]",
+     "reason": "baseline sweep of moved code"
     }
    ]
   },
@@ -643,6 +802,16 @@
    "hash": "4b951cb62bdb0d2917e92fa7d4e7879d99e3209c96e7240e11d1f091145a56aa",
    "survivors": [
     {
+     "was": "\"app_role\":        app_role,",
+     "now": "\"APP_ROLE\":        app_role,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"app_role\":        app_role,",
+     "now": "\"XXapp_roleXX\":        app_role,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
      "was": "\"app_role\": app_role,",
      "now": "\"APP_ROLE\": app_role,",
      "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
@@ -656,6 +825,26 @@
      "was": "\"error\":    (f\"golden refused: {record['refused']}\" if record[\"refused\"]",
      "now": "\"error\":    (f\"golden refused: {record['refused']}\" if (record[\"refused\"]) or True",
      "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"facts\":           facts,",
+     "now": "\"FACTS\":           facts,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"facts\":           facts,",
+     "now": "\"XXfactsXX\":           facts,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"hostname\":        hostname,",
+     "now": "\"HOSTNAME\":        hostname,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"hostname\":        hostname,",
+     "now": "\"XXhostnameXX\":        hostname,",
+     "reason": "baseline sweep of moved code"
     },
     {
      "was": "\"hostname\": csv_hostname or ip,",
@@ -719,8 +908,108 @@
     },
     {
      "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
+     "now": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 1,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"mgmt_prefix_len\": dev.get(\"prefix_len\") or 0,",
      "now": "\"mgmt_prefix_len\": dev.get(None) or 0,",
      "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    },
+    {
+     "was": "\"neighbors\":       [],",
+     "now": "\"NEIGHBORS\":       [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"neighbors\":       [],",
+     "now": "\"XXneighborsXX\":       [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"netbox_id\":       dev.get(\"netbox_id\"),",
+     "now": "\"NETBOX_ID\":       dev.get(\"netbox_id\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"netbox_id\":       dev.get(\"netbox_id\"),",
+     "now": "\"XXnetbox_idXX\":       dev.get(\"netbox_id\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"netbox_id\":       dev.get(\"netbox_id\"),",
+     "now": "\"netbox_id\":       dev.get(\"NETBOX_ID\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"netbox_id\":       dev.get(\"netbox_id\"),",
+     "now": "\"netbox_id\":       dev.get(\"XXnetbox_idXX\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"netbox_id\":       dev.get(\"netbox_id\"),",
+     "now": "\"netbox_id\":       dev.get(None),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"protocol_tags\":   protocol_tags,",
+     "now": "\"PROTOCOL_TAGS\":   protocol_tags,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"protocol_tags\":   protocol_tags,",
+     "now": "\"XXprotocol_tagsXX\":   protocol_tags,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"routing_context\": routing_context,",
+     "now": "\"ROUTING_CONTEXT\": routing_context,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"routing_context\": routing_context,",
+     "now": "\"XXrouting_contextXX\": routing_context,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"running_config\":  golden,",
+     "now": "\"RUNNING_CONFIG\":  golden,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"running_config\":  golden,",
+     "now": "\"XXrunning_configXX\":  golden,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"static_routes\":   static_routes,",
+     "now": "\"STATIC_ROUTES\":   static_routes,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"static_routes\":   static_routes,",
+     "now": "\"XXstatic_routesXX\":   static_routes,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"vlans\":           vlans,",
+     "now": "\"VLANS\":           vlans,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"vlans\":           vlans,",
+     "now": "\"XXvlansXX\":           vlans,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"vrfs\":            vrfs,",
+     "now": "\"VRFS\":            vrfs,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"vrfs\":            vrfs,",
+     "now": "\"XXvrfsXX\":            vrfs,",
+     "reason": "baseline sweep of moved code"
     },
     {
      "was": "app_role = (dev.get(\"role\") or \"router\").strip().lower()",
@@ -931,6 +1220,643 @@
      "was": "vrfs            = _parse_vrfs_from_config(golden)",
      "now": "vrfs            = None",
      "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.nsot.onboard.create_netbox_record": {
+   "path": "modules/nsot/onboard.py",
+   "qualname": "create_netbox_record",
+   "hash": "4dd7350f464596e0ee931cf1f91bbce8a4eddd9a9c9c065c312e6bd438171cdb",
+   "survivors": [
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"PLATFORM\": (entry or {}).get(\"platform\", \"\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"XXplatformXX\": (entry or {}).get(\"platform\", \"\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry and {}).get(\"platform\", \"\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry or {}).get(\"\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry or {}).get(\"PLATFORM\", \"\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry or {}).get(\"XXplatformXX\", \"\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry or {}).get(\"platform\", \"XXXX\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry or {}).get(\"platform\", ),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry or {}).get(\"platform\", None),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"platform\": (entry or {}).get(\"platform\", \"\"),",
+     "now": "\"platform\": (entry or {}).get(None, \"\"),",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"PREFIX_LEN\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"XXprefix_lenXX\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"prefix_len\": (entry and {}).get(\"mgmt_prefix_len\") or 0,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"prefix_len\": (entry or {}).get(\"MGMT_PREFIX_LEN\") or 0,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"prefix_len\": (entry or {}).get(\"XXmgmt_prefix_lenXX\") or 0,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") and 0,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 1,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"prefix_len\": (entry or {}).get(\"mgmt_prefix_len\") or 0,",
+     "now": "\"prefix_len\": (entry or {}).get(None) or 0,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"reason\": \"\"}",
+     "now": "\"REASON\": \"\"}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"reason\": \"\"}",
+     "now": "\"XXreasonXX\": \"\"}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"reason\": \"\"}",
+     "now": "\"reason\": \"XXXX\"}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"ROLE\": (entry or {}).get(\"role\", \"\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"XXroleXX\": (entry or {}).get(\"role\", \"\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry and {}).get(\"role\", \"\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry or {}).get(\"\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry or {}).get(\"ROLE\", \"\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry or {}).get(\"XXroleXX\", \"\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry or {}).get(\"role\", \"XXXX\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry or {}).get(\"role\", )}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry or {}).get(\"role\", None)}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"role\": (entry or {}).get(\"role\", \"\")}",
+     "now": "\"role\": (entry or {}).get(None, \"\")}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"; \".join(f\"{f.get('?')}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"; \".join(f\"{f.get('HOSTNAME', '?')}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"; \".join(f\"{f.get('XXhostnameXX', '?')}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"; \".join(f\"{f.get('hostname', 'XX?XX')}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"; \".join(f\"{f.get('hostname', )}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"; \".join(f\"{f.get('hostname', None)}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"; \".join(f\"{f.get(None, '?')}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{f.get('hostname', '?')}: \"",
+     "now": "+ \"XX; XX\".join(f\"{f.get('hostname', '?')}: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "now": "+ \"; \".join(None))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "now": "+ \"; \".join(f\"{w['WRITE']} ({w['error']})\" for w in mine[:3]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "now": "+ \"; \".join(f\"{w['XXwriteXX']} ({w['error']})\" for w in mine[:3]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "now": "+ \"; \".join(f\"{w['write']} ({w['ERROR']})\" for w in mine[:3]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "now": "+ \"; \".join(f\"{w['write']} ({w['XXerrorXX']})\" for w in mine[:3]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "now": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:4]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "+ \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "now": "+ \"XX; XX\".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "created = get_created(list_name) or {}",
+     "now": "created = get_created(None) or {}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "device = {\"hostname\": hostname, \"ip\": mgmt_ip,",
+     "now": "device = {\"HOSTNAME\": hostname, \"ip\": mgmt_ip,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "device = {\"hostname\": hostname, \"ip\": mgmt_ip,",
+     "now": "device = {\"XXhostnameXX\": hostname, \"ip\": mgmt_ip,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "device = {\"hostname\": hostname, \"ip\": mgmt_ip,",
+     "now": "device = {\"hostname\": hostname, \"IP\": mgmt_ip,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "device = {\"hostname\": hostname, \"ip\": mgmt_ip,",
+     "now": "device = {\"hostname\": hostname, \"XXipXX\": mgmt_ip,",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "f\"{f.get('error', 'no reason given')}\"",
+     "now": "f\"{f.get('error', 'NO REASON GIVEN')}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "f\"{f.get('error', 'no reason given')}\"",
+     "now": "f\"{f.get('error', 'XXno reason givenXX')}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "f\"{f.get('error', 'no reason given')}\"",
+     "now": "f\"{f.get('error', )}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "f\"{f.get('error', 'no reason given')}\"",
+     "now": "f\"{f.get('error', None)}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "for f in failed[:3]))",
+     "now": "for f in failed[:4]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if not mgmt_ip or not _load_golden_config_file(mgmt_ip, list_name):",
+     "now": "if not mgmt_ip or not _load_golden_config_file(None, list_name):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if not mgmt_ip or not _load_golden_config_file(mgmt_ip, list_name):",
+     "now": "if not mgmt_ip or not _load_golden_config_file(mgmt_ip, None):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if not result.get(\"ok\", False):",
+     "now": "if not result.get(\"ok\", ):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if not result.get(\"ok\", False):",
+     "now": "if not result.get(\"ok\", None):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if not result.get(\"ok\", False):",
+     "now": "if not result.get(\"ok\", True):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if result.get(\"blocked\"):",
+     "now": "if result.get(\"BLOCKED\"):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if result.get(\"blocked\"):",
+     "now": "if result.get(\"XXblockedXX\"):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if result.get(\"blocked\"):",
+     "now": "if result.get(None):",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if w.get(\"device\") in (\"\", hostname)]",
+     "now": "if w.get(\"DEVICE\") in (\"\", hostname)]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if w.get(\"device\") in (\"\", hostname)]",
+     "now": "if w.get(\"XXdeviceXX\") in (\"\", hostname)]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if w.get(\"device\") in (\"\", hostname)]",
+     "now": "if w.get(\"device\") in (\"XXXX\", hostname)]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if w.get(\"device\") in (\"\", hostname)]",
+     "now": "if w.get(\"device\") not in (\"\", hostname)]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "if w.get(\"device\") in (\"\", hostname)]",
+     "now": "if w.get(None) in (\"\", hostname)]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "mgmt_ip = (entry or {}).get(\"mgmt_ip\", \"\")",
+     "now": "mgmt_ip = (entry or {}).get(\"mgmt_ip\", \"XXXX\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "mgmt_ip = (entry or {}).get(\"mgmt_ip\", \"\")",
+     "now": "mgmt_ip = (entry or {}).get(\"mgmt_ip\", )",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "mgmt_ip = (entry or {}).get(\"mgmt_ip\", \"\")",
+     "now": "mgmt_ip = (entry or {}).get(\"mgmt_ip\", None)",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "mine = [w for w in (result.get(\"write_failures\") or [])",
+     "now": "mine = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "mine = [w for w in (result.get(\"write_failures\") or [])",
+     "now": "mine = [w for w in (result.get(\"WRITE_FAILURES\") or [])",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "mine = [w for w in (result.get(\"write_failures\") or [])",
+     "now": "mine = [w for w in (result.get(\"XXwrite_failuresXX\") or [])",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "mine = [w for w in (result.get(\"write_failures\") or [])",
+     "now": "mine = [w for w in (result.get(None) or [])",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
+     "now": "out = {\"ok\": False, \"DEFERRED\": False, \"created\": [], \"failed\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
+     "now": "out = {\"ok\": False, \"XXdeferredXX\": False, \"created\": [], \"failed\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
+     "now": "out = {\"ok\": False, \"deferred\": False, \"CREATED\": [], \"failed\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
+     "now": "out = {\"ok\": False, \"deferred\": False, \"XXcreatedXX\": [], \"failed\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
+     "now": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"FAILED\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
+     "now": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"XXfailedXX\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
+     "now": "out = {\"ok\": False, \"deferred\": True, \"created\": [], \"failed\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"created\"] = [f\"{endpoint}:{obj_id}\"",
+     "now": "out[\"created\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"failed\"] = failed",
+     "now": "out[\"FAILED\"] = failed",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"failed\"] = failed",
+     "now": "out[\"XXfailedXX\"] = failed",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"failed\"] = failed",
+     "now": "out[\"failed\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = (\"NetBox reported \"",
+     "now": "out[\"reason\"] = (\"NETBOX REPORTED \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = (\"NetBox reported \"",
+     "now": "out[\"reason\"] = (\"XXNetBox reported XX\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = (\"NetBox reported \"",
+     "now": "out[\"reason\"] = (\"netbox reported \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = (f\"recorded, but {len(mine)} write(s) did not land: \"",
+     "now": "out[\"REASON\"] = (f\"recorded, but {len(mine)} write(s) did not land: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = (f\"recorded, but {len(mine)} write(s) did not land: \"",
+     "now": "out[\"XXreasonXX\"] = (f\"recorded, but {len(mine)} write(s) did not land: \"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = (f\"recorded, but {len(mine)} write(s) did not land: \"",
+     "now": "out[\"reason\"] = (f\"recorded, but {len(mine)} write(s) did not land: \" - \"; \".join(f\"{w['write']} ({w['error']})\" for w in mine[:3]))",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = (f\"recorded, but {len(mine)} write(s) did not land: \"",
+     "now": "out[\"reason\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = f\"could not check for a capture: {exc}\"",
+     "now": "out[\"REASON\"] = f\"could not check for a capture: {exc}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = f\"could not check for a capture: {exc}\"",
+     "now": "out[\"XXreasonXX\"] = f\"could not check for a capture: {exc}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = f\"could not check for a capture: {exc}\"",
+     "now": "out[\"reason\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = f\"could not read the committed bootstrap parameters: {exc}\"",
+     "now": "out[\"REASON\"] = f\"could not read the committed bootstrap parameters: {exc}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = f\"could not read the committed bootstrap parameters: {exc}\"",
+     "now": "out[\"XXreasonXX\"] = f\"could not read the committed bootstrap parameters: {exc}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = f\"could not read the committed bootstrap parameters: {exc}\"",
+     "now": "out[\"reason\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"NetBox writes are disabled\"",
+     "now": "out[\"reason\"] = result.get(\"ERROR\") or \"NetBox writes are disabled\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"NetBox writes are disabled\"",
+     "now": "out[\"reason\"] = result.get(\"XXerrorXX\") or \"NetBox writes are disabled\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"NetBox writes are disabled\"",
+     "now": "out[\"reason\"] = result.get(\"error\") and \"NetBox writes are disabled\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"NetBox writes are disabled\"",
+     "now": "out[\"reason\"] = result.get(\"error\") or \"NETBOX WRITES ARE DISABLED\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"NetBox writes are disabled\"",
+     "now": "out[\"reason\"] = result.get(\"error\") or \"XXNetBox writes are disabledXX\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"NetBox writes are disabled\"",
+     "now": "out[\"reason\"] = result.get(\"error\") or \"netbox writes are disabled\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"NetBox writes are disabled\"",
+     "now": "out[\"reason\"] = result.get(None) or \"NetBox writes are disabled\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"REASON\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"XXreasonXX\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"reason\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"reason\"] = result.get(\"ERROR\") or \"the sync did not report success\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"reason\"] = result.get(\"XXerrorXX\") or \"the sync did not report success\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"reason\"] = result.get(\"error\") and \"the sync did not report success\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"reason\"] = result.get(\"error\") or \"THE SYNC DID NOT REPORT SUCCESS\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"reason\"] = result.get(\"error\") or \"XXthe sync did not report successXX\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"reason\"] = result.get(\"error\") or \"the sync did not report success\"",
+     "now": "out[\"reason\"] = result.get(None) or \"the sync did not report success\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"write_failures\"] = mine",
+     "now": "out[\"WRITE_FAILURES\"] = mine",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"write_failures\"] = mine",
+     "now": "out[\"XXwrite_failuresXX\"] = mine",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"write_failures\"] = mine",
+     "now": "out[\"write_failures\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "result = sync(list_name, [device], actor=actor, authority=authority) or {}",
+     "now": "result = sync(None, [device], actor=actor, authority=authority) or {}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "result = sync(list_name, [device], actor=actor, authority=authority) or {}",
+     "now": "result = sync(list_name, [device], actor=None, authority=authority) or {}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "result = sync(list_name, [device], actor=actor, authority=authority) or {}",
+     "now": "result = sync(list_name, [device], actor=actor, ) or {}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "result = sync(list_name, [device], actor=actor, authority=authority) or {}",
+     "now": "result = sync(list_name, [device], actor=actor, authority=None) or {}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "result = sync(list_name, [device], actor=actor, authority=authority) or {}",
+     "now": "result = sync(list_name, [device], authority=authority) or {}",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "sync=None, actor: str = \"\", authority: str = \"\") -> dict:",
+     "now": "sync=None, actor: str = \"\", authority: str = \"XXXX\") -> dict:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "sync=None, actor: str = \"\", authority: str = \"\") -> dict:",
+     "now": "sync=None, actor: str = \"XXXX\", authority: str = \"\") -> dict:",
+     "reason": "baseline sweep of moved code"
     }
    ]
   },
