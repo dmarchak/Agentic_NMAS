@@ -13,13 +13,17 @@ reachable by `curl` and by nothing else.
 The asymmetry is what makes it serious rather than untidy: "Deploy plan"
 *reads* committed intent and has a button, so the interface can push a change
 toward a target it has no way to set.
+
+"The rendered page" is the interface's pages (tests/interface_pages.py): v2's, by the links
+between them, and today's while they exist. Until P7-19 (2026-10-15) it was today's index
+alone, so removing it would have made every blueprint unreachable at once.
 """
 
 import re
 
 import pytest
 
-from tests.js_source import with_loaded_scripts
+from tests import interface_pages
 
 #: Blueprints with no route referenced by the rendered page, and why that is
 #: tolerated for now. **Entries must leave as they are built**, exactly like
@@ -36,15 +40,23 @@ KNOWN_UNREACHABLE = {}
 #: hides behind identity is useless when identity breaks" -- so the GUI not
 #: calling it is its design, not a gap. `KNOWN_UNREACHABLE` is for gaps to
 #: close; putting a diagnostic there would imply somebody should close it.
+#:
+#: Today's blueprints are named; v2's are found, by property: a blueprint with a route
+#: under `/v2/` serves v2's interface (`_gui_blueprints`), so a new one is checked the
+#: commit it lands.
 GUI_BLUEPRINTS = ("templatize", "templates", "deploy", "golden", "remote",
                   "inventory", "onboard")
 
 
+def _gui_blueprints() -> tuple:
+    found = {name for name, paths in _routes_by_blueprint().items()
+             if any(p.startswith("/v2/") for p in paths)}
+    return tuple(GUI_BLUEPRINTS) + tuple(sorted(found - set(GUI_BLUEPRINTS)))
+
+
 @pytest.fixture(scope="module")
 def rendered():
-    import app as nmas
-
-    return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
+    return interface_pages.corpus()
 
 
 def _routes_by_blueprint():
@@ -76,20 +88,30 @@ def _reachable(paths, page):
 
 class TestEveryGuiBlueprintIsReachable:
     def test_the_page_rendered(self, rendered):
-        """An empty page would make every blueprint look unreachable."""
-        assert len(rendered) > 100_000
+        """An empty page would make every blueprint look unreachable. The floor is v2's
+        pages alone: 3,774,798 bytes with their scripts on 2026-10-15."""
+        assert len(interface_pages.v2_corpus()) > 3_000_000
+        assert len(rendered) >= len(interface_pages.v2_corpus())
 
     def test_the_check_finds_reachable_ones(self, rendered):
         """If this cannot see a blueprint the GUI *does* call, every result
-        below is meaningless."""
+        below is meaningless. Read on v2's pages alone (until P7-19, golden and deploy on
+        today's index)."""
         groups = _routes_by_blueprint()
-        assert _reachable(groups.get("golden", []), rendered)
-        assert _reachable(groups.get("deploy", []), rendered)
+        v2 = interface_pages.v2_corpus()
+        assert _reachable(groups.get("device_v2", []), v2)
+        assert _reachable(groups.get("intent_v2", []), v2)
+
+    def test_v2_s_blueprints_are_in_the_population(self):
+        """Found by their routes, so the population cannot silently be today's list: 17
+        blueprints with a route under /v2/ on 2026-10-15."""
+        found = set(_gui_blueprints()) - set(GUI_BLUEPRINTS)
+        assert len(found) >= 15 and {"v2", "device_v2", "intent_v2"} <= found, sorted(found)
 
     def test_no_new_unreachable_blueprint(self, rendered):
         groups = _routes_by_blueprint()
         unreachable = []
-        for name in GUI_BLUEPRINTS:
+        for name in _gui_blueprints():
             paths = groups.get(name)
             if not paths:
                 continue
@@ -114,35 +136,41 @@ class TestEveryGuiBlueprintIsReachable:
             assert len(reason) > 40, name
 
 
-class TestTheTemplatizeGapIsClosed:
-    """It was twelve routes with zero references, measured 2026-09-23.
+class TestTheIntentLoopIsReachable:
+    """The templatize gap: twelve routes with zero references, measured 2026-09-23.
 
     The asymmetry that made it serious: Deploy plan READS committed intent
     and has had a button since Stage 1.5, so the interface could push a
     change toward a target it had no way to set.
+
+    Read on v2's pages since P7-19 (2026-10-15): the device page's Intent tab edits intent in
+    place (routes/intent_v2.py, board H) and its Actions menu plans a deploy. Until then these
+    pinned today's editor on the index (`/templatize/committed/`, `/deploy/plan`), which goes
+    with P7-23 and stays reached meanwhile by the route-reachability check.
     """
 
-    def test_templatize_is_now_referenced(self, rendered):
-        assert "/templatize" in rendered
+    @pytest.fixture(scope="class")
+    def v2(self):
+        return interface_pages.v2_corpus()
 
-    def test_the_editor_reads_committed_intent(self, rendered):
-        assert "/templatize/committed/" in rendered
+    def test_the_intent_tab_opens_the_editor(self, v2):
+        assert "/v2/device/r3/intent/edit" in v2
 
-    def test_the_editor_previews_before_committing(self, rendered):
+    def test_the_editor_checks_before_committing(self, v2):
         """The requirement that makes a text editor usable rather than
-        merely honest."""
-        assert "/preview" in rendered
+        merely honest: the edit is checked (rendered and compared) as it is typed."""
+        assert "/v2/device/r3/intent/check" in v2
 
     def test_the_intent_editor_route_exists(self):
         import app as nmas
 
         posts = [str(r) for r in nmas.app.url_map.iter_rules()
                  if "POST" in (r.methods or set())
-                 and str(r).startswith("/templatize/committed/")]
-        assert posts, "no POST route for editing committed intent"
+                 and str(r) == "/v2/device/<name>/intent/commit"]
+        assert posts, "no POST route for committing edited intent"
 
-    def test_both_halves_of_the_loop_are_reachable(self, rendered):
+    def test_both_halves_of_the_loop_are_reachable(self, v2):
         """Edit intent -> see the plan -> deploy. The loop the deploy path
         assumed and nobody could exercise."""
-        assert "/templatize/committed/" in rendered
-        assert "/deploy/plan" in rendered
+        assert "/v2/device/r3/intent/commit" in v2
+        assert "/v2/device/r3/deploy" in v2

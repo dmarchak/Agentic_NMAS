@@ -139,13 +139,17 @@ class TestACrashIsNotARedirect:
         r, html = _post(live, SWITCH.format(to="off"), accept="text/html")
         assert r.status_code == 500 and "Couldn't load" in html and "disk on fire" in html
 
-    def test_a_browser_navigation_still_redirects(self, live):
-        """The redirect is right for a page load and wrong for a fetch. Only
+    def test_a_browser_navigation_gets_a_page(self, live):
+        """A page is right for a page load and wrong for a fetch. Only
         the literal Accept header separates them: `*/*` from fetch cannot be
-        told from `*/*` by any quality comparison."""
+        told from `*/*` by any quality comparison. The page is v2's failure answer with the
+        real status, never a redirect to today's index (P7-19, 2026-10-15; it redirected to
+        `/` until then)."""
         r = live["client"].get("/no-such-page",
                                headers={"Accept": "text/html,application/xhtml+xml"})
-        assert r.status_code == 302
+        html = r.get_data(as_text=True)
+        assert r.status_code == 404 and "Location" not in r.headers, r.status_code
+        assert r.mimetype == "text/html" and "Couldn't load" in html, html[:200]
 
     def test_a_fetch_gets_json_for_a_404(self, live):
         r = live["client"].get("/no-such-page", headers={"Accept": "*/*"})

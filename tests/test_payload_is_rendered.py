@@ -769,7 +769,7 @@ def measured(tmp_path_factory):
     mp.setattr(identity, "identify", lambda _request: person)
     out = {}
     try:
-        P._client().get("/")
+        P._client().get("/v2/")
         for route, spec in RENDERS.items():
             with pytest.MonkeyPatch.context() as local:
                 payload = spec.provider(local, tmp_path_factory.mktemp("p"))

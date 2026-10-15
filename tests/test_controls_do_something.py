@@ -10,7 +10,8 @@ whatever the layout becomes). Register C226 to C228.
 * C227: the device page loaded Bootstrap's CSS and bundle a second time, so
   every data-API handler was registered twice.
 * C228: the empty device list said "Add one below." after Add Device was
-  removed: its text must name a control the page has.
+  removed: its text must name a control the page has. Checked on v2's Devices page too
+  since P7-19 (2026-10-15); today's half, and C227's, leave with today's pages (P7-27).
 """
 
 import os
@@ -18,6 +19,7 @@ import re
 
 import pytest
 
+from tests.test_device_v2 import lab  # noqa: F401 (the fixture: a list with two devices)
 from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -95,6 +97,20 @@ class TestBootstrapLoadsOnce:
 
 
 class TestTheEmptyListNamesAControlThatExists:
+    def test_v2_s_empty_list_says_so_and_the_page_offers_add_device(self, lab, monkeypatch):
+        """C228 on v2 (P7-19, 2026-10-15): the Devices page of a network with no device says
+        so, names no control, and the page's head carries the way to add one, Add device…
+        (onboarding). Today's empty list, below, leaves with today's index (P7-27)."""
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: [])
+        r = lab["client"].get("/v2/devices")
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200
+        notice = re.search(r'<p class="cov-head">(.*?)</p>', html, re.S)
+        assert notice and "Lab has no devices yet." in notice.group(1), notice
+        assert "below" not in notice.group(1) and "above" not in notice.group(1)
+        assert re.search(r'<a class="btn" data-op="onboard" href="/v2/onboard/new[^"]*"[^>]*>'
+                         r'Add device…</a>', html)
+
     def test_it_names_onboard_a_device_and_the_page_has_it(self):
         table = open(os.path.join(ROOT, "templates", "partials", "device_table.html"),
                      encoding="utf-8").read()

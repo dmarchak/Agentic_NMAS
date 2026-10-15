@@ -114,12 +114,13 @@ GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
 #: yet). Help's index marks each, so a person knows where to go (the operator, 2026-10-02:
 #: onboarding's page existed and nothing said its action lived on today's app). A page
 #: leaves this set in the commit that builds its screen in v2.
-#: Held to that by tests/test_manual.py: no page here has a v2 control (`data-op="<slug>"`).
+#: Held to that by tests/test_manual.py: no page here has a v2 control (`data-op="<slug>"`),
+#: and no Screens page here is a v2 sidebar destination (`SCREENS`).
 #: (C644, 2026-10-10: twelve operations built on v2 and the NetBox screen were still marked.)
 #: (2026-10-15: drift-check left with today's Drift tab; its Check now is Diagnostics'.)
-ON_TODAYS_APP = frozenset((
-    "logs", "dhcp",
-))
+#: (2026-10-15, P7-19: logs and dhcp left. Both are v2 sidebar screens, Logs since C675 and
+#: DHCP since C529, and stayed marked because the check read operations' controls only.)
+ON_TODAYS_APP = frozenset()
 
 #: Every sidebar destination (its label in ``templates/v2/base.html``) and the
 #: Screens page it opens.

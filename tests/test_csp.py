@@ -81,22 +81,28 @@ class TestNothingLoadsFromOffTheHost:
         import json
 
         manifest = json.load(open(os.path.join(ROOT, "static", "js", "vendor", "MANIFEST.json")))
-        # base.html is the layout both pages extend, so a library it loads
-        # is loaded by both (the socket client moved there for C58). The
-        # redesign's layout (v2/base.html) loads htmx, Alpine and uPlot.
-        pages = "".join(open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
-                        for f in ("base.html", "index.html", "device.html", "v2/base.html"))
+        # The pages as served (tests/interface_pages.py: v2's, and today's while they exist),
+        # since P7-19 (2026-10-15); until then the source of today's base, index and device
+        # page and v2's base, named, so removing today's pages would have failed the read.
+        # A library only today's pages load must leave with them (Bootstrap, CodeMirror).
+        from tests import interface_pages
+
+        pages = interface_pages.corpus()
         code = [rel for rel in manifest if rel.endswith((".js", ".css"))]
         assert code and not [rel for rel in code if f"js/vendor/{rel}" not in pages], code
 
 
 class TestTheHeader:
     def test_the_page_carries_it_and_json_does_not(self):
+        """Read on Needs attention since P7-19 (2026-10-15), which carries v2's strict
+        policy; today's index, read until then, carried `POLICY`, the default `install` sets
+        on an HTML response with none of its own (the throwaway app below drives that)."""
         import app as A
 
         c = A.app.test_client()
-        page = c.get("/")
-        assert page.headers.get("Content-Security-Policy") == csp.POLICY
+        page = c.get("/v2/")
+        assert page.status_code == 200 and page.mimetype == "text/html"
+        assert page.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
         js = c.get("/identity/status")
         assert "Content-Security-Policy" not in js.headers
 

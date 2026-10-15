@@ -18,6 +18,13 @@ import re
 
 import pytest
 
+#: The page the HTML half is read on: a manual page, Getting started (P7-19, 2026-10-15;
+#: today's index `/` until then, which goes at cutover). Not Needs attention: a live page, its
+#: rows and ages move between two requests in a busy worker (measured mid-suite: 200, not 304).
+PAGE = "/v2/help/getting-started"
+#: A versioned script URL as the page writes it (`url_for('static')` adds the file's mtime).
+VERSIONED = re.compile(r"/static/(js/[\w./-]+\.js)\?v=(\d+)")
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -29,7 +36,7 @@ def client():
 
 class TestHTMLIsNeverReusedWithoutAsking:
     def test_it_carries_no_cache(self, client):
-        cc = client.get("/").headers.get("Cache-Control", "")
+        cc = client.get(PAGE).headers.get("Cache-Control", "")
         assert "no-cache" in cc
         assert "must-revalidate" in cc
 
@@ -37,34 +44,33 @@ class TestHTMLIsNeverReusedWithoutAsking:
         """C389: a proxy injected scripts into the served pages; `no-transform` asks every
         intermediary to pass the body as sent (RFC 9111, 5.2.2.6), the page and its
         fragments alike."""
-        for path in ("/", "/v2/help/credentials/panel"):
+        for path in (PAGE, "/v2/help/credentials/panel"):
             r = client.get(path)
-            assert r.mimetype == "text/html", path
+            assert r.status_code == 200 and r.mimetype == "text/html", (path, r.status_code)
             assert "no-transform" in r.headers.get("Cache-Control", "").split(", "), path
 
     def test_and_NOT_no_store(self, client):
         """`no-store` forbids keeping a copy, so every navigation is a full
         re-download of a third of a megabyte. `no-cache` keeps it and
         revalidates."""
-        assert "no-store" not in client.get("/").headers.get("Cache-Control", "")
+        assert "no-store" not in client.get(PAGE).headers.get("Cache-Control", "")
 
     def test_it_carries_a_validator(self, client):
         """Without one, `no-cache` IS a re-download — measured: before this,
         the page had no ETag, no Last-Modified and no Cache-Control at
         all."""
-        assert client.get("/").headers.get("ETag")
+        assert client.get(PAGE).headers.get("ETag")
 
     def test_an_unchanged_page_revalidates_to_304_and_zero_bytes(self, client):
         """**The whole reason for `no-cache` over `no-store`**, asserted as
         bytes rather than as a header."""
-        first = client.get("/")
-        again = client.get("/", headers={"If-None-Match": first.headers["ETag"]})
+        first = client.get(PAGE)
+        again = client.get(PAGE, headers={"If-None-Match": first.headers["ETag"]})
 
         assert again.status_code == 304
         assert len(again.get_data()) == 0
-        # 30 kB: the page was about 90 kB since the AI family left (D15, 2026-10-14), and is
-        # 45,214 bytes since today's Settings modal, Logs tab and status bar left (7.8,
-        # 2026-10-15).
+        # 30 kB: Getting started is 38,268 bytes with no network (measured 2026-10-15, P7-19).
+        # Today's index, read until then, was 45,214 bytes.
         assert len(first.get_data()) > 30_000, "the page is suspiciously small"
 
 
@@ -74,8 +80,8 @@ class TestStaticAssetsKeepALongLifetime:
     navigation, in the commit whose purpose was to stop exactly that."""
 
     def _a_versioned_asset(self, client):
-        html = client.get("/").get_data(as_text=True)
-        m = re.search(r"/static/(js/gen/[\w.]+\.js)\?v=(\d+)", html)
+        html = client.get(PAGE).get_data(as_text=True)
+        m = VERSIONED.search(html)
         assert m, "no versioned static URL in the page"
         return m
 
@@ -95,8 +101,9 @@ class TestStaticAssetsKeepALongLifetime:
         URL nobody versions is the HTML problem one layer down: a deploy
         changes the file and every browser keeps the old one for a month.
         Two files in `base.html` reference `/static/...` literally, so this
-        is a live path and not a hypothetical."""
-        cc = client.get("/static/js/bootstrap.bundle.min.js") \
+        is a live path and not a hypothetical. Read on v2's own script since P7-19 (today's
+        vendored Bootstrap until then, which goes at cutover)."""
+        cc = client.get("/static/js/nmas_v2.js") \
                    .headers.get("Cache-Control", "")
 
         assert "max-age=2592000" not in cc
@@ -174,9 +181,8 @@ class TestTheTwoHalvesAreOpposites:
     def test_html_and_static_do_not_get_the_same_policy(self, client):
         """§0b moved 275 KB of script out of the HTML precisely so the two
         could differ. If they ever converge, one of them is wrong."""
-        html_cc = client.get("/").headers.get("Cache-Control", "")
-        m = re.search(r"/static/(js/gen/[\w.]+\.js)\?v=(\d+)",
-                      client.get("/").get_data(as_text=True))
+        html_cc = client.get(PAGE).headers.get("Cache-Control", "")
+        m = VERSIONED.search(client.get(PAGE).get_data(as_text=True))
         asset_cc = client.get(f"/static/{m.group(1)}?v={m.group(2)}") \
                          .headers.get("Cache-Control", "")
 

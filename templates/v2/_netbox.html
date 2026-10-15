@@ -12,7 +12,7 @@
   {%- if not nb.configured %}
   <p class="cov-head">{{ icon('info') }} NetBox is not configured, so its record of {{ device.hostname }} cannot be read here (Settings &gt; Integrations).</p>
   {%- elif nb.absent %}
-  <p class="cov-head">{{ icon('info') }} NetBox holds no device named {{ device.hostname }}. The import on today's NetBox tab records it from its committed golden.</p>
+  <p class="cov-head">{{ icon('info') }} NetBox holds no device named {{ device.hostname }}. NetBox's Import into NetBox… (the sidebar's NetBox) records it from its committed golden.</p>
   {%- elif nb.record %}
   {%- set r = nb.record %}
   <p class="cov-head">{{ badge(nb.provenance.state | replace('_', ' '), nb.provenance.kind) }} {{ nb.provenance.words }}</p>
@@ -41,5 +41,5 @@
   {%- endif %}
   <p><a class="ext" href="{{ nb.ui_url }}" rel="noopener" target="_blank">Open in NetBox {{ icon('ext', 13) }}</a></p>
   {%- endif %}
-  <p class="muted nb-limits">Read from NetBox and {{ brand.short }}'s own records. Importing and removing stay on today's NetBox tab, behind its preview and one-time confirmation.</p>
+  <p class="muted nb-limits">Read from NetBox and {{ brand.short }}'s own records. Importing and removing are NetBox's own (the sidebar's NetBox: Import into NetBox…, Remove from NetBox…), behind its preview and one-time confirmation.</p>
 </section>

@@ -136,6 +136,12 @@ def lab(tmp_path, monkeypatch):
     """The real app; a list 'Lab' holding r3 (with r2's real config as its
     committed golden) and r9 (nothing committed); the dashboards stored by the
     real reader over the fake client."""
+    yield from lab_setup(tmp_path, monkeypatch)
+
+
+def lab_setup(tmp_path, monkeypatch):
+    """`lab`'s body, a plain generator, so a module-scoped user (tests/interface_pages.py)
+    builds the same lab with its own MonkeyPatch and folder."""
     import app as A
     from modules import device_page
     from modules.nsot.repo import GoldenItem, save_golden

@@ -97,7 +97,15 @@ def with_loaded_scripts(html: str) -> str:
     Strictly more faithful than before: it models the assembled program
     rather than one file that happened to hold all of it.
     """
-    extra = []
+    return html + "\n" + "\n".join(
+        f"<script>\n{e}\n</script>" for e in loaded_scripts(html).values()) + "\n"
+
+
+def loaded_scripts(html: str) -> dict:
+    """``{path under static/js: text}`` for the project's scripts *html* loads, in the order
+    `with_loaded_scripts` appends them. A check over many pages reads each file once
+    (tests/interface_pages.py: v2's pages each load the same two dozen)."""
+    out = {}
     # The shared components first, as the browser loads them from <head>.
     # Until 2026-09-27 only `js/gen/` files were appended, so a `fetch` in a
     # component (capture's two routes, 7.1 step 4) was invisible to every
@@ -105,10 +113,9 @@ def with_loaded_scripts(html: str) -> str:
     for name in sorted(set(_COMPONENT_SRC.findall(html))):
         full = os.path.join(STATIC_JS, name)
         if os.path.exists(full):
-            extra.append(open(full, encoding="utf-8").read())
+            out[name] = open(full, encoding="utf-8").read()
     for name in sorted(set(_SRC.findall(html))):
         full = os.path.join(GEN, name)
         if os.path.exists(full):
-            extra.append(open(full, encoding="utf-8").read())
-    return html + "\n" + "\n".join(
-        f"<script>\n{e}\n</script>" for e in extra) + "\n"
+            out["gen/" + name] = open(full, encoding="utf-8").read()
+    return out

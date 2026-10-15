@@ -23,6 +23,12 @@ Jinja loop counts as a caller and a partial that fails to render does not.
 **Named IIFEs are not dead.** `(async function loadHistory() { ... })()` is
 invoked at its own definition site, and counting it as uncalled is the
 matcher being wrong rather than the code.
+
+**The rendered page is the interface's pages** (tests/interface_pages.py): v2's, by the
+links between them, and today's while they exist, with the scripts each loads (P7-19,
+2026-10-15; until then today's index alone, so removing it would have emptied the check).
+The two classes about today's device rows and dispatcher read today's index as before
+(`todays_page`): their property is today's alone, and they leave with it (P7-27).
 """
 
 import collections
@@ -133,6 +139,15 @@ def _unreferenced(html, scripts):
 
 @pytest.fixture(scope="module")
 def page():
+    from tests import interface_pages
+
+    html = interface_pages.corpus()
+    return html, _inline_scripts(html)
+
+
+@pytest.fixture(scope="module")
+def todays_page():
+    """Today's index with two devices, one online: the device rows' own classes below."""
     html = _rendered()
     return html, _inline_scripts(html)
 
@@ -140,14 +155,23 @@ def page():
 class TestNothingIsDefinedWithoutACaller:
     def test_the_page_actually_rendered_devices(self, page):
         """Without this, every per-device handler looks dead and the whole
-        check passes vacuously."""
-        html, _scripts = page
-        assert html.count('class="device-row"') == 2
+        check passes vacuously. v2's Devices page lists the lab's two devices, each a link
+        to its page."""
+        from tests import interface_pages
+
+        devices = interface_pages.pages()["v2"]["/v2/devices"]
+        for name in ("r3", "r9"):
+            assert re.search(rf'href="/v2/device/{name}[?"]', devices), name
 
     def test_there_are_functions_to_check(self, page):
-        """A regex that matches nothing also reports no findings."""
+        """A regex that matches nothing also reports no findings. The floor is v2's pages
+        alone, which define 214 functions (403 with today's; measured 2026-10-15)."""
+        from tests import interface_pages
+
         _html, scripts = page
-        assert len(_definitions(scripts)) > 100
+        v2 = _definitions(_inline_scripts(interface_pages.v2_corpus()))
+        assert len(v2) > 150, len(v2)
+        assert v2 <= _definitions(scripts)
 
     def test_no_new_unreachable_function(self, page):
         html, scripts = page
@@ -193,31 +217,31 @@ class TestTheThreeGradedPathsAreReachable:
 
     GRADED = ("showRenderPreview", "openDeployPlan", "showGoldenHistory")
 
-    def test_each_is_defined(self, page):
-        _html, scripts = page
+    def test_each_is_defined(self, todays_page):
+        _html, scripts = todays_page
         defined = _definitions(scripts)
         for name in self.GRADED:
             assert name in defined, name
 
-    def test_each_has_a_caller(self, page):
-        html, scripts = page
+    def test_each_has_a_caller(self, todays_page):
+        html, scripts = todays_page
         dead = _unreferenced(html, scripts)
         for name in self.GRADED:
             assert name not in dead, f"{name} is unreachable again"
 
-    def test_each_is_reachable_from_a_device_row(self, page):
+    def test_each_is_reachable_from_a_device_row(self, todays_page):
         """Specifically from a per-device button, not merely referenced
         somewhere. `openDeployPlan` was 'referenced' the whole time -- by a
         Re-preview button inside the modal it opens."""
-        html, _scripts = page
+        html, _scripts = todays_page
         for name in self.GRADED:
             hits = re.findall(r"nsotAction\('" + name + r"', '([^']+)'", html)
             assert sorted(hits) == ["r1", "s4"], (name, hits)
 
-    def test_an_offline_device_keeps_them(self, page):
+    def test_an_offline_device_keeps_them(self, todays_page):
         """All three read captured artifacts and open no socket, so an
         unreachable device is exactly when its history is worth looking at."""
-        html, _scripts = page
+        html, _scripts = todays_page
         assert "nsotAction('showGoldenHistory', 'r1')" in html
 
 

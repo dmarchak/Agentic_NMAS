@@ -413,11 +413,33 @@ class TestTheIndexListsEverything:
         nav = html.split('class="helpnav"', 1)[1].split("</nav>", 1)[0]
         assert nav.count("helpnav-mark") == len(manual.ON_TODAYS_APP)
         # Check drift was the marked anchor until today's Drift tab left (7.8, 2026-10-15): its
-        # Check now is Settings › Installation › Diagnostics' (data-op="drift-check").
-        assert re.search(r"DHCP</span><span class=\"helpnav-mark\"", nav)
+        # Check now is Settings › Installation › Diagnostics' (data-op="drift-check"). DHCP
+        # was the marked anchor until the set emptied (P7-19, 2026-10-15).
+        assert not re.search(r"DHCP</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Check drift</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Onboard a device</span><span class=\"helpnav-mark\"", nav)
         assert not re.search(r"Update the app</span><span class=\"helpnav-mark\"", nav)
+
+    def test_a_page_in_the_set_is_marked(self, monkeypatch):
+        """The mark still draws, now the set is empty (P7-19): a page planted in it is
+        marked in the index, and only that page."""
+        monkeypatch.setattr(manual, "ON_TODAYS_APP", frozenset(("dhcp",)))
+        html = _client().get("/v2/help/onboard").get_data(as_text=True)
+        nav = html.split('class="helpnav"', 1)[1].split("</nav>", 1)[0]
+        assert nav.count("helpnav-mark") == 1
+        assert re.search(r"DHCP</span><span class=\"helpnav-mark\"", nav)
+
+    def test_no_screen_marked_as_today_s_app_is_a_v2_sidebar_destination(self):
+        """Logs and DHCP stayed marked after their v2 screens were built (P7-19, 2026-10-15):
+        the check below reads operations' controls, and a screen has none. A Screens page
+        whose sidebar item v2 draws is on v2."""
+        side = _client().get("/v2/").get_data(as_text=True)
+        side = side[side.index('<nav class="sidebar"'):]
+        side = side[:side.index("</nav>")]
+        drawn = set(re.findall(r"<span>([^<]+)</span>", side))
+        on_v2 = {slug for label, slug in manual.SCREENS.items() if label in drawn}
+        assert len(on_v2) >= 10 and {"logs", "dhcp"} <= on_v2, sorted(on_v2)
+        assert not manual.ON_TODAYS_APP & on_v2, sorted(manual.ON_TODAYS_APP & on_v2)
 
     def test_no_page_marked_as_today_s_app_has_a_v2_control(self):
         """C644: a page leaves ON_TODAYS_APP in the commit that builds its v2 control; twelve

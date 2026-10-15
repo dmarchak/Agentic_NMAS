@@ -367,7 +367,7 @@ def _client_wants_html() -> bool:
 
 
 def _error_response(error, status: int, message):
-    """Redirect a navigation; answer a fetch() with JSON and a real status.
+    """Answer a navigation with v2's failure page; a fetch() with JSON; both with a real status.
 
     **An unhandled exception must never present as a successful redirect.**
     These handlers redirected everything to the index, so every JSON endpoint
@@ -399,11 +399,11 @@ def _error_response(error, status: int, message):
         message = (f"{request.method} {request.path} failed with an unexpected "
                    f"error: {detail}")
     if _client_wants_html():
-        if request.path.startswith("/v2/"):
-            from routes.v2_failure import answer
-            return answer(message, status)
-        flash(message, 'warning' if status == 404 else 'danger')
-        return redirect(url_for('index'))
+        # Every navigation that failed is answered ON v2, in place, with its status (C569's
+        # rule, for every path since P7-19, 2026-10-15): a redirect to today's index made a
+        # failure look like a page load, and that index goes at cutover.
+        from routes.v2_failure import answer
+        return answer(message, status)
     return jsonify({"ok": False, "error": message, "detail": detail,
                     "status": status}), status
 
@@ -749,76 +749,6 @@ def select_device_list_route():
 # Today's bulk commands (POST /bulk_execute, GET /bulk_status/<id>, and the worker,
 # modules/bulk_ops.py) left at 7.8 on 2026-10-15: Show commands (/v2/show-commands) runs
 # allowlisted reads across devices. POST /bulk_clear/<id> had left the same day.
-
-
-# ---------------------------------------------------------------------------
-# Subnet Discovery Routes
-# ---------------------------------------------------------------------------
-
-# In-memory store for running discovery operations  { op_id -> state dict }
-_discovery_ops: dict = {}
-
-
-def _ping_host(ip: str) -> bool:
-    """Return True if `ip` responds to a single ICMP ping within ~500 ms."""
-    import subprocess, sys
-    if sys.platform.startswith("win"):
-        cmd = ["ping", "-n", "1", "-w", "500", ip]
-    else:
-        cmd = ["ping", "-c", "1", "-W", "1", ip]
-    try:
-        result = subprocess.run(cmd, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL, timeout=3)
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
-def _run_subnet_discovery(op_id: str, hosts: list, username: str,
-                          password: str, secret: str, device_type: str,
-                          max_workers: int) -> None:
-    """Background thread: ping sweep first, then SSH only reachable hosts."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from modules.connection import verify_device_connection
-
-    op = _discovery_ops[op_id]
-
-    # ── Phase 1: ping sweep ───────────────────────────────────────────────
-    op["phase"] = "ping"
-    reachable: list[str] = []
-
-    # Use more workers for ICMP — it's fast and cheap
-    ping_workers = min(len(hosts), max(max_workers * 2, 50))
-    with ThreadPoolExecutor(max_workers=ping_workers) as executor:
-        futures = {executor.submit(_ping_host, ip): ip for ip in hosts}
-        for future in as_completed(futures):
-            ip = futures[future]
-            op["ping_completed"] += 1
-            if future.result():
-                reachable.append(ip)
-                op["ping_reachable"] += 1
-
-    op["phase"] = "ssh"
-    op["ssh_total"] = len(reachable)
-
-    # ── Phase 2: SSH only reachable hosts ────────────────────────────────
-    def probe(ip: str):
-        try:
-            hostname = verify_device_connection(ip, username, password, secret, device_type)
-            return {"ip": ip, "hostname": hostname, "success": True}
-        except Exception as exc:
-            return {"ip": ip, "success": False, "error": str(exc)}
-
-    if reachable:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(probe, ip): ip for ip in reachable}
-            for future in as_completed(futures):
-                result = future.result()
-                op["completed"] += 1
-                if result["success"]:
-                    op["found"].append(result)
-
-    op["status"] = "done"
 
 
 # `/ai/restart` and `/server/restart` are REMOVED (CONCURRENCY_AUDIT R5, 2026-10-02): each

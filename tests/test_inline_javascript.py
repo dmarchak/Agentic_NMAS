@@ -44,7 +44,7 @@ import tempfile
 
 import pytest
 
-from tests.js_source import with_loaded_scripts
+from tests import interface_pages
 from tests.source_index import tracked
 
 TEMPLATES = os.path.join(os.path.dirname(os.path.dirname(
@@ -355,16 +355,15 @@ class TestEveryInlineScriptParses:
         in correct code. The browser receives the *rendered* output, so that
         is what has to parse.
 
-        Rendering `/` covers base.html, index.html and every partial included
-        from them, which is where all of this project's inline script lives.
-        A template reachable only from another route is not covered here; the
-        string scanner above still walks every file on disk.
+        The interface's pages (tests/interface_pages.py) since P7-19 (2026-10-15): v2's, by
+        the links between them, and today's while they exist, each with the scripts it
+        loads. Until then it rendered `/`, today's index, alone. A template reachable only
+        from another route is not covered here; the string scanner above still walks every
+        file on disk.
         """
         import re as _re
 
-        import app as nmas
-
-        html = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
+        html = interface_pages.corpus()
         failures = []
         for match in _re.finditer(r"<script([^>]*)>(.*?)</script>", html, _re.S):
             attrs, body = match.group(1), match.group(2)
@@ -377,13 +376,12 @@ class TestEveryInlineScriptParses:
         assert not failures, "\n".join(failures)
 
     def test_the_rendered_page_actually_had_scripts(self):
-        """An empty sweep would make the check above vacuously true."""
+        """An empty sweep would make the check above vacuously true. The floor is v2's
+        pages alone: 12 blocks, the scripts they load (45 with today's), measured 2026-10-15."""
         import re as _re
 
-        import app as nmas
-
-        html = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
+        html = interface_pages.v2_corpus()
         inline = [m for m in _re.finditer(r"<script([^>]*)>(.*?)</script>",
                                           html, _re.S)
                   if "src=" not in m.group(1)]
-        assert len(inline) >= 5, len(inline)
+        assert len(inline) >= 10, len(inline)

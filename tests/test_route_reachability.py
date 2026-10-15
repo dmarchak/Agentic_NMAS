@@ -114,14 +114,9 @@ CEILING = 0
 
 @pytest.fixture(scope="module")
 def reach():
-    mp = pytest.MonkeyPatch()
-    try:
-        import app as A
+    import app as A
 
-        out = reachability(A, mp)
-    finally:
-        mp.undo()
-    return out
+    return reachability(A)
 
 
 def _pairs(reach):
@@ -134,20 +129,28 @@ class TestThePopulation:
         GUI doc's floor was 220 routes, before P.4 removed Jenkins; there are
         212 routes (218 method pairs) now, measured."""
         assert len(_pairs(reach)) >= 210, len(_pairs(reach))
-        # 450 kB: 497,320 bytes on 2026-10-15, after today's Settings modal's two scripts and
-        # the status bar's left (7.8).
-        assert reach["_corpus_size"] > 450_000, reach["_corpus_size"]
+        # The floors are v2's alone, so removing today's pages moves neither (P7-19,
+        # 2026-10-15; until then the corpus was today's two pages, 497,320 bytes). Measured
+        # 2026-10-15: 119 v2 pages, 3,774,798 bytes with each script they load once.
+        assert reach["_v2_pages"] >= 100, reach["_v2_pages"]
+        assert reach["_v2_corpus_size"] > 3_000_000, reach["_v2_corpus_size"]
+        assert reach["_corpus_size"] >= reach["_v2_corpus_size"]
 
     def test_anchors(self, reach):
         """Known answers in each direction, including each way a reference is
-        found: a fetch literal, a url_for in a form, and a per-method split."""
+        found: a fetch literal, a url_for in a form, and a per-method split. Each a v2 page's
+        since P7-19 (2026-10-15): today's were POST /deploy/apply, GET /onboard/pending, POST
+        /run_command/<ip> and POST /templatize/committed/<path:hostname>."""
         pairs = _pairs(reach)
-        assert pairs["POST /deploy/apply"] is True
-        assert pairs["GET /onboard/pending"] is True
-        assert pairs["POST /run_command/<ip>"] is True          # url_for, device page
-        # A mixed path, write half (the editor's save beside its open). Before 2026-10-15
-        # this anchor was POST /drift/settings, single-method since its GET left at 7.8.
-        assert pairs["POST /templatize/committed/<path:hostname>"] is True
+        # A data-url its script sends (v2 has no fetch literal): Check again, nmas_update.js.
+        assert pairs["POST /update/check"] is True
+        assert pairs["GET /v2/onboard/discovered"] is True       # a link between v2's pages
+        # url_for in a form: a network's Delete (Settings › the network).
+        assert pairs["POST /v2/settings/network/<list_name>/delete"] is True
+        # A mixed path, both halves, each by its own url_for: the Approve… link's hx-get opens
+        # the check (GET, templates_v2.check), its form confirms (POST, templates_v2.approve).
+        assert pairs["GET /v2/templates/approve"] is True
+        assert pairs["POST /v2/templates/approve"] is True
         # Unreached, the answer each way: a non-GUI route only a script posts to. The
         # unreached allowlist's own anchors (bulk intent's JSON apply, and inventory source's
         # POST, whose GET half was no proof) left at 7.8 on 2026-10-15; the per-method split

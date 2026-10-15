@@ -72,6 +72,7 @@ Access session, so each of these is a sitting with the operator's browser. Batch
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | D2 | B (self-signed) |
 | C450, P7-08b | Devices and Coverage: summary, groups, filter (`EXCUSED` 4 → 0); then C704's server-side sort | the large-fleets test's EXCUSED empty | L, then M | the revised Devices board (15.1 B) | B |
 | C472 | the remaining live regions keep state through another person's write (History diffs, remote Push/Verify) | each region's test | M | — | — |
+| C855 | criterion 11: the v2 device page's per-device work (every device's last measurement read, a regex compiled per device) | test_scale's device-page calls-per-device pin at 0 per device | S–M | — | — |
 | C850 | criterion 6 on v2: the four Alpine confirm components converted to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C543, C544 | Needs attention's action words (Persist; Revert and Retry) | the rows' tests | S | — | — |
 | C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
@@ -160,3 +161,9 @@ finding joins this list unless it blocks cutover or is a security issue (B).
   5 → 0; four v2 gaps built in place), tests/test_v2_one_confirm.py (30 routes in the one
   pattern, 19 today's with a v2 home); criterion 6 itself waits on C850. C852 (NetBox's Remove
   preview) fixed on the way.
+- **P7-19 and P7-08a done** (the next commit): the checks that rendered today's pages read v2
+  through one helper (tests/interface_pages.py: 119 v2 pages followed from `/v2/`); app.py's
+  failed navigations answered by v2 (no redirect to `index`); dead `_ping_host`,
+  `_run_subnet_discovery` removed; `ON_TODAYS_APP` empty; tests/test_scale.py measures v2 at 9
+  and 900 devices. The v1-only tests left for each removal commit are named in that commit's
+  message. C857 (four v2 sentences sending to today's pages) fixed with a guard; C855 found.

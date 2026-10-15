@@ -93,7 +93,7 @@ def creators():
     shutil.copytree(store, original)
     socket.socket.connect = _no_network
     client = A.app.test_client()
-    client.get("/")
+    client.get("/v2/")
     target = os.path.join(config.LISTS_DIR, config.list_slug(UNKNOWN))
     found, swept = {}, []
     try:
@@ -154,7 +154,7 @@ def client():
     import app as A
 
     c = A.app.test_client()
-    c.get("/")
+    c.get("/v2/")
     return c
 
 

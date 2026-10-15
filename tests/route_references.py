@@ -157,35 +157,17 @@ def url_for_references() -> dict:
     return out
 
 
-FIXTURE_DEVICE = {"ip": "192.0.2.1", "hostname": "r1", "device_type": "cisco_ios",
-                  "username": "admin", "password": "", "secret": ""}
+def corpus() -> str:
+    """Every page a person navigates to, each rendered WITH a device, plus the scripts each
+    loads: v2's pages by the links between them, and today's while they exist
+    (`tests/interface_pages.py` says which, and what it cannot see). Until P7-19
+    (2026-10-15) it was today's two pages alone, the index and the device page."""
+    from tests import interface_pages
+
+    return interface_pages.corpus()
 
 
-def corpus(app_module, monkeypatch) -> str:
-    """Every page a person navigates to (the index and the device page, the
-    only two `render_template` renders), each rendered WITH a device, plus
-    the scripts each loads.
-
-    With no device, the index's per-device loop renders nothing and the
-    device page redirects, and a redirect has no references in it: the
-    fixture would decide what the interface can reach.
-    """
-    from tests.js_source import with_loaded_scripts
-
-    monkeypatch.setattr(app_module, "load_saved_devices",
-                        lambda *a, **k: [dict(FIXTURE_DEVICE)])
-    monkeypatch.setattr(app_module, "get_device_context",
-                        lambda d, *a, **k: (["flash:"], [], "flash:"))
-    client = app_module.app.test_client()
-    pages = []
-    for path in ("/", f"/device/{FIXTURE_DEVICE['ip']}"):
-        r = client.get(path)
-        assert r.status_code == 200, f"{path} did not render ({r.status_code})"
-        pages.append(with_loaded_scripts(r.get_data(as_text=True)))
-    return "\n".join(pages)
-
-
-def reachability(app_module, monkeypatch) -> dict:
+def reachability(app_module) -> dict:
     """{"<METHOD> <rule>": bool} for every route and method the app serves.
 
     Whether a path MIXES a read and a write is decided per PATH, across
@@ -193,7 +175,9 @@ def reachability(app_module, monkeypatch) -> dict:
     POST (both left at 7.8), and deciding it per rule made each look single-method, so the
     page's GET counted as reaching the POST (found by the method-blind
     negative control, which should have failed and did not)."""
-    text = corpus(app_module, monkeypatch)
+    from tests import interface_pages
+
+    text = corpus()
     by_endpoint = url_for_references()
     rules = [r for r in app_module.app.url_map.iter_rules() if r.endpoint != "static"]
     methods_on_path = {}
@@ -210,40 +194,50 @@ def reachability(app_module, monkeypatch) -> dict:
         for method in methods:
             out[f"{method} {rule.rule}"] = (method in seen) if mixed else bool(seen)
     out["_corpus_size"] = len(text)
+    out["_v2_corpus_size"] = len(interface_pages.v2_corpus())
+    out["_v2_pages"] = len(interface_pages.pages()["v2"])
     return out
 
 
 #: A request a page makes: the first argument of `fetch(`, or an `href`,
-#: `action` or `data-url` attribute, when it is a literal path. What this
-#: cannot see, stated: a URL held in a variable and fetched elsewhere (only
-#: its literal is found, where it is written), and `url_for()`, which Flask
-#: resolves at render and which fails the render when its endpoint is gone.
-_REQUEST = re.compile(r"""(?:fetch\(\s*|(?:href|action|data-url)\s*=\s*)(['"`])(/[^'"`\s?#]*)""")
+#: `action`, `formaction` or `data-url` attribute, or v2's `hx-get`, `hx-post`, `hx-put`,
+#: `hx-patch` or `hx-delete` (htmx's request attributes, v2's usual request, read since
+#: P7-19), when it is a literal path. What this cannot see, stated: a URL held in a variable
+#: and fetched elsewhere (only its literal is found, where it is written), and `url_for()`,
+#: which Flask resolves at render and which fails the render when its endpoint is gone.
+_REQUEST = re.compile(r"""(?:fetch\(\s*|(?:href|action|data-url|hx-(get|post|put|patch|delete))"""
+                      r"""\s*=\s*)(['"`])(/[^'"`\s?#]*)""")
 
 
 def page_requests(text: str) -> dict:
     """{(literal path, method): True} for every literal request in *text*.
-    The method is read the way `classify` reads it; unreadable is GET."""
+
+    An `hx-<verb>` request's method is its verb; any other is read the way `classify` reads
+    it. One `classify` cannot read (a `data-url` a script sends, a button's `formaction`) is
+    ``None``, which resolves to a route under ANY method: until P7-19 it was GET, and v2's
+    first pages read that way named three live POSTs dead (`/update/check`'s `data-url`,
+    sent as a POST by its Alpine component, among them)."""
     out = {}
     for m in _REQUEST.finditer(text):
-        raw = m.group(2)
+        raw = m.group(3)
         if raw == "/" or raw.startswith("/static/"):
             continue
-        concatenated = (m.group(1) in "'\""
-                        and text[m.end(2) + 1:m.end(2) + 8].lstrip().startswith("+"))
-        method = classify(text, m.start(2) - 1) or "GET"
+        concatenated = (m.group(2) in "'\""
+                        and text[m.end(3) + 1:m.end(3) + 8].lstrip().startswith("+"))
+        method = m.group(1).upper() if m.group(1) else classify(text, m.start(3) - 1)
         out[(raw + ("+" if concatenated else ""), method)] = True
     return out
 
 
 def resolves(app_module, request: str, method: str) -> bool:
     """Does *request* (a literal path; `${...}` is one segment; a trailing `+`
-    marks a string the page concatenates onto) reach a route with *method*?"""
+    marks a string the page concatenates onto) reach a route with *method*
+    (``None``: any method)?"""
     concatenated = request.endswith("+")
     path = request.rstrip("+")
     segs = [s for s in re.sub(r"\$\{[^}]*\}", "\x00", path).split("/")]
     for rule in app_module.app.url_map.iter_rules():
-        if method not in (rule.methods or set()):
+        if method is not None and method not in (rule.methods or set()):
             continue
         rsegs = rule.rule.split("/")
         if concatenated:

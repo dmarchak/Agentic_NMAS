@@ -171,15 +171,21 @@ class TestAFailedV2RequestStaysOnV2:
         html = r.get_data(as_text=True)
         assert r.status_code == 500 and html.startswith('<div class="notice notice-danger"')
 
-    def test_today_s_pages_keep_their_redirect(self, failing, monkeypatch):
-        """A v1 navigation that fails is unchanged (today's pages draw the flash)."""
+    def test_any_navigation_that_fails_is_answered_on_v2(self, failing, monkeypatch):
+        """A navigation outside /v2/ that fails is answered on v2 too, with its status (P7-19,
+        2026-10-15): it redirected to today's index, which goes at cutover, with a flash."""
         import app as A
 
         def boom(*a, **k):
             raise ValueError("planted")
-        monkeypatch.setitem(A.app.view_functions, "git_status", boom)
-        r = failing.get("/git/status", headers={"Accept": "text/html"})
-        assert r.status_code == 302
+        monkeypatch.setitem(A.app.view_functions, "health.operations", boom)
+        r = failing.get("/health/operations", headers={"Accept": "text/html"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 500 and "Location" not in r.headers, r.status_code
+        assert "Couldn't load: GET /health/operations failed with an unexpected error: " \
+               "ValueError: planted" in html, html
+        assert 'href="/v2/"' in html
+        assert "'unsafe-inline'" not in r.headers["Content-Security-Policy"]
 
 
 LINKS_JS = """

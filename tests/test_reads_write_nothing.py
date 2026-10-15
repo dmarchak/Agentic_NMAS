@@ -59,7 +59,7 @@ def writers(monkeypatch):
     # /configure/audit_latest's write in the full run).
     shutil.rmtree(store)
     os.makedirs(store)
-    client.get("/")                     # initialize, as the first page load does
+    client.get("/v2/")                  # initialize, as the first page load does
     saved = os.path.join(os.path.dirname(store), os.path.basename(store) + ".saved")
     shutil.copytree(store, saved)
     found = {}

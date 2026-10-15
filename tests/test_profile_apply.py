@@ -35,6 +35,12 @@ def _r6_config():
 
 @pytest.fixture
 def lab(monkeypatch, tmp_path):
+    return lab_setup(monkeypatch, tmp_path)
+
+
+def lab_setup(monkeypatch, tmp_path):
+    """`lab`'s body, so a module-scoped user (tests/test_scale.py) builds the same lab with
+    its own MonkeyPatch and folder."""
     from modules.nsot import approval, hostvars
     from modules.nsot.parsers import get_parser
     from modules.nsot.repo import GoldenItem, save_golden, save_host_vars

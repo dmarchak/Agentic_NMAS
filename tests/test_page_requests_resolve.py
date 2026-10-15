@@ -9,12 +9,14 @@ for any other removed route nothing would have. `check_removed_definitions.py`
 matches names, never paths.
 
 The population is every literal request in the rendered pages and the scripts
-they load (`route_references.page_requests`): 143 distinct at the time of
-writing, all resolving. What it cannot see is stated in that function.
+they load (`route_references.page_requests`; the pages are tests/interface_pages.py's):
+143 distinct at the time of writing, on today's pages; 362 on 2026-10-15 when v2's pages
+joined them (P7-19), all resolving. What it cannot see is stated in that function.
 """
 
 import pytest
 
+from tests import interface_pages
 from tests import route_references as rr
 
 
@@ -22,26 +24,30 @@ from tests import route_references as rr
 def requests():
     import app as A
 
-    mp = pytest.MonkeyPatch()
-    try:
-        text = rr.corpus(A, mp)
-    finally:
-        mp.undo()
-    return A, rr.page_requests(text)
+    return A, rr.page_requests(rr.corpus())
 
 
 def test_the_scan_finds_the_population(requests):
     _A, found = requests
-    # 119 on 2026-10-13, after Quick actions' two requests left with their family (7.8, D16);
-    # 111 the same day after Device files and Bulk file actions; the floor falls as today's
-    # pages shrink, never below what a removal explains. 91 on 2026-10-14, after the AI
-    # family's requests left with it (D15: the AI panel's, the Agent, Approvals and Ansible
-    # tabs', the usage summary's and the AI debug log's). 85 the same day, after today's
-    # Backups' requests and the template preview's refresh-capture left with it (7.8, C632).
-    # 80 on 2026-10-15, after today's drift panel's requests left with its tab (7.8). 67 the
-    # same day, after today's Settings modal's, Logs tab's and status bar's left (7.8).
-    assert len(found) >= 67, len(found)
-    assert ("/deploy/plan", "POST") in found           # a positive anchor
+    # Until P7-19 (2026-10-15) the population was today's two pages' (67 that day, falling as
+    # they shrank). Now the floor is v2's alone, so removing today's pages moves nothing:
+    # 298 distinct requests on v2's 119 pages and their scripts, measured 2026-10-15 (362
+    # with today's pages).
+    v2 = rr.page_requests(interface_pages.v2_corpus())
+    assert len(v2) >= 250, len(v2)
+    assert set(v2) <= set(found)
+    assert ("/update/check", None) in v2                # a data-url its script sends
+    assert ("/v2/device/r3/ask", "POST") in v2          # an hx-post (the device's Ask tab)
+
+
+def test_an_htmx_request_is_read_with_its_verb():
+    """v2's requests are htmx attributes: each read with its own verb, and a request whose
+    method cannot be read (a `data-url` a script sends) is held to ANY method, never GET."""
+    page = ('<button hx-post="/v2/a">x</button><a href="/v2/b" hx-get="/v2/c">y</a>'
+            '<span hx-delete="/v2/d"></span><span data-url="/update/check"></span>')
+    assert rr.page_requests(page) == {("/v2/a", "POST"): True, ("/v2/b", "GET"): True,
+                                      ("/v2/c", "GET"): True, ("/v2/d", "DELETE"): True,
+                                      ("/update/check", None): True}
 
 
 def test_every_request_reaches_a_route(requests):

@@ -10,6 +10,15 @@ deleted. So the marginal cost is pinned instead, and the day somebody bounds
 the device list this test **fails and has to be updated with a new number** —
 which is the point. A bound that improves things should have to be recorded.
 
+**The pages are v2's since P7-19 (2026-10-15, burn-down P7-08a)**: Needs attention, the
+Devices list and a device's page, each at 9 devices and at 900, every device but the
+fleet's `no_golden` ones with a committed golden (`scripts_scale_helper`). Criterion 11's
+property, "no per-device work per request", is asserted as what must not move with the
+fleet: processes started, files read from the network's folder, inventory reads, sockets
+opened. The CPU work and the bytes that do move are pinned as numbers. Until then this
+measured today's index, `/` (45,117 bytes fixed, 1,616 per device on 2026-10-15), which goes
+at cutover.
+
 Nothing here writes into `data/lists/`: `fleet_scale.write_csv()` refuses a
 path under it, and these tests build in `tmp_path`.
 """
@@ -54,10 +63,31 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
 #:
 #: 45,117 fixed since 2026-10-15: today's Settings modal (its NetBox section, the integrations
 #: and security posture partials, its script), the Logs tab and the status bar left (7.8).
-FIXED_PAGE_BYTES = 45_117
+#: Those two figures were today's index's, and left with its measurement (P7-19, 2026-10-15);
+#: the extracted script stays pinned until today's pages, the only ones loading it, go.
 EXTRACTED_SCRIPT_BYTES = 199_435
-BYTES_PER_DEVICE = 1_616
 TOLERANCE = 0.25
+
+#: v2's pages, measured 2026-10-15 (P7-19) at 9 and 900 devices: {page: (fixed bytes, bytes
+#: per device, Python calls per device)}. A page drawing no device list costs no byte per
+#: device. Update with a new measurement, never by widening.
+#:
+#: - Needs attention: no byte per device, and about one Python call (0.8 to 1.0 measured).
+#: - Devices: every row drawn (C450, 7.4's revised Devices board owed: summary, groups,
+#:   paging), so bytes and calls per device; bounding it fails this, with a new number.
+#:   31,250 bytes at 9 devices, 886,902 at 900; 23,416 calls at 9, 1,180,027 at 900.
+#: - A device's page: no byte per device, and CALLS per device, because its record reads
+#:   `device_list.last_measured` for EVERY device of the network to draw one (each a regex
+#:   compiled and searched per device in `_intent_of`): 0.03 s at 9 devices and 0.3 s at
+#:   900, measured 2026-10-15, a finding of P7-19.
+V2_PAGES = {
+    # Its fixed bytes are not pinned (None): its rows come from the reader stores every test
+    # in a worker shares, 49,813 bytes alone and 88,687 mid-suite (measured 2026-10-15). What
+    # moves with the fleet is read within one environment, so its per-device pins hold.
+    "/v2/": (None, 0, 1),
+    "/v2/devices": (22_610, 960, 1_298),
+    "/v2/device/cor0000": (33_319, 0, 460),
+}
 
 
 class TestTheFleetIsRealisticallyMixed:
@@ -165,37 +195,134 @@ class TestTheReadIsNotTheCost:
         assert time.perf_counter() - start < 0.01
 
 
-class TestThePageGrowsWithTheInventory:
-    """Asserting the STATUS QUO. The day somebody bounds the device list this
-    fails and must be updated with a new number."""
+SIZES = (9, 900)
 
-    @pytest.fixture(scope="class")
-    def measured(self):
-        from scripts_scale_helper import render_sizes
 
-        return render_sizes([9, 900])
+@pytest.fixture(scope="module")
+def measured(tmp_path_factory):
+    """{page: {size: cost}}, each page at 9 devices and at 900, on test_profile_apply's lab:
+    built once per worker (the 900 goldens' commit is most of it, about 15 s measured
+    2026-10-15), on its own MonkeyPatch, as a verified person (a module-scoped fixture runs
+    before conftest's function-scoped one, and a gated control is drawn only for a viewer who
+    may use it)."""
+    from scripts_scale_helper import commit_goldens, measure
 
-    def test_the_page_carries_every_device(self, measured):
-        small, large = measured[9], measured[900]
-        marginal = (large["bytes"] - small["bytes"]) / (900 - 9)
-        assert abs(marginal - BYTES_PER_DEVICE) < BYTES_PER_DEVICE * TOLERANCE, (
-            f"the per-device page cost is now {marginal:.0f} bytes, not "
-            f"{BYTES_PER_DEVICE}. If the list was bounded, that is good news "
-            "— record the new number here rather than widening the tolerance.")
+    import app as A
+    from tests.interface_pages import as_a_verified_person
+    from tests.test_profile_apply import lab_setup
 
-    def test_the_fixed_cost_is_shipped_on_every_load(self, measured):
-        """Its own finding, and nothing to do with scale: a third of a
-        megabyte of markup before the first device row."""
-        small = measured[9]
-        fixed = small["bytes"] - BYTES_PER_DEVICE * 9
-        assert abs(fixed - FIXED_PAGE_BYTES) < FIXED_PAGE_BYTES * TOLERANCE
+    fleet = build_fleet(max(SIZES))
+    mp = pytest.MonkeyPatch()
+    out = {page: {} for page in V2_PAGES}
+    try:
+        as_a_verified_person(mp)
+        lab = lab_setup(mp, tmp_path_factory.mktemp("scale"))
+        rows, loads = {"now": []}, {"n": 0}
+
+        def loader(path=None):
+            loads["n"] += 1
+            return [dict(r) for r in rows["now"]]
+        mp.setattr("modules.device.load_saved_devices", loader)
+        mp.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(r) for r in rows["now"]])
+        client = A.app.test_client()
+        done = 0
+        for size in SIZES:
+            commit_goldens("Lab", fleet[done:size])
+            rows["now"], done = fleet[:size], size
+            for page in V2_PAGES:
+                out[page][size] = measure(client, page, os.path.dirname(lab["repo"]), loads)
+    finally:
+        mp.undo()
+    return out
+
+
+class TestAV2PageDoesNoPerDeviceWork:
+    """Criterion 11 on v2 (P7-08a): a request costs the same I/O at 900 devices as at 9.
+    Each count is compared exactly: one more process, file or inventory read per request at
+    900 is the per-device work the rule forbids, found before a person waits for it."""
+
+    @pytest.mark.parametrize("what", ("children", "opens", "loads", "connects"))
+    def test_the_io_does_not_move_with_the_fleet(self, measured, what):
+        moved = {p: (c[SIZES[0]][what], c[SIZES[-1]][what]) for p, c in measured.items()
+                 if c[SIZES[0]][what] != c[SIZES[-1]][what]}
+        assert moved == {}, (f"{what} per request moves with the fleet (9 devices, 900): "
+                             f"{moved}")
+
+    def test_the_measurement_saw_the_work(self, measured):
+        """Floors: a measurement that counted nothing passes every check above. Every page
+        reads its records through git and the network's folder (measured 2026-10-15: 3 to 11
+        processes and 3 to 18 files), and no page opens a socket."""
+        for page, cost in measured.items():
+            small = cost[SIZES[0]]
+            assert small["children"] >= 1 and small["opens"] >= 1, (page, small)
+            assert small["connects"] == 0, (page, small)
+            assert small["calls"] > 1_000, (page, small)
+
+    def test_the_counters_count(self, tmp_path):
+        """The control: a page that reads one file per device and starts one process per
+        device is seen moving, on a throwaway app with the same measurement."""
+        import subprocess as sp
+
+        from flask import Flask
+        from scripts_scale_helper import measure
+
+        app, n = Flask("scale_probe"), {"devices": 1}
+        for i in range(3):
+            (tmp_path / f"d{i}.cfg").write_text("x")
+
+        @app.route("/page")
+        def page():
+            for i in range(n["devices"]):
+                open(tmp_path / f"d{i}.cfg", encoding="utf-8").read()
+                sp.run(["true"], check=False)
+            return "<p>ok</p>"
+        c, loads = app.test_client(), {"n": 0}
+        one = measure(c, "/page", str(tmp_path), loads)
+        n["devices"] = 3
+        three = measure(c, "/page", str(tmp_path), loads)
+        assert (one["opens"], three["opens"]) == (1, 3)
+        assert (one["children"], three["children"]) == (1, 3)
+        assert three["calls"] > one["calls"]
+
+
+class TestWhatMovesWithTheFleetIsPinned:
+    """Asserting the STATUS QUO, per page: the fixed bytes, and the bytes and Python calls
+    each device adds. The day somebody bounds the Devices list, or stops the device page
+    reading every device, this fails and must be updated with a new number."""
+
+    @pytest.mark.parametrize("page", sorted(p for p, v in V2_PAGES.items() if v[0] is not None))
+    def test_the_fixed_bytes(self, measured, page):
+        fixed, per_device, _calls = V2_PAGES[page]
+        small = measured[page][SIZES[0]]["bytes"]
+        got = small - per_device * SIZES[0]
+        assert abs(got - fixed) <= fixed * TOLERANCE, (page, got, fixed)
+
+    @pytest.mark.parametrize("page", sorted(V2_PAGES))
+    def test_the_bytes_per_device(self, measured, page):
+        _fixed, per_device, _calls = V2_PAGES[page]
+        cost = measured[page]
+        marginal = (cost[SIZES[-1]]["bytes"] - cost[SIZES[0]]["bytes"]) / (SIZES[-1] - SIZES[0])
+        assert abs(marginal - per_device) <= max(per_device * TOLERANCE, 1), (
+            f"{page}: {marginal:.1f} bytes per device, pinned at {per_device}. If the list "
+            "was bounded, that is good news: record the new number rather than widening.")
+
+    @pytest.mark.parametrize("page", sorted(V2_PAGES))
+    def test_the_python_calls_per_device(self, measured, page):
+        _fixed, _bytes, per_device = V2_PAGES[page]
+        cost = measured[page]
+        marginal = (cost[SIZES[-1]]["calls"] - cost[SIZES[0]]["calls"]) / (SIZES[-1] - SIZES[0])
+        assert abs(marginal - per_device) <= max(per_device * TOLERANCE, 2), (
+            f"{page}: {marginal:.1f} Python calls per device, pinned at {per_device}. "
+            "A page that stopped passing over every device: record the new number.")
+
+
+class TestTheExtractedScript:
+    """Today's pages only (static/js/gen/, Stage 7 §0b); leaves with them (P7-27)."""
 
     def test_the_extracted_script_is_no_longer_in_the_document(self):
-        """**The §0b acceptance**, and the reason the figure above moved.
-
-        Pinned as a number for the same reason the page cost is: a later
-        change that quietly inlines a block again must update this line
-        rather than pass."""
+        """**The §0b acceptance**, pinned as a number for the same reason the page cost is:
+        a later change that quietly inlines a block again must update this line rather than
+        pass."""
         import os as _os
 
         from tests.source_index import tracked
@@ -209,8 +336,3 @@ class TestThePageGrowsWithTheInventory:
             f"only {total} bytes are extracted — the inline script has "
             "returned to the templates")
         assert abs(total - EXTRACTED_SCRIPT_BYTES) < EXTRACTED_SCRIPT_BYTES * TOLERANCE
-
-    def test_one_render_reads_the_whole_inventory(self, measured):
-        """Cheap today — 0.73 ms — and recorded so the claim in §0a is
-        checkable rather than remembered."""
-        assert measured[900]["loads"] >= 1

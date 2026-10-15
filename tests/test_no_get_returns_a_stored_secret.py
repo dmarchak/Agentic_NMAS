@@ -136,7 +136,7 @@ def planted_stores():
         from modules import approval_queue, credentials, device, secrets_store
         from modules.nsot import repo as R
 
-        A.app.test_client().get("/")
+        A.app.test_client().get("/v2/")
         values["env"] = [_p("Env")]
         mp.setenv("ANTHROPIC_API_KEY", _p("Env"))
 
