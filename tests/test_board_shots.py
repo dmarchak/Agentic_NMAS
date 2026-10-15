@@ -414,6 +414,31 @@ def test_history_ask_logs(tmp_path, monkeypatch):
         loki.empty, loki.fail = False, "Timed out after 65.0s"
         _shoot("history-ask-logs-down", "", lambda w: base + "&ask=1", served,
                widths=((1440, 1.0),))
+        # Reveal… (C818): the capture with its one planted secret-bearing line
+        # (tests/test_log_reveal.py), the box opened with a reason, then the line revealed.
+        from tests.browser import Browser
+        from tests.test_log_reveal import REASON, plant
+        loki.fail = ""
+        monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path / "lab"))
+        plant(loki)
+        for width, scale in ((1440, 1.0), (390, 2.0)):
+            prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+            with Browser(prefs=prefs) as b:
+                b._call("POST", f"/session/{b.session}/window/rect", {"width": width,
+                                                                      "height": 1000})
+                b.go(served.url(base + "&range=1h&ask=1"))
+                if width < 480:
+                    b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
+                         f"document.body.style.maxWidth = '{width}px'; return 1")
+                b.wait_for("return document.querySelector('.lq-rvbox summary')", 15)
+                b.js("var s = document.querySelector('.lq-rvbox summary'); s.click();"
+                     "s.scrollIntoView({block: 'center'});"
+                     "document.querySelector('.lq-rvbox input[name=reason]').value = "
+                     f"{json.dumps(REASON)}; return 1")
+                _full(b, os.path.join(OUT, f"history-ask-logs-reveal-ask-page-{width}.png"))
+                b.js("document.querySelector('.lq-rvbox button[type=submit]').click(); return 1")
+                b.wait_for("return document.querySelector('.lq-rv-line')", 15)
+                _full(b, os.path.join(OUT, f"history-ask-logs-revealed-page-{width}.png"))
     history_logq.forget()
 
 

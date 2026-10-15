@@ -1106,6 +1106,30 @@ def logging_path():
     ])
 
 
+def reveal_log_line():
+    return svg(450, (
+        "Revealing a log line: a verified person gives a reason; the line is named by its Loki "
+        "stream, its time and a digest of the masked line shown; it is read from Loki again, "
+        "now; the reveal is recorded with who, when, which line and the reason, never the "
+        "value; then the line is drawn unmasked under its row to that person, and History "
+        "lists the record."), [
+        lanes(20, 444, right="LOKI"),
+        person(14, 34, 186, 28, "A verified person"), num(14, 34, 1),
+        doc("box", 14, 74, 186, 36, "A reason", "three words or more"), num(14, 74, 2),
+        doc("box", 14, 122, 186, 36, "The line named", "stream, time, digest shown"),
+        num(14, 122, 3),
+        svc(250, 170, 130, 36, "Loki", "asked now"),
+        *rows([(194, "read", 4, "Read again", "the one line shown")], dev_x=250),
+        store(14, 230, 186, 40, "The reveal record", "who, when, which, why"), num(14, 230, 5),
+        t(14, 288, "never the line or its value;", "sm"),
+        t(14, 301, "unrecorded, nothing is shown", "sm"),
+        doc("box", 14, 320, 186, 40, "Your page", "the line unmasked, in place"),
+        num(14, 320, 6),
+        t(14, 384, "History's Timeline lists the record.", "sm"),
+        t(14, 428, "No device is asked or changed.", "sm"),
+    ])
+
+
 def path_trace():
     return svg(470, (
         "A path trace: From and To are checked before any device is asked; the first device is "
@@ -1410,6 +1434,7 @@ DIAGRAMS = {
     "dhcp-exclusion": dhcp_exclusion,
     "show-commands": show_commands,
     "logging-path": logging_path,
+    "reveal-log-line": reveal_log_line,
     "path-trace": path_trace,
     "privileged": privileged,
     "publish-remote": publish_remote,

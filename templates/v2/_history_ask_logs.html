@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, info, stamp -%}
+{%- from "v2/_macros.html" import icon, info, how, stamp -%}
 {%- import "v2/_history_ask_parts.html" as part with context -%}
 {#- History › Query › Ask your own, the logs builder (board F3, QueryBuilderLogs3 and its phone
     board, approved 2026-10-15; compared in docs/fidelity/history-ask-logs.md). One region,
@@ -16,6 +16,17 @@
 {%- for k in ('job', 'dev', 'mn') if k not in skip %}{% for v in s[k] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endfor %}
 {%- for k in ('role', 'sev', 'has', 'not', 'show', 'by', 'every', 'range', 'within', 'from', 'to') if k not in skip and s[k] %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
 {%- for k, v in extra.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+{%- endmacro %}
+{#- Reveal… (C818; board F3): a line with a masked value asks a reason in place, then the line
+    is read from Loki again, recorded and drawn unmasked under it (modules/log_reveal.py). -#}
+{%- macro reveal_form(r) -%}
+<details class="lq-more lq-rvbox" data-keep="{{ r.reveal.slot }}-ask"><summary class="btn btn-small">Reveal…</summary>
+  <form class="lq-pop lq-rvpop" method="post" action="{{ url_for('v2.history_ask_logs_reveal') }}" hx-post="{{ url_for('v2.history_ask_logs_reveal') }}" hx-target="#{{ r.reveal.slot }}" hx-swap="outerHTML" aria-label="Reveal this line">
+    <input type="hidden" name="list" value="{{ q.list }}"><input type="hidden" name="stream" value="{{ r.reveal.stream }}"><input type="hidden" name="ns" value="{{ r.reveal.ns }}"><input type="hidden" name="shown" value="{{ r.reveal.shown }}">
+    <label for="{{ r.reveal.slot }}-why"><span>Why do you need to see it? At least three words, recorded in History with you and the line; the value never is.</span><input id="{{ r.reveal.slot }}-why" type="text" name="reason" required minlength="8" maxlength="300" autocomplete="off" placeholder="e.g. check the community set by this change"></label>
+    <div class="lq-popacts"><span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="reveal-log-line" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Reveal</span><span class="op-busy">Revealing…</span></button>{{ how('reveal-log-line', compact=True, op='a reveal') }}</span><button type="button" class="btn btn-small" data-lq-close>Cancel</button></div>
+  </form>
+</details>
 {%- endmacro %}
 {%- set code_range = q.code_range %}
 <div id="lq" class="lq">
@@ -109,7 +120,7 @@
 
   <div class="lq-row"><span class="lq-lab">The query</span><div class="lq-col">
     {%- set hl = 'count' if s.hl == 'show' and s.show == 'counts' else s.hl %}
-    {%- set tail %}{% if s.show == 'counts' %}, which draws lines only today{% endif %}. Lines are masked as every log line Mercury shows.{% endset %}
+    {%- set tail %}{% if s.show == 'counts' %}, which draws the counts on the same chart{% endif %}. Lines are masked as every log line Mercury shows.{% endset %}
     {{ part.query_box(b, hl, url_for('v2.history_query_metric', key='ask', lang='logql', range=code_range, q=b.query, list=q.list), tail) }}
   </div></div>
 
@@ -130,7 +141,7 @@
       {%- if lim.query_timeout %} · {{ lim.query_timeout.words }} an ask (Loki's <span class="mono">query_timeout</span>){% endif %}
       {%- if lim.max_entries_limit_per_query %} · at most {{ '{:,}'.format(lim.max_entries_limit_per_query.n) }} lines (<span class="mono">max_entries_limit_per_query</span>){% endif %}
       {%- if lim.max_query_series %} and {{ lim.max_query_series.n }} series (<span class="mono">max_query_series</span>) an ask{% endif %}
-      {%- if lim.retention_period %} · lines kept {{ lim.retention_period.words }} (Loki's <span class="mono">retention_period {{ lim.retention_period.text }}</span>){% endif %}. Loki's values read from its /config {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC. Lines are masked.
+      {%- if lim.retention_period %} · lines kept {{ lim.retention_period.words }} (Loki's <span class="mono">retention_period {{ lim.retention_period.text }}</span>){% endif %}. Loki's values read from its /config {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC. Lines are masked; revealing one is recorded.
       {%- endif %}</p>
   </div></div>
 
@@ -179,11 +190,12 @@
 <section id="lines" class="card lq-card" aria-label="The Lines view">
   <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{% if a.total is not none %}{{ '{:,}'.format(a.total) }} line{{ 's' if a.total != 1 }} · {% endif %}answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>
   <div class="table-wrap"><table class="table lq-lines">
-    <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Device</th><th scope="col">Severity</th><th scope="col">Kind</th><th scope="col">Line (masked)</th></tr></thead>
-    <tbody>{% for r in a.rows %}<tr><td class="lq-nw mono" title="{{ r.iso }}">{{ r.at }}</td><td class="mono">{{ r.device or '—' }}</td><td>{% if r.sev is not none %}<span class="lq-sev{{ ' s3' if r.sev <= 3 else ' s4' if r.sev == 4 }}">{{ r.sev }} {{ r.sev_word }}</span>{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono small lq-nw">{{ r.kind }}</td><td class="lq-l">{{ r.text }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Device</th><th scope="col">Severity</th><th scope="col">Kind</th><th scope="col">Line (masked)</th><th scope="col"><span class="sr">Reveal</span></th></tr></thead>
+    <tbody>{% for r in a.rows %}<tr><td class="lq-nw mono" title="{{ r.iso }}">{{ r.at }}</td><td class="mono">{{ r.device or '—' }}</td><td>{% if r.sev is not none %}<span class="lq-sev{{ ' s3' if r.sev <= 3 else ' s4' if r.sev == 4 }}">{{ r.sev }} {{ r.sev_word }}</span>{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono small lq-nw">{{ r.kind }}</td><td class="lq-l">{% for piece, masked in r.text | masked_parts %}{% if masked %}<span class="lq-mask">{{ piece }}</span>{% else %}{{ piece }}{% endif %}{% endfor %}{% if r.reveal %}<div class="lq-rv-out" id="{{ r.reveal.slot }}"></div>{% endif %}</td><td class="lq-rv">{% if r.reveal %}{{ reveal_form(r) }}{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
   <div class="lq-foot"><span class="muted">Lines {{ a.at + 1 }} to {{ a.at + a.rows | length }}{% if a.total is not none %} of {{ '{:,}'.format(a.total) }}{% endif %}, newest first. A line's time is when the collector received it, never the device's clock.</span>
     <span class="lq-line">{% if a.at %}{{ go({'ask': '1', 'before': '', 'at': ''}, '‹ Newest', 'btn btn-small') }}{% endif %}{% if a.more %}{{ go({'ask': '1', 'before': a.next_before, 'at': a.at + a.rows | length}, 'Older ›', 'btn btn-small') }}{% endif %}</span></div>
+  <span class="lq-hint">Reveal… asks for a reason, then reads that one line from Loki again and shows it unmasked, to you only; who, when, which line and why are recorded in History, never the value.</span>
 </section>
 {%- endif %}
 </div>

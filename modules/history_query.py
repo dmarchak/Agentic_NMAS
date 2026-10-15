@@ -10,6 +10,8 @@ own" are a later step of C667, said on the page as such.
 
 import logging
 
+from modules.history_ask import duration_words
+
 log = logging.getLogger(__name__)
 
 #: The board's six ready-made questions, in its order: (key, title, what it answers, source).
@@ -165,6 +167,16 @@ LOGQL_LIMIT = 200
 LOGQL_MAX_DAYS = 30
 LANGS = {"promql": "PromQL", "logql": "LogQL"}
 
+# Code mode is free text, BOUNDED (the operator's decision, 2026-10-15, C817): it reads only
+# through the stores' read endpoints, over at most `LOGQL_MAX_DAYS`, at most `LOGQL_LIMIT`
+# lines, waiting at most `history_logq.DEFAULT_WAIT`, every line and label masked by
+# `redact_text`. The query text never chooses an endpoint: each ask names its path here first.
+#: The only paths Code mode asks of each store.
+READS = {"loki": ("loki/api/v1/query", "loki/api/v1/query_range", "loki/api/v1/labels"),
+         "grafana": ("api/ds/query",)}
+#: The data source types Code mode's PromQL is asked of, through Grafana's query endpoint.
+PROMQL_SOURCES = ("prometheus",)
+
 ASK = {"title": "Ask your own", "y": "your query's values", "unit": "short",
        "source": ("your own query: PromQL asked of the network's Grafana, from the store that "
                   "keeps the range; LogQL asked of the network's Loki, its lines masked")}
@@ -172,6 +184,30 @@ ASK = {"title": "Ask your own", "y": "your query's values", "unit": "short",
 
 class AskRefused(ValueError):
     """A question asked with a value it cannot carry, named."""
+
+
+def read_only(store: str, path: str) -> str:
+    """*path* when it is one of the read endpoints Code mode asks *store* through; else
+    refused, naming both."""
+    allowed = READS[store]
+    if path not in allowed:
+        raise AskRefused(f"Refused: Code mode reads {store} only through "
+                         f"{', '.join(allowed)}; this ask names {path!r}")
+    return path
+
+
+def promql_sources(body: dict) -> None:
+    """Every query in a Grafana `api/ds/query` *body* is asked of a Prometheus data source,
+    named by uid; else refused, naming the query and its source."""
+    for q in body.get("queries") or []:
+        ds = q.get("datasource") or {}
+        if ds.get("type") in PROMQL_SOURCES and ds.get("uid"):
+            continue
+        source = (f"a {ds.get('type') or 'typeless'} data source ({ds['uid']})" if ds.get("uid")
+                  else "no named data source (the network's Grafana lists none of that type)")
+        raise AskRefused(f"Refused: Code mode's PromQL is asked only of a "
+                         f"{' or '.join(PROMQL_SOURCES)} data source; query "
+                         f"{q.get('refId', '?')} would be asked of {source}")
 
 
 def question(key: str):
@@ -218,8 +254,10 @@ def metric_ask(values, key: str = "errors") -> dict:
         raise AskRefused(f"{s['range']!r} is not one of the ranges: "
                          + ", ".join(METRIC_RANGES))
     if s["lang"] == "logql" and METRIC_RANGES[s["range"]][1] > LOGQL_MAX_DAYS * 86400:
-        raise AskRefused(f"Loki answers at most {LOGQL_MAX_DAYS} days at a time: choose 30 d "
-                         "or shorter for a LogQL query")
+        raise AskRefused(f"Refused: a LogQL query spans at most {LOGQL_MAX_DAYS} days (Code "
+                         f"mode's bound; Loki answers at most 30 days 1 hour at a time); this "
+                         f"range is {duration_words(METRIC_RANGES[s['range']][1])}: choose "
+                         "30 d or shorter")
     for k, what in (("d", "a device"), ("i", "an interface")):
         if s[k] and not _NAME.match(s[k]):
             raise AskRefused(f"{s[k]!r} is not {what} name")
@@ -282,8 +320,8 @@ def metric_data(key: str, list_name: str, values) -> tuple:
     except AskRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
     if s["lang"] == "logql":
-        return {"ok": False, "error": "a LogQL query is drawn as lines on its page, not as a "
-                                      "chart"}, 400
+        return {"ok": False, "error": "a LogQL query is drawn on its page from Loki's answer, "
+                                      "not read here"}, 400
     if not metric_exprs(key, s):
         return {"ok": False, "error": "nothing is asked yet: write a query and run it"}, 400
     client, datasources, err = _grafana(list_name)
@@ -295,7 +333,12 @@ def metric_data(key: str, list_name: str, values) -> tuple:
     st = panels.stores(datasources, list_name)
     try:
         body = panels.build_request(panel, {}, {}, seconds, default_ds, st)
-    except panels.RangeRefused as exc:
+        # A read, and only of Prometheus (C817): Grafana's query endpoint, never another path,
+        # and never a data source of another type, whatever the query says.
+        from modules.integrations.grafana import GrafanaIntegration
+        read_only("grafana", GrafanaIntegration.QUERY_PATH)
+        promql_sources(body)
+    except (panels.RangeRefused, AskRefused) as exc:
         return {"ok": False, "error": str(exc)}, 400
     got = client.query(body)
     if not got.get("ok"):
@@ -332,7 +375,7 @@ def metric_view(key: str, list_name: str, values) -> dict:
     out["expr"] = s["q"] or out.get("refused_text") or out["own_expr"]
     out["asked"] = bool(s["q"]) or key != "ask"
     if s.get("lang") == "logql" and s["q"]:
-        out["logql"] = logql_lines(list_name, s)
+        out["logql"] = logql_answer(list_name, s)
     client, datasources, err = _grafana(list_name)
     st = panels.stores(datasources, list_name) if not err else None
     seconds = METRIC_RANGES[s["range"]][1]
@@ -359,38 +402,73 @@ def metric_view(key: str, list_name: str, values) -> dict:
     return out
 
 
-def logql_lines(list_name: str, s: dict, now: float = None) -> dict:
-    """Your own LogQL query's lines, newest first, each masked: one Loki query over the range
-    (at most `LOGQL_MAX_DAYS`), at most `LOGQL_LIMIT` lines, a full page said to be cut. A
-    metric query (numbers, not lines) is refused by what Loki answered, never drawn as lines."""
+def _number(v):
+    """A sample's value as a number, or None (a gap) when it is not one."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f and f not in (float("inf"), float("-inf")) else None
+
+
+def logql_answer(list_name: str, s: dict, now: float = None) -> dict:
+    """Your own LogQL query, asked of the network's Loki once over the range, BOUNDED (C817):
+    through `query_range` only (`read_only`), over at most `LOGQL_MAX_DAYS`, waiting at most
+    `history_logq.DEFAULT_WAIT` (Loki's default query_timeout and 5 s; its /config is not read,
+    being no query endpoint), every line and label masked by `redact_text`.
+
+    A log query answers LINES: newest first, at most `LOGQL_LIMIT`, a full page said to be cut.
+    A metric query (count_over_time, rate, sum by …: C819) answers SERIES, drawn by the
+    Monitoring chart as the logs builder's counts are (a `data-panel-json` payload): one series
+    a label set, its values at Loki's step (the builder's window ladder, at most
+    `history_logq.MAX_WINDOWS` a series), the `history_logq.MAX_SERIES` largest drawn and the
+    rest counted. ``{"kind": "lines"|"series"|"", "error", "lines", "cut", "payload",
+    "series_total", "window", "bounds"}``."""
     import time as _time
 
-    from modules.integrations.loki import LokiIntegration
+    from modules import history_logq as LQ
     from modules.redact import redact_text
 
     now = _time.time() if now is None else now
     seconds = METRIC_RANGES[s["range"]][1]
-    out = {"lines": [], "error": "", "cut": False,
+    step = next((secs for _w, secs, _d in LQ.WINDOWS.values()
+                 if seconds // secs <= LQ.MAX_WINDOWS), 86400)
+    out = {"kind": "", "lines": [], "error": "", "cut": False, "payload": None,
+           "series_total": 0,
            "window": (_time.strftime("%Y-%m-%d %H:%M", _time.gmtime(now - seconds)),
-                      _time.strftime("%Y-%m-%d %H:%M", _time.gmtime(now)))}
-    loki = LokiIntegration(list_name=list_name)
-    if not loki.is_configured():
+                      _time.strftime("%Y-%m-%d %H:%M", _time.gmtime(now))),
+           "bounds": {"lines": LOGQL_LIMIT, "days": LOGQL_MAX_DAYS, "series": LQ.MAX_SERIES,
+                      "step": duration_words(step), "wait": "",
+                      "reads": ", ".join(p.rsplit("/", 1)[-1] for p in READS["loki"])}}
+    # The wait is fixed, never read from Loki's /config: Code mode asks Loki nothing but its
+    # query endpoints (`READS`). Loki's default query_timeout, 1 min, and 5 s.
+    wait = LQ.DEFAULT_WAIT
+    out["bounds"]["wait"] = duration_words(wait)
+    client = LQ._client(list_name, wait)                                  # noqa: SLF001
+    if not client.is_configured():
         out["error"] = "no log store is configured for this network (its Loki card in Settings)"
         return out
-    r = loki._get("loki/api/v1/query_range", query=s["q"], limit=LOGQL_LIMIT,  # noqa: SLF001
-                  start=str(int((now - seconds) * 1e9)), end=str(int(now * 1e9)),
-                  direction="backward")
-    if not r.get("ok"):
-        out["error"] = f"Loki: {r.get('error')}"
-        return out
     try:
-        data = r["response"].json().get("data") or {}
-    except ValueError as exc:
-        out["error"] = f"Loki's answer could not be read: {exc}"
+        path = read_only("loki", "loki/api/v1/query_range")
+    except AskRefused as exc:
+        out["error"] = str(exc)
         return out
-    if data.get("resultType") not in (None, "streams"):
-        out["error"] = (f"this LogQL query answers numbers ({data.get('resultType')}), not lines; "
-                        "a LogQL metric query is not drawn here: ask for lines")
+    data, err = LQ._json(client, path, query=s["q"], limit=LOGQL_LIMIT,   # noqa: SLF001
+                         step=str(step),
+                         start=str(int((now - seconds) * 1e9)), end=str(int(now * 1e9)),
+                         direction="backward")
+    if err:
+        out["error"] = (f"Loki did not answer within {duration_words(wait)} (Code mode's wait: "
+                        "Loki's default query_timeout, 1 min, and 5 s)"
+                        if err.startswith("Loki did not answer") else err)
+        return out
+    data = data or {}
+    kind = data.get("resultType")
+    if kind == "matrix":
+        return dict(out, **_logql_series(data.get("result") or [], s, step, now, LQ, redact_text))
+    if kind not in (None, "streams"):
+        out["error"] = (f"Loki answered {kind}, neither lines (a log query) nor series over "
+                        "time (a metric query): nothing is drawn")
         return out
     rows = []
     for stream in data.get("result") or []:
@@ -399,9 +477,37 @@ def logql_lines(list_name: str, s: dict, now: float = None) -> dict:
             rows.append({"ns": int(ns), "text": redact_text(line), "labels": redact_text(labels),
                          "at": _time.strftime("%Y-%m-%d %H:%M:%S", _time.gmtime(int(ns) / 1e9))})
     rows.sort(key=lambda x: x["ns"], reverse=True)
-    out["lines"] = rows[:LOGQL_LIMIT]
-    out["cut"] = len(rows) >= LOGQL_LIMIT
+    out.update(kind="lines", lines=rows[:LOGQL_LIMIT], cut=len(rows) >= LOGQL_LIMIT)
     return out
+
+
+def _logql_series(result: list, s: dict, step: int, now: float, LQ, redact_text) -> dict:
+    """A LogQL metric answer as the Monitoring chart's payload: each series' label set masked,
+    its own times and values (a missing point is a gap the chart leaves, never a zero)."""
+    series = []
+    for row in result:
+        metric = row.get("metric") or {}
+        label = redact_text(", ".join(f'{k}="{v}"' for k, v in sorted(metric.items()))) \
+            or "no labels"
+        times, values = [], []
+        for ts, v in row.get("values") or []:
+            try:
+                times.append(int(float(ts)))
+            except (TypeError, ValueError):
+                continue
+            values.append(_number(v))
+        series.append({"label": "{" + label + "}" if metric else label, "times": times,
+                       "values": values, "size": sum(abs(v) for v in values if v is not None)})
+    series.sort(key=lambda x: (-x["size"], x["label"]))
+    shown = series[:LQ.MAX_SERIES]
+    payload = {"ok": True, "type": "timeseries", "title": "", "unit": "",
+               "range": METRIC_RANGES[s["range"]][0], "step": step,
+               "read_at": LQ._iso(now), "asked": [s["q"]],                # noqa: SLF001
+               "series": [{"label": x["label"], "times": x["times"], "values": x["values"]}
+                          for x in shown],
+               "note": (f"{len(series)} series: the {LQ.MAX_SERIES} largest are drawn"
+                        if len(series) > LQ.MAX_SERIES else "")}
+    return {"kind": "series", "payload": payload, "series_total": len(series)}
 
 
 def restart_record(list_name: str, device: str, seconds: int, now: float = None) -> dict:

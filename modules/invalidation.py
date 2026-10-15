@@ -87,6 +87,8 @@ VOCABULARY = {
                      "discovery reader, board L)",
     "saved_views": "History › Query's saved views: their titles, who saved them, pinned or not "
                    "(modules/saved_views.py, C667)",
+    "reveals": "the reveal record: who saw a masked value, when, which and why "
+               "(modules/reveal_audit.py); History's timeline draws a log line's (C818)",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
     "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
@@ -158,6 +160,7 @@ DECLARED = {
     "v2.history_view_save": ("saved_views",),
     "v2.history_view_pin": ("saved_views",),
     "v2.history_view_remove": ("saved_views",),
+    "v2.history_ask_logs_reveal": ("reveals",),
     "topology_v2.expected_declare": ("topology",),
     "topology_v2.expected_withdraw": ("topology",),
     "topology_v2.positions_save": ("topology",),

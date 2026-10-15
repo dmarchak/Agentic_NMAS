@@ -190,6 +190,12 @@ def _json(client, path: str, **params) -> tuple:
     return (body or {}).get("data"), ""
 
 
+def wait(lim: dict) -> float:
+    """The client's wait for an ask: Loki's own query_timeout and 5 s more, or `DEFAULT_WAIT`
+    when it is not read (the builder's, Code mode's and a reveal's, one rule)."""
+    return ((lim.get("query_timeout") or {}).get("seconds") or (DEFAULT_WAIT - 5)) + 5
+
+
 def _loki_words(error: str, client) -> str:
     """Loki's failure in the board's words: a timeout names the wait and where it came from."""
     if error.startswith("Timed out"):
@@ -496,6 +502,7 @@ def lines(list_name: str, spec: dict, built: dict, rng: dict, client, now: float
     if (data or {}).get("resultType") not in (None, "streams"):
         return {"state": "error", "error": f"Loki answered {data.get('resultType')}, not lines",
                 "asked_at": _iso(now)}
+    from modules import log_reveal
     from modules.readers.logs_summary import _fields_of
 
     rows = []
@@ -503,6 +510,9 @@ def lines(list_name: str, spec: dict, built: dict, rng: dict, client, now: float
         labels = stream.get("stream") or {}
         for ns, raw in stream.get("values") or []:
             text = redact_text(raw)
+            # A line with a masked value offers Reveal… (C818): its stream, its time and a
+            # digest of the masked line as drawn, never the line itself.
+            reveal = log_reveal.carried(labels, ns, text) if text != raw else None
             # The device by its label, else by its own name in the line (the logs readers'
             # pattern); a line naming none (a trap's own words) keeps its text whole.
             dev = labels.get("device") or _fields_of(text)[0] or ""
@@ -514,7 +524,7 @@ def lines(list_name: str, spec: dict, built: dict, rng: dict, client, now: float
             rows.append({"ns": int(ns), "at": _utc(int(ns) / 1e9, "%-d %b %H:%M:%S"),
                          "iso": _iso(int(ns) / 1e9), "device": dev, "kind": _kind_of(labels),
                          "sev": sev, "sev_word": device_logs.SEVERITY.get(sev, "")
-                         if sev is not None else "", "text": line})
+                         if sev is not None else "", "text": line, "reveal": reveal})
     rows.sort(key=lambda r: r["ns"], reverse=True)
     rows = rows[:PAGE]
     at = int(spec["at"] or 0)
@@ -648,8 +658,7 @@ def view(list_name: str, values, now: float = None, client=None) -> dict:
     probe = client or _client(list_name, 15.0)
     lim = limits(list_name, client=probe, now=now) if probe.is_configured() else {}
     # The wait is Loki's own query_timeout and 5 s (its default, 1 min, when it is not read).
-    wait = ((lim.get("query_timeout") or {}).get("seconds") or (DEFAULT_WAIT - 5)) + 5
-    client = client or _client(list_name, wait)
+    client = client or _client(list_name, wait(lim))
     disc = discover(list_name, rng["start"], rng["end"], client=client, now=now)
     devices = list(spec["dev"])
     role_devices = _devices_of_role(list_name, spec["role"]) if spec["role"] else []

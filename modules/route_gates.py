@@ -237,6 +237,10 @@ GATES = {
     "device_v2.golden_reveal": _g(R, "one golden version of a device, unmasked, drawn in place on History (decided 2026-10-05: a person, recorded)", "golden_config"),
     "onboard_v2.bootstrap": _g(R, "a pending device's bootstrap config, its one-time credential in "
                                   "the clear, drawn on its v2 page", "onboard_bootstrap"),
+    "v2.history_ask_logs_reveal": _g(R, "one log line, unmasked, drawn in place under its row in "
+                                        "History › Query's Lines view to a verified person who "
+                                        "gave a reason (C818); recorded first (who, when, which "
+                                        "line, the reason), never the value", "log_line"),
 
     # ---- publish_remote --------------------------------------------------
     "remote.push": _g(P, "publishes the repository"),

@@ -31,6 +31,24 @@ def one_run(steps, name, label="Progress") -> dict:
     return run_stepper.single(steps or [], name, label)
 
 
+@bp.app_template_filter("masked_parts")
+def masked_parts(text) -> list:
+    """A masked line as ``[(piece, is_a_mask)]``, so each masked value is marked where the line
+    is drawn (board F3's Lines view). The pieces join back to *text* exactly."""
+    from modules.redact import PLACEHOLDER
+
+    mask = re.compile(re.escape(PLACEHOLDER).replace(re.escape("{label}"), r"[^<>\s]+"))
+    text, out, at = str(text or ""), [], 0
+    for m in mask.finditer(text):
+        if m.start() > at:
+            out.append((text[at:m.start()], False))
+        out.append((m.group(0), True))
+        at = m.end()
+    if at < len(text) or not out:
+        out.append((text[at:], False))
+    return out
+
+
 @bp.app_template_filter("age_words")
 def age_words(iso, now=None) -> str:
     """An ISO time as the page's own age words ("just now", "3 min ago", "2 h ago"), the
@@ -516,6 +534,25 @@ def history_ask_logs_region():
     resp = _strict(render_template("v2/_history_ask_logs.html", **ctx))
     resp.headers["HX-Push-Url"] = url_for("v2.history_ask_logs") + ctx["q"]["qs"]()
     return resp
+
+
+@bp.route("/history/query/ask/logs/reveal", methods=["POST"])
+def history_ask_logs_reveal():
+    """Reveal one log line (C818; board F3's Reveal…): to a verified person with a stated
+    reason, the line read from Loki again by its stream and time, recorded before it is drawn
+    (modules/log_reveal.py), drawn in place under its row and kept nowhere."""
+    from modules import identity, log_reveal
+    from modules.nsot import listref
+
+    ident, refused = identity.require(request, "reveal", operation="log_line")
+    name = (request.form.get("list") or "").strip()
+    if name and not listref.exists(name):
+        c, status = log_reveal.refusal(request.form, f"there is no network named "
+                                                     f"{name[:60]!r}: nothing was read"), 404
+    else:
+        c, status = log_reveal.reveal(name or listref.active().name, request.form, ident,
+                                      refused=refused)
+    return _strict(render_template("v2/_history_reveal.html", c=c), status)
 
 
 # ---------------------------------------------------------------------------

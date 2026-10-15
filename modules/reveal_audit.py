@@ -70,11 +70,12 @@ def record(*, actor: str, kind: str, what: str, target: str, detail: str = "",
     return dict(entry, recorded=recorded)
 
 
-def entries(limit: int = 200) -> list:
-    """The most recent reveals, newest first."""
+def read() -> dict:
+    """Every reveal, newest first: ``{"state": "ok"|"absent"|"unreadable", "rows", "error"}``.
+    A record that cannot be read is said (History draws it as an error), never an empty one."""
     path = _path()
     if not os.path.exists(path):
-        return []
+        return {"state": "absent", "rows": [], "error": ""}
     out = []
     try:
         with open(path, encoding="utf-8") as fh:
@@ -87,5 +88,10 @@ def entries(limit: int = 200) -> list:
                         continue
     except OSError as exc:
         log.error("reveal_audit: unreadable (%s)", exc)
-        return []
-    return list(reversed(out))[:limit]
+        return {"state": "unreadable", "rows": [], "error": str(exc)}
+    return {"state": "ok", "rows": list(reversed(out)), "error": ""}
+
+
+def entries(limit: int = 200) -> list:
+    """The most recent reveals, newest first (none when the record cannot be read)."""
+    return read()["rows"][:limit]

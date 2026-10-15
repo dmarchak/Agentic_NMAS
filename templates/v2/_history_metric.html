@@ -47,14 +47,24 @@
   <label class="hq-q-text"><span class="muted small">The query</span>
     <textarea name="q" rows="4" spellcheck="false" maxlength="{{ m.limits.chars }}" placeholder="sum by (device) (rate(ifInErrors[$__rate_interval]))   or   {job=&quot;syslog&quot;} |= &quot;%LINK&quot;">{{ m.expr }}</textarea></label>
   <span class="op-act"><button type="submit" class="btn">Run</button></span>
-  <p class="muted small">PromQL: up to {{ m.limits.lines }} expressions, one a line, each drawn as series. LogQL: one line query, its newest {{ m.limits.logql_lines }} lines over at most {{ m.limits.logql_days }} days, masked. Your query is in the address, so Copy the link carries it.</p>
+  <p class="muted small">PromQL: up to {{ m.limits.lines }} expressions, one a line, each drawn as series, asked only of a Prometheus data source. LogQL: one query over at most {{ m.limits.logql_days }} days: a log query draws its newest {{ m.limits.logql_lines }} lines, a metric query (count_over_time, rate, sum by …) its series on the chart; read through Loki's query endpoints only, waiting at most a minute and 5 s, masked. Your query is in the address, so Copy the link carries it.</p>
 </form>
 {%- endif %}
 {%- if ask and s.lang == 'logql' and s.q %}{% set lq = m.logql %}
 <section class="card hq-logql" aria-labelledby="hq-logql-h">
-  <h3 id="hq-logql-h">Your LogQL query's lines, {{ lq.window[0] }} to {{ lq.window[1] }} UTC</h3>
+  <h3 id="hq-logql-h">Your LogQL query's {{ 'series' if lq.kind == 'series' else 'lines' }}, {{ lq.window[0] }} to {{ lq.window[1] }} UTC</h3>
   {%- if lq.error %}
-  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }} {{ lq.error }}</p>
+  <p class="notice notice-warn" role="status">{{ icon('warn', 16) }} Couldn't load: {{ lq.error }}</p>
+  {%- elif lq.kind == 'series' and not lq.series_total %}
+  <p class="muted small">No series in this range: Loki answered the metric query with nothing over it.</p>
+  {%- elif lq.kind == 'series' %}
+  <div class="panels">
+  <section class="panel gx-0 gw-24" data-panel-h="9" data-panel-json='{{ lq.payload | tojson }}' aria-label="Your LogQL query's {{ lq.series_total }} series">
+    <div class="panel-head"><h3>Your query, {{ lq.series_total }} series every {{ lq.bounds.step }}</h3></div>
+    <div class="panel-body"><p class="panel-wait">Drawing…</p></div>
+  </section>
+  </div>
+  {%- if lq.payload.note %}<p class="muted small">{{ lq.payload.note }}; narrow the query's labels to see the rest.</p>{% endif %}
   {%- elif not lq.lines %}
   <p class="muted small">No line in this range matches the query.</p>
   {%- else %}
@@ -64,6 +74,7 @@
   </table></div>
   {%- if lq.cut %}<p class="muted small">The newest {{ lq.lines | length }} lines are drawn; there are more: narrow the query or the range.</p>{% endif %}
   {%- endif %}
+  <p class="lq-bounds"><b>Bounds:</b> {{ lq.bounds.lines }} lines (Mercury) · {{ lq.bounds.days }} days an ask (Mercury) · a metric query's {{ lq.bounds.series }} largest series drawn, a point every {{ lq.bounds.step }}{% if lq.bounds.wait %} · Mercury waits at most {{ lq.bounds.wait }} for Loki (its default query_timeout and 5 s){% endif %} · read through Loki's {{ lq.bounds.reads }} only · lines and labels masked.</p>
 </section>
 {%- elif m.grafana_error %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ m.grafana_error }}: nothing can be asked yet.</p></div>

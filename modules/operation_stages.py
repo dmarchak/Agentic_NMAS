@@ -453,6 +453,8 @@ WRITTEN_ELSEWHERE = {
                  "with the AI family (D15)",
     "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
                      "reveal routes that read devices, Ask the device and Show commands",
+    "log_reveals": "a log line's reveal (modules/log_reveal.py), written by History › Query's "
+                   "Reveal…, a reveal route (v2.history_ask_logs_reveal)",
 }
 
 #: The history gaps, counted: only down (12 -> 9, 2026-10-12: the three credential profile JSON

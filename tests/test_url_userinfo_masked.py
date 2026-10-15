@@ -103,10 +103,15 @@ ENTRY_POINTS = {
     "modules/nsot/adopt.py:_scrub_plan": _adopt_scrub_plan,
     "modules/breakglass_export.py:_scrub": lambda: __import__(
         "modules.breakglass_export", fromlist=["x"])._scrub(PLANTED, "a-passphrase"),
+    # A log line's stream, as Reveal… carries it and its record keeps it (C818).
+    "modules/log_reveal.py:_masked_labels": lambda: repr(__import__(
+        "modules.log_reveal", fromlist=["x"])._masked_labels({"filename": PLANTED})),
 }
 
 #: Functions whose names say mask, redact or scrub but never take free text, each with why.
 NOT_FREE_TEXT = {
+    "routes/v2.py:masked_parts": "splits a line already masked by redact_text at its "
+        "placeholders, to mark them where drawn; it masks nothing (C818)",
     "modules/attention.py:redaction_source": "reports redact.health()'s counts as a Needs "
         "attention row; it masks nothing (C624)",
     "modules/installation_diagnostics.py:redaction": "returns redact.health()'s measurement "

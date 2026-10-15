@@ -17,6 +17,9 @@ class GrafanaIntegration(IntegrationClient):
                   "grafana_verify_tls", "grafana_fleet_dashboard_uid", "grafana_device_dashboard_uid",
                   "grafana_device_variable", "grafana_device_variable_value",
                   "grafana_token_expires")
+    #: The one path `query` asks: Grafana's query endpoint, a read (History › Query's Code
+    #: mode asks nothing else, modules/history_query.READS).
+    QUERY_PATH = "api/ds/query"
 
     def query(self, body: dict, timeout: float = 20.0) -> dict:
         """Run panel queries through Grafana's own query endpoint
@@ -26,7 +29,7 @@ class GrafanaIntegration(IntegrationClient):
         need no second configuration here. Never raises."""
         if not self.is_configured():
             return {"ok": False, "error": "Grafana is not configured — set it in Settings"}
-        url = f"{self.url}/api/ds/query"
+        url = f"{self.url}/{self.QUERY_PATH}"
         try:
             r = self.session().post(url, json=body, timeout=timeout)
         except Exception as exc:                  # noqa: BLE001 - never raise into a handler

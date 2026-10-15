@@ -1874,7 +1874,25 @@ summary.lq-chip::-webkit-details-marker { display: none; }
 .lq-k { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; color: var(--ink-2); }
 .lq-warn .lq-k { color: var(--warn); }
 .lq-danger .lq-k { color: var(--danger); }
+/* Reveal… (C818; board F3): a masked value marked where the line is drawn; the reason asked
+   in a box under the button, opening leftwards from the table's last column; the line, once
+   revealed, under its masked form. */
+.lq-mask { background: var(--mark); color: var(--mark-ink); border-radius: 3px; padding: 0 2px; }
+.lq-lines td.lq-rv { width: 1%; white-space: nowrap; vertical-align: top; }
+.lq-pop.lq-rvpop { left: auto; right: 0; width: min(420px, calc(100vw - 48px)); grid-template-columns: minmax(0, 1fr);
+  white-space: normal; }
+.lq-rvpop label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.lq-rvpop input[type=text] { width: 100%; }
+.lq-rvpop .lq-popacts { align-items: center; }
+.lq-rv-out:empty { display: none; }
+.lq-rv-out { margin-top: 6px; }
+.lq-rv-out p { margin: 0 0 4px; color: var(--ink-2); font-family: var(--sans); }
+.lq-rv-line { margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--danger-soft); color: var(--ink);
+  border: 1px solid var(--danger-line); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; }
 @media (max-width: 640px) {
+  /* On a phone the box opens in the line's card, under its button, never over the edge. */
+  .lq-lines td.lq-rv { width: auto; flex: 1 1 100%; white-space: normal; }
+  .lq-pop.lq-rvpop { position: static; width: auto; margin-top: 6px; box-shadow: none; }
   .lq-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px 14px; }
   .lq-lab { padding-top: 0; }
   .lq-text { display: flex; width: 100%; }

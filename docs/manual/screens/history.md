@@ -110,15 +110,21 @@ question's own query: change it and press **Run**, and the chart draws yours, fr
 store and over the same range. The title is marked **edited**, the question's own query is
 shown beside yours, and **Back to the question's own query** returns to it. Your query is in
 the address, so Copy the link carries it. **Ask your own (PromQL or LogQL)…**, under the
-questions, opens the same page with no question: choose the language, write the query and
-Run it. PromQL is drawn by the chart (at most 4 expressions, one a line, each its own series);
-a LogQL line query draws its newest 200 lines over at most 30 days (Loki answers at most 30
-days at a time), each masked like every other configuration text. A LogQL query that answers
-numbers rather than lines is refused, saying so. A query is at most 2000 characters of
-printable ASCII. These are reads: nothing is written, and nothing reaches a device. Its
-**Source** and **Mode** switches open the builders described below: the metrics builder
-(Metrics, Builder) and the logs builder (Logs, Builder). A builder opened from here starts
-afresh: it does not read the query in the box back.
+questions, opens the metrics builder ([below](#ask-metrics)); **Code** on its Mode switch is
+this page with no question, where you choose the language, write the query and Run it.
+PromQL is drawn by the chart (at most 4 expressions, one a line, each its own series), asked
+only of a Prometheus data source through Grafana's query endpoint. A LogQL query is asked of
+the network's Loki over at most 30 days (Loki answers at most 30 days 1 hour at a time),
+through its query endpoints only, waiting at most 1 min 5 s (Loki's default query timeout
+and 5 s): a log
+query draws its newest 200 lines; a metric query (`count_over_time`, `rate`, `sum by …`) draws
+its series on the same chart as a metrics answer, the 20 largest, a point every 5 minutes at
+24 h and every hour at 7 or 30 days. Every line and label is masked like every other log line
+Mercury shows, and the bounds are said under the answer. A refusal names the bound and what
+passed it. A query is at most 2000 characters of printable ASCII. These are reads: nothing is
+written, and nothing reaches a device. Its **Source** and **Mode** switches open the builders
+described below: the metrics builder (Metrics, Builder) and the logs builder (Logs, Builder).
+A builder opened from here starts afresh: it does not read the query in the box back.
 
 **Saved views.** **Save this view…**, beside Copy the link on any answer (Syslog by device
 included), asks a title and saves the question as you asked it (the question, its device and
@@ -175,13 +181,21 @@ drawn).
 and changing any choice afterwards removes the answer, since it no longer matches the query.
 The answer is one of: the counts (the chart, then each series' lines in the range, its most in
 one window and its last window with a line); the lines (time received, device, severity, kind,
-the line masked like every log line Mercury shows; 200 a page, **Older ›** for the next);
+the line masked like every log line Mercury shows, each masked value marked; 200 a page,
+**Older ›** for the next; a line with a masked value offers **Reveal…**, below);
 **Refused**, naming the bound and the range or count that passed it, with the choice that fits;
 **Couldn't load**, naming what Loki answered or how long it was waited for, with **Ask again**;
 or **No lines in range**, saying how many lines the same jobs and devices sent in the range and
 whether the range is inside what Loki keeps, so an empty answer is not mistaken for a gap. A
 line's time is when the collector received it, never the device's clock. These are reads:
-nothing is written, and nothing reaches a device.
+nothing is written, and nothing reaches a device. **Edit as code** from Counts over time opens
+Code mode with the count query, drawn there on the same chart.
+
+**Reveal…** on a line asks why you need to see it (at least three words), then reads that one
+line from Loki again and draws it unmasked under its masked form, to you only: a verified
+person, never a service. Who, when, which line (its stream and time) and the reason are
+recorded first and listed on the Timeline under **Log lines revealed**; the value never is.
+How it works: [Reveal a log line](reveal-log-line).
 
 ## Ask your own: the metrics builder {#ask-metrics}
 

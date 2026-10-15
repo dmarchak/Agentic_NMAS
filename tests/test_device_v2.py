@@ -670,7 +670,9 @@ class TestTheShippedScripts:
                                                     "/v2/logs?list=Lab",
                                                     "/v2/dhcp?list=Lab",
                                                     "/v2/onboard/discovered?list=Lab",
-                                                    "/v2/history?tab=query&list=Lab"))
+                                                    "/v2/history?tab=query&list=Lab",
+                                                    # History's timeline (C818's reveals).
+                                                    "/v2/history?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -703,7 +705,9 @@ class TestTheShippedScripts:
         # asks anew, is picked or goes quiet, board L).
         # +1 2026-10-12: path_trace (Topology redraws a shown path trace as each hop is read
         # and when it ends, board D, C693).
-        assert len(keys) == 40
+        # +1 2026-10-15: reveals (History's timeline and a device's History tab redraw when a
+        # log line's reveal is recorded, C818).
+        assert len(keys) == 41
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

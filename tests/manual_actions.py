@@ -107,8 +107,9 @@ NOT_AN_OPERATION = {
                                                "interface and range), a read",
     ("_history_metric.html", "Show"): "asks the question again for the device and interface "
                                       "chosen, a read",
-    ("_history_views.html", "Ask your own (PromQL or LogQL)…"): "opens Ask your own, board B's "
-                                                                "layout with no question, a read",
+    ("_history_views.html", "Ask your own (PromQL or LogQL)…"): "opens Ask your own's metrics "
+                                                                "builder (board E3; Code one "
+                                                                "click away), a read",
     ("_history_views.html", "Pin"): "pins a saved view for everyone: a link to a read, in "
                                     "Mercury's own store, recorded; no device",
     ("_history_views.html", "Unpin"): "unpins a saved view for everyone, recorded; no device",
@@ -129,6 +130,7 @@ NOT_AN_OPERATION = {
                                         "reaches a device",
     ("_history_ask_logs.html", "Add"): "adds a device Loki holds lines from to the choices and "
                                        "redraws the query, asking nothing",
+    ("_history_ask_logs.html", "Cancel"): "closes a line's Reveal… box, revealing nothing",
     ("_history_ask_parts.html", "Apply"): "applies From… to…'s range to the choices and redraws "
                                           "the query, asking nothing",
     ("_history_ask_parts.html", "Cancel"): "closes From… to…, changing nothing",

@@ -1,7 +1,9 @@
 /* History › Query › Ask your own, the logs builder (board F3; templates/v2/_history_ask_logs.html,
  * modules/history_logq.py). The query is formed on the server; this file only:
  *  - writes the viewer's local time beside each UTC time typed in From… to… (`data-lq-local`);
- *  - closes the From… to… picker on Cancel (`data-lq-close`), changing nothing;
+ *  - closes the From… to… picker, or a line's Reveal… box, on Cancel (`data-lq-close`),
+ *    changing nothing; closes a Reveal… box once the line it revealed is drawn (C818), so the
+ *    box never covers it;
  *  - on a click on the counts chart, names the window and the series under the pointer and
  *    offers that window's lines (`data-lq-pick`, each series' `href` from the server).
  *
@@ -101,6 +103,13 @@
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('DOMContentLoaded', function () { refresh(); });
     root.document.addEventListener('htmx:afterSettle', function (e) { refresh(e.target); });
+    root.document.addEventListener('htmx:afterRequest', function (e) {
+      var form = e.detail && e.detail.elt;
+      if (!form || !form.classList || !form.classList.contains('lq-rvpop')) return;
+      if (!e.detail.successful) return;           // a refusal is drawn under the line; the box stays
+      var box = form.closest('details');
+      if (box) box.open = false;
+    });
     root.document.addEventListener('input', function (e) {
       if (e.target && e.target.getAttribute && e.target.getAttribute('data-lq-local')) local(e.target);
     });

@@ -30,5 +30,5 @@
   {%- endfor %}
 </div>
 {%- endif %}
-<a class="hq-q hq-own" href="{{ url_for('v2.history_query_metric', key='ask') }}"><strong>Ask your own (PromQL or LogQL)…</strong></a>
+<a class="hq-q hq-own" href="{{ url_for('v2.history_ask_metrics', list=list_name) }}"><strong>Ask your own (PromQL or LogQL)…</strong></a>
 </section>

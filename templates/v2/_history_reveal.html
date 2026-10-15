@@ -1,0 +1,12 @@
+{%- from "v2/_macros.html" import icon, stamp -%}
+{#- One log line revealed in place under its row in History › Query's Lines view (C818; board
+    F3's Reveal…; modules/log_reveal.py): the line unmasked, who it was revealed to and that it
+    was recorded; or why not, with nothing shown. -#}
+<div class="lq-rv-out" id="{{ c.slot }}">
+{%- if c.state == 'revealed' %}
+  <p class="small" title="The line received at {{ c.line_at }}"><strong>Unmasked</strong>, read from Loki again: revealed to {{ c.by }} {{ stamp(c.at) }} and recorded in History with your reason, never the value.</p>
+  <pre class="mono lq-rv-line">{{ c.text }}</pre>
+{%- else %}
+  <p class="lq-bad" role="alert">{{ icon('warn', 14) }} Not revealed: {{ c.refused }}. Nothing was shown.</p>
+{%- endif %}
+</div>

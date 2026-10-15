@@ -885,6 +885,38 @@ def saved_views(ctx):
                  for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
 
 
+def log_reveals(ctx):
+    """Each log line revealed (C818; board F3's Reveal…): who, when, which line by its Loki
+    stream and time, and the reason, from the reveal record (`modules/log_reveal.py`); never
+    the line or its value, which the record does not hold. A line from a device outside the
+    list's inventory is the network's own record."""
+    from modules import log_reveal, reveal_audit
+    got = reveal_audit.read()
+    if got["state"] == "unreadable":
+        return _out(errors=[f"the reveal record could not be read: {got['error']}"])
+    events, more = [], False
+    for r in got["rows"]:
+        if r.get("what") != log_reveal.WHAT or r.get("list") != ctx["ref"].name:
+            continue
+        dev = r.get("target") or ""
+        if (ctx["device"] and dev != ctx["device"]) or not _recent(ctx, r.get("at")):
+            continue
+        if len(events) >= ctx["limit"]:
+            more = True
+            break
+        stream = ", ".join(f'{k}="{v}"' for k, v in sorted((r.get("stream") or {}).items()))
+        devices = [dev] if dev and (ctx["members"] is None or dev in ctx["members"]) else []
+        events.append(_event(
+            r.get("at"), "reveal", f"Log line revealed: {dev or 'a line'} at "
+                                   f"{(r.get('line_at') or '')[:19].replace('T', ' ')} UTC",
+            devices, who=r.get("actor", ""), detail=r.get("reason", ""),
+            record=[("Line", f"{{{stream}}} at {r.get('line_at', '')}"),
+                    ("Reason", r.get("reason")),
+                    ("What was shown", f"the masked line, sha256 {r.get('shown_sha256', '')}"),
+                    ("Verified", r.get("kind"))]))
+    return _out(events, cut=[f"the log line reveals' newest {ctx['limit']}"] if more else [])
+
+
 def show_commands(ctx):
     """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
     commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
@@ -985,7 +1017,7 @@ SOURCES = {
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
-    "saved_views": saved_views,
+    "saved_views": saved_views, "log_reveals": log_reveals,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1009,6 +1041,7 @@ KIND_GROUPS = (
                                ("expected", "Expected islands", ("expected",)),
                                ("layout", "Topology layouts", ("layout",)),
                                ("views", "Saved views", ("view",)),
+                               ("reveals", "Log lines revealed", ("reveal",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),

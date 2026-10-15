@@ -379,10 +379,16 @@ class TestYourOwnQuery:
         assert r.status_code == 400 and words in r.get_json()["error"]
         assert grafana.asked == [], "nothing is asked"
 
-    def test_ask_your_own_is_board_b_with_no_question(self, web, grafana):  # noqa: F811
+    def test_ask_your_own_opens_the_metrics_builder_and_code_is_board_b(self, web,  # noqa: F811
+                                                                         grafana):
+        """E3 (the operator, 2026-10-15): the card opens the METRICS BUILDER, the boards'
+        default; Code mode, board B's layout with no question, is one click away on its Mode
+        switch."""
         html = _tab(web)
-        assert re.search(r'<a class="hq-q hq-own" href="/v2/history/query/metric/ask"><strong>'
-                         r'Ask your own \(PromQL or LogQL\)…</strong>', html)
+        m = re.search(r'<a class="hq-q hq-own" href="(/v2/history/query/ask/metrics[^"]*)">'
+                      r'<strong>Ask your own \(PromQL or LogQL\)…</strong>', html)
+        assert m, "the card does not open the metrics builder"
+        assert "/v2/history/query/metric/ask" not in m.group(0)
         page = web.get("/v2/history/query/metric/ask").get_data(as_text=True)
         assert ">Query</a> › Ask your own" in page and 'name="d"' not in page
         assert "Write a PromQL or LogQL query above and run it." in page
@@ -421,7 +427,9 @@ class TestYourOwnQuery:
         times = re.findall(r'<tr><td class="mono">([0-9: -]+)</td>', html)
         assert times and times == sorted(times, reverse=True)
 
-    def test_a_logql_metric_query_is_refused_by_what_loki_answered(self, web, monkeypatch):  # noqa: F811
+    def test_a_logql_metric_query_with_no_series_says_so(self, web, monkeypatch):  # noqa: F811
+        """C819: a metric query is drawn as series (tests/test_history_code_mode.py); one that
+        Loki answers with no series is said, never drawn as an empty chart."""
         from modules.integrations import loki as L
 
         class _Resp:
@@ -433,10 +441,11 @@ class TestYourOwnQuery:
                             lambda self, path, **p: {"ok": True, "response": _Resp()})
         html = web.get("/v2/history/query/metric/ask", query_string={
             "lang": "logql", "q": 'rate({host="r4"}[5m])'}).get_data(as_text=True)
-        assert "this LogQL query answers numbers (matrix), not lines" in html
+        assert "No series in this range" in html and "data-panel-json" not in html
 
-    def test_logql_past_thirty_days_is_refused(self):
+    def test_logql_past_thirty_days_is_refused_naming_both(self):
         from modules import history_query as H
         with pytest.raises(H.AskRefused) as err:
             H.metric_ask({"lang": "logql", "q": "{a=\"b\"}", "range": "180d"}, "ask")
-        assert "Loki answers at most 30 days at a time" in str(err.value)
+        assert "a LogQL query spans at most 30 days" in str(err.value)
+        assert "this range is 180 days" in str(err.value)

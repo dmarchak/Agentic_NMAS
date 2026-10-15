@@ -468,6 +468,19 @@ class TestThePage:
         html = _page(web, dev="r1", range="1h")
         assert "/v2/history/query/metric/ask?" in html and "lang=logql" in html
 
+    def test_edit_as_code_from_counts_ends_in_the_chart(self, web):
+        """C819: Counts over time's query, handed to Code mode, is drawn there as series by
+        the same chart (Loki answering with the counts capture); it was refused before."""
+        html = _page(web, dev="r1", show="counts", every="1h", ask="1")
+        href = re.search(r'<a href="(/v2/history/query/metric/ask\?[^"]+)">Edit as code</a>',
+                         html).group(1)
+        assert "lang=logql" in href and "count_over_time" in href
+        code = unescape(web.get(href).get_data(as_text=True))
+        assert "data-panel-json" in code, "Code mode drew no chart for the count query"
+        assert "Couldn't load" not in code and "not lines" not in code
+        asked = [p for path, p in web.asked if path.endswith("query_range") and p.get("step")]
+        assert asked and "count_over_time" in asked[-1]["query"]
+
     def test_nothing_is_written(self, web, tmp_path):
         from modules import config
         before = sorted(os.listdir(config.DATA_DIR)) if os.path.isdir(config.DATA_DIR) else []
