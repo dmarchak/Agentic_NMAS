@@ -38,6 +38,7 @@
       <div class="hist-detail tl-more">
         <p>{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</p>
         {%- if e.who %}<p class="muted">By {{ e.who }}</p>{% endif %}
+        {%- if e.kind == 'golden' %}<p class="muted" data-concept="golden-is-a-record">A golden is a record of what the device ran when it was captured, not a target: the target is its committed intent, rendered, and a deploy sends that.</p>{% endif %}
         {%- if e.correction %}<p>Planned by a window recorded after the restart was seen, as a correction: {{ e.correction }}</p>{% endif %}
         {%- if e.acknowledged %}<p>Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</p>{% endif %}
         {%- if e.exception %}<p class="tl-exception">This {{ 'commit' if e.sha else 'row' }}'s record is known to be wrong: {{ e.exception }}</p>{% endif %}

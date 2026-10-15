@@ -17,7 +17,12 @@ desktop board at 1440 and 1280 beside the page; the phone board at 390 beside th
 Compared 2026-10-15. History's own page (heading, remote line) is board D's; the board's Code
 mode panel is today's Ask your own box, Code on the Mode switch.
 Templates compared: templates/v2/history_ask_metrics.html, templates/v2/_history_body.html, templates/v2/_history_ask_metrics.html, templates/v2/_history_ask_parts.html, templates/v2/_history_ask_head.html
-Templates sha256: `f52bf349f076ec3ee09aef79f66ff42337732d37f359c079acf8ec2bca168ace`
+Templates sha256: `b8bcac7e3a0d041e86bd06eb65db5506759983ebfb33b8535fa86dde6835a1ef`
+
+Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
+sentence inside a Baselines row's detail (the block drawing each baseline's Re-apply… link); this
+record compares Ask your own, metrics, where Baselines is only a tab name (unchanged). No region
+here changed; the hash written again.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

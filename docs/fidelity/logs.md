@@ -17,7 +17,12 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `fa46aa9592f3520b99f5085a72324db9a3344d381585b9b216bf85ab22749d57`
+Templates sha256: `a84cacfcf0495786e16aa0cc585f7a69af657a23de449039a3165c676b280904`
+
+Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
+sentence ("It claims: …") inside a Baselines row's detail, the block drawing each baseline's
+Re-apply… link; this record compares History › Query's syslog view, where Baselines is only a tab
+name (unchanged). No region here changed; the hash written again.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

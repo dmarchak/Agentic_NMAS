@@ -35,7 +35,7 @@
 {% endfor %}</pre>
     {%- for n in c.notes %}<p class="op-wait">{{ n.title }}</p>{% if n.lines %}<pre class="op-diff">{{ n.lines | join('\n') }}</pre>{% endif %}{% endfor %}
     {%- else %}<p>{{ c.none }}</p>{% endif %}</div></div>
-  <div class="op-part"><h3>What it will not do</h3><div>
+  <div class="op-part"><h3>What it will not do</h3><div data-concept="revert-is-forward">
     {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}{{ '' if n.endswith('.') else '.' }}</p>{% endfor %}</div></div>
   <div class="op-part"><h3>Operands</h3><div>
     <dl class="op-ops">

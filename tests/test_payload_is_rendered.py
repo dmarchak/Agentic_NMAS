@@ -561,8 +561,6 @@ EMPTY_IN_FIXTURE = {
                                             "carry only a removal's"),
     "POST /netbox/safety/import_all/preview preview.what_not.items[].lines": (S_, "an import's what-not items are "
                                             "sentences; a removal's carry lines"),
-    "POST /netbox/safety/remove/preview preview.explain": (R_, "no concept is taught on the NetBox safety "
-                                            "modal yet; the concepts harness names it"),
     "POST /netbox/safety/remove/preview preview.targets[].program.authorised": (S_, "a NetBox write is sent to no "
                                             "device, so no line is authorised"),
     "POST /netbox/safety/remove/preview preview.targets[].program.dangerous": (S_, "a NetBox write is sent to no "
@@ -660,7 +658,9 @@ EMPTY_IN_FIXTURE = {
 # 35 -> 33: the AI family (D15, 2026-10-14): /ai/agent_log's entries and /ai/approvals' entries.
 # 33 -> 32: 7.8 (2026-10-15): /identity/posture left with today's Settings modal, and its
 # `settings_read_failure` with it.
-EMPTY_RECORDS_CEILING = 32
+# 32 -> 31: P7-03 (2026-10-15): the NetBox removal preview's `explain` carries
+# provenance-limits-remove, drawn by v2's preview parts (tests/test_concepts_are_taught.py).
+EMPTY_RECORDS_CEILING = 31
 
 
 def _empty_paths(obj, path=""):

@@ -50,6 +50,9 @@ def judge(repo: str, list_name: str, baselines: list) -> dict:
                  "withdrawn_why": (b.get("withdrawn") or {}).get("why", "")
                  if isinstance(b.get("withdrawn"), dict) else "",
                  "decision": b.get("decision", ""), "decision_detail": b.get("decision_detail", ""),
+                 # WHICH CLAIM it makes (configured, or configured and working), from its own
+                 # tag (`repo._baseline_claim`): baseline-is-earned draws it (Stage 7 section 4).
+                 "claim": b.get("claim", ""), "claim_detail": b.get("claim_detail", ""),
                  "commit": b.get("commit", ""), "stale": [], "guarded": [], "silent": []}
         if not entry["withdrawn"]:
             gaps = baseline_credential_gaps(repo, b["tag"], list_name,
@@ -78,9 +81,9 @@ def read(lists=None, previous=None) -> dict:
         try:
             head = git(repo, "rev-parse", "HEAD")[1].strip()
             tags = git(repo, "tag", "--list", "baseline/*")[1].split()
-            # "v2": rows carry what each baseline earned (History, 2026-10-02); a
-            # stored answer from before is recomputed once.
-            key = f"v2|{head}|{','.join(sorted(tags))}"
+            # "v2": rows carry what each baseline earned (History, 2026-10-02); "v3": and
+            # which claim it makes (2026-10-15). A stored answer from before is recomputed once.
+            key = f"v3|{head}|{','.join(sorted(tags))}"
             before = (previous.get("lists") or {}).get(name) or {}
             if before.get("key") == key and "usable" in before:
                 out[name] = before          # nothing moved: the stored answer stands

@@ -27,7 +27,7 @@
     {%- for n in c.not_validated %}<p><a href="{{ url_for('device_v2.device', name=n.device) }}">{{ n.device }}</a>: {{ n.reason }}. Recorded as not validated; it is checked at its own deploy.</p>{% endfor %}</div></div>
   {%- endif %}
   {%- if c.can_approve %}
-  <div class="op-part"><h3>What it covers</h3><div>
+  <div class="op-part"><h3>What it covers</h3><div data-concept="approval-binds-the-template">
     <p>The template's text and its {{ c.imports }} import{{ '' if c.imports == 1 else 's' }}, as they are now (fingerprint <span class="mono">{{ c.fingerprint[:12] }}</span>). An edit to any of them revokes the approval at once, saying why.</p>
     <p class="muted">{{ c.does_not_cover }}</p></div></div>
   {%- endif %}

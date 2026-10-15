@@ -178,7 +178,7 @@ def _rows(html):
     import re
     text = lambda s: " ".join(_h.unescape(re.sub(r"<[^>]+>", " ", s)).split())  # noqa: E731
     rows = re.findall(r'<details class="hist-row[^"]*"[^>]*>\s*<summary class="hist-sum">(.*?)'
-                      r'</summary>\s*<div class="hist-detail[^"]*">(.*?)</div>\s*</details>', html, re.S)
+                      r'</summary>\s*<div class="hist-detail[^"]*"[^>]*>(.*?)</div>\s*</details>', html, re.S)
     return [text(s) for s, _d in rows], [text(d) for _s, d in rows]
 
 

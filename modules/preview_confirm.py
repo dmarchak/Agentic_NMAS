@@ -1521,7 +1521,13 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
     }
     return build(action="netbox_remove", summary=summary, targets=[target],
                  what_not=what_not, nothing_left_out="", confirm=confirm,
-                 titles={"program": "What will be deleted from NetBox"})
+                 titles={"program": "What will be deleted from NetBox"},
+                 explain={"what_not": [{"concept": "provenance-limits-remove",
+                                        "text": "Removal is limited by provenance: Mercury "
+                                                "deletes only an object it recorded creating AND "
+                                                "NetBox shows tagged nmas-managed. An object it "
+                                                "did not create, or whose tag is gone, is left "
+                                                "alone, named below with why."}]})
 
 
 #: What phase 1 of onboarding creates, per completed step, in words (C86).
@@ -3239,7 +3245,14 @@ def revert_preview(entry: dict, *, list_name: str, request) -> dict:
                  "text": ("Every later intent commit is kept: only this commit's own change is "
                           "undone." if entry.get("kept") else
                           "It is the most recent intent commit, so no later commit is kept."),
-                 "lines": [f"{k['sha']} {k['subject']}" for k in entry.get("kept") or []]}]
+                 "lines": [f"{k['sha']} {k['subject']}" for k in entry.get("kept") or []]},
+                # revert-is-forward (NSOT_STAGE7_PLAN section 4): a revert is a new commit, and
+                # what the reverted change already put on the device is not taken off by it.
+                {"target": name, "kind": "not_removed", "lines": [],
+                 "text": (f"A revert takes nothing off {name}: a deploy is merge-only, so a line "
+                          "this change already put on the device stays there after the revert "
+                          "and after the next deploy. Taking it off is Mode B (Plan a deploy, "
+                          "Left on the device), with your reason.")}]
     if note:
         what_not.append({"target": name, "kind": "block",
                          "text": ("The rollback block is NOT lifted by the revert itself: after "

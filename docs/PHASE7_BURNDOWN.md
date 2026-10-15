@@ -72,6 +72,7 @@ Access session, so each of these is a sitting with the operator's browser. Batch
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | D2 | B (self-signed) |
 | C450, P7-08b | Devices and Coverage: summary, groups, filter (`EXCUSED` 4 → 0); then C704's server-side sort | the large-fleets test's EXCUSED empty | L, then M | the revised Devices board (15.1 B) | B |
 | C472 | the remaining live regions keep state through another person's write (History diffs, remote Push/Verify) | each region's test | M | — | — |
+| C850 | criterion 6 on v2: the four Alpine confirm components converted to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C543, C544 | Needs attention's action words (Persist; Revert and Retry) | the rows' tests | S | — | — |
 | C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
 | C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
@@ -155,3 +156,7 @@ finding joins this list unless it blocks cutover or is a security issue (B).
   as moot and C48 with C616 (each checked against the code), C721 closed as built. Left in
   P7-16: C705 and C765 (not clearly moot: read further), C176 (a read the config hook guards),
   and the Scheduled section's 7.x rows read once.
+- **P7-03 done; P7-06's test done** (the next commit): all nine concepts drawn from v2 (PENDING
+  5 → 0; four v2 gaps built in place), tests/test_v2_one_confirm.py (30 routes in the one
+  pattern, 19 today's with a v2 home); criterion 6 itself waits on C850. C852 (NetBox's Remove
+  preview) fixed on the way.

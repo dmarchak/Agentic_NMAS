@@ -149,7 +149,7 @@ class TestThePendingBannerReadsItBack:
     def _banner(self, data):
         import dukpy
 
-        from tests.test_concepts_are_taught import lift
+        from tests.payload_render import lift
 
         src = read_shipped("static/js/gen/partials__onboard_pending.1.js")
         return dukpy.evaljs("var window = {};\n" + read_shipped("static/js/nmas_preview_confirm.js")

@@ -147,7 +147,7 @@ class TestTheShippedText:
     def _text(self, payload):
         import dukpy
 
-        from tests.test_concepts_are_taught import lift
+        from tests.payload_render import lift
 
         src = read_shipped("static/js/gen/partials__netbox_safety_modal.1.js")
         return dukpy.evaljs(lift(src, "nbProgressText") + f"\nnbProgressText({json.dumps(payload)})")

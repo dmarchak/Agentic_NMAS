@@ -109,7 +109,7 @@
   <div class="op-part{{ ' op-focus' if c.focus == 'removal' }}" id="removal"><h3>Left on the device</h3><div>
     {%- if c.focus == 'removal' %}<p class="op-focus-note">Removals are made as part of a deploy: tick the lines to remove here; anything intent adds is sent with them.</p>{% endif %}
     {%- if c.residue %}
-    <p class="op-wait">On {{ c.host }} and not in its committed intent. Merge-only leaves each as it is, unless you tick it for removal (Mode B) with your reason.</p>
+    <p class="op-wait" data-concept="merge-only">On {{ c.host }} and not in its committed intent. Merge-only leaves each as it is, unless you tick it for removal (Mode B) with your reason.</p>
     <ul class="op-list op-residue">
       {%- for r in c.residue %}
       <li>
@@ -146,7 +146,7 @@
   </form>
   <div class="op-ft">
     {%- if c.may %}
-    <p class="op-note">{{ c.effect }} Bound to program {{ c.command_hash[:12] }}: if {{ c.host }} or its intent moves before you confirm, nothing is sent.</p>
+    <p class="op-note" data-concept="confirm-by-hash">{{ c.effect }} Bound to program {{ c.command_hash[:12] }}: if {{ c.host }} or its intent moves before you confirm, nothing is sent.</p>
     <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="deploy"
             hx-post="{{ url_for('device_v2.deploy_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
             hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "remove": c.confirm.remove | tojson, "authorise": c.confirm.authorise | tojson, "declare": c.confirm.declare | tojson} | tojson }}'{{ gate('confirm') }}><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>

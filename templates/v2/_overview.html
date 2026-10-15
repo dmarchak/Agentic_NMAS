@@ -35,7 +35,7 @@
       <div><dt>Model</dt><dd>{% if hw.model %}{{ hw.model }} <span class="muted">· from {{ hw.model_from }}{% if hw.model_commit %} (<span class="mono">{{ hw.model_commit }}</span>){% endif %}</span>{% else %}not recorded <span class="muted">· {{ hw.model_from }}</span>{% endif %}</dd></div>
       <div><dt>Platform</dt><dd>{% if hw.platform %}{{ hw.platform }} <span class="muted">· from {{ hw.platform_from }}; connects as {{ device.device_type or '?' }}</span>{% else %}not recorded <span class="muted">· connects as {{ device.device_type or '?' }}</span>{% endif %}</dd></div>
     </dl>
-    <p class="card-foot">A golden is a record of what the device runs; intent is what it should run.</p>
+    <p class="card-foot" data-concept="intent-vs-device">A golden is a record of what the device runs; intent is what it should run.</p>
   </section>
   <section class="card">
     <div class="card-head"><h2>Checks</h2></div>

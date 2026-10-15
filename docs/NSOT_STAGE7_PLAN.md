@@ -888,8 +888,9 @@ The device page's Monitoring section embeds **this device's** Grafana panels
 "Teach at the point of action" is an acceptance criterion, not a principle.
 Each concept has a named screen. The screen marks its explanation with a
 `data-concept="<name>"` element. **A test renders the screen (the shipped
-code, in duktape, against a real payload) and asserts that element is
-present, non-empty and visible without navigating away.** A data attribute,
+code against a real state: since P7-03, 2026-10-15, the v2 route through the
+test client; before it, today's JavaScript in duktape) and asserts that element
+is present, non-empty and visible without navigating away.** A data attribute,
 because a text search would match the concept's name in prose (*a pattern
 that can appear in English needs an anchor*).
 
@@ -2996,10 +2997,10 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 |---|---|---|
 | 1 Reachability | closes at cutover (reread 2026-10-15) | `KNOWN_UNREACHABLE` is 0 (ceiling 0, `tests/test_route_reachability.py`), down from 49: the 7.8 removals of 2026-10-11 to 15 took the rest. `NON_GUI` holds 8 deliberate non-GUI routes, two of them (`/identity/status`, `/settings/integrations/status`) kept as diagnostics pending the operator (docs/PHASE7_BURNDOWN.md, D1). Closes when today's pages go (P7-27) |
 | 2 No curl-only task | closes at cutover (reread 2026-10-15) | `NO_GUI` is empty. `PENDING` (`tests/test_results_are_drawn.py`) holds 8 of today's handlers (run_command, templatize.edit_committed, remote.push, auto_push, acknowledge, verify_write, templates.approve, write_template); `remote.push` stays (v2 posts to it), so its entry is re-pointed at v2's drawing when today's pages go. Several v2 homes are built but not yet run on the host (the burn-down's walks W1 to W3) |
-| 3 Nine concepts | partly (reread 2026-10-13) | Still 4 live, 5 pending, and the 4 live ones render through today's JS only: templates/v2 has no `data-concept` marker. Left: v2 draws all nine, and the harness is pointed at v2 screens before today's pages go |
-| 4 Payloads drawn | partly (reread 2026-10-15) | `UNDRAWN` holds 93 keys over 18 routes (ceiling 93), `PHANTOM` 14, empty records 32. Its `RENDERS` registry measures only today's JavaScript renderers. Left: extend the check to v2's render context, then shrink the list (P7-04) |
+| 3 Nine concepts | met on v2 (P7-03, 2026-10-15) | All nine LIVE, `PENDING` 0 (ceiling 0): tests/test_concepts_are_taught.py asks each one's v2 page or card through the test client, and its control fails. Five were already taught in words and gained only the marker (Overview's foot, Deploy's residue and confirm, Templates › Approve…'s What it covers, a pending device's header); four were v2 gaps, built in place: a golden row of History says it is a record, not a target; Revert intent says it takes nothing off the device (Mode B does); History › Baselines says which claim each baseline makes (the reader carries it); NetBox › Remove… names what it leaves alone and the provenance rule (the preview parts now draw each item's lines and the program's notes) |
+| 4 Payloads drawn | partly (reread 2026-10-15) | `UNDRAWN` holds 93 keys over 18 routes (ceiling 93), `PHANTOM` 14, empty records 31. Its `RENDERS` registry measures only today's JavaScript renderers. Left: extend the check to v2's render context, then shrink the list (P7-04) |
 | 5 Invalidation | partly (reread 2026-10-15) | `NOT_YET_SUBSCRIBED` holds 4, each needing a v2 subscriber (active_list, lists, posture, breakglass); the five that closed at 7.8 went with their families. The host case was met: docs/THROWAWAY_SESSION.md Part 3, "7.0's acceptance 5 PASSED" (P7-05) |
-| 6 One pattern | partly (reread 2026-10-13) | `RETROFIT_PENDING` is empty and bulk intent is on v2. The no-second-implementation test reads only today's files. Left: a v2 test that every preview and confirm is drawn one way; 8 browser `confirm()` calls go at cutover |
+| 6 One pattern | partly (P7-06, 2026-10-15) | tests/test_v2_one_confirm.py holds v2: of the 55 routes that confirm (a `confirm` gate, or a served preview in `operation_stages`), 30 are reached from v2 in one pattern (htmx posts it; the confirm is busy on itself, draws `gate()`, and carries the field the route binds it to), 19 are today's with their v2 home in that pattern, and no v2 script or template asks the browser. Left: `SECOND_IMPLEMENTATIONS`, 4 Alpine components posting 6 routes their own way (the batch Apply and Re-apply's `applyConfirm`, IP SLA's `ipslaPost`, Update's `update` and `stepDone`), a ceiling that only shrinks; today's browser `confirm()` calls go at cutover |
 | 7 Needs attention, every source | met, except Stage 8 | The agent's triage reports are Stage 8's, by design |
 | 8 Grafana, natively | met | Restated 2026-10-02 (section 10); the device and fleet dashboards and the logs are drawn and every state said. Its one gap is P.8's per-network dashboards |
 | 9 CI has no destination | met | The CI verdict is on About, the Update page and a Needs attention row; no CI tab |
