@@ -2,11 +2,13 @@
 
 ## NIGHT, 2026-10-15 (to 04:00 UTC; 22:00 UTC−6): the run-id fix deployed, the loki-writer and trap-label steps, C781 to C784, today's Backups removed, night #6 valid
 
-**The host runs 7fc336f2** (deployed 02:11:49 UTC by `nmas-deploy --to`, CI #796, after the
+**The host runs a8acc2a1** (deployed 02:41:02 UTC, CI #800; before it 7fc336f2 at 02:11:49
+UTC by `nmas-deploy --to`, CI #796, each after the
 hold check: nothing in flight, the rotation lock free). The walk of 2c62ec42 (deployed 01:43:27):
 the three routes that answered 500 answer 404, a well-formed run id 200, all 4 run-id rules
 shaped; `data/chat_histories/` unchanged since 2026-10-13 21:29 UTC through both restarts.
-Later commits (d8a3d26e, ff5854ec, a8acc2a1) are pushed and deploy once their CI passes.
+d40f19f2 (tests only, CI #801) is not deployed; nothing on the host needs it. Step 5's
+`--delete` can follow the archive: a8acc2a1, which removed the Backups code, is deployed.
 
 **Waiting on the operator, in order** (each on the NMAS host, as their own user, from
 `~/python/Agentic_NMAS`, outside 08:30 to 09:10 UTC):
@@ -60,8 +62,16 @@ the recommendation:**
 finishing the sweep, canary 11 of 11, 277 planned mutants ran (mutmut's counter: 287 of 1,462,
 the canary's 11 among them), 17 functions left over, record `mutation-state-38651956957`. Its
 181 sweep survivors were added with the approved reason: **377 entries in 13 functions**
-(145e7039). Night #7 (38667040508, 2c62ec42) dispatched 01:41 UTC: that it continued from
-#6's record shows in its first progress line (near 287, not 0). Queued, the operator's speed
+(145e7039). **Night #7** (38667040508, 2c62ec42, dispatched 01:41 UTC) **continued from #6's
+record** (restored `mutation-state-38651956957`; 17 functions kept with only their unchecked or
+open mutants, 925 names against #6's 1,462; the two functions C785 changed planned whole;
+debt at its listed text not re-run) and **failed in mutmut's clean run, before any mutant**
+(C792): an operation test_one_stepper left in `op_progress` was still running in mutmut's
+second session in the process. Walked on the laptop under systemd-run (#7's own plan, fenced),
+fixed for its cause in conftest with a test and a control (d40f19f2, CI #801). **Night #8**
+(38677080468, d40f19f2) dispatched 03:35 UTC; in flight at the session's end, about 2 hours.
+C792's open half: the night's copy measurement should run two sessions as mutmut does.
+Failed dispatches in this loop: #5 (C787) and #7 (C792), each a different cause. Queued, the operator's speed
 request: the 12 child-process tests only for functions inside nmas-config-check's import
 closure (computed), the canary's child-only function kept, the per-survivor time measured
 before and after under `systemd-run --user`; it changes `scripts/nmas_mutation.py`, never
@@ -70,8 +80,10 @@ touched while a night runs.
 **Commits this night, all pushed:** f6cb8b38 (C788 masking), 145e7039 (the debt, 377),
 5b8d445b (C788's steps), 2c62ec42 (C791: CI #791 to #794 were red on the coverage job only,
 fixed forward), 7fc336f2 (IBN decision 7), d8a3d26e (C781's tests), ff5854ec (C783, C784),
-a8acc2a1 (C632 and today's Backups; restore tag `pre-remove/c632`). Registered: C791 (B).
-Closed: C632, C335, C270, C783, C784; 188 open. Not shown able to fail:
+a8acc2a1 (C632 and today's Backups; restore tag `pre-remove/c632`; deployed 02:41:02 UTC,
+walked: 89 v2 pages 200, 4 answer 400, none 5xx, the old tab gone, the removed routes 404),
+d40f19f2 (C792, and C781's legacy-rename tests). Registered: C791 (B), C792 (B). Closed:
+C632, C335, C270, C783, C784; 189 open. The host runs a8acc2a1. Not shown able to fail:
 `TestNoBackupStore`'s two new tests (the control's edit was refused to the agent that wrote
 them).
 
