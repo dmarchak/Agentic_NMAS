@@ -122,6 +122,34 @@ class TestHostsOnlyNeverDevices:
         assert runner.calls[0][-1] == "ls -l -- x"
 
 
+class TestAUrlsUserinfoIsMasked:
+    """C788 (2026-10-14): a survey read Loki's configuration through this helper with a keyword
+    filter, and MinIO's `loki-writer` key, inline in the storage URL, went through. Every line
+    relayed now has a URL's userinfo masked: `scheme://user:secret@` -> `scheme://***@`."""
+
+    def test_the_exact_shape(self):
+        line = b"  s3: s3://loki-writer:PLANTEDsecret9q@127.0.0.1:9000/loki\n"
+        assert H.mask_userinfo(line) == b"  s3: s3://***@127.0.0.1:9000/loki\n"
+
+    def test_a_token_alone_and_every_url_on_a_line(self):
+        line = b"a https://PLANTEDtoken@x.example b http://u:p@y.example/z"
+        assert H.mask_userinfo(line) == b"a https://***@x.example b http://***@y.example/z"
+
+    def test_a_url_without_userinfo_and_an_address_are_untouched(self):
+        for line in (b"http://127.0.0.1:3100/ready", b"user@host.example", b"no url here"):
+            assert H.mask_userinfo(line) == line
+
+    def test_a_real_child_is_relayed_masked_on_both_streams(self, capfd):
+        import sys
+        child = ("import sys; print('url: s3://k:PLANTEDsecret9q@h:9000/b'); "
+                 "print('err: https://u:PLANTEDsecret9q@h', file=sys.stderr)")
+        rc, err = H.run_ssh([sys.executable, "-c", child])
+        out = capfd.readouterr()
+        assert rc == 0
+        assert "url: s3://***@h:9000/b" in out.out and "PLANTED" not in out.out
+        assert "err: https://***@h" in out.err and "PLANTED" not in out.err + err
+
+
 class TestTheExpiredTokenStops:
     def test_it_is_recognised_names_the_host_and_is_not_retried(self, capsys):
         runner = Runner(rc=255, err=EXPIRED)
