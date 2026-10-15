@@ -1,7 +1,11 @@
 {%- from "v2/_macros.html" import icon -%}
 {#- A refused credential is its own words (P.21): the service answered and refused the tool, so
-    the fix is the credential, never "down". -#}
+    the fix is the credential, never "down". A value older than its reader's promise is STALE,
+    never green; the unconfigured are named on hover (today's status bar did both until it left
+    at 7.8). -#}
 {%- set bad = down + refused -%}
+{%- macro unset_words() %}{% if unset %}&#10;not configured: {{ unset|map(attribute='label')|join(', ') }}{% endif %}{% endmacro -%}
 {%- if not read %}<span class="strip-item muted" title="Integrations not probed yet: {{ why }}">{{ icon('dot', 14) }}<span class="strip-words">Integrations not probed yet</span></span>
-{%- elif bad %}<span class="strip-item warn" title="Integrations {{ rows|length - bad|length }} of {{ rows|length }}&#10;{% for r in bad %}{{ r.label }}: {{ r.message }}&#10;{% endfor %}">{{ icon('warn', 14) }}<span class="strip-words">Integrations {{ rows|length - bad|length }} of {{ rows|length }}{% if down %} · {{ down|map(attribute='label')|join(', ') }} down{% endif %}{% if refused %} · {{ refused|map(attribute='label')|join(', ') }} refuse{{ 's' if refused|length == 1 }} its credential{% endif %}</span></span>
-{%- else %}<span class="strip-item ok" title="Integrations {{ rows|length }} of {{ rows|length }}, probed {{ value_at }}">{{ icon('check', 14) }}<span class="strip-words">Integrations {{ rows|length }} of {{ rows|length }}</span></span>{% endif -%}
+{%- elif stale %}<span class="strip-item warn" data-strip="stale" title="Integration health read {{ value_at }}, older than the {{ promise }} s its reader promises: what it said then is not what is true now{{ unset_words() }}">{{ icon('warn', 14) }}<span class="strip-words">Integrations: stale</span></span>
+{%- elif bad %}<span class="strip-item warn" title="Integrations {{ rows|length - bad|length }} of {{ rows|length }}&#10;{% for r in bad %}{{ r.label }}: {{ r.message }}&#10;{% endfor %}{{ unset_words() }}">{{ icon('warn', 14) }}<span class="strip-words">Integrations {{ rows|length - bad|length }} of {{ rows|length }}{% if down %} · {{ down|map(attribute='label')|join(', ') }} down{% endif %}{% if refused %} · {{ refused|map(attribute='label')|join(', ') }} refuse{{ 's' if refused|length == 1 }} its credential{% endif %}</span></span>
+{%- else %}<span class="strip-item ok" title="Integrations {{ rows|length }} of {{ rows|length }}, probed {{ value_at }}{{ unset_words() }}">{{ icon('check', 14) }}<span class="strip-words">Integrations {{ rows|length }} of {{ rows|length }}</span></span>{% endif -%}

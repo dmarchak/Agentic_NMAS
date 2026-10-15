@@ -27,7 +27,8 @@ import json
 
 import pytest
 
-from tests.js_source import read_shipped, with_loaded_scripts
+from tests.js_source import read_shipped
+from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 
 @pytest.fixture
@@ -183,16 +184,19 @@ class TestTheOrphanKeysAreDeclared:
         for key in self.ORPHANS:
             assert key not in store, key
 
-    def test_the_settings_route_goes_through_the_write_path(self):
+    def test_the_settings_saves_go_through_the_write_path(self):
+        """Today's `/settings` save (and its `_save_settings`) left with today's Settings modal
+        at 7.8 (2026-10-15); its homes, Settings › Installation's cards and each network's,
+        write through `write_settings` (or a network's own store), never around it."""
         from tests.astcheck import calls_in
 
-        import app as nmas
+        from modules import installation_settings as I
+        from modules import list_settings as L
 
-        # The route compares under the lock, then saves in `_save_settings` (R17). Since the
-        # AI family's keys left (D15) it writes no settings key at all (NetBox has its own
-        # store), and it never writes around the one write path.
-        assert calls_in(nmas.save_settings, "save_user_settings") == 0
-        assert calls_in(nmas._save_settings, "save_user_settings") == 0
+        assert calls_in(I.save_card, "save_user_settings") == 0
+        assert calls_in(I.save_card, "write_settings") == 1
+        assert calls_in(L.write, "save_user_settings") == 0
+        assert calls_in(L.write, "write_settings") == 1
 
 
 class TestRatifyNeverChanges:
@@ -256,6 +260,11 @@ class TestRatifyNeverChanges:
 
 
 class TestTheRatifyRouteRequiresAPerson:
+    """Record this decision on Settings › Installation › Access and identity
+    (`settings_v2.install_ratify`); today's ratify route (/identity/posture/ratify) left with
+    today's Settings modal at 7.8 (2026-10-15)."""
+
+    RECORD = "/v2/settings/installation/access/record"
 
     @pytest.fixture
     def client(self, store):
@@ -265,26 +274,23 @@ class TestTheRatifyRouteRequiresAPerson:
         return nmas.app.test_client()
 
     def test_an_unverified_caller_is_refused(self, client):
-        r = client.post("/identity/posture/ratify",
-                        json={"key": "require_person_for_reveal"})
+        r = client.post(self.RECORD, data={"keys": ["require_person_for_reveal"]})
         assert r.status_code == 403
-        assert r.get_json()["ok"] is False
 
     def test_the_refusal_does_not_write(self, client, store):
-        client.post("/identity/posture/ratify",
-                    json={"key": "require_person_for_reveal"})
+        client.post(self.RECORD, data={"keys": ["require_person_for_reveal"]})
         assert "require_person_for_reveal" not in store
 
-    def test_it_ships_with_its_entry_point(self):
+    def test_it_ships_with_its_entry_point(self, store):
+        """With every gate defaulted (nobody decided), the tab offers the decision."""
         import re
 
         import app as nmas
 
-        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
+        page = nmas.app.test_client().get("/v2/settings/installation?tab=access") \
+            .get_data(as_text=True)
         flat = re.sub(r"\s+", " ", page)
-        assert "/identity/posture/ratify" in flat
-        assert page.count("ratifySetting") >= 2
-        assert "record this decision" in flat
+        assert self.RECORD in flat and "Record this decision" in flat
 
 
 class TestEverySchemaKeyHasADecision:
@@ -364,54 +370,23 @@ class TestEverySchemaKeyHasADecision:
 class TestASaveThatDidNotPersistSaysSo:
     """The Kea Username field cleared itself on re-render.
 
-    The save is followed by a re-render from the server, so a field that did
-    not persist is redrawn with the stored value and simply appears to empty.
-    That is the silent-drop shape one layer on from a control missing from
-    the payload — and a non-secret field that empties itself must say so.
+    The save is followed by a re-render from the server, so a field that did not persist is
+    redrawn with the stored value and simply appears to empty. Today's Integrations card
+    compared what came back in its script; it left with today's Settings modal at 7.8
+    (2026-10-15). On v2 the card is redrawn from the server after its Save, naming the fields
+    written, so a field that did not persist shows as what is stored: driven here.
     """
 
-    @pytest.fixture(scope="class")
-    def page(self):
-        import app as nmas
+    def test_a_non_secret_field_round_trips_through_the_card(self, networks):
+        """Behavioural, on a temporary store (`tests/test_settings_v2.networks`): reader and
+        writer agree on the file, or the harness manufactures the defect it is looking for."""
+        import html as html_mod
 
-        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
+        from tests.test_settings_v2 import _save
 
-    def test_the_save_compares_what_came_back(self, page):
-        assert "did not persist" in page
-
-    def test_secrets_are_excluded_from_the_comparison(self, page):
-        """They are never echoed, by design, so they would always 'differ'. Read from the
-        shipped save function itself, never a window of characters before a phrase."""
-        from tests.payload_render import lift, shipped
-
-        save = lift(shipped("partials__settings_integrations.1.js"), "saveIntegration")
-        assert "did not persist" in save
-        assert ".filter(f => f.type === 'secret')" in save and "!secret.has(k)" in save
-
-    def test_a_non_secret_field_round_trips_through_the_route(self, tmp_path,
-                                                              monkeypatch):
-        """Behavioural: the thing the comparison would catch, not caught.
-
-        Patches the settings FILE rather than the accessors. The first version
-        of this test used the mocking fixture above, which redirects
-        `settings_schema.load_user_settings` but not
-        `modules.config.set_user_setting` -- so the write went to the real
-        file and the read to the mock, and it reported `kea_username` as lost.
-        That looked exactly like the reported bug and was entirely my own
-        test. Reader and writer have to agree on the file, or the harness
-        manufactures the defect it is looking for.
-        """
-        import app as nmas
-        from modules import config
-
-        path = tmp_path / "user_settings.json"
-        path.write_text("{}", encoding="utf-8")
-        monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(path))
-
-        client = nmas.app.test_client()
-        loaded = client.get("/settings/integrations").get_json()["integrations"]["kea"]
-        r = client.post("/settings/integrations/kea",
-                        json={"kea_username": "keauser",
-                              "kea_url": "http://example:8000", "loaded": loaded})
-        assert r.get_json()["ok"] is True
-        assert r.get_json()["integration"]["kea_username"] == "keauser"
+        r, html = _save(networks, "Default", "kea", {"kea_username": "keauser",
+                                                     "kea_url": "http://192.0.2.8:8000"})
+        assert r.status_code == 200 and "Kea saved" in html, html
+        from modules.settings_schema import get_setting
+        assert get_setting("kea_username") == "keauser"
+        assert 'value="keauser"' in html_mod.unescape(html), "redrawn with what was stored"

@@ -87,28 +87,9 @@ class TestErrorsNeverEscape:
         assert result["ok"] is False and result["status"] == 503
 
 
-class TestSecretHandling:
-    def test_get_config_never_returns_secret_values(self, configured, monkeypatch):
-        monkeypatch.setattr("modules.integrations.base.is_set", lambda key: True)
-        cfg = configured.get_config()
-        assert cfg["_secrets"] == {"dummy_token": True}
-        assert "dummy_token" not in cfg          # only the indicator, never the value
-
-    def test_blank_secret_does_not_overwrite_stored_one(self, configured, monkeypatch):
-        written = {}
-        monkeypatch.setattr("modules.integrations.base.set_secret",
-                            lambda k, v: written.__setitem__(k, v))
-        monkeypatch.setattr("modules.config.set_user_setting", lambda k, v: True)
-        configured.save_config({"dummy_token": ""})
-        assert written == {}, "an empty secret field must leave the stored value alone"
-
-    def test_supplied_secret_is_written(self, configured, monkeypatch):
-        written = {}
-        monkeypatch.setattr("modules.integrations.base.set_secret",
-                            lambda k, v: written.__setitem__(k, v))
-        monkeypatch.setattr("modules.config.set_user_setting", lambda k, v: True)
-        configured.save_config({"dummy_token": "new-token"})
-        assert written == {"dummy_token": "new-token"}
+# TestSecretHandling left with the clients' get_config and save_config (7.8, 2026-10-15): their
+# one caller was today's Integrations card. v2's cards draw a secret as set or not set and keep
+# a blank one (tests/test_settings_v2.py, tests/test_installation_settings.py).
 
 
 class TestRegistry:

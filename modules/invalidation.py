@@ -237,13 +237,10 @@ DECLARED = {
     "netbox_safety.apply_import": ("netbox",),
     "netbox_safety.apply_import_all": ("netbox",),
     "netbox_safety.apply_removal": ("netbox",),
-    # Measured: persists the auth scheme that worked when the stored token is
-    # the one tested. A test that writes is declared as the write it is.
-    "netbox_test_connection": ("settings",),
+    # Today's NetBox Test (/netbox/test_connection), which persisted the auth scheme that
+    # worked, left with today's Settings modal at 7.8 (2026-10-15); the NetBox card's Test
+    # (settings_v2.install_test, below) keeps nothing.
     # Settings, posture and the collectors.
-    "save_settings": ("settings",),
-    "settings_integrations.general_settings": ("settings",),
-    "settings_integrations.save_integration": ("settings",),
     "settings_v2.group_switch": ("settings",),
     "settings_v2.mode_switch": ("settings",),
     "settings_v2.group_save": ("settings",),
@@ -267,7 +264,6 @@ DECLARED = {
     "settings_v2.diag_drift_switch": ("drift",),
     # The third measured case, a drift run's state (today's /drift/check/sync until 7.8).
     "settings_v2.diag_drift_check": ("drift",),
-    "identity.ratify_setting": ("posture", "settings"),
     # A device and its files.
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
@@ -365,7 +361,6 @@ DECLARED = {
     "netbox_safety.preview_import": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "netbox_safety.preview_import_all": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "netbox_safety.preview_removal": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
-    "settings_integrations.test_integration": Nothing("tests an integration's connection and reports"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "settings_v2.install_test": Nothing("tests an Installation card's service and reports in the card; keeps nothing"),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),

@@ -62,8 +62,10 @@ class TestHTMLIsNeverReusedWithoutAsking:
 
         assert again.status_code == 304
         assert len(again.get_data()) == 0
-        # 50 kB: the page is about 90 kB since the AI family left (D15, 2026-10-14).
-        assert len(first.get_data()) > 50_000, "the page is suspiciously small"
+        # 30 kB: the page was about 90 kB since the AI family left (D15, 2026-10-14), and is
+        # 45,214 bytes since today's Settings modal, Logs tab and status bar left (7.8,
+        # 2026-10-15).
+        assert len(first.get_data()) > 30_000, "the page is suspiciously small"
 
 
 class TestStaticAssetsKeepALongLifetime:

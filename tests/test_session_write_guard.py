@@ -282,8 +282,8 @@ KNOWN_UNHELD = {
 
 #: A name the scan matches that is not a device write, each with why.
 NOT_A_DEVICE = {
-    "routes/settings_integrations.py:save_integration": (
-        "IntegrationClient.save_config() writes an integration's settings, not a device"),
+    # (routes/settings_integrations.py:save_integration left with today's Integrations card,
+    # 7.8, 2026-10-15.)
 }
 
 

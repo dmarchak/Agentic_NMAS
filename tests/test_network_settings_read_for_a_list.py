@@ -38,8 +38,8 @@ INVENTORY = {
     "modules/nsot/ztp_responder.py": (1, "one Kea fragment and responder serve every list (P.7)"),
     "modules/attention.py": (1, "a declared expiry beside the Default network's clients (step 5)"),
     "modules/monitoring_coverage.py": (2, "rows() answers every list from one read (step 5)"),
-    "routes/settings_integrations.py": (3, "the general Settings form writes the global file, "
-                                           "the Default network's layer (step 7)"),
+    # routes/settings_integrations.py's three (today's general Settings form) left with today's
+    # Settings modal at 7.8 (2026-10-15).
 }
 
 #: file -> (calls, why): a global reader called with a COMPUTED key, which a parse cannot judge.
@@ -171,7 +171,9 @@ class TestTheDefaultLayerReadsAreAnExactInventory:
 
     def test_the_scan_finds_something(self):
         """The floor: a parse that found nothing would satisfy an empty inventory."""
-        assert sum(default_layer_calls(_program_files()).values()) >= 19   # 19 after 7.8's topology service
+        # 19 after 7.8's topology service; 16 on 2026-10-15, after today's general Settings
+        # form's three left with today's Settings modal (7.8).
+        assert sum(default_layer_calls(_program_files()).values()) >= 16
 
     def test_the_parse_sees_each_shape_and_ignores_prose(self, tmp_path):
         """The planted case: a call by name, by alias, as an attribute, and a docstring that

@@ -44,6 +44,9 @@
   {%- endif %}
   <form class="set-form" id="form-{{ k.name }}" method="post" action="{{ url_for('settings_v2.install_save', name=k.name) }}"
         hx-post="{{ url_for('settings_v2.install_save', name=k.name) }}" hx-target="#card-{{ k.name }}" hx-swap="outerHTML">
+    {#- What this card drew (R17): its Save writes only what the person changed, and refuses a
+        change to a field another person moved since. -#}
+    <input type="hidden" name="loaded" value='{{ k.loaded | tojson }}'>
     {%- for f in k.fields %}
     {%- if s.secret and loop.index0 == s.secret_at %}{{ secret_row() }}{% endif %}
     {%- set fid = 'f-' ~ k.name ~ '-' ~ f.key %}

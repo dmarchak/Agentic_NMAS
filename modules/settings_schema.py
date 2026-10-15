@@ -15,6 +15,7 @@ Secret-bearing keys are declared in :mod:`modules.secrets_store` and stored
 encrypted; the defaults here are always "" (unset).
 """
 
+import json
 import logging
 import os
 import re
@@ -948,6 +949,33 @@ def moved_since(sent: dict, loaded, current: dict) -> dict:
     loaded = loaded if isinstance(loaded, dict) else {}
     return {k: (loaded[k], current[k]) for k in sent
             if k in loaded and k in current and loaded[k] != current[k]}
+
+
+#: A save whose form did not say what it loaded (R17): refused, since nothing then tells a field
+#: the person changed from one another person moved since. A refusal's words, drawn after
+#: "Not saved:" with the page's own full stop.
+NOT_LOADED = ("this form did not say what it loaded, so a field nobody changed could revert "
+              "another person's decision. Reopen Settings and save again")
+
+
+def loaded_from(raw):
+    """A form's ``loaded`` field (what it drew, as JSON) as a dict; None when absent or not
+    one, which a save refuses with `NOT_LOADED`."""
+    try:
+        got = json.loads(raw) if isinstance(raw, str) else None
+    except ValueError:
+        return None
+    return got if isinstance(got, dict) else None
+
+
+def changed_since_loaded(sent: dict, loaded: dict, now: dict) -> tuple:
+    """R17 for a form that sends every field (v2's settings cards): ``(changed, moved)``, each
+    value as the form draws it. A field still as the form loaded it is one the person did not
+    change: never written, so another person's change to it stands. A changed field whose
+    value moved since the form loaded it is in ``moved`` (``{key: (as loaded, now)}``), which
+    the save refuses, naming both (`moved_words`)."""
+    changed = {k: v for k, v in sent.items() if k not in loaded or loaded[k] != v}
+    return changed, moved_since(changed, loaded, now)
 
 
 def moved_words(moved: dict) -> list:

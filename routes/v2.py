@@ -4,7 +4,8 @@ approved 2026-09-30): the landing page (Needs attention) and Help > About.
 Every route here is a READ under the strict policy, drawn from what the app
 already computes: Needs attention is `attention.needs_attention()`, masked on
 the way out as `/attention` masks it; About's version is
-`routes.health.version_facts()`, the one composition `/health/version` serves;
+`routes.health.version_facts()`, the one composition (its JSON form, `/health/version`, left
+with today's status bar at 7.8);
 whether the running commit is what is pushed is the `app-pushed` reader.
 """
 

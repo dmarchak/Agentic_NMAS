@@ -56,11 +56,9 @@
   </style>
 </head>
 <body>
-  <!-- The status bar (7.2): integration health from its reader's stored
-       value, on every page, with its own age. -->
-  <div id="nmasStatusBar" class="d-flex flex-wrap align-items-center gap-1 px-3 py-1 small">
-    <span class="text-muted">Integrations: loading</span></div>
-  <script src="{{ url_for('static', filename='js/nmas_status_bar.js') }}"></script>
+  {#- Today's status bar (integration health, the running version, who you are) left at 7.8
+      (2026-10-15): every v2 page's top bar draws the integrations strip and who you are, and
+      Help › About the running version. #}
   <!-- Filled by nmas_invalidation.js only while background announcements
        cannot reach this page (C58). Empty otherwise. -->
   <div id="nmasLiveNote" class="px-3"></div>

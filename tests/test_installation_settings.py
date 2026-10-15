@@ -591,6 +591,15 @@ class _Client:
         return self.answer
 
 
+def _card_save(n, name, data):
+    """A card's Save as its page sends it: the fields, and what the card drew (R17)."""
+    from tests.test_settings_v2 import loaded_of
+
+    _r, card = _get(n, f"/v2/settings/installation/card/{name}")
+    return _post(n, f"/v2/settings/installation/card/{name}/save",
+                 dict(data, loaded=loaded_of(card)))
+
+
 def _fake_integration(monkeypatch, answer):
     from modules import integrations
 
@@ -646,7 +655,7 @@ class TestTheCards:
     def test_save_writes_what_changed_records_names_never_values(self, networks):
         from modules import installation_settings as I
         from modules.settings_schema import get_setting
-        _r, html = _post(networks, "/v2/settings/installation/card/netbox/save",
+        _r, html = _card_save(networks, "netbox",
                          {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Token"})
         card = _kcard(html, "netbox")
         assert "Saved" in card and "netbox_auth_scheme" in card
@@ -656,7 +665,7 @@ class TestTheCards:
         rec = I.changes(kinds=("card_save",))["rows"][0]
         assert rec["card"] == "netbox" and "netbox_url" in rec["fields"]
         assert "192.0.2.30" not in json.dumps(rec), "names, never values"
-        _r, again = _post(networks, "/v2/settings/installation/card/netbox/save",
+        _r, again = _card_save(networks, "netbox",
                           {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Token"})
         assert "Nothing changed" in _kcard(again, "netbox")
 
@@ -669,17 +678,17 @@ class TestTheCards:
                              "Backup VMs '100,abc' is not VM ids"),
                             ({"proxmox_url": "", "proxmox_token_expires": "2027-02-30"},
                              "Token expires '2027-02-30' is not a date")):
-            r, html = _post(networks, "/v2/settings/installation/card/proxmox/save", data)
+            r, html = _card_save(networks, "proxmox", data)
             assert r.status_code == 409 and words in _kcard(html, "proxmox"), words
         assert get_setting("proxmox_backup_vmids") == before
 
     def test_the_server_s_bind_and_port_wait_for_a_restart_and_say_so(self, networks):
         from modules.settings_schema import get_setting
-        _r, html = _post(networks, "/v2/settings/installation/card/server/save",
+        _r, html = _card_save(networks, "server",
                          {"flask_host": "127.0.0.1", "flask_port": "5001"})
         card = _kcard(html, "server")
         assert "take effect at the next restart" in card and get_setting("flask_port") == 5001
-        r, html = _post(networks, "/v2/settings/installation/card/server/save",
+        r, html = _card_save(networks, "server",
                         {"flask_host": "127.0.0.1", "flask_port": "70000"})
         assert r.status_code == 409 and "is not a port number" in html
 
@@ -736,7 +745,7 @@ class TestTheCards:
             "netbox_allow_writes"]
         _r, html = _post(networks, "/v2/settings/installation/netbox/writes-off")
         assert "Already off" in html
-        _r, html = _post(networks, "/v2/settings/installation/card/netbox/save",
+        _r, html = _card_save(networks, "netbox",
                          {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Bearer",
                           "netbox_allow_writes": "on"})
         assert get_setting("netbox_allow_writes") is False, "Save never arms writes"

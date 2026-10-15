@@ -4,7 +4,8 @@ field saves nothing. And register B16: no GET runs a command a request named.
 B11: `GET /settings` returned the Anthropic key and both Jenkins secrets in
 cleartext, ungated, on every opening of the Settings modal since e729267
 (2026-04-12). The NetBox token beside them was always a `*_set` flag. P.4
-removed Jenkins, so its fields are now refused by name rather than stored.
+removed Jenkins, so its fields were refused by name rather than stored; the
+modal and `/settings` left at 7.8 (2026-10-15).
 
 B16, found while sweeping the GET routes for this step: `/run_command/<ip>`
 ran any exec-mode command (reload, delete, copy, clear) from a URL. The gate
@@ -71,53 +72,13 @@ class TestNoGetReturnsASecret:
         _swept, hits = _sweep(probe)
         assert hits == [("/leak", "anthropic")]
 
-    def test_the_modal_is_told_whether_each_secret_is_set(self, planted):
-        import app as A
-        body = A.app.test_client().get("/settings").get_json()
-        assert body["netbox_token_set"] is True
-        assert "netbox_token" not in body
-        assert not [k for k in body if k.startswith("jenkins")], "Jenkins is gone (P.4)"
-        assert not [k for k in body if k.startswith("anthropic")], "the AI family is gone (D15)"
 
-
-class TestTheSettingsFormAfterJenkins:
-    """P.4: the Jenkins fields are gone from the form, and a page older than
-    the server that still sends them is told why nothing was stored."""
-
-    def test_jenkins_fields_are_refused_by_name(self, planted):
-        import app as A
-        r = A.app.test_client().post("/settings", json={
-            "jenkins_url": "https://ci.example.invalid", "jenkins_token": "x",
-            "loaded": A._settings_payload()})
-        body = r.get_json()
-        assert r.status_code == 207
-        assert any("Jenkins was removed" in e for e in body["errors"]), body
-
-    def test_the_ai_family_s_fields_are_refused_by_name(self, planted):
-        """D15: the same for the AI family's key and switches, so an old page's save says why
-        nothing was stored and the key never reaches `.env` again."""
-        import app as A
-        r = A.app.test_client().post("/settings", json={
-            "anthropic_api_key": PLANTED["anthropic"], "ai_enabled": True,
-            "loaded": A._settings_payload()})
-        body = r.get_json()
-        assert r.status_code == 207
-        assert any("were removed (D15)" in e for e in body["errors"]), body
-        assert PLANTED["anthropic"] not in r.get_data(as_text=True)
-
-    def test_a_form_without_them_is_not_refused(self, planted):
-        """The floor: the refusal is about the removed fields, not every save."""
-        import app as A
-        r = A.app.test_client().post("/settings", json={"loaded": A._settings_payload()})
-        assert r.status_code == 200, r.get_json()
-
-    def test_the_modal_sends_a_secret_only_if_typed(self):
-        from tests.js_source import read_shipped
-        page = read_shipped("templates/index.html")
-        assert "s.netbox_token " not in page and "s.netbox_token)" not in page
-        assert "if (nbTokVal) payload.netbox_token = nbTokVal;" in page
-        assert "settingsJenkins" not in page and "payload.jenkins_" not in page
-        assert "anthropic" not in page
+# Today's Settings modal's own tests (its payload said whether each secret was set, never the
+# value; it sent a secret only if typed; an old page's Jenkins and AI fields were refused by name)
+# left with the modal and GET and POST /settings at 7.8 (2026-10-15). On v2 a secret is drawn as
+# set or not set and changed only by Replace… (tests/test_installation_settings.py,
+# test_each_field_is_a_control_and_a_token_is_never_drawn), and a card's Save reads only its own
+# fields, so an old page's removed keys reach nothing.
 
 
 # ---------------------------------------------------------------------------

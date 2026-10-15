@@ -95,3 +95,54 @@ def test_the_probes_are_the_types_the_service_account_grants_view_on():
     missing = [label for _p, label in nc.READ_PROBES
                if re.sub(r"^.* › ", "", label).lower() not in view]
     assert missing == [], f"probed but not granted view in SERVICE_ACCOUNTS 1.3: {missing}"
+
+
+class TestTheNetBoxCardsTest:
+    """The same Test on its v2 home: Settings › Installation › Connections, the NetBox
+    connection card. Today's Settings modal's Test (/netbox/test_connection) was the function's
+    one caller until it left at 7.8 (2026-10-15); the card had asked `api/status/` only, so a
+    token missing a view passed it. The card asks in its own auth scheme and keeps nothing."""
+
+    @pytest.fixture
+    def card(self, monkeypatch):
+        from modules import installation_settings as I
+        from modules.integrations.netbox import NetBoxIntegration
+
+        asked = []
+
+        def session(token, verify_tls, auth_scheme="Bearer"):
+            asked.append(auth_scheme)
+            return self.session
+
+        def kept(*a, **k):
+            raise AssertionError("the card's Test wrote a setting")
+
+        monkeypatch.setattr(nc, "_build_session", session)
+        monkeypatch.setattr(nc, "set_user_setting", kept)
+        c = NetBoxIntegration()
+        saved = {"netbox_url": "http://nb.invalid", "netbox_auth_scheme": "Token"}
+        monkeypatch.setattr(c, "_setting", lambda k, d=None: saved.get(k, d))
+        monkeypatch.setattr(c, "_secret", lambda k, d="": "nbt_x.y")
+        return lambda: (I.test_card("netbox", client=c), asked)
+
+    def test_a_token_missing_a_view_fails_the_cards_test_naming_the_type(self, card):
+        self.session = _Session(refuse={
+            "users/tokens/": "You do not have permission to perform this action."})
+        got, asked = card()
+        assert got["ok"] is False, "a token that cannot read what the tool reads passed the Test"
+        assert "Users › token" in got["error"], got
+        assert set(asked) == {"Token"}, f"the card's own scheme only: {asked}"
+
+    def test_a_refused_token_says_netboxs_reason_in_the_card(self, card):
+        self.session = _Session(status=_R(403, "Token expired"))
+        got, asked = card()
+        assert got["ok"] is False and "Token expired" in got["error"] and "has expired" in \
+            got["error"], got
+        assert "tried Token)" in got["error"] and asked == ["Token"], (got, asked)
+
+    def test_a_token_that_reads_everything_passes_the_card(self, card):
+        """The control."""
+        self.session = _Session()
+        got, _asked = card()
+        assert got["ok"] is True, got
+        assert f"every type the tool reads answered ({len(nc.READ_PROBES)})" in got["message"]

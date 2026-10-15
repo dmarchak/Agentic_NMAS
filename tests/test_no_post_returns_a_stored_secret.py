@@ -129,8 +129,6 @@ def _bodies(v):
         "netbox_safety.preview_import_all": (200, ("json", {}), "the same, every list"),
         "netbox_safety.preview_removal": (200, ("json", {"list_name": LIST}),
                                           "a dry-run removal"),
-        "netbox_test_connection": (200, ("json", {}),
-                                   "the stored URL and token: the connection is refused"),
         "onboard.plan": (200, ("json", {"list_name": LIST, "hostname": "r8",
                                         "platform": "cisco_ios"}),
                          "a plan for a new device; creates nothing"),
@@ -141,9 +139,6 @@ def _bodies(v):
                           "no remote configured: a configured one would start ssh, which the "
                           "harness refuses and counts as a failure; the remote is an alias "
                           "and a key PATH, never a stored secret"),
-        "settings_integrations.test_integration": (200, ("json", {}),
-                                                   "driven once per registered integration "
-                                                   "below; this row is the grafana one"),
         "templates.validate": (200, ("json", {"list_name": LIST}), "validates the template"),
         "retire.preview": (200, ("json", {"list_name": LIST, "device": "r1",
                                           "reason": "leaving management"}),
@@ -344,7 +339,6 @@ def _follow_job(client, endpoint, r):
 def _drive(v, person, writes=None):
     import app as A
     from modules import identity
-    from modules.integrations import REGISTRY
 
     mp = pytest.MonkeyPatch()
     if person:
@@ -360,10 +354,9 @@ def _drive(v, person, writes=None):
         bodies = _bodies(v)
         for endpoint, rule in sorted(_population().items()):
             status, (kind, body), _why = bodies[endpoint]
-            names = [None]
-            if endpoint == "settings_integrations.test_integration":
-                names = sorted(set(REGISTRY) - set(INTEGRATIONS_NOT_DRIVEN))
-            for name in names:
+            # One body per route (each integration's Test, once a name per integration here,
+            # is driven by `_drive_tests` since today's left at 7.8).
+            for name in [None]:
                 url = _fill(rule, dict(v, **({"_integration": name} if name else {})))
                 if name:
                     url = url.replace("/planted-profile/", f"/{name}/")
@@ -411,6 +404,9 @@ def swept():
             writes = {}
             anon = _drive(values, person=False)
             person = _drive(values, person=True, writes=writes)
+            with pytest.MonkeyPatch.context() as test_mp:
+                test_mp.setattr(identity, "identify", lambda _r: who)
+                tests = _drive_tests(A.app.test_client())
             # A known writer, through the same instrument (C134's store hash): the drift run
             # Check now starts, r1 read NOW against its golden and the run recorded in the
             # network's drift state. Today's /drift/check/sync was the population's one writer
@@ -426,10 +422,44 @@ def swept():
             # read here because only this fixture seeds the templates it renders.
             got = A.app.test_client().get(f"/templates/preview/r1?list_name={LIST}")
             yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
-                   "person": person, "drift_run": drift_run,
+                   "person": person, "tests": tests, "drift_run": drift_run,
                    "template_preview": (got.status_code, got.get_data(as_text=True))}
     finally:
         mp.undo()
+
+
+def _test_routes() -> dict:
+    """Each registered integration's Test on v2, ``{name: url}``: its Installation card's
+    (NetBox, Proxmox) or the Default network's card for its group. Today's per-integration
+    Test (`settings_integrations.test_integration`, a `not_device` POST this sweep drove once
+    per integration) left with today's Settings modal at 7.8 (2026-10-15); v2's Tests are a
+    person's (`configure`), so they are driven here, as a person, outside the population."""
+    from modules import installation_settings as I
+    from modules import settings_page
+    from modules.settings_scope import network_groups
+
+    out = {spec["integration"]: f"/v2/settings/installation/card/{card}/test"
+           for card, spec in I.CARDS.items() if spec["integration"]}
+    for group in network_groups():
+        cls = settings_page.integration_for(group)
+        if cls is not None:
+            out.setdefault(cls.name, f"/v2/settings/network/Default/group/{group}/test")
+    return out
+
+
+def _drive_tests(client) -> dict:
+    """``{name: (status, text)}``: every integration's v2 Test, driven over the planted stores
+    (the harness refuses every connection, so each answers with its failure, which must carry
+    no stored value)."""
+    from modules.integrations import REGISTRY
+
+    routes = _test_routes()
+    out = {}
+    for name in sorted(set(REGISTRY) - set(INTEGRATIONS_NOT_DRIVEN)):
+        if name in routes:
+            r = client.post(routes[name], headers={"HX-Request": "true"})
+            out[name] = (r.status_code, r.get_data(as_text=True))
+    return out
 
 
 def _hits(result, planted):
@@ -451,8 +481,10 @@ class TestThePopulation:
 
     def test_every_integration_is_driven_or_named(self, swept):
         from modules.integrations import REGISTRY
-        driven = {k.split(":", 1)[1] for k in swept["person"] if ":" in k}
-        assert driven | set(INTEGRATIONS_NOT_DRIVEN) == set(REGISTRY)
+        driven = {name for name, (status, _t) in swept["tests"].items() if status == 200}
+        assert driven | set(INTEGRATIONS_NOT_DRIVEN) == set(REGISTRY), (
+            sorted(set(REGISTRY) - driven - set(INTEGRATIONS_NOT_DRIVEN)),
+            {n: s for n, (s, _t) in swept["tests"].items()})
         assert len(driven) >= 8
 
 
@@ -485,6 +517,10 @@ class TestNoPostReturnsAStoredSecret:
     @pytest.mark.parametrize("who", ["anon", "person"])
     def test_no_planted_value_comes_back(self, swept, who):
         hits = _hits(swept[who], swept["planted"])
+        assert hits == [], "\n".join(f"{k} <- {s}" for k, s in hits)
+
+    def test_no_integrations_test_returns_one(self, swept):
+        hits = _hits(swept["tests"], swept["planted"])
         assert hits == [], "\n".join(f"{k} <- {s}" for k, s in hits)
 
     def test_every_store_is_planted(self, swept):

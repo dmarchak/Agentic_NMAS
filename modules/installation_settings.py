@@ -388,11 +388,20 @@ def card(name: str) -> dict:
     out = {"name": name, "spec": spec, "fields": fields, "health": None, "writes": None,
            "secret_set": bool(spec["secret"]) and is_set(spec["secret"][0]),
            "id_value": get_setting(spec["with_id"][0], "") if spec["with_id"] else ""}
+    out["loaded"] = {f["key"]: _drawn(f, f["value"]) for f in fields}
     if spec["integration"]:
         out["health"] = _health(spec["integration"])
     if name == "netbox":
         out["writes"] = _writes_state()
     return out
+
+
+def _drawn(f: dict, value) -> str:
+    """A field's value as the card's form sends it back: a switch "on" or "", anything else
+    its text. What the card drew (``loaded``, R17) and what a Save sent compare in this form."""
+    if f["kind"] == "switch":
+        return "on" if value else ""
+    return "" if value is None else str(value).strip()
 
 
 def _value(f: dict, raw):
@@ -447,18 +456,36 @@ def _value(f: dict, raw):
     return text
 
 
-def save_card(name: str, form: dict, actor: str, verified: str) -> dict:
-    """Save a card's fields (CARD_SAVE_STEPS): check each, write what changed to the
+def save_card(name: str, form: dict, actor: str, verified: str, loaded=None) -> dict:
+    """Save a card's fields (CARD_SAVE_STEPS): check each, write what the person changed to the
     installation's settings, record who and which fields (never a value). A switch the form
-    did not send is off. ``{"ok", "written", "nothing", "restart", "recorded", ...}``."""
-    from modules.settings_schema import DEFAULTS, get_setting, write_settings
+    did not send is off. ``{"ok", "written", "nothing", "restart", "recorded", ...}``.
+
+    *loaded* is what the card drew (CONCURRENCY_AUDIT R17): a field still as drawn is not
+    written, so another person's change to it since stands; a field the person changed that
+    another person moved since refuses the Save, naming both values. Compared and written under
+    one hold of the settings lock. A Save that does not say what it drew is refused."""
+    from modules.config import settings_lock
+    from modules.settings_schema import (DEFAULTS, NOT_LOADED, changed_since_loaded,
+                                         get_setting, moved_words, write_settings)
 
     spec = CARDS[name]
-    values = {f["key"]: _value(f, form.get(f["key"])) for f in spec["fields"]}      # check
-    changed = {k: v for k, v in values.items() if get_setting(k, DEFAULTS.get(k)) != v}
-    if not changed:
-        return {"ok": True, "nothing": True, "written": [], "recorded": True, "restart": False}
-    out = write_settings(changed, actor=actor)                                       # write
+    if not isinstance(loaded, dict):
+        raise Refused(NOT_LOADED)
+    by_key = {f["key"]: f for f in spec["fields"]}
+    values = {k: _value(f, form.get(k)) for k, f in by_key.items()}                   # check
+    with settings_lock():
+        now = {k: get_setting(k, DEFAULTS.get(k)) for k in by_key}
+        mine, moved = changed_since_loaded({k: _drawn(by_key[k], v) for k, v in values.items()},
+                                           loaded, {k: _drawn(by_key[k], v)
+                                                    for k, v in now.items()})
+        if moved:
+            raise Refused("; ".join(moved_words(moved)))
+        changed = {k: values[k] for k in mine if values[k] != now[k]}
+        if not changed:
+            return {"ok": True, "nothing": True, "written": [], "recorded": True,
+                    "restart": False}
+        out = write_settings(changed, actor=actor)                                   # write
     if not out["ok"]:
         raise Refused(out["error"])
     entry = _record({"kind": "card_save", "card": name, "actor": actor,             # record
@@ -476,8 +503,11 @@ def test_card(name: str, client=None) -> dict:
     if not spec["integration"]:
         raise Refused(f"{spec['title']} has no Test: it configures no service to ask")
     c = client or get_integration(spec["integration"])
+    # A person's Test asks more than the reader's minute probe where the client says so
+    # (NetBox: each type the tool reads, C468); otherwise the same `test_connection`.
+    ask = getattr(c, "test_now", None) or c.test_connection
     try:
-        got = c.test_connection()
+        got = ask()
     except Exception as exc:                                            # noqa: BLE001
         got = {"ok": False, "error": f"the test raised {type(exc).__name__}: {exc}"}
     now = _now()

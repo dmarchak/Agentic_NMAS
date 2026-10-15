@@ -182,9 +182,6 @@ GATES = {
     "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, from v2's NetBox page"),
 
     # ---- configure: the tool's own settings, gates, inventory, records ---
-    "save_settings": _g(K, "writes settings, secrets included"),
-    "settings_integrations.general_settings": _g(K, "writes settings"),
-    "settings_integrations.save_integration": _g(K, "writes an integration's settings and secrets"),
     "settings_v2.group_switch": _g(K, "switches a network's settings group (inherit, its own with its values and secrets, not applicable), bound to its preview and recorded"),
     "settings_v2.mode_switch": _g(K, "switches a network between inheriting from Default and standalone, bound to its preview and recorded"),
     "settings_v2.group_save": _g(K, "saves a card's fields (Default's, or a network's own group) and their secrets, recorded"),
@@ -213,7 +210,6 @@ GATES = {
     "settings_v2.network_delete_preview": _g(N, "counts what a network holds and says where its data would go; writes nothing"),
     "settings_v2.records_store_preview": _g(N, "counts every network's receipts lines in the files and the records database for a move's preview; writes nothing"),
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
-    "identity.ratify_setting": _g(K, "records a decision about a gate", "ratify_setting"),
     "create_device_list_route": _g(K, "creates a device list"),
     "delete_device_list_route": _g(K, "deletes a device list"),
     "select_device_list_route": _g(K, "changes the active list, which every derived read and the ping worker follow"),
@@ -301,8 +297,6 @@ GATES = {
     "netbox_safety.preview_import_all": _g(N, "a dry run"),
     "netbox_safety.preview_removal": _g(N, "a dry run"),
     "netbox_v2.preview": _g(N, "starts a dry run of an import or removal on a thread; writes nothing"),
-    "netbox_test_connection": _g(N, "a connection test"),
-    "settings_integrations.test_integration": _g(N, "a connection test"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),

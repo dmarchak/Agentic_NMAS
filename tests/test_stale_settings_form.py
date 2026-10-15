@@ -1,138 +1,138 @@
 """A stale Settings tab never reverts another person's decision (CONCURRENCY_AUDIT R17).
 
-The Settings form sent every field as it was loaded. A tab opened before another person turned
-NetBox writes off turned them back on when it saved an unrelated field. Now each settings form
-(the modal, every integration card, the general block) sends only the fields the person
-changed, with the values it loaded. Under the settings lock, a changed field whose stored value
-moved since is refused, naming both values; the rest are saved. (The `.env` writer and its
-test left with the AI key it saved: C783.)
+Today's Settings form sent every field as it was loaded. A tab opened before another person
+turned NetBox writes off turned them back on when it saved an unrelated field. Today's forms (the
+modal, every integration card, the general block) then sent only the fields the person changed,
+with the values they loaded, and the server refused a changed field whose stored value had moved
+since, naming both values. (The `.env` writer and its test left with the AI key it saved: C783.)
 
-Driven through the real routes on a temporary settings file; the shipped clients are checked by
-lifting their functions."""
+Those forms left with today's Settings modal at 7.8 (2026-10-15), and the property moved to their
+v2 homes, which had resent every field as drawn (found by rebasing these tests): each card of
+Settings › Installation (NetBox connection, Proxmox, Commit author, Server: the modal's NetBox
+section and general block) and each network's integration cards (Settings › Default and a
+network's own: the modal's integration cards). Each card sends what it drew (``loaded``); its
+Save writes only what the person changed, under one hold of the settings lock, and refuses a
+changed field another person moved since, naming both values, nothing saved. The incident's own
+field, NetBox's master write switch, is on no Save at all on v2: the card turns it off only, and
+an authorised NetBox confirm turns it on (tests/test_installation_settings.py).
 
-import os
+Driven through the real routes on a temporary store, as each page sends its form."""
 
-import pytest
+import json
 
-from tests.payload_render import lift, shipped
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    import app as nmas
-    from modules import config
-
-    path = tmp_path / "user_settings.json"
-    path.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(path))
-    return nmas.app.test_client()
+from tests.test_settings_v2 import _card, _get, _save, loaded_of, networks  # noqa: F401
+from tests.test_settings_v2 import L
 
 
 def _stored(key):
-    from modules.config import load_user_settings
-    return load_user_settings().get(key)
+    from modules.settings_schema import get_setting
+    return get_setting(key)
 
 
-class TestTheSettingsModal:
-    def test_a_field_another_person_moved_is_refused_and_the_rest_saved(self, client):
-        # The incident's own field (R17): NetBox writes start OFF, another person turns them
-        # ON, and this tab, opened before, saves another field and its stale switch. (It drove
-        # the background agent's switch until that left with the AI family, D15.)
-        stale = client.get("/settings").get_json()               # this tab opens Settings
-        assert stale["netbox_allow_writes"] is False
-        assert client.post("/settings", json={                   # another person turns writes on
-            "netbox_allow_writes": True,
-            "loaded": client.get("/settings").get_json()}).status_code == 200
-        r = client.post("/settings", json={"netbox_allow_writes": False,
-                                           "netbox_verify_tls": False, "loaded": stale})
-        body = r.get_json()
-        assert r.status_code == 207 and body["status"] == "partial"
-        assert any(e.startswith("netbox_allow_writes: not saved, because it changed after "
-                                "you opened Settings: it was False when you opened it and is "
-                                "True now") for e in body["errors"]), body
-        assert _stored("netbox_allow_writes") is True            # their decision stands
-        assert _stored("netbox_verify_tls") is False             # this person's change saved
-
-    def test_a_field_this_person_did_not_change_is_never_sent_so_never_reverts(self, client):
-        save = lift(SETTINGS_JS, "saveSettings")
-        assert "if (loaded && k in loaded && loaded[k] === payload[k]) delete payload[k];" in save
-        assert "payload.loaded = loaded;" in save
-        assert "window._settingsLoaded = s;" in lift(SETTINGS_JS, "openSettingsModal")
-
-    def test_a_save_that_says_nothing_about_what_it_loaded_is_refused(self, client):
-        r = client.post("/settings", json={"netbox_verify_tls": False})
-        assert r.status_code == 400 and "did not say what it loaded" in r.get_json()["errors"][0]
-        assert _stored("netbox_verify_tls") is None
-
-    def test_the_write_switch_alone_is_saved(self, client):
-        """Sent alone (the other NetBox fields unchanged), it was dropped by a branch that
-        waited for the URL beside it."""
-        r = client.post("/settings", json={"netbox_allow_writes": True,
-                                           "loaded": client.get("/settings").get_json()})
-        assert r.status_code == 200, r.get_json()
-        assert client.get("/settings").get_json()["netbox_allow_writes"] is True
-
-    def test_the_general_blocks_answer_is_part_of_the_result(self):
-        save = lift(SETTINGS_JS, "saveSettings")
-        assert "Promise.all([fetch('/settings'" in save
-        assert "concat(gen && gen.ok === false ? [gen.error] : [])" in save
+def _install_card(n, name):
+    _r, html = _get(n, f"/v2/settings/installation/card/{name}")
+    return loaded_of(html)
 
 
-class TestTheIntegrationCards:
-    def _loaded(self, client):
-        return client.get("/settings/integrations").get_json()["integrations"]["kea"]
-
-    def test_a_field_another_person_moved_is_refused_naming_both(self, client):
-        stale = self._loaded(client)
-        assert client.post("/settings/integrations/kea", json={
-            "kea_url": "http://192.0.2.7:8000", "loaded": self._loaded(client)}).get_json()["ok"]
-        r = client.post("/settings/integrations/kea",
-                        json={"kea_url": "http://192.0.2.9:8000", "loaded": stale})
-        body = r.get_json()
-        assert r.status_code == 409 and body["moved"] == ["kea_url"]
-        assert "'http://192.0.2.7:8000' now" in body["error"]
-        assert _stored("kea_url") == "http://192.0.2.7:8000"
-
-    def test_an_unchanged_card_field_is_not_sent(self):
-        js = shipped("partials__settings_integrations.1.js")
-        save = lift(js, "saveIntegration")
-        assert "JSON.stringify(loaded[k]) === JSON.stringify(changed[k])) delete changed[k];" in save
-        assert "body: JSON.stringify({...changed, loaded})," in save
-        assert "_intLoaded[name] = cfg;" in lift(js, "loadIntegrationSettings")
-
-    def test_a_card_save_without_what_it_loaded_is_refused(self, client):
-        r = client.post("/settings/integrations/kea", json={"kea_url": "http://192.0.2.9:8000"})
-        assert r.status_code == 400 and "did not say what it loaded" in r.get_json()["error"]
+def _install_save(n, name, data, loaded):
+    import html as html_mod
+    r = n["client"].post(f"/v2/settings/installation/card/{name}/save",
+                         data=dict(data, loaded=loaded) if loaded is not None else data,
+                         headers={"HX-Request": "true"})
+    return r, html_mod.unescape(r.get_data(as_text=True))
 
 
-class TestTheGeneralBlock:
-    def test_a_field_another_person_moved_is_refused(self, client):
-        stale = client.get("/settings/integrations/general").get_json()["settings"]
-        fresh = client.get("/settings/integrations/general").get_json()["settings"]
-        assert client.post("/settings/integrations/general",
-                           json={"flask_host": "127.0.0.1", "loaded": fresh}).get_json()["ok"]
-        r = client.post("/settings/integrations/general",
-                        json={"flask_host": "0.0.0.0", "loaded": stale})
-        assert r.status_code == 409 and r.get_json()["moved"] == ["flask_host"]
+NB = {"netbox_url": "https://192.0.2.30", "netbox_auth_scheme": "Bearer",
+      "netbox_verify_tls": "on"}
+
+
+class TestTheInstallationCards:
+    """Today's modal's NetBox section and its general block, on Settings › Installation."""
+
+    def test_a_field_this_person_did_not_change_never_reverts_anothers(self, networks):
+        stale = _install_card(networks, "netbox")                  # this tab opens the card
+        assert json.loads(stale)["netbox_verify_tls"] == "on"
+        # Another person turns TLS verification off.
+        r, _html = _install_save(networks, "netbox",
+                                 {"netbox_url": "", "netbox_auth_scheme": "Bearer"},
+                                 _install_card(networks, "netbox"))
+        assert r.status_code == 200 and _stored("netbox_verify_tls") is False
+        # This tab, opened before, saves a URL, its switch still drawn on.
+        r, html = _install_save(networks, "netbox", NB, stale)
+        assert r.status_code == 200 and "Saved" in html, html
+        assert _stored("netbox_url") == "https://192.0.2.30"     # this person's change saved
+        assert _stored("netbox_verify_tls") is False             # their decision stands
+
+    def test_a_changed_field_another_person_moved_is_refused_naming_both(self, networks):
+        stale = _install_card(networks, "netbox")
+        assert _install_save(networks, "netbox", dict(NB, netbox_url="https://192.0.2.7"),
+                             _install_card(networks, "netbox"))[0].status_code == 200
+        r, html = _install_save(networks, "netbox", dict(NB, netbox_url="https://192.0.2.9"),
+                                stale)
+        assert r.status_code == 409, html
+        assert ("netbox_url: not saved, because it changed after you opened Settings: it was "
+                "'' when you opened it and is 'https://192.0.2.7' now") in html, html
+        assert "Nothing was changed" in html
+        assert _stored("netbox_url") == "https://192.0.2.7"
+
+    def test_the_servers_bind_moved_since_is_refused(self, networks):
+        """Today's general block's own case (flask_host), on the Server card."""
+        stale = _install_card(networks, "server")
+        assert _install_save(networks, "server", {"flask_host": "127.0.0.1", "flask_port": "5000"},
+                             _install_card(networks, "server"))[0].status_code == 200
+        r, html = _install_save(networks, "server",
+                                {"flask_host": "192.0.2.5", "flask_port": "5000"}, stale)
+        assert r.status_code == 409 and "flask_host: not saved" in html, html
         assert _stored("flask_host") == "127.0.0.1"
 
-    def test_the_block_sends_only_what_changed(self):
-        js = shipped("partials__settings_integrations.1.js")
-        save = lift(js, "saveGeneralIntegrationSettings")
-        assert "payload.loaded = loaded;" in save
-        assert "_intLoaded.general = d.settings;" in lift(js, "loadGeneralIntegrationSettings")
+    def test_a_save_that_says_nothing_about_what_it_drew_is_refused(self, networks):
+        before = _stored("netbox_url")
+        for loaded in (None, "not json", "[]"):
+            r, html = _install_save(networks, "netbox", dict(NB, netbox_url="https://192.0.2.9"),
+                                    loaded)
+            assert r.status_code == 409 and "did not say what it loaded" in html, loaded
+        assert _stored("netbox_url") == before
+
+    def test_the_card_sends_what_it_drew(self, networks):
+        from modules import installation_settings as I
+        _r, html = _get(networks, "/v2/settings/installation")
+        for name in I.CARDS:
+            drawn = _card(html, name)
+            assert json.loads(loaded_of(drawn)) == I.card(name)["loaded"], name
 
 
-SETTINGS_JS = None
+class TestTheNetworkCards:
+    """Today's modal's integration cards, on Settings › Default and a network's own."""
 
+    def test_a_changed_field_another_person_moved_is_refused_naming_both(self, networks):
+        _r, html = _get(networks, "/v2/settings/network/Default/group/kea")
+        stale = loaded_of(html)
+        r, _h = _save(networks, "Default", "kea", {"kea_url": "http://192.0.2.7:8000"})
+        assert r.status_code == 200 and _stored("kea_url") == "http://192.0.2.7:8000"
+        r = networks["client"].post("/v2/settings/network/Default/group/kea/save",
+                                    data={"kea_url": "http://192.0.2.9:8000", "loaded": stale})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 409, body
+        assert "kea_url: not saved, because it changed after you opened Settings" in body
+        assert "http://192.0.2.7:8000" in body
+        assert _stored("kea_url") == "http://192.0.2.7:8000"
 
-def setup_module(_module):
-    """The modal's script is inline in index.html: its <script> block, parsed out by tag."""
-    global SETTINGS_JS
-    with open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8") as fh:
-        html = fh.read()
-    blocks = html.split("<script>")
-    SETTINGS_JS = next(b.split("</script>")[0] for b in blocks
-                       if "window.saveSettings = function" in b)
+    def test_a_field_this_person_did_not_change_never_reverts_anothers(self, networks):
+        _r, html = _get(networks, "/v2/settings/network/Branch/group/grafana")
+        stale = loaded_of(html)
+        assert json.loads(stale)["grafana_verify_tls"] == "on"
+        r, _h = _save(networks, "Branch", "grafana", {"grafana_verify_tls": "off"})
+        assert r.status_code == 200 and L.resolve("Branch", "grafana_verify_tls")[0] is False
+        r = networks["client"].post("/v2/settings/network/Branch/group/grafana/save", data={
+            "grafana_url": "http://192.0.2.61:3000", "grafana_verify_tls": "on",
+            "loaded": stale})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert L.resolve("Branch", "grafana_url")[0] == "http://192.0.2.61:3000"
+        assert L.resolve("Branch", "grafana_verify_tls")[0] is False, "their decision stands"
+
+    def test_a_card_save_without_what_it_drew_is_refused(self, networks):
+        r = networks["client"].post("/v2/settings/network/Default/group/kea/save",
+                                    data={"kea_url": "http://192.0.2.9:8000"})
+        assert r.status_code == 409
+        assert "did not say what it loaded" in r.get_data(as_text=True)
+        assert _stored("kea_url") != "http://192.0.2.9:8000"

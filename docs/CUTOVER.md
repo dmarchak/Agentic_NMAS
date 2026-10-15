@@ -58,15 +58,12 @@ and built.
 | Onboard | `/onboard/*` (9) | BUILT, 7.4 (board E and the pending page's actions, 2026-10-10; not run on the host). Boards L (the discovery list) and M (serial pre-provisioning) are new capabilities, not v1 parity: nice-to-haves | Devices › Add device… (static, DHCP, ZTP by MAC; Create bound to its review) and a pending device's page: Verify… (preview, confirm), Get the bootstrap config… (a recorded reveal), Abandon… (its dry run, confirm bound to it); a retired device's Onboard it again…. The same cores as today's routes (`routes/onboard.py`) |
 | Adopt | (no route; `modules/nsot/adopt.py`) | BUILT (board G, 2026-10-10; not run on the host) | Devices › Adopt a device… (`routes/adopt_v2.py`): the preview reads over the supplied login and sends nothing, the confirm (a verified person, the password typed again, bound to the preview's fingerprint) runs `adopt.apply` as a job on the stepper |
 | NetBox import and remove | `/netbox/safety/*` (8), `/netbox/status` | BUILT, 7.6 (2026-10-10; not run on the host) | Source of truth › NetBox (`/v2/netbox`): every network's Import into NetBox… and Remove from NetBox…, Import every network…, each a preview job and a confirm that may turn writes on (C619), its result and recorded removals; the same core as today's routes (`modules/netbox_ops.py`) |
-| NetBox connection test | `/netbox/test_connection` | BUILT | Settings › Installation › Connections, the NetBox card's Test |
 | Inventory source | `/inventory/source/<list>`, `/inventory/refresh/<list>` | BUILT (2026-10-10; not run on the host) | Every network's Settings › Network tab, Inventory source: its own list or NetBox through filters, a preview reading NetBox once with the new filters (how many devices, which skipped and why), a confirm bound to it, recorded; Refresh now for a NetBox network. Today's `/inventory/source/<list>` is its GET (the panel's read); its POST, which no page sent, was removed 2026-10-15 (7.8) |
 | Networks | `/device_lists`, `/device_lists/<name>`, `/select_device_list` | BUILT, P.8 (2026-10-10; not run on the host) | Choosing one: BUILT (board N, 2026-10-10; not run on the host): the top bar's Network picker, the choice each verified person's own (`routes/network_v2.py`), so `/select_device_list`'s one choice for everyone has no v2 equivalent by design. Create and delete: BUILT (2026-10-10; not run on the host): Settings' New network… and a network's Delete this network…, each previewed and recorded; a deleted network's folder is moved aside, never erased. Rename: never offered by today's pages (C639), not built. Today's `/device_lists` is its POST (create); its GET, the list of lists as JSON that no page called, was removed 2026-10-15 (7.8) |
 | Break-glass export | `/breakglass/export` | STAYS (its preview route removed 2026-10-12, 7.8) | Credentials › The break-glass record posts to the one export (walked); today's modal goes at 7.8 |
-| Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | BUILT, 7.7 (board F4) | Settings › Installation › Access and identity, with Record this decision; `/v2/who` |
-| Settings | `/settings`, `/settings/integrations`, `/settings/integrations/*` (4) | BUILT, P.8 and 7.7 | Each network's Settings (boards A to J) and every Installation tab (boards F to F4); NetBox writes are turned on by an authorised NetBox confirm on Source of truth › NetBox (C619, closed 2026-10-10) |
-| App log | `/logs/server` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, the app's log |
-| In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
-| Version | `/health/version` | BUILT | Help › About |
+| Identity diagnostic | `/identity/status` | STAYS (a question for the operator, 7.8) | The end-to-end identity diagnostic, not gated by identity (docs/LESSONS.md, the route-gates section), read with curl; the posture is Settings › Installation › Access and identity (board F4), and who you are is every v2 page's top bar and `/v2/who`. Today's status bar read it until it left at 7.8 (2026-10-15) |
+| Integration health | `/settings/integrations/status` | STAYS (a question for the operator, 7.8) | docs/DEPLOY_LINUX.md's Verify reads it with curl on a new install; every v2 page's strip and Needs attention read the same stored value in-process. Today's status bar and Settings strip read it until they left at 7.8 (2026-10-15) |
+| In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight. The route stays while today's pages do: today's in-flight panel (`templates/base.html`, both of today's pages) reads it; v2 has no in-flight indicator on every page yet (C537's top bar) |
 | Backups | (no route of today's; its six routes, backup_config, backup_history, backup_stats, compare_backups, delete_backup and download_backup, removed 2026-10-15, a8acc2a1) | **REMOVED 2026-10-15** (7.8, C632, C335) | Section 6a's prerequisite met first: the v2 intent editor and bulk intent render against the committed golden only since 2026-10-11 (C683), and today's template preview since 2026-10-14 (C632: its fallback to the newest backup, its "versus running config" diff and its refresh-capture route went). Today's device page's Backups tab, `modules/backups.py` and the manual's Backups page went with the routes. No code deleted or migrated the stored files; the operator archived them masked (`s3://mercury/archives/backups/20261015T040957Z.tar.gz`, lists/default's 2 files; no legacy folder existed) and deleted them by checksum with `scripts/host-steps/d16-archive.sh`, 2026-10-15. The follow-ups (the operator's decisions 6 to 9): retire no longer says backups are kept, onboarding's results name drift and heartbeats only, the legacy migration of a data-root backups folder is gone, and the concurrency audit marks the index REMOVED. A capture is the device's page's Capture…, recorded as a golden |
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
@@ -342,6 +339,32 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   now link the card. The manual's Check drift page left today's-app marking: v2's Check now
   carries its link. Proved before removal: index.4.js's `loadDriftStatus`,
   `saveDriftSettings` and `runDriftCheck` were the routes' only callers.
+- **Today's Settings modal, Logs tab and status bar** (GET and POST /settings,
+  /netbox/test_connection, /settings/integrations and its save, Test and general block,
+  /identity/posture and /identity/posture/ratify, /logs/server, /health/version), 2026-10-15.
+  Their homes: NetBox's connection is Settings › Installation › Connections' NetBox card,
+  NetBox writes are turned on by an authorised NetBox confirm (C619) and off on that card;
+  each network's integrations are Settings › Default and a network's own cards; Proxmox, the
+  commit author and the server's bind and port are Installation's cards; the posture and
+  Record this decision are Installation › Access and identity; the app's log is Installation ›
+  Diagnostics; the running version is Help › About; integration health and who you are are
+  every v2 page's top bar. The modal, its two partials (`settings_integrations.html`,
+  `security_posture.html`) and their scripts, index.4.js's NetBox test, the Logs tab and its
+  script, and the status bar (`static/js/nmas_status_bar.js`, base.html, so today's device page
+  too) went with the routes, as did their gate, invalidation and operation-stage entries.
+  `routes.health.version_facts()` stays (About draws it), and so do `/identity/status` and
+  `/settings/integrations/status` (their rows above). Carried over first, each found by
+  rebasing a removed path's property test onto v2: a card's Save writes only what the person
+  changed and refuses a changed field another person moved since, naming both values
+  (CONCURRENCY_AUDIT R17: v2's cards had resent every field as drawn); the NetBox card's Test
+  names a token's missing views and NetBox's own reason (C468: it had asked `api/status/`
+  only); the strip says STALE past its reader's promise and names the unconfigured on hover;
+  the Monitoring profile card has its Test (it had none on v2). Not carried over:
+  `auto_open_browser`, the desktop app's switch (not drawn on v2 by board F3; `NMAS_HEADLESS`
+  and `NMAS_AUTO_OPEN_BROWSER` set it), and the retiring `collector_*`, `monitoring_*` and
+  `promql_*` fields, read by nothing. Proved before removal: index.html's `openSettingsModal`,
+  `saveSettings` and `loadLogsTab`, the two partials' scripts and the status bar were the
+  routes' only callers; the updater, the host scripts and the monitoring configs call none.
 
 ## Legacy actions that are not routes
 
@@ -350,7 +373,6 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
 | The terminal (socket events) | **REMOVED 2026-10-05** (R39, brought forward from 7.8 on the operator's decision, after the console drill proved the emergency path: docs/CONSOLE_DRILL.md) | The Device page's allowlisted Ask tab is the one way to ask a device. Kept: the `break_glass` gate kind and its two settings, until they retire |
 | Today's Git tab, Remote card, Baselines panel | BUILT | History: Commits, the remote's sentence, Baselines |
 | The AI chat panel (every page) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns it |
-| Settings modal | BUILT | Settings per network and every Installation tab are built; NetBox writes come on by an authorised confirm on the NetBox page (C619, closed 2026-10-10) |
 
 ## Decided 2026-10-02
 

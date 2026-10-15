@@ -170,34 +170,6 @@ async function loadNetboxTab() {
   }
 }
 
-// Test NetBox connection using the values currently in the Settings modal
-// (so the user can test before saving). Falls back to stored values for blanks.
-async function netboxTestFromSettings() {
-  const url        = (document.getElementById('settingsNetboxUrl')?.value   || '').trim();
-  const token      = (document.getElementById('settingsNetboxToken')?.value || '').trim();
-  const verify_tls = document.getElementById('settingsNetboxVerifyTls')?.checked ?? true;
-  const btn     = document.getElementById('settingsNetboxTestBtn');
-  const status  = document.getElementById('settingsNetboxTestStatus');
-  if (btn)    btn.disabled = true;
-  if (status) { status.textContent = 'Testing…'; status.className = 'form-text text-muted'; }
-  try {
-    const r = await fetch('/netbox/test_connection', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, token, verify_tls }),
-    });
-    const data = await r.json();
-    if (status) {
-      status.textContent = data.message || (data.ok ? 'OK' : 'Failed');
-      status.className = 'form-text ' + (data.ok ? 'text-success' : 'text-danger');
-    }
-  } catch (e) {
-    if (status) { status.textContent = 'Error: ' + e.message; status.className = 'form-text text-danger'; }
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
 async function netboxSyncCurrent() {
   // Shows a read-only preview first, then asks for confirmation.
   // See templates/partials/netbox_safety_modal.html.

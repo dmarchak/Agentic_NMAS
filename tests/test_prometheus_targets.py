@@ -646,10 +646,12 @@ class TestTheKeeper:
     def test_the_settings_card_offers_the_directory(self):
         from modules.integrations.prometheus import PrometheusIntegration
 
+        from modules.settings_scope import group_keys
+
         assert "prometheus_targets_dir" in PrometheusIntegration.plain_keys
-        spec = open(os.path.join(ROOT, "static", "js", "gen", "partials__settings_integrations.1.js"),
-                    encoding="utf-8").read()
-        assert "key: 'prometheus_targets_dir', label: 'Targets directory'" in spec
+        # Each network's Prometheus card draws its group's every key (today's Integrations card
+        # drew it by name until it left at 7.8, 2026-10-15).
+        assert "prometheus_targets_dir" in group_keys("prometheus")
 
 
 class TestTheScriptsReport:

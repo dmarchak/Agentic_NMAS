@@ -321,16 +321,19 @@ def install_card(name):
 
 @bp.route("/installation/card/<name>/save", methods=["POST"])
 def install_save(name):
-    """Board F3: save a card's fields as sent, recorded with the verified person and the
-    fields' names; a switch the form did not send is off."""
+    """Board F3: save the fields the person changed, recorded with the verified person and the
+    fields' names; a switch the form did not send is off. The card sends what it drew
+    (`loaded`, R17): a changed field another person moved since is refused, naming both."""
     from modules import identity
     from modules import installation_settings as I
+    from modules.settings_schema import loaded_from
 
     if name not in I.CARDS:
         return _install(name)
     form = {f["key"]: request.form.get(f["key"]) for f in I.CARDS[name]["fields"]}
     try:
-        saved = I.save_card(name, form, identity.request_actor(), _verified())
+        saved = I.save_card(name, form, identity.request_actor(), _verified(),
+                            loaded=loaded_from(request.form.get("loaded")))
     except I.Refused as exc:
         return _install(name, 409, refused=str(exc))
     return _install(name, saved=saved)
@@ -684,16 +687,38 @@ def group_switch(list_name, group):
 def group_save(list_name, group):
     """Boards A and D: save a card's fields as sent, for Default or a network's own group,
     recorded with the verified person and the fields' names. An empty field keeps what is
-    stored; the card is drawn again with the result in place."""
+    stored; the card is drawn again with the result in place.
+
+    Only what the person changed is saved (CONCURRENCY_AUDIT R17): the card sends what it drew
+    (`loaded`), so a field still as drawn is never written, and a changed field another person
+    moved since is refused, naming both values, nothing saved. Compared and written under one
+    hold of the settings lock."""
     from modules import identity
     from modules import list_settings as L
+    from modules import settings_page
+    from modules.config import settings_lock
+    from modules.secrets_store import SECRET_KEYS
+    from modules.settings_schema import (NOT_LOADED, changed_since_loaded, loaded_from,
+                                         moved_words)
     from modules.settings_scope import group_keys
 
     form = request.form
+    loaded = loaded_from(form.get("loaded"))
+    if loaded is None:
+        return _fragment("v2/_settings_refused.html", 409, why=NOT_LOADED, list_name=list_name,
+                         group=group)
     values = {k: form.get(k) for k in group_keys(group) if (form.get(k) or "") != ""}
     try:
-        out = L.save_values(list_name, group, _typed(values), identity.request_actor(),
-                            _verified())
+        with settings_lock():
+            now = settings_page.drawn(settings_page.form_fields(list_name, group))
+            plain, moved = changed_since_loaded(
+                {k: v for k, v in values.items() if k not in SECRET_KEYS}, loaded, now)
+            if moved:
+                raise L.SwitchRefused("; ".join(moved_words(moved)))
+            # A secret is never drawn, so one typed is always a change.
+            plain.update({k: v for k, v in values.items() if k in SECRET_KEYS})
+            out = L.save_values(list_name, group, _typed(plain), identity.request_actor(),
+                                _verified())
     except (L.SwitchRefused, L.ListSettingsUnreadable) as exc:
         return _fragment("v2/_settings_refused.html", 409, why=str(exc), list_name=list_name,
                          group=group)

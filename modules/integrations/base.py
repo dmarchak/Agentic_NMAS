@@ -17,7 +17,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from modules.secrets_store import get_secret, is_set, set_secret
+from modules.secrets_store import get_secret
 from modules.settings_schema import get_setting
 
 log = logging.getLogger(__name__)
@@ -83,43 +83,9 @@ class IntegrationClient:
         """True when the integration has enough settings to attempt a call."""
         return bool(self.url)
 
-    def get_config(self) -> dict:
-        """Return this integration's settings, with secrets masked.
-
-        Secret values never leave the process: the UI receives only a
-        set/unset indicator.
-        """
-        cfg = {key: self._setting(key) for key in self.plain_keys}
-        cfg[self.url_key] = self.url
-        cfg["_secrets"] = {key: (bool(self._secret(key)) if self.list_name else is_set(key))
-                           for key in self.secret_keys}
-        cfg["_configured"] = self.is_configured()
-        return cfg
-
-    def save_config(self, values: dict) -> dict:
-        """Persist submitted settings.
-
-        A secret field submitted empty is left untouched, so a user editing an
-        unrelated field on a masked form does not wipe a stored token.
-        """
-        from modules.config import set_user_setting
-
-        if self.list_name:
-            # FOR a network (P.8): its own store, the group rule and validation in one place.
-            from modules import list_settings
-
-            updates = {k: values[k] for k in self.plain_keys + (self.url_key,) if k in values}
-            updates.update({k: values[k] for k in self.secret_keys if values.get(k)})
-            self._session = None
-            return list_settings.write(self.list_name, updates) if updates else {"ok": True}
-        for key in self.plain_keys + (self.url_key,):
-            if key in values:
-                set_user_setting(key, values[key])
-        for key in self.secret_keys:
-            if values.get(key):
-                set_secret(key, values[key])
-        self._session = None      # force rebuild with new settings
-        return {"ok": True}
+    # get_config and save_config left with today's Integrations card (7.8, 2026-10-15), their
+    # one caller: v2's settings cards read and write through modules/settings_page.py and
+    # modules/installation_settings.py, under write_settings and list_settings.write.
 
     # ── HTTP ────────────────────────────────────────────────────────────────
 

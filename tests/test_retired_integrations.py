@@ -7,8 +7,8 @@ answering" for a service that was gone on purpose. A retired integration is name
 
 - it is not in `REGISTRY`, which is what every health probe and status strip iterates
   (`all_statuses`), so nothing probes it and no row says it is down;
-- it has no Settings card, on v2 (`settings_page.INTEGRATIONS`) or on today's page (the
-  generated integrations script draws no field for one of its keys);
+- it has no Settings card (`settings_page.INTEGRATIONS`), and no v2 card draws one of its keys
+  (today's integrations script was scanned too, until it left at 7.8, 2026-10-15);
 - its keys stay declared for one release, `retiring` in the scope table, so a rollback finds
   them, and nothing outside the declaring files reads one (found by parsing: a string
   constant equal to the key; Oxidized's test, tests/test_oxidized_settings_inert.py, is the
@@ -17,7 +17,6 @@ answering" for a service that was gone on purpose. A retired integration is name
 
 import ast
 import os
-import re
 
 import pytest
 
@@ -29,7 +28,6 @@ from tests.test_oxidized_settings_inert import FLOOR, ROOT, python_files
 #: The files that declare a retiring key, the only ones a read is excused in.
 DECLARING = {"modules/settings_schema.py", "modules/settings_scope.py",
              "modules/secrets_store.py"}
-V1_SCRIPT = os.path.join(ROOT, "static", "js", "gen", "partials__settings_integrations.1.js")
 
 
 def _keys(name: str) -> set:
@@ -47,10 +45,14 @@ def test_it_is_not_registered_so_nothing_probes_it(name, monkeypatch):
 
 @pytest.mark.parametrize("name", sorted(I.RETIRED))
 def test_it_has_no_settings_card(name):
+    """No v2 settings card draws it (today's Integrations script, scanned here until it left
+    with today's Settings modal at 7.8, 2026-10-15): every key the network cards and the
+    Installation cards draw, by their declarations."""
+    from modules import installation_settings
     assert name not in settings_page.INTEGRATIONS
-    with open(V1_SCRIPT, encoding="utf-8") as fh:
-        drawn = set(re.findall(r"\bkey: '([a-z0-9_]+)'", fh.read()))
-    assert drawn, "the scan of today's integrations script found no field at all"
+    drawn = {f["key"] for c in installation_settings.CARDS.values() for f in c["fields"]}
+    drawn |= {k for g in settings_scope.network_groups() for k in settings_scope.group_keys(g)}
+    assert len(drawn) >= 40, f"the scan of the v2 cards found {len(drawn)} fields"
     assert not drawn & _keys(name), drawn & _keys(name)
 
 

@@ -734,104 +734,11 @@ def select_device_list_route():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-#: The AI family's settings, removed (D15, 2026-10-14). A page older than the server can still
-#: send them: refused by name, as Jenkins's are, so the save says why nothing was stored.
-_AI_FAMILY_KEYS = ("anthropic_api_key", "ai_enabled", "background_agent_enabled",
-                   "wf_read_first", "wf_auto_backup", "wf_update_vars", "wf_require_approval")
-
-
-@app.route("/settings", methods=["GET"])
-def get_settings():
-    """Return all configurable global settings in one payload."""
-    return jsonify(_settings_payload())
-
-
-def _settings_payload() -> dict:
-    """What the Settings form loads, and what its save is compared against (R17)."""
-    from modules.netbox_client import get_netbox_config as _get_nb_cfg
-    nbcfg = _get_nb_cfg()
-    # SECRETS ARE WRITE-ONLY: a flag, never the value (register B11, P.3
-    # step 6). This returned the Anthropic key and both Jenkins secrets in
-    # cleartext, ungated, to every opening of the Settings modal since
-    # e729267 (2026-04-12). The NetBox token beside them was always a flag.
-    return {
-        # NetBox — token never returned in cleartext; UI uses token_set flag.
-        "netbox_url":         nbcfg.get("url", ""),
-        "netbox_token_set":   bool(nbcfg.get("token")),
-        "netbox_verify_tls":  bool(nbcfg.get("verify_tls", True)),
-        "netbox_auth_scheme": nbcfg.get("auth_scheme", "Bearer"),
-        "netbox_allow_writes": bool(nbcfg.get("allow_writes", False)),
-    }
-
-
-@app.route("/settings", methods=["POST"])
-def save_settings():
-    """Save the settings the person CHANGED in the Settings modal (CONCURRENCY_AUDIT R17).
-
-    The form sends only its changed fields, with the values it loaded (`loaded`). Under the
-    settings lock, a changed field whose stored value moved since is refused, naming both
-    values, and the rest are saved: a stale tab can no longer revert another person's decision
-    (it turned NetBox writes back on by saving an unrelated field)."""
-    from modules.config import settings_lock
-    from modules.settings_schema import moved_since, moved_words
-
-    data = request.get_json(silent=True) or {}
-    loaded = data.pop("loaded", None)
-    if not isinstance(loaded, dict):
-        return jsonify({"status": "error", "errors": [
-            "Not saved: this form did not say what it loaded, so a field nobody changed could "
-            "revert another person's decision. Reopen Settings and save again."]}), 400
-    with settings_lock():
-        moved = moved_since(data, loaded, _settings_payload())
-        for key in moved:
-            data.pop(key)
-        return _save_settings(data, moved_words(moved))
-
-
-def _save_settings(data: dict, errors: list):
-    # ── The AI family: REMOVED (D15) ──────────────────────────────────────
-    if any(k in data for k in _AI_FAMILY_KEYS):
-        errors.append("The AI assistant, the background agent and their workflow switches "
-                      "were removed (D15); their settings are no longer stored. Reload the "
-                      "page.")
-
-    # ── Jenkins: REMOVED (P.4) ────────────────────────────────────────────
-    # A page older than the server (the edge caches HTML) can still send these.
-    # Refused by name rather than dropped, so the save says why nothing stored.
-    if any(k in data for k in ("jenkins_url", "jenkins_user",
-                               "jenkins_api_key", "jenkins_token")):
-        errors.append("Jenkins was removed (P.4, docs/NSOT_CI.md); its settings "
-                      "are no longer stored. Reload the page.")
-
-    # ── NetBox ────────────────────────────────────────────────────────────
-    # Any NetBox field, alone: the form sends only what changed (R17), so the write switch
-    # can arrive without the URL beside it.
-    if any(k in data for k in ("netbox_url", "netbox_token", "netbox_verify_tls",
-                               "netbox_allow_writes")):
-        try:
-            from modules.netbox_client import save_netbox_config, get_netbox_config
-            existing = get_netbox_config()
-            url   = (data.get("netbox_url",   existing.get("url",   "")) or "").strip()
-            token = (data.get("netbox_token", "") or "").strip()
-            # Blank token = keep the one on file (matches other secret fields).
-            if not token:
-                token = existing.get("token", "")
-            verify_tls = data.get("netbox_verify_tls", existing.get("verify_tls", True))
-            # Fail-closed write gate; absent from the payload means "leave as is".
-            allow_writes = data.get("netbox_allow_writes")
-            if url and not token:
-                errors.append("NetBox token is required the first time you save a URL.")
-            else:
-                save_netbox_config(url, token, bool(verify_tls),
-                                   allow_writes=None if allow_writes is None
-                                   else bool(allow_writes))
-        except Exception as exc:
-            errors.append(f"NetBox settings failed: {exc}")
-
-    if errors:
-        return jsonify({"status": "partial", "errors": errors}), 207
-    return jsonify({"status": "ok"})
-
+# Today's Settings modal's routes (GET and POST /settings, and its NetBox Test,
+# POST /netbox/test_connection) left with the modal at 7.8 (2026-10-15). NetBox's connection is
+# Settings › Installation › Connections, the NetBox connection card (its Test is the same
+# netbox_client.test_connection, C468); NetBox writes are turned on by an authorised NetBox
+# confirm (C619) and off on that card.
 
 # Today's bulk commands (POST /bulk_execute, GET /bulk_status/<id>, and the worker,
 # modules/bulk_ops.py) left at 7.8 on 2026-10-15: Show commands (/v2/show-commands) runs
@@ -923,27 +830,6 @@ def _run_subnet_discovery(op_id: str, hosts: list, username: str,
 # NetBox source-of-truth sync
 # ---------------------------------------------------------------------------
 
-@app.route("/netbox/test_connection", methods=["POST"])
-def netbox_test_connection():
-    """Verify the NetBox URL + token work.
-
-    Accepts optional overrides in the request body (so the Settings modal can
-    test a pending change before saving it). Falls back to stored config.
-    """
-    from modules.netbox_client import test_connection, get_netbox_config
-    data  = request.get_json(silent=True) or {}
-    cfg   = get_netbox_config()
-    url   = (data.get("url")   or cfg["url"]   or "").strip()
-    token = (data.get("token") or cfg["token"] or "").strip()
-    verify_tls = bool(data.get("verify_tls", cfg["verify_tls"]))
-
-    # Persist the working auth scheme only when using the stored token,
-    # so "Test" in the modal with a not-yet-saved token doesn't overwrite it.
-    persist = not data.get("token")
-    ok, message = test_connection(url, token, verify_tls, persist_scheme=persist)
-    return jsonify({"ok": ok, "message": message})
-
-
 @app.route("/netbox/status", methods=["GET"])
 def netbox_status():
     """Return the last-sync summary for every list (plus in-progress markers)."""
@@ -1014,21 +900,8 @@ def git_commit_diff(commit_hash):
     return jsonify({"ok": True, **result})
 
 
-@app.route("/logs/server")
-def server_log():
-    """Return the last N lines of logs/device_manager.log for in-browser
-    diagnostics -- this is the file every "check server logs" error message
-    refers to. Captures app.py plus every modules/*.py logger (see the root
-    logger handler set up above)."""
-    from modules import app_log
-
-    got = app_log.tail(app_log.lines_asked(request.args.get("lines", "500")))
-    text = {"Content-Type": "text/plain; charset=utf-8"}
-    if got["state"] == "absent":
-        return "logs/device_manager.log not yet created.\n", 404, text
-    if got["state"] != "ok":
-        return f"logs/device_manager.log could not be read: {got['error']}\n", 500, text
-    return "".join(line + "\n" for line in got["lines"]), 200, text
+# Today's Logs tab's route (/logs/server) left with the tab at 7.8 (2026-10-15): the app's log is
+# Settings › Installation › Diagnostics (routes/settings_v2.diag_log, over modules/app_log).
 
 
 # ---------------------------------------------------------------------------

@@ -319,8 +319,8 @@ GREEN_TOASTS = {
     ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
     ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
     ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
-    ("templates/index.html", "'Settings saved'"): "saved with no errors (warnings have their own)",
-    ("static/js/gen/partials__security_posture.1.js", "is now set explicitly"): "one ratification, ok checked",
+    # Today's Settings modal's "Settings saved" and its posture panel's ratification left with
+    # the modal at 7.8 (2026-10-15).
     ("static/js/gen/partials__netbox_safety_modal.1.js", "Import started for"): "says STARTED; the outcome is the sync card's (C85)",
     ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
     ("templates/partials/onboard_wizard.html", ".cfg downloaded"): "a file download",
@@ -476,7 +476,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 10, len(calls)          # the scan can see them (10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        assert len(calls) >= 8, len(calls)           # the scan can see them (8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

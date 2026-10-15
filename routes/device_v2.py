@@ -373,15 +373,28 @@ def who():
 
 @bp.route("/strip", methods=["GET"])
 def strip():
-    """The top bar's integration health, from the integration-health reader."""
+    """The top bar's integration health, from the integration-health reader. Judged against
+    the reader's promise: a value older than it is drawn STALE, never green (today's status bar
+    did, until it left at 7.8; a small green item that stopped updating is the most confidently
+    wrong thing a page can show). The unconfigured are named on hover, never only left out."""
+    import time
+
+    from modules import reader_job
+
     value, at, why = device_page._cached("integrations")
     rows = (value or {}).get("integrations") or []
     configured = [r for r in rows if r.get("state") != "not_configured"]
+    unset = [r for r in rows if r.get("state") == "not_configured"]
     down = [r for r in configured if r.get("state") not in ("up", "refused")]
     refused = [r for r in configured if r.get("state") == "refused"]
+    promise = ((reader_job.read_cached("integrations").get("doc") or {})
+               .get("stale_after_seconds"))
+    read_at = reader_job._parse_iso(at) if at else None
+    stale = bool(value is not None and promise and
+                 (read_at is None or time.time() - read_at > promise))
     return _strict(render_template("v2/_strip.html", rows=configured, down=down, refused=refused,
-                                   value_at=at, why=why,
-                                   read=value is not None))
+                                   unset=unset, value_at=at, why=why, stale=stale,
+                                   promise=promise, read=value is not None))
 
 
 @bp.route("/update-available", methods=["GET"])

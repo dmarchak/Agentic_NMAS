@@ -24,7 +24,7 @@ import json
 
 import pytest
 
-from tests.js_source import with_loaded_scripts
+from modules.identity import Identity
 
 
 @pytest.fixture
@@ -169,33 +169,46 @@ class TestItReadsThroughTheGateItDescribes:
         assert actions == set(identity.GATED_ACTIONS)
 
 
+#: Who is looking, as `identity.identify()` answers: a caller with no verified assertion, and a
+#: verified person.
+NOBODY = Identity()
+PERSON = Identity(actor="op@example.com", email="op@example.com", kind="person", verified=True,
+                  outcome="ok", peer_trusted=True, header_present=True)
+
+
 class TestAccessValuesAreNotHandedToAnyone:
-    """`routes/identity.py` has refused to echo the team domain and the AUD
-    since it was written: they are what an assertion is validated against."""
+    """The team domain and the AUD are what an assertion is validated against, so they are
+    shown to a verified person only. Today's posture route (/identity/posture) refused to
+    echo them; it left with today's Settings modal at 7.8 (2026-10-15), and the same rule is
+    Settings › Installation › Access and identity's (`installation_settings.access_view`)."""
 
-    @pytest.mark.real_identity
+    def test_an_unverified_caller_gets_no_values(self, settings):
+        from modules import installation_settings as I
 
-    def test_an_unverified_caller_gets_no_values(self, client, settings):
         settings(cf_access_team_domain="example.cloudflareaccess.com",
                  cf_access_aud="a" * 64)
-        body = client.get("/identity/posture").get_json()
-        assert "access" not in body
-        assert body["config_withheld_reason"]
+        view = I.access_view(NOBODY)
+        assert view["access"] is None and view["person"] is False
+        assert "example.cloudflareaccess.com" not in json.dumps(view, default=str)
+        assert I.access_view(PERSON)["access"]["team_domain"] == "example.cloudflareaccess.com"
 
-    def test_but_it_still_says_whether_they_are_set(self, client, settings):
+    def test_but_it_still_says_whether_they_are_set(self, settings):
         """Set-or-unset is posture; the value is configuration."""
-        settings(cf_access_team_domain="example.cloudflareaccess.com")
-        body = client.get("/identity/posture").get_json()
-        assert body["access_values_set"]["cf_access_team_domain"] is True
-        assert body["access_values_set"]["cf_access_aud"] is False
+        from modules import installation_settings as I
 
-    def test_the_gates_themselves_are_shown_to_anyone(self, client, settings):
+        settings(cf_access_team_domain="example.cloudflareaccess.com")
+        view = I.access_view(NOBODY)
+        assert view["access_set"]["cf_access_team_domain"] is True
+        assert view["access_set"]["cf_access_aud"] is False
+
+    def test_the_gates_themselves_are_shown_to_anyone(self, settings):
         """Hiding "a person is required to reveal" protects nothing and makes
         it uncheckable."""
+        from modules import installation_settings as I
+
         settings(require_person_for_reveal=False)
-        body = client.get("/identity/posture").get_json()
-        g = {x["key"]: x for x in body["gates"]}
-        assert g["require_person_for_reveal"]["value"] is False
+        cells = {c["key"]: c for g in I.access_view(NOBODY)["gates"] for c in g["cells"]}
+        assert cells["require_person_for_reveal"]["value"] is False
 
     def test_a_revealed_aud_shows_its_ends_only(self, settings):
         from modules import identity
@@ -226,37 +239,37 @@ class TestAccessValuesAreNotHandedToAnyone:
 
 
 class TestItShipsWithItsEntryPoint:
-    """Four unreachable features have been found by asking this question."""
+    """Four unreachable features have been found by asking this question. Today's posture
+    panel (loaded by today's Settings modal) left at 7.8 (2026-10-15); the posture is Settings
+    › Installation › Access and identity, drawn here as a page."""
 
-    @pytest.fixture(scope="class")
-    def page(self):
-        import app as nmas
-
-        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-
-    def test_the_page_calls_the_route(self, page):
-        assert "/identity/posture" in page
-
-    def test_the_loader_is_defined_and_called(self, page):
-        assert page.count("loadSecurityPosture") >= 2
-
-    def test_the_reason_is_written_not_implied(self, page):
-        """A disabled input says "you can't" and never says why.
-
-        Whitespace-normalised before matching. The phrase wraps across a
-        source line, and the browser collapses that to one space -- the same
-        trap already recorded against `golden_repo.html`, where a literal
-        spanning a line break made a present string look absent.
-        """
+    @pytest.fixture
+    def tab(self, client):
         import re
 
-        flat = re.sub(r"\s+", " ", page)
-        assert "Why this panel is read-only" in flat
-        assert "lower its own gate" in flat
-        assert "a wrong team domain or AUD either locks everyone out" in flat
+        html = client.get("/v2/settings/installation?tab=access").get_data(as_text=True)
+        return re.sub(r"\s+", " ", html)
 
-    def test_a_read_failure_does_not_read_as_no_gates(self, page):
-        assert "not a statement that the gates are off" in page
+    def test_the_tab_draws_the_gates(self, tab):
+        assert 'id="card-gates"' in tab and 'id="card-access"' in tab
+
+    def test_the_reason_is_written_not_implied(self, tab):
+        """A disabled input says "you can't" and never says why (whitespace-normalised: a
+        phrase that wraps across a source line looked absent once)."""
+        assert "Why read-only" in tab and "lower its own gate" in tab
+
+    @pytest.mark.real_identity
+    def test_the_values_are_withheld_saying_so(self, tab):
+        assert "shown to a verified person only" in tab
+
+    def test_a_read_failure_does_not_read_as_the_defaults(self, client, monkeypatch):
+        """The settings file's own health, as `config.settings_read_health` reports a file
+        the settings layer could not read: every gate is then its default, said so."""
+        monkeypatch.setattr("modules.config.settings_read_health",
+                            lambda: {"unreadable": True, "error": "boom"})
+        html = client.get("/v2/settings/installation?tab=access").get_data(as_text=True)
+        assert "The settings file could not be read" in html
+        assert "nothing on this tab may be assumed" in html
 
 
 class TestWhyOriginIsNotObvious:

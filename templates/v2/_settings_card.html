@@ -46,6 +46,9 @@
   {%- endif %}
   <form class="set-form" id="form-{{ g }}" method="post" action="{{ url_for('settings_v2.group_save', list_name=list_name, group=g) }}"
         hx-post="{{ url_for('settings_v2.group_save', list_name=list_name, group=g) }}" hx-target="#card-{{ g }}" hx-swap="outerHTML">
+    {#- What this card drew (R17): its Save writes only what the person changed, and refuses a
+        change to a field another person moved since. -#}
+    <input type="hidden" name="loaded" value='{{ c.loaded | tojson }}'>
     {%- for f in c.inputs %}
     <label for="f-{{ g }}-{{ f.key }}">{{ f.label }}</label>
     <div>

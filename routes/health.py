@@ -50,10 +50,10 @@ _STARTED = time.time()
 
 
 def version_facts() -> dict:
-    """What `/health/version` serves, for any page that draws it (Help >
-    About in the redesign): ONE composition, never a second.
+    """The running version, for any page that draws it (Help > About):
+    ONE composition, never a second.
 
-    The status bar's version item, COMPOSED from answers that each have
+    COMPOSED from answers that each have
     one implementation, never computed here (the operator, 2026-09-28):
     what is running is `_COMMIT` (what `/health` serves `nmas-deploy`);
     whether it is the checkout's commit is job health's running-version row
@@ -94,10 +94,8 @@ def version_facts() -> dict:
     return body
 
 
-@bp.route("/health/version", methods=["GET"])
-def version():
-    """The status bar's version item: `version_facts()`, as JSON."""
-    return jsonify(version_facts())
+# GET /health/version, the JSON form of `version_facts()`, left with today's status bar, its
+# one caller, at 7.8 (2026-10-15). Help › About draws `version_facts()` itself.
 
 
 @bp.route("/health/operations", methods=["GET"])

@@ -208,9 +208,20 @@ class TestTheModeSwitch:
         assert r.status_code == 409 and "base layer" in html
 
 
-def _save(n, list_name, group, data):
+def loaded_of(html) -> str:
+    """What a card's form drew (its hidden ``loaded``, R17), as the browser sends it: "{}"
+    when the page drew no form (a refusal)."""
     import html as html_mod
-    r = n["client"].post(f"/v2/settings/network/{list_name}/group/{group}/save", data=data)
+    m = re.search(r"""<input type="hidden" name="loaded" value='([^']*)'>""", html)
+    return html_mod.unescape(m.group(1)) if m else "{}"
+
+
+def _save(n, list_name, group, data):
+    """A card's Save as its page sends it: the fields, and what the card drew."""
+    import html as html_mod
+    _r, card = _get(n, f"/v2/settings/network/{list_name}/group/{group}")
+    r = n["client"].post(f"/v2/settings/network/{list_name}/group/{group}/save",
+                         data=dict(data, loaded=loaded_of(card)))
     return r, html_mod.unescape(r.get_data(as_text=True))
 
 

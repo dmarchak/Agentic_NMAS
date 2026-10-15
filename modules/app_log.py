@@ -1,5 +1,5 @@
-"""The app's own log, read on request: one reader for today's `/logs/server` and Settings ›
-Installation › Diagnostics (board F4).
+"""The app's own log, read on request: Settings › Installation › Diagnostics (board F4).
+(Today's `/logs/server` read it too, until it left with today's Logs tab at 7.8, 2026-10-15.)
 
 `logs/device_manager.log` holds app.py and every module's logger (the root logger's rotating
 handler, 10 MB a file). Every line was masked as it was WRITTEN, by the redacting filter on

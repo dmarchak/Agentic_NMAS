@@ -24,10 +24,9 @@ import pytest
 #: route -> what it creates. The finding, not an allowance.
 KNOWN_WRITERS = {
     "/templates": "the whole template library, seeded",
-    # migrate() RUNS on every GET of this panel and WRITES when the stored
-    # schema version is behind, which on a fresh install it always is.
-    "/settings/integrations": "user_settings.json, through migrate()",
-    "/settings/integrations/general": "user_settings.json, through migrate()",
+    # `/settings/integrations` and `/settings/integrations/general` ran migrate() on every GET,
+    # writing user_settings.json when the stored schema version was behind; both left with
+    # today's Settings modal at 7.8 (2026-10-15).
 }
 
 
@@ -89,14 +88,14 @@ def writers(monkeypatch):
 
 def test_the_sweep_can_see_a_writer(writers):
     """Floor: a sweep that saw nothing is indistinguishable from one that
-    could not see. `/settings/integrations` is a writer this harness has measured
-    (user_settings.json, through migrate()); before it, `/backup_stats` (until today's
-    Backups left at 7.8, C632) and the approval queue (until its reads stopped writing:
+    could not see. `/templates` is a writer this harness has measured (the template library,
+    seeded); before it, `/settings/integrations` (user_settings.json, through migrate(), until
+    today's Settings modal left at 7.8, 2026-10-15), `/backup_stats` (until today's Backups
+    left at 7.8, C632) and the approval queue (until its reads stopped writing:
     CONCURRENCY_AUDIT R4)."""
     assert len(writers["_swept"]) >= 60, len(writers["_swept"])
-    assert "/settings/integrations" in writers
-    assert any(p.endswith("user_settings.json") for p in writers["/settings/integrations"]), \
-        writers["/settings/integrations"]
+    assert "/templates" in writers
+    assert any("templates" in p for p in writers["/templates"]), writers["/templates"]
 
 
 def test_no_new_get_writes(writers):

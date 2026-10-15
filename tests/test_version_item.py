@@ -1,15 +1,14 @@
-"""The status bar's version item (7.2 step 17): what is running, whether it
-is the checkout's commit, and its CI verdict, each from the ONE implementation
-of that answer (the operator, 2026-09-28): `routes.health._COMMIT`, job
-health's running-version row (C129) as its reader stored it, and
-`scripts/nmas-deploy`'s own `ci_verdict()` through the ci-verdict reader.
-Nothing here computes any of the three again."""
+"""The running version (7.2 step 17, today's status bar's version item until it left at 7.8;
+Help › About draws it): what is running, whether it is the checkout's commit, and its CI
+verdict, each from the ONE implementation of that answer (the operator, 2026-09-28):
+`routes.health._COMMIT`, job health's running-version row (C129) as its reader stored it, and
+`scripts/nmas-deploy`'s own `ci_verdict()` through the ci-verdict reader. Nothing here computes
+any of the three again."""
 
 import ast
 import dataclasses
 import os
 
-import dukpy
 import pytest
 
 from modules import attention as A
@@ -75,33 +74,31 @@ class TestOneImplementation:
         assert "60 unauthenticated requests" in CV.READER.interval_basis
 
 
-class TestTheRouteComposes:
-    @pytest.fixture
-    def client(self):
-        import app as Ap
-        return Ap.app.test_client()
+class TestTheCompositionComposes:
+    """`version_facts()`, which Help › About draws (through /health/version for today's status
+    bar until both left at 7.8, 2026-10-15)."""
 
-    def test_it_composes_the_stored_answers_and_computes_none(self, client, monkeypatch):
+    def test_it_composes_the_stored_answers_and_computes_none(self, monkeypatch):
         store_version_row("mixed_version", "MIXED VERSION: checkout at abc, service running def")
         mod = store_ci(H._COMMIT, CV.deploy_script().OK)[1]
         calls = []
         from modules import job_health as J
         monkeypatch.setattr(J, "version_rows", lambda *a, **k: calls.append("version_rows") or [])
         monkeypatch.setattr(mod, "ci_verdict", lambda *a: calls.append("ci_verdict") or (0, ""))
-        body = client.get("/health/version").get_json()
-        assert calls == [], f"the route computed: {calls}"
+        body = H.version_facts()
+        assert calls == [], f"the composition computed: {calls}"
         assert body["running"] == H._COMMIT
         assert body["version"]["state"] == "mixed_version" and "MIXED" in body["version"]["detail"]
         assert body["ci"]["state"] == "verified" and body["ci"]["value_at"] == R._iso(T0)
 
-    def test_a_verdict_for_another_commit_is_not_this_commit_s(self, client):
+    def test_a_verdict_for_another_commit_is_not_this_commit_s(self):
         store_version_row("ok", "running x")
         store_ci("f" * 40, CV.deploy_script().OK)
-        ci = client.get("/health/version").get_json()["ci"]
+        ci = H.version_facts()["ci"]
         assert ci["state"] == "not_judged" and "not judged yet" in ci["sentence"]
 
-    def test_nothing_stored_says_what_is_missing(self, client):
-        body = client.get("/health/version").get_json()
+    def test_nothing_stored_says_what_is_missing(self):
+        body = H.version_facts()
         assert body["version"]["state"] == "unknown" and body["ci"]["state"] == "unknown"
         assert "not judged yet" in body["ci"]["sentence"]
 
@@ -126,81 +123,9 @@ class TestTheSource:
         assert res["state"] == "unreadable"
 
 
-BAR = os.path.join(ROOT, "static", "js", "nmas_status_bar.js")
-
-
-def version_html(v, now_iso="2026-09-28T21:30:00Z"):
-    src = open(BAR, encoding="utf-8").read()
-    js = ("var window = {}; var document = undefined;\n" + src.replace(
-        "})(typeof window !== 'undefined' ? window : this);", "})(window);")
-        + "\nwindow.versionHtml(dukpy['v'], Date.parse(dukpy['now']));")
-    return dukpy.evaljs(js, v=v, now=now_iso)
-
-
-def payload(ver_state="ok", ci_state="verified", ci_at="2026-09-28T21:29:00Z"):
-    return {"ok": True, "running": "abcdef0123456789", "started_at": "x",
-            "version": {"state": ver_state, "detail": "d"},
-            "ci": {"state": ci_state, "sentence": "s", "value_at": ci_at,
-                   "stale_after_seconds": 2700}}
-
-
-class TestTheShippedItem:
-    def test_the_running_commit_and_its_verdict(self):
-        html = version_html(payload())
-        assert "abcdef0123" in html and "CI passed" in html and "MIXED" not in html
-
-    def test_a_mixed_version_is_red_and_named(self):
-        html = version_html(payload(ver_state="mixed_version"))
-        assert "MIXED VERSION" in html and "bg-danger" in html
-
-    def test_a_failed_and_a_not_judged_verdict_say_so(self):
-        assert "CI FAILED" in version_html(payload(ci_state="failed"))
-        assert "CI not judged yet" in version_html(payload(ci_state="not_judged"))
-
-    def test_a_verdict_past_its_promise_is_marked_stale(self):
-        html = version_html(payload(ci_at="2026-09-28T20:00:00Z"))
-        assert "(stale)" in html
-
-    def test_a_failed_read_says_so(self):
-        assert "could not be read" in version_html({"ok": False, "error": "x"})
-
-
-def identity_html(i):
-    src = open(BAR, encoding="utf-8").read()
-    js = ("var window = {}; var document = undefined;\n" + src.replace(
-        "})(typeof window !== 'undefined' ? window : this);", "})(window);")
-        + "\nwindow.identityHtml(dukpy['i']);")
-    return dukpy.evaljs(js, i=i)
-
-
-class TestWhoYouAre:
-    """The bar's third item: who you are, for THIS request, from the same
-    verified answer the gates act on (never a header)."""
-
-    def test_a_verified_person_is_named(self):
-        html = identity_html({"ok": True, "is_identified": True, "kind": "person",
-                              "email": "op@example.com", "outcome": "verified"})
-        assert "you: <strong>op@example.com</strong>" in html
-
-    def test_a_service_is_named_as_the_audit_trail_will_name_it(self):
-        html = identity_html({"ok": True, "is_identified": True, "kind": "service",
-                              "audit_name": "ci-runner", "actor": "service:abc"})
-        assert "service: <strong>ci-runner</strong>" in html and "never confirm" in html
-
-    def test_not_identified_says_what_that_means_and_why_one_level_down(self):
-        html = identity_html({"ok": True, "is_identified": False,
-                              "reason": "no Cf-Access-Jwt-Assertion header"})
-        assert "not identified: you can look, not change" in html
-        assert 'title="no Cf-Access-Jwt-Assertion header"' in html
-
-    def test_the_bar_draws_what_the_real_route_answers(self):
-        """The seam: the item drawn from the real diagnostic's payload. The
-        suite identifies its requests as a test person, so this drives the
-        identified branch; the unidentified one is driven above."""
-        import app as Ap
-        body = Ap.app.test_client().get("/identity/status").get_json()
-        html = identity_html(body)
-        if body["is_identified"] and body["kind"] == "person":
-            assert f"you: <strong>{body['email']}</strong>" in html
-        else:
-            assert "not identified" in html
+# Today's status bar (static/js/nmas_status_bar.js), whose version item and who-you-are item
+# were drawn by the shipped script tested here, left at 7.8 (2026-10-15) with /health/version.
+# Their v2 homes: Help › About draws each version state (tests/test_v2_pages.py, TestHelpAbout,
+# test_about_draws_each_version_state) and who you are; every v2 page's top bar draws who you are
+# through `identity.viewer()`, the same `identify()` as /identity/status
+# (tests/test_device_v2.py).

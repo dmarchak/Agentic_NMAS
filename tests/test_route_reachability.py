@@ -62,6 +62,14 @@ NON_GUI = {
     "GET /health/operations": ("scripts/nmas-deploy",
                                "nmas-deploy refuses to restart the service while an "
                                "operation holds a device (exit 10), as Update's gate does"),
+    # Today's status bar read both until it left at 7.8 (2026-10-15); kept as the operator's
+    # diagnostics, a question put to the operator the same day (whether either goes).
+    "GET /identity/status": ("docs/LESSONS.md",
+                             "the end-to-end identity diagnostic: does the tunnel forward the "
+                             "assertion and does the app verify it; not gated by identity"),
+    "GET /settings/integrations/status": ("docs/DEPLOY_LINUX.md",
+                                          "a new install's Verify step reads every "
+                                          "integration's stored state with curl"),
     "GET /favicon.ico": (None, "requested by browsers by convention; no page "
                                "references it and none needs to"),
 }
@@ -126,7 +134,9 @@ class TestThePopulation:
         GUI doc's floor was 220 routes, before P.4 removed Jenkins; there are
         212 routes (218 method pairs) now, measured."""
         assert len(_pairs(reach)) >= 210, len(_pairs(reach))
-        assert reach["_corpus_size"] > 500_000, reach["_corpus_size"]
+        # 450 kB: 497,320 bytes on 2026-10-15, after today's Settings modal's two scripts and
+        # the status bar's left (7.8).
+        assert reach["_corpus_size"] > 450_000, reach["_corpus_size"]
 
     def test_anchors(self, reach):
         """Known answers in each direction, including each way a reference is

@@ -213,9 +213,7 @@ class TestEveryWayInOpensItHere:
         assert want + "r.action.list, open='export')" in attention
         assert "r.action.open == 'breakglass_drill'" in attention
         assert want + "r.action.list) }}#bg-drill" in attention, "the overdue drill's row opens it"
-        settings = read("templates/partials/settings_integrations.html")
-        assert "url_for('v2.credentials')" in settings
-        assert 'data-nmas-open="breakglass_export"' not in settings, "nothing exports there now"
+        # Today's Settings modal linked here too, until it left at 7.8 (2026-10-15).
 
 
 class TestTheClient:

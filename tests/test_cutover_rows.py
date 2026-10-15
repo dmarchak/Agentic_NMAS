@@ -112,8 +112,10 @@ def test_every_row_names_routes_and_every_route_a_row():
     text = open(DOC, encoding="utf-8").read()
     # 39 rows since 2026-10-15: Bulk read-only commands and Bulk restore at HEAD moved to
     # "Removed at 7.8" (each family leaves the table in the commit that removes it); 38 the
-    # same day, Drift moved there with today's Drift tab.
-    assert len(table_rows(text)) >= 38, len(table_rows(text))
+    # same day, Drift moved there with today's Drift tab; 35 the same day, today's Settings
+    # modal, Logs tab and status bar moved there (NetBox connection test, App log and Version
+    # left; Identity and Settings became the two diagnostics that stay).
+    assert len(table_rows(text)) >= 35, len(table_rows(text))
     problems = check(text, all_rules)
     assert problems == [], "\n".join(problems)
 

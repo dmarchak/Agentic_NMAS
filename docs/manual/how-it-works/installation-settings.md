@@ -22,8 +22,12 @@ service itself; **Test** is a person asking now.
    other name is letters, digits and `. _ -`; backup VMs are numbers separated by commas; a
    date is `YYYY-MM-DD` or empty; the port is a number from 1 to 65535. A refusal names the
    field and what it accepts, and nothing is saved.
-2. `write`: only the fields that changed are written, to the installation's settings, for
-   every network. Read: the settings as they stand. Sent: nothing. Recorded: the values.
+2. `write`: only the fields you changed are written, to the installation's settings, for
+   every network. Read: the settings as they stand, compared with what the card showed when
+   you opened it. Sent: nothing. Recorded: the values. A field you left as it was is not
+   written, so a change another person made to it since stands. A field you changed that
+   another person also changed since is refused, naming what it was when you opened the card
+   and what it is now, and nothing is saved: the card is drawn again with the values now.
    Saving what is already stored writes nothing and says "Nothing changed".
 3. `record`: the save is appended to the installation's settings record, a file. Read:
    nothing. Sent: nothing. Recorded: who, how that was established, when, the card and the
@@ -38,8 +42,10 @@ cutover, so it leaves with them (Mercury's own transfers serve their files from 
 ## Test {#test}
 
 **Test** asks the service with the settings as saved (save first: it tests what is stored, not
-what is typed), and changes nothing. NetBox is asked for its status and answers with its
-version; Proxmox is asked for its version with the token. The answer is drawn in the card: the
+what is typed), and changes nothing. NetBox is asked for its status in the card's auth scheme,
+then for one row of each kind of object Mercury reads: a token missing permission to view one
+fails the Test, naming each kind, and a refused token is drawn with NetBox's own reason and
+what to do about it. Proxmox is asked for its version with the token. The answer is drawn in the card: the
 version on success, the service's own words on failure (a refused token, a certificate that
 does not verify, nothing listening). The badge stays the reader's and catches up within a
 minute.

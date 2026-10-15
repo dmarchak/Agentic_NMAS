@@ -10,7 +10,7 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
   unless a network sets its own. It holds each network's goldens at
   `goldens/<network>/<device>/<stamp>.cfg` and Show commands answers past their retention at
   `reads/<network>/<run>.json`, under its prefix. Its key can read and write the bucket and
-  never delete. The status bar and Needs attention ask only whether its bucket answers, and
+  never delete. The top bar's integrations and Needs attention ask only whether its bucket answers, and
   write nothing; its full test writes a probe object, reads it back byte for byte and states its
   size, naming the first step that fails with what the server answered.
 - **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).

@@ -34,7 +34,6 @@
 {% include "v2/_network_source.html" %}
 {%- if not v.is_default %}{% with name=v.network %}{% include "v2/_network_delete.html" %}{% endwith %}{% endif %}
 {%- endif %}
-<p class="muted small">Values are edited here only by choosing a group's own values (Configure…). Saving one field of a group, and Default's change with its warning naming who inherits it (board G), are on today's Settings page until they reach this page.</p>
 {%- endif %}
 </div>
 {% endblock %}

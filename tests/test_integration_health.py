@@ -1,12 +1,12 @@
 """Integration health as a reader job (7.2 step 16; modules/readers/
-integration_health.py), consumed by the status bar on every page AND by Needs
-attention: one stored value, two consumers, so they cannot disagree. The
-Settings panel's Test button stays a live check (reader_job rule 11)."""
+integration_health.py), consumed by every v2 page's strip in its top bar
+(today's status bar until it left at 7.8) AND by Needs attention: one stored value, two
+consumers, so they cannot disagree. A card's Test stays a live check (reader_job
+rule 11)."""
 
 import os
 import time
 
-import dukpy
 import pytest
 
 from modules import attention as A
@@ -107,13 +107,16 @@ class TestTheRoute:
         assert [s["name"] for s in body["statuses"]] == ["prometheus", "grafana", "s3"]
 
     def test_the_test_button_stays_a_live_check(self, client, monkeypatch):
-        """Rule 11: a person asking NOW is a check, never a cached report."""
+        """Rule 11: a person asking NOW is a check, never a cached report. A card's Test on
+        Settings › Default (today's Integrations card's Test until it left at 7.8)."""
         from modules.integrations.prometheus import PrometheusIntegration
+        stored()
+        monkeypatch.setattr(PrometheusIntegration, "is_configured", lambda self: True)
         monkeypatch.setattr(PrometheusIntegration, "test_connection",
                             lambda self: {"ok": True, "message": "asked live"})
-        r = client.post("/settings/integrations/prometheus/test")
-        assert r.status_code == 200, r.get_json()
-        assert r.get_json().get("message") == "asked live"
+        r = client.post("/v2/settings/network/Default/group/prometheus/test")
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert "asked live" in r.get_data(as_text=True)
 
 
 class TestTheSource:
@@ -194,58 +197,55 @@ class TestTheSource:
         assert res["state"] == "unreadable" and "not probed yet" in res["rows"][0]["cause"]
 
 
-BAR = os.path.join(ROOT, "static", "js", "nmas_status_bar.js")
+def strip_html(client, ago=0.0, registry=REG):
+    """The top bar's strip (`/v2/strip`) over a value the reader stored *ago* seconds ago."""
+    import dataclasses
+    R.run_once(dataclasses.replace(IH.READER, read=lambda: IH.read(registry)),
+               clock=lambda: time.time() - ago)
+    return client.get("/v2/strip").get_data(as_text=True)
 
 
-def bar(payload, now_iso):
-    src = open(BAR, encoding="utf-8").read()
-    js = ("var window = {}; var document = undefined;\n" + src.replace(
-        "})(typeof window !== 'undefined' ? window : this);", "})(window);")
-        + "\nwindow.statusBarHtml(dukpy['d'], Date.parse(dukpy['now']));")
-    return dukpy.evaljs(js, d=payload, now=now_iso)
+class TestTheStrip:
+    """Today's status bar's integration item (7.2 step 16), on its v2 home, every page's strip
+    in the top bar, `device_v2.strip`, since today's left at 7.8 (2026-10-15). Its cases, each
+    rebased: the strip had drawn a value past its promise green, and left the unconfigured
+    out unnamed; both fixed with the move."""
 
+    @pytest.fixture
+    def client(self):
+        import app as Ap
+        return Ap.app.test_client()
 
-PAYLOAD = {"ok": True, "value_at": "2026-09-28T21:30:00Z", "stale_after_seconds": 180,
-           "statuses": [{"name": "prometheus", "label": "Prometheus", "state": "up",
-                         "message": "Prometheus 2.45.3", "took_ms": 6},
-                        {"name": "grafana", "label": "Grafana", "state": "down",
-                         "message": "Could not connect", "took_ms": 5003}]}
+    def test_a_down_integration_is_named_in_words(self, client):
+        html = strip_html(client)
+        assert "Integrations 1 of 2 · Grafana down" in html and 'class="strip-item warn"' in html
+        assert "Grafana: Could not connect" in html, "the detail is on hover"
 
-
-class TestTheShippedBar:
-    def test_fresh_badges_name_their_state_and_the_bar_says_its_age(self):
-        html = bar(PAYLOAD, "2026-09-28T21:30:40Z")
-        assert 'data-integration="grafana"' in html and "Grafana down" in html
-        assert 'data-status-bar-age="fresh"' in html and "40 s ago" in html
-
-    def test_all_up_is_one_answer_and_the_unconfigured_are_named(self):
-        """Answer first: is anything down? One badge says no; the ten equal
-        badges are gone. What is not configured is named (C171)."""
-        d = dict(PAYLOAD, statuses=[
-            {"name": "prometheus", "label": "Prometheus", "state": "up", "message": "ok", "took_ms": 6},
-            {"name": "loki", "label": "Loki", "state": "up", "message": "Ready", "took_ms": 5},
-            {"name": "s3", "label": "S3 archive", "state": "not_configured", "message": "x",
-             "took_ms": 0}])
-        html = bar(d, "2026-09-28T21:30:10Z")
-        assert "All 2 integrations up" in html and 'data-integration="' not in html
+    def test_all_up_is_one_answer_and_the_unconfigured_are_named(self, client):
+        html = strip_html(client, registry={k: REG[k] for k in ("prometheus", "s3")})
+        assert "Integrations 1 of 1" in html and 'class="strip-item ok"' in html
         assert "not configured: S3 archive" in html
-        assert "Prometheus: up. ok (probe 6 ms)" in html, "the detail is on hover"
 
-    def test_a_down_integration_comes_first(self):
-        html = bar(PAYLOAD, "2026-09-28T21:30:10Z")
-        assert html.index("Grafana down") < html.index("1 up")
+    def test_past_its_promise_the_strip_says_stale_never_green(self, client):
+        html = strip_html(client, ago=IH.READER.interval_seconds * 3 + 60,
+                          registry={"prometheus": REG["prometheus"]})
+        assert 'data-strip="stale"' in html and "Integrations: stale" in html, html
+        assert "older than the 180 s its reader promises" in html
+        assert 'class="strip-item ok"' not in html
 
-    def test_past_its_promise_the_bar_says_stale(self):
-        html = bar(PAYLOAD, "2026-09-28T21:34:00Z")
-        assert 'data-status-bar-age="stale"' in html and "older than the 180 s" in html
+    def test_within_its_promise_it_is_not_stale(self, client):
+        """The control: a fresh value is drawn as what it says."""
+        html = strip_html(client, ago=30, registry={"prometheus": REG["prometheus"]})
+        assert 'class="strip-item ok"' in html and "stale" not in html
 
-    def test_a_failed_read_is_never_drawn_as_all_up(self):
-        html = bar({"ok": False, "error": "not probed yet"}, "2026-09-28T21:30:00Z")
-        assert "not the same as every integration being up" in html
+    def test_a_failed_read_is_never_drawn_as_all_up(self, client):
+        html = client.get("/v2/strip").get_data(as_text=True)
+        assert "Integrations not probed yet" in html and 'class="strip-item ok"' not in html
 
-    def test_every_page_carries_it(self):
-        base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
-        assert 'id="nmasStatusBar"' in base and "filename='js/nmas_status_bar.js'" in base
+    def test_every_v2_page_carries_it(self):
+        base = open(os.path.join(ROOT, "templates", "v2", "base.html"), encoding="utf-8").read()
+        assert 'id="nmas-strip"' in base and "url_for('device_v2.strip')" in base
+        assert "nmas:integration_health from:body" in base
 
 
 class TestTheCompactStamp:
@@ -258,13 +258,3 @@ class TestTheCompactStamp:
           [p.children.length, redraws];
         """)
         assert out == [0, 2]
-
-
-class TestTheSettingsStrip:
-    def test_a_failed_read_says_so_instead_of_leaving_the_strip_blank(self):
-        src = open(os.path.join(ROOT, "static", "js", "gen",
-                                "partials__settings_integrations.1.js"), encoding="utf-8").read()
-        body = src[src.index("async function loadIntegrationStatus"):]
-        body = body[:body.index("\n}\n")]
-        assert "if (!d.ok) return;" not in body
-        assert "not the same as every integration being up" in body

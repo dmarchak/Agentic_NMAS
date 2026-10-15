@@ -192,11 +192,12 @@ RENDERS = {
         # remotePublicationHtml draws `publication` (C223).
         {GR2: ("loadRemotePanel", "remotePublicationHtml"), GR3: ("_gLastPush",)},
         ((GR2, "loadRemotePanel", "s"),)),
-    "GET /identity/posture": Render(
-        _get("/identity/posture"),
-        {"partials__security_posture.1.js": ("loadSecurityPosture",)},
-        (("partials__security_posture.1.js", "loadSecurityPosture", "d"),),
-        maps=("access_values_set",)),
+    # GET /identity/posture, GET /settings/integrations/status and GET
+    # /settings/integrations/general left this table at 7.8 (2026-10-15) with their renderers,
+    # today's Settings modal's posture panel, Integrations strip and general block, and the
+    # status bar. The posture and the integrations' state are drawn on v2 by the server
+    # (Settings › Installation › Access and identity; every page's strip); /identity/posture
+    # and the general block's route left too.
     "GET /templates": Render(
         _get("/templates"),
         {"partials__template_editor.1.js": ("loadTemplateLibrary", "templateRowHtml")},
@@ -256,24 +257,10 @@ RENDERS = {
         {"partials__inventory_source.1.js": ("loadInventorySource", "applyInventorySourceUI",
                                              "renderInventoryBanner")},
         (("partials__inventory_source.1.js", "loadInventorySource", "d"),)),
-    "GET /settings/integrations/status": Render(
-        # The reader stores a value first (the real reader over the real
-        # registry, every integration unconfigured in the test store): the
-        # route serves only what was stored.
-        lambda mp, tmp: _answer(P.integration_status(mp, tmp)),
-        {"partials__settings_integrations.1.js": ("loadIntegrationStatus",),
-         "nmas_status_bar.js": ("statusBarHtml",)},
-        (("partials__settings_integrations.1.js", "loadIntegrationStatus", "d"),
-         ("nmas_status_bar.js", "statusBarHtml", "d"))),
     "GET /onboard/platforms": Render(
         _get("/onboard/platforms"),
         {"partials__onboard_wizard.1.js": ("openOnboardWizard", "onboardPlatformOptions")},
         (("partials__onboard_wizard.1.js", "openOnboardWizard", "d"),)),
-    "GET /settings/integrations/general": Render(
-        _get("/settings/integrations/general"),
-        {"partials__settings_integrations.1.js": ("loadGeneralIntegrationSettings",)},
-        (("partials__settings_integrations.1.js", "loadGeneralIntegrationSettings", "d"),),
-        tables={"partials__settings_integrations.1.js": ("_GENERAL_MAP",)}),
     # A STORED PARTIAL IMPORT (C85). This entry used `_get("/netbox/status")`
     # on a store with no import, so `status` was empty (declared "NetBox is
     # not configured in the fixture") and the summary C8 filled with
@@ -337,13 +324,6 @@ UNDRAWN = {
          "draws them"),
         ("subject", "the tag's subject; the row is named by its tag"),
         ("list", "the list the withdrawal record belongs to; the panel is that list's")],
-    "GET /identity/posture": [
-        ("action actor_kind", "per-gate detail (what a gate guards, which "
-                              "actor kind); the panel draws value and origin. "
-                              "7.7 (Settings)"),
-        ("certs_url", "where assertions are verified; carried for a person, "
-                      "drawn in 7.7"),
-        ("config_revealed", "the panel infers it from `access` being present")],
     "GET /inventory/source/<list>": [
         ("config credential_list device_order filters refresh_interval role "
          "schema_version site tag",
@@ -447,9 +427,6 @@ UNDRAWN = {
 #: does not carry. Each is a branch the fixture cannot reach; a provider
 #: that reaches it lets the entry leave.
 PHANTOM = {
-    "GET /identity/posture": [
-        ("config_withheld_reason", "carried only when the Access values are "
-                                   "withheld; the fixture's caller is a person")],
     "GET /remote/status": [
         ("acknowledged acknowledgement_covers auto_push branch last_push "
          "last_push_failure managed_by_nmas owner_repo read_verified_at "
@@ -487,9 +464,6 @@ EMPTY_IN_FIXTURE = {
             "tests/test_monitoring_profile_plan.py"),
     "GET /golden/history/<host> history": (R_, "no golden commit for the device in "
                                                "the fixture; 7.3's History draws it"),
-    "GET /identity/posture service_allowed_operations": (S_, _STRINGS),
-    "GET /identity/posture settings_read_failure": (R_, "the settings file reads; the "
-                                                        "failure record is never exhibited"),
     "GET /inventory/source/<list> config.device_order": (S_, _STRINGS),
     "GET /inventory/source/<list> stale_devices": (R_, "a local list has no stale "
                                                        "NetBox devices; a map of records"),
@@ -684,7 +658,9 @@ EMPTY_IN_FIXTURE = {
 # 38 -> 37: 7.8 (2026-10-12): /golden/renames left, and its `pending` with it.
 # 37 -> 35: 7.8 (2026-10-12): /golden/migrate/plan left, and its `devices` and `merges` with it.
 # 35 -> 33: the AI family (D15, 2026-10-14): /ai/agent_log's entries and /ai/approvals' entries.
-EMPTY_RECORDS_CEILING = 33
+# 33 -> 32: 7.8 (2026-10-15): /identity/posture left with today's Settings modal, and its
+# `settings_read_failure` with it.
+EMPTY_RECORDS_CEILING = 32
 
 
 def _empty_paths(obj, path=""):
@@ -763,8 +739,8 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 97  # -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
-PHANTOM_CEILING = 15  # 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
+UNDRAWN_CEILING = 93  # -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+PHANTOM_CEILING = 14  # 2026-10-15: /identity/posture's config_withheld_reason left with the route (7.8). Before: 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
 
 
 @pytest.fixture(scope="module")

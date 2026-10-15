@@ -100,69 +100,7 @@ def status():
     })
 
 
-@bp.route("/posture", methods=["GET"])
-def security_posture():
-    """What the identity gates are set to, and where each value came from.
-
-    **Why this is a page and not a file.** `require_person_for_reveal`,
-    `require_person_for_approve` and `service_allowed_operations` decide
-    whether a human has to authorise a reveal, an approval or a publish. Until
-    now they were visible only by opening `data/user_settings.json` over SSH
-    — which is the shape that lost the drift checker for twenty-four days. A
-    gate switched off weeks ago would look exactly like a gate that was never
-    on, and nobody would have cause to look.
-
-    **The gate states are shown to anyone.** "A person is required to reveal a
-    secret" is a posture statement; hiding it protects nothing and makes it
-    uncheckable. **The Access values are not** — the team domain and the AUD
-    are what an assertion is validated against, and this blueprint has refused
-    to echo them since it was written, because handing them to an
-    unauthenticated caller gives away the values the check depends on. They
-    are added only for a verified person, and the refusal says so rather than
-    omitting them silently.
-    """
-    from modules import identity as ident_mod
-
-    ident = ident_mod.identify(request)
-    is_person = ident.is_identified and ident.kind == "person"
-
-    body = ident_mod.posture(reveal_config=is_person)
-    body["ok"] = True
-    body["actor_kind"] = ident.kind or ""
-    if not is_person:
-        body["config_withheld_reason"] = (
-            "The Cloudflare Access team domain and AUD are shown to a verified "
-            "person only. They are what an assertion is checked against, so an "
-            "unauthenticated caller must not be handed them.")
-    return jsonify(body)
-
-
-@bp.route("/posture/ratify", methods=["POST"])
-def ratify_setting():
-    """Record a defaulted setting as a decision. **Ratify, never change.**
-
-    It writes the value already in force, so it cannot alter behaviour — which
-    is what lets the read-only posture panel offer it. A compromised browser
-    session still cannot lower a gate here: the only value this endpoint can
-    write is the one already applying.
-
-    It requires a **person**, through the same `identity.require()` the other
-    gated actions use. A decision needs somebody to have made it; a
-    ratification with nobody behind it is a seeded default wearing a better
-    name, which is exactly what `migrate()` was stopped from doing.
-
-    `configure` is the action kind (P.3, 2026-09-26): the tool's own settings
-    and gates. It was `approve` until `configure` existed, and a service grant
-    written for approving an approval-queue item should not reach a gate.
-    """
-    from modules import identity as ident_mod
-    from modules.settings_schema import ratify
-
-    ident, refusal = ident_mod.require(request, action="configure",
-                                       operation="ratify_setting")
-    if refusal:
-        return jsonify(refusal), 403
-
-    key = (request.get_json(silent=True) or {}).get("key", "")
-    result = ratify(key, actor=ident.actor)
-    return jsonify(result), (200 if result.get("ok") else 400)
+# Today's Security posture panel's routes (GET /identity/posture, POST /identity/posture/ratify)
+# left with today's Settings modal at 7.8 (2026-10-15): the posture is Settings › Installation ›
+# Access and identity (board F4, from `identity.posture()`), and Record this decision ratifies
+# through `settings_v2.install_ratify` (the same `settings_schema.ratify`, a person, recorded).

@@ -184,20 +184,30 @@ class TestTheResponseCarriesIt:
     def test_a_read_carries_no_header(self, client):
         assert I.HEADER not in client.get("/health").headers
 
-    def test_a_read_of_a_mixed_endpoint_carries_no_header(self, client):
-        """`settings_integrations.general_settings` serves GET and POST from ONE endpoint
-        (`monitoring_config` did, until 7.8 removed it). The hook
-        first keyed on the endpoint alone, so every read of the panel
-        announced an invalidation and carried `invalidates` in its body;
-        `/health` above could not show it, having no write half."""
-        import app as A
+    def test_a_read_of_a_mixed_endpoint_carries_no_header(self, monkeypatch):
+        """One endpoint serving GET and POST (`monitoring_config` did, then today's general
+        settings block, `settings_integrations.general_settings`, until both left at 7.8; no
+        endpoint of the app does now, so a probe app is the population). The hook first keyed
+        on the endpoint alone, so every read of the panel announced an invalidation and carried
+        `invalidates` in its body; `/health` above could not show it, having no write half."""
+        from flask import Flask, jsonify
 
-        rules = [r for r in A.app.url_map.iter_rules()
-                 if r.endpoint == "settings_integrations.general_settings"]
-        assert {"GET", "POST"} <= set().union(*(r.methods for r in rules))
-        r = client.get("/settings/integrations/general")
-        assert I.HEADER not in r.headers
-        assert "invalidates" not in (r.get_json() or {})
+        from modules import reader_wakes
+
+        probe = Flask("probe")
+        I.install(probe)
+
+        @probe.route("/probe/mixed", methods=["GET", "POST"])
+        def probe_mixed():
+            return jsonify({"ok": True})
+
+        monkeypatch.setitem(I.DECLARED, "probe_mixed", ("settings",))
+        monkeypatch.setattr(reader_wakes, "wake", lambda keys, by: None)
+        c = probe.test_client()
+        r = c.get("/probe/mixed")
+        assert I.HEADER not in r.headers and "invalidates" not in r.get_json()
+        w = c.post("/probe/mixed")
+        assert w.headers[I.HEADER] == "settings", "the control: its write half announces"
 
 
 # ── subscriptions, both directions ──────────────────────────────────────────

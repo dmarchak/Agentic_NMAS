@@ -114,20 +114,20 @@
    "functions": 2
   },
   "modules/integrations/base.py": {
-   "covered_unit": 10,
-   "functions": 11
+   "covered_unit": 8,
+   "functions": 9
   },
   "modules/integrations/kea.py": {
    "covered_unit": 9,
    "functions": 9
   },
   "modules/integrations/monitoring_profile.py": {
-   "covered_unit": 7,
-   "functions": 7
+   "covered_unit": 5,
+   "functions": 5
   },
   "modules/integrations/netbox.py": {
-   "covered_unit": 3,
-   "functions": 3
+   "covered_unit": 4,
+   "functions": 4
   },
   "modules/integrations/nsot_git.py": {
    "covered_unit": 2,
@@ -178,8 +178,8 @@
    "functions": 3
   },
   "modules/netbox_client.py": {
-   "covered_unit": 86,
-   "functions": 110
+   "covered_unit": 85,
+   "functions": 109
   },
   "modules/netbox_context_mask.py": {
    "covered_unit": 9,

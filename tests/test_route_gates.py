@@ -102,8 +102,8 @@ class TestEveryMutatingEndpointIsDeclared:
         ("golden.restore_apply", "confirm"),
         ("golden.capture_apply", "approve"),
         ("bulk_intent_v2.apply", "approve"),
-        ("save_settings", "configure"),
-        ("identity.ratify_setting", "configure"),
+        ("settings_v2.install_save", "configure"),     # today's /settings save until 7.8
+        ("settings_v2.install_ratify", "configure"),   # today's ratify until 7.8
         ("reads_v2.ask_run", "reveal"),
         ("reads_v2.show_commands_run", "reveal"),   # today's /bulk_execute's home (7.8)
         ("remote.push", "publish_remote"),
@@ -196,7 +196,7 @@ REFUSED_WITHOUT_IDENTITY = [
     "/golden/restore/apply",
     "/golden/capture/apply",
     "/v2/show-commands/run",        # many devices' reads: today's /bulk_execute left at 7.8
-    "/settings",
+    "/v2/settings/installation/card/netbox/save",   # today's /settings until 7.8
     "/v2/devices/change/apply",
 ]
 
@@ -294,7 +294,8 @@ class TestAPersonPasses:
 
 
 class TestAServiceIsNotAPerson:
-    @pytest.mark.parametrize("path", ["/deploy/apply", "/settings",
+    @pytest.mark.parametrize("path", ["/deploy/apply",
+                                      "/v2/settings/installation/card/netbox/save",
                                       "/v2/devices/change/apply"])
     def test_a_service_is_refused(self, monkeypatch, path):
         from modules import identity

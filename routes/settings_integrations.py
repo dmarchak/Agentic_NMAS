@@ -1,100 +1,30 @@
-"""Integrations settings blueprint.
+"""Integration health, as stored: `GET /settings/integrations/status`.
 
-Backs Settings → Integrations. Every field is user-supplied: no endpoint,
-credential, query template, or identity mapping is hardcoded, so the tool stays
-network-agnostic.
+The blueprint backed today's Settings → Integrations. Its form routes (the settings read and
+each integration's save, its Test and the general block: `GET /settings/integrations`,
+`POST /settings/integrations/<name>`, `POST /settings/integrations/<name>/test`,
+`/settings/integrations/general`) left with today's Settings modal at 7.8 (2026-10-15): each
+network's integration cards are Settings › Default and each network's own (`routes/settings_v2.py`,
+boards A to J), NetBox's and Proxmox's Settings › Installation › Connections (board F3).
 
-Secrets are write-only over the wire. A GET returns a set/unset indicator, never
-a value; a POST with an empty secret field leaves the stored value untouched.
+`/status` stays: docs/DEPLOY_LINUX.md's Verify reads it on a new install (a question for the
+operator, 7.8: whether that check moves elsewhere and this route goes).
 """
 
 import logging
 
-from flask import Blueprint, jsonify, request
-
-from modules.integrations import REGISTRY, get_integration
-from modules.list_settings import default_layer   # the general form is the Default network's
-from modules.settings_schema import (DEFAULTS, migrate, moved_since, moved_words,
-                                     validate)
-from modules.config import load_user_settings, save_user_settings, settings_lock
-from modules.secrets_store import SECRET_KEYS
+from flask import Blueprint, jsonify
 
 log = logging.getLogger(__name__)
-
-#: A save that does not say what its form loaded (CONCURRENCY_AUDIT R17).
-_NOT_LOADED = ("Not saved: this form did not say what it loaded, so a field nobody changed "
-               "could revert another person's decision. Reopen Settings and save again.")
 
 bp = Blueprint("settings_integrations", __name__, url_prefix="/settings/integrations")
 
 
-@bp.route("", methods=["GET"])
-def get_integrations():
-    """Return every integration's settings, with secrets masked."""
-    try:
-        migrate()
-        out = {}
-        for name in REGISTRY:
-            client = get_integration(name)
-            out[name] = client.get_config()
-            out[name]["label"] = client.label
-        return jsonify({"ok": True, "integrations": out})
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("settings_integrations: GET failed")
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@bp.route("/<name>", methods=["POST"])
-def save_integration(name):
-    """Persist one integration's settings."""
-    client = get_integration(name)
-    if client is None:
-        return jsonify({"ok": False, "error": f"Unknown integration '{name}'"}), 404
-
-    values = request.get_json(silent=True) or {}
-    loaded = values.pop("loaded", None)
-    if not isinstance(loaded, dict):
-        return jsonify({"ok": False, "error": _NOT_LOADED}), 400
-    try:
-        # Compared, validated and written under ONE hold of the settings lock (R17): a changed
-        # field another person moved since this card loaded is refused, naming both values.
-        with settings_lock():
-            moved = moved_since(values, loaded, client.get_config())
-            if moved:
-                return jsonify({"ok": False, "moved": sorted(moved),
-                                "error": "; ".join(moved_words(moved))}), 409
-            candidate = load_user_settings()
-            candidate.update({k: v for k, v in values.items() if k not in SECRET_KEYS})
-            ok, err = validate(candidate)
-            if not ok:
-                return jsonify({"ok": False, "error": f"Invalid setting — {err}"}), 400
-            client.save_config(values)
-        log.info("settings_integrations: saved '%s'", name)
-        return jsonify({"ok": True, "integration": client.get_config()})
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("settings_integrations: save '%s' failed", name)
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@bp.route("/<name>/test", methods=["POST"])
-def test_integration(name):
-    """Probe one integration. Never raises; a failure is reported, not thrown."""
-    client = get_integration(name)
-    if client is None:
-        return jsonify({"ok": False, "error": f"Unknown integration '{name}'"}), 404
-    try:
-        return jsonify(client.test_connection())
-    except Exception as exc:                  # noqa: BLE001
-        log.warning("settings_integrations: test '%s' raised: %s", name, exc)
-        return jsonify({"ok": False, "error": str(exc)})
-
-
 @bp.route("/status", methods=["GET"])
 def integration_status():
-    """Badge state for the Settings strip and the status bar: green / red /
-    grey per tool, from the integration-health READER's stored value, never
-    probed per request (modules/readers/integration_health.py, 7.2). The
-    per-integration Test button stays a live check (`/<name>/test`)."""
+    """Each integration's state from the integration-health READER's stored value, never
+    probed per request (modules/readers/integration_health.py, 7.2). v2's strip and Needs
+    attention read the same stored value."""
     from modules import reader_job
     from modules.readers import integration_health
 
@@ -109,54 +39,3 @@ def integration_status():
     return jsonify({"ok": True, "statuses": (good.get("value") or {}).get("integrations") or [],
                     "value_at": good.get("value_at"),
                     "stale_after_seconds": doc.get("stale_after_seconds")})
-
-
-@bp.route("/general", methods=["GET", "POST"])
-def general_settings():
-    """Settings that are not tied to one integration.
-
-    Server bind, browser auto-open, collector toggles,
-    monitoring identity mapping, and the PromQL query templates.
-    """
-    keys = (
-        "flask_host", "flask_port", "auto_open_browser",
-        "collector_trap_enabled", "collector_netflow_enabled",
-        "collector_syslog_enabled",
-        "monitoring_identity_mode", "monitoring_identity_field",
-        "monitoring_prom_label", "monitoring_strip_port",
-        "promql_device_up", "promql_cpu", "promql_interface_oper",
-    )
-
-    if request.method == "GET":
-        migrate()
-        return jsonify({"ok": True,
-                        "settings": {k: default_layer(k, DEFAULTS.get(k)) for k in keys}})
-
-    values = request.get_json(silent=True) or {}
-    loaded = values.pop("loaded", None)
-    if not isinstance(loaded, dict):
-        return jsonify({"ok": False, "error": _NOT_LOADED}), 400
-    try:
-        # A read-modify-write outside `write_settings()`, so it takes the
-        # lock itself (C20); a changed field moved since the form loaded it is refused (R17).
-        with settings_lock():
-            moved = moved_since(values, loaded,
-                                {k: default_layer(k, DEFAULTS.get(k)) for k in keys})
-            if moved:
-                return jsonify({"ok": False, "moved": sorted(moved),
-                                "error": "; ".join(moved_words(moved))}), 409
-            settings = load_user_settings()
-            settings.update({k: v for k, v in values.items() if k in keys})
-            ok, err = validate(settings)
-            if not ok:
-                return jsonify({"ok": False, "error": f"Invalid setting — {err}"}), 400
-            save_user_settings(settings)
-        log.info("settings_integrations: saved general settings (%d key(s))",
-                 len([k for k in values if k in keys]))
-        return jsonify({"ok": True,
-                        "settings": {k: default_layer(k, DEFAULTS.get(k)) for k in keys},
-                        "restart_required": any(k in values
-                                                for k in ("flask_host", "flask_port"))})
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("settings_integrations: general save failed")
-        return jsonify({"ok": False, "error": str(exc)}), 500

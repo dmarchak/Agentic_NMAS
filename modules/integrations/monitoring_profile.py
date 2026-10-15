@@ -78,26 +78,6 @@ class MonitoringProfileIntegration(IntegrationClient):
         return any(self._setting(k) for k in ("syslog_host", "snmp_exporter_config",
                                             "telemetry_receiver", "ntp_servers"))
 
-    def get_config(self) -> dict:
-        cfg = {key: self._setting(key) for key in self.plain_keys}
-        cfg["_secrets"] = {}
-        cfg["_configured"] = self.is_configured()
-        return cfg
-
-    def save_config(self, values: dict) -> dict:
-        from modules.config import set_user_setting
-
-        if self.list_name:
-            # FOR a network (P.8): its own store, through the one write path for lists.
-            from modules import list_settings
-
-            updates = {k: values[k] for k in self.plain_keys if k in values}
-            return list_settings.write(self.list_name, updates) if updates else {"ok": True}
-        for key in self.plain_keys:
-            if key in values:
-                set_user_setting(key, values[key])
-        return {"ok": True}
-
     def checks(self) -> list:
         """``[{"name", "state": ok|failed|not_set|not_testable, "detail"}]``."""
         from modules.nsot.profile_propose import exporter_community

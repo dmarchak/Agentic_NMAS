@@ -59,8 +59,9 @@ has expired. One expiring more than a year out has no row. Where each expiry com
 
 - **NetBox's API token:** NetBox shows it.
 - **Proxmox's TLS certificate:** read from the certificate itself.
-- **Grafana's and Proxmox's API tokens:** the expiry declared for each in Settings →
-  Integrations, because neither token can read its own. "never" is a valid declaration.
+- **Grafana's and Proxmox's API tokens:** the expiry declared for each on its card (Settings ›
+  Default's Grafana card, Settings › Installation's Proxmox card), because neither token can
+  read its own. "never" is a valid declaration.
 
 An expiry that could not be read is an **Unknown** row, never a warning: a warning claims a danger
 the reader has seen. A device's login credential or an SNMP community older than 180 days is a warning

@@ -189,6 +189,9 @@ class TestTheNameLeavesTheScreens:
             for text in [subject] + recorded:
                 html = html.replace(str(html_escape(text)), "").replace(text, "")
             html = html.replace(author_value, "")
+            # A settings card's hidden `loaded` (R17, 7.8) carries what the card drew, the same
+            # author value among it, back to its Save: never shown on the screen.
+            html = re.sub(r"""<input type="hidden" name="loaded" value='[^']*'>""", "", html)
             if nmas_shown(html):
                 found[path] = nmas_shown(html)
             title = re.search(r"<title>(.*?)</title>", html, re.S)

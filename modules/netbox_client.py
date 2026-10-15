@@ -68,23 +68,8 @@ def get_netbox_config() -> dict:
     }
 
 
-def save_netbox_config(url: str, token: str, verify_tls: bool = True,
-                       auth_scheme: Optional[str] = None,
-                       allow_writes: Optional[bool] = None) -> None:
-    """Persist NetBox URL, token, TLS flag, auth scheme, and the write gate.
-
-    The token is encrypted at rest. An empty *token* leaves the stored one
-    untouched, so saving the form without re-typing the token does not wipe it.
-    """
-    from modules.secrets_store import set_secret
-    set_user_setting("netbox_url", (url or "").rstrip("/"))
-    if token:
-        set_secret("netbox_token", token)
-    set_user_setting("netbox_verify_tls", bool(verify_tls))
-    if auth_scheme:
-        set_user_setting("netbox_auth_scheme", auth_scheme)
-    if allow_writes is not None:
-        set_user_setting("netbox_allow_writes", bool(allow_writes))
+# save_netbox_config left with today's Settings modal (7.8, 2026-10-15), its one caller: NetBox's
+# settings are saved by Settings › Installation's card (modules/installation_settings.py).
 
 
 # ---------------------------------------------------------------------------
@@ -124,13 +109,16 @@ def _session_from_config(cfg: dict) -> requests.Session:
 
 
 def test_connection(url: str, token: str, verify_tls: bool = True,
-                    persist_scheme: bool = True) -> tuple[bool, str]:
+                    persist_scheme: bool = True,
+                    schemes: tuple = ("Bearer", "Token")) -> tuple[bool, str]:
     """Ping the NetBox status endpoint. Returns (ok, message).
 
-    Tries the Bearer auth header first (NetBox's documented format) and falls
-    back to the legacy Token header if Bearer is rejected. When `persist_scheme`
-    is true and the probe succeeds, the working scheme is cached in user
-    settings so every subsequent sync uses it directly.
+    Tries each auth header in *schemes*: by default Bearer first (NetBox's
+    documented format), falling back to the legacy Token header if Bearer is
+    rejected. When `persist_scheme` is true and the probe succeeds, the working
+    scheme is cached in user settings so every subsequent sync uses it directly.
+    The NetBox card's Test (Settings › Installation) passes the one scheme the card
+    holds and persists nothing (`NetBoxIntegration.test_now`).
     """
     if not url or not token:
         return False, "NetBox URL and API token are required"
@@ -140,7 +128,7 @@ def test_connection(url: str, token: str, verify_tls: bool = True,
     last_err    = None
     reasons = []
 
-    for scheme in ("Bearer", "Token"):
+    for scheme in schemes:
         try:
             s = _build_session(token, verify_tls, auth_scheme=scheme)
             r = s.get(f"{base}/api/status/", timeout=8)
@@ -178,7 +166,8 @@ def test_connection(url: str, token: str, verify_tls: bool = True,
         # token for another key, and a source address the token does not allow each need a
         # different repair, and a person could not tell them apart.
         said = next((x for x in reasons if x), "")
-        return False, (f"NetBox refused the token (HTTP {last_status}, tried Bearer and Token): "
+        return False, (f"NetBox refused the token (HTTP {last_status}, tried "
+                       f"{' and '.join(schemes)}): "
                        f"{said or 'no reason given'}. {refusal_advice(said)}").strip()
     return False, "NetBox connection failed"
 

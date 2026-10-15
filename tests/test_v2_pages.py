@@ -306,12 +306,42 @@ class TestHelpAbout:
         for key in ("ci_verdict", "app_version", "job_health"):
             assert f"nmas:{key} from:body" in html
 
-    def test_health_version_and_about_share_one_composition(self):
+    def test_about_draws_the_one_composition(self):
+        """`/health/version`, its JSON form for today's status bar, left with the bar at 7.8
+        (2026-10-15); About draws `version_facts()` itself."""
         from routes import health
         src = open(os.path.join(ROOT, "routes", "v2.py"), encoding="utf-8").read()
         assert "health.version_facts()" in src
-        assert json.loads(_client().get("/health/version").get_data(as_text=True))["running"] == \
-            health._COMMIT
+        assert health.version_facts()["running"] == health._COMMIT
+
+    @pytest.mark.parametrize("version, ci, said", [
+        # Today's status bar's version item's cases (7.2 step 17), on their v2 home since it
+        # left at 7.8 (2026-10-15): a mixed version is red and named, a failed or not-judged
+        # verdict says so, a verdict that could not be read is not drawn as one.
+        ({"state": "mixed_version", "detail": "MIXED: checkout at abc, service running def"},
+         {"state": "verified", "sentence": "run 412 passed"},
+         ('<span class="badge badge-danger">MIXED VERSION</span>', "service running def")),
+        ({"state": "ok", "detail": "the checkout's commit"},
+         {"state": "failed", "sentence": "run 413 failed"},
+         ('<span class="badge badge-danger">failed</span>', "run 413 failed")),
+        ({"state": "ok", "detail": "the checkout's commit"},
+         {"state": "not_judged", "sentence": "this commit is not judged yet"},
+         ('<span class="badge badge-muted">', "this commit is not judged yet")),
+        ({"state": "unknown", "detail": "job health stored no running-version row"},
+         {"state": "unknown", "sentence": "not judged yet: never read"},
+         ("job health stored no running-version row", "not judged yet: never read")),
+    ])
+    def test_about_draws_each_version_state(self, monkeypatch, version, ci, said):
+        from routes import health
+
+        monkeypatch.setattr(health, "version_facts", lambda: {
+            "running": "a" * 40, "started_at": "2026-09-30T09:41:00.000Z",
+            "version": version, "ci": dict(ci, value_at="2026-09-30T09:50:00Z")})
+        html = _client().get("/v2/help/about").get_data(as_text=True)
+        for words in said:
+            assert words in html, (words, version, ci)
+        if version["state"] != "mixed_version":
+            assert "MIXED VERSION" not in html
 
 
 class TestThePolicy:

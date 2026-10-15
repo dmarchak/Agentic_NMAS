@@ -70,17 +70,12 @@ def test_a_lists_own_grafana_never_carries_defaults_token(store):
     assert g.url == "http://192.0.2.20:3000"
     assert "Authorization" not in g._auth_headers(), "Default's token went to another Grafana"
     assert get_integration("grafana")._auth_headers()["Authorization"].endswith("default-token")
-    assert g.get_config()["_secrets"]["grafana_token"] is False
+    assert g._secret("grafana_token") == "", "Default's token read for another network"
 
 
-def test_a_save_for_a_list_writes_that_lists_store_never_the_global_file(store):
-    before = (store / "user_settings.json").read_text(encoding="utf-8")
-    out = get_integration("kea", list_name="Branch").save_config(
-        {"kea_url": "http://192.0.2.30:8000", "kea_username": "k", "kea_password": "p"})
-    assert out["ok"] is True, out
-    assert (store / "user_settings.json").read_text(encoding="utf-8") == before
-    kea = get_integration("kea", list_name="Branch")
-    assert kea.url == "http://192.0.2.30:8000" and kea._secret("kea_password") == "p"
+# The client's save_config left with today's Integrations card (7.8, 2026-10-15); a network's
+# own values are saved to that network's store by its settings card, an empty secret kept:
+# tests/test_settings_v2.py, test_its_own_takes_values_in_the_card_and_an_empty_field_clears.
 
 
 def test_every_registered_client_takes_a_list():

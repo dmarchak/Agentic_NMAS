@@ -94,13 +94,16 @@ def test_it_is_registered_and_its_secret_is_encrypted():
 
 
 def test_the_settings_card_carries_every_key_the_client_reads():
-    """A key only curl could set is a feature no operator has."""
-    from tests.js_source import read_shipped
+    """A key only curl could set is a feature no operator has. Settings › Installation's
+    Proxmox card (today's Integrations card until it left at 7.8, 2026-10-15): its fields, its
+    secret and the id replaced with it."""
+    from modules.installation_settings import CARDS
 
-    spec = read_shipped("static/js/gen/partials__settings_integrations.1.js")
+    card = CARDS["proxmox"]
+    drawn = {f["key"] for f in card["fields"]} | {card["secret"][0], card["with_id"][0]}
     for key in (P.ProxmoxIntegration.plain_keys + P.ProxmoxIntegration.secret_keys
                 + (P.ProxmoxIntegration.url_key,)):
-        assert f"key: '{key}'" in spec, key
+        assert key in drawn, key
 
 
 class TestTheTlsWarningIsScopedToThisClient:

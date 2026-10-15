@@ -547,6 +547,19 @@ an unlocked truncate (app.py:1333-1356).
   line).
 - **Not tested:** retire's hold; no test drives two declarations at once.
 
+*Moved to v2, 2026-10-15 (7.8, tests/test_stale_settings_form.py rebased):* today's modal, its
+integration cards and its general block left with today's Settings modal. Their homes, v2's
+settings cards (Settings › Installation's NetBox connection, Proxmox, Commit author and Server;
+Settings › Default's and each network's own group cards), had sent every field as drawn and
+written whatever differed from the store, so a stale card reverted another person's change: the
+same defect, found by rebasing these tests. Each card now carries what it drew (`loaded`, a
+hidden field); its Save, under one hold of the settings lock, writes only the fields the person
+changed (`settings_schema.changed_since_loaded`) and refuses, naming both values, a changed
+field another person moved since; nothing is saved then. A Save naming no `loaded` is refused.
+NetBox's master write switch is on no Save on v2 (Turn off on the card, on by an authorised
+NetBox confirm, C619). The records database card's Save is not covered: it was never today's
+form, and resends its four fields as drawn (a finding at 7.8).
+
 **R18. Publication records and pushes race** (git-13, git-14, stores-5, locks-20). Each
 commit starts its own hook thread (modules/nsot/hooks.py:104-140). `record_push` and its
 siblings are unlocked read-modify-writes of `remote.json` (modules/nsot/remote.py:893-931,

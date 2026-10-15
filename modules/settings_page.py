@@ -231,13 +231,21 @@ def is_group(group: str) -> bool:
 
 def integration_for(group: str):
     """The integration a group configures, for its Test: the client whose URL key is the
-    group's (`settings_scope.URL_KEYS`); None for a group with none (the deploy tuning, the
-    monitoring profile)."""
+    group's (`settings_scope.URL_KEYS`), or the client named as the group that speaks to no
+    URL (the monitoring profile's connectors: its Test reads the exporter's auth module, asks
+    Telegraf's listener and each NTP server, and says one-way syslog and traps cannot be
+    tested; today's Integrations card had it until it left at 7.8, 2026-10-15). None for a
+    group with neither (the deploy tuning)."""
     from modules.integrations import REGISTRY
     from modules.settings_scope import URL_KEYS
 
     url_key = URL_KEYS.get(group)
-    return next((cls for cls in REGISTRY.values() if url_key and cls.url_key == url_key), None)
+    by_url = next((cls for cls in REGISTRY.values() if url_key and cls.url_key == url_key),
+                  None)
+    if by_url is not None:
+        return by_url
+    named = REGISTRY.get(group)
+    return named if named is not None and not named.url_key else None
 
 
 def _editing(list_name: str, group: str, c: dict) -> dict:
@@ -249,8 +257,16 @@ def _editing(list_name: str, group: str, c: dict) -> dict:
     editable = L.is_default(list_name) or c.get("state") == "own"
     c["editable"] = editable
     c["inputs"] = form_fields(list_name, group) if editable else []
+    c["loaded"] = drawn(c["inputs"])
     c["testable"] = editable and integration_for(group) is not None
     return c
+
+
+def drawn(inputs: list) -> dict:
+    """What a card's form drew, ``{key: value as drawn}``, a secret never (CONCURRENCY_AUDIT
+    R17): the card sends it back as ``loaded``, so its Save writes only what the person changed
+    and refuses a change to a field another person moved since, naming both values."""
+    return {f["key"]: f["value"] for f in inputs if f["kind"] != "secret"}
 
 
 def one_card(list_name: str, group: str) -> dict:

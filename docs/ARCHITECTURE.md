@@ -635,17 +635,18 @@ and others have left since too.
   `readers/freshness_reader.py` stores the Oxidized freshness
   signal per list every 300 s (it ran per device on every page load);
   the sanitiser's gate stays live on purpose. `readers/integration_health.py`
-  probes every integration in parallel every 60 s for the status bar (on
-  every page, `static/js/nmas_status_bar.js`) and Needs attention alike;
-  the Settings Test button stays a live check (rule 11).
+  probes every integration in parallel every 60 s for every v2 page's strip
+  (`device_v2.strip`, STALE past its promise; today's status bar until it left
+  at 7.8) and Needs attention alike; a card's Test stays a live check (rule 11).
   `readers/baseline_usability.py` judges whether any stored baseline can be
   re-applied without changing a held credential (C75), recomputing only when
   HEAD or the tag set moves (the full judgement is 8 to 9 s on the host), for
   Needs attention's "no stored baseline can be re-applied" row.
   `readers/ci_verdict.py` stores the running commit's CI verdict by LOADING
   `scripts/nmas-deploy` and calling its own `ci_verdict()` (one
-  implementation); `GET /health/version` composes it with `_COMMIT` and
-  job health's running-version row and computes none of them.
+  implementation); `routes.health.version_facts()` composes it with `_COMMIT`
+  and job health's running-version row and computes none of them (About draws
+  it; its JSON form, `/health/version`, left with today's status bar at 7.8).
   `readers/remote_publication.py` (C223) compares each list repository's HEAD
   with the REMOTE's own branch (`git ls-remote` through the repository's own
   `origin`, never the push hook's record) every 120 s and after every commit,
@@ -697,7 +698,7 @@ and others have left since too.
   `/attention` masks it, with its evidence one level down and the recent deploys and restores)
   and Help > About (`/v2/help/about`: the running commit, its CI verdict, whether it is what
   is pushed, the checkout, who is looking; the version from `routes.health.version_facts()`,
-  the one composition `/health/version` serves). The top bar carries no commit. **Devices**
+  the one composition). The top bar carries no commit. **Devices**
   (`/v2/devices`, 2026-10-01, `modules/device_list.py`): every device with its status, address,
   platform, intent state AS OF ITS LAST MEASUREMENT and when that was (the golden's last
   change on hover), pending onboardings as rows, searched and filtered, from a FIXED number of
@@ -1788,10 +1789,10 @@ processes, because a CLI such as `nmas-retire` writes settings while the app
 runs. After the fix: 300 of 300, threads and processes. An AST scan requires
 the lock in any function that both loads and saves. **`write_settings()` is
 not the only write path**: the general-settings POST in
-`routes/settings_integrations.py` does its own read-modify-write. `migrate()`
-RUNS on every GET of that panel, and WRITES only when the schema version is
-behind or a secret is still plaintext. Both hold the lock now. The bypass is
-recorded, not yet removed.
+`routes/settings_integrations.py` did its own read-modify-write. `migrate()`
+RAN on every GET of that panel, and WROTE only when the schema version was
+behind or a secret was still plaintext. Both held the lock. The bypass left
+with today's Settings modal at 7.8 (2026-10-15).
 **Where it came from, and whether it fired.** The shared temp name arrived
 in `4f8a0f1` (2026-09-23 18:26), the fix for that day's erasure. So it is
 NOT the erasure's mechanism, which was truncate-in-place followed by a write

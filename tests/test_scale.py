@@ -51,7 +51,10 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
 #: Approvals and Ansible tabs, the settings modal's AI sections, and the page's embedded copy
 #: of every device (`device-full-data`, read only by the AI's device cache), which was most of
 #: the per-device cost.
-FIXED_PAGE_BYTES = 76_444
+#:
+#: 45,117 fixed since 2026-10-15: today's Settings modal (its NetBox section, the integrations
+#: and security posture partials, its script), the Logs tab and the status bar left (7.8).
+FIXED_PAGE_BYTES = 45_117
 EXTRACTED_SCRIPT_BYTES = 199_435
 BYTES_PER_DEVICE = 1_616
 TOLERANCE = 0.25

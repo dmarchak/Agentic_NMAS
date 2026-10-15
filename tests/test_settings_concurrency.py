@@ -180,10 +180,12 @@ class TestEveryReadModifyWriteHoldsTheLock:
         rmw = {key: node for key, node in functions.items()
                if self._calls(node, "load_user_settings")
                and self._calls(node, "save_user_settings")}
-        # Floor: the four found by hand, so a scan that matches nothing fails.
+        # Floor: the four found by hand, so a scan that matches nothing fails. Three since
+        # 2026-10-15: the fourth, today's general-settings POST, left with today's Settings
+        # modal (7.8).
         names = {name for _, name in rmw}
         assert {"set_user_setting", "write_settings", "_migrate_unlocked"} <= names, names
-        assert len(rmw) >= 4, sorted(rmw)
+        assert len(rmw) >= 3, sorted(rmw)
 
         unlocked = []
         for (path, name), node in rmw.items():
