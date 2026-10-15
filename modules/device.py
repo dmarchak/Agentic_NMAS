@@ -436,7 +436,7 @@ def _needs_migration(config: dict) -> bool:
 def _migrate_to_folder_structure(config: dict) -> dict:
     """
     One-time migration: move each list's CSV into data/lists/{slug}/devices.csv,
-    and move shared data (backups, playbooks, KB, notes) into the current list's folder.
+    and move shared data (playbooks, KB, notes) into the current list's folder.
     """
     import shutil
 

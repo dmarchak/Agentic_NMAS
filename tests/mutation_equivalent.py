@@ -129,4 +129,12 @@ EQUIVALENT = [
            "if response and response > 0:", ("if response and response >= 0:",),
            "the two differ only at response == 0, where `response and` has already decided "
            "False"),
+    # ── Night #10 (2026-10-15, run 38702510441): the list registry's migration, killed by
+    # tests/test_list_folder_migration.py but for these two (C824).
+    *_each("modules.device._migrate_to_folder_structure",
+           'current = config.get("current_list", "Default")',
+           ('current = config.get("current_list", "default")',
+            'current = config.get("current_list", "DEFAULT")'),
+           "`current` is used only through get_list_data_dir, which resolves through list_slug, "
+           "and list_slug lowercases first: every case of Default names the folder `default`"),
 ]

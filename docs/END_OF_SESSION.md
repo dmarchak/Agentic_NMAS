@@ -1,14 +1,17 @@
 # End of session: where Phase 7 stands
 
-## OVERNIGHT, 2026-10-15 (04:00 to about 08:30 UTC; 22:00 to 02:30 UTC−6): C791, four of today's page families removed, nights #8 and #9, C808 to C816
+## OVERNIGHT, 2026-10-15 (04:00 to about 10:00 UTC; 22:00 to 04:00 UTC−6): C791, four of today's page families removed, board F3 built, nights #8 to #10, C807 to C823
 
-**The host runs 18605333** (deployed 08:11:16 UTC by `nmas-deploy --to` after the hold check,
-CI #816; before it 2f173736 at 06:57:03, 1301d3f7 at 06:09:24, caa6021e at 05:29:55, 495afbec
-at 04:46:32, 4e75b972 at 04:16:43). Each was walked on the host by GETs through Flask's client:
-the last, `/` without the Settings modal, Logs tab or status bar (`nmas_in_flight.js` kept), seven
+**The host runs 1665062d, board F3** (deployed 09:41:04 UTC after the hold check, CI #817),
+walked against the live Loki by GETs: lines over 1 h, 50 lines in 30 ms; counts by device over
+24 h, 10 series in 135 ms; s1's lines over 24 h, 16; a hostile device value (`x"}|="`) one token
+matching nothing ("No lines match"); severity 9 refused, naming it. **Before it** 18605333
+(08:11:16 UTC, CI #816), 2f173736 at 06:57:03, 1301d3f7 at 06:09:24, caa6021e at 05:29:55,
+495afbec at 04:46:32 and 4e75b972 at 04:16:43, each walked on the host by GETs through Flask's
+client; 18605333's walk: `/` without the Settings modal, Logs tab or status bar (`nmas_in_flight.js` kept), seven
 removed routes 404, `/identity/status`, `/settings/integrations/status` and
 `/operations/in_flight` 200, both v2 settings pages' cards carrying `loaded`, Diagnostics' app
-log, `/v2/help/about` 200. **CI on main is green** (#816 on 18605333); 8fca3e14's #814 green.
+log, `/v2/help/about` 200. **CI on main is green** (#817 on 1665062d).
 
 **What was done**, each commit pushed and gated:
 - **C791:** the gate refuses `--push` while CI on main is red, naming the run (`nmas-ci-log
@@ -35,12 +38,24 @@ log, `/v2/help/about` 200. **CI on main is green** (#816 on 18605333); 8fca3e14'
   tests found nothing else; the shuffle finds C809 without its fix in 4 of 6 seeds.
 - **docs/ASSURE_FEATURES.md:** the seven Assure proposals (C799 to C801, C803 to C806), linked
   from IBN_DESIGN's Assure section; no build.
+- **Board F3 built** (1665062d): History › Query › Ask your own, logs, at
+  `/v2/history/query/ask/logs`; jobs, devices and labels discovered from Loki, each value one
+  escaped token, Loki's own limits read from `/config`; the fidelity record and ten deviations
+  logged; Reveal marked later (C818). Found building it: C817 to C822 (Code mode's own LogQL;
+  no Reveal for a log line; Code mode refusing counts; `device_logs.JOB` naming the lab's job;
+  an integration's 4xx without its reason; a patched `time.time` being the process's clock),
+  C823 fixed. E3 (metrics) is not built; what it can share is named in
+  docs/fidelity/history-ask-logs.md.
 
 **The nights.** #8 (38677080468, d40f19f2): valid and green, "377 known, 0 new", its 27 sweep
 survivors added to the debt (404 entries in 15 functions). #9 (38690740461, 1301d3f7): failed,
-"Failed to run clean test" (C809), no result stands. **#10 (38702510441, 8fca3e14) dispatched
-07:59 UTC**, the first with C809's fix; its result is the next session's to read and handle
-by the loop's rules. The speed change (child tests only where the import closure reaches) is
+"Failed to run clean test" (C809), no result stands. **#10 (38702510441, 8fca3e14): valid,
+red by the rule:** the clean run passed (C809's fix held), canary 11 of 11, "404 known, 38
+new", all 38 in `device._migrate_to_folder_structure`, which no test reached (C824); each
+survivor ran the whole set, so the night reached 48 of 1,792 mutants. Fixed forward: nine tests
+kill 104 of its 106 mutants (the night's run step on the laptop, 307 s), the two left listed
+equivalent with the reason; the report then reads "404 known, 0 new". **Night #11 is dispatched
+on the fix once CI is green.** The speed change (child tests only where the import closure reaches) is
 NOT built: measured, the closure holds every planned function (C796, a question below).
 
 **Waiting on the operator** (each on the NMAS host, as their own user, from
@@ -75,10 +90,13 @@ NOT built: measured, the closure holds every planned function (C796, a question 
 5. **C813:** the records database card gets R17's guard? Recommended: yes, a follow-up.
 6. **C797:** VM_IMAGES's restore check names the wrong liveness route; rewrite step 4.
 7. **The PSIRT openVuln API key** for the CVE/EoL proposal (C806's common asks), when it is wanted.
+8. **F3's three:** the Kind row names jobs by the values Loki holds (recommended: keep, add an
+   optional per-network name only if asked); Code mode draws LogQL counts (recommended: yes,
+   with E3's Code mode, C819); Reveal for a log line as its own operation, person-gated and
+   recorded (recommended: yes, before cutover, C818). And C817: does Code mode stay free LogQL?
 
-**Next:** F3 (History › Query's "Ask your own" logs builder, board QueryBuilderLogs3, approved
-with E3) and the remaining today's-pages removals (commits 4, 5, 7, 8, 9 wait on the walks and
-questions above).
+**Next:** E3 (the metrics builder, approved with F3), and the remaining today's-pages removals
+(commits 4, 5, 7, 8, 9 wait on the walks and questions above).
 
 ## NIGHT, 2026-10-15 (to 04:00 UTC; 22:00 UTC−6): the run-id fix deployed, the loki-writer and trap-label steps, C781 to C784, today's Backups removed, night #6 valid
 
