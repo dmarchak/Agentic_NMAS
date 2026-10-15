@@ -92,7 +92,12 @@ Two of them come from the operator's course material on AI in networking and int
 networking:
 - **Few-shot and an error contract** on every translation prompt: 2 or 3 real examples from the
   config repository's history, and the error shapes `{"error": "could not parse"}` and
-  `{"error": "ambiguous", "clarification_needed": "…"}`, surfaced to the operator.
+  `{"error": "ambiguous", "clarification_needed": "…"}`, surfaced to the operator. *Proposed
+  (11.4):* 1 or 2 of the examples end in that contract (a clarifying question, a refusal), not
+  only successful commits.
+- **Added 2026-10-15 (section 11):** consistency measured over N runs (11.1); ambiguity decided
+  by code (11.2); field provenance in every translation schema (11.3); input normalised before
+  any prompt (11.7); context freshness at confirm (11.10).
 - **Minimum context, found by test:** the eval suite removes context blocks until the score
   drops, and records the smallest context that still passes. That number, times 1.5, is the
   feature's context budget (proposed), re-measured when its prompt changes.
@@ -169,6 +174,10 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | 9 | **Inferring higher-level intent from configs** (8.5) | `neighbours.expected` and the profile already derive some; AI proposes statements across devices | a device set's intent summarised, about 20k tokens → statements with evidence | 20k in, 2k out, 60 s | medium | 60% of proposed statements accepted | 10 runs; 60% | below 40% |
 | 10 | **Template draft for a new platform** (8.5) | today a person writes it; accepted only by round trip | a platform's captured config and the nearest template, about 30k tokens → a template draft | 30k in, 6k out, 120 s | medium or large (the eval decides) | 50% pass the round trip within two revisions | 5 platforms | below 40%, or cost per accepted template above 3× budget |
 
+*Proposed (11.9):* feature 1's pattern extended to Mercury's records (changes, rotations,
+approvals) and NetBox's inventory, a builder's query read back before running, with the same
+bounds. 11.12 maps each feature to the course's patterns (Analyst, Translator, Decision-maker).
+
 **Removed by rule 2 (deterministic first), not built:**
 - **Change summaries:** a deterministic diff summary (sections and line counts per device)
   answers it.
@@ -194,10 +203,13 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | AI catalog selection (decision 9: yes, observe mode first) | at least 95% MEASURED agreement with a person over at least 100 observed selections before the tier is enabled; no self-reported confidence gate: confidence is logged for analysis only and never decides (decided 2026-10-13) | stricter than the deterministic classes |
 | Activate | a canary soaks 30 minutes with its verifiers holding before the fleet; one device at a time after it | rotation's pattern |
 | Context budgets | the measured minimum times 1.5 | headroom without waste |
+| Consistency (11.1; N DECIDED, the floors PROPOSED) | each golden case run 5 times (a profile setting); the release gate's floor 95% consistent cases for Translator features, 90% for Analyst and Decision-maker | a translation that differs between runs is a different change; the floor is measured per model, never assumed from temperature (11.11) |
 | The built-in model (PROPOSED, section 10) | a tier is admitted only if, with the model loaded at its profile's context, MemAvailable stays at or above 20% of the host's RAM (3.2 GiB on a 16 GiB host); the profile's context 8k tokens by default; CPU capped at all but one vCPU; one request at a time; unloaded after 10 minutes idle; cost per token zero, so the caps that bind are the latency budget and the one-at-a-time rule | the stack's measured swing over nine days was about 1.2 GiB (lowest 10.4 GiB available, highest daily mean 11.7 GiB), so a 20% reserve covers it about 2.6 times; the 8k context keeps the KV cache under 0.5 GiB on gpt-oss-20b (estimate, 10.8) |
 
 ## 8. Process
 
+- **Voice never approves** (11.6, decided 2026-10-15): a voice request may query and ask; a
+  change it asks for waits at the GUI's confirm by hash.
 - **Every AI feature goes through:**
   1. a board, showing where it appears in the GUI;
   2. its card;
@@ -283,6 +295,11 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 13. **The licence of each candidate model** (a new third-party licence is the operator's):
     gpt-oss-20b and Granite 4.0 are published under Apache-2.0; Gemma 4's terms are to be read
     from Google's release before it is offered.
+14. **Section 11's PROPOSED additions:** 11.4 (few-shot clarification and refusal examples),
+    11.5 (the review-gated feedback loop), 11.8 (the gateway's rate limits, busy state and
+    parse-failure rate), 11.9 (feature 1 over records and inventory), 11.11 (temperature per
+    model profile), 11.12 (the patterns table, the three placements the operator did not make,
+    and the departures); and 11.1's floor numbers (95% Translator, 90% the others).
 
 ### Decided, 2026-10-13 (the operator)
 
@@ -305,6 +322,20 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | 6 (amended) | **A free local model ships with Mercury** ("Local (built-in)"), so AI works out of the box and offline, beside the paid providers; it replaces "a local model optional, later" (section 10). |
 | 10 | **Model origin: US-only, operator's decision.** The built-in model's candidates are gpt-oss-20b (OpenAI), Gemma 4 26B MoE and Gemma 4 E4B (Google), Granite 4.0-H-Tiny and Granite 4.0-H-Small (IBM). No other origin is offered, and there is no setting to add one (section 10.2). |
 | 11 | **The multi-model design rule:** one definition of every tool and one prompt structure for all models; an adapter per API shape (Anthropic Messages; OpenAI-compatible), never per model; per-model differences in a profile (data); no per-model prompt forks; no third-party multi-LLM abstraction library; a curated list of only the models that passed the eval (section 10.3). |
+
+### Decided, 2026-10-15 (the operator)
+
+From re-reading the course material (weeks 8 and 9) against this plan; each written in section 11
+with the test that will enforce it.
+
+| # | Decision |
+|---|---|
+| 11.1 | **Consistency eval:** each golden case runs N times (default 5, a profile setting), scored on identical structured output; a consistency rate per feature and model, with a floor in the release gate (the numbers proposed in 11.1); recorded responses in CI, live on the host. |
+| 11.2 | **Deterministic ambiguity:** every reference in a structured output resolved by code against NetBox and intent; zero or several matches, code asks, whatever the model returned; the model's flag additive, never the safeguard. |
+| 11.3 | **Field provenance:** every translation schema marks each field stated (with its words) or inferred; the read-back highlights the inferred fields before confirm. |
+| 11.6 | **Voice never approves:** voice may query and request; approval is only the GUI's confirm by hash (IBN_DESIGN section 8 step 1, and section 13 item 9: speaker spoofing). |
+| 11.7 | **Input normalisation before any prompt,** on the operator's text and retrieved data: NFKC; zero-width, bidirectional-override and control characters stripped; length caps per block; each removal flagged in the audit log; tested with planted hidden-instruction strings. |
+| 11.10 | **Context freshness:** each translation records the NetBox and intent versions it used; at confirm, if either changed, validation re-runs before anything applies. |
 
 **Noted 2026-10-14 (Lab 7):** the function-coverage report (`scripts/nmas-coverage`: per
 automation module, unit and all-tier function coverage with line and branch beside it, and the
@@ -466,3 +497,211 @@ Each is a required test of the 8.0 build, and must be shown able to fail:
    adapters and profiles: no tool schema, tool name list or prompt text defined in an adapter
    module or a profile, and no profile key naming a prompt. A profile holds only the fields in
    10.3. Planted case: a tool schema defined inside an adapter fails it.
+
+Section 11 names the required tests of its additions, each in this form, beside the addition it
+enforces.
+
+## 11. Additions from the course re-read (2026-10-15)
+
+**The operator, 2026-10-15:** twelve additions from re-reading the operator's course material on
+AI in networking (weeks 8 and 9) against this plan and IBN_DESIGN. Documents only; nothing is
+built. Each is marked **DECIDED** (the operator's, 2026-10-15) or **PROPOSED** (pending the
+operator, section 9), and names the test that enforces it once built, in 10.9's form: written
+with the code, shown able to fail, with a planted case. IBN_DESIGN points here where its text
+touches an addition (sections 8, 10 and 13), so each rule has one home.
+
+### 11.1 Consistency eval (DECIDED)
+
+- Each golden case runs **N times** (default 5; N is a profile setting, 10.3), and the runs are
+  compared on their **structured output**, canonicalised (key order, whitespace, list order where
+  the schema declares a field unordered). Free-text fields (a cause sentence, a summary) are not
+  compared; the fields a decision reads are.
+- A case is **consistent** when all N structured outputs are identical. The **consistency rate**
+  is consistent cases over cases, per feature and per model and version, stored with the eval's
+  other results (10.7).
+- **The floor in the release gate (PROPOSED numbers):** 95% for Translator features (11.12:
+  natural language → query, natural language → intent), where a different output is a different
+  change or a different answer; 90% for Analyst and Decision-maker features. A feature turns on
+  for a model only where that model meets the floor, beside its accuracy target (section 6) and
+  the red-team gate.
+- **Recorded responses in CI** (all N per case, so CI scores consistency offline); **live on the
+  host** as a job, as every eval runs (section 4). N times the live cost is counted on the cost
+  dashboard as eval cost, apart from use.
+- **Enforced by `tests/test_consistency_eval.py`:** the scorer marks a case consistent only when
+  all N canonical outputs match; a feature below its floor is refused for that model by the
+  release gate. Planted case: a recorded case whose fifth run differs in one decision field is
+  inconsistent and drops the rate below the floor; a run differing only in a free-text field
+  stays consistent. Population floor: every feature with a card has N recorded runs per case.
+
+### 11.2 Deterministic ambiguity (DECIDED)
+
+- **Every reference in a structured output** (a device, interface, site, role, VLAN, prefix, peer)
+  is resolved by code against NetBox and the committed intent, never taken from the model.
+- **Zero matches or several matches:** code asks the clarifying question (naming the reference
+  and, for several, each candidate), whatever the model returned, including a model that set no
+  ambiguity flag.
+- **The model's ambiguity flag** (`{"error": "ambiguous", ...}`, section 4) is additive: it can
+  raise a question code would not, never suppress one. It is not the safeguard.
+- **Enforced by `tests/test_ambiguity_is_resolved_by_code.py`:** for each translation schema, a
+  recorded output naming a reference that matches no NetBox object, and one matching two, each
+  yield code's clarifying question though the recorded model output says it is unambiguous; a
+  reference matching exactly one passes. Planted case: the resolver taught to trust the model's
+  flag lets the two-match output through, and the test fails.
+
+### 11.3 Field provenance (DECIDED)
+
+- **Every translation schema marks each field `stated` or `inferred`**, a `stated` field carrying
+  the words of the operator's request it came from (`source_words`).
+- **The deterministic read-back (IBN_DESIGN section 8, step 5) highlights every inferred field**
+  before confirm, so a person sees what the request did not say.
+- *PROPOSED detail:* a field marked `stated` whose `source_words` do not occur in the request (after
+  11.7's normalisation) is shown as inferred, by code; the model's marking is never trusted
+  alone.
+- **Enforced by `tests/test_translation_provenance.py`:** every translation schema's every leaf
+  field has its provenance; the read-back marks each inferred field; a `stated` field whose words
+  are absent from the request is drawn as inferred. Planted cases: a schema field without
+  provenance fails the schema scan; a read-back that drops the inferred mark fails.
+
+### 11.4 Few-shot includes clarification and refusal (PROPOSED)
+
+- Every translation prompt's 2 or 3 examples (section 4) include **1 or 2 that end in the error
+  contract**: a clarifying question (`{"error": "ambiguous", "clarification_needed": "..."}`)
+  and a refusal (`{"error": "could not parse"}`, or a request outside the person's role), not
+  only successful commits. The examples come from real history where it holds such a case;
+  otherwise from the eval's labelled cases, marked as such.
+- **Enforced by `tests/test_few_shot_carries_the_error_contract.py`:** every translation prompt in
+  `prompts/` holds at least one success example and at least one error-contract example, each
+  valid against the feature's schema. Planted case: a prompt with only successful examples fails.
+
+### 11.5 A review-gated feedback loop (PROPOSED)
+
+- **Accepted translations join the example pool only after a person's review** (who reviewed,
+  when, which version of the pool).
+- **Declined or edited translations become eval cases**: the request, the model's output, and the
+  person's correction as the expected output, labelled with the reason.
+- **Answers to clarifying questions are recorded** with the question and the translation that
+  followed.
+- **Everything is versioned:** the example pool and the eval set are files under version
+  control, changed by commits. **Nothing enters a prompt automatically**; a prompt changes only
+  by a reviewed commit, gated by its evals (IBN_DESIGN section 10).
+- **Enforced by `tests/test_feedback_loop_is_review_gated.py`:** an accepted translation without a
+  review record never appears in the example pool; a declined one appears in the eval set with
+  its correction; the prompt builder reads only the committed pool. Planted case: an
+  auto-append of an unreviewed translation to the pool fails.
+
+### 11.6 Voice never approves (DECIDED)
+
+- **Voice may query and request** (IBN_DESIGN section 8, step 1, the later input layer). **It never
+  approves:** approval is only the GUI's confirm by hash (non-negotiable 5). A spoken read-back
+  informs; it does not approve.
+- **The threat it answers:** speaker spoofing (a recorded, synthesised or replayed voice). Voice
+  identifies no one; the request still runs as the authenticated session that carries it, and a
+  change it asks for waits at the GUI's confirm (IBN_DESIGN section 13, item 9).
+- **Enforced by `tests/test_voice_never_approves.py`:** every confirm- and approve-gated route
+  (`modules/route_gates.py`) refuses a request marked as voice-originated, naming the channel;
+  the voice adapter's route table holds no confirm or approve route. Planted case: a
+  voice-marked request to a confirm route that is accepted fails the test.
+
+### 11.7 Input normalisation before any prompt (DECIDED)
+
+- **On the operator's text and on retrieved data**, before either reaches a prompt:
+  1. Unicode NFKC;
+  2. strip zero-width, bidirectional-override and control characters (Unicode categories Cf
+     and Cc, except newline and tab; Cf includes the tag characters U+E0000 to U+E007F, which
+     can carry invisible text);
+  3. a length cap per block (per feature, in its card);
+  4. **each removal flagged in the audit log**: which block, which characters by code point and
+     count, and whether a cap cut it, never silently.
+- Masking (IBN_DESIGN section 10) runs after normalisation, so a secret split by an invisible
+  character is still found.
+- **Enforced by `tests/test_prompt_input_normalised.py`** with planted hidden-instruction
+  strings: "ignore previous instructions" interleaved with zero-width joiners; a right-to-left
+  override reversing a command; the same instruction in tag characters; fullwidth letters NFKC
+  folds; and an over-cap block. Each reaches the prompt normalised, each removal is in the audit
+  log, and the masked secret split by a zero-width space is masked. Planted case: the strip
+  step removed, the zero-width string reaches the prompt intact and the test fails.
+
+### 11.8 The gateway's load and failure handling (PROPOSED)
+
+- **Provider rate limits:** on HTTP 429, back off as the provider's `retry-after` says (else
+  exponential, bounded by the feature's latency budget); a bounded queue per provider; a
+  per-feature concurrency limit. A request past its budget stops and says so (section 4's
+  capped loops).
+- **A visible "AI busy" or "AI degraded" state** wherever AI appears, naming the cause (queued
+  behind N requests, rate-limited until a time, the provider not answering) and saying that the
+  workflow continues without AI (non-negotiable 3).
+- **The parse-failure rate per feature and per model** on the cost dashboard, beside tokens and
+  cost.
+- **Enforced by `tests/test_gateway_backs_off.py`:** a recorded 429 with `retry-after` is waited
+  out and retried within the budget, then refused by name past it; the queue's bound refuses the
+  next request naming the queue; and `tests/test_ai_state_is_drawn.py`: the busy and degraded
+  states are drawn with their cause. Planted case: a retry that ignores `retry-after` fails.
+
+### 11.9 Feature 1 extended to Mercury's records and NetBox inventory (PROPOSED)
+
+- Natural language → **a builder's query, read back before running**, also over Mercury's records
+  (changes, rotations, approvals, on E18's database) and NetBox's inventory. Same pattern as
+  feature 1 (section 6): the AI turns a sentence into a deterministic builder's own query model,
+  never free query text; the builder reads it back; a person runs it.
+- **Same bounds:** read-only endpoints, a range and row limit, a timeout, masking on every result
+  (the operator's bounds for Code mode, 2026-10-15, C817).
+- *Deterministic first:* a records builder and an inventory builder exist before the AI front of
+  them (section 2, rule 2).
+- **Enforced by feature 1's own tests, extended:** every query the AI path produces is one the
+  builder's own model can hold and reads back; no AI path sends text the builder did not build.
+  Planted case: an AI output carrying raw SQL or a free filter string is refused by the builder's
+  model.
+
+### 11.10 Context freshness (DECIDED)
+
+- **Each translation records the versions of the data it used:** the config repository's commit
+  for the committed intent it read, and a digest of the NetBox objects it read (their ids and
+  `last_updated`).
+- **At confirm:** if either changed since the translation, **validation (IBN_DESIGN section 8, step
+  4) re-runs before anything applies.** Confirm by hash pins the artifact, not its facts. A
+  validation that now fails refuses the confirm, naming what changed (both versions); one that
+  still passes proceeds, and the record says it re-ran.
+- **Enforced by `tests/test_translation_context_freshness.py`:** a NetBox object changed between
+  preview and confirm makes validation re-run (observed), and a reference the change invalidated
+  refuses the confirm naming both versions; unchanged facts skip the re-run. Planted case:
+  confirm that skips the version comparison applies over changed facts and the test fails.
+
+### 11.11 Temperature is a per-model profile setting (PROPOSED)
+
+- **Temperature is a field of the model's profile** (10.3's per-model differences), per feature
+  where a feature needs its own.
+- **Consistency (11.1) is what is measured; it is never assumed from temperature.** A low
+  temperature that still gives inconsistent output fails the floor like any other.
+- **Enforced by `tests/test_one_tool_registry.py`** (10.9, test 2), extended: temperature is read
+  only from the profile, never set in a prompt or an adapter; and 11.1's test, which gates on the
+  measured rate whatever the temperature. Planted case: a temperature hard-coded in an adapter
+  fails.
+
+### 11.12 The course's three patterns, and deliberate departures (PROPOSED)
+
+**Section 6's features by the course's patterns** (the operator's placement; *proposed* for the
+three the operator did not place):
+
+| Pattern | Features (section 6's rank) | What it means here |
+|---|---|---|
+| **Analyst** (reads, explains, proposes; a person decides) | 2 alert correlation; 5 root cause; 3 incident drafts; 8 verifier drafts; *proposed:* 6 a pipeline check after an escape, 9 inferring higher-level intent | output is evidence-linked text and drafts; nothing acts |
+| **Translator** (words → a structure deterministic code checks) | 7 natural language → intent (8.5); 1 natural language → query (and 11.9); *proposed:* 10 a template draft for a new platform (accepted only by round trip) | output is a schema-constrained structure, read back, validated, confirmed by hash |
+| **Decision-maker** (chooses among pre-approved options) | 4 catalog selection, in observe mode | chooses only inside the catalog; enabled only on measured agreement (section 7), never on confidence |
+
+**Deliberate departures from the course examples, each with its reason:**
+
+| The course example | Mercury | Why |
+|---|---|---|
+| A confidence threshold gates an action | **confidence logged, never a gate** | self-reported confidence is uncalibrated; agreement is measured instead (section 7, decided 2026-10-13) |
+| "Return only JSON" in the prompt | **constrained decoding** (the provider's structured output or tool schema; `llama-server`'s grammar, 10.6) | an instruction can be ignored; a schema-constrained decoder cannot emit what does not parse |
+| A y/n prompt to approve | **confirm by hash** in the GUI | a y/n approves whatever is current; a hash approves exactly the previewed artifact (IBN_DESIGN section 8, step 5) |
+| Jenkins runs the pipeline | **GitHub Actions** | Jenkins was removed in P.4; the config repository's workflow is the pipeline |
+
+- **Enforced by `tests/test_feature_cards.py`:** every card in section 6 names its pattern; a
+  Decision-maker card carries an observe threshold measured by agreement and no confidence gate;
+  and `tests/test_confidence_is_never_a_gate.py`: no gateway, validator or policy code branches
+  on `confidence` (by parsing). The other departures are held by tests that exist:
+  confirm by hash by `tests/test_preview_confirm.py` and `tests/test_deploy_contract.py`;
+  Jenkins' absence by `tests/test_no_jenkins.py`; constrained decoding by 8.0's adapter tests
+  (every call passes a schema). Planted cases: a card with no pattern; an `if confidence` in a
+  validator.

@@ -577,14 +577,14 @@ archived by D15) is removed at 7.8.
 
 | Step | What happens | Exists today | New |
 |---|---|---|---|
-| 1. Input | plain-language intent, from an authenticated person; when ambiguous, the model asks a question and never guesses. A later input layer: voice, speech-to-text in front of the same pipeline, for queries and commands, from an authenticated session, with a mandatory spoken and written read-back before any confirm (low priority; the design leaves room) | Ask the device's typed reads, a person's reason fields | the request card, the clarifying turn, voice later |
-| 2. Prompt construction (Python) | the intent model's schema; the affected devices' current intent from Git; NetBox's facts (roles, sites, interfaces, addresses); platform capabilities; 2 or 3 REAL input → output examples drawn from the config repository's history (a commit's intent change and the words that asked for it); masked; only the context the request needs, sized by the feature's measured minimum (section 10) | committed intent readers (`hostvars.read_committed`), NetBox client, `redact_text` | the context selector, the example selector, C733's index |
-| 3. LLM translation | constrained to the intent model's JSON schema (structured output), with an explicit error contract: `{"error": "could not parse"}` and `{"error": "ambiguous", "clarification_needed": "…"}`, each surfaced to the operator in their own words, never retried silently. It outputs intent, never device configuration or Jinja (template drafting is a separate workflow gated by round trip) | none | the gateway, the schema, the error shapes |
-| 4. Validation | the schema; **intent authorisation** (the person may submit this kind of intent for these devices and sites; section 5); semantics (references exist in NetBox, guardrails such as never the management path or s3); **the policy-conflict layer** (precedence, conflicts shown with the intent they clash with; section 5); `nmas-config-check`; pre-change simulation (Batfish); the device-level diff and blast radius. On failure one bounded retry with the error fed back, then back to the operator | `nmas-config-check`, the render, `deploy.classify_diff`, the management-path rules, `may` | authorisation per scope, the conflict layer, semantic checks, Batfish, the retry |
-| 5. Confirmation | the operator's words; a plain-language read-back GENERATED FROM THE STRUCTURED OUTPUT (not the model's own description); the intent diff; the exact device commands; validation results; the risk. Approved by hash: exactly that artifact runs (the model is not deterministic) | preview and confirm by hash, the program masked | the read-back generator |
+| 1. Input | plain-language intent, from an authenticated person; when ambiguous, code asks a question and never guesses (step 4; PHASE8_PLAN 11.2). A later input layer: voice, speech-to-text in front of the same pipeline, from an authenticated session, with a mandatory spoken and written read-back. **Voice may query and request; it never approves** (decided 2026-10-15, PHASE8_PLAN 11.6): approval is only the GUI's confirm by hash, and the spoken read-back informs, it does not approve (the threat: speaker spoofing, section 13 item 9). Low priority; the design leaves room | Ask the device's typed reads, a person's reason fields | the request card, the clarifying turn, voice later |
+| 2. Prompt construction (Python) | the intent model's schema; the affected devices' current intent from Git; NetBox's facts (roles, sites, interfaces, addresses); platform capabilities; 2 or 3 REAL input → output examples drawn from the config repository's history (a commit's intent change and the words that asked for it; *proposed, PHASE8_PLAN 11.4:* 1 or 2 ending in the error contract); **the person's text and every retrieved block normalised first** (NFKC; zero-width, bidirectional-override and control characters stripped; a length cap per block; each removal in the audit log; decided 2026-10-15, PHASE8_PLAN 11.7), then masked; **the versions of the intent and NetBox data used recorded** (decided 2026-10-15, PHASE8_PLAN 11.10); only the context the request needs, sized by the feature's measured minimum (section 10) | committed intent readers (`hostvars.read_committed`), NetBox client, `redact_text` | the normaliser, the context selector, the example selector, C733's index |
+| 3. LLM translation | constrained to the intent model's JSON schema (structured output), with an explicit error contract: `{"error": "could not parse"}` and `{"error": "ambiguous", "clarification_needed": "…"}`, each surfaced to the operator in their own words, never retried silently. Every field marked `stated` (with the request's words it came from) or `inferred` (decided 2026-10-15, PHASE8_PLAN 11.3). It outputs intent, never device configuration or Jinja (template drafting is a separate workflow gated by round trip) | none | the gateway, the schema, the error shapes, field provenance |
+| 4. Validation | the schema; **intent authorisation** (the person may submit this kind of intent for these devices and sites; section 5); semantics (references exist in NetBox, guardrails such as never the management path or s3; **every reference resolved by code against NetBox and intent, and zero or several matches make code ask the clarifying question whatever the model returned**: the model's ambiguity flag is additive, never the safeguard; decided 2026-10-15, PHASE8_PLAN 11.2); **the policy-conflict layer** (precedence, conflicts shown with the intent they clash with; section 5); `nmas-config-check`; pre-change simulation (Batfish); the device-level diff and blast radius. On failure one bounded retry with the error fed back, then back to the operator | `nmas-config-check`, the render, `deploy.classify_diff`, the management-path rules, `may` | authorisation per scope, the conflict layer, semantic checks, Batfish, the retry |
+| 5. Confirmation | the operator's words; a plain-language read-back GENERATED FROM THE STRUCTURED OUTPUT (not the model's own description), **the inferred fields highlighted** (PHASE8_PLAN 11.3); the intent diff; the exact device commands; validation results; the risk. Approved by hash: exactly that artifact runs (the model is not deterministic). **Confirm by hash pins the artifact, not its facts:** if the intent or NetBox data changed since the translation, step 4 re-runs before anything applies, and a failure refuses naming both versions (decided 2026-10-15, PHASE8_PLAN 11.10) | preview and confirm by hash, the program masked | the read-back generator, the freshness check |
 | 6. Execution | commit the intent to the config repository (its pipeline and GitHub Actions run on it), then deploy, verify, roll back | `save_host_vars`, the pipeline, the config repository's workflow | none |
 | 7. Verification that the intent holds | Assure's verifiers prove the network now behaves as stated; roll back if not | verify (configuration) | the statement's verifier (behaviour) |
-| 8. Logging | one id linking the words, the masked prompt, the model and version, the raw response, the structured output, validation's results, the approver, the deploy receipt, the verification; the only way to reproduce a translation | receipts, commits | the translation record (on E18's database) |
+| 8. Logging | one id linking the words, the normalisation's removals, the masked prompt, the model and version, the versions of the intent and NetBox data used, the raw response, the structured output, validation's results (and whether it re-ran at confirm), the approver, the deploy receipt, the verification; the only way to reproduce a translation | receipts, commits | the translation record (on E18's database) |
 
 **Threat model: prompt injection.**
 - **Untrusted data:** interface descriptions, log lines, NetBox fields and device output are
@@ -598,6 +598,11 @@ archived by D15) is removed at 7.8.
 - **The operator's own sentence is untrusted too:** it may ask for more than its author may
   submit, or carry text pasted from elsewhere. Intent authorisation (section 5) is checked on
   the structured output, so the model's compliance with an injected instruction gains nothing.
+- **Hidden text:** zero-width, bidirectional-override, tag and control characters in the
+  sentence or the retrieved data are stripped before any prompt, each removal audited
+  (step 2; PHASE8_PLAN 11.7). It removes what a person reading the text cannot see; security
+  still rests on validation, as section 13's item 5 says of prompt hygiene.
+- **A spoofed voice** may ask, never approve (step 1; section 13 item 9).
 
 **Validation in the pipeline, mapped to Mercury.** The pattern is: the model's output becomes a
 reviewed git change; the change passes syntax, semantics and behaviour checks; an approval gate;
@@ -724,10 +729,14 @@ them feature by feature.
   eval's score does not merge.
 - Order: a stable prefix first (system, schema, the network digest), so the provider caches it,
   with the per-request material last.
-- Low temperature for translation and classification.
-- "Ask, don't guess" is a field of the output schema, not a hope.
+- Low temperature for translation and classification. *Proposed (PHASE8_PLAN 11.11):* the
+  temperature is a per-model profile setting, and consistency over N runs (11.1, decided) is
+  what is measured, never assumed from temperature.
+- "Ask, don't guess" is a field of the output schema, not a hope; and code asks whenever a
+  reference resolves to zero or several objects, whatever that field says (PHASE8_PLAN 11.2).
 - **Few-shot and an error contract** on every translation prompt:
-  - 2 or 3 real input → output examples drawn from the config repository's history;
+  - 2 or 3 real input → output examples drawn from the config repository's history; *proposed
+    (11.4):* 1 or 2 of them a clarification or a refusal in the error contract;
   - the explicit error shapes `{"error": "could not parse"}` and
     `{"error": "ambiguous", "clarification_needed": "…"}`, each surfaced to the operator.
 - **Minimum context, found by test:** each feature's eval suite finds and records the smallest
@@ -743,6 +752,8 @@ them feature by feature.
   was actually fetched in this run; a finding citing something never fetched is dropped.
 - Every schema carries `needs_human`, `confidence` and `open_questions`. `confidence` is
   logged for analysis only; no gate reads it (the operator, 2026-10-13).
+- Every translation schema marks each field `stated` (with the request's words) or `inferred`,
+  and the read-back highlights the inferred ones (the operator, 2026-10-15; PHASE8_PLAN 11.3).
 
 **Tools are narrow, typed and read-only.**
 - The reads: `query_prometheus`, `query_loki`, `get_intent`, `get_drift`, `netbox_lookup`, and
@@ -763,7 +774,10 @@ them feature by feature.
 - Incident records (finding → cause → fix) are reviewed by a person and versioned.
 
 **Security.**
-- Masking before every prompt (section 7; C733's index, C745's shapes).
+- Input normalised before every prompt, on the person's text and on retrieved data: NFKC;
+  zero-width, bidirectional-override and control characters stripped; length caps per block;
+  each removal in the audit log (the operator, 2026-10-15; PHASE8_PLAN 11.7).
+- Masking before every prompt (section 7; C733's index, C745's shapes), after normalisation.
 - Everything retrieved is untrusted data (section 8's threat model).
 - Every prompt and response is recorded in History with who asked.
 
@@ -970,7 +984,13 @@ do nothing the person could not already do.** Each item is a decision for the op
    - attempts to exfiltrate through links.
 
    It asserts **zero** unauthorised tool calls, **zero** unauthorised proposals and **zero**
-   external links. **Any non-zero result blocks the release.**
+   external links. **Any non-zero result blocks the release.** *Added 2026-10-15:* hidden
+   instructions in zero-width, bidirectional-override and tag characters (PHASE8_PLAN 11.7).
+9. **Voice and speaker spoofing** (the operator, 2026-10-15; PHASE8_PLAN 11.6). A voice can be
+   recorded, synthesised or replayed, so **voice may query and request, and never approves.**
+   Approval is only the GUI's confirm by hash, from the authenticated session (item 3). A voice
+   identifies no one: a voice request runs as the session that carries it, never as the
+   speaker it sounds like, and a change it asks for waits at the GUI's confirm.
 
 **The shape, in code** (illustrative):
 
