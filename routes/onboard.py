@@ -17,6 +17,7 @@ distinction, and a new tab is the thing that redesign exists to undo.
 import logging
 
 from flask import Blueprint, jsonify, request
+from modules.outbound import no_store
 
 log = logging.getLogger(__name__)
 
@@ -265,6 +266,7 @@ def pending():
 
 
 @bp.route("/bootstrap/<hostname>", methods=["GET"])
+@no_store
 def bootstrap(hostname):
     """The config a pending device was onboarded with. **A reveal.**
 
@@ -305,9 +307,17 @@ def bootstrap_reveal(hostname: str, data, req) -> tuple:
     if not out.get("ok"):
         return out, 404
 
-    reveal_audit.record(actor=ident.actor, kind=ident.kind,
-                        what="bootstrap_config", target=hostname,
-                        detail=f"list={list_name}", peer=ident.peer)
+    entry = reveal_audit.record(actor=ident.actor, kind=ident.kind,
+                                what="bootstrap_config", target=hostname,
+                                detail=f"list={list_name}", peer=ident.peer,
+                                extra={"list": list_name})
+    if not entry.get("recorded"):
+        # C841: fail closed, as the log line's reveal does. The record is written first and
+        # read; a reveal it could not record shows nothing, the config and its credential
+        # included.
+        return {"ok": False, "config": "",
+                "error": ("the reveal could not be recorded, so nothing is shown: a bootstrap "
+                          "config is never revealed unrecorded")}, 503
     return {**out, "revealed_by": ident.actor}, 200
 
 

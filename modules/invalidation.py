@@ -88,7 +88,7 @@ VOCABULARY = {
     "saved_views": "History › Query's saved views: their titles, who saved them, pinned or not "
                    "(modules/saved_views.py, C667)",
     "reveals": "the reveal record: who saw a masked value, when, which and why "
-               "(modules/reveal_audit.py); History's timeline draws a log line's (C818)",
+               "(modules/reveal_audit.py); History's timeline draws every kind (C818, C837)",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
     "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
@@ -161,6 +161,8 @@ DECLARED = {
     "v2.history_view_pin": ("saved_views",),
     "v2.history_view_remove": ("saved_views",),
     "v2.history_ask_logs_reveal": ("reveals",),
+    # C837: History's timeline draws every reveal the record holds.
+    "onboard_v2.bootstrap": ("reveals",),
     "topology_v2.expected_declare": ("topology",),
     "topology_v2.expected_withdraw": ("topology",),
     "topology_v2.positions_save": ("topology",),
@@ -301,10 +303,12 @@ DECLARED = {
                                        "(golden.capture_preview); it records nothing, and the "
                                        "job ANNOUNCES capture_preview when it finishes"),
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
+    "device_v2.golden_reveal": Nothing("draws one golden version in place INSIDE History's "
+                                       "timeline, the region `reveals` redraws: announcing it "
+                                       "would wipe the version it just drew; the timeline "
+                                       "lists the reveal (C837) when it is next drawn"),
     "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
                                       "it writes nothing"),
-    "device_v2.golden_reveal": Nothing("draws one golden version in place and records the "
-                                       "reveal; no screen draws the reveal record"),
     "v2.history_reapply_confirm": Nothing("starts the re-apply as a job and answers at once; "
                                           "the batch ANNOUNCES deploy_job as each device "
                                           "finishes, and what a restore changes at the end "
@@ -335,8 +339,6 @@ DECLARED = {
                                          "would send; it writes nothing"),
     "onboard_v2.abandon_preview": Nothing("Abandon's dry run: names what it would remove and "
                                           "removes nothing"),
-    "onboard_v2.bootstrap": Nothing("reveals the bootstrap config in place and records the "
-                                    "reveal; no screen draws the reveal record"),
     "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),

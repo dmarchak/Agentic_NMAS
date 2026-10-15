@@ -11,6 +11,7 @@ import base64
 import logging
 
 from flask import Blueprint, jsonify, request
+from modules.outbound import no_store
 
 from modules.identity import request_actor
 
@@ -23,6 +24,7 @@ bp = Blueprint("breakglass", __name__, url_prefix="/breakglass")
 
 
 @bp.route("/export", methods=["POST"])
+@no_store
 def export():
     """Build, seal, verify, record, and return the record. The list is
     carried from the preview; the passphrase arrives twice and leaves in
@@ -67,6 +69,5 @@ def export():
     else:
         log.warning("breakglass: an export of %s by %s was refused at %s", list_name, actor,
                     out.get("stage"))
-    response = jsonify(result)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    # `no-store` on every answer, by `no_store` (C840).
+    return jsonify(result)

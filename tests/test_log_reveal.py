@@ -1,5 +1,5 @@
 """Reveal one log line (C818; board F3's Reveal…; the operator's decision 2026-10-15):
-modules/log_reveal.py, the route `v2.history_ask_logs_reveal`, History's `log_reveals`.
+modules/log_reveal.py, the route `v2.history_ask_logs_reveal`, History's `reveals`.
 
 Fed by the logs builder's stand-in for Loki (tests/test_history_ask_logs.py), answering with
 the real capture of 2026-10-15 (ask_lines_labelled.json) with ONE PLANTED LINE: s4 logging an
@@ -178,6 +178,8 @@ class TestARevealByAPerson:
         assert f"snmp-server community {PLANTED} RO" in unescape(html)
         assert "revealed to test-person@example.invalid" in html
         assert "reveals" in r.headers.get("X-NMAS-Invalidates", "")
+        # C840: the unmasked line is an answer no cache keeps.
+        assert r.headers.get("Cache-Control") == "no-store, no-transform"
         # Read AGAIN, now: the label API around the line, then the line at its nanosecond.
         paths = [p for p, _q in lab.loki.reads]
         assert paths == ["loki/api/v1/labels", "loki/api/v1/query_range"], paths
@@ -338,7 +340,7 @@ class TestHistoryDrawsTheRecord:
     def test_the_record_is_a_timeline_row_and_never_the_value(self, lab, audit):
         from modules import history_sources as HS
         assert _reveal(lab).status_code == 200
-        got = HS.log_reveals(self._ctx())
+        got = HS.reveals(self._ctx())
         assert got["errors"] == [] and len(got["events"]) == 1
         e = got["events"][0]
         assert e["kind"] == "reveal" and e["devices"] == ["s4"]
@@ -346,10 +348,10 @@ class TestHistoryDrawsTheRecord:
         assert e["who"] == "test-person@example.invalid" and e["detail"] == REASON
         assert 'job="network_syslog"' in dict(e["record"])["Line"]
         assert PLANTED not in json.dumps(got)
-        assert HS.log_reveals(self._ctx(device="r1"))["events"] == []
-        assert HS.log_reveals(dict(self._ctx(), ref=SimpleNamespace(name="Other")))["events"] \
+        assert HS.reveals(self._ctx(device="r1"))["events"] == []
+        assert HS.reveals(dict(self._ctx(), ref=SimpleNamespace(name="Other")))["events"] \
             == [], "another network's History drew this network's reveal"
-        assert HS.log_reveals(self._ctx(members={"r1"}))["events"][0]["devices"] == [], \
+        assert HS.reveals(self._ctx(members={"r1"}))["events"][0]["devices"] == [], \
             "a device outside the inventory is the network's own record, never hidden"
         assert "reveal" in HS.KIND_FILTERS["reveals"]
 
@@ -364,6 +366,6 @@ class TestHistoryDrawsTheRecord:
     def test_an_unreadable_record_is_said(self, audit):
         from modules import history_sources as HS
         audit.mkdir()                                          # a folder where the file is
-        got = HS.log_reveals(self._ctx())
+        got = HS.reveals(self._ctx())
         assert got["events"] == [] and got["errors"] and \
             got["errors"][0].startswith("the reveal record could not be read:")

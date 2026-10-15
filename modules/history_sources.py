@@ -885,36 +885,96 @@ def saved_views(ctx):
                  for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
 
 
-def log_reveals(ctx):
-    """Each log line revealed (C818; board F3's Reveal…): who, when, which line by its Loki
-    stream and time, and the reason, from the reveal record (`modules/log_reveal.py`); never
-    the line or its value, which the record does not hold. A line from a device outside the
-    list's inventory is the network's own record."""
-    from modules import log_reveal, reveal_audit
+#: The reveal record's kinds this view leaves to another, each with why. Every other kind, a
+#: new one included, is drawn by `reveals` (who, when, which object; never a value).
+REVEALS_ELSEWHERE = {
+    "breakglass_record": "the break-glass export: History's `breakglass` source draws it from "
+                         "the export's own log, with its download verdicts",
+    "bootstrap_config_refused": "a TFTP request the ZTP responder refused: nothing was served, "
+                                "so nothing was revealed (a pending device's page reads it, "
+                                "modules/nsot/ztp.py)",
+}
+
+
+def _reveal_network(r) -> str:
+    """The network a reveal row names: its `list`, or a bootstrap's ``list=<name>`` detail;
+    "" for a row recorded before reveals named one."""
+    name = str(r.get("list") or "").strip()
+    if not name:
+        m = re.match(r"list=(.+)$", str(r.get("detail") or ""))
+        name = m.group(1).strip() if m else ""
+    return name
+
+
+def _reveal_drawn(r) -> tuple:
+    """``(what, record)`` for one reveal row: the object revealed, from the fields its kind
+    records, each masked again on the way out. Only named fields are read, so a field holding
+    a value is never drawn whatever it is called."""
+    from modules.redact import redact_text
+
+    def m(value):
+        return redact_text(str(value)) if value not in (None, "") else ""
+
+    what, dev, detail = str(r.get("what") or ""), m(r.get("target")), m(r.get("detail"))
+    if what == "log_line":
+        stream = ", ".join(f'{k}="{m(v)}"' for k, v in sorted((r.get("stream") or {}).items()))
+        at = m(r.get("line_at"))
+        return (f"Log line revealed: {dev or 'a line'} at {at[:19].replace('T', ' ')} UTC",
+                [("Line", f"{{{stream}}} at {at}"),
+                 ("What was shown", f"the masked line, sha256 {m(r.get('shown_sha256'))}")])
+    if what == "golden_config":
+        return (f"Golden config revealed: {dev} at {detail[:10]}",
+                [("Device", dev), ("Version", detail)])
+    if what == "golden_diff":
+        return f"Golden diff revealed: {dev}, {detail}", [("Device", dev), ("Versions", detail)]
+    if what == "bootstrap_config" and str(r.get("actor") or "").startswith("ztp:"):
+        return (f"Bootstrap config served to {dev} over TFTP",
+                [("Device", dev), ("Asked from", m(r.get("peer"))), ("File", m(r.get("file"))),
+                 ("What was served", f"sha256 {m(r.get('sha256'))}" if r.get("sha256")
+                  else "")])
+    if what == "bootstrap_config":
+        return f"Bootstrap config revealed: {dev}", [("Device", dev)]
+    return (f"{what.replace('_', ' ').capitalize() or 'Something'} revealed: {dev or '?'}",
+            [("Kind", m(what)), ("Object", dev)])
+
+
+def reveals(ctx):
+    """Every reveal the reveal record holds (C837; C818's log lines first): a golden version,
+    a golden diff, a bootstrap config (to a person, or served to a device over TFTP), a log
+    line, and any kind added later; who, when, which object and the reason where the kind
+    records one, never the value, which the record does not hold (and a field that did is not
+    read). The break-glass export is its own source (`REVEALS_ELSEWHERE`). A reveal about a
+    device outside the list's inventory is the network's own record; one recorded before
+    reveals named their network is drawn by its device's name, and says so."""
+    from modules import reveal_audit
+    from modules.redact import redact_text
     got = reveal_audit.read()
     if got["state"] == "unreadable":
         return _out(errors=[f"the reveal record could not be read: {got['error']}"])
     events, more = [], False
     for r in got["rows"]:
-        if r.get("what") != log_reveal.WHAT or r.get("list") != ctx["ref"].name:
+        if r.get("what") in REVEALS_ELSEWHERE:
             continue
-        dev = r.get("target") or ""
+        dev = str(r.get("target") or "")
+        net = _reveal_network(r)
+        if net and net != ctx["ref"].name:
+            continue
+        if not net and not (dev and _mine(ctx, dev)):
+            continue
         if (ctx["device"] and dev != ctx["device"]) or not _recent(ctx, r.get("at")):
             continue
         if len(events) >= ctx["limit"]:
             more = True
             break
-        stream = ", ".join(f'{k}="{v}"' for k, v in sorted((r.get("stream") or {}).items()))
+        what, record = _reveal_drawn(r)
+        reason = redact_text(str(r.get("reason") or ""))
         devices = [dev] if dev and (ctx["members"] is None or dev in ctx["members"]) else []
         events.append(_event(
-            r.get("at"), "reveal", f"Log line revealed: {dev or 'a line'} at "
-                                   f"{(r.get('line_at') or '')[:19].replace('T', ' ')} UTC",
-            devices, who=r.get("actor", ""), detail=r.get("reason", ""),
-            record=[("Line", f"{{{stream}}} at {r.get('line_at', '')}"),
-                    ("Reason", r.get("reason")),
-                    ("What was shown", f"the masked line, sha256 {r.get('shown_sha256', '')}"),
-                    ("Verified", r.get("kind"))]))
-    return _out(events, cut=[f"the log line reveals' newest {ctx['limit']}"] if more else [])
+            r.get("at"), "reveal", what, devices, who=r.get("actor", ""), detail=reason,
+            record=record + [("Reason", reason), ("Verified", r.get("kind")),
+                             ("Network", "" if net else "not recorded (drawn by its device's "
+                                                        "name)")]))
+    return _out(events, cut=[f"the reveals' newest {ctx['limit']}"] if more else [])
 
 
 def show_commands(ctx):
@@ -1017,7 +1077,7 @@ SOURCES = {
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
-    "saved_views": saved_views, "log_reveals": log_reveals,
+    "saved_views": saved_views, "reveals": reveals,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1041,7 +1101,7 @@ KIND_GROUPS = (
                                ("expected", "Expected islands", ("expected",)),
                                ("layout", "Topology layouts", ("layout",)),
                                ("views", "Saved views", ("view",)),
-                               ("reveals", "Log lines revealed", ("reveal",)),
+                               ("reveals", "Reveals", ("reveal",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),

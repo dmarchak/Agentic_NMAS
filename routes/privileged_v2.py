@@ -16,6 +16,7 @@ import logging
 import time
 
 from flask import Blueprint, redirect, render_template, request, url_for
+from modules.outbound import no_store
 
 from routes.device_v2 import _device_or_404, _strict, carry_list
 
@@ -85,6 +86,7 @@ def privileged(name):
 
 
 @bp.route("/device/<name>/privileged/preview", methods=["POST"])
+@no_store
 def preview(name):
     """Read the before-state through the reads engine, as the verified person (a recorded run),
     or draw the plan's refusal with nothing read."""

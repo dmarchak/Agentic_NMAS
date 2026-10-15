@@ -176,3 +176,76 @@ class TestTheRoutes:
         got = HS.saved_views(ctx)
         words = [e.get("what") or e.get("summary") or json.dumps(e) for e in got["events"]]
         assert len(words) == 2 and "removed" in json.dumps(got["events"][0])
+
+
+@pytest.fixture
+def two(tmp_path, monkeypatch):
+    """Two networks, Lab (the ACTIVE one) and Other, each its own folder."""
+    from types import SimpleNamespace
+    for n in ("Lab", "Other"):
+        (tmp_path / n).mkdir()
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name in ("Lab", "Other"))
+    monkeypatch.setattr("modules.nsot.listref.resolve",
+                        lambda name: SimpleNamespace(name=name, data_dir=str(tmp_path / name)))
+    monkeypatch.setattr("modules.nsot.listref.active",
+                        lambda: SimpleNamespace(name="Lab", data_dir=str(tmp_path / "Lab")))
+    import app as A
+    return {"client": A.app.test_client(), "dir": tmp_path}
+
+
+def _titles(name):
+    return [v["title"] for v in SV.read(name)["views"]]
+
+
+class TestOffTheActiveNetwork:
+    """C838: the saved views' writes act on the network their FORM names (the page's), never
+    the active one; a form and an address naming two networks is refused naming both."""
+
+    def test_saved_pinned_and_removed_on_the_network_the_form_names(self, two):
+        c = two["client"]
+        form = c.get("/v2/history/query/views/save",
+                     query_string={"address": "/v2/history/query/metric/cpu", "list": "Other"})
+        assert '<input type="hidden" name="list" value="Other">' in form.get_data(as_text=True)
+        r = c.post("/v2/history/query/views", data={"list": "Other", "title": "Core CPU",
+                                                    "address": "/v2/history/query/metric/cpu"})
+        assert r.status_code == 200, r.get_data(as_text=True)[:300]
+        assert _titles("Other") == ["Core CPU"] and _titles("Lab") == [], \
+            "the save landed on the active network, not the one the form named"
+        v = SV.read("Other")["views"][0]
+        r = c.post(f"/v2/history/query/views/{v['id']}/pin", data={"list": "Other",
+                                                                   "pinned": "1"})
+        assert r.status_code == 200, r.get_data(as_text=True)[:300]
+        assert SV.read("Other")["views"][0]["pinned"] is True
+        assert 'action="/v2/history/query/views/' in r.get_data(as_text=True)
+        assert '<input type="hidden" name="list" value="Other">' in r.get_data(as_text=True), \
+            "the list redrawn after the pin is not the network acted on"
+        r = c.post(f"/v2/history/query/views/{v['id']}/remove", data={"list": "Other"})
+        assert r.status_code == 200, r.get_data(as_text=True)[:300]
+        assert _titles("Other") == []
+
+    @pytest.mark.parametrize("path", ["/v2/history/query/views?list=Lab",
+                                      "/v2/history/query/views/{id}/pin?list=Lab",
+                                      "/v2/history/query/views/{id}/remove?list=Lab"])
+    def test_a_form_and_an_address_naming_two_networks_are_refused_naming_both(self, two,
+                                                                               path):
+        v = SV.save("Other", "Core CPU", "/v2/history/query/metric/cpu", ME)["view"]
+        before = {n: (two["dir"] / n / SV.STORE).read_bytes()
+                  if (two["dir"] / n / SV.STORE).exists() else b"" for n in ("Lab", "Other")}
+        r = two["client"].post(path.format(id=v["id"]), data={
+            "list": "Other", "pinned": "1", "title": "x",
+            "address": "/v2/history/query/metric/cpu"})
+        page = r.get_data(as_text=True)
+        assert r.status_code == 409, (r.status_code, page[:300])
+        assert "the form names the network &#39;Other&#39; and the page&#39;s address names " \
+               "&#39;Lab&#39;" in page, page[:600]
+        assert "X-NMAS-Invalidates" not in r.headers
+        after = {n: (two["dir"] / n / SV.STORE).read_bytes()
+                 if (two["dir"] / n / SV.STORE).exists() else b"" for n in ("Lab", "Other")}
+        assert after == before, "a refused write changed a network's views"
+
+    def test_a_network_that_does_not_exist_is_refused_naming_it(self, two):
+        r = two["client"].post("/v2/history/query/views", data={
+            "list": "Nowhere", "title": "x", "address": "/v2/history/query/metric/cpu"})
+        assert r.status_code == 409
+        assert "there is no network named &#39;Nowhere&#39;" in r.get_data(as_text=True)
+        assert not (two["dir"] / "Nowhere").exists()

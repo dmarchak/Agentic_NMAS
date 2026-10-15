@@ -453,8 +453,10 @@ WRITTEN_ELSEWHERE = {
                  "with the AI family (D15)",
     "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
                      "reveal routes that read devices, Ask the device and Show commands",
-    "log_reveals": "a log line's reveal (modules/log_reveal.py), written by History › Query's "
-                   "Reveal…, a reveal route (v2.history_ask_logs_reveal)",
+    "reveals": "the reveal record (modules/reveal_audit.py), written by the reveal routes: a "
+               "golden version (device_v2.golden_reveal, golden.version), a golden diff "
+               "(golden.diff), a bootstrap config (onboard_v2.bootstrap, onboard.bootstrap, "
+               "the ZTP responder) and a log line (v2.history_ask_logs_reveal)",
 }
 
 #: The history gaps, counted: only down (12 -> 9, 2026-10-12: the three credential profile JSON

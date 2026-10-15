@@ -41,8 +41,11 @@ def _commit(repo, message, *paths, allow_empty=False):
 
 
 @pytest.fixture
-def planted(lab):  # noqa: F811
-    from modules import acknowledgements, config, restarts
+def planted(lab, tmp_path, monkeypatch):  # noqa: F811
+    from modules import acknowledgements, config, restarts, reveal_audit
+    # The reveal record is this lab's own (C837: History draws every reveal, and the process's
+    # record holds other tests' reveals of a list also named Lab).
+    monkeypatch.setattr(reveal_audit, "_path", lambda: str(tmp_path / "reveal_audit.jsonl"))
     from modules.nsot import credential_rotation as cr
     from modules.nsot import listref, receipts
     from modules.nsot import repo as R

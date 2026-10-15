@@ -19,7 +19,7 @@ Reveal… in History › Query's Lines view; revealing it is an operation of its
    that cannot be recorded shows nothing.
 6. ``show``: the line, unmasked, in place under its row, to that person only, in the answer
    to their own request; it is kept nowhere. History's timeline draws the record
-   (`history_sources.log_reveals`).
+   (`history_sources.reveals`).
 
 A refusal names the comparison it made and both operands.
 """

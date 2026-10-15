@@ -51,8 +51,8 @@ Filters:
   - **What ran on a device:** deploys and restores, rotations, persists, onboarding and adopt,
     runs cut off midway, and authorised retries.
   - **What happened to a device:** restarts and planned windows.
-  - **Decisions and records:** approvals, acknowledgements, break-glass exports, baseline
-    decisions and app updates.
+  - **Decisions and records:** approvals, acknowledgements, break-glass exports, reveals,
+    baseline decisions and app updates.
 - **Since.**
 
 **Every kind** and **Commits only** are one click away. Each filter is part of the page's
@@ -75,7 +75,22 @@ A golden row (on a device's History tab, or on History when the commit is one de
 **Reveal <device>'s version…**: the device's golden at that commit, unmasked, drawn under the
 row. **Show the change** is masked, like every screen; a reveal is the one place secrets are
 drawn in the clear. It needs a verified person, and it is recorded in the reveal record (who,
-when, which device and which commit) before the text is drawn; a refusal draws nothing.
+when, which device and which commit) before the text is drawn; a refusal draws nothing, and so
+does a reveal the record could not take: nothing is ever shown unrecorded.
+
+## Reveals on the Timeline {#reveals}
+
+Every reveal the reveal record holds is one row on the Timeline under **Reveals** (in Decisions
+and records), and on the device's History tab: a golden version, a golden diff, a pending
+device's bootstrap config (to a person, or served to the device over TFTP), and a log line.
+Each says who, when and which object (the device and the commit, the line's stream and time),
+and the reason where the reveal asked for one (a log line's); how the person was identified is
+under the row. **The value is never drawn**: the record holds what was looked at, never what was
+seen. A reveal recorded before reveals named their network is drawn by its device's name, and
+says so. The break-glass export is its own row, under Break-glass exports. The Timeline redraws
+when a log line or a bootstrap config is revealed; a golden version, revealed in place inside
+the Timeline, is listed the next time it is drawn, so the redraw does not take away the version
+you are reading.
 
 ## Query {#query}
 
@@ -194,7 +209,7 @@ Code mode with the count query, drawn there on the same chart.
 **Reveal…** on a line asks why you need to see it (at least three words), then reads that one
 line from Loki again and draws it unmasked under its masked form, to you only: a verified
 person, never a service. Who, when, which line (its stream and time) and the reason are
-recorded first and listed on the Timeline under **Log lines revealed**; the value never is.
+recorded first and listed on the Timeline under **Reveals**; the value never is.
 How it works: [Reveal a log line](reveal-log-line).
 
 ## Ask your own: the metrics builder {#ask-metrics}

@@ -299,6 +299,29 @@ class TestTheConfirm:
         r, frag = _get(ready, "/v2/monitoring/apply/job/nope")
         assert r.status_code == 404 and "no record of that batch" in frag
 
+    @pytest.mark.parametrize("record", [
+        # A job record with no `list` field (the suite's KeyError: 'list', C839), as a stand-in
+        # for `state()` would hand it; and the real `state()` of a job kept without one.
+        "state_without_list", "job_without_list"])
+    def test_a_job_record_naming_no_network_is_refused_naming_that(self, ready, monkeypatch,
+                                                                   record):
+        from modules import deploy_job
+        from modules.nsot import capture_job
+        if record == "state_without_list":
+            monkeypatch.setattr(deploy_job, "state", lambda job: {
+                "job": job, "state": "done", "order": ["r6"], "steps": [], "elapsed_s": 1,
+                "payload": None, "error": ""})
+        else:
+            monkeypatch.setattr(capture_job, "get", lambda job: {
+                "state": "done", "elapsed_s": 1, "payload": None, "error": ""})
+        try:
+            r, frag = _get(ready, "/v2/monitoring/apply/job/j1")
+        except KeyError as exc:                       # the app propagates under test
+            pytest.fail(f"a record naming no network raised KeyError {exc}")
+        assert r.status_code == 409, (r.status_code, frag[:300])
+        assert frag.startswith("Couldn&#x27;t load: the batch j1 has a record that names no "
+                               "network"), frag[:300]
+
     def test_the_confirm_is_gated_and_invalidates_through_its_announcer(self):
         from modules import invalidation, route_gates
         assert route_gates.GATES["v2.profile_apply_confirm"].kind == "confirm"

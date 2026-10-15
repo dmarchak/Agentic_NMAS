@@ -46,6 +46,33 @@ def named_list(req) -> str:
     return ""
 
 
+#: Where a WRITE's form carries the network it acts on.
+FORM_KEYS = ("list",)
+
+
+def submitted_list(req) -> tuple:
+    """``(name, refusal)``: the network a write acts on (C838). The one its SUBMITTED FORM
+    names, which is the network the page drew; else the page's address's; else the active
+    one. A form and an address naming two different networks is refused, naming both, and so
+    is a name no network has: a write never lands on a network nobody chose."""
+    form = ""
+    for key in FORM_KEYS:
+        form = (req.form.get(key) or "").strip()
+        if form:
+            break
+    url = named_list(req)
+    if form and url and form != url:
+        return "", (f"the form names the network {form!r} and the page's address names "
+                    f"{url!r}: which one is meant cannot be told, so nothing was changed")
+    name = form or url
+    from modules.nsot import listref
+    if not name:
+        return listref.active().name, ""
+    if not listref.exists(name):
+        return "", f"there is no network named {name[:60]!r}: nothing was changed"
+    return name, ""
+
+
 def install(app) -> None:
     @app.before_request
     def _refuse_a_read_of_an_unknown_list():

@@ -16,6 +16,7 @@ import logging
 import re
 
 from flask import Blueprint, render_template, request
+from modules.outbound import no_store
 
 from routes.device_v2 import _strict
 
@@ -255,6 +256,7 @@ def abandon(name):
 
 
 @bp.route("/<name>/bootstrap", methods=["POST"])
+@no_store
 def bootstrap(name):
     """The bootstrap config, revealed in place to a person and recorded."""
     from routes.onboard import bootstrap_reveal

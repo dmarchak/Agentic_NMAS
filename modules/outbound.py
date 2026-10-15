@@ -23,10 +23,13 @@ def wants_reveal(request) -> bool:
     return (request.args.get("reveal", "") or "").lower() in ("1", "true", "yes")
 
 
-def config_text(request, text: str, *, what: str, target: str, detail: str = ""):
+def config_text(request, text: str, *, what: str, target: str, detail: str = "",
+                list_name: str = ""):
     """``(payload, status)``: ``{"ok", "masked", "text"}``, masked unless the
     request asks for ``?reveal=1`` and a person is behind it, in which case
-    the reveal is recorded in `data/reveal_audit.jsonl` first."""
+    the reveal is recorded in `data/reveal_audit.jsonl` first, with the
+    network (*list_name*) History files it under; a reveal that could not be
+    recorded answers 503 with the masked text (C841)."""
     from modules import identity as ident_mod
     from modules import redact, reveal_audit
 
@@ -39,12 +42,44 @@ def config_text(request, text: str, *, what: str, target: str, detail: str = "")
                     refusal.get("outcome"))
         return {**refusal, "masked": True, "text": redact.redact_text(text)}, 403
 
-    reveal_audit.record(actor=ident.actor, kind=ident.kind, what=what,
-                        target=target, detail=detail, peer=ident.peer,
-                        extra={"audit_name": ident_mod.service_label(ident.service_id)
-                               if ident.kind == "service" else ident.actor})
+    extra = {"audit_name": ident_mod.service_label(ident.service_id)
+             if ident.kind == "service" else ident.actor}
+    if list_name:
+        extra["list"] = list_name
+    entry = reveal_audit.record(actor=ident.actor, kind=ident.kind, what=what,
+                                target=target, detail=detail, peer=ident.peer, extra=extra)
+    if not entry.get("recorded"):
+        # C841: fail closed. The record is written FIRST and read: a reveal it could not
+        # record shows nothing unmasked (the masked text, as every refusal answers).
+        return {"ok": False, "masked": True, "text": redact.redact_text(text),
+                "error": (f"the reveal of {what} for {target} could not be recorded, so it is "
+                          "not shown unmasked: a configuration is never revealed "
+                          "unrecorded")}, 503
     return {"ok": True, "masked": False, "text": text,
             "revealed_by": ident.actor}, 200
+
+
+#: What every response carrying an unmasked secret, a credential or a device's configuration
+#: says to a browser and to every cache on the way (C840): keep no copy, and change nothing.
+NO_STORE = "no-store, no-transform"
+
+
+def no_store(view):
+    """A view whose every response says ``Cache-Control: no-store`` (C840): the reveals and
+    every route that returns a secret, its refusals included. app.py's header hook sets a
+    default only where a route set none, so this stands. ``view.no_store`` marks it, which
+    tests/test_secret_responses_no_store.py reads for every reveal-gated endpoint."""
+    import functools
+
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        from flask import make_response
+        response = make_response(view(*args, **kwargs))
+        response.headers["Cache-Control"] = NO_STORE
+        return response
+
+    wrapped.no_store = True
+    return wrapped
 
 
 #: Keys whose string value IS a secret, in a structured payload. Exact names.

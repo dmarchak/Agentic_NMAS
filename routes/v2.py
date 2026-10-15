@@ -15,6 +15,7 @@ import re
 import subprocess
 
 from flask import Blueprint, render_template, request
+from modules.outbound import no_store
 from html import escape
 
 from routes.device_v2 import _strict, _who
@@ -537,6 +538,7 @@ def history_ask_logs_region():
 
 
 @bp.route("/history/query/ask/logs/reveal", methods=["POST"])
+@no_store
 def history_ask_logs_reveal():
     """Reveal one log line (C818; board F3's Reveal…): to a verified person with a stated
     reason, the line read from Loki again by its stream and time, recorded before it is drawn
@@ -598,12 +600,14 @@ def history_ask_metrics_region():
 # what it did, in place, and announces `saved_views`, on which the list redraws.
 # ---------------------------------------------------------------------------
 
-def _views_region(status: int = 200, op: dict = None):
+def _views_region(status: int = 200, op: dict = None, name: str = ""):
     from modules import saved_views
     from modules.nsot import listref
     from routes.list_param import named_list
 
-    name = named_list(request) or listref.active().name
+    name = name or named_list(request)
+    if not name or not listref.exists(name):
+        name = listref.active().name          # a refused write's network may be none
     op = op or {}
     html = render_template("v2/_history_views.html", views=saved_views.read(name),
                            list_name=name, op=op)
@@ -630,55 +634,68 @@ def history_view_remove_form():
 
 @bp.route("/history/query/views/save", methods=["GET"])
 def history_view_save_form():
-    """Save this view…: a title asked, in place; nothing written."""
-    return _save_slot(state="form", address=(request.args.get("address") or "").strip())
+    """Save this view…: a title asked, in place; nothing written. The form carries the page's
+    network, so the save lands on it (C838)."""
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    return _save_slot(state="form", address=(request.args.get("address") or "").strip(),
+                      list_name=named_list(request) or listref.active().name)
 
 
 @bp.route("/history/query/views", methods=["POST"])
 def history_view_save():
-    """Save the view the page shows, with a title, for the network, as the verified person;
-    recorded."""
+    """Save the view the page shows, with a title, for the network its form names (C838), as
+    the verified person; recorded."""
     from modules import identity, saved_views
-    from modules.nsot import listref
-    from routes.list_param import named_list
+    from routes.list_param import submitted_list
 
     where = (request.form.get("address") or "").strip()
-    got = saved_views.save(named_list(request) or listref.active().name,
-                           request.form.get("title", ""), where, identity.request_actor())
+    name, refused = submitted_list(request)
+    if refused:
+        return _save_slot(409, state="form", address=where, refused=refused,
+                          title=request.form.get("title", ""),
+                          list_name=(request.form.get("list") or "").strip())
+    got = saved_views.save(name, request.form.get("title", ""), where,
+                           identity.request_actor())
     if not got["ok"]:
         return _save_slot(400, state="form", address=where, refused=got["error"],
-                          title=request.form.get("title", ""))
-    return _save_slot(state="saved", view=got["view"], record_error=got["record_error"])
+                          title=request.form.get("title", ""), list_name=name)
+    return _save_slot(state="saved", view=got["view"], record_error=got["record_error"],
+                      list_name=name)
 
 
 @bp.route("/history/query/views/<view_id>/pin", methods=["POST"])
 def history_view_pin(view_id):
-    """Pin or unpin a view, for everyone, as the verified person; recorded."""
+    """Pin or unpin a view, for everyone, on the network its form names (C838), as the
+    verified person; recorded."""
     from modules import identity, saved_views
-    from modules.nsot import listref
-    from routes.list_param import named_list
+    from routes.list_param import submitted_list
 
+    name, refused = submitted_list(request)
+    if refused:
+        return _views_region(409, op={"state": "refused", "refused": refused})
     pinned = request.form.get("pinned") == "1"
-    got = saved_views.pin(named_list(request) or listref.active().name, view_id, pinned,
-                          identity.request_actor())
+    got = saved_views.pin(name, view_id, pinned, identity.request_actor())
     if not got["ok"]:
-        return _views_region(409, op={"state": "refused", "refused": got["error"]})
-    return _views_region(op=dict(got, state=got["action"]))
+        return _views_region(409, op={"state": "refused", "refused": got["error"]}, name=name)
+    return _views_region(op=dict(got, state=got["action"]), name=name)
 
 
 @bp.route("/history/query/views/<view_id>/remove", methods=["POST"])
 def history_view_remove(view_id):
-    """Remove a view, as the verified person: only the saved link goes, the history it asks is
-    untouched; recorded."""
+    """Remove a view, on the network its form names (C838), as the verified person: only the
+    saved link goes, the history it asks is untouched; recorded."""
     from modules import identity, saved_views
-    from modules.nsot import listref
-    from routes.list_param import named_list
+    from routes.list_param import submitted_list
 
-    got = saved_views.remove(named_list(request) or listref.active().name, view_id,
-                             identity.request_actor())
+    name, refused = submitted_list(request)
+    if refused:
+        return _views_region(409, op={"state": "refused", "refused": refused})
+    got = saved_views.remove(name, view_id, identity.request_actor())
     if not got["ok"]:
-        return _views_region(409, op={"state": "refused", "refused": got["error"]})
-    return _views_region(op=dict(got, state="removed"))
+        return _views_region(409, op={"state": "refused", "refused": got["error"]}, name=name)
+    return _views_region(op=dict(got, state="removed"), name=name)
 
 
 def syslog_ctx(request) -> dict:
@@ -1509,6 +1526,13 @@ def profile_apply_job(job):
     the receipts the apply wrote. Redrawn when the job announces."""
     from modules import deploy_job
     got = deploy_job.state(job)
+    if got and not (got.get("list") or "").strip():
+        # C839: a record naming no network is refused, naming that, never a 500: where its
+        # devices are held, and so where it is, is read in a network.
+        return _strict(str(escape(
+            f"Couldn't load: the batch {job} has a record that names no network (its `list` "
+            "is missing or empty), so where it is cannot be read. What each device received "
+            "is in its receipts and in the golden history.")), 409)
     from modules import arrival_watch
     run = deploy_job.run_card(got, got["list"], q=request.args.get("q", "")) if got else None
     return _strict(render_template("v2/_apply_job.html", j=got, job=job, run=run,

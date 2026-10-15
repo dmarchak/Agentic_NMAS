@@ -120,7 +120,7 @@ class TestThePassphraseIsCheckedBeforeAnythingIsBuilt:
 class TestTheExport:
     def test_the_file_opens_verifies_and_is_recorded(self, lab):
         r = _export(lab)
-        assert r.headers["Cache-Control"] == "no-store"
+        assert "no-store" in r.headers["Cache-Control"].split(", ")
         body = r.get_json()
         blob = base64.b64decode(body["file"])
         assert hashlib.sha256(blob).hexdigest() == body["sha256"]

@@ -16,6 +16,7 @@ moves for a DHCP or ZTP device).
 import logging
 
 from flask import Blueprint, jsonify, render_template, request
+from modules.outbound import no_store
 
 from modules import csp, device_page
 
@@ -822,6 +823,7 @@ def rotate_job_card(name, job):
 # ---------------------------------------------------------------------------
 
 @bp.route("/device/<name>/golden/reveal", methods=["POST"])
+@no_store
 def golden_reveal(name):
     """Reveal *name*'s golden at the commit the row names (``ref``), in place, to a verified
     person; the reveal is recorded in the reveal record before the text is drawn."""
@@ -847,8 +849,14 @@ def golden_reveal(name):
     if refused is not None:
         return _strict(render_template("v2/_golden_reveal.html", c=dict(
             c, refused=refused.get("error", "a verified person reveals"))), 403)
-    reveal_audit.record(actor=ident.actor, kind=ident.kind, what="golden_config", target=host,
-                        detail=sha, peer=ident.peer)
+    entry = reveal_audit.record(actor=ident.actor, kind=ident.kind, what="golden_config",
+                                target=host, detail=sha, peer=ident.peer,
+                                extra={"list": ref.name})
+    if not entry.get("recorded"):
+        # C841: fail closed, as the log line's reveal does: nothing shown unrecorded.
+        return _strict(render_template("v2/_golden_reveal.html", c=dict(
+            c, refused="the reveal could not be recorded, so nothing is shown: a golden "
+                       "version is never revealed unrecorded")), 503)
     return _strict(render_template("v2/_golden_reveal.html", c=dict(
         c, text=text, by=ident.actor)))
 

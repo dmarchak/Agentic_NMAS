@@ -199,6 +199,12 @@ def _cache_policy(resp):
                 resp.headers["Cache-Control"] = "no-cache"
             return resp
 
+        if resp.mimetype == "text/html" and "Cache-Control" in resp.headers:
+            # A DEFAULT, never an overwrite (C840): a route that set its own
+            # Cache-Control has thought harder than this rule. The reveals
+            # say `no-store` (modules/outbound.py, `no_store`); overwriting
+            # it made every revealed secret a page a browser may keep.
+            return resp
         if resp.mimetype == "text/html":
             # `no-transform` (C389): an intermediary must not change the
             # body. A proxy injected scripts into the pages (an email

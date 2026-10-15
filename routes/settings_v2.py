@@ -13,6 +13,7 @@ import json
 import logging
 
 from flask import Blueprint, render_template, request
+from modules.outbound import no_store
 
 from routes.device_v2 import _strict, _who
 
@@ -430,6 +431,7 @@ def platforms_preview():
 
 
 @bp.route("/installation/platforms/test", methods=["POST"])
+@no_store
 def platforms_test():
     """The Test: one read-only session to one affected device with the new driver, as a reads
     job; answered in place when the job announces."""

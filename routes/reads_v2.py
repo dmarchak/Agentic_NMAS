@@ -8,6 +8,7 @@ capped, recorded. A run is a job; the card listens for `reads`, never a timer.
 import logging
 
 from flask import Blueprint, redirect, render_template, request, url_for
+from modules.outbound import no_store
 
 from routes.device_v2 import _device_or_404, _strict
 
@@ -43,6 +44,7 @@ def ask_check(name):
 
 
 @bp.route("/device/<name>/ask", methods=["POST"])
+@no_store
 def ask_run(name):
     """Start the read as a job, as the verified person, or refuse it with nothing sent (the
     refusal recorded). Answers the card (htmx), or the device page at its card."""
@@ -150,6 +152,7 @@ def show_commands_reason():
 
 
 @bp.route("/show-commands/run", methods=["POST"])
+@no_store
 def show_commands_run():
     """Start the run as a job, as the verified person, on exactly the devices the card showed:
     refused now (recorded, nothing asked) or the run's page."""
@@ -205,6 +208,7 @@ def show_commands_result_part(run_id):
 
 
 @bp.route("/show-commands/logging-path", methods=["POST"])
+@no_store
 def logging_path_run():
     """Test the logging path (board F) as the verified person: on exactly the devices the card
     showed (its fingerprint, as Run), or again on a past test's devices (`again`, with `host`

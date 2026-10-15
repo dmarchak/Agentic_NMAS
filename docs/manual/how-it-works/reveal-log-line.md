@@ -44,7 +44,7 @@ value has **Reveal…** at the end of its row. It opens a box asking why you nee
 
 ## Afterwards {#afterwards}
 
-The History **Timeline** lists each reveal under **Log lines revealed** (in Decisions and
-records): who, when, the device, the line's stream and time and the reason; a device's History
+The History **Timeline** lists each reveal under **Reveals** (in Decisions and records,
+beside every other kind of reveal): who, when, the device, the line's stream and time and the reason; a device's History
 tab lists the reveals of its lines. The Timeline redraws when a reveal is recorded. To see the
 same line again, reveal it again: each reveal is its own record.

@@ -11,6 +11,7 @@ reason, recorded (modules/topology_expected.py).
 import logging
 
 from flask import Blueprint, render_template, request
+from modules.outbound import no_store
 
 from routes.device_v2 import _strict
 
@@ -121,6 +122,7 @@ def positions_save():
 
 
 @bp.route("/path", methods=["POST"])
+@no_store
 def path_run():
     """Path… (board D): trace the path packets take from a device to an address, as the
     verified person, as a job reading each hop's forwarding table through the reads engine

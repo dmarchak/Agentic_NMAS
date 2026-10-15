@@ -6,6 +6,7 @@ import os
 from flask import Blueprint, jsonify, request
 
 from modules.identity import request_actor
+from modules.outbound import no_store
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +30,8 @@ def _serve_config(text: str, *, what: str, target: str, detail: str = ""):
     download and these routes are one pattern rather than two."""
     from modules import outbound
 
-    return outbound.config_text(request, text, what=what, target=target, detail=detail)
+    return outbound.config_text(request, text, what=what, target=target, detail=detail,
+                                list_name=_active_list())
 
 
 @bp.route("/history/<path:hostname>", methods=["GET"])
@@ -51,6 +53,7 @@ def history(hostname):
 
 
 @bp.route("/version/<path:hostname>", methods=["GET"])
+@no_store
 def version(hostname):
     """One device's golden config at a given ref."""
     from modules.nsot.repo import golden_at
@@ -68,6 +71,7 @@ def version(hostname):
 
 
 @bp.route("/diff/<path:hostname>", methods=["GET"])
+@no_store
 def diff(hostname):
     """Unified diff of one device's golden config between two refs."""
     import difflib

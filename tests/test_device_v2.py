@@ -639,9 +639,11 @@ class TestTheShippedScripts:
 
         keys = json.loads(_eval("nmas_v2.js", "NMAS_V2", "KEYS"))
         assert keys and set(keys) <= set(invalidation.VOCABULARY)
-        # A batch apply RUNNING (P.9 d2) listens for its job's announcements.
+        # A batch apply RUNNING (P.9 d2) listens for its job's announcements. `state()` always
+        # names the network (C839: this stand-in lacked it, and the route raised KeyError).
         monkeypatch.setattr(deploy_job, "state", lambda job: {
             "job": job, "state": "running", "order": ["r3"], "elapsed_s": 1, "payload": None,
+            "list": "Lab",
             "error": "", "steps": [{"device": "r3", "state": "running", "took_s": 1}]})
         # The device page's Capture card READING (7.3) listens for its preview job, the
         # Rotate card ROTATING for its job, and a card refused because its device is held for
