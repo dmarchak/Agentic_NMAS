@@ -1,9 +1,13 @@
 # End of session: where Phase 7 stands
 
-## OVERNIGHT, 2026-10-15 (04:00 to about 10:00 UTC; 22:00 to 04:00 UTC−6): C791, four of today's page families removed, board F3 built, nights #8 to #10, C807 to C823
+## OVERNIGHT, 2026-10-15 (04:00 to about 11:15 UTC; 22:00 to 05:15 UTC−6): C791, four of today's page families removed, boards F3 and E3 built, nights #8 to #11, C807 to C831
 
-**The host runs 1665062d, board F3** (deployed 09:41:04 UTC after the hold check, CI #817),
-walked against the live Loki by GETs: lines over 1 h, 50 lines in 30 ms; counts by device over
+**The host runs cd0d499a, board E3** (deployed 11:02:38 UTC after the hold check, CI #819),
+walked by GETs against the live Prometheus: `ifHCInOctets` over 24 h, 67 series in 188 ms (the
+counter rule applying `rate:5m` itself); an operation not of the form refused naming it; a
+metric Prometheus does not hold refused naming it; a hostile filter value one token ("No samples
+… as filtered"); F3 after the shared code moved, 52 lines in 29 ms. **Before it 1665062d, board
+F3** (09:41:04 UTC, CI #817), walked against the live Loki by GETs: lines over 1 h, 50 lines in 30 ms; counts by device over
 24 h, 10 series in 135 ms; s1's lines over 24 h, 16; a hostile device value (`x"}|="`) one token
 matching nothing ("No lines match"); severity 9 refused, naming it. **Before it** 18605333
 (08:11:16 UTC, CI #816), 2f173736 at 06:57:03, 1301d3f7 at 06:09:24, caa6021e at 05:29:55,
@@ -11,7 +15,7 @@ matching nothing ("No lines match"); severity 9 refused, naming it. **Before it*
 client; 18605333's walk: `/` without the Settings modal, Logs tab or status bar (`nmas_in_flight.js` kept), seven
 removed routes 404, `/identity/status`, `/settings/integrations/status` and
 `/operations/in_flight` 200, both v2 settings pages' cards carrying `loaded`, Diagnostics' app
-log, `/v2/help/about` 200. **CI on main is green** (#817 on 1665062d).
+log, `/v2/help/about` 200. **CI on main is green** (#819 on cd0d499a).
 
 **What was done**, each commit pushed and gated:
 - **C791:** the gate refuses `--push` while CI on main is red, naming the run (`nmas-ci-log
@@ -44,8 +48,15 @@ log, `/v2/help/about` 200. **CI on main is green** (#817 on 1665062d).
   logged; Reveal marked later (C818). Found building it: C817 to C822 (Code mode's own LogQL;
   no Reveal for a log line; Code mode refusing counts; `device_logs.JOB` naming the lab's job;
   an integration's 4xx without its reason; a patched `time.time` being the process's clock),
-  C823 fixed. E3 (metrics) is not built; what it can share is named in
-  docs/fidelity/history-ask-logs.md.
+  C823 fixed.
+- **Board E3 built** (cd0d499a): History › Query › Ask your own, metrics, at
+  `/v2/history/query/ask/metrics`; names, labels and values discovered from Prometheus, its
+  bounds read from its flags and config; F3's escaping and template parts moved to one home
+  (`modules/history_ask.py`, `_history_ask_parts.html`); fourteen deviations logged. Found
+  building it: three F3 defects fixed (C825 Save refused every logs view, C826 a 500 on a
+  network without Loki, C827 the brand word), C821 narrowed (a JSON refusal's words kept,
+  masked), C828 to C831 open.
+- **C824:** night #10's 38 new survivors (an untested migration) killed by tests (20b2a9c0).
 
 **The nights.** #8 (38677080468, d40f19f2): valid and green, "377 known, 0 new", its 27 sweep
 survivors added to the debt (404 entries in 15 functions). #9 (38690740461, 1301d3f7): failed,
@@ -54,8 +65,8 @@ red by the rule:** the clean run passed (C809's fix held), canary 11 of 11, "404
 new", all 38 in `device._migrate_to_folder_structure`, which no test reached (C824); each
 survivor ran the whole set, so the night reached 48 of 1,792 mutants. Fixed forward: nine tests
 kill 104 of its 106 mutants (the night's run step on the laptop, 307 s), the two left listed
-equivalent with the reason; the report then reads "404 known, 0 new". **Night #11 is dispatched
-on the fix once CI is green.** The speed change (child tests only where the import closure reaches) is
+equivalent with the reason; the report then reads "404 known, 0 new". **Night #11 (38720380201)
+was dispatched on the fix at 10:27 UTC, after CI #818 passed; it ends about 12:35.** The speed change (child tests only where the import closure reaches) is
 NOT built: measured, the closure holds every planned function (C796, a question below).
 
 **Waiting on the operator** (each on the NMAS host, as their own user, from
@@ -95,8 +106,13 @@ NOT built: measured, the closure holds every planned function (C796, a question 
    with E3's Code mode, C819); Reveal for a log line as its own operation, person-gated and
    recorded (recommended: yes, before cutover, C818). And C817: does Code mode stay free LogQL?
 
-**Next:** E3 (the metrics builder, approved with F3), and the remaining today's-pages removals
-(commits 4, 5, 7, 8, 9 wait on the walks and questions above).
+9. **E3's two:** History › Query's "Ask your own (PromQL or LogQL)…" card opens the metrics
+   builder rather than Code mode (recommended: yes, the boards make Builder the default); Pin
+   to a device's page for saved views (recommended: its own item, not E3's).
+
+**Next:** night #11 (38720380201, dispatched 10:27 UTC on 20b2a9c0) read by the loop's rules,
+and the remaining today's-pages removals (commits 4, 5, 7, 8, 9 wait on the walks and questions
+above).
 
 ## NIGHT, 2026-10-15 (to 04:00 UTC; 22:00 UTC−6): the run-id fix deployed, the loki-writer and trap-label steps, C781 to C784, today's Backups removed, night #6 valid
 
