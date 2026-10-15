@@ -87,7 +87,6 @@ VOCABULARY = {
                      "discovery reader, board L)",
     "saved_views": "History › Query's saved views: their titles, who saved them, pinned or not "
                    "(modules/saved_views.py, C667)",
-    "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
     "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
@@ -152,7 +151,6 @@ _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's
 DECLARED = {
     # Inventory and lists.
     "inventory.refresh": ("inventory",),
-    "inventory.set_source": ("inventory", "lists"),
     "create_device_list_route": ("lists",),
     "delete_device_list_route": ("lists", "active_list"),
     "select_device_list_route": ("active_list",),
@@ -179,7 +177,6 @@ DECLARED = {
     "golden.restore_apply": ("device_state", "intent", "baselines", "drift",
                              "approvals", "rolled_back") + _COMMIT,
     "remote.acknowledge": ("remote",),
-    "remote.adopt": ("remote",),
     "remote.auto_push": ("remote",),
     "remote.push": ("remote",),
     "remote.verify": ("remote",),
@@ -216,7 +213,6 @@ DECLARED = {
     "templates_v2.seed": ("templates", "remote"),
     "v2.profile_propose_commit": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
-    "templatize.bulk_apply": ("intent", "remote"),
     "bulk_intent_v2.apply": ("intent", "remote"),
     "templatize.retry_apply": ("rolled_back",),
     "device_v2.revert_confirm": ("intent", "remote", "rolled_back"),
@@ -225,8 +221,6 @@ DECLARED = {
     "device_v2.retire_confirm": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
     "templates.write_template": ("templates", "remote"),
     "templates.approve": ("templates", "remote"),
-    "templates.revoke_approval": ("templates", "remote"),
-    "templates.save_bindings": ("templates", "remote"),
     "deploy.apply": ("device_state", "baselines", "drift", "rolled_back") + _COMMIT,
     # Onboarding. Verify runs phase 2, which PROMOTES: the device list is the
     # first of the three measured cases.
@@ -241,7 +235,6 @@ DECLARED = {
     "onboard_v2.abandon": ("pending", "intent", "credentials", "remote"),
     # Drift. The badge after a run is the third measured case.
     "drift_check_sync": ("drift",),
-    "drift_check_trigger": ("drift",),
     "drift_settings_post": ("drift",),
     # NetBox.
     "netbox_safety.apply_import": ("netbox",),
@@ -302,8 +295,6 @@ DECLARED = {
     "credential_profiles_v2.rotate_due_confirm": Nothing("starts the run as a job and answers at once; the run ANNOUNCES rotation and credentials after each device and when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     "bulk_execute": ("device_state",),
-    # The rest of the page's own state.
-    "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),
     "golden.capture_preview": Nothing("starts a job that reads each device's running config "
@@ -351,7 +342,6 @@ DECLARED = {
     "onboard_v2.bootstrap": Nothing("reveals the bootstrap config in place and records the "
                                     "reveal; no screen draws the reveal record"),
     "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
-    "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
     "intent_v2.check": Nothing("checks and renders an intent edit as it is typed"),
@@ -373,7 +363,6 @@ DECLARED = {
                                        "intent a seed would commit; writes nothing"),
     "templatize.profile_propose_preview": Nothing("computes the network's monitoring profile "
                                                   "from committed intent; writes nothing"),
-    "templatize.bulk_preview": Nothing("previews a bulk intent change; the apply commits"),
     "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
                                       "commits"),
     "netbox_safety.preview_import": Nothing("a NetBox dry run: reads, and issues a one-shot token"),

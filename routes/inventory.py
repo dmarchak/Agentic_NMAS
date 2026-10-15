@@ -6,7 +6,7 @@ stale-device view.
 
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 log = logging.getLogger(__name__)
 
@@ -29,22 +29,9 @@ def get_source(list_name):
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-@bp.route("/source/<path:list_name>", methods=["POST"])
-def set_source(list_name):
-    """Change a list's inventory source and filters."""
-    try:
-        from modules.inventory import invalidate, refresh_async
-        from modules.inventory.source_config import SOURCE_NETBOX, save
-
-        data = request.get_json(silent=True) or {}
-        cfg = save(list_name, data)
-        invalidate(list_name)
-        if cfg["source"] == SOURCE_NETBOX:
-            refresh_async(list_name)
-        return jsonify({"ok": True, "config": cfg})
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("inventory: could not save source for '%s'", list_name)
-        return jsonify({"ok": False, "error": str(exc)}), 500
+# Setting a list's source (POST /source/<list>) left at 7.8 on 2026-10-15: no page called it.
+# Its home is each network's Settings › Network tab, Inventory source (`routes/settings_v2.py`
+# over `modules/network_source.py`: previewed, confirmed and recorded).
 
 
 @bp.route("/refresh/<path:list_name>", methods=["POST"])

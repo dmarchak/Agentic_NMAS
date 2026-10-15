@@ -197,15 +197,18 @@ class TestTheRoutesCommitAndSayWhenTheyCannot:
         assert "Not approved yet" in body["error"] and "disk full" in body["error"]
         assert approval.is_approved(lab, REL) is False
 
-    def test_the_revoke_route_says_the_gate_refuses_but_history_lacks_it(self, lab,
-                                                                         monkeypatch):
+    def test_the_revoke_says_the_gate_refuses_but_history_lacks_it(self, lab, monkeypatch):
+        """Through `approve_op.revoke`, the one code path v2's Templates › Revoke… takes (today's
+        /templates/revoke route, this test's vehicle before, left at 7.8 on 2026-10-15)."""
+        from modules.config import get_current_list_name
+        from modules.nsot import approve_op
+
         approval.approve(lab, REL, _devices(["s1"]), actor="p@example.invalid")
         _commit_approvals(lab)
         monkeypatch.setattr("modules.nsot.repo.save_templates",
                             lambda *a, **k: {"ok": False, "error": "disk full"})
-        r = self._client().post(f"/templates/revoke/{REL}",
-                                json={"reason": "a defect found in its evidence"})
-        body = r.get_json()
-        assert r.status_code == 500 and body["ok"] is False
+        body = approve_op.revoke(get_current_list_name(), REL,
+                                 "a defect found in its evidence", "p@example.invalid")
+        assert body["status"] == 500 and body["ok"] is False
         assert "already refused" in body["error"] and "not in the repository" in body["error"]
         assert approval.is_approved(lab, REL) is False

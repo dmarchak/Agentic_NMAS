@@ -512,7 +512,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
     By default from the job-health READER's stored value, never from systemd
     (rule 1 of modules/reader_job.py): read live, it was 9.8 s of a 10 s
     page (measured on the host, 2026-09-28). *health* is a live read for a
-    caller that has one (the tests; `/jobs/health` stays live by design).
+    caller that has one (the tests; `nmas-jobs` stays live by design).
 
     The readers' OWN liveness is judged now, from their stores (*readers_now*,
     a file read each), never taken from the cached value: a stopped

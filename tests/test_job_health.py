@@ -176,10 +176,11 @@ def test_the_headline_counts_and_names():
     assert h["headline"].startswith("0 of") and J.JOBS[0]["unit"] in h["headline"]
 
 
-def test_the_route_reports_rather_than_withholds(monkeypatch):
-    import app as nmas
+def test_the_live_read_reports_rather_than_withholds(monkeypatch):
+    """`health()` as the reader and `nmas-jobs` call it (its JSON route, this test's
+    vehicle before, left at 7.8 on 2026-10-15)."""
     monkeypatch.setattr(J, "_run", _runner(LOADED, _fail(NOW - 60)))
-    body = nmas.app.test_client().get("/jobs/health").get_json()
+    body = J.health()
     assert body["ok"] is True and J.JOBS[0]["unit"] in body["not_ok"]
     # The STATE, not just "not ok": a route asking the real systemd of a
     # machine without the unit would say not_installed and also be "not ok".

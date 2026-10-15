@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Apply one structured change to N devices' committed intent, as ONE commit.
 
-NSOT_PLAN.md P.1b. Runs IN-PROCESS on the host, through the same helpers the
-routes use (`routes.templatize._bulk_inputs`, `_bulk_render_and_eligible`)
+NSOT_PLAN.md P.1b. Runs IN-PROCESS on the host, through the same helpers v2's
+Change a setting uses (`routes.templatize._bulk_inputs`, `_bulk_render_and_eligible`)
 and the same `modules.nsot.bulk_intent.plan` / `apply`, so there is still one
 code path. It used to POST to the app, and from P.3 the app refuses an
 unidentified commit of intent: a shell on the host has no Access assertion.

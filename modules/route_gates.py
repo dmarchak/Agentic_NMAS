@@ -126,9 +126,7 @@ GATES = {
 
     # ---- approve: a decision a later device change acts on ---------------
     "templates.approve": _g(A, "approves a template for deployment"),
-    "templates.revoke_approval": _g(A, "withdraws a template approval, with a recorded reason"),
     "templates.write_template": _g(A, "edits a template, which revokes every approval over it"),
-    "templates.save_bindings": _g(A, "changes which template renders which device"),
     "retire.apply": _g(A, "retires a device: removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row, the only stored copy of its credential"),
     "templatize.seed_apply": _g(A, "commits a device's first full intent, parsed from its committed golden"),
     "templatize.profile_propose_apply": _g(A, "commits the network's monitoring profile, intent every device inherits (P.9 step b)"),
@@ -165,9 +163,8 @@ GATES = {
                                              "repository as the person (R3); sends nothing"),
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),
     "templatize.revert_apply": _g(A, "commits the inverse of one intent commit's change"),
-    "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),
     "bulk_intent_v2.apply": _g(A, "commits one change to the ticked devices' intent, from "
-                                  "Devices (board D; the same core as templatize.bulk_apply)"),
+                                  "Devices (board D; routes.templatize.bulk_apply_of)"),
     "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; the same apply as templatize.revert_apply, in the list its card carries)"),
     "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; the same apply as templatize.retry_apply, in the list its card carries)"),
     "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; the same apply as templatize.seed_apply, in the list its card carries)"),
@@ -223,7 +220,6 @@ GATES = {
     "create_device_list_route": _g(K, "creates a device list"),
     "delete_device_list_route": _g(K, "deletes a device list"),
     "select_device_list_route": _g(K, "changes the active list, which every derived read and the ping worker follow"),
-    "inventory.set_source": _g(K, "changes where a list's inventory comes from"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "
@@ -252,7 +248,6 @@ GATES = {
     # ---- publish_remote --------------------------------------------------
     "remote.push": _g(P, "publishes the repository"),
     "remote.auto_push": _g(P, "switches automatic publishing"),
-    "remote.adopt": _g(P, "binds the list to a remote"),
     "remote.acknowledge": _g(P, "acknowledges the history scan before first publication"),
     "remote.verify_write": _g(P, "writes a probe to the remote"),
     "remote_v2.connect": _g(P, "binds the network to its existing remote, from History's set-up card (C631)"),
@@ -286,7 +281,6 @@ GATES = {
                                      "library outside the repository; writes nothing"),
     "onboard.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                     "send (P.9 step c); sends nothing"),
-    "templatize.bulk_preview": _g(N, "computes a preview; writes nothing"),
     "bulk_intent_v2.preview": _g(N, "computes the change's preview for the ticked devices; "
                                     "writes nothing"),
     "templatize.preview_committed_edit": _g(N, "renders an edit; writes nothing"),
@@ -305,7 +299,6 @@ GATES = {
     "templatize.profile_propose_preview": _g(N, "reads committed intent and compares stored values in memory; writes nothing"),
     "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),
     "templatize.retry_preview": _g(N, "reads the rollback record and the retry log; writes nothing"),
-    "templates.preview": _g(N, "renders; writes nothing"),
     "templates.validate": _g(N, "validates; writes nothing"),
     "netbox_safety.preview_import": _g(N, "a dry run"),
     "netbox_safety.preview_import_all": _g(N, "a dry run"),
@@ -315,10 +308,8 @@ GATES = {
     "settings_integrations.test_integration": _g(N, "a connection test"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),
-    "drift_check_trigger": _g(N, "the schedule does this anyway; it only happens earlier"),
     "drift_check_sync": _g(N, "the schedule does this anyway; it only happens earlier"),
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),
-    "bulk_clear": _g(N, "clears a finished operation's on-screen result"),
 }
 
 #: SocketIO events, which never reach ``before_request``. Empty since the break-glass

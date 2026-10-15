@@ -231,26 +231,11 @@ class TestAbandonNamesItsActor:
         assert "Actor: {actor" in src[i:i + 200]
 
 
-class TestThroughTheApp:
-    """End to end: a gated route in the real app, the harness's verified
-    person, and the commit read back from git. The unit tests above construct
-    the request context themselves, which is the seam this closes: nothing
-    there shows the gate puts on ``g`` what ``actor_verification`` reads."""
-
-    def test_a_gated_route_commits_access(self, tmp_path, monkeypatch):
-        import app as app_module
-        from tests.conftest import TEST_PERSON
-
-        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
-        monkeypatch.setattr("modules.config.get_list_data_dir",
-                            lambda name: str(tmp_path / name))
-        (tmp_path / "t" / "config_repo" / "templates").mkdir(parents=True)
-        client = app_module.app.test_client()
-        resp = client.post("/templates/bindings", json={"list_name": "t"})
-        assert resp.status_code == 200, resp.get_data(as_text=True)[:300]
-        msg = _last_message(str(tmp_path / "t" / "config_repo"))
-        assert f"Actor: {TEST_PERSON}" in msg, msg
-        assert "Actor-Verified: access" in msg, msg
+# End to end (a gated route in the real app, the harness's verified person, the commit read
+# back from git: the seam showing the gate puts on ``g`` what ``actor_verification`` reads) is
+# held by v2's Bindings apply, `tests/test_template_bindings_v2.py`
+# (`test_it_commits_as_the_person_and_the_device_renders_through_the_new_one`), since today's
+# /templates/bindings, its vehicle here, left at 7.8 (2026-10-15).
 
 
 class TestAnApprovalCommitsItsApprover:

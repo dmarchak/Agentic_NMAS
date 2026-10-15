@@ -545,8 +545,12 @@ class TestPublishIsItsOwnOperationKind:
                 continue
             body = ast.dump(node)
             (gated if "publish_remote" in body else ungated).add(node.name)
-        assert {"adopt", "acknowledge", "push", "auto_push"} <= gated
+        # `adopt` left this file at 7.8 (2026-10-15, no page called it); v2's Connect,
+        # `remote_v2.connect`, is gated publish_remote in modules/route_gates.py.
+        assert {"acknowledge", "push", "auto_push"} <= gated
         assert {"status", "verify", "preview"} <= ungated
+        from modules.route_gates import GATES
+        assert GATES["remote_v2.connect"].kind == "publish_remote"
 
 
 class TestTheAcknowledgementIsBoundToWhatItAcknowledged:

@@ -13,7 +13,8 @@ stores at the time of the request (a file read each). Otherwise a stopped
 job-health reader would freeze a cache whose own row says ``ok`` for ever:
 the one row that must be live, read from the thing that stopped.
 
-`/jobs/health` stays a LIVE read: it is the ask-now diagnostic, and says so.
+`nmas-jobs` stays a LIVE read on the host: it is the ask-now diagnostic, and says so. (Its
+JSON route, `/jobs/health`, left at 7.8 on 2026-10-15: no page called it.)
 """
 
 from modules import reader_job

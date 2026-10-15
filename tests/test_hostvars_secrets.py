@@ -98,12 +98,6 @@ class TestStaging:
         assert loaded["hostname"] == "s1"
         assert len(loaded["interfaces"]) == len(out["interfaces"])
 
-    def test_list_staged(self, tmp_path):
-        for name, platform in (("s1_vios_l2.cfg", "cisco_ios"),
-                               ("r1_c8000v.cfg", "cisco_xe")):
-            hostvars.write_staged(str(tmp_path), get_parser(platform).parse(_config(name)))
-        assert hostvars.list_staged(str(tmp_path)) == ["r1", "s1"]
-
     def test_store_secrets_dry_run_writes_nothing(self):
         out = get_parser("cisco_ios").parse(_config("s1_vios_l2.cfg"))
         result = hostvars.store_secrets(out, "s1", dry_run=True)

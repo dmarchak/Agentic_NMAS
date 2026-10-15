@@ -605,21 +605,8 @@ def run_command(ip):
 # Device List Management Routes
 # ---------------------------------------------------------------------------
 
-@app.route("/device_lists", methods=["GET"])
-def get_device_lists_route():
-    """Get all device lists."""
-    try:
-        lists = get_device_lists()
-        current_name, _ = get_current_device_list()
-        return jsonify({
-            "status": "success",
-            "lists": lists,
-            "current": current_name
-        })
-    except Exception as e:
-        app.logger.error(f"Failed to get device lists: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
+# GET /device_lists (the list of lists as JSON) left at 7.8 on 2026-10-15: no page called it;
+# today's page renders the lists server-side and v2's Network picker draws its own.
 
 @app.route("/device_lists", methods=["POST"])
 def create_device_list_route():
@@ -930,14 +917,7 @@ def bulk_status(operation_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/bulk_clear/<operation_id>", methods=["POST"])
-def bulk_clear(operation_id):
-    """Clear a completed bulk operation."""
-    try:
-        bulk_manager.clear_operation(operation_id)
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+# POST /bulk_clear/<id> left at 7.8 on 2026-10-15: no page called it (on the audit's CUT list).
 
 
 # ---------------------------------------------------------------------------
@@ -1037,19 +1017,8 @@ def drift_status():
     return jsonify(status)
 
 
-@app.route("/drift/check", methods=["POST"])
-def drift_check_trigger():
-    """Trigger an immediate drift check of the network named.  Returns immediately; the
-    check runs async."""
-    from modules.drift_check import get_checker
-    checker = get_checker()
-    from modules.drift_check import network_for
-    name = network_for(request, request.get_json(silent=True))
-    if checker.is_running(name):
-        return jsonify({"ok": False, "message": f"A drift check of {name} is already in progress"}), 409
-    checker.trigger(name)
-    return jsonify({"ok": True, "message": f"Drift check of {name} triggered", "list": name})
-
+# The async run, POST /drift/check, left at 7.8 on 2026-10-15: no page called it. Today's panel
+# uses /drift/check/sync; v2's Check now is Settings › Installation › Diagnostics.
 
 @app.route("/drift/check/sync", methods=["POST"])
 def drift_check_sync():
@@ -1082,19 +1051,8 @@ def drift_check_sync():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-@app.route("/drift/settings", methods=["GET"])
-def drift_settings_get():
-    """Return the drift check interval (one, every network) and the named network's switch."""
-    from modules.drift_check import _is_disabled, _get_interval
-    from modules.drift_check import network_for
-    name = network_for(request)
-    return jsonify({
-        "ok":        True,
-        "list":      name,
-        "interval_s": int(_get_interval()),
-        "disabled":  _is_disabled(name),
-    })
-
+# GET /drift/settings left at 7.8 on 2026-10-15: a duplicate read nothing called; the panel
+# takes its interval and switch from /drift/status.
 
 @app.route("/drift/settings", methods=["POST"])
 def drift_settings_post():

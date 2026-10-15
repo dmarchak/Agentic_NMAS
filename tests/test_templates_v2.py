@@ -228,7 +228,6 @@ def test_todays_routes_and_v2_share_one_code_path():
     from routes import templates, templates_v2
 
     assert calls_in(templates.approve, "approve") >= 1
-    assert calls_in(templates.revoke_approval, "revoke") >= 1
     assert calls_in(templates.validate, "bound_captures") >= 1
     assert calls_in(templates_v2.approve, "approve") >= 1
     assert calls_in(templates_v2.revoke, "revoke") >= 1

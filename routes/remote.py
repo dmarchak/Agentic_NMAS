@@ -1,4 +1,4 @@
-"""Per-list git remote: adopt, verify, preview, acknowledge, push.
+"""Per-list git remote: status, verify, preview, acknowledge, push (adopt left at 7.8).
 
 Publishing a network's configuration history — including the credentials in
 it — is gated on ``publish_remote``: a verified PERSON, by default. Its own
@@ -66,22 +66,9 @@ def status():
     })
 
 
-@bp.route("/adopt", methods=["POST"])
-def adopt():
-    """Record an existing, hand-made setup. Never edits ~/.ssh/config."""
-    ident, refusal = identity.require(request, "publish_remote")
-    if refusal:
-        return refusal
-    payload = request.get_json(silent=True) or {}
-    missing = [k for k in ("ssh_alias", "owner", "repo") if not payload.get(k)]
-    if missing:
-        return jsonify({"ok": False, "error": f"missing: {', '.join(missing)}"}), 400
-
-    out = R.adopt(_list_name(), ssh_alias=payload["ssh_alias"],
-                  owner=payload["owner"], repo=payload["repo"],
-                  branch=payload.get("branch", "main"),
-                  key_path=payload.get("key_path", ""), actor=ident.actor)
-    return jsonify(out), (200 if out["ok"] else 409)
+# Recording an existing setup (POST /adopt) left at 7.8 on 2026-10-15: no page called it. Its
+# home is v2's History › Remote set-up (`routes/remote_v2.py` over `modules/remote_setup.py`,
+# which calls `remote.adopt`).
 
 
 @bp.route("/verify", methods=["POST"])

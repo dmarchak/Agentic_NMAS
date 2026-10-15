@@ -357,56 +357,26 @@ def _write_template_locked(repo: str, list_name: str, rel_path: str, content: st
     return jsonify(got), status
 
 
-@bp.route("/revoke/<path:rel_path>", methods=["POST"])
-def revoke_approval(rel_path):
-    """Withdraw a template's approval, recording why.
-
-    Separate from editing. An approval is withdrawn when the *claim* it makes
-    stops being true — which can happen without the template changing at all,
-    as when a defect is found in what validated it.
-    """
-    from modules.nsot import approve_op
-
-    data = request.get_json(silent=True) or {}
-    result = approve_op.revoke(_active_list(data), rel_path,
-                               (data.get("reason") or "").strip(), request_actor())
-    status = result.pop("status")
-    result.pop("actor", None)
-    if not result.get("ok") and status == 400:
-        return jsonify(result), 400
-    return jsonify(result), status
-
-
-@bp.route("/bindings", methods=["POST"])
-def save_bindings():
-    from modules.nsot import repo as repo_service, templates_repo
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
-    templates_repo.save_bindings(repo, data)
-    commit = repo_service.save_templates(list_name, ["bindings.yml"],
-                                         actor=request_actor(),
-                                         message="template: update bindings")
-    return jsonify({"ok": True, "commit": commit.get("commit", ""),
-                    "bindings": templates_repo.load_bindings(repo)})
+# Withdrawing an approval (POST /revoke/<path>) and saving the bindings (POST /bindings) left
+# at 7.8 on 2026-10-15: no page called them. Their homes are v2's Templates › Revoke… and
+# Bindings… (`routes/templates_v2.py`), over `approve_op.revoke` and `template_bindings`.
 
 
 # ---------------------------------------------------------------------------
 # Preview
 # ---------------------------------------------------------------------------
 
-@bp.route("/preview/<path:hostname>", methods=["GET", "POST"])
+@bp.route("/preview/<path:hostname>", methods=["GET"])
 def preview(hostname):
     """Render a device and diff it against its committed golden.
 
     The golden is the only input (C632: never the backup store, which retired
-    at 7.8). This endpoint opens no session.
+    at 7.8). This endpoint opens no session. (Its POST half, the same read with a
+    JSON body, left at 7.8 on 2026-10-15: nothing sent it.)
     """
     from modules.nsot import roundtrip, templates_repo
 
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
+    list_name = _active_list()
     repo = _repo_for(list_name)
 
     golden, golden_at = _captured_golden(hostname, list_name)
@@ -512,28 +482,6 @@ def validate(rel_path):
     return jsonify(result)
 
 
-@bp.route("/seed_status", methods=["GET"])
-def seed_status():
-    """Is this network running a stale seed of any shipped template?
-
-    OPEN_FINDINGS C6. Four states -- current, stale, edited,
-    edited_and_stale -- and ``edited`` is a deliberate local change, not a
-    defect. The list is looked up in the registry rather than through
-    ``get_list_data_dir()``, which creates a directory: a READ must not be
-    able to bring a list into existence from a typo.
-    """
-    from modules.config import LISTS_DIR, get_current_list_name
-    from modules.device import get_device_lists
-    from modules.nsot import templates_repo
-
-    name = (request.args.get("list_name") or "").strip() or \
-        get_current_list_name()
-    match = next((l for l in get_device_lists() if l["name"] == name), None)
-    if match is None:
-        return jsonify({"ok": False, "error": f"no device list named {name!r}"}), 404
-    repo = os.path.join(LISTS_DIR, match["filename"], "config_repo")
-    report = templates_repo.seed_status(repo)
-    report["list_name"] = name
-    report["needs_attention"] = [e["path"] for e in report["files"]
-                                 if e["state"] in ("stale", "edited_and_stale")]
-    return jsonify(report)
+# Seed status (GET /seed_status, C6) left at 7.8 on 2026-10-15: no page called it. Its home
+# is v2's Templates, the Against the shipped version column (`approve_op`, over
+# `templates_repo.seed_status`), and `scripts/nmas-seed-status` asks the same on the host.

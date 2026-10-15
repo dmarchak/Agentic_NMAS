@@ -101,6 +101,9 @@ class TestTheApply:
         msg = _git(alt["repo"], "log", "-1", "--format=%B")
         assert msg.startswith("template: bindings s2 renders through alt for the trial")
         assert "Actor: test-person@example.invalid" in msg
+        # The gate put on `g` what `actor_verification` reads (test_actor_verified_trailer's
+        # end-to-end case, held here since today's /templates/bindings left at 7.8).
+        assert "Actor-Verified: access" in msg, msg
         assert templates_repo.template_for_device(alt["repo"], "s2", "cisco_ios") == ALT
         assert templates_repo.template_for_device(alt["repo"], "s1", "cisco_ios") == REL
         assert "Bindings" in out and "committed" in out and "s2" in out

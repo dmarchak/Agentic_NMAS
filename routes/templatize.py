@@ -5,7 +5,8 @@ Phase 3a made it read-only (extractions to a gitignored staging area) and 3b
 added a reviewed commit. Both halves had no screen, and the commit refused
 anything without a verified person, so seeding a device's first intent had no
 working path (C148). Seed intent replaces them as one previewed, confirmed
-operation; the intent editor, revert, retry and bulk intent commit here too.
+operation; the intent editor, revert and retry commit here too, and bulk intent's core
+(`bulk_plan_of`, `bulk_apply_of`) lives here for v2's Change a setting.
 """
 
 import logging
@@ -186,19 +187,9 @@ def profile_read():
 
 
 # ---------------------------------------------------------------------------
-# Committed intent
+# Committed intent (the list of devices with committed intent, GET /committed, left at
+# 7.8 on 2026-10-15: no page called it; Devices draws each device's intent state)
 # ---------------------------------------------------------------------------
-
-@bp.route("/committed", methods=["GET"])
-def committed():
-    """Devices that have committed intent. The deploy path reads only these."""
-    from modules.nsot import hostvars
-
-    repo = _repo_for(_active_list())
-    return jsonify({"ok": True,
-                    "committed": hostvars.list_committed(repo),
-                    "staged": hostvars.list_staged(repo)})
-
 
 @bp.route("/committed/<path:hostname>", methods=["GET"])
 def read_committed(hostname):
@@ -349,22 +340,9 @@ def retry_apply():
     return jsonify(mask_payload({"ok": True, "list": list_name, "result": retry_result(out)}))
 
 
-@bp.route("/rolled-back/retries", methods=["GET"])
-def rolled_back_retries():
-    """Every authorised retry, for audit."""
-    from modules.nsot import hostvars
-    return jsonify({"ok": True,
-                    "retries": hostvars.retry_log(_repo_for(_active_list()))})
-
-
-@bp.route("/rolled-back", methods=["GET"])
-def rolled_back():
-    """Rolled-back notes, split by whether they still apply (see
-    `rolled_back_notes`, which Needs attention reads too: one classifier)."""
-    got = rolled_back_notes(_active_list())
-    return jsonify({"ok": True, "rolled_back": got["applies"], "stale": got["stale"],
-                    "unreadable": got["unreadable"],
-                    "blocking_count": len(got["applies"])})
+# The two JSON reads of the rollback record (GET /rolled-back and /rolled-back/retries) left
+# at 7.8 on 2026-10-15: no page called them. Needs attention draws the blocked devices from
+# `rolled_back_notes` below, and History draws each retry (`history_sources`).
 
 
 #: The applicability words that mean a note no longer blocks anything.
@@ -520,7 +498,7 @@ def _bulk_render_and_eligible(list_name: str, repo: str):
 
 
 def bulk_plan_of(data: dict) -> tuple:
-    """THE bulk intent preview, for this JSON route and v2's Devices › Change a setting:
+    """THE bulk intent preview, for v2's Devices › Change a setting:
     ``(report, status)``; the report keeps each accepted device's new text (``text``) for a
     caller that draws the intent's diff, and names its list."""
     from modules.nsot import bulk_intent
@@ -536,7 +514,7 @@ def bulk_plan_of(data: dict) -> tuple:
 
 
 def bulk_apply_of(data: dict, actor: str) -> tuple:
-    """THE bulk intent apply, for both entry points: ``(result, status)``."""
+    """THE bulk intent apply, for v2's Devices › Change a setting: ``(result, status)``."""
     from modules.nsot import bulk_intent
 
     list_name, repo, devices, steps, error = _bulk_inputs(data)
@@ -550,19 +528,6 @@ def bulk_apply_of(data: dict, actor: str) -> tuple:
     return result, (200 if result.get("ok") else 409)
 
 
-@bp.route("/bulk/preview", methods=["POST"])
-def bulk_preview():
-    """Preview one change against N devices' intent. Writes nothing."""
-    report, status = bulk_plan_of(request.get_json(silent=True) or {})
-    report.pop("repo", None)
-    for entry in report.get("accepted", []):
-        entry.pop("text", None)      # the preview shows effects, not files
-        entry.pop("was", None)
-    return jsonify(report), status
-
-
-@bp.route("/bulk/apply", methods=["POST"])
-def bulk_apply():
-    """Recompute the preview; refuse unless it is what was confirmed; commit once."""
-    result, status = bulk_apply_of(request.get_json(silent=True) or {}, request_actor())
-    return jsonify(result), status
+# The JSON routes (POST /bulk/preview and /bulk/apply) left at 7.8 on 2026-10-15: no page
+# called them. Their home is v2's Devices › Change a setting (`routes/bulk_intent_v2.py`),
+# which calls the two functions above.

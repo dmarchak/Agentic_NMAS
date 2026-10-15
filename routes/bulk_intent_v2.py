@@ -3,8 +3,8 @@
 2026-10-10).
 
 One change to many devices' committed intent, as one commit, through THE bulk intent core
-(`routes/templatize.bulk_plan_of` and `bulk_apply_of`, which today's JSON routes and
-`scripts/nmas-bulk-intent` run): each setting is a path, the value it holds now and the value
+(`routes/templatize.bulk_plan_of` and `bulk_apply_of`; `scripts/nmas-bulk-intent` shares
+their inputs and render, and today's JSON routes over them left at 7.8, 2026-10-15): each setting is a path, the value it holds now and the value
 it becomes. The preview groups the accepted devices by what changes in their rendered
 configuration, each device's intent diff one level down, and draws the refused devices with
 each reason; the apply recomputes it and commits only when it is what was previewed. Nothing

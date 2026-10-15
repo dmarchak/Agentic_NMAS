@@ -7,8 +7,8 @@ configuration and names, device by device, the comparison and every line that fa
 unmodelled line not acknowledged in the device's committed intent links to its Intent tab's
 editor); the confirm is bound to the template's fingerprint and to the check's outcome as
 read. C: the result in place, the row redrawn; Revoke… asks why. Every step is
-`modules/nsot/approve_op.py`'s, the code today's `/templates/approve` and `/templates/revoke`
-run too. The network is named on every call (a write path carries its list). Edit… (cutover
+`modules/nsot/approve_op.py`'s, the code today's `/templates/approve` runs too (today's
+`/templates/revoke` left at 7.8, 2026-10-15). The network is named on every call (a write path carries its list). Edit… (cutover
 blocker 5, intent editor H's pattern) is `modules/nsot/template_edit.py`'s: checked as typed
 against each governed device's committed golden, committed bound to the version opened.
 Nothing here contacts a device.

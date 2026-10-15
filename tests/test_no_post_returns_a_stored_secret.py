@@ -53,11 +53,9 @@ def _head_golden():
 #: test, so a new computing POST cannot go unswept by being new.
 def _bodies(v):
     return {
-        "bulk_clear": (200, ("json", {}), "clears an on-screen result; returns a status"),
         "deploy.plan": (200, ("json", {"devices": ["r1"], "list_name": LIST}),
                         "committed intent renders a community the device does not hold: "
                         "the program adds one, and the device's is residue"),
-        "drift_check_trigger": (200, ("json", {}), "schedules a run; returns a message"),
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "
                                          "refused naming the networks; it starts nothing"),
@@ -76,8 +74,12 @@ def _bodies(v):
         "templates_v2.coverage_check": (404, ("form", {"list": "no-such-network"}),
                                         "a network that does not exist: refused, nothing "
                                         "measured"),
-        "bulk_intent_v2.preview": (400,("form", {"device": "r1"}),
-                                   "no network named: refused before any intent is read"),
+        # Bulk intent's render delta, through v2's Change a setting since its JSON route left
+        # at 7.8 (2026-10-15): the same core, `bulk_plan_of`.
+        "bulk_intent_v2.preview": (200, ("form", {"list": LIST, "device": "r1",
+                                                  "path": "hostname", "before": "r1",
+                                                  "after": "r1x"}),
+                                   "a bulk intent change's render delta"),
         "adopt_v2.preview": (400,("form", {"hostname": "r9"}),
                              "no network named: refused before the device is read"),
         "onboard_v2.preview": (400, ("form", {"hostname": "r9"}),
@@ -144,14 +146,7 @@ def _bodies(v):
         "settings_integrations.test_integration": (200, ("json", {}),
                                                    "driven once per registered integration "
                                                    "below; this row is the grafana one"),
-        "templates.preview": (200, ("json", {"list_name": LIST}),
-                              "the render (a community the device lacks) against the golden"),
         "templates.validate": (200, ("json", {"list_name": LIST}), "validates the template"),
-        "templatize.bulk_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"],
-                                                   "steps": [{"path": ["hostname"],
-                                                              "before": "r1",
-                                                              "after": "r1x"}]}),
-                                    "a bulk intent change's render delta"),
         "retire.preview": (200, ("json", {"list_name": LIST, "device": "r1",
                                           "reason": "leaving management"}),
                            "r1's retire plan: its steps, the credential gate, the export log"),
@@ -200,8 +195,10 @@ def _bodies(v):
 #: `drift_check_sync` is not among them: it answers with counts and queues
 #: the diff as an approval item, which the GET sweep covers.
 REACHES = {"deploy.plan", "device_v2.capture_start",
-           "golden.capture_preview", "golden.restore_preview", "templates.preview",
+           "golden.capture_preview", "golden.restore_preview",
            "templatize.preview_committed_edit"}
+# `templates.preview` LEFT this set 2026-10-15: its POST half left at 7.8; its GET is read by
+# the fixture below and held by `test_the_template_preview_drew_the_masked_slot_and_no_value`.
 # `netbox_safety.preview_import` LEFT this set in 7.1: its response no longer
 # carries the dry run's object payloads (each device's golden rode in
 # `local_context_data`), only the preview drawn from them, so there is no
@@ -414,8 +411,13 @@ def swept():
                        for x in xs}
             writes = {}
             anon = _drive(values, person=False)
+            person = _drive(values, person=True, writes=writes)
+            # Today's template preview, a GET since its POST half left at 7.8 (2026-10-15),
+            # read here because only this fixture seeds the templates it renders.
+            got = A.app.test_client().get(f"/templates/preview/r1?list_name={LIST}")
             yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
-                   "person": _drive(values, person=True, writes=writes)}
+                   "person": person,
+                   "template_preview": (got.status_code, got.get_data(as_text=True))}
     finally:
         mp.undo()
 
@@ -458,7 +460,15 @@ class TestEveryRouteReachedItsState:
         missing = sorted(k for k in REACHES
                          if not any(m in swept["person"][k][1] for m in MASKS))
         assert missing == [], missing
-        assert len(REACHES) >= 6   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632)
+        assert len(REACHES) >= 5   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632); 6 -> 5: templates.preview's POST left (7.8, 2026-10-15), its GET held below
+
+    def test_the_template_preview_drew_the_masked_slot_and_no_value(self, swept):
+        """Today's template preview, held as REACHES held its POST half: the render against
+        r1's golden reached the planted line and drew it masked, and no planted value."""
+        status, text = swept["template_preview"]
+        assert status == 200, text[:300]
+        assert any(m in text for m in MASKS), text[:300]
+        assert [s for v, s in swept["planted"].items() if v in text] == []
 
 
 class TestNoPostReturnsAStoredSecret:

@@ -171,8 +171,9 @@ Inside the restored VM, it **passes** when:
    (`key_fingerprint()` is that same computation.)
 4. The app starts: `curl -s -o /dev/null -w '%{http_code}' localhost:5000/`
    prints 200. This is the path `nmas-deploy` checks (`/`). There is no
-   `/health` route: it answers 404. `GET /jobs/health` is the scheduled-job
-   report, not the app's liveness.
+   `/health` route: it answers 404. `nmas-jobs` is the scheduled-job
+   report, not the app's liveness (its JSON route, `GET /jobs/health`, left at 7.8 on
+   2026-10-15).
 
 **PASSED 2026-09-25 on the real image** (operator): `qmrestore` of VM 102's
 image to 9102 in 123 s, with `--unique 1` (new MACs, which mattered: the
@@ -233,7 +234,7 @@ pveum aclmod / -token 'nmas-monitor@pve!job-health' -role PVEAuditor
 The token secret becomes a new encrypted setting (`secrets_store.SECRET_KEYS`),
 and `nmas-check-secret-storage` classifies it with the rest.
 
-**Built 2026-09-25** (`modules/integrations/proxmox.py`, `job_health.image_jobs()`). Configure it in **Settings → Integrations → Proxmox VE**. The rows then appear in `nmas-jobs` and `GET /jobs/health` beside the systemd jobs. Until it is configured, the one row reads `not_configured` and names every missing value. That row is never ok.
+**Built 2026-09-25** (`modules/integrations/proxmox.py`, `job_health.image_jobs()`). Configure it in **Settings → Integrations → Proxmox VE**. The rows then appear in `nmas-jobs` beside the systemd jobs, and in Needs attention when one is not ok. Until it is configured, the one row reads `not_configured` and names every missing value. That row is never ok.
 
 **What NMAS reads, and the states it reports:**
 

@@ -466,7 +466,8 @@ changes what a screen shows"):*
 - The three-way diff is NOT drawn on v1, because it would change the screen. v2's template
   screen draws it after its mockup.
 - Bindings: no control in the interface posts `/templates/bindings`, so there is no client
-  half to build. The server half stands.
+  half to build. The server half stands. (That route left at 7.8 on 2026-10-15; v2's
+  Bindings… binds its commit to the file committed then and to the change previewed.)
 
 **BUILT 2026-10-04 (tests/test_template_editor_binds.py):**
 - The open hands out the blob at HEAD and reads its text from that blob.

@@ -248,20 +248,22 @@ class TestApplyIsOneShotAndOneCommit:
         assert hostvars.read_committed(repo, "s2")["logging"]["syslog"] == BLOCK
 
 
-class TestTheRoutes:
+class TestTheEntryPoints:
+    """Through `routes.templatize.bulk_plan_of`, THE preview v2's Change a setting calls (the
+    JSON route these drove before left at 7.8 on 2026-10-15)."""
+
     def test_the_list_is_carried_never_inferred(self):
-        import app as nmas
-        r = nmas.app.test_client().post("/templatize/bulk/preview", json={
-            "devices": ["s1"], "steps": P1_MOVE})
-        assert r.status_code == 400 and "list_name is required" in r.get_json()["error"]
+        from routes.templatize import bulk_plan_of
+        report, status = bulk_plan_of({"devices": ["s1"], "steps": P1_MOVE})
+        assert status == 400 and "list_name is required" in report["error"]
 
     def test_an_unknown_list_is_refused_and_not_created(self, tmp_path,
                                                         monkeypatch):
-        import app as nmas
+        from routes.templatize import bulk_plan_of
         monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
-        r = nmas.app.test_client().post("/templatize/bulk/preview", json={
-            "list_name": "Nope", "devices": ["s1"], "steps": P1_MOVE})
-        assert r.status_code == 400 and "no device list named" in r.get_json()["error"]
+        report, status = bulk_plan_of({"list_name": "Nope", "devices": ["s1"],
+                                       "steps": P1_MOVE})
+        assert status == 400 and "no device list named" in report["error"]
         # The registry seeds its own `default` list on first read (pre-
         # existing behaviour); what must not exist is the MISTYPED one.
         assert not any(n.lower() == "nope" for n in os.listdir(tmp_path))

@@ -110,7 +110,7 @@ def set_drift_off(network: str, off: bool, actor: str, verified: str) -> dict:
 
 
 def check_now(network: str) -> dict:
-    """A network's drift check started now, in the background (today's /drift/check): the
+    """A network's drift check started now, in the background (the checker's `trigger`): the
     schedule does it anyway, only later. Refused while one runs. The card redraws when the
     check records its result (the drift checker announces `drift`)."""
     from modules import installation_settings as I

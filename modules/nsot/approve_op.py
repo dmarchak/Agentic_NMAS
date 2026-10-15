@@ -1,7 +1,7 @@
 """nsot/approve_op.py — approving and revoking a network's configuration template.
 
-The one code path today's `/templates/approve`, `/templates/validate` and `/templates/revoke`
-and the v2 Templates page (7.6, boards A to C, signed off 2026-10-05; C481) share. Scheme 3
+The one code path today's `/templates/approve` and `/templates/validate` (today's
+`/templates/revoke` left at 7.8, 2026-10-15) and the v2 Templates page (7.6, boards A to C, signed off 2026-10-05; C481) share. Scheme 3
 (`approval.py`): an approval is a claim about the TEMPLATE, its closure's fingerprint and the
 person; each bound device's check is recorded as evidence and at least one must reproduce.
 

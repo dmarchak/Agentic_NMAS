@@ -74,11 +74,12 @@ RESULT_COMPONENT = {
     # page links a RETIRED device's history yet).
     "retire.apply": ("static/js/nmas_retire.js", "runApply", "golden.history"),
     # Persist (7.3, C164): its record is the rotation record job health's
-    # `rotation:<device>` row reads, served by the job-health route.
-    "persist.apply": ("static/js/nmas_persist.js", "runApply", "jobs.jobs_health"),
+    # `rotation:<device>` row reads, drawn on the device's History (`history_sources.rotation`;
+    # the live job-health route it was served by left at 7.8, 2026-10-15).
+    "persist.apply": ("static/js/nmas_persist.js", "runApply", "device_v2.history"),
     # Rotate (7.3): a job; its result is read by id, and its record is the
-    # rotation record job health's `rotation:<device>` row reads.
-    "rotate.apply": ("static/js/nmas_rotate.js", "runApply", "jobs.jobs_health"),
+    # rotation record job health's `rotation:<device>` row reads, on the device's History.
+    "rotate.apply": ("static/js/nmas_rotate.js", "runApply", "device_v2.history"),
     "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
                               "templatize.read_committed"),
     # The monitoring profile's proposal (P.9 step b): its record is the profile
@@ -87,11 +88,12 @@ RESULT_COMPONENT = {
                                          "templatize.profile_read"),
     # Revert and retry (7.3): drawn by the component. A revert's record is
     # the intent commit it wrote, which the intent editor reads back from
-    # HEAD; a retry's is the retry log, served by its reader.
+    # HEAD; a retry's is the retry log, drawn on the device's History
+    # (`history_sources`; its JSON reader left at 7.8, 2026-10-15).
     "templatize.revert_apply": ("static/js/nmas_intent_ops.js", "runApply",
                                 "templatize.read_committed"),
     "templatize.retry_apply": ("static/js/nmas_intent_ops.js", "runApply",
-                               "templatize.rolled_back_retries"),
+                               "device_v2.history"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read
     # back is the device's pending row.
     "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",
@@ -196,7 +198,7 @@ PAGE_RECORD = {
     "device_v2.deploy_confirm": ("templates/v2/_deploy.html",
                                  ('id="device-op"', "c.words", "c.record"), "device_v2.history"),
     "device_v2.rotate_confirm": ("templates/v2/_rotate.html",
-                                 ('id="device-op"', "c.summary", "c.record"), "jobs.jobs_health"),
+                                 ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     # C724, Rotate due devices now: the run on the one stepper in place, then its result (what
     # it rotated, skipped and where it stopped); each device's rotation read on History.
     "credential_profiles_v2.rotate_due_confirm": (
@@ -206,7 +208,7 @@ PAGE_RECORD = {
     "privileged_v2.confirm": ("templates/v2/_privileged.html",
                               ('id="device-op"', "c.record", "r.verify"), "device_v2.history"),
     "device_v2.persist_confirm": ("templates/v2/_persist.html",
-                                  ('id="device-op"', "c.outcome", "c.record"), "jobs.jobs_health"),
+                                  ('id="device-op"', "c.outcome", "c.record"), "device_v2.history"),
     # Devices › Save (C593): a job, its result drawn per device (each outcome and its detail)
     # with the commit it made; each persist row read back on the device's History.
     "v2.save_confirm": ("templates/v2/_save.html",
@@ -297,12 +299,10 @@ PENDING = {
     "remote.verify_write": "a toast, then the panel reloads",
 }
 
-#: No page sends these (test_route_reachability.KNOWN_UNREACHABLE).
-NO_GUI = {
-    "templates.revoke_approval", "templates.save_bindings",
-    "templatize.bulk_apply",
-    "remote.adopt",
-}
+#: No page sends these (test_route_reachability.KNOWN_UNREACHABLE). Empty since 2026-10-15:
+#: the four (today's template revoke and bindings, bulk intent's JSON apply, remote adopt)
+#: left with the unreached routes at 7.8, each with a v2 home.
+NO_GUI: set = set()
 
 #: (file, the literal that draws success unearned) -> reason. Only shrinks.
 FALSE_GREEN = {
@@ -419,7 +419,9 @@ class TestNoGuiIsTheReachabilityFact:
         unreachable_gated = {ep for ep in _population()
                              if by_endpoint.get(ep, set()) & set(KNOWN_UNREACHABLE)}
         assert unreachable_gated == NO_GUI, (sorted(unreachable_gated ^ NO_GUI))
-        assert len(NO_GUI) >= 4   # 5 -> 4: freshness.authorise left in Phase 3
+        # 5 -> 4: freshness.authorise left in Phase 3; 4 -> 0 2026-10-15: the rest at 7.8.
+        # The population this compares is still found: the gated endpoints (floor below).
+        assert len(_population()) >= 30, len(_population())
 
 
 class TestColourAndEscaping:

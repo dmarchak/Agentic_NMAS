@@ -116,13 +116,6 @@ def read_staged(repo: str, hostname: str):
         return from_yaml(fh.read())
 
 
-def list_staged(repo: str) -> list:
-    directory = os.path.join(repo, STAGING_REL)
-    if not os.path.isdir(directory):
-        return []
-    return sorted(f[:-4] for f in os.listdir(directory) if f.endswith(".yml"))
-
-
 # ---------------------------------------------------------------------------
 # Committed intent
 # ---------------------------------------------------------------------------

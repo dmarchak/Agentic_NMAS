@@ -298,11 +298,6 @@ class BulkOperationManager:
                 "results": []
             }).copy()
 
-    def clear_operation(self, operation_id: str):
-        """Remove operation from tracking."""
-        with self.lock:
-            self.active_operations.pop(operation_id, None)
-
 
 # Global instance
 bulk_manager = BulkOperationManager()

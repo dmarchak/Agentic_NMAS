@@ -1464,7 +1464,8 @@ exception.
   approved" — both block a deploy, so the gate was never wrong, but the finding
   was thrown away. `is_approved()` refuses a `revoked` record **first**, ahead
   of the scheme and fingerprint checks, so no later computation can overturn
-  the decision. `POST /templates/revoke/<path>` is the reachable path.
+  the decision. v2's Templates › Revoke… is the reachable path (`approve_op.revoke`; today's
+  `POST /templates/revoke/<path>` left at 7.8 on 2026-10-15).
 - Template commits use their own namespace (`template:`) and create **no tags**.
   **Seeding commits itself** (`template: seed library`), so an approval's diff
   is the approval rather than the whole library.

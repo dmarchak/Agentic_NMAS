@@ -177,10 +177,6 @@ STAGES = {
         "templatize.seed_preview", "confirmations", NO_DEVICE,
         "n/a: a failed commit puts the file back; a seeded intent is corrected forward",
         "modules.nsot.seed.apply"),
-    "templatize.bulk_apply": Stages(
-        "templatize.bulk_preview", "confirmed_hash in routes.templatize.bulk_apply_of",
-        NO_DEVICE, "n/a: a failed commit puts every file back; one device reverts alone",
-        "modules.nsot.bulk_intent.apply"),
     # Devices › Change a setting on the ticked devices (7.4's board D): the same core.
     "bulk_intent_v2.apply": Stages(
         "bulk_intent_v2.preview", "hash", NO_DEVICE,
@@ -234,9 +230,6 @@ STAGES = {
         "MISSING: the approval records the closure's fingerprint, but no hash binds the confirm "
         "to the validation the person saw", NO_DEVICE, "modules.nsot.approval.revoke",
         "modules.nsot.approval.approve"),
-    "templates.revoke_approval": Stages(
-        "n/a: a withdrawal, recorded with its reason", "n/a: nothing is previewed", NO_DEVICE,
-        "n/a: approve it again", "modules.nsot.approval.revoke"),
     # The v2 Templates page (7.6, boards A to C): the check is the preview, and the confirm is
     # bound to the fingerprint it showed AND the check's outcome as read (`seen`).
     "templates_v2.approve": Stages(
@@ -270,9 +263,6 @@ STAGES = {
     "templates_v2.seed": Stages(
         "templates_v2.seed_form", "signature", NO_DEVICE, FORWARD,
         "modules.nsot.repo.save_templates"),
-    "templates.save_bindings": Stages(
-        "MISSING: bindings are saved with no preview", "MISSING: no hash is bound", NO_DEVICE, FORWARD,
-        "modules.nsot.repo.save_templates"),
     "templates.write_template": Stages(
         "MISSING: the editor saves with no preview of what the change revokes",
         "MISSING: no hash binds the save to the version opened (CONCURRENCY_AUDIT R14)",
@@ -305,12 +295,14 @@ STAGES = {
 }
 
 #: The gaps, counted: the test pins this number, so it can only go down.
+# 46 -> 21 2026-10-15, measured: today's /templates/bindings took its two gaps with it at 7.8,
+# and the ceiling had not followed the 7.8 removals before it (23 measured before this one).
 # +1 2026-10-10: v2's NetBox confirm shares today's import's missing read-back (C8); today's three
 # NetBox entries leave at 7.8 and take theirs with them.
 # +1 2026-10-10: v2's Create shares today's Create's missing run record (one core); v2's
 # Create and Abandon bind their confirms, so today's two hash gaps and Abandon's preview gap
 # leave with today's routes at 7.8.
-MISSING_CEILING = 46
+MISSING_CEILING = 21
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +360,6 @@ HISTORY = {
     "templatize.seed_apply": ("intent",),
     "templatize.edit_committed": ("intent",),
     "intent_v2.commit": ("intent",),
-    "templatize.bulk_apply": ("intent",),
     "bulk_intent_v2.apply": ("intent",),
     "templatize.revert_apply": ("intent",),
     "templatize.retry_apply": ("retries",),
@@ -391,7 +382,6 @@ HISTORY = {
     "templatize.profile_propose_apply": PROFILE,
     "v2.ip_sla_policy_set": PROFILE,
     "templates.approve": TEMPLATE,
-    "templates.revoke_approval": TEMPLATE,
     "templates_v2.approve": TEMPLATE,
     "templates_v2.revoke": TEMPLATE,
     "templates_v2.bring": TEMPLATE,
@@ -399,7 +389,6 @@ HISTORY = {
     "templates_v2.bindings_apply": TEMPLATE,
     "templates_v2.seed": TEMPLATE,
     "v2.profile_propose_commit": PROFILE,
-    "templates.save_bindings": TEMPLATE,
     "templates.write_template": TEMPLATE,
     # ---- configure
     # A saved command set (C548, R3): a commit as the person, read as one of the fleet's commits.
@@ -424,7 +413,6 @@ HISTORY = {
     "v2.credentials_drill": ("breakglass",),
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
-    "inventory.set_source": NOT_A_DEVICE,
     "create_device_list_route": NOT_A_DEVICE,
     "delete_device_list_route": NOT_A_DEVICE,
     "drift_settings_post": NOT_A_DEVICE,

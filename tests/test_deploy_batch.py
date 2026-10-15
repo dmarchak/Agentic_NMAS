@@ -934,29 +934,27 @@ class TestTheNotesListingEvaluatesApplicability:
         return repo, hostvars
 
     def _listing(self, monkeypatch, program):
-        import flask
+        """`rolled_back_notes`, the one classifier Needs attention reads (the JSON route that
+        also served it, /templatize/rolled-back, left at 7.8 on 2026-10-15)."""
         import routes.deploy as D
         import routes.templatize as T
 
         monkeypatch.setattr(D, "_artifact_for", lambda *a: (("art", "cap"), ""))
         monkeypatch.setattr(D, "_current_program", lambda art, cap: program)
-        app = flask.Flask(__name__)
-        with app.test_request_context(json={}):
-            return T.rolled_back().get_json()
+        return T.rolled_back_notes("Lab")
 
     def test_a_note_whose_program_still_applies_is_listed_as_blocking(
             self, lab, monkeypatch):
         body = self._listing(monkeypatch, self.FAILED)
-        assert "s4" in body["rolled_back"]
-        assert body["rolled_back"]["s4"]["applicability"] == "blocking"
-        assert body["blocking_count"] == 1
+        assert "s4" in body["applies"]
+        assert body["applies"]["s4"]["applicability"] == "blocking"
+        assert len(body["applies"]) == 1
 
     def test_a_note_that_no_longer_applies_is_not_listed_as_blocking(
             self, lab, monkeypatch):
         """The 3B case: intent reverted, nothing would be sent."""
         body = self._listing(monkeypatch, [])
-        assert body["rolled_back"] == {}
-        assert body["blocking_count"] == 0
+        assert body["applies"] == {}
         assert body["stale"]["s4"]["applicability"] == "no longer applies"
 
     def test_the_record_is_kept_not_deleted(self, lab, monkeypatch):
@@ -976,13 +974,10 @@ class TestTheNotesListingEvaluatesApplicability:
 
         monkeypatch.setattr(D, "_artifact_for", lambda *a: (("art", "cap"), ""))
         monkeypatch.setattr(D, "_current_program", _boom)
-        import flask
-        app = flask.Flask(__name__)
-        with app.test_request_context(json={}):
-            body = T.rolled_back().get_json()
+        body = T.rolled_back_notes("Lab")
 
-        assert body["rolled_back"]["s4"]["applicability"] == "unknown"
-        assert body["blocking_count"] == 1
+        assert body["applies"]["s4"]["applicability"] == "unknown"
+        assert len(body["applies"]) == 1
 
 
 @pytest.mark.usefixtures("intent_matches")

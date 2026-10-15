@@ -19,6 +19,9 @@ home NSOT_STAGE7_PLAN.md section 6 gives it:
 * (c) state that exists and is never shown;
 * (d) superseded, duplicate or dead: removed in 7.8, or never had a caller.
 
+Measured 2026-10-15: the allowlist is EMPTY. 7.8 removed its last sixteen, and every
+route is now reached by a page or non-GUI with a named consumer.
+
 **The allowlist only shrinks.** It is compared with the unreachable set
 EXACTLY, in both directions (a new unreachable route fails, and so does an
 entry that has become reachable), and its size is pinned by `CEILING`, so
@@ -66,32 +69,11 @@ NON_GUI = {
 A, B, C, D = "(a) no entry point", "(b) credentials", \
     "(c) never shown", "(d) superseded or dead"
 
-#: (group, reason). Each must leave when it becomes reachable.
-KNOWN_UNREACHABLE = {
-    # (a) Phase 3 and later features with no entry point.
-    "GET /templatize/committed": (A, "the list of devices with committed intent; Fleet (7.4)"),
-    "GET /templatize/rolled-back": (A, "rollback-blocked devices; a Needs attention row (7.2)"),
-    "GET /templatize/rolled-back/retries": (A, "the retry record; Device, History (7.3)"),
-    "POST /templatize/bulk/preview": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
-    "POST /templatize/bulk/apply": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
-    "POST /templates/revoke/<path:rel_path>": (A, "withdraw an approval with a reason; Source of truth, Templates (7.6)"),
-    "POST /templates/bindings": (A, "which template a device uses; Source of truth, Templates (7.6)"),
-    "GET /templates/seed_status": (A, "seed status (C6); Source of truth, Templates (7.6)"),
-    "GET /jobs/health": (A, "job, image and pool health; Needs attention (7.2)"),
-    "POST /inventory/source/<path:list_name>": (A, "set a network's inventory source: the panel only READS it; Fleet, Networks (7.4)"),
-    "POST /remote/adopt": (A, "connect a remote; Versions (7.5)"),
-    # (b) Credential management: the whole resolution chain is HTTP-only.
-    # (c) State that exists and is never shown.
-    # (d) Superseded, duplicate or dead.
-    "POST /bulk_clear/<operation_id>": (D, "on the audit's CUT list; removed in 7.8"),
-    "POST /drift/check": (D, "the async drift run: the panel uses /drift/check/sync; on the audit's CUT list"),
-    "GET /drift/settings": (D, "a duplicate read: the drift panel takes its interval and toggle from /drift/status"),
-    "GET /device_lists": (D, "the list of lists as JSON: the page renders it server-side; on the audit's CUT list"),
-    "POST /templates/preview/<path:hostname>": (D, "the same capture-only READ as GET, with a JSON body; nothing sends it"),
-    # The six the GUI doc called "the AI agent's NetBox reads, need no UI".
-    # Measured: nothing in the repository calls them, the agent included (it
-    # calls netbox_client directly). A claimed consumer, checked and absent.
-}
+#: (group, reason). Each must leave when it becomes reachable. Empty since 2026-10-15: the
+#: last sixteen, each with a v2 home or superseded, were removed at 7.8 (docs/CUTOVER.md,
+#: "Removed at 7.8"). A route no page reaches is now given an entry point, declared non-GUI
+#: with its consumer, or removed; an entry here is the last resort and raises CEILING.
+KNOWN_UNREACHABLE: dict = {}
 
 #: The allowlist's size, pinned. It may only go DOWN: lower it in the same
 #: commit that gives a route its entry point or removes it. The GUI doc set
@@ -114,7 +96,12 @@ KNOWN_UNREACHABLE = {
 # 21 -> 17 (2026-10-14): /ai/events (GET and POST clear), /ai/tool_cache_snapshot and
 # /ai/report removed with the AI family (D15).
 # 17 -> 16 (2026-10-14): GET /backup_stats removed with today's Backups (7.8, C632).
-CEILING = 16
+# 16 -> 0 (2026-10-15): the sixteen no page reached, removed at 7.8: /templatize/committed,
+# /templatize/rolled-back and its /retries, /templatize/bulk/preview and /apply,
+# /templates/revoke/<path>, POST /templates/bindings, /templates/seed_status, /jobs/health,
+# POST /inventory/source/<list>, /remote/adopt, /bulk_clear/<id>, POST /drift/check,
+# GET /drift/settings, GET /device_lists and POST /templates/preview/<host>.
+CEILING = 0
 
 
 @pytest.fixture(scope="module")
@@ -148,12 +135,29 @@ class TestThePopulation:
         assert pairs["POST /deploy/apply"] is True
         assert pairs["GET /onboard/pending"] is True
         assert pairs["POST /run_command/<ip>"] is True          # url_for, device page
-        assert pairs["POST /drift/settings"] is True            # a mixed path, write half
-        assert pairs["POST /templatize/bulk/apply"] is False     # bulk intent: no page yet
-        assert pairs["POST /inventory/source/<path:list_name>"] is False  # its GET half is no proof
+        # A mixed path, write half (the editor's save beside its open). Before 2026-10-15
+        # this anchor was POST /drift/settings, single-method since its GET left at 7.8.
+        assert pairs["POST /templatize/committed/<path:hostname>"] is True
+        # Unreached, the answer each way: a non-GUI route only a script posts to. The
+        # unreached allowlist's own anchors (bulk intent's JSON apply, and inventory source's
+        # POST, whose GET half was no proof) left at 7.8 on 2026-10-15; the per-method split
+        # is driven on a planted page below.
+        assert pairs["POST /jobs/finished"] is False
         # The device page's Actions menu loop (`url_for('device_v2.' ~ op)`, one row per op):
         # Seed's card is reached only from its row there (2026-10-03).
         assert pairs["GET /v2/device/<name>/seed"] is True
+
+    def test_a_read_of_a_mixed_path_is_no_proof_of_its_write(self):
+        """The per-method split on a planted page, since no shipped mixed path has an
+        unreached half left: a page that READS a path reaches its GET, never its POST; the
+        same fetch sent as a POST reaches the POST (the control)."""
+        from tests.route_references import path_references
+
+        rule = "/inventory/source/<path:list_name>"
+        read = "fetch(`/inventory/source/${encodeURIComponent(listName)}`);"
+        assert path_references(read, rule, True) == {"GET"}
+        write = read.replace(");", ", {method: 'POST'});")
+        assert path_references(write, rule, True) == {"POST"}
 
 
 class TestTheThreeStates:

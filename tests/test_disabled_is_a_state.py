@@ -40,21 +40,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: ``fetches``  — returns a resource that genuinely does not exist when the
 #:                feature is off. Refusing is correct; the refusal must still
 #:                say what to do about it.
-CLASSIFIED = {
-    "/drift/settings":     "reports",
-}
+#: Empty since 2026-10-15: its last member, GET /drift/settings ("reports"), left at 7.8 (a
+#: duplicate read nothing called; /drift/status reports the same switch).
+CLASSIFIED: dict = {}
 
 _STATE = re.compile(r"disabled|not configured|not_configured|unconfigured|"
                     r"no api key|not enabled", re.I)
 
 
-def _gets_mentioning_a_degraded_state():
-    """GET routes that return something naming a disabled/unconfigured state."""
+def _gets_mentioning_a_degraded_state(paths=None):
+    """GET routes that return something naming a disabled/unconfigured state: app.py's and
+    every route file's, or the *paths* given."""
     found = []
-    paths = [os.path.join(ROOT, "app.py")]
-    routes_dir = os.path.join(ROOT, "routes")
-    paths += [os.path.join(routes_dir, f) for f in sorted(os.listdir(routes_dir))
-              if f.endswith(".py")]
+    if paths is None:
+        paths = [os.path.join(ROOT, "app.py")]
+        routes_dir = os.path.join(ROOT, "routes")
+        paths += [os.path.join(routes_dir, f) for f in sorted(os.listdir(routes_dir))
+                  if f.endswith(".py")]
 
     for path in paths:
         tree = ast.parse(io.open(path, encoding="utf-8").read())
@@ -83,12 +85,23 @@ class TestEveryDegradedReadIsClassified:
     """The list must not grow silently, which is the only way this stays a
     check rather than a snapshot of one afternoon."""
 
-    def test_the_scan_finds_something(self):
-        """A scan that returns nothing would make the test below vacuous —
-        and this project has found five controls that could not fail."""
-        # 1 since 2026-10-12: the monitoring stack panel's per-tool card and the topology
-        # service's SVG left at 7.8; /drift/settings remains.
-        assert len(_gets_mentioning_a_degraded_state()) >= 1
+    def test_the_scan_finds_a_planted_one(self, tmp_path):
+        """A scan that cannot find anything would make the test below vacuous, and this
+        project has found five controls that could not fail. The real population is empty
+        since 2026-10-15 (1 since 2026-10-12, when the monitoring stack panel's per-tool card
+        and the topology service's SVG left; GET /drift/settings, the last, left at 7.8), so
+        the floor is a planted GET in the shape the scan reads, and a POST beside it that it
+        must not count."""
+        planted = tmp_path / "planted_routes.py"
+        planted.write_text(
+            '@bp.route("/planted/state", methods=["GET"])\n'
+            "def state():\n"
+            '    return {"disabled": True}\n\n\n'
+            '@bp.route("/planted/write", methods=["POST"])\n'
+            "def set_state():\n"
+            '    return {"disabled": False}\n', encoding="utf-8")
+        assert _gets_mentioning_a_degraded_state([str(planted)]) == ["/planted/state"]
+        assert isinstance(_gets_mentioning_a_degraded_state(), list)
 
     def test_every_one_is_classified(self):
         unclassified = [r for r in _gets_mentioning_a_degraded_state() if r not in CLASSIFIED]
