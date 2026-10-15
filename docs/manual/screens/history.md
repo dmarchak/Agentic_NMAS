@@ -116,7 +116,9 @@ a LogQL line query draws its newest 200 lines over at most 30 days (Loki answers
 days at a time), each masked like every other configuration text. A LogQL query that answers
 numbers rather than lines is refused, saying so. A query is at most 2000 characters of
 printable ASCII. These are reads: nothing is written, and nothing reaches a device. Its
-**Source** and **Mode** switches open the logs builder (Logs, Builder), described below.
+**Source** and **Mode** switches open the builders described below: the metrics builder
+(Metrics, Builder) and the logs builder (Logs, Builder). A builder opened from here starts
+afresh: it does not read the query in the box back.
 
 **Saved views.** **Save this view…**, beside Copy the link on any answer (Syslog by device
 included), asks a title and saves the question as you asked it (the question, its device and
@@ -180,6 +182,60 @@ or **No lines in range**, saying how many lines the same jobs and devices sent i
 whether the range is inside what Loki keeps, so an empty answer is not mistaken for a gap. A
 line's time is when the collector received it, never the device's clock. These are reads:
 nothing is written, and nothing reaches a device.
+
+## Ask your own: the metrics builder {#ask-metrics}
+
+Ask a question of the network's metrics by choosing, not by writing PromQL. It shares the logs
+builder's head (**Source**, **Mode**), its range, its query box and its actions; **Edit as code**
+hands the PromQL formed to Code mode. The network's **Saved queries** are listed beside it, each
+one click from its answer.
+
+- **Start from** sets every choice at once to a common question: errors per interface (the top
+  5), CPU per device over 7 days, BGP sessions not established, bytes in per role. A question
+  whose metric Prometheus does not hold is drawn but is not a link.
+- **What** searches the metric names Prometheus holds over the range, and their help text, and
+  lists the matches, each with its type (counter, gauge) and its unit where one is known. The
+  names, help and types are Prometheus's own, never a list Mercury keeps.
+- **Devices** offers the values of the `device` label the chosen metric carries (**+ device**),
+  its `role` label's values (**by role**), or **all**. **Interfaces** offers the IF-MIB interface
+  names it carries (`ifDescr`, else `ifName`); a metric with no such label has no Interfaces row.
+- **Filters** keep or leave out series by any label the metric carries: **+ filter** opens the
+  editor, a label, how it matches (= is exactly, != is not, =~ matches a pattern, !~ does not; a
+  pattern is RE2, anchored at both ends) and a value, with the values the label holds offered
+  and how many series the filter would keep or leave out.
+- **Operations** apply in order. A counter (Prometheus's metadata says so) always starts with a
+  **rate per second** or an **increase** over a window, never its raw value. **+ operation** adds
+  × 8 (bytes to bits, for a metric counted in bytes), per minute (× 60, after a rate), a group
+  (sum, avg, min, max or count, by a label the series still carry), or a comparison that keeps
+  only the values equal to, not equal to, above or below a number. The unit follows the chain:
+  bytes, × 8 is bits, a rate is per second.
+- **Top** keeps the 5 or 10 highest series at each step (`topk`); over a range, more than that
+  many series can appear.
+
+**The query** is drawn as it forms, the last choice marked, with a sentence saying what that
+part does and what the whole query reads. Every value you choose reaches Prometheus inside one
+quoted string, escaped, so a quote, a backslash or a line break in it can never become part of
+the query's own structure; several values are matched as exact names; a metric or label name,
+which cannot be quoted, must be one Prometheus holds.
+
+**Range** is 1 h, 24 h, 7 days, 30 days, 90 days, or **From… to…** (the last so many minutes,
+hours or days, or two times in UTC, your local time beside each). The step widens with the
+range so that a series is at most 1,000 points (15 s at 1 h to 3 h at 90 days). The limits in
+From… to… are Prometheus's own, read from its flags (how long it keeps, how long one ask may
+run, how many samples one ask may load), the long-term store Code mode reads past what
+Prometheus keeps, Mercury's (1,000 points a series, 200 series an answer, the 20 highest drawn)
+and Loki's for the logs builder.
+
+**Ask** sends the query; the button says **Asking Prometheus…** until the answer is drawn, and
+changing any choice afterwards removes the answer. The answer is one of: the chart, with each
+series' value now and its highest and lowest in the range (past 20 series, the 20 highest are
+drawn and the rest counted); **Refused**, naming the bound and what passed it, with the choice
+that fits: a rate's window shorter than two scrapes of the metric's slowest job, more samples
+than Prometheus loads in one ask, more than 200 series; **Couldn't load**, naming what
+Prometheus answered (its own words for a query it refused) or how long it was waited for, and
+what its probe last found, with **Ask again**; or **No data in range**, saying whether the
+range is inside what Prometheus keeps, so no samples is not mistaken for a zero. These are
+reads: nothing is written, and nothing reaches a device.
 
 ## Baselines {#baselines}
 

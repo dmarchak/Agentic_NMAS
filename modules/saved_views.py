@@ -75,14 +75,36 @@ def address(text: str) -> tuple:
     parts = urlsplit((text or "").strip())
     if parts.scheme or parts.netloc:
         return "", "a view is an address on this page, not another site"
-    if not PATH.match(parts.path):
+    builder = builders().get(parts.path)
+    if not PATH.match(parts.path) and builder is None:
         return "", f"{parts.path or 'nothing'} is not a History › Query question"
+    if builder is not None:
+        # Ask your own's builders (boards E3 and F3): the keys each reads, a repeatable one
+        # (two devices, two filters) kept in its order.
+        keys, lists = builder
+        asked = parse_qsl(parts.query, keep_blank_values=False)
+        unknown = sorted({k for k, _v in asked} - set(keys) - {"list"})
+        if unknown:
+            return "", "the address carries what a question does not read: " + ", ".join(unknown)
+        pairs = []
+        for key in keys:
+            values = [v for k, v in asked if k == key]
+            pairs += [(key, v) for v in (values if key in lists else values[:1])]
+        return parts.path + ("?" + urlencode(pairs) if pairs else ""), ""
     asked = dict(parse_qsl(parts.query, keep_blank_values=False))
     unknown = sorted(set(asked) - set(KEYS) - {"list"})
     if unknown:
         return "", "the address carries what a question does not read: " + ", ".join(unknown)
     pairs = [(k, asked[k]) for k in KEYS if asked.get(k)]
     return parts.path + ("?" + urlencode(pairs) if pairs else ""), ""
+
+
+def builders() -> dict:
+    """Ask your own's builders: path -> (the keys a view keeps, the repeatable ones)."""
+    from modules import history_logq, history_promq
+
+    return {"/v2/history/query/ask/logs": (history_logq.ADDRESS_KEYS, history_logq.LISTS),
+            history_promq.PAGE_PATH: (history_promq.ADDRESS_KEYS, history_promq.LISTS)}
 
 
 def save(list_name: str, title: str, text: str, actor: str) -> dict:

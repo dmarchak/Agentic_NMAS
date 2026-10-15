@@ -61,11 +61,14 @@ def go_unquote(text, i):
     simple = {"a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v",
               "\\": "\\", '"': '"'}
     while True:
+        # A string that never closes is a failure to say, not an index past the end.
+        assert i < len(text), f"the string from {text[:40]!r} never closes"
         ch = text[i]
         if ch == '"':
             return "".join(out), i + 1
         assert ch != "\n", "a raw newline inside a Go string literal"
         if ch == "\\":
+            assert i + 1 < len(text), f"the string from {text[:40]!r} ends in a backslash"
             nxt = text[i + 1]
             if nxt in simple:
                 out.append(simple[nxt])

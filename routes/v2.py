@@ -519,6 +519,43 @@ def history_ask_logs_region():
 
 
 # ---------------------------------------------------------------------------
+# History › Query › Ask your own, the metrics builder (board E3, QueryBuilderMetrics3, approved
+# 2026-10-15; modules/history_promq.py): the choices in the address, the PromQL Mercury forms
+# from them, and, asked, the answer. Reads: nothing is written and no list is created.
+# ---------------------------------------------------------------------------
+
+def _ask_metrics_ctx() -> dict:
+    from modules import history_promq
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    ref = listref.active()
+    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
+            "f": _history_filters(request), "ask_metrics": True,
+            "q": history_promq.view(named_list(request) or ref.name, request.args)}
+
+
+@bp.route("/history/query/ask/metrics", methods=["GET"])
+def history_ask_metrics():
+    """History › Query › Ask your own, metrics (board E3): the builder, the PromQL as the
+    choices form it, and the answer once asked. A read."""
+    return _page("v2/history_ask_metrics.html", active_nav="history", **_ask_metrics_ctx())
+
+
+@bp.route("/history/query/ask/metrics/region", methods=["GET"])
+def history_ask_metrics_region():
+    """The metrics builder and its answer alone, redrawn as a choice is made or Ask is
+    pressed; the page's own address for the choices is pushed, so what is drawn is a link.
+    A read."""
+    from flask import url_for
+
+    ctx = _ask_metrics_ctx()
+    resp = _strict(render_template("v2/_history_ask_metrics.html", **ctx))
+    resp.headers["HX-Push-Url"] = url_for("v2.history_ask_metrics") + ctx["q"]["qs"]()
+    return resp
+
+
+# ---------------------------------------------------------------------------
 # History › Query's saved views (C667; board A's "Saved by your team", board B's "Save this
 # view…"): links to reads, kept per network (modules/saved_views.py). Each write answers with
 # what it did, in place, and announces `saved_views`, on which the list redraws.

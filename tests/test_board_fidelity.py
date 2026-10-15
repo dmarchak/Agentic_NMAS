@@ -27,7 +27,8 @@ FIDELITY = os.path.join(ROOT, "docs", "fidelity")
 #: Screen -> its record.
 RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "logs.html": "logs-tail.md", "dhcp.html": "dhcp.md", "onboard.html": "onboard.md",
-           "history_ask_logs.html": "history-ask-logs.md"}
+           "history_ask_logs.html": "history-ask-logs.md",
+           "history_ask_metrics.html": "history-ask-metrics.md"}
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.

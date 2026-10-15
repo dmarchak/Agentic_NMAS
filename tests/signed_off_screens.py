@@ -69,6 +69,12 @@ SIGNED_OFF = {
                                 "2026-10-11): board D (LogsTail, canvas v110, page 'History, "
                                 "Query'), drawn under the Phase 7 mode and counted as signed off "
                                 "(docs/STANDING_APPROVAL_LOG.md)"),
+    "history_ask_metrics.html": ("2026-10-15", "History › Query › Ask your own, the metrics "
+                                               "builder: board E3 (QueryBuilderMetrics3 and "
+                                               "QueryBuilderMetrics3Phone, canvas page "
+                                               "'History, Query'), approved by the operator "
+                                               "with F3 on 2026-10-15; compared in "
+                                               "docs/fidelity/history-ask-metrics.md"),
     "history_ask_logs.html": ("2026-10-15", "History › Query › Ask your own, the logs "
                                             "builder: board F3 (QueryBuilderLogs3 and "
                                             "QueryBuilderLogs3Phone, canvas page 'History, "

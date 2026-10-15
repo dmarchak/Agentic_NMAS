@@ -1,0 +1,64 @@
+{%- from "v2/_macros.html" import icon, info -%}
+{#- History › Query › Ask your own: the pieces both builders draw (board E3, metrics,
+    _history_ask_metrics.html; board F3, logs, _history_ask_logs.html), imported with context.
+    Each builder's region is #lq; *q* is its view (modules/history_promq.py or history_logq.py),
+    whose `qs(over)` is the address with *over* applied; *here* is the page and *region* the
+    region's route.
+
+    - go: a choice as a link that redraws the region in place (its own hx-target: the frame
+      turns htmx's inheritance off, C409) and pushes the page's address;
+    - query_box: the query as the choices form it, the last choice marked and repeated, the
+      plain sentence, and Edit as code;
+    - range_chips: the range chips and From… to… (relative, or absolute UTC with the viewer's
+      local time beside, the fit line, the limits the caller draws, Apply and Cancel);
+    - actions: Ask (busy on itself), Save this view…, Copy the link, and the (i);
+    - state: one of the answer's states (refused, the store not answering, nothing in range). -#}
+
+{%- macro go(q, here, region, over, words, cls='lq-chip', pressed=none, label='', current=false) -%}
+<a class="{{ cls }}" href="{{ here }}{{ q.qs(over) }}" hx-get="{{ region }}{{ q.qs(over) }}" hx-target="#lq" hx-swap="outerHTML"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if current %} aria-current="true"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+{%- endmacro %}
+
+{%- macro query_box(b, hl, code_href, tail='') -%}
+{%- set marked = (b.parts | selectattr(1, 'equalto', hl) | map(attribute=0) | map('trim') | list) if hl else [] %}
+    <pre class="lq-q">{% for text, key in b.parts %}{% if key and key == hl %}{{ ' ' if text.startswith(' ') }}<mark>{{ text.lstrip(' ') }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}{% if marked %}
+<span class="lq-dim">the last choice:</span> <mark>{{ marked | join(' … ') }}</mark>{% endif %}</pre>
+    <p class="lq-say">{% if hl and b.explain[hl] %}<strong>{{ marked | join(' … ') if marked else 'The range' if hl == 'range' else 'Start from' }}</strong> {{ b.explain[hl] }}. {% endif %}The whole query reads: {{ b.reads }}.</p>
+    <span class="lq-hint">Formed as you choose; <a href="{{ code_href }}">Edit as code</a> hands it to Code mode{{ tail }}</span>
+{%- endmacro %}
+
+{%- macro range_chips(q, here, region, s, rng, change, hidden_html, fit_html, pop_cls='') -%}
+    <div class="lq-chips">
+      {%- for key, rv in q.ranges.items() %}{{ go(q, here, region, dict(change, range=key, within='', to='', hl='range', **{'from': ''}), rv[0], 'lq-chip' ~ (' on' if s.range == key), s.range == key) }}{% endfor %}
+      <details class="lq-more lq-pickbox" data-keep="lq-range-pick"{% if s.range == 'custom' and rng.error %} open{% endif %}>
+        <summary class="lq-chip{{ ' on' if s.range == 'custom' }}">{% if s.range == 'custom' %}{{ rng.words }}{% else %}From… to…{% endif %}</summary>
+        <form class="lq-pop{{ ' ' ~ pop_cls if pop_cls }}" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" aria-label="Choose the time range">{{ hidden_html }}<input type="hidden" name="range" value="custom"><input type="hidden" name="hl" value="range">
+          <div class="lq-popcol">
+            <fieldset><legend>Relative</legend>
+              <label for="lq-within"><span>Last</span><input id="lq-within" type="text" name="within" value="{{ s.within }}" placeholder="3 days"></label>
+            </fieldset>
+            <fieldset><legend>Or absolute (UTC; your local time beside it)</legend>
+              <label for="lq-from"><span>From</span><input id="lq-from" class="mono" type="text" name="from" value="{{ s['from'] }}" placeholder="2026-10-10 06:00" data-lq-local="lq-from-local"><span class="faint" id="lq-from-local"></span></label>
+              <label for="lq-to"><span>To</span><input id="lq-to" class="mono" type="text" name="to" value="{{ s.to }}" placeholder="now" data-lq-local="lq-to-local"><span class="faint" id="lq-to-local"></span></label>
+            </fieldset>
+            {%- if rng.error and s.range == 'custom' %}<p class="lq-bad" role="alert">{{ icon('warn', 14) }} Not taken: {{ rng.error }}.</p>
+            {%- else %}{{ fit_html }}{% endif %}
+          </div>
+          <div class="lq-popcol">
+            {{- caller() }}
+          </div>
+          <div class="lq-popacts"><button type="submit" class="btn btn-primary btn-small">Apply</button><button type="button" class="btn btn-small" data-lq-close>Cancel</button></div>
+        </form>
+      </details>
+    </div>
+{%- endmacro %}
+
+{%- macro actions(q, here, busy, address_over, section, label) -%}
+    <span class="op-act"><button id="lq-ask" type="submit" form="lq-form" class="btn btn-primary"><span class="op-idle">Ask</span><span class="op-busy">{{ busy }}</span></button></span>
+    {%- with op={'address': here ~ q.qs(address_over)} %}{% include "v2/_history_save.html" %}{% endwith %}
+    <button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q.qs(address_over) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button>
+    {{ info('history', section, label) }}
+{%- endmacro %}
+
+{%- macro state(kind, key, role='alert') -%}
+<div class="lq-st{{ ' lq-' ~ kind if kind }}" role="{{ role }}"><span class="lq-k">{{ key }}</span>{{ caller() }}</div>
+{%- endmacro %}

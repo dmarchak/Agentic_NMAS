@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, info, stamp -%}
+{%- import "v2/_history_ask_parts.html" as part with context -%}
 {#- History › Query › Ask your own, the logs builder (board F3, QueryBuilderLogs3 and its phone
     board, approved 2026-10-15; compared in docs/fidelity/history-ask-logs.md). One region,
     #lq: the builder, the query Mercury forms from the choices (the last one marked and said in
@@ -8,7 +9,7 @@
 {%- set here = url_for('v2.history_ask_logs') %}{% set region = url_for('v2.history_ask_logs_region') %}
 {%- set change = {'ask': '', 'before': '', 'at': ''} %}
 {%- macro go(over, words, cls='lq-chip', pressed=none, label='', current=false) -%}
-<a class="{{ cls }}" href="{{ here }}{{ q.qs(over) }}" hx-get="{{ region }}{{ q.qs(over) }}" hx-target="#lq" hx-swap="outerHTML"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if current %} aria-current="true"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+{{ part.go(q, here, region, over, words, cls, pressed, label, current) }}
 {%- endmacro %}
 {%- macro hidden(skip=(), extra={}) -%}
 <input type="hidden" name="list" value="{{ q.list }}">
@@ -26,7 +27,7 @@
 {%- if d.state == 'not_configured' %}
 <div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ d.error | capitalize }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
 {%- elif d.state == 'error' %}
-<div class="lq-st lq-danger" role="alert"><span class="lq-k">Loki not answering</span><p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ q.now[11:16] }} UTC. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div></div>
+{%- call part.state('danger', 'Loki not answering') %}<p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ q.now[11:16] }} UTC. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
 {%- endif %}
 
 <form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('sev', 'has', 'not', 'by', 'every')) }}<input type="hidden" name="ask" value="1"></form>
@@ -108,43 +109,22 @@
 
   <div class="lq-row"><span class="lq-lab">The query</span><div class="lq-col">
     {%- set hl = 'count' if s.hl == 'show' and s.show == 'counts' else s.hl %}
-    {%- set marked = (b.parts | selectattr(1, 'equalto', hl) | map(attribute=0) | map('trim') | list) if hl else [] %}
-    <pre class="lq-q">{% for text, key in b.parts %}{% if key and key == hl %}{{ ' ' if text.startswith(' ') }}<mark>{{ text.lstrip(' ') }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}{% if marked %}
-<span class="lq-dim">the last choice:</span> <mark>{{ marked | join(' … ') }}</mark>{% endif %}</pre>
-    <p class="lq-say">{% if hl and b.explain[hl] %}<strong>{{ marked | join(' … ') if marked else 'The range' if hl == 'range' else 'Start from' }}</strong> {{ b.explain[hl] }}. {% endif %}The whole query reads: {{ b.reads }}.</p>
-    <span class="lq-hint">Formed as you choose; <a href="{{ url_for('v2.history_query_metric', key='ask', lang='logql', range=code_range, q=b.query, list=q.list) }}">Edit as code</a> hands it to Code mode{% if s.show == 'counts' %}, which draws lines only today{% endif %}. Lines are masked as every log line Mercury shows.</span>
+    {%- set tail %}{% if s.show == 'counts' %}, which draws lines only today{% endif %}. Lines are masked as every log line Mercury shows.{% endset %}
+    {{ part.query_box(b, hl, url_for('v2.history_query_metric', key='ask', lang='logql', range=code_range, q=b.query, list=q.list), tail) }}
   </div></div>
 
   <div class="lq-row"><span class="lq-lab">Range</span><div class="lq-col">
-    <div class="lq-chips">
-      {%- for key, rv in q.ranges.items() %}{{ go(dict(change, range=key, within='', to='', hl='range', **{'from': ''}), rv[0], 'lq-chip' ~ (' on' if s.range == key), s.range == key) }}{% endfor %}
-      <details class="lq-more lq-pickbox" data-keep="lq-range-pick"{% if s.range == 'custom' and rng.error %} open{% endif %}>
-        <summary class="lq-chip{{ ' on' if s.range == 'custom' }}">{% if s.range == 'custom' %}{{ rng.words }}{% else %}From… to…{% endif %}</summary>
-        <form class="lq-pop" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" aria-label="Choose the time range">{{ hidden(('range', 'within', 'from', 'to')) }}<input type="hidden" name="range" value="custom"><input type="hidden" name="hl" value="range">
-          <div class="lq-popcol">
-            <fieldset><legend>Relative</legend>
-              <label for="lq-within"><span>Last</span><input id="lq-within" type="text" name="within" value="{{ s.within }}" placeholder="3 days"></label>
-            </fieldset>
-            <fieldset><legend>Or absolute (UTC; your local time beside it)</legend>
-              <label for="lq-from"><span>From</span><input id="lq-from" class="mono" type="text" name="from" value="{{ s['from'] }}" placeholder="2026-10-10 06:00" data-lq-local="lq-from-local"><span class="faint" id="lq-from-local"></span></label>
-              <label for="lq-to"><span>To</span><input id="lq-to" class="mono" type="text" name="to" value="{{ s.to }}" placeholder="now" data-lq-local="lq-to-local"><span class="faint" id="lq-to-local"></span></label>
-            </fieldset>
-            {%- if rng.error and s.range == 'custom' %}<p class="lq-bad" role="alert">{{ icon('warn', 14) }} Not taken: {{ rng.error }}.</p>
-            {%- else %}<p class="lq-ok{{ ' lq-over' if q.fit.words != 'within every limit below' }}">{{ q.range_words }}{% if s.show == 'counts' %} · every {{ q.windows[s.every][0] }} · {{ '{:,}'.format(q.fit.windows) }} windows{% endif %} · {{ q.fit.words }}</p>{% endif %}
-          </div>
-          <div class="lq-popcol">
+    {%- set fit %}<p class="lq-ok{{ ' lq-over' if q.fit.words != 'within every limit below' }}">{{ q.range_words }}{% if s.show == 'counts' %} · every {{ q.windows[s.every][0] }} · {{ '{:,}'.format(q.fit.windows) }} windows{% endif %} · {{ q.fit.words }}</p>{% endset %}
+    {%- call part.range_chips(q, here, region, s, rng, change, hidden(('range', 'within', 'from', 'to')), fit) %}
             <h4>Limits{% if lim.read_at and not lim.error %} <span class="faint">(Loki's read {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC)</span>{% endif %}</h4>
             <table class="lq-lim">
               <tr><th scope="row">Loki</th><td>{% if lim.error %}its bounds could not be read ({{ lim.error }}); it refuses what passes them, and the refusal is drawn{% else %}one ask spans at most {{ lim.max_query_length.text if lim.max_query_length else '(not stated)' }} (<span class="mono">max_query_length</span>); lines kept {{ lim.retention_period.text if lim.retention_period else '(not stated)' }} (<span class="mono">retention_period</span>), read from Loki's /config{% endif %}</td></tr>
               <tr><th scope="row">Mercury</th><td>{{ q.page }} lines a page; at most {{ '{:,}'.format(q.max_windows) }} windows a series; the {{ q.max_series }} series with the most lines drawn</td></tr>
             </table>
-          </div>
-          <div class="lq-popacts"><button type="submit" class="btn btn-primary btn-small">Apply</button><button type="button" class="btn btn-small" data-lq-close>Cancel</button></div>
-        </form>
-      </details>
-    </div>
+    {%- endcall %}
     <p class="lq-bounds"><b>Bounds:</b> {{ q.page }} lines a page (Mercury)
-      {%- if lim.error %} · Loki's own bounds could not be read ({{ lim.error }}): it refuses what passes them, and the refusal is drawn.
+      {%- if not lim %} · no log store is configured for this network, so Loki's bounds are not read.
+      {%- elif lim.error %} · Loki's own bounds could not be read ({{ lim.error }}): it refuses what passes them, and the refusal is drawn.
       {%- else %}
       {%- if lim.max_query_length %} · one ask spans at most {{ lim.max_query_length.words }} (Loki's <span class="mono">max_query_length {{ lim.max_query_length.text }}</span>){% endif %}
       {%- if lim.query_timeout %} · {{ lim.query_timeout.words }} an ask (Loki's <span class="mono">query_timeout</span>){% endif %}
@@ -155,10 +135,7 @@
   </div></div>
 
   <div class="lq-row lq-acts"><span class="lq-lab"></span><div class="lq-line">
-    <span class="op-act"><button id="lq-ask" type="submit" form="lq-form" class="btn btn-primary"><span class="op-idle">Ask</span><span class="op-busy">Asking Loki…</span></button></span>
-    {%- with op={'address': here ~ q.qs({'ask': '1', 'before': '', 'at': '', 'hl': ''})} %}{% include "v2/_history_save.html" %}{% endwith %}
-    <button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q.qs({'ask': '1', 'before': '', 'at': '', 'hl': ''}) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button>
-    {{ info('history', 'ask-logs', 'About the logs builder') }}
+    {{ part.actions(q, here, 'Asking Loki…', {'ask': '1', 'before': '', 'at': '', 'hl': ''}, 'ask-logs', 'About the logs builder') }}
   </div></div>
 </section>
 
@@ -166,24 +143,24 @@
 {%- if a %}
 <div id="lq-answer" class="lq-answer">
 {%- if a.state == 'refused' %}
-<div class="lq-st lq-warn" role="alert"><span class="lq-k">Refused{% if a.refusals and a.refusals[0][1] %} by a bound{% endif %}</span>
+{%- call part.state('warn', 'Refused' ~ (' by a bound' if a.refusals and a.refusals[0][1] else '')) %}
   {%- for words, fixes in a.refusals %}<p><strong>{{ words }}</strong></p>{% endfor %}
   {%- if lim.retention_period and a.refusals and a.refusals[0][1] %}<p class="muted">Narrow the range, or ask in parts: Loki keeps {{ lim.retention_period.words }}, so every part is there.</p>{% endif %}
   <div class="lq-line">{% for words, fixes in a.refusals %}{% for label, over in fixes %}{{ go(dict(over, ask='1', before='', at='', hl=''), label, 'btn btn-small') }}{% endfor %}{% endfor %}</div>
-</div>
+{% endcall %}
 {%- elif a.state == 'error' %}
-<div class="lq-st lq-danger" role="alert"><span class="lq-k">Loki not answering</span>
+{%- call part.state('danger', 'Loki not answering') %}
   <p><strong>Couldn't load: {{ a.error }}</strong>, asked {{ a.asked_at[11:16] }} UTC. Nothing is drawn from an earlier answer.</p>
   <p class="muted">{% if a.last_good %}Its last good read (the live tail's, every 5 s) was {{ stamp(a.last_good) }}.{% else %}The live tail has no good read of it either.{% endif %} If Loki stays down, Needs attention carries it as a row (its probe runs every 60 s).</p>
   <div>{{ go({'ask': '1'}, 'Ask again', 'btn btn-small') }}</div>
-</div>
+{% endcall %}
 {%- elif a.state == 'empty' %}
 {%- set c = a.context or {} %}
-<div class="lq-st" role="status"><span class="lq-k">No lines in range</span>
+{%- call part.state('', 'No lines in range', 'status') %}
   <p><strong>No lines match over {{ rng.words }}.</strong>{% if c.sent is not none and c.sent is defined %} {{ (q.devices | join(' and ')) if q.devices and q.devices | length <= 3 else 'The devices asked' if q.devices else 'Every device' }} sent {{ '{:,}'.format(c.sent) }} line{{ 's' if c.sent != 1 }} in the range{% if c.filtered %}; none passed the filters{% endif %}.{% endif %}</p>
   {%- if a.kept %}<p class="muted">{% if a.inside_kept %}The range is inside what Loki keeps ({{ a.kept_words }}), so this is an answer, not a gap.{% else %}Part of the range is older than Loki keeps ({{ a.kept_words }}): nothing there is held.{% endif %}</p>{% endif %}
   {%- if s.has %}<div>{{ go({'has': '', 'ask': '1', 'hl': 'has'}, 'Drop the text filter', 'btn btn-small') }}</div>{% endif %}
-</div>
+{% endcall %}
 {%- elif s.show == 'counts' %}
 <section class="card lq-card" aria-label="The answer, counts over time">
   <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{{ a.series_total }} series · answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>

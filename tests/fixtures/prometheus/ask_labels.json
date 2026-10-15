@@ -1,0 +1,159 @@
+{
+ "read_at": "2026-10-15T09:49:10Z",
+ "window": {
+  "start": 1791784800,
+  "end": 1792044000
+ },
+ "labels": {
+  "ifHCInOctets": {
+   "status": "success",
+   "data": [
+    "__name__",
+    "device",
+    "ifAlias",
+    "ifDescr",
+    "ifIndex",
+    "ifName",
+    "instance",
+    "job",
+    "role"
+   ]
+  },
+  "cpmCPUTotal5minRev": {
+   "status": "success",
+   "data": [
+    "__name__",
+    "cpmCPUTotalIndex",
+    "device",
+    "instance",
+    "job",
+    "role"
+   ]
+  }
+ },
+ "values": {
+  "ifHCInOctets": {
+   "device": {
+    "status": "success",
+    "data": [
+     "r1",
+     "r2",
+     "r3",
+     "r4",
+     "r6",
+     "s1",
+     "s2",
+     "s3",
+     "s4"
+    ]
+   },
+   "role": {
+    "status": "success",
+    "data": [
+     "router",
+     "switch"
+    ]
+   },
+   "ifName": {
+    "status": "success",
+    "data": [
+     "Gi0/0",
+     "Gi0/1",
+     "Gi0/2",
+     "Gi0/3",
+     "Gi1",
+     "Gi1/0",
+     "Gi1/1",
+     "Gi2",
+     "Gi3",
+     "Gi4",
+     "Lo0",
+     "Nu0",
+     "Vl10",
+     "Vl100",
+     "Vl20",
+     "Vl30",
+     "Vl99",
+     "Vo0"
+    ]
+   },
+   "ifDescr": {
+    "status": "success",
+    "data": [
+     "GigabitEthernet0/0",
+     "GigabitEthernet0/1",
+     "GigabitEthernet0/2",
+     "GigabitEthernet0/3",
+     "GigabitEthernet1",
+     "GigabitEthernet1/0",
+     "GigabitEthernet1/1",
+     "GigabitEthernet2",
+     "GigabitEthernet3",
+     "GigabitEthernet4",
+     "Loopback0",
+     "Null0",
+     "Vlan10",
+     "Vlan100",
+     "Vlan20",
+     "Vlan30",
+     "Vlan99",
+     "VoIP-Null0"
+    ]
+   }
+  }
+ },
+ "counts": {
+  "count(ifHCInOctets{ifDescr!=\"Null0\"})": {
+   "status": "success",
+   "data": {
+    "resultType": "vector",
+    "result": [
+     {
+      "metric": {},
+      "value": [
+       1792044000,
+       "62"
+      ]
+     }
+    ]
+   }
+  },
+  "count(ifHCInOctets{ifDescr!=\"Null0\",ifDescr=~\"Loopback.*\"})": {
+   "status": "success",
+   "data": {
+    "resultType": "vector",
+    "result": [
+     {
+      "metric": {},
+      "value": [
+       1792044000,
+       "9"
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "bad_regex": {
+  "query": "count(ifHCInOctets{ifDescr=~\"(\"})",
+  "status": 400,
+  "answer": {
+   "status": "error",
+   "errorType": "bad_data",
+   "error": "invalid parameter \"query\": 1:20: parse error: error parsing regexp: missing closing ): `^(?:()$`"
+  }
+ },
+ "empty": {
+  "query": "sum by (role) (rate(ifHCInOctets{ifDescr!=\"Null0\"}[5m]) * 8)",
+  "start": 1780293600,
+  "end": 1782885600,
+  "step": 3600,
+  "answer": {
+   "status": "success",
+   "data": {
+    "resultType": "matrix",
+    "result": []
+   }
+  }
+ }
+}

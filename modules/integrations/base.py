@@ -125,7 +125,18 @@ class IntegrationClient:
                         "error": f"HTTP {r.status_code}: {self.label} refused the tool's "
                                  "credential"}
             if r.status_code >= 400:
-                return {"ok": False, "error": f"HTTP {r.status_code}", "status": r.status_code}
+                out = {"ok": False, "error": f"HTTP {r.status_code}", "status": r.status_code}
+                # The service's own words for the failure, where its answer carries an `error`
+                # (Prometheus's for a query it refused, board E3), so a caller can say why.
+                try:
+                    body = r.json()
+                except Exception:                     # noqa: BLE001 - no JSON, no words
+                    body = None
+                if isinstance(body, dict) and isinstance(body.get("error"), str):
+                    # Masked on the way out, as every answer carrying a service's text is.
+                    from modules.redact import redact_text
+                    out["detail"] = redact_text(body["error"][:500])
+                return out
             return {"ok": True, "status": r.status_code, "response": r}
         except requests.exceptions.SSLError as exc:
             return {"ok": False, "error": f"TLS error: {exc}"}

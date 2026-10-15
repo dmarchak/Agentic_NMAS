@@ -24,11 +24,17 @@ never end the string or add a stage; a value inside a pattern is escaped as a li
 log line Mercury shows (`redact_text`), and a line's time is when the collector received it.
 """
 
-import calendar
 import logging
 import re
 import time
-from urllib.parse import urlencode
+
+from modules import history_ask
+# What the two builders share (board E3's and this one's): one token each, durations, the
+# range and the address, in modules/history_ask.py.
+from modules.history_ask import (REMEMBER, alternation, duration_words, literal,  # noqa: F401
+                                 parse_duration, string)
+from modules.history_ask import iso as _iso, matcher as _matcher  # noqa: F401
+from modules.history_ask import utc as _utc, when as _when  # noqa: F401
 
 log = logging.getLogger(__name__)
 
@@ -42,8 +48,6 @@ RANGES = {"1h": ("1 h", 3600), "24h": ("24 h", 86400), "7d": ("7 days", 7 * 8640
 #: A count's windows: key -> (words, seconds, LogQL duration).
 WINDOWS = {"1m": ("1 minute", 60, "1m"), "5m": ("5 minutes", 300, "5m"),
            "1h": ("1 hour", 3600, "1h"), "1d": ("1 day", 86400, "1d")}
-#: How long a measured fact about Loki (its bounds, when a label began) is kept, seconds.
-REMEMBER = 3600
 #: The client's wait when Loki's own query_timeout is not read: its default, 1 minute, and 5 s.
 DEFAULT_WAIT = 65.0
 #: The longest text a contains/excludes filter takes, and a device or job value.
@@ -69,18 +73,15 @@ DEFAULTS = {"job": [], "dev": [], "role": "", "sev": "", "mn": [], "has": "", "n
             "show": "lines", "by": "device", "every": "5m", "range": "24h", "within": "",
             "from": "", "to": "", "ask": "", "before": "", "at": "", "hl": ""}
 LISTS = ("job", "dev", "mn")
+#: The keys a saved view keeps (modules/saved_views.py): the question and the range, asked.
+ADDRESS_KEYS = ("job", "dev", "role", "sev", "mn", "has", "not", "show", "by", "every", "range",
+                "within", "from", "to", "ask")
 #: The filter choices (what a preset sets or leaves at its default).
 FILTERS = ("job", "dev", "role", "sev", "mn", "has", "not", "show", "by", "every", "range",
            "within", "from", "to")
 
 _MN = re.compile(r"^%?[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+$")
 _LABEL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_WHEN = re.compile(r"^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?$")
-_WITHIN = re.compile(r"^(\d{1,4})\s*(m|min|mins|minutes?|h|hours?|d|days?)$", re.I)
-_DUR = re.compile(r"(\d+)(ms|y|w|d|h|m|s)")
-_UNIT = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "d": 86400, "w": 7 * 86400, "y": 365 * 86400}
-#: RE2's metacharacters: escaped with a backslash to stand for themselves.
-_RE2_META = set("\\.+*?()|[]{}^$")
 
 _CACHE = {}
 
@@ -95,86 +96,6 @@ def forget():
     _CACHE.clear()
 
 
-# ---------------------------------------------------------------------------- one token each
-
-def string(value: str) -> str:
-    """*value* as ONE LogQL string token: double-quoted, a backslash and a quote escaped, and
-    every control character (a newline among them) written as \\xHH, so nothing in it can end
-    the string. Loki reads it back with Go's strconv.Unquote, which takes each of these."""
-    out = []
-    for ch in str(value):
-        if ch == "\\":
-            out.append("\\\\")
-        elif ch == '"':
-            out.append('\\"')
-        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
-            out.append("\\x%02x" % ord(ch))
-        else:
-            out.append(ch)
-    return '"' + "".join(out) + '"'
-
-
-def literal(value: str) -> str:
-    """*value* as an RE2 pattern matching exactly itself: each metacharacter escaped, each
-    control character as \\x{HH}."""
-    out = []
-    for ch in str(value):
-        if ch in _RE2_META:
-            out.append("\\" + ch)
-        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
-            out.append("\\x{%02x}" % ord(ch))
-        else:
-            out.append(ch)
-    return "".join(out)
-
-
-def alternation(values) -> str:
-    """One pattern matching exactly any of *values*."""
-    return "|".join(literal(v) for v in values)
-
-
-def _matcher(label: str, values) -> str:
-    values = list(values)
-    if len(values) == 1:
-        return f"{label}={string(values[0])}"
-    return f"{label}=~{string(alternation(values))}"
-
-
-# ---------------------------------------------------------------------------- durations
-
-def parse_duration(text) -> float:
-    """Seconds in a Loki duration ("30d1h", "1m", "2y", "0s"); None when it is not one."""
-    text = str(text or "").strip()
-    if not text:
-        return None
-    parts = _DUR.findall(text)
-    if not parts or "".join(n + u for n, u in parts) != text:
-        return None
-    return sum(int(n) * _UNIT[u] for n, u in parts)
-
-
-def duration_words(seconds) -> str:
-    """Seconds as words: "30 days 1 hour", "1 min", "2 years"."""
-    seconds = int(seconds or 0)
-    if seconds <= 0:
-        return "no limit"
-    out = []
-    for unit, size in (("year", 365 * 86400), ("day", 86400), ("hour", 3600), ("min", 60),
-                       ("s", 1)):
-        n, seconds = divmod(seconds, size)
-        if n:
-            out.append(f"{n} {unit}" + ("s" if n != 1 and unit in ("year", "day", "hour") else ""))
-    return " ".join(out[:2])
-
-
-def _utc(ts: float, fmt: str = "%-d %b %H:%M") -> str:
-    return time.strftime(fmt, time.gmtime(ts))
-
-
-def _iso(ts: float) -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
-
-
 # ---------------------------------------------------------------------------- the address
 
 class Refused(ValueError):
@@ -184,21 +105,7 @@ class Refused(ValueError):
 def ask(values) -> tuple:
     """``(spec, errors)``: the choices the address carries, each checked; a value the builder
     cannot carry is left out and said (*errors*), never passed on."""
-    getlist = getattr(values, "getlist", None)
-    spec, errors = {}, []
-    for key, default in DEFAULTS.items():
-        if key in LISTS:
-            raw = getlist(key) if getlist else (values.get(key) or [])
-            raw = [raw] if isinstance(raw, str) else list(raw)
-            seen = []
-            for v in raw:
-                v = (v or "").strip()
-                if v and v not in seen:
-                    seen.append(v)
-            spec[key] = seen
-        else:
-            v = values.get(key)
-            spec[key] = (v if isinstance(v, str) else default).strip() if v is not None else default
+    spec, errors = history_ask.read_values(values, DEFAULTS, LISTS), []
     for key in ("job", "dev"):
         long = [v for v in spec[key] if len(v) > VALUE_MAX]
         if long:
@@ -243,15 +150,7 @@ def ask(values) -> tuple:
 
 def qs(spec: dict, list_name: str = "", over: dict = None) -> str:
     """The address for *spec* with *over* applied: only what differs from the defaults."""
-    merged = dict(spec, **(over or {}))
-    pairs = [("list", list_name)] if list_name else []
-    for key, default in DEFAULTS.items():
-        v = merged.get(key, default)
-        if key in LISTS:
-            pairs += [(key, x) for x in v or []]
-        elif v and v != default:
-            pairs.append((key, v))
-    return "?" + urlencode(pairs)
+    return history_ask.qs(spec, DEFAULTS, LISTS, list_name, over)
 
 
 def preset_over(params: dict) -> dict:
@@ -386,40 +285,10 @@ def discover(list_name: str, start: float, end: float, client=None, now: float =
 
 # ---------------------------------------------------------------------------- the range
 
-def _when(text: str):
-    if not _WHEN.match(text or ""):
-        return None
-    fmt = "%Y-%m-%d %H:%M" if " " in text else "%Y-%m-%d"
-    return float(calendar.timegm(time.strptime(text, fmt)))
-
-
 def window(spec: dict, now: float) -> dict:
-    """``{start, end, seconds, words, error}``: the range asked, to the minute."""
-    end = float(int(now // 60) * 60)
-    if spec["range"] in RANGES:
-        words, secs = RANGES[spec["range"]]
-        return {"start": end - secs, "end": end, "seconds": secs, "words": f"the last {words}",
-                "error": ""}
-    if spec["within"] and not (spec["from"] or spec["to"]):
-        m = _WITHIN.match(spec["within"])
-        if not m:
-            return {"start": end - 86400, "end": end, "seconds": 86400, "words": "the last 24 h",
-                    "error": f"{spec['within'][:40]!r} is not a span this reads: write 3 days, "
-                             "12 hours or 90 minutes"}
-        n, unit = int(m.group(1)), m.group(2).lower()[0]
-        secs = n * {"m": 60, "h": 3600, "d": 86400}[unit]
-        return {"start": end - secs, "end": end, "seconds": secs,
-                "words": f"the last {duration_words(secs)}", "error": ""}
-    start, stop = _when(spec["from"]), (_when(spec["to"]) if spec["to"] else end)
-    if start is None or stop is None:
-        bad = spec["from"] if start is None else spec["to"]
-        return {"start": end - 86400, "end": end, "seconds": 86400, "words": "the last 24 h",
-                "error": f"{bad[:40]!r} is not a time this reads: write 2026-10-12 10:00 (UTC)"}
-    if start >= stop:
-        return {"start": end - 86400, "end": end, "seconds": 86400, "words": "the last 24 h",
-                "error": f"From ({spec['from']}) is not before To ({spec['to'] or 'now'})"}
-    return {"start": start, "end": stop, "seconds": stop - start,
-            "words": f"{_utc(start)} to {_utc(stop)} UTC", "error": ""}
+    """``{start, end, seconds, words, error}``: the range asked, to the minute (the chips
+    `RANGES`, the last so many, or From… to…; history_ask.window)."""
+    return history_ask.window(spec, now, RANGES)
 
 
 # ---------------------------------------------------------------------------- the query
@@ -521,8 +390,12 @@ def build(spec: dict, disc: dict, rng: dict, devices: list) -> dict:
         pipe.append((f"!= {string(spec['not'])}", "not"))
         explain["not"] = f'leaves out the lines containing "{spec["not"]}"'
         reads.append(f'not containing "{spec["not"]}"')
-    from modules.device_logs import HEARTBEAT_LINE
-    pipe.append((f"!~ {string(HEARTBEAT_LINE)}", "hb"))
+    # device_logs' heartbeat line, its marker written as an RE2 literal (`literal` leaves the
+    # hyphen as it is, where Python's re.escape writes `\-`): the same lines matched, and the
+    # query drawn names the marker as the identifier it is.
+    from modules.device_logs import MARKER
+    heartbeat = r"%HA_EM-\d-LOG: " + literal(MARKER) + ": " + literal(MARKER)
+    pipe.append((f"!~ {string(heartbeat)}", "hb"))
     explain["hb"] = "leaves out Mercury's heartbeat lines, as every log view does"
     selector = "{" + ", ".join(t for t, _k in sel) + "}"
     log_parts = [("{", ""), *[(t + (", " if i < len(sel) - 1 else ""), k)

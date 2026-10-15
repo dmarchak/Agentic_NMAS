@@ -123,15 +123,20 @@ NOT_AN_OPERATION = {
                                     "title, recorded; no device",
     ("_history_metric.html", "Run"): "asks your own query (the question's PromQL edited, or Ask "
                                      "your own's PromQL or LogQL), its text in the address, a read",
-    ("_history_ask_logs.html", "Ask"): "asks Loki the query the logs builder formed, a read; "
-                                       "nothing is written and nothing reaches a device",
+    # Both Ask your own builders' shared pieces (boards E3 and F3, _history_ask_parts.html).
+    ("_history_ask_parts.html", "Ask"): "asks Prometheus (metrics) or Loki (logs) the query the "
+                                        "builder formed, a read; nothing is written and nothing "
+                                        "reaches a device",
     ("_history_ask_logs.html", "Add"): "adds a device Loki holds lines from to the choices and "
                                        "redraws the query, asking nothing",
-    ("_history_ask_logs.html", "Apply"): "applies From… to…'s range to the choices and redraws "
-                                         "the query, asking nothing",
-    ("_history_ask_logs.html", "Cancel"): "closes From… to…, changing nothing",
-    ("_history_ask_logs.html", "Copy the link"): "copies the builder's address (every choice, "
-                                                 "asked), a read",
+    ("_history_ask_parts.html", "Apply"): "applies From… to…'s range to the choices and redraws "
+                                          "the query, asking nothing",
+    ("_history_ask_parts.html", "Cancel"): "closes From… to…, changing nothing",
+    ("_history_ask_parts.html", "Copy the link"): "copies the builder's address (every choice, "
+                                                  "asked), a read",
+    ("_history_ask_metrics.html", "Add"): "adds a device, an interface or a filter to the "
+                                          "metrics builder's choices and redraws the query, "
+                                          "asking nothing",
     ("_topology_map.html", "'s Neighbours"): "opens that end's Neighbours tab on its device "
                                              "page, a read",
     ("_credential_profiles.html", "Cancel"): "puts the profiles table back, writing nothing",

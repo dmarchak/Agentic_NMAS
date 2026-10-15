@@ -1,0 +1,285 @@
+{%- from "v2/_macros.html" import icon, info, stamp -%}
+{%- import "v2/_history_ask_parts.html" as part with context -%}
+{#- History › Query › Ask your own, the metrics builder (board E3, QueryBuilderMetrics3 and its
+    phone board, approved 2026-10-15; compared in docs/fidelity/history-ask-metrics.md). One
+    region, #lq: the builder (what, devices, interfaces, filters, operations, top), the PromQL
+    Mercury forms from the choices (the last one marked and said in plain words), the range, and
+    the answer once asked; the network's saved queries beside it. Every choice is in the
+    address; a choice redraws the region and drops the answer, Ask draws it
+    (modules/history_promq.py). The pieces it shares with the logs builder are
+    _history_ask_parts.html and _history_ask_head.html. -#}
+{%- set s = q.s %}{% set d = q.disc %}{% set b = q.built %}{% set rng = q.range %}{% set lim = q.limits %}
+{%- set here = url_for('v2.history_ask_metrics') %}{% set region = url_for('v2.history_ask_metrics_region') %}
+{%- set change = {'ask': '', 'fe': '', 'fl': '', 'fo': '', 'fv': ''} %}
+{%- macro go(over, words, cls='lq-chip', pressed=none, label='', current=false) -%}
+{{ part.go(q, here, region, over, words, cls, pressed, label, current) }}
+{%- endmacro %}
+{%- macro hidden(skip=(), extra={}) -%}
+<input type="hidden" name="list" value="{{ q.list }}">
+{%- for k in ('dev', 'if', 'f', 'op') if k not in skip %}{% for v in s[k] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endfor %}
+{%- for k in ('m', 'mq', 'role', 'top', 'range', 'within', 'from', 'to') if k not in skip and s[k] %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+{%- for k, v in extra.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+{%- endmacro %}
+{%- set code_href = url_for('v2.history_query_metric', key='ask', lang='promql', range=q.code_range, q=b.query, list=q.list) if b else url_for('v2.history_query_metric', key='ask', lang='promql', list=q.list) %}
+{%- set address_over = {'ask': '1', 'hl': '', 'fe': '', 'fl': '', 'fo': '', 'fv': '', 'mq': ''} %}
+<div id="lq" class="lq pq">
+{%- with source='metrics', mode='builder' %}{% include "v2/_history_ask_head.html" %}{% endwith %}
+
+{%- for e in q.errors %}
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>Not taken: {{ e }}. The query below leaves it out.</p></div>
+{%- endfor %}
+{%- for n in q.notes %}
+<div class="notice" role="status">{{ icon('info', 16) }}<p>{{ n }}.</p></div>
+{%- endfor %}
+{%- if q.state == 'not_configured' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ q.error | capitalize }}: there are no metrics to ask here (Settings › Integrations › Prometheus).</p></div>
+{%- elif q.state == 'error' and not q.answer %}
+{%- call part.state('danger', 'Prometheus not answering') %}<p><strong>Couldn't load: {{ q.error }}</strong>, asked {{ q.now[11:16] }} UTC. The choices below are the address's; Prometheus's metrics and labels could not be read, so no query is formed.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div>{% endcall %}
+{%- endif %}
+
+<form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('op', 'top')) }}<input type="hidden" name="ask" value="1"></form>
+<div class="pq-lay">
+<div class="pq-main">
+<section class="card lq-build" aria-label="Build a metrics question">
+  <div class="lq-row"><span class="lq-lab">Start from</span><div class="lq-chips">
+    {%- for key, title, _a, params in q.presets %}
+    {%- if q.presets_held.get(key) %}<a class="lq-chip{{ ' on' if q.preset_on == key }}" href="{{ here }}{{ q.preset_qs(params) }}" hx-get="{{ region }}{{ q.preset_qs(params) }}" hx-target="#lq" hx-swap="outerHTML"{% if q.preset_on == key %} aria-current="true"{% endif %}>{{ title }}</a>
+    {%- else %}<span class="lq-chip pq-off" aria-disabled="true" title="{{ 'Prometheus holds no ' ~ params.m ~ ' over ' ~ rng.words if q.cat.state == 'ok' else 'Prometheus could not be read' }}">{{ title }}</span>{% endif %}
+    {%- endfor %}
+  </div></div>
+
+  <div class="lq-row"><label class="lq-lab" for="pq-mq">What</label><div class="lq-col">
+    <form class="pq-search" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" role="search">{{ hidden(('mq',)) }}<input type="hidden" name="hl" value="what">
+      <input id="pq-mq" type="text" name="mq" value="{{ s.mq }}" maxlength="80" placeholder="search the names and help, then Enter" aria-label="Search the metrics Prometheus holds" autocomplete="off">
+    </form>
+    {%- if q.pick.rows %}
+    <div class="pq-pick" role="listbox" aria-label="Metrics Prometheus holds">
+      {%- for name, help, kind, unit in q.pick.rows %}{% set on = name == s.m %}
+      <a class="pq-item" role="option" aria-selected="{{ 'true' if on else 'false' }}" aria-pressed="{{ 'true' if on else 'false' }}" href="{{ here }}{{ q.qs(dict(change, m=name, op=[], f=[], top='', hl='what', **{'if': []})) }}" hx-get="{{ region }}{{ q.qs(dict(change, m=name, op=[], f=[], top='', hl='what', **{'if': []})) }}" hx-target="#lq" hx-swap="outerHTML"><span><span class="mono">{{ name }}</span> {{ help }}</span><span class="faint">{{ kind }}{% if unit %} · {{ unit }}{% endif %}</span></a>
+      {%- endfor %}
+    </div>
+    {%- endif %}
+    <span class="lq-hint">{% if q.cat.state == 'ok' %}From Prometheus's own list of metric names ({{ '{:,}'.format(q.cat.names | length) }} over {{ rng.words }}, read {{ q.cat.read_at[:10] }} {{ q.cat.read_at[11:16] }} UTC), each with its help text{% if s.mq %}; {{ q.pick.total }} match "{{ s.mq }}"{% if q.pick.total > q.pick.rows | length %}, the first {{ q.pick.rows | length }} shown: narrow the search{% endif %}{% elif q.pick.total > q.pick.rows | length %}; search to find one{% endif %}.{% else %}Prometheus's metric names could not be read, so none is offered.{% endif %}</span>
+  </div></div>
+
+  {%- if b %}
+  {%- set held = d['values'] %}
+  <div class="lq-row"><span class="lq-lab">Devices</span><div class="lq-col">
+    <div class="lq-chips">
+      {%- for dv in s.dev %}{{ go(dict(change, dev=(s.dev | reject('equalto', dv) | list), hl='dev'), dv ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ dv) }}{% endfor %}
+      {%- if s.role %}{{ go(dict(change, role='', hl='dev'), 'role: ' ~ s.role ~ ' ×', 'lq-chip on', none, 'Remove the role ' ~ s.role) }}{% endif %}
+      {%- set others = (held.get('device') or []) | reject('in', s.dev) | list %}
+      {%- if others %}
+      <details class="lq-more" data-keep="pq-device-add"><summary class="lq-chip">+ device</summary>
+        <form class="lq-add" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML">{{ hidden(()) }}<input type="hidden" name="hl" value="dev">
+          <label for="pq-dev-add" class="sr">A device Prometheus holds this metric for</label>
+          <input id="pq-dev-add" type="text" name="dev" list="pq-devs" autocomplete="off" placeholder="type a name ({{ others | length }})" required>
+          <datalist id="pq-devs">{% for dv in others %}<option value="{{ dv }}">{% endfor %}</datalist>
+          <button type="submit" class="btn btn-small">Add</button>
+        </form>
+      </details>
+      {%- endif %}
+      {%- for role in held.get('role') or [] if role != s.role %}{{ go(dict(change, role=role, hl='dev'), 'by role: ' ~ role, 'lq-chip') }}{% endfor %}
+      {%- if 'device' in d.labels %}{{ go(dict(change, dev=[], role='', hl='dev'), 'all ' ~ (held.get('device') or []) | length, 'lq-chip' ~ (' on' if not s.dev and not s.role), not s.dev and not s.role) }}{% endif %}
+    </div>
+    <span class="lq-hint">{% if 'device' in d.labels %}The values the <span class="mono">device</span> label holds for {{ s.m }} over {{ rng.words }}, read from Prometheus{% if 'role' in d.labels %}; the roles, its <span class="mono">role</span> label's{% endif %}.{% else %}{{ s.m }} carries no <span class="mono">device</span> label, so it is asked whole; a filter below narrows it.{% endif %}</span>
+  </div></div>
+
+  {%- if d.iface %}
+  <div class="lq-row"><span class="lq-lab">Interfaces</span><div class="lq-col">
+    <div class="lq-chips">
+      {{- go(dict(change, hl='if', **{'if': []}), 'all', 'lq-chip' ~ (' on' if not s['if']), not s['if']) }}
+      {%- for i in s['if'] %}{{ go(dict(change, hl='if', **{'if': s['if'] | reject('equalto', i) | list}), i ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ i) }}{% endfor %}
+      {%- set rest = (held.get(d.iface) or []) | reject('in', s['if']) | list %}
+      {%- for i in rest[:q.chips] %}{{ go(dict(change, hl='if', **{'if': s['if'] + [i]}), i, 'lq-chip') }}{% endfor %}
+      {%- if rest | length > q.chips %}
+      <details class="lq-more" data-keep="pq-if-add"><summary class="lq-chip">+ {{ rest | length - q.chips }} more</summary>
+        <form class="lq-add" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML">{{ hidden(()) }}<input type="hidden" name="hl" value="if">
+          <label for="pq-if-add" class="sr">An interface this metric holds</label>
+          <input id="pq-if-add" type="text" name="if" list="pq-ifs" autocomplete="off" placeholder="type a name ({{ rest | length }})" required>
+          <datalist id="pq-ifs">{% for i in rest %}<option value="{{ i }}">{% endfor %}</datalist>
+          <button type="submit" class="btn btn-small">Add</button>
+        </form>
+      </details>
+      {%- endif %}
+    </div>
+    <span class="lq-hint">By IF-MIB's <span class="mono">{{ d.iface }}</span>: the values it holds for {{ s.m }} over {{ rng.words }}, read from Prometheus.</span>
+  </div></div>
+  {%- endif %}
+
+  <div class="lq-row"><span class="lq-lab">Filters</span><div class="lq-col">
+    <div class="lq-chips">
+      {%- for token in s.f %}{% set fl = token.split(' ', 2) %}
+      <span class="pq-filt"><span class="mono">{{ fl[0] }}</span><span class="pq-op">{{ fl[1] }}</span><span class="mono">"{{ fl[2] }}"</span>{{ go(dict(change, f=(s.f | reject('equalto', token) | list), hl=''), '×', 'pq-x', none, 'Remove the filter ' ~ fl[0] ~ ' ' ~ fl[1] ~ ' ' ~ fl[2]) }}</span>
+      {%- endfor %}
+      <a class="lq-chip{{ ' on' if s.fe }}" aria-expanded="{{ 'true' if s.fe else 'false' }}" href="{{ here }}{{ q.qs(dict(change, fe='' if s.fe else '1', hl='')) }}" hx-get="{{ region }}{{ q.qs(dict(change, fe='' if s.fe else '1', hl='')) }}" hx-target="#lq" hx-swap="outerHTML">+ filter</a>
+    </div>
+    {%- if s.fe %}
+    <form class="pq-fedit" role="group" aria-label="Add a filter" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML">{{ hidden(()) }}<input type="hidden" name="fe" value="1"><input type="hidden" name="fo" value="{{ s.fo or '=' }}"><input type="hidden" name="hl" value="f{{ s.f | length + 1 }}">
+      <div class="pq-line">
+        <label for="pq-fl">Label</label>
+        <select id="pq-fl" name="fl" hx-get="{{ region }}" hx-include="closest form" hx-target="#lq" hx-swap="outerHTML" hx-vals='{"hl": ""}' hx-indicator="this" hx-disabled-elt="this">
+          {%- if not s.fl %}<option value="" selected>choose a label</option>{% endif %}
+          {%- for l in d.labels %}<option value="{{ l }}"{% if l == s.fl %} selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select>
+        <div class="seg pq-ops" role="group" aria-label="How it matches">
+          {%- for op, words in q.filter_ops.items() %}{{ go(dict(s, fe='1', fo=op, ask='', hl=''), op, 'seg-btn mono' ~ (' on' if (s.fo or '=') == op), (s.fo or '=') == op, words) }}{% endfor %}
+        </div>
+        <label for="pq-fv">Value</label>
+        <input id="pq-fv" type="text" name="fv" value="{{ s.fv }}" maxlength="200" list="pq-fvs" autocomplete="off" required>
+        {%- if s.fl %}<datalist id="pq-fvs">{% for v in held.get(s.fl) or [] %}<option value="{{ v }}">{% endfor %}</datalist>{% endif %}
+        <button type="submit" name="fadd" value="1" class="btn btn-small btn-primary">Add</button>
+        {{ go(dict(change, hl=''), 'Cancel', 'btn btn-small') }}
+      </div>
+      {%- if s.fl %}{% set fvals = held.get(s.fl) or [] %}
+      <div class="lq-chips"><span class="lq-hint">Values {{ s.fl }} holds now:</span>
+        {%- for v in fvals[:4] %}{{ go(dict(s, fe='1', fv=v, ask='', hl=''), v, 'lq-chip' ~ (' on' if v == s.fv), v == s.fv) }}{% endfor %}
+        {%- if fvals | length > 4 %}<span class="lq-hint">and {{ fvals | length - 4 }} more in the value's list</span>{% endif %}
+      </div>
+      {%- endif %}
+      <span class="lq-hint">Any label {{ s.m }} carries, its names and values read from Prometheus. = is exactly, != is not, =~ matches a pattern, !~ does not; a pattern is RE2, anchored at both ends{% if q.fe_count and q.fe_count[0] is not none %}; {{ s.fl }} {{ s.fo }} "{{ s.fv }}" would {{ q.fe_count[1] }} {{ q.fe_count[0] }} series{% endif %}.</span>
+    </form>
+    {%- endif %}
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">Operations</span><div class="lq-col">
+    <ol class="pq-chain" aria-label="Operations, applied in order">
+      {%- for r in q.op_rows %}
+      {%- if not loop.first %}<li class="pq-arr" aria-hidden="true">→</li>{% endif %}
+      <li><span class="pq-n">{{ r.i }}</span>
+        <select name="ok{{ r.i }}" form="lq-form" aria-label="Operation {{ r.i }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "op{{ r.i }}"}' hx-indicator="this" hx-disabled-elt="this">
+          {%- for k in r.kinds %}<option value="{{ k }}"{% if k == r.kind %} selected{% endif %}>{{ q.range_ops.get(k) or q.unit_ops.get(k) or (q.aggs.get(k)) or ('only values ' ~ q.compare[k][0]) }}</option>{% endfor %}
+        </select>
+        {%- if r.group == 'range' %}<span class="muted">over</span>
+        <select name="oa{{ r.i }}" form="lq-form" aria-label="Window" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "op{{ r.i }}"}' hx-indicator="this" hx-disabled-elt="this">
+          {%- for w, ww in q.windows.items() %}<option value="{{ w }}"{% if w == r.arg %} selected{% endif %}>{{ ww[0] }}</option>{% endfor %}
+        </select>
+        {%- elif r.group == 'agg' %}<span class="muted">by</span>
+        <select name="oa{{ r.i }}" form="lq-form" aria-label="By" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "op{{ r.i }}"}' hx-indicator="this" hx-disabled-elt="this">
+          {%- for l in r.args %}<option value="{{ l }}"{% if l == r.arg %} selected{% endif %}>{{ l or 'nothing (one line)' }}</option>{% endfor %}
+        </select>
+        {%- elif r.group == 'cmp' %}
+        <input type="text" name="oa{{ r.i }}" form="lq-form" value="{{ r.arg }}" inputmode="decimal" maxlength="19" class="pq-num" aria-label="The value compared" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-trigger="change" hx-vals='{"ask": "", "hl": "op{{ r.i }}"}' hx-indicator="this" hx-disabled-elt="this">
+        {%- endif %}
+        {%- if r.removable %}{{ go(dict(change, op=(s.op[:r.i - 1] + s.op[r.i:]), hl=''), '×', 'pq-x', none, 'Remove operation ' ~ r.i) }}{% endif %}
+      </li>
+      {%- endfor %}
+      {%- if not q.menu.full %}
+      <li class="pq-add"><details class="lq-more" data-keep="pq-op-add"><summary class="lq-chip">+ operation</summary>
+        <div class="lq-menu pq-menu" role="menu" aria-label="Add an operation">
+          {%- set n = s.op | length %}
+          {%- if q.menu.range %}<span class="pq-mh">Rate</span>
+          {%- for k, words in q.range_ops.items() %}{{ go(dict(change, op=[k ~ ':5m'] + s.op, hl='op1'), words ~ ' (first)', 'lq-item') }}{% endfor %}{% endif %}
+          {%- if q.menu.bits or q.menu.per_min %}<span class="pq-mh">Units</span>{% endif %}
+          {%- if q.menu.bits %}{{ go(dict(change, op=s.op + ['bits'], hl='op' ~ (n + 1)), '× 8, bytes to bits', 'lq-item') }}{% endif %}
+          {%- if q.menu.per_min %}{{ go(dict(change, op=s.op + ['per_min'], hl='op' ~ (n + 1)), 'per minute (× 60)', 'lq-item') }}{% endif %}
+          <span class="pq-mh">Group</span>
+          {%- for k in q.aggs %}{{ go(dict(change, op=s.op + [k ~ ':'], hl='op' ~ (n + 1)), k ~ ' by …', 'lq-item') }}{% endfor %}
+          <span class="pq-mh">Compare</span>
+          {%- for k, c in q.compare.items() %}{{ go(dict(change, op=s.op + [k ~ ':0'], hl='op' ~ (n + 1)), 'only values ' ~ c[0] ~ ' …', 'lq-item') }}{% endfor %}
+        </div>
+      </details></li>
+      {%- endif %}
+    </ol>
+    <span class="lq-hint">{% if q.kind == 'counter' %}The counter rule: {{ s.m }} is a counter (Prometheus's metadata says so), so the first step is a rate or an increase, never its raw value. {% elif q.kind == 'gauge' %}{{ s.m }} is a gauge (Prometheus's metadata says so): its value is drawn as it is, so no rate is offered. {% else %}Prometheus's metadata gives {{ s.m }} no type{% if q.kind != 'unknown' %} ({{ q.kind }}){% endif %}: a rate is offered, for a counter. {% endif %}The unit follows the chain{% if q.unit %} ({{ q.unit }}, from {{ q.unit_where }}){% endif %}: the answer is in {{ b.unit_words }}.</span>
+  </div></div>
+
+  <div class="lq-row"><label class="lq-lab" for="pq-top">Top</label><div class="lq-line">
+    <label class="pq-check"><input id="pq-top" type="checkbox"{% if s.top %} checked{% endif %} hx-get="{{ region }}{{ q.qs(dict(change, top='' if s.top else '5', hl='top' if not s.top else '')) }}" hx-target="#lq" hx-swap="outerHTML" hx-indicator="this" hx-disabled-elt="this"> only the top</label>
+    <select aria-label="How many" form="lq-form"{% if s.top %} name="top"{% else %} disabled{% endif %} hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "top"}' hx-indicator="this" hx-disabled-elt="this">
+      {%- for t in q.tops %}<option value="{{ t }}"{% if t == (s.top or '5') %} selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+    <span class="lq-hint">{% if s.top %}topk keeps the {{ s.top }} highest at each step, so over a range more than {{ s.top }} series can appear{% else %}off: every series is asked; past {{ q.drawn }}, the {{ q.drawn }} highest are drawn and the rest counted{% endif %}.</span>
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">The query</span><div class="lq-col">
+    {%- set hl = s.hl if s.hl in b.explain or s.hl in ('range', 'start') else '' %}
+    {{ part.query_box(b, hl, code_href, '. Prometheus anchors a pattern at both ends.') }}
+  </div></div>
+  {%- endif %}
+
+  <div class="lq-row"><span class="lq-lab">Range</span><div class="lq-col">
+    {%- set fit %}<p class="lq-ok">{{ q.range_words }} · step {{ q.step_words }} · {{ '{:,}'.format(q.points) }} points a series · within every limit below</p>{% endset %}
+    {%- call part.range_chips(q, here, region, s, rng, change, hidden(('range', 'within', 'from', 'to')), fit, 'pq-pop') %}
+            <h4>Limits, measured on this network's services{% if lim.read_at and not lim.error %} <span class="faint">(Prometheus's read {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC)</span>{% endif %}</h4>
+            <table class="lq-lim pq-lim">
+              <tr><th scope="row">Prometheus</th><td>{% if lim.error or not lim %}its bounds could not be read{% if lim.error %} ({{ lim.error }}){% endif %}; it refuses what passes them, and the refusal is drawn{% else %}keeps {{ lim['storage.tsdb.retention.time'].words if lim['storage.tsdb.retention.time'] else '(not stated)' }} at full detail (<span class="mono">storage.tsdb.retention.time {{ lim['storage.tsdb.retention.time'].text if lim['storage.tsdb.retention.time'] else '' }}</span>{% if lim['storage.tsdb.retention.size'] %}, capped at {{ lim['storage.tsdb.retention.size'].text }}{% endif %}); one ask stops at {{ lim['query.timeout'].words if lim['query.timeout'] else '(not stated)' }} (<span class="mono">query.timeout</span>) and {{ '{:,}'.format(lim['query.max-samples'].n) if lim['query.max-samples'] else '(not stated)' }} samples (<span class="mono">query.max-samples</span>), read from its flags{% endif %}</td></tr>
+              <tr><th scope="row">Long-term store</th><td>{% if q.stores.history %}beyond {{ q.stores.live_days }} days, {{ q.stores.history }}: Code mode reads it; the builder asks Prometheus{% elif q.stores.error %}not known here ({{ q.stores.error }}); the builder asks Prometheus{% else %}none set{% if q.stores.why %} ({{ q.stores.why }}){% endif %}: past what Prometheus keeps, nothing is held{% endif %}</td></tr>
+              <tr><th scope="row">Mercury</th><td>at most {{ '{:,}'.format(q.max_points) }} points a series (the step grows to fit) and {{ q.max_series }} series an answer, the {{ q.drawn }} highest drawn</td></tr>
+              <tr><th scope="row">Loki (for Logs)</th><td>{% if not q.loki %}no log store is configured for this network{% elif q.loki.error %}its bounds could not be read ({{ q.loki.error }}){% else %}one ask spans at most {{ q.loki.max_query_length.words if q.loki.max_query_length else '(not stated)' }} (<span class="mono">max_query_length {{ q.loki.max_query_length.text if q.loki.max_query_length else '' }}</span>); lines kept {{ q.loki.retention_period.words if q.loki.retention_period else '(not stated)' }} (<span class="mono">retention_period {{ q.loki.retention_period.text if q.loki.retention_period else '' }}</span>), read from Loki's /config{% endif %}</td></tr>
+            </table>
+            <h4>The step widens with the range</h4>
+            <div class="pq-ladder" aria-label="Range and its step">{% for r, st in q.ladder %}<div><b>{{ r }}</b>{{ st }}</div>{% endfor %}</div>
+    {%- endcall %}
+    <span class="lq-hint">Step {{ q.step_words }}, {{ '{:,}'.format(q.points) }} points a series: the step widens with the range, so a series is at most {{ '{:,}'.format(q.max_points) }} points.</span>
+  </div></div>
+
+  <div class="lq-row lq-acts"><span class="lq-lab"></span><div class="lq-line">
+    {%- if b %}
+    {{ part.actions(q, here, 'Asking Prometheus…', address_over, 'ask-metrics', 'About the metrics builder') }}
+    {%- else %}
+    <span class="lq-hint">Choose what to ask first: the query forms as you choose, then Ask, Save this view… and Copy the link.</span>
+    {{ info('history', 'ask-metrics', 'About the metrics builder') }}
+    {%- endif %}
+  </div></div>
+</section>
+
+{%- set a = q.answer %}
+{%- if a %}
+<div id="lq-answer" class="lq-answer">
+{%- if a.state == 'refused' %}
+{%- call part.state('warn', 'Refused' ~ (' by a bound' if a.refusals and a.refusals[0][1] else '')) %}
+  {%- for words, fixes in a.refusals %}<p><strong>{{ words }}</strong></p>{% endfor %}
+  <div class="lq-line">{% for words, fixes in a.refusals %}{% for label, over in fixes %}{{ go(dict(over, ask='1', hl=''), label, 'btn btn-small') }}{% endfor %}{% endfor %}</div>
+{% endcall %}
+{%- elif a.state == 'error' %}
+{%- set refused = a.error.startswith('Prometheus refused') %}
+{%- call part.state('danger', 'Prometheus refused the query' if refused else 'Prometheus not answering') %}
+  <p><strong>Couldn't load: {{ a.error }}</strong>, asked {{ a.asked_at[11:16] }} UTC. Nothing is drawn from an earlier answer.</p>
+  <p class="muted">{% if refused %}Prometheus answered and refused it: change the choice its words name (a pattern typed for a filter is RE2).{% elif a.probe and a.probe.state == 'down' %}The integrations probe found it down too, {{ stamp(a.probe.at) }}: Needs attention carries it as a row while it stays down.{% elif a.probe and a.probe.state == 'up' %}The integrations probe last found it answering, {{ stamp(a.probe.at) }} (it probes every 60 s); if it stays down, Needs attention carries it as a row.{% else %}The integrations probe has no read of it, so nothing says when it last answered.{% endif %}</p>
+  <div>{{ go({'ask': '1'}, 'Ask again', 'btn btn-small') }}</div>
+{% endcall %}
+{%- elif a.state == 'empty' %}
+{%- call part.state('', 'No data in range', 'status') %}
+  <p><strong>No samples between {{ q.between }}</strong> for <span class="mono">{{ s.m }}</span>{% if s.dev or s.role or s.f or s['if'] %}, as filtered{% endif %}.</p>
+  <p class="muted">{% if a.inside_kept %}The range is inside what Prometheus keeps ({{ q.kept_words }}), so this is an answer: nothing matched then.{% elif a.kept_from_words %}Prometheus holds {{ s.m }} from {{ a.kept_from_words }} ({{ q.kept_words }}){% if not q.stores.history %}, and no long-term store is set{% endif %}: nothing older is held here.{% else %}How long Prometheus keeps is not known here.{% endif %} This is not the same as a zero.</p>
+  {%- if a.start_at %}<div>{{ go(a.start_at.over, 'Start the range at ' ~ a.start_at.words, 'btn btn-small') }}</div>{% endif %}
+{% endcall %}
+{%- else %}
+<section class="card lq-card" aria-label="The answer">
+  <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{{ a.series_total }} series · answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>
+  <section class="panel lq-panel" data-panel-json='{{ a.payload | tojson }}' data-panel-h="9" aria-label="{{ a.series_total }} series, {{ b.unit_words }}">
+    <div class="panel-body"><p class="panel-wait">Drawing…</p></div>
+  </section>
+  <div class="table-wrap"><table class="table lq-legend pq-legend" aria-label="The series">
+    <thead><tr><th scope="col">Series</th><th scope="col" class="num">Now ({{ a.end_words }} UTC)</th><th scope="col" class="num">Highest in range</th><th scope="col" class="num">Lowest in range</th></tr></thead>
+    <tbody>{% for sr in a.series %}<tr><td><span class="swatch s{{ loop.index0 % 6 }}" aria-hidden="true"></span> <span class="mono">{{ sr.label }}</span></td><td class="num"><span class="pq-k">now </span>{{ sr.now_words }}</td><td class="num"><span class="pq-k">highest </span>{{ sr.high_words }}</td><td class="num"><span class="pq-k">lowest </span>{{ sr.low_words }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {%- if a.series_total > a.series | length %}<p class="lq-hint">{{ a.series_total }} series answer: the {{ a.series | length }} highest in range are drawn; the other {{ a.series_total - a.series | length }} are counted, not drawn. Only the top, a group or a filter narrows it.</p>{% endif %}
+  {%- if not a.inside_kept and a.kept_from_words %}<p class="lq-hint">Part of the range is older than Prometheus keeps ({{ q.kept_words }}, from {{ a.kept_from_words }}): nothing there is held.</p>{% endif %}
+</section>
+{%- endif %}
+</div>
+{%- endif %}
+</div>
+
+<aside class="pq-side" aria-label="Saved queries">
+<div class="card pq-saved">
+  <h2>Saved queries</h2>
+  <span class="lq-hint">This network's. One click runs one; a pinned one stays first in Query's Saved by your team.</span>
+  {%- if q.saved.state == 'unreadable' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ q.saved.error }}. Nothing can be saved until it is repaired.</p></div>
+  {%- elif not q.saved.rows %}
+  <p class="muted small">Nothing is saved yet: Save this view… keeps a question for the network.</p>
+  {%- else %}
+  <div class="pq-sqs">
+    {%- for v in q.saved.rows %}
+    <a class="pq-sq" href="{{ v.address }}{{ '&' if '?' in v.address else '?' }}list={{ q.list | urlencode }}"><span class="pq-sq-top"><strong>{{ v.title }}</strong><span class="pq-tag{{ ' pq-tag-l' if v.lang == 'LogQL' }}">{{ v.lang }}</span></span>{% if v.code %}<code>{{ v.code }}</code>{% endif %}<span class="pq-sq-foot"><span>{{ 'pinned' if v.pinned else 'not pinned' }}</span><span class="pq-run">Run ›</span></span></a>
+    {%- endfor %}
+  </div>
+  {%- endif %}
+  <span class="lq-hint">Save this view… asks a title and saves the question, as asked, for the whole network.</span>
+</div>
+</aside>
+</div>
+</div>

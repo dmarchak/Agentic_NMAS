@@ -417,6 +417,88 @@ def test_history_ask_logs(tmp_path, monkeypatch):
     history_logq.forget()
 
 
+def test_history_ask_metrics(tmp_path, monkeypatch):
+    """Board E3 (QueryBuilderMetrics3, 1440, and QueryBuilderMetrics3Phone, 390; approved
+    2026-10-15) beside Ask your own's metrics builder, Prometheus answering with the real
+    captures of 2026-10-15 (tests/test_history_ask_metrics.py's stand-in), Loki's bounds from
+    F3's, Grafana's data sources from their capture (the long-term store's row): the board's
+    question (bytes in per role over three days) asked, with the filter editor, From… to… and
+    the operation menu open as the board draws them; the phone; and the three states."""
+    import copy
+    from types import SimpleNamespace
+
+    from tests import browser
+    from tests import test_history_ask_logs as F
+    from tests import test_history_ask_metrics as E
+    from tests import test_logs_v2 as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.readers.adjacencies.lists",
+                        lambda: [("Lab", SimpleNamespace(repo_dir=str(tmp_path)), T.MANAGED)])
+    monkeypatch.setattr("modules.history_promq._now", lambda: E.NOW)
+    prom = E.FakeProm()
+    monkeypatch.setattr("modules.history_promq._client", lambda list_name, wait=125.0: prom)
+    loki = F.FakeLoki()
+    monkeypatch.setattr("modules.history_logq._client", lambda list_name, wait=65.0: loki)
+    with open(os.path.join(os.path.dirname(__file__), "fixtures", "grafana", "dashboards",
+                           "datasources_api.json"), encoding="utf-8") as fh:
+        datasources = json.load(fh)
+    monkeypatch.setattr("modules.device_page._cached", lambda name, list_name=None: (
+        {"datasources": datasources}, "2026-10-15T09:00:00Z", ""))
+    from modules import list_settings
+    real = list_settings.value
+    history = next(d["uid"] for d in datasources if d["name"].startswith("Thanos"))
+    monkeypatch.setattr("modules.list_settings.value", lambda ln, key, default=None: (
+        history if key == "grafana_history_datasource_uid" else real(ln, key, default)))
+    from modules import history_logq, history_promq, saved_views
+    history_promq.forget()
+    history_logq.forget()
+    spec = history_promq.ask(E.BOARD)[0]
+    saved_views.save("Lab", "Bytes in per role, bits",
+                     history_promq.PAGE_PATH + history_promq.qs(spec, over={"ask": "1"}),
+                     "operator@example.com")
+    saved_views.save("Lab", "Who stopped answering", "/v2/history/query/metric/ask?lang=promql"
+                     "&q=up+%3D%3D+0&range=24h", "operator@example.com")
+    saved_views.save("Lab", "OSPF adjacency changes, by device", "/v2/history/query/ask/logs"
+                     "?mn=%25OSPF-5-ADJCHG&show=counts&ask=1", "operator@example.com")
+    base = history_promq.PAGE_PATH
+    board = base + history_promq.qs(spec, "Lab", {"ask": "1", "hl": "op3", "fe": "1", "mq": "octets",
+                                                  "fl": "ifDescr", "fo": "!~",
+                                                  "fv": "Loopback.*"})
+    asked = base + history_promq.qs(spec, "Lab", {"ask": "1", "hl": "op3", "mq": "octets"})
+    opened = ("!document.querySelector('.panel-wait') && "
+              "(document.querySelector('.lq-pickbox').open = true, "
+              "document.querySelector('[data-keep=pq-op-add]').open = true, true)")
+    settled = "!document.querySelector('.panel-wait')"
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("history-ask-metrics", "QueryBuilderMetrics3.dc.html", lambda w: board, served,
+               settled=opened, widths=((1440, 1.0), (1280, 1.0)))
+        _shoot("history-ask-metrics", "QueryBuilderMetrics3Phone.dc.html", lambda w: asked,
+               served, settled=settled, widths=((390, 2.0),))
+        refused = copy.deepcopy(prom.config)
+        prom.config["data"]["yaml"] = prom.config["data"]["yaml"].replace(
+            "scrape_interval: 30s", "scrape_interval: 1m")
+        history_promq.forget()
+        bad = dict(spec, op=["rate:1m", "bits", "sum:role"])
+        _shoot("history-ask-metrics-refused", "", lambda w: base + history_promq.qs(
+            bad, "Lab", {"ask": "1"}), served, widths=((1440, 1.0),))
+        prom.config = refused
+        history_promq.forget()
+        prom.empty = True
+        june = dict(spec, **{"from": "2026-06-01 06:00", "to": "2026-07-01 06:00"})
+        _shoot("history-ask-metrics-empty", "", lambda w: base + history_promq.qs(
+            june, "Lab", {"ask": "1"}), served, widths=((1440, 1.0),))
+        prom.empty, prom.fail = False, "Could not connect to http://192.0.2.10:9090"
+        _shoot("history-ask-metrics-down", "", lambda w: asked, served, widths=((1440, 1.0),))
+    history_promq.forget()
+    history_logq.forget()
+
+
 def test_history_metric(tmp_path, monkeypatch):
     """C667's board B (AskMetric, 1440) beside the metrics question, Grafana answering with a
     real capture (tests/fixtures/grafana/dsquery/throughput.json)."""
