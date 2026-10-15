@@ -3009,7 +3009,7 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 | 13 Controls drawn from `may` | met 2026-10-13 (C738) | Every gated control in templates/v2 draws `gate()` (`preview_confirm.control_gate`, from `may`); tests/test_controls_consult_may.py fails on one that does not |
 | 14 A writeup entry per sub-task | partly (reread 2026-10-13) | NSOT_WRITEUP.md's last entry is 2026-10-10. No entry yet for: P.11 Topology, Show commands (C548), Ask (C547), Logs (C652), DHCP on v2 (C529), Remote set-up (C631), the monitoring profile (C566), C738's gates, the 7.8 removals of 2026-10-11 to 13, P.9 (d), Update, v2 Monitoring. 7.3 and 7.D still read open |
 | 15 The manual stays true | met so far | Holds for every built v2 screen (`tests/test_manual.py`, the click test); each new screen adds its page |
-| 16 No duplicated function | closes at cutover (reread 2026-10-13) | `KNOWN_DUPLICATES` holds 1 ("typed": `commands._run` and `bulk_ops._run_single_enable_command`), reached only from today's `/bulk_execute`; the brief's D1 to D24 live on today's pages |
+| 16 No duplicated function | closes at cutover (reread 2026-10-13) | `KNOWN_DUPLICATES` is empty since 2026-10-15 (its last, "typed": `commands._run` and `bulk_ops._run_single_enable_command`, left with today's `/bulk_execute` at 7.8); the brief's D1 to D24 live on today's pages |
 
 ### The order for the rest, and why
 

@@ -32,7 +32,6 @@ from tests.test_session_write_guard import _writer_sites
 #: Sends whose text the scan cannot resolve, declared by the task they serve.
 DECLARED_DYNAMIC = {
     ("modules/commands.py", "_run"): ("typed",),
-    ("modules/bulk_ops.py", "_run_single_enable_command"): ("typed",),
     ("modules/nsot/credential_rotation.py", "push_rotation"): ("rotation",),
     # Tier 2: the confirmed command from COMMANDS, sent once (modules/nsot/privileged.py).
     ("modules/nsot/privileged.py", "apply"): ("tier 2",),
@@ -44,8 +43,6 @@ DECLARED_DYNAMIC = {
 #: effect, so a send is keyed by what it is for (C191, 2026-09-29, when the
 #: population widened to config mode and the scripts).
 CONFIG_TASKS = {
-    ("modules/bulk_ops.py", "_execute_remove_static_routes"): ("config", "static route removal"),
-    ("modules/bulk_ops.py", "_execute_worker"): ("config", "bulk config"),
     ("modules/pipeline.py", "_push_via_netmiko"): ("config", "deploy push"),
     ("modules/pipeline.py", "_restore_config"): ("config", "rollback"),
     ("modules/nsot/onboard.py", "remove_rw_communities"): ("config", "RW community removal"),
@@ -69,8 +66,8 @@ KNOWN_DUPLICATES = {
     # deploy's save after verify calls `persist_on_device`, the one home.
     # ("delete", "file"), ("copy", "file", "tftp") and ("copy", "tftp", "file") LEFT this list
     # 2026-10-13: Device files left at 7.8 (D16); the bulk file routes are their one home now.
-    ("typed",): {"modules/commands.py:_run",
-                 "modules/bulk_ops.py:_run_single_enable_command"},
+    # ("typed",) LEFT this list 2026-10-15: today's bulk commands left at 7.8 with
+    # modules/bulk_ops.py, so `commands._run` is the one home of a typed command.
 }
 
 _COMMAND = re.compile(r"^[a-z][a-z-]*\b")

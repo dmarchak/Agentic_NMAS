@@ -68,7 +68,6 @@ from modules import route_gates
 from modules.identity import request_actor
 from modules.utils import make_device_filename
 from modules.commands import run_device_command
-from modules.bulk_ops import bulk_manager
 
 # Device status cache and ping worker setup
 #
@@ -834,90 +833,9 @@ def _save_settings(data: dict, errors: list):
     return jsonify({"status": "ok"})
 
 
-# ---------------------------------------------------------------------------
-# Bulk Operations Routes
-# ---------------------------------------------------------------------------
-
-@app.route("/bulk_execute", methods=["POST"])
-def bulk_execute():
-    """Execute a command on multiple devices."""
-    try:
-        device_ips = request.form.getlist("device_ips[]")
-        command = request.form.get("command", "").strip()
-        command_mode = request.form.get("command_mode", "enable").strip()
-
-        if not device_ips:
-            return jsonify({"status": "error", "message": "No devices selected"}), 400
-
-        if not command:
-            return jsonify({"status": "error", "message": "No command provided"}), 400
-
-        # Config mode is CUT (NSOT_PLAN P.3 step 2): a free-form command list
-        # pushed to many devices with no plan, no hash and no rollback. It is
-        # REFUSED by name rather than downgraded, so a stale page asking for it
-        # learns why instead of silently running its commands in enable mode.
-        # Configuration changes go through intent: edit, plan, confirm.
-        if command_mode == "config":
-            return jsonify({"status": "error", "message": (
-                "Config mode was removed (P.3): a configuration change goes "
-                "through intent (edit, plan, confirm), which previews exactly "
-                "what is sent and can roll it back. Enable mode is still "
-                "available and needs a person.")}), 400
-        if command_mode != "enable":
-            command_mode = "enable"
-        # READS ONLY (C570): enable mode ran any command on every selected device, holding
-        # each so the session guard let it through, and answered `reload`'s and `write
-        # erase`'s prompts itself. Every `;`-separated command must pass the read-only
-        # allowlist, or none runs on any device.
-        from modules.readonly_commands import refusal_for as _reads_refusal
-        _why = _reads_refusal([c.strip() for c in command.split(";") if c.strip()])
-        if _why:
-            return jsonify({"status": "error", "message": f"Not run on any device: {_why}"}), 400
-
-        # Load devices from current list
-        _, current_list_file = get_current_device_list()
-        all_devices = load_saved_devices(current_list_file)
-        selected_devices = [d for d in all_devices if d["ip"] in device_ips]
-
-        if not selected_devices:
-            return jsonify({"status": "error", "message": "No valid devices found"}), 400
-
-        mode_text = "config" if command_mode == "config" else "enable"
-        app.logger.info(f"Bulk execute ({mode_text} mode) on {len(selected_devices)} devices: {command}")
-
-        # Start bulk operation
-        operation_id = bulk_manager.execute_bulk_command(
-            devices=selected_devices,
-            command=command,
-            connection_factory=get_persistent_connection,
-            connections_pool=connections,
-            pool_lock=lock,
-            max_workers=5,
-            command_mode=command_mode
-        )
-
-        return jsonify({
-            "status": "success",
-            "operation_id": operation_id,
-            "message": f"Executing ({mode_text} mode) on {len(selected_devices)} device(s)"
-        })
-
-    except Exception as e:
-        app.logger.error(f"Bulk execute failed: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@app.route("/bulk_status/<operation_id>")
-def bulk_status(operation_id):
-    """Get status of a bulk operation."""
-    try:
-        status = bulk_manager.get_operation_status(operation_id)
-        return jsonify({"status": "success", "operation": status})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-# POST /bulk_clear/<id> left at 7.8 on 2026-10-15: no page called it (on the audit's CUT list).
+# Today's bulk commands (POST /bulk_execute, GET /bulk_status/<id>, and the worker,
+# modules/bulk_ops.py) left at 7.8 on 2026-10-15: Show commands (/v2/show-commands) runs
+# allowlisted reads across devices. POST /bulk_clear/<id> had left the same day.
 
 
 # ---------------------------------------------------------------------------

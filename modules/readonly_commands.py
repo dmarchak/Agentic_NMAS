@@ -60,9 +60,10 @@ state (``clear ip ospf process`` drops adjacencies, ``clear counters`` erases
 the evidence a diagnosis reads, ``debug`` loads the device) and are NOT here
 (NSOT_FEATURE_AUDIT 3a).
 
-Used by the agent's ``execute_*`` tools, and as a REFUSAL by ``/run_command`` and
-``bulk_execute`` (C570, 2026-10-08: they had used it only to decide whether to hold the device,
-and then ran anything; ``tests/test_device_text_is_refused.py``). The connection layer's guard
+Used by the agent's ``execute_*`` tools, and as a REFUSAL by ``/run_command`` (C570,
+2026-10-08: it, and today's bulk commands until they left at 7.8 on 2026-10-15, had used it
+only to decide whether to hold the device, and then ran anything;
+``tests/test_device_text_is_refused.py``). The connection layer's guard
 (``connection._guard_writes``) refuses any unheld non-read on every session besides.
 """
 
@@ -479,10 +480,5 @@ def bound_seconds(command: str) -> int:
     return 0 if why else worst + SLACK_SECONDS
 
 
-def refusal_for(commands, extra=()) -> str:
-    """The first refusal among *commands*, or "" when all may run."""
-    for command in commands or []:
-        reason = refusal(command, extra)
-        if reason:
-            return reason
-    return ""
+# `refusal_for` (the first refusal among several commands) left 2026-10-15 with its one caller,
+# today's /bulk_execute (7.8).

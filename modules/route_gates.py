@@ -110,8 +110,6 @@ GATES = {
     "run_command": _g(C, "runs a READ a person typed on one device; anything the read-only "
                          "allowlist refuses is refused before any device (C570; B16: it was "
                          "an ungated GET)"),
-    "bulk_execute": _g(C, "sends READS to many devices: every ;-part passes the read-only "
-                          "allowlist or none runs (C570; config mode cut in P.3 step 2)"),
     "rotate.apply": _g(C, "rotates a device's login credential: the device then accepts only the new password"),
     "device_v2.restore_confirm": _g(C, "re-applies a moment (its golden now, an older golden or a baseline) to one device from the v2 device page (7.3; THE restore plan and apply, run as a job, in the list its preview was drawn in, C396), merge-only, every line needing a reason (a dangerous line, an account added back) with its stated reason in the hash"),
     "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; the same plan and apply as deploy.apply and the batch apply, run as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),

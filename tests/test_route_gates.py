@@ -100,12 +100,12 @@ class TestEveryMutatingEndpointIsDeclared:
     @pytest.mark.parametrize("endpoint,kind", [
         ("deploy.apply", "confirm"),
         ("golden.restore_apply", "confirm"),
-        ("bulk_execute", "confirm"),
         ("golden.capture_apply", "approve"),
         ("bulk_intent_v2.apply", "approve"),
         ("save_settings", "configure"),
         ("identity.ratify_setting", "configure"),
         ("reads_v2.ask_run", "reveal"),
+        ("reads_v2.show_commands_run", "reveal"),   # today's /bulk_execute's home (7.8)
         ("remote.push", "publish_remote"),
         ("deploy.plan", "not_device"),
     ])
@@ -195,7 +195,7 @@ REFUSED_WITHOUT_IDENTITY = [
     "/deploy/apply",
     "/golden/restore/apply",
     "/golden/capture/apply",
-    "/bulk_execute",
+    "/v2/show-commands/run",        # many devices' reads: today's /bulk_execute left at 7.8
     "/settings",
     "/v2/devices/change/apply",
 ]

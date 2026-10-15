@@ -47,14 +47,10 @@ _ONE_RUN = ("one device per run: `routes/deploy.py` `_deploy_one` hands the pipe
 SCANNED = {
     # (run_chat.execute_tool's loop left 2026-10-08: the `execute_command*` tools read through
     # the reads engine, concurrent across devices by `fanout.read_each`; C548, R5.)
-    ("modules/bulk_ops.py", "_run_single_enable_command"): (
-        "one_device", "answers one device's interactive prompts"),
+    # (modules/bulk_ops.py's two left 2026-10-15 with today's bulk commands, 7.8.)
     ("modules/nsot/reload_op.py", "read_device.read"): (
         "one_device", "the image files ONE device's `show version` and `show boot` name, each "
                       "a `dir` on that device's one session (Reload's preview, P.14)"),
-    ("modules/bulk_ops.py", "BulkOperationManager._execute_worker.worker"): (
-        "one_device", "a worker draining the bulk queue; several run at once, so the "
-                      "operation IS concurrent (5 or 3 workers)"),
     ("modules/pipeline.py", "_stage_pre_snapshot"): ("sequential", _ONE_RUN),
     ("modules/pipeline.py", "_stage_post_snapshot"): ("sequential", _ONE_RUN),
     ("modules/pipeline.py", "_capture_failure_state"): ("sequential", _ONE_RUN),
@@ -175,9 +171,9 @@ class TestEverySerialDeviceLoopStatesWhy:
 
     def test_the_scan_finds_something(self):
         found, _ = scan()
-        assert ("modules/bulk_ops.py", "BulkOperationManager._execute_worker.worker") in found
+        assert ("modules/nsot/reload_op.py", "read_device.read") in found
         assert ("modules/pipeline.py", "_stage_rollback") in found
-        assert len(found) >= 10  # 10 since 2026-10-14: the AI device warm-up left (D15)
+        assert len(found) >= 8  # 8 since 2026-10-15: today's bulk commands left (7.8); 10 since 2026-10-14: the AI device warm-up left (D15)
 
     def test_a_planted_serial_read_is_found(self):
         planted = ("def read_them(devices):\n"

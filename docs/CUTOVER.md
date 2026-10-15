@@ -69,7 +69,6 @@ and built.
 | In-flight operations | `/operations/in_flight` | BUILT, 7.7 (board F4) | Settings › Installation › Diagnostics, In flight |
 | Version | `/health/version` | BUILT | Help › About |
 | Backups | (no route of today's; its six routes, backup_config, backup_history, backup_stats, compare_backups, delete_backup and download_backup, removed 2026-10-15, a8acc2a1) | **REMOVED 2026-10-15** (7.8, C632, C335) | Section 6a's prerequisite met first: the v2 intent editor and bulk intent render against the committed golden only since 2026-10-11 (C683), and today's template preview since 2026-10-14 (C632: its fallback to the newest backup, its "versus running config" diff and its refresh-capture route went). Today's device page's Backups tab, `modules/backups.py` and the manual's Backups page went with the routes. No code deleted or migrated the stored files; the operator archived them masked (`s3://mercury/archives/backups/20261015T040957Z.tar.gz`, lists/default's 2 files; no legacy folder existed) and deleted them by checksum with `scripts/host-steps/d16-archive.sh`, 2026-10-15. The follow-ups (the operator's decisions 6 to 9): retire no longer says backups are kept, onboarding's results name drift and heartbeats only, the legacy migration of a data-root backups folder is gone, and the concurrency audit marks the index REMOVED. A capture is the device's page's Capture…, recorded as a golden |
-| Bulk read-only commands | `/bulk_execute`, `/bulk_status/<id>` | BUILT (C548; not yet walked on the host) | Show commands (`/v2/show-commands`): devices by name, role or network, commands from the allowlist, results grouped and compared. /bulk_clear/<id>, which no page called, was removed 2026-10-15 (7.8) |
 | Reload | (no route of today's; its /bulk_reload removed 2026-10-12) | BUILT, P.14 (2026-10-10, the board drawn under the Phase 7 mode; not run on a device) | Device Actions › Reload…: a preview job reads the device and judges the six gates (running against startup, its golden and intent, startup carrying Mercury's credential, the boot image, no holder, the blast radius from committed intent and this host's subnets); a reason; the run declares its planned-restart window before it sends anything, reloads, waits within the platform's measured bound, verifies it runs what it ran, and records (History's Reloads). P.14's plain form: the device boots the startup it holds; booting a moment from history is revert by reload (the charter's Phase 2) |
 | Ask the device | `/run_command/<ip>` | BUILT (C547; not yet walked on the host) | The device page's Ask tab (allowlisted) |
 | Topology service | (no route of today's; its two routes and panel removed 2026-10-12) | BUILT for boards A and B (P.11 steps 1 and 2, 2026-10-10; the reader walked on the host, the page not yet); the service itself REMOVED at 7.8 (2026-10-12: the renderer from the repository, the unit and link by its host step, `topology-service-removal.sh`), and its integration with it (C714: no client, no probe, no Settings card; its keys `retiring` for one release) | OBSERVE › Topology (`routes/topology_v2.py` over the `topology-graph` reader): the layers, outside peers, islands (expected by a recorded declaration, or warned, and "became"), single points of failure, criticality, path trace, search, the list first at phone width. Still to come: saved shared positions (step 3), time travel and the wall (board C; its kiosk identity is the operator's) |
@@ -314,6 +313,22 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
 
   Their gate, invalidation and operation-stage entries left with them. Tests that drove a
   property through one were rebased onto the core or the v2 route that does it now.
+- **Today's bulk commands** (/bulk_execute, /bulk_status/<id>), 2026-10-15 (C548's home
+  built; C798 moot): Show commands (`/v2/show-commands`) runs reads across devices, by name,
+  role or network, from the same allowlist, results grouped and compared. The worker
+  (`modules/bulk_ops.py`, whose finished runs nothing cleared, C798), today's device list's
+  bulk panel (the command box, the selection checkboxes and Select all that fed it) and its
+  results modal went with the routes, and so did their gate, invalidation and two
+  operation-stage and history entries, and `readonly_commands.refusal_for`, which only
+  /bulk_execute called (the allowlist itself, `refusal`, stays: `/run_command` and the reads
+  engine use it). Proved before removal: index.1.js's `executeBulkCommand` and
+  `showBulkResults` were the routes' only callers.
+- **Restore Golden Config at HEAD** (`bulkRestoreGoldenConfig`, the bulk panel's button, and
+  today's device page's Restore Golden Config link), 2026-10-15 (cut 2026-10-05): a device's
+  Restore from…, whose first point is its golden now, and History's baselines remain. Both
+  only opened the guarded preview through the index; that handoff (`_restoreHeadFromUrl` in
+  `partials__golden_repo.3.js`, read from `?restore_head=&restore_ref=`) stays, because
+  Restore from… (`nmas_restore_scope.js` `restoreFromUrl`) still sends the device there.
 
 ## Legacy actions that are not routes
 
@@ -322,7 +337,6 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
 | The terminal (socket events) | **REMOVED 2026-10-05** (R39, brought forward from 7.8 on the operator's decision, after the console drill proved the emergency path: docs/CONSOLE_DRILL.md) | The Device page's allowlisted Ask tab is the one way to ask a device. Kept: the `break_glass` gate kind and its two settings, until they retire |
 | Today's Git tab, Remote card, Baselines panel | BUILT | History: Commits, the remote's sentence, Baselines |
 | The AI chat panel (every page) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns it |
-| Bulk restore at HEAD (`bulkRestoreGoldenConfig`) | REMOVE, 7.8 (cut 2026-10-05) | A device's Restore from… and History's baselines remain |
 | Settings modal | BUILT | Settings per network and every Installation tab are built; NetBox writes come on by an authorised confirm on the NetBox page (C619, closed 2026-10-10) |
 
 ## Decided 2026-10-02

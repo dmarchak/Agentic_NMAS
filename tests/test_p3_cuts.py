@@ -6,9 +6,11 @@ name them, and it names them to assert their absence.
 
 - every cut route answers 404, by path (what a stale page or a script sends);
 - nothing the browser loads, and no script, still refers to one;
-- the two cuts that keep a route refuse BY NAME rather than degrade:
-  bulk config mode (enable mode stays) and chat playbook replay;
 - the Configure forms send nothing, and say so.
+
+Bulk config mode was refused by name on a route that stayed; that route,
+/bulk_execute, left whole at 7.8 (2026-10-15), so its refusal's two tests went
+with it. Chat playbook replay left with the AI family (D15).
 """
 
 import os
@@ -88,26 +90,5 @@ def test_the_scan_would_see_one():
     """Control: the needles are spelled as the removed callers spelled them."""
     old = "fetch('/bulk_remove_static_routes', { method: 'POST', body: formData })"
     assert any(n in old for n in NEEDLES)
-
-
-def test_bulk_config_mode_is_refused_by_name():
-    resp = _client().post("/bulk_execute", data={
-        "device_ips[]": ["192.0.2.1"], "command": "hostname x",
-        "command_mode": "config"})
-    body = resp.get_json()
-    assert resp.status_code == 400
-    assert "Config mode was removed" in body["message"], body
-
-
-def test_bulk_enable_mode_still_reaches_the_route(monkeypatch):
-    """Control: the refusal is for config mode, not the route."""
-    import app as A
-    monkeypatch.setattr(A, "load_saved_devices", lambda _p: [])
-    resp = _client().post("/bulk_execute", data={
-        "device_ips[]": ["192.0.2.1"], "command": "show clock",
-        "command_mode": "enable"})
-    body = resp.get_json()
-    assert "Config mode was removed" not in (body.get("message") or ""), body
-    assert body.get("message") == "No valid devices found", body
 
 

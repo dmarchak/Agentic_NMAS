@@ -6,8 +6,8 @@ mode did the same on every selected device and answered `reload`'s prompts itsel
 file routes spliced form fields into commands (`delete {filesystem}{filename}`), where a line
 break is a second command. Now:
 
-- a free-form command passes the read-only allowlist whole, or nothing is sent (`/run_command`,
-  `/bulk_execute`, every `;`-separated part);
+- a free-form command passes the read-only allowlist whole, or nothing is sent (`/run_command`;
+  today's `/bulk_execute`, which checked every `;`-separated part, left at 7.8, 2026-10-15);
 - a field spliced into a command is one token of its shape (`modules/cli_tokens.py`);
 - each refusal comes BEFORE any device is contacted: netmiko's connect is recorded here, and a
   refused request records none.
@@ -52,15 +52,6 @@ def contacts(monkeypatch):
     return Contacts.made
 
 
-@pytest.fixture
-def bulk_calls(monkeypatch):
-    from modules.bulk_ops import bulk_manager
-    got = []
-    monkeypatch.setattr(bulk_manager, "execute_bulk_command",
-                        lambda **kw: got.append(kw) or "op-1")
-    return got
-
-
 AJAX = {"X-Requested-With": "XMLHttpRequest"}
 
 
@@ -78,28 +69,19 @@ class TestTheDevicePageCommand:
         assert r.status_code == 200 and contacts == [IP] and "show clock" in FakeConn.sent
 
 
-class TestBulkOperation:
-    @pytest.mark.parametrize("command", ["reload", "write erase", "show clock; reload",
-                                         "show clock;delete flash:x.bin"])
-    def test_a_write_anywhere_in_the_list_refuses_every_device(self, client, contacts,
-                                                              bulk_calls, command):
-        r = client.post("/bulk_execute", data={"device_ips[]": [IP], "command": command,
-                                               "command_mode": "enable"})
-        assert r.status_code == 400 and "Not run on any device: REFUSED" in r.get_json()["message"]
-        assert bulk_calls == [] and contacts == []
-
-    def test_reads_start_the_operation(self, client, bulk_calls):
-        r = client.post("/bulk_execute", data={"device_ips[]": [IP],
-                                               "command": "show clock; show version",
-                                               "command_mode": "enable"})
-        assert r.status_code == 200 and len(bulk_calls) == 1
+class TestTheBulkRoutesAreGone:
+    """Bulk file actions left at 7.8 (D16, 2026-10-13) and today's bulk commands
+    (/bulk_execute, /bulk_status) on 2026-10-15: nothing reaches a device through them. Many
+    devices' reads are Show commands', which refuses a write in any part before any device
+    (tests/test_show_commands.py, TestARun)."""
 
     @pytest.mark.parametrize("route", ["/bulk_tftp_download", "/bulk_download_config",
-                                       "/bulk_delete_file", "/bulk_tftp_upload"])
-    def test_the_bulk_file_routes_are_gone(self, client, contacts, bulk_calls, route):
-        """Bulk file actions left at 7.8 (D16, 2026-10-13): nothing reaches a device."""
-        r = client.post(route, data={"device_ips[]": [IP], "filename": "x.bin"})
-        assert r.status_code in (404, 405) and bulk_calls == [] and contacts == []
+                                       "/bulk_delete_file", "/bulk_tftp_upload",
+                                       "/bulk_execute"])
+    def test_the_bulk_routes_are_gone(self, client, contacts, route):
+        r = client.post(route, data={"device_ips[]": [IP], "filename": "x.bin",
+                                     "command": "show clock", "command_mode": "enable"})
+        assert r.status_code in (404, 405) and contacts == [] and FakeConn.sent == []
 
 
 class TestTheFileRoutesAreGone:
@@ -136,10 +118,9 @@ class TestTheShapes:
 #: Every route whose body reads the request and calls a device sender, with its check.
 CHECKED = {
     "run_command": "readonly_commands.refusal, before any device",
-    "bulk_execute": "readonly_commands.refusal_for over every ;-part, before any device",
 }
 SENDERS = {"run_device_command", "send_command", "send_command_timing", "send_config_set",
-           "execute_bulk_command", "with_temp_connection", "get_persistent_connection",
+           "with_temp_connection", "get_persistent_connection",
            "get_device_context"}
 
 
@@ -166,7 +147,7 @@ def _routes_that_send_request_text():
 
 def test_every_route_sending_request_text_is_checked():
     found = _routes_that_send_request_text()
-    assert len(found) >= 3, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files, 4 since Bulk file actions (2026-10-13), 3 since Backups (2026-10-14)
+    assert len(found) >= 2, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files, 4 since Bulk file actions (2026-10-13), 3 since Backups (2026-10-14), 2 since today's bulk commands (2026-10-15)
     unchecked = sorted(set(found) - set(CHECKED) - set(NOT_REQUEST_TEXT))
     assert not unchecked, (
         "a route reads the request and sends to a device with no declared check: "

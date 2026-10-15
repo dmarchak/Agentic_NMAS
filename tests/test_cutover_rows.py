@@ -110,7 +110,9 @@ def test_every_row_names_routes_and_every_route_a_row():
     all_rules = rules()
     assert len(all_rules) >= 300, len(all_rules)              # the floor; 379 on 2026-10-10
     text = open(DOC, encoding="utf-8").read()
-    assert len(table_rows(text)) >= 40, len(table_rows(text))
+    # 39 rows since 2026-10-15: Bulk read-only commands and Bulk restore at HEAD moved to
+    # "Removed at 7.8" (each family leaves the table in the commit that removes it).
+    assert len(table_rows(text)) >= 39, len(table_rows(text))
     problems = check(text, all_rules)
     assert problems == [], "\n".join(problems)
 

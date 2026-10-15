@@ -291,10 +291,10 @@ STAGES = {
         "modules.netbox_guard.record_modified"),
     # ---- Legacy device routes, removed or replaced at cutover
     "run_command": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
-    "bulk_execute": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
 }
 
 #: The gaps, counted: the test pins this number, so it can only go down.
+# 21 -> 17 2026-10-15, measured: today's /bulk_execute took its four LEGACY gaps with it (7.8).
 # 46 -> 21 2026-10-15, measured: today's /templates/bindings took its two gaps with it at 7.8,
 # and the ceiling had not followed the 7.8 removals before it (23 measured before this one).
 # +1 2026-10-10: v2's NetBox confirm shares today's import's missing read-back (C8); today's three
@@ -302,7 +302,7 @@ STAGES = {
 # +1 2026-10-10: v2's Create shares today's Create's missing run record (one core); v2's
 # Create and Abandon bind their confirms, so today's two hash gaps and Abandon's preview gap
 # leave with today's routes at 7.8.
-MISSING_CEILING = 21
+MISSING_CEILING = 17
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +351,6 @@ HISTORY = {
                                   "(dhcp/exclusions.yml)"),
     "update.step_done": NOT_A_DEVICE,
     "run_command": NO_RECORD,
-    "bulk_execute": NO_RECORD,
     # ---- approve: a decision a later device change acts on
     "golden.capture_apply": ("golden", "measured"),
     "device_v2.capture_confirm": ("golden", "measured"),
@@ -464,5 +463,6 @@ WRITTEN_ELSEWHERE = {
 #: The history gaps, counted: only down (12 -> 9, 2026-10-12: the three credential profile JSON
 #: routes removed at 7.8; 9 -> 7, 2026-10-13: Device files' upload and delete removed at 7.8;
 #: 7 -> 5 the same day: Bulk file actions' upload and delete; 5 -> 3, 2026-10-14: the assistant's
-#: chat and agent run, removed with the AI family, D15).
-HISTORY_MISSING_CEILING = 3
+#: chat and agent run, removed with the AI family, D15; 3 -> 2, 2026-10-15: today's bulk
+#: commands, /bulk_execute, removed at 7.8).
+HISTORY_MISSING_CEILING = 2

@@ -70,16 +70,6 @@ def test_a_failure_is_never_recorded_as_an_empty_sentence():
     assert error_text(RuntimeError("RuntimeError while x")) == "RuntimeError while x"
 
 
-def test_the_per_device_recorders_use_it():
-    """The per-device failure recorder the bulk loop has (the reload's left with
-    /bulk_reload at 7.8). A bare `str(exc)` put back is found."""
-    import re
-
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    bare = re.compile(r'result\["error"\]\s*=\s*str\((exc|e)\)')
-    found = {}
-    for rel in ("modules/bulk_ops.py",):
-        text = open(os.path.join(root, rel), encoding="utf-8").read()
-        found[rel] = (len(re.findall(r'result\["error"\]\s*=', text)), bare.findall(text))
-    assert all(n >= 1 for n, _ in found.values()), found
-    assert all(not b for _, b in found.values()), found
+# test_the_per_device_recorders_use_it left 2026-10-15: its population was the per-device
+# failure recorders of today's bulk loops, the reload's (with /bulk_reload) and then the bulk
+# commands' (with modules/bulk_ops.py), both removed at 7.8.

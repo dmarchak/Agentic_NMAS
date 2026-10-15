@@ -2,9 +2,10 @@
 restore preview, and that preview draws the exact program.
 
 Two buttons, the device page's and bulk ops', POSTed to a replay that pushed
-the whole golden line by line: no plan, no confirm hash, no rollback. Both now
-open `previewBaselineRestore('HEAD', ..., {devices})`, the path the approval
-queue already hands off to, and the replay routes are gone.
+the whole golden line by line: no plan, no confirm hash, no rollback. Both then
+opened `previewBaselineRestore('HEAD', ..., {devices})`, the path the approval
+queue already hands off to, and the replay routes are gone. Both buttons left
+at 7.8 (2026-10-15); the device page's Restore from… opens the same preview.
 
 Routing two more buttons into that preview exposed its own defect: its confirm
 dialog showed counts and at most three replace and three residue lines, and
@@ -307,22 +308,9 @@ class TestTheWiring:
         assert chosen == [["r1", {"hash": r1["capture_hash"],
                                   "command-hash": r1["command_hash"]}]]
 
-    def test_bulk_ops_opens_the_guarded_preview_at_head(self):
-        src = open(os.path.join(ROOT, "static", "js", "gen", "index.1.js"),
-                   encoding="utf-8").read()
-        m = re.search(r"window\.bulkRestoreGoldenConfig = function\(\) \{(.*?)\n  \};", src, re.S)
-        assert m
-        assert "previewBaselineRestore('HEAD', null, {devices: hosts})" in m.group(1)
-        assert "fetch(" not in m.group(1)
-
-    def test_the_device_page_links_to_the_preview_at_head(self):
-        import app as A
-        with A.app.test_request_context("/"):
-            from flask import url_for
-            href = url_for("index", restore_head="r1")
-        assert href == "/?restore_head=r1"
-        page = open(os.path.join(ROOT, "templates", "device.html"), encoding="utf-8").read()
-        assert "url_for('index', restore_head=device['hostname'])" in page
+    # The two "Restore Golden Config" controls (the bulk panel's and today's device page's)
+    # left at 7.8 (2026-10-15), and their two tests with them. The device page's Restore
+    # from… (its first point the golden now) still reaches the index through the URL.
 
     def test_the_index_page_opens_it_from_the_url(self):
         index = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()

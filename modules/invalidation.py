@@ -294,7 +294,6 @@ DECLARED = {
     "device_v2.rotate_confirm": Nothing("the same confirm as rotate.apply: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "credential_profiles_v2.rotate_due_confirm": Nothing("starts the run as a job and answers at once; the run ANNOUNCES rotation and credentials after each device and when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
-    "bulk_execute": ("device_state",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),
     "golden.capture_preview": Nothing("starts a job that reads each device's running config "

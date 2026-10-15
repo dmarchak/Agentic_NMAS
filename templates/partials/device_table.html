@@ -1,52 +1,12 @@
-{#- The device list's bulk panel and table, rendered by today's index. Its second caller,
-    GET /devices/regions (the in-place redraw, Stage 7.0), was removed at 7.8; v2's Devices
-    replaces this list. -#}
+{#- The device list's table, rendered by today's index. Its second caller, GET
+    /devices/regions (the in-place redraw, Stage 7.0), was removed at 7.8; v2's Devices
+    replaces this list. Its bulk panel (the command box, Restore Golden Config at HEAD) and
+    the selection that fed it left at 7.8 on 2026-10-15. -#}
 {% if devices %}
-<!-- Bulk Operations Panel -->
-<div class="card mb-3" id="bulkOpsPanel" style="display: none;">
-  <div class="card-body">
-    <div class="d-flex justify-content-between align-items-center mb-1">
-      <h5 class="card-title mb-0">Bulk Operations</h5>
-    </div>
-    <p class="text-muted mb-2">Execute commands on <span id="selectedCount">0</span> selected device(s)</p>
-    <div class="mb-3">
-      <div class="btn-group" role="group" aria-label="Command mode">
-        <input type="radio" class="btn-check" name="commandMode" id="modeEnable" value="enable" checked>
-        <label class="btn btn-outline-primary" for="modeEnable">Enable Mode</label>
-      </div>
-      <small class="text-muted ms-2" id="modeHint">Run show/exec commands (e.g., show ip int brief) — separate multiple with semicolons</small>
-    </div>
-    <div class="input-group">
-      <input type="text" class="form-control" id="bulkCommand" placeholder="Enter command(s) - use semicolons for multiple">
-      <button class="btn btn-primary" onclick="executeBulkCommand()">Execute</button>
-      <button class="btn btn-outline-secondary" onclick="clearSelection()">Clear Selection</button>
-    </div>
-    <small class="text-muted mt-2 d-block" id="configHint" style="display: none;">For multiple config commands, separate with semicolons (e.g., hostname R1; interface gi0/0; description WAN)</small>
-
-    <div class="row g-2">
-      <!-- Restore Golden Config -->
-      <div class="col-md-6">
-        <div class="card border-warning">
-          <div class="card-body p-2">
-            <label class="form-label mb-1 small fw-bold">Restore Golden Config</label>
-            <button class="btn btn-warning btn-sm w-100" onclick="bulkRestoreGoldenConfig()">
-              Restore Golden Config
-            </button>
-            <small class="text-muted">Previews re-applying each device's golden at HEAD: the exact program, what stays behind, then a confirm</small>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Table of saved devices -->
 <table class="table table-bordered table-hover align-middle">
   <thead class="table-dark">
     <tr>
-      <th style="width: 40px;">
-        <input type="checkbox" id="selectAll" title="Select All">
-      </th>
       <th>Status</th>
       <th>Hostname</th>
       <th>IP Address</th>
@@ -56,10 +16,6 @@
   <tbody id="deviceTableBody">
     {% for d in devices %}
     <tr data-ip="{{ d['ip'] }}" data-hostname="{{ d['hostname'] }}" class="device-row">
-      <td>
-        <input type="checkbox" class="device-checkbox" value="{{ d['ip'] }}"
-               {% if not d['online'] %}disabled{% endif %}>
-      </td>
       <td>
         <span id="status-{{ d['ip'] }}"
               class="btn btn-sm {% if d['online'] %}btn-success{% else %}btn-danger{% endif %}">

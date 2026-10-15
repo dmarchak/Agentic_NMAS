@@ -105,33 +105,6 @@
 {% include 'partials/device_table.html' %}
 </div>
 
-<!-- Bulk Operation Results Modal -->
-<div class="modal fade" id="bulkResultsModal" tabindex="-1" aria-labelledby="bulkResultsLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="bulkResultsLabel">Bulk Operation Results</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div id="bulkProgress" class="mb-3">
-          <div class="d-flex justify-content-between mb-2">
-            <span>Progress: <span id="bulkProgressText">0/0</span></span>
-            <span><span id="bulkSuccessCount" class="text-success">0 succeeded</span>, <span id="bulkFailCount" class="text-danger">0 failed</span></span>
-          </div>
-          <div class="progress">
-            <div id="bulkProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-          </div>
-        </div>
-        <div id="bulkResults"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 {% include 'partials/inventory_source.html' %}
 {% include 'partials/golden_repo.html' %}
 {% include 'partials/template_editor.html' %}
@@ -409,7 +382,7 @@
   </div>
 </div>
 
-<!-- Device List Management & Bulk Ops Scripts -->
+<!-- Device List Management Scripts -->
 <script src="{{ url_for('static', filename='js/gen/index.1.js') }}"></script>
 
 {% endblock %}

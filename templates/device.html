@@ -10,12 +10,6 @@
     <h2 class="mb-0">Manage {{ device["hostname"] }} ({{ device["ip"] }})</h2>
   </div>
   <div class="btn-group">
-    <!-- Restore Golden Config -->
-    <a class="btn btn-outline-warning"
-       href="{{ url_for('index', restore_head=device['hostname']) }}"
-       title="Preview re-applying this device's golden at HEAD: the exact program, what stays behind, then a confirm">
-      ⭐ Restore Golden Config
-    </a>
     <!-- Restore from a chosen point (7.1 step 5, C80): its own golden tags and the baselines that hold it -->
     <button type="button" class="btn btn-outline-warning"
             data-hostname="{{ device['hostname'] }}"
@@ -154,11 +148,6 @@
   </div>
 
   <script>
-
-  function escapeHtml(s) {
-    if (!s) return '';
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
 
   // Copy to clipboard functionality
   function attachCopyHandlers() {

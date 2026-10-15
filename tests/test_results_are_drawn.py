@@ -287,7 +287,6 @@ PAGE_RECORD = {
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.
 PENDING = {
     # -- drawn in place, gone when the window closes or the page moves on --
-    "bulk_execute": "the bulk results modal, until closed",
     "run_command": "the device page re-rendered with the output",
     "templatize.edit_committed": "the editor's status line names the commit",
     "remote.push": "the remote panel's output box",
@@ -317,8 +316,7 @@ FALSE_GREEN = {
 #: (file, a literal from the call); a scan finds them all, both ways.
 GREEN_TOASTS = {
     ("static/js/gen/index.4.js", "data.drifted > 0 ? 'warning'"): "level from drifted and errors",
-    ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create/delete, TFTP server, bulk STARTED): the per-device outcome is the bulk modal's",
-    ("static/js/gen/index.1.js", "Bulk operation finished"): "level from the failed and succeeded counts (C121)",
+    ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create and delete); the bulk run's STARTED and its finished toast left with today's bulk commands (7.8, 2026-10-15)",
     ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
     ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
     ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
@@ -337,7 +335,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 9, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
+CEILINGS = {"PENDING": 8, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 8 since today's bulk commands left (7.8, 2026-10-15); 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
 
 
 def _population():

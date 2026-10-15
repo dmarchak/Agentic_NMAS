@@ -340,11 +340,14 @@ function _restoreSelected(preview) {
     ? preview.what.targets.filter(t => t.selectable) : [];
 }
 
-// The device page's and bulk ops' "Restore Golden Config" (P.3 step 3, D5)
-// arrive here as ?restore_head=<hostname>[,<hostname>...]: the guarded
-// preview at HEAD (or at ?restore_ref=<ref>, from "Restore from…"), scoped to those devices, exactly as an approval-queue
-// handoff opens it. The parameter is removed first, so a reload cannot
-// re-open a preview nobody asked for.
+// The device page's "Restore from…" (7.1 step 5, C80) arrives here as
+// ?restore_head=<hostname>&restore_ref=<ref>: the guarded preview at that ref
+// (its first point is the golden now, HEAD), scoped to that device, exactly as
+// an approval-queue handoff opens it. HEAD when no ref is named. The two
+// "Restore Golden Config" controls that sent the device(s) alone, today's
+// device page's and the bulk panel's, left at 7.8 on 2026-10-15. The
+// parameters are removed first, so a reload cannot re-open a preview nobody
+// asked for.
 function _restoreHeadFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const raw = params.get('restore_head');

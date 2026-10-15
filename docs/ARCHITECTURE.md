@@ -940,7 +940,8 @@ and others have left since too.
 `backups.py`, `variable_discovery.py`, `event_monitor.py`,
 `terminal.py`, `commands.py`, `agent_timers.py`, `ai_usage_log.py`, `quick_actions.py`,
 `utils.py`, `config.py` (`variable_discovery.py`, `event_monitor.py`, `agent_timers.py`
-and `ai_usage_log.py` were removed with the AI family, D15, 2026-10-14)
+and `ai_usage_log.py` were removed with the AI family, D15, 2026-10-14; `bulk_ops.py` with
+today's bulk commands, 7.8, 2026-10-15)
 
 #### Templates
 `base.html` (2,442 — layout + AI chat panel, the panel removed with the AI family, D15,

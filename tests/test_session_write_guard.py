@@ -15,7 +15,6 @@ run for real.
 
 import os
 import threading
-import time
 
 import pytest
 
@@ -207,30 +206,10 @@ class TestEveryWriterNowHoldsTheDevice:
         assert r.status_code == 400
         assert "clear counters" not in FakeConn.sent
 
-    def _bulk(self, client, command):
-        from modules.bulk_ops import bulk_manager
-
-        d = client.post("/bulk_execute", data={"device_ips[]": [IP], "command": command,
-                                               "command_mode": "enable"}).get_json()
-        op = d["operation_id"]
-        for _ in range(100):
-            status = bulk_manager.active_operations.get(op, {})
-            if len(status.get("results", [])) == 1:
-                return status["results"][0]
-            time.sleep(0.05)
-        raise AssertionError("the bulk operation never reported")
-
-    def test_a_bulk_write_is_refused_before_any_device(self, client):
-        """C570: enable mode reads only; a write is refused for every device at once."""
-        r = client.post("/bulk_execute", data={"device_ips[]": [IP], "command": "clear counters",
-                                               "command_mode": "enable"})
-        assert r.status_code == 400 and "Not run on any device" in r.get_json()["message"]
-        assert "clear counters" not in FakeConn.sent
-
-    def test_a_bulk_read_on_a_held_device_runs(self, client):
-        with Holder():
-            result = self._bulk(client, "show clock")
-        assert result["status"] == "success"
+    # Today's bulk commands (/bulk_execute) left at 7.8 (2026-10-15), and their two tests here
+    # with them: Show commands refuses a write before any device (tests/test_show_commands.py,
+    # TestARun), and a read on a held device is the session guard's, run above through
+    # /run_command.
 
 
 class TestTheRefusalSaysHowLongAndWhetherItMoves:
@@ -276,14 +255,13 @@ def test_the_steps_that_take_long_report_progress():
 #: Functions that send a non-read command WITHOUT taking the hold themselves,
 #: because their caller holds it. Each with its caller. Only shrinks.
 HELD_BY_CALLER = {
-    "modules/bulk_ops.py:_run_single_enable_command": "the bulk worker, per device",
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
     "scripts/nmas-tier2-probe:measure": "the probe's main(), which holds the device for the run",
     "modules/commands.py:_run": "run_device_command's body (C272); its callers: /run_command holds a non-read",
     "modules/device_reload.py:reload_device": "reload_op.run, which holds the device for the reload (P.14; app.bulk_reload left at 7.8)",
     # Found when the scan was widened to config mode and the scripts (C191,
-    # 2026-09-29); each caller verified in the code.
-    "modules/bulk_ops.py:_execute_remove_static_routes": "the bulk worker, per device",
+    # 2026-09-29); each caller verified in the code. (The bulk worker's two, in
+    # modules/bulk_ops.py, left with it at 7.8, 2026-10-15.)
     "modules/pipeline.py:_push_via_netmiko": "the deploy and restore applies, which hold "
                                              "every target for the run (acquire_many)",
     "modules/pipeline.py:_restore_config": "the deploy and restore applies (acquire_many)",
@@ -386,7 +364,7 @@ def test_every_writer_takes_the_hold_or_names_the_caller_that_does():
     import ast
 
     sites = _writer_sites()
-    assert len(sites) >= 17, len(sites)   # 19 since the file routes left at 7.8 (D16, 2026-10-13)
+    assert len(sites) >= 12, len(sites)   # 14 since today's bulk commands left at 7.8 (2026-10-15); 19 since the file routes left (D16, 2026-10-13)
     unheld = []
     for rel, chain, text, line in sites:
         if f"{rel}:*" in HELD_BY_CALLER:
@@ -400,9 +378,10 @@ def test_every_writer_takes_the_hold_or_names_the_caller_that_does():
         unheld.append(f"{rel}:{line} {text!r}")
     assert unheld == [], unheld
     names = {f"{rel}:{f.name}" for rel, chain, _t, _l in sites for f in chain}
-    # Anchors (the file routes, single and bulk, left at 7.8, 2026-10-13).
-    assert "modules/bulk_ops.py:_run_single_enable_command" in names
+    # Anchors (the file routes, single and bulk, left at 7.8, 2026-10-13; the bulk worker's
+    # `_run_single_enable_command` with today's bulk commands, 2026-10-15).
     assert "modules/commands.py:_run" in names
+    assert "modules/pipeline.py:_push_via_netmiko" in names
     ghosts = sorted((set(HELD_BY_CALLER) | set(KNOWN_UNHELD)) - names)
     assert ghosts == [], f"named but sending nothing now: {ghosts}"
 
