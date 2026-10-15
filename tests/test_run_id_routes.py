@@ -4,6 +4,7 @@ every v2 page after the AI family's deploy (2026-10-14) found three answering 50
 the URL (`<run_id:...>`, `reads.url_converter`), so an id of any other shape matches no route.
 The population is every rule with an argument named `run_id`, read from the app's own map."""
 import os
+import re
 
 import pytest
 
@@ -37,6 +38,23 @@ class TestEveryRunIdIsShapedInTheUrl:
             method = "post" if "POST" in rule.methods and "GET" not in rule.methods else "get"
             resp = getattr(client, method)(url)
             assert resp.status_code == 404, (rule.rule, bad, resp.status_code)
+
+    def test_the_converter_matches_exactly_the_shape_and_its_example_is_one(self):
+        """`url_converter` itself, run in the test (C791: the app registers it at import, which
+        no unit test's run phase sees, so the coverage ratchet counted it unreached)."""
+        from werkzeug.exceptions import NotFound
+        from werkzeug.routing import Map, Rule
+
+        from modules.nsot import reads
+        conv = reads.url_converter()
+        assert conv.regex == reads.RUN_ID
+        assert re.fullmatch(reads.RUN_ID, conv.example)
+        urls = Map([Rule("/run/<run_id:run_id>", endpoint="run")],
+                   converters={"run_id": conv}).bind("h")
+        assert urls.match(f"/run/{conv.example}") == ("run", {"run_id": conv.example})
+        for bad in ("r1", conv.example + "0", conv.example.lower()):
+            with pytest.raises(NotFound):
+                urls.match(f"/run/{bad}")
 
     def test_the_control_an_unshaped_route_raises(self, app):
         """The shape the converter prevents: the same read behind a plain `<run_id>` raises."""
