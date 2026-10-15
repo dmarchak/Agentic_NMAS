@@ -72,6 +72,7 @@ not built.
 | Deterministic alternative | the rule, query, template or builder considered, and why it falls short |
 | Inputs | the exact context, sized in tokens (the measured minimum, section 4); the tools (read-only, bounded); the output schema (Pydantic, versioned) |
 | Success metric | a target (accepted-without-edit rate, time saved, findings confirmed true) and the eval set that measures it |
+| Compared fields | the structured fields its consistency eval compares across N runs (11.1), never prose; and its pattern (11.12), which sets the floor: 95% Translator and Decision-maker, 90% Analyst (the operator, 2026-10-15) |
 | Budgets | tokens and cost per use, latency, the monthly cap; the model tier and why |
 | Observe mode | how long it runs alongside the deterministic path, and the threshold to leave it |
 | Kill criteria | the measured result that removes it (for example acceptance below target after N uses, or cost per accepted output above budget). A feature that misses is removed, not left running |
@@ -92,11 +93,13 @@ Two of them come from the operator's course material on AI in networking and int
 networking:
 - **Few-shot and an error contract** on every translation prompt: 2 or 3 real examples from the
   config repository's history, and the error shapes `{"error": "could not parse"}` and
-  `{"error": "ambiguous", "clarification_needed": "…"}`, surfaced to the operator. *Proposed
-  (11.4):* 1 or 2 of the examples end in that contract (a clarifying question, a refusal), not
-  only successful commits.
-- **Added 2026-10-15 (section 11):** consistency measured over N runs (11.1); ambiguity decided
-  by code (11.2); field provenance in every translation schema (11.3); input normalised before
+  `{"error": "ambiguous", "clarification_needed": "…"}`, surfaced to the operator; 1 or 2 of
+  the examples end in that contract (a clarifying question, a refusal), not only successful
+  commits (11.4, decided 2026-10-15).
+- **Added 2026-10-15 (section 11, all decided):** consistency measured over N runs on each
+  card's compared fields (11.1); ambiguity decided by code (11.2); field provenance in every
+  translation schema (11.3); a review-gated feedback loop (11.5); the gateway's rate limits and
+  busy state (11.8); temperature per model profile (11.11); input normalised before
   any prompt (11.7); context freshness at confirm (11.10).
 - **Minimum context, found by test:** the eval suite removes context blocks until the score
   drops, and records the smallest context that still passes. That number, times 1.5, is the
@@ -174,9 +177,25 @@ Each line is the card's summary. Every number is a proposal for the operator (se
 | 9 | **Inferring higher-level intent from configs** (8.5) | `neighbours.expected` and the profile already derive some; AI proposes statements across devices | a device set's intent summarised, about 20k tokens → statements with evidence | 20k in, 2k out, 60 s | medium | 60% of proposed statements accepted | 10 runs; 60% | below 40% |
 | 10 | **Template draft for a new platform** (8.5) | today a person writes it; accepted only by round trip | a platform's captured config and the nearest template, about 30k tokens → a template draft | 30k in, 6k out, 120 s | medium or large (the eval decides) | 50% pass the round trip within two revisions | 5 platforms | below 40%, or cost per accepted template above 3× budget |
 
-*Proposed (11.9):* feature 1's pattern extended to Mercury's records (changes, rotations,
-approvals) and NetBox's inventory, a builder's query read back before running, with the same
-bounds. 11.12 maps each feature to the course's patterns (Analyst, Translator, Decision-maker).
+**Each card's pattern and compared fields** (11.1, 11.12; the operator, 2026-10-15). The pattern
+sets the consistency floor; the compared fields are what its N runs must agree on, never prose:
+
+| Rank | Pattern (floor) | Compared fields |
+|---|---|---|
+| 1 | Translator (95%) | the builder's query model, whole (metric or stream, filters, operations, range) |
+| 2 | Analyst (90%) | cause category, `evidence_refs`, `needs_human` |
+| 3 | Analyst (90%) | `evidence_refs`, `needs_human` (finding, cause and fix are prose) |
+| 4 | Decision-maker (95%) | `entry`, `params`, `evidence_refs` |
+| 5 | Analyst (90%) | each cause's category, `tests_to_confirm`, `evidence_refs`, `needs_human` |
+| 6 | Translator (95%) | `check_kind`, `rule`, `planted_case` (the artifact a deterministic test accepts) |
+| 7 | Translator (95%) | the intent model, whole, or the error contract's kind |
+| 8 | Analyst (90%) | the verifier's statement kind, the readers' fields it reads, its planted failing case's kind |
+| 9 | Analyst (90%) | each proposed statement's kind and the devices it covers, `evidence_refs` |
+| 10 | Translator (95%) | the template draft's rendered output on the platform's captured config (the round trip's input) |
+
+Each card may refine its compared fields with its eval; the card scan (11.1's test) requires
+them. Feature 1's pattern extends to Mercury's records (changes, rotations, approvals) and NetBox's
+inventory: a builder's query read back before running, with the same bounds (11.9).
 
 **Removed by rule 2 (deterministic first), not built:**
 - **Change summaries:** a deterministic diff summary (sections and line counts per device)
@@ -203,7 +222,7 @@ bounds. 11.12 maps each feature to the course's patterns (Analyst, Translator, D
 | AI catalog selection (decision 9: yes, observe mode first) | at least 95% MEASURED agreement with a person over at least 100 observed selections before the tier is enabled; no self-reported confidence gate: confidence is logged for analysis only and never decides (decided 2026-10-13) | stricter than the deterministic classes |
 | Activate | a canary soaks 30 minutes with its verifiers holding before the fleet; one device at a time after it | rotation's pattern |
 | Context budgets | the measured minimum times 1.5 | headroom without waste |
-| Consistency (11.1; N DECIDED, the floors PROPOSED) | each golden case run 5 times (a profile setting); the release gate's floor 95% consistent cases for Translator features, 90% for Analyst and Decision-maker | a translation that differs between runs is a different change; the floor is measured per model, never assumed from temperature (11.11) |
+| Consistency (11.1; decided 2026-10-15) | each golden case run 5 times (a profile setting), compared on the card's structured fields, never prose; the release gate's floor 95% consistent cases for Translator and Decision-maker features, 90% for Analyst features | a Translator's different output is a different change; an inconsistent catalog pick is a different remediation; the floor is measured per model, never assumed from temperature (11.11) |
 | The built-in model (PROPOSED, section 10) | a tier is admitted only if, with the model loaded at its profile's context, MemAvailable stays at or above 20% of the host's RAM (3.2 GiB on a 16 GiB host); the profile's context 8k tokens by default; CPU capped at all but one vCPU; one request at a time; unloaded after 10 minutes idle; cost per token zero, so the caps that bind are the latency budget and the one-at-a-time rule | the stack's measured swing over nine days was about 1.2 GiB (lowest 10.4 GiB available, highest daily mean 11.7 GiB), so a 20% reserve covers it about 2.6 times; the 8k context keeps the KV cache under 0.5 GiB on gpt-oss-20b (estimate, 10.8) |
 
 ## 8. Process
@@ -295,11 +314,11 @@ bounds. 11.12 maps each feature to the course's patterns (Analyst, Translator, D
 13. **The licence of each candidate model** (a new third-party licence is the operator's):
     gpt-oss-20b and Granite 4.0 are published under Apache-2.0; Gemma 4's terms are to be read
     from Google's release before it is offered.
-14. **Section 11's PROPOSED additions:** 11.4 (few-shot clarification and refusal examples),
-    11.5 (the review-gated feedback loop), 11.8 (the gateway's rate limits, busy state and
-    parse-failure rate), 11.9 (feature 1 over records and inventory), 11.11 (temperature per
-    model profile), 11.12 (the patterns table, the three placements the operator did not make,
-    and the departures); and 11.1's floor numbers (95% Translator, 90% the others).
+14. ~~Section 11's proposed additions and 11.1's floors.~~ **Closed 2026-10-15:** every one
+    decided, as written, with the floors and placements the operator ruled ("Decided,
+    2026-10-15" below).
+15. **11.3's proposed detail:** a field marked `stated` whose words do not occur in the request
+    is drawn as inferred, by code.
 
 ### Decided, 2026-10-13 (the operator)
 
@@ -336,6 +355,19 @@ with the test that will enforce it.
 | 11.6 | **Voice never approves:** voice may query and request; approval is only the GUI's confirm by hash (IBN_DESIGN section 8 step 1, and section 13 item 9: speaker spoofing). |
 | 11.7 | **Input normalisation before any prompt,** on the operator's text and retrieved data: NFKC; zero-width, bidirectional-override and control characters stripped; length caps per block; each removal flagged in the audit log; tested with planted hidden-instruction strings. |
 | 11.10 | **Context freshness:** each translation records the NetBox and intent versions it used; at confirm, if either changed, validation re-runs before anything applies. |
+
+**The operator's rulings on 1705edfc, the same day** (closing decision 14):
+
+| # | Decision |
+|---|---|
+| 11.1 (floors) | **Translator and Decision-maker features: 95%** (catalog selection picks an action that runs, so an inconsistent pick is a different remediation). **Analyst features: 90%, on the structured fields only** (for example cause category, `evidence_refs`, `needs_human`), never prose. **The compared fields are part of each card** (section 3; section 6 names them), and `tests/test_consistency_eval.py` carries the planted case of two runs with different prose and identical structured fields scoring consistent. |
+| 11.12 (placements) | **Feature 6** (a pipeline check after an escape) **is Translator:** it produces an artifact accepted only by a deterministic test, like template drafts. **Feature 9 is Analyst. Feature 10 is Translator.** |
+| 11.4 | **Few-shot includes 1 or 2 clarification and refusal examples** in the error contract: decided as written. |
+| 11.5 | **The review-gated feedback loop:** decided as written. |
+| 11.8 | **The gateway's rate-limit handling, busy or degraded state and parse-failure rate:** decided as written. |
+| 11.9 | **Feature 1 over Mercury's records and NetBox inventory:** decided as written. |
+| 11.11 | **Temperature a per-model profile setting; consistency measured, never assumed:** decided as written. |
+| 11.12 | **The patterns table and the deliberate departures:** decided as written, with the placements above. |
 
 **Noted 2026-10-14 (Lab 7):** the function-coverage report (`scripts/nmas-coverage`: per
 automation module, unit and all-tier function coverage with line and branch beside it, and the
@@ -505,33 +537,44 @@ enforces.
 
 **The operator, 2026-10-15:** twelve additions from re-reading the operator's course material on
 AI in networking (weeks 8 and 9) against this plan and IBN_DESIGN. Documents only; nothing is
-built. Each is marked **DECIDED** (the operator's, 2026-10-15) or **PROPOSED** (pending the
-operator, section 9), and names the test that enforces it once built, in 10.9's form: written
-with the code, shown able to fail, with a planted case. IBN_DESIGN points here where its text
+built. **All twelve are DECIDED** (the operator, 2026-10-15: six with the additions, the other
+six and 11.1's floors in their rulings on 1705edfc), and each names the test that enforces it
+once built, in 10.9's form: written with the code, shown able to fail, with a planted case. One
+detail stays proposed, marked where it stands (11.3's check of a stated field's words). IBN_DESIGN points here where its text
 touches an addition (sections 8, 10 and 13), so each rule has one home.
 
 ### 11.1 Consistency eval (DECIDED)
 
 - Each golden case runs **N times** (default 5; N is a profile setting, 10.3), and the runs are
-  compared on their **structured output**, canonicalised (key order, whitespace, list order where
-  the schema declares a field unordered). Free-text fields (a cause sentence, a summary) are not
-  compared; the fields a decision reads are.
-- A case is **consistent** when all N structured outputs are identical. The **consistency rate**
-  is consistent cases over cases, per feature and per model and version, stored with the eval's
-  other results (10.7).
-- **The floor in the release gate (PROPOSED numbers):** 95% for Translator features (11.12:
-  natural language → query, natural language → intent), where a different output is a different
-  change or a different answer; 90% for Analyst and Decision-maker features. A feature turns on
-  for a model only where that model meets the floor, beside its accuracy target (section 6) and
-  the red-team gate.
+  compared on their **structured fields**, canonicalised (key order, whitespace, list order where
+  the schema declares a field unordered). **Prose is never compared** (a cause sentence, a
+  summary, an incident's fix); only the fields a decision or a person's action reads.
+- **The compared fields are part of each feature's card** (section 3's "Compared fields" row;
+  section 6's table names them per feature). A card without them is incomplete, and its feature
+  is not built.
+- A case is **consistent** when all N runs' compared fields are identical. The **consistency
+  rate** is consistent cases over cases, per feature and per model and version, stored with the
+  eval's other results (10.7).
+- **The floors in the release gate (decided, the operator, 2026-10-15):**
+  - **Translator and Decision-maker features: 95%.** A Translator's different output is a
+    different change, query or artifact; catalog selection picks an action that runs, so an
+    inconsistent pick is a different remediation.
+  - **Analyst features: 90%,** measured on the structured fields only (for example cause
+    category, `evidence_refs`, `needs_human`), never on prose.
+
+  A feature turns on for a model only where that model meets its floor, beside its accuracy
+  target (section 6) and the red-team gate.
 - **Recorded responses in CI** (all N per case, so CI scores consistency offline); **live on the
   host** as a job, as every eval runs (section 4). N times the live cost is counted on the cost
   dashboard as eval cost, apart from use.
-- **Enforced by `tests/test_consistency_eval.py`:** the scorer marks a case consistent only when
-  all N canonical outputs match; a feature below its floor is refused for that model by the
-  release gate. Planted case: a recorded case whose fifth run differs in one decision field is
-  inconsistent and drops the rate below the floor; a run differing only in a free-text field
-  stays consistent. Population floor: every feature with a card has N recorded runs per case.
+- **Enforced by `tests/test_consistency_eval.py`:** the scorer compares only the card's compared
+  fields and marks a case consistent only when all N canonical values match; a feature below its
+  pattern's floor is refused for that model by the release gate; every card names its compared
+  fields. Planted cases: (1) a recorded case whose fifth run differs in one compared field is
+  inconsistent and drops the rate below the floor; (2) **two runs with different prose but
+  identical structured fields score consistent** (the operator, 2026-10-15); (3) a card with no
+  compared fields fails the card scan. Population floor: every feature with a card has N
+  recorded runs per case.
 
 ### 11.2 Deterministic ambiguity (DECIDED)
 
@@ -562,7 +605,7 @@ touches an addition (sections 8, 10 and 13), so each rule has one home.
   are absent from the request is drawn as inferred. Planted cases: a schema field without
   provenance fails the schema scan; a read-back that drops the inferred mark fails.
 
-### 11.4 Few-shot includes clarification and refusal (PROPOSED)
+### 11.4 Few-shot includes clarification and refusal (DECIDED)
 
 - Every translation prompt's 2 or 3 examples (section 4) include **1 or 2 that end in the error
   contract**: a clarifying question (`{"error": "ambiguous", "clarification_needed": "..."}`)
@@ -573,7 +616,7 @@ touches an addition (sections 8, 10 and 13), so each rule has one home.
   `prompts/` holds at least one success example and at least one error-contract example, each
   valid against the feature's schema. Planted case: a prompt with only successful examples fails.
 
-### 11.5 A review-gated feedback loop (PROPOSED)
+### 11.5 A review-gated feedback loop (DECIDED)
 
 - **Accepted translations join the example pool only after a person's review** (who reviewed,
   when, which version of the pool).
@@ -621,7 +664,7 @@ touches an addition (sections 8, 10 and 13), so each rule has one home.
   log, and the masked secret split by a zero-width space is masked. Planted case: the strip
   step removed, the zero-width string reaches the prompt intact and the test fails.
 
-### 11.8 The gateway's load and failure handling (PROPOSED)
+### 11.8 The gateway's load and failure handling (DECIDED)
 
 - **Provider rate limits:** on HTTP 429, back off as the provider's `retry-after` says (else
   exponential, bounded by the feature's latency budget); a bounded queue per provider; a
@@ -637,7 +680,7 @@ touches an addition (sections 8, 10 and 13), so each rule has one home.
   next request naming the queue; and `tests/test_ai_state_is_drawn.py`: the busy and degraded
   states are drawn with their cause. Planted case: a retry that ignores `retry-after` fails.
 
-### 11.9 Feature 1 extended to Mercury's records and NetBox inventory (PROPOSED)
+### 11.9 Feature 1 extended to Mercury's records and NetBox inventory (DECIDED)
 
 - Natural language → **a builder's query, read back before running**, also over Mercury's records
   (changes, rotations, approvals, on E18's database) and NetBox's inventory. Same pattern as
@@ -666,7 +709,7 @@ touches an addition (sections 8, 10 and 13), so each rule has one home.
   refuses the confirm naming both versions; unchanged facts skip the re-run. Planted case:
   confirm that skips the version comparison applies over changed facts and the test fails.
 
-### 11.11 Temperature is a per-model profile setting (PROPOSED)
+### 11.11 Temperature is a per-model profile setting (DECIDED)
 
 - **Temperature is a field of the model's profile** (10.3's per-model differences), per feature
   where a feature needs its own.
@@ -677,16 +720,16 @@ touches an addition (sections 8, 10 and 13), so each rule has one home.
   measured rate whatever the temperature. Planted case: a temperature hard-coded in an adapter
   fails.
 
-### 11.12 The course's three patterns, and deliberate departures (PROPOSED)
+### 11.12 The course's three patterns, and deliberate departures (DECIDED)
 
-**Section 6's features by the course's patterns** (the operator's placement; *proposed* for the
-three the operator did not place):
+**Section 6's features by the course's patterns** (the operator's placement, 2026-10-15; the
+pattern sets the consistency floor, 11.1):
 
-| Pattern | Features (section 6's rank) | What it means here |
+| Pattern (floor) | Features (section 6's rank) | What it means here |
 |---|---|---|
-| **Analyst** (reads, explains, proposes; a person decides) | 2 alert correlation; 5 root cause; 3 incident drafts; 8 verifier drafts; *proposed:* 6 a pipeline check after an escape, 9 inferring higher-level intent | output is evidence-linked text and drafts; nothing acts |
-| **Translator** (words → a structure deterministic code checks) | 7 natural language → intent (8.5); 1 natural language → query (and 11.9); *proposed:* 10 a template draft for a new platform (accepted only by round trip) | output is a schema-constrained structure, read back, validated, confirmed by hash |
-| **Decision-maker** (chooses among pre-approved options) | 4 catalog selection, in observe mode | chooses only inside the catalog; enabled only on measured agreement (section 7), never on confidence |
+| **Analyst** (90%; reads, explains, proposes; a person decides) | 2 alert correlation; 5 root cause; 3 incident drafts; 8 verifier drafts; 9 inferring higher-level intent | output is evidence-linked text and drafts; nothing acts |
+| **Translator** (95%; words or evidence → an artifact deterministic code checks) | 7 natural language → intent (8.5); 1 natural language → query (and 11.9); 10 a template draft for a new platform (accepted only by round trip); 6 a pipeline check after an escape (accepted only by a deterministic test, like template drafts) | output is a schema-constrained structure or artifact, read back or tested, validated, confirmed by hash |
+| **Decision-maker** (95%; chooses among pre-approved options) | 4 catalog selection, in observe mode | chooses only inside the catalog; enabled only on measured agreement (section 7), never on confidence |
 
 **Deliberate departures from the course examples, each with its reason:**
 
