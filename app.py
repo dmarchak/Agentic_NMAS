@@ -22,7 +22,6 @@ from flask import (
     redirect, # for HTTP redirects
     url_for, # to build URLs for routes
     flash, # to show one-time messages to users
-    send_file, # to send files for download
     session, # for user session management
     jsonify # to return JSON responses
 )
@@ -37,7 +36,6 @@ import webbrowser # to open browser on start
 import ipaddress # for IP address validation
 import logging # for application logging
 from logging.handlers import RotatingFileHandler # for log file rotation
-from io import BytesIO # for in-memory file downloads
 
 # Import Project modules
 from modules.device import (
@@ -70,16 +68,6 @@ from modules import route_gates
 from modules.identity import request_actor
 from modules.utils import make_device_filename
 from modules.commands import run_device_command
-from modules.backups import (
-    get_running_config,
-    get_startup_config,
-    save_config_backup,
-    get_backup_history,
-    get_backup_content,
-    compare_configs,
-    delete_backup,
-    get_backup_stats
-)
 from modules.bulk_ops import bulk_manager
 
 # Device status cache and ping worker setup
@@ -857,171 +845,6 @@ def _save_settings(data: dict, errors: list):
     if errors:
         return jsonify({"status": "partial", "errors": errors}), 207
     return jsonify({"status": "ok"})
-
-
-# ---------------------------------------------------------------------------
-# Configuration Backup Routes
-# ---------------------------------------------------------------------------
-
-@app.route("/device/<ip>/backup_config", methods=["POST"])
-def backup_config(ip):
-    """Backup device configuration (running or startup)."""
-    try:
-        config_type = request.form.get("config_type", "running")
-
-        _, current_list_file = get_current_device_list()
-        devices = load_saved_devices(current_list_file)
-        dev = next((d for d in devices if d["ip"] == ip), None)
-
-        if not dev:
-            flash("Device not found", "danger")
-            return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
-
-        app.logger.info(f"Backing up {config_type} config for device: {ip}")
-
-        # Get connection
-        conn = get_persistent_connection(dev, connections, lock)
-
-        # Get configuration
-        if config_type == "running":
-            config = get_running_config(conn)
-        else:
-            config = get_startup_config(conn)
-
-        # Save backup
-        backup_info = save_config_backup(ip, dev["hostname"], config, config_type)
-
-        flash(f"Configuration backed up successfully: {backup_info['filename']}", "success")
-        app.logger.info(f"Backup created: {backup_info['filename']}")
-
-    except Exception as e:
-        app.logger.error(f"Backup failed for {ip}: {str(e)}")
-        flash(f"Backup failed: {str(e)}", "danger")
-
-    return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
-
-
-@app.route("/device/<ip>/backup_history")
-def backup_history_route(ip):
-    """Get backup history for a device."""
-    try:
-        backups = get_backup_history(ip=ip, limit=50)
-        return jsonify({"status": "success", "backups": backups})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@app.route("/download_backup/<filename>")
-def download_backup(filename):
-    """Download a backup file: MASKED unless a person reveals it (C56).
-
-    It returned the stored backup raw, secrets included, to anyone who
-    reached the URL. Now it is the golden path's pattern
-    (`modules/outbound.py`): masked by default, and `?reveal=1` requires a
-    person and is recorded. The page's Download button asks for the reveal,
-    so a raw backup always has a person and a record behind it.
-    """
-    from modules import outbound
-
-    try:
-        content = get_backup_content(filename)
-
-        if content is None:
-            flash("Backup file not found", "danger")
-            return redirect(url_for("index"))
-
-        payload, status = outbound.config_text(
-            request, content, what="backup", target=filename)
-        if status != 200:
-            return jsonify(payload), status
-        content = payload["text"]
-
-        # Create in-memory file
-        file_obj = BytesIO(content.encode("utf-8"))
-        file_obj.seek(0)
-
-        return send_file(
-            file_obj,
-            mimetype="text/plain",
-            as_attachment=True,
-            download_name=filename
-        )
-    except Exception as e:
-        app.logger.error(f"Download backup failed: {str(e)}")
-        flash(f"Download failed: {str(e)}", "danger")
-        return redirect(url_for("index"))
-
-
-@app.route("/delete_backup/<filename>", methods=["POST"])
-def delete_backup_route(filename):
-    """Delete a backup file."""
-    device_ip = None
-
-    try:
-        # Try to extract IP from filename (format: hostname_ip_type_timestamp.cfg)
-        parts = filename.rsplit('_', 3)
-        if len(parts) >= 4:
-            device_ip = parts[1]
-
-        success = delete_backup(filename)
-
-        if success:
-            flash(f"Backup deleted: {filename}", "success")
-        else:
-            flash("Failed to delete backup", "danger")
-
-    except Exception as e:
-        app.logger.error(f"Delete backup failed: {str(e)}")
-        flash(f"Delete failed: {str(e)}", "danger")
-
-    # Redirect back to backups tab if we know the device IP
-    if device_ip:
-        return redirect(url_for("manage_device", ip=device_ip, active_tab="backups"))
-    else:
-        return redirect(request.referrer or url_for("index"))
-
-
-@app.route("/compare_backups", methods=["POST"])
-def compare_backups_route():
-    """Compare two backup configurations."""
-    try:
-        file1 = request.form.get("file1")
-        file2 = request.form.get("file2")
-
-        if not file1 or not file2:
-            return jsonify({"status": "error", "message": "Two files required"}), 400
-
-        config1 = get_backup_content(file1)
-        config2 = get_backup_content(file2)
-
-        if config1 is None or config2 is None:
-            return jsonify({"status": "error", "message": "Backup file not found"}), 404
-
-        diff = compare_configs(config1, config2)
-
-        # Masked on the way out (C77's sweep, 2026-09-27): the diff carries
-        # both backups' secrets on its -/+ lines, and this returned them
-        # verbatim. Reading a backup unmasked is the download's reveal.
-        from modules.outbound import mask_payload
-        return jsonify(mask_payload({
-            "status": "success",
-            "diff": diff,
-            "file1": file1,
-            "file2": file2
-        }))
-
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@app.route("/backup_stats")
-def backup_stats_route():
-    """Get backup statistics."""
-    try:
-        stats = get_backup_stats()
-        return jsonify({"status": "success", "stats": stats})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ---------------------------------------------------------------------------

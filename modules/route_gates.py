@@ -220,7 +220,6 @@ GATES = {
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
     "identity.ratify_setting": _g(K, "records a decision about a gate", "ratify_setting"),
     "drift_settings_post": _g(K, "switches the drift checker and its interval"),
-    "delete_backup_route": _g(K, "deletes a backup"),
     "create_device_list_route": _g(K, "creates a device list"),
     "delete_device_list_route": _g(K, "deletes a device list"),
     "select_device_list_route": _g(K, "changes the active list, which every derived read and the ping worker follow"),
@@ -308,7 +307,6 @@ GATES = {
     "templatize.retry_preview": _g(N, "reads the rollback record and the retry log; writes nothing"),
     "templates.preview": _g(N, "renders; writes nothing"),
     "templates.validate": _g(N, "validates; writes nothing"),
-    "templates.refresh_capture": _g(N, "reads a device into a backup"),
     "netbox_safety.preview_import": _g(N, "a dry run"),
     "netbox_safety.preview_import_all": _g(N, "a dry run"),
     "netbox_safety.preview_removal": _g(N, "a dry run"),
@@ -320,8 +318,6 @@ GATES = {
     "drift_check_trigger": _g(N, "the schedule does this anyway; it only happens earlier"),
     "drift_check_sync": _g(N, "the schedule does this anyway; it only happens earlier"),
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),
-    "backup_config": _g(N, "reads a device into a new local backup"),
-    "compare_backups_route": _g(N, "compares two backups"),
     "bulk_clear": _g(N, "clears a finished operation's on-screen result"),
 }
 

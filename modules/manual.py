@@ -104,7 +104,6 @@ PAGES = (
     ("templates", "Templates", "Screens", "screens/templates.md"),
     ("netbox", "NetBox", "Screens", "screens/netbox.md"),
     ("credentials", "Credentials", "Screens", "screens/credentials.md"),
-    ("backups", "Backups", "Screens", "screens/backups.md"),
     ("settings", "Settings", "Screens", "screens/settings.md"),
     ("help", "Help", "Screens", "screens/help.md"),
 )
@@ -117,7 +116,7 @@ GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
 #: Held to that by tests/test_manual.py: no page here has a v2 control (`data-op="<slug>"`).
 #: (C644, 2026-10-10: twelve operations built on v2 and the NetBox screen were still marked.)
 ON_TODAYS_APP = frozenset((
-    "drift-check", "logs", "dhcp", "backups",
+    "drift-check", "logs", "dhcp",
 ))
 
 #: Every sidebar destination (its label in ``templates/v2/base.html``) and the

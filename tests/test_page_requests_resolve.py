@@ -36,8 +36,9 @@ def test_the_scan_finds_the_population(requests):
     # 111 the same day after Device files and Bulk file actions; the floor falls as today's
     # pages shrink, never below what a removal explains. 91 on 2026-10-14, after the AI
     # family's requests left with it (D15: the AI panel's, the Agent, Approvals and Ansible
-    # tabs', the usage summary's and the AI debug log's).
-    assert len(found) >= 88, len(found)
+    # tabs', the usage summary's and the AI debug log's). 85 the same day, after today's
+    # Backups' requests and the template preview's refresh-capture left with it (7.8, C632).
+    assert len(found) >= 82, len(found)
     assert ("/deploy/plan", "POST") in found           # a positive anchor
 
 

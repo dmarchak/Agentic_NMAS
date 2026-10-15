@@ -21,7 +21,8 @@ the check built to catch leaks.
 
 Each store gets a DISTINCT planted value. EVERY GET is called, with its
 arguments filled by the planted objects' own names (an argument-free sweep
-cannot reach `/golden/version/<host>` or `/download_backup/<file>`), twice:
+cannot reach `/golden/version/<host>`; `/download_backup/<file>` was one until today's
+Backups left at 7.8, C632, and its files stay planted as an install's residue), twice:
 * as an ANONYMOUS caller: no planted value may come back;
 * as a verified PERSON: only a reveal-gated route (audited, by design) may
   return one.
@@ -93,6 +94,19 @@ def _config_body(tag):
             f"end\n")
 
 
+def plant_backup(list_name, tag, stamp="20261001_000000"):
+    """A backup file as today's removed Backups wrote one (`<host>_<ip>_running_<stamp>.cfg`
+    in the list's backups folder), written straight to the file; its name."""
+    from modules import config
+
+    folder = os.path.join(config.list_data_path(list_name), "backups")
+    os.makedirs(folder, exist_ok=True)
+    name = f"r1_{DEVICE['ip']}_running_{stamp}.cfg"
+    with open(os.path.join(folder, name), "w", encoding="utf-8") as fh:
+        fh.write(_config_body(tag))
+    return name
+
+
 @pytest.fixture(scope="module")
 def planted(tmp_path_factory):
     """Plant every store, sweep every GET inside the planting (so the GETs'
@@ -119,7 +133,7 @@ def planted_stores():
     values = {}
     try:
         import app as A
-        from modules import approval_queue, backups, credentials, device, secrets_store
+        from modules import approval_queue, credentials, device, secrets_store
         from modules.nsot import repo as R
 
         A.app.test_client().get("/")
@@ -161,9 +175,11 @@ def planted_stores():
                       allow_new=True)
         values["golden"] = [_p("GoldSec"), _p("GoldComm")]
 
-        info = backups.save_config_backup(DEVICE["ip"], "r1", _config_body("Back"))
+        # Today's Backups left at 7.8 (C632); its folder outlives the code as files an
+        # install may still hold, so it is planted as that residue, in the shape the
+        # removed writer named its files, and no route may return it.
+        values["_backup_file"] = plant_backup(LIST, "Back")
         values["backup"] = [_p("BackSec"), _p("BackComm")]
-        values["_backup_file"] = info["filename"]
 
         approval_queue.add_approval("update_golden_config", "planted", DEVICE["ip"], "r1",
                                     diff="+" + _config_body("Queue").replace("\n", "\n+"))
@@ -356,51 +372,3 @@ class TestEveryFileTheCodeWritesIsClassified:
                          and not any(fnmatch.fnmatch(c, p) for c in (n, f"lists/x/{n}")
                                      for p in pats))
         assert missing == [], f"written under data/ and in no class: {missing}"
-
-
-class TestTheBackupDownloadIsTheGoldenPattern:
-    """C56 (3): a stored backup was downloaded raw by anyone who reached the
-    URL. It is now `modules/outbound.py`, the golden routes' pattern: masked
-    by default, raw only for a person asking `?reveal=1`, and recorded."""
-
-    @pytest.fixture
-    def backup(self, tmp_path, monkeypatch):
-        import modules.backups as B
-
-        monkeypatch.setattr(B, "get_backups_dir", lambda: str(tmp_path))
-        name = "r1_192.0.2.1_running_x.cfg"
-        (tmp_path / name).write_text(_config_body("Dl"))
-        monkeypatch.setattr("app.get_backup_content",
-                            lambda f: (tmp_path / f).read_text() if (tmp_path / f).exists() else None)
-        return name
-
-    def test_masked_by_default(self, backup):
-        import app as A
-
-        body = A.app.test_client().get(f"/download_backup/{backup}").get_data(as_text=True)
-        assert _p("DlSec") not in body and _p("DlComm") not in body
-        assert "hostname r1" in body and "<redacted:" in body
-
-    def test_a_person_revealing_gets_it_and_is_recorded(self, backup, monkeypatch):
-        import app as A
-        from modules import reveal_audit
-
-        rows = []
-        monkeypatch.setattr(reveal_audit, "record", lambda **k: rows.append(k) or {"recorded": True})
-        body = A.app.test_client().get(f"/download_backup/{backup}?reveal=1").get_data(as_text=True)
-        assert _p("DlSec") in body
-        assert [(r["what"], r["target"]) for r in rows] == [("backup", backup)]
-
-    @pytest.mark.real_identity
-    def test_an_anonymous_reveal_is_refused_and_gets_the_mask(self, backup):
-        import app as A
-
-        r = A.app.test_client().get(f"/download_backup/{backup}?reveal=1")
-        body = r.get_json()
-        assert r.status_code == 403 and body["masked"] is True
-        assert _p("DlSec") not in r.get_data(as_text=True)
-
-    def test_the_page_asks_for_the_reveal(self):
-        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "templates", "device.html"), encoding="utf-8").read()
-        assert "/download_backup/${backup.filename}?reveal=1" in src

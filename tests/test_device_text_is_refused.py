@@ -166,7 +166,7 @@ def _routes_that_send_request_text():
 
 def test_every_route_sending_request_text_is_checked():
     found = _routes_that_send_request_text()
-    assert len(found) >= 4, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files, 4 since Bulk file actions (2026-10-13)
+    assert len(found) >= 3, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files, 4 since Bulk file actions (2026-10-13), 3 since Backups (2026-10-14)
     unchecked = sorted(set(found) - set(CHECKED) - set(NOT_REQUEST_TEXT))
     assert not unchecked, (
         "a route reads the request and sends to a device with no declared check: "
@@ -176,7 +176,6 @@ def test_every_route_sending_request_text_is_checked():
 #: Routes the scan finds whose request fields choose a DEVICE or a fixed command, never text
 #: sent to it: each named with what it reads.
 NOT_REQUEST_TEXT = {
-    "backup_config": "config_type picks show running-config or show startup-config",
     "manage_device": "active_tab picks a tab; get_device_context with no filesystem",
 }
 

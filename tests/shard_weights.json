@@ -23,8 +23,6 @@
   "tests/test_attention_rows_act.py": 0.8,
   "tests/test_authoring_schema.py": 1.7,
   "tests/test_authorised_lines.py": 1.8,
-  "tests/test_backup_naming.py": 0.1,
-  "tests/test_backup_paths.py": 0.3,
   "tests/test_band_acknowledgements_shown.py": 0.2,
   "tests/test_baseline_event.py": 0.3,
   "tests/test_baseline_tag_push.py": 1.7,

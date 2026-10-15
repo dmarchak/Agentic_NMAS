@@ -75,7 +75,6 @@ VOCABULARY = {
     "netbox": "the NetBox objects Mercury shows or counts",
     "settings": "settings and integrations",
     "posture": "the identity gates' recorded posture",
-    "backups": "stored backups of device configs",
     "device_state": "what a device runs: anything read live from it",
     "breakglass": "the break-glass export log, its intact checks and its drills (job health's "
                   "break-glass rows read them)",
@@ -228,7 +227,6 @@ DECLARED = {
     "templates.approve": ("templates", "remote"),
     "templates.revoke_approval": ("templates", "remote"),
     "templates.save_bindings": ("templates", "remote"),
-    "templates.refresh_capture": ("backups",),
     "deploy.apply": ("device_state", "baselines", "drift", "rolled_back") + _COMMIT,
     # Onboarding. Verify runs phase 2, which PROMOTES: the device list is the
     # first of the three measured cases.
@@ -279,7 +277,7 @@ DECLARED = {
     "settings_v2.diag_drift_switch": ("drift",),
     "settings_v2.diag_drift_check": ("drift",),
     "identity.ratify_setting": ("posture", "settings"),
-    # A device, its files and backups.
+    # A device and its files.
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
     "device_v2.persist_confirm": ("device_state",),   # the same apply
@@ -304,8 +302,6 @@ DECLARED = {
     "credential_profiles_v2.rotate_due_confirm": Nothing("starts the run as a job and answers at once; the run ANNOUNCES rotation and credentials after each device and when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     "bulk_execute": ("device_state",),
-    "backup_config": ("backups",),
-    "delete_backup_route": ("backups",),
     # The rest of the page's own state.
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
@@ -393,7 +389,6 @@ DECLARED = {
     "netbox_v2.preview": Nothing("starts a dry run on a thread; the job announces netbox when it lands (ANNOUNCERS netbox-job)"),
     "remote_v2.publication": Nothing("reads what a first push would publish; writes nothing"),
     "settings_v2.records_store_preview": Nothing("counts the receipts lines in the files and the table for a move's preview; writes nothing"),
-    "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
 }
 
 

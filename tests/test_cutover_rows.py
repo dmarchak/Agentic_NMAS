@@ -135,7 +135,7 @@ def test_the_scan_names_each_planted_case():
                    "Counted: `/c/*` says 1, and 2 routes are its"], got
 
 
-@pytest.mark.parametrize("path,want", [("/device/<ip>/backup_config", "/device/<>/backup_config"),
+@pytest.mark.parametrize("path,want", [("/onboard/bootstrap/<hostname>", "/onboard/bootstrap/<>"),
                                        ("/settings/", "/settings")])
 def test_parameters_compare_by_place(path, want):
     assert _norm(path) == want

@@ -31,7 +31,7 @@ RULES = (
 #: path -> (category, why): the files the rules above would place wrongly.
 EXCEPTIONS = {
     # ── Retiring (decided removals) ─────────────────────────────────────────────────────────
-    "modules/backups.py": (RETIRING, "today's Backups page, C632 then removal"),
+    # None now: the last, today's Backups (its module), was removed 2026-10-14 (C632, 7.8).
     # ── Support (the interface, settings and the app's own plumbing) ────────────────────────
     "modules/acknowledgements.py": (SUPPORT, "Needs attention's acknowledgements"),
     "modules/alert_bands.py": (SUPPORT, "the monitoring page's alert bands"),

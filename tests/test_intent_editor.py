@@ -645,7 +645,9 @@ class TestNeverCommittedIsItsOwnState:
 class TestNoBackupStore:
     """C683: the intent editor and bulk intent render against the device's committed golden
     only. The backup store they fell back to retires at 7.8; a device with a backup and no
-    golden is told it has no golden, and nothing reads the store."""
+    golden is told it has no golden, and nothing reads the store. C632 (2026-10-14): today's
+    template preview, the last reader, the same; Backups left, and the backup planted here is
+    a file an install may still hold."""
 
     def _backup_only(self, world):
         import yaml
@@ -671,3 +673,16 @@ class TestNoBackupStore:
         render, _eligible = T._bulk_render_and_eligible("lab", world["repo"])
         with pytest.raises(RuntimeError, match="no golden is recorded for it yet"):
             render("s9", {"hostname": "s9"})
+
+    def test_todays_template_preview_says_no_golden_for_a_device_with_only_a_backup(self, world):
+        """C632: it rendered from the newest file in `backups/` when a device had no golden."""
+        self._backup_only(world)
+        r = world["client"].get("/templates/preview/s9")
+        body = r.get_json()
+        assert r.status_code == 404 and body["ok"] is False, body
+        assert "No golden config is recorded for s9 yet" in body["error"], body
+        assert "Capture" in body["error"] and "backup" not in body["error"].lower(), body
+
+    def test_todays_refresh_capture_is_gone(self, world):
+        """C632: it delegated to today's backup route, which left with Backups at 7.8."""
+        assert world["client"].post("/templates/refresh-capture/s4").status_code == 404

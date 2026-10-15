@@ -15,8 +15,8 @@ responses are masked; `test_previews_mask_secrets.py`).
 
 **Every store is planted** by B11's own planting (`planted_stores`), and
 the sweep adds what a POST reads that a GET does not: a device's running
-config as a read returns it NOW, a second backup to compare, configs a
-caller supplies, a NetBox to preview against, and a list that has what a
+config as a read returns it NOW, configs a caller supplies (a second backup
+to compare left with today's Backups at 7.8, C632), a NetBox to preview against, and a list that has what a
 real list has (seeded templates, r1's intent extracted and committed
 through the routes a person uses, the template approved, a template secret
 that differs from the device, and a second golden).
@@ -54,13 +54,9 @@ def _head_golden():
 def _bodies(v):
     return {
         "bulk_clear": (200, ("json", {}), "clears an on-screen result; returns a status"),
-        "compare_backups_route": (200, ("form", {"file1": v["_backup_file"],
-                                                 "file2": v["_backup_file_2"]}),
-                                  "two different backups of r1: the diff carries both"),
         "deploy.plan": (200, ("json", {"devices": ["r1"], "list_name": LIST}),
                         "committed intent renders a community the device does not hold: "
                         "the program adds one, and the device's is residue"),
-        "backup_config": (302, ("form", {}), "a form post that redirects; no body"),
         "drift_check_trigger": (200, ("json", {}), "schedules a run; returns a message"),
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "
@@ -150,7 +146,6 @@ def _bodies(v):
                                                    "below; this row is the grafana one"),
         "templates.preview": (200, ("json", {"list_name": LIST}),
                               "the render (a community the device lacks) against the golden"),
-        "templates.refresh_capture": (200, ("json", {}), "delegates to the backup flow"),
         "templates.validate": (200, ("json", {"list_name": LIST}), "validates the template"),
         "templatize.bulk_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"],
                                                    "steps": [{"path": ["hostname"],
@@ -204,7 +199,7 @@ def _bodies(v):
 #: Responses that draw stored config: the masked slot must be in them.
 #: `drift_check_sync` is not among them: it answers with counts and queues
 #: the diff as an approval item, which the GET sweep covers.
-REACHES = {"compare_backups_route", "deploy.plan", "device_v2.capture_start",
+REACHES = {"deploy.plan", "device_v2.capture_start",
            "golden.capture_preview", "golden.restore_preview", "templates.preview",
            "templatize.preview_committed_edit"}
 # `netbox_safety.preview_import` LEFT this set in 7.1: its response no longer
@@ -240,7 +235,7 @@ def _population():
 def _setup(v, mp, client):
     """What a POST reads that the planting does not provide. Everything is
     built through the program's own writers and routes, as a person."""
-    from modules import backups, config, credentials
+    from modules import config, credentials
     from modules.nsot import repo as R
     from modules.nsot import templates_repo
 
@@ -272,18 +267,6 @@ def _setup(v, mp, client):
                   source="manual", actor="t", baseline=False)
     v["golden"].append(_p("HeadComm"))
 
-    # A second backup, under its own name BY CONSTRUCTION: a startup backup,
-    # whose filename can never be the running one's. It was a second running
-    # backup, which in the same second as the first OVERWROTE it, was renamed,
-    # and re-planted the first, which then took the NEXT second's name if the
-    # clock ticked in between: `_backup_file` named nothing (2026-10-01,
-    # measured: the overwrite ran on every local run).
-    second = backups.save_config_backup(DEVICE["ip"], "r1", _config_body("Back2"),
-                                        config_type="startup")
-    assert second["filename"] != v["_backup_file"], second["filename"]
-    v["_backup_file_2"] = second["filename"]
-    v["backup"] += [_p("Back2Sec"), _p("Back2Comm")]
-
     # The device, as a read returns it NOW (capture preview and drift).
     import routes.golden as rg
     running = _config_body("Run")
@@ -309,29 +292,6 @@ def _setup(v, mp, client):
     for name, cls in REGISTRY.items():
         if name not in INTEGRATIONS_NOT_DRIVEN:
             config.set_user_setting(cls().url_key, "http://127.0.0.1:9")
-
-
-def _planted_backups_present(v, when):
-    """The sweep's precondition, asserted where it can be read (the operator,
-    2026-10-01: CI answered 404 "Backup file not found" for compare_backups on
-    gw1 twice, while 28 simulated schedules here passed). Order-independent: it
-    says what is missing, where it went, and what ran before, whatever ran."""
-    from modules import backups, config
-    from tests import run_history
-
-    where = backups.get_backups_dir()
-    missing = [n for n in (v["_backup_file"], v["_backup_file_2"])
-               if not os.path.exists(os.path.join(where, n))]
-    if not missing:
-        return
-    found = [os.path.join(root, f) for root, _d, files in os.walk(config.DATA_DIR)
-             for f in files if f in missing]
-    listing = sorted(os.listdir(where)) if os.path.isdir(where) else "(no such directory)"
-    raise AssertionError(
-        f"the backup(s) the fixture planted are gone {when}: {missing} (not in {where}, "
-        f"current list {config.get_current_list_name()!r}). Found elsewhere in the store: "
-        f"{found or 'nowhere'}. The directory holds: {listing}. "
-        + run_history.last_line() + "\n" + run_history.describe())
 
 
 def _store_state():
@@ -453,9 +413,7 @@ def swept():
             planted = {x: store for store, xs in values.items() if not store.startswith("_")
                        for x in xs}
             writes = {}
-            _planted_backups_present(values, "after the setup, before any route ran")
             anon = _drive(values, person=False)
-            _planted_backups_present(values, "after the anonymous pass, before the person's")
             yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
                    "person": _drive(values, person=True, writes=writes)}
     finally:
@@ -500,7 +458,7 @@ class TestEveryRouteReachedItsState:
         missing = sorted(k for k in REACHES
                          if not any(m in swept["person"][k][1] for m in MASKS))
         assert missing == [], missing
-        assert len(REACHES) >= 7   # 8 -> 7: the import preview left it (7.1)
+        assert len(REACHES) >= 6   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632)
 
 
 class TestNoPostReturnsAStoredSecret:
@@ -555,34 +513,3 @@ class TestNoPreviewWritesTheStore:
 
     def test_every_declared_writer_is_in_the_population(self):
         assert set(MAY_WRITE) <= set(_population()), set(MAY_WRITE) - set(_population())
-
-
-class TestThePreconditionIsSaid:
-    """The sweep's own precondition (CI run #245, 2026-10-01): a missing
-    planted backup is named with where it was looked for, where it is, and what
-    this worker ran before, on the FIRST line, which is all CI's annotation
-    carries."""
-
-    def _v(self, tmp_path, monkeypatch, names):
-        from modules import backups
-        monkeypatch.setattr(backups, "get_backups_dir", lambda: str(tmp_path))
-        for n in names:
-            (tmp_path / n).write_text("x")
-        return {"_backup_file": "first.cfg", "_backup_file_2": "second.cfg"}
-
-    def test_both_present_says_nothing(self, tmp_path, monkeypatch):
-        _planted_backups_present(self._v(tmp_path, monkeypatch, ["first.cfg", "second.cfg"]),
-                                 "now")
-
-    def test_one_gone_is_named_with_what_ran_before(self, tmp_path, monkeypatch):
-        from tests import run_history
-        v = self._v(tmp_path, monkeypatch, ["second.cfg"])
-        with pytest.raises(AssertionError) as exc:
-            _planted_backups_present(v, "before the drive")
-        first = str(exc.value).splitlines()[0]
-        assert "gone before the drive: ['first.cfg']" in first and str(tmp_path) in first
-        assert "The directory holds: ['second.cfg']" in first
-        assert "before it, worker" in first
-        # The history is this process's own, the running test last.
-        assert run_history.RAN[-1].endswith("test_one_gone_is_named_with_what_ran_before")
-        assert "other threads alive now" in str(exc.value)

@@ -289,9 +289,7 @@ async function showRenderPreview(hostname) {
         ? (obj.changed
             ? `<pre class="small bg-body-tertiary p-2 rounded" style="max-height:300px;overflow:auto">${_tEsc(obj.diff)}</pre>`
             : '<p class="small text-success mb-0">No differences.</p>')
-        : `<p class="small text-muted mb-0">${_tEsc(obj.message)}
-             <button class="btn btn-outline-secondary btn-sm ms-2"
-                     onclick="refreshCapture('${_tEsc(hostname)}')">Refresh capture</button></p>`}
+        : `<p class="small text-muted mb-0">${_tEsc(obj.message)}</p>`}
       ${_tMaskedNote(obj)}`;
 
     body.innerHTML = `
@@ -301,8 +299,6 @@ async function showRenderPreview(hostname) {
           template ${_tEsc(d.template)}</span>
         <span class="text-muted small">modelled ${d.modeled_coverage}% ·
           fidelity ${d.round_trip_fidelity}%</span>
-        <button class="btn btn-outline-secondary btn-sm ms-auto"
-                onclick="refreshCapture('${_tEsc(hostname)}')">Refresh capture</button>
       </div>
       ${blockers}
       <div class="alert alert-info py-2 px-3 small">
@@ -311,25 +307,12 @@ async function showRenderPreview(hostname) {
         re-renders from the template with real secrets at push time.
       </div>
       ${diffPane('current golden', d.diff_vs_golden)}
-      ${diffPane('last captured running config', d.diff_vs_running)}
       <h6 class="fw-semibold mt-3 mb-1">Rendered (secrets masked)</h6>
       <pre class="small bg-body-tertiary p-2 rounded"
            style="max-height:360px;overflow:auto">${_tEsc(d.rendered)}</pre>`;
   } catch (e) {
     body.innerHTML = `<div class="alert alert-danger mb-0">${_tEsc(e.message)}</div>`;
   }
-}
-
-async function refreshCapture(hostname) {
-  try {
-    const d = await (await fetch(`/templates/refresh-capture/${encodeURIComponent(hostname)}`,
-                                 {method: 'POST'})).json();
-    if (!d.ok) { showToast(d.error, 'danger'); return; }
-    showToast('Capturing…', 'info');
-    // 3b owns no connection code — call the route that does, then reload.
-    await fetch(d.delegate_to, {method: d.method});
-    showRenderPreview(hostname);
-  } catch (e) { showToast('Error: ' + e.message, 'danger'); }
 }
 
 document.addEventListener('DOMContentLoaded', loadTemplateLibrary);

@@ -82,7 +82,6 @@ KNOWN_UNREACHABLE = {
     "POST /remote/adopt": (A, "connect a remote; Versions (7.5)"),
     # (b) Credential management: the whole resolution chain is HTTP-only.
     # (c) State that exists and is never shown.
-    "GET /backup_stats": (C, "backup statistics, never drawn; removed in 7.8 unless Versions draws them"),
     # (d) Superseded, duplicate or dead.
     "POST /bulk_clear/<operation_id>": (D, "on the audit's CUT list; removed in 7.8"),
     "POST /drift/check": (D, "the async drift run: the panel uses /drift/check/sync; on the audit's CUT list"),
@@ -114,7 +113,8 @@ KNOWN_UNREACHABLE = {
 # 23 -> 21 (2026-10-12): /configure/audit_latest and /configure/audit/<id> removed with Configure (7.8).
 # 21 -> 17 (2026-10-14): /ai/events (GET and POST clear), /ai/tool_cache_snapshot and
 # /ai/report removed with the AI family (D15).
-CEILING = 17
+# 17 -> 16 (2026-10-14): GET /backup_stats removed with today's Backups (7.8, C632).
+CEILING = 16
 
 
 @pytest.fixture(scope="module")

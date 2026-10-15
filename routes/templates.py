@@ -1,9 +1,9 @@
 """Template library blueprint — Phase 3b. Read-mostly.
 
 Lists, reads, edits, renders, diffs, and approves templates. **Nothing here
-opens a socket to a device.** Every comparison is against a captured artifact —
-a golden config or a stored backup. "Refresh capture" delegates to the existing
-backup/drift flow, so sessions stay in the module that owns them.
+opens a socket to a device.** Every comparison is against the device's
+committed golden, the store deploy and restore read (C632: the backup store,
+and the "Refresh capture" that wrote to it, retired at 7.8).
 
 Deploy is Phase 3c and lives elsewhere.
 """
@@ -55,11 +55,11 @@ def _captured_golden(hostname: str, list_name: str = ""):
     rest. A view whose correctness varies per device by which of two stores
     answers first is the two-stores problem, not a date bug.
 
-    That mattered beyond the diff, because `preview()` does
-    ``source = golden or running``: whatever this returns is what the artifact
-    is BUILT from, so the render, its coverage and its deployability all rest
-    on it. Reading one store, through the path deploy and restore use, removes
-    the question rather than answering it.
+    That mattered beyond the diff, because whatever this returns is what
+    `preview()`'s artifact is BUILT from, so the render, its coverage and its
+    deployability all rest on it. Reading one store, through the path deploy
+    and restore use, removes the question rather than answering it (C632: the
+    fallback to the newest file in `backups/` went with the backup store).
 
     The timestamp comes from the commit rather than the file's mtime, because
     in this repository the commit *is* the record: the `! Saved:` header was
@@ -73,28 +73,6 @@ def _captured_golden(hostname: str, list_name: str = ""):
         return None, ""
     history = _repo.golden_history(repo_dir, hostname, limit=1)
     return content, (history[0]["timestamp"] if history else "")
-
-
-def _captured_running(list_name: str, hostname: str):
-    """The most recent *captured* running config from backups. Never a live read."""
-    from modules.config import get_list_data_dir
-
-    backups = os.path.join(get_list_data_dir(list_name), "backups")
-    if not os.path.isdir(backups):
-        return None, ""
-    candidates = [f for f in os.listdir(backups)
-                  if f.startswith(hostname) and f.endswith((".cfg", ".txt"))]
-    if not candidates:
-        return None, ""
-    newest = max(candidates, key=lambda f: os.path.getmtime(os.path.join(backups, f)))
-    path = os.path.join(backups, newest)
-    import time as _time
-    stamp = _time.strftime("%Y-%m-%d %H:%M", _time.localtime(os.path.getmtime(path)))
-    try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return fh.read(), stamp
-    except OSError:
-        return None, ""
 
 
 def _row_for(hostname: str, list_name: str = "") -> dict:
@@ -420,26 +398,23 @@ def save_bindings():
 
 @bp.route("/preview/<path:hostname>", methods=["GET", "POST"])
 def preview(hostname):
-    """Render a device and diff it against golden and last-captured running.
+    """Render a device and diff it against its committed golden.
 
-    Both sides are captured artifacts. This endpoint opens no session.
+    The golden is the only input (C632: never the backup store, which retired
+    at 7.8). This endpoint opens no session.
     """
-    import difflib
-
-    from modules.nsot import approval, roundtrip, templates_repo
-    from modules.nsot.render_artifact import build_artifact
+    from modules.nsot import roundtrip, templates_repo
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
     repo = _repo_for(list_name)
 
     golden, golden_at = _captured_golden(hostname, list_name)
-    running, running_at = _captured_running(list_name, hostname)
-    source = golden or running
-    if not source:
+    if not golden:
         return jsonify({"ok": False, "error": (
-            "No captured configuration for this device. Save a golden config "
-            "or run a backup first — this view never reads from the device.")}), 404
+            f"No golden config is recorded for {hostname} yet, so there is nothing "
+            "to render against. Capture the device first on its device page "
+            "(Capture…); this view never reads from the device.")}), 404
 
     platform = _platform_for(hostname, list_name)
     from modules.nsot.platform import is_dialect
@@ -448,12 +423,9 @@ def preview(hostname):
                         "error": unknown_platform_words(hostname, list_name)}), 409
     template = templates_repo.template_for_device(repo, hostname, platform)
 
-    artifact = artifact_for(hostname, source, repo, platform, template)
+    artifact = artifact_for(hostname, golden, repo, platform, template)
 
     def _diff(other, label):
-        if not other:
-            return {"available": False,
-                    "message": f"No captured {label}. Use Refresh capture."}
         # `canonical_diff` is section-aware: it sorts children only where the
         # device does not care about order, and keeps the sequence in an ACL,
         # prefix-list, route-map or `ip sla`, where reordering changes what
@@ -482,37 +454,6 @@ def preview(hostname):
         "rendered": artifact.rendered_masked,     # masked: never a deploy source
         "secrets_masked": True,
         "diff_vs_golden": {**_diff(golden, "golden"), "captured_at": golden_at},
-        "diff_vs_running": {**_diff(running, "running config"),
-                            "captured_at": running_at},
-    })
-
-
-@bp.route("/refresh-capture/<path:hostname>", methods=["POST"])
-def refresh_capture(hostname):
-    """Resolve which device to capture and hand the UI the existing endpoint.
-
-    3b opens no sockets. Rather than duplicating connection code, this returns
-    the address of the backup route that already owns it; the browser calls
-    that and then reloads the preview.
-    """
-    from modules.device import get_current_device_list, load_saved_devices
-
-    _name, csv_path = get_current_device_list()
-    device = next((d for d in load_saved_devices(csv_path)
-                   if d.get("hostname") == hostname), None)
-    if device is None:
-        return jsonify({"ok": False, "error": f"'{hostname}' is not in this list"}), 404
-
-    # Point the UI at the existing backup route rather than opening a session
-    # here. 3b owns no connection code: sessions stay in the module that owns
-    # them, and this endpoint only resolves which device to capture.
-    return jsonify({
-        "ok": True,
-        "hostname": hostname,
-        "delegate_to": f"/device/{device.get('ip', '')}/backup_config",
-        "method": "POST",
-        "message": ("Triggering the existing backup flow; reload the preview "
-                    "when it completes."),
     })
 
 
