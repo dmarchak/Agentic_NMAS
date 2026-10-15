@@ -68,7 +68,7 @@ SCOPES: dict = {
     **_group(HOST, "platforms", "platform_map", "platform_default_netmiko_type"),
     # C724: keyed by credential profile, which is the installation's (as the profiles are).
     **_group(HOST, "credential_rotation", "credential_rotation_policies"),
-    **_group(HOST, "web_server", "flask_host", "flask_port", "auto_open_browser"),
+    **_group(HOST, "web_server", "flask_host", "flask_port"),
     **_group(HOST, "git_author", "nsot_git_author_name", "nsot_git_author_email"),
     # Mercury's records database: one for the installation (P4-2), never a network's.
     **_group(HOST, "records_db", "records_db_host", "records_db_port", "records_db_name",
@@ -97,6 +97,10 @@ SCOPES: dict = {
     # The TFTP setting, retired at 7.8 (D16, 2026-10-13): its last readers, the device and bulk
     # file routes, left the same day; declared for one release, as Oxidized's keys are.
     **_group(RETIRING, "tftp_setting", "tftp_server_ip", "tftp_root"),
+    # C815 (the operator, 2026-10-15): the browser at startup is the environment's alone
+    # (NMAS_AUTO_OPEN_BROWSER, NMAS_HEADLESS; modules/config.py); the key had no control on any
+    # page once today's Settings modal left; declared for one release, as the TFTP keys are.
+    **_group(RETIRING, "browser_at_startup", "auto_open_browser"),
     # The AI family, removed (D15, 2026-10-14): the assistant's switch, the background agent's
     # and the workflow switches that only changed the assistant's prompt; declared for one
     # release, as Oxidized's keys are.

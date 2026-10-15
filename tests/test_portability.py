@@ -73,3 +73,22 @@ class TestEnvironmentOverrides:
             env={**os.environ, "NMAS_HEADLESS": "1", "PYTHONPATH": str(REPO_ROOT)},
         )
         assert result.stdout.strip() == "False", result.stderr
+
+    @pytest.mark.parametrize("env_value, expected", [(None, "True"), ("0", "False"),
+                                                     ("1", "True")])
+    def test_the_browser_is_the_environments_alone(self, tmp_path, env_value, expected):
+        """C815 (the operator, 2026-10-15): a stored `auto_open_browser` is retiring and read by
+        nothing; NMAS_AUTO_OPEN_BROWSER decides, on when unset."""
+        import json
+        import subprocess
+        (tmp_path / "user_settings.json").write_text(json.dumps({"auto_open_browser": False}))
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("NMAS_HEADLESS", "NMAS_AUTO_OPEN_BROWSER")}
+        env.update(NMAS_DATA_DIR=str(tmp_path), PYTHONPATH=str(REPO_ROOT))
+        if env_value is not None:
+            env["NMAS_AUTO_OPEN_BROWSER"] = env_value
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "from modules.config import AUTO_OPEN_BROWSER; print(AUTO_OPEN_BROWSER)"],
+            cwd=str(REPO_ROOT), capture_output=True, text=True, env=env)
+        assert result.stdout.strip() == expected, result.stderr

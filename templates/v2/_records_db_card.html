@@ -39,6 +39,9 @@
   {%- endif %}
   <form class="set-form" id="form-records-db" method="post" action="{{ url_for('settings_v2.records_save') }}"
         hx-post="{{ url_for('settings_v2.records_save') }}" hx-target="#records-db" hx-swap="outerHTML">
+    {#- What this card drew (R17, C813): its Save writes only what the person changed, and
+        refuses a change to a field another person moved since. -#}
+    <input type="hidden" name="loaded" value='{{ r.loaded | tojson }}'>
     <label for="f-records-host">Host</label>
     <div><input id="f-records-host" name="records_db_host" class="mono" type="text" value="{{ c.host }}" autocomplete="off" placeholder="empty: off, every store on its files"></div>
     <label for="f-records-port">Port</label>

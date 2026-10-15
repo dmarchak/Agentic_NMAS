@@ -93,9 +93,12 @@ def records_save():
     from modules import identity
     from modules import installation_settings as I
 
+    from modules.settings_schema import loaded_from
+
     form = {k: request.form.get(k) for k in I.FIELDS}
     try:
-        saved = I.save(form, identity.request_actor(), _verified())
+        saved = I.save(form, identity.request_actor(), _verified(),
+                       loaded=loaded_from(request.form.get("loaded")))
     except I.Refused as exc:
         return _records(409, refused=str(exc))
     return _records(saved=saved)

@@ -156,6 +156,7 @@ def records_card() -> dict:
                     if s["name"] == "version" and s["ok"]), "")
     # Off: no Test is drawn, an old one included (its checks would read as today's).
     return {"state": state, "stale": stale, "config": c, "test": answer,
+            "loaded": _records_drawn(c),
             "steps": _steps_drawn(answer) if answer["state"] == "ok" and state != "off" else [],
             "version": version, "stores": [RD.STORE_WORDS[s] for s in RD.stores()],
             "test_unreadable": answer["state"] == "unreadable",
@@ -185,21 +186,42 @@ def _typed(form: dict) -> dict:
     return out
 
 
-def save(form: dict, actor: str, verified: str) -> dict:
-    """Save the card's fields (SAVE_STEPS): check them, write what changed to the installation's
-    settings, record who and which fields. Never opens the database, so it works with it down.
-    ``{"ok", "written", "nothing", "recorded", ...}``; raises `Refused` naming the field."""
-    from modules import records_db as RD
-    from modules.settings_schema import write_settings
+def _records_drawn(c: dict) -> dict:
+    """The records card's four fields as its form draws them and sends them back (R17)."""
+    return {"records_db_host": str(c["host"] or ""), "records_db_port": str(c["port"]),
+            "records_db_name": str(c["name"] or ""), "records_db_user": str(c["user"] or "")}
 
+
+def save(form: dict, actor: str, verified: str, loaded=None) -> dict:
+    """Save the card's fields (SAVE_STEPS): check them, write what the person changed to the
+    installation's settings, record who and which fields. Never opens the database, so it works
+    with it down. ``{"ok", "written", "nothing", "recorded", ...}``; raises `Refused` naming the
+    field.
+
+    *loaded* is what the card drew (CONCURRENCY_AUDIT R17, C813): a field still as drawn is not
+    written, so another person's change to it since stands; a field the person changed that
+    another person moved since refuses the Save, naming both values. Compared and written under
+    one hold of the settings lock. A Save that does not say what it drew is refused."""
+    from modules import records_db as RD
+    from modules.config import settings_lock
+    from modules.settings_schema import (NOT_LOADED, changed_since_loaded, moved_words,
+                                         write_settings)
+
+    if not isinstance(loaded, dict):
+        raise Refused(NOT_LOADED)
     values = _typed(form)                                                     # check
-    c = RD.config()
-    stored = {"records_db_host": c["host"], "records_db_port": c["port"],
-              "records_db_name": c["name"], "records_db_user": c["user"]}
-    changed = {k: v for k, v in values.items() if stored[k] != v}
-    if not changed:
-        return {"ok": True, "nothing": True, "written": [], "recorded": True}
-    out = write_settings(changed, actor=actor)                                # write
+    with settings_lock():
+        c = RD.config()
+        stored = {"records_db_host": c["host"], "records_db_port": c["port"],
+                  "records_db_name": c["name"], "records_db_user": c["user"]}
+        sent = {k: str(v) for k, v in values.items()}
+        mine, moved = changed_since_loaded(sent, loaded, _records_drawn(c))
+        if moved:
+            raise Refused("; ".join(moved_words(moved)))
+        changed = {k: values[k] for k in mine if stored[k] != values[k]}
+        if not changed:
+            return {"ok": True, "nothing": True, "written": [], "recorded": True}
+        out = write_settings(changed, actor=actor)                            # write
     if not out["ok"]:
         raise Refused(out["error"])
     entry = _record({"kind": "records_db_save", "actor": actor, "actor_verified": verified,

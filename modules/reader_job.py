@@ -668,7 +668,16 @@ def _loop(reader: Reader, announce) -> None:
 
 
 def start(announce=None) -> list:
-    """Start every registered reader's thread once. Returns their names."""
+    """Start every registered reader's thread once. Returns their names.
+
+    The integration clients are imported HERE, in the starting thread, before any reader runs
+    (C836): each reader imports what it needs inside its read, so after a restart the readers'
+    threads make their first imports of `modules.integrations` and its submodules together,
+    and the DHCP reader's read failed with `_DeadlockError` on `modules.integrations.loki` (the
+    operator, 2026-10-15, after the 18:40 UTC restart; not reproduced by two threads alone).
+    A package imported whole before the threads start is one no thread has to initialise."""
+    import modules.integrations  # noqa: F401 (imported for its effect: every client loaded)
+
     _stop.clear()
     started = []
     for r in readers():

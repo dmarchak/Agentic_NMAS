@@ -317,6 +317,37 @@ class TestLiveness:
 # ---------------------------------------------------------------------------
 
 class TestScheduler:
+    def test_the_integration_clients_are_loaded_before_any_reader_thread_starts(self,
+                                                                                monkeypatch):
+        """C836: the DHCP reader's read failed with `_DeadlockError` on
+        `modules.integrations.loki` after a restart, the readers' threads making their first
+        imports of the integration package together. `start()` imports the package whole in
+        the starting thread first. The package is set aside (restored after) so the import
+        is seen to happen before the first thread is made."""
+        import sys
+        import types
+
+        import modules
+        monkeypatch.delitem(sys.modules, "modules.integrations")
+        monkeypatch.setattr(modules, "integrations", None, raising=False)
+        seen = []
+
+        class Thread:
+            def __init__(self, *a, **kw):
+                seen.append("modules.integrations" in sys.modules)
+
+            def start(self):
+                pass
+
+            def is_alive(self):
+                return False
+        mine = R.register(make(lambda: {}))
+        monkeypatch.setattr(R, "readers", lambda: [mine])
+        monkeypatch.setattr(R, "threading", types.SimpleNamespace(Thread=Thread))
+        monkeypatch.setattr(R, "_threads", {})
+        assert R.start() == ["t-reader"]
+        assert seen == [True], "a reader thread was made before the integration package loaded"
+
     def test_start_runs_each_reader_and_stop_ends_it(self, monkeypatch):
         """ONLY the test's own reader is started (C163, 2026-10-05): `start()` starts every
         registered reader, and `readers()` imports every declared one, so this test once

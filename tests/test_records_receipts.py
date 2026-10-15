@@ -276,9 +276,12 @@ def app_db(networks, pg):
 
     with pg.connect() as c:
         c.execute("drop schema if exists audit cascade")
+    from tests.test_installation_settings import _loaded
+
     _post(networks, "/v2/settings/installation/records/save",
           {"records_db_host": "127.0.0.1", "records_db_port": str(pg.port),
-           "records_db_name": "mercury", "records_db_user": "mercury"})
+           "records_db_name": "mercury", "records_db_user": "mercury",
+           "loaded": _loaded(networks)})
     _r, html = _post(networks, "/v2/settings/installation/records/replace",
                      {"records_db_password": pg_instance.MERCURY_PW})
     assert "Test passed" in html

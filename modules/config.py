@@ -541,11 +541,12 @@ FLASK_PORT  = _env_or_setting("NMAS_PORT", "flask_port", 5000)
 FLASK_DEBUG = False
 
 # Open a browser at startup. Historically unconditional, which is wrong for a
-# headless systemd unit; NMAS_HEADLESS=1 forces it off.
+# headless systemd unit; NMAS_HEADLESS=1 forces it off. The environment alone decides (C815,
+# the operator 2026-10-15): the `auto_open_browser` setting had no control on any page once
+# today's Settings modal left, and is retiring (modules/settings_scope.py).
 _HEADLESS = os.environ.get("NMAS_HEADLESS", "").strip().lower() in ("1", "true", "yes", "on")
-AUTO_OPEN_BROWSER = False if _HEADLESS else bool(
-    _env_or_setting("NMAS_AUTO_OPEN_BROWSER", "auto_open_browser", True)
-)
+AUTO_OPEN_BROWSER = False if _HEADLESS else (
+    os.environ.get("NMAS_AUTO_OPEN_BROWSER", "1").strip().lower() in ("1", "true", "yes", "on"))
 
 # The TFTP root (`NMAS_TFTP_ROOT`, the `tftp_root` setting) left with its last readers, the
 # device and bulk file routes (D16, 2026-10-13; restore point tag pre-remove/tftp-root).

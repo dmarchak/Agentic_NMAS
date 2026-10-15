@@ -74,9 +74,13 @@ class TestEverySettingsControlIsRead:
         assert unread == [], f"controls no Save reads: {unread}"
 
     def test_the_control_a_planted_unread_control_is_found(self, pages):
-        planted = pages.replace('<input type="hidden" name="loaded"',
-                                '<input name="plantedDeadSwitch"><input type="hidden" '
-                                'name="loaded"', 1)
+        # Planted in the first form the scan reads (the records card, which carries `loaded`
+        # too since C813, is outside it, with its own tests).
+        first = _SAVES.search(pages).group(0)
+        planted = pages.replace(first, first.replace(
+            '<input type="hidden" name="loaded"',
+            '<input name="plantedDeadSwitch"><input type="hidden" name="loaded"', 1), 1)
+        assert planted != pages
         _names, unread = _unread(planted, _saves_read())
         assert unread == ["plantedDeadSwitch"]
 

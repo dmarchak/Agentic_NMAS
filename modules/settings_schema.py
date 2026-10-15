@@ -97,7 +97,8 @@ DEFAULTS: dict = {
     # ── Server / portability ────────────────────────────────────────────────
     "flask_host":        "0.0.0.0",
     "flask_port":        5000,
-    # Historically an unconditional webbrowser.open() at startup.
+    # RETIRING (C815, 2026-10-15; settings_scope): read by nothing; the environment decides
+    # (NMAS_AUTO_OPEN_BROWSER, NMAS_HEADLESS). Declared one release so a rollback finds it.
     "auto_open_browser": True,
 
     # ── File transfer ───────────────────────────────────────────────────────

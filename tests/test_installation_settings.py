@@ -34,6 +34,15 @@ def _post(n, path, data=None):
     return r, r.get_data(as_text=True)
 
 
+def _loaded(n):
+    """What the records card drew, as its form sends it back (`loaded`, R17, C813)."""
+    from html import unescape
+    page = _get(n, "/v2/settings/installation")[1]
+    m = re.search(r'id="form-records-db".*?name="loaded" value=\'([^\']*)\'', page, re.S)
+    assert m, "the records card draws no loaded field"
+    return unescape(m.group(1))
+
+
 def _card(html):
     m = re.search(r'<section class="card set-card[^"]*" id="records-db".*?</section>', html, re.S)
     assert m, "no records database card"
@@ -90,7 +99,8 @@ class TestOffAndSave:
         _no_db(monkeypatch)
         r, html = _post(networks, "/v2/settings/installation/records/save",
                         {"records_db_host": "127.0.0.1", "records_db_port": "5433",
-                         "records_db_name": "mercury", "records_db_user": "mercury"})
+                         "records_db_name": "mercury", "records_db_user": "mercury",
+                         "loaded": _loaded(networks)})
         card = _card(html)
         assert r.status_code == 200 and "Saved</strong> by" in card
         assert "recorded in the installation's settings record, a file" in card.lower()
@@ -104,8 +114,46 @@ class TestOffAndSave:
     def test_saving_what_is_stored_changes_nothing(self, networks):
         _r, html = _post(networks, "/v2/settings/installation/records/save",
                          {"records_db_host": "", "records_db_port": "5433",
-                          "records_db_name": "mercury", "records_db_user": "mercury"})
+                          "records_db_name": "mercury", "records_db_user": "mercury",
+                          "loaded": _loaded(networks)})
         assert "Nothing changed" in _card(html) and _record(networks) == []
+
+    def test_another_persons_change_since_the_card_was_drawn_stands(self, networks):
+        """R17 (C813): this person changes the port; another person set the host after this
+        card was drawn. The Save writes the port alone, and the host stays theirs."""
+        from modules.settings_schema import get_setting, write_settings
+        drawn = _loaded(networks)
+        write_settings({"records_db_host": "192.0.2.50"}, actor="someone else")
+        r, html = _post(networks, "/v2/settings/installation/records/save",
+                        {"records_db_host": "", "records_db_port": "5434",
+                         "records_db_name": "mercury", "records_db_user": "mercury",
+                         "loaded": drawn})
+        assert r.status_code == 200, _card(html)
+        assert get_setting("records_db_port") == 5434
+        assert get_setting("records_db_host") == "192.0.2.50"
+        (row,) = _record(networks)
+        assert row["fields"] == ["records_db_port"]
+
+    def test_a_field_another_person_moved_is_refused_naming_both_values(self, networks):
+        from modules.settings_schema import get_setting, write_settings
+        drawn = _loaded(networks)
+        write_settings({"records_db_host": "192.0.2.50"}, actor="someone else")
+        r, html = _post(networks, "/v2/settings/installation/records/save",
+                        {"records_db_host": "192.0.2.60", "records_db_port": "5433",
+                         "records_db_name": "mercury", "records_db_user": "mercury",
+                         "loaded": drawn})
+        card = _card(html)
+        assert r.status_code == 409 and "changed after you opened Settings" in card
+        assert "&#39;&#39; when you opened it and is &#39;192.0.2.50&#39; now" in card
+        assert get_setting("records_db_host") == "192.0.2.50" and _record(networks) == []
+
+    def test_a_save_that_does_not_say_what_it_drew_is_refused(self, networks):
+        from modules.settings_schema import get_setting
+        r, html = _post(networks, "/v2/settings/installation/records/save",
+                        {"records_db_host": "192.0.2.60", "records_db_port": "5433",
+                         "records_db_name": "mercury", "records_db_user": "mercury"})
+        assert r.status_code == 409 and "did not say what it loaded" in _card(html)
+        assert get_setting("records_db_host") == "" and _record(networks) == []
 
     @pytest.mark.parametrize("field, value, words", [
         ("records_db_port", "70000", "is not a port number"),
@@ -115,7 +163,8 @@ class TestOffAndSave:
     def test_a_bad_field_is_refused_naming_it_and_nothing_is_saved(self, networks, field,
                                                                    value, words):
         data = {"records_db_host": "127.0.0.1", "records_db_port": "5433",
-                "records_db_name": "mercury", "records_db_user": "mercury", field: value}
+                "records_db_name": "mercury", "records_db_user": "mercury", field: value,
+                "loaded": _loaded(networks)}
         r, html = _post(networks, "/v2/settings/installation/records/save", data)
         assert r.status_code == 409 and words in _card(html) and "Nothing was changed" in html
         assert _record(networks) == []
@@ -168,7 +217,8 @@ class TestAgainstARealPostgreSQL:
 
         _post(networks, "/v2/settings/installation/records/save",
               {"records_db_host": "127.0.0.1", "records_db_port": str(pg.port),
-               "records_db_name": "mercury", "records_db_user": "mercury"})
+               "records_db_name": "mercury", "records_db_user": "mercury",
+               "loaded": _loaded(networks)})
         _r, html = _post(networks, "/v2/settings/installation/records/replace",
                          {"records_db_password": pg_instance.MERCURY_PW})
         card = _card(html)
@@ -192,7 +242,8 @@ class TestAgainstARealPostgreSQL:
         _r, html = _post(networks, "/v2/settings/installation/records/save",
                          {"records_db_host": "127.0.0.1",
                           "records_db_port": str(pg_instance._free_port()),
-                          "records_db_name": "mercury", "records_db_user": "mercury"})
+                          "records_db_name": "mercury", "records_db_user": "mercury",
+                          "loaded": _loaded(networks)})
         assert "Saved</strong> by" in _card(html)
         from modules.secrets_store import set_secret
         set_secret("records_db_password", pg_instance.MERCURY_PW)

@@ -169,9 +169,12 @@ Inside the restored VM, it **passes** when:
    `python3 -c "import hashlib;print(hashlib.sha256(open('data/key.key','rb').read().strip()).hexdigest()[:16])"`
    must print the fingerprint `nmas-breakglass verify` printed on the laptop.
    (`key_fingerprint()` is that same computation.)
-4. The app starts: `curl -s -o /dev/null -w '%{http_code}' localhost:5000/`
-   prints 200. This is the path `nmas-deploy` checks (`/`). There is no
-   `/health` route: it answers 404. `nmas-jobs` is the scheduled-job
+4. The app starts and loaded the restored code: `curl -s localhost:5000/health` prints JSON
+   with `"ok": true`, the `commit` the restored checkout is at (`git -C <checkout> rev-parse
+   HEAD`), and the `pid` systemd names for the service (`systemctl show -p MainPID
+   flask-app.service`, `scripts/nmas-deploy`'s `SERVICE`). This is what `nmas-deploy` checks (`routes/health.py`'s `/health`: the
+   commit the process loaded, from that very process); a 200 from `/` alone would also come
+   from a process that never restarted (C797, 2026-10-15). `nmas-jobs` is the scheduled-job
    report, not the app's liveness (its JSON route, `GET /jobs/health`, left at 7.8 on
    2026-10-15).
 
