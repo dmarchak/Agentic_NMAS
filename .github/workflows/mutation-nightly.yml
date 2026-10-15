@@ -16,10 +16,10 @@
 name: mutation-nightly
 
 on:
-  schedule:
-    # 08:17 UTC = 02:17 America/Denver while daylight time holds (UTC−6), 01:17 in winter (UTC−7).
-    - cron: "17 8 * * *"
-  # By hand, from the Actions tab (the demo, or after a change worth checking at once).
+  # No schedule while Phase 7 changes the code daily (the operator, 2026-10-15, C835: a late
+  # scheduled night ran on an older commit and held the one-night slot). Once the operator says
+  # Phase 7 has settled it becomes a WEEKLY schedule, outside the 08:30 to 09:10 UTC backup
+  # window. Until then, by hand, from the Actions tab or scripts/nmas-ci-dispatch.
   workflow_dispatch:
     inputs:
       functions:

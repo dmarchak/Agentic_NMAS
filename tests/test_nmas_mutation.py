@@ -549,12 +549,12 @@ class TestTheWorkflow:
         with open(WORKFLOW, encoding="utf-8") as fh:
             return fh.read()
 
-    def test_it_runs_nightly_and_by_hand_never_on_a_push(self):
+    def test_it_runs_by_hand_only_never_on_a_push_or_a_schedule(self):
+        """The operator, 2026-10-15 (C835): no schedule while Phase 7 changes the code daily;
+        weekly, outside the backup window, once they say Phase 7 has settled."""
         on = self.doc()[True]                    # YAML reads the bare key `on` as True
-        assert set(on) == {"schedule", "workflow_dispatch"}
-        assert on["schedule"] == [{"cron": "17 8 * * *"}]
-        cron_at = self.text().index('cron: "17 8 * * *"')
-        assert "America/Denver" in self.text()[cron_at - 160:cron_at]
+        assert set(on) == {"workflow_dispatch"}
+        assert "WEEKLY" in self.text() and "08:30 to 09:10 UTC" in self.text()
 
     def test_a_dispatchs_functions_reach_the_plan_through_the_environment(self):
         """Never `${{ inputs... }}` pasted into a script (an input is text a person typed)."""

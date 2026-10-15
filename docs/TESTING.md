@@ -211,8 +211,9 @@ across the whole file rather than within the line (C767): the message only, neve
 refused. Fixed the same day (line by line, "line N, column M"); the rewritten function's 25
 mutants are all killed.
 
-**The nightly run** (`.github/workflows/mutation-nightly.yml`, 08:17 UTC, by hand from the
-Actions tab too; never on a push). Coverage says a test RAN a line; mutation testing says
+**The nightly run** (`.github/workflows/mutation-nightly.yml`, by hand from the Actions tab or
+`scripts/nmas-ci-dispatch`; never on a push, and no schedule while Phase 7 changes the code
+daily: weekly, outside the backup window, once the operator says Phase 7 has settled; C835). Coverage says a test RAN a line; mutation testing says
 whether a test would NOTICE the line being wrong, so a test that calls a function and checks
 nothing scores 100% coverage and 0% here. Each night:
 
