@@ -183,6 +183,12 @@ Surveyed 2026-10-13 at c40d9440. Three facts frame the rest:
 - **No service or path verification:** reachability is a per-device probe.
 - **No Mercury-side judgement of IP SLA results.**
 
+**Proposed for Stage 9** (the operator, 2026-10-15; nothing built): incident evidence export,
+ISP circuit verification, bandwidth by application and user, scans, traffic analysis to
+findings, a management-access profile per device, and the common asks (ranked), each with its
+dependencies (E18, C764 packs, the role model E5) and its Phase 8 hook, in
+[ASSURE_FEATURES](ASSURE_FEATURES.md) (C799 to C801, C803 to C806).
+
 ### Respond: correct deviations
 
 **Exists:**

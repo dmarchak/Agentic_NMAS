@@ -207,6 +207,108 @@
     }
    ]
   },
+  "modules.goldens._golden_record": {
+   "path": "modules/goldens.py",
+   "qualname": "_golden_record",
+   "hash": "733789dec8e6cbb745dc0e090ef842a2914c96057038b4afefb8fcafe5928109",
+   "survivors": [
+    {
+     "was": "def _golden_record(device_ip: str, list_name: str = \"\") -> dict:",
+     "now": "def _golden_record(device_ip: str, list_name: str = \"XXXX\") -> dict:",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "entry = None",
+     "now": "entry = \"\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(None, identity)",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(identity)",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(repo, )",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "entry = _m.find_by_identity(repo, identity)",
+     "now": "entry = _m.find_by_identity(repo, None)",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = _identity_for_ip(None, list_name if named_other else \"\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = _identity_for_ip(device_ip, )",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = _identity_for_ip(device_ip, None)",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = _identity_for_ip(device_ip, list_name if (named_other) and False else \"\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = _identity_for_ip(device_ip, list_name if (named_other) or True else \"\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = _identity_for_ip(device_ip, list_name if named_other else \"XXXX\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "identity = _identity_for_ip(device_ip, list_name if named_other else \"\")",
+     "now": "identity = _identity_for_ip(list_name if named_other else \"\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "record[\"path\"] = rel.replace(os.sep, \"/\")",
+     "now": "record[\"PATH\"] = rel.replace(os.sep, \"/\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "record[\"path\"] = rel.replace(os.sep, \"/\")",
+     "now": "record[\"XXpathXX\"] = rel.replace(os.sep, \"/\")",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "record[\"path\"] = rel.replace(os.sep, \"/\")",
+     "now": "record[\"path\"] = None",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "record[\"path\"] = rel.replace(os.sep, \"/\")",
+     "now": "record[\"path\"] = rel.replace(os.sep, \"XX/XX\")",
+     "reason": "baseline sweep of moved code"
+    }
+   ]
+  },
   "modules.goldens._identity_for_ip": {
    "path": "modules/goldens.py",
    "qualname": "_identity_for_ip",
@@ -453,6 +555,38 @@
      "was": "with open(fpath, encoding=\"utf-8\") as fh:",
      "now": "with open(fpath, encoding=None) as fh:",
      "reason": "The first full night's open VERDICT survivors (run #4, 38615953823, b0c76806, 2026-10-14): the functions the AI family's shared pieces moved into, and the three their move touched. C781's work order kills them after the Lab 7 video."
+    }
+   ]
+  },
+  "modules.goldens._list_golden_configs": {
+   "path": "modules/goldens.py",
+   "qualname": "_list_golden_configs",
+   "hash": "a837116f21c20396751d32bf91c5841365eea7c78fe9eb1d214c9c09832b96ad",
+   "survivors": [
+    {
+     "was": "\"file\":       e[\"file\"],",
+     "now": "\"FILE\":       e[\"file\"],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"file\":       e[\"file\"],",
+     "now": "\"XXfileXX\":       e[\"file\"],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"size_bytes\": e[\"size_bytes\"],",
+     "now": "\"SIZE_BYTES\": e[\"size_bytes\"],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "\"size_bytes\": e[\"size_bytes\"],",
+     "now": "\"XXsize_bytesXX\": e[\"size_bytes\"],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "entries = list_goldens(get_current_list_name())",
+     "now": "entries = list_goldens(None)",
+     "reason": "baseline sweep of moved code"
     }
    ]
   },
@@ -1509,6 +1643,11 @@
      "reason": "baseline sweep of moved code"
     },
     {
+     "was": "for obj_id in (objects or {})]",
+     "now": "for obj_id in (objects and {})]",
+     "reason": "baseline sweep of moved code"
+    },
+    {
      "was": "if not mgmt_ip or not _load_golden_config_file(mgmt_ip, list_name):",
      "now": "if not mgmt_ip or not _load_golden_config_file(None, list_name):",
      "reason": "baseline sweep of moved code"
@@ -1641,6 +1780,16 @@
     {
      "was": "out = {\"ok\": False, \"deferred\": False, \"created\": [], \"failed\": [],",
      "now": "out = {\"ok\": False, \"deferred\": True, \"created\": [], \"failed\": [],",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"created\"] = [f\"{endpoint}:{obj_id}\"",
+     "now": "out[\"CREATED\"] = [f\"{endpoint}:{obj_id}\"",
+     "reason": "baseline sweep of moved code"
+    },
+    {
+     "was": "out[\"created\"] = [f\"{endpoint}:{obj_id}\"",
+     "now": "out[\"XXcreatedXX\"] = [f\"{endpoint}:{obj_id}\"",
      "reason": "baseline sweep of moved code"
     },
     {
