@@ -487,6 +487,38 @@ def test_every_settings_grid_fills_its_width_on_a_wide_screen(served):
     assert gaps == [], gaps
 
 
+def test_an_operation_card_fills_the_tab_on_a_wide_screen(served):
+    """C793 (the operator, 2026-10-15, a deploy to s1 at about 2546 px: "windows like this
+    should stretch to fill the screen so it's not all compacted for no reason"). An operation's
+    card (`.op-card`: deploy, capture, restore, reload, rotate and the rest) spans the device
+    tab's width at 2560, and its stepper's twelve steps sit in one row; it was held to 860 px,
+    and the deploy's steps wrapped onto three rows."""
+    srv, b = served
+    b._call("POST", f"/session/{b.session}/window/rect", {"width": 2560, "height": 1400})
+    try:
+        b.go(srv.url("/v2/device/r2"))
+        b.wait_for("return !!document.getElementById('tab-body')", 10)
+        steps = "".join(f'<li class="run-step"><span class="run-dot"></span>'
+                        f'<span class="run-words">Step {n}</span></li>' for n in range(12))
+        got = b.js(
+            "var t=document.getElementById('tab-body'); t.innerHTML=arguments[0];"
+            "var c=t.querySelector('.op-card'), s=Array.from(t.querySelectorAll('.run-step'));"
+            "return [Math.round(t.getBoundingClientRect().width),"
+            " Math.round(c.getBoundingClientRect().width),"
+            " new Set(s.map(function (e) { return Math.round(e.getBoundingClientRect().top); })).size]",
+            '<section class="op-card" id="device-op"><div class="op-hd"><h2>Deploying to r2</h2>'
+            '</div><div class="op-part"><h3>Where it is</h3><div><div class="run"><ul class="run-rows">'
+            '<li class="run-row"><span class="run-name">r2</span>'
+            f'<ol class="run-steps">{steps}</ol><span class="run-el">1 s</span></li></ul></div>'
+            '</div></div></section>')
+    finally:
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+    tab, card, rows = got
+    assert tab > 1600, f"the tab is {tab} px wide at 2560: the window did not widen"
+    assert card >= tab - 2, f"the operation card is {card} px in a {tab} px tab"
+    assert rows == 1, f"the stepper's twelve steps sit on {rows} rows"
+
+
 def test_the_context_rule_fails_each_way_on_a_planted_page(served):
     """The rule's three failures and its passes, planted in a page the browser draws: a card
     with no words, a card with words twice, a menu row with words, a standalone (i)."""

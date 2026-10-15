@@ -962,9 +962,9 @@ button.menu-item[disabled]:hover { background: none; }
 
 /* The device page's actions on v2 (7.3; the mockup signed off 2026-10-02): an operation's
    card in place of the tab's content. The border says the state: accent while it is a
-   preview, ok when recorded, warn when nothing was. */
-.op-card { background: var(--surface); border: 1px solid var(--accent); border-radius: var(--r-card);
-  max-width: 860px; }
+   preview, ok when recorded, warn when nothing was. It spans the tab (C793, the operator,
+   2026-10-15: held to 860 px, a deploy's stepper wrapped onto three rows on a wide screen). */
+.op-card { background: var(--surface); border: 1px solid var(--accent); border-radius: var(--r-card); }
 .op-card.op-ok { border-color: var(--ok); }
 .op-card.op-warn { border-color: var(--warn-mark); }
 .op-card.op-danger { border-color: var(--danger); }
