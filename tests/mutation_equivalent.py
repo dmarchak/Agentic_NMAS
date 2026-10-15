@@ -137,4 +137,13 @@ EQUIVALENT = [
             'current = config.get("current_list", "DEFAULT")'),
            "`current` is used only through get_list_data_dir, which resolves through list_slug, "
            "and list_slug lowercases first: every case of Default names the folder `default`"),
+    # ── Night #12 (2026-10-15, run 38726986751): F3's role filter, killed by
+    # tests/test_history_ask_logs.py's TestARolesDevices but for these three (C833).
+    *_each("modules.history_logq._devices_of_role",
+           'return sorted(d.get("hostname", "") for d in rows',
+           ('return sorted(d.get("hostname", None) for d in rows',
+            'return sorted(d.get("hostname", ) for d in rows',
+            'return sorted(d.get("hostname", "XXXX") for d in rows'),
+           "the same comprehension keeps a row only `if d.get(\"hostname\")`, so every row it "
+           "keeps has a hostname and the default is never returned"),
 ]

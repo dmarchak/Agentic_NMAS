@@ -556,3 +556,41 @@ class TestTheScript:
         assert got == 1
         assert _js("window.NMAS_LOGQ.nearest([[0], [0], [null]], 0, 10,"
                    " function (v) { return v; })") == -1
+
+
+class TestARolesDevices:
+    """The devices a role filter matches, from the NAMED network's own inventory (C833: mutation
+    night #12 found its 5 survivors; the page's tests stood it in)."""
+
+    ROWS = [{"hostname": "r2", "role": "router"}, {"hostname": "s1", "role": "switch"},
+            {"hostname": "r1", "role": "router"}, {"hostname": "", "role": "router"},
+            {"hostname": "x9", "role": None}, {"role": "router"}]
+
+    @pytest.fixture
+    def inventory(self, monkeypatch):
+        from types import SimpleNamespace
+        asked = {}
+
+        def resolve(name):
+            asked["network"] = name
+            return SimpleNamespace(csv_path=f"/lists/{name}/devices.csv")
+
+        def load(path):
+            asked["path"] = path
+            if "Unreadable" in path:
+                raise OSError("devices.csv: permission denied")
+            return [dict(r) for r in self.ROWS]
+        monkeypatch.setattr("modules.nsot.listref.resolve", resolve)
+        monkeypatch.setattr("modules.device.load_saved_devices", load)
+        return asked
+
+    def test_the_roles_named_devices_sorted_from_that_networks_inventory(self, inventory):
+        assert Q._devices_of_role("Branch", "router") == ["r1", "r2"]
+        assert inventory == {"network": "Branch", "path": "/lists/Branch/devices.csv"}
+
+    def test_a_device_with_no_role_matches_only_the_empty_role(self, inventory):
+        assert Q._devices_of_role("Branch", "") == ["x9"]
+        assert Q._devices_of_role("Branch", "firewall") == []
+
+    def test_an_unreadable_inventory_matches_nothing(self, inventory):
+        assert Q._devices_of_role("Unreadable", "router") == []

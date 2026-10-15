@@ -69,8 +69,12 @@ equivalent with the reason; the report then reads "404 known, 0 new". **#11 (387
 20b2a9c0): failed in its harness, no result stands (C832):** its plan grew to 53 functions and
 the run in mutmut's copy passed its 400 s bound (a laptop's figure; the runner's were 299 s and
 340 s), and the bound's handler crashed on bytes. Fixed in 1a02cb2d (850 s, 2.5 times the
-runner's measured; the handler tested). **Night #12 (38726986751) was dispatched on 1a02cb2d at 11:23 UTC, after CI #820 passed; it
-ends about 13:30.** The speed change (child tests only where the import closure reaches) is
+runner's measured; the handler tested). **#12 (38726986751, 1a02cb2d): valid, red by the rule:** canary 11 of 11, the copy run
+passed in 777 s, "404 known, 5 new", all in F3's role filter (C833, fixed: three tests kill the
+5, three equivalents listed, the report then "0 new"). It reached **15 of 8,277 mutants** in its
+budget: the plan has grown to 97 functions (C834, a question below). Night #13 is dispatched on
+the fix once CI is green; its copy run may near the 850 s bound again, and if it passes it
+the night now says so. The speed change (child tests only where the import closure reaches) is
 NOT built: measured, the closure holds every planned function (C796, a question below).
 
 **Waiting on the operator** (each on the NMAS host, as their own user, from
@@ -89,8 +93,11 @@ NOT built: measured, the closure holds every planned function (C796, a question 
    is refused, naming why.
 
 **Questions, each with the recommendation:**
-1. **C796:** narrow the child-process tests by MEASURED reach (which children run the planned
-   function) rather than the import closure, which narrows nothing? Recommended: yes.
+1. **C796 and C834, the night's throughput:** night #12 reached 15 of 8,277 mutants (97
+   functions planned, a 777 s copy run, 45 child-starting tests on every function). Narrow the
+   child-process tests by MEASURED reach (which children run the planned function) rather than
+   the import closure, which narrows nothing, and cap a night's plan, oldest unfinished first?
+   Recommended: yes to both.
 2. **C808:** the ratchet judges the uncovered count (must not rise) instead of the percentage,
    and the gate runs it? Recommended: yes, both.
 3. **The today's-pages survey's ten** (unanswered): `/` 302 to `/v2/`; JSON routes go with their
