@@ -151,7 +151,30 @@ class TestWhatTheRunningReleaseOwes:
         assert [(d["step"], d["by"]) for d in said] == [("tell the team", "p@example.invalid")]
         monkeypatch.setitem(host_steps.CHECKS, "topology-renderer",
                             lambda root: {"state": "done", "detail": "ok"})
-        assert host_steps.owed("a" * 40, log_text=text)["steps"] == []
+        got = host_steps.owed("a" * 40, log_text=text)
+        assert got["steps"] == []
+        # C795: a step its check reads done stays visible, with what the check read.
+        (c,) = got["checked_done"]
+        assert (c["step"], c["check"], c["check_state"], c["check_detail"]) == (
+            "install the renderer as a symlink and restart it", "topology-renderer", "done", "ok")
+
+    def test_the_update_page_draws_each_checked_step_with_its_answer(self, store, monkeypatch):
+        """C795 (the operator, 2026-10-15): tonight's [trap-label] and [severity-label] read done
+        and so appeared nowhere on the Update page."""
+        import app as A
+        from modules import host_steps
+        from routes import health
+        monkeypatch.setattr(health, "_COMMIT", "7" * 40)
+        monkeypatch.setitem(host_steps.CHECKS, "trap-label", lambda root: {
+            "state": "done", "detail": "Loki's first trap arrived 2026-10-15 04:02 UTC"})
+        text = _log(("7" * 40, "IBN 7\n\nHost-Step-After: [trap-label] a link flap sends the trap\n"))
+        real = host_steps.owed
+        monkeypatch.setattr(host_steps, "owed", lambda running, **kw: real(running, log_text=text))
+        html = A.app.test_client().get("/v2/update").get_data(as_text=True)
+        card = html.split('id="update-checked-done"')[1].split("</section>")[0]
+        assert "a link flap sends the trap" in card and "[trap-label]" in card
+        assert "checked: Loki&#39;s first trap arrived 2026-10-15 04:02 UTC" in card
+        assert 'id="update-owed"' not in html, "a checked step is not also owed"
 
     def test_no_person_records_nothing_and_an_unreadable_record_is_said(self, store):
         from modules import host_steps

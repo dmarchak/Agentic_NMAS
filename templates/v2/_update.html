@@ -147,6 +147,15 @@
   </ul>
 </section>
 {%- endif %}
+{#- C795: the steps the tool's own check reads done, with what it read. -#}
+{%- if owed and owed.checked_done %}
+<section class="card" id="update-checked-done">
+  <div class="card-head"><h2>Host steps the tool checked done</h2></div>
+  <ul class="plain-list">
+    {%- for d in owed.checked_done %}<li data-step-id="{{ d.id }}" data-check="{{ d.check }}">{{ icon('check', 14) }} {{ d.step }} <span class="muted">· [{{ d.check }}] checked: {{ d.check_detail }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
+  </ul>
+</section>
+{%- endif %}
 {%- if owed and not owed.ok %}
 <div class="notice notice-warn" id="update-owed-unread">{{ icon('warn') }}<p>Whether a release that runs now still owes a host step could not be read: {{ owed.error }}. This is not the same as none being owed.</p></div>
 {%- endif %}

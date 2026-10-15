@@ -374,7 +374,11 @@ def steps_in(text: str, when: str = None) -> list:
 def owed(running: str, root: str = ROOT, log_text: str = None) -> dict:
     """The AFTER steps of the running history that are not done:
     ``{"ok": bool, "steps": [...], "error"}``, each step with its check's
-    answer or the person who said it done."""
+    answer or the person who said it done; and the steps already done, by a
+    person (``said_done``) or by the tool's own check (``checked_done``, with
+    the check's answer: C795, the operator, 2026-10-15: a step the check had
+    passed vanished from the Update page, so a person could not see that it
+    had been checked, or by what)."""
     try:
         text = log_text if log_text is not None else _log(root, running, HISTORY)
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
@@ -383,17 +387,19 @@ def owed(running: str, root: str = ROOT, log_text: str = None) -> dict:
     if "__unreadable__" in done:
         return {"ok": False, "steps": [], "error": "the host-step record could not be read: "
                                                   + done["__unreadable__"]["error"]}
-    out, said = [], []
+    out, said, checked = [], [], []
     for s in steps_in(text, when="after"):
         c = check(s, root)
         if c["state"] == "not_checkable" and s["id"] in done:
             said.append(dict(s, by=done[s["id"]].get("by"), at=done[s["id"]].get("at")))
             continue
         if c["state"] == "done":
+            checked.append(dict(s, check_state="done", check_detail=c["detail"]))
             continue
         out.append(dict(s, check_state=c["state"], check_detail=c["detail"]))
-    # The record read back: who said each step done, and when.
-    return {"ok": True, "steps": grouped(out), "said_done": grouped(said)}
+    # The record read back: who said each step done, and when; and what the tool checked.
+    return {"ok": True, "steps": grouped(out), "said_done": grouped(said),
+            "checked_done": grouped(checked)}
 
 
 def grouped(steps: list) -> list:

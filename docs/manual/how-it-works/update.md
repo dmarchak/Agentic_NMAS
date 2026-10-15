@@ -70,7 +70,9 @@ it with its golden before changing it, then acknowledge the row with what you fo
 Host steps come in two kinds. A `Host-Step:` must be done BEFORE the update: where the tool
 can check it, it does so itself (done needs no tick; not done refuses, saying what it found);
 otherwise you tick it as done. A `Host-Step-After:` never blocks: once the release runs, it
-is a Needs attention row until it is checked done or you say **It is done**.
+is a Needs attention row until it is checked done or you say **It is done**. Done steps stay
+on the page: **Host steps said done** names who said so and when, and **Host steps the tool
+checked done** names each check and what it read.
 
 One artifact is one row. Steps checked by the same check (three re-links of the topology
 renderer, say) are one row naming every commit: the newest step's words lead, and the older
