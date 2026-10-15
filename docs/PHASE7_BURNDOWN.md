@@ -39,7 +39,7 @@ written from the sitting's results. Screens no walk touches move to Stage 7's ta
 
 | Sitting | Walks | Clears | Ready |
 |---|---|---|---|
-| **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **being written: docs/walks/W1.md** |
+| **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **READY: docs/walks/W1.md** (once the host runs d0c88463 or later) |
 | W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811) | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 70; C667; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | after W1 |
 | W3 Onboarding and recovery | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs) | CUTOVER rows 52, 58, 59; C148; their screens' records; unblocks P7-24, P7-25 | after W2 |
 | (in any sitting) | Needs attention clears at once after a Save All or rotation (C539); the logging-path test at the trap level (C587); Ask's label (C588); snap-to-grid (C691); DHCP confirms (C529) | those rows | with W1 |
@@ -72,6 +72,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C855 | criterion 11: the v2 device page's per-device work | test_scale's device-page calls-per-device pin at 0 per device | S–M | — | — |
 | C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
+| C860 | v2's Save draws C539's "a baseline was taken N min ago" warning (found writing W1) | the `/v2/devices/save` test with a baseline just taken | S | — | — |
 | C543, C544 | Needs attention's action words (Persist; Revert and Retry) | the rows' tests | S | — | — |
 | C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
 | C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
@@ -128,6 +129,7 @@ blocks cutover or is a security issue (B).
   - C7, frozen settings defaults; C338 (390 px findings), C337 (the manual's gaps), C183 (notices
     that stop), C179 (subsets said): refinements of screens that already work.
   - P7-30, the designed v2 error page: the plain error answer serves until then.
+  - C861, the batch deploy's "Back to Coverage" from every start: wording, leads nowhere wrong.
   - The board comparisons of screens no walk touches (C650's remainder).
   - D3's plan items: 7.10, P.12 (with C322, heartbeat and ip_sla), P.7, P.8 step 9, P.9, P.11
     step 3, P.15's rest.
@@ -169,3 +171,7 @@ blocks cutover or is a security issue (B).
   v2 sentences sending to today's pages) fixed with a guard; C855 found.
 - **Section 1c re-checked against the host** (2026-10-15): C722, C725 and the three "It is done"
   steps done and removed.
+- **W1's script written** (docs/walks/W1.md, with docs/walks/README.md): 45 steps in 12
+  sections, targets s1's and s2's uncabled Gi0/1 (a description and its Mode B removal) and r6
+  (the reload); nothing configured on s3 (Save All's `write memory` reaches it, flagged at step
+  37). Found while writing it: C860 (into section 2) and C861 (the tail).
