@@ -19,9 +19,10 @@ a function "covered" by one line is visibly unlike one exercised through; and th
 assert nothing.
 
 **The gate** is a ratchet against a committed baseline (tests/coverage_baseline.json), per
-module: a drop in an automation module's unit function coverage, a new automation module with
-none, or a new test that asserts nothing, fails. No absolute threshold. The baseline moves only
-by `nmas-coverage baseline`, never by itself.
+module: a rise in an automation module's UNCOVERED function count (never its percentage, C808:
+removing a covered function is no fall), a function the baseline names as covered no longer
+covered, a new automation module with none covered, or a new test that asserts nothing, fails.
+No absolute threshold. The baseline moves only by `nmas-coverage baseline`, never by itself.
 """
 import ast
 import glob
@@ -317,35 +318,59 @@ def totals(report: dict, category: str = "automation") -> dict:
 # ── The ratchet ───────────────────────────────────────────────────────────────────────────────
 
 def baseline_of(report: dict) -> dict:
-    """What `nmas-coverage baseline` writes: each automation module's unit function figure,
-    and the tests that assert nothing today."""
-    return {"modules": {p: {"functions": m["functions"], "covered_unit": m["covered_unit"]}
+    """What `nmas-coverage baseline` writes: each automation module's unit function figure
+    and the names of its functions a unit test reached (C808: so a covered function losing its
+    test is seen even where another gained one and the count held), and the tests that assert
+    nothing today."""
+    return {"modules": {p: {"functions": m["functions"], "covered_unit": m["covered_unit"],
+                            "covered": sorted({f["name"] for f in m.get("function_list", ())
+                                               if f["covered_unit"]})}
                         for p, m in sorted(report["modules"].items())
                         if m["category"] == "automation"},
             "assertion_free": sorted(report["assertion_free"])}
 
 
+def _figure(covered: int, functions: int) -> str:
+    return f"{functions - covered} ({covered} of {functions} covered)"
+
+
 def ratchet(report: dict, baseline: dict) -> list:
-    """The ratchet's failures, each naming the module or test and both figures: an automation
-    module's unit function coverage below its baseline; a new automation module (not in the
-    baseline) with functions and none covered; a test that asserts nothing and is not in the
-    baseline."""
+    """The ratchet's failures, each naming the module or test and both figures (C808, the
+    operator's decision of 2026-10-15: the UNCOVERED count, never the percentage, so removing a
+    covered function is no fall):
+
+    - an automation module whose uncovered functions (`functions - covered_unit`) rose above
+      its baseline's: a new function without a unit test, or a test lost;
+    - a function the baseline names as covered that is still in the module and is not covered
+      now, by name, whatever the count did (only where the baseline names its covered
+      functions: a baseline written before C808 holds counts alone, and is read as counts);
+    - a new automation module (not in the baseline) with functions and none covered;
+    - a test that asserts nothing and is not in the baseline."""
     failures = []
     base_mods = baseline.get("modules", {})
     for path, m in sorted(report["modules"].items()):
         if m["category"] != "automation" or not m["functions"]:
             continue
         b = base_mods.get(path)
-        now = m["covered_unit"] / m["functions"]
         if b is None:
             if not m["covered_unit"]:
                 failures.append(f"{path}: a new automation module with no unit test "
                                 f"(0 of {m['functions']} functions)")
-        elif b["functions"] and now < b["covered_unit"] / b["functions"]:
-            failures.append(
-                f"{path}: unit function coverage fell from {b['covered_unit']} of "
-                f"{b['functions']} ({100.0 * b['covered_unit'] / b['functions']:.1f}%) to "
-                f"{m['covered_unit']} of {m['functions']} ({100.0 * now:.1f}%)")
+            continue
+        uncovered, was = m["functions"] - m["covered_unit"], b["functions"] - b["covered_unit"]
+        if uncovered > was:
+            failures.append(f"{path}: uncovered functions rose from "
+                            f"{_figure(b['covered_unit'], b['functions'])} to "
+                            f"{_figure(m['covered_unit'], m['functions'])}")
+        if "covered" in b and "function_list" in m:
+            present = {f["name"] for f in m["function_list"]}
+            now = {f["name"] for f in m["function_list"] if f["covered_unit"]}
+            lost = sorted(n for n in set(b["covered"]) & present if n not in now)
+            if lost:
+                failures.append(f"{path}: covered in the baseline, not covered now: "
+                                + ", ".join(lost)
+                                + f" (the module: {_figure(b['covered_unit'], b['functions'])}"
+                                f" then, {_figure(m['covered_unit'], m['functions'])} now)")
     known = set(baseline.get("assertion_free", []))
     for t in report["assertion_free"]:
         if t not in known:
@@ -399,8 +424,9 @@ def summary_markdown(report: dict, failures: list, drilldown: str = "") -> str:
     if failures:
         lines += ["### The ratchet failed", ""] + [f"- {f}" for f in failures] + [""]
     else:
-        lines += ["The ratchet holds: no module fell, no new module is untested, no new test "
-                  "asserts nothing.", ""]
+        lines += ["The ratchet holds: no module's uncovered count rose, no covered function "
+                  "lost its unit test, no new module is untested, no new test asserts nothing.",
+                  ""]
     lines += [f"### Modules with no unit test ({len(t['untested_modules'])})", ""]
     lines += [f"- `{p}`" for p in t["untested_modules"]] or ["- none"]
     mods = sorted((m for m in report["modules"].values() if m["category"] == "automation"

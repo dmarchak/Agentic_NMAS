@@ -13,6 +13,10 @@ everything after it:
                     195fdbe; d0ce454 shipped two failures), and NO browser test skipped: CI
                     runs them in this suite, with CI's workers (2026-10-03, "The browser
                     tests" in docs/TESTING.md);
+  4b. the ratchet:  CI's coverage job over the four shards' measurement (each measures by tier,
+                    as CI's do): combined, then `nmas-coverage report --check`; a failure
+                    refuses, naming the module and both figures (C808: the gate passed and
+                    CI's ratchet failed afterwards);
   5. browser tests: optional (--browser), unconfined, in one clean process, the same verdict
                     rule: an extra, never a stand-in for step 3's;
   6. the message:   its first line must start with --expect (a failed write leaves the
@@ -31,13 +35,15 @@ everything after it:
                       [--fixes-red N]
 
 Exit 0 committed; 1 refused at a step (named, with where its evidence is kept); 2 usage.
-For tests only, NMAS_GATE_SUITE and NMAS_GATE_BROWSER replace the two commands.
+For tests only, NMAS_GATE_SUITE, NMAS_GATE_RATCHET and NMAS_GATE_BROWSER replace the three
+commands.
 """
 import argparse
 import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -57,9 +63,21 @@ CI_WORKERS = 4
 #: (`scripts/nmas-shards`): the gate runs the SAME four commands, at once, each with CI's
 #: workers, so each job's company in a worker is the one CI's has (C349).
 SHARDS = ("browser1", "browser2", "a", "b")
-SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 NMAS_REQUIRE_PG=1 "
+#: Each shard measures by tier into its own data file and records its tiers in one folder, as
+#: CI's tests step does (NMAS_COVERAGE_TIERS=1, C773), so step 4b can run CI's ratchet.
+SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_COVERAGE_TIERS=1 "
+         "COVERAGE_FILE={cov}/.coverage.{shard} NMAS_TEST_TIERS={cov}/tiers "
+         "NMAS_TEST_TIMEOUT=740 NMAS_REQUIRE_PG=1 "
          f"scripts/nmas-test -q -p no:cacheprovider -n {CI_WORKERS} --cov=modules --cov=routes "
          "--cov=app --cov-report= -rEfs $({py} scripts/nmas-shards {shard})")
+#: Step 4b, CI's coverage job (C808, the operator's decision of 2026-10-15: the gate passed and
+#: CI's ratchet failed afterwards, a red found only after the push): the four shards' data
+#: combined, then the report with --check against tests/coverage_baseline.json. Measured
+#: 2026-10-15 on the laptop: see docs/TESTING.md, "Where it runs".
+RATCHET = ("{py} -m coverage combine --keep --data-file={cov}/.coverage {files} && "
+           "{py} scripts/nmas-coverage report --data {cov}/.coverage --tiers {cov}/tiers --check")
+#: The header the ratchet's failures follow (scripts/nmas-coverage).
+RATCHET_HEADER = "THE RATCHET:"
 BROWSER_DIR = os.environ.get("NMAS_GATE_BROWSER_DIR",
                              os.path.expanduser("~/.local/share/nmas-browser"))
 #: The records tests' PostgreSQL, unpacked without root (docs/TESTING.md, "CI's interpreter
@@ -157,6 +175,22 @@ def browser_skipped(path):
     return (f"{n} browser test skip(s) ({BROWSER_SKIPPED!r}): CI runs them in this suite, "
             f"so a pass here would not be CI's. Put a Firefox that starts confined and its "
             f"geckodriver in {BROWSER_DIR} (docs/TESTING.md, \"The browser tests\")")
+
+
+def ratchet_failed(path, rc):
+    """None if the ratchet (step 4b) held, else why not: its own failures, each naming the
+    module or test and both figures (scripts/nmas_coverage.py `ratchet`), or, when it failed
+    before judging (the combine, the report), its last line."""
+    if not os.path.isfile(path):
+        return "no result file: the ratchet did not run"
+    if rc == 0:
+        return None
+    text = open(path, encoding="utf-8", errors="replace").read()
+    if RATCHET_HEADER in text:
+        found = [ln.strip() for ln in text.split(RATCHET_HEADER, 1)[1].splitlines() if ln.strip()]
+        return "; ".join(found[:6]) + (f"; and {len(found) - 6} more" if len(found) > 6 else "")
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    return f"it exited {rc} before judging; its last line: {(lines[-1] if lines else '')[:200]!r}"
 
 
 def run_to_file(cmd, repo, path, env=None):
@@ -287,6 +321,9 @@ def main(argv=None):
                    + ". Rebuild it: scripts/nmas-ci-env <CI's python> (docs/TESTING.md)")
     say("4. the suite, CI's four commands in CI's interpreter, at once, the browser tests "
         "among them")
+    cov = os.path.join(gitdir, "nmas-gate-coverage")
+    shutil.rmtree(cov, ignore_errors=True)          # step 3's rule, for the measurement too
+    os.makedirs(os.path.join(cov, "tiers"))
     path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
                             os.environ.get("PATH", "")])
     env = dict(os.environ, PATH=path)
@@ -296,7 +333,7 @@ def main(argv=None):
     if os.environ.get("NMAS_GATE_SUITE"):           # the gate's own tests: one stand-in run
         runs = {"suite": (os.environ["NMAS_GATE_SUITE"], suite_out)}
     else:
-        runs = {s: (SUITE.format(py=shlex.quote(a.python), shard=s),
+        runs = {s: (SUITE.format(py=shlex.quote(a.python), shard=s, cov=shlex.quote(cov)),
                     os.path.join(gitdir, f"nmas-gate-suite-{s}.out")) for s in SHARDS}
     codes = run_all_to_files(runs, repo, env)
     whys, lines = [], []
@@ -312,6 +349,17 @@ def main(argv=None):
         name, why, out = whys[0]
         refuse("the suite", (f"job {name}: " if len(runs) > 1 else "") + why
                + (f" (and {len(whys) - 1} more)" if len(whys) > 1 else ""), out)
+
+    say("4b. the coverage ratchet, CI's coverage job over the four shards' measurement")
+    ratchet_out = os.path.join(gitdir, "nmas-gate-ratchet.out")
+    cmd = os.environ.get("NMAS_GATE_RATCHET") or RATCHET.format(
+        py=shlex.quote(a.python), cov=shlex.quote(cov),
+        files=" ".join(shlex.quote(os.path.join(cov, f".coverage.{s}")) for s in SHARDS))
+    rc = run_to_file(cmd, repo, ratchet_out, env)
+    why = ratchet_failed(ratchet_out, rc)
+    if why:
+        refuse("the coverage ratchet", why, ratchet_out)
+    say("4b. the coverage ratchet holds")
 
     browser_line = ""
     if a.browser:

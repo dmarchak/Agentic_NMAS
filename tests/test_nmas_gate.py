@@ -51,10 +51,11 @@ def _suite(lines, rc=0):
 
 
 def _gate(repo, tmp_path, *, subject="Docs: two", expect="Docs:", suite=None, browser=None,
-          extra=()):
+          extra=(), ratchet=None):
     msg = tmp_path / "msg.txt"
     msg.write_text(f"{subject}\n\nThe suite: @SUITE@\n")
-    env = dict(ENV, NMAS_GATE_SUITE=suite or _suite(["....", "12 passed, 1 skipped in 3.10s"]))
+    env = dict(ENV, NMAS_GATE_SUITE=suite or _suite(["....", "12 passed, 1 skipped in 3.10s"]),
+               NMAS_GATE_RATCHET=ratchet or _suite(["Tests that assert nothing: 0"]))
     if browser is not None:
         env["NMAS_GATE_BROWSER"] = browser
     return subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
@@ -134,6 +135,73 @@ class TestEveryWayAStepFails:
         assert r.returncode == 2 and _commits(repo) == 1
 
 
+class TestTheCoverageRatchet:
+    """C808 (the operator's decision, 2026-10-15): the gate ran the suite with coverage but not
+    the ratchet, so it passed and CI's coverage job failed after the push. Step 4b runs CI's
+    ratchet over the four shards' measurement; measured to add under 30 s (docs/TESTING.md,
+    "Where it runs")."""
+
+    FAILED = _suite(["Combined 4 files", "Tests that assert nothing: 0", "",
+                     "THE RATCHET:",
+                     "  modules/x.py: uncovered functions rose from 1 (2 of 3 covered) to "
+                     "2 (2 of 4 covered)"], rc=1)
+
+    def test_a_ratchet_failure_refuses_naming_the_module_and_both_figures(self, repo, tmp_path):
+        r = _gate(repo, tmp_path, ratchet=self.FAILED)
+        assert r.returncode == 1 and "REFUSED at the coverage ratchet" in r.stdout
+        assert ("modules/x.py: uncovered functions rose from 1 (2 of 3 covered) to "
+                "2 (2 of 4 covered)") in r.stdout
+        assert "nmas-gate-ratchet.out" in r.stdout and _commits(repo) == 1
+
+    def test_a_ratchet_that_fails_before_judging_refuses_with_its_last_line(self, repo,
+                                                                            tmp_path):
+        r = _gate(repo, tmp_path, ratchet=_suite(["No data to combine"], rc=1))
+        assert r.returncode == 1 and "REFUSED at the coverage ratchet" in r.stdout
+        assert "before judging" in r.stdout and "No data to combine" in r.stdout
+        assert _commits(repo) == 1
+
+    def test_a_holding_ratchet_commits(self, repo, tmp_path):
+        r = _gate(repo, tmp_path)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "4b. the coverage ratchet holds" in r.stdout and _commits(repo) == 2
+
+    def test_it_runs_only_after_the_suite_passed(self, repo, tmp_path):
+        r = _gate(repo, tmp_path, suite=_suite(["1 failed, 11 passed in 3.1s"], rc=1),
+                  ratchet="touch ratchet-ran; " + _suite(["ok"]))
+        assert r.returncode == 1 and "REFUSED at the suite" in r.stdout
+        assert not (repo / "ratchet-ran").exists()
+
+    def test_an_earlier_runs_measurement_is_never_read(self, repo, tmp_path):
+        """Step 3's rule for the measurement: a shard that wrote nothing cannot be judged on
+        an earlier run's data file."""
+        gitdir = _git(repo, "rev-parse", "--absolute-git-dir")
+        stale = os.path.join(gitdir, "nmas-gate-coverage", ".coverage.a")
+        os.makedirs(os.path.dirname(stale))
+        open(stale, "w").close()
+        r = _gate(repo, tmp_path, ratchet=f"test ! -e {stale} && echo fresh")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_the_ratchet_is_cis_coverage_job(self):
+        """The default command is CI's: the four shards combined, then the report with --check
+        over the tier records (ci.yml's coverage job, read from the workflow)."""
+        import yaml
+        gate = _gate_module()
+        doc = yaml.safe_load(open(os.path.join(ROOT, ".github", "workflows", "ci.yml"),
+                                  encoding="utf-8"))
+        steps = doc["jobs"]["coverage"]["steps"]
+        combine = next(s["run"] for s in steps if s.get("name") == "Combine them")
+        report = " ".join(next(s["run"] for s in steps
+                               if s.get("name") == "The report and the ratchet").split())
+        assert "coverage combine --keep --data-file=.coverage" in combine
+        assert "coverage combine --keep --data-file={cov}/.coverage {files}" in gate.RATCHET
+        assert "scripts/nmas-coverage report --data .coverage --tiers tiers" in report
+        assert "--check" in report.split()
+        assert ("scripts/nmas-coverage report --data {cov}/.coverage --tiers {cov}/tiers --check"
+                in gate.RATCHET)
+        shard = gate.SUITE.format(py="P", shard="a", cov="D")
+        assert "COVERAGE_FILE=D/.coverage.a" in shard and "NMAS_TEST_TIERS=D/tiers" in shard
+
+
 def _gate_module():
     import importlib.machinery
     import importlib.util
@@ -161,10 +229,11 @@ def _ci_suite_args():
 #: tier with sys.monitoring and no per-test argument (the per-test measurement is the nightly
 #: coverage run's), so nothing: the gate runs CI's command argument for argument.
 CI_ONLY_ARGS = ()
-#: The coverage job's inputs (its data file, the tier records, the tier-labelled run phases:
-#: NMAS_COVERAGE_TIERS) and CI's own bound (2.5x ITS measured step, 1470 s); the gate reports no
-#: coverage, and its bound stays 740 s, derived for its own run.
-CI_ONLY_ENV = ("COVERAGE_FILE", "NMAS_TEST_TIERS", "NMAS_COVERAGE_TIERS", "NMAS_TEST_TIMEOUT")
+#: CI's own bound (2.5x ITS measured step, 1470 s; the gate's stays 740 s, derived for its own
+#: run), and the coverage job's two inputs whose VALUES are paths of CI's workspace: the gate
+#: sets both in its own folder (test_the_ratchet_is_cis_coverage_job). Since C808 the gate
+#: measures by tier as CI does (NMAS_COVERAGE_TIERS=1) and runs the ratchet (step 4b).
+CI_ONLY_ENV = ("COVERAGE_FILE", "NMAS_TEST_TIERS", "NMAS_TEST_TIMEOUT")
 
 
 def test_the_default_suite_is_cis_command():
@@ -203,7 +272,8 @@ def test_each_job_is_a_gate_command():
     assert "$(python scripts/nmas-shards ${{ matrix.shard }})" in tests["run"]
     assert "scripts/nmas-shards {shard})" in gate.SUITE
     for s in gate.SHARDS:
-        assert gate.SUITE.format(py="P", shard=s).endswith(f"$(P scripts/nmas-shards {s})")
+        assert gate.SUITE.format(py="P", shard=s, cov="D").endswith(
+            f"$(P scripts/nmas-shards {s})")
     once = [s for s in job["steps"] if s.get("if") == "matrix.shard == 'a'"]
     assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed"}
 
@@ -323,7 +393,8 @@ class TestNothingIsPushedOnARedCi:
     def _run(self, repo, tmp_path, ci, *extra):
         msg = tmp_path / "msg.txt"
         msg.write_text("Docs: two\n")
-        env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]), NMAS_GATE_CI_LOG=ci)
+        env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]), NMAS_GATE_CI_LOG=ci,
+                   NMAS_GATE_RATCHET=_suite(["Tests that assert nothing: 0"]))
         return subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
                                "--expect", "Docs:", "--push", *extra], capture_output=True,
                               text=True, env=env)
@@ -363,6 +434,7 @@ class TestNothingIsPushedOnARedCi:
         msg = tmp_path / "msg.txt"
         msg.write_text("Docs: two\n")
         env = dict(ENV, NMAS_GATE_SUITE=_suite(["12 passed in 1.00s"]),
+                   NMAS_GATE_RATCHET=_suite(["Tests that assert nothing: 0"]),
                    NMAS_GATE_CI_LOG="echo asked > " + str(tmp_path / "asked"))
         r = subprocess.run([sys.executable, GATE, "--repo", str(repo), "--message", str(msg),
                             "--expect", "Docs:"], capture_output=True, text=True, env=env)

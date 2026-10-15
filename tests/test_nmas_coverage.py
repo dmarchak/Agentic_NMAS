@@ -250,11 +250,11 @@ class TestTheRatchet:
         "routes/x.py": {"category": "support", "functions": 4, "covered_unit": 0}},
         "assertion_free": ["tests/test_a.py::test_old", "tests/test_a.py::test_new"]}
 
-    def test_a_drop_a_new_untested_module_and_a_new_assertion_free_test_fail(self):
+    def test_a_lost_test_a_new_untested_module_and_a_new_assertion_free_test_fail(self):
         baseline = {"modules": {"modules/a.py": {"functions": 6, "covered_unit": 4}},
                     "assertion_free": ["tests/test_a.py::test_old"]}
         assert C.ratchet(self.REPORT, baseline) == [
-            "modules/a.py: unit function coverage fell from 4 of 6 (66.7%) to 3 of 6 (50.0%)",
+            "modules/a.py: uncovered functions rose from 2 (4 of 6 covered) to 3 (3 of 6 covered)",
             "modules/new.py: a new automation module with no unit test (0 of 2 functions)",
             "tests/test_a.py::test_new: a new test that asserts nothing"]
 
@@ -262,6 +262,67 @@ class TestTheRatchet:
         baseline = C.baseline_of(self.REPORT)
         assert "routes/x.py" not in baseline["modules"]
         assert C.ratchet(self.REPORT, baseline) == []
+
+    # C808 (the operator's decision, 2026-10-15): the UNCOVERED count, never the percentage.
+
+    @staticmethod
+    def _module(covered, uncovered=()):
+        """A report's automation module from the names of its covered and uncovered
+        functions."""
+        fl = ([{"name": n, "covered_unit": True} for n in covered]
+              + [{"name": n, "covered_unit": False} for n in uncovered])
+        return {"modules": {"modules/drift_check.py": {
+            "category": "automation", "functions": len(fl),
+            "covered_unit": len(covered), "function_list": fl}}, "assertion_free": []}
+
+    def test_ci_812_removing_a_covered_function_passes(self):
+        """CI #812 on 48301a0a, the real case: the Drift tab's removal took `network_for`, a
+        covered function, out of modules/drift_check.py; 31 of 35 became 30 of 34, the
+        percentage fell (88.6% to 88.2%) and the old ratchet failed; nothing lost its test."""
+        baseline = {"modules": {"modules/drift_check.py": {"functions": 35,
+                                                           "covered_unit": 31}}}
+        report = {"modules": {"modules/drift_check.py": {
+            "category": "automation", "functions": 34, "covered_unit": 30}},
+            "assertion_free": []}
+        assert C.ratchet(report, baseline) == []
+
+    def test_ci_812_with_named_functions_passes_too(self):
+        """The same removal against a baseline that names its covered functions: the removed
+        one is gone from the module, so its absence from the covered set is no loss."""
+        covered = [f"f{i}" for i in range(30)]
+        uncovered = [f"u{i}" for i in range(4)]
+        baseline = C.baseline_of(self._module(covered + ["network_for"], uncovered))
+        assert (baseline["modules"]["modules/drift_check.py"]["functions"],
+                baseline["modules"]["modules/drift_check.py"]["covered_unit"]) == (35, 31)
+        assert C.ratchet(self._module(covered, uncovered), baseline) == []
+
+    def test_adding_an_untested_function_fails(self):
+        baseline = C.baseline_of(self._module(["a", "b"], ["c"]))
+        assert C.ratchet(self._module(["a", "b"], ["c", "d"]), baseline) == [
+            "modules/drift_check.py: uncovered functions rose from 1 (2 of 3 covered) to "
+            "2 (2 of 4 covered)"]
+
+    def test_a_covered_function_losing_its_test_fails_by_name_while_the_count_holds(self):
+        """The planted loss: `b` loses its test while `c` gains one, so the uncovered count
+        holds at 1 (and the percentage too); only the names can see it."""
+        baseline = C.baseline_of(self._module(["a", "b"], ["c"]))
+        assert baseline["modules"]["modules/drift_check.py"].get("covered") == ["a", "b"]
+        assert C.ratchet(self._module(["a", "c"], ["b"]), baseline) == [
+            "modules/drift_check.py: covered in the baseline, not covered now: b (the module: "
+            "1 (2 of 3 covered) then, 1 (2 of 3 covered) now)"]
+
+    def test_a_baseline_without_names_is_read_as_counts(self):
+        """The format before C808 (counts only) is still read: the count rule applies, and the
+        swap above, invisible to counts, passes there; the next `nmas-coverage baseline` adds
+        the names."""
+        old = {"modules": {"modules/drift_check.py": {"functions": 3, "covered_unit": 2}}}
+        assert C.ratchet(self._module(["a", "c"], ["b"]), old) == []
+        assert C.ratchet(self._module(["a"], ["b", "c"]), old) == [
+            "modules/drift_check.py: uncovered functions rose from 1 (2 of 3 covered) to "
+            "2 (1 of 3 covered)"]
+
+    def test_a_new_module_with_some_covered_passes(self):
+        assert C.ratchet(self._module(["a"], ["b", "c"]), {"modules": {}}) == []
 
 
 class TestTheAssertionCheck:
