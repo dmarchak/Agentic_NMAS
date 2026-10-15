@@ -149,6 +149,22 @@ def _socketio_server_sends_to_real_clients():
 
 
 @pytest.fixture(autouse=True)
+def _no_operation_outlives_its_test():
+    """After each test, no operation it started is still listed as running.
+
+    `modules.op_progress` keeps the operations without a device (a NetBox import's preview) in
+    a process-wide dict. A test that started one and never finished it left it running for every
+    later test in the process: night #7's clean run (2026-10-15, mutmut's second pytest session
+    in one process) failed test_in_flight_reads_every_network on "NetBox (Lab): previewed for
+    import", left by test_one_stepper. Cleared for every test, so no list of offending files is
+    kept."""
+    yield
+    progress = sys.modules.get("modules.op_progress")
+    if progress is not None:
+        progress._ops.clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_spawned_process_reaches_a_network(request, _fakes_live_under_pytests_temporary_tree):
     """A child that tried to reach a real endpoint fails the test that
     started it, by name: the child's own error is often swallowed by the

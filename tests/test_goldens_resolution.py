@@ -59,6 +59,51 @@ class TestTheLegacyHeaderScan:
         assert G._legacy_header_scan("192.0.2.1") is None
 
 
+class TestTheLegacyRename:
+    """`_migrate_golden_configs`: a legacy file named by address (`192_0_2_1.cfg`) is renamed
+    to its hostname from its header, once, and never after the repository's migration."""
+
+    @pytest.fixture
+    def store(self, legacy_dir, monkeypatch):
+        monkeypatch.setattr(G, "_nsot_migrated", lambda: False)
+        return legacy_dir
+
+    def test_an_address_named_file_takes_its_hostname(self, store):
+        _legacy(store, "192_0_2_1.cfg", "192.0.2.1", host="r1")
+        G._migrate_golden_configs()
+        assert sorted(os.listdir(store)) == ["r1.cfg"]
+        assert (store / "r1.cfg").read_text(encoding="utf-8").startswith("! Golden config — r1")
+
+    def test_the_hostname_is_made_a_safe_file_name(self, store):
+        _legacy(store, "192_0_2_2.cfg", "192.0.2.2", host="core.sw 1/a")
+        G._migrate_golden_configs()
+        assert sorted(os.listdir(store)) == ["core_sw_1_a.cfg"]
+
+    def test_an_existing_target_is_never_overwritten(self, store):
+        _legacy(store, "192_0_2_1.cfg", "192.0.2.1", host="r1", body="old\n")
+        (store / "r1.cfg").write_text("newer\n", encoding="utf-8")
+        G._migrate_golden_configs()
+        assert sorted(os.listdir(store)) == ["192_0_2_1.cfg", "r1.cfg"]
+        assert (store / "r1.cfg").read_text(encoding="utf-8") == "newer\n"
+
+    def test_only_address_named_files_with_a_readable_header_move(self, store, caplog):
+        _legacy(store, "r9.cfg", "192.0.2.9", host="r9")                  # not address-named
+        (store / "192_0_2_3.cfg").write_text("! no header here\n", encoding="utf-8")
+        (store / "192_0_2_4.cfg").mkdir()                                  # opening it raises
+        _legacy(store, "192_0_2_5.cfg", "192.0.2.5", host="r5")
+        with caplog.at_level(logging.WARNING, logger="modules.goldens"):
+            G._migrate_golden_configs()
+        assert sorted(os.listdir(store)) == ["192_0_2_3.cfg", "192_0_2_4.cfg", "r5.cfg",
+                                             "r9.cfg"]
+        assert any("192_0_2_4.cfg" in r.getMessage() for r in caplog.records)
+
+    def test_nothing_moves_once_the_repository_is_migrated(self, legacy_dir, monkeypatch):
+        monkeypatch.setattr(G, "_nsot_migrated", lambda: True)
+        _legacy(legacy_dir, "192_0_2_1.cfg", "192.0.2.1", host="r1")
+        G._migrate_golden_configs()
+        assert sorted(os.listdir(legacy_dir)) == ["192_0_2_1.cfg"]
+
+
 class TestTheIdentityForAnAddress:
     @pytest.fixture
     def inventory(self, monkeypatch):

@@ -339,3 +339,21 @@ class TestADirFdPathIsResolvedThroughItsDirectory:
         subprocess.run([sys.executable, "-c", f"import shutil; shutil.rmtree({str(tmp_path / 't')!r})"],
                        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), timeout=30)
         assert network_guard.spawn_guard().take() == []
+
+
+class TestNoOperationOutlivesItsTest:
+    """Night #7 (2026-10-15): an operation one test started and never finished was still
+    `op_progress.running()` in a later test of the same process. conftest clears the registry
+    after every test; the two tests below run in this order in one process (serially, as
+    mutmut's sessions do): the first leaves one running, the second must not see it."""
+
+    PID = "c792-left-running-0001"
+
+    def test_1_a_test_leaves_an_operation_running(self):
+        from modules import op_progress
+        assert op_progress.start(self.PID, "previewed for import", "NetBox (Left)")
+        assert [r["device"] for r in op_progress.running()] == ["NetBox (Left)"]
+
+    def test_2_the_next_test_sees_none_of_it(self):
+        from modules import op_progress
+        assert op_progress.get(self.PID) is None and op_progress.running() == []
