@@ -305,14 +305,6 @@ class TestStaleDevices:
         assert "still available" in msg        # artifacts are kept
 
 
-    def test_approval_executor_refuses(self, stale_list, monkeypatch):
-        from modules import approval_queue
-        monkeypatch.setattr("modules.config.get_current_list_name", lambda: stale_list)
-        result = approval_queue._execute({"id": "x", "action_type": "update_golden_config",
-                                          "device_ip": "203.0.113.9"})
-        assert "no longer in NetBox" in result["error"]
-
-
 class TestEndToEndDispatch:
     """The acceptance criterion: load_saved_devices serves a NetBox list
     transparently, and a local list is completely unaffected."""

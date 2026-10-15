@@ -89,8 +89,6 @@ class TestAnUnreadableQueue:
         before = open(path, "rb").read()
         with pytest.raises(StoreUnreadable):
             _add(Q)
-        got = Q.resolve("x", "approve", actor="a@example.com")
-        assert got["ok"] is False and got["unreadable"] and "could not be read" in got["error"]
         assert Q.mark_done("x", actor="a")["unreadable"] is True
         assert Q.withdraw("x", "a reason given", "test")["unreadable"] is True
         assert open(path, "rb").read() == before
@@ -108,30 +106,19 @@ class TestAnUnreadableQueue:
             in d["pending_approvals_error"]
 
 
-class TestResolve:
-    def test_an_item_added_while_it_executes_is_kept(self, queue, monkeypatch):
-        Q, path = queue
-        first = _add(Q, "r1")
+class TestNothingApprovesAndExecutes:
+    """C783: the approve-and-execute path left with the AI family; an item closes only by a
+    capture, a withdrawal or expiry, none of which acts on a device here."""
 
-        def execute_while_the_drift_run_adds(entry, actor=""):
-            _add(Q, "r9")                      # the drift run, meanwhile
-            return {"error": "the device did not answer"}
+    def test_the_queues_public_operations_add_read_and_close_only(self):
+        import inspect
 
-        monkeypatch.setattr(Q, "_execute", execute_while_the_drift_run_adds)
-        got = Q.resolve(first, "approve", actor="a@example.com")
-        assert got["ok"]
-        by_host = {e["device_hostname"]: e for e in json.load(open(path))}
-        assert set(by_host) == {"r1", "r9"}, "the item added meanwhile was overwritten"
-        assert by_host["r1"]["status"] == "pending"
-        assert by_host["r1"]["context"] == "Last attempt failed: the device did not answer"
-
-    def test_the_second_approver_is_told_it_is_decided(self, queue, monkeypatch):
-        Q, _path = queue
-        eid = _add(Q)
-        monkeypatch.setattr(Q, "_execute", lambda entry, actor="": {"ok": True})
-        assert Q.resolve(eid, "approve", actor="a@example.com")["ok"]
-        second = Q.resolve(eid, "reject", actor="b@example.com")
-        assert second == {"ok": False, "error": "Approval is already approved"}
+        from modules import approval_queue as Q
+        public = sorted(n for n, f in inspect.getmembers(Q, inspect.isfunction)
+                        if f.__module__ == Q.__name__ and not n.startswith("_"))
+        assert public == ["add_approval", "get_all", "get_pending", "get_pending_count",
+                          "mark_done", "read_list", "read_pending", "supersede_drift",
+                          "withdraw"]
 
 
 class TestTheWrite:

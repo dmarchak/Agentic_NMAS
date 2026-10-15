@@ -1,13 +1,12 @@
 """approval_queue.py
 
-Human-in-the-loop approval queue for AI-proposed network changes.
+The drift check's queue: an item per drifted device, waiting for a person.
 
-When the AI agent wants to perform a potentially destructive action (e.g.,
-updating a golden config baseline or reverting a device), it submits an entry
-here instead of acting immediately.  The user reviews and approves or rejects
-from the UI; approved entries are executed at that point by the backend.
-Entries auto-expire after 48 hours and are stored per device-list at
-data/lists/{slug}/approval_queue.json.
+Nothing here acts on a device or a golden. An item closes when its device is captured through
+the confirmed capture operation (`mark_done`), when it is withdrawn with a reason (`withdraw`,
+`supersede_drift`), or when it expires after 48 hours. The approve-and-execute path left with
+the AI family (D15, 2026-10-14; its executors were removed by C783). Entries are stored per
+device list at data/lists/{slug}/approval_queue.json.
 """
 
 import json
@@ -42,8 +41,8 @@ def _queue_path(list_name: str = "") -> str:
 # The store's concurrency (CONCURRENCY_AUDIT R4, 2026-10-02). It truncated in place with no
 # lock, read an unreadable file as an empty queue, and its READS wrote it: the main page polls
 # the queue from every tab every 30 s, so a torn read followed by that save erased the queue,
-# and `resolve()` saved a stale list twice around its execution, overwriting whatever the
-# drift run (up to six threads) added in between. Now every read-modify-write holds ONE
+# and the approve path (removed, C783) saved a stale list twice around its execution,
+# overwriting whatever the drift run (up to six threads) added in between. Now every read-modify-write holds ONE
 # cross-process lock (`filestore.PathLock`), writes replace the file atomically, an
 # unreadable queue refuses every write (kept as `.corrupt-<ts>`) and is its own answer to a
 # read, and reads write nothing (expiry applies in memory; a write persists it).
@@ -115,23 +114,6 @@ def _expire_old(entries: list) -> list:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-
-#: Action types whose execution **ends in a confirmation** rather than in a
-#: result — the operator is shown a freshly computed program and confirms it
-#: under the normal hash discipline.
-#:
-#: These must never be bulk-approved. "Approve all" exists to clear a queue of
-#: decided outcomes; looping a confirmation through it would either
-#: auto-confirm programs nobody was shown — which is precisely what the confirm
-#: hash exists to prevent — or stack N modal dialogs on one click. Skipping and
-#: saying so is the only honest third option.
-CONFIRM_ENDING_ACTIONS = ("revert_to_golden", "update_golden_config")
-
-
-def is_confirm_ending(entry: dict) -> bool:
-    """Does approving this entry end in a confirmation the operator must give?"""
-    return entry.get("action_type", "") in CONFIRM_ENDING_ACTIONS
-
 
 def add_approval(
     action_type:  str,
@@ -239,97 +221,8 @@ def get_pending_count(list_name: str = "") -> int:
     return len(get_pending(list_name))
 
 
-def resolve(entry_id: str, action: str, actor: str = "") -> dict:
-    """An unreadable queue is a refusal naming it (`unreadable`), never an
-    empty queue and never a raise at the route (CONCURRENCY_AUDIT R4)."""
-    from modules.filestore import StoreUnreadable
-    try:
-        return _resolve_unguarded(entry_id=entry_id, action=action, actor=actor)
-    except StoreUnreadable as exc:
-        return {"ok": False, "error": str(exc), "unreadable": True}
-
-
-def _resolve_unguarded(entry_id: str, action: str, actor: str = "") -> dict:
-    """
-    Resolve an approval entry.
-
-    action: 'approve' | 'reject'
-
-    If approved, executes the action immediately and returns the result.
-    Returns {"ok": True, "entry": {...}, "execution": {...}}
-    """
-    # Compare-and-set under the lock: two approvers at once, the second is told it is
-    # already decided, and the save writes the queue as it is NOW, never a stale copy.
-    with _lock():
-        entries = _expire_old(_load_queue())
-        entry   = next((e for e in entries if e["id"] == entry_id), None)
-        if not entry:
-            return {"ok": False, "error": f"Approval {entry_id!r} not found"}
-        if entry["status"] != "pending":
-            return {"ok": False, "error": f"Approval is already {entry['status']}"}
-
-        entry["status"]      = "approved" if action == "approve" else "rejected"
-        entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        # WHO decided, from the route's verified identity (C81). The executor
-        # attributes what it commits to this person.
-        entry["resolved_by"] = actor
-        _save_queue(entries)
-        entry = dict(entry)
-
-    execution = {}
-    if action == "approve":
-        execution = _execute(entry, actor=actor)
-
-        # A confirm-ending action is not finished by approving it. Approving
-        # opens the preview; the work happens when the operator confirms the
-        # program. Marking it approved here would leave the queue claiming a
-        # change was made that nobody has sent yet — and would hide the item
-        # from the operator who still has to act on it.
-        if execution.get("needs_confirmation"):
-            entry = _update_after(entry_id, entry["status"], {
-                "status": "pending", "resolved_at": None,
-                "context": ("Awaiting confirmation: the command list is computed fresh and "
-                            "must be confirmed before anything is sent.")}) or entry
-            log.info("approval_queue: %s handed to its confirmed operation (%s)",
-                     entry.get("device_hostname", entry["id"]),
-                     "capture" if execution.get("capture") else "restore")
-            return {"ok": True, "entry": entry, "execution": execution,
-                    "needs_confirmation": True}
-
-        # If execution failed, revert the entry to pending so it can be retried.
-        # A silent "approved" with a failed execution would let the drift check
-        # generate the same approval again on the next restart.
-        if execution.get("error"):
-            entry = _update_after(entry_id, entry["status"], {
-                "status": "pending", "resolved_at": None,
-                "context": f"Last attempt failed: {execution['error']}"}) or entry
-            log.warning(
-                "approval_queue: execution failed for %s — reverted to pending: %s",
-                entry.get("device_hostname", entry["id"]), execution["error"],
-            )
-
-    return {"ok": True, "entry": entry, "execution": execution}
-
-
-def _update_after(entry_id: str, expected_status: str, fields: dict):
-    """After an execution that ran OUTSIDE the lock: re-read the queue under it and update
-    ONE entry, only if it still has the status this resolve gave it. Everything else in
-    the queue (an item the drift run added meanwhile) is kept as it is now. Returns the
-    entry, or None when it moved (said in the log, never overwritten)."""
-    with _lock():
-        entries = _load_queue()
-        entry = next((e for e in entries if e.get("id") == entry_id), None)
-        if entry is None or entry.get("status") != expected_status:
-            log.warning("approval_queue: [%s] moved while it executed (now %s); left as "
-                        "it is", entry_id, (entry or {}).get("status", "gone"))
-            return None
-        entry.update(fields)
-        _save_queue(entries)
-        return dict(entry)
-
-
 # ---------------------------------------------------------------------------
-# Action executors — called when user approves
+# Closing an item: a capture, a withdrawal
 # ---------------------------------------------------------------------------
 
 def mark_done(entry_id: str, note: str = "", actor: str = "") -> dict:
@@ -345,11 +238,10 @@ def mark_done(entry_id: str, note: str = "", actor: str = "") -> dict:
 def _mark_done_unguarded(entry_id: str, note: str = "", actor: str = "") -> dict:
     """Close an item whose work completed elsewhere.
 
-    A confirm-ending item is finished by the restore or capture it handed off
-    to, not by
-    ``resolve()``. Without this the item stays pending for ever and the
-    operator learns to clear the queue by rejecting things — which is the habit
-    that makes an approval queue worthless.
+    An item is finished by the capture or restore that did its work. Without
+    this the item stays pending for ever and the operator learns to clear the
+    queue by dismissing things — which is the habit that makes a queue
+    worthless.
     """
     with _lock():
         entries = _expire_old(_load_queue())
@@ -362,7 +254,7 @@ def _mark_done_unguarded(entry_id: str, note: str = "", actor: str = "") -> dict
         entry["status"] = "approved"
         entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         # WHO confirmed the operation that finished it (C326: an item closed here
-        # recorded nobody, unlike one resolve() closes).
+        # once recorded nobody).
         entry["resolved_by"] = actor
         entry["context"] = note or "Completed via its confirmed operation"
         _save_queue(entries)
@@ -434,101 +326,3 @@ def supersede_drift(hostnames, reason: str, by: str, list_name: str = "",
             if withdraw(e["id"], reason, by, list_name).get("ok"):
                 done.append(e["id"])
     return done
-
-
-def _execute(entry: dict, actor: str = "") -> dict:
-    """Dispatch to the correct executor based on action_type."""
-    atype = entry.get("action_type", "")
-
-    # A device that has disappeared from NetBox is inert: its artifacts stay
-    # readable, but nothing may act on it. See modules/inventory.is_stale.
-    device_ip = entry.get("device_ip", "")
-    try:
-        from modules.inventory import is_stale, stale_message
-        if device_ip and is_stale(device_ip):
-            log.info("approval_queue: refusing [%s] — %s is stale", entry.get("id"), device_ip)
-            return {"error": stale_message(device_ip)}
-    except ImportError:
-        pass
-
-    try:
-        if atype == "update_golden_config":
-            return _exec_update_golden(entry, actor=actor)
-        elif atype == "revert_to_golden":
-            return _exec_revert_golden(entry)
-        else:
-            return {"error": f"Unknown action type: {atype}"}
-    except Exception as exc:
-        log.exception("approval_queue: execution error for [%s]: %s", entry["id"], exc)
-        return {"error": str(exc)}
-
-
-def _exec_update_golden(entry: dict, actor: str = "") -> dict:
-    """Hand off to the capture operation. Reads nothing, records nothing.
-
-    A drift item's "make the running config the golden" IS a capture of one
-    device, and the capture operation already implements it: the device is
-    read now, the diff against its golden and its departure from committed
-    intent are previewed, the confirm is bound to the capture's hash, the
-    device is held while it is recorded, and the commit names the verified
-    person (`Source: capture`).
-
-    This executor read the device and committed with NO preview, one click
-    per item: a second capture path inside the queue, and the least guarded
-    one, since drift queues an item for every drifted device (minimalism,
-    NSOT_STAGE7_PLAN section 6a; register C105). Its history: it committed
-    as `ai-agent` until C81, and required an approving person after.
-
-    The queued diff is what the drift check saw, when it saw it: context,
-    never an input, as for a revert.
-    """
-    hostname = entry.get("device_hostname") or entry.get("device_ip", "")
-    if not hostname:
-        return {"error": "No device named in the approval item"}
-    return {
-        "needs_confirmation": True,
-        "capture": {"devices": [hostname],
-                    "approvals": {hostname: [entry.get("id", "")]}},
-        "advisory_diff": entry.get("diff", ""),
-        "message": (f"Opening the capture preview for {hostname}: its running config "
-                    "is read NOW and recorded only when you confirm it."),
-    }
-
-
-def _exec_revert_golden(entry: dict) -> dict:
-    """Hand off to the confirmed restore path. Sends nothing.
-
-    A single-device ``revert_to_golden`` **is** a Mode A re-apply of that
-    device's golden at HEAD, and the restore path already implements it with
-    the confirm hash, the ASCII guard, provenance, ``error_pattern``, failure
-    capture, rollback and the circuit breaker.
-
-    This executor used to parse the stored diff and push the result straight at
-    a device: every ``-`` line verbatim, every ``+`` line as ``no <command>``.
-    No confirm hash, no mask check, no sendability check, no failure capture,
-    and unbounded negation — which is precisely what
-    ``assert_rollback_provenance()`` exists to bound.
-
-    **The queued diff never reaches a device.** It was computed when the drift
-    was noticed, which is not when the operator is looking, and a program the
-    approver never read is what the confirm hash exists to prevent. It is
-    returned as *advisory context* — what the agent saw — beside a program
-    computed now, from the device as it is now.
-    """
-    hostname = entry.get("device_hostname") or entry.get("device_ip", "")
-    return {
-        "needs_confirmation": True,
-        "restore": {"ref": "HEAD", "devices": [hostname],
-                    "approval_id": entry.get("id", "")},
-        # What the agent saw, when it saw it. Context for the reader, never an
-        # input to anything that runs.
-        "advisory_diff": entry.get("diff", ""),
-        "advisory_note": (
-            "This diff was captured when the drift was detected. The program "
-            "you confirm is computed fresh from the device's current state — "
-            "the two may differ, and the fresh one is what is sent."),
-        "message": (
-            f"Re-applying {hostname}'s golden config needs your confirmation. "
-            "The exact command list is computed now and shown before anything "
-            "is sent."),
-    }

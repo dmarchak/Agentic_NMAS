@@ -115,26 +115,6 @@ def open_secure(path: str, mode: str = "w", **kwargs):
     return handle
 
 
-def set_env_line(path: str, name: str, value: str) -> None:
-    """Set ``name=value`` in the env file at *path*, keeping every other line.
-
-    Locked across processes from its read to its write, and replaced whole (CONCURRENCY_AUDIT
-    R17): an unlocked truncate let two writers lose each other's line, and a reader mid-write
-    saw none. Owner-only: `.env` held the AI key in PLAINTEXT by design until D15 (docs/SECRETS.md), so
-    its mode is all that protects it; the replacement is created 0600."""
-    from modules.filestore import PathLock, write_atomic
-
-    with PathLock(path):
-        lines = []
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as fh:
-                lines = fh.readlines()
-        kept = [line for line in lines if not line.startswith(f"{name}=")]
-        if kept and not kept[-1].endswith("\n"):
-            kept[-1] += "\n"
-        write_atomic(path, "".join(kept) + f"{name}={value}\n")
-
-
 class KeyRefused(RuntimeError):
     """The application key is absent where a new one would orphan what the old one sealed."""
 

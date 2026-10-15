@@ -470,47 +470,10 @@ class TestRestoreUsesTheListItWasGiven:
         assert offending == [], offending
 
 
-class TestRevertHandsOffToTheConfirmedPath:
-    """`revert_to_golden` pushed a stored diff straight at a device.
-
-    Every `-` line applied verbatim, every `+` line turned into `no <command>` —
-    unbounded negation, with no confirm hash, no `assert_no_mask()`, no
-    sendability check, no failure capture and no rollback.
-    The restore route also rejected every pending revert on each use (removed
-    with C326); approving one through the normal queue UI reached the executor.
-    """
-
-    ENTRY = {"id": "abc123", "action_type": "revert_to_golden",
-             "device_ip": "203.0.113.1", "device_hostname": "R1",
-             "diff": "--- golden\n+++ running\n-ip route 0.0.0.0 0.0.0.0 1.1.1.1\n"
-                     "+ip route 0.0.0.0 0.0.0.0 2.2.2.2\n"}
-
-    def test_it_hands_off_instead_of_pushing(self):
-        from modules import approval_queue
-
-        result = approval_queue._exec_revert_golden(dict(self.ENTRY))
-        assert result["needs_confirmation"] is True
-        assert "error" not in result
-
-    def test_it_points_at_this_device_at_HEAD(self):
-        """A single-device revert IS a Mode A re-apply of its HEAD golden."""
-        from modules import approval_queue
-
-        result = approval_queue._exec_revert_golden(dict(self.ENTRY))
-        assert result["restore"] == {"ref": "HEAD", "devices": ["R1"],
-                                     "approval_id": "abc123"}
-        assert "R1" in result["message"]
-
-    def test_it_opens_no_connection(self, monkeypatch):
-        """The decisive property: nothing reaches a device."""
-        from modules import approval_queue
-
-        def _boom(*a, **k):
-            raise AssertionError("the retired executor opened a connection")
-        monkeypatch.setattr("modules.connection.get_persistent_connection", _boom)
-        monkeypatch.setattr("modules.connection.with_temp_connection", _boom)
-
-        approval_queue._exec_revert_golden(dict(self.ENTRY))
+class TestTheQueueBuildsNoProgram:
+    """`revert_to_golden` once pushed a stored diff straight at a device: every `-` line
+    verbatim, every `+` line as `no <command>`, with no confirm hash. Its executor became a
+    hand-off to the restore path, and left entirely with the AI family (C783)."""
 
     def test_no_negation_is_generated_anywhere_in_the_module(self):
         """The `no <line>` construction is gone, not merely unreached."""
@@ -524,63 +487,10 @@ class TestRevertHandsOffToTheConfirmedPath:
             "may generate 'no' is deploy.rollback_commands(), bounded by "
             "assert_rollback_provenance()")
 
-    def test_the_update_action_hands_off_to_capture_and_saves_nothing(self, monkeypatch):
-        """C105: a drift item's "record the running config" is a CAPTURE, so
-        approving it hands off to the capture operation, which reads the
-        device now and records it only when confirmed. It used to read and
-        commit with no preview (and as `ai-agent` until C81)."""
-        from modules import approval_queue
-
-        called = {}
-        monkeypatch.setattr("modules.nsot.repo.save_golden",
-                            lambda *a, **k: called.setdefault("saved", True))
-        monkeypatch.setattr("modules.connection.with_temp_connection",
-                            lambda *a, **k: called.setdefault("read", True))
-        monkeypatch.setattr("modules.connection.get_persistent_connection",
-                            lambda *a, **k: called.setdefault("read", True))
-        result = approval_queue._exec_update_golden(
-            {"id": "q1", "device_ip": "203.0.113.1", "device_hostname": "R1"},
-            actor="ops@example.com")
-        assert called == {}, "approving read or saved: it must only hand off"
-        assert result["needs_confirmation"] is True
-        assert result["capture"] == {"devices": ["R1"], "approvals": {"R1": ["q1"]}}
-
-    def test_an_approval_with_nobody_behind_it_saves_nothing(self, monkeypatch):
-        """Nothing is saved at approve, with or without an actor: the capture
-        apply records, and its gate requires a person (C81's rule moved
-        there)."""
-        from modules import approval_queue
-
-        called = {}
-        monkeypatch.setattr("modules.nsot.repo.save_golden",
-                            lambda *a, **k: called.setdefault("saved", True))
-        result = approval_queue._exec_update_golden(
-            {"device_ip": "203.0.113.1", "device_hostname": "R1"})
-        assert "saved" not in called and result["needs_confirmation"] is True
-
-
-class TestApproveAllHandsOffToOneCapture:
-    """C105: Approve-all approves nothing by itself. Every queued kind ends in
-    a confirmation: the drift items' devices go to ONE capture preview, each
-    confirmed by its hash, and a revert (a restore of one device) is named for
-    individual review. Nothing is resolved by the click."""
-
-    def test_both_kinds_are_confirm_ending(self):
-        from modules import approval_queue
-
-        assert approval_queue.is_confirm_ending({"action_type": "revert_to_golden"})
-        assert approval_queue.is_confirm_ending({"action_type": "update_golden_config"})
-
 
 class TestTheQueuedDiffNeverReachesADevice:
-    """D2 part 1: approving opens the preview; the program is computed fresh.
-
-    The queued diff was computed when the drift was noticed, which is not when
-    the operator is looking. A program the approver never read is exactly what
-    the confirm hash exists to prevent — so the stored diff is advisory context
-    ("what the agent saw") beside a program computed now, from the device as it
-    is now.
-    """
+    """D2 part 1: a queued item closes when its device is restored or captured through the
+    confirmed path; the queued diff, computed when the drift was noticed, is never an input."""
 
     ENTRY = {"id": "q1", "action_type": "revert_to_golden", "status": "pending",
              "resolved_at": None,
@@ -595,8 +505,7 @@ class TestTheQueuedDiffNeverReachesADevice:
         path = tmp_path / "approval_queue.json"
         monkeypatch.setattr(approval_queue, "_queue_path", lambda *a: str(path))
         saved = {}
-        # A store that keeps what was saved: `resolve` re-reads it under the lock after
-        # its execution (CONCURRENCY_AUDIT R4), as the real one does.
+        # A store that keeps what was saved, so a second read sees the first write.
         monkeypatch.setattr(approval_queue, "_load_queue",
                             lambda *a: [dict(e) for e in saved.get("entries",
                                                                    [dict(self.ENTRY)])])
@@ -605,35 +514,6 @@ class TestTheQueuedDiffNeverReachesADevice:
                                 {"entries": [dict(e) for e in entries]}))
         monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
         return approval_queue, saved
-
-    def test_the_advisory_diff_is_carried_but_labelled(self):
-        from modules import approval_queue
-
-        result = approval_queue._exec_revert_golden(dict(self.ENTRY))
-        assert result["advisory_diff"] == self.ENTRY["diff"]
-        assert "computed fresh" in result["advisory_note"]
-        assert "may differ" in result["advisory_note"]
-
-    def test_approving_does_not_mark_the_item_done(self, queue):
-        """The work has not happened — it is awaiting a confirmation."""
-        approval_queue, saved = queue
-
-        result = approval_queue.resolve("q1", "approve")
-
-        assert result["needs_confirmation"] is True
-        assert result["entry"]["status"] == "pending"
-        assert result["entry"]["resolved_at"] is None
-        assert "Awaiting confirmation" in result["entry"]["context"]
-
-    def test_approving_opens_no_connection(self, queue, monkeypatch):
-        approval_queue, _saved = queue
-
-        def _boom(*a, **k):
-            raise AssertionError("approving opened a connection")
-        monkeypatch.setattr("modules.connection.get_persistent_connection", _boom)
-        monkeypatch.setattr("modules.connection.with_temp_connection", _boom)
-
-        approval_queue.resolve("q1", "approve")
 
     def test_mark_done_closes_it(self, queue):
         approval_queue, _saved = queue

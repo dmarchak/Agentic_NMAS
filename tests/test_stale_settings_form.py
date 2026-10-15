@@ -4,16 +4,13 @@ The Settings form sent every field as it was loaded. A tab opened before another
 NetBox writes off turned them back on when it saved an unrelated field. Now each settings form
 (the modal, every integration card, the general block) sends only the fields the person
 changed, with the values it loaded. Under the settings lock, a changed field whose stored value
-moved since is refused, naming both values; the rest are saved. The `.env` write is locked and
-replaced whole.
+moved since is refused, naming both values; the rest are saved. (The `.env` writer and its
+test left with the AI key it saved: C783.)
 
-Driven through the real routes on a temporary settings file, and two real processes for
-`.env`; the shipped clients are checked by lifting their functions."""
+Driven through the real routes on a temporary settings file; the shipped clients are checked by
+lifting their functions."""
 
 import os
-import stat
-import subprocess
-import sys
 
 import pytest
 
@@ -126,30 +123,6 @@ class TestTheGeneralBlock:
         save = lift(js, "saveGeneralIntegrationSettings")
         assert "payload.loaded = loaded;" in save
         assert "_intLoaded.general = d.settings;" in lift(js, "loadGeneralIntegrationSettings")
-
-
-ENV_WRITER = '''
-import sys
-sys.path.insert(0, {root!r})
-from modules.config import set_env_line
-for i in range(60):
-    set_env_line(sys.argv[1], sys.argv[2], str(i))
-'''
-
-
-class TestTheEnvFile:
-    def test_two_processes_writing_different_keys_lose_neither(self, tmp_path):
-        path = tmp_path / ".env"
-        path.write_text("KEPT=1\n", encoding="utf-8")
-        procs = [subprocess.Popen([sys.executable, "-c", ENV_WRITER.format(root=ROOT),
-                                   str(path), name], stderr=subprocess.PIPE, text=True)
-                 for name in ("A_KEY", "B_KEY")]
-        for p in procs:
-            _o, err = p.communicate(timeout=120)
-            assert p.returncode == 0, err[-500:]
-        lines = sorted(path.read_text(encoding="utf-8").splitlines())
-        assert lines == ["A_KEY=59", "B_KEY=59", "KEPT=1"], lines
-        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
 
 SETTINGS_JS = None
