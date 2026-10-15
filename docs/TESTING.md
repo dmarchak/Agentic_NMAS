@@ -240,7 +240,13 @@ mutants are all killed.
 
 **The nightly run** (`.github/workflows/mutation-nightly.yml`, by hand from the Actions tab or
 `scripts/nmas-ci-dispatch`; never on a push, and no schedule while Phase 7 changes the code
-daily: weekly, outside the backup window, once the operator says Phase 7 has settled; C835). Coverage says a test RAN a line; mutation testing says
+daily: weekly, outside the backup window, once the operator says Phase 7 has settled; C835).
+
+**PARKED until Phase 7 closes (the operator, 2026-10-15, "Phase 7 first").** Once the
+coverage-map freshness commit lands (the last mutation work), nothing more: no night is
+dispatched, nothing in the mutation harness is debugged, and the schedule stays off. A mutation
+finding is registered, not worked, unless it breaks CI for everything else. The harness, the
+canary, the record and the debt list stay as they are, so the loop resumes where it stopped. Coverage says a test RAN a line; mutation testing says
 whether a test would NOTICE the line being wrong, so a test that calls a function and checks
 nothing scores 100% coverage and 0% here. Each night:
 

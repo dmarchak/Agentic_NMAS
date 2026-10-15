@@ -1,5 +1,22 @@
 # End of session: where Phase 7 stands
 
+## EVENING, 2026-10-15: PRIORITY RESET, Phase 7 first (the operator)
+
+- **Mutation testing is PARKED** once the coverage-map freshness commit lands (the last
+  mutation work; its agent is building it). Until Phase 7 closes: no night dispatched, no
+  mutation debugging, the schedule off; a mutation finding is registered, not worked, unless it
+  breaks CI for everything else (docs/TESTING.md, "Mutation testing"). C796 and C834 stay open,
+  built, their first night on the runner waiting with the rest. Coverage nightly #4 (38807850080,
+  af2a439a) was dispatched before the reset.
+- **Lab 7 is down to the fact sheet,** final by Friday evening (re-measure only what changed),
+  and nothing else unless the video script needs it.
+- **Phase 7's finish line:** a burn-down of every item between today and cutover
+  (docs/PHASE7_BURNDOWN.md, the operator's items surfaced early and batched), and the register
+  rows that do NOT block cutover declared out of Phase 7. Then the burn-down is worked in order;
+  each report shows it with items checked off.
+- **New findings:** registered; fixed inside Phase 7 only if one blocks cutover or is a security
+  issue (B).
+
 ## OVERNIGHT, 2026-10-15 (04:00 to about 11:15 UTC; 22:00 to 05:15 UTC−6): C791, four of today's page families removed, boards F3 and E3 built, nights #8 to #11, C807 to C831
 
 **The host runs cd0d499a, board E3** (deployed 11:02:38 UTC after the hold check, CI #819),
