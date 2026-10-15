@@ -68,7 +68,9 @@ EXPECTED = {"phase3-step1.sh", "phase3-step2.sh", "c584-loki-writer.sh",
             # IBN decision 7: severity on syslog lines, a stable trap job and trap_oid at ingest.
             "ibn7-severity-trap-label.sh",
             # C789: snmptrapd started at boot, so no trap is the one that activates it.
-            "c789-snmptrapd-at-boot.sh"}
+            "c789-snmptrapd-at-boot.sh",
+            # C794: Loki's own detected_level off; severity the one level (2026-10-15).
+            "c794-loki-detected-level-off.sh"}
 # minio-4d-4e.sh (pip into the app's interpreter) was removed on 2026-10-08: the operator
 # decided on boto3, the host's apt package, so nothing is installed and the lock is
 # regenerated from the host, read-only, once the release importing it is deployed.
