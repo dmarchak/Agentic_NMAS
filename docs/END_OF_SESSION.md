@@ -74,8 +74,10 @@ passed in 777 s, "404 known, 5 new", all in F3's role filter (C833, fixed: three
 5, three equivalents listed, the report then "0 new"). It reached **15 of 8,277 mutants** in its
 budget: the plan has grown to 97 functions (C834, a question below). **Run #14 (38745086321) runs on the fix,
 8ed381ea**, dispatched 13:43 UTC after CI #821; the late 08:17 schedule had started #13 at 13:25
-on 2948c8a0, before the fix, and was cancelled at 13:44 so #14 could run (C835). Its copy run
-may near the 850 s bound again; if it passes it, the night now says so. The speed change (child tests only where the import closure reaches) is
+on 2948c8a0, before the fix, and was cancelled at 13:44 so #14 could run (C835). **#14 failed in
+setup (14:19 UTC, 33.1 min): its copy run passed the 850 s bound**, said as the bound (C832's
+handler held). The copy run has grown 299, 340, 777 s and past 850 s with the plan: **no further
+night is dispatched until C834 is decided** (question 1). The speed change (child tests only where the import closure reaches) is
 NOT built: measured, the closure holds every planned function (C796, a question below).
 
 **Waiting on the operator** (each on the NMAS host, as their own user, from
@@ -125,7 +127,7 @@ NOT built: measured, the closure holds every planned function (C796, a question 
    an older commit and holds the slot), or turn it off until the loop ends? Recommended: off
    until C834 is decided.
 
-**Next:** run #14 read by the loop's rules,
+**Next:** C834's decision, then the next night,
 and the remaining today's-pages removals (commits 4, 5, 7, 8, 9 wait on the walks and questions
 above).
 
