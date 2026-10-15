@@ -22,6 +22,10 @@ def register_blueprints(app) -> list:
     """
     registered = []
 
+    # A run id's shape, before any blueprint's rules are built (C785): `<run_id:run_id>`.
+    from modules.nsot import reads
+    app.url_map.converters["run_id"] = reads.url_converter()
+
     # The gate table's hook goes on first, and is NOT inside the try below:
     # an app that started without it would serve every route ungated, which
     # is the failure P.3 exists to end. A crash here is the right outcome.

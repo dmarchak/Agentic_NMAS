@@ -243,8 +243,10 @@ def _gated_requests(app):
         values = {}
         for arg in rule.arguments:
             conv = rule._converters.get(arg)
-            values[arg] = (1 if isinstance(conv, IntegerConverter)
-                           else "p/q" if isinstance(conv, PathConverter) else "x")
+            # A converter with a shape of its own names a well-formed example (C785's run id).
+            values[arg] = (getattr(conv, "example", None)
+                           or (1 if isinstance(conv, IntegerConverter)
+                               else "p/q" if isinstance(conv, PathConverter) else "x"))
         url = app.url_map.bind("localhost").build(rule.endpoint, values,
                                                   append_unknown=False)
         for method in sorted(set(rule.methods or ()) - SAFE_METHODS):

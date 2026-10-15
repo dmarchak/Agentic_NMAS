@@ -523,9 +523,10 @@ class TestPlatformsAndRoles:
 
     def test_the_test_reads_one_device_with_the_new_driver(self, networks, monkeypatch):
         from modules.nsot import reads
+        run = "20261015T000000000000Z-" + "a" * 32       # a run id's real shape (C785)
         asked = []
         monkeypatch.setattr(reads, "start", lambda net, hosts, cmds, actor, **kw: (
-            asked.append((net, hosts, cmds, kw.get("drivers"))) or {"job": "j1", "run": "r1"}))
+            asked.append((net, hosts, cmds, kw.get("drivers"))) or {"job": "j1", "run": run}))
         _r, html = _post(networks, "/v2/settings/installation/platforms/test",
                          {"target": "Branch|nb1|cisco_ios"})
         assert asked == [("Branch", ["nb1"], ["show version"], {"nb1": "cisco_ios"})]
@@ -535,7 +536,7 @@ class TestPlatformsAndRoles:
             "results": {"nb1": {"state": "answered", "took_s": 2.1, "answers": [
                 {"command": "show version", "state": "answered",
                  "answer": "Cisco IOS XE Software, Version 17.9\nline 2"}]}}})
-        _r, html = _get(networks, "/v2/settings/installation/platforms/test/Branch/r1")
+        _r, html = _get(networks, f"/v2/settings/installation/platforms/test/Branch/{run}")
         assert "passed" in html and "through <span class=\"mono\">cisco_ios</span>" in html
         assert "Version 17.9" in html
 

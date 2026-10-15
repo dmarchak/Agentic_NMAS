@@ -443,7 +443,7 @@ def platforms_test():
     return _fragment("v2/_install_platforms_test.html", t=dict(t, state="started"))
 
 
-@bp.route("/installation/platforms/test/<network>/<run_id>", methods=["GET"])
+@bp.route("/installation/platforms/test/<network>/<run_id:run_id>", methods=["GET"])
 def platforms_test_status(network, run_id):
     """The Test's answer, read from its run's record: a read."""
     from modules.nsot import reads

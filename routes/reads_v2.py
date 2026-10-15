@@ -188,7 +188,7 @@ def _result_ctx(name, run_id):
                              command=a.get("command", ""), against=a.get("against", ""))
 
 
-@bp.route("/show-commands/run/<run_id>", methods=["GET"])
+@bp.route("/show-commands/run/<run_id:run_id>", methods=["GET"])
 def show_commands_result(run_id):
     """A run's page (boards C and D): running with its progress, or its result."""
     from routes.v2 import _page
@@ -197,7 +197,7 @@ def show_commands_result(run_id):
                  r=_result_ctx(name, run_id))
 
 
-@bp.route("/show-commands/run/<run_id>/part", methods=["GET"])
+@bp.route("/show-commands/run/<run_id:run_id>/part", methods=["GET"])
 def show_commands_result_part(run_id):
     """The run's region alone: re-read on `reads` while running, and as its filters change."""
     name = _list()
@@ -252,7 +252,7 @@ def logging_path_run():
     return redirect(target)
 
 
-@bp.route("/show-commands/run/<run_id>/ignore", methods=["POST"])
+@bp.route("/show-commands/run/<run_id:run_id>/ignore", methods=["POST"])
 def show_commands_ignore(run_id):
     """Record the columns the person ticked to ignore when grouping one command's answers
     (board C2, C580), as the verified person, then draw the run's region again. Nothing is asked

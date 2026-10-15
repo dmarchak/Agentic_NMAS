@@ -186,8 +186,26 @@ def _dir(list_name: str) -> str:
     return os.path.join(config.get_list_data_dir(list_name), "reads")
 
 
+#: A run id's one shape: its start time to the millisecond, then 32 hex. The URL converter below
+#: is built from it, so a route never meets an id this module would refuse (C785).
+RUN_ID = r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}"
+
+
+def url_converter():
+    """A werkzeug converter for `<run_id:...>`: an id of any other shape matches no route, so a
+    hand-typed or stale URL answers 404 instead of raising in the view (C785)."""
+    from werkzeug.routing import BaseConverter
+
+    class RunIdConverter(BaseConverter):
+        regex = RUN_ID
+        #: A well-formed id naming no run, for a sweep that builds every rule's URL.
+        example = "20261014T" + "0" * 12 + "Z-" + "0" * 32
+
+    return RunIdConverter
+
+
 def _path(list_name: str, run_id: str) -> str:
-    if not re.fullmatch(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}", run_id or ""):
+    if not re.fullmatch(RUN_ID, run_id or ""):
         raise ValueError(f"not a run id: {run_id!r}")
     return os.path.join(_dir(list_name), f"{run_id}.json")
 
