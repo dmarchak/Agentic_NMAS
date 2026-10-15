@@ -224,7 +224,7 @@ After the last device, in this order:
    every inventory device was targeted and succeeded and every capture matches its committed
    intent. When no device succeeded, nothing is committed.
 2. **Publish.** Sent: the commit to the list's remote, by `git push` where a remote is set, and
-   to the S3 archive where one is configured. Recorded: the push's outcome, which the Remote
+   each changed golden, masked, to the S3 archive where one is configured. Recorded: the push's outcome, which the Remote
    card and Needs attention read. The post-commit hooks run in the background and never hold
    the commit; they also regenerate the Prometheus scrape targets from the changed goldens.
 3. **Write the receipts.** Recorded: one masked row per device, sent, failed or refused, in

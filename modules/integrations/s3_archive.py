@@ -10,6 +10,10 @@ places built a client their own way and none passed `s3_verify_tls` (C355).
 Mercury's key can list, read and write its bucket and never delete (M-2): nothing here calls a
 delete, and the Test's probe is overwritten in place.
 
+Nothing leaves the host unmasked (C730, C743): a golden only through `put_golden`, which masks
+it and names the masking on the object; a removed family's archive only through `put_archive`,
+which refuses one masking would still change. `put` refuses a key under ``goldens/``.
+
 **The library is boto3** (the operator's decision, 2026-10-08): the host runs Ubuntu's system
 Python, externally managed, where Ubuntu ships no minio package and `python3-boto3` 1.34.46 is
 already installed from apt. Pinned at the host's version through the lock: newer boto3 sends
@@ -41,8 +45,45 @@ TEST_STEPS = ("bucket", "put", "get", "stat")
 QUIET_LOGGERS = ("boto3", "botocore", "s3transfer")
 
 
+#: Where each golden's archive copy is written, under the prefix:
+#: ``goldens/<network>/<device>/<stamp>.masked.cfg`` (NSOT_PHASE4_MINIO, M-1).
+GOLDENS = "goldens"
+#: C730 (the operator's decision D6, 2026-10-15): a golden leaves the host MASKED, as on every
+#: outbound path. The repository keeps it verbatim (masking is outbound: docs/SECRETS.md); the
+#: archive held each device's communities and type-9 hashes verbatim until then. The marker is
+#: in the key, so a listing tells a masked copy from one written before (`<stamp>.cfg`), and in
+#: the object's metadata (`masking`), so a read of one object does too.
+GOLDEN_SUFFIX = ".masked.cfg"
+GOLDEN_MASKING = "redact_text"
+
+
 class Unavailable(RuntimeError):
     """No client could be built; the message says which of the three reasons."""
+
+
+class Unmaskable(RuntimeError):
+    """A golden was not archived: it could not be shown masked (the message says why, never a
+    value)."""
+
+
+def masked_golden(data: bytes, values: dict = None) -> bytes:
+    """*data*, a golden's committed bytes, masked by the masking every outbound path uses
+    (`redact.redact_text`: by position, and by every value this installation holds, resolved
+    once). Raises `Unmaskable` for bytes that are not UTF-8 text (they cannot be shown masked)
+    and for a result a second pass would still change: masking twice changes nothing (C743), so
+    a change says the first pass is not complete. What masking does not know is not masked
+    (C745's shapes): the archive is as masked as every other outbound path, no more."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise Unmaskable(f"not UTF-8 text (byte {exc.start}), so it cannot be shown "
+                         "masked") from None
+    values = redact.known_secret_values() if values is None else values
+    masked = redact.redact_text(text, values)
+    if redact.redact_text(masked, values) != masked:
+        raise Unmaskable("masking it a second time still changed it, so the first pass is "
+                         "not shown complete (C743)")
+    return masked.encode("utf-8")
 
 
 class Refused(RuntimeError):
@@ -123,11 +164,76 @@ class S3ArchiveIntegration(IntegrationClient):
             # MinIO serves buckets by path, never as a host name.
             config=Config(signature_version="s3v4", s3={"addressing_style": "path"}))
 
-    def put(self, key: str, data: bytes, metadata: dict = None, client=None) -> None:
-        """Write *data* at *key* (already under the prefix: `key()`). *metadata* names its
-        fields without boto3's ``x-amz-meta-`` prefix. Raises on failure."""
+    def _put_object(self, key: str, data: bytes, metadata: dict, client=None) -> None:
+        """The one call that writes an object; `put` and `put_golden` are its only callers
+        (C730, tests/test_s3_archive.py)."""
         (client or self.client()).put_object(Bucket=self.bucket, Key=key, Body=data,
                                              Metadata=dict(metadata or {}))
+
+    def put(self, key: str, data: bytes, metadata: dict = None, client=None) -> None:
+        """Write *data* at *key* (already under the prefix: `key()`). *metadata* names its
+        fields without boto3's ``x-amz-meta-`` prefix. Raises on failure. A key under
+        ``goldens/`` is refused: a golden is written only masked, by `put_golden` (C730)."""
+        bare = key.lstrip("/")
+        # Under the prefix, or at the bucket's root whatever the prefix (a key built without it).
+        for root in (self.key(GOLDENS), GOLDENS):
+            if bare == root or bare.startswith(root + "/"):
+                raise ValueError(f"refused: the key {key} is under {root}/, where a golden is "
+                                 "written only masked, by put_golden (C730)")
+        self._put_object(key, data, metadata, client)
+
+    def put_golden(self, network: str, device: str, stamp: str, data: bytes,
+                   metadata: dict = None, client=None) -> str:
+        """Write a golden's committed bytes *data*, MASKED (`masked_golden`), at
+        ``goldens/<network>/<device>/<stamp>.masked.cfg`` under the prefix, its metadata naming
+        the masking (``masking: redact_text``); the key written. The one path a golden reaches
+        the bucket by: there is no unmasked form of this call (C730). Raises `Unmaskable`
+        before anything is written, or the server's error."""
+        body = masked_golden(data)
+        key = self.key(GOLDENS, network, device, f"{stamp}{GOLDEN_SUFFIX}")
+        self._put_object(key, body, {**(metadata or {}), "masking": GOLDEN_MASKING}, client)
+        return key
+
+    def golden_census(self, client=None) -> dict:
+        """Read-only: every version of every object under ``goldens/``, each read and asked
+        whether Mercury's masking would still change it (C730's measurement, the operator's
+        host step `c730-golden-archive-census.sh`). Counts and keys, never a value:
+        ``{"versions", "current", "marked", "unmasked": {"<device folder>": n},
+        "marked_unmasked": [key], "not_text": [key], "unreadable": [key (why)]}``. The latest
+        version is read as the object (GetObject); an older one by its version id, which a key
+        without that right is refused, and each refusal is named, never counted as masked."""
+        c = client or self.client()
+        root = self.key(GOLDENS) + "/"
+        values = redact.known_secret_values()
+        out = {"versions": 0, "current": 0, "marked": 0, "unmasked": {},
+               "marked_unmasked": [], "not_text": [], "unreadable": []}
+        for page in c.get_paginator("list_object_versions").paginate(Bucket=self.bucket,
+                                                                     Prefix=root):
+            for v in page.get("Versions") or []:
+                key, latest = v["Key"], bool(v.get("IsLatest"))
+                out["versions"] += 1
+                out["current"] += latest
+                marked = key.endswith(GOLDEN_SUFFIX)
+                out["marked"] += marked
+                try:
+                    kw = {} if latest else {"VersionId": v.get("VersionId")}
+                    body = c.get_object(Bucket=self.bucket, Key=key, **kw)["Body"].read()
+                except Exception as exc:              # noqa: BLE001 (named, never masked)
+                    out["unreadable"].append(f"{key} ({type(exc).__name__})")
+                    continue
+                try:
+                    text = body.decode("utf-8")
+                except UnicodeDecodeError:
+                    out["not_text"].append(key)
+                    continue
+                if redact.redact_text(text, values) == text:
+                    continue
+                if marked:
+                    out["marked_unmasked"].append(key)
+                else:
+                    folder = key.rsplit("/", 1)[0]
+                    out["unmasked"][folder] = out["unmasked"].get(folder, 0) + 1
+        return out
 
     def put_archive(self, key: str, body: bytes, metadata: dict = None) -> dict:
         """Write the masked tarball *body* at *key*, the one path a removed family's archive

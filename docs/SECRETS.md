@@ -21,6 +21,7 @@ a claim, and this one was wrong.)
 | Device credentials, the pre-lists legacy file | `data/Devices.csv` | **encrypted** (raw Fernet fields), when it exists | the key + file mode. Nothing writes it since lists existed; declared so a leftover copy is checked |
 | **The B2 application key** (off-box NetBox dailies) | `~/.config/rclone/rclone.conf` | **plaintext** (rclone obscures, it does not encrypt) | file mode, and nothing else. The key has no `deleteFiles`, and whether it can HIDE is register B9 |
 | **Every imported device's golden (its credential lines) and SNMP communities** | NetBox, `local_context_data` on each device (`running_config`, `snmp.communities`), and so every P.2 NetBox backup | **plaintext**: measured 2026-09-27, all 10 devices, credential-slot lines unmasked | NetBox's own access control, and nothing else. Register C95 (a decision: mask on the way in, then re-import) |
+| **Each golden's archive copy** (C730) | Mercury's MinIO bucket, `goldens/<network>/<device>/<stamp>.masked.cfg` | **masked** (`redact.redact_text`) since the C730 release; the copies written before it, `<stamp>.cfg`, every version, hold each device's communities and type-9 hashes **plaintext** and stay until the operator decides (`scripts/host-steps/c730-golden-archive-census.sh` counts them) | the bucket's policy (Mercury's key reads and writes, never deletes) and MinIO's access control (C749) |
 | NetBox's `SECRET_KEY`, API token pepper, DB password | `~/netbox-docker/env/netbox.env`, `postgres.env` | plaintext | file mode (B4) |
 | The backup push key (rrsync -wo to Proxmox) | `~/.ssh/nmas_netbox_backup` | plaintext | file mode, plus `from=`, `restrict` and a forced command on the Proxmox side |
 
@@ -28,6 +29,39 @@ a claim, and this one was wrong.)
 applied **at creation**, by `config.open_secure()` and `config.secure_dir()`.
 
 ---
+
+## The golden archive is masked (C730)
+
+**The operator's decision D6, 2026-10-15.** The `s3-archive` post-commit hook
+(`modules/nsot/archive.py`) copies each committed golden to MinIO. Goldens are verbatim in the
+repository by design (masking is outbound), so the bucket was a second copy of every device's
+SNMP communities and type-9 hashes, outside the repository's protections. The archive is an
+outbound path, and is masked as every other one is.
+
+- **One write path.** A golden reaches the bucket only through
+  `S3ArchiveIntegration.put_golden`, which masks the committed bytes with `redact.redact_text`
+  (by position, and by every value the installation holds) and has no unmasked form. It refuses
+  a golden that is not UTF-8 text, or one a second pass would still change (masking twice changes
+  nothing, C743), and writes nothing of it. `put` refuses any key under `goldens/`, and the one
+  call that writes an object is reached only through those two (`tests/test_s3_archive.py`,
+  `TestOneWritePath`).
+- **The marker.** The key ends `.masked.cfg` and the object's metadata says
+  `masking: redact_text`, so a listing or a read tells a masked copy from one written before.
+- **What is lost.** The archive no longer restores a device's secrets: a masked copy holds
+  `<redacted:…>` where the community, hash or key was. Nothing reads goldens back from the
+  archive: restore, recreate and every deploy read the repository's committed goldens and tags,
+  and no code lists or reads `goldens/` except the operator's census step (read-only). The
+  repository's goldens remain the record, verbatim, and the key-sealed break-glass export
+  (`scripts/nmas-breakglass`) carries the credentials and the key.
+- **What masking does not know is not masked** (C745: an OSPF MD5 key, a BGP neighbour's
+  password, an SNMPv3 user's keys, and the shapes surveyed but unknown). The archive is as masked
+  as every other outbound path, no more; the known gap is a test of its own, which fails when
+  C745 adds a shape.
+- **What is already in the bucket stays.** The copies written before this release (every
+  version of each `<stamp>.cfg`) are plaintext, and Mercury's key cannot delete. The operator's
+  read-only measurement, `scripts/host-steps/c730-golden-archive-census.sh`, counts the versions
+  under `goldens/` that masking would still change, by device folder, never a value; deleting
+  them is the operator's (deleting backups is theirs).
 
 ## Why `ANTHROPIC_API_KEY` stayed in `.env`, in plaintext
 

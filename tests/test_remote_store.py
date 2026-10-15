@@ -230,5 +230,7 @@ class TestTheArchiveUploadsWhatWasCommitted:
         assert data == b"hostname s1\n" and length == len(data)
         assert meta["commit"] == sha, "boto3 adds the x-amz-meta- prefix itself"
         # NSOT_PHASE4_MINIO M-1: goldens under their purpose and network.
-        assert key == f"goldens/default/s1/{sha[:12]}.cfg", key
+        # C730: the copy is masked, and its key and metadata say so.
+        assert key == f"goldens/default/s1/{sha[:12]}.masked.cfg", key
+        assert meta.get("masking") == "redact_text", meta
         assert _S3Client.built["verify"] is True, "TLS verification as set (C355)"

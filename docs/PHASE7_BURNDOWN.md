@@ -63,7 +63,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ID | Item | Done means | Size | Deps | Op |
 |---|---|---|---|---|---|
 | **Security** | | | | | |
-| C730 | the golden archives in MinIO masked (D6) | archived objects carry no secret value; a planted community is masked in the archive | S–M | — | — |
+| ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | **Harness: the checks on v2** | | | | | |
 | P7-04 | Criterion 4, payloads drawn: the check extended to v2's render context | the check reads v2; the lists shrink to v2's real gaps | M–L | — | — |
 | P7-05 | Criterion 5, invalidation: `NOT_YET_SUBSCRIBED` (active_list, lists, posture, breakglass) to 0 | each key has a v2 subscriber | S–M | P7-26 for `lists` | — |
@@ -175,3 +175,8 @@ blocks cutover or is a security issue (B).
   37). Found while writing it: C860 (into section 2) and C861 (the tail).
 - **C836 closed** (5 of 5 clean restarts; the fifth d0c88463's deploy, 23:19:27 UTC). The host
   runs d0c88463, W1's release.
+- **C730 done** (D6, the security item): every golden reaches MinIO masked, through one write
+  that cannot be called unmasked. The pre-C730 plaintext versions stay (Mercury's key cannot
+  delete; deleting is the operator's), counted by the read-only census
+  `scripts/host-steps/c730-golden-archive-census.sh` after the release is deployed. C862 opened
+  (UNKNOWN: whether the key reads older versions; the census settles it).

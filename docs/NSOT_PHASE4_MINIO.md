@@ -59,7 +59,7 @@ key needs no delete right). It says which of the four failed, with what the serv
 
 | Prefix | What | Written by | Retention |
 |---|---|---|---|
-| `goldens/<network>/<device>/<stamp>.cfg` | each changed golden at its commit (today's hook; its key moves under `goldens/`) | post-commit hook | kept (git is the record; this is the archive) |
+| `goldens/<network>/<device>/<stamp>.masked.cfg` | each changed golden at its commit, **masked** (C730, the operator's decision D6, 2026-10-15: `put_golden`, `redact_text`, metadata `masking: redact_text`); before that release `<stamp>.cfg`, verbatim, and those copies stay (docs/SECRETS.md, "The golden archive is masked") | post-commit hook | kept (git is the record, verbatim; this is the archive, which restores no secret) |
 | `reads/<network>/<run>.json` | Show commands answers past `reads_retention_days`, one object per run (the run's results) | `reads.expire` | kept |
 | `records/<date>.dump` | the record database's nightly `pg_dump` (Phase 4 step 2) | the backup job | a retention setting (section 5) |
 | `archive/oxidized/<name>.bundle` | Oxidized's history, once (P3-1) | the operator's host step, once | kept |

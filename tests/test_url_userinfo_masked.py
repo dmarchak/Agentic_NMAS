@@ -78,6 +78,10 @@ ENTRY_POINTS = {
     "modules/nsot/config_check.py:mask": lambda: (
         __import__("modules.nsot.config_check", fromlist=["_Run"])._Run(".", False).mask(PLANTED)),
     "modules/redact.py:redact_text": lambda: redact.redact_text(PLANTED, values={}),
+    # A golden's archive copy (C730): the bytes the bucket receives.
+    "modules/integrations/s3_archive.py:masked_golden": lambda: __import__(
+        "modules.integrations.s3_archive", fromlist=["x"]).masked_golden(
+            PLANTED.encode("utf-8"), values={}).decode("utf-8"),
     "modules/redact.py:redact_payload": lambda: repr(redact.redact_payload(
         {"a": [PLANTED, (PLANTED,)]}, values={})),
     "modules/redact.py:RedactingFilter": _log_record_masked,
@@ -121,6 +125,8 @@ NOT_FREE_TEXT = {
     "modules/secrets_store.py:mask": "draws dots for a set field; it is given a setting's key",
     "modules/integrations/s3_archive.py:unmasked_members": "names the archive members that "
         "redact.redact_text would still change; it masks nothing, it asks the one masker (C743)",
+    "modules/integrations/s3_archive.py:Unmaskable": "an exception `masked_golden` raises, "
+        "naming why a golden was not archived, never a value (C730)",
     "modules/nsot/credential_rotation.py:masked_commands": "builds the masked rotation "
         "commands from a username and a privilege",
     "modules/nsot/credential_rotation.py:masked_command": "the same, one command",

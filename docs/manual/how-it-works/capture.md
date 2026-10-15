@@ -88,7 +88,7 @@ below.
    `Baseline: denied:` with the reasons. When no golden changed, the decision is still
    recorded, as an empty commit, so a denial is never only a message on a screen.
 5. **Publish.** Sent: the commit to the list's remote by `git push` where a remote is set,
-   and to the S3 archive where one is configured. Recorded: the push's outcome. The
+   and each changed golden, masked, to the S3 archive where one is configured. Recorded: the push's outcome. The
    post-commit hooks run in the background and never hold the commit.
 6. **Close what the capture answers.** Recorded: an approval item that handed off to this
    capture is closed, only for a device that was recorded or found unchanged; older pending

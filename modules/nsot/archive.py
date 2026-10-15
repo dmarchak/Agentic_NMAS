@@ -223,9 +223,12 @@ def committed_bytes(repo: str, sha: str, rel: str):
 
 
 def s3_archive_hook(context: dict) -> dict:
-    """Upload changed golden configs to the S3-compatible archive, each at
-    ``<prefix>/goldens/<network>/<device>/<stamp>.cfg`` (NSOT_PHASE4_MINIO, M-1), through the
-    archive's one client (`S3ArchiveIntegration.client`, TLS verification as set: C355)."""
+    """Upload changed golden configs to the S3-compatible archive, MASKED (C730), each at
+    ``<prefix>/goldens/<network>/<device>/<stamp>.masked.cfg`` (NSOT_PHASE4_MINIO, M-1),
+    through the archive's one client (`S3ArchiveIntegration.client`, TLS verification as set:
+    C355) and its one golden write (`put_golden`, which masks). The repository keeps the golden
+    verbatim and stays the record; the archive no longer holds a device's secrets, so it does
+    not restore them (docs/SECRETS.md, "The golden archive is masked")."""
     from modules.config import list_slug
     from modules.integrations.s3_archive import Unavailable, archive
     from modules.nsot.repo import _safe_name
@@ -260,22 +263,21 @@ def s3_archive_hook(context: dict) -> dict:
         data = committed_bytes(repo, sha, rel)
         if data is None:
             continue
-        key = integration.key("goldens", list_slug(list_name), _safe_name(hostname),
-                              f"{stamp}.cfg")
         try:
-            integration.put(key, data, client=client, metadata={
-                # boto3 adds the x-amz-meta- prefix itself.
-                "commit": sha,
-                "source": context.get("source", ""),
-                "actor":  context.get("actor", ""),
-            })
-            uploaded.append(key)
-        except Exception as exc:              # noqa: BLE001
+            uploaded.append(integration.put_golden(
+                list_slug(list_name), _safe_name(hostname), stamp, data, client=client,
+                metadata={
+                    # boto3 adds the x-amz-meta- prefix itself.
+                    "commit": sha,
+                    "source": context.get("source", ""),
+                    "actor":  context.get("actor", ""),
+                }))
+        except Exception as exc:              # noqa: BLE001 (Unmaskable, or the server's)
             failed.append(f"{hostname}: {exc}")
 
     if failed:
         return {"ok": False, "error": "; ".join(failed)[:300]}
-    return {"ok": True, "message": f"archived {len(uploaded)} config(s)"}
+    return {"ok": True, "message": f"archived {len(uploaded)} config(s), masked"}
 
 
 def publication_hook(context: dict) -> dict:
