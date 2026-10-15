@@ -279,7 +279,8 @@
   function drawSeries(section, body, p) {
     var pal = palette();
     var unit = section.getAttribute('data-panel-unit') || p.unit || '';
-    var stepped = p.type === 'state-timeline';
+    // A count per window is drawn stepped too (History › Query's logs builder, `stepped`).
+    var stepped = p.type === 'state-timeline' || p.stepped === true;
     var width = Math.max(200, body.clientWidth || section.clientWidth - 24);
     var opts = {
       width: width, height: chartHeight(section.getAttribute('data-panel-h')), legend: {show: false}, cursor: {drag: {x: false, y: false}},
@@ -302,6 +303,9 @@
     opts.hooks = {setCursor: [hoverTip(holder, p, unit, data)]};
     var chart = new root.uPlot(opts, data, holder);
     section.__nmasChart = chart;
+    // A page that draws its own legend table beside the chart (the logs builder's, with each
+    // series' numbers) asks for none here (`legend_off`).
+    if (p.legend_off === true) return;
     var foot = el('div', 'panel-foot');
     for (i = 0; i < p.series.length && i < 12; i++) {
       var item = el('span', 'legend-item');
@@ -403,6 +407,18 @@
 
   function load(section) {
     var src = section.getAttribute('data-panel-src');
+    // An answer the page already holds (the logs builder's counts, asked once with the page)
+    // arrives in `data-panel-json` and is drawn once, never fetched.
+    var inline = section.getAttribute('data-panel-json');
+    if (!src && inline) {
+      if (section.__nmasLoaded) return;
+      var p = null;
+      try { p = JSON.parse(inline); } catch (e) { p = null; }
+      if (!p || p.ok === false) { fail(section, (p && p.error) || 'the answer could not be read'); return; }
+      draw(section, p);
+      section.__nmasLoaded = true;
+      return;
+    }
     if (!src || section.__nmasBusy) return;
     section.__nmasBusy = true;
     root.fetch(src, {headers: {Accept: 'application/json'}, credentials: 'same-origin'})
@@ -425,7 +441,7 @@
   }
 
   function scan(scope) {
-    var list = (scope || root.document).querySelectorAll('[data-panel-src]');
+    var list = (scope || root.document).querySelectorAll('[data-panel-src],[data-panel-json]');
     for (var i = 0; i < list.length; i++) load(list[i]);
   }
 
@@ -444,7 +460,7 @@
   }
 
   function resize() {
-    var list = root.document.querySelectorAll('[data-panel-src]');
+    var list = root.document.querySelectorAll('[data-panel-src],[data-panel-json]');
     for (var i = 0; i < list.length; i++) {
       var s = list[i], body = s.querySelector('.panel-body');
       if (s.__nmasChart && body) {
@@ -461,7 +477,7 @@
     // A theme change redraws each drawn panel from its last answer, in the
     // new colours: nothing is fetched again.
     root.document.addEventListener('nmas:theme', function () {
-      var list = root.document.querySelectorAll('[data-panel-src]');
+      var list = root.document.querySelectorAll('[data-panel-src],[data-panel-json]');
       for (var i = 0; i < list.length; i++) if (list[i].__nmasLast) draw(list[i], list[i].__nmasLast);
     });
     var pending = null;

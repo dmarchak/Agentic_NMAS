@@ -1,0 +1,466 @@
+{
+ "captured": "2026-10-15 08:24 UTC, the NMAS host's Loki, read-only: query_range {job=\"network_syslog\", severity=~\".+\"}, limit 40, backward, the 6 h 18 min before; addresses mapped into 192.0.2.0/24, each line masked by redact_text",
+ "answer": {
+  "status": "success",
+  "data": {
+   "resultType": "streams",
+   "result": [
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "s4",
+      "filename": "/var/log/network/192.0.2.20.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052478689457052",
+       "Oct 15 08:21:18 s4 3071: s4: *Oct 12 02:37:44.606: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052076408996792",
+       "Oct 15 08:14:36 s4 3070: s4: *Oct 12 02:32:44.402: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "s3",
+      "filename": "/var/log/network/192.0.2.21.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052681258782667",
+       "Oct 15 08:24:41 s3 2260: s3: *Oct  9 05:08:24.090: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052095702472618",
+       "Oct 15 08:14:55 s3 2259: s3: *Oct  9 05:03:24.143: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "s2",
+      "filename": "/var/log/network/192.0.2.22.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052634633288676",
+       "Oct 15 08:23:54 s2 3820: s2: .Oct 14 20:29:55.556: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052316755855507",
+       "Oct 15 08:18:36 s2 3819: s2: .Oct 14 20:24:55.348: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792051998463766634",
+       "Oct 15 08:13:18 s2 3818: s2: .Oct 14 20:19:55.434: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "s1",
+      "filename": "/var/log/network/192.0.2.23.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052576221487161",
+       "Oct 15 08:22:55 s1 3950: s1: *Oct 14 12:54:02.783: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052257340629386",
+       "Oct 15 08:17:37 s1 3949: s1: *Oct 14 12:49:02.687: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792051938055926659",
+       "Oct 15 08:12:17 s1 3948: s1: *Oct 14 12:44:02.678: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "r6",
+      "filename": "/var/log/network/192.0.2.24.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052453127516130",
+       "Oct 15 08:20:53 192.0.2.24 2339: r6: Oct 15 08:20:52.046: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052226263620823",
+       "Oct 15 08:17:06 192.0.2.24 2337: r6: Oct 15 08:17:04.838: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:17:04 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052153090118734",
+       "Oct 15 08:15:53 192.0.2.24 2336: r6: Oct 15 08:15:52.016: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792051853042693301",
+       "Oct 15 08:10:53 192.0.2.24 2335: r6: Oct 15 08:10:51.996: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "r4",
+      "filename": "/var/log/network/192.0.2.26.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052445607593573",
+       "Oct 15 08:20:45 r4 6150: r4: Oct 15 08:20:44.025: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052224257239929",
+       "Oct 15 08:17:04 r4 6149: r4: Oct 15 08:17:03.077 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:17:03 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052145573677673",
+       "Oct 15 08:15:45 r4 6148: r4: Oct 15 08:15:44.105: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792051845272866690",
+       "Oct 15 08:10:45 r4 6147: r4: Oct 15 08:10:43.960: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "r3",
+      "filename": "/var/log/network/192.0.2.27.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052440845587017",
+       "Oct 15 08:20:40 r3 5931: r3: Oct 15 08:20:39.658: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052219244195507",
+       "Oct 15 08:16:59 r3 5930: r3: Oct 15 08:16:57.361 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:16:57 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052140810830411",
+       "Oct 15 08:15:40 r3 5929: r3: Oct 15 08:15:39.640: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792051840762484289",
+       "Oct 15 08:10:40 r3 5928: r3: Oct 15 08:10:39.637: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "r2",
+      "filename": "/var/log/network/192.0.2.28.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052500012300886",
+       "Oct 15 08:21:39 r2 8140: r2: Oct 15 08:21:38.683 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:21:38 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052434576480355",
+       "Oct 15 08:20:34 r2 8139: r2: Oct 15 08:20:33.374: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052209470510347",
+       "Oct 15 08:16:49 r2 8137: r2: Oct 15 08:16:48.232 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:16:48 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052191429080712",
+       "Oct 15 08:16:31 r2 8136: r2: Oct 15 08:16:30.181 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:16:30 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052134548649161",
+       "Oct 15 08:15:34 r2 8135: r2: Oct 15 08:15:33.354: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792051884131333388",
+       "Oct 15 08:11:24 r2 8132: r2: Oct 15 08:11:23.044 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:11:23 UTC Thu Oct 15 2026"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "5",
+      "device": "r1",
+      "filename": "/var/log/network/192.0.2.29.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "5"
+     },
+     "values": [
+      [
+       "1792052499760118496",
+       "Oct 15 08:21:39 r1 7842: r1: Oct 15 08:21:38.725 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:21:38 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052440344511713",
+       "Oct 15 08:20:40 r1 7841: r1: Oct 15 08:20:39.242: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792052216737920071",
+       "Oct 15 08:16:56 r1 7840: r1: Oct 15 08:16:54.598 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:16:54 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792052213981369511",
+       "Oct 15 08:16:53 r1 7839: r1: Oct 15 08:16:52.862 UTC: %OSPF-5-ADJCHG: Process 1, Nbr 192.0.2.21 on GigabitEthernet2 from 2WAY to DOWN, Neighbor Down: Dead timer expired"
+      ],
+      [
+       "1792052140310268086",
+       "Oct 15 08:15:40 r1 7837: r1: Oct 15 08:15:39.218: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ],
+      [
+       "1792051883892188013",
+       "Oct 15 08:11:23 r1 7836: r1: Oct 15 08:11:23.009 UTC: %SEC_LOGIN-5-LOGIN_SUCCESS: Login Success [user: admin] [Source: 192.0.2.25] [localport: 22] at 08:11:23 UTC Thu Oct 15 2026"
+      ],
+      [
+       "1792051840261480681",
+       "Oct 15 08:10:40 r1 7835: r1: Oct 15 08:10:39.178: %HA_EM-5-LOG: NMAS-HEARTBEAT: NMAS-HEARTBEAT"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "4",
+      "device": "r6",
+      "filename": "/var/log/network/192.0.2.24.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "4"
+     },
+     "values": [
+      [
+       "1792052692789749888",
+       "Oct 15 08:24:52 192.0.2.24 2340: r6: Oct 15 08:24:51.175: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [63:0] create:exec:notif:now [485332319:485332773:485337971:485337971] eproc [561] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1792052385197814180",
+       "Oct 15 08:19:45 192.0.2.24 2338: r6: Oct 15 08:19:43.882: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [151:0] create:exec:notif:now [485024026:485024094:485030686:485030686] eproc [626] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "4",
+      "device": "r2",
+      "filename": "/var/log/network/192.0.2.28.log",
+      "host": "nmas",
+      "job": "network_syslog",
+      "service_name": "network_syslog",
+      "severity": "4"
+     },
+     "values": [
+      [
+       "1792052236284243922",
+       "Oct 15 08:17:16 r2 8138: r2: Oct 15 08:17:14.737 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [110:0] create:exec:notif:now [1178138130:1178138284:1178145381:1178145381] eproc [669] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1792052113494782956",
+       "Oct 15 08:15:13 r2 8134: r2: Oct 15 08:15:12.133 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [253:0] create:exec:notif:now [1178011793:1178011793:1178022738:1178022738] eproc [723] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ],
+      [
+       "1792051921990985400",
+       "Oct 15 08:12:01 r2 8133: r2: Oct 15 08:12:00.342 UTC: %DBAL-4-DELAYED_BATCH: R0/0: pubd: Delayed batch [175:0] create:exec:notif:now [1177824775:1177824775:1177830986:1177830986] eproc [367] e:p [0:0] peer [BPROC_IOSD_RP]"
+      ]
+     ]
+    }
+   ],
+   "stats": {
+    "summary": {
+     "bytesProcessedPerSecond": 578085,
+     "linesProcessedPerSecond": 3168,
+     "totalBytesProcessed": 11130,
+     "totalLinesProcessed": 61,
+     "execTime": 0.019253,
+     "queueTime": 0.000353,
+     "subqueries": 0,
+     "totalEntriesReturned": 40,
+     "splits": 1,
+     "shards": 1,
+     "totalPostFilterLines": 61,
+     "totalStructuredMetadataBytesProcessed": 1742
+    },
+    "querier": {
+     "store": {
+      "totalChunksRef": 0,
+      "totalChunksDownloaded": 0,
+      "chunksDownloadTime": 0,
+      "queryReferencedStructuredMetadata": false,
+      "chunk": {
+       "headChunkBytes": 0,
+       "headChunkLines": 0,
+       "decompressedBytes": 0,
+       "decompressedLines": 0,
+       "compressedBytes": 0,
+       "totalDuplicates": 0,
+       "postFilterLines": 0,
+       "headChunkStructuredMetadataBytes": 0,
+       "decompressedStructuredMetadataBytes": 0
+      },
+      "chunkRefsFetchTime": 0,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0
+     }
+    },
+    "ingester": {
+     "totalReached": 1,
+     "totalChunksMatched": 4,
+     "totalBatches": 1,
+     "totalLinesSent": 40,
+     "store": {
+      "totalChunksRef": 44,
+      "totalChunksDownloaded": 44,
+      "chunksDownloadTime": 1867586,
+      "queryReferencedStructuredMetadata": false,
+      "chunk": {
+       "headChunkBytes": 538,
+       "headChunkLines": 4,
+       "decompressedBytes": 10592,
+       "decompressedLines": 57,
+       "compressedBytes": 8579,
+       "totalDuplicates": 0,
+       "postFilterLines": 61,
+       "headChunkStructuredMetadataBytes": 32,
+       "decompressedStructuredMetadataBytes": 1710
+      },
+      "chunkRefsFetchTime": 972045,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0
+     }
+    },
+    "cache": {
+     "chunk": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "index": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "result": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "statsResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "volumeResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "seriesResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "labelResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "instantMetricResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     }
+    },
+    "index": {
+     "totalChunks": 0,
+     "postFilterChunks": 0,
+     "shardsDuration": 0,
+     "usedBloomFilters": false
+    }
+   }
+  }
+ }
+}

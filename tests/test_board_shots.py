@@ -365,6 +365,58 @@ def test_history_query(tmp_path, monkeypatch):
                widths=((1440, 1.0), (960, 1.0), (390, 2.0)))
 
 
+def test_history_ask_logs(tmp_path, monkeypatch):
+    """Board F3 (QueryBuilderLogs3, 1440, and QueryBuilderLogs3Phone, 390; approved 2026-10-15)
+    beside Ask your own's logs builder, Loki answering with the real captures of 2026-10-15
+    (tests/test_history_ask_logs.py's stand-in): the board's counts question (OSPF adjacency
+    changes for r1 and s1, counted every hour, the capture's step), its Lines view (the last
+    hour's lines), and the three states the answer can be in."""
+    from types import SimpleNamespace
+
+    from tests import browser
+    from tests import test_history_ask_logs as F
+    from tests import test_logs_v2 as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    (tmp_path / "lab").mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    monkeypatch.setattr("modules.readers.adjacencies.lists",
+                        lambda: [("Lab", SimpleNamespace(repo_dir=str(tmp_path)), T.MANAGED)])
+    monkeypatch.setattr("modules.reader_job.read_cached_for",
+                        lambda name, list_name: __import__("modules.reader_job").reader_job
+                        .read_cached(name))
+    T._store(T._read(previous=T._read()))
+    monkeypatch.setattr("modules.history_logq._now", lambda: F.NOW)
+    monkeypatch.setattr("modules.history_logq.roles", lambda ln: [("router", 5), ("switch", 4)])
+    loki = F.FakeLoki()
+    monkeypatch.setattr("modules.history_logq._client", lambda list_name, wait=65.0: loki)
+    from modules import history_logq
+    history_logq.forget()
+    base = "/v2/history/query/ask/logs?list=Lab"
+    counts = (base + "&dev=r1&dev=s1&sev=5&mn=%25OSPF-5-ADJCHG&has=Neighbor&show=counts"
+              "&every=1h&ask=1&hl=count")
+    settled = "!document.querySelector('.panel-wait')"
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("history-ask-logs", "QueryBuilderLogs3.dc.html", lambda w: counts, served,
+               settled=settled, widths=((1440, 1.0), (1280, 1.0)))
+        _shoot("history-ask-logs", "QueryBuilderLogs3Phone.dc.html", lambda w: counts, served,
+               settled=settled, widths=((390, 2.0),))
+        _shoot("history-ask-logs-lines", "", lambda w: base + "&range=1h&ask=1", served,
+               widths=((1440, 1.0), (390, 2.0)))
+        _shoot("history-ask-logs-refused", "", lambda w: base + "&range=custom&from=2026-08-31"
+               "%2008:25&to=2026-10-15%2008:25&ask=1", served, widths=((1440, 1.0),))
+        loki.empty = True
+        _shoot("history-ask-logs-empty", "", lambda w: base + "&range=1h&has=Neighbor&ask=1",
+               served, widths=((1440, 1.0),))
+        loki.empty, loki.fail = False, "Timed out after 65.0s"
+        _shoot("history-ask-logs-down", "", lambda w: base + "&ask=1", served,
+               widths=((1440, 1.0),))
+    history_logq.forget()
+
+
 def test_history_metric(tmp_path, monkeypatch):
     """C667's board B (AskMetric, 1440) beside the metrics question, Grafana answering with a
     real capture (tests/fixtures/grafana/dsquery/throughput.json)."""

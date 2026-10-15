@@ -1,0 +1,220 @@
+{
+ "captured": "2026-10-15 08:24 UTC, the NMAS host's Loki, read-only: query_range {job=\"snmptrapd\"}, limit 6, backward, 30 days; addresses mapped into 192.0.2.0/24, each line masked",
+ "answer": {
+  "status": "success",
+  "data": {
+   "resultType": "streams",
+   "result": [
+    {
+     "stream": {
+      "detected_level": "unknown",
+      "host": "nmas",
+      "job": "snmptrapd",
+      "service_name": "snmptrapd",
+      "unit": "snmptrapd.service"
+     },
+     "values": [
+      [
+       "1792045291509730000",
+       "NET-SNMP version 5.9.4.pre2"
+      ],
+      [
+       "1792045291236487000",
+       "Stopping snmptrapd"
+      ],
+      [
+       "1792045291233366000",
+       "2026-10-15 06:21:31 NET-SNMP version 5.9.4.pre2 Stopped."
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "unknown",
+      "device": "s1",
+      "host": "nmas",
+      "job": "snmptrapd",
+      "service_name": "snmptrapd",
+      "trap_oid": "IF-MIB::linkUp",
+      "unit": "snmptrapd.service"
+     },
+     "values": [
+      [
+       "1792037101921747000",
+       "2026-10-15 04:05:01 s1 [UDP: [192.0.2.23]:64384->[192.0.2.30]:162]:\nDISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (109398162) 12 days, 15:53:01.62\tSNMPv2-MIB::snmpTrapOID.0 = OID: IF-MIB::linkUp\tIF-MIB::ifIndex.2 = INTEGER: 2\tIF-MIB::ifDescr.2 = STRING: GigabitEthernet0/1\tIF-MIB::ifType.2 = INTEGER: ethernetCsmacd(6)"
+      ]
+     ]
+    },
+    {
+     "stream": {
+      "detected_level": "unknown",
+      "device": "s1",
+      "host": "nmas",
+      "job": "snmptrapd",
+      "service_name": "snmptrapd",
+      "trap_oid": "IF-MIB::linkDown",
+      "unit": "snmptrapd.service"
+     },
+     "values": [
+      [
+       "1792036810991532000",
+       "2026-10-15 04:00:10 s1 [UDP: [192.0.2.23]:64384->[192.0.2.30]:162]:\nDISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (109371296) 12 days, 15:48:32.96\tSNMPv2-MIB::snmpTrapOID.0 = OID: IF-MIB::linkDown\tIF-MIB::ifIndex.2 = INTEGER: 2\tIF-MIB::ifDescr.2 = STRING: GigabitEthernet0/1\tIF-MIB::ifType.2 = INTEGER: ethernetCsmacd(6)\tSNMPv2-SMI::enterprises.192.0.2.31.1.20.2 = STRING: \"administratively down\""
+      ]
+     ]
+    }
+   ],
+   "stats": {
+    "summary": {
+     "bytesProcessedPerSecond": 370,
+     "linesProcessedPerSecond": 1,
+     "totalBytesProcessed": 1072,
+     "totalLinesProcessed": 5,
+     "execTime": 2.889981,
+     "queueTime": 0.197421,
+     "subqueries": 0,
+     "totalEntriesReturned": 5,
+     "splits": 721,
+     "shards": 721,
+     "totalPostFilterLines": 5,
+     "totalStructuredMetadataBytesProcessed": 150
+    },
+    "querier": {
+     "store": {
+      "totalChunksRef": 3,
+      "totalChunksDownloaded": 3,
+      "chunksDownloadTime": 3230975,
+      "queryReferencedStructuredMetadata": false,
+      "chunk": {
+       "headChunkBytes": 0,
+       "headChunkLines": 0,
+       "decompressedBytes": 1072,
+       "decompressedLines": 5,
+       "compressedBytes": 743,
+       "totalDuplicates": 0,
+       "postFilterLines": 5,
+       "headChunkStructuredMetadataBytes": 0,
+       "decompressedStructuredMetadataBytes": 150
+      },
+      "chunkRefsFetchTime": 175556046,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0
+     }
+    },
+    "ingester": {
+     "totalReached": 2,
+     "totalChunksMatched": 0,
+     "totalBatches": 2,
+     "totalLinesSent": 0,
+     "store": {
+      "totalChunksRef": 0,
+      "totalChunksDownloaded": 0,
+      "chunksDownloadTime": 0,
+      "queryReferencedStructuredMetadata": false,
+      "chunk": {
+       "headChunkBytes": 0,
+       "headChunkLines": 0,
+       "decompressedBytes": 0,
+       "decompressedLines": 0,
+       "compressedBytes": 0,
+       "totalDuplicates": 0,
+       "postFilterLines": 0,
+       "headChunkStructuredMetadataBytes": 0,
+       "decompressedStructuredMetadataBytes": 0
+      },
+      "chunkRefsFetchTime": 862777,
+      "congestionControlLatency": 0,
+      "pipelineWrapperFilteredLines": 0
+     }
+    },
+    "cache": {
+     "chunk": {
+      "entriesFound": 2,
+      "entriesRequested": 3,
+      "entriesStored": 2,
+      "bytesReceived": 1386,
+      "bytesSent": 254,
+      "requests": 4,
+      "downloadTime": 26311,
+      "queryLengthServed": 0
+     },
+     "index": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "result": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "statsResult": {
+      "entriesFound": 719,
+      "entriesRequested": 750,
+      "entriesStored": 750,
+      "bytesReceived": 165406,
+      "bytesSent": 0,
+      "requests": 1500,
+      "downloadTime": 9421027,
+      "queryLengthServed": 20670000000000
+     },
+     "volumeResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "seriesResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "labelResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     },
+     "instantMetricResult": {
+      "entriesFound": 0,
+      "entriesRequested": 0,
+      "entriesStored": 0,
+      "bytesReceived": 0,
+      "bytesSent": 0,
+      "requests": 0,
+      "downloadTime": 0,
+      "queryLengthServed": 0
+     }
+    },
+    "index": {
+     "totalChunks": 0,
+     "postFilterChunks": 0,
+     "shardsDuration": 0,
+     "usedBloomFilters": false
+    }
+   }
+  }
+ }
+}

@@ -115,7 +115,8 @@ Run it. PromQL is drawn by the chart (at most 4 expressions, one a line, each it
 a LogQL line query draws its newest 200 lines over at most 30 days (Loki answers at most 30
 days at a time), each masked like every other configuration text. A LogQL query that answers
 numbers rather than lines is refused, saying so. A query is at most 2000 characters of
-printable ASCII. These are reads: nothing is written, and nothing reaches a device.
+printable ASCII. These are reads: nothing is written, and nothing reaches a device. Its
+**Source** and **Mode** switches open the logs builder (Logs, Builder), described below.
 
 **Saved views.** **Save this view…**, beside Copy the link on any answer (Syslog by device
 included), asks a title and saves the question as you asked it (the question, its device and
@@ -127,6 +128,58 @@ asks is untouched. A network keeps at most 100. Each save, pin and removal is li
 Timeline under **Saved views**. If the saved views' file cannot be read, the tab says so and
 nothing can be saved until it is repaired, so no one's views are written over. The sidebar's Logs is the live tail
 ([Logs](logs)); Syslog by device's "Open these lines on Logs" opens it filtered.
+
+## Ask your own: the logs builder {#ask-logs}
+
+Ask a question of the network's logs by choosing, not by writing LogQL. **Source** switches
+between Metrics and Logs and **Mode** between Builder and Code (Code is the box where a query is
+written by hand; **Edit as code** hands it the query the builder formed). Each choice is in the
+address, so **Copy the link** carries the whole question, and **Save this view…** saves it for
+the network like any other view.
+
+- **Start from** sets every choice at once to a common question: interfaces going down, OSPF
+  adjacency changes, configuration changes and who made them, errors and worse.
+- **Kind** offers the values of Loki's `job` label over the range: whatever the network's log
+  store holds, read from Loki, never assumed. Choose one or more, or every job.
+- **Devices** offers the devices Loki holds lines from in the range (**+ device**), the network's
+  roles (**by role**), or **all**. Where Loki's `device` label covers the whole range a device is
+  matched by it; a range starting before the label's first line matches each device by its own
+  name before the line's timestamp, which reads the older lines too, and the row says which.
+- **Severity at or worse than** keeps lines of that severity or worse: by Loki's `severity`
+  label where it covers the range, else by the digit in each line's mnemonic (`%LINK-3-UPDOWN`
+  is 3). A line with no severity, a trap, is left out once a severity is chosen.
+- **Mnemonic** offers the mnemonics Mercury's logs reader counted for the chosen devices over
+  the range, the most frequent first; **+ more** lists the rest.
+- **Text contains** and **excludes** keep or leave out lines holding the text, exactly as typed.
+- **Show** draws the **Lines**, newest first, or **Counts over time**: the matching lines
+  counted in each window (a minute to a day), one series per device, mnemonic or any label
+  Loki holds, drawn on the same chart as a metrics answer. Click a point to name its window and
+  open **Show these lines**: the Lines view for that series in that window.
+
+**The query** is drawn as it forms, the last choice marked, with a sentence saying what that
+part does and what the whole query reads. Every value you choose reaches Loki inside one quoted
+string, escaped, so a quote, a backslash or a line break in it can never become part of the
+query's own structure; a label name, which cannot be quoted, must be one Loki holds. Mercury's
+heartbeat lines are always left out.
+
+**Range** is 1 h, 24 h, 7 days, 30 days, or **From… to…**: the last so many minutes, hours or
+days, or two times in UTC, your local time shown beside each; Apply or Cancel. The **Bounds**
+under it are Loki's own, read from its configuration (the longest span one ask can cover, how
+long an ask may take, the most lines and series an ask returns, how long lines are kept) and
+Mercury's (200 lines a page, at most 1,000 windows a series, the 20 series with the most lines
+drawn).
+
+**Ask** sends the query; the button says **Asking Loki…** until the answer is drawn below it,
+and changing any choice afterwards removes the answer, since it no longer matches the query.
+The answer is one of: the counts (the chart, then each series' lines in the range, its most in
+one window and its last window with a line); the lines (time received, device, severity, kind,
+the line masked like every log line Mercury shows; 200 a page, **Older ›** for the next);
+**Refused**, naming the bound and the range or count that passed it, with the choice that fits;
+**Couldn't load**, naming what Loki answered or how long it was waited for, with **Ask again**;
+or **No lines in range**, saying how many lines the same jobs and devices sent in the range and
+whether the range is inside what Loki keeps, so an empty answer is not mistaken for a gap. A
+line's time is when the collector received it, never the device's clock. These are reads:
+nothing is written, and nothing reaches a device.
 
 ## Baselines {#baselines}
 

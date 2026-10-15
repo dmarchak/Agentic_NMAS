@@ -1,0 +1,25 @@
+{#- History › Query › Ask your own's head, shared by both builders' boards (E3 metrics, F3 logs):
+    the heading with the way back to the questions, and the two switches, Source (Metrics or
+    Logs) and Mode (Builder or Code). *source* is 'metrics' or 'logs', *mode* 'builder' or
+    'code'; *code_href* opens Code mode with the query formed so far; *heading* false draws the
+    switches alone (Code mode's page has its own title). A builder not built yet is said so on
+    its switch, never drawn as a link that goes nowhere. -#}
+<div class="lq-head">
+  {%- if heading is not defined or heading %}
+  <h2>Ask your own <a class="lq-back" href="{{ url_for('v2.history_page', tab='query') }}">‹ back to the questions</a></h2>
+  {%- endif %}
+  <div class="lq-switches">
+    <div class="seg" role="group" aria-label="Source">
+      <a class="seg-btn{% if source == 'metrics' %} on{% endif %}" aria-pressed="{{ 'true' if source == 'metrics' else 'false' }}" href="{{ url_for('v2.history_query_metric', key='ask', lang='promql') }}">Metrics</a>
+      <a class="seg-btn{% if source == 'logs' %} on{% endif %}" aria-pressed="{{ 'true' if source == 'logs' else 'false' }}" href="{{ url_for('v2.history_ask_logs') }}">Logs</a>
+    </div>
+    <div class="seg" role="group" aria-label="Mode">
+      {%- if source == 'logs' %}
+      <a class="seg-btn{% if mode == 'builder' %} on{% endif %}" aria-pressed="{{ 'true' if mode == 'builder' else 'false' }}" href="{{ url_for('v2.history_ask_logs') }}">Builder</a>
+      {%- else %}
+      <span class="seg-btn lq-later" aria-disabled="true" title="The metrics builder (board E3) is not built yet: write PromQL in Code">Builder</span>
+      {%- endif %}
+      <a class="seg-btn{% if mode == 'code' %} on{% endif %}" aria-pressed="{{ 'true' if mode == 'code' else 'false' }}" href="{{ code_href }}">Code</a>
+    </div>
+  </div>
+</div>

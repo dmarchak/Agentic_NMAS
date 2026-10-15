@@ -483,6 +483,42 @@ def history_query_metric_data(key):
 
 
 # ---------------------------------------------------------------------------
+# History › Query › Ask your own, the logs builder (board F3, QueryBuilderLogs3, approved
+# 2026-10-15; modules/history_logq.py): the choices in the address, the query Mercury forms
+# from them, and, asked, the answer. Reads: nothing is written and no list is created.
+# ---------------------------------------------------------------------------
+
+def _ask_logs_ctx() -> dict:
+    from modules import history_logq
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    ref = listref.active()
+    return {"tab": "query", "tabs": HISTORY_TABS, "ref": ref, "remote": _history_remote(ref),
+            "f": _history_filters(request), "ask_logs": True,
+            "q": history_logq.view(named_list(request) or ref.name, request.args)}
+
+
+@bp.route("/history/query/ask/logs", methods=["GET"])
+def history_ask_logs():
+    """History › Query › Ask your own, logs (board F3): the builder, the query as the choices
+    form it, and the answer once asked. A read."""
+    return _page("v2/history_ask_logs.html", active_nav="history", **_ask_logs_ctx())
+
+
+@bp.route("/history/query/ask/logs/region", methods=["GET"])
+def history_ask_logs_region():
+    """The builder and its answer alone, redrawn as a choice is made or Ask is pressed; the
+    page's own address for the choices is pushed, so what is drawn is a link. A read."""
+    from flask import url_for
+
+    ctx = _ask_logs_ctx()
+    resp = _strict(render_template("v2/_history_ask_logs.html", **ctx))
+    resp.headers["HX-Push-Url"] = url_for("v2.history_ask_logs") + ctx["q"]["qs"]()
+    return resp
+
+
+# ---------------------------------------------------------------------------
 # History › Query's saved views (C667; board A's "Saved by your team", board B's "Save this
 # view…"): links to reads, kept per network (modules/saved_views.py). Each write answers with
 # what it did, in place, and announces `saved_views`, on which the list redraws.

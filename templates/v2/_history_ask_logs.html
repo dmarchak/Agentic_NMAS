@@ -1,0 +1,214 @@
+{%- from "v2/_macros.html" import icon, info, stamp -%}
+{#- History › Query › Ask your own, the logs builder (board F3, QueryBuilderLogs3 and its phone
+    board, approved 2026-10-15; compared in docs/fidelity/history-ask-logs.md). One region,
+    #lq: the builder, the query Mercury forms from the choices (the last one marked and said in
+    plain words), and the answer once asked. Every choice is in the address; a choice redraws
+    the region and drops the answer, Ask draws it (modules/history_logq.py). -#}
+{%- set s = q.s %}{% set d = q.disc %}{% set b = q.built %}{% set rng = q.range %}{% set lim = q.limits %}
+{%- set here = url_for('v2.history_ask_logs') %}{% set region = url_for('v2.history_ask_logs_region') %}
+{%- set change = {'ask': '', 'before': '', 'at': ''} %}
+{%- macro go(over, words, cls='lq-chip', pressed=none, label='', current=false) -%}
+<a class="{{ cls }}" href="{{ here }}{{ q.qs(over) }}" hx-get="{{ region }}{{ q.qs(over) }}" hx-target="#lq" hx-swap="outerHTML"{% if pressed is not none %} aria-pressed="{{ 'true' if pressed else 'false' }}"{% endif %}{% if current %} aria-current="true"{% endif %}{% if label %} aria-label="{{ label }}"{% endif %}>{{ words }}</a>
+{%- endmacro %}
+{%- macro hidden(skip=(), extra={}) -%}
+<input type="hidden" name="list" value="{{ q.list }}">
+{%- for k in ('job', 'dev', 'mn') if k not in skip %}{% for v in s[k] %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endfor %}
+{%- for k in ('role', 'sev', 'has', 'not', 'show', 'by', 'every', 'range', 'within', 'from', 'to') if k not in skip and s[k] %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+{%- for k, v in extra.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+{%- endmacro %}
+{%- set code_range = q.code_range %}
+<div id="lq" class="lq">
+{%- with source='logs', mode='builder', code_href=url_for('v2.history_query_metric', key='ask', lang='logql', range=code_range, q=b.query, list=q.list) %}{% include "v2/_history_ask_head.html" %}{% endwith %}
+
+{%- for e in q.errors %}
+<div class="notice notice-warn" role="status">{{ icon('warn', 16) }}<p>Not taken: {{ e }}. The query below leaves it out.</p></div>
+{%- endfor %}
+{%- if d.state == 'not_configured' %}
+<div class="notice notice-warn" role="status">{{ icon('info', 16) }}<p>{{ d.error | capitalize }}: there are no logs to ask here (Settings › Integrations › Loki).</p></div>
+{%- elif d.state == 'error' %}
+<div class="lq-st lq-danger" role="alert"><span class="lq-k">Loki not answering</span><p><strong>Couldn't load: {{ d.error }}</strong>, asked {{ q.now[11:16] }} UTC. The choices below are the address's; Loki's jobs, devices and labels could not be read.</p><div>{{ go(dict(change), 'Ask again', 'btn btn-small') }}</div></div>
+{%- endif %}
+
+<form id="lq-form" class="lq-form" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-disabled-elt="#lq-ask" hx-indicator="#lq-ask">{{ hidden(('sev', 'has', 'not', 'by', 'every')) }}<input type="hidden" name="ask" value="1"></form>
+<section class="card lq-build" aria-label="Build a logs question">
+  <div class="lq-row"><span class="lq-lab">Start from</span><div class="lq-chips">
+    {%- for key, title, params in q.presets %}<a class="lq-chip{{ ' on' if q.preset_on == key }}" href="{{ here }}{{ q.preset_qs(params) }}" hx-get="{{ region }}{{ q.preset_qs(params) }}" hx-target="#lq" hx-swap="outerHTML"{% if q.preset_on == key %} aria-current="true"{% endif %}>{{ title }}</a>{% endfor %}
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">Kind</span><div class="lq-col">
+    <div class="seg lq-seg" role="group" aria-label="Kind of log">
+      {%- for j in d['values']['job'] %}{% set on = j in s.job %}{{ go(dict(change, job=(s.job | reject('equalto', j) | list) if on else s.job + [j], hl='job'), j, 'seg-btn mono' ~ (' on' if on), on) }}{% endfor %}
+      {{- go(dict(change, job=[], hl='job'), 'every job', 'seg-btn' ~ (' on' if not s.job), not s.job) }}
+    </div>
+    <span class="lq-hint">{% if d.state == 'ok' %}The values Loki's <span class="mono">job</span> label holds over {{ rng.words }}, read {{ d.read_at[11:16] }} UTC: {{ d['values']['job'] | length }}. Choose one or more, or every job.{% else %}Loki's jobs could not be read, so none is offered.{% endif %}</span>
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">Devices</span><div class="lq-col">
+    <div class="lq-chips">
+      {%- for dv in s.dev %}{{ go(dict(change, dev=(s.dev | reject('equalto', dv) | list), hl='dev'), dv ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ dv) }}{% endfor %}
+      {%- if s.role %}{{ go(dict(change, role='', hl='dev'), 'role: ' ~ s.role ~ ' (' ~ q.role_devices | length ~ ') ×', 'lq-chip on', none, 'Remove the role ' ~ s.role) }}{% endif %}
+      {%- set others = d['values']['device'] | reject('in', q.devices) | list %}
+      {%- if others %}
+      <details class="lq-more" data-keep="lq-device-add"><summary class="lq-chip">+ device</summary>
+        <form class="lq-add" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML">{{ hidden(()) }}<input type="hidden" name="hl" value="dev">
+          <label for="lq-dev-add" class="sr">A device Loki holds lines from</label>
+          <input id="lq-dev-add" type="text" name="dev" list="lq-devs" autocomplete="off" placeholder="type a name ({{ others | length }})" required>
+          <datalist id="lq-devs">{% for dv in others %}<option value="{{ dv }}">{% endfor %}</datalist>
+          <button type="submit" class="btn btn-small">Add</button>
+        </form>
+      </details>
+      {%- endif %}
+      {%- for role, n in q.roles if role != s.role %}{{ go(dict(change, role=role, hl='dev'), 'by role: ' ~ role, 'lq-chip') }}{% endfor %}
+      {{- go(dict(change, dev=[], role='', hl='dev'), 'all ' ~ d['values']['device'] | length, 'lq-chip' ~ (' on' if not q.devices), not q.devices) }}
+    </div>
+    <span class="lq-hint">{% if 'device' not in d.labels %}Loki holds no <span class="mono">device</span> label over {{ rng.words }}: a device chosen is matched by its own name in the line.{% elif b.modes.dev == 'line' %}The <span class="mono">device</span> label's first line is {{ q.since_words.device or 'not known' }}, after this range starts: a device chosen is matched by its own name before the line's timestamp, which reads older lines too.{% else %}By the <span class="mono">device</span> label Loki holds (its first line {{ q.since_words.device }}), never by a pattern over the line.{% endif %}</span>
+  </div></div>
+
+  <div class="lq-row"><label class="lq-lab" for="lq-sev">Severity</label><div class="lq-line">
+    <span class="muted">at or worse than</span>
+    <select id="lq-sev" name="sev" form="lq-form" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "sev"}' hx-indicator="this" hx-disabled-elt="this">
+      <option value=""{% if not s.sev %} selected{% endif %}>any severity</option>
+      {%- for n in range(8) %}<option value="{{ n }}"{% if s.sev == n | string %} selected{% endif %}>{{ n }} {{ q.severities[n] }}</option>{% endfor %}
+    </select>
+    {%- if s.sev %}<span class="lq-hint">{% if b.modes.sev == 'label' %}By Loki's <span class="mono">severity</span> label (its first line {{ q.since_words.severity }}); a line with none, a trap, is left out.{% else %}By the digit in each line's mnemonic{% if q.since_words.severity %}: the <span class="mono">severity</span> label's first line is {{ q.since_words.severity }}, after this range starts{% elif 'severity' not in d.labels %}: Loki holds no <span class="mono">severity</span> label here{% endif %}.{% endif %}</span>{% endif %}
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">Mnemonic</span><div class="lq-col">
+    {%- set mrows = q.mnemonics.rows %}
+    <div class="lq-chips">
+      {%- for mn in s.mn %}{{ go(dict(change, mn=(s.mn | reject('equalto', mn) | list), hl='mn'), mn[1:] ~ ' ×', 'lq-chip on mono', none, 'Remove ' ~ mn[1:]) }}{% endfor %}
+      {%- set rest = mrows | rejectattr(0, 'in', s.mn) | list %}
+      {%- for mn, n in rest[:4] %}{{ go(dict(change, mn=s.mn + [mn], hl='mn'), mn[1:], 'lq-chip mono', none, 'Add ' ~ mn[1:] ~ ', ' ~ n ~ ' lines') }}{% endfor %}
+      {%- if rest | length > 4 %}
+      <details class="lq-more" data-keep="lq-mnemonic-more"><summary class="lq-chip">+ {{ rest | length - 4 }} more</summary>
+        <div class="lq-menu">{% for mn, n in rest[4:] %}{{ go(dict(change, mn=s.mn + [mn], hl='mn'), mn[1:] ~ ' (' ~ n ~ ')', 'lq-item mono') }}{% endfor %}</div>
+      </details>
+      {%- endif %}
+    </div>
+    <span class="lq-hint">{% if q.mnemonics.state == 'ok' %}The mnemonics Mercury's logs reader counted for {{ 'the chosen devices' if q.devices else 'every device' }} over {{ rng.words }}, most lines first{% if not mrows %}: none{% endif %}.{% else %}No mnemonic is offered: {{ q.mnemonics.why }}.{% endif %}</span>
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">Text</span><div class="lq-line">
+    <label class="lq-text">contains <input id="lq-has" type="text" name="has" form="lq-form" value="{{ s.has }}" maxlength="200" aria-label="Text the line contains" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "has"}' hx-trigger="change" hx-indicator="this" hx-disabled-elt="this"></label>
+    <label class="lq-text">excludes <input id="lq-not" type="text" name="not" form="lq-form" value="{{ s['not'] }}" maxlength="200" placeholder="nothing" aria-label="Text the line excludes" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "not"}' hx-trigger="change" hx-indicator="this" hx-disabled-elt="this"></label>
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">Show</span><div class="lq-line">
+    <div class="seg" role="group" aria-label="Show">{{ go(dict(change, show='lines', hl='show'), 'Lines', 'seg-btn' ~ (' on' if s.show == 'lines'), s.show == 'lines') }}{{ go(dict(change, show='counts', hl='count'), 'Counts over time', 'seg-btn' ~ (' on' if s.show == 'counts'), s.show == 'counts') }}</div>
+    {%- if s.show == 'counts' %}
+    <select name="by" form="lq-form" aria-label="Count by" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "count"}' hx-indicator="this" hx-disabled-elt="this">
+      {%- for l in q.by_choices %}<option value="{{ l }}"{% if s.by == l %} selected{% endif %}>per {{ l }}</option>{% endfor %}
+    </select>
+    <span class="muted">every</span>
+    <select name="every" form="lq-form" aria-label="Window" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" hx-include="#lq-form" hx-vals='{"ask": "", "hl": "count"}' hx-indicator="this" hx-disabled-elt="this">
+      {%- for k, w in q.windows.items() %}<option value="{{ k }}"{% if s.every == k %} selected{% endif %}>{{ w[0] }}</option>{% endfor %}
+    </select>
+    {%- else %}<input type="hidden" name="by" form="lq-form" value="{{ s.by }}"><input type="hidden" name="every" form="lq-form" value="{{ s.every }}">{% endif %}
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">The query</span><div class="lq-col">
+    {%- set hl = 'count' if s.hl == 'show' and s.show == 'counts' else s.hl %}
+    {%- set marked = (b.parts | selectattr(1, 'equalto', hl) | map(attribute=0) | map('trim') | list) if hl else [] %}
+    <pre class="lq-q">{% for text, key in b.parts %}{% if key and key == hl %}{{ ' ' if text.startswith(' ') }}<mark>{{ text.lstrip(' ') }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}{% if marked %}
+<span class="lq-dim">the last choice:</span> <mark>{{ marked | join(' … ') }}</mark>{% endif %}</pre>
+    <p class="lq-say">{% if hl and b.explain[hl] %}<strong>{{ marked | join(' … ') if marked else 'The range' if hl == 'range' else 'Start from' }}</strong> {{ b.explain[hl] }}. {% endif %}The whole query reads: {{ b.reads }}.</p>
+    <span class="lq-hint">Formed as you choose; <a href="{{ url_for('v2.history_query_metric', key='ask', lang='logql', range=code_range, q=b.query, list=q.list) }}">Edit as code</a> hands it to Code mode{% if s.show == 'counts' %}, which draws lines only today{% endif %}. Lines are masked as every log line Mercury shows.</span>
+  </div></div>
+
+  <div class="lq-row"><span class="lq-lab">Range</span><div class="lq-col">
+    <div class="lq-chips">
+      {%- for key, rv in q.ranges.items() %}{{ go(dict(change, range=key, within='', to='', hl='range', **{'from': ''}), rv[0], 'lq-chip' ~ (' on' if s.range == key), s.range == key) }}{% endfor %}
+      <details class="lq-more lq-pickbox" data-keep="lq-range-pick"{% if s.range == 'custom' and rng.error %} open{% endif %}>
+        <summary class="lq-chip{{ ' on' if s.range == 'custom' }}">{% if s.range == 'custom' %}{{ rng.words }}{% else %}From… to…{% endif %}</summary>
+        <form class="lq-pop" method="get" action="{{ here }}" hx-get="{{ region }}" hx-target="#lq" hx-swap="outerHTML" aria-label="Choose the time range">{{ hidden(('range', 'within', 'from', 'to')) }}<input type="hidden" name="range" value="custom"><input type="hidden" name="hl" value="range">
+          <div class="lq-popcol">
+            <fieldset><legend>Relative</legend>
+              <label for="lq-within"><span>Last</span><input id="lq-within" type="text" name="within" value="{{ s.within }}" placeholder="3 days"></label>
+            </fieldset>
+            <fieldset><legend>Or absolute (UTC; your local time beside it)</legend>
+              <label for="lq-from"><span>From</span><input id="lq-from" class="mono" type="text" name="from" value="{{ s['from'] }}" placeholder="2026-10-10 06:00" data-lq-local="lq-from-local"><span class="faint" id="lq-from-local"></span></label>
+              <label for="lq-to"><span>To</span><input id="lq-to" class="mono" type="text" name="to" value="{{ s.to }}" placeholder="now" data-lq-local="lq-to-local"><span class="faint" id="lq-to-local"></span></label>
+            </fieldset>
+            {%- if rng.error and s.range == 'custom' %}<p class="lq-bad" role="alert">{{ icon('warn', 14) }} Not taken: {{ rng.error }}.</p>
+            {%- else %}<p class="lq-ok{{ ' lq-over' if q.fit.words != 'within every limit below' }}">{{ q.range_words }}{% if s.show == 'counts' %} · every {{ q.windows[s.every][0] }} · {{ '{:,}'.format(q.fit.windows) }} windows{% endif %} · {{ q.fit.words }}</p>{% endif %}
+          </div>
+          <div class="lq-popcol">
+            <h4>Limits{% if lim.read_at and not lim.error %} <span class="faint">(Loki's read {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC)</span>{% endif %}</h4>
+            <table class="lq-lim">
+              <tr><th scope="row">Loki</th><td>{% if lim.error %}its bounds could not be read ({{ lim.error }}); it refuses what passes them, and the refusal is drawn{% else %}one ask spans at most {{ lim.max_query_length.text if lim.max_query_length else '(not stated)' }} (<span class="mono">max_query_length</span>); lines kept {{ lim.retention_period.text if lim.retention_period else '(not stated)' }} (<span class="mono">retention_period</span>), read from Loki's /config{% endif %}</td></tr>
+              <tr><th scope="row">Mercury</th><td>{{ q.page }} lines a page; at most {{ '{:,}'.format(q.max_windows) }} windows a series; the {{ q.max_series }} series with the most lines drawn</td></tr>
+            </table>
+          </div>
+          <div class="lq-popacts"><button type="submit" class="btn btn-primary btn-small">Apply</button><button type="button" class="btn btn-small" data-lq-close>Cancel</button></div>
+        </form>
+      </details>
+    </div>
+    <p class="lq-bounds"><b>Bounds:</b> {{ q.page }} lines a page (Mercury)
+      {%- if lim.error %} · Loki's own bounds could not be read ({{ lim.error }}): it refuses what passes them, and the refusal is drawn.
+      {%- else %}
+      {%- if lim.max_query_length %} · one ask spans at most {{ lim.max_query_length.words }} (Loki's <span class="mono">max_query_length {{ lim.max_query_length.text }}</span>){% endif %}
+      {%- if lim.query_timeout %} · {{ lim.query_timeout.words }} an ask (Loki's <span class="mono">query_timeout</span>){% endif %}
+      {%- if lim.max_entries_limit_per_query %} · at most {{ '{:,}'.format(lim.max_entries_limit_per_query.n) }} lines (<span class="mono">max_entries_limit_per_query</span>){% endif %}
+      {%- if lim.max_query_series %} and {{ lim.max_query_series.n }} series (<span class="mono">max_query_series</span>) an ask{% endif %}
+      {%- if lim.retention_period %} · lines kept {{ lim.retention_period.words }} (Loki's <span class="mono">retention_period {{ lim.retention_period.text }}</span>){% endif %}. Loki's values read from its /config {{ lim.read_at[:10] }} {{ lim.read_at[11:16] }} UTC. Lines are masked.
+      {%- endif %}</p>
+  </div></div>
+
+  <div class="lq-row lq-acts"><span class="lq-lab"></span><div class="lq-line">
+    <span class="op-act"><button id="lq-ask" type="submit" form="lq-form" class="btn btn-primary"><span class="op-idle">Ask</span><span class="op-busy">Asking Loki…</span></button></span>
+    {%- with op={'address': here ~ q.qs({'ask': '1', 'before': '', 'at': '', 'hl': ''})} %}{% include "v2/_history_save.html" %}{% endwith %}
+    <button type="button" class="btn" x-data="copy" data-copy="{{ request.url_root.rstrip('/') }}{{ here }}{{ q.qs({'ask': '1', 'before': '', 'at': '', 'hl': ''}) }}" data-label="Copy the link" x-on:click="copy" x-text="label">Copy the link</button>
+    {{ info('history', 'ask-logs', 'About the logs builder') }}
+  </div></div>
+</section>
+
+{%- set a = q.answer %}
+{%- if a %}
+<div id="lq-answer" class="lq-answer">
+{%- if a.state == 'refused' %}
+<div class="lq-st lq-warn" role="alert"><span class="lq-k">Refused{% if a.refusals and a.refusals[0][1] %} by a bound{% endif %}</span>
+  {%- for words, fixes in a.refusals %}<p><strong>{{ words }}</strong></p>{% endfor %}
+  {%- if lim.retention_period and a.refusals and a.refusals[0][1] %}<p class="muted">Narrow the range, or ask in parts: Loki keeps {{ lim.retention_period.words }}, so every part is there.</p>{% endif %}
+  <div class="lq-line">{% for words, fixes in a.refusals %}{% for label, over in fixes %}{{ go(dict(over, ask='1', before='', at='', hl=''), label, 'btn btn-small') }}{% endfor %}{% endfor %}</div>
+</div>
+{%- elif a.state == 'error' %}
+<div class="lq-st lq-danger" role="alert"><span class="lq-k">Loki not answering</span>
+  <p><strong>Couldn't load: {{ a.error }}</strong>, asked {{ a.asked_at[11:16] }} UTC. Nothing is drawn from an earlier answer.</p>
+  <p class="muted">{% if a.last_good %}Its last good read (the live tail's, every 5 s) was {{ stamp(a.last_good) }}.{% else %}The live tail has no good read of it either.{% endif %} If Loki stays down, Needs attention carries it as a row (its probe runs every 60 s).</p>
+  <div>{{ go({'ask': '1'}, 'Ask again', 'btn btn-small') }}</div>
+</div>
+{%- elif a.state == 'empty' %}
+{%- set c = a.context or {} %}
+<div class="lq-st" role="status"><span class="lq-k">No lines in range</span>
+  <p><strong>No lines match over {{ rng.words }}.</strong>{% if c.sent is not none and c.sent is defined %} {{ (q.devices | join(' and ')) if q.devices and q.devices | length <= 3 else 'The devices asked' if q.devices else 'Every device' }} sent {{ '{:,}'.format(c.sent) }} line{{ 's' if c.sent != 1 }} in the range{% if c.filtered %}; none passed the filters{% endif %}.{% endif %}</p>
+  {%- if a.kept %}<p class="muted">{% if a.inside_kept %}The range is inside what Loki keeps ({{ a.kept_words }}), so this is an answer, not a gap.{% else %}Part of the range is older than Loki keeps ({{ a.kept_words }}): nothing there is held.{% endif %}</p>{% endif %}
+  {%- if s.has %}<div>{{ go({'has': '', 'ask': '1', 'hl': 'has'}, 'Drop the text filter', 'btn btn-small') }}</div>{% endif %}
+</div>
+{%- elif s.show == 'counts' %}
+<section class="card lq-card" aria-label="The answer, counts over time">
+  <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{{ a.series_total }} series · answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>
+  <section class="panel lq-panel" data-panel-json='{{ a.payload | tojson }}' data-panel-h="9" data-lq-pick aria-label="{{ a.series_total }} series of lines per {{ a.window_words }}">
+    <div class="panel-body"><p class="panel-wait">Drawing…</p></div>
+  </section>
+  <p class="lq-pick" aria-live="polite" hidden></p>
+  <div class="table-wrap"><table class="table lq-legend" aria-label="The series">
+    <thead><tr><th scope="col">Series</th><th scope="col" class="num">Lines in range</th><th scope="col" class="num">Most in a window</th><th scope="col">Last window with a line</th></tr></thead>
+    <tbody>{% for sr in a.series %}<tr><td><span class="swatch s{{ loop.index0 % 6 }}" aria-hidden="true"></span> <span class="mono">{{ sr.label }}</span></td><td class="num">{{ '{:,}'.format(sr.total) }} line{{ 's' if sr.total != 1 }}</td><td class="num">{{ sr.most }} per {{ a.window_words }}</td><td>{{ sr.last_words }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {%- if a.series_total > a.series | length %}<p class="lq-hint">{{ a.series_total }} series: the {{ a.series | length }} with the most lines are drawn.</p>{% endif %}
+  <span class="lq-hint">Counts are drawn on the metrics chart, the same as a PromQL answer. Click a point for that window's lines: they open in the Lines view, filtered to the window.</span>
+</section>
+{%- else %}
+<section id="lines" class="card lq-card" aria-label="The Lines view">
+  <div class="lq-top"><strong>{{ q.answer_title }}</strong><span class="faint">{% if a.total is not none %}{{ '{:,}'.format(a.total) }} line{{ 's' if a.total != 1 }} · {% endif %}answered in {{ a.took_ms }} ms · read {{ a.read_at[11:16] }} UTC</span></div>
+  <div class="table-wrap"><table class="table lq-lines">
+    <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Device</th><th scope="col">Severity</th><th scope="col">Kind</th><th scope="col">Line (masked)</th></tr></thead>
+    <tbody>{% for r in a.rows %}<tr><td class="lq-nw mono" title="{{ r.iso }}">{{ r.at }}</td><td class="mono">{{ r.device or '—' }}</td><td>{% if r.sev is not none %}<span class="lq-sev{{ ' s3' if r.sev <= 3 else ' s4' if r.sev == 4 }}">{{ r.sev }} {{ r.sev_word }}</span>{% else %}<span class="muted">—</span>{% endif %}</td><td class="mono small lq-nw">{{ r.kind }}</td><td class="lq-l">{{ r.text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="lq-foot"><span class="muted">Lines {{ a.at + 1 }} to {{ a.at + a.rows | length }}{% if a.total is not none %} of {{ '{:,}'.format(a.total) }}{% endif %}, newest first. A line's time is when the collector received it, never the device's clock.</span>
+    <span class="lq-line">{% if a.at %}{{ go({'ask': '1', 'before': '', 'at': ''}, '‹ Newest', 'btn btn-small') }}{% endif %}{% if a.more %}{{ go({'ask': '1', 'before': a.next_before, 'at': a.at + a.rows | length}, 'Older ›', 'btn btn-small') }}{% endif %}</span></div>
+</section>
+{%- endif %}
+</div>
+{%- endif %}
+</div>

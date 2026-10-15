@@ -15,7 +15,8 @@ Compared again 2026-10-11 (C667's saved views): "Save this view…" beside Copy 
 Templates compared: templates/v2/history_syslog.html, templates/v2/_logs_view.html, templates/v2/_history_body.html
 Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the line under the timeline tab's filters, a branch the syslog view never draws; nothing on this board's page moved.
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
-Templates sha256: `6da8adc653190b3e982fb5e380969f2905355e41d8081d9c7edf3c9a5e8a9bcf`
+Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
+Templates sha256: `73c57e301ae7a242096c96a2fc6ede4a626724d859e302d74ff3b81fad9d6c37`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

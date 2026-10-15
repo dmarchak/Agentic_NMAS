@@ -1,0 +1,16 @@
+{
+ "captured": "2026-10-15 08:20 UTC, the NMAS host's Loki (3.3.x), read-only: GET /loki/api/v1/labels and /loki/api/v1/label/<name>/values over the 30 days before (start 1789460453000000000, end 1792052453000000000); and the first line carrying each label, query_range {job=~\".+\", <label>=~\".+\"} limit 1 forward over the same 30 days",
+ "start": "1789460453000000000",
+ "end": "1792052453000000000",
+ "labels": {"status": "success", "data": ["filename", "host", "job", "service_name", "unit", "device", "severity", "trap_oid"]},
+ "values": {
+  "job": {"status": "success", "data": ["loki.source.journal.snmptrapd", "network_syslog", "snmptrapd"]},
+  "device": {"status": "success", "data": ["r1", "r2", "r3", "r4", "r6", "s1", "s2", "s3", "s4"]},
+  "severity": {"status": "success", "data": ["3", "4", "5"]},
+  "trap_oid": {"status": "success", "data": ["IF-MIB::linkDown", "IF-MIB::linkUp"]}
+ },
+ "first_labelled": {
+  "severity": "2026-10-15T03:49:00Z",
+  "device": "2026-10-13T00:35:00Z"
+ }
+}

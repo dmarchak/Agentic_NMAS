@@ -68,6 +68,8 @@
 {% include "v2/_history_metric.html" %}
 {%- elif tab == 'query' and syslog %}
 {% include "v2/_logs_view.html" %}
+{%- elif tab == 'query' and ask_logs %}
+{% include "v2/_history_ask_logs.html" %}
 {%- elif tab == 'query' %}
 {% include "v2/_history_query.html" %}
 {%- elif tab == 'baselines' %}

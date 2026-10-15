@@ -39,6 +39,7 @@
   {%- for key, rv in m.ranges.items() %}<a class="seg-btn{% if s.range == key %} on{% endif %}" href="{{ here }}{{ q({'range': key}) }}" aria-pressed="{{ 'true' if s.range == key else 'false' }}">{{ rv[0] }}</a>{% endfor %}
 </div>
 {%- if ask %}
+{%- with source=('logs' if s.lang == 'logql' else 'metrics'), mode='code', heading=False, code_href=here ~ q({}) %}{% include "v2/_history_ask_head.html" %}{% endwith %}
 <form class="card hq-query hq-ask-own" method="get" action="{{ here }}">
   <input type="hidden" name="list" value="{{ m.list }}"><input type="hidden" name="range" value="{{ s.range }}">
   <label><span class="muted small">Language</span>
