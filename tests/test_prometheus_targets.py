@@ -569,6 +569,16 @@ class TestTheFilesOnDisk:
 
 
 class TestTheKeeper:
+    @pytest.fixture(autouse=True)
+    def _own_record(self, tmp_path_factory, monkeypatch):
+        """Each test its own data folder, so its own keeper record (C809): the record lives in
+        `config.DATA_DIR`, one per session, and a test that records a run decided what a later
+        test's `last_sync()` read. Night #9's clean run met it in mutmut's order. Not `tmp_path`:
+        a test here asserts its target directory stays empty."""
+        from modules import config
+
+        monkeypatch.setattr(config, "DATA_DIR", str(tmp_path_factory.mktemp("keeper-data")))
+
     def test_the_default_directory_is_empty_so_nothing_is_written(self):
         from modules import prometheus_targets as P
         from modules.settings_schema import DEFAULTS
