@@ -147,8 +147,10 @@ blocks cutover or is a security issue (B).
 - **The 2026-10-07 "Now" rows that are not cutover needs** (D5): C603, C589, C596, C582, C665;
   measurements C581, C597, C677, C627; harness C567, C592, C599, C641.
 - **Harness and measurement only:** C546, C480, C206, C528, C782, C802, C810, C822, C843, C845,
-  C763.
-- **Mutation (parked):** C781, C842, C792, C834, C844, C796.
+  C763, C863, C865.
+- **Mutation (parked):** C781, C842, C792, C834, C844, C796, C864, C866. The freshness rule
+  (the last mutation commit) landed 2026-10-15; no nights run until the operator says Phase 7
+  has settled.
 - **Lab tooling:** C93, C94, C218, C301, C518, C523, C525, C534, C535, C671, C673, C695, C703,
   E2, C451.
 - **The Scheduled section's 7.x rows** not named above (C14, C58, C140, C164, C102, C105, C106,

@@ -282,14 +282,80 @@ nothing scores 100% coverage and 0% here. Each night:
   contexts saw execute it (by test function, so a moved parameter id still selects; an id head
   no longer collects is dropped and named), its importing files' child-starting tests (their
   children are measured below), and those importing files changed since the drill-down whole
-  (their tests are newer than the measurement, as a test written to kill a survivor is). A
-  function changed since the drill-down, or new, or every function when no drill-down with
-  tiers is found, runs its importing test files, as before: never fewer tests than could kill
-  its mutants. The summary says which functions were measured and why each other one was not.
-  Per mutant, mutmut's own statistics run then picks, among those, the tests that called the
-  function in the test's process. **What a caller's change since the drill-down makes newly
-  reach a function is not seen until the next coverage night** (only the function's own text is
-  compared).
+  (their tests are newer than the measurement, as a test written to kill a survivor is). The
+  summary says which functions were measured and why each other one was not. Per mutant,
+  mutmut's own statistics run then picks, among those, the tests that called the function in
+  the test's process. **What a caller's change since the drill-down makes newly reach a
+  function whose own text is unchanged is not seen until the next coverage night** (only the
+  function's own text hash is compared).
+- **A stale map** (the operator, 2026-10-15: "a night selects tests from the coverage
+  nightly's artifact, which can be older than the code it mutates"). Every summary names the
+  map under its heading: the coverage nightly's run, its commit and date, and why it was not
+  usable when it was not, or "none found" (`map_line`; the workflow reads the run's id, head
+  commit and `created_at`). A planned function is **stale** when its text hash differs from the
+  map's, or the map lacks it (or there is no usable map): the hash is `function_hash`, sha256
+  of the function's own lines (nested functions within), of the file at the map's commit (`git
+  show <commit>:<path>`) against the same at tonight's head (`reach_fresh`, which records both
+  in the plan's `map_hashes`). A stale function is never selected by the map, and never by the
+  test files importing its module: a test reaching it only through a caller imports nothing of
+  it (C842: `history_ask.alternation`'s killing test). The two ways measured on the laptop
+  (2026-10-15, fcd1e4f6, 11,053 tests, 4 workers), against a capped night's 120-minute budget
+  that already holds about 60 minutes of setup and 15 of mutants on the runner:
+  - **(a) refresh the map in the same workflow, CHOSEN:** the whole suite once, confined, the C
+    tracer's per-test contexts over the stale functions' modules alone: **521 s** over 7
+    modules, and 825 s over 1 in the planted walk while other suites loaded the laptop; at 2.2
+    times about 19 to 30 minutes on the runner. On the runner itself the coverage nightly's own
+    four shards' test steps (the same suite per test, every module, with branches) summed
+    1,988 s (run #2), 1,646 s (run #3) and 2,070 s (run #4): **about 27 to 35 minutes**, which
+    with a capped night's 60 minutes of setup and 15 of mutants is 102 to 110, inside 120 even
+    were it counted there. It runs in the plan step, before mutmut and outside the budget's
+    `timeout`; the job's bound grows by its own (`REFRESH_TIMEOUT_S`, 5,200 s, about 2.5 times
+    run #4's; `timeout-minutes` 230), the budget unchanged.
+  - **(b) the whole suite as mutmut's own selection:** cannot run as the night stands (the
+    copy lacks `.github/`, which a test reads at collection: mutmut's statistics run failed in
+    68 s). With `.github/` copied in a scratch clone: the whole suite in mutmut's copy 360 s
+    (53 tests fail there with no mutant active, C779's kind, against 2 for a capped night);
+    mutmut's statistics run over it, serial, 1,056 s; its clean run then failed after 253 s and
+    2,281 tests, on a test failing only in that order, so no mutant was reached. A night's
+    setup repeats these (two statistics runs, three clean runs, the copy run): about 6,100 s
+    on the laptop by these figures, about 3.7 hours on the runner, three times the budget.
+  - **(c) defer** the stale function until a coverage nightly holds its text: the fallback,
+    used when the refresh cannot measure (its bound fired, it crashed, it left no data; or
+    `plan --stale-map defer`). The function waits in the record as the cap's deferred ones do
+    (its results kept; one not started `whole`), is named in the summary with why ("Stale map,
+    not mutated tonight"), and is planned the first night a map holds its text.
+
+  The refresh's tests for each stale function are those its contexts saw execute a line of the
+  function's body, in any phase (`refreshed_reach`), with its importing files' tests the
+  refresh saw start a child of ours, as for a map-measured function (their children are
+  measured each night, below); only ids of this checkout's test files (the refresh's tier
+  records also hold the suite's own nested pytest runs' ids). A test that fails in the refresh
+  is run once more alone, its contexts appended: one that passes then is measured whole (the
+  laptop's refresh had one, `test_v2_brand`'s rendered-page check, failing among the rest and
+  passing alone); one that fails again fails on the unmutated code, so it can kill no mutant
+  (it would fail mutmut's clean run, and be deselected there, C779), and is named. Only when
+  that second run cannot itself finish is the reach partial: its functions are "refreshed in
+  part" (the map's own tests for them added), a stale selection.
+- **A survivor under a stale selection** (its function's tests not chosen by a measurement of
+  its text tonight: anything but `measured` or `refreshed`; a plan from before this rule, by
+  import, included) carries `stale_map` in the report, in the summary's survivor line ("STALE
+  MAP") and in the record (the function's `stale_map`, an additive field). It is never known
+  debt or the baseline sweep's, even when its lines are on the debt list; it is an open VERDICT
+  survivor and **fails the night** like any other (the rule stands: only an open VERDICT
+  survivor turns it red); and `nmas-mutation debt add` refuses a report holding one, naming
+  each, until a night under fresh selection finds it too (`add_to_debt`).
+- **The planted case** (the operator's test, 2026-10-15): a function changed after the coverage
+  run and a test that only now reaches it, through a caller, importing nothing of it.
+  `TestAStaleMap` holds it in a real repository with a real refresh (the caller's test found,
+  the planted mutant killed by that selection and surviving the import one); walked on the
+  laptop through the night's three steps (2026-10-15, at fcd1e4f6): commit A added
+  `toy_walk.span`, mapped by the coverage tool's own report; commit B changed it and added a
+  test reaching it only through `toy_walk_caller.width`. The plan judged it stale by its hash,
+  the refresh (762 s; 930 s on a second walk, the laptop loaded) selected
+  `test_toy_walk.py::test_never_negative` and
+  `test_toy_walk_caller.py::test_width`, and mutmut's 3 mutants were all killed, `hi - lo + 1`
+  → `hi + lo + 1` among them. The same night under af2a439a's selection (by import:
+  `tests/test_toy_walk.py`) left that one and `+ 1` → `+ 2` surviving.
 - **A test's child.** A child process records nothing in mutmut's statistics (above), and the
   coverage nightly's contexts do not see it either (measured 2026-10-15 with CI's coverage
   command, coverage 7.16.1 and pytest-cov 7.1.0, which no longer measures children: `in_child`'s
@@ -370,15 +436,18 @@ nothing scores 100% coverage and 0% here. Each night:
   also where two rules came from: loopback brought up in the namespace (without it a test's
   own listener read "Network is unreachable" and mutmut exited 1), and one mutant at a time.
 
-**Reading the summary:** the canary's line (all its mutants killed: the measurement works), the
+**Reading the summary:** the coverage map it selected by (run, commit, date; or none, and why),
+the canary's line (all its mutants killed: the measurement works), the
 scope's (how many mutants ran, all of the planned functions, and how many functions the record
-carried in, and how many logging mutants were never run), how the tests were chosen (by
-measured reach or by import, each by-import function with its reason) and the children
+carried in, and how many logging mutants were never run), how the tests were chosen (by the
+map, or by tonight's refresh, each stale function with its reason, the refresh's exit, time and
+any test that failed in it, and each function deferred) and the children
 measured (and each test that was not), the functions the cap left waiting, a table per function (mutants,
 killed, survived VERDICT, survived MESSAGE, known equivalents; the score, killed over the
 mutants a test could kill; and the VERDICT score, killed over killed and VERDICT survivors),
 then the open VERDICT survivors with their line before and after (each one keeps the night
-failing; "no test reached it" marks one no test ran), the open MESSAGE survivors (listed,
+failing; "no test reached it" marks one no test ran; "STALE MAP" one found under a stale
+selection, never added to the debt list), the open MESSAGE survivors (listed,
 never failing), the known equivalents with their reasons, what the budget left (kept, resumed next night),
 and any function mutmut made no mutant of (nothing in it was tested that night). The artifact
 `mutation-report` holds `report.json` (every mutant's status), `run.json` (each mutmut run's
@@ -394,8 +463,10 @@ number, which moves when the function changes. Never chase an equivalent mutant 
 **To run a night on the laptop:** install `requirements-mutation.txt` `--no-deps` into its own
 folder and put it on `PYTHONPATH`, then run the workflow's three steps: `scripts/nmas-mutation
 plan --state <state.json> --head <sha> --out mutation-out [--also path::qualname] [--reach
-<drill-down> --reach-commit <its sha>]` (the drill-down: `scripts/nmas-ci-log run <coverage
-nightly run> --artifact coverage-drilldown --out <dir>`),
+<drill-down> --reach-commit <its sha> --reach-run <its run> --reach-date <its date>]
+[--stale-map defer]` (the drill-down: `scripts/nmas-ci-log run <coverage nightly run>
+--artifact coverage-drilldown --out <dir>`; without `--stale-map defer` a stale function's map
+is refreshed, the whole suite run once, 9 to 14 minutes here),
 `scripts/nmas-mutation run --out mutation-out` inside `unshare -rn` with `ip link set lo up` (as
 the workflow), and `scripts/nmas-mutation report --plan mutation-out/plan.json --summary <file>
 --state-out <next.json> --mutmut-exit <its exit>`. Run it in a copy of the tree when you will
@@ -1014,7 +1085,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_tmp_roots.py` | C776 (2026-10-14): a killed run's pytest root (its lock's owner gone) is removed when the next run starts, through the real conftest in a nested run; a root whose owner lives (another shard), one with no lock or an unreadable one, this run's own, and a folder not named `pytest-<n>` are left; a dead owner planted as a pid above `kernel.pid_max`. Controls: the owner never gone (all three fail), the conftest's call removed (the nested run's test fails) |
 | `test_nmas_test_interpreter.py` | (the operator, 2026-10-14: an ordinary terminal ran the suite on 3.14) `scripts/nmas-test`'s interpreter, through the REAL script with stand-in interpreters reporting a chosen version: with no `PYTHON`, CI's environment is chosen and named; without it, a `python3` of another version is refused naming both versions, `scripts/nmas-ci-env` and `PYTHON=`, and pytest never starts; a `python3` of CI's version runs; a `PYTHON` given is honoured and said to be not CI's. CI's version is read from `ci.yml` as YAML, independent of the script's `sed`. Controls: the refusal removed (the refusal test fails); the CI-environment default removed (the default test fails) |
 | `test_no_duplicate_definitions.py` | C90's sibling: no module or class body defines a name twice (a second `def` silently replaces the first; in a test class it drops a test), across the program, scripts and tests (floor 300 files); a property's setter and the definition after `@overload` are the exemptions, anchored on the real one; the definitions come from `scripts/pydefs.py`, the walker the coverage tool shares |
-| `test_nmas_mutation.py` | Lab 7's nightly mutation run (`scripts/nmas_mutation.py`, the workflow), without mutmut: a real diff's changed lines; a night's plan from a real git history (the counted automation functions changed, each whole; a property, a route and a deleted module left out), and from the record (a kept function runs only what is left and its open survivors, by name; one whose text changed starts afresh; `--also`); the function hash; the test files a night runs, by parsed imports (an import inside string data is not one); mutmut's real names and results (captured 2026-10-14); the tests that start a child added to each planned function's; a child under the statistics run recording nothing; a listed equivalent known by function and lines, any other survivor open, "no tests" surviving; the canary (all killed, or MEASUREMENT BROKEN) and the scope (SCOPE BROKEN); a failed mutmut run, an out-of-time night, a function with no mutant; merging the record's results, and what the next record keeps; the equivalent list's shape; the workflow nightly and by hand only, its one budget, serial, confined, bytecode written, the record kept after every standing night, and mutmut never in the host's, the gate's or a push's requirements. After the first GitHub night (2026-10-14): every setup step of ci.yml's test job has a twin in the night (`run` word for word, the install's commands, the interpreter) and the tests step's variables are the mutate step's, each exception named with why (controls: a step ci.yml gains, the PostgreSQL step lost, `NMAS_REQUIRE_PG` taken off; and the real PostgreSQL step deleted); a failed run's own lines quoted in the summary, from that night's real output (`failure_excerpt`); each mutmut run's output kept and `NMAS_COPY_OF` given to it; a function moved unchanged named with where it was, a moved-and-edited one not (controls: the excerpt finding nothing, `NMAS_COPY_OF` not set, `moved_from` finding nothing). C778 (the second GitHub night): `fence` marks every unplanned function and class of a planned module with mutmut's own pragma on its header's colon line (a signature over two lines, a class holding a planned method, an async function; a one-line body left), adding only comments (the same AST); the workflow plans with `--fence`; the CLI fences a clean planned module in place and refuses one with changes of its own (controls: the fence doing nothing, the planned fenced too, the workflow without it, the refusal removed). C779: the ids a run names FAILED or ERROR are read from that walk's real short summary (an id with spaces, a reason, a repeat); each is added as `--deselect` among mutmut's pytest arguments; the CLI's run step, its first mutmut run failing, measures the copy, deselects, records and tries again (controls: no retry, nothing deselected, no id read). The debt (`TestTheDebt`): mutmut's names read back to a path and qualname; a survivor on the list by its function and two lines, or by its hash when moved, never when moved and changed; the verdict parts known debt from new, the summary counting both; the list grows only with a reason and never twice for one survivor; its report (size, change, met, biggest functions); the record keeps open debt, finished hashes and the list's size; through the real report step, a night with only known open survivors is green, one off the list red, a grown list red once; `debt add` from a report with a reason, refused without one or for a failed night; every function on the committed list exists, with a planted control. Moves: the record's results carried, renamed; a move finished before or on the debt list not mutated; `--also` still forces (controls: nothing on the debt, growth never red, no reason needed, nothing carried, existence not checked) |
+| `test_nmas_mutation.py` | Lab 7's nightly mutation run (`scripts/nmas_mutation.py`, the workflow), without mutmut: a real diff's changed lines; a night's plan from a real git history (the counted automation functions changed, each whole; a property, a route and a deleted module left out), and from the record (a kept function runs only what is left and its open survivors, by name; one whose text changed starts afresh; `--also`); the function hash; the test files a night runs, by parsed imports (an import inside string data is not one); mutmut's real names and results (captured 2026-10-14); the tests that start a child added to each planned function's; a child under the statistics run recording nothing; a listed equivalent known by function and lines, any other survivor open, "no tests" surviving; the canary (all killed, or MEASUREMENT BROKEN) and the scope (SCOPE BROKEN); a failed mutmut run, an out-of-time night, a function with no mutant; merging the record's results, and what the next record keeps; the equivalent list's shape; the workflow nightly and by hand only, its one budget, serial, confined, bytecode written, the record kept after every standing night, and mutmut never in the host's, the gate's or a push's requirements. After the first GitHub night (2026-10-14): every setup step of ci.yml's test job has a twin in the night (`run` word for word, the install's commands, the interpreter) and the tests step's variables are the mutate step's, each exception named with why (controls: a step ci.yml gains, the PostgreSQL step lost, `NMAS_REQUIRE_PG` taken off; and the real PostgreSQL step deleted); a failed run's own lines quoted in the summary, from that night's real output (`failure_excerpt`); each mutmut run's output kept and `NMAS_COPY_OF` given to it; a function moved unchanged named with where it was, a moved-and-edited one not (controls: the excerpt finding nothing, `NMAS_COPY_OF` not set, `moved_from` finding nothing). C778 (the second GitHub night): `fence` marks every unplanned function and class of a planned module with mutmut's own pragma on its header's colon line (a signature over two lines, a class holding a planned method, an async function; a one-line body left), adding only comments (the same AST); the workflow plans with `--fence`; the CLI fences a clean planned module in place and refuses one with changes of its own (controls: the fence doing nothing, the planned fenced too, the workflow without it, the refusal removed). C779: the ids a run names FAILED or ERROR are read from that walk's real short summary (an id with spaces, a reason, a repeat); each is added as `--deselect` among mutmut's pytest arguments; the CLI's run step, its first mutmut run failing, measures the copy, deselects, records and tries again (controls: no retry, nothing deselected, no id read). The debt (`TestTheDebt`): mutmut's names read back to a path and qualname; a survivor on the list by its function and two lines, or by its hash when moved, never when moved and changed; the verdict parts known debt from new, the summary counting both; the list grows only with a reason and never twice for one survivor; its report (size, change, met, biggest functions); the record keeps open debt, finished hashes and the list's size; through the real report step, a night with only known open survivors is green, one off the list red, a grown list red once; `debt add` from a report with a reason, refused without one or for a failed night; every function on the committed list exists, with a planted control. Moves: the record's results carried, renamed; a move finished before or on the debt list not mutated; `--also` still forces (controls: nothing on the debt, growth never red, no reason needed, nothing carried, existence not checked). A stale map (`TestAStaleMap`, the operator, 2026-10-15): the map's run, commit and date in every summary (nothing to mutate, a failed night, none found, unusable); a function stale by text hash at the map's commit, a hash-equal one fresh though its file changed; the planted case in a real repository (a function changed after the map, a new test reaching it only through a caller): the real refresh finds the caller's test and that selection kills the planted mutant, which the import selection lets survive; a refresh's failing test run again alone (complete when it passes, "refreshed in part" when not), a broken refresh measuring nothing; a stale function not refreshed deferred, carried whole, named, and planned and measured the night a map holds it; a survivor under a stale selection labelled, never known debt, red, kept in the record, and refused by `add_to_debt` and `debt add`; the job's bound holding the refresh with the budget unchanged |
 | `test_mutation_canary.py` | the nightly mutation run's canary (`tests/mutation_canary.py`): both functions pinned so that every mutant fails a test, `in_child` reached only through a child process by its dotted name |
 | `test_nmas_coverage.py` | Lab 7's coverage tool (`scripts/nmas_coverage.py`): the lab's example (3 of 6 functions tested is 50%, the module imported inside a test so def lines cannot count), a module no test reaches named, a module no rule places and a stale exception failing; the tiers' two columns; the counting rules (nested, property, overload, abstract, Protocol, stub, lambda, TYPE_CHECKING, `__main__`); the ratchet's failures; the assertion check following helpers; this repository's scope complete and no new assertion-free test. C808 (2026-10-15): the ratchet judges the UNCOVERED count, never the percentage: CI #812's real case (drift_check 31 of 35 to 30 of 34, a covered function removed) passes, against counts and against named functions; an untested function added fails; a planted loss (a covered function losing its test while an uncovered one gains one, the count holding) fails by name; a baseline without names (the format before C808) is read as counts. Controls, each from a scratchpad copy restored byte-identical: the percentage rule back (the two #812 tests fail), the names check off (the planted loss fails), the count check off (three fail), `baseline_of` writing no names (the planted loss fails), a removed function counted as lost (the named #812 test fails) |
 | `test_removal_reads_before_it_forgets.py` | C130: a NetBox removal forgets a record entry only for an object NetBox answered 404 for, and a preview forgets nothing; an object that could not be read (a 500) is `failed`, neither deleted nor forgotten, and the preview names it first, fails its read gate and cannot be confirmed; a clean preview stays confirmable (the floor) |

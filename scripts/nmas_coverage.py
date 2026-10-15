@@ -262,6 +262,18 @@ def process_files(folder: str) -> list:
     return out
 
 
+def contexts_by_line(data_file: str) -> dict:
+    """`{measured file: {line: [contexts]}}` of one coverage data file with per-test contexts.
+    The nightly mutation run's refresh of a stale coverage map reads which tests ran each line
+    through it (scripts/nmas_mutation.py, `refreshed_reach`): coverage is imported here
+    alone (tests/test_requirements_lock.py, CI_TOOLS)."""
+    from coverage.data import CoverageData
+    data = CoverageData(data_file)
+    data.read()
+    return {f: {line: sorted(ctxs) for line, ctxs in data.contexts_by_lineno(f).items()}
+            for f in data.measured_files()}
+
+
 def measure(data_file: str, tiers_dir: str, root: str = ROOT, files=None, scope=None) -> dict:
     """The whole report from a combined coverage data file with per-test contexts."""
     import coverage

@@ -4,9 +4,9 @@
 # last night covered, and those the record keeps (unfinished, or holding an open survivor), at
 # most a cap of them, the oldest first, mutated by mutmut, each mutant run against the tests
 # MEASURED to execute its function (the coverage nightly's per-test contexts, mutmut's own
-# statistics, and the night's measurement of each test's children; by import where nothing has
-# measured it yet); a canary first. Never on a push or a pull request, never on the NMAS host,
-# never in the gate.
+# statistics, and the night's measurement of each test's children; where the coverage map does
+# not hold a function's text, the plan's own whole-suite refresh of it); a canary first. Never
+# on a push or a pull request, never on the NMAS host, never in the gate.
 #
 # A night fails when an open VERDICT survivor remains (a mutant no test killed whose change can
 # decide a result, not in tests/mutation_equivalent.py, the hand-kept list; MESSAGE survivors,
@@ -52,8 +52,11 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # The budget, plus about 20 minutes for the install, mutmut's own setup run and the report.
-    timeout-minutes: 145
+    # The budget, plus about 20 minutes for the install, mutmut's own setup run and the report,
+    # plus the plan's refresh of a stale coverage map (its bound, REFRESH_TIMEOUT_S in
+    # scripts/nmas-mutation: 5,200 s, about 87 minutes; about 27 to 35 expected, the coverage
+    # nightly's own four shards' test steps summed).
+    timeout-minutes: 230
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,9 +131,9 @@ jobs:
 
       # The tests that reach each function, MEASURED (C796, C834; the operator, 2026-10-15): the
       # newest successful coverage nightly's drill-down (each function's tests from its per-test
-      # contexts, and each test's tier), from that run, outside the checkout. Its commit is the
-      # run's: a function changed since, or new, is tested by import, as before, and none found
-      # means every function is (each said in the summary).
+      # contexts, and each test's tier), from that run, outside the checkout. Its run, commit and
+      # date go to the plan and the summary; a function changed since, or new, or every one when
+      # none is found, has its reach refreshed by the plan (below).
       - name: The newest coverage drill-down (each function's tests, measured)
         id: reach
         env:
@@ -138,8 +141,8 @@ jobs:
         run: |
           curl -sf --max-time 20 \
             "https://api.github.com/repos/$REPO/actions/workflows/coverage-nightly.yml/runs?status=success&per_page=1" \
-            | python -c "import json,sys; r=(json.load(sys.stdin).get('workflow_runs') or [{}])[0]; print(f\"id={r.get('id','')}\nsha={r.get('head_sha','')}\")" \
-            >> "$GITHUB_OUTPUT" || echo "no coverage drill-down found: every function by import"
+            | python -c "import json,sys; r=(json.load(sys.stdin).get('workflow_runs') or [{}])[0]; print(f\"id={r.get('id','')}\nsha={r.get('head_sha','')}\ndate={r.get('created_at','')}\")" \
+            >> "$GITHUB_OUTPUT" || echo "no coverage drill-down found: every function refreshed"
 
       - name: Download it
         if: steps.reach.outputs.id != ''
@@ -156,11 +159,22 @@ jobs:
       # --fence: mutmut is given only the planned functions; every other function of a planned
       # module is fenced off in this checkout, which exists for the night alone (the second
       # night planned two functions of pipeline.py and mutmut made 5,030 mutants of 56).
+      # The summary names the map's run, commit and date every night. A planned function the map
+      # does not hold at its text tonight (its text hash there differs, or it is absent) is never
+      # selected by the map, nor by the test files importing it (a caller's test imports
+      # nothing of it, C842): the plan REFRESHES the map for it first, the whole suite once,
+      # confined by scripts/nmas-test, per-test contexts over its module alone (about 27 to 35
+      # minutes here, by the coverage nightly's shards summed; bounded at 5,200 s), and a
+      # refresh that cannot finish leaves it waiting in the record. NMAS_REQUIRE_PG as the mutate
+      # step's: the refresh runs the tests ci.yml runs, and a skipped test reaches nothing.
       - name: Plan the night
         id: plan
         env:
           ALSO_FUNCTIONS: ${{ inputs.functions }}
           REACH_COMMIT: ${{ steps.reach.outputs.sha }}
+          REACH_RUN: ${{ steps.reach.outputs.id }}
+          REACH_DATE: ${{ steps.reach.outputs.date }}
+          NMAS_REQUIRE_PG: "1"
         run: |
           mkdir -p .mutation-state
           set -f
@@ -168,7 +182,8 @@ jobs:
           for f in $ALSO_FUNCTIONS; do set -- "$@" --also "$f"; done
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
             --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md --fence \
-            --reach "$RUNNER_TEMP/coverage-reach" --reach-commit "$REACH_COMMIT" "$@"
+            --reach "$RUNNER_TEMP/coverage-reach" --reach-commit "$REACH_COMMIT" \
+            --reach-run "$REACH_RUN" --reach-date "$REACH_DATE" "$@"
           # The summary in the job's log too (readable through the API, which returns no job
           # summary), and on the run's page.
           if [ -f mutation-out/summary.md ]; then

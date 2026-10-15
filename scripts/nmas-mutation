@@ -3,15 +3,18 @@
 "Mutation testing"; .github/workflows/mutation-nightly.yml; the logic is scripts/nmas_mutation.py).
 
     nmas-mutation plan --state S --head SHA --out DIR [--summary F] [--also PATH::QUALNAME]...
-                       [--reach DRILLDOWN --reach-commit SHA] [--cap N]
+                       [--reach DRILLDOWN --reach-commit SHA --reach-run ID --reach-date WHEN]
+                       [--stale-map refresh|defer] [--cap N]
         the functions to mutate tonight: those the record S keeps (unfinished, or holding an
         open survivor) whose text is unchanged, then the automation functions changed since S's
         commit (or HEAD~1 on the first night); at most N, the oldest first, the rest left in the
         record. Writes DIR/plan.json, DIR/patterns.txt (mutmut's names) and ./setup.cfg
         (mutmut's configuration: the planned modules and the canary, and the night's tests: for
-        a function the drill-down measured as it is tonight, the tests it saw execute it; for
-        any other, the test files that import its module). With nothing to mutate, writes
-        "nothing to mutate" to F and S's next record, and DIR/patterns.txt is empty.
+        a function the drill-down holds at its text tonight, by text hash, the tests it saw
+        execute it; for any other, the tests tonight's refresh of the map saw execute it, the
+        whole suite run once per test over its module (`refresh`, the default), or it waits in
+        the record (`defer`, or a refresh that could not finish)). With nothing to mutate,
+        writes "nothing to mutate" to F and S's next record, and DIR/patterns.txt is empty.
     nmas-mutation run --out DIR
         mutmut, one mutant at a time, in three runs: the canary's in-process function (which
         also collects mutmut's statistics and each test's tier); then, each test that starts a
@@ -193,6 +196,105 @@ def _measure_children(population, paths, functions, out) -> dict:
                          failed=set(M.failing_tests(text)))
 
 
+#: The bound on the refresh (`_refresh`): the whole suite, confined, per-test contexts over the
+#: stale functions' modules. Measured on the laptop (2026-10-15, fcd1e4f6, 11,053 tests, 4
+#: workers): 521 s over 7 modules, and 825 s over 1 in the planted walk while other suites
+#: loaded the laptop; at the runner's 2.2 times, about 1,150 to 1,800 s. On the runner itself
+#: the coverage nightly's four shards' test steps (the same suite per test, every module, with
+#: branches) summed 1,988 s (run #2), 1,646 s (run #3) and 2,070 s (run #4, af2a439a): the
+#: bound is about 2.5 times the largest. Past it the refresh measured nothing usable, and its
+#: stale functions wait (defer). The workflow's job bound carries it.
+REFRESH_TIMEOUT_S = 5200
+
+
+def _refresh(stale: list, out: str, head: str) -> dict:
+    """Refresh the coverage map for *stale* (`path::qualname`) tonight (M.STALE_REFRESH): the
+    whole suite once, through scripts/nmas-test (confined, as the coverage nightly), with the C
+    tracer's per-test contexts measuring only their modules and each test's tier recorded. A
+    run that passed whole is complete; one that ended with failing tests runs those once more
+    alone, and is complete when that run ends (those failing again fail at head and can kill
+    no mutant: named), else used in part (its stale functions' survivors labelled stale map);
+    any other end (its bound, a crash, no data) measured nothing usable, and the stale
+    functions wait. Returns `{"paths", "exit",
+    "seconds", "failed", "rerun", "why", "reach": {"functions", "tiers", "complete"} or None}`;
+    the runs' output is kept in *out*/refresh.log and refresh-rerun.log."""
+    import time
+    paths = M.stale_paths(stale)
+    out = os.path.abspath(out)
+    data = os.path.join(out, "refresh.coverage")
+    tiers = os.path.join(out, "refresh-tiers")
+    os.makedirs(tiers, exist_ok=True)
+    env = dict(os.environ, COVERAGE_CORE="ctrace", COVERAGE_FILE=data, NMAS_TEST_TIERS=tiers,
+               NMAS_TEST_TIMEOUT=str(REFRESH_TIMEOUT_S), PYTHON=sys.executable)
+    # A measurement of its own (as `_measure_children`'s): none of an outer run's coverage or
+    # mutmut settings.
+    for name in ("MUTANT_UNDER_TEST", "NMAS_COVERAGE_TIERS", "COVERAGE_PROCESS_START",
+                 "NMAS_CHILD_COVERAGE"):
+        env.pop(name, None)
+    cmd = [os.path.join(M.ROOT, "scripts", "nmas-test"), "-q", "-rfE", "-p", "no:cacheprovider",
+           "-n", "auto", *[f"--cov={p[:-3].replace('/', '.')}" for p in paths],
+           "--cov-report=", "--cov-context=test"]
+    print(f"nmas-mutation: refreshing the coverage map of {len(stale)} stale function(s) in "
+          f"{len(paths)} module(s): the whole suite, per test", flush=True)
+
+    def run(args, log):
+        try:
+            r = subprocess.run(cmd[:1] + args, cwd=M.ROOT, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, errors="replace",
+                               timeout=REFRESH_TIMEOUT_S + 60)
+            text, code = r.stdout, r.returncode
+        except subprocess.TimeoutExpired as e:
+            partial = e.stdout or b""
+            text = partial.decode("utf-8", "replace") if isinstance(partial, bytes) else partial
+            code = None
+        with open(os.path.join(out, log), "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return text, code
+
+    start = time.monotonic()
+    text, code = run(cmd[1:], "refresh.log")
+    res = {"paths": paths, "exit": code, "seconds": round(time.monotonic() - start),
+           "failed": [], "rerun": [], "why": "", "reach": None}
+    if code not in (0, 1) or not os.path.exists(data):
+        res["why"] = (f"the refresh ended with exit {code} (0 passed, 1 tests failed; 124 or 137 "
+                      f"its {REFRESH_TIMEOUT_S} s bound) and left "
+                      + ("its data" if os.path.exists(data) else "no data")
+                      + ", so it measured nothing usable")
+        return res
+    if code == 1:
+        # A test that failed may have stopped before it reached a stale function. Each is run
+        # once more, alone of the rest, its contexts added to the same data: one that passes
+        # then (a test whose result depends on its neighbours: measured 2026-10-15, one of
+        # 10,877 in the laptop's refresh, passing alone) is measured whole.
+        failed = M.failing_tests(text)
+        res["rerun"] = failed
+        again, code2 = run(["-q", "-rfE", "-p", "no:cacheprovider", "--cov-append",
+                            *cmd[cmd.index("-n") + 2:], *failed], "refresh-rerun.log") \
+            if failed else ("", 1)
+        res["seconds"] = round(time.monotonic() - start)
+        if code2 == 1:
+            # Failing again alone: it fails on the unmutated code, so it can kill no mutant (it
+            # would fail mutmut's clean run, and be deselected there: C779). The reach stands.
+            res["failed"] = M.failing_tests(again) or failed
+            res["why"] = ("failing at head, alone too, so they can kill no mutant: "
+                          + ", ".join(res["failed"]))
+            code = 0
+        elif code2 != 0:
+            # Their reach is unknown: they may pass alone and reach a stale function.
+            res["failed"] = failed
+            res["why"] = (f"the run of its failing tests alone ended with exit {code2}, so their "
+                          "reach is unknown: survivors labelled stale map")
+            code = 1
+        else:
+            code = 0
+
+    def read(path):
+        return M.git("show", f"{head}:{path}", root=M.ROOT)
+    res["reach"] = {"functions": M.refreshed_reach(data, stale, read),
+                    "tiers": M.load_tier_records(tiers), "complete": code == 0}
+    return res
+
+
 def cmd_plan(a) -> int:
     state = {}
     if a.state and os.path.exists(a.state):
@@ -205,13 +307,25 @@ def cmd_plan(a) -> int:
     for f in glob.glob(os.path.join(M.ROOT, "tests", "test_*.py")):
         with open(f, encoding="utf-8") as fh:
             sources[os.path.relpath(f, M.ROOT)] = fh.read()
-    # The night's tests by MEASURED reach where the coverage nightly measured the function as it
-    # is tonight; by import where it did not (C796, C834).
+    # The night's tests by MEASURED reach where the coverage nightly measured the function at its
+    # text tonight (C796, C834); where it did not, by tonight's own whole-suite refresh, or the
+    # function waits (the operator, 2026-10-15: M.STALE_REFRESH, and why).
     reach = M.load_reach(a.reach) if a.reach else None
     fresh = M.reach_fresh(p["planned"], p["hashes"], reach, a.reach_commit or "", p["head"],
                           root=M.ROOT)
+    map_info = {"run": a.reach_run or "", "commit": a.reach_commit or "",
+                "date": a.reach_date or "", "unusable": fresh["unusable"]}
+    refresh, refreshed = {}, None
+    if fresh["stale"] and a.stale_map == M.STALE_REFRESH:
+        refresh = _refresh(sorted(fresh["stale"]), a.out, p["head"])
+        refreshed = refresh.pop("reach", None)
     chosen = M.choose_tests(p["planned"], sources, reach if not fresh["unusable"] else None,
-                            fresh["fresh"], fresh["changed_tests"])
+                            fresh["fresh"], fresh["changed_tests"], refreshed)
+    if chosen["deferred"]:
+        why = (refresh.get("why") or "the refresh measured nothing of it") \
+            if a.stale_map == M.STALE_REFRESH else "the stale-map rule is defer (--stale-map)"
+        M.defer_stale(p, chosen["deferred"], why)
+        files = sorted({path for path, _q in p["planned"]})
     whole = [t for t in chosen["tests"] if "::" not in t]
     ids = [t for t in chosen["tests"] if "::" in t]
     not_found = []
@@ -224,6 +338,8 @@ def cmd_plan(a) -> int:
     tests = whole + ids
     p["tests"] = tests
     p["selection"] = {"reach_commit": a.reach_commit or "", "unusable": fresh["unusable"],
+                      "map": map_info, "stale_rule": a.stale_map, "refresh": refresh,
+                      "map_hashes": fresh["map_hashes"],
                       "how": chosen["how"], "stale": fresh["stale"],
                       "changed_tests": fresh["changed_tests"], "not_found": not_found,
                       "ids": sum(1 for t in tests if "::" in t),
@@ -236,8 +352,11 @@ def cmd_plan(a) -> int:
     print(f"base {p['base'][:9]}, head {p['head'][:9]}: {len(p['planned'])} function(s) in "
           f"{len(files)} module(s), {sel['files']} test file(s) whole and {sel['ids']} test(s) "
           f"by measured reach, {len(names)} mutmut name(s)")
-    print("  tests: " + (f"the coverage drill-down of {sel['reach_commit'][:9]}"
-                         if not sel["unusable"] else f"by import ({sel['unusable']})"))
+    print("  " + M.map_line(map_info))
+    if refresh:
+        print(f"  refreshed: the whole suite over {len(refresh['paths'])} module(s), exit "
+              f"{refresh['exit']}, {refresh['seconds']} s" + (f": {refresh['why']}"
+                                                              if refresh.get("why") else ""))
     for path, q in p["planned"]:
         k = M.key((path, q))
         why = (f"moved from {p['carried'][k]}, its text unchanged: the record's results carried, "
@@ -247,12 +366,14 @@ def cmd_plan(a) -> int:
                if k in p["kept"] else
                f"moved from {p['moved'][k]}, its text unchanged: every mutant"
                if k in p.get("moved", {}) else "changed since the covered commit: every mutant")
-        how = sel["how"].get(k, "by import")
+        how = sel["how"].get(k, "deferred")
         print(f"  {path}: {q} ({why}; tests {how}"
-              + (f": {sel['stale'][k]}" if how == "by import" and k in sel["stale"]
-                 and not sel["unusable"] else "") + ")")
+              + (f": {sel['stale'][k]}" if k in sel["stale"] else "") + ")")
     for k in p.get("deferred") or {}:
-        print(f"  {k}: capped: waits in the record for a later night")
+        stale_why = (p.get("deferred_stale") or {}).get(k)
+        print(f"  {k}: " + (f"stale map, not refreshed ({stale_why}): waits in the record until "
+                            "a coverage map holds its text" if stale_why else
+                            "capped: waits in the record for a later night"))
     for t in sel["not_found"]:
         print(f"  {t}: measured by the drill-down, not collected at head: not run")
     for k, was in sorted(p.get("skipped_moved", {}).items()):
@@ -275,8 +396,10 @@ def cmd_plan(a) -> int:
         if a.summary:
             with open(a.summary, "a", encoding="utf-8") as fh:
                 fh.write(M.summary(p["base"], p["head"], [], {}, [], 0,
-                                   known=M.debt_entries(debt)))
-                fh.write("\n" + "\n".join(M.gone_lines(p) + M.not_rerun_lines(p)
+                                   known=M.debt_entries(debt), map_info=map_info,
+                                   waiting=len(p.get("deferred") or {})))
+                fh.write("\n" + "\n".join(M.selection_lines(p) + M.deferred_lines(p)
+                                            + M.gone_lines(p) + M.not_rerun_lines(p)
                                             + M.debt_lines([], debt, prev))
                          + "\n")
                 if grew:
@@ -284,7 +407,7 @@ def cmd_plan(a) -> int:
         if a.state:
             M.save(a.state, M.next_state(p["head"], [], {}, [], {},
                                          finished_before=p.get("finished_before"),
-                                         debt_count=now))
+                                         debt_count=now, deferred=p.get("deferred")))
         return 1 if grew else 0
     sources_to_mutate = files + [M.CANARY_FILE]
     with open(os.path.join(M.ROOT, "setup.cfg"), "w", encoding="utf-8") as fh:
@@ -460,8 +583,13 @@ def cmd_report(a) -> int:
                                                           "mutation_equivalent.py"))
     debt = M.load_debt()
     hash_of_function = {M.dotted(f): p["hashes"].get(M.key(f), "") for f in planned}
+    # A function whose tests tonight were not chosen by a measurement of its text tonight (a
+    # plan without a selection is one from before measured reach: by import): its survivors
+    # are labelled stale map (the operator, 2026-10-15).
+    how = (p.get("selection") or {}).get("how") or {}
+    stale = {M.dotted(f) for f in planned if how.get(M.key(f)) not in M.FRESH_SELECTION}
     v = M.verdict(results, shows, eq_mod.EQUIVALENT, kinds, debt, hash_of_function,
-                  M.load_sweep())
+                  M.load_sweep(), stale=stale)
     prev_debt, debt_now = p.get("previous_debt_entries"), M.debt_entries(debt, counted=True)
     debt_grew = prev_debt is not None and debt_now > prev_debt
     ran = sum(1 for m, s in tonight.items() if s != "not checked")
@@ -500,7 +628,8 @@ def cmd_report(a) -> int:
         fh.write(M.summary(p["base"], p["head"], planned, v, out["left"], a.budget, error,
                            out["empty"], extra,
                            cause=ran_record.get("failure") or [] if out["error"] else [],
-                           moved=p.get("moved"), known=M.debt_entries(debt)))
+                           moved=p.get("moved"), known=M.debt_entries(debt),
+                           map_info=(p.get("selection") or {}).get("map")))
     M.save(os.path.join(os.path.dirname(a.plan), "report.json"),
            {"plan": p, "mutmut_exit": a.mutmut_exit, "error": error, "results": results,
             "verdict": v, **{k: out[k] for k in ("done", "left", "empty")}})
@@ -514,9 +643,12 @@ def cmd_report(a) -> int:
                                       + v["sweep"]],
                                      p["hashes"], finished_before=p.get("finished_before"),
                                      debt_count=debt_now, deferred=p.get("deferred"),
-                                     since=p.get("since")))
+                                     since=p.get("since"),
+                                     stale_open=[s["mutant"] for s in v["new"] + v["message"]
+                                                 if s.get("stale_map")]))
     for s in v["new"]:
-        print(f"OPEN VERDICT SURVIVOR {s['mutant']}: {s['was']} -> {s['now']}")
+        print(f"OPEN VERDICT SURVIVOR {s['mutant']}"
+              + (" (stale map)" if s.get("stale_map") else "") + f": {s['was']} -> {s['now']}")
     for s in v["message"]:
         print(f"open message survivor {s['mutant']}: {s['was']} -> {s['now']}")
     print(f"known debt: {len(v['debt'])} met tonight; the list holds {debt_now}"
@@ -579,6 +711,12 @@ def main(argv=None) -> int:
                         "each function's tests by measured reach")
     p.add_argument("--reach-commit", metavar="SHA",
                    help="the commit the drill-down measured")
+    p.add_argument("--reach-run", metavar="ID", help="the coverage nightly's run it came from")
+    p.add_argument("--reach-date", metavar="WHEN", help="when that run was made")
+    p.add_argument("--stale-map", choices=[M.STALE_REFRESH, M.STALE_DEFER],
+                   default=M.STALE_REFRESH,
+                   help="a function the map does not hold at its text tonight: refresh the map "
+                        "for it tonight (the whole suite, per test; the default) or defer it")
     p.add_argument("--cap", type=int, default=NIGHT_CAP,
                    help=f"at most this many functions tonight, the oldest first (default "
                         f"{NIGHT_CAP})")

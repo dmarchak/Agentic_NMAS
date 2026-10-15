@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -395,9 +396,14 @@ class TestMeasuredReach:
         hashes = {M.key(f): M.function_hash(V2, f[1]) for f in planned}
         got = M.reach_fresh(planned, hashes, reach, base, head, root=root)
         assert got["fresh"] == ["modules/net.py::untouched"]
-        assert got["stale"] == {"modules/net.py::changed": f"its text changed since {base[:9]}",
+        then, now = M.function_hash(V1, "changed"), M.function_hash(V2, "changed")
+        assert got["stale"] == {"modules/net.py::changed":
+                                    f"its text hash changed since {base[:9]} "
+                                    f"({then[:12]} there, {now[:12]} tonight)",
                                 "modules/net.py::Box.fill":
                                     f"not in the drill-down of {base[:9]} (new since)"}
+        assert got["map_hashes"]["modules/net.py::untouched"] == hashes[
+            "modules/net.py::untouched"], "the same text hash at the map's commit: fresh"
         for reach_, commit, why in ((None, base, "no coverage drill-down"),
                                     (reach, "", "commit is not known"),
                                     (reach, "0" * 40, "not in this history"),
@@ -418,9 +424,10 @@ class TestMeasuredReach:
                                 "tests/test_net_cli.py::test_script",
                                 "tests/test_other.py::test_unit_caller"]
         assert got["how"] == {"modules/net.py::untouched": "measured"}
+        # Stale and not refreshed: never the map, never the importing files; it waits.
         stale = M.choose_tests([("modules/net.py", "untouched")], self.SOURCES, reach, fresh=[])
-        assert stale == {"tests": ["tests/test_net.py", "tests/test_net_cli.py"],
-                         "how": {"modules/net.py::untouched": "by import"}}
+        assert stale == {"tests": [], "how": {"modules/net.py::untouched": "deferred"},
+                         "deferred": ["modules/net.py::untouched"]}
 
     def test_a_test_file_changed_since_the_drilldown_runs_whole_and_absorbs_its_ids(self):
         """Its tests are newer than the measurement (a test added to kill a survivor, C824)."""
@@ -459,8 +466,24 @@ class TestMeasuredReach:
         def collected(files):
             asked.append(files)
             return {"tests/test_net.py::TestA::test_unit_one", "tests/test_net_cli.py::test_script",
-                    "tests/test_other.py::test_unit_caller[1]"}
+                    "tests/test_other.py::test_unit_caller[1]",
+                    "tests/test_other.py::test_caller_of_changed"}
         monkeypatch.setattr(cli, "_collected", collected)
+        refreshed = []
+
+        def refresh(stale, out_, head_):
+            """Tonight's refresh, as `_refresh` returns it: `changed` reached by a caller's test
+            in a file that imports nothing of net, `Box.fill` by none."""
+            refreshed.append(list(stale))
+            return {"paths": ["modules/net.py"], "exit": 0, "seconds": 9, "failed": [],
+                    "rerun": [], "why": "",
+                    "reach": {"functions": {"modules/net.py::changed":
+                                            ["tests/test_other.py::test_caller_of_changed"],
+                                            "modules/net.py::Box.fill": []},
+                              "tiers": {"tests/test_net_cli.py::test_script":
+                                        {"tier": "spawns", "children": 1}},
+                              "complete": True}}
+        monkeypatch.setattr(cli, "_refresh", refresh)
         drill = _drilldown(str(tmp_path / "d"), self.REACH, self.TIERS)
         out = tmp_path / "out"
 
@@ -477,22 +500,32 @@ class TestMeasuredReach:
                                "    tests/test_net_cli.py::test_script\n"
                                "    tests/test_other.py::test_unit_caller\n"
                                f"    {M.CANARY_TESTS}\n"), "never the importing files whole"
+        assert refreshed == [], "nothing stale: no refresh"
         asked.clear()
-        # The first night: the two changed since the drill-down run by import beside it.
+        # The first night: the two changed since the drill-down, refreshed tonight.
         assert cli.main(["plan", "--head", head, "--out", str(out), "--reach", drill,
-                         "--reach-commit", base, "--also", "modules/net.py::untouched"]) == 0
-        selection = selection()
-        assert "    tests/test_other.py::test_unit_caller\n" in selection
-        assert "    tests/test_net.py\n" in selection, "Box.fill and changed: by import"
+                         "--reach-commit", base, "--reach-run", "38706838662",
+                         "--reach-date", "2026-10-15T08:36:09Z",
+                         "--also", "modules/net.py::untouched"]) == 0
+        assert refreshed == [["modules/net.py::Box.fill", "modules/net.py::changed"]]
+        assert selection() == ("    tests/test_net.py::TestA::test_unit_one\n"
+                               "    tests/test_net_cli.py::test_script\n"
+                               "    tests/test_other.py::test_caller_of_changed\n"
+                               "    tests/test_other.py::test_unit_caller\n"
+                               f"    {M.CANARY_TESTS}\n"), \
+            "the refreshed reach, never net's importing files whole"
         p = json.load(open(out / "plan.json", encoding="utf-8"))
-        assert p["selection"]["how"]["modules/net.py::untouched"] == "measured"
-        assert p["selection"]["how"]["modules/net.py::changed"] == "by import"
-        assert "    tests/test_net_cli.py\n" in selection
-        assert "test_unit_one" not in selection, "inside a file run whole"
-        assert asked == [["tests/test_other.py"]], "only the files holding a selected id"
+        assert p["selection"]["how"] == {"modules/net.py::untouched": "measured",
+                                         "modules/net.py::changed": "refreshed",
+                                         "modules/net.py::Box.fill": "refreshed"}
+        assert p["selection"]["map"] == {"run": "38706838662", "commit": base,
+                                         "date": "2026-10-15T08:36:09Z", "unusable": ""}
+        assert asked == [["tests/test_net.py", "tests/test_net_cli.py", "tests/test_other.py"]]
         text = "\n".join(M.selection_lines(p))
-        assert f"The coverage drill-down of {base[:9]} measured 1 of the 3" in text
-        assert f"- `modules/net.py::changed`: by import (its text changed since {base[:9]})" in text
+        assert f"The coverage map ({base[:9]}) measured 1 of the 3" in text
+        assert "the stale-map rule: refresh" in text
+        assert f"- `modules/net.py::changed`: refreshed (its text hash changed since {base[:9]}" \
+            in text
 
     def test_the_summary_names_the_tests_whose_children_were_not_measured(self):
         p = {"selection": {"how": {"m.py::f": "measured"}, "ids": 3, "files": 0,
@@ -502,6 +535,324 @@ class TestMeasuredReach:
         text = "\n".join(M.selection_lines(p, ran))
         assert "2 test(s) start a child of ours; 1 measured" in text
         assert f"1 not measured, so added to every function as before: `{SPAWN_2}`" in text
+
+
+TOY_A = "def span(lo, hi):\n    return abs(hi - lo)\n"
+TOY_B = "def span(lo, hi):\n    return hi - lo + 1\n"
+#: The planted mutant: one mutmut 3.8 makes of TOY_B (its operator swap; the walk of
+#: 2026-10-15 made it as `x_span__mutmut_2`).
+TOY_MUTANT = TOY_B.replace("hi - lo + 1", "hi + lo + 1")
+CALLER_A = "def width(x):\n    return 10 - x\n"
+CALLER_B = "from modules import toy\n\n\ndef width(x):\n    return toy.span(x, 10)\n"
+TEST_TOY = ("from modules import toy\n\n\ndef test_never_negative():\n"
+            "    assert toy.span(0, 0) >= 0\n")
+#: The test that only NOW reaches span, through its caller, importing nothing of toy.
+TEST_CALLER = ("from modules.toy_caller import width\n\n\ndef test_width():\n"
+               "    assert width(3) == 8\n")
+#: A stand-in for scripts/nmas-test in the planted repository: pytest, unconfined (the suite
+#: running this is confined already), through the interpreter `_refresh` names.
+SHIM = '#!/bin/sh\nexec "$PYTHON" -m pytest "$@"\n'
+
+
+def _toy_git(root, *args):
+    subprocess.run(["git", "-C", root, "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                    *args], check=True, capture_output=True)
+
+
+@pytest.fixture
+def planted(tmp_path, monkeypatch):
+    """The operator's planted case (2026-10-15) in a real repository: commit A, the coverage
+    map's commit, holds `toy.span` reached only by test_toy; commit B changes span, makes
+    `toy_caller.width` call it, and adds test_toy_caller, which reaches span only through
+    width and never imports toy. Returns (root, A, B)."""
+    root = str(tmp_path / "repo")
+    for rel, text in (("modules/toy.py", TOY_A), ("modules/toy_caller.py", CALLER_A),
+                      ("tests/test_toy.py", TEST_TOY), ("pytest.ini", "[pytest]\npythonpath = .\n")):
+        os.makedirs(os.path.dirname(os.path.join(root, rel)) or root, exist_ok=True)
+        with open(os.path.join(root, rel), "w", encoding="utf-8") as fh:
+            fh.write(text)
+    _toy_git(root, "init", "-q", "-b", "main")
+    _toy_git(root, "add", "-A")
+    _toy_git(root, "commit", "-qm", "A: the map's commit")
+    for rel, text in (("modules/toy.py", TOY_B), ("modules/toy_caller.py", CALLER_B),
+                      ("tests/test_toy_caller.py", TEST_CALLER)):
+        with open(os.path.join(root, rel), "w", encoding="utf-8") as fh:
+            fh.write(text)
+    _toy_git(root, "add", "-A")
+    _toy_git(root, "commit", "-qm", "B: after the coverage run")
+    a, b = (M.git("rev-parse", r, root=root).strip() for r in ("HEAD~1", "HEAD"))
+    os.makedirs(os.path.join(root, "scripts"))
+    shim = os.path.join(root, "scripts", "nmas-test")
+    with open(shim, "w", encoding="utf-8") as fh:
+        fh.write(SHIM)
+    os.chmod(shim, 0o755)
+    monkeypatch.setenv("PYTEST_XDIST_AUTO_NUM_WORKERS", "2")
+    return root, a, b
+
+
+def _toy_sources(root):
+    out = {}
+    for name in sorted(os.listdir(os.path.join(root, "tests"))):
+        if name.startswith("test_") and name.endswith(".py"):
+            with open(os.path.join(root, "tests", name), encoding="utf-8") as fh:
+                out[f"tests/{name}"] = fh.read()
+    return out
+
+
+def _run_against(root, source, tests):
+    """pytest's exit over *tests* in the planted repository with toy.py as *source* (a mutant:
+    1 is killed, 0 survived); toy.py restored after."""
+    path = os.path.join(root, "modules", "toy.py")
+    with open(path, encoding="utf-8") as fh:
+        before = fh.read()
+    env = {k: v for k, v in os.environ.items() if not k.startswith("COV")
+           and k not in ("NMAS_COVERAGE_TIERS", "MUTANT_UNDER_TEST")}
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(source)
+        return subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                               *tests], cwd=root, env=env, capture_output=True,
+                              text=True).returncode
+    finally:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(before)
+
+
+class TestAStaleMap:
+    """The operator, 2026-10-15: "A night selects tests from the coverage nightly's artifact,
+    which can be older than the code it mutates." The map's run, commit and date in every
+    summary; a function whose text hash differs from the map's (or that the map lacks) never
+    selected by it, nor by its importing files (C842: a caller's test imports nothing of it),
+    but by tonight's refresh of the map, or deferred; a survivor under a stale selection
+    labelled, and never added to the debt list."""
+
+    K = "modules/toy.py::span"
+
+    def _map(self, tmp_path):
+        """The coverage map of commit A, before the change: span reached by test_toy alone."""
+        return M.load_reach(_drilldown(str(tmp_path / "map"),
+                                       {self.K: ["tests/test_toy.py::test_never_negative"]},
+                                       {"tests/test_toy.py::test_never_negative": "unit"}))
+
+    def test_the_planted_case_a_test_that_only_now_reaches_it_kills_its_mutant(
+            self, planted, monkeypatch, tmp_path):
+        """A function changed after the coverage run, and a test that only now reaches it
+        (new, through a caller): judged stale by its text hash; the night's real refresh (the
+        whole suite, per test, over its module) finds the caller's test, and that selection
+        kills the planted mutant, which the import selection (af2a439a's for a stale function)
+        lets survive."""
+        root, a, b = planted
+        cli = _cli()
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        f = ("modules/toy.py", "span")
+        hashes = {self.K: M.function_hash(TOY_B, "span")}
+        reach = self._map(tmp_path)
+        fresh = M.reach_fresh([f], hashes, reach, a, b, root=root)
+        assert fresh["fresh"] == [] and "its text hash changed since" in fresh["stale"][self.K]
+        sources = _toy_sources(root)
+        by_import = M.tests_for(["modules/toy.py"], sources)
+        assert by_import == ["tests/test_toy.py"], "the caller's test imports nothing of toy"
+        refresh = cli._refresh(sorted(fresh["stale"]), str(tmp_path / "out"), b)
+        assert refresh["exit"] == 0 and refresh["reach"]["complete"], refresh
+        assert refresh["reach"]["functions"] == {
+            self.K: ["tests/test_toy.py::test_never_negative",
+                     "tests/test_toy_caller.py::test_width"]}
+        chosen = M.choose_tests([f], sources, reach, fresh["fresh"], fresh["changed_tests"],
+                                refresh["reach"])
+        assert chosen["how"] == {self.K: "refreshed"} and chosen["deferred"] == []
+        assert chosen["tests"] == ["tests/test_toy.py::test_never_negative",
+                                   "tests/test_toy_caller.py::test_width"]
+        assert _run_against(root, TOY_B, chosen["tests"]) == 0, "the original passes"
+        assert _run_against(root, TOY_MUTANT, chosen["tests"]) == 1, "the mutant is killed"
+        assert _run_against(root, TOY_MUTANT, by_import) == 0, \
+            "under the import selection the same mutant survives"
+
+    def test_a_refresh_that_fails_reruns_its_failures_alone_and_says_what_it_could_not_measure(
+            self, planted, monkeypatch, tmp_path):
+        """A test that fails among the rest and passes alone is measured whole (complete); one
+        that fails again fails at head, can kill no mutant, and is named (complete); when that
+        second run cannot finish, the reach is partial ("refreshed in part": survivors
+        labelled stale map); a run that ends any other way measured nothing, and its stale
+        functions wait."""
+        root, _a, b = planted
+        cli = _cli()
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        marker = os.path.join(root, "first-run")
+        with open(os.path.join(root, "tests", "test_neighbours.py"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("import os\n\n\ndef test_fails_once():\n"
+                     f"    first = not os.path.exists({marker!r})\n"
+                     f"    open({marker!r}, 'w').close()\n    assert not first\n")
+        got = cli._refresh([self.K], str(tmp_path / "once"), b)
+        assert got["exit"] == 1 and got["rerun"] == ["tests/test_neighbours.py::test_fails_once"]
+        assert got["failed"] == [] and got["reach"]["complete"] is True, got
+        with open(os.path.join(root, "tests", "test_neighbours.py"), "w",
+                  encoding="utf-8") as fh:
+            fh.write("def test_always_fails():\n    assert False\n")
+        got = cli._refresh([self.K], str(tmp_path / "always"), b)
+        assert got["failed"] == ["tests/test_neighbours.py::test_always_fails"]
+        assert got["reach"]["complete"] is True and "failing at head" in got["why"]
+        shim = os.path.join(root, "scripts", "nmas-test")
+        with open(shim, "w", encoding="utf-8") as fh:
+            fh.write('#!/bin/sh\ncase "$*" in *--cov-append*) exit 3;; esac\n' + SHIM[10:])
+        got = cli._refresh([self.K], str(tmp_path / "rerun-broken"), b)
+        assert got["reach"]["complete"] is False and "exit 3" in got["why"], got
+        chosen = M.choose_tests([("modules/toy.py", "span")], _toy_sources(root),
+                                self._map(tmp_path), (), (), got["reach"])
+        assert chosen["how"] == {self.K: "refreshed in part"}
+        with open(os.path.join(root, "scripts", "nmas-test"), "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\nexit 2\n")
+        got = cli._refresh([self.K], str(tmp_path / "broken"), b)
+        assert got["reach"] is None and "exit 2" in got["why"] and "no data" in got["why"]
+
+    def test_a_refreshed_function_takes_its_importing_files_child_starters_and_only_real_ids(
+            self):
+        """As a map-measured function: its importing files' child-starting tests join it; a
+        child-starter elsewhere does not, nor an id of the suite's own nested pytest runs
+        (`test_reaches_out.py::...`, in the refresh's tier records; one broke the walk's
+        collection, 2026-10-15)."""
+        sources = {"tests/test_toy.py": "from modules import toy\n",
+                   "tests/test_other.py": "import json\n"}
+        refreshed = {"functions": {self.K: ["tests/test_toy.py::test_never_negative",
+                                            "test_reaches_out.py::test_x"]},
+                     "tiers": {"tests/test_toy.py::test_cli": {"tier": "spawns", "children": 1},
+                               "tests/test_other.py::test_cli": {"tier": "spawns",
+                                                                 "children": 1},
+                               "test_reaches_out.py::test_y": {"tier": "spawns",
+                                                               "children": 1}},
+                     "complete": True}
+        got = M.choose_tests([("modules/toy.py", "span")], sources, None, (), (), refreshed)
+        assert got["tests"] == ["tests/test_toy.py::test_cli",
+                                "tests/test_toy.py::test_never_negative"]
+
+    def test_the_maps_run_commit_and_date_are_in_every_summary(self):
+        info = {"run": "38706838662", "commit": "f48fdc617" + "0" * 31,
+                "date": "2026-10-15T08:36:09Z", "unusable": ""}
+        said = "Coverage map: the coverage nightly's run 38706838662 at f48fdc617, " \
+               "2026-10-15T08:36:09Z."
+        v = {"functions": {}, "new": [], "message": [], "known": [], "debt": [], "sweep": []}
+        for text in (M.summary("a" * 40, "b" * 40, [], {}, [], 120, map_info=info),
+                     M.summary("a" * 40, "b" * 40, [PROBE], v, [], 120, map_info=info),
+                     M.summary("a" * 40, "b" * 40, [PROBE], v, [], 120, error="mutmut exited 1",
+                               map_info=info)):
+            assert said in text.splitlines()[2], text
+        unusable = dict(info, unusable="the drill-down holds no test tiers")
+        assert M.map_line(unusable) == said[:-1] + \
+            "; not usable tonight: the drill-down holds no test tiers."
+        assert M.map_line({"unusable": "no coverage drill-down was found"}) == \
+            "Coverage map: none found (no coverage drill-down was found)."
+        assert "Coverage map: none found" in M.summary("a" * 40, "b" * 40, [], {}, [], 120)
+
+    def test_a_hash_equal_function_is_fresh_and_a_hash_changed_one_stale(self, planted,
+                                                                        tmp_path):
+        """By text hash at the map's commit: `width`'s file and `span`'s both changed, but a
+        function whose own lines are the same there and here is fresh."""
+        root, a, b = planted
+        with open(os.path.join(root, "modules", "toy.py"), "a", encoding="utf-8") as fh:
+            fh.write("\n\ndef later(x):\n    return x\n")
+        _toy_git(root, "add", "modules/toy.py")
+        _toy_git(root, "commit", "-qm", "later")
+        head = M.git("rev-parse", "HEAD", root=root).strip()
+        reach = M.load_reach(_drilldown(str(tmp_path / "m"), {self.K: [],
+                                                              "modules/toy.py::later": []},
+                                        {"tests/test_toy.py::test_never_negative": "unit"}))
+        src = M.git("show", f"{head}:modules/toy.py", root=root)
+        planned = [("modules/toy.py", "span"), ("modules/toy.py", "later")]
+        hashes = {M.key(f): M.function_hash(src, f[1]) for f in planned}
+        # A map of A: span's text hash there is TOY_A's, not tonight's.
+        got = M.reach_fresh(planned, hashes, reach, a, head, root=root)
+        assert got["fresh"] == [] and got["map_hashes"][self.K] == M.function_hash(TOY_A, "span")
+        # A map of B: its file changed since (`later` added), span's own lines did not.
+        got = M.reach_fresh(planned, hashes, reach, b, head, root=root)
+        assert got["fresh"] == [self.K] and got["map_hashes"][self.K] == hashes[self.K]
+        assert "text hash changed" in got["stale"]["modules/toy.py::later"], \
+            "absent at B: no hash there"
+
+    def test_a_stale_survivor_is_labelled_never_known_debt_and_refused_by_debt_add(self):
+        results = {f"{PROBE_MUT}__mutmut_31": "survived", f"{PROBE_MUT}__mutmut_1": "killed"}
+        shows = {f"{PROBE_MUT}__mutmut_31": _fixture("show-probe-31.txt")}
+        debt = _debt(SURVIVOR_31)
+        fresh = M.verdict(results, shows, [], {}, debt, {PROBE_FN: "h1"})
+        assert [s["mutant"] for s in fresh["debt"]] == [f"{PROBE_MUT}__mutmut_31"]
+        stale = M.verdict(results, shows, [], {}, debt, {PROBE_FN: "h1"}, stale={PROBE_FN})
+        assert stale["debt"] == [] and [s.get("stale_map") for s in stale["new"]] == [True]
+        assert stale["functions"][PROBE_FN]["stale_map"] == 1
+        with pytest.raises(ValueError, match=f"{PROBE_MUT}__mutmut_31"):
+            M.add_to_debt({"functions": {}}, stale["new"], "accepted", lambda p, q: "h")
+        text = M.summary("a" * 40, "b" * 40, [PROBE], stale, [], 120)
+        assert "1 of them found under a STALE MAP" in text
+        assert f"`{PROBE_MUT}__mutmut_31` (STALE MAP: its tests were not measured" in text
+
+    def test_a_night_under_a_stale_selection_is_red_labels_and_keeps_the_label(
+            self, tmp_path, monkeypatch, capsys):
+        """Through the real report step: probe chosen not by a measurement of its text
+        tonight; its survivor on the debt list is NOT known debt there: new, labelled, the
+        night red, the record keeping the label; and `debt add` from that report refuses it."""
+        night = TestTheDebt()
+        code, text, state = night._night(tmp_path, monkeypatch, [SURVIVOR_12, SURVIVOR_31], 2,
+                                         how="by import")
+        assert code == 1 and "### New open VERDICT survivors (1)" in text
+        assert "Coverage map: the coverage nightly's run 38706838662 at ccccccccc" in text
+        assert state["functions"][M.key(PROBE)].get("stale_map") == [f"{PROBE_MUT}__mutmut_31"]
+        report = tmp_path / "out" / "report.json"
+        rep = json.loads(report.read_text())
+        rep["plan"]["head"] = M.git("rev-parse", "HEAD").strip()     # probe's text, for its hash
+        report.write_text(json.dumps(rep))
+        cli = _cli()
+        assert cli.main(["debt", "add", "--from-report", str(report), "--reason", "r",
+                         "--file", str(tmp_path / "debt-add.json")]) == 2
+        assert f"{PROBE_MUT}__mutmut_31" in capsys.readouterr().err
+        assert not (tmp_path / "debt-add.json").exists(), "nothing added"
+
+    @pytest.mark.parametrize("rule, refresh_why", [
+        ("defer", ""),
+        ("refresh", "the refresh ended with exit 124 (its bound)"),
+    ])
+    def test_a_stale_function_not_refreshed_waits_and_is_mutated_once_a_map_holds_it(
+            self, history, monkeypatch, tmp_path, rule, refresh_why):
+        """(c), the fallback: deferred by the rule, or because the refresh measured nothing;
+        never mutated under the stale map, carried in the record whole, named with why; the
+        next night, a map holding its text tonight, it is planned and measured."""
+        root, head = history
+        base = M.git("rev-parse", f"{head}~1", root=root).strip()
+        cli = _cli()
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None, cap=None: M.plan(
+            state, h, root=root, also=also, debt=debt, cap=cap))
+        monkeypatch.setattr(cli.M, "load_debt", lambda path=None: {"functions": {}})
+        monkeypatch.setattr(cli, "_refresh", lambda stale, out, h: {
+            "paths": M.stale_paths(stale), "exit": 124, "seconds": 1, "failed": [], "rerun": [],
+            "why": refresh_why, "reach": None})
+        monkeypatch.setattr(cli, "_collected", lambda files: {
+            "tests/test_net.py::TestA::test_unit_one"})
+        os.makedirs(os.path.join(root, "tests"), exist_ok=True)
+        with open(os.path.join(root, "tests", "test_net.py"), "w", encoding="utf-8") as fh:
+            fh.write("from modules import net\n")
+        state, summary = tmp_path / "state.json", tmp_path / "summary.md"
+        reach = {"modules/net.py::changed": ["tests/test_net.py::TestA::test_unit_one"],
+                 "modules/net.py::Box.fill": ["tests/test_net.py::TestA::test_unit_one"]}
+        TIERS = {"tests/test_net.py::TestA::test_unit_one": "unit"}
+        old_map = _drilldown(str(tmp_path / "old"), reach, TIERS)
+        assert cli.main(["plan", "--state", str(state), "--head", head, "--out",
+                         str(tmp_path / "o1"), "--summary", str(summary), "--reach", old_map,
+                         "--reach-commit", base, "--stale-map", rule]) == 0
+        p = json.load(open(tmp_path / "o1" / "plan.json", encoding="utf-8"))
+        assert p["planned"] == [] and set(p["deferred_stale"]) == set(reach)
+        text = summary.read_text()
+        assert "Nothing mutated tonight: 2 function(s) wait in the record" in text
+        assert "Stale map, not mutated tonight (2)" in text
+        assert (refresh_why or "the stale-map rule is defer") in text
+        rec = json.loads(state.read_text())
+        assert set(rec["functions"]) == set(reach)
+        assert all(r["whole"] for r in rec["functions"].values())
+        # The next night: a map of head holds both at their text tonight.
+        new_map = _drilldown(str(tmp_path / "new"), reach, TIERS)
+        assert cli.main(["plan", "--state", str(state), "--head", head, "--out",
+                         str(tmp_path / "o2"), "--reach", new_map, "--reach-commit", head,
+                         "--stale-map", rule]) == 0
+        p = json.load(open(tmp_path / "o2" / "plan.json", encoding="utf-8"))
+        assert sorted(M.key(f) for f in p["planned"]) == sorted(reach)
+        assert set(p["selection"]["how"].values()) == {"measured"}
 
 
 class TestMutmutsNames:
@@ -907,7 +1258,10 @@ class TestTheWorkflow:
         assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions"}
         plan = next(s for s in doc["jobs"]["mutate"]["steps"] if s.get("id") == "plan")
         assert plan["env"] == {"ALSO_FUNCTIONS": "${{ inputs.functions }}",
-                               "REACH_COMMIT": "${{ steps.reach.outputs.sha }}"}
+                               "REACH_COMMIT": "${{ steps.reach.outputs.sha }}",
+                               "REACH_RUN": "${{ steps.reach.outputs.id }}",
+                               "REACH_DATE": "${{ steps.reach.outputs.date }}",
+                               "NMAS_REQUIRE_PG": "1"}
         assert "${{" not in plan["run"] and '--also "$f"' in plan["run"]
 
     def test_the_plan_reads_the_newest_coverage_drilldown_from_its_run(self):
@@ -929,6 +1283,9 @@ class TestTheWorkflow:
                                "github-token": "${{ github.token }}"}
         plan = next(s for s in steps if s.get("id") == "plan")
         assert '--reach "$RUNNER_TEMP/coverage-reach" --reach-commit "$REACH_COMMIT"' in plan["run"]
+        # The map's run, commit and date reach the plan, for the summary every night.
+        assert "date={r.get('created_at','')}" in reach["run"]
+        assert '--reach-run "$REACH_RUN" --reach-date "$REACH_DATE"' in plan["run"]
         names = [s.get("name") for s in steps]
         assert names.index("Download it") < names.index("Plan the night")
         cov = os.path.join(ROOT, ".github", "workflows", "coverage-nightly.yml")
@@ -947,6 +1304,19 @@ class TestTheWorkflow:
         assert "NMAS_REQUIRE_NETWORK_CONFINEMENT=1" in run
         # Bytecode written: a child recompiling the mutated module cost 7.7 s per spawn.
         assert "PYTHONDONTWRITEBYTECODE" not in run
+
+    def test_the_jobs_bound_holds_the_budget_and_the_refresh_and_the_budget_is_untouched(self):
+        """The plan's refresh of a stale map runs before the budget's `timeout`, so the job's
+        bound carries it on top of the budget and the 20 minutes around it; the budget itself
+        is not shortened to make room."""
+        doc = self.doc()
+        cli = _cli()
+        assert doc["env"]["MUTATION_BUDGET_MINUTES"] == "120"
+        assert doc["jobs"]["mutate"]["timeout-minutes"] * 60 >= \
+            120 * 60 + 20 * 60 + cli.REFRESH_TIMEOUT_S + 60
+        # The bound, about 2.5 times the runner's measured whole suite per test (the coverage
+        # nightly's four shards' test steps summed, 2,070 s on run #4, the largest of three).
+        assert 2.3 * 2070 <= cli.REFRESH_TIMEOUT_S <= 2.7 * 2070
 
     def test_mutmut_runs_one_mutant_at_a_time(self):
         cli = open(os.path.join(ROOT, "scripts", "nmas-mutation"), encoding="utf-8").read()
@@ -1225,6 +1595,11 @@ class TestTheFence:
         monkeypatch.setattr(cli.M, "git", lambda *a, root=root: M.git(*a, root=root))
         monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None, cap=None: M.plan(
             state, h, root=root, also=also, debt=debt, cap=cap))
+        # No map: every planned function is refreshed (here, as measured reaching nothing).
+        monkeypatch.setattr(cli, "_refresh", lambda stale, out, head: {
+            "paths": M.stale_paths(stale), "exit": 0, "seconds": 1, "failed": [], "rerun": [],
+            "why": "", "reach": {"functions": {k: [] for k in stale}, "tiers": {},
+                                 "complete": True}})
         os.makedirs(os.path.join(root, "tests"), exist_ok=True)
         args = ["plan", "--head", head, "--out", str(tmp_path / "out"), "--fence"]
         net = os.path.join(root, "modules", "net.py")
@@ -1513,16 +1888,20 @@ class TestTheDebt:
         loader.exec_module(cli)
         return cli
 
-    def _night(self, tmp_path, monkeypatch, listed, previous):
+    def _night(self, tmp_path, monkeypatch, listed, previous, how="measured"):
         """The real report step over a night with two open VERDICT survivors of probe (12, 31)
-        and one kill, *listed* of them on the debt list, the last night's list *previous*."""
+        and one kill, *listed* of them on the debt list, the last night's list *previous*,
+        probe's tests chosen tonight *how* (`measured` by the map, at its text)."""
         import json
         cli = self._cli("nmas_mutation_cli_debt_report")
         out = tmp_path / "out"
         out.mkdir()
         (out / "plan.json").write_text(json.dumps({
             "base": "a" * 40, "head": "b" * 40, "planned": [list(PROBE)], "kept": {},
-            "hashes": {M.key(PROBE): "h1"}, "moved": {}, "previous_debt_entries": previous}))
+            "hashes": {M.key(PROBE): "h1"}, "moved": {}, "previous_debt_entries": previous,
+            "selection": {"how": {M.key(PROBE): how},
+                          "map": {"run": "38706838662", "commit": "c" * 40,
+                                  "date": "2026-10-15T08:36:09Z", "unusable": ""}}}))
         (out / "run.json").write_text(json.dumps({"kinds": {}}))
         debt_file = tmp_path / "debt.json"
         debt_file.write_text(json.dumps(_debt(*listed)))
