@@ -221,6 +221,98 @@ class TestThePlan:
         assert "Nothing to mutate" in M.summary(p["base"], head, [], {}, [], 120)
 
 
+def _commit_all(root, message, later_by):
+    """Commit everything, its committer time *later_by* seconds after now (the cap orders by
+    it, and a test's commits otherwise share one second)."""
+    import time
+    env = dict(os.environ, GIT_COMMITTER_DATE=f"@{int(time.time()) + later_by} +0000")
+    for args in (("add", "-A"), ("commit", "-qm", message)):
+        subprocess.run(["git", "-C", root, "-c", "user.name=t", "-c",
+                        "user.email=t@example.invalid", *args], check=True, capture_output=True,
+                       env=env)
+    return M.git("rev-parse", "HEAD", root=root).strip()
+
+
+class TestTheCap:
+    """C834 (night #12: 97 functions, 15 of 7,707 mutants reached; night #14's copy run past its
+    bound): at most a cap of functions a night, the oldest unfinished first; the rest wait in
+    the record, in their place, their results kept."""
+
+    def _three(self, root):
+        """`a` entered the record two commits ago (unfinished), `b` one commit ago; `c` and
+        `d` change tonight."""
+        old = M.git("rev-parse", "HEAD~1", root=root).strip()
+        with open(os.path.join(root, "modules", "more.py"), "w", encoding="utf-8") as fh:
+            fh.write("def a(x):\n    return x\n\n\ndef b(x):\n    return x\n")
+        mid = _commit_all(root, "a and b", 100)
+        with open(os.path.join(root, "modules", "more.py"), "a", encoding="utf-8") as fh:
+            fh.write("\n\ndef c(x):\n    return x\n\n\ndef d(x):\n    return x\n")
+        head = _commit_all(root, "c and d", 200)
+        src = M.git("show", f"{head}:modules/more.py", root=root)
+
+        def rec(q, since):
+            return {"hash": M.function_hash(src, q), "since": since, "open": [],
+                    "results": {f"modules.more.x_{q}__mutmut_1": "not checked"}}
+        return {"commit": mid, "functions": {"modules/more.py::b": rec("b", mid),
+                                             "modules/more.py::a": rec("a", old)}}, head
+
+    def test_the_oldest_unfinished_go_first_and_the_rest_wait_in_the_record(self, history):
+        root, _head = history
+        state, head = self._three(root)
+        p = M.plan(state, head, root=root, cap=2)
+        assert p["planned"] == [("modules/more.py", "a"), ("modules/more.py", "b")]
+        assert list(p["deferred"]) == ["modules/more.py::c", "modules/more.py::d"]
+        assert all(r["whole"] and r["since"] == head and r["results"] == {}
+                   for r in p["deferred"].values())
+        nxt = M.next_state(head, p["planned"], {}, [], p["hashes"], deferred=p["deferred"],
+                           since=p["since"])
+        assert set(nxt["functions"]) == {"modules/more.py::c", "modules/more.py::d"}
+        lines = "\n".join(M.deferred_lines(p))
+        assert "2 function(s) tonight" in lines and "`modules/more.py::c` (not started)" in lines
+
+    def test_a_function_left_waiting_runs_whole_in_its_turn_and_a_kept_one_keeps_its_results(
+            self, history):
+        root, _head = history
+        state, head = self._three(root)
+        first = M.plan(state, head, root=root, cap=1)
+        assert first["planned"] == [("modules/more.py", "a")]
+        assert first["deferred"]["modules/more.py::b"] == state["functions"]["modules/more.py::b"]
+        nxt = M.next_state(head, first["planned"],
+                           {"modules.more.x_a__mutmut_1": "killed"}, [], first["hashes"],
+                           deferred=first["deferred"], since=first["since"])
+        second = M.plan(nxt, head, root=root, cap=2)
+        assert second["planned"] == [("modules/more.py", "b"), ("modules/more.py", "c")]
+        assert M.patterns(second) == ["modules.more.x_b__mutmut_1", "modules.more.x_c__mutmut_*"]
+        assert second["dropped"] == [], "a waiting function is not a dropped one"
+        third = M.plan(M.next_state(head, second["planned"], {}, [], second["hashes"],
+                                    deferred=second["deferred"], since=second["since"]),
+                       head, root=root, cap=5)
+        assert third["planned"] == [("modules/more.py", "d")] and third["deferred"] == {}
+
+    def test_a_function_a_person_names_goes_first(self, history):
+        root, _head = history
+        state, head = self._three(root)
+        p = M.plan(state, head, root=root, cap=1, also=["modules/more.py::d"])
+        assert p["planned"] == [("modules/more.py", "d")]
+
+    def test_a_record_from_before_the_cap_still_loads_and_is_the_oldest(self, history):
+        """Earlier nights' records hold no `since` and no `whole`: they load as they are, their
+        functions first in line, their results kept."""
+        root, _head = history
+        state, head = self._three(root)
+        for rec in state["functions"].values():
+            rec.pop("since")
+        state["functions"]["modules/more.py::b"]["since"] = head
+        p = M.plan(state, head, root=root, cap=1)
+        assert p["planned"] == [("modules/more.py", "a")]
+        assert p["names"]["modules/more.py::a"] == ["modules.more.x_a__mutmut_1"]
+
+    def test_without_a_cap_everything_is_planned(self, history):
+        root, _head = history
+        state, head = self._three(root)
+        assert len(M.plan(state, head, root=root)["planned"]) == 4
+
+
 class TestTheFunctionHash:
     def test_it_follows_the_functions_own_text(self):
         assert M.function_hash(V1, "untouched") == M.function_hash(V2, "untouched")
@@ -248,6 +340,170 @@ class TestTheTestsANightRuns:
         assert got == (["tests/test_x.py"] if picked else [])
 
 
+def _drilldown(folder, functions, tiers):
+    """A coverage nightly's drill-down as its artifact holds it: coverage.json in
+    scripts/nmas_coverage.py's shape (`modules` → `function_list`), and tiers/ in
+    tests/conftest.py's records, under the report job's names."""
+    modules = {}
+    for k, tests in functions.items():
+        path, q = k.split("::")
+        modules.setdefault(path, {"function_list": []})["function_list"].append(
+            {"name": q, "line": 1, "unit_tests": [t for t in tests if "unit" in t],
+             "other_tests": [t for t in tests if "unit" not in t],
+             "covered_unit": True, "covered_any": True})
+    os.makedirs(os.path.join(folder, "tiers"))
+    with open(os.path.join(folder, "coverage.json"), "w", encoding="utf-8") as fh:
+        json.dump({"modules": modules, "data": "per test"}, fh)
+    with open(os.path.join(folder, "tiers", "tiers-a-tiers-gw0-7.jsonl"), "w",
+              encoding="utf-8") as fh:
+        fh.writelines(json.dumps({"test": t, "tier": r}) + "\n" for t, r in tiers.items())
+    return folder
+
+
+class TestMeasuredReach:
+    """C796, C834 (the operator, 2026-10-15): "test selection by MEASURED reach: the coverage
+    nightly's per-test contexts say which tests execute each function, and a mutant runs only
+    those". A function changed since the drill-down's commit, or new, has no measured reach yet
+    and runs its module's importing test files, as before."""
+
+    SOURCES = {"tests/test_net.py": "from modules import net\n",
+               "tests/test_net_cli.py": "import modules.net\n",
+               "tests/test_other.py": "import json\n"}
+    REACH = {"modules/net.py::untouched": ["tests/test_other.py::test_unit_caller[1]",
+                                           "tests/test_other.py::test_unit_caller[2]",
+                                           "tests/test_net.py::TestA::test_unit_one"],
+             "modules/net.py::changed": ["tests/test_net.py::TestA::test_unit_one"]}
+    TIERS = {"tests/test_net_cli.py::test_script": "spawns",
+             "tests/test_other.py::test_unit_caller[1]": "unit",
+             "tests/test_net.py::TestA::test_unit_one": "unit"}
+
+    def test_the_drilldown_is_read_with_each_tests_tier(self, tmp_path):
+        reach = M.load_reach(_drilldown(str(tmp_path / "d"), self.REACH, self.TIERS))
+        assert reach["functions"]["modules/net.py::untouched"] == sorted(
+            self.REACH["modules/net.py::untouched"])
+        assert reach["tiers"]["tests/test_net_cli.py::test_script"] == {"tier": "spawns",
+                                                                         "children": None}
+        assert M.load_reach(str(tmp_path / "none")) is None
+
+    def test_a_function_unchanged_since_the_drilldown_is_measured_one_changed_or_new_is_not(
+            self, history, tmp_path):
+        root, head = history
+        base = M.git("rev-parse", f"{head}~1", root=root).strip()
+        reach = M.load_reach(_drilldown(str(tmp_path / "d"), self.REACH, self.TIERS))
+        planned = [("modules/net.py", "untouched"), ("modules/net.py", "changed"),
+                   ("modules/net.py", "Box.fill")]
+        hashes = {M.key(f): M.function_hash(V2, f[1]) for f in planned}
+        got = M.reach_fresh(planned, hashes, reach, base, head, root=root)
+        assert got["fresh"] == ["modules/net.py::untouched"]
+        assert got["stale"] == {"modules/net.py::changed": f"its text changed since {base[:9]}",
+                                "modules/net.py::Box.fill":
+                                    f"not in the drill-down of {base[:9]} (new since)"}
+        for reach_, commit, why in ((None, base, "no coverage drill-down"),
+                                    (reach, "", "commit is not known"),
+                                    (reach, "0" * 40, "not in this history"),
+                                    (dict(reach, tiers={}), base, "holds no test tiers")):
+            r = M.reach_fresh(planned, hashes, reach_, commit, head, root=root)
+            assert why in r["unusable"] and r["fresh"] == [] and len(r["stale"]) == 3, why
+
+    def test_a_measured_function_runs_its_measured_tests_and_its_files_child_starters(self):
+        """Measured: the tests the contexts saw execute it (by function, so a parameter id that
+        moved still selects), wherever they are (a caller's test that never imports it), and
+        the importing files' child-starting tests (whose children are measured tonight); never
+        the rest of those files. By import: the importing files whole."""
+        reach = {"functions": self.REACH,
+                 "tiers": {t: {"tier": r, "children": None} for t, r in self.TIERS.items()}}
+        got = M.choose_tests([("modules/net.py", "untouched")], self.SOURCES, reach,
+                             fresh=["modules/net.py::untouched"])
+        assert got["tests"] == ["tests/test_net.py::TestA::test_unit_one",
+                                "tests/test_net_cli.py::test_script",
+                                "tests/test_other.py::test_unit_caller"]
+        assert got["how"] == {"modules/net.py::untouched": "measured"}
+        stale = M.choose_tests([("modules/net.py", "untouched")], self.SOURCES, reach, fresh=[])
+        assert stale == {"tests": ["tests/test_net.py", "tests/test_net_cli.py"],
+                         "how": {"modules/net.py::untouched": "by import"}}
+
+    def test_a_test_file_changed_since_the_drilldown_runs_whole_and_absorbs_its_ids(self):
+        """Its tests are newer than the measurement (a test added to kill a survivor, C824)."""
+        reach = {"functions": self.REACH,
+                 "tiers": {t: {"tier": r, "children": None} for t, r in self.TIERS.items()}}
+        got = M.choose_tests([("modules/net.py", "untouched")], self.SOURCES, reach,
+                             fresh=["modules/net.py::untouched"],
+                             changed_tests=["tests/test_net.py"])
+        assert got["tests"] == ["tests/test_net.py", "tests/test_net_cli.py::test_script",
+                                "tests/test_other.py::test_unit_caller"]
+
+    def test_an_id_head_no_longer_collects_is_dropped_and_a_moved_parameter_still_selects(self):
+        collected = {"tests/a.py::test_x[new-id]", "tests/a.py::T::test_y"}
+        assert M.valid_ids(["tests/a.py::test_x", "tests/a.py::T::test_y", "tests/a.py::gone"],
+                           collected) == (["tests/a.py::test_x", "tests/a.py::T::test_y"],
+                                          ["tests/a.py::gone"])
+        assert M.function_level("tests/a.py::T::test_x[a-b[c]]") == "tests/a.py::T::test_x"
+
+    def test_the_cli_writes_the_measured_selection_and_the_summary_says_how(self, history,
+                                                                           monkeypatch, tmp_path):
+        """Through the real plan step: mutmut's configuration names the measured tests (not the
+        importing files), the plan records why each function's tests are what they are, and
+        the summary says it."""
+        root, head = history
+        base = M.git("rev-parse", f"{head}~1", root=root).strip()
+        cli = _cli()
+        monkeypatch.setattr(cli.M, "ROOT", root)
+        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None, cap=None: M.plan(
+            state, h, root=root, also=also, debt=debt, cap=cap))
+        os.makedirs(os.path.join(root, "tests"), exist_ok=True)
+        for rel, text in self.SOURCES.items():
+            with open(os.path.join(root, rel), "w", encoding="utf-8") as fh:
+                fh.write(text)
+        asked = []
+
+        def collected(files):
+            asked.append(files)
+            return {"tests/test_net.py::TestA::test_unit_one", "tests/test_net_cli.py::test_script",
+                    "tests/test_other.py::test_unit_caller[1]"}
+        monkeypatch.setattr(cli, "_collected", collected)
+        drill = _drilldown(str(tmp_path / "d"), self.REACH, self.TIERS)
+        out = tmp_path / "out"
+
+        def selection():
+            cfg = open(os.path.join(root, "setup.cfg"), encoding="utf-8").read()
+            return cfg.split("pytest_add_cli_args_test_selection =\n", 1)[1]
+        # The measured function alone (the record covered head; a person names it).
+        state = tmp_path / "state.json"
+        state.write_text(json.dumps({"commit": head}))
+        assert cli.main(["plan", "--state", str(state), "--head", head, "--out", str(out),
+                         "--reach", drill, "--reach-commit", base,
+                         "--also", "modules/net.py::untouched"]) == 0
+        assert selection() == ("    tests/test_net.py::TestA::test_unit_one\n"
+                               "    tests/test_net_cli.py::test_script\n"
+                               "    tests/test_other.py::test_unit_caller\n"
+                               f"    {M.CANARY_TESTS}\n"), "never the importing files whole"
+        asked.clear()
+        # The first night: the two changed since the drill-down run by import beside it.
+        assert cli.main(["plan", "--head", head, "--out", str(out), "--reach", drill,
+                         "--reach-commit", base, "--also", "modules/net.py::untouched"]) == 0
+        selection = selection()
+        assert "    tests/test_other.py::test_unit_caller\n" in selection
+        assert "    tests/test_net.py\n" in selection, "Box.fill and changed: by import"
+        p = json.load(open(out / "plan.json", encoding="utf-8"))
+        assert p["selection"]["how"]["modules/net.py::untouched"] == "measured"
+        assert p["selection"]["how"]["modules/net.py::changed"] == "by import"
+        assert "    tests/test_net_cli.py\n" in selection
+        assert "test_unit_one" not in selection, "inside a file run whole"
+        assert asked == [["tests/test_other.py"]], "only the files holding a selected id"
+        text = "\n".join(M.selection_lines(p))
+        assert f"The coverage drill-down of {base[:9]} measured 1 of the 3" in text
+        assert f"- `modules/net.py::changed`: by import (its text changed since {base[:9]})" in text
+
+    def test_the_summary_names_the_tests_whose_children_were_not_measured(self):
+        p = {"selection": {"how": {"m.py::f": "measured"}, "ids": 3, "files": 0,
+                           "reach_commit": "a" * 40, "unusable": "", "stale": {}}}
+        ran = {"spawning_tests": [SPAWN, SPAWN_2], "children_reached": {SPAWN: ["m.x_f"]},
+               "children_unmeasured": [SPAWN_2], "associations_added": 4}
+        text = "\n".join(M.selection_lines(p, ran))
+        assert "2 test(s) start a child of ours; 1 measured" in text
+        assert f"1 not measured, so added to every function as before: `{SPAWN_2}`" in text
+
+
 class TestMutmutsNames:
     """mutmut 3's names, from its real `results` output: a function's mutants are
     `module.x_<name>__mutmut_<n>`, a method's `module.xǁ<Class>ǁ<name>__mutmut_<n>`."""
@@ -270,21 +526,110 @@ class TestMutmutsNames:
 
 # ── The tests a child reaches ─────────────────────────────────────────────────────────────────
 
+SPAWN = "tests/test_a.py::test_spawn"
+SPAWN_2 = "tests/test_a.py::test_two_children"
+NO_CHILD = "tests/test_b.py::test_page"
+
+
 class TestATestsChild:
-    def test_the_tests_that_start_a_child_join_each_planned_functions_tests(self):
-        """A child records nothing in mutmut's statistics, so a test reaching a function only
-        through one would never be chosen: every test that started one (its tier) is added."""
-        tiers = {"tests/test_a.py::test_unit": "unit", "tests/test_a.py::test_spawn": "spawns",
-                 "tests/test_b.py::test_page": "browser"}
-        spawning = M.spawning_tests(tiers)
-        assert spawning == ["tests/test_a.py::test_spawn", "tests/test_b.py::test_page"]
+    """C796 (2026-10-15): every child-starting test joined every planned function (45 tests,
+    4,225 associations on night #12), though most children run none of them. Now each joins
+    only the functions its children were MEASURED to run, and one that could not be measured
+    joins every function, as before."""
+
+    def test_the_tests_that_start_a_child_of_ours_are_those_the_spawn_guard_counted(self):
+        """By the count the spawn guard keeps (`children`), never the file: a browser test whose
+        app runs on a thread of its own process starts none; a record from before the count
+        falls back to its tier."""
+        records = {"tests/test_a.py::test_unit": {"tier": "unit", "children": 0},
+                   SPAWN: {"tier": "spawns", "children": 1},
+                   NO_CHILD: {"tier": "browser", "children": 0},
+                   "tests/test_c.py::test_old": {"tier": "browser", "children": None},
+                   "tests/test_c.py::test_old_unit": {"tier": "unit", "children": None}}
+        assert M.child_starting(records) == [SPAWN, "tests/test_c.py::test_old"]
+
+    def test_each_function_gets_its_own_tests(self):
         stats = {"tests_by_mangled_function_name": {"m.x_f": ["tests/test_a.py::test_unit",
-                                                             "tests/test_a.py::test_spawn"]}}
-        assert M.add_tests(stats, ["m.x_f", "m.x_g"], spawning) == 3
+                                                             SPAWN]}}
+        assert M.add_tests_by(stats, {"m.x_f": [SPAWN, SPAWN_2], "m.x_g": []}) == 1
         assert stats["tests_by_mangled_function_name"] == {
-            "m.x_f": ["tests/test_a.py::test_spawn", "tests/test_a.py::test_unit",
-                      "tests/test_b.py::test_page"],
-            "m.x_g": ["tests/test_a.py::test_spawn", "tests/test_b.py::test_page"]}
+            "m.x_f": [SPAWN, SPAWN_2, "tests/test_a.py::test_unit"], "m.x_g": []}
+
+    FUNCTIONS = {"m.x_f": ("modules/m.py", (3, 4)), "m.x_g": ("modules/m.py", (8, 9)),
+                 "tests.mutation_canary.x_in_child": ("tests/mutation_canary.py", (22,))}
+
+    def test_a_measured_test_joins_only_the_functions_its_children_ran(self):
+        measured = {SPAWN: {"files": 1, "lines": {"modules/m.py": {1, 4}}},
+                    SPAWN_2: {"files": 2, "lines": {"tests/mutation_canary.py": {22}}}}
+        records = {SPAWN: {"tier": "spawns", "children": 1},
+                   SPAWN_2: {"tier": "spawns", "children": 2}}
+        got = M.child_reach(self.FUNCTIONS, measured, records, [SPAWN, SPAWN_2])
+        assert got["by_function"] == {"m.x_f": [SPAWN], "m.x_g": [],
+                                      "tests.mutation_canary.x_in_child": [SPAWN_2]}
+        assert got["reached"] == {SPAWN: ["m.x_f"], SPAWN_2: ["tests.mutation_canary.x_in_child"]}
+        assert got["unmeasured"] == []
+
+    @pytest.mark.parametrize("measured, records, failed, why", [
+        ({SPAWN: {"files": 1, "lines": {"modules/m.py": {4}}}},
+         {SPAWN: {"tier": "spawns", "children": 2}}, (), "one of its two children wrote nothing"),
+        ({SPAWN: {"files": 1, "lines": {"modules/m.py": {4}}}},
+         {SPAWN: {"tier": "spawns", "children": 1}}, (SPAWN,), "it failed in the measurement"),
+        ({SPAWN: {"files": 1, "lines": {"modules/m.py": {4}}}}, {}, (), "the run never reached it"),
+        ({}, {SPAWN: {"tier": "spawns", "children": 1}}, (), "no child wrote anything"),
+    ])
+    def test_a_test_that_could_not_be_measured_joins_every_function(self, measured, records,
+                                                                    failed, why):
+        """Never fewer tests than could kill a mutant: what is not measured is today's rule."""
+        got = M.child_reach(self.FUNCTIONS, measured, records, [SPAWN], failed=set(failed))
+        assert got["unmeasured"] == [SPAWN], why
+        assert all(t == [SPAWN] for t in got["by_function"].values()), why
+
+    def test_the_childrens_coverage_names_the_test_and_measures_the_planned_code_anywhere(self):
+        """Each child under its test's context (the spawn guard's NODE_ENV), its own data file,
+        the planned paths matched wherever the child runs them from, and the guard's
+        sitecustomize, which every Python child runs, so a measured child always writes a
+        context."""
+        from tests.network_guard import NODE_ENV
+        rc = M.child_rc(["modules/m.py", "tests/mutation_canary.py"], "/w/child-coverage")
+        assert "data_file = /w/child-coverage/.coverage\n" in rc and "parallel = True\n" in rc
+        assert f"context = ${{{NODE_ENV}}}\n" in rc
+        assert "    */modules/m.py\n    */tests/mutation_canary.py\n    */sitecustomize.py\n" in rc
+        assert M.planned_path_of("/tmp/copy/modules/m.py", ["modules/m.py"]) == "modules/m.py"
+        assert M.planned_path_of("/x/modules/mm.py", ["modules/m.py"]) == ""
+
+    def test_the_spawn_guard_measures_a_tests_children_only_when_asked(self, monkeypatch):
+        """Set by the measurement run: every child a test starts carries coverage.py's
+        configuration, whatever environment the test gave it; never otherwise, and never a
+        child started outside a test (an xdist worker)."""
+        from tests.network_guard import CHILD_COVERAGE_ENV, spawn_guard
+        guard = spawn_guard()
+        assert "COVERAGE_PROCESS_START" not in guard.child_env({})
+        monkeypatch.setenv(CHILD_COVERAGE_ENV, "/w/child-coverage.rc")
+        assert guard.child_env({"PATH": "/bin"}).get("COVERAGE_PROCESS_START") == \
+            "/w/child-coverage.rc"
+        monkeypatch.setattr(guard, "current", "")
+        assert "COVERAGE_PROCESS_START" not in guard.child_env({})
+
+    def test_the_canarys_child_is_measured_for_real_and_reaches_only_its_function(self, tmp_path):
+        """The night's own measurement, run for real on the canary's tests: `test_in_child`'s two
+        children are measured under its name and ran `in_child` alone; `test_in_process`
+        started none, so it is not measured and (were it in the population) joins every
+        function."""
+        cli = _cli()
+        functions = {}
+        for path, q in (M.CANARY_IN_PROCESS, M.CANARY_IN_CHILD):
+            with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+                functions[M.mangled(path, q)] = (path, M.body_lines(fh.read(), q))
+        child, inproc = (f"{M.CANARY_TESTS}::test_in_child",
+                         f"{M.CANARY_TESTS}::test_in_process[2-3-5]")
+        got = cli._measure_children([child, inproc], [M.CANARY_FILE], functions, str(tmp_path))
+        records = M.load_tier_records(str(tmp_path / "child-tiers"))
+        assert records[child] == {"tier": "spawns", "children": 2}, "the spawn guard's count"
+        assert records[inproc] == {"tier": "unit", "children": 0}
+        assert got["reached"] == {child: ["tests.mutation_canary.x_in_child"]}
+        assert got["unmeasured"] == [inproc]
+        assert got["by_function"]["tests.mutation_canary.x_in_child"] == [child, inproc]
+        assert got["by_function"]["tests.mutation_canary.x_in_process"] == [inproc]
 
     def test_only_the_statistics_run_turns_a_childs_recording_off(self):
         """Recording needs mutmut's configuration, which only the run's folder holds
@@ -561,8 +906,36 @@ class TestTheWorkflow:
         doc = self.doc()
         assert set(doc[True]["workflow_dispatch"]["inputs"]) == {"functions"}
         plan = next(s for s in doc["jobs"]["mutate"]["steps"] if s.get("id") == "plan")
-        assert plan["env"] == {"ALSO_FUNCTIONS": "${{ inputs.functions }}"}
+        assert plan["env"] == {"ALSO_FUNCTIONS": "${{ inputs.functions }}",
+                               "REACH_COMMIT": "${{ steps.reach.outputs.sha }}"}
         assert "${{" not in plan["run"] and '--also "$f"' in plan["run"]
+
+    def test_the_plan_reads_the_newest_coverage_drilldown_from_its_run(self):
+        """C796, C834: the newest successful coverage nightly's run, found through the public
+        API with no token, its `coverage-drilldown` downloaded outside the checkout with the
+        job's token, which reads Actions for it (tests/test_ci_workflow.py, READS_ACTIONS); a
+        failed download leaves every function tested by import, never a failed night."""
+        doc = self.doc()
+        steps = doc["jobs"]["mutate"]["steps"]
+        assert doc["jobs"]["mutate"]["permissions"] == {"contents": "read", "actions": "read"}
+        reach = next(s for s in steps if s.get("id") == "reach")
+        assert "coverage-nightly.yml/runs?status=success&per_page=1" in reach["run"]
+        assert "token" not in reach["run"].lower() and "secrets." not in reach["run"]
+        get = next(s for s in steps if s.get("name") == "Download it")
+        assert get["uses"] == "actions/download-artifact@v4" and get["continue-on-error"] is True
+        assert get["with"] == {"name": "coverage-drilldown",
+                               "path": "${{ runner.temp }}/coverage-reach",
+                               "run-id": "${{ steps.reach.outputs.id }}",
+                               "github-token": "${{ github.token }}"}
+        plan = next(s for s in steps if s.get("id") == "plan")
+        assert '--reach "$RUNNER_TEMP/coverage-reach" --reach-commit "$REACH_COMMIT"' in plan["run"]
+        names = [s.get("name") for s in steps]
+        assert names.index("Download it") < names.index("Plan the night")
+        cov = os.path.join(ROOT, ".github", "workflows", "coverage-nightly.yml")
+        with open(cov, encoding="utf-8") as fh:
+            keep = yaml.safe_load(fh)["jobs"]["report"]["steps"][-1]
+        assert keep["with"]["name"] == "coverage-drilldown"
+        assert "tiers/" in keep["with"]["path"].split(), "the tiers travel with the drill-down"
 
     def test_its_one_setting_is_the_budget_and_it_bounds_the_run(self):
         doc = self.doc()
@@ -850,8 +1223,8 @@ class TestTheFence:
         loader.exec_module(cli)
         monkeypatch.setattr(cli.M, "ROOT", root)
         monkeypatch.setattr(cli.M, "git", lambda *a, root=root: M.git(*a, root=root))
-        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None: M.plan(
-            state, h, root=root, also=also, debt=debt))
+        monkeypatch.setattr(cli.M, "plan", lambda state, h, also=(), debt=None, cap=None: M.plan(
+            state, h, root=root, also=also, debt=debt, cap=cap))
         os.makedirs(os.path.join(root, "tests"), exist_ok=True)
         args = ["plan", "--head", head, "--out", str(tmp_path / "out"), "--fence"]
         net = os.path.join(root, "modules", "net.py")

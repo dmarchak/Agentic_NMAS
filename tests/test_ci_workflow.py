@@ -83,12 +83,49 @@ def test_the_scan_finds_a_workflow_and_a_checkout():
     assert checkouts
 
 
+#: The one job whose token may also read Actions, each with why: `actions: read` is read-only and
+#: this repository's alone (a token reaches no other repository through it), the permission
+#: actions/download-artifact needs to fetch another run's artifact.
+READS_ACTIONS = {
+    ("mutation-nightly.yml", "mutate"): "the newest coverage nightly's drill-down (C796, C834)",
+}
+
+
+def _permission_problems(workflow: str, doc: dict) -> list:
+    """What in a workflow's token is more than reading this repository's contents (and, for a
+    job in READS_ACTIONS, its Actions)."""
+    problems = []
+    if doc.get("permissions") != {"contents": "read"}:
+        problems.append(f"the workflow's permissions: {doc.get('permissions')}")
+    for name, job in (doc.get("jobs") or {}).items():
+        allowed = [None, {"contents": "read"}]
+        if (workflow, name) in READS_ACTIONS:
+            allowed.append({"contents": "read", "actions": "read"})
+        if job.get("permissions") not in allowed:
+            problems.append(f"job {name}: {job.get('permissions')}")
+    return problems
+
+
 @pytest.mark.parametrize("path", WORKFLOWS)
 def test_the_token_is_read_only(path):
     doc, _ = _load(path)
-    assert doc.get("permissions") == {"contents": "read"}, doc.get("permissions")
-    for job in (doc.get("jobs") or {}).values():
-        assert job.get("permissions") in (None, {"contents": "read"}), job.get("permissions")
+    assert _permission_problems(os.path.basename(path), doc) == []
+
+
+def test_the_job_reading_actions_is_the_one_listed_and_nothing_else_gains():
+    """The listed job's token reads Actions and its contents, nothing more; controls: the same
+    permission planted on another job, and a write planted on the listed one, are each named."""
+    for wf, job in READS_ACTIONS:
+        doc, _ = _load(os.path.join(ROOT, ".github", "workflows", wf))
+        assert doc["jobs"][job]["permissions"] == {"contents": "read", "actions": "read"}
+    ci, _ = _load(os.path.join(ROOT, ".github", "workflows", "ci.yml"))
+    ci["jobs"]["test"]["permissions"] = {"contents": "read", "actions": "read"}
+    assert _permission_problems("ci.yml", ci) == [
+        "job test: {'contents': 'read', 'actions': 'read'}"]
+    night, _ = _load(os.path.join(ROOT, ".github", "workflows", "mutation-nightly.yml"))
+    night["jobs"]["mutate"]["permissions"] = {"contents": "read", "actions": "write"}
+    assert _permission_problems("mutation-nightly.yml", night) == [
+        "job mutate: {'contents': 'read', 'actions': 'write'}"]
 
 
 @pytest.mark.parametrize("path", WORKFLOWS)

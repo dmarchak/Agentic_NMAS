@@ -157,6 +157,8 @@ jobs:
           python scripts/nmas-coverage report --data .coverage --tiers tiers
           --json coverage.json --html coverage.html --summary "$GITHUB_STEP_SUMMARY"
 
+      # With each test's tier record (tiers/): the nightly mutation run reads both, each function's
+      # tests and which of them start a child (C796, C834).
       - name: Keep the drill-down
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,4 +167,5 @@ jobs:
           path: |
             coverage.html
             coverage.json
+            tiers/
           retention-days: 30

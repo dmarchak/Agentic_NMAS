@@ -4,11 +4,14 @@
 Coverage says a test ran a line; mutation testing says whether a test would notice the line being
 wrong. Each night this mutates ONLY the automation functions changed since the commit the last
 night covered, and the functions the record keeps (one unfinished, or one with an open
-survivor), runs the tests that import their modules against each mutant, and reports the
+survivor), at most a cap of them, the oldest first; runs against each mutant the tests measured
+to execute its function (the tests that import its module where nothing has measured it yet:
+"The tests that reach a function"), and reports the
 survivors that are not in the hand-kept list of equivalent mutants
 (tests/mutation_equivalent.py). A canary (tests/mutation_canary.py) runs first and must be
 killed, or no result stands. It never runs on the NMAS host, the gate or a push.
 """
+import glob
 import hashlib
 import importlib.util
 import json
@@ -245,28 +248,252 @@ def tests_for(paths: list, test_sources: dict) -> list:
     return sorted(f for f, text in test_sources.items() if imported_modules(text) & wanted)
 
 
-# ── The tests a child reaches ─────────────────────────────────────────────────────────────────
+# ── The tests that reach a function: measured (C796, C834; the operator, 2026-10-15) ─────────
+#
+# "Test selection by MEASURED reach: the coverage nightly's per-test contexts say which tests
+# execute each function, and a mutant runs only those." Three measurements, none an import:
+# (1) the night's TESTS: for a function whose text is unchanged since the coverage nightly's
+# commit, the tests its per-test contexts saw execute it (`load_reach`, `choose_tests`); for
+# one changed since, or new, the test files importing its module, as before, until a coverage
+# night has measured it; (2) per MUTANT, mutmut's own statistics run, which records the tests
+# that call each function in the test's process; (3) a test's CHILD processes, which neither
+# sees (the contexts record nothing a child runs: measured 2026-10-15 on the canary with CI's
+# coverage command), measured each night by running the tests that start a child of ours once,
+# with coverage in their children (`child_rc`, `child_reach`): a test joins only the functions
+# its children were measured to run, and one whose children could not all be measured joins
+# every function, as before.
 
-def spawning_tests(tiers: dict) -> list:
-    """The tests that started a process running this checkout's code (the tier records
-    tests/conftest.py writes: `spawns`, and `browser`, whose app runs apart too). Such a test can
-    reach any function in its child, and a child records nothing in mutmut's statistics, so
-    mutmut alone would never choose it to run against a mutant."""
-    return sorted(t for t, tier in tiers.items() if tier != "unit")
+def load_tier_records(folder: str) -> dict:
+    """`{test node id: {"tier", "children"}}` from the tier records tests/conftest.py writes
+    (`NMAS_TEST_TIERS`, one JSON line per test); `children` is None in a record that predates
+    the count (the coverage nightly's before 2026-10-15)."""
+    out = {}
+    for path in sorted(glob.glob(os.path.join(folder, "*.jsonl"))):
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip():
+                    rec = json.loads(line)
+                    out[rec["test"]] = {"tier": rec["tier"], "children": rec.get("children")}
+    return out
+
+
+def child_starting(records: dict) -> list:
+    """The tests that started a process running this checkout's code, by their tier records:
+    a counted child (`children` > 0); in a record without the count, any test not `unit` (its
+    tier then is the only word: `spawns`, or `browser`, which may have)."""
+    return sorted(t for t, r in records.items()
+                  if (r.get("children") or 0) > 0
+                  or (r.get("children") is None and r.get("tier") != "unit"))
 
 
 def add_tests(stats: dict, functions: list, tests: list) -> int:
     """Add *tests* to each of *functions*' (mangled names) tests in mutmut's statistics
     (`mutants/mutmut-stats.json`, as loaded): `tests_by_mangled_function_name`. Returns how many
     associations were new."""
+    return add_tests_by(stats, {f: tests for f in functions})
+
+
+def add_tests_by(stats: dict, tests_by_function: dict) -> int:
+    """Add each function's own tests (`{mangled name: [test]}`) to mutmut's statistics; returns
+    how many associations were new."""
     by = stats.setdefault("tests_by_mangled_function_name", {})
     added = 0
-    for f in functions:
+    for f, tests in tests_by_function.items():
         have = set(by.get(f, []))
         new = [t for t in tests if t not in have]
         by[f] = sorted(have | set(new))
         added += len(new)
     return added
+
+
+def function_level(nodeid: str) -> str:
+    """A test's id without its parameters (`tests/a.py::T::test_x[1-2]` → `tests/a.py::T::test_x`):
+    the night selects the test function, so a parameter id that moved since the coverage night
+    measured it still selects, and no id carries a character mutmut's configuration file reads
+    as its own (`%`)."""
+    return nodeid.split("[", 1)[0]
+
+
+def load_reach(folder: str):
+    """The coverage nightly's drill-down (its `coverage-drilldown` artifact, unpacked in
+    *folder*): `{"functions": {path::qualname: [test]}, "tiers": {test: record}}`, each
+    function's tests those its per-test contexts saw execute a line of its body (in the test's
+    own process: scripts/nmas_coverage.py, `module_report`); None when there is no drill-down."""
+    path = os.path.join(folder or "", "coverage.json")
+    if not folder or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        report = json.load(fh)
+    functions = {}
+    for mpath, mod in (report.get("modules") or {}).items():
+        for f in mod.get("function_list") or []:
+            functions[f"{mpath}::{f['name']}"] = sorted(set(f.get("unit_tests") or [])
+                                                        | set(f.get("other_tests") or []))
+    return {"functions": functions, "tiers": load_tier_records(os.path.join(folder, "tiers"))}
+
+
+def reach_fresh(planned: list, hashes: dict, reach, reach_commit: str, head: str,
+                root: str = ROOT) -> dict:
+    """Which planned functions the drill-down measured as they are tonight: `{"fresh": [key],
+    "stale": {key: why}, "changed_tests": [test file], "unusable": why or ""}`. A function is
+    fresh when the drill-down names it and its text at the drill-down's commit is its text at
+    *head* (`function_hash`); the test files changed since that commit are named, so their new
+    tests are run whole."""
+    out = {"fresh": [], "stale": {}, "changed_tests": [], "unusable": ""}
+    if reach is None:
+        out["unusable"] = "no coverage drill-down was found"
+    elif not reach_commit:
+        out["unusable"] = "the drill-down's commit is not known"
+    elif not reach["tiers"]:
+        out["unusable"] = ("the drill-down holds no test tiers, so the tests that start a child "
+                           "cannot be found in it")
+    else:
+        r = subprocess.run(["git", "-C", root, "rev-parse", "--verify", "-q",
+                            f"{reach_commit}^{{commit}}"], capture_output=True, text=True)
+        if r.returncode != 0:
+            out["unusable"] = f"the drill-down's commit {reach_commit[:9]} is not in this history"
+    if out["unusable"]:
+        out["stale"] = {key(f): out["unusable"] for f in planned}
+        return out
+    out["changed_tests"] = sorted(git("diff", "--name-only", f"{reach_commit}..{head}", "--",
+                                      "tests", root=root).split())
+    for f in planned:
+        k = key(f)
+        r = subprocess.run(["git", "-C", root, "show", f"{reach_commit}:{f[0]}"],
+                           capture_output=True, text=True)
+        then = function_hash(r.stdout if r.returncode == 0 else None, f[1])
+        if k not in reach["functions"]:
+            out["stale"][k] = f"not in the drill-down of {reach_commit[:9]} (new since)"
+        elif not then or then != hashes.get(k):
+            out["stale"][k] = f"its text changed since {reach_commit[:9]}"
+        else:
+            out["fresh"].append(k)
+    return out
+
+
+def choose_tests(planned: list, test_sources: dict, reach=None, fresh=(),
+                 changed_tests=()) -> dict:
+    """The night's tests, each function's by what is measured of it: for a *fresh* one (its text
+    unchanged since the drill-down), the tests the drill-down saw execute it, the tests of its
+    module's importing files that start a child (their children are measured tonight), and its
+    importing files changed since the drill-down, whole (their tests are newer than it); for any
+    other, its module's importing test files whole, as before. `{"tests": files then ids,
+    "how": {key: "measured" | "by import"}}`; an id inside a file run whole is dropped."""
+    files, ids, how = set(), set(), {}
+    starters = set(child_starting(reach["tiers"])) if reach else set()
+    for f in planned:
+        k = key(tuple(f))
+        importing = tests_for([f[0]], test_sources)
+        if reach is not None and k in fresh:
+            how[k] = "measured"
+            ids.update(function_level(t) for t in reach["functions"].get(k, []))
+            ids.update(function_level(t) for t in starters if t.split("::")[0] in importing)
+            files.update(t for t in importing if t in set(changed_tests))
+        else:
+            how[k] = "by import"
+            files.update(importing)
+    ids = {i for i in ids if i.split("::")[0] not in files}
+    return {"tests": sorted(files) + sorted(ids), "how": how}
+
+
+def valid_ids(ids: list, collected: set) -> tuple:
+    """`(kept, not found)`: each selected function-level id that names a test collected at head
+    (exactly, or with parameters), so a test the drill-down measured and head no longer has
+    never fails the night's collection (pytest refuses a run naming one)."""
+    bases = {function_level(c) for c in collected}
+    kept, gone = [], []
+    for i in ids:
+        (kept if i in bases else gone).append(i)
+    return kept, gone
+
+
+#: What a measured child writes its coverage under: the test that started it, from the
+#: environment the spawn guard gives every child (tests/network_guard.py, NODE_ENV).
+CHILD_CONTEXT_ENV = "NMAS_TEST_NODEID"
+
+
+def child_rc(paths: list, data_dir: str) -> str:
+    """coverage.py's configuration for the children of the night's child-starting tests
+    (`COVERAGE_PROCESS_START`, set on each child by the spawn guard when
+    `NMAS_CHILD_COVERAGE` names this file): each child writes its own data file in *data_dir*,
+    under the context of the test that started it, measuring *paths* (the planned modules and
+    the canary, wherever the child runs them from) and the spawn guard's sitecustomize, which
+    every Python child runs: a child that wrote a context was measured, even when it ran none of
+    the planned code."""
+    include = [f"*/{p}" for p in paths] + ["*/sitecustomize.py"]
+    return ("[run]\n"
+            f"data_file = {os.path.join(data_dir, '.coverage')}\n"
+            "parallel = True\n"
+            f"context = ${{{CHILD_CONTEXT_ENV}}}\n"
+            "sigterm = True\n"
+            "patch = _exit\n"
+            "disable_warnings = no-data-collected, module-not-measured, module-not-imported, "
+            "module-not-python, couldnt-parse, no-ctracer\n"
+            "include =\n" + "".join(f"    {i}\n" for i in include))
+
+
+def child_reach(functions: dict, measured: dict, records: dict, population: list,
+                failed=()) -> dict:
+    """Which functions each child-starting test's children ran, and which tests could not be
+    measured. *functions*: `{mangled name: (path, {body line})}`; *measured*: `{test: {"files":
+    data files with its context, "lines": {path: {line}}}}` from the measurement run;
+    *records*: that run's tier records (`children`, counted by the spawn guard); *population*:
+    the tests measured. A test is measured when that run recorded it, it passed, and at least as
+    many of its children wrote data as it started; otherwise it is `unmeasured` and joins every
+    function, as before (never fewer tests than could kill a mutant). Returns `{"by_function":
+    {mangled: [test]}, "reached": {test: [mangled]}, "unmeasured": [test]}`."""
+    by = {f: [] for f in functions}
+    reached, unmeasured = {}, []
+    for t in sorted(population):
+        rec, got = records.get(t), measured.get(t) or {}
+        if rec is None or t in failed or got.get("files", 0) < (rec.get("children") or 0) \
+                or not got.get("files"):
+            unmeasured.append(t)
+            continue
+        lines = got.get("lines") or {}
+        reached[t] = sorted(f for f, (path, body) in functions.items()
+                            if lines.get(path, set()) & set(body))
+        for f in reached[t]:
+            by[f].append(t)
+    for f in by:
+        by[f] = sorted(set(by[f]) | set(unmeasured))
+    return {"by_function": by, "reached": reached, "unmeasured": unmeasured}
+
+
+def body_lines(source: str, qualname: str) -> tuple:
+    """A counted function's body lines in *source* (pydefs: after the docstring, nested
+    functions within), () when there is none."""
+    for d in pydefs.definitions(source):
+        if d.qualname == qualname and d.counted:
+            return tuple(d.body_lines)
+    return ()
+
+
+def planned_path_of(measured_file: str, paths: list) -> str:
+    """The planned path a measured file is (by its path's ending: a child may run the program
+    from a copy of the checkout), or ""."""
+    norm = measured_file.replace(os.sep, "/")
+    for p in sorted(paths, key=len, reverse=True):
+        if norm == p or norm.endswith("/" + p):
+            return p
+    return ""
+
+
+def read_child_data(data_dir: str, paths: list) -> dict:
+    """`{test: {"files": n, "lines": {path: {line}}}}` from the children's coverage data files
+    in *data_dir* (`child_rc`): each file is one child process, its one context the test that
+    started it (read by the coverage tool, scripts/nmas_coverage.py, `process_files`)."""
+    coverage_tool = _load("nmas_coverage", os.path.join(ROOT, "scripts", "nmas_coverage.py"))
+    out = {}
+    for proc in coverage_tool.process_files(data_dir):
+        for ctx in proc["contexts"]:
+            rec = out.setdefault(ctx, {"files": 0, "lines": {}})
+            rec["files"] += 1
+            for mf, lines in proc["lines"][ctx].items():
+                p = planned_path_of(mf, paths)
+                if p:
+                    rec["lines"].setdefault(p, set()).update(lines)
+    return out
 
 
 # ── What a mutant changes: logging, MESSAGE or VERDICT ───────────────────────────────────────
@@ -767,7 +994,8 @@ def outcome(planned: list, results: dict, mutmut_exit: int) -> dict:
 # ── The record a night leaves for the next ────────────────────────────────────────────────────
 
 def next_state(head: str, planned: list, results: dict, open_mutants: list,
-               hashes: dict, finished_before: dict = None, debt_count: int = None) -> dict:
+               hashes: dict, finished_before: dict = None, debt_count: int = None,
+               deferred: dict = None, since: dict = None) -> dict:
     """What the next night starts from: this run's HEAD, and per function still unfinished or
     holding an open survivor (the debt's included, so a test that kills one is seen), its hash
     and every result so far (C769: a large function is finished across nights, never
@@ -775,7 +1003,10 @@ def next_state(head: str, planned: list, results: dict, open_mutants: list,
     it as equivalent). `finished`: the hash of every function finished with nothing open, this
     night's and earlier ones' still at that hash, so a function MOVED with its text unchanged
     is known as done (the operator, 2026-10-14). `debt_entries`: the debt list's size tonight,
-    against which the next night sees it grow."""
+    against which the next night sees it grow. *deferred*: the functions the night's cap left
+    (`plan`), carried as they were; *since*: `{key: commit}`, when each planned function entered
+    the record (the cap's order), kept on each one still unfinished. Both fields are additions:
+    a record without them loads as the oldest."""
     open_by = {}
     for m in open_mutants:
         open_by.setdefault(function_of(m), []).append(m)
@@ -785,9 +1016,14 @@ def next_state(head: str, planned: list, results: dict, open_mutants: list,
         if any(s == "not checked" for s in res.values()) or dotted(f) in open_by:
             functions[key(f)] = {"hash": hashes.get(key(f), ""), "results": res,
                                  "open": sorted(open_by.get(dotted(f), []))}
+            if (since or {}).get(key(f)):
+                functions[key(f)]["since"] = since[key(f)]
             finished.pop(key(f), None)
         elif hashes.get(key(f)):
             finished[key(f)] = {"hash": hashes[key(f)]}
+    for k, rec in (deferred or {}).items():
+        functions.setdefault(k, rec)
+        finished.pop(k, None)
     state = {"commit": head, "functions": functions, "finished": dict(sorted(finished.items()))}
     if debt_count is not None:
         state["debt_entries"] = debt_count
@@ -932,7 +1168,8 @@ def first_base(head: str, root: str = ROOT) -> str:
     return git("rev-parse", f"{head}~1", root=root).strip()
 
 
-def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict = None) -> dict:
+def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict = None,
+         cap: int = None) -> dict:
     """The night's plan: the base commit (the last covered, or on the first night the commit
     that added the nightly workflow, `first_base`) and the functions to mutate, each read at
     head: those the record keeps whose hash is
@@ -942,7 +1179,9 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
     the record holds under another name, is kept with those results renamed (`carried`); one
     the record finished, or the *debt* list holds, is not mutated again (`skipped_moved`).
     *also*: functions (`path::qualname`) a person names to mutate whole tonight, changed or
-    not. The scope is *root*'s tests/coverage_scope.py, the coverage tool's."""
+    not. The scope is *root*'s tests/coverage_scope.py, the coverage tool's. *cap*: at most
+    that many functions tonight, the oldest unfinished first (`since`); the rest are
+    `deferred`, carried by the record as they were (one not started as `whole`)."""
     scope = _load("coverage_scope", os.path.join(root, "tests", "coverage_scope.py"))
     # The record names a COMMIT: a name like HEAD would move under it (a laptop run stored
     # "HEAD" itself, 2026-10-14).
@@ -956,9 +1195,16 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
                            text=True)
         return r.stdout if r.returncode == 0 else None
 
-    kept, names, not_rerun = {}, {}, []
+    kept, names, not_rerun, waiting = {}, {}, [], []
+    since = {k: rec.get("since", "") for k, rec in (state.get("functions") or {}).items()}
     for k, rec in (state.get("functions") or {}).items():
         path, _, qualname = k.partition("::")
+        if rec.get("whole") and rec.get("hash") \
+                and function_hash(read(path), qualname) == rec["hash"]:
+            # Left over by an earlier night's cap before any of it ran: mutated whole, in its
+            # turn (its place in line is its `since`).
+            waiting.append((path, qualname))
+            continue
         if rec.get("hash") and function_hash(read(path), qualname) == rec["hash"]:
             # Known debt at the text it was listed at is NOT run again (the operator,
             # 2026-10-14): only the function's unchecked mutants are; one with none left is
@@ -978,7 +1224,7 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
     # only what is left or open runs; one finished before, or one on the debt list, is not
     # mutated again at all.
     record_by_hash = {rec["hash"]: k for k, rec in (state.get("functions") or {}).items()
-                      if rec.get("hash") and k not in kept}
+                      if rec.get("hash") and k not in kept and not rec.get("whole")}
     finished_by_hash = {v["hash"]: k for k, v in (state.get("finished") or {}).items()
                         if v.get("hash")}
     debt_by_hash = {f["hash"]: f"{f['path']}::{f['qualname']}"
@@ -995,26 +1241,51 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
             names[key(f)] = sorted(m for m, s in moved["results"].items()
                                    if s == "not checked" or m in moved["open"])
             carried[key(f)] = old
+            since[key(f)] = since.get(old, "")
             continue
         was = finished_by_hash.get(h) or debt_by_hash.get(h)
         if key(f) not in kept and was and was != key(f):
             skipped[key(f)] = was
             continue
         still_fresh.append(f)
-    fresh = still_fresh
+    fresh = still_fresh + [f for f in waiting if f not in still_fresh]
+    named = []
     for k in also:
         f = tuple(k.split("::", 1))
         if not function_hash(read(f[0]), f[1]):
             raise ValueError(f"{k}: no counted function of that name at {head[:9]}")
         if f not in fresh:
             fresh.append(f)
+        named.append(f)
         kept.pop(k, None)
         names.pop(k, None)
         carried.pop(k, None)
         skipped.pop(k, None)
-    planned = [tuple(k.split("::", 1)) for k in kept]
-    planned += [f for f in fresh if key(f) not in kept]
-    hashes = {key(f): function_hash(read(f[0]), f[1]) for f in planned}
+    candidates = [tuple(k.split("::", 1)) for k in kept]
+    candidates += [f for f in fresh if key(f) not in kept]
+    # THE CAP (C834): the oldest unfinished first, by when each entered the record (`since`, the
+    # night's head commit then; a record from before the field is older than any), a function a
+    # person named tonight before all; what does not fit waits in the record, in its place.
+    for f in candidates:
+        if key(f) not in since:
+            since[key(f)] = head
+    when = _commit_times({since[key(f)] for f in candidates}, root)
+    order = sorted(range(len(candidates)),
+                   key=lambda i: (candidates[i] not in named,
+                                  when.get(since[key(candidates[i])], 0), i))
+    ordered = [candidates[i] for i in order]
+    planned = ordered if not cap else ordered[:cap]
+    hashes_all = {key(f): function_hash(read(f[0]), f[1]) for f in ordered}
+    deferred = {}
+    for f in ordered[len(planned):]:
+        k = key(f)
+        deferred[k] = (dict(kept[k], since=since[k]) if k in kept else
+                       {"hash": hashes_all[k], "results": {}, "open": [], "since": since[k],
+                        "whole": True})
+    hashes = {key(f): hashes_all[key(f)] for f in planned}
+    kept = {k: v for k, v in kept.items() if k not in deferred}
+    names = {k: v for k, v in names.items() if k not in deferred}
+    carried = {k: v for k, v in carried.items() if k not in deferred}
     # GONE: a function the record names (unfinished, or finished) that no longer exists at head,
     # deleted rather than changed (the AI family's removal, D15). Dropped from the record and
     # said in the night's summary, never an error (the operator, 2026-10-14).
@@ -1022,6 +1293,7 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
     gone = [k for k in recorded
             if not function_hash(read(k.partition("::")[0]), k.partition("::")[2])]
     finished_before = {k: v for k, v in (state.get("finished") or {}).items() if k not in gone}
+    waiting_keys = {key(f) for f in waiting}
     return {"base": base, "head": head, "planned": planned, "names": names, "kept": kept,
             "hashes": hashes, "moved": moved_from([f for f in planned if key(f) not in kept],
                                                   hashes, base, root),
@@ -1029,8 +1301,75 @@ def plan(state: dict, head: str, root: str = ROOT, also: list = (), debt: dict =
             "finished_before": finished_before,
             "previous_debt_entries": state.get("debt_entries"),
             "gone": gone, "debt_not_rerun": sorted(not_rerun),
+            "cap": cap, "deferred": deferred,
+            "since": {key(f): since[key(f)] for f in planned},
             "dropped": sorted(k for k in (state.get("functions") or {})
-                              if k not in kept and k not in gone and k not in not_rerun)}
+                              if k not in kept and k not in gone and k not in not_rerun
+                              and k not in deferred and k not in waiting_keys)}
+
+
+def _commit_times(commits, root: str = ROOT) -> dict:
+    """`{commit: committer time}` for the commits git knows (an unknown one is left out, and
+    sorts as the oldest)."""
+    out = {}
+    for c in sorted(c for c in commits if c):
+        r = subprocess.run(["git", "-C", root, "show", "-s", "--format=%ct", c],
+                           capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip().isdigit():
+            out[c] = int(r.stdout.strip())
+    return out
+
+
+def selection_lines(p: dict, ran: dict = None) -> list:
+    """The summary's lines for how the night chose its tests (`plan`'s `selection`, and the run's
+    measurement of the children): by measured reach, or by import and why, per function."""
+    sel = p.get("selection")
+    if not sel:
+        return []
+    how = sel.get("how") or {}
+    measured = sorted(k for k, h in how.items() if h == "measured")
+    by_import = sorted(k for k, h in how.items() if h != "measured")
+    lines = [f"Tests: {sel.get('ids', 0)} test function(s) by measured reach and "
+             f"{sel.get('files', 0)} test file(s) whole. "
+             + (f"The coverage drill-down of {sel['reach_commit'][:9]} measured "
+                f"{len(measured)} of the {len(how)} function(s) as they are tonight; "
+                if not sel.get("unusable") else
+                f"No measured reach tonight ({sel['unusable']}); ")
+             + f"{len(by_import)} ran their modules' importing test files, as before:", ""]
+    lines += [f"- `{k}`: by import" + (f" ({sel['stale'][k]})" if k in (sel.get("stale") or {})
+                                         and not sel.get("unusable") else "")
+              for k in by_import]
+    if by_import:
+        lines += [""]
+    if sel.get("not_found"):
+        lines += [f"Measured by the drill-down but not collected at head, so not run "
+                  f"({len(sel['not_found'])}): " + ", ".join(f"`{t}`" for t in sel["not_found"]),
+                  ""]
+    ran = ran or {}
+    if "children_reached" in ran:
+        reached, unmeasured = ran.get("children_reached") or {}, ran.get("children_unmeasured") or []
+        lines += [f"Children: {len(ran.get('spawning_tests') or [])} test(s) start a child of "
+                  f"ours; {len(reached)} measured (each joins only the functions its children "
+                  f"ran: {sum(1 for f in reached.values() if f)} reached one), "
+                  f"{len(unmeasured)} not measured, so added to every function as before"
+                  + (": " + ", ".join(f"`{t}`" for t in unmeasured) if unmeasured else "")
+                  + f"; {ran.get('associations_added', 0)} association(s) added.", ""]
+    return lines
+
+
+def deferred_lines(p: dict) -> list:
+    """The summary's lines for the functions the night's cap left for the next nights (`plan`'s
+    `deferred`), oldest first, each kept in the record in its place."""
+    left = p.get("deferred") or {}
+    if not left:
+        return []
+    return [f"Capped: {len(p['planned'])} function(s) tonight, the oldest unfinished first (the "
+            f"cap is {p.get('cap')}); {len(left)} wait in the record for the next nights, "
+            "their results so far kept:", "",
+            *[f"- `{k}`" + (" (not started)" if r.get("whole") else
+                            f" ({sum(1 for s in r.get('results', {}).values() if s == 'not checked')}"
+                            " not checked)")
+              for k, r in left.items()], ""]
 
 
 def not_rerun_lines(p: dict) -> list:

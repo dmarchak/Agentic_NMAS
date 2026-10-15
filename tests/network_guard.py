@@ -136,6 +136,9 @@ import subprocess
 SHIMMED = ("ssh", "scp", "sftp", "rsync", "curl", "wget", "nc", "ncat", "telnet")
 LOG_ENV = "NMAS_TEST_SPAWN_LOG"
 NODE_ENV = "NMAS_TEST_NODEID"
+#: Names coverage.py's configuration for the children of a test (the nightly mutation run's
+#: measurement, C796): set, every child a test starts is measured (`SpawnGuard.child_env`).
+CHILD_COVERAGE_ENV = "NMAS_CHILD_COVERAGE"
 
 # A FAKE a test builds for itself (an `ssh` that records its argv, in the
 # test's tmp_path) is not a network: the shim runs the next tool on PATH when
@@ -319,6 +322,12 @@ class SpawnGuard:
         # it anyway. In a mutant's run the child still runs the mutant.
         if env.get("MUTANT_UNDER_TEST") == "stats":
             env["MUTMUT_DEPENDENCY_DEPTH"] = "0"
+        # The nightly mutation run's measurement of what a test's children run (C796,
+        # scripts/nmas-mutation `_measure_children`): every child a TEST starts runs coverage.py
+        # from that configuration, under the test's context (NODE_ENV above), whatever
+        # environment the test gave it. A child started outside a test (an xdist worker) is not.
+        if os.environ.get(CHILD_COVERAGE_ENV) and self.current:
+            env["COVERAGE_PROCESS_START"] = os.environ[CHILD_COVERAGE_ENV]
         return env
 
     def attempts(self, start=0):

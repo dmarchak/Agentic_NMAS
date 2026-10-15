@@ -248,9 +248,10 @@ nothing scores 100% coverage and 0% here. Each night:
   counting rules, `tests/coverage_scope.py`, `scripts/pydefs.py`) whose lines changed since the
   commit the last night covered (on a night with no record, since the commit that added the
   nightly workflow, so the first night is not an empty one), read with `git diff -U0`,
-  and the functions the record keeps (below). Each function's mutants run against the test
-  files whose code imports its module (parsed, never searched: a text search matched an import
-  written inside a test's string data). mutmut writes every mutant of a FILE, so its progress
+  and the functions the record keeps (below), at most the night's cap of them (below). Each
+  function's mutants run against the tests MEASURED to execute it (below); where nothing has
+  measured it yet, against the test files whose code imports its module (parsed, never
+  searched: a text search matched an import written inside a test's string data). mutmut writes every mutant of a FILE, so its progress
   counter counts the whole file (`x/2168` for `config_check.py`); only the planned functions'
   run, and the report checks it: a mutant of anything else having run is "SCOPE BROKEN" and
   fails the night. `nmas-mutation plan --also path::qualname` names a function to mutate whole,
@@ -265,12 +266,62 @@ nothing scores 100% coverage and 0% here. Each night:
   BROKEN", never as survivors, and no result stands. Shown able to fail twice (2026-10-14):
   children stripped of `MUTANT_UNDER_TEST` (the in-child mutants survived), and the tests that
   start a child left out of the in-child function's tests (they read "no tests").
-- **A test's child.** A child process records nothing in mutmut's statistics (above), so mutmut
-  alone would never choose a test that reaches a function only through a child. The first run
-  records each test's tier (`tests/conftest.py`), and every test that started a child (tier
-  `spawns` or `browser`) is added to each planned function's tests before the night's mutants
-  run. Proven on `config_check._check_device` (2026-10-14): a mutant's own code, instrumented to
-  record the process running it, ran in 12 separate `nmas-config-check` children per test run.
+- **The night's tests, by measured reach** (C796, C834; the operator, 2026-10-15: "the coverage
+  nightly's per-test contexts say which tests execute each function, and a mutant runs only
+  those"). The workflow downloads the newest successful coverage nightly's `coverage-drilldown`
+  (its `coverage.json`, each function's tests by per-test context, and `tiers/`, each test's
+  tier record) from that run, with the job's token reading Actions (`actions: read`, the one
+  permission it adds; `READS_ACTIONS` in tests/test_ci_workflow.py). For a planned function
+  whose text at the drill-down's commit is its text tonight, the night runs the tests the
+  contexts saw execute it (by test function, so a moved parameter id still selects; an id head
+  no longer collects is dropped and named), its importing files' child-starting tests (their
+  children are measured below), and those importing files changed since the drill-down whole
+  (their tests are newer than the measurement, as a test written to kill a survivor is). A
+  function changed since the drill-down, or new, or every function when no drill-down with
+  tiers is found, runs its importing test files, as before: never fewer tests than could kill
+  its mutants. The summary says which functions were measured and why each other one was not.
+  Per mutant, mutmut's own statistics run then picks, among those, the tests that called the
+  function in the test's process. **What a caller's change since the drill-down makes newly
+  reach a function is not seen until the next coverage night** (only the function's own text is
+  compared).
+- **A test's child.** A child process records nothing in mutmut's statistics (above), and the
+  coverage nightly's contexts do not see it either (measured 2026-10-15 with CI's coverage
+  command, coverage 7.16.1 and pytest-cov 7.1.0, which no longer measures children: `in_child`'s
+  body line had no context at all). Proven on `config_check._check_device` (2026-10-14) that
+  children do run planned code: a mutant's own code, instrumented to record the process running
+  it, ran in 12 separate `nmas-config-check` children per test run. So each night, after the
+  first run records each test's tier and its count of children of ours (`children`, counted by
+  the spawn guard; `tests/conftest.py`), every test that started one is run once more, in the
+  checkout, with coverage in its children: the spawn guard gives every child a test starts
+  `COVERAGE_PROCESS_START` (when `NMAS_CHILD_COVERAGE` names the night's configuration) and the
+  test's id as its coverage context, and every Python child runs the guard's sitecustomize, so a
+  measured child always writes its test's context. A test joins only the functions its children
+  ran (`child_reach`); one that failed there, was not reached, or has fewer measured children
+  than it started joins every function, as before, and is named in the summary. The canary's
+  `in_child` gets `test_in_child` only through this measurement, so a measurement that
+  misattributes kills the canary's verdict, not the night's.
+- **The cap** (C834): at most `NIGHT_CAP` functions a night (`plan --cap`), the oldest
+  unfinished first: a function a person named tonight, then by when each entered the record
+  (`since`, the head commit of the night it entered; a record from before the field is older
+  than any), then the functions changed tonight. The rest wait in the record as they were
+  (results kept; one not started as `whole`) and are named in the summary. The copy run, the
+  statistics run and the clean runs then see only the capped plan's tests. **Walked on the
+  laptop, 2026-10-15** (the night's steps at ff55539b, the coverage nightly of f48fdc617):
+  - `onboard.create_netbox_record` alone: by import, 29 test files and every child-starting
+    test, the run took 814 s, survivors 0.8 s and killed 0.2 s each (mutmut's
+    `durations_by_key`); by measured reach, 14 test functions, the run took 146 s, survivors
+    0.5 s; the same 104 killed and 129 survived, mutant for mutant. Of its 4 child-starting
+    tests, 3 were measured (`test_in_child` reaching only the canary's `in_child`) and 1, whose
+    child the test kills, was not, so it joined every function.
+  - the record night #12 left (92 functions waiting), capped at 20: 16 measured, 4 by import
+    (changed since the drill-down, or new), 51 test files whole and 412 test functions where
+    import alone would run 134 files; the copy run 183 s for 1,833 tests; the children of 21
+    tests measured in 9 s (18 measured, 3 not), 59 associations added where every test joining
+    every function would add 462; the canary all killed; 72 functions left waiting, named. On
+    the laptop everything before the first mutant took about 27 minutes (the statistics run,
+    serial, 14 of them), the mutants about 0.32 s each. The runner runs tests about 2.2 times
+    slower (night #12's copy run, 0.218 s a test, against 0.100 s), which puts a capped night's
+    setup near 60 minutes and its 1,301 mutants near 15: `NIGHT_CAP` is 20 for that.
 - **The budget** is the one setting, `MUTATION_BUDGET_MINUTES` (120): what it does not reach is
   named in the summary, and its results so far are kept. The mutate step WRITES bytecode:
   mutmut's copy of a module holds every mutant of it (`config_check.py`: 2168 mutants, 7.5 MB,
@@ -315,7 +366,9 @@ nothing scores 100% coverage and 0% here. Each night:
 
 **Reading the summary:** the canary's line (all its mutants killed: the measurement works), the
 scope's (how many mutants ran, all of the planned functions, and how many functions the record
-carried in, and how many logging mutants were never run), a table per function (mutants,
+carried in, and how many logging mutants were never run), how the tests were chosen (by
+measured reach or by import, each by-import function with its reason) and the children
+measured (and each test that was not), the functions the cap left waiting, a table per function (mutants,
 killed, survived VERDICT, survived MESSAGE, known equivalents; the score, killed over the
 mutants a test could kill; and the VERDICT score, killed over killed and VERDICT survivors),
 then the open VERDICT survivors with their line before and after (each one keeps the night
@@ -334,7 +387,9 @@ number, which moves when the function changes. Never chase an equivalent mutant 
 
 **To run a night on the laptop:** install `requirements-mutation.txt` `--no-deps` into its own
 folder and put it on `PYTHONPATH`, then run the workflow's three steps: `scripts/nmas-mutation
-plan --state <state.json> --head <sha> --out mutation-out [--also path::qualname]`,
+plan --state <state.json> --head <sha> --out mutation-out [--also path::qualname] [--reach
+<drill-down> --reach-commit <its sha>]` (the drill-down: `scripts/nmas-ci-log run <coverage
+nightly run> --artifact coverage-drilldown --out <dir>`),
 `scripts/nmas-mutation run --out mutation-out` inside `unshare -rn` with `ip link set lo up` (as
 the workflow), and `scripts/nmas-mutation report --plan mutation-out/plan.json --summary <file>
 --state-out <next.json> --mutmut-exit <its exit>`. Run it in a copy of the tree when you will

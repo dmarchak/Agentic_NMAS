@@ -199,9 +199,12 @@ def _test_tier(request):
     tier = ("browser" if Browser.calls > calls else
             "spawns" if guard.spawned_ours > spawned else "unit")
     worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    # `children`: how many processes running our code it started (the nightly mutation run
+    # measures each one's children and compares, C796).
     with open(os.path.join(out, f"tiers-{worker}-{os.getpid()}.jsonl"), "a",
               encoding="utf-8") as fh:
-        fh.write(json.dumps({"test": request.node.nodeid, "tier": tier}) + "\n")
+        fh.write(json.dumps({"test": request.node.nodeid, "tier": tier,
+                             "children": guard.spawned_ours - spawned}) + "\n")
 
 
 def pytest_configure(config):

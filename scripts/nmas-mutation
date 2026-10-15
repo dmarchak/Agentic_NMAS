@@ -3,16 +3,21 @@
 "Mutation testing"; .github/workflows/mutation-nightly.yml; the logic is scripts/nmas_mutation.py).
 
     nmas-mutation plan --state S --head SHA --out DIR [--summary F] [--also PATH::QUALNAME]...
+                       [--reach DRILLDOWN --reach-commit SHA] [--cap N]
         the functions to mutate tonight: those the record S keeps (unfinished, or holding an
         open survivor) whose text is unchanged, then the automation functions changed since S's
-        commit (or HEAD~1 on the first night). Writes DIR/plan.json, DIR/patterns.txt (mutmut's
-        names) and ./setup.cfg (mutmut's configuration: the planned modules and the canary, and
-        the test files that import them). With nothing to mutate, writes "nothing to mutate" to
-        F and S's next record, and DIR/patterns.txt is empty.
+        commit (or HEAD~1 on the first night); at most N, the oldest first, the rest left in the
+        record. Writes DIR/plan.json, DIR/patterns.txt (mutmut's names) and ./setup.cfg
+        (mutmut's configuration: the planned modules and the canary, and the night's tests: for
+        a function the drill-down measured as it is tonight, the tests it saw execute it; for
+        any other, the test files that import its module). With nothing to mutate, writes
+        "nothing to mutate" to F and S's next record, and DIR/patterns.txt is empty.
     nmas-mutation run --out DIR
         mutmut, one mutant at a time, in three runs: the canary's in-process function (which
-        also collects mutmut's statistics and each test's tier); then, the tests that start a
-        child process added to every planned function's tests, the canary's in-child function;
+        also collects mutmut's statistics and each test's tier); then, each test that starts a
+        child of ours run once with coverage in its children and added to the functions they
+        ran (to every function when its children could not be measured), the canary's in-child
+        function;
         then the night's mutants, each classified first from mutmut's copy of its module
         (logging, MESSAGE or VERDICT: scripts/nmas_mutation.py, `classify`), a logging call's
         never run, the rest by name. Stops after a run that fails. Exit: 0, or the failing
@@ -106,26 +111,133 @@ def _fails_in_the_copy(p, out) -> list:
     return M.failing_tests(text) if code == 1 else []
 
 
+#: The bound on collecting the selected tests' files at plan time (`_collected`): the laptop's
+#: plan of a capped night took 64 s, nearly all of it this collection (2026-10-15, 20 functions,
+#: 51 files whole and 412 test functions), and the runner runs tests about 2.2 times slower
+#: (night #12's copy run, 0.218 s a test, against the laptop's 0.100 s): about 2.5 times 140 s.
+COLLECT_TIMEOUT_S = 360
+
+
+def _collected(files: list) -> set:
+    """The test ids pytest collects at head from *files* (`--collect-only -q`); None when the
+    collection itself failed or passed its bound (the caller then runs those files whole)."""
+    try:
+        r = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q",
+                            "-p", "no:cacheprovider", *files], cwd=M.ROOT, capture_output=True,
+                           text=True, errors="replace", timeout=COLLECT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        print(f"nmas-mutation: collecting the selected tests passed its {COLLECT_TIMEOUT_S} s "
+              "bound: their files run whole", flush=True)
+        return None
+    if r.returncode != 0:
+        print(f"nmas-mutation: collecting the selected tests exited {r.returncode}: their files "
+              "run whole", flush=True)
+        return None
+    return {ln.strip() for ln in r.stdout.splitlines() if ln.startswith("tests/") and "::" in ln}
+
+
+#: THE CAP (C834): at most this many functions a night, the oldest unfinished first; the rest
+#: wait in the record. From the laptop's walk of the record night #12 left (2026-10-15; 20 of
+#: its 92 functions, 1,833 tests): the copy run 183 s, and everything before the first mutant
+#: (two statistics runs, the copy run, the children, three clean runs) about 27 minutes; the
+#: mutants about 0.32 s each. At the runner's 2.2 times: the copy run about 400 s (C832's bound
+#: is 850 s), the setup about 60 minutes, the plan's 1,301 mutants about 15 minutes: inside the
+#: 120-minute budget with room. Uncapped, night #12's 97 functions never left the setup.
+NIGHT_CAP = 20
+
+
+#: The bound on the run that measures the child-starting tests' children (`_measure_children`):
+#: 21 tests in 9 s on the laptop (the capped walk, 2026-10-15), about 20 s at the runner's 2.2
+#: times, so about 2.5 times that. Past it, what did not finish is unmeasured and joins every
+#: function: slower, never wrong.
+CHILD_RUN_TIMEOUT_S = 60
+
+
+def _measure_children(population, paths, functions, out) -> dict:
+    """Run each test of *population* once, in the checkout, with coverage in every child of ours
+    it starts (`M.child_rc`, through the spawn guard), and read which of *functions* each test's
+    children ran (`M.child_reach`). Its output is kept in *out*/child-run.log, the children's
+    data in *out*/child-coverage/. A run past its bound measures what finished; a test it did not
+    reach is unmeasured, and joins every function."""
+    data_dir = os.path.join(os.path.abspath(out), "child-coverage")
+    tiers = os.path.join(os.path.abspath(out), "child-tiers")
+    for d in (data_dir, tiers):
+        os.makedirs(d, exist_ok=True)
+    rc = os.path.join(os.path.abspath(out), "child-coverage.rc")
+    with open(rc, "w", encoding="utf-8") as fh:
+        fh.write(M.child_rc(paths, data_dir))
+    env = dict(os.environ, NMAS_CHILD_COVERAGE=rc, NMAS_TEST_TIERS=tiers)
+    # A measurement of its own: none of an outer run's coverage settings (the gate's and CI's
+    # NMAS_COVERAGE_TIERS and COVERAGE_FILE measured nothing of the children: the canary's
+    # child read as reaching nothing when the suite ran under them, 2026-10-15).
+    for name in ("MUTANT_UNDER_TEST", "NMAS_COVERAGE_TIERS", "COVERAGE_FILE",
+                 "COVERAGE_PROCESS_START"):
+        env.pop(name, None)
+    print(f"nmas-mutation: measuring the children of {len(population)} test(s)", flush=True)
+    try:
+        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider",
+                            "-n", "auto", *population], cwd=M.ROOT, env=env,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                           errors="replace", timeout=CHILD_RUN_TIMEOUT_S)
+        text = r.stdout
+    except subprocess.TimeoutExpired as e:
+        partial = e.stdout or b""
+        if isinstance(partial, bytes):
+            partial = partial.decode("utf-8", "replace")
+        text = partial + (f"\nnmas-mutation: the children's measurement passed its "
+                          f"{CHILD_RUN_TIMEOUT_S} s bound")
+    with open(os.path.join(out, "child-run.log"), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    measured = M.read_child_data(data_dir, paths)
+    return M.child_reach(functions, measured, M.load_tier_records(tiers), population,
+                         failed=set(M.failing_tests(text)))
+
+
 def cmd_plan(a) -> int:
     state = {}
     if a.state and os.path.exists(a.state):
         with open(a.state, encoding="utf-8") as fh:
             state = json.load(fh)
-    p = M.plan(state, a.head, also=a.also, debt=M.load_debt())
+    p = M.plan(state, a.head, also=a.also, debt=M.load_debt(), cap=a.cap)
     os.makedirs(a.out, exist_ok=True)
     files = sorted({path for path, _q in p["planned"]})
     sources = {}
     for f in glob.glob(os.path.join(M.ROOT, "tests", "test_*.py")):
         with open(f, encoding="utf-8") as fh:
             sources[os.path.relpath(f, M.ROOT)] = fh.read()
-    tests = M.tests_for(files, sources)
+    # The night's tests by MEASURED reach where the coverage nightly measured the function as it
+    # is tonight; by import where it did not (C796, C834).
+    reach = M.load_reach(a.reach) if a.reach else None
+    fresh = M.reach_fresh(p["planned"], p["hashes"], reach, a.reach_commit or "", p["head"],
+                          root=M.ROOT)
+    chosen = M.choose_tests(p["planned"], sources, reach if not fresh["unusable"] else None,
+                            fresh["fresh"], fresh["changed_tests"])
+    whole = [t for t in chosen["tests"] if "::" not in t]
+    ids = [t for t in chosen["tests"] if "::" in t]
+    not_found = []
+    if ids:
+        collected = _collected(sorted({i.split("::")[0] for i in ids}))
+        if collected is None:
+            whole, ids = sorted(set(whole) | {i.split("::")[0] for i in ids}), []
+        else:
+            ids, not_found = M.valid_ids(ids, collected)
+    tests = whole + ids
     p["tests"] = tests
+    p["selection"] = {"reach_commit": a.reach_commit or "", "unusable": fresh["unusable"],
+                      "how": chosen["how"], "stale": fresh["stale"],
+                      "changed_tests": fresh["changed_tests"], "not_found": not_found,
+                      "ids": sum(1 for t in tests if "::" in t),
+                      "files": sum(1 for t in tests if "::" not in t)}
     names = M.patterns(p) if p["planned"] else []
     M.save(os.path.join(a.out, "plan.json"), p)
     with open(os.path.join(a.out, "patterns.txt"), "w", encoding="utf-8") as fh:
         fh.write("".join(n + "\n" for n in names))
+    sel = p["selection"]
     print(f"base {p['base'][:9]}, head {p['head'][:9]}: {len(p['planned'])} function(s) in "
-          f"{len(files)} module(s), {len(tests)} test file(s), {len(names)} mutmut name(s)")
+          f"{len(files)} module(s), {sel['files']} test file(s) whole and {sel['ids']} test(s) "
+          f"by measured reach, {len(names)} mutmut name(s)")
+    print("  tests: " + (f"the coverage drill-down of {sel['reach_commit'][:9]}"
+                         if not sel["unusable"] else f"by import ({sel['unusable']})"))
     for path, q in p["planned"]:
         k = M.key((path, q))
         why = (f"moved from {p['carried'][k]}, its text unchanged: the record's results carried, "
@@ -135,7 +247,14 @@ def cmd_plan(a) -> int:
                if k in p["kept"] else
                f"moved from {p['moved'][k]}, its text unchanged: every mutant"
                if k in p.get("moved", {}) else "changed since the covered commit: every mutant")
-        print(f"  {path}: {q} ({why})")
+        how = sel["how"].get(k, "by import")
+        print(f"  {path}: {q} ({why}; tests {how}"
+              + (f": {sel['stale'][k]}" if how == "by import" and k in sel["stale"]
+                 and not sel["unusable"] else "") + ")")
+    for k in p.get("deferred") or {}:
+        print(f"  {k}: capped: waits in the record for a later night")
+    for t in sel["not_found"]:
+        print(f"  {t}: measured by the drill-down, not collected at head: not run")
     for k, was in sorted(p.get("skipped_moved", {}).items()):
         print(f"  {k}: moved from {was}, its text unchanged, finished or on the debt list "
               "before: not mutated again")
@@ -249,18 +368,32 @@ def cmd_run(a) -> int:
             code = _mutmut_run(first, next_log(), env=tiers_env)
     if done("the canary, in process", code):
         return code
-    # 2. A test that starts a child may reach any function there, and a child records nothing:
-    #    every such test joins each planned function's tests, and the canary's in-child one's.
-    coverage = M._load("nmas_coverage", os.path.join(M.ROOT, "scripts", "nmas_coverage.py"))
-    spawning = M.spawning_tests(coverage.load_tiers(tiers_dir))
+    # 2. A child records nothing in mutmut's statistics, and the coverage nightly's contexts do
+    #    not see it either (measured 2026-10-15): each test that started a child of ours is run
+    #    once more with coverage in its children, and joins only the functions they ran (the
+    #    canary's in-child function among them, which must still die); a test whose children
+    #    could not all be measured joins every function, as before (C796).
+    population = M.child_starting(M.load_tier_records(tiers_dir))
+    planned_and_canary = [tuple(f) for f in p["planned"]] + [M.CANARY_IN_PROCESS,
+                                                              M.CANARY_IN_CHILD]
+    functions = {}
+    for path, q in planned_and_canary:
+        with open(os.path.join(M.ROOT, path), encoding="utf-8") as fh:
+            functions[M.mangled(path, q)] = (path, M.body_lines(fh.read(), q))
+    reach = (_measure_children(population, sorted({f[0] for f in planned_and_canary}),
+                               functions, a.out) if population
+             else {"by_function": {f: [] for f in functions}, "reached": {}, "unmeasured": []})
     with open(STATS, encoding="utf-8") as fh:
         stats = json.load(fh)
-    functions = [M.mangled(*f) for f in p["planned"]] + [M.mangled(*M.CANARY_IN_CHILD)]
-    record["spawning_tests"] = spawning
-    record["associations_added"] = M.add_tests(stats, functions, spawning)
+    record["spawning_tests"] = population
+    record["children_reached"] = reach["reached"]
+    record["children_unmeasured"] = reach["unmeasured"]
+    record["associations_added"] = M.add_tests_by(stats, reach["by_function"])
     M.save(STATS, stats)
-    print(f"nmas-mutation: {len(spawning)} test(s) start a child; "
-          f"{record['associations_added']} test association(s) added", flush=True)
+    M.save(os.path.join(a.out, "run.json"), record)
+    print(f"nmas-mutation: {len(population)} test(s) start a child; "
+          f"{len(reach['reached'])} measured, {len(reach['unmeasured'])} not (added to every "
+          f"function); {record['associations_added']} test association(s) added", flush=True)
     code = _mutmut_run([M.mutant_pattern(*M.CANARY_IN_CHILD)], next_log())
     if done("the canary, in a child", code):
         return code
@@ -352,6 +485,7 @@ def cmd_report(a) -> int:
             extra += [f"**The debt list grew** from {prev_debt} to {debt_now} since the last "
                       "night: red this night; an addition is a person's, made on purpose "
                       "(`nmas-mutation debt add --reason …`), and seen once.", ""]
+    extra += M.selection_lines(p, ran_record) + M.deferred_lines(p)
     extra += M.gone_lines(p) + M.not_rerun_lines(p)
     carried, skipped = p.get("carried") or {}, p.get("skipped_moved") or {}
     if carried or skipped:
@@ -379,7 +513,8 @@ def cmd_report(a) -> int:
                                      [s["mutant"] for s in v["new"] + v["message"] + v["debt"]
                                       + v["sweep"]],
                                      p["hashes"], finished_before=p.get("finished_before"),
-                                     debt_count=debt_now))
+                                     debt_count=debt_now, deferred=p.get("deferred"),
+                                     since=p.get("since")))
     for s in v["new"]:
         print(f"OPEN VERDICT SURVIVOR {s['mutant']}: {s['was']} -> {s['now']}")
     for s in v["message"]:
@@ -439,6 +574,14 @@ def main(argv=None) -> int:
                         "IN PLACE: only in a checkout made for the night")
     p.add_argument("--also", action="append", default=[], metavar="PATH::QUALNAME",
                    help="a function to mutate whole tonight, changed or not")
+    p.add_argument("--reach", metavar="DIR",
+                   help="the coverage nightly's drill-down, unpacked (coverage.json, tiers/): "
+                        "each function's tests by measured reach")
+    p.add_argument("--reach-commit", metavar="SHA",
+                   help="the commit the drill-down measured")
+    p.add_argument("--cap", type=int, default=NIGHT_CAP,
+                   help=f"at most this many functions tonight, the oldest first (default "
+                        f"{NIGHT_CAP})")
     r = sub.add_parser("run")
     r.add_argument("--out", required=True)
     s = sub.add_parser("report")

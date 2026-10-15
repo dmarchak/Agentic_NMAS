@@ -243,6 +243,25 @@ def module_report(path: str, source: str, by_line: dict, tiers: dict, statements
     }
 
 
+def process_files(folder: str) -> list:
+    """One entry per coverage data file in *folder* (a `parallel` measurement writes one per
+    process): `{"contexts": [its contexts], "lines": {context: {measured file: [line]}}}`. The
+    nightly mutation run reads its children's measurement through it (scripts/nmas_mutation.py,
+    `read_child_data`)."""
+    from coverage.data import CoverageData
+    out = []
+    for path in sorted(glob.glob(os.path.join(folder, ".coverage.*"))):
+        data = CoverageData(path)
+        data.read()
+        contexts = sorted(c for c in data.measured_contexts() if c)
+        lines = {}
+        for ctx in contexts:
+            data.set_query_context(ctx)
+            lines[ctx] = {f: sorted(data.lines(f) or []) for f in data.measured_files()}
+        out.append({"contexts": contexts, "lines": lines})
+    return out
+
+
 def measure(data_file: str, tiers_dir: str, root: str = ROOT, files=None, scope=None) -> dict:
     """The whole report from a combined coverage data file with per-test contexts."""
     import coverage

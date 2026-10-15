@@ -1,9 +1,12 @@
 # Nightly mutation testing of the CHANGED automation code (docs/TESTING.md, "Mutation testing";
 # the operator, 2026-10-14). Coverage says a test ran a line; this says whether a test would
 # notice the line being wrong. Each night: the automation functions changed since the commit the
-# last night covered, and those the record keeps (unfinished, or holding an open survivor),
-# mutated by mutmut, each mutant run against the test files that import its module; a canary
-# first. Never on a push or a pull request, never on the NMAS host, never in the gate.
+# last night covered, and those the record keeps (unfinished, or holding an open survivor), at
+# most a cap of them, the oldest first, mutated by mutmut, each mutant run against the tests
+# MEASURED to execute its function (the coverage nightly's per-test contexts, mutmut's own
+# statistics, and the night's measurement of each test's children; by import where nothing has
+# measured it yet); a canary first. Never on a push or a pull request, never on the NMAS host,
+# never in the gate.
 #
 # A night fails when an open VERDICT survivor remains (a mutant no test killed whose change can
 # decide a result, not in tests/mutation_equivalent.py, the hand-kept list; MESSAGE survivors,
@@ -44,6 +47,11 @@ env:
 jobs:
   mutate:
     runs-on: ubuntu-24.04
+    # `actions: read`, read-only and this repository's alone: to download the newest coverage
+    # nightly's drill-down from its run (the step "Download it"), which needs it (C796, C834).
+    permissions:
+      contents: read
+      actions: read
     # The budget, plus about 20 minutes for the install, mutmut's own setup run and the report.
     timeout-minutes: 145
     steps:
@@ -118,6 +126,31 @@ jobs:
           key: mutation-state-${{ github.run_id }}
           restore-keys: mutation-state-
 
+      # The tests that reach each function, MEASURED (C796, C834; the operator, 2026-10-15): the
+      # newest successful coverage nightly's drill-down (each function's tests from its per-test
+      # contexts, and each test's tier), from that run, outside the checkout. Its commit is the
+      # run's: a function changed since, or new, is tested by import, as before, and none found
+      # means every function is (each said in the summary).
+      - name: The newest coverage drill-down (each function's tests, measured)
+        id: reach
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          curl -sf --max-time 20 \
+            "https://api.github.com/repos/$REPO/actions/workflows/coverage-nightly.yml/runs?status=success&per_page=1" \
+            | python -c "import json,sys; r=(json.load(sys.stdin).get('workflow_runs') or [{}])[0]; print(f\"id={r.get('id','')}\nsha={r.get('head_sha','')}\")" \
+            >> "$GITHUB_OUTPUT" || echo "no coverage drill-down found: every function by import"
+
+      - name: Download it
+        if: steps.reach.outputs.id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-drilldown
+          path: ${{ runner.temp }}/coverage-reach
+          run-id: ${{ steps.reach.outputs.id }}
+          github-token: ${{ github.token }}
+
       # The dispatch's `functions` reach the script through the environment, never pasted into
       # it: each word becomes one --also argument, and the plan refuses a name it cannot find.
       # --fence: mutmut is given only the planned functions; every other function of a planned
@@ -127,13 +160,15 @@ jobs:
         id: plan
         env:
           ALSO_FUNCTIONS: ${{ inputs.functions }}
+          REACH_COMMIT: ${{ steps.reach.outputs.sha }}
         run: |
           mkdir -p .mutation-state
           set -f
           set --
           for f in $ALSO_FUNCTIONS; do set -- "$@" --also "$f"; done
           python scripts/nmas-mutation plan --state .mutation-state/state.json \
-            --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md --fence "$@"
+            --head "$GITHUB_SHA" --out mutation-out --summary mutation-out/summary.md --fence \
+            --reach "$RUNNER_TEMP/coverage-reach" --reach-commit "$REACH_COMMIT" "$@"
           # The summary in the job's log too (readable through the API, which returns no job
           # summary), and on the run's page.
           if [ -f mutation-out/summary.md ]; then
@@ -153,9 +188,9 @@ jobs:
       # the tests' conftest, so parallel children share one test store and fail each other's
       # tests, which mutmut counts as kills (measured 2026-10-14: in parallel a log.debug mutant
       # was "killed" and 13 real survivors were hidden; serially, two runs agreed mutant for
-      # mutant). `nmas-mutation run` runs mutmut three times: the canary in process, then (the
-      # tests that start a child added to every planned function's tests) the canary in a child,
-      # then the night. Bytecode is WRITTEN here (no PYTHONDONTWRITEBYTECODE): mutmut's copy of a
+      # mutant). `nmas-mutation run` runs mutmut three times: the canary in process, then (each
+      # test that starts a child added to the functions its children were measured to run) the
+      # canary in a child, then the night. Bytecode is WRITTEN here (no PYTHONDONTWRITEBYTECODE): mutmut's copy of a
       # module holds every mutant of it (config_check.py: 2168, 7.5 MB, 7.7 s to compile), and a
       # test's child process compiled it afresh each time, so one surviving mutant's tests took
       # 107 s instead of 7 (measured 2026-10-14). The copy is scratch; no stale bytecode can
