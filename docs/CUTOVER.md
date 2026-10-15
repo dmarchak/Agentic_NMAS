@@ -372,7 +372,7 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
 |---|---|---|
 | The terminal (socket events) | **REMOVED 2026-10-05** (R39, brought forward from 7.8 on the operator's decision, after the console drill proved the emergency path: docs/CONSOLE_DRILL.md) | The Device page's allowlisted Ask tab is the one way to ask a device. Kept: the `break_glass` gate kind and its two settings, until they retire |
 | Today's Git tab, Remote card, Baselines panel | BUILT | History: Commits, the remote's sentence, Baselines |
-| The AI chat panel (every page) | REMOVE, 7.8 (decided 2026-10-05) | Stage 8 redesigns it |
+| The AI chat panel (every page) | **REMOVED 2026-10-14** (D15, with the AI family; the "AI agent" row above) | Stage 8 redesigns it (docs/PHASE8_PLAN.md) |
 
 ## Decided 2026-10-02
 

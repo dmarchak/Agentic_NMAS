@@ -149,3 +149,9 @@ finding joins this list unless it blocks cutover or is a security issue (B).
 ## Checked off
 
 (Each report adds the items finished, with the commit.)
+
+- **P7-16, first part** (this commit): CUTOVER's stale AI chat row marked REMOVED; NSOT_STAGE7_PLAN's
+  status rows 1, 2, 4 and 5 re-read to today's measured values; C616, C620, C626 and C576 closed
+  as moot and C48 with C616 (each checked against the code), C721 closed as built. Left in
+  P7-16: C705 and C765 (not clearly moot: read further), C176 (a read the config hook guards),
+  and the Scheduled section's 7.x rows read once.
