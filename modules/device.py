@@ -460,7 +460,6 @@ def _migrate_to_folder_structure(config: dict) -> dict:
 
     # 2. Move shared data into the current list's folder
     current_dir = get_list_data_dir(current)
-    _move_if_absent(os.path.join(DATA_DIR, "backups"),     os.path.join(current_dir, "backups"))
     _move_if_absent(os.path.join(DATA_DIR, "playbooks"),   os.path.join(current_dir, "playbooks"))
     _move_if_absent(os.path.join(DATA_DIR, "network_kb.json"), os.path.join(current_dir, "network_kb.json"))
     _move_if_absent(os.path.join(DATA_DIR, "lab_notes.md"),    os.path.join(current_dir, "lab_notes.md"))

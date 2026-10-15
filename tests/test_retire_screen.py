@@ -75,11 +75,13 @@ class TestThePreview:
         said = " ".join(i["text"] for i in p["what_not"]["items"])
         for claim in ("NetBox device 9 is KEPT",
                       "running configuration is not changed",
-                      "backups are kept", "is not withdrawn", "Advisory: its golden shows the "
+                      "is not withdrawn", "Advisory: its golden shows the "
                       "NMAS-HEARTBEAT applet"):
             assert claim in said, claim
         html = render_preview(p)
         assert "Oxidized" not in html and "is not withdrawn" in html
+        # Today's Backups left (7.8, 2026-10-15): retire no longer promises to keep them.
+        assert "backup" not in said.lower() and "backups are kept" not in html
 
     def test_it_says_which_basis_it_trusts_and_what_that_cannot_show(self, screen):
         _export(screen)

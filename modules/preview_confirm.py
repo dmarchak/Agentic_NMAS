@@ -1598,7 +1598,7 @@ def onboard_create_result(run: dict, plan) -> dict:
         did_not=did_not, nothing_left_out="",
         record={"commit": commit, "tags": [], "baseline": "", "statement": statement},
         not_watched=("Nothing watches a pending device but its pending row: it has not "
-                     "been reached, so no heartbeat, drift check or backup covers it yet."),
+                     "been reached, so no heartbeat or drift check covers it yet."),
         titles={"sent": "What was created (on no device)",
                 "checks": "What was checked on the device"})
 
@@ -1704,7 +1704,7 @@ def onboard_verify_result(row: dict, record_status: dict = None) -> dict:
         record={"commit": row.get("golden_commit", ""), "tags": [], "baseline": "",
                 "statement": _run_record_statement(row, record_status, tail)},
         not_watched=("Nothing re-reads the device after promotion except what watches every "
-                     "device: drift, heartbeats and backups." if row.get("ok") else
+                     "device: drift and heartbeats." if row.get("ok") else
                      "Nothing retries: the device stays pending until Verify is pressed again "
                      "or it is abandoned."),
         titles={"sent": "What phase 2 did", "checks": "Whether the device answered"})

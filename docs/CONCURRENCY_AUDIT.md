@@ -1143,9 +1143,8 @@ thread and path), `write_atomic` (a temp per write, `fsync`, `os.replace`) and
 | Jobs, NetBox tokens, reader requests, session slots | memory | **SQLite WAL**: shared ephemeral state with expiry and an atomic consume |
 | Deploy receipts, push events | JSONL, read whole | SQLite when they need querying, not before |
 
-The backups index is locked and atomic (modules/backups.py:160-161, 174-181, the
-`PathLock` blocks), and each backup file is created with `open(filepath, "x")`
-(modules/backups.py:61), an exclusive create that is safe across processes.
+The backups index was locked and atomic (`PathLock`), and each backup file created with
+`open(filepath, "x")`; REMOVED 2026-10-15 with today's Backups (7.8, a8acc2a1).
 
 SQLite in WAL mode is warranted where a record is a state machine with more than one actor,
 or ephemeral state every process must see and consume once. Both need a local filesystem.
@@ -1376,7 +1375,7 @@ l. "Today" is yes when two users, two tabs or a host CLI already reach it.
 | stores-23 | NetBox provenance records | created, modified, adopted, removals | `PathLock`, `O_APPEND` | yes | SAFE | l | no |
 | stores-24 | rolled-back record, retry log | `.nsot/*.json` | `PathLock` | yes | SAFE | l | no |
 | stores-25 | reader caches | one JSON per reader | `PathLock`, `write_atomic` | yes | SAFE | l | no |
-| stores-26 | backups index, fetch record, Update wait, heartbeat rules | small files | `PathLock` (backups.py:160-161, 174-181; backup files by exclusive create, :61) or fingerprint and `write_atomic` | yes | SAFE | l | no |
+| stores-26 | fetch record, Update wait, heartbeat rules (the backups index REMOVED 2026-10-15 with today's Backups, a8acc2a1) | small files | `PathLock` or fingerprint and `write_atomic` | yes | SAFE | l | no |
 | stores-27 | append-only audit JSONL | receipts and audit logs | `O_APPEND` | partly | SAFE (receipts UNSAFE, R32) | l | receipts yes |
 | stores-28 | device hold files | `data/device_ops/*` | `flock`, holder writes | yes | SAFE | l | no |
 | stores-29 | per-device staging | staged credential, captures, intent | one file per held device | yes | SAFE | l | no |

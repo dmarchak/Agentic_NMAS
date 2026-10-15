@@ -96,7 +96,7 @@ for an omission:
 - A template approval is not withdrawn: an approval is of the template, never of its
   devices.
 - What still watches it is said in two kinds, below.
-- Its running configuration is not changed, and its backups are kept.
+- Its running configuration is not changed.
 - A session the app has pooled to it is closed by the app's idle reaper within two minutes,
   not by retiring.
 

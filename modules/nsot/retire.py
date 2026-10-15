@@ -54,9 +54,9 @@ Either way an export taken before the last rotation does not count.
 **What retire does NOT do, stated every time**, because each is correct and
 each looks like an omission unless it is named: the NetBox device stays
 (NetBox records what exists, not what NMAS manages); the device's running
-configuration is not changed; backups are kept; and a session the app has pooled is not
-closed by a command that runs outside it. (Oxidized's polling was named here until
-Oxidized was retired, Phase 3, 2026-10-08.)
+configuration is not changed; and a session the app has pooled is not closed by a command
+that runs outside it. (Oxidized's polling was named here until Oxidized was retired, Phase 3,
+2026-10-08; "backups are kept" until today's Backups left, 7.8, 2026-10-15.)
 
 **What watches it afterwards, in two kinds** (board 12, the operator,
 2026-10-03; `_watchers`): GENERATED, dropped at the next regeneration and
@@ -260,7 +260,6 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     out["not_doing"] += [f"{w['what']}: {w['how']}" for w in watchers]
     out["not_doing"] += [
         "its running configuration is not changed",
-        "its backups are kept",
         "a session the app has pooled to it is not closed by this command, "
         "which runs outside the app; the app's idle reaper closes it within "
         "two minutes of its last use (C97)",
