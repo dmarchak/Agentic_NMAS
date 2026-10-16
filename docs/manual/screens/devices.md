@@ -52,10 +52,15 @@ Tick devices and the bar above the list names them, with **Actions** and **Clear
 The Actions menu:
 
 - **Plan a deploy for the ticked devices…** opens Devices › Plan a deploy: each device's whole
-  committed intent planned at once, the devices in a rollout order you can change (Earlier,
-  Later, Leave out), each device's exact program and what it holds back, then one confirm. The
-  batch runs as a job, one device at a time in that order, each verified and rolled back alone,
-  and stops after repeated failures. Merge-only: lines a device holds that its intent lacks
+  committed intent planned at once, the devices in a rollout order you can change, each
+  device's exact program and what it holds back, then one confirm. Drag a device by its grip,
+  or use Earlier and Later (the keyboard's and touch's way): the order changes on the page at
+  once and plans nothing, since no device's program depends on its place, and a device let go
+  outside the list stays where it was. Leave out plans the batch again without that device.
+  The confirm sends the order the list shows, and is refused unless it names exactly the
+  devices confirmed. The batch runs as a job, one device at a time in that order, each
+  verified and rolled back alone, and stops after repeated failures. While it runs, the
+  preview says so and its controls do nothing; once it has ended, the preview says that. Merge-only: lines a device holds that its intent lacks
   stay; Remove lines (Mode B) is on each device's page. See [Deploy](deploy).
 - **Save (N)…** opens Devices › Save for the ticked devices: each saves its running
   configuration to startup, is read back, and is recorded as golden, one commit for the batch.

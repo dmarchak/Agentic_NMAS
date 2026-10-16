@@ -74,7 +74,7 @@ def _body(page_html):
 
 
 def _order(page_html):
-    return re.findall(r'<li class="rollout-item">\s*<span class="grow"><a href="#apply-([^"]+)"', page_html)
+    return re.findall(r'<li class="rollout-item" data-device="([^"]+)">', page_html)
 
 
 class TestNothingToSend:
@@ -116,7 +116,7 @@ class TestThePreview:
         # r6's program is the profile's lines, drawn MASKED on the way out.
         r6 = want["r6"]["commands"]
         assert r6 and any(c.startswith("snmp-server") for c in r6)
-        assert "&lt;redacted:" in page and "1. r6" in page
+        assert "&lt;redacted:" in page and '<span class="apply-pos">1.</span> r6' in page
 
     def test_every_gate_and_operand_has_words(self, ready):
         """C296 (the operator, 2026-10-01: ten empty bullets per device). Every
@@ -143,13 +143,35 @@ class TestThePreview:
         for v in _secret_values(ready):
             assert v not in page
 
-    def test_the_rollout_order_is_set_on_the_page(self, ready):
+    def test_the_rollout_order_is_the_order_the_form_carries(self, ready):
+        """A re-plan (a Leave out, a ticked line, a reason) is planned in the order the form's
+        devices carry, which the page's moves keep (C888); `move` is Coverage's combined
+        deploy's, still planned here."""
+        _r, page = _page(ready, devices=("r2", "r6"))
+        assert _order(page) == ["r2", "r6"] and _body(page)["order"] == ["r2", "r6"]
         _r, page = _page(ready, extra="&move=down:r6")
         assert _order(page) == ["r2", "r6"] and _body(page)["order"] == ["r2", "r6"]
         _r, page = _page(ready, extra="&move=up:r2")
         assert _order(page) == ["r2", "r6"]
         _r, page = _page(ready, extra="&drop=r2")
         assert _order(page) == ["r6"] and _body(page)["order"] == ["r6"]
+
+    def test_earlier_and_later_ask_the_server_nothing(self, ready):
+        """C888: a move plans nothing, so its buttons carry no request; Leave out still plans
+        again (it changes what is confirmed). The grip is drawn on every row (C905)."""
+        _r, page = _page(ready)
+        rows = re.findall(r'<li class="rollout-item" data-device="[^"]+">(.*?)</li>', page, re.S)
+        assert len(rows) == 2
+        for row in rows:
+            moves = re.findall(r'<button[^>]*data-move="(?:up|down)"[^>]*>', row)
+            assert len(moves) == 2 and not any("hx-" in b for b in moves), moves
+            assert re.search(r'<button[^>]*hx-get="[^"]*drop=', row)
+            assert 'data-grip' in row
+        first, last = rows
+        assert re.search(r'data-move="up" disabled', first) and \
+            not re.search(r'data-move="down" disabled', first)
+        assert re.search(r'data-move="down" disabled', last)
+        assert 'id="rollout-said" aria-live="polite"' in page
 
     def test_the_rollout_order_says_why_it_matters(self, ready):
         _r, page = _page(ready)
@@ -225,6 +247,42 @@ class TestTheConfirm:
         assert rr.status_code == 200
         assert "2 of 2 device(s) deployed" in frag and "every device in the batch appears here" in frag
         assert "hx-trigger" not in frag, "a finished batch listens for nothing"
+
+    def test_the_confirm_binds_and_records_the_order_it_carries(self, ready, monkeypatch,
+                                                               caplog):
+        """C888: the order is set in the page and sent at the confirm. No hash covers it (each
+        device's is its own program), so the route binds it: run in exactly that order, the
+        job's record, its log line and the receipts in it; an order that is not exactly the
+        confirmed devices, each once, is refused naming both, with nothing started."""
+        import logging
+
+        from modules import deploy_job
+        from modules.nsot import capture_job, receipts
+        reached = self._spy(monkeypatch)
+        _r, page = _page(ready)                      # the preview draws r6, then r2
+        body = _body(page)
+        assert body["order"] == ["r6", "r2"]
+        for bad, named in ((["r6"], "(r6)"), (["r6", "r2", "r6"], "(r6, r2, r6)"),
+                           ([], None)):
+            r = _confirm(ready, dict(body, order=bad))
+            html = r.get_data(as_text=True)
+            assert r.status_code == 400 and "Nothing was sent" in html, html
+            if named:
+                assert f"the rollout order sent {named} is not exactly the devices this " \
+                       "confirm carries hashes for (r2, r6)" in html, html
+        assert reached == [], "a refused order started a batch"
+        with caplog.at_level(logging.INFO, logger="modules.deploy_job"):
+            r = _confirm(ready, dict(body, order=["r2", "r6"]))  # the person's order, not drawn
+        assert r.status_code == 202, r.get_data(as_text=True)
+        out = _out(r)
+        assert capture_job.wait(out["job"], 20)
+        assert reached == [("r2", "profile"), ("r6", "profile")]
+        assert deploy_job.state(out["job"])["order"] == ["r2", "r6"]
+        assert any("on 2 device(s): r2, r6 started by" in m for m in caplog.messages), \
+            caplog.messages
+        rows = [x for x in receipts.read("Lab")["rows"] if x.get("run_id")]
+        run = rows[0]["run_id"]
+        assert [x["device"] for x in reversed(rows) if x["run_id"] == run] == ["r2", "r6"]
 
     def test_the_golden_commit_names_the_person_who_confirmed(self, ready, monkeypatch):
         """The review's finding, 2026-10-01: the job thread has no request, so
@@ -368,6 +426,38 @@ class TestTheShippedClient:
         assert self._started({"target": {"id": "apply-job"}, "xhr": {"status": 202}}) is False
         assert self._started(None) is False
 
+    def _pure(self, call):
+        import dukpy
+        return dukpy.evaljs("var window = {};\n" + self._js() + f"\nwindow.NMAS_APPLY.{call}")
+
+    def test_a_note_is_drawn_only_for_a_batch_this_preview_started(self):
+        """C883: no note on a preview no batch started from; 'running' while its card runs;
+        'ended' after."""
+        assert self._pure("lockNote(false, false)") == ""
+        assert self._pure("lockNote(false, true)") == ""
+        assert self._pure("lockNote(true, true)") == "running"
+        assert self._pure("lockNote(true, false)") == "ended"
+
+    def test_a_move_puts_one_device_in_one_place(self):
+        """C888, C905: the order a move leaves, the slot a drag lands in, and what the
+        confirm sends."""
+        names = '["r1", "r2", "r3", "r4"]'
+        assert self._pure(f"moved({names}, 0, 1)") == ["r2", "r1", "r3", "r4"]
+        assert self._pure(f"moved({names}, 3, 0)") == ["r4", "r1", "r2", "r3"]
+        assert self._pure(f"moved({names}, 1, 3)") == ["r1", "r3", "r4", "r2"]
+        assert self._pure(f"moved({names}, 2, 2)") == ["r1", "r2", "r3", "r4"]
+        # The other rows' middles at 10, 30, 50 px: above all, between, below all.
+        assert self._pure("slotFor([10, 30, 50], 5)") == 0
+        assert self._pure("slotFor([10, 30, 50], 31)") == 2
+        assert self._pure("slotFor([10, 30, 50], 99)") == 3
+        # The confirmed devices in the order shown; one the list lacks is left for the route
+        # to refuse, never placed by guess; one shown and not confirmed is not sent.
+        assert self._pure('confirmOrder(["r2", "r6"], ["r6", "r2"])') == ["r2", "r6"]
+        assert self._pure('confirmOrder(["r2", "x", "r6"], ["r6", "r2"])') == ["r2", "r6"]
+        assert self._pure('confirmOrder(["r2"], ["r6", "r2"])') == ["r2"]
+        assert self._pure('movedWords("r6", 1, 2, 0)') == "r6 moved to 2 of 2."
+        assert self._pure('movedWords("r6", 0, 2, 0)') == "r6 stays at 1 of 2."
+
     def test_the_component_reads_its_attributes_from_its_root(self):
         src = self._js()
         assert "this.$el" not in src and "self.$el" not in src
@@ -463,47 +553,300 @@ def live_browser():
         yield browser, srv, b
 
 
-class TestClickingTheShippedPage:
-    def test_reorder_then_confirm_runs_the_batch_in_the_order_set(self, ready, monkeypatch,
-                                                                   live_browser):
-        import routes.deploy as rd
-        browser, srv, b = live_browser
-        reached = []
+_SETTLED = ("var c=document.querySelector('#apply-confirm');"
+            "return window.Alpine && window.htmx && window.NMAS_DRAG && c && !c.disabled && "
+            "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')")
 
-        def spy(entry, list_name, rows, authorise, **kw):
-            reached.append(entry["artifact"].device)
-            return {"device": entry["artifact"].device, "outcome": "deployed", "commands": ["x"]}
-        monkeypatch.setattr(rd, "_deploy_one", spy)
-        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+#: What a browser test watches: every request a control in the preview makes (its verb, path,
+#: and the order it carries), and every preview request as it finishes.
+_WATCH = """
+window.__seen = []; window.__done = [];
+document.body.addEventListener('htmx:beforeRequest', function (e) {
+  var el = e.detail.elt;
+  if (el && el.closest && el.closest('#apply-preview')) {
+    var p = e.detail.requestConfig.parameters;
+    window.__seen.push(e.detail.requestConfig.verb.toUpperCase() + ' ' +
+                       e.detail.pathInfo.requestPath + (p && p.order ? ' ' + p.order : ''));
+  }
+});
+document.body.addEventListener('htmx:afterRequest', function (e) {
+  window.__done.push(e.detail.pathInfo.requestPath); });
+return 1
+"""
+
+#: The page as the person reads it: the rollout list, each device's section with its number,
+#: and the form's devices (what a re-plan carries).
+_READ = """
+function attr(sel, a) { return Array.prototype.map.call(document.querySelectorAll(sel),
+  function (x) { return a ? x.getAttribute(a) : x.textContent.trim(); }); }
+return {list: attr('#rollout li[data-device]', 'data-device'),
+        sections: attr('section.apply-device h2', null).map(function (t) {
+          return t.split(/\\s+/).slice(0, 2).join(' '); }),
+        fields: attr('#apply-form input[type=hidden][name=device]', 'value'),
+        said: (document.getElementById('rollout-said') || {}).textContent || ''}
+"""
+
+#: Whether an element is drawn at all (C883: `hidden` was set and the note was drawn anyway).
+_SHOWN = ("var n=document.getElementById(arguments[0]);"
+          "return !!n && getComputedStyle(n).display !== 'none' && n.getClientRects().length > 0")
+
+
+def _pointer(b, steps):
+    b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+        "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+        "actions": steps}]})
+
+
+def _element(b, css):
+    return b._call("POST", f"/session/{b.session}/element", {"using": "css selector",
+                                                              "value": css})
+
+
+def _grip(name):
+    return f'#rollout li[data-device="{name}"] [data-grip]'
+
+
+def _to_below(b, dragged, past):
+    """How far down the pointer moves from *dragged*'s grip to land below *past*'s middle
+    (the browser's own geometry, never the script's)."""
+    return int(b.js(
+        "var g=document.querySelector(arguments[0]).getBoundingClientRect();"
+        "var r=document.querySelector(arguments[1]).getBoundingClientRect();"
+        "return Math.round(r.top + r.height * 0.8 - (g.top + g.height / 2))",
+        _grip(dragged), f'#rollout li[data-device="{past}"]'))
+
+
+def _wait_done(b):
+    """The job's card once it says the batch finished, asking with Check now meanwhile."""
+    text = ""
+    for _ in range(40):
+        text = b.wait_for("var j=document.querySelector('#apply-job');"
+                          "return j && j.textContent")
+        if "device(s) deployed" in text:
+            return text
+        b.js("var x=document.querySelector('#apply-job button'); if (x) x.click(); return 1")
+        time.sleep(0.25)
+    return text
+
+
+@pytest.fixture
+def spied(monkeypatch):
+    """The device path spied: the devices reached, in order, with an optional gate holding the
+    batch at its first device."""
+    import routes.deploy as rd
+    reached, gate, started = [], threading.Event(), threading.Event()
+    gate.set()
+
+    def spy(entry, list_name, rows, authorise, **kw):
+        started.set()
+        gate.wait(30)
+        reached.append(entry["artifact"].device)
+        return {"device": entry["artifact"].device, "outcome": "deployed", "commands": ["x"]}
+    monkeypatch.setattr(rd, "_deploy_one", spy)
+    monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+    return {"reached": reached, "gate": gate, "started": started}
+
+
+class TestClickingTheShippedPage:
+    def test_earlier_and_later_move_in_the_page_and_the_confirm_carries_it(
+            self, ready, spied, live_browser):
+        """C888: Later on r6 moves it at once, the sections and their numbers and the form's
+        devices with it, asking nothing; the confirm is the one request, carrying the order
+        shown, and the batch runs in it."""
+        browser, srv, b = live_browser
         try:
             b.go(srv.url("/v2/monitoring/apply?list=Lab&device=r6&device=r2"))
-            b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')")
+            b.wait_for(_SETTLED)
+            b.js(_WATCH)
             assert b.js("return document.querySelector('#apply-confirm .op-idle')"
                         ".textContent.trim()") == "Apply to 2 device(s) in this order"
-            # "Later" on r6, the first row: the server plans the batch again.
             b.click('button[aria-label="Move r6 later"]')
-            b.wait_for("var a=document.querySelectorAll('#rollout li a');"
-                       "return a.length === 2 && a[0].textContent === 'r2'")
-            b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')")
+            page = b.js(_READ)                      # read at once: nothing was waited for
+            assert page["list"] == ["r2", "r6"], page
+            assert page["sections"] == ["1. r2", "2. r6"], page
+            assert page["fields"] == ["r2", "r6"], page
+            assert page["said"] == "r6 moved to 2 of 2.", page
+            assert b.js("return [document.querySelector('[aria-label=\"Move r2 earlier\"]')"
+                        ".disabled, document.querySelector('[aria-label=\"Move r6 later\"]')"
+                        ".disabled, document.activeElement.getAttribute('aria-label')]") \
+                == [True, True, "Move r6 earlier"]
+            b.click('button[aria-label="Move r6 earlier"]')
+            b.click('button[aria-label="Move r6 later"]')
+            time.sleep(0.5)
+            assert b.js("return window.__seen") == [], "a move asked the server"
             b.click("#apply-confirm")
-            text = ""
-            for _ in range(40):
-                text = b.wait_for("var j=document.querySelector('#apply-job');"
-                                  "return j && j.textContent")
-                if "device(s) deployed" in text:
-                    break
-                b.js("var x=document.querySelector('#apply-job button');"
-                     "if (x) x.click(); return 1")
-                time.sleep(0.25)
-            assert "2 of 2 device(s) deployed" in text, text
-            assert reached == ["r2", "r6"]
+            assert "2 of 2 device(s) deployed" in _wait_done(b)
+            assert b.js("return window.__seen") == [
+                'POST /v2/monitoring/apply/confirm ["r2","r6"]']
+            assert spied["reached"] == ["r2", "r6"]
             # The confirm drawn again by the answer (C850), never offered twice.
             assert b.js("return document.querySelector('#apply-confirm').disabled") is True
             assert b.js("return document.querySelector('#apply-confirm').textContent.trim()") \
                 == "Started: its progress is below"
         finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+    def test_a_drag_by_the_grip_moves_in_the_page_and_the_confirm_carries_it(
+            self, ready, spied, live_browser):
+        """C905: r6 dragged by its grip below r2 lands there, said for a screen reader, with
+        no request; the confirm carries the order shown and the batch runs in it."""
+        browser, srv, b = live_browser
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            b.go(srv.url("/v2/monitoring/apply?list=Lab&device=r6&device=r2"))
+            b.wait_for(_SETTLED)
+            b.js(_WATCH)
+            dy = _to_below(b, "r6", "r2")
+            _pointer(b, [{"type": "pointerMove", "origin": _element(b, _grip("r6")),
+                          "x": 0, "y": 0},
+                         {"type": "pointerDown", "button": 0},
+                         {"type": "pointerMove", "origin": "pointer", "x": 0, "y": dy // 2,
+                          "duration": 100}])
+            assert "Moving r6, at 1 of 2" in b.js(_READ)["said"]
+            assert b.js("return document.querySelector('#rollout li[data-device=\"r6\"]')"
+                        ".classList.contains('rollout-dragging')")
+            _pointer(b, [{"type": "pointerMove", "origin": "pointer", "x": 0, "y": dy - dy // 2,
+                          "duration": 100},
+                         {"type": "pointerUp", "button": 0}])
+            b._call("DELETE", f"/session/{b.session}/actions")
+            page = b.js(_READ)
+            assert page["list"] == ["r2", "r6"], page
+            assert page["sections"] == ["1. r2", "2. r6"] and page["fields"] == ["r2", "r6"]
+            assert page["said"] == "r6 moved to 2 of 2.", page
+            assert not b.js("return document.querySelector('.rollout-dragging, "
+                            ".rollout-before, .rollout-after')")
+            time.sleep(0.5)
+            assert b.js("return window.__seen") == [], "a drag asked the server"
+            b.click("#apply-confirm")
+            assert "2 of 2 device(s) deployed" in _wait_done(b)
+            assert b.js("return window.__seen") == [
+                'POST /v2/monitoring/apply/confirm ["r2","r6"]']
+            assert spied["reached"] == ["r2", "r6"]
+        finally:
+            b._call("DELETE", f"/session/{b.session}/actions")
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+    def test_a_drop_outside_the_list_changes_nothing(self, ready, spied, live_browser):
+        """C905: let go well above the list, r6 stays first, and that is said."""
+        browser, srv, b = live_browser
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            b.go(srv.url("/v2/monitoring/apply?list=Lab&device=r6&device=r2"))
+            b.wait_for(_SETTLED)
+            b.js(_WATCH)
+            dy = _to_below(b, "r6", "r2")
+            _pointer(b, [{"type": "pointerMove", "origin": _element(b, _grip("r6")),
+                          "x": 0, "y": 0},
+                         {"type": "pointerDown", "button": 0},
+                         {"type": "pointerMove", "origin": "pointer", "x": 0, "y": dy,
+                          "duration": 100},
+                         {"type": "pointerMove", "origin": "pointer", "x": 0, "y": -dy - 120,
+                          "duration": 100},
+                         {"type": "pointerUp", "button": 0}])
+            b._call("DELETE", f"/session/{b.session}/actions")
+            page = b.js(_READ)
+            assert page["list"] == ["r6", "r2"] and page["fields"] == ["r6", "r2"], page
+            assert page["said"] == "r6 was let go outside the list: the order is as it was."
+            assert b.js("return window.__seen") == []
+        finally:
+            b._call("DELETE", f"/session/{b.session}/actions")
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+    def test_an_answer_landing_mid_drag_does_not_move_the_list(self, ready, spied,
+                                                               live_browser, monkeypatch):
+        """C905 with C882's guard: a re-plan asked as the grip is pressed (a reason typed, its
+        `change` fired) answers mid-drag. Nothing is redrawn under the pointer: the row is the
+        element first drawn and the order is as it was. On the drop the row lands where the
+        pointer let go, and the preview is planned again in THAT order (the answer set aside
+        was planned in the old one)."""
+        import routes.deploy as rd
+        real_plan = rd.plan_devices
+
+        def slow_plan(*a, **k):
+            time.sleep(1.0)
+            return real_plan(*a, **k)
+        browser, srv, b = live_browser
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1280, "height": 1000})
+            b.go(srv.url("/v2/monitoring/apply?list=Lab&device=r6&device=r2"))
+            b.wait_for(_SETTLED)
+            b.js(_WATCH)
+            b.js("window.__r6 = document.querySelector('#rollout li[data-device=\"r6\"]');"
+                 "return 1")
+            monkeypatch.setattr(rd, "plan_devices", slow_plan)
+            dy = _to_below(b, "r6", "r2")
+            _pointer(b, [{"type": "pointerMove", "origin": _element(b, _grip("r6")),
+                          "x": 0, "y": 0},
+                         {"type": "pointerDown", "button": 0},
+                         {"type": "pointerMove", "origin": "pointer", "x": 0, "y": 4,
+                          "duration": 50}])
+            b.js("htmx.trigger(document.getElementById('apply-form'), 'change'); return 1")
+            b.wait_for("return window.__done.filter(function (p) {"
+                       " return p.indexOf('/v2/monitoring/apply/preview') === 0; }).length === 1", 15)
+            time.sleep(0.3)
+            assert b.js("return window.__r6.isConnected"), "the list was redrawn mid-drag"
+            assert b.js(_READ)["list"] == ["r6", "r2"]
+            _pointer(b, [{"type": "pointerMove", "origin": "pointer", "x": 0, "y": dy - 4,
+                          "duration": 100},
+                         {"type": "pointerUp", "button": 0}])
+            b._call("DELETE", f"/session/{b.session}/actions")
+            # Planned again from the form, which now carries r2 first.
+            b.wait_for("return window.__done.filter(function (p) {"
+                       " return p.indexOf('/v2/monitoring/apply/preview') === 0; }).length === 2", 15)
+            b.wait_for("return !window.__r6.isConnected")
+            b.wait_for(_SETTLED, 15)
+            page = b.js(_READ)
+            assert page["list"] == ["r2", "r6"] and page["sections"] == ["1. r2", "2. r6"], page
+            # And the confirm the server drew from that plan carries it.
+            vals = json.loads(b.js("return document.getElementById('apply-confirm')"
+                                   ".getAttribute('hx-vals')"))
+            assert json.loads(vals["order"]) == ["r2", "r6"], vals
+        finally:
+            b._call("DELETE", f"/session/{b.session}/actions")
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+    @pytest.mark.parametrize("lab_state,devices", [("idle", ("r2",)), ("ready", ("r6", "r2"))],
+                             ids=["nothing-to-send", "two-of-two"])
+    def test_the_running_note_is_drawn_only_while_its_batch_runs(self, request, spied,
+                                                                 live_browser, lab_state,
+                                                                 devices):
+        """C883 (the operator's walk W1): "The batch is running…" was drawn before anything was
+        confirmed, with nothing to send and with 2 of 2. Neither note is drawn on a preview;
+        the running one only once the confirm started a batch and while its card runs; the
+        ended one once it has finished."""
+        request.getfixturevalue(lab_state)
+        browser, srv, b = live_browser
+        q = "&".join(f"device={d}" for d in devices)
+        try:
+            b.go(srv.url(f"/v2/monitoring/apply?list=Lab&{q}"))
+            b.wait_for("return window.htmx && document.getElementById('apply-preview')")
+            assert b.js(_SHOWN, "apply-locked") is False
+            assert b.js(_SHOWN, "apply-ended") is False
+            text = b.js("return document.body.innerText")
+            assert "The batch is running" not in text and "has ended" not in text
+            if len(devices) == 1:
+                assert b.js("return !document.getElementById('apply-confirm')")
+                return
+            b.wait_for(_SETTLED)
+            spied["gate"].clear()
+            b.click("#apply-confirm")
+            assert spied["started"].wait(30), "the batch never reached its first device"
+            b.wait_for(_SHOWN, 10, "apply-locked")
+            assert b.js(_SHOWN, "apply-ended") is False
+            assert b.js("return document.querySelector('[aria-label=\"Move r6 later\"]')"
+                        ".getAttribute('title')").startswith("The batch is running")
+            spied["gate"].set()
+            assert "2 of 2 device(s) deployed" in _wait_done(b)
+            b.wait_for(_SHOWN, 10, "apply-ended")
+            assert b.js(_SHOWN, "apply-locked") is False
+            assert b.js("return document.querySelector('[aria-label=\"Move r6 later\"]')"
+                        ".getAttribute('title')").startswith("The batch confirmed here has ended")
+        finally:
+            spied["gate"].set()
             b.go("about:blank")
             browser.close_socketio_sessions()
 

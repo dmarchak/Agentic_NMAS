@@ -1288,7 +1288,9 @@ def _scope(req=None) -> str:
 def _apply_args(req) -> dict:
     """What the preview form carries: the list, the devices in the rollout
     order (a move or a leave-out applied), the superseded lines ticked for
-    removal (by id) and each one's stated reason."""
+    removal (by id) and each one's stated reason. A `move` comes from Coverage's
+    combined deploy (`_coverage_deploy_preview.html`); the batch Apply's preview
+    reorders in the page and sends its devices in the order shown (C888)."""
     from routes.list_param import named_list
 
     order = []
@@ -1540,8 +1542,10 @@ def profile_apply_confirm():
     rollout order. Every device's program is computed again by the apply and
     compared with the hash this confirm carries; a moved one is refused alone,
     with nothing sent to it. Posted by htmx from the preview's confirm, the body the preview
-    drew in its fields (C850); answers 202 with the job's card, drawn in place below the
-    preview, or 400 with the refusal and nothing sent."""
+    drew in its fields (C850), its `order` the rollout list as the page shows it (C888);
+    answers 202 with the job's card, drawn in place below the preview, or 400 with the
+    refusal and nothing sent: an order that is not exactly the confirmed devices, each once,
+    is refused naming both."""
     from flask import request
 
     from modules import deploy_job, identity
@@ -1567,6 +1571,15 @@ def profile_apply_confirm():
         return _apply_answer("", 400, refused=(
             "Nothing confirmed: every device needs the capture and command hashes its preview "
             "showed. Nothing was sent."))
+    # The order is the person's, set in the page (C888: a move plans nothing, since no
+    # device's program or hash depends on its place), and is bound HERE: it must be exactly
+    # the devices whose hashes this confirm carries, each once. A device dropped from it or
+    # named twice would run a batch the preview never showed.
+    if len(order) != len(set(order)) or set(order) != set(confirmations):
+        return _apply_answer("", 400, refused=(
+            f"Nothing confirmed: the rollout order sent ({', '.join(order)}) is not exactly the "
+            f"devices this confirm carries hashes for ({', '.join(sorted(confirmations))}), "
+            "each once. Nothing was sent."))
     job = deploy_job.start(
         list_name, order, confirmations, hashes,
         authorise=data["authorise"], remove=data["remove"],

@@ -367,6 +367,11 @@ def test_a_real_browser_deploys_from_coverage_s_own_button(lab, monkeypatch, r6_
             browser.close_socketio_sessions()
 
 
+#: Whether the element with the id given is drawn at all (C883: `hidden` was set on the running
+#: note and `.notice`'s display drew it anyway, so reading `.hidden` passed over the bug).
+_DRAWN = ("var n=document.getElementById(arguments[0]);"
+          "return !!n && getComputedStyle(n).display !== 'none' && n.getClientRects().length > 0")
+
 #: Each page with Earlier and Later: (scope, how r2 is made to send too, the rollout's names).
 ROLLOUT_PAGES = {
     "templates": (_strip_ip_sla, "return Array.prototype.map.call(document.querySelectorAll("
@@ -436,6 +441,9 @@ def test_a_real_browser_pages_earlier_and_later_while_a_job_runs(lab, monkeypatc
                 "var n = document.querySelector('#apply-nothing') || "
                 "document.querySelector('#apply-preview');"
                 "return n.textContent.replace(/\\s+/g, ' ').slice(0, 900)"))
+            # C883: before any confirm, neither note is drawn (`hidden` lost to `.notice`'s
+            # display, and "The deploy is running…" was on every preview).
+            assert b.js(_DRAWN, "apply-locked") is False and b.js(_DRAWN, "apply-ended") is False
             # Before the confirm: a move is busy on itself, every button waiting with it, and
             # the new order arrives.
             b.click(f'button[aria-label="Move {before[0]} later"]')
@@ -459,10 +467,12 @@ def test_a_real_browser_pages_earlier_and_later_while_a_job_runs(lab, monkeypatc
             # While it runs: the order cannot change it, so every control says so and does
             # nothing; the note is shown; a click sends no request.
             locked = b.wait_for(
-                "var n=document.querySelector('#apply-locked'); if (!n || n.hidden) return null;"
+                "var n=document.querySelector('#apply-locked');"
+                "if (!n || getComputedStyle(n).display === 'none') return null;"
                 "var m=document.querySelectorAll('#apply-form button[data-reorder]');"
                 "return Array.prototype.map.call(m, function (y) { return [y.disabled,"
                 " y.getAttribute('title')]; })", 10)
+            assert b.js(_DRAWN, "apply-ended") is False
             assert locked and all(d and t.startswith("The batch is running in the order you "
                                                      "confirmed") for d, t in locked), locked
             b.js(seen)
@@ -511,15 +521,18 @@ def test_a_real_browser_finds_the_profile_apply_locked_while_its_batch_runs(
             b.go(srv.url("/v2/monitoring/apply?list=Lab&scope=profile&device=r6"))
             b.wait_for("var c=document.querySelector('#apply-confirm');"
                        "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')", 30)
-            assert b.js("return document.querySelector('#apply-locked').hidden") is True
+            # C883: drawn, not merely `hidden` (the attribute was set while the note showed).
+            assert b.js(_DRAWN, "apply-locked") is False
             b.click("#apply-confirm")
             assert running.wait(30), "the batch never reached its device"
             locked = b.wait_for(
-                "var n=document.querySelector('#apply-locked'); if (!n || n.hidden) return null;"
+                "var n=document.querySelector('#apply-locked');"
+                "if (!n || getComputedStyle(n).display === 'none') return null;"
                 "var m=document.querySelectorAll('#rollout button[data-reorder]');"
                 "return Array.prototype.map.call(m, function (y) { return [y.textContent.trim(),"
                 " y.disabled, y.getAttribute('title')]; })", 10)
-            assert locked and [x[0] for x in locked] == ["EarlierMoving…", "LaterMoving…",
+            # Earlier and Later ask nothing, so they have no busy words (C888).
+            assert locked and [x[0] for x in locked] == ["Earlier", "Later",
                                                          "Leave outLeaving out…"], locked
             assert all(d and t.startswith("The batch is running in the order you confirmed")
                        for _w, d, t in locked), locked

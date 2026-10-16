@@ -244,8 +244,13 @@ After the last device, in this order:
 ## Many devices at once
 
 A batch deploys one device after another (`deploy_max_workers`, default 1), in the order the
-confirm lists them: on today's wizard, the order of the plan; on Monitoring > Coverage's Apply,
-the order you set with Earlier and Later. A device refused at apply is skipped and the rest
+confirm lists them: on today's wizard, the order of the plan; on Devices › Plan a deploy and
+the monitoring profile's Apply, the order you set by dragging a device's grip or with Earlier
+and Later, which changes the page and plans nothing (no device's program or hash depends on
+its place); on Coverage's Deploy missing, the order Earlier and Later plan again. The order is
+not in any hash: the confirm sends it as the list shows it, the server refuses one that is not
+exactly the confirmed devices, each once, and the job and the receipts record the devices in
+it. A device refused at apply is skipped and the rest
 proceed. After `deploy_verify_failure_limit` failed devices (default 2) the circuit breaker
 trips and the remaining devices are not attempted, each saying so. A failed device is one that
 did not end deployed with its verify passed: a push the device rejected, a refusal on the way to

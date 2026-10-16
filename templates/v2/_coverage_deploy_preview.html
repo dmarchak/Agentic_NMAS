@@ -20,8 +20,10 @@
   {%- for name in order %}
   <input type="hidden" name="device" value="{{ name }}">
   {%- endfor %}
-  {#- Shown once the confirm starts the deploy (C602): it runs in the order confirmed. -#}
+  {#- Drawn only while a deploy confirmed from this preview runs, then only once it has ended
+      (C602, C883; nmas_apply.js, keyed on the job card in #apply-result). -#}
   <p class="notice notice-info apply-locked" id="apply-locked" hidden>The deploy is running in the order you confirmed: a change here cannot reach it, so the order and the devices are fixed. Its progress is below; open this page again to plan another.</p>
+  <p class="notice notice-info apply-locked" id="apply-ended" hidden>The deploy confirmed here has ended: its result is below. This preview was planned before it ran, so nothing on it can be confirmed again; open this page again to plan another.</p>
 
   {%- for r in sending %}
   <section class="card cdep-device" id="apply-{{ r.name }}">

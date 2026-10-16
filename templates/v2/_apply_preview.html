@@ -3,10 +3,14 @@
 {#- The batch Apply's preview (P.9 step d2), drawn server-side from the six
     parts routes.v2._apply_ctx builds with deploy_preview(): what happens, the
     rollout order, each device's exact program and what it holds back, the
-    gates and operands one level down, and the confirm. A change of order, a
-    device left out, a superseded line ticked or a reason typed plans the
-    batch again (`change` on the form), so the confirm always carries the
-    hashes of the program on the screen. -#}
+    gates and operands one level down, and the confirm. A device left out, a
+    superseded line ticked or a reason typed plans the batch again (`change`
+    on the form), so the confirm always carries the hashes of the program on
+    the screen. A change of ORDER plans nothing (C888): no device's program or
+    hash depends on its place, so Earlier, Later and a drag by the grip (C905)
+    reorder the page itself (nmas_apply.js: the list, the device sections and
+    the form's devices), and the confirm sends the order the list shows, which
+    the route refuses unless it is exactly the devices confirmed. -#}
 {%- set STATE = {'deployable': ('can be applied', 'ok'), 'blocked': ('blocked: nothing is sent', 'danger'),
                  'refused': ('refused: nothing is sent', 'danger'),
                  'not_authorised': ('waits on a stated reason', 'warn'),
@@ -27,26 +31,30 @@
   <input type="hidden" name="device" value="{{ name }}">
   {%- endfor %}
   <p class="apply-what">{{ preview.what.summary }}</p>
-  {#- Shown once the confirm starts the batch (C602): it runs in the order confirmed, so the
-      order, the devices and the removals here can no longer change it. -#}
+  {#- Drawn only while a batch confirmed from this preview runs, then only once it has ended
+      (C602; C883: both were drawn on every preview, `.notice`'s display beating `hidden`):
+      nmas_apply.js shows one when the confirm's 202 locks the preview, keyed on the job card
+      in #apply-result (`data-job`, running while it carries `data-running`). -#}
   <p class="notice notice-info apply-locked" id="apply-locked" hidden>The batch is running in the order you confirmed: a change here cannot reach it, so the order, the devices and the removals are fixed. Its progress is below; open this page again to plan another.</p>
+  <p class="notice notice-info apply-locked" id="apply-ended" hidden>The batch confirmed here has ended: its result is below. This preview was planned before it ran, so nothing on it can be confirmed again; open this page again to plan another.</p>
 
   {%- if sending %}
-  <h2 class="apply-h">Rollout order</h2>
-  <p class="muted apply-why">One device at a time, in this order. The batch stops after repeated failures (a push, a verify or a refusal), so the first devices are the ones a bad change would reach; put the one you would most like to learn from first.</p>
-  <ol class="rollout" id="rollout">
+  <h2 class="apply-h" id="rollout-h">Rollout order</h2>
+  <p class="muted apply-why">One device at a time, in this order. The batch stops after repeated failures (a push, a verify or a refusal), so the first devices are the ones a bad change would reach; put the one you would most like to learn from first. Drag a device by its grip, or use Earlier and Later.</p>
+  {#- Where a move is said for a screen reader, and a refused drop for everyone (C905). -#}
+  <p class="rollout-said sr-only" id="rollout-said" aria-live="polite"></p>
+  <ol class="rollout" id="rollout" aria-labelledby="rollout-h">
     {%- for r in sending %}
-    <li class="rollout-item">
+    <li class="rollout-item" data-device="{{ r.name }}">
+      <span class="rollout-grip" data-grip aria-hidden="true" title="Drag to move {{ r.name }} in the order">{{ icon('grip', 16) }}</span>
       <span class="grow"><a href="#apply-{{ r.name }}">{{ r.name }}</a> {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</span>
-      {#- Busy on itself while the batch is planned again (C602: 3 to 6 s on the host while a
-          job planned, and nothing showed the click had landed); every button on the preview
-          waits with it, so two moves never cross. -#}
-      <button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', move='up:' ~ r.name) }}"
-              hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button"{% if loop.first %} disabled{% endif %}
-              aria-label="Move {{ r.name }} earlier"><span class="op-idle">Earlier</span><span class="op-busy">Moving…</span></button>
-      <button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', move='down:' ~ r.name) }}"
-              hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button"{% if loop.last %} disabled{% endif %}
-              aria-label="Move {{ r.name }} later"><span class="op-idle">Later</span><span class="op-busy">Moving…</span></button>
+      {#- Earlier and Later move the row in the page and ask nothing (C888: each was a re-plan
+          of about 6 s that changed no program); the keyboard's and touch's way, beside the
+          grip. Leave out still plans again: it changes what is confirmed. -#}
+      <button type="button" class="btn btn-small" data-reorder data-move="up"{% if loop.first %} disabled{% endif %}
+              aria-label="Move {{ r.name }} earlier">Earlier</button>
+      <button type="button" class="btn btn-small" data-reorder data-move="down"{% if loop.last %} disabled{% endif %}
+              aria-label="Move {{ r.name }} later">Later</button>
       <button type="button" class="btn btn-small" data-reorder hx-get="{{ url_for('v2.profile_apply_preview', drop=r.name) }}"
               hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML" hx-disabled-elt="#apply-preview button"
               aria-label="Leave {{ r.name }} out of this batch"><span class="op-idle">Leave out</span><span class="op-busy">Leaving out…</span></button>
@@ -64,8 +72,8 @@
   {%- endif %}
 
   {%- for r in sending %}
-  <section class="apply-device" id="apply-{{ r.name }}">
-    <h2 class="apply-h">{{ loop.index }}. {{ r.name }} {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</h2>
+  <section class="apply-device" id="apply-{{ r.name }}" data-device="{{ r.name }}">
+    <h2 class="apply-h"><span class="apply-pos">{{ loop.index }}.</span> {{ r.name }} {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</h2>
     {%- if r.busy %}<div class="notice notice-warn">{{ icon('warn') }}<p>{{ r.busy }}</p></div>{% endif %}
     {%- if r.refused %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ r.refused }}</p></div>{% endif %}
     {%- for b in r.blocking %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ b }}</p></div>{% endfor %}
@@ -135,7 +143,8 @@
       preview drew from the hashes it shows (routes.v2._apply_ctx), exactly those fields
       (`hx-params`, none of the form's), busy on itself until the answer; the batch's card is
       drawn below (#apply-result), or the refusal with nothing sent. A viewer `may` refuses sees
-      it disabled with the reason on it (gate()). -#}
+      it disabled with the reason on it (gate()). Its `order` is the one field the page sets:
+      the rollout list as it is drawn when pressed (C888, nmas_apply.js `confirmOrder`). -#}
   <div class="confirm">
     <p>{{ preview.confirm.statement }}</p>
     {%- if confirm_body %}

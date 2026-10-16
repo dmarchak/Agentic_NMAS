@@ -65,8 +65,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **From W1, first (the operator's sequence, 2026-10-16)** | | | | | |
 | ~~C881~~ | ~~A1: Reload's startup gate on IOS-XE~~ **done, verified on r6** (see Checked off) | | | | |
 | ~~C882~~ | ~~B1: Topology drag jumps~~ **done** (see Checked off); C691 re-checked in W2 | | | | |
-| C888, C905 | C2 and R4: the rollout order kept client-side and bound at the confirm, then reordered by drag and drop (keeping Earlier/Later for touch and keyboard), on C882's shared guard (`window.NMAS_DRAG`: `hold`, `release`, `far`) | their browser tests | M | C882, C850 (landed) | — |
-| C883 | B2: Plan a deploy's "The batch is running…" before any confirm | drawn only while a batch runs | S | — | — |
+| ~~C883, C888, C905~~ | ~~B2, C2 and R4: the batch preview's note, client-side order, drag and drop~~ **done** (see Checked off) | | | | |
 | ~~C884, C885, C886, C913~~ | ~~B3, B4, B5 and adopt's comparison~~ **done** (see Checked off) | | | | |
 | C923 | Adopt's card draws the lines startup gains and loses (C886's part), as its manual says (it blocks W3's adopt) | its test | S | — | — |
 | **Security** | | | | | |
@@ -238,6 +237,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C883, C888, C905 done** (B2: the "running" note hidden by a CSS rule that overrode
+  `hidden`, fixed globally; C2: the rollout order moves in the page and the confirm route binds
+  it, refusing any order that is not exactly the confirmed devices; R4: drag and drop on C882's
+  guard). C928, C929 (C) to the tail.
 - **C884, C885, C886, C913 done** (B3: a deletion-only edit's card says how the device departs,
   Mode B first; B4: a partial operation's baseline row names the commit and offers Save All;
   B5: Persist's preview lists what startup gains and loses, from Reload's comparison; Adopt's

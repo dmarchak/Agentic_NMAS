@@ -23,7 +23,8 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>This server has no record of that batch: it expired, or the server restarted while it ran. What each device received is in its receipts (each device's Changes) and in the golden history.</p></div>
 </section>
 {%- elif j.state == 'running' %}
-<section class="card apply-job" id="apply-job" data-job="{{ job }}" hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
+{#- `data-running`: what the preview above keys its "is running" note on (C883). -#}
+<section class="card apply-job" id="apply-job" data-job="{{ job }}" data-running hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
          hx-trigger="nmas:deploy_job from:body, nmas:device_progress from:body" hx-swap="outerHTML">
   <h2 class="apply-h">Applying, one device at a time</h2>
   {{ run_stepper(run) }}

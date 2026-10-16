@@ -17,8 +17,12 @@
 
    Interface (window.NMAS_DRAG):
      hold(region, pointerId) -> a hold        the pointer went down on *region*
-     release(hold, answered) -> 'asked'|''    the pointer came up; *answered*: the drop's own
-                                              request redraws the region (no second ask)
+     release(hold, answered) -> 'asked'|'unasked'|''   the pointer came up; *answered*: the
+                                              drop's own request redraws the region (no second
+                                              ask). 'unasked': an answer was set aside and the
+                                              element it was for has no hx-get to ask again by,
+                                              so the caller asks (the rollout order re-plans
+                                              from its form, C905)
      holding(el) -> bool                      is *el* inside, or holding, a held region
      stillThere(hold) -> bool                 is the held region still on the page
      far(landed, wanted, limit) -> null | {by, limit}   PURE: the largest difference on any
@@ -77,7 +81,7 @@
     for (var j = 0; j < holds.length; j++) {
       if (holds[j].region === h.region) { holds[j].deferred = h.deferred; return ''; }
     }
-    return askAgain(h.deferred) ? 'asked' : '';
+    return askAgain(h.deferred) ? 'asked' : 'unasked';
   }
 
   /* Before any swap (an answer, an announcement's redraw, an out-of-band part): one that would
