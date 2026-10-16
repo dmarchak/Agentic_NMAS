@@ -145,6 +145,13 @@ C888 and C905, C906 (3 M), C883 to C886 (5 S). Left: about 2 L (C850's `applyCon
 These open rows do not block cutover; each has its home. A new finding joins this list unless it
 blocks cutover or is a security issue (B).
 
+- **FUTURE designs (the operator, 2026-10-16), documents only, post-cutover:** C1003 sites
+  (`docs/SITES_DESIGN.md`), C1004 flows (`docs/FLOWS_DESIGN.md`), C1005 the kit fleet
+  (`docs/EDGE_ARCHITECTURE.md`, Phase 10 or later), C1006 the IPAM import
+  (`docs/IPAM_IMPORT_DESIGN.md`), C1007 bring-up from provider documents
+  (`docs/BRINGUP_FROM_DOCUMENTS.md`), C1008 offline operation (`docs/OFFLINE_OPERATION.md`).
+  Found with them and measured next, read-only: C1009 and C1010 (UNKNOWN, NetBox writes); at
+  the tail, C1011 and C1012.
 - **Stage 7's tail, after cutover (the operator, 2026-10-15), each with its reason:**
   - C450 and P7-08b, large-fleet Devices and Coverage (summary, groups, filter; `EXCUSED` 4):
     large-fleet scale, consistent with D3's 7.10; C704 (sortable columns) with them, since it
@@ -259,6 +266,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C954 verified on the host** (deployed e63dbe57ff, 2026-10-16 18:00Z): the Stop tracking
+  preview through its real route, for Default: "Deletes nothing in NetBox. Mercury forgets 10
+  object(s) it created for Default …", "Deletes in NetBox 0", where the data survives; no
+  confirm drawn for an unverified caller; nothing confirmed.
 - **C954 done** (B, the operator's decision: build it): the Remove card's Stop tracking
   instead…, its own preview (deletes nothing in NetBox; each object forgotten named), confirmed
   by hash holding the network's writer, through today's one forget path given the confirmed

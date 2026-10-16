@@ -212,6 +212,13 @@ Cloudflare verification becomes one provider behind it, unchanged in behaviour.
 
 ### 2.2 Providers, in priority order
 
+> **Superseded in part by the operator's decision of 2026-10-16** (docs/OFFLINE_OPERATION.md,
+> section 1): Keycloak, one per instance, is the product's identity, with three ways in:
+> smart-card client certificates, a brokered "Log in with HQ", and local accounts with TOTP plus
+> one recorded break-glass admin, held in Keycloak rather than built into Mercury. Cloudflare
+> Access becomes an optional integration, off unless configured. The in-app local accounts in
+> (a) below are kept as the record of the earlier plan. Where they differ, the decision governs.
+
 **(a) LOCAL ACCOUNTS: built in, always available, the default.**
 - **Passwords:**
   - hashed with argon2id;
