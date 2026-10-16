@@ -42,7 +42,7 @@ merged device list. Instead there is a **read-only All-networks scope: read acro
 | VRF | `_ensure_vrf(session, base, list_name, rd=f"ndm:{_slug(list_name)}")` | one "list VRF" per network, looked up by name alone; an interface with its own `vrf_name` takes that VRF instead |
 | Device | `_upsert_device(..., site_id=site["id"], ...)` | every device of the network goes into that one site |
 | VLAN | `_ensure_vlan(session, base, vid, name, site_id)` | looked up and created per site |
-| Prefix | `_ensure_prefix(..., site_id=..., vrf_id=...)` | looked up by prefix and VRF; `site` is sent on create |
+| Prefix | `_ensure_prefix(..., site_id=..., vrf_id=...)` | looked up by prefix and VRF; the site is sent as NetBox 4.2+'s scope (`scope_type` `dcim.site`, `scope_id`) on create and read back from NetBox's answer, and a prefix Mercury created with no scope is given it by the next import (C1010; until then `site` was sent and dropped, measured M2) |
 
 Three properties of today's code that this design keeps:
 
@@ -189,9 +189,10 @@ meet in one NetBox network: [EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md).)
 **Recommendation:** a VRF per site, created only for a site the network declares as repeating
 its addressing, because it states the fact that matters (these addresses are separate routing
 domains). Every other site keeps the network's VRF, as today. Which of the two NetBox accepts
-without changing its uniqueness settings is measurement M4. Section 2 also notes that
-`_ensure_prefix` sends `site` on create. NetBox 4.2 replaced a prefix's site with a generic scope
-(`scope_type`, `scope_id`), so whether that field lands on the installed NetBox is measurement M2.
+without changing its uniqueness settings is measurement M4. `_ensure_prefix` sent `site` on
+create; NetBox 4.2 replaced a prefix's site with a generic scope (`scope_type`, `scope_id`), and
+measurement M2 (2026-10-16) found all 3 prefixes Mercury created carrying no site. C1010 sends
+the scope, reads it back, and has the import give Mercury's own unscoped prefixes their site.
 
 **In Mercury, management addresses stay unique per instance.** Reachability, device credential
 overrides, Prometheus targets and the instance's own routing table are keyed by address across
@@ -395,7 +396,7 @@ per device per scrape and per syslog line, measurement M9, decide the classes.
 - `modules/netbox_client.py`: `_sync_list_to_netbox_impl` (one site per distinct device site),
   `_ensure_site` (called per site; its rule unchanged), `_existing_device` (name fallback scoped
   to the region; manifest `nb:` id first), `_upsert_device` (the device's own site id on create),
-  `_ensure_vrf` (per-site VRF names), `_ensure_prefix` (the scope field, after M2).
+  `_ensure_vrf` (per-site VRF names), `_ensure_prefix` (the scope field: done by C1010; per site, each prefix takes its device's site).
 - `modules/network_source.py` (`FILTERS` gains `region`, `tenant`) and
   `modules/inventory/netbox_source.py` (`fetch_netbox_devices`' keys).
 - `modules/nsot/manifest.py` (a `site` field on an entry, written only by a confirmed operation),
@@ -478,7 +479,7 @@ values, and avoids the backup window (08:30 to 09:10 UTC) and s3.
 | # | What | Method | Where |
 |---|---|---|---|
 | M1 | Whether any device of a network sits outside its network-named site today, and whether its serial is shared (the duplicate in section 2) | NetBox API reads: each network's region and site, then devices by `region_id`, compared by name with each network's inventory; serials compared by count only | the NMAS host against the lab NetBox, through `scripts/nmas-host nmas --` |
-| M2 | Whether `_ensure_prefix`'s `site` field lands on NetBox 4.6.9 (4.2 replaced it by `scope_type`/`scope_id`) | read the scope of the prefixes Mercury created (`netbox_guard.get_created(..., "ipam/prefixes")`) | the NMAS host, the lab NetBox, read-only |
+| M2 | Whether `_ensure_prefix`'s `site` field lands on NetBox 4.6.9 (4.2 replaced it by `scope_type`/`scope_id`). **Measured 2026-10-16: it does not; all 3 prefixes carry no site (C1010, fixed)** | read the scope of the prefixes Mercury created (`netbox_guard.get_created(..., "ipam/prefixes")`) | the NMAS host, the lab NetBox, read-only |
 | M3 | Whether the device filters `region_id` and `region` include child regions, and `tenant` filters as expected | create a parent and child region with one site each in a disposable NetBox 4.6.9, then filter | a throwaway NetBox container on the laptop, never the lab's |
 | M4 | Whether one prefix at two sites needs separate VRFs under the installed NetBox's uniqueness settings (`ENFORCE_GLOBAL_UNIQUE`, a VRF's `enforce_unique`) | create the same prefix at two sites, once in one VRF and once in two | the same disposable NetBox |
 | M5 | Whether a `file_sd` group's `__scrape_interval__` label sets a per-target interval on the installed Prometheus | read the version (`api/v1/status/buildinfo`); test the label in a disposable Prometheus of that version | the lab Prometheus (read-only) and the laptop |

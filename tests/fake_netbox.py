@@ -8,6 +8,7 @@ Used to compare a dry-run preview against a real execution against identical
 starting state.
 """
 
+import copy
 import json
 import re
 
@@ -26,11 +27,33 @@ class FakeResponse:
         return json.dumps(self._payload)
 
     def json(self):
-        return self._payload
+        # A COPY, as a real response is decoded afresh from its bytes (C1010). Returning the
+        # stored object let a later PATCH mutate a before-state already read, so `_nb_patch`
+        # compared the after with itself and recorded no change.
+        return copy.deepcopy(self._payload)
 
     def raise_for_status(self):
         if not self.ok:
             raise RuntimeError(f"HTTP {self.status_code}")
+
+
+#: Fields NetBox 4.2 and later no longer have on an object, which a write DROPS without an error
+#: (C1010, a deliberate model of the version the lab runs, 4.6.9). NetBox 4.2.0's release notes
+#: ("Breaking Changes"): "The `site` foreign key field on `ipam.Prefix` has been replaced by the
+#: `scope` generic foreign key". 4.6.9's PrefixSerializer declares no `site`, and its serializer
+#: ignores a field it does not declare, so a POST carrying `site` answers 201 and the prefix holds
+#: no site: measured on the host 2026-10-16, all 3 prefixes Mercury created carry neither a `site`
+#: nor a `scope_type`. The fake keeps what was SENT in `posts` and `patches` and stores what NetBox
+#: would hold, so a test that reads an object back sees the dropped field missing.
+REMOVED_FIELDS = {"ipam/prefixes": ("site",)}
+
+#: Objects that take NetBox 4.2+'s generic scope, stored as `scope_type` ("app.model") and
+#: `scope_id`, both null when unset, and returned with a read-only nested `scope` (the scoped
+#: object's brief form) as NetBox renders it. 4.6.9 limits a prefix's scope type to region,
+#: sitegroup, site and location (`dcim.constants.LOCATION_SCOPE_TYPES`).
+SCOPED_ENDPOINTS = {"ipam/prefixes"}
+_SCOPE_STORE = {"dcim.site": "dcim/sites", "dcim.region": "dcim/regions",
+                "dcim.sitegroup": "dcim/site-groups", "dcim.location": "dcim/locations"}
 
 
 class FakeNetBox:
@@ -55,8 +78,30 @@ class FakeNetBox:
         obj = dict(obj)
         obj.setdefault("id", self._take_id())
         obj.setdefault("tags", [])
+        self._as_stored(endpoint.strip("/"), obj)
         self.store.setdefault(endpoint.strip("/"), []).append(obj)
         return obj
+
+    def _as_stored(self, endpoint, obj):
+        """*obj* as NetBox 4.2+ holds it: a removed field gone, a scope rendered (above)."""
+        for field in REMOVED_FIELDS.get(endpoint, ()):
+            obj.pop(field, None)
+        if endpoint in SCOPED_ENDPOINTS:
+            obj.setdefault("scope_type", None)
+            obj.setdefault("scope_id", None)
+            obj["scope"] = self._scope(obj["scope_type"], obj["scope_id"])
+        return obj
+
+    def _scope(self, scope_type, scope_id):
+        if not scope_type or scope_id is None:
+            return None
+        for o in self.store.get(_SCOPE_STORE.get(scope_type, ""), []):
+            if o["id"] == scope_id:
+                return {"id": o["id"], "url": f"http://nb.invalid/api/{_SCOPE_STORE[scope_type]}"
+                                             f"/{o['id']}/",
+                        "display": o.get("name", ""), "name": o.get("name", ""),
+                        "slug": o.get("slug", ""), "description": o.get("description", "")}
+        return None
 
     def _take_id(self):
         val = self._next_id
@@ -145,6 +190,7 @@ class FakeNetBox:
         # NetBox returns tags as objects; the client sends ids.
         obj["tags"] = [{"id": t, "slug": self._tag_slug(t), "name": self._tag_slug(t)}
                        if isinstance(t, int) else t for t in obj["tags"]]
+        self._as_stored(endpoint, obj)
         self.store.setdefault(endpoint, []).append(obj)
         return FakeResponse(obj, 201)
 
@@ -155,6 +201,7 @@ class FakeNetBox:
         for obj in self.store.get(endpoint, []):
             if obj["id"] == obj_id:
                 obj.update(payload)
+                self._as_stored(endpoint, obj)
                 return FakeResponse(obj)
         return FakeResponse({"detail": "Not found."}, 404)
 

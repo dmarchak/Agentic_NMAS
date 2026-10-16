@@ -457,6 +457,17 @@ def _ensure_region(session, base: str, name: str) -> dict:
     })
 
 
+def _mercury_may_edit(obj: dict, endpoint: str) -> bool:
+    """Whether the sync may EDIT an existing object beyond what it always updates: Mercury
+    created it, by its tag OR by its created-id record (`_ensure_site`'s rule, explained there;
+    removal takes the stricter tagged AND recorded). Used where an edit would otherwise change a
+    person's object: a site's region, a prefix's scope (C1010)."""
+    from modules import netbox_guard as _guard
+
+    return bool(_guard.has_managed_tag(obj)
+                or _guard.was_created_by_nmas(_guard.get_current_list(), endpoint, obj["id"]))
+
+
 def _ensure_site(session, base: str, name: str, region_id: int,
                  notes: list = None) -> dict:
     """Get-or-create a NetBox site under the given region (same name as region).
@@ -480,17 +491,12 @@ def _ensure_site(session, base: str, name: str, region_id: int,
     Adoption is unchanged: a site with a matching slug is still used rather
     than duplicated. What changed is that NMAS no longer edits it silently.
     """
-    from modules import netbox_guard as _guard
-
     slug = _slug(name)
     existing = _nb_first(session, base, "dcim/sites/", slug=slug)
     if existing:
         current_region = (existing.get("region") or {}).get("id")
         if current_region != region_id:
-            ours = (_guard.has_managed_tag(existing)
-                    or _guard.was_created_by_nmas(
-                        _guard.get_current_list(), "dcim/sites", existing["id"]))
-            if ours:
+            if _mercury_may_edit(existing, "dcim/sites"):
                 _nb_patch(session, base, f"dcim/sites/{existing['id']}/",
                           {"region": region_id})
                 existing["region"] = {"id": region_id}
@@ -1085,38 +1091,94 @@ def _ensure_interface(session, base: str, device_id: int,
     return _nb_post(session, base, "dcim/interfaces/", payload)
 
 
+#: A prefix's site, as NetBox 4.2 and later take it (C1010). NetBox 4.2.0 replaced the `site`
+#: foreign key on ipam.Prefix with the generic `scope` (its release notes, "Breaking Changes");
+#: 4.6.9's PrefixSerializer has `scope_type` (a content type limited to region, sitegroup, site,
+#: location) and `scope_id`, a read-only nested `scope`, and no `site` at all. A `site` key is not
+#: refused: the serializer ignores a field it does not declare, so the create succeeded and the
+#: prefix carried no site (measured on the host 2026-10-16: all 3 prefixes Mercury created).
+#: Mercury therefore needs NetBox 4.2 or later for a prefix's site; on an older one the read-back
+#: below names every prefix stored without it as a write that did not land.
+PREFIX_SCOPE_TYPE = "dcim.site"
+
+
+def _prefix_scope(site_id: Optional[int]) -> dict:
+    """The fields that put a prefix at *site_id*; ``{}`` with no site. The one place a prefix's
+    site is written, for every create and the backfill alike."""
+    if site_id is None:
+        return {}
+    return {"scope_type": PREFIX_SCOPE_TYPE, "scope_id": site_id}
+
+
+def _prefix_scope_backfill(existing: dict, site_id: Optional[int]) -> dict:
+    """The scope an EXISTING prefix is given: the network's site, only when the prefix carries
+    no scope at all and Mercury created it (`_mercury_may_edit`). A prefix a person made, or one
+    already scoped (to this site or any other place), is left as it is. This is how the prefixes
+    created while `site` was sent (C1010) get their site: the next import, previewed and
+    confirmed like any other update, recorded with its before by `_nb_patch`."""
+    if site_id is None or existing.get("scope_type") or existing.get("scope_id") is not None:
+        return {}
+    if not _mercury_may_edit(existing, "ipam/prefixes"):
+        return {}
+    return _prefix_scope(site_id)
+
+
+def _check_prefix_scope(obj: dict, prefix: str, sent: dict) -> None:
+    """Read back what NetBox STORED against the scope sent, and name a difference as a write that
+    did not land. NetBox answers a POST or PATCH with the object as saved, so a scope it dropped
+    (a NetBox before 4.2, or a field renamed again) shows here instead of passing silently, which
+    is how C1010's `site` went unnoticed. A dry run's object is the payload, so it always agrees."""
+    if not sent:
+        return
+    held = {"scope_type": obj.get("scope_type"), "scope_id": obj.get("scope_id")}
+    if held != sent:
+        _write_failed(
+            f"site of prefix {prefix}",
+            RuntimeError(f"Mercury sent scope_type={sent['scope_type']}, "
+                         f"scope_id={sent['scope_id']}; NetBox stored "
+                         f"scope_type={held['scope_type']}, scope_id={held['scope_id']} "
+                         "(a prefix's site needs NetBox 4.2 or later)"))
+
+
 def _ensure_prefix(session, base: str, prefix: str,
                    description: str = "",
                    site_id: Optional[int] = None,
                    vrf_id: Optional[int] = None,
                    role_id: Optional[int] = None) -> dict:
-    """Get-or-create an IPAM prefix (network/subnet)."""
+    """Get-or-create an IPAM prefix (network/subnet), at the network's site (C1010)."""
     params: dict = {"prefix": prefix}
     if vrf_id:
         params["vrf_id"] = vrf_id
     existing = _nb_first(session, base, "ipam/prefixes/", **params)
     if existing:
+        update: dict = {}
         if role_id and (existing.get("role") or {}).get("id") != role_id:
+            update["role"] = role_id
+        scope = _prefix_scope_backfill(existing, site_id)
+        update.update(scope)
+        if update:
             try:
-                return _nb_patch(session, base, f"ipam/prefixes/{existing['id']}/",
-                                 {"role": role_id})
+                obj = _nb_patch(session, base, f"ipam/prefixes/{existing['id']}/", update)
             except RuntimeError as exc:
                 # The object exists; the UPDATE did not land (register C8).
                 _write_failed(f"update of prefix {prefix}", exc)
                 return existing
+            _check_prefix_scope(obj, prefix, scope)
+            return obj
         return existing
     payload: dict = {
         "prefix":      prefix,
         "status":      "active",
         "description": (description or "")[:200],
+        **_prefix_scope(site_id),
     }
-    if site_id is not None:
-        payload["site"] = site_id
     if vrf_id is not None:
         payload["vrf"] = vrf_id
     if role_id is not None:
         payload["role"] = role_id
-    return _nb_post(session, base, "ipam/prefixes/", payload)
+    obj = _nb_post(session, base, "ipam/prefixes/", payload)
+    _check_prefix_scope(obj, prefix, _prefix_scope(site_id))
+    return obj
 
 
 class UnscopedAddressLookup(Exception):
@@ -2490,19 +2552,27 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                 params: dict = {"prefix": route["prefix"]}
                 if route_vrf_id:
                     params["vrf_id"] = route_vrf_id
-                if _nb_first(session, base, "ipam/prefixes/", **params):
-                    continue   # already exists
+                existing_pf = _nb_first(session, base, "ipam/prefixes/", **params)
+                if existing_pf:
+                    # Already there; only a missing site is set, on Mercury's own (C1010).
+                    scope = _prefix_scope_backfill(existing_pf, site_id)
+                    if scope:
+                        obj = _nb_patch(session, base,
+                                        f"ipam/prefixes/{existing_pf['id']}/", scope)
+                        _check_prefix_scope(obj, route["prefix"], scope)
+                    continue
                 pf: dict = {
                     "prefix":      route["prefix"],
                     "status":      "active",
                     "description": f"Static via {route.get('nexthop', '')} on {hostname}",
-                    "site":        site_id,
+                    **_prefix_scope(site_id),
                 }
                 if route_vrf_id:
                     pf["vrf"] = route_vrf_id
                 if sr_tag_id:
                     pf["tags"] = [sr_tag_id]
-                _nb_post(session, base, "ipam/prefixes/", pf)
+                obj = _nb_post(session, base, "ipam/prefixes/", pf)
+                _check_prefix_scope(obj, route["prefix"], _prefix_scope(site_id))
                 ipam_stats["prefixes_synced"] = ipam_stats.get("prefixes_synced", 0) + 1
             except Exception as exc:
                 _write_failed(f"static route {route.get('prefix')}", exc, hostname)

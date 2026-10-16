@@ -64,6 +64,13 @@ A dry run is always allowed, because it writes nothing.
    what was skipped, and the notes (for example a site the tool did not create, which it uses
    and does not move).
 
+Each prefix is placed at the list's site, as NetBox 4.2 and later hold a prefix's site (its
+scope). NetBox answers each write with the prefix as stored, and a prefix stored without the
+site sent is a write that did not land, named with both values. A prefix the tool created that
+has no site yet (those created before 2026-10-16 were stored without one) is given the list's
+site by the next import, previewed as an update that changes `scope_id, scope_type`. A prefix a
+person made, or one already placed elsewhere, is never moved.
+
 ## What each write records {#records}
 
 Four records, each answering one question, kept apart so that none can be read as another:
