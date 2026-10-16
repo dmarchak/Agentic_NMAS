@@ -277,8 +277,12 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 14px 16px;
   display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.card-head { display: flex; align-items: center; gap: 8px; }
+.card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .card-head h2 { margin: 0; font-size: 15px; font-weight: 600; flex-grow: 1; }
+/* C503's rule, C522: a card's "How does this work?" in words, beside its heading, first in its
+   own wrapper so the help-link check reads it as the heading's (nothing drawn before it). */
+.card-head-how { display: inline-flex; align-items: center; white-space: nowrap; }
+.card-head-how .how-link { margin-left: 0; }
 .card-foot { margin: 0; font-size: 12px; color: var(--ink-2); }
 .facts { margin: 0; display: flex; flex-direction: column; }
 .facts > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; padding: 7px 0;
@@ -1204,6 +1208,7 @@ button[data-refused]::after { content: " (" attr(data-refused) ")"; font-weight:
 .ie-hd h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .ie-hd p { margin: 2px 0 0; }
 .ie-hd-actions { display: flex; gap: 10px; align-items: center; }
+.ie-hd-actions .how-link { margin-left: 0; }
 .ie-refused, .intent-moved > .notice { margin: 10px 18px 0; }
 .ie-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .ie-split > div { padding: 14px 18px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }

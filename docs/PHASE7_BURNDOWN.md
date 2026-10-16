@@ -94,7 +94,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
 | C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
 | C342 | the device page's drift: masked diff and three choices | built from its board | M | — | B |
-| C522 | the 8 lone (i) cards (`C503_KNOWN_GAPS` 8 → 0) | the browser test's list empty | S–M | — | — |
+| ~~C522~~ | ~~the 8 lone (i) cards~~ **done** (see Checked off) | | | | |
 | C820, C821 | the lab's syslog job in product code; an integration's 4xx reason | discovered job, wider scan; the body's first line masked | S each | — | — |
 | P7-09 | Criterion 14, the writeup: entries for 7.4 to 7.8, P.11, Show commands, Ask, Logs, DHCP, Update; 7.3 and 7.D closed | an entry per sub-task, forecasts checked | M | — | — |
 | P7-16 (rest) | C705, C765, C176; the Scheduled section's 7.x rows read once | each closed or placed | S | — | — |
@@ -126,7 +126,7 @@ C888 and C905, C906 (3 M), C883 to C886 (5 S). Left: about 2 L (C850's `applyCon
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
 | tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | **1** (C850, 2026-10-16) | 1, IP SLA's `ipslaPost` with P.12 (D3); 0 after |
 | tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | **0** (P7-05, 2026-10-16) | 0 |
-| tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | 8 | 0 (C522) |
+| tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | **0** (C522, 2026-10-16) | 0 (met) |
 | tests/test_no_new_v1_capability.py controls / handlers / functions / fields | 43 / 31 / 333 / 20 | 0 (P7-27) |
 | tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | 93 / 14 / 31 (v1 routes) | 0 at P7-27 (the v1 check goes with today's pages) |
 | tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | **358** (C868, C869's GAP gone) / **11** (C867) / 23 (2026-10-16) | met: the GAP entries cutover needs gone; `UPSTREAM` 11; the rest reasoned or the tail's |
@@ -248,6 +248,8 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C522 done** (overnight): every v2 card says "How does this work?" in words once;
+  `C503_KNOWN_GAPS` 8 → 0. C962 (UNKNOWN) to the tail.
 - **C940, C955 done** (B, overnight): Retire and Abandon forget the address's SSH host key
   (recorded; kept when another device holds the address); Retire's preview counts live
   approvals only, and the listing that counted tombstones is removed. C958, C959 (UNKNOWN),

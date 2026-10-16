@@ -30,7 +30,9 @@ rule found the practice NOT consistent. Eight contexts draw a lone (i) in a card
 anywhere in it (the Settings cards, the Templates table, the intent editor, History's
 baselines, About's installation card, Update's "Still to do on the host", Update while waiting,
 and the Settings switch's choice outside a card); they are register C522. The paragraph below
-described the op cards and was written as if it covered every button.
+described the op cards and was written as if it covered every button. **Repaired 2026-10-16
+(C522):** each of the eight draws "How does this work?" in words once; the "switch's choice
+outside a card" was the network's mode banner (Make <network> standalone…), now in words.
 
 The practice in the op cards, and where it differs from the signed-off rule:
 

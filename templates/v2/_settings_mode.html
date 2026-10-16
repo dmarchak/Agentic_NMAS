@@ -57,6 +57,6 @@
     {%- if sm.own %} Its own: {{ sm.own | join(', ') }}.{% endif %}
     {%- if sm.not_applicable %} Not applicable: {{ sm.not_applicable | join(', ') }}.{% endif %}
     {%- if s.mode == 'standalone' and sm.inherit %} Chosen to inherit: {{ sm.inherit | join(', ') }}.{% endif %}</div>
-  <span class="op-act"><a class="btn" data-op="settings-switch" href="{{ url_for('settings_v2.mode_preview', list_name=s.network, to='inherit' if s.mode == 'standalone' else 'standalone') }}" hx-get="{{ url_for('settings_v2.mode_preview', list_name=s.network, to='inherit' if s.mode == 'standalone' else 'standalone') }}" hx-target="#settings-mode-banner" hx-swap="outerHTML">{% if s.mode == 'standalone' %}Change to inheriting from Default…{% else %}Make {{ s.network }} standalone…{% endif %}</a>{{ how('settings-switch', compact=True, op='the switch') }}</span>
+  <span class="op-act"><a class="btn" data-op="settings-switch" href="{{ url_for('settings_v2.mode_preview', list_name=s.network, to='inherit' if s.mode == 'standalone' else 'standalone') }}" hx-get="{{ url_for('settings_v2.mode_preview', list_name=s.network, to='inherit' if s.mode == 'standalone' else 'standalone') }}" hx-target="#settings-mode-banner" hx-swap="outerHTML">{% if s.mode == 'standalone' %}Change to inheriting from Default…{% else %}Make {{ s.network }} standalone…{% endif %}</a>{{ how('settings-switch') }}</span>
 </div>
 {%- endif %}

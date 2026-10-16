@@ -14,7 +14,9 @@
   <div class="ie-hd">
     <div><h2 id="ed-h">Editing {{ host }}'s intent{% if c.refused.line %} {{ badge('line ' ~ c.refused.line ~ (', column ' ~ c.refused.column if c.refused.column else ''), 'danger') }}{% endif %}</h2>
       <p class="muted small"><span class="mono">host_vars/{{ host }}.yml</span>, opened at <span class="mono">{{ (c.base or '')[:7] }}</span>{% if c.last.commit %} ({{ c.last.subject }}{% if c.last.at %}, {{ stamp(c.last.at) }}{% endif %}){% endif %}. Nothing is written until you commit.</p></div>
-    <div class="ie-hd-actions"><button type="button" class="btn" hx-get="{{ url_for('device_v2.intent', name=host) }}" hx-target="#intent" hx-swap="outerHTML">Discard the edit</button></div>
+    {#- C503's rule (C522): the card's one "How does this work?" in words, in its head as board
+        H draws it; Commit keeps the (i) alone. -#}
+    <div class="ie-hd-actions">{{ how('edit-intent') }}<button type="button" class="btn" hx-get="{{ url_for('device_v2.intent', name=host) }}" hx-target="#intent" hx-swap="outerHTML">Discard the edit</button></div>
   </div>
   {%- if c.refused %}
   <div class="notice notice-danger ie-refused" role="alert">{{ icon('warn', 16) }}<div><strong>Not committed{% if c.refused.line %}, line {{ c.refused.line }}{% if c.refused.column %}, column {{ c.refused.column }}{% endif %}{% endif %}:</strong> {{ c.refused.error }}. Nothing was written.</div></div>
@@ -56,7 +58,8 @@
 {%- endmacro -%}
 {%- set removal_href = url_for('device_v2.device', name=host, tab='intent', op='deploy', focus='removal') -%}
 <section class="card intent intent-edit intent-done" id="intent" aria-labelledby="done-h">
-  <div class="ie-hd"><h2 id="done-h">{% if c.r.changed %}Committed to {{ host }}'s intent {{ badge('done', 'ok') }}{% else %}Nothing to commit {{ badge('unchanged', 'muted') }}{% endif %}</h2></div>
+  <div class="ie-hd"><h2 id="done-h">{% if c.r.changed %}Committed to {{ host }}'s intent {{ badge('done', 'ok') }}{% else %}Nothing to commit {{ badge('unchanged', 'muted') }}{% endif %}</h2>
+    <div class="ie-hd-actions">{{ how('edit-intent') }}</div></div>
   <div class="ie-split">
     <div>
       {%- if c.r.changed %}
@@ -109,7 +112,7 @@
 {%- set m = c.m -%}
 <section class="card intent intent-edit intent-moved" id="intent" aria-labelledby="mv-h">
   <div class="ie-hd"><h2 id="mv-h">Editing {{ host }}'s intent: not saved</h2>
-    <div class="ie-hd-actions"><button type="button" class="btn" hx-get="{{ url_for('device_v2.intent', name=host) }}" hx-target="#intent" hx-swap="outerHTML">Discard the edit</button></div></div>
+    <div class="ie-hd-actions">{{ how('edit-intent') }}<button type="button" class="btn" hx-get="{{ url_for('device_v2.intent', name=host) }}" hx-target="#intent" hx-swap="outerHTML">Discard the edit</button></div></div>
   <div class="notice notice-warn">{{ icon('warn', 16) }}<div>You opened <span class="mono">{{ (m.base or '')[:7] }}</span>; it is now <span class="mono">{{ (m.current or '')[:7] }}</span>{% if m.last_commit %}, committed by {{ m.last_commit.by or 'someone' }} {% if m.last_commit.at %}{{ stamp(m.last_commit.at) }}{% endif %}: "{{ m.last_commit.subject }}"{% endif %}. Nothing was written.</div></div>
   <div class="ie-split">
     <div><h3 class="ie-k">Your edit, kept</h3><pre class="op-diff">{{ m.your_change or 'not shown: ' ~ m.error }}</pre></div>

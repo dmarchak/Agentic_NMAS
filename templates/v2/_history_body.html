@@ -85,7 +85,10 @@
   <p class="cov-head">{{ icon('info') }} The baselines have not been read yet (the check runs in the background).</p>
   {%- else %}
   {#- One line per baseline; why it was denied or withdrawn and what it predates open UNDER it
-      (the operator, 2026-10-02: the reasons squeezed the tag and the action into narrow cells). -#}
+      (the operator, 2026-10-02: the reasons squeezed the tag and the action into narrow cells).
+      C503's rule (C522): the card's one "How does this work?" in words, beside its heading;
+      each row's Re-apply… keeps the (i) alone. -#}
+  <div class="card-head"><h2>{{ b.baselines | length }} baseline{{ '' if b.baselines | length == 1 else 's' }}</h2><span class="card-head-how">{{ how('restore') }}</span></div>
   <div class="hist-list hist-bl">
     <div class="hist-head" aria-hidden="true"><span></span><span>Baseline</span><span>Taken</span><span>Earned</span><span>Can be re-applied</span><span></span></div>
     {%- for r in b.baselines %}

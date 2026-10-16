@@ -986,8 +986,10 @@ Built as drawn (the mockups artifact, page "The manual"):
   beside a page title or a tab's opening line (`info()`) says what the screen is, and is not
   this rule's. Enforced in a real browser: a card that draws any such link draws exactly one
   in words, a menu row never carries the words, a button outside any card or menu carries them
-  (`HELP_CONTEXT_JS`, tests/test_v2_layout_in_a_browser.py). The contexts that broke it when
-  it was written are named there as known gaps, only shrinking (register C522).
+  (`HELP_CONTEXT_JS`, tests/test_v2_layout_in_a_browser.py). The eight contexts that broke it
+  when it was written were named there as known gaps and given their words (register C522,
+  2026-10-16): `C503_KNOWN_GAPS` is empty, its ceiling 0. A card with no heading row of its own
+  gained one to carry the words (History's baselines, the Templates library).
 - **Today's pages carry links too**: the onboarding wizard and the pending banner open the
   page in a new tab, since today's pages have no panel.
 - **Help's index lists every operation and screen**, those still on today's app marked, and

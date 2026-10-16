@@ -24,7 +24,7 @@
       {%- if inst.pushed.state == 'at_tip' and inst.pushed.value_at %} Up to date as of {{ stamp(inst.pushed.value_at, note=why) }}: {% else %} {% endif %}{{ inst.pushed.words }}
       {%- if inst.pushed.value_at and inst.pushed.state != 'at_tip' %}<span class="muted"> · asked {{ stamp(inst.pushed.value_at, note=why) }}</span>{% endif %}
       <span class="fact-actions">{{ check_again(inst.check) }}
-      {%- if inst.pushed.state in ('behind', 'behind_unfetched') %}<a class="btn btn-small btn-outline" id="about-update" href="{{ url_for('v2.update') }}" data-op="update">Update…</a>{{ how('update', compact=True, op='the update') }}{% endif -%}
+      {%- if inst.pushed.state in ('behind', 'behind_unfetched') %}<a class="btn btn-small btn-outline" id="about-update" href="{{ url_for('v2.update') }}" data-op="update">Update…</a>{{ how('update') }}{% endif -%}
       </span>
     </dd></div>
     <div><dt>Last update</dt><dd>

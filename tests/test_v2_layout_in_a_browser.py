@@ -373,8 +373,9 @@ document.querySelectorAll('a.how-link').forEach(function(a){
   var slug=(a.getAttribute('data-manual')||'').split('#')[0], p=a.previousElementSibling;
   while (p && !shown(p)) p=p.previousElementSibling;
   var words=a.getAttribute('aria-label') || (a.textContent||'').trim();
-  // Beside a HEADING (an op card's or a card's head row): it documents the card, not a control.
-  var head=a.closest('.op-hd, .card-head');
+  // Beside a HEADING (an op card's, a card's or the intent editor's head row): it documents the
+  // card, not a control.
+  var head=a.closest('.op-hd, .card-head, .ie-hd');
   if (!p && head && head.querySelector('h1, h2, h3')) return;
   if (!p) out.push(words+' ('+slug+'): no control is drawn before it');
   else if (p.matches('a.how-link, a.info-link')) out.push(words+' ('+slug+'): a second help '
@@ -421,20 +422,11 @@ return [out, n];
 """
 
 
-#: The contexts that broke C503's rule when it was written (2026-10-06), kept on screen as they
-#: are until the operator decides (register C522): each a lone (i) in a card with no words.
-#: Matched on the problem's text; the list may only shrink (`test_the_known_gaps_only_shrink`).
-C503_KNOWN_GAPS = (
-    '#intent "Editing',                     # the intent editor's card (_intent_edit.html)
-    '#hist-baselines ',                     # History's baselines card (_history_body.html)
-    '#installation "About this installation"',   # _installation.html:27
-    '#card-',                               # each Settings card (_settings_card.html:59)
-    'a standalone (i) outside any card or menu (settings-switch)',   # the switch's choice
-    '#update-owed "Still to do on the host"',    # _update.html:136
-    '#update-preview "Update from',         # Update while waiting: its worded link hides
-    '"card tpl-card"',                      # the Templates table (_templates_table.html)
-)
-C503_GAPS_CEILING = 8
+#: The contexts that broke C503's rule when it was written (2026-10-06): each a lone (i) in a
+#: card with no words. The eight were given their words (C522, 2026-10-16), so none is left;
+#: matched on the problem's text, the list may only shrink (`test_the_known_gaps_only_shrink`).
+C503_KNOWN_GAPS = ()
+C503_GAPS_CEILING = 0
 
 
 def measure_help_links(b, page_label):

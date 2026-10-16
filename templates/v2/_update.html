@@ -118,13 +118,15 @@
             hx-include="#update-host-steps" hx-vals='{{ {"hash": p.hash, "when": "ci" if p.waitable else ""} | tojson }}'
             hx-disabled-elt="this"{% if confirm.may and not (p.selectable or p.waitable) %} disabled{% endif %}{{ gate('confirm') }}><span class="op-idle">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</span><span class="op-busy">Sending the request…</span></button>{{ how('update') }}</span>
     <p class="wait" id="update-waiting" x-show="waiting" x-cloak x-text="words" role="status" aria-live="polite"></p>
-    {#- Stop waiting and its (i) are drawn together or not at all (C505: the (i) stayed when the
+    {#- Stop waiting and its link are drawn together or not at all (C505: the (i) stayed when the
         button was hidden, a second link beside Update). It posts the same route as Update and
         carries the preview's hash as every confirm of that route does; it ends the wait in
-        force, whatever its target (update_op.stop_waiting reads no hash). -#}
+        force, whatever its target (update_op.stop_waiting reads no hash). Its link is in words
+        (C522): while waiting, Update and its words are hidden, so Stop waiting is the card's one
+        action, and the two are never drawn together. -#}
     <span class="op-act" x-show="waiting" x-cloak><button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak data-op="update"
             hx-post="{{ url_for('update.apply') }}" hx-target="#update-panel" hx-swap="outerHTML"
-            hx-vals='{{ {"hash": p.hash, "when": "stop"} | tojson }}' hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Stop waiting</span><span class="op-busy">Stopping…</span></button>{{ how('update', 'update-when-ci-passes', compact=True, op='waiting for CI') }}</span>
+            hx-vals='{{ {"hash": p.hash, "when": "stop"} | tojson }}' hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Stop waiting</span><span class="op-busy">Stopping…</span></button>{{ how('update', 'update-when-ci-passes') }}</span>
     <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal">{{ refusal }}</p></div>
     {#- THE stepper (run_stepper), its steps drawn waiting; the script sets each step's state
         from the updater's record, the app being down for part of it (nmas_update.js). -#}
@@ -139,7 +141,9 @@
     there is not. Each is also a Needs attention row. -#}
 {%- if owed and owed.steps %}
 <section class="card" id="update-owed">
-  <div class="card-head"><h2>Still to do on the host</h2></div>
+  {#- C503's rule (C522): the card's one "How does this work?" in words, beside its heading;
+      each "It is done" keeps the (i) alone. -#}
+  <div class="card-head"><h2>Still to do on the host</h2><span class="card-head-how">{{ how('update', 'the-preview') }}</span></div>
   <ul class="plain-list" id="update-owed-steps">
     {%- for s in owed.steps %}<li data-step-id="{{ s.id }}">{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}nothing can check it: say when it is done{% else %}checked: {{ s.check_detail }}{% endif %} <span class="mono">({% for x in s.shas or [s.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span>
       {%- if s.check_state == 'not_checkable' %}

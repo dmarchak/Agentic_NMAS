@@ -32,7 +32,15 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `3684d6332644eb70a00f3b5a5f0bfe72daa97d17153806c6919f36fae3838710`
+Templates sha256: `8ef3cab2e2e7d2d66ddfdec1b97aa52a7ac0648085f47daeefff3abef5a9a19d`
+
+Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
+row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
+page, "Restore and re-apply a baseline"), C503's rule of one worded link per card; each row's
+Re-apply… keeps its (i). `history-baselines` shot again at 1280 and 390 (the count and the link
+on one row at both). Neither board draws the Baselines
+tab's content (board D names the tab; the earlier board's Baseline column was superseded), so the
+Baselines region's verdict is unchanged; no other region moved.
 
 Compared again 2026-10-16 (C945) after `_history_remote.html` gained two states of its
 uncommitted clause: "No repository yet: the network's first commit makes it." for a network
@@ -66,6 +74,6 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | How a row's person was identified | the identity board's table puts "host login" as a chip after the person in Who | in the opened row ("By … (host login, not verified)"), as the board's note says ("as today, in the expanded row") | **deviation** (log: History: how a row's person was identified) |
 | The fleet's own records | rows with no device read "fleet"; a commit is one row naming its devices | the same; but a golden commit that also writes a path outside `golden/` and `host_vars/` (here r3's first, which adopts it into the manifest) is drawn twice, as r3's golden and again as a fleet commit, "golden: 1 device(s) via capture" (`history-real`) | **deviation** (log: History: a device's first golden drawn again as a fleet commit (a defect, register C650 follow-up)) |
 | The earlier board (History.dc.html) | a Commits tab; a Workflow filter; a Baseline column; Re-apply this baseline… under a Save All | superseded by board D: Commits a kind (Commits only), Workflow folded into Kind, a baseline decision its own row; Re-apply… on the Baselines tab | **same** |
-| Baselines | its own tab (board D: "Baselines and Authorisations keep their tabs") | one line per baseline (tag, taken, earned, can be re-applied, Re-apply… with its (i)), why it was denied or withdrawn and what it claims opened under it, "Judged … in the background"; the walk's step 40 re-applied the newest from it | **same** |
+| Baselines | its own tab (board D: "Baselines and Authorisations keep their tabs") | headed by the count and "How does this work?" (C522); one line per baseline (tag, taken, earned, can be re-applied, Re-apply… with its (i)), why it was denied or withdrawn and what it claims opened under it, "Judged … in the background"; the walk's step 40 re-applied the newest from it | **same** |
 | Query | board A's library (compared in docs/fidelity/history-query.md and its sibling records) | the same records | **same** |
 | Phone | no phone board | the filters wrap to a second line, the identity chips wrap, each row's cells stack | **same** |

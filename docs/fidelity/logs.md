@@ -17,12 +17,17 @@ Compared again 2026-10-11 (7.5's identity line): `_history_body.html` gained the
 Compared again 2026-10-12 (C708): History's Authorisations tab left the shared `_history_body.html`; its branch drew only at `?tab=authorisations`, so nothing this board draws moved.
 Compared again 2026-10-15 (board F3): `_history_body.html` gained the logs builder's branch, drawn only on its own page (`/v2/history/query/ask/logs`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
 Compared again 2026-10-15 (board E3): `_history_body.html` gained the metrics builder's branch, drawn only on its own page (`/v2/history/query/ask/metrics`); the shots at 1440 and 390 retaken; nothing on this board's page moved.
-Templates sha256: `a84cacfcf0495786e16aa0cc585f7a69af657a23de449039a3165c676b280904`
+Templates sha256: `a5a617a0a1ec0a6eb699ae4933514f151891627437bb2bfef6aabd469ff0bc92`
 
 Compared again 2026-10-15 (P7-03): `_history_body.html` gained a `data-concept` marker and one
 sentence ("It claims: …") inside a Baselines row's detail, the block drawing each baseline's
 Re-apply… link; this record compares History › Query's syslog view, where Baselines is only a tab
 name (unchanged). No region here changed; the hash written again.
+
+Compared again 2026-10-16 (C522): `_history_body.html`'s Baselines card gained a heading row (the
+count of baselines and "How does this work?" in words, C503's rule), inside the Baselines tab's
+branch, which this record's syslog view never draws; the History shots retaken
+(tests/test_board_shots.py). No region here changed; the hash written again.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
