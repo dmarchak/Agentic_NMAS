@@ -253,6 +253,12 @@ UNDRAWN = {
         ("group", "a settings group's internal id; its title is drawn"),
         ("rule_words", "the password rule, drawn by the records Replace form"),
         ("store", "a store's internal id; its words and backend are drawn")],
+    # P7-05 (2026-10-16): the Access cards read again on `posture`, the same context as the
+    # page's tab.
+    "GET /v2/settings/installation/access": [
+        ("certs_url", "the identity provider's key endpoint, derived from the team domain "
+                      "(drawn); Python fetches from it"),
+        ("default origin", "each identity gate cell's raw inputs, drawn as its origin words")],
     "GET /v2/settings/installation/card/<name>": [
         ("group", "a settings group's internal id; its title is drawn"),
         ("tab", "the tab the card belongs to: the route filters cards by it, and only the "
@@ -292,6 +298,8 @@ UNDRAWN = {
         ("cards is_default mode_words scope tab tabs", "the whole network view handed to the "
                                                        "banner, which reads four fields; the "
                                                        "settings page draws the rest")],
+    # P7-05 (2026-10-16): the scope bar alone, read again on `lists`.
+    "GET /v2/settings/scope": [("bucket mode", SCOPE_ROW)],
     "GET /v2/show-commands/check": [
         ("list max_commands message platform platforms q role roles rows sets sets_unreadable "
          "site sites test_command test_wait workers", SC_PICK),
@@ -328,7 +336,7 @@ UNDRAWN = {
         ("stage status", "the check's HTTP status and failing stage; the card draws its error "
                          "with line and column")],
 }
-UNDRAWN_CEILING = 357
+UNDRAWN_CEILING = 362  # +5 2026-10-16: P7-05's two fragments, the same plumbing as their pages
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.

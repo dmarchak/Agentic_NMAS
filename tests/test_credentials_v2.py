@@ -108,6 +108,34 @@ class TestTheExportCard:
         assert r.status_code == 404 and "Nope" in html
 
 
+def _record_card(html):
+    m = re.search(r'<section [^>]*id="bg-record".*?</section>', html, re.S)
+    assert m, "no break-glass record card"
+    return re.sub(r"\s+", " ", m.group(0))
+
+
+class TestTheRecordHearsTheLog:
+    """P7-05: the export, the browser's word on it and the drill each announce `breakglass`, and
+    the record card reads again on it, so the export this tab just made is on the card before
+    job health's next judgement (`job_health`, which it also hears)."""
+
+    def test_the_card_listens_for_both_keys(self, page):
+        head = re.search(r'<section [^>]*id="bg-record"[^>]*>',
+                         _get(page, f"/v2/credentials?list={LIST}")[1]).group(0)
+        assert 'hx-trigger="nmas:job_health from:body, nmas:breakglass from:body"' in head
+        assert f'hx-get="/v2/credentials?list={LIST}"' in head and 'hx-select="#bg-record"' in head
+
+    def test_an_export_announces_it_and_the_card_it_reads_again_shows_the_export(self, page):
+        from modules import invalidation as I
+        before = _record_card(_get(page, f"/v2/credentials?list={LIST}")[1])
+        assert "none exported" in before and "Last export" not in before
+        r = _export(page)
+        assert r.status_code == 200 and "breakglass" in r.headers[I.HEADER].split(",")
+        after = _record_card(_get(page, f"/v2/credentials?list={LIST}")[1])
+        assert "none exported" not in after and "Last export" in after
+        assert f"{len(DEVICES)} device(s)" in after
+
+
 class TestTheBrowsersWordOnTheDownload:
     def _exported(self, lab):
         r = _export(lab)

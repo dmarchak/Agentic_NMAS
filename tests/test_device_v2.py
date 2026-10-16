@@ -680,7 +680,16 @@ class TestTheShippedScripts:
                                                     "/v2/onboard/discovered?list=Lab",
                                                     "/v2/history?tab=query&list=Lab",
                                                     # History's timeline (C818's reveals).
-                                                    "/v2/history?list=Lab"))
+                                                    "/v2/history?list=Lab",
+                                                    # P7-05: the picker's list (lists,
+                                                    # active_list), Settings' scope bar
+                                                    # (lists), Access and identity at rest
+                                                    # (posture), the break-glass record card
+                                                    # (breakglass).
+                                                    "/v2/network/picker?next=/v2/",
+                                                    "/v2/settings/scope?at=Lab",
+                                                    "/v2/settings/installation?tab=access",
+                                                    "/v2/credentials?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -715,7 +724,10 @@ class TestTheShippedScripts:
         # and when it ends, board D, C693).
         # +1 2026-10-15: reveals (History's timeline and a device's History tab redraw when a
         # log line's reveal is recorded, C818).
-        assert len(keys) == 41
+        # +4 2026-10-15 (P7-05): lists and active_list (the top bar's network picker, and
+        # Settings' scope bar for lists), posture (Access and identity at rest), breakglass
+        # (Credentials' break-glass record card).
+        assert len(keys) == 45
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

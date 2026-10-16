@@ -13,7 +13,11 @@
   </form>
   {%- endif %}
 {%- endmacro -%}
-<div id="install-access" class="set-cards">
+{#- At rest it reads again when a response announces `posture` (P7-05); a result (recorded or
+    refused) stays until the page is read again, as the Record stores card does. -#}
+{%- set live = not done and not refused -%}
+<div id="install-access" class="set-cards"
+  {%- if live %} hx-disinherit="*" hx-get="{{ url_for('settings_v2.install_access') }}" hx-trigger="nmas:posture from:body" hx-swap="outerHTML"{% endif %}>
   {%- if refused %}
   <div class="notice notice-danger set-result set-card-wide" role="alert">{{ icon('warn', 16) }}<div><strong>Not recorded:</strong> {{ refused }}. Nothing was written.</div></div>
   {%- endif %}

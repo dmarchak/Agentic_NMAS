@@ -79,6 +79,59 @@ class TestCreate:
         assert "Site East" not in _registry(networks)
 
 
+def _scope(html):
+    m = re.search(r'<nav class="scope"[^>]*>.*?</nav>', html, re.S)
+    assert m, "no scope bar"
+    return re.sub(r"\s+", " ", m.group(0))
+
+
+class TestTheScopeBarHearsIt:
+    """P7-05: create and delete announce `lists`, and Settings' scope bar (its counts and its
+    picker are the set of networks) reads itself again on it, through `settings_v2.scope`."""
+
+    def test_the_bar_listens_on_each_scope_naming_where_it_is(self, networks):
+        for path, at in (("/v2/settings/network/Branch", "Branch"),
+                         ("/v2/settings/network/Default", "Default"),
+                         ("/v2/settings/installation", "")):
+            head = re.search(r'<nav class="scope"[^>]*>',
+                             networks["client"].get(path).get_data(as_text=True)).group(0)
+            assert 'hx-trigger="nmas:lists from:body"' in head, path
+            assert f'hx-get="/v2/settings/scope?at={at}"' in head, path
+            assert 'hx-disinherit="*"' in head, "its New network… link keeps its own target"
+
+    def test_the_bar_alone_is_the_bar_the_page_draws(self, networks):
+        from modules import csp
+        for path, at in (("/v2/settings/network/Branch", "Branch"),
+                         ("/v2/settings/network/Default", "Default"),
+                         ("/v2/settings/installation", "")):
+            page = _scope(networks["client"].get(path).get_data(as_text=True))
+            r = networks["client"].get(f"/v2/settings/scope?at={at}")
+            assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
+            assert _scope(r.get_data(as_text=True)) == page, path
+
+    def test_create_announces_lists_and_the_bar_read_again_counts_it(self, networks):
+        from modules import invalidation as I
+        before = _scope(networks["client"].get("/v2/settings/scope?at=Branch").get_data(as_text=True))
+        assert "every network (4)" in before and "Site East" not in before
+        _r, pv = _post(networks, "/v2/settings/networks/new/preview", {"name": "Site East"})
+        r, _html = _post(networks, "/v2/settings/networks/new",
+                         {"name": "Site East", "fingerprint": _fp(pv)})
+        assert "lists" in r.headers[I.HEADER].split(",")
+        after = _scope(networks["client"].get("/v2/settings/scope?at=Branch").get_data(as_text=True))
+        assert "every network (5)" in after and "<span>Site East</span>" in after
+
+    def test_delete_announces_lists_and_the_bar_says_its_network_is_gone(self, networks):
+        from modules import invalidation as I
+        _r, pv = _post(networks, "/v2/settings/network/Branch/delete/preview")
+        r, _html = _post(networks, "/v2/settings/network/Branch/delete",
+                         {"typed": "Branch", "fingerprint": _fp(pv)})
+        assert {"lists", "active_list"} <= set(r.headers[I.HEADER].split(","))
+        after = _scope(networks["client"].get("/v2/settings/scope?at=Branch").get_data(as_text=True))
+        assert "every network (3)" in after and "<span>Branch</span>" not in after
+        assert "<b>Branch</b><small>deleted: it has left every page</small>" in after
+        assert not (networks["dir"] / "lists" / "branch").exists(), "the read made no folder"
+
+
 class TestDelete:
     def test_default_s_page_has_no_delete_and_a_network_s_does(self, networks):
         html = networks["client"].get("/v2/settings/network/Default?tab=network").get_data(as_text=True)

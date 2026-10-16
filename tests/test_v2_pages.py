@@ -276,6 +276,43 @@ class TestTheLanding:
         assert 'href="/v2/help/getting-started"' in html
 
 
+#: The sidebar, top to bottom: NSOT_STAGE7_PLAN.md acceptance criterion 10 (signed off
+#: 2026-09-30), as the operator has moved it since: Topology joined OBSERVE (P.11), DHCP moved
+#: to SOURCE OF TRUTH after NetBox (C529, 2026-10-06), Show commands joined OBSERVE. "—" is the
+#: rule above Help and Settings at the bottom.
+SIDEBAR = ("Needs attention", "Devices", "History",
+           "OBSERVE", "Monitoring", "Topology", "Show commands", "Logs",
+           "SOURCE OF TRUTH", "Templates", "NetBox", "DHCP", "Credentials",
+           "—", "Help", "Settings")
+
+_SIDEBAR_PART = re.compile(r'<div class="nav-head">([^<]+)</div>'
+                           r'|class="nav-item[^"]*"[^>]*>.*?<span[^>]*>([^<]+)</span>'
+                           r'|(<div class="nav-rule">)', re.S)
+
+
+class TestTheSidebar:
+    """P7-07, criterion 10: the sidebar's ORDER is pinned, not only its labels (the manual's
+    test reads the labels as a set), and it says nothing beyond its items and headings: the
+    footer note "Other items open today's screens" (C746) stood on every page after no item
+    opened one, and nothing would have caught it coming back."""
+
+    def _nav(self):
+        html = _client().get("/v2/").get_data(as_text=True)
+        nav = html.split('<nav class="sidebar" aria-label="Main"', 1)[1].split("</nav>", 1)[0]
+        return nav.split(">", 1)[1]                    # the rest of its own opening tag
+
+    def test_its_items_and_headings_in_order(self, landing):
+        got = tuple(m.group(1) or m.group(2) or "—" for m in _SIDEBAR_PART.finditer(self._nav()))
+        assert got == SIDEBAR
+
+    def test_it_says_nothing_but_its_items_and_headings(self, landing):
+        nav = self._nav()
+        nav = re.sub(r'<div class="brand">.*?</div>\s*</div>', "", nav, count=1, flags=re.S)
+        nav = re.sub(r'<span id="attention-count".*?</span>', "", nav, count=1, flags=re.S)
+        words = _text(nav).split()
+        assert words == " ".join(s for s in SIDEBAR if s != "—").split(), words
+
+
 class TestHelpAbout:
     def test_about_draws_each_fact_from_its_one_source(self, monkeypatch):
         from routes import health

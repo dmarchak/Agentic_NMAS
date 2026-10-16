@@ -1,6 +1,8 @@
 {#- Board N: the picker's list, recent networks first, each with its mode. Choosing one opens
-    the same kind of page for it (routes/network_v2.choose). -#}
-<ul class="net-pick-items" id="net-pick-items">
+    the same kind of page for it (routes/network_v2.choose). Once opened, it reads again, with
+    what the search box holds, when a network is created or deleted (`lists`) or the person's
+    choice moves (`active_list`), P7-05. -#}
+<ul class="net-pick-items" id="net-pick-items" hx-disinherit="*" hx-get="{{ url_for('network_v2.picker_items', next=next) }}" hx-include="previous .net-pick-search" hx-trigger="nmas:lists from:body, nmas:active_list from:body" hx-swap="outerHTML">
   {%- for r in rows %}
   <li><form method="post" action="{{ url_for('network_v2.choose') }}" hx-post="{{ url_for('network_v2.choose') }}">
     <input type="hidden" name="name" value="{{ r.name }}"><input type="hidden" name="next" value="{{ next }}">

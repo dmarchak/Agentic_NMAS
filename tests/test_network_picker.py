@@ -68,6 +68,32 @@ class TestThePicker:
         assert "No network's name holds that." in html
 
 
+class TestTheOpenedListHearsIt:
+    """P7-05: once opened, the picker's list reads itself again, with what its search box
+    holds, when a network is created or deleted (`lists`) or the person's choice moves
+    (`active_list`)."""
+
+    def test_the_list_listens_for_both_keys_and_carries_the_search(self, networks, as_person):
+        for path in ("/v2/network/picker?next=/v2/devices",
+                     "/v2/network/picker/items?q=re&next=/v2/devices"):
+            _r, html = _get(networks, path)
+            ul = re.search(r'<ul class="net-pick-items"[^>]*>', html).group(0)
+            assert 'hx-trigger="nmas:lists from:body, nmas:active_list from:body"' in ul, path
+            assert 'hx-get="/v2/network/picker/items?next=/v2/devices"' in ul, path
+            assert 'hx-include="previous .net-pick-search"' in ul, path
+            assert 'hx-disinherit="*"' in ul, "each row's choose keeps its own swap"
+
+    def test_a_choice_announces_active_list_and_the_list_read_again_marks_it(self, networks,
+                                                                          as_person):
+        from modules import invalidation as I
+        r = _choose(networks, "Remote")
+        assert r.headers[I.HEADER] == "active_list"
+        _r, html = _get(networks, "/v2/network/picker/items?next=/v2/devices")
+        on = re.findall(r'class="net-row on" aria-current="true"[^>]*><span class="grow">(.*?)</span>',
+                        html)
+        assert on == ["Remote"]
+
+
 class TestChoosing:
     def test_it_opens_the_same_kind_of_page_for_that_network(self, networks, as_person):
         r = _choose(networks, "Branch", "/v2/history?tab=commits")

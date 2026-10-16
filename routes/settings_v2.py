@@ -173,6 +173,32 @@ def network_create():
     return _net_card("v2/_network_create.html", done=done)
 
 
+@bp.route("/scope", methods=["GET"])
+def scope():
+    """Board H's scope bar alone, read again when a network is created or deleted (`lists`,
+    P7-05): *at* is the network the page is about, or empty on Installation. A network deleted
+    since the page drew is said, and nothing of it is read."""
+    from modules import list_settings as L
+    from modules import settings_page
+    from modules.nsot import listref
+
+    at = (request.args.get("at") or "").strip()
+    if not at:
+        v = {"scope": dict(settings_page.scope_bar(listref.active_name()), is_installation=True),
+             "mode_words": ""}
+        return _fragment("v2/_settings_scope.html", v=v)
+    words = ""
+    if not listref.exists(at):
+        words = "deleted: it has left every page"
+    elif not L.is_default(at):
+        try:
+            words = L.MODE_WORDS[L.load(at)["mode"]]
+        except L.ListSettingsUnreadable:
+            words = ""
+    return _fragment("v2/_settings_scope.html",
+                     v={"scope": settings_page.scope_bar(at), "mode_words": words})
+
+
 @bp.route("/network/<list_name>/delete", methods=["GET"])
 def network_delete_card(list_name):
     """The network's Delete card at rest (Cancel)."""
@@ -486,6 +512,16 @@ def platforms_apply():
 
 
 # ── Board F4, Access and identity: read-only; Record this decision the one control ─────────
+
+@bp.route("/installation/access", methods=["GET"])
+def install_access():
+    """The Access and identity cards at rest, read again when a response announces `posture`
+    (P7-05); a result stays where Record this decision drew it."""
+    from modules import identity
+    from modules import installation_settings as I
+
+    return _fragment("v2/_install_access.html", acc=I.access_view(identity.identify(request)))
+
 
 @bp.route("/installation/access/record", methods=["POST"])
 def install_ratify():

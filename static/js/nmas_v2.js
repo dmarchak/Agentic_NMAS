@@ -62,7 +62,19 @@
               // A Topology path trace read a hop, or finished (board D, C693).
               'path_trace',
               // A log line revealed, its record written: History's timeline re-reads (C818).
-              'reveals'];
+              'reveals',
+              // A network created or deleted (Settings): the top bar's network picker and
+              // Settings' scope bar draw the list again (P7-05).
+              'lists',
+              // A person chose a network, or the one they were on was deleted: the picker
+              // marks which is theirs again (P7-05).
+              'active_list',
+              // An access or identity decision recorded (Record this decision): Settings ›
+              // Installation › Access and identity, at rest, reads again (P7-05).
+              'posture',
+              // A break-glass export, its intact check or a drill logged: Credentials' record
+              // card reads the log again at once; job health's judgement follows (P7-05).
+              'breakglass'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -335,6 +347,10 @@
   function relayDiscovery() { relay('ztp_discovery'); }
   function relayPathTrace() { relay('path_trace'); }
   function relayReveals() { relay('reveals'); }
+  function relayLists() { relay('lists'); }
+  function relayActiveList() { relay('active_list'); }
+  function relayPosture() { relay('posture'); }
+  function relayBreakglass() { relay('breakglass'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -422,6 +438,10 @@
     NMAS.subscribe('ztp_discovery', 'v2Discovery', relayDiscovery);
     NMAS.subscribe('path_trace', 'v2PathTrace', relayPathTrace);
     NMAS.subscribe('reveals', 'v2Reveals', relayReveals);
+    NMAS.subscribe('lists', 'v2Lists', relayLists);
+    NMAS.subscribe('active_list', 'v2ActiveList', relayActiveList);
+    NMAS.subscribe('posture', 'v2Posture', relayPosture);
+    NMAS.subscribe('breakglass', 'v2Breakglass', relayBreakglass);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

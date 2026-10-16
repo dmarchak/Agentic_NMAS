@@ -13,13 +13,15 @@
 {%- if r.parts.inherit %}{% set _ = bits.append('inherit: ' ~ names(r.parts.inherit)) %}{% endif -%}
 {{ bits | join(' · ') }}
 {%- endmacro -%}
-<nav class="scope" aria-label="Settings scope">
-  {%- set here = 'installation' if s.is_installation else ('default' if s.is_default else 'network') %}
+{#- It reads again when a network is created or deleted (`lists`, P7-05): the counts and the
+    picker are the set of networks. `settings_v2.scope`. -#}
+{%- set here = 'installation' if s.is_installation else ('default' if s.is_default else 'network') %}
+<nav class="scope" id="settings-scope" aria-label="Settings scope" hx-disinherit="*" hx-get="{{ url_for('settings_v2.scope', at=('' if here == 'installation' else s.current)) }}" hx-trigger="nmas:lists from:body" hx-swap="outerHTML">
   <a class="scope-item{% if here == 'installation' %} on{% endif %}" href="{{ url_for('settings_v2.installation') }}"{% if here == 'installation' %} aria-current="page"{% endif %}><b>Installation</b><small>every network ({{ s.networks }}) · NetBox, Proxmox, the records database</small></a>
   <a class="scope-item{% if here == 'default' %} on{% endif %}" href="{{ url_for('settings_v2.network', list_name='Default') }}"{% if here == 'default' %} aria-current="page"{% endif %}><b>Default</b><small>the base for the {{ s.inheriting }} network{{ '' if s.inheriting == 1 else 's' }} that inherit</small></a>
   <div class="scope-item scope-net{% if here == 'network' %} on{% endif %}">
     {%- if here == 'network' %}<span><b>{{ s.current }}</b><small>{{ v.mode_words or '' }}</small></span>{% else %}<span><b>A network</b><small>{{ s.others }} more · {{ s.standalone | length }} standalone · {{ s.differs | length }} with their own values</small></span>{% endif %}
-    <details class="scope-pick">
+    <details class="scope-pick" data-keep="scope-pick">
       <summary class="btn btn-small">Choose a network</summary>
       <div class="scope-menu">
         {%- if s.standalone %}
@@ -30,7 +32,7 @@
         <p class="scope-h">Inherit, with their own values · {{ s.differs | length }}</p>
         {%- for r in s.differs %}<a class="scope-row" href="{{ url_for('settings_v2.network', list_name=r.name) }}"><span>{{ r.name }}</span><small>{{ parts_words(r) }}</small></a>{% endfor %}
         {%- endif %}
-        <details class="scope-all"{% if not s.standalone and not s.differs %} open{% endif %}>
+        <details class="scope-all" data-keep="scope-all"{% if not s.standalone and not s.differs %} open{% endif %}>
           <summary class="scope-h">Inherit everything from Default · {{ s.inherits | length }}</summary>
           {%- for r in s.inherits %}<a class="scope-row" href="{{ url_for('settings_v2.network', list_name=r.name) }}"><span>{{ r.name }}</span></a>{% else %}<p class="muted small">None.</p>{% endfor %}
         </details>

@@ -445,6 +445,32 @@ class TestAccessAndIdentity:
         assert rec["fields"] == ["require_identity_for_reveal", "require_person_for_reveal"]
         assert "Recorded" in html and "recorded by" in _section(html, "card-gates")
 
+    def test_at_rest_it_reads_again_on_posture_and_a_result_stays(self, networks):
+        """P7-05: Record this decision announces `posture`; the cards at rest read again on it
+        through `settings_v2.install_access`, and a result (recorded or refused) does not, so
+        the read never wipes the answer it drew."""
+        from modules import csp
+        from modules import invalidation as I
+
+        def head(html):
+            return re.search(r'<div id="install-access"[^>]*>', html).group(0)
+
+        page = _get(networks, "/v2/settings/installation?tab=access")[1]
+        assert 'hx-trigger="nmas:posture from:body"' in head(page)
+        assert 'hx-get="/v2/settings/installation/access"' in head(page)
+        r, alone = _get(networks, "/v2/settings/installation/access")
+        assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
+        assert "nmas:posture from:body" in head(alone) and "defaulted, nobody decided" in alone
+        r, done = _post(networks, "/v2/settings/installation/access/record",
+                        {"keys": ["require_identity_for_reveal", "require_person_for_reveal"]})
+        assert "posture" in r.headers[I.HEADER].split(",") and "Recorded" in done
+        assert "nmas:posture" not in head(done), "the result stays where it was drawn"
+        r, refused = _post(networks, "/v2/settings/installation/access/record",
+                           {"keys": ["netbox_url"]})
+        assert r.status_code == 409 and "nmas:posture" not in head(refused)
+        again = _section(_get(networks, "/v2/settings/installation/access")[1], "card-gates")
+        assert "recorded by" in again, "read again, it draws what was recorded"
+
     def test_a_setting_that_is_not_access_or_identity_is_refused(self, networks):
         from modules.settings_schema import origin_of
         r, html = _post(networks, "/v2/settings/installation/access/record",

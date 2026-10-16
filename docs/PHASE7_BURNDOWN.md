@@ -40,7 +40,7 @@ written from the sitting's results. Screens no walk touches move to Stage 7's ta
 | Sitting | Walks | Clears | Ready |
 |---|---|---|---|
 | **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **READY: docs/walks/W1.md** (once the host runs d0c88463 or later) |
-| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811) | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 70; C667; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | after W1 |
+| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16) | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 70; C667; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | after W1 |
 | W3 Onboarding and recovery | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs) | CUTOVER rows 52, 58, 59; C148; their screens' records; unblocks P7-24, P7-25 | after W2 |
 | (in any sitting) | Needs attention clears at once after a Save All or rotation (C539); the logging-path test at the trap level (C587); Ask's label (C588); snap-to-grid (C691); DHCP confirms (C529) | those rows | with W1 |
 
@@ -66,8 +66,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | **Harness: the checks on v2** | | | | | |
 | ~~P7-04~~ | ~~Criterion 4, payloads drawn on v2~~ **done** (see Checked off); its gaps are C867 to C869 below | | | | |
-| P7-05 | Criterion 5, invalidation: `NOT_YET_SUBSCRIBED` (active_list, lists, posture, breakglass) to 0 | each key has a v2 subscriber | S–M | P7-26 for `lists` | — |
-| P7-07 | Criterion 10, the sidebar: an order test; the 37 findability questions walked | the test; the walk folded into a sitting | S + walk | — | W |
+| ~~P7-05~~ | ~~Criterion 5, invalidation~~ **done** (see Checked off) | | | | |
+| P7-07 | Criterion 10, the sidebar: ~~an order test~~ (done); the 37 findability questions walked | the walk, in W2 | walk | W1 | W |
 | **v2 gaps cutover needs** | | | | | |
 | C855 | criterion 11: the v2 device page's per-device work | test_scale's device-page calls-per-device pin at 0 per device | S–M | — | — |
 | C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
@@ -107,7 +107,7 @@ their sittings clear.
 | tests/test_results_are_drawn.py `PENDING` | 8 | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
 | tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | 4 | 0 (C850) |
-| tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | 4 | 0 (P7-05) |
+| tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | **0** (P7-05, 2026-10-16) | 0 |
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | 8 | 0 (C522) |
 | tests/test_no_new_v1_capability.py controls / handlers / functions / fields | 43 / 31 / 333 / 20 | 0 (P7-27) |
 | tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | 93 / 14 / 31 (v1 routes) | 0 at P7-27 (the v1 check goes with today's pages) |
@@ -133,6 +133,8 @@ blocks cutover or is a security issue (B).
   - C861, the batch deploy's "Back to Coverage" from every start: wording, leads nowhere wrong.
   - C870 (keys no interface ever drew; three missing icons) and C871 (the walk's lab lacks a
     break-glass record and a window): never drawn on today's pages either, or harness.
+  - C872 (the scope bar and `settings`), C873 (the top bar after a delete), C874 (the picker's
+    mark; UNKNOWN): the network picker and scope bar's edges; choosing and deleting work.
   - The board comparisons of screens no walk touches (C650's remainder).
   - D3's plan items: 7.10, P.12 (with C322, heartbeat and ip_sla), P.7, P.8 step 9, P.9, P.11
     step 3, P.15's rest.
@@ -192,3 +194,7 @@ blocks cutover or is a security issue (B).
   templates read: 117 routes, 3,119 keys; `UNDRAWN` 357 each reasoned (17 GAP), `UPSTREAM` 16
   (the deploy card's adapter), `UNREACHED` 23. Found: C867 (A), C868, C869 (B), into this
   section; C870, C871 (C), the tail.
+- **P7-05 done** (criterion 5 met): `NOT_YET_SUBSCRIBED` 4 → 0. `lists` and `active_list`
+  heard by the network picker and Settings' scope bar, `posture` by Installation's Access card,
+  `breakglass` by the break-glass record card. **P7-07's test done**: the sidebar's order
+  pinned, and nothing but its items and headings; the 37 questions go into W2.
