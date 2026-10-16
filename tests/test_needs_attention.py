@@ -434,7 +434,7 @@ class TestApprovalsAsASource:
     def queue(self, tmp_path, monkeypatch):
         from modules import approval_queue as Q
         path = tmp_path / "approval_queue.json"
-        monkeypatch.setattr(Q, "_queue_path", lambda: str(path))
+        monkeypatch.setattr(Q, "_queue_path", lambda list_name="": str(path))
         monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
         return Q, path
 

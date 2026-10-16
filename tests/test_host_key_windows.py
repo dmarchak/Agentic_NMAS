@@ -124,7 +124,8 @@ class TestAWindowThatTakesTwoKeys:
         assert sorted(row["devices"]) == ["r2", "s9"]
         for k in keys:
             assert _fp(k) in row["cause"], "each new key and the one it replaced are named"
-        assert row["action"]["href"] == "/v2/history?kind=hostkeys&since=30"
+        # Its network's History (C493: an action that is an address keeps the row's network).
+        assert row["action"]["href"] == "/v2/history?kind=hostkeys&since=30&list=Lab"
 
         # History draws the summary too, once.
         tl = history_sources.timeline(resolve("Lab"), kinds=["hostkeys"])

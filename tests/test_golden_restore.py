@@ -528,7 +528,7 @@ class TestTheQueuedDiffNeverReachesADevice:
                                                          monkeypatch):
         approval_queue, _saved = queue
         monkeypatch.setattr(approval_queue, "_load_queue",
-                            lambda: [dict(self.ENTRY, status="approved")])
+                            lambda *a: [dict(self.ENTRY, status="approved")])
         assert approval_queue.mark_done("q1")["ok"] is False
 
     def test_the_restore_closes_the_item_only_on_success(self, monkeypatch):
@@ -541,8 +541,9 @@ class TestTheQueuedDiffNeverReachesADevice:
 
         closed = {}
 
-        def _mark_done(entry_id, note="", actor=""):
+        def _mark_done(entry_id, note="", actor="", list_name=""):
             closed["id"] = entry_id
+            closed["list"] = list_name          # its own network's queue (C487)
             return {"ok": True}
         monkeypatch.setattr("modules.approval_queue.mark_done", _mark_done)
         monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
@@ -571,7 +572,7 @@ class TestTheQueuedDiffNeverReachesADevice:
             "ref": "HEAD", "confirmations": {"R1": "h"},
             "approval_id": "q1"}).get_json()
         assert body["approval_closed"] is True
-        assert closed["id"] == "q1"
+        assert closed["id"] == "q1" and closed["list"] == "Lab"
 
     def test_no_approval_id_means_no_queue_interaction(self, monkeypatch):
         """An ordinary restore must not touch the queue."""

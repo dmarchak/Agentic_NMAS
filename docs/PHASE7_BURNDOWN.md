@@ -91,7 +91,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
 | ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
-| C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
+| ~~C487, C493~~ | ~~Needs attention names each row's network; no store falls back~~ **done** (see Checked off) | | | | |
 | C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
 | C342 | the device page's drift: masked diff and three choices | built from its board | M | — | B |
 | ~~C522~~ | ~~the 8 lone (i) cards~~ **done** (see Checked off) | | | | |
@@ -249,6 +249,9 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C487, C493 done** (overnight): a network's store never adopts another's (one helper,
+  `network_store`; the survey found drift state and the approval queue WRITING into the wrong
+  network); every Needs attention row names its device's network. C972 (C), C973 (UNKNOWN).
 - **C963, C964 done** (B, overnight): the heartbeat rules measure the syslog job and refuse
   without one; the device dashboard's job is a variable and its platforms a join, and the app
   carries a variable's declared All value. C969 (UNKNOWN), C970, C971 (C) to the tail.

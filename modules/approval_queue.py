@@ -180,7 +180,7 @@ def _add_locked(action_type, description, device_ip, device_hostname, diff, acti
     return entry_id
 
 
-def read_pending() -> tuple:
+def read_pending(list_name: str = "") -> tuple:
     """``(pending, None)`` or ``(None, reason)``, and it WRITES NOTHING.
 
     For a reader that polls (Needs attention, 7.2). `get_pending()` saves the
@@ -189,8 +189,8 @@ def read_pending() -> tuple:
     followed by that write empties the queue (register C159). Here expiry is
     applied in memory only, and unreadable is its own answer, because "no
     approval is waiting" and "the queue could not be read" must not share
-    one."""
-    path = _queue_path()
+    one. *list_name* is the network the page names (C487), else the active list."""
+    path = _queue_path(list_name)
     if not os.path.exists(path):
         return [], None
     try:
@@ -221,17 +221,23 @@ def get_all(limit: int = 100) -> list:
 # Closing an item: a capture, a withdrawal
 # ---------------------------------------------------------------------------
 
-def mark_done(entry_id: str, note: str = "", actor: str = "") -> dict:
+def mark_done(entry_id: str, note: str = "", actor: str = "", list_name: str = "") -> dict:
     """An unreadable queue is a refusal naming it (`unreadable`), never an
-    empty queue and never a raise at the route (CONCURRENCY_AUDIT R4)."""
+    empty queue and never a raise at the route (CONCURRENCY_AUDIT R4).
+
+    *list_name* is the network whose operation finished the item (C487): its own queue, never
+    the active list's, so a capture on another network closes its own item and never one of
+    the active network's by a colliding id."""
     from modules.filestore import StoreUnreadable
     try:
-        return _mark_done_unguarded(entry_id=entry_id, note=note, actor=actor)
+        return _mark_done_unguarded(entry_id=entry_id, note=note, actor=actor,
+                                    list_name=list_name)
     except StoreUnreadable as exc:
         return {"ok": False, "error": str(exc), "unreadable": True}
 
 
-def _mark_done_unguarded(entry_id: str, note: str = "", actor: str = "") -> dict:
+def _mark_done_unguarded(entry_id: str, note: str = "", actor: str = "",
+                         list_name: str = "") -> dict:
     """Close an item whose work completed elsewhere.
 
     An item is finished by the capture or restore that did its work. Without
@@ -239,8 +245,8 @@ def _mark_done_unguarded(entry_id: str, note: str = "", actor: str = "") -> dict
     queue by dismissing things — which is the habit that makes a queue
     worthless.
     """
-    with _lock():
-        entries = _expire_old(_load_queue())
+    with _lock(list_name):
+        entries = _expire_old(_load_queue(list_name))
         entry = next((e for e in entries if e["id"] == entry_id), None)
         if not entry:
             return {"ok": False, "error": f"Approval {entry_id!r} not found"}
@@ -253,7 +259,7 @@ def _mark_done_unguarded(entry_id: str, note: str = "", actor: str = "") -> dict
         # once recorded nobody).
         entry["resolved_by"] = actor
         entry["context"] = note or "Completed via its confirmed operation"
-        _save_queue(entries)
+        _save_queue(entries, list_name)
     log.info("approval_queue: [%s] closed — %s", entry_id, entry["context"])
     return {"ok": True, "entry": entry}
 

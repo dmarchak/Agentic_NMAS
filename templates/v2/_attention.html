@@ -34,15 +34,25 @@
       {%- endif %}
       {%- endif %}
       {%- for x in r.attached or [] %}<p class="att-also">Also: {{ x.what }} ({{ x.source }})</p>{% endfor %}
+      {#- C493: every device is named with its network (attention._with_networks), so another
+          network's device never reads as this one's. -#}
+      {%- set nets = r.networks or {} %}
+      {%- set seen = namespace(all=[], each_one=true) %}
+      {%- for d in r.devices or [] %}{% set ns = nets.get(d) or [] %}{% set seen.all = seen.all + ns %}{% if ns|length != 1 %}{% set seen.each_one = false %}{% endif %}{% endfor %}
+      {%- set one = seen.all|unique|list %}
       <p class="att-meta">
-        {%- if r.devices %}{{ r.devices|join(', ') }} · {% endif -%}
+        {%- if r.devices %}
+        {%- if seen.each_one and one|length == 1 %}{{ r.devices|join(', ') }} in {{ one[0] }}
+        {%- else %}{% for d in r.devices %}{{ d }} ({{ nets[d]|join(' or ') if nets.get(d) else "in no network's inventory" }}){{ ', ' if not loop.last }}{% endfor %}
+        {%- endif %} · {% endif -%}
         since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %}
         {#- C539 (3): the age of the reading the row stands on, kept current by the page. -#}
         {%- if r.read_at %} · read {{ stamp(r.read_at, note='the reading this row stands on') }}{% endif %} · {{ r.source }}
       </p>
       {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
       <div class="att-action">
-        {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d) }}">Open {{ d }}</a>{% endfor %}
+        {#- In the device's own network when it is known (C493), never the active one's. -#}
+        {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d, list=(nets[d][0] if (nets.get(d) or [])|length == 1 else none)) }}">Open {{ d }}</a>{% endfor %}
         <span class="att-label{% if r.action.known == false %} muted{% endif %}">{{ r.action.label }}</span>
         {%- if r.action.command %}
         <span class="cmd"><code>{{ r.action.command }}</code><button type="button" class="btn btn-small" x-data="copy" data-label="Copy" data-copy="{{ r.action.command }}" x-on:click="copy" x-text="label">Copy</button></span>

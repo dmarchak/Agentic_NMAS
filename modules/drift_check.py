@@ -91,10 +91,11 @@ def _state_file(list_name: str = "") -> str:
     networks is a switch whose position tells you nothing about the network
     you are looking at.
     """
-    from modules.config import get_current_list_name, get_list_data_dir
+    from modules import network_store
+    from modules.config import get_current_list_name
 
-    return os.path.join(get_list_data_dir(list_name or get_current_list_name()),
-                        _STATE_FILE_NAME)
+    return network_store.own(list_name or get_current_list_name(), _STATE_FILE_NAME,
+                             create=True)
 
 
 def _legacy_state_file() -> str:
@@ -142,12 +143,30 @@ def _load_state(list_name: str = "") -> dict:
     adopts the legacy one: a torn read used to adopt it and write it over the list's state,
     which could drop `disabled`. An unreadable file is ``{UNREADABLE: why}``, which every
     writer refuses and the scheduler reads as paused.
+
+    **Only the network that held the installation-wide file adopts it** (C487,
+    `network_store.LEGACY_OWNER`): every network did, so a network made later was born
+    holding Default's last run and its switch ("switched off by nobody recorded", nine
+    "has drifted" rows naming Default's devices), and the copy was WRITTEN into its folder.
+    Any other network with no file of its own has none yet, and nothing is written. A copy
+    another network took before this is read as not its own (`without_adopted_copy`), and a
+    stored run naming another network is not its own either.
     """
-    path = _state_file(list_name)
+    from modules import network_store
+    from modules.config import get_current_list_name
+
+    name = list_name or get_current_list_name()
+    path = _state_file(name)
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         if isinstance(data, dict):
+            data = network_store.without_adopted_copy(name, data, _legacy_state_file())
+            if "last_result" in data and not network_store.adopts_installation_file(name) \
+                    and (data.get("last_result") or {}).get("list") not in (None, name):
+                # A run recorded for another network (C487's copy, its installation file gone).
+                data = {k: v for k, v in data.items()
+                        if k not in ("last_result", "last_check_ts")}
             return data
         return {UNREADABLE: f"{_STATE_FILE_NAME} is not a mapping"}
     except FileNotFoundError:
@@ -155,6 +174,8 @@ def _load_state(list_name: str = "") -> dict:
     except (ValueError, OSError) as exc:
         return {UNREADABLE: f"{_STATE_FILE_NAME} could not be read ({type(exc).__name__})"}
 
+    if not network_store.adopts_installation_file(name):
+        return {}
     try:
         with open(_legacy_state_file(), encoding="utf-8") as fh:
             legacy = json.load(fh)

@@ -442,7 +442,7 @@ def _read_all(list_name: str, repo: str, devices: list, progress=None) -> tuple:
     return [(e, t) for e, t, _s, _p in read], timing
 
 
-def _close_handed_off(approvals: dict, outcomes: list) -> dict:
+def _close_handed_off(approvals: dict, outcomes: list, list_name: str = "") -> dict:
     """Close the queue items a capture was handed ({host: [ids]}), ONLY for
     devices it recorded: an item closed for a device that moved, could not be
     read or was busy would be the queue claiming work that did not happen,
@@ -458,7 +458,8 @@ def _close_handed_off(approvals: dict, outcomes: list) -> dict:
             if host in recorded:
                 out = mark_done(entry_id, f"Recorded {host}'s running config as its golden "
                                           f"through the capture operation, confirmed by "
-                                          f"{request_actor()}", actor=request_actor())
+                                          f"{request_actor()}", actor=request_actor(),
+                                list_name=list_name)        # its own network's queue (C487)
                 (closed if out.get("ok") else left).append(entry_id)
             else:
                 left.append(entry_id)
@@ -745,7 +746,7 @@ def apply_captures(list_name: str, confirmations: dict, *, fleet: bool, acknowle
                                     else "unchanged")
                     o["intent"] = (save.get("intent") or {}).get(o["device"], o["intent"])
         result = capture_result(outcomes, save, fleet=fleet, timing=timing)
-        closed = _close_handed_off(approvals, outcomes)
+        closed = _close_handed_off(approvals, outcomes, list_name)
         return {"result": result, "approvals": closed, "outcomes": outcomes, "save": save,
                 "timing": timing}
     finally:
@@ -1049,7 +1050,8 @@ def restore_apply():
         if succeeded:
             closed = mark_done(approval_id,
                                f"Re-applied {ref} to {', '.join(succeeded)} "
-                               "through the confirmed deploy path", actor=request_actor())
+                               "through the confirmed deploy path", actor=request_actor(),
+                               list_name=list_name)         # its own network's queue (C487)
             report["approval_closed"] = closed.get("ok", False)
         else:
             report["approval_closed"] = False

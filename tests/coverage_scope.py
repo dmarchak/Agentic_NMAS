@@ -71,6 +71,7 @@ EXCEPTIONS = {
     "modules/monitoring_profile_page.py": (SUPPORT, "the monitoring profile's page"),
     "modules/network_admin.py": (SUPPORT, "network administration pages"),
     "modules/network_choice.py": (SUPPORT, "which network a page shows"),
+    "modules/network_store.py": (SUPPORT, "a network's own store, never another's (C487)"),
     "modules/op_progress.py": (SUPPORT, "operation progress for the pages"),
     "modules/operation_stages.py": (SUPPORT, "the declared stages of each operation route"),
     "modules/outbound.py": (SUPPORT, "the app's outbound request guard"),

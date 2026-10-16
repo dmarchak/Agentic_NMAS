@@ -29,7 +29,7 @@ def lists(tmp_path, monkeypatch):
     """Two lists, so 'per list' is testable rather than assumed."""
     from modules import drift_check
 
-    for name in ("alpha", "beta"):
+    for name in ("alpha", "beta", "Default"):
         (tmp_path / name).mkdir()
     monkeypatch.setattr("modules.config.get_list_data_dir",
                         lambda name: str(tmp_path / name))
@@ -63,14 +63,16 @@ class TestStateIsPerList:
 
 
 class TestTheOldFileIsAdoptedNotDiscarded:
-    """It is the only record that drift was ever switched on."""
+    """It is the only record that drift was ever switched on, and it is Default's: the network
+    that held it (C487: every network adopted it, so a new one was born holding Default's run).
+    """
 
     def test_the_installation_wide_state_is_adopted(self, lists):
         d = lists["module"]
         (lists["root"] / "drift_state.json").write_text(json.dumps({
             "disabled": True,
             "last_result": {"summary": "drift on all nine"}}), encoding="utf-8")
-        state = d._load_state("alpha")
+        state = d._load_state("Default")
         assert state["disabled"] is True
         assert state["last_result"]["summary"] == "drift on all nine"
 
@@ -78,21 +80,21 @@ class TestTheOldFileIsAdoptedNotDiscarded:
         d = lists["module"]
         legacy = lists["root"] / "drift_state.json"
         legacy.write_text(json.dumps({"disabled": True}), encoding="utf-8")
-        d._load_state("alpha")
+        d._load_state("Default")
         assert legacy.exists(), "copied, not moved"
 
     def test_adoption_records_where_it_came_from(self, lists):
         d = lists["module"]
         (lists["root"] / "drift_state.json").write_text(
             json.dumps({"disabled": True}), encoding="utf-8")
-        assert "migrated_from" in d._load_state("alpha")
+        assert "migrated_from" in d._load_state("Default")
 
     def test_adopting_does_not_recurse(self, lists):
         """`_save_state` merges by loading, and loading is what adopts."""
         d = lists["module"]
         (lists["root"] / "drift_state.json").write_text(
             json.dumps({"disabled": True}), encoding="utf-8")
-        assert d._load_state("alpha")["disabled"] is True   # no RecursionError
+        assert d._load_state("Default")["disabled"] is True   # no RecursionError
 
 
 class TestSavingMergesRatherThanReplaces:

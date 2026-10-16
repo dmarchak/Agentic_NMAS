@@ -35,12 +35,18 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
 Templates compared: templates/v2/landing.html, templates/v2/_attention.html
-Templates sha256: `97266ab296d1e4d88c5a28985a487d1aa36acba53f288f51ea122efd966ac76a`
+Templates sha256: `624b6da04de1115dab2df2f30d993b629f0d8d04d7a62e3fb026986fe8839df0`
 
 Compared again 2026-10-16 after C543 and C544 changed `_attention.html` (an unsaved deploy's
 row opens Persist with its network; the rolled-back row draws Revert intent… and Retry with a
 reason… as two links): the rolled-back row's region rewritten; no other region's verdict
 changed.
+
+Compared again 2026-10-16 (C493): the row's meta line names each device's network ("tw-a in
+Branch", "r1 (Branch or Default)" for a name two networks hold), and each Open <device> link
+carries the device's network. Compared by the template and the page the tests draw
+(tests/test_attention_names_networks.py), not a new shot: the change is words in the meta line
+and link addresses. "A row" rewritten, a deviation logged; no other region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -54,7 +60,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Top bar with an update waiting | not drawn | "Update available" added before the strip, and at half desktop width the strip is cut to "Integrations 9 of '" and the person's name cut short (captures 32 to 35; C901) | **deviation** (log: Top bar: Update available truncates Integrations and the person (C901)) |
 | Page head | "Needs attention" with an "Info" link, the sub line | the same heading and sub line; the help is the (i) beside the title, as on every v2 page | **same** |
 | Summary | "5 items · checked 11 sources at 23:40", right-aligned | "1 item · 25 sources checked" under the sub line (capture 01), naming any source that could not be read; each row carries its own read time | **deviation** (log: Landing: the summary names what could not be read, each row its read time) |
-| A row | level, what, cause, then the device link, since and the source's detail; the one action as a button at the right | level, what, cause, the operands, any attached finding ("Also: …"), device, since, read time and source, and "Clears when …"; the action under it (capture 01). The operands can be a source's raw words: "check:" with nothing after it and "state: not_checkable" in capture 01, a pasted exception in the walk's RIP rows (C893) | **deviation** (log: Landing: a row carries its operands and how it clears) |
+| A row | level, what, cause, then the device link, since and the source's detail; the one action as a button at the right | level, what, cause, the operands, any attached finding ("Also: …"), device with its network ("r1 in Default", C493), since, read time and source, and "Clears when …"; the action under it (capture 01). The operands can be a source's raw words: "check:" with nothing after it and "state: not_checkable" in capture 01, a pasted exception in the walk's RIP rows (C893) | **deviation** (log: Landing: a row carries its operands and how it clears) (log: Landing: a row names each device's network, C493) |
 | A row's action | one button named for the act (Persist s1…, Resolve r2…, Push now, Read again) | Open <device> for each device named, the action's words, and a button where the action has a control on v2 ("Open the Update page and say it is done", Update…, its (i), capture 01); a command with Copy where the remedy is a host command | **deviation** (log: Landing: an action is its words, with a button only where v2 has its control) |
 | Levels | Critical red, Warning amber, Unknown grey, as the row's left edge and its level word | the same | **same** |
 | A source that could not be read | an Unknown row: "This is not the same as no alerts" with the last good read | an Unknown row naming what failed, "This is not the same as nothing needing attention", and the summary says it | **same** |

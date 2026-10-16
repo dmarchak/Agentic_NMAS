@@ -594,7 +594,9 @@ the hook's sha (archive.py:226-236).
 
 *FIXED 2026-10-02 (tests/test_drift_state_concurrency.py):* every read-modify-write of a
 list's state holds a cross-process `PathLock` and replaces the file atomically; only an
-ABSENT state adopts the legacy file, and an unreadable one is never empty: writes refuse
+ABSENT state adopts the legacy file, and only Default's (C487, 2026-10-16: every network
+adopted it, so a new one was born holding Default's run; `network_store`), and an unreadable
+one is never empty: writes refuse
 (the file kept, a `.corrupt-` copy beside it), the scheduler reads it as paused and the panel
 says "State unreadable" with why. One drift run per list at a time across processes
 (`DATA_DIR/drift_runs/<list>.lock`): a second run raises `DriftRunning` naming the first,

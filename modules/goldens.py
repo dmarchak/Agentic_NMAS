@@ -192,9 +192,12 @@ def _golden_record(device_ip: str, list_name: str = "") -> dict:
     written since the migration) is still read from its file: it has no
     commit to read, and ``legacy_only_goldens()`` is that store's exit.
     """
-    _migrate_golden_configs()
     from modules.config import get_current_list_name
     named_other = bool(list_name) and list_name != get_current_list_name()
+    if not named_other:
+        # The legacy store's one-time rename is the ACTIVE list's: a read of another network
+        # never writes in the active one's folder (C487's survey).
+        _migrate_golden_configs()
     if named_other:
         from modules.nsot import listref
         repo = listref.resolve(list_name).repo_dir

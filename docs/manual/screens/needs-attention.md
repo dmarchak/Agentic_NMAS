@@ -9,6 +9,16 @@ The landing page answers one question: does anything need you?
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
   since when, the cause, and the ONE action that deals with it. A source that did not answer,
   or whose value is older than it promised, is itself a row.
+- **Every device is named with its network** ("tw-a in Branch"), because some sources watch
+  every network: job health, Grafana's alerts and reachability. A name two networks both hold
+  is said as either ("r1 (Branch or Default)"). Its Open button, and an action that is an
+  address, open the device in its own network, never in the one you are looking at.
+- **The sources kept per network** (drift, approvals, pending onboardings, rollback blocks,
+  deploys, baselines and repeated authorisations) are the network the page names: its address,
+  else your own choice of network. A network with no drift run says "No drift check has run
+  yet", never another network's run.
+- **One cause is one row.** A device whose configuration has no heartbeat is its one "not
+  monitored" row; Grafana's "no heartbeat rule" row leaves it out, and says so.
 - **Never a fact with nothing to do.** Every row names something wrong and an action you can
   take. Something true that needs nothing, such as a new release being available, or a
   check that missed a booting device once, is

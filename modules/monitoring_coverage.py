@@ -203,7 +203,7 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
             text = golden(ref, host)
         except Exception as exc:                        # noqa: BLE001
             out.append({"unit": unit, "what": what, "state": "unknown", "device": host,
-                        "max_age_minutes": 0,
+                        "list": ref.name, "max_age_minutes": 0,
                         "detail": f"{host}'s committed golden could not be read ({type(exc).__name__}: "
                                   f"{exc}) -- not the same as not configured"})
             continue
@@ -238,8 +238,9 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
             headline = f"{host} is not monitored by " + " or ".join(WORDS[k] for k in missing)
             detail = "; ".join(f"{host} is not monitored by {WORDS[k]}: its configuration has no "
                                f"{LACK[k]} (the network uses {want[k]})" for k in missing)
+        # The device's network, so the row says whose device it is (C493).
         out.append({"unit": unit, "what": what, "state": "not_monitored", "device": host,
-                    "max_age_minutes": 0, "missing": missing, "action": action_for(ref, host, missing, view),
+                    "list": ref.name, "max_age_minutes": 0, "missing": missing, "action": action_for(ref, host, missing, view),
                     "since": min(firsts), "since_basis": "; ".join(basis),
                     "headline": headline, "detail": detail + " (" + "; ".join(basis) + ")"})
     if record and seen != state:

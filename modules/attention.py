@@ -31,6 +31,7 @@ cache, rather than a guess.
 """
 
 import logging
+import re
 import time
 
 log = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ ROW_KINDS = {
     ("job_health", "job"): ("a job or check is failing, stale, not installed or could not ask",
                             "its own remedy, or read its output on the host, or install it"),
     ("drift", "disabled"): ("drift checking is switched off", "switch it back on"),
-    ("drift", "never"): ("drift has never been checked", "run a drift check"),
+    ("drift", "never"): ("no drift check has run yet for the network", "run a drift check"),
     ("drift", "failed"): ("the last drift check failed", "run it again and read its reason"),
     ("drift", "stale"): ("the last drift check is old", "run a drift check"),
     ("drift", "drifted"): ("a device differs from its golden", "capture it, or put it back"),
@@ -599,6 +600,13 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
         # to job_health later must not arrive here as something quieter.
         words, level = _JOB_STATES.get(state, (f"reads {state}", "danger"))
         device = job.get("device") or job.get("address")
+        ops = {"job": job.get("what", ""), "state": state}
+        # The network a job's row is about, where its check says (C493), and what a
+        # not-monitored device lacks (C488's one cause, folded by `_fold_known_unmonitored`).
+        if job.get("list"):
+            ops["list"] = job["list"]
+        if job.get("missing"):
+            ops["missing"] = list(job["missing"])
         rows.append(row(
             source="job_health", kind="job", key=job.get("unit", "?"),
             # A row may name its own headline, in the reader's words ("r6 is not
@@ -607,7 +615,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             devices=list(job.get("devices") or ([device] if device else [])),
             since=job.get("since"),
             cause=job.get("detail") or f"state {state}, with no detail recorded",
-            operands={"job": job.get("what", ""), "state": state},
+            operands=ops,
             action=_job_action(job), level=level,
             read_at=job.get("_read_at") or value_at or started))
     n_ok = len(jobs) - len(rows) - len(expected)
@@ -652,7 +660,7 @@ def drift_source(status=None, now=None) -> dict:
     started = time.time()
     now = now or started
     try:
-        st = status() if status else D.get_checker().status()
+        st = status() if status else D.get_checker().status(_page_network())
         interval = D._get_interval()
     except Exception as exc:                       # noqa: BLE001
         log.error("attention: drift status could not be read: %s", exc)
@@ -679,7 +687,7 @@ def drift_source(status=None, now=None) -> dict:
              "href": _DRIFT_HOME},
             "warning", since=_ts(st.get("disabled_at")))
     if not last:
-        add("never", f"Drift has never been checked for {lst}",
+        add("never", f"No drift check has run yet for {lst}",
             "no drift run is recorded for this list, so whether any device has "
             "drifted is unknown",
             {"label": _CHECK_NOW, "href": _DRIFT_HOME}, "unknown")
@@ -738,6 +746,17 @@ def drift_source(status=None, now=None) -> dict:
                                  f"{coverage}, triggered by {last.get('triggered_by') or 'unrecorded'}")
 
 
+def _page_network() -> str:
+    """The network the page is about, for the sources kept per network (drift, approvals,
+    onboarding, rollbacks, deploys, baselines, authorisations): on a v2 request the network its
+    address or its person names, as the page's header does (`listref.active_name`), else the
+    installation's current list. C487: these read the installation's current list while the
+    page named another, so one network's rows were drawn under another's name."""
+    from modules.nsot import listref
+
+    return listref.active_name()
+
+
 def _ts(value):
     """An epoch from a stored time that may be epoch or ISO text; None if neither."""
     if value is None or value == "":
@@ -765,12 +784,11 @@ def approvals_source(read=None) -> dict:
     drift item attaches to its device's drift row (the page must not count
     one event twice); anything else is a row of its own."""
     from modules import approval_queue as Q
-    from modules.config import get_current_list_name
 
     started = time.time()
     try:
-        lst = get_current_list_name()
-        pending, reason = (read or Q.read_pending)()
+        lst = _page_network()
+        pending, reason = (read or (lambda: Q.read_pending(lst)))()
     except Exception as exc:                       # noqa: BLE001
         pending, reason = None, f"it raised {type(exc).__name__}: {exc}"
     took = int((time.time() - started) * 1000)
@@ -813,12 +831,12 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
     carries it."""
     import os
 
-    from modules.config import get_current_list_name, get_list_data_dir
+    from modules.config import get_list_data_dir
     from modules.nsot.manifest import pending_devices
 
     started = time.time()
     try:
-        lst = get_current_list_name()
+        lst = _page_network()
         devices = (pending or (lambda: pending_devices(
             os.path.join(get_list_data_dir(lst), "config_repo"))))()
     except Exception as exc:                       # noqa: BLE001
@@ -877,11 +895,10 @@ def rollback_source(notes=None) -> dict:
     only while the program a fresh plan would send still contains what failed,
     so a stale note is counted, never listed as needing attention. Its work
     is per NOTED device, bounded by the rollbacks on record."""
-    from modules.config import get_current_list_name
 
     started = time.time()
     try:
-        lst = get_current_list_name()
+        lst = _page_network()
         if notes is None:
             from routes.templatize import rolled_back_notes
             got = rolled_back_notes(lst)
@@ -982,13 +999,12 @@ def deploy_source(read=None, saves=None) -> dict:
     startup is its own kind, `unsaved`, a warning whose action is Persist on the device's
     page, and a save read back SAFE after the receipt clears it; any other fault reads its
     receipt and plans again, offering Persist too when the change is also unsaved."""
-    from modules.config import get_current_list_name
     from modules.nsot import receipts
     from modules.preview_confirm import OUTCOME_WORDS, SAVED_STARTUP_WORDS, result_level
 
     started = time.time()
     try:
-        lst = get_current_list_name()
+        lst = _page_network()
         got = (read or (lambda: receipts.read(lst, limit=10 ** 6)))()
     except Exception as exc:                       # noqa: BLE001
         got = {"state": "unreadable", "error": f"it raised {type(exc).__name__}: {exc}"}
@@ -1118,11 +1134,11 @@ def baseline_source(log_fn=None) -> dict:
     rather than reading their silence as either answer."""
     import os
 
-    from modules.config import get_current_list_name, get_list_data_dir
+    from modules.config import get_list_data_dir
 
     started = time.time()
     try:
-        lst = get_current_list_name()
+        lst = _page_network()
         if log_fn is None:
             from modules.nsot.repo import git
             repo = os.path.join(get_list_data_dir(lst), "config_repo")
@@ -1303,12 +1319,11 @@ def authorisation_source(counts=None) -> dict:
     least `REPEAT_THRESHOLD` times, from ONE read of the receipts through the
     counting the preview's aggregate uses. It makes behaviour visible; it
     blocks nothing."""
-    from modules.config import get_current_list_name
     from modules.nsot import receipts
 
     started = time.time()
     try:
-        lst = get_current_list_name()
+        lst = _page_network()
         got = (counts or (lambda: receipts.authorisations_by_device(lst)))()
     except Exception as exc:                       # noqa: BLE001
         got = {"state": "unreadable", "error": f"it raised {type(exc).__name__}: {exc}"}
@@ -3097,6 +3112,112 @@ def _fold_one_cause(rows: list) -> list:
     return rows
 
 
+def _fold_known_unmonitored(rows: list) -> list:
+    """One cause, one row (C493, with C488's Needs attention half; the operator, 2026-10-05):
+    a device whose committed configuration has no heartbeat is job health's ONE "not
+    monitored" row, and Grafana's heartbeat floor naming the same device is the same cause
+    said again (no heartbeat configured, so no rule was made). The floor row leaves that
+    device out, saying so; a floor row left naming none attaches to the not-monitored row,
+    which keeps its own action. Matched by the device's name and network where the floor
+    row's network is known: the floor reads every network's inventory."""
+    known = {}
+    for r in rows:
+        ops = r.get("operands") or {}
+        if (r["source"], r["kind"]) == ("job_health", "job") and \
+                ops.get("state") == "not_monitored" and "heartbeat" in (ops.get("missing") or ()):
+            for d in r["devices"]:
+                known.setdefault(d, r)
+    if not known:
+        return rows
+    for r in rows:
+        if (r["source"].split("@", 1)[0], r["kind"]) != ("grafana", "heartbeat-floor"):
+            continue
+        folded = [d for d in r["devices"] if d in known]
+        if not folded:
+            continue
+        rest = [d for d in r["devices"] if d not in known]
+        if not rest:
+            r["attach_to"] = known[folded[0]]["id"]
+            r["attach_action"] = False
+            continue
+        r["devices"] = rest
+        r["what"] = f"{len(rest)} device(s) have no heartbeat rule Grafana shows"
+        r["cause"] = ("no heartbeat rule the reader can see names " + ", ".join(rest)
+                      + ": the rule is missing, or the reader's account cannot see it. Not "
+                      "counted here: " + ", ".join(folded) + ", whose committed configuration "
+                      "has no heartbeat, each said on its own not-monitored row")
+    return rows
+
+
+def _device_networks():
+    """``{hostname: [network, ...]}`` over EVERY network's inventory, or None when one cannot
+    be read (C493). A row naming a device and no network of its own is placed by this: two
+    networks may each hold a device of one name, and then both are named."""
+    import os
+
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists, load_saved_devices
+
+    out = {}
+    try:
+        for entry in get_device_lists():
+            path = os.path.join(LISTS_DIR, entry.get("filename") or "", "devices.csv")
+            for d in load_saved_devices(path):
+                if d.get("hostname"):
+                    out.setdefault(d["hostname"], set()).add(entry["name"])
+    except Exception as exc:                       # noqa: BLE001
+        log.warning("attention: the networks' inventories could not be read: %s", exc)
+        return None
+    return {h: sorted(n) for h, n in out.items()}
+
+
+def _stated_network(r: dict, names: set) -> str:
+    """The network a row's source says it is about (its operands' or its action's ``list``),
+    when that is a network the installation holds."""
+    for got in ((r.get("operands") or {}).get("list"), (r.get("action") or {}).get("list")):
+        if isinstance(got, str) and got in names:
+            return got
+    return ""
+
+
+def _with_networks(rows: list) -> list:
+    """Every row naming a device names each device's network (C493, the operator, 2026-10-05:
+    tw-ztp-a's rows read as Default's): ``networks`` maps each device to its network, from the
+    row's own source where it says, else from every network's inventory (a name two networks
+    hold maps to both; a name none holds to none, drawn as such). A row about ONE network keeps
+    it in its action's address, so following it lands in that network, never the active one."""
+    from urllib.parse import quote
+
+    from modules.nsot import listref
+
+    if not any(r["devices"] for r in rows):
+        for r in rows:
+            r["networks"] = {}
+        return rows
+    try:
+        names = set(listref._registry())
+    except Exception:                              # noqa: BLE001
+        names = set()
+    where = None
+    for r in rows:
+        stated = _stated_network(r, names)
+        if stated or not r["devices"]:
+            r["networks"] = {d: [stated] for d in r["devices"]}
+        else:
+            if where is None:
+                where = _device_networks() or {}
+            r["networks"] = {d: list(where.get(d) or []) for d in r["devices"]}
+        one = {n for ns in r["networks"].values() for n in ns}
+        if len(one) != 1 or not all(len(ns) == 1 for ns in r["networks"].values()):
+            continue
+        (net,) = one
+        href = (r.get("action") or {}).get("href") or ""
+        if href.startswith("/v2/") and not re.search(r"[?&]list=", href):
+            r["action"] = dict(r["action"],
+                               href=href + ("&" if "?" in href else "?") + "list=" + quote(net))
+    return rows
+
+
 def _standing_acknowledgements(hiding: list) -> list:
     """The band acknowledgements IN FORCE that hide nothing now (C433, the operator,
     2026-10-05: s3's discards were acknowledged, the alert stopped, and the acknowledgement
@@ -3325,7 +3446,8 @@ def needs_attention(sources=None) -> dict:
         for r in res["rows"]:
             if not r.get("read_at"):
                 r["read_at"] = res.get("value_at") or res.get("read_at")
-    rows = _attach(_fold_one_cause([r for res in results for r in res["rows"]]))
+    rows = _with_networks(_attach(_fold_known_unmonitored(_fold_one_cause(
+        [r for res in results for r in res["rows"]]))))
     rows, acknowledged, ack_result = _without_acknowledged(rows)
     if ack_result:
         results.append(ack_result)

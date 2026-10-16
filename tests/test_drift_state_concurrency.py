@@ -97,10 +97,11 @@ class TestAnUnreadableStateIsNeverEmpty:
         assert status["state"] == "unreadable" and "could not be read" in status["unreadable"]
 
     def test_an_absent_state_still_adopts_the_legacy_file_once(self, lab):
+        """By the network that held it, Default (C487); the lab's folder stands in for it."""
         D = lab["D"]
         with open(lab["legacy"], "w", encoding="utf-8") as fh:
             json.dump({"disabled": True}, fh)
-        assert D._load_state("R19lab")["disabled"] is True
+        assert D._load_state("Default")["disabled"] is True
         assert json.load(open(lab["state"], encoding="utf-8"))["migrated_from"]
 
 
