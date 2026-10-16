@@ -20,7 +20,15 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `dfb79ced26a7317ae6713654fdcd5f9e0ce262f14168c63faf793a1d76885f10`
+Templates sha256: `db142f8ca85199c4ea2711c17bbd123ae0f2abceb54ff78158b9d7e4fb3a434e`
+
+Compared again 2026-10-16 (C957) after `_timeline.html` gained one state: on a network with no
+repository yet, the tab draws one muted notice above the rows, "No repository yet: the
+network's first commit makes it. Until then the golden history, the intent history and the
+saves that measured devices have nothing to show.", in place of three warnings that each
+"could not be read". The state is on no board or shot. The rows rendered from `timeline_rows`
+as it was and as it is, in five states each with and without a device: every byte the same.
+No region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

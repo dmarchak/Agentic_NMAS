@@ -61,8 +61,20 @@ def _event(at, kind, what, devices, *, who="", detail="", sha="", outcome="", ma
             "record": [(k, v) for k, v in (record or []) if v not in (None, "", [], {})]}
 
 
-def _out(events=None, errors=None, cut=None):
-    return {"events": events or [], "errors": errors or [], "cut": cut or []}
+def _out(events=None, errors=None, cut=None, unborn=None):
+    return {"events": events or [], "errors": errors or [], "cut": cut or [],
+            "unborn": unborn or []}
+
+
+def _unborn(ctx, words):
+    """A source that reads the network's repository, for a network with no repository yet
+    (C957): ``_out(unborn=[words])``, or None when the repository exists. Decided by
+    `repo.has_repository` (the folder's ``.git``, the header's test, C945), never by git's
+    words: its first commit makes the repository, so there is nothing to read yet, which is a
+    state, not a failure. Any other failure stays an error, naming git's."""
+    from modules.nsot import repo as R
+
+    return None if R.has_repository(ctx["ref"].repo_dir) else _out(unborn=[words])
 
 
 def about(event: dict, device: str) -> bool:
@@ -306,6 +318,9 @@ def _named(rows, folder, renames):
 
 def _commit_source(folder, kind, words):
     def source(ctx):
+        unborn = _unborn(ctx, f"the {words} history")
+        if unborn:
+            return unborn
         ext = "cfg" if folder == "golden" else "yml"
         paths = [f"{folder}/{ctx['device']}.{ext}"] if ctx["device"] else [f"{folder}/"]
         rows, err = _log(ctx, paths, follow=bool(ctx["device"]))
@@ -353,6 +368,9 @@ def measured(ctx):
     """A save that READ the device and changed no golden (a capture that found it unchanged, a
     Save All that measured it): its commit names it in `Devices-Measured:` and touches no
     `golden/<device>` file, so the golden history alone never shows it."""
+    unborn = _unborn(ctx, "the saves that measured devices")
+    if unborn:
+        return unborn
     # No pathspec: a measurement that changed no file is an EMPTY commit, which `-- .` skips.
     rows, err = _log(ctx, [], "--grep=^Devices-Measured: ", count=ctx["limit"] * 4)
     if err:
@@ -377,6 +395,9 @@ def fleet_commits(ctx):
     device's view has none."""
     if ctx["device"]:
         return _out()
+    unborn = _unborn(ctx, "the repository's other commits")
+    if unborn:
+        return unborn
     rows, err = _log(ctx, [".", ":(exclude)golden", ":(exclude)host_vars"])
     if err:
         return _out(errors=[f"the repository's other commits could not be read: {err}"])
@@ -396,6 +417,9 @@ def decisions(ctx):
     whether every device was at its intent. About the list, so a device's view has none."""
     if ctx["device"]:
         return _out()
+    unborn = _unborn(ctx, "the baseline decisions")
+    if unborn:
+        return unborn
     rows, err = _log(ctx, [], "--grep=^Baseline: ")
     if err:
         return _out(errors=[f"the baseline decisions could not be read: {err}"])
@@ -1249,12 +1273,14 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
     tab with *device* set. *kinds*: KIND_FILTERS keys to keep (None or empty: every kind);
     *since_days*: "" for all time. *people* and *counts* are of the rows before the person and
     kind filters, for the filters' choices. *members*: the list's devices, for a store whose
-    rows name no list (the rotation record); None reads them all."""
+    rows name no list (the rotation record); None reads them all. *unborn*: the records that
+    live in the network's repository, for a network with no repository yet (C957): drawn as
+    that state, once, never as errors."""
     limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
     since = (time.time() - int(since_days) * 86400) if str(since_days or "").isdigit() else None
     ctx = {"ref": ref, "device": device or "", "limit": limit, "since": since,
            "members": set(members) if members is not None else None}
-    events, errors, cut = [], [], []
+    events, errors, cut, unborn = [], [], [], []
     for name, source in SOURCES.items():
         try:
             got = source(ctx)
@@ -1266,6 +1292,7 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
         events += got.get("events") or []
         errors += got.get("errors") or []
         cut += got.get("cut") or []
+        unborn += got.get("unborn") or []
     events = [e for e in events if _recent(ctx, e["at"])
               and (not device or about(e, device))]
     for e in events:
@@ -1285,6 +1312,7 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
     if unverified:
         events = [e for e in events if "verified" in e and e["verified"] != "access"]
     events.sort(key=lambda e: epoch(e["at"]), reverse=True)
-    return {"events": events[:limit], "errors": errors, "cut": cut, "limit": limit,
+    return {"events": events[:limit], "errors": errors, "cut": cut, "unborn": unborn,
+            "limit": limit,
             "total": len(events), "people": people, "counts": counts,
             "identity": identity(events)}

@@ -57,7 +57,7 @@ def read(list_name: str = "", loki=None, clock=time.time) -> dict:
     if not loki.configured():
         return {"configured": False}
     now = clock()
-    got = loki.ask("loki/api/v1/query_range", query=selector(), limit=WINDOW_LIMIT,
+    got = loki.ask("loki/api/v1/query_range", query=selector(loki), limit=WINDOW_LIMIT,
                    start=str(int((now - WINDOW_SECONDS) * 1e9)), end=str(int(now * 1e9)),
                    direction="backward")
     lines = [line_of(ns, raw) for stream in got for ns, raw in stream.get("values") or []]

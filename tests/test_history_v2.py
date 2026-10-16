@@ -147,8 +147,16 @@ class TestFilters:
         assert len(got["events"]) == 1 and got["total"] > 1
 
     def test_an_unreadable_repository_is_said(self, tmp_path):
-        got = HS.timeline(_ref(str(tmp_path / "nothing")), since_days="")
-        assert any("could not be read" in e for e in got["errors"])
+        """A `.git` git cannot read is said as could not be read; a folder with none is a
+        network with no repository yet, said as that state and never as an error (C957)."""
+        planted = tmp_path / "planted"
+        planted.mkdir()
+        (planted / ".git").write_text("gitdir: ../nowhere\n", encoding="utf-8")
+        got = HS.timeline(_ref(str(planted)), since_days="")
+        assert any("history could not be read" in e for e in got["errors"]) and not got["unborn"]
+        none = HS.timeline(_ref(str(tmp_path / "nothing")), since_days="")
+        assert none["unborn"] and not [e for e in none["errors"] if "could not be read: " in e
+                                       and "git" in e], none["errors"]
 
 
 class TestTheChangeIsMasked:

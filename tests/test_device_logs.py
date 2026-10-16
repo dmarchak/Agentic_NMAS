@@ -220,3 +220,120 @@ class TestThePage:
     def test_the_tab_is_built(self, page):
         _r, html = page("/v2/device/r3?tab=logs")
         assert 'hx-get="/v2/device/r3/logs?list=Lab"' in html and 'id="logs"' in html
+
+
+# ---------------------------------------------------------------------------
+# C820: the syslog job is measured from Loki, never named in the product.
+# ---------------------------------------------------------------------------
+
+JOBS_CAPTURE = os.path.join(ROOT, "tests", "fixtures", "loki", "syslog_jobs.json")
+
+
+def _jobs_answer(*jobs):
+    """The lab's real answer to the count by job (`syslog_jobs.json`), its one row's job
+    renamed for each of *jobs* (a minimal edit); none: an answer holding no row."""
+    cap = json.load(open(JOBS_CAPTURE, encoding="utf-8"))
+    row = cap["body"]["data"]["result"][0]
+    body = copy.deepcopy(cap["body"])
+    body["data"]["result"] = [dict(copy.deepcopy(row), metric={"job": j}) for j in jobs]
+    return body
+
+
+@pytest.fixture
+def held(loki, syslog_job_measured, monkeypatch):
+    """The `loki` fixture's corpus held under the jobs a planted count-by-job answer names, as a
+    real Loki holds them: a selector naming any other job finds no stream."""
+    from modules import device_logs
+    from modules.integrations.loki import LokiIntegration
+    inner = LokiIntegration._get
+    state = {"jobs": ["site_syslog"], "measured": 0, "refuse": None}
+
+    def get(self, path, **params):
+        q = params["query"]
+        if q == device_logs.job_query():
+            state["measured"] += 1
+            loki["asked"].append((path, q))
+            if state["refuse"]:
+                return state["refuse"]
+            return {"ok": True, "response": Resp(_jobs_answer(*state["jobs"]))}
+        m = re.search(r'\{job(=~?)"([^"]*)"', q)
+        named = (set(m.group(2).split("|")) if m.group(1) == "=~" else {m.group(2)}) if m else set()
+        if not named & set(state["jobs"]):
+            loki["asked"].append((path, q))
+            return {"ok": True, "response": Resp({"status": "success",
+                                                 "data": {"result": []}})}
+        return inner(self, path, **params)
+
+    monkeypatch.setattr(LokiIntegration, "_get", get)
+    monkeypatch.setattr(LokiIntegration, "url", property(lambda self: "http://loki.invalid"))
+    return state
+
+
+class TestTheSyslogJobIsMeasured:
+    def test_the_capture_is_the_query_the_module_asks(self):
+        from modules import device_logs
+        cap = json.load(open(JOBS_CAPTURE, encoding="utf-8"))
+        assert cap["query"] == device_logs.job_query()
+        assert [r["metric"]["job"] for r in cap["body"]["data"]["result"]] == ["network_syslog"]
+
+    def test_another_networks_job_is_read_from_loki_and_its_lines_drawn(self, page, held, loki):
+        """A planted Loki whose count names `site_syslog`: the tab asks that job's lines and
+        draws them; the lab's job name is asked nowhere."""
+        from modules import device_logs
+        r, html = page("/v2/device/r3/logs")
+        assert r.status_code == 200
+        assert "<code>%SEC_LOGIN-5-LOGIN_SUCCESS</code>" in html, html[-1500:]
+        assert re.search(r"\d+ heartbeat\(s\) in the last 24 h", html)
+        others = [q for _p, q in loki["asked"] if q != device_logs.job_query()]
+        assert len(others) >= 3, others          # the label's start, the lines, the heartbeats
+        assert all(re.search(r'\{job="site_syslog"[,}]', q) for q in others), others
+        assert not any("network_syslog" in q for _p, q in loki["asked"])
+        assert held["measured"] == 1
+
+    def test_the_labs_answer_reads_the_labs_job(self, held, loki):
+        """The lab's own answer, unedited: the tab reads `network_syslog`, as it did."""
+        held["jobs"] = ["network_syslog"]
+        v = _view("r3", loki)
+        assert v["errors"] == [] and v["lines"], v
+        assert any(q.startswith('{job="network_syslog"} |= "r3:"') for _p, q in loki["asked"])
+
+    def test_two_jobs_are_both_read(self, held, loki):
+        from modules import device_logs
+        held["jobs"] = ["alpha_syslog", "site_syslog"]
+        assert device_logs.job_matcher() == 'job=~"alpha_syslog|site_syslog"'
+        assert _view("r3", loki)["lines"]
+
+    def test_none_found_is_said_and_no_line_is_asked(self, page, held, loki):
+        from modules import device_logs
+        held["jobs"] = []
+        r, html = page("/v2/device/r3/logs")
+        assert r.status_code == 200
+        assert ("The syslog job could not be found: no job in Loki holds a device&#39;s syslog "
+                "line (a device&#39;s own name, its time and a mnemonic) in the last 24 h. "
+                "Not the same as r3 having sent nothing.") in html, html[-1500:]
+        assert [q for _p, q in loki["asked"]] == [device_logs.job_query()]
+
+    def test_a_refused_ask_is_said_with_lokis_words(self, held, loki):
+        held["refuse"] = {"ok": False, "status": 400, "error": "HTTP 400",
+                          "detail": "parse error at line 1, col 5: planted"}
+        v = _view("r3", loki)
+        assert v["errors"] == ["The syslog job could not be found: Loki could not be asked which "
+                               "job holds the devices' syslog: HTTP 400 (parse error at line 1, "
+                               "col 5: planted)"], v["errors"]
+
+    def test_asked_once_an_hour_and_a_failed_ask_keeps_the_last_jobs(self, held, loki):
+        from modules import device_logs
+
+        def jobs(at):
+            try:
+                return device_logs.syslog_jobs(now=at)
+            except device_logs.NoSyslogJob as exc:
+                return f"refused: {exc}"
+        now = _now()
+        assert jobs(now) == ["site_syslog"]
+        assert jobs(now + 60) == ["site_syslog"] and held["measured"] == 1
+        held["refuse"] = {"ok": False, "error": "Could not connect to http://loki.invalid"}
+        later = now + device_logs.LABEL_ASK_EVERY + 1
+        assert jobs(later) == ["site_syslog"] and held["measured"] == 2
+        held["refuse"], held["jobs"] = None, []
+        assert jobs(later + 1) == ["site_syslog"], "an ask finding none dropped the jobs found"

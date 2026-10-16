@@ -546,6 +546,34 @@ def _fresh_device_label_measurement(monkeypatch):
     monkeypatch.setattr(device_logs, "_LABEL", {"since": None, "asked": None})
 
 
+#: The syslog job the suite's Loki fixtures hold: every capture under tests/fixtures/loki was
+#: read from the lab's Loki, whose one syslog job this is. The product MEASURES the job from
+#: Loki (C820, `device_logs.syslog_jobs`, once an hour per Loki); a fake Loki answering every
+#: query with its captured lines cannot answer that count, so every test is given the
+#: captures' job, and a test of the measurement takes `syslog_job_measured`.
+CAPTURED_SYSLOG_JOB = "network_syslog"
+_REAL = {}
+
+
+@pytest.fixture(autouse=True)
+def _syslog_job_of_the_captures(monkeypatch):
+    from modules import device_logs
+
+    _REAL.setdefault("syslog_jobs", device_logs.syslog_jobs)
+    monkeypatch.setattr(device_logs, "_JOBS", {})
+    monkeypatch.setattr(device_logs, "syslog_jobs",
+                        lambda client=None, now=None: [CAPTURED_SYSLOG_JOB])
+
+
+@pytest.fixture
+def syslog_job_measured(monkeypatch):
+    """The real measurement of the syslog job (C820), its memory empty."""
+    from modules import device_logs
+
+    monkeypatch.setattr(device_logs, "syslog_jobs", _REAL["syslog_jobs"])
+    monkeypatch.setattr(device_logs, "_JOBS", {})
+
+
 @pytest.fixture(autouse=True)
 def _fresh_redaction_cache():
     from modules import redact

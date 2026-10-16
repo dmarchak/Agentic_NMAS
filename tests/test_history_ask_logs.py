@@ -182,12 +182,16 @@ class FakeLoki:
         self.asked, self.timeout = [], 65.0
         self.labels = labels or LABELS
         self.fail, self.empty = fail, empty
+        #: A whole failed result to answer each ask for lines or counts with (C821).
+        self.refuse = None
 
     def is_configured(self):
         return True
 
     def _get(self, path, **params):
         self.asked.append((path, params))
+        if self.refuse and (path.endswith("query_range") or path.endswith("/query")):
+            return self.refuse
         if self.fail and (path.endswith("query_range") or path.endswith("/query")):
             return {"ok": False, "error": self.fail}
         if path == "config":
@@ -607,3 +611,72 @@ class TestARolesDevices:
 
     def test_an_unreadable_inventory_matches_nothing(self, inventory):
         assert Q._devices_of_role("Unreadable", "router") == []
+
+
+# ---------------------------------------------------------------------------- Loki's own words
+# C821: Loki answers a query it refuses with its reason as PLAIN TEXT; the integration client
+# kept a JSON answer's `error` (Prometheus's form) and nothing else, so the person read
+# "HTTP 400" alone.
+
+REFUSED = _fx("refused_plain_text.json")
+PLANTED = "PlantedC0mmunity0nTheWire"
+
+
+def _refused(monkeypatch, body=None, content_type=None, status=None):
+    """The real client's one GET, on Loki's captured refusal (or *body* in its place)."""
+    from types import SimpleNamespace
+
+    from modules.integrations.loki import LokiIntegration
+
+    def no_json():
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")
+    answer = SimpleNamespace(status_code=status or REFUSED["status"], json=no_json,
+                             text=REFUSED["body"] if body is None else body,
+                             headers={"Content-Type": content_type or REFUSED["content_type"]})
+    c = LokiIntegration()
+    monkeypatch.setattr(LokiIntegration, "url", "http://192.0.2.10:3100")
+    monkeypatch.setattr(c, "session", lambda: SimpleNamespace(get=lambda *a, **k: answer))
+    return c._get("loki/api/v1/query_range", query=REFUSED["query"])
+
+
+class TestLokisOwnWords:
+    def test_the_capture_is_one_plain_text_line_carrying_the_planted_value(self):
+        assert REFUSED["status"] == 400 and REFUSED["content_type"].startswith("text/plain")
+        assert "\n" not in REFUSED["body"] and REFUSED["body"].count(PLANTED) == 2
+
+    def test_a_plain_text_refusal_keeps_its_line_masked(self, monkeypatch):
+        r = _refused(monkeypatch)
+        assert not r["ok"] and r["status"] == 400 and r["error"] == "HTTP 400"
+        assert PLANTED not in json.dumps(r), r
+        # Loki's own words, around the masked value, as the capture holds them.
+        head = REFUSED["body"].partition(PLANTED)[0]
+        said = r.get("detail", "")
+        assert said.startswith(head) and "error parsing regexp: missing closing ): `" in said \
+            and said.endswith(" RO`"), said
+
+    def test_only_the_first_line_is_kept(self, monkeypatch):
+        r = _refused(monkeypatch, body="\n" + REFUSED["body"] + "\nsecond line, planted\n")
+        said = r.get("detail", "")
+        assert said.startswith("parse error : stage '|~ ") and "second line" not in said, said
+
+    def test_bounded_at_500_and_masked(self, monkeypatch):
+        """A long line is cut at 500 characters, the planted value inside them still masked."""
+        from modules.integrations.base import DETAIL_LIMIT
+        r = _refused(monkeypatch, body="x" * 300 + " " + REFUSED["body"] + " " + "y" * 400)
+        said = r.get("detail", "")
+        assert DETAIL_LIMIT == 500 and len(said) == 500
+        assert "community <redacted" in said and "PlantedC0" not in said
+
+    def test_an_html_page_or_an_empty_answer_adds_no_words(self, monkeypatch):
+        r = _refused(monkeypatch, body="<html><body>502 Bad Gateway</body></html>",
+                     content_type="text/html", status=502)
+        assert r["error"] == "HTTP 502" and "detail" not in r
+        assert "detail" not in _refused(monkeypatch, body="  \n\n")
+
+    def test_the_page_says_lokis_reason_masked(self, web, monkeypatch):
+        web.loki.refuse = _refused(monkeypatch)
+        html = _page(web, ask="1")
+        assert "Couldn't load: Loki refused the query: HTTP 400: parse error : stage " in html, \
+            html[html.find("Couldn't load"):][:400]
+        assert "error parsing regexp: missing closing )" in html
+        assert PLANTED not in html

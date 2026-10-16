@@ -17,6 +17,11 @@
                  'credential': ('credential profile', 'muted'),
                  'expected': ('expected island', 'muted')} -%}
 {%- macro timeline_rows(h, here='') -%}
+  {#- A network with no repository yet (C957): the records its repository holds are a state,
+      said once with what ends it (the header's words, C945), never "could not be read". -#}
+  {%- if h.unborn %}
+  <div class="notice notice-muted tl-unborn">{{ icon('info') }}<p>No repository yet: the network's first commit makes it. Until then {{ h.unborn[:-1] | join(', ') }}{% if h.unborn | length > 1 %} and {% endif %}{{ h.unborn[-1] }} have nothing to show.</p></div>
+  {%- endif %}
   {%- for e in h.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>
   {%- endfor %}

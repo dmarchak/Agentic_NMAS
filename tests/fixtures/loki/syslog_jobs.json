@@ -1,0 +1,5 @@
+{
+  "what": "The lab's Loki answering device_logs.job_query() (the count by job of every line carrying a device's syslog form over 24 h), read-only through scripts/nmas-host on 2026-10-16 07:07 UTC; the answer's stats block left out. The query took 0.12 s.",
+  "query": "sum by (job) (count_over_time({job=~\".+\"} |~ `\\s(?P<dev>[A-Za-z][A-Za-z0-9._-]*):\\s+\\*?\\.?[A-Z][a-z]{2}\\s+\\d+\\s+[\\d:.]+(?:\\s+[A-Z]{3,4})?:\\s+(?P<mn>%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-7]-[A-Z0-9_]+)` [24h]))",
+  "body": {"status": "success", "data": {"resultType": "vector", "result": [{"metric": {"job": "network_syslog"}, "value": [1792134466.882, "3699"]}]}}
+}

@@ -145,7 +145,7 @@ def telemetry(prom, now: float) -> dict:
 
 
 def _loki_last(loki, extra: str, what: str, now: float) -> dict:
-    q = (f'sum by (dev) (count_over_time({{job="{_job()}"}}{extra} | regexp `{NAME_RX}` '
+    q = (f'sum by (dev) (count_over_time({{{_job(loki)}}}{extra} | regexp `{NAME_RX}` '
          f"[{STEP_SECONDS}s]))")
     data = _json(loki._get("loki/api/v1/query_range", query=q,
                            start=int((now - LOOKBACK_SECONDS) * 1e9), end=int(now * 1e9),
@@ -161,9 +161,11 @@ def _loki_last(loki, extra: str, what: str, now: float) -> dict:
     return out
 
 
-def _job() -> str:
-    from modules.device_logs import JOB
-    return JOB
+def _job(loki) -> str:
+    """*loki*'s syslog job matcher, measured from it (C820); raises `NoSyslogJob`, a
+    RuntimeError naming why, as every source here raises naming itself."""
+    from modules.device_logs import job_matcher
+    return job_matcher(loki)
 
 
 def syslog(loki, now: float) -> dict:

@@ -281,8 +281,9 @@ def _history_remote(ref) -> dict:
                no_repository=False, unreadable="")
     # A network with no repository yet (C945): its folder has no `.git`, the property
     # `repo.run_git` names when a read fails there (C931), decided by the folder and never by
-    # git's words. Its first commit makes the repository; that is said, not "could not be read".
-    if not os.path.exists(os.path.join(ref.repo_dir, ".git")):
+    # git's words (`repo.has_repository`, the timeline's test too, C957). Its first commit
+    # makes the repository; that is said, not "could not be read".
+    if not R.has_repository(ref.repo_dir):
         out["no_repository"] = True
         return out
     rc, text, err = R.git(ref.repo_dir, "status", "--porcelain")

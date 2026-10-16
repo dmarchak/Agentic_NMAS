@@ -32,7 +32,43 @@ import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATTERN = re.compile(r"containerlab|\bclab\b|\bclab[_-]|vrnetlab|\brcn[-_]|csci\s?5840|"
-                     r"\b10\.255\.\d|rcn-lab-overview|rcn-lab1-snmp", re.I)
+                     r"\b10\.255\.\d|rcn-lab-overview|rcn-lab1-snmp|\bnetwork_syslog\b", re.I)
+
+#: A JOB NAMED in the product (C820: `device_logs.JOB` named the lab's syslog job and the
+#: pattern above, which knew no job name, did not see it). A job's name is the collector's
+#: configuration's choice (Alloy's, Prometheus's), so a query naming one works on the network
+#: that chose it and reads nothing anywhere else. The shape, not a list of names: a `job`
+#: matcher holding a literal value (LogQL, PromQL, Alloy's `job = "..."`), or a constant
+#: named `JOB` assigned a string. Not a job named: a value built from code (`{`), and the
+#: selector-needs-a-label wildcards `.+` and `.*`.
+JOB_LITERAL = re.compile(r"""\bjob\s*=~?\s*\\?["'`](?P<value>[^"'`\\{]*)|"""
+                         r"""\bJOB\s*=\s*["'](?P<constant>[^"']*)["']""")
+WILDCARDS = {".+", ".*"}
+
+
+def product_jobs() -> set:
+    """The job names the PRODUCT declares, so a query naming them is the product's own contract:
+    the routing jobs Mercury writes a target file for (`prometheus_targets.ROUTING`, each file
+    `nmas-snmp-<kind>.json` read by the job of the same name, docs/PROMETHEUS_TARGETS.md step 2).
+    Read from that module, a path independent of the files the scan reads."""
+    from modules.prometheus_targets import ROUTING
+    return {kind for kind, _rx, _platform in ROUTING}
+
+
+def names_a_job(line: str, own=None) -> bool:
+    """Whether *line* names a job the product does not declare."""
+    own = product_jobs() if own is None else own
+    for m in JOB_LITERAL.finditer(line):
+        value = m.group("value") if m.group("value") is not None else m.group("constant")
+        if not value or value in WILDCARDS:
+            continue                                  # built from code, empty, or a wildcard
+        if set(value.split("|")) - own:
+            return True
+    return False
+
+
+def lab_specific(line: str, own=None) -> bool:
+    return bool(PATTERN.search(line)) or names_a_job(line, own)
 #: The product: its code and the manual it ships (docs/manual). The project's
 #: records (the register, the write-up, plans, runbooks) stay in this
 #: repository and out of the release (NSOT_STAGE10_PLAN 6.0b), so they are
@@ -60,6 +96,27 @@ INVENTORY = {
     # the one host that had them, as Phase 3's spent step was.
     "scripts/host-steps/c663-step3b-topology.sh": (4, LAB_VALUES, REMOVE,
                                                    "renames the renderer's unit and link"),
+    # Found by C820's widening (2026-10-16): the job names the lab's collectors chose, written
+    # into queries. `device_logs` measures its job from Loki now; these still name the lab's.
+    "deploy/grafana/build_nmas_device.py": (5, LAB_VALUES, GENERIC,
+                                            "the device dashboard's syslog and SNMP panels name "
+                                            "the lab's syslog job and its platform SNMP jobs"),
+    "deploy/grafana/nmas-device.json": (5, LAB_VALUES, GENERIC,
+                                        "the built device dashboard, the same five queries"),
+    "modules/host_steps.py": (5, LAB_VALUES, GENERIC,
+                              "the severity and trap label checks name the lab's syslog and "
+                              "trap jobs"),
+    "scripts/nmas-heartbeat-rules": (1, LAB_VALUES, GENERIC,
+                                     "the heartbeat alert rules name the lab's syslog job"),
+    "scripts/host-steps/c722-device-label.sh": (10, LAB_VALUES, REMOVE,
+                                                "a one-shot host step writing the lab's Alloy "
+                                                "configuration and counting its syslog job"),
+    "scripts/host-steps/ibn7-severity-trap-label.sh": (14, LAB_VALUES, REMOVE,
+                                                       "a one-shot host step writing the lab's "
+                                                       "Alloy configuration, its jobs named"),
+    "scripts/host-steps/c794-loki-detected-level-off.sh": (1, LAB_VALUES, REMOVE,
+                                                           "a one-shot host step's note of what "
+                                                           "it measured in the lab's syslog job"),
 }
 
 
@@ -67,7 +124,7 @@ def scan(root=ROOT, scope=SCOPE) -> dict:
     """``{path: lines}`` for every tracked product file holding a lab name or value."""
     files = subprocess.run(["git", "-C", root, "ls-files", "--", *scope],
                            capture_output=True, text=True, check=True).stdout.split()
-    out = {}
+    out, own = {}, product_jobs()
     for f in files:
         if "/vendor/" in f:
             continue
@@ -76,7 +133,7 @@ def scan(root=ROOT, scope=SCOPE) -> dict:
                 text = fh.read()
         except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
             continue
-        n = sum(1 for line in text.splitlines() if PATTERN.search(line))
+        n = sum(1 for line in text.splitlines() if lab_specific(line, own))
         if n:
             out[f] = n
     return out
@@ -106,6 +163,10 @@ class TestTheInventoryIsExact:
         A tracked file in scope with one lab line is found and counted; the same line outside
         the scope, in an untracked file and in a vendored file is not."""
         for rel, text in (("modules/x.py", "a = 1\n# the clab-sync job\n"),
+                          # C820's shape: a constant naming a collector's job, as device_logs
+                          # held the lab's, and a query naming one.
+                          ("modules/logs.py", 'JOB = "site_syslog"\nQ = \'{job="site_syslog"}\'\n'
+                                              "S = f'{{job=\"{JOB}\"}}'\n"),
                           ("modules/untracked.py", "# containerlab\n"),
                           ("docs/notes.md", "rcn-lab1\n"),
                           ("static/js/vendor/lib.js", "// vrnetlab\n")):
@@ -113,9 +174,9 @@ class TestTheInventoryIsExact:
             (tmp_path / rel).write_text(text, encoding="utf-8")
         git = ["git", "-C", str(tmp_path)]
         subprocess.run(git + ["init", "-q"], check=True)
-        subprocess.run(git + ["add", "modules/x.py", "docs/notes.md", "static/js/vendor/lib.js"],
-                       check=True)
-        assert scan(root=str(tmp_path)) == {"modules/x.py": 1}
+        subprocess.run(git + ["add", "modules/x.py", "modules/logs.py", "docs/notes.md",
+                              "static/js/vendor/lib.js"], check=True)
+        assert scan(root=str(tmp_path)) == {"modules/x.py": 1, "modules/logs.py": 2}
 
     def test_every_lab_specific_line_is_declared_exactly(self):
         assert problems(scan(), INVENTORY) == []
@@ -142,3 +203,20 @@ class TestTheCheckCanFail:
             assert PATTERN.search(hit), hit
         for miss in ("disclaimer", "clabber", "10.2.55.1", "192.0.2.10", "nmas-device"):
             assert not PATTERN.search(miss), miss
+
+    def test_a_named_job_is_found_in_each_shape_and_a_built_one_is_not(self):
+        """C820: the scan knew no job name, so `JOB = "network_syslog"` in device_logs passed."""
+        own = {"ospf", "ospfv3", "bgp"}
+        for hit in ('JOB = "network_syslog"', "JOB = 'site_syslog'", '{job="site_syslog"}',
+                    'up{job=~"cisco_8000v|cisco_vios_l2", device="r1"}',
+                    'labels = { job = "snmptrapd", host = "$HOSTLABEL" }',
+                    '{job=~\\".*snmptrapd\\", device=~\\".+\\"}',
+                    "{job=`site_syslog`}", 'up{job=~"ospf|lldp"}'):
+            assert names_a_job(hit, own) and lab_specific(hit, own), hit
+        for miss in ('{job=~".+"}', '{job=~".*", device="r1"}', "f'{{job=\"{JOB}\"}}'",
+                     'up{job=~"ospf|ospfv3|bgp"}', 'data-job="{{ job }}"', 'job="", run=None',
+                     "SOME_JOB = 'x'", "the job is measured from Loki"):
+            assert not names_a_job(miss, own), miss
+
+    def test_the_products_own_jobs_come_from_the_targets_it_writes(self):
+        assert product_jobs() == {"ospf", "ospfv3", "bgp"}

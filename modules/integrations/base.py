@@ -23,6 +23,32 @@ from modules.settings_schema import get_setting
 log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 5.0
+#: The longest a service's own words for a refusal are kept (board E3).
+DETAIL_LIMIT = 500
+
+
+def _refusal_words(r) -> str:
+    """The service's own words for a 4xx or 5xx, so a caller can say why: a JSON answer's
+    `error` (Prometheus's form for a query it refused, board E3), else a plain-text answer's
+    first line (Loki's form, C821: "HTTP 400" alone named no reason). An HTML page (a proxy's
+    error page) says nothing a person can act on, and is left out. Masked on the way out, as
+    every answer carrying a service's text is, BEFORE it is cut: a secret cut in two would
+    escape a mask by value. "" when there are none."""
+    from modules.redact import redact_text
+
+    try:
+        body = r.json()
+    except Exception:                                 # noqa: BLE001 - no JSON: its text
+        body = None
+    kind = ((getattr(r, "headers", None) or {}).get("Content-Type") or "").lower()
+    if isinstance(body, dict):
+        words = body.get("error") if isinstance(body.get("error"), str) else ""
+    elif body is None and "html" not in kind:
+        text = getattr(r, "text", "") or ""
+        words = next((line.strip() for line in str(text).splitlines() if line.strip()), "")
+    else:
+        words = ""
+    return redact_text(words)[:DETAIL_LIMIT] if words else ""
 
 
 class IntegrationClient:
@@ -126,16 +152,9 @@ class IntegrationClient:
                                  "credential"}
             if r.status_code >= 400:
                 out = {"ok": False, "error": f"HTTP {r.status_code}", "status": r.status_code}
-                # The service's own words for the failure, where its answer carries an `error`
-                # (Prometheus's for a query it refused, board E3), so a caller can say why.
-                try:
-                    body = r.json()
-                except Exception:                     # noqa: BLE001 - no JSON, no words
-                    body = None
-                if isinstance(body, dict) and isinstance(body.get("error"), str):
-                    # Masked on the way out, as every answer carrying a service's text is.
-                    from modules.redact import redact_text
-                    out["detail"] = redact_text(body["error"][:500])
+                detail = _refusal_words(r)
+                if detail:
+                    out["detail"] = detail
                 return out
             return {"ok": True, "status": r.status_code, "response": r}
         except requests.exceptions.SSLError as exc:

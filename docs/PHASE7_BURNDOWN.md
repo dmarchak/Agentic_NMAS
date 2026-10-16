@@ -73,7 +73,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C931~~ | ~~Seed on a network created on v2~~ **done**, with C943 (see Checked off); W2 section H walks it | | | | |
 | C948 | the Stage 2 redeploy checklist brought to today's rules or retired (the operator's file: "do not edit"); `lab/REDEPLOY.md` is followed meanwhile | the operator's decision | S | — | the operator |
 | ~~C944, C945~~ | ~~the unused `git init`; History's header~~ **done** (see Checked off) | | | | |
-| C957 | History's timeline says "no repository yet" for such a network, as the header now does (C945's sibling) | its test | S | — | — |
+| ~~C957~~ | ~~History's timeline says "no repository yet"~~ **done** (see Checked off) | | | | |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
 | C954 | v2's "stop tracking" for a NetBox removal: build it or retire it (CUTOVER row 60) | the operator's decision, then its test | S–M | — | the operator |
 | ~~C955~~ | ~~Retire's preview counts live approvals only~~ **done** (see Checked off) | | | | |
@@ -95,7 +95,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
 | C342 | the device page's drift: masked diff and three choices | built from its board | M | — | B |
 | ~~C522~~ | ~~the 8 lone (i) cards~~ **done** (see Checked off) | | | | |
-| C820, C821 | the lab's syslog job in product code; an integration's 4xx reason | discovered job, wider scan; the body's first line masked | S each | — | — |
+| ~~C820, C821~~ | ~~the syslog job; an integration's 4xx reason~~ **done** (see Checked off) | | | | |
+| C963, C964 | the heartbeat rules and the device dashboard take the measured syslog job and platforms, not the lab's names (found by C820's wider scan) | each its test; the lab-specifics inventory shrinks | S each | — | — |
 | P7-09 | Criterion 14, the writeup: entries for 7.4 to 7.8, P.11, Show commands, Ask, Logs, DHCP, Update; 7.3 and 7.D closed | an entry per sub-task, forecasts checked | M | — | — |
 | P7-16 (rest) | C705, C765, C176; the Scheduled section's 7.x rows read once | each closed or placed | S | — | — |
 | **C650, during the walks** | each walked screen's fidelity record written from its sitting; `UNCHECKED` shrinks by the walked screens; the rest to the tail | records from W1 to W3 | S per screen | the sittings | W |
@@ -248,6 +249,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C957, C820, C821 done** (B, overnight): the timeline says "No repository yet" by the one
+  `.git` test; the syslog job is measured from Loki, not named in code (the lab-specifics scan
+  widened); a plain-text integration refusal reaches the person masked. C963, C964 (B) into
+  this section; C965 to C968 (C) to the tail.
 - **C522 done** (overnight): every v2 card says "How does this work?" in words once;
   `C503_KNOWN_GAPS` 8 → 0. C962 (UNKNOWN) to the tail.
 - **C940, C955 done** (B, overnight): Retire and Abandon forget the address's SSH host key

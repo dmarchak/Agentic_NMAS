@@ -230,7 +230,13 @@ def _open(list_name, s, row, v, start_day, today, now, mine) -> dict:
         return out
     out["cut_window"] = end - start > WINDOW_DAYS * 86400
     start = max(start, end - WINDOW_DAYS * 86400)
-    q = f"{device_logs.selector(dev, start=start)} !~ `{device_logs.HEARTBEAT_LINE}`"
+    loki = LokiIntegration(list_name=list_name)
+    try:
+        sel = device_logs.selector(dev, start=start, client=loki)
+    except device_logs.NoSyslogJob as exc:
+        out["errors"].append(f"The syslog job could not be found: {exc}")
+        return out
+    q = f"{sel} !~ `{device_logs.HEARTBEAT_LINE}`"
     limit = SEVERITIES[s["sev"]][1]
     if limit < 7:
         q += f' |~ `%[A-Z0-9_]+(?:-[A-Z0-9_]+)*-[0-{limit}]-[A-Z0-9_]+`'
@@ -238,7 +244,6 @@ def _open(list_name, s, row, v, start_day, today, now, mine) -> dict:
         q += f' |= "{s["mn"]}"'
     if s["text"]:
         q += f' |= "{s["text"]}"'
-    loki = LokiIntegration(list_name=list_name)
     r = loki._get("loki/api/v1/query_range", query=q, limit=PAGE,       # noqa: SLF001
                   start=str(int(start * 1e9)), end=str(int(end * 1e9)), direction="backward")
     if not r.get("ok"):

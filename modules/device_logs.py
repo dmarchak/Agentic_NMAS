@@ -26,7 +26,6 @@ import time
 
 log = logging.getLogger(__name__)
 
-JOB = "network_syslog"
 MARKER = "NMAS-HEARTBEAT"
 HEARTBEAT_LINE = r"%HA_EM-\d-LOG: " + re.escape(MARKER) + ": " + re.escape(MARKER)
 #: The window and the page size. A cut list says it is cut.
@@ -56,6 +55,80 @@ def host_pattern(hostname: str) -> str:
     return r"\s" + re.escape(hostname) + r":\s"
 
 
+#: C820: the syslog JOB is MEASURED, never named in the product (a job's name is the log
+#: shipper's configuration's choice, so each network names its own). It is every job whose
+#: lines carry a device's syslog form (`LOGQL_FIELDS`: the device's own name, its timestamp
+#: and a mnemonic) in Loki's last JOB_WINDOW_HOURS: ONE count by job across what Loki holds,
+#: the way F3's builder takes its jobs from Loki rather than from a list (0.12 s on the lab's
+#: Loki, which answered its one syslog job with 3,699 lines in 24 h, measured 2026-10-16).
+#: Asked at most every LABEL_ASK_EVERY seconds for each Loki; a failed ask is not remembered,
+#: and an ask that fails or finds none keeps the jobs last found (a stored answer keeps its
+#: last good value). No setting: the store answers the question, so nothing is kept in step.
+JOB_WINDOW_HOURS = 24
+_JOBS = {}
+
+
+class NoSyslogJob(RuntimeError):
+    """Loki holds no device's syslog line in the window, or could not be asked which job does:
+    its words say which, for the page that could not draw the lines."""
+
+
+def job_query(hours: int = JOB_WINDOW_HOURS) -> str:
+    """The count by job of every line carrying a device's syslog form."""
+    return (f'sum by (job) (count_over_time({{job=~".+"}} |~ `{LOGQL_FIELDS}` '
+            f"[{int(hours)}h]))")
+
+
+def syslog_jobs(client=None, now: float = None) -> list:
+    """The jobs holding the devices' syslog in *client*'s Loki (the installation's by
+    default), sorted. Raises `NoSyslogJob` naming why when none is known. Remembered per Loki
+    (its address) for LABEL_ASK_EVERY seconds."""
+    now = time.time() if now is None else now
+    if client is None:
+        from modules.integrations.loki import LokiIntegration
+
+        client = LokiIntegration()
+    held = _JOBS.get(client.url) or {}
+    if held.get("asked") is not None and now - held["asked"] < LABEL_ASK_EVERY:
+        if held.get("jobs"):
+            return list(held["jobs"])
+        raise NoSyslogJob(held.get("why") or "no syslog job is known")
+    r = client._get("loki/api/v1/query", query=job_query(), time=str(int(now)))  # noqa: SLF001
+    if not r.get("ok"):
+        detail = f" ({r['detail']})" if r.get("detail") else ""
+        why = (f"Loki could not be asked which job holds the devices' syslog: "
+               f"{r.get('error')}{detail}")
+    else:
+        try:
+            rows = (r["response"].json().get("data") or {}).get("result") or []
+        except (ValueError, AttributeError) as exc:
+            rows, why = None, f"Loki's answer on which job holds the devices' syslog could not " \
+                              f"be read: {exc}"
+        if rows is not None:
+            found = sorted({(row.get("metric") or {}).get("job") for row in rows
+                            if isinstance(row, dict) and (row.get("metric") or {}).get("job")})
+            why = (f"no job in Loki holds a device's syslog line (a device's own name, its time "
+                   f"and a mnemonic) in the last {JOB_WINDOW_HOURS} h")
+            if found:
+                _JOBS[client.url] = {"jobs": found, "asked": now, "why": ""}
+                return list(found)
+            if not held.get("jobs"):
+                _JOBS[client.url] = {"jobs": [], "asked": now, "why": why}
+    if held.get("jobs"):
+        log.warning("device_logs: %s; keeping the jobs last found, %s", why, held["jobs"])
+        return list(held["jobs"])
+    raise NoSyslogJob(why)
+
+
+def job_matcher(client=None, now: float = None) -> str:
+    """The stream selector's job matcher for the devices' syslog, as F3's `history_ask.matcher`
+    builds it: an equality for one job, an alternation for several, each value one token.
+    Raises `NoSyslogJob`."""
+    from modules.history_ask import matcher
+
+    return matcher("job", syslog_jobs(client, now=now))
+
+
 #: C722: Alloy labels each line with its `device` (the same pattern as LOGQL_FIELDS, set by
 #: scripts/host-steps/c722-device-label.sh) from the moment that step ran. When that was is
 #: MEASURED, as Loki's first labelled line, and asked again at most this often (seconds).
@@ -72,13 +145,19 @@ def label_since(now: float = None, ask=None):
     if _LABEL["asked"] is not None and now - _LABEL["asked"] < LABEL_ASK_EVERY:
         return _LABEL["since"]
     start, end = int((now - 30 * 86400) * 1e9), int(now * 1e9)
-    query = f'{{job="{JOB}", device=~".+"}}'
+    loki = None
     if ask is None:
         from modules.integrations.loki import LokiIntegration
 
         loki = LokiIntegration()
         if not loki.is_configured():
             return None
+    try:
+        query = f'{{{job_matcher(loki, now=now)}, device=~".+"}}'
+    except NoSyslogJob as exc:
+        log.warning("device_logs: when the device label began could not be asked: %s", exc)
+        return None                           # not remembered: asked again next time
+    if ask is None:
         r = loki._get("loki/api/v1/query_range", query=query, limit=1, start=start,  # noqa: SLF001
                       end=end, direction="forward")
     else:
@@ -97,16 +176,18 @@ def label_since(now: float = None, ask=None):
     return _LABEL["since"]
 
 
-def selector(hostname: str, start: float = None) -> str:
+def selector(hostname: str, start: float = None, client=None) -> str:
     """This device's lines over a window from *start* (epoch seconds). By its `device` label
     when the window starts after the label began (C722); otherwise by the line itself: the
     substring stage first is only for Loki's cost, the anchored regex is the match (a prefix of
-    another name never matches), and it reads labelled and unlabelled lines alike."""
+    another name never matches), and it reads labelled and unlabelled lines alike. The job is
+    *client*'s Loki's syslog job (`syslog_jobs`); raises `NoSyslogJob` when none is known."""
+    job = job_matcher(client)
     if start is not None:
         since = label_since(now=None)
         if since is not None and start >= since:
-            return f'{{job="{JOB}", device="{hostname}"}}'
-    return f'{{job="{JOB}"}} |= "{hostname}:" |~ `{host_pattern(hostname)}`'
+            return f'{{{job}, device="{hostname}"}}'
+    return f'{{{job}}} |= "{hostname}:" |~ `{host_pattern(hostname)}`'
 
 
 def _kind(sev):
@@ -152,7 +233,11 @@ def for_device(dev: dict, *, now: float = None) -> dict:
         return view
     now = now if now is not None else time.time()
     start, end = int((now - WINDOW_HOURS * 3600) * 1e9), int(now * 1e9)
-    sel = selector(host, start=now - WINDOW_HOURS * 3600)
+    try:
+        sel = selector(host, start=now - WINDOW_HOURS * 3600, client=loki)
+    except NoSyslogJob as exc:
+        view["errors"].append(f"The syslog job could not be found: {exc}")
+        return view
 
     def ask(path, query, **extra):
         r = loki._get(path, query=query, **extra)

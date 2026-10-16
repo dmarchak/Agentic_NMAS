@@ -17,6 +17,8 @@ What is held:
   and that its first commit makes it (C945; never "clean"), and its first Seed makes the
   repository (the one init, as every write path does) and commits; nothing reaches the parent;
   a repository git cannot read is said as "could not be read", with git's error (C945);
+  its timeline, on the page and a device's tab, says the same once, naming the records the
+  repository will hold, never "could not be read" (C957);
 - Seed's failed commit, and a status it could not read, are said as failed (a danger card
   naming the git error, HTTP 500), never "Nothing was added".
 """
@@ -209,6 +211,94 @@ class TestANetworkWithNoRepository:
             "template: seed library (")
         assert _sh(old["repo"], "status", "--porcelain")[1] == ""
         assert old["state"]() == old["before"], "the parent repository was written"
+
+
+def _timeline_card(r):
+    """History's timeline card (`templates/v2/_history_timeline.html`)."""
+    m = re.search(r'<section class="card hist-timeline" id="hist-timeline".*?</section>', _flat(r))
+    assert m, _flat(r)[:600]
+    return m.group(0)
+
+
+def _tab(r):
+    """A device's History tab (`templates/v2/_history.html`)."""
+    m = re.search(r'<section class="card history" id="history".*?</section>', _flat(r))
+    assert m, _flat(r)[:600]
+    return m.group(0)
+
+
+#: Every timeline source that reads the network's repository, in `SOURCES`' order: the fleet's
+#: view reads all five; a device's view reads the first three (the other commits and the
+#: baseline decisions are about no one device).
+FLEET_UNBORN = ("the golden history, the intent history, the saves that measured devices, "
+                "the repository&#39;s other commits and the baseline decisions")
+DEVICE_UNBORN = "the golden history, the intent history and the saves that measured devices"
+
+
+@pytest.fixture
+def old_r1(old):
+    (old["data"] / "lists" / "old" / "devices.csv").write_text("hostname,ip\nr1,192.0.2.1\n",
+                                                                encoding="utf-8")
+    return old
+
+
+class TestTheTimelineWithNoRepository:
+    """C957: the timeline said "the golden history could not be read: … is not a git
+    repository (it has no .git)" (and the same for the intent history, the measured saves, the
+    other commits and the baseline decisions) for a network whose first commit has not made its
+    repository yet. Decided by `repo.has_repository`, the header's test (C945)."""
+
+    def test_history_says_no_repository_yet_once_naming_what_it_holds(self, old_r1):
+        r = old_r1["client"].get("/v2/history?list=Old")
+        assert r.status_code == 200
+        card = _timeline_card(r)
+        assert ("No repository yet: the network's first commit makes it. Until then "
+                f"{FLEET_UNBORN} have nothing to show.") in card, card[-1200:]
+        assert card.count("No repository yet") == 1
+        assert "could not be read" not in card and "has no .git" not in card, card[-1200:]
+        assert not (old_r1["repo"] / ".git").exists(), "a read made the repository"
+        assert old_r1["state"]() == old_r1["before"]
+
+    def test_the_timeline_redrawn_alone_says_the_same(self, old_r1):
+        """The card's own route, which a landed record redraws it by."""
+        old_r1["client"].get("/v2/history?list=Old")       # makes Old the active network
+        card = _timeline_card(old_r1["client"].get("/v2/history/timeline?list=Old"))
+        assert f"Until then {FLEET_UNBORN} have nothing to show." in card, card[-1200:]
+        assert "could not be read" not in card
+
+    def test_a_device_s_history_tab_says_it_naming_its_own_records(self, old_r1):
+        r = old_r1["client"].get("/v2/device/r1?list=Old&tab=history")
+        assert r.status_code == 200
+        tab = _tab(r)
+        assert ("No repository yet: the network's first commit makes it. Until then "
+                f"{DEVICE_UNBORN} have nothing to show.") in tab, tab[-1200:]
+        assert "could not be read" not in tab and "has no .git" not in tab, tab[-1200:]
+
+    def test_an_unreadable_repository_keeps_its_errors(self, old_r1):
+        """The control: a `.git` that git cannot read is not "no repository yet"; each source
+        that reads it keeps "could not be read" with git's own error."""
+        (old_r1["repo"] / ".git").write_text("gitdir: ../planted-for-c957\n", encoding="utf-8")
+        own = subprocess.run(["git", "log", "-1"], cwd=str(old_r1["repo"]),
+                             capture_output=True, text=True,
+                             env=dict(os.environ,
+                                      GIT_CEILING_DIRECTORIES=str(old_r1["repo"].parent)))
+        assert own.returncode != 0 and own.stderr.strip(), "git read the planted .git file"
+        import html
+        from modules.redact import redact_text
+        said = html.escape(redact_text(own.stderr.strip().splitlines()[0]), quote=False)
+        card = _timeline_card(old_r1["client"].get("/v2/history?list=Old"))
+        assert "No repository yet" not in card, card[-1200:]
+        for words in ("the golden history could not be read: ",
+                      "the intent history could not be read: ",
+                      "the saves that measured devices could not be read: ",
+                      "the repository&#39;s other commits could not be read: ",
+                      "the baseline decisions could not be read: "):
+            assert words in card, f"{words!r} not said: {card[-1500:]}"
+        assert said in card, f"git's error ({said!r}) not carried"
+        tab = _tab(old_r1["client"].get("/v2/device/r1?list=Old&tab=history"))
+        assert "No repository yet" not in tab
+        assert "the golden history could not be read: " in tab and said in tab
+        assert old_r1["state"]() == old_r1["before"]
 
 
 class TestAFailedSeedIsSaid:

@@ -65,7 +65,9 @@ filtered to the device. It holds every record the tool keeps about the device:
 | cut off | an operation whose process ended mid-run, found when the hold was cleared |
 
 A record that could not be read is said above the timeline: the timeline lacks it, which is
-not the same as nothing having happened.
+not the same as nothing having happened. On a network with no repository yet, the tab says so
+once instead ("No repository yet: the network's first commit makes it"), naming the device's
+records the repository will hold: its golden and intent histories and its measured saves.
 
 Each entry is one line: when, its kind, its device or devices, what, any marks (corrected, acknowledged, crash file, record known
 wrong, failed) and who. Open it for the full record underneath: the reason, each step and its
@@ -107,6 +109,10 @@ foot line says so; with none set, such a range is refused, naming the setting.
 
 The device's syslog for the last 24 hours, from Loki. Heartbeats are folded into a count; an
 error that names the heartbeat is still listed.
+
+Which of Loki's jobs holds the syslog is read from Loki, never set: every job whose lines carry
+a device's syslog form (its own name, its time and a mnemonic) in the last 24 hours, asked at
+most once an hour. When no job holds one, the tab says so in place of the lines.
 
 ## NetBox {#netbox-tab}
 

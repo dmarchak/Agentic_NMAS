@@ -266,6 +266,14 @@ def pinned_env(repo: str, env=None) -> dict:
     return out
 
 
+def has_repository(repo: str) -> bool:
+    """Whether *repo* is a repository yet: its folder holds a ``.git`` (a folder, or the file
+    a worktree has). THE test a reader uses to say "no repository yet: the network's first
+    commit makes it" (C945, C957), and `run_git`'s when it names a failure: decided by the
+    folder, never by git's words, which differ between versions (CI #853)."""
+    return os.path.exists(os.path.join(repo, ".git"))
+
+
 def run_git(repo: str, *args, env=None, timeout=GIT_TIMEOUT, text=True, input=None):
     """THE git subprocess on a list's repository: ``git -C <repo> <args>`` pinned to *repo*
     (`pinned_env`), returning the `subprocess.CompletedProcess`. Every git call on a list's
@@ -277,7 +285,7 @@ def run_git(repo: str, *args, env=None, timeout=GIT_TIMEOUT, text=True, input=No
     repository"."""
     proc = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=text,
                           input=input, timeout=timeout, env=pinned_env(repo, env))
-    if proc.returncode != 0 and not os.path.exists(os.path.join(repo, ".git")):
+    if proc.returncode != 0 and not has_repository(repo):
         said = f"{repo} is not a git repository (it has no .git): "
         proc.stderr = (said if text else said.encode()) + (proc.stderr or ("" if text else b""))
     return proc

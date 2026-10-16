@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `8ef3cab2e2e7d2d66ddfdec1b97aa52a7ac0648085f47daeefff3abef5a9a19d`
+Templates sha256: `225bbe33a2f41a8cebfa26634216b245488d6af7dcf5a6e540363df9feb14050`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -50,6 +50,16 @@ board or in a shot: board D draws the remote line in sync and committed. The hea
 from the template as it was and as it is, in five states (in sync and clean, 7 and 2 paths
 uncommitted, no remote and clean, ahead with a failed push): every byte the same. No region's
 verdict changed.
+
+Compared again 2026-10-16 (C957) after `_timeline.html` gained one state: a network with no
+repository yet draws one muted notice above the rows, "No repository yet: the network's first
+commit makes it. Until then the golden history, the intent history, the saves that measured
+devices, the repository's other commits and the baseline decisions have nothing to show.", in
+place of five warnings that each history "could not be read". The state is on no board or
+shot: board D draws a network with a repository. The rows rendered from `timeline_rows` as it
+was and as it is, in five states each with and without a device (the layout test's widest
+timeline, a device's restart row, errors with a cut list, empty, empty with no repository
+key): every byte the same. No region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

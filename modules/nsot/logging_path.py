@@ -155,8 +155,13 @@ def refusal(hosts: list) -> str:
 
 def _ask(start_ns: int, end_ns: int, tok: str, limit: int):
     """``(lines, why)``: ``[(ns, line)]`` holding *tok* in the network's syslog, or why not."""
-    from modules.device_logs import JOB
-    r = _loki()._get("loki/api/v1/query_range", query=f'{{job="{JOB}"}} |= "{tok}"',
+    from modules.device_logs import NoSyslogJob, job_matcher
+    loki = _loki()
+    try:
+        job = job_matcher(loki)
+    except NoSyslogJob as exc:
+        return None, f"the syslog job could not be found: {exc}"
+    r = loki._get("loki/api/v1/query_range", query=f'{{{job}}} |= "{tok}"',
                      start=start_ns, end=end_ns, limit=limit, direction="forward")
     if not r.get("ok"):
         return None, f"Loki could not be asked: {r.get('error')}"
@@ -240,11 +245,15 @@ LAST_LINE_HOURS = 24
 def last_lines(hosts: list, *, now: float = None, ask=None) -> dict:
     """``{host: iso or ""}``: when Loki last received a line from each of *hosts* (the first
     `LAST_LINE_FOR`), within `LAST_LINE_HOURS`; ``""`` when none, absent when not read."""
-    from modules.device_logs import selector
+    from modules.device_logs import NoSyslogJob, selector
     now = time.time() if now is None else now
     out = {}
     for host in hosts[:LAST_LINE_FOR]:
-        query = selector(host, start=now - LAST_LINE_HOURS * 3600)
+        try:
+            query = selector(host, start=now - LAST_LINE_HOURS * 3600, client=_loki())
+        except NoSyslogJob as exc:
+            log.warning("logging path: no host's last line could be asked: %s", exc)
+            return out                                # absent: not read
         if ask is not None:
             r = ask(query)
         else:

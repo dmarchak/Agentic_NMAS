@@ -182,7 +182,7 @@ def _json(client, path: str, **params) -> tuple:
     """``(data, error)`` from one GET through the integration client."""
     r = client._get(path, **params)                  # noqa: SLF001 (the client's one GET)
     if not r.get("ok"):
-        return None, _loki_words(r.get("error") or "no answer", client)
+        return None, _loki_words(r.get("error") or "no answer", client, r.get("detail") or "")
     try:
         body = r["response"].json()
     except ValueError as exc:
@@ -196,8 +196,12 @@ def wait(lim: dict) -> float:
     return ((lim.get("query_timeout") or {}).get("seconds") or (DEFAULT_WAIT - 5)) + 5
 
 
-def _loki_words(error: str, client) -> str:
-    """Loki's failure in the board's words: a timeout names the wait and where it came from."""
+def _loki_words(error: str, client, detail: str = "") -> str:
+    """Loki's failure in the board's words: its own reason where it gave one (the first line of
+    its plain-text answer, masked, C821; Prometheus's `_words` the same); a timeout names the
+    wait and where it came from."""
+    if detail:
+        return f"Loki refused the query: {error}: {detail}"
     if error.startswith("Timed out"):
         return (f"Loki did not answer within {duration_words(max(client.timeout - 5, 1))} "
                 "(its query_timeout; Mercury waits 5 s more)")

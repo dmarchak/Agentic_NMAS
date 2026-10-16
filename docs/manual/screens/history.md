@@ -63,7 +63,11 @@ Filters:
 **Every kind** and **Commits only** are one click away. Each filter is part of the page's
 address, so a view is a link you can share. A long list shows the newest and says how many there
 are, with **Show more**. A record store that could not be read is said above the list. A
-commit whose record is known to be wrong says so in its row.
+network with no repository yet says so once above the list ("No repository yet: the network's
+first commit makes it"), naming the records the repository will hold (the golden and intent
+histories, the measured saves, the other commits, the baseline decisions), never "could not be
+read"; a repository git cannot read keeps each of those as could not be read, with git's own
+error. A commit whose record is known to be wrong says so in its row.
 
 **Who changed it, and can it be trusted.** Under the filters, one line counts the commits in the
 window the filters draw by how their person was identified: signed in through the access proxy

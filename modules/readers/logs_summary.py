@@ -52,15 +52,18 @@ def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
-def selector() -> str:
+def selector(loki=None) -> str:
+    """Every device's syslog but the heartbeats, from *loki*'s syslog job (measured from that
+    Loki, `device_logs.syslog_jobs`, C820). Raises `device_logs.NoSyslogJob` (a RuntimeError,
+    the reader's failure) when none is known."""
     from modules import device_logs
-    return f'{{job="{device_logs.JOB}"}} !~ `{device_logs.HEARTBEAT_LINE}`'
+    return f'{{{_job(loki)}}} !~ `{device_logs.HEARTBEAT_LINE}`'
 
 
-def count_query(seconds: int) -> str:
+def count_query(seconds: int, loki=None) -> str:
     """Every line in the *seconds* before the query's time, by device and mnemonic."""
     from modules import device_logs
-    return (f"sum by (dev, mn) (count_over_time({selector()} | regexp "
+    return (f"sum by (dev, mn) (count_over_time({selector(loki)} | regexp "
             f"`{device_logs.LOGQL_FIELDS}` [{int(seconds)}s]))")
 
 
@@ -111,7 +114,7 @@ def _first_day(loki, now: float) -> str:
     end, first = now, None
     while end > floor:
         start = max(end - WINDOW_DAYS * 86400, floor)
-        got = loki.ask("loki/api/v1/query_range", query=f'{{job="{_job()}"}}', limit=1,
+        got = loki.ask("loki/api/v1/query_range", query=f'{{{_job(loki)}}}', limit=1,
                        start=str(int(start * 1e9)), end=str(int(end * 1e9)),
                        direction="forward")
         stamps = [int(v[0]) for s in got for v in s.get("values") or []]
@@ -122,9 +125,11 @@ def _first_day(loki, now: float) -> str:
     return _day(first / 1e9) if first else ""
 
 
-def _job() -> str:
+def _job(loki=None) -> str:
+    """The syslog job's matcher for *loki* (a `_Loki`: its client's Loki; anything else, as a
+    test's stand-in, the installation's)."""
     from modules import device_logs
-    return device_logs.JOB
+    return device_logs.job_matcher(loki.client if isinstance(loki, _Loki) else None)
 
 
 _LINE_DEVICE = None
@@ -161,7 +166,7 @@ def read(list_name: str = "", loki=None, clock=time.time, previous=None,
     first_day = previous.get("first_day") or _first_day(loki, now)
 
     def day_counts(end: float, seconds: int):
-        return counts(loki.ask("loki/api/v1/query", query=count_query(seconds),
+        return counts(loki.ask("loki/api/v1/query", query=count_query(seconds, loki),
                                time=str(int(end))))
 
     midnight = now - now % 86400
@@ -180,7 +185,7 @@ def read(list_name: str = "", loki=None, clock=time.time, previous=None,
     # Each device's newest line PER SEVERITY, so the view's Newest follows the severity asked.
     newest = {d: dict(v) for d, v in (previous.get("newest") or {}).items() if isinstance(v, dict)}
     since = (previous.get("read_at_ts") or (now - 86400))
-    lines = loki.ask("loki/api/v1/query_range", query=selector(), limit=NEWEST_LIMIT,
+    lines = loki.ask("loki/api/v1/query_range", query=selector(loki), limit=NEWEST_LIMIT,
                      start=str(int(since * 1e9)), end=str(int(now * 1e9)), direction="backward")
     for stream in lines:
         for ts, line in stream.get("values") or []:

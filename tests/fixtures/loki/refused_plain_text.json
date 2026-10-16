@@ -1,0 +1,7 @@
+{
+  "what": "The lab's Loki refusing a query whose line filter is a regex that never closes (it carries a PLANTED community string, never a real one), read-only through scripts/nmas-host on 2026-10-16 07:17 UTC: HTTP 400, its reason as plain text, one line, no trailing newline.",
+  "query": "{job=~\".+\"} |~ `(snmp-server community PlantedC0mmunity0nTheWire RO`",
+  "status": 400,
+  "content_type": "text/plain; charset=utf-8",
+  "body": "parse error : stage '|~ \"(snmp-server community PlantedC0mmunity0nTheWire RO\"' : error parsing regexp: missing closing ): `(snmp-server community PlantedC0mmunity0nTheWire RO`"
+}
