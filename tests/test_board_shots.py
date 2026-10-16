@@ -1,7 +1,8 @@
 """Board fidelity shots (C650; the operator, 2026-10-10: "a screenshot of the page next to the
 board, compared region by region"). Runs only when asked: `NMAS_BOARD_SHOTS=<out folder>` and
 `NMAS_BOARDS_DIR=<a copy of the mockups canvas's project/ folder>` (the Artifact tool's read of
-the canvas saves it). Otherwise every test here skips, and the suite never needs the canvas.
+the canvas saves it), with the first canvas's project/ folder ("NMAS redesign mockups") copied
+into its `redesign/`. Otherwise every test here skips, and the suite never needs the canvas.
 
 For each board-built screen in `SCREENS`: the board's own `.dc.html` and the page as built, fed
 from real captures, rendered in the same headless Firefox at the board's width and at phone
@@ -706,3 +707,1317 @@ def test_decline(tmp_path, monkeypatch):
                      "swap: 'outerHTML'}); return 1", served.url(card))
                 b.wait_for("return !!document.querySelector('#decline-card .op-confirm')")
                 _full(b, os.path.join(OUT, f"decline-card-page-{width}.png"))
+
+
+# The screens built before the fidelity step (C650's UNCHECKED) that the operator walked in W1
+# (2026-10-16), compared in groups. A board on the first canvas ("NMAS redesign mockups", the
+# 2026-09-29/30 sign-offs) is read from the boards folder's `redesign/` (its Main, Logs and
+# MonitoringQuery share names with the second canvas's).
+
+# --- C650 group A: devices, bulk_intent ---
+
+def _group_a_boards(name, board_file, widths):
+    """A board alone at each width (the page is shot by `_group_a_page`)."""
+    from tests.browser import Browser
+
+    os.makedirs(OUT, exist_ok=True)
+    with _Boards() as boards:
+        for width, scale in widths:
+            prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+            with Browser(prefs=prefs) as b:
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 1000})
+                b.go(boards.url(board_file))
+                _full(b, os.path.join(OUT, f"{name}-board-{width}.png"))
+
+
+def _group_a_page(name, served, path, widths, act=None):
+    """The page at each width, *act(b)* run on it first (a click, an htmx swap), as `_shoot`
+    holds a phone's page to its column."""
+    from tests.browser import Browser
+
+    os.makedirs(OUT, exist_ok=True)
+    settled = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
+    for width, scale in widths:
+        prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+        with Browser(prefs=prefs) as b:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 1000})
+            b.go(served.url(path))
+            b.wait_for("return !!window.Alpine && " + settled, 15)
+            if width < 480:
+                b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
+                     f"document.body.style.maxWidth = '{width}px'; return 1")
+            if act:
+                act(b)
+                b.wait_for("return " + settled, 15)
+            _full(b, os.path.join(OUT, f"{name}-page-{width}.png"))
+            if width < 480:
+                png = b._call("GET", f"/session/{b.session}/screenshot")
+                with open(os.path.join(OUT, f"{name}-page-{width}-first.png"), "wb") as fh:
+                    fh.write(base64.b64decode(png))
+
+
+def test_devices(lab, monkeypatch):            # noqa: F811 (Save's lab, imported above)
+    """Devices (NSOT_GUI_BRIEF 13; the selection bar, Actions and Startup column from 7.4's
+    board A, C593) beside `FleetSelect.dc.html` (1440) and the first canvas's
+    `redesign/Devices.dc.html` (1440) and `redesign/DevicesPhone.dc.html` (390), on Save's lab
+    (tests/test_save_v2.py: r2's real capture as its golden, r3 answering and not in the
+    manifest, r4 not answering, s9 with no driver; the hourly startup check read r2 not saved
+    and r3 saved). The page as it opens, and with r2 and r3 ticked and Actions open."""
+    from tests import browser
+    from tests.test_save_v2 import _startup_check
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules.nsot import listref
+
+    monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+    _startup_check(lab, [{"list": "Lab", "device": "r2", "state": "not_persisted",
+                          "detail": "the startup config does not carry username nmas"},
+                         {"list": "Lab", "device": "r3", "state": "persisted"}])
+    widths = ((1440, 1.0), (1280, 1.0), (390, 2.0))
+    _group_a_boards("devices-fleetselect", "FleetSelect.dc.html", ((1440, 1.0), (1280, 1.0)))
+    _group_a_boards("devices-redesign", "redesign/Devices.dc.html", ((1440, 1.0),))
+    _group_a_boards("devices-phone", "redesign/DevicesPhone.dc.html", ((390, 2.0),))
+
+    def tick_and_open(b):
+        for host in ("r2", "r3"):
+            b.click(f"#dev-{host}")
+        b.wait_for("return document.querySelector('#dev-bar strong').textContent "
+                   "=== '2 selected'", 5)
+        b.click('#dev-bar button[aria-haspopup="menu"]')
+        b.wait_for("var m=document.querySelector('#dev-bar [role=menu]'); "
+                   "return m && m.offsetParent", 5)
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _group_a_page("devices", served, "/v2/devices", widths)
+        _group_a_page("devices-selected", served, "/v2/devices", widths, act=tick_and_open)
+
+
+def test_bulk_intent(tmp_path, monkeypatch):
+    """Devices › Change a setting beside `BulkIntent.dc.html` (board D, 1440), on
+    test_bulk_intent's lab (four devices' real fleet intent, the real render with a stub secret
+    lookup; its fixture's own lines, inline here because Save's `lab` holds the name): the
+    change as the Actions menu opens it for s1, s2 and r1 with tests/test_bulk_intent_v2.py's
+    setting, its preview (s2 drifted, so refused naming both values), and the commit's result,
+    each reached by its own button."""
+    import subprocess
+
+    from tests import browser
+    from tests import test_bulk_intent as T
+    from tests.test_bulk_intent_v2 import FLOW, KEPT
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from urllib.parse import urlencode
+
+    from modules.nsot import hostvars, repo as R
+
+    monkeypatch.setattr("modules.settings_schema.get_setting",
+                        lambda key, default=None: {
+                            "nsot_git_author_name": "NMAS",
+                            "nsot_git_author_email": "nmas@localhost",
+                            "nsot_device_tag_retention": 50}.get(key, default))
+    list_dir = tmp_path / "lab"
+    list_dir.mkdir()
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+    monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda c: None)
+    repo = str(list_dir / "config_repo")
+    R.init_repo(repo)
+    for name in ("s1", "s2", "r1", "r3"):
+        hostvars.write_committed(repo, T._old_shape_intent(name))
+    R.save_host_vars("Lab", ["s1", "s2", "r1", "r3"], message="host_vars: seed")
+    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+    monkeypatch.setattr("modules.device.get_device_lists",
+                        lambda: [{"name": "Lab", "filename": "lab"}])
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: str(name) == "Lab")
+    monkeypatch.setattr("routes.templatize._bulk_render_and_eligible",
+                        lambda list_name, repo: (T._render, None))
+    doc = hostvars.read_committed(repo, "s2")
+    doc["logging"]["settings"] = ["trap errors"] + T.OLD_SETTINGS[1:]
+    hostvars.write_committed(repo, doc)
+    R.save_host_vars("Lab", ["s2"], message="host_vars: s2 drift")
+    before = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True,
+                            text=True).stdout.strip()
+    path = "/v2/devices/change?" + urlencode(
+        [("list", "Lab"), ("device", "s1"), ("device", "s2"), ("device", "r1"),
+         ("summary", "drop the source interface"), ("path", "logging.settings"),
+         ("before", FLOW), ("after", KEPT)])
+    widths = ((1440, 1.0), (1280, 1.0), (390, 2.0))
+    _group_a_boards("bulk-intent", "BulkIntent.dc.html", ((1440, 1.0),))
+
+    def preview(b):
+        b.click('#bulk-card button[data-op="bulk-intent"][type="submit"]')
+        b.wait_for("var c=document.getElementById('bulk-card'); "
+                   "return c && c.querySelector('[data-keep=bi-refused]')", 15)
+
+    def opened(b):
+        preview(b)
+        b.js("document.querySelectorAll('#bulk-card details').forEach("
+             "function (d) { d.open = true; }); return 1")
+
+    def committed(b):
+        preview(b)
+        b.click('#bulk-card form[action$="/apply"] button[data-op="bulk-intent"]')
+        b.wait_for("var c=document.getElementById('bulk-card'); "
+                   "return c && c.textContent.indexOf('Committed') >= 0", 15)
+        subprocess.run(["git", "-C", repo, "reset", "-q", "--hard", before], check=True)
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _group_a_page("bulk-intent-change", served, path, widths)
+        _group_a_page("bulk-intent-preview", served, path, widths, act=preview)
+        _group_a_page("bulk-intent-opened", served, path, ((1440, 1.0), (390, 2.0)), act=opened)
+        _group_a_page("bulk-intent-result", served, path, ((1440, 1.0), (390, 2.0)),
+                      act=committed)
+
+
+# --- C650 group B: device ---
+
+#: htmx at rest: a swapped-in control binds while it settles (the device-action tests' rule).
+_DEVICE_SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
+_DEVICE_CARD = "document.getElementById('device-op')"
+_DEVICE_WIDTHS = ((1440, 1.0), (1280, 1.0), (390, 2.0))
+
+
+def _device_fx(fixture, *args):
+    """A device-action test's fixture, built by calling it: imported as a fixture its `lab`
+    would shadow this file's (Save's)."""
+    return fixture._get_wrapped_function()(*args)
+
+
+def _device_boards(shots):
+    """Each (shot name, board file, width, scale): the board alone, at its own width."""
+    from tests.browser import Browser
+
+    os.makedirs(OUT, exist_ok=True)
+    with _Boards() as boards:
+        for name, board_file, width, scale in shots:
+            prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+            with Browser(prefs=prefs) as b:
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 1000})
+                b.go(boards.url(board_file))
+                _full(b, os.path.join(OUT, f"{name}-board-{width}.png"))
+
+
+class _DevicePage:
+    """One browser at one width on a device page: the page, then each action's card opened as
+    its control opens it (a click on the control, or the control's own htmx request), each
+    state shot whole; at phone width its first screen too."""
+
+    def __init__(self, served, width, scale):
+        self.served, self.width, self.scale = served, width, scale
+
+    def __enter__(self):
+        from tests.browser import Browser
+
+        prefs = {"layout.css.devPixelsPerPx": str(self.scale)} if self.scale != 1.0 else {}
+        self.cm = Browser(prefs=prefs)
+        self.b = self.cm.__enter__()
+        self.b._call("POST", f"/session/{self.b.session}/window/rect",
+                     {"width": self.width, "height": 1000})
+        return self
+
+    def __exit__(self, *exc):
+        from tests import browser
+        try:
+            self.b.go("about:blank")
+            browser.close_socketio_sessions()
+        finally:
+            self.cm.__exit__(*exc)
+
+    def open(self, path):
+        b = self.b
+        b.go(self.served.url(path))
+        if self.width < 480:
+            b.js(f"document.documentElement.style.maxWidth = '{self.width}px'; "
+                 f"document.body.style.maxWidth = '{self.width}px'; return 1")
+        b.wait_for("return !!window.Alpine && window.NMAS && "
+                   "NMAS.live().state === 'connected' && " + _DEVICE_SETTLED, 20)
+
+    def until(self, cond, timeout=30):
+        self.b.wait_for(f"return ({cond}) && {_DEVICE_SETTLED}", timeout)
+
+    def swap(self, url, until, method="GET", values=None, timeout=30):
+        """The control's own request into the tab's place (`#tab-body`), as its hx-get does."""
+        self.b.js("var t = document.getElementById('tab-body'); var m = "
+                  "document.createElement('i'); m.id = 'shot-marker'; t.appendChild(m); "
+                  "htmx.ajax(arguments[0], arguments[1], {target: '#tab-body', swap: "
+                  "'innerHTML', values: arguments[2] || {}}); return 1", method, url, values)
+        self.until(f"!document.getElementById('shot-marker') && ({until})", timeout)
+
+    def click(self, css, until, timeout=30):
+        self.b.js("var e = document.querySelector(arguments[0]); e.scrollIntoView("
+                  "{block: 'center'}); e.click(); return 1", css)
+        self.until(until, timeout)
+
+    def menu(self):
+        self.click('.page-actions button[aria-haspopup="menu"]',
+                   "(function () { var m = document.querySelector('.page-actions [role=menu]');"
+                   " return m && m.offsetParent !== null; })()", 10)
+
+    def type(self, css, value, until, timeout=30):
+        self.b.js("var i = document.querySelector(arguments[0]); i.value = arguments[1]; "
+                  "i.dispatchEvent(new Event('input', {bubbles: true})); "
+                  "i.dispatchEvent(new Event('change', {bubbles: true})); return 1", css, value)
+        self.until(until, timeout)
+
+    def shot(self, name):
+        b = self.b
+        b.js("window.scrollTo(0, 0); return 1")
+        _full(b, os.path.join(OUT, f"{name}-page-{self.width}.png"))
+        if self.width < 480:
+            png = b._call("GET", f"/session/{b.session}/screenshot")
+            with open(os.path.join(OUT, f"{name}-page-{self.width}-first.png"), "wb") as fh:
+                fh.write(base64.b64decode(png))
+
+
+def test_device_page(tmp_path, monkeypatch):
+    """The device page's shell and Actions menu (redesign `Device`, 1440; `DevicePhone`, 390;
+    the manual's board 7, `ActionsMenu`) and Capture (boards 1, 2 and 4), on test_capture's
+    lab: r2's REAL configuration and committed intent, the device read replaced by r2 with
+    `load-interval 30` on Gi2 (tests/test_device_capture_v2.py's lab and `_broken`). The card
+    opened from the menu's row, the read run, the preview arriving by the job's announcement,
+    the confirm clicked; then r2 moved before a confirm."""
+    from tests import browser
+    from tests import test_device_capture_v2 as T
+    from tests.test_intent_match import _broken
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab = _device_fx(T.lab, tmp_path, monkeypatch)
+    lab["running"]["r2"] = _broken(lab["captured"])
+    _device_boards([("device", "redesign/Device.dc.html", 1440, 1.0),
+                    ("device", "redesign/DevicePhone.dc.html", 390, 2.0),
+                    ("device-menu", "ActionsMenu.dc.html", 1440, 1.0),
+                    ("device-capture", "DevCapturePreview.dc.html", 1440, 1.0),
+                    ("device-capture", "DevCapturePhone.dc.html", 390, 2.0),
+                    ("device-capture-result", "DevCaptureResult.dc.html", 1440, 1.0)])
+    ready = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('.op-confirm')"
+    import app as A
+    with browser.Served(A.app) as served:
+        for width, scale in _DEVICE_WIDTHS:
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r2")
+                p.shot("device")
+                p.menu()
+                p.shot("device-menu")
+                p.click('.page-actions a[data-op="capture"]', ready, 60)
+                p.shot("device-capture")
+        # The result, then r2 moving between a preview and its confirm (the board's second
+        # card): the test's own move, load-interval 30 to 60.
+        moved = _broken(lab["captured"]).replace("load-interval 30", "load-interval 60")
+        for width, scale in ((1440, 1.0), (390, 2.0)):
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r2")
+                p.swap("/v2/device/r2/capture?back=overview", ready, timeout=60)
+                p.click("#device-op .op-confirm",
+                        f"{_DEVICE_CARD} && /op-ok/.test({_DEVICE_CARD}.className)")
+                p.shot("device-capture-result")
+                if width == 1440:
+                    lab["running"]["r2"] = moved
+                    p.swap("/v2/device/r2/capture?back=overview", ready, timeout=60)
+                    lab["running"]["r2"] = moved.replace("load-interval 60", "load-interval 90")
+                    p.click("#device-op .op-confirm",
+                            f"{_DEVICE_CARD} && /op-warn/.test({_DEVICE_CARD}.className)")
+                    p.shot("device-capture-moved")
+
+
+def test_device_deploy(tmp_path, monkeypatch):
+    """Plan a deploy… (boards 5 and 6, and C506's `DeployExpected`) on the deploy tests' lab
+    (tests/test_device_deploy_v2.py's `deploy`: r2's real capture, its golden lacking
+    `lldp run` and carrying `load-interval 30`, its intent shutting Gi3), the device path spied
+    as those tests spy it and held until the running card is shot: the card with the residue
+    ticked and its reason, the dangerous line waiting on its own; then given, confirmed, the
+    one stepper running, the result; and a failed verify rolled back."""
+    import threading
+
+    from tests import browser
+    from tests import test_device_deploy_v2 as D
+    from tests import test_profile_apply as P
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab = _device_fx(D.deploy, _device_fx(P.lab, monkeypatch, tmp_path), monkeypatch)
+    sent = []
+    D._spy(monkeypatch, sent_hash=sent)
+    import routes.deploy as rd
+    gate = {"open": threading.Event()}
+
+    def held(spy):
+        def one(*a, **k):
+            gate["open"].wait(60)
+            return spy(*a, **k)
+        return one
+
+    monkeypatch.setattr(rd, "_deploy_one", held(rd._deploy_one))
+    _r, plain = D._get(lab, "/v2/device/r2/deploy?" + D._reasons()[1:])
+    rid = D._residue_id(plain)
+    from urllib.parse import quote
+    ticked = f"/v2/device/r2/deploy?back=overview&rm={quote(rid)}&why::{quote(rid)}=" \
+             "left+over+from+the+old+design"
+    _r, card = D._get(lab, ticked + D._reasons())
+    sent.append(D._vals(card)["command_hash"])
+    _device_boards([("device-deploy", "DevDeployPreview.dc.html", 1440, 1.0),
+                    ("device-deploy-expected", "DeployExpected.dc.html", 1440, 1.0),
+                    ("device-deploy-result", "DevDeployResult.dc.html", 1440, 1.0)])
+    stepper = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('[data-run-stepper]')"
+    confirm = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('.op-confirm')"
+    import app as A
+    with browser.Served(A.app) as served:
+        for width, scale in _DEVICE_WIDTHS:
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r2")
+                p.swap(ticked, f"{_DEVICE_CARD} && "
+                               f"{_DEVICE_CARD}.querySelector('input[name=\"dz::0\"]')")
+                p.shot("device-deploy")
+                if width == 1280:
+                    continue
+                p.swap(ticked + D._reasons(), confirm)
+                p.shot("device-deploy-ready")
+                gate["open"] = threading.Event()
+                p.click("#device-op .op-confirm", stepper)
+                p.shot("device-deploy-running")
+                gate["open"].set()
+                p.until(f"{_DEVICE_CARD} && /op-ok/.test({_DEVICE_CARD}.className)", 30)
+                p.shot("device-deploy-result")
+        D._spy(monkeypatch, outcome="failed", rollback={
+            "state": "restored",
+            "detail": "the rollback undid what landed and read r2 back as it was"})
+        with _DevicePage(served, 1440, 1.0) as p:
+            p.open("/v2/device/r2")
+            p.swap(ticked + D._reasons(), confirm)
+            p.click("#device-op .op-confirm",
+                    f"{_DEVICE_CARD} && /Rolled back/.test({_DEVICE_CARD}.textContent)")
+            p.shot("device-deploy-rolledback")
+
+
+def test_device_rotate_persist(tmp_path, monkeypatch):
+    """Rotate credential… (board 3) and Persist on test_persist_screen's lab with the rotate
+    tests' fakes of the device-facing calls (tests/test_device_rotate_v2.py's `rot`): the card
+    while another person's deploy holds r2 (its check failing by name), the same card once the
+    hold is released (redrawn by the release's announcement), the result; Persist's card and
+    its result. Persist's only board is the first canvas's `PersistRunningHelp`."""
+    from tests import browser
+    from tests import test_device_rotate_v2 as RV
+    from tests import test_persist_screen as PS
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules.nsot import device_ops
+    _device_fx(RV.rot, _device_fx(PS.lab, tmp_path, monkeypatch), monkeypatch)
+    _device_boards([("device-rotate-held", "DevRotateHeld.dc.html", 1440, 1.0),
+                    ("device-persist", "redesign/PersistRunningHelp.dc.html", 1440, 1.0)])
+    checks = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('.op-gates')"
+    ready = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('.op-confirm')"
+    ok = f"{_DEVICE_CARD} && /op-(ok|warn|danger)/.test({_DEVICE_CARD}.className)"
+    import app as A
+    with browser.Served(A.app) as served:
+        for width, scale in ((1440, 1.0), (390, 2.0)):
+            with _DevicePage(served, width, scale) as p:
+                device_ops.acquire("Lab", "r2", "deploy", "alex@example.invalid")
+                try:
+                    p.open("/v2/device/r2")
+                    p.swap("/v2/device/r2/rotate?back=overview", checks)
+                    p.shot("device-rotate-held")
+                finally:
+                    device_ops.release("Lab", "r2")
+                p.until(ready, 30)
+                p.shot("device-rotate")
+                p.click("#device-op .op-confirm", ok)
+                p.shot("device-rotate-result")
+                p.swap("/v2/device/r2/persist?back=overview", ready)
+                p.shot("device-persist")
+                p.click("#device-op .op-confirm", f"{_DEVICE_CARD} && "
+                        f"/Recorded/.test({_DEVICE_CARD}.textContent)")
+                p.shot("device-persist-result")
+
+
+def test_device_seed(tmp_path, monkeypatch):
+    """Seed intent… (board 8) on the seed tests' lab (tests/test_device_seed_v2.py's `lab`:
+    r2's real golden, its intent only the bootstrap block): the card from the menu's row at
+    each width, then the confirm and its result in place."""
+    from tests import browser
+    from tests import test_device_seed_v2 as S
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    _device_fx(S.lab, tmp_path, monkeypatch)
+    _device_boards([("device-seed", "DevSeed.dc.html", 1440, 1.0)])
+    ready = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('.op-confirm')"
+    import app as A
+    with browser.Served(A.app) as served:
+        for width, scale in _DEVICE_WIDTHS:
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r2")
+                p.menu()
+                p.shot("device-seed-menu")
+                p.click('.page-actions a[data-op="seed"]', ready)
+                p.shot("device-seed")
+                if width == 390:
+                    p.click("#device-op .op-confirm", f"{_DEVICE_CARD} && "
+                            f"/Open in History/.test({_DEVICE_CARD}.textContent)")
+                    p.shot("device-seed-result")
+
+
+def test_device_restore(tmp_path, monkeypatch):
+    """Restore from… (boards 9 and 10) on the restore tests' history (tests/
+    test_device_restore_v2.py's `history`: three moments of r2, the middle one shutting Gi3),
+    the device path spied and held until the running card is shot: the chooser, the middle
+    moment's preview waiting on its reason, the moment before onboarding, the confirm, the
+    result; and a program that moved (the test's own changed hash) refused."""
+    import threading
+
+    from tests import browser
+    from tests import test_device_restore_v2 as RS
+    from tests import test_profile_apply as P
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules.nsot.repo import git
+    hist = _device_fx(RS.history, _device_fx(P.lab, monkeypatch, tmp_path), monkeypatch)
+    RS._spy(monkeypatch)
+    import routes.deploy as rd
+    gate = {"open": threading.Event()}
+    spy = rd._deploy_one
+
+    def one(*a, **k):
+        gate["open"].wait(60)
+        return spy(*a, **k)
+
+    monkeypatch.setattr(rd, "_deploy_one", one)
+    first = git(hist["repo"], "tag", "--list", "golden/r2/*", "--sort=creatordate")[1].split()[0]
+    _device_boards([("device-restore", "DevRestore.dc.html", 1440, 1.0),
+                    ("device-restore-result", "DevRestoreResult.dc.html", 1440, 1.0)])
+    card = _DEVICE_CARD
+    preview = f"/v2/device/r2/restore/preview?back=overview&moment={hist['middle']}"
+    import app as A
+    with browser.Served(A.app) as served:
+        for width, scale in _DEVICE_WIDTHS:
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r2")
+                p.swap("/v2/device/r2/restore?back=overview",
+                       f"{card} && {card}.querySelector('input[name=chosen]')")
+                p.shot("device-restore-choose")
+                p.b.js("Array.prototype.filter.call(document.querySelectorAll('#device-op "
+                       "button'), function (x) { return /^Preview /.test(x.textContent.trim()); "
+                       "})[0].click(); return 1")
+                p.until(f"{card} && {card}.querySelector('input[name=\"dz::0\"]')")
+                p.shot("device-restore")
+                if width == 1280:
+                    continue
+                p.swap(f"/v2/device/r2/restore/preview?back=overview&moment={first}",
+                       f"{card} && /onboard/i.test({card}.textContent)")
+                p.shot("device-restore-before")
+                p.swap(preview + RS._reason(), f"{card} && {card}.querySelector('.op-confirm')")
+                gate["open"] = threading.Event()
+                p.click("#device-op .op-confirm", f"{card} && {card}.querySelector("
+                        "'[data-run-stepper]')")
+                p.shot("device-restore-running")
+                gate["open"].set()
+                p.until(f"{card} && /Open in History/.test({card}.textContent)")
+                p.shot("device-restore-result")
+                if width == 1440:
+                    p.swap(preview + RS._reason(),
+                           f"{card} && {card}.querySelector('.op-confirm')")
+                    p.b.js("var b = document.querySelector('#device-op .op-confirm'); var v = "
+                           "JSON.parse(b.getAttribute('hx-vals')); v.command_hash = "
+                           "'0000000000000000'; b.setAttribute('hx-vals', JSON.stringify(v)); "
+                           "return 1")
+                    p.click("#device-op .op-confirm",
+                            f"{card} && /refused|Not sent/i.test({card}.textContent) && "
+                            f"!{card}.querySelector('.op-confirm')")
+                    p.shot("device-restore-moved")
+
+
+def test_device_revert_retry(tmp_path, monkeypatch):
+    """Revert intent… and Retry rolled-back change… (board 11) on the intent-ops lab with a
+    rollback block recorded against change A (tests/test_device_revert_retry_v2.py's
+    `blocked`): the menu offering both, the retry card waiting on its reason and then given
+    one, the revert card and its result, and Retry once no block stands."""
+    from tests import browser
+    from tests import test_device_revert_retry_v2 as RR
+    from tests import test_intent_ops as IO
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab = _device_fx(IO.lab, tmp_path, monkeypatch)
+    lab = _device_fx(RR.page, _device_fx(IO.classify, lab, monkeypatch), monkeypatch)
+    IO._note(lab, "blocking")
+    _device_boards([("device-revert", "DevRevertRetry.dc.html", 1440, 1.0)])
+    card = _DEVICE_CARD
+    import app as A
+    with browser.Served(A.app) as served:
+        # The phone first: the desk's confirm reverts the blocked commit.
+        for width, scale in ((390, 2.0), (1440, 1.0)):
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r2")
+                p.menu()
+                p.shot("device-revert-menu")
+                p.click('.page-actions a[data-op="revert-retry"][href*="op=retry"]',
+                        f"{card} && {card}.querySelector('input[name=reason]')")
+                p.shot("device-retry")
+                p.type("#device-op input[name=reason]",
+                       "the neighbour's OSPF was down for the carrier's maintenance, unrelated",
+                       f"{card} && {card}.querySelector('.op-confirm')")
+                p.shot("device-retry-ready")
+                p.swap("/v2/device/r2/revert?back=overview",
+                       f"{card} && {card}.querySelector('.op-confirm')")
+                p.shot("device-revert")
+                if width == 1440:
+                    p.click("#device-op .op-confirm",
+                            f"{card} && /What happened/.test({card}.textContent)")
+                    p.shot("device-revert-result")
+                    p.swap("/v2/device/r2/retry?back=overview",
+                           f"{card} && !{card}.querySelector('.op-confirm')")
+                    p.shot("device-retry-none")
+
+
+def test_device_retire(tmp_path, monkeypatch):
+    """Retire… (board 12) on the retire tests' world (tests/test_device_retire_v2.py's `page`:
+    r4 and r5 in 'Lab', a real repository, CSV, manifest and credential store, NetBox holding
+    r5 by hand), a target directory naming both: the card refused while no break-glass export
+    holds r5's credential, the card once one does, the confirm and its result; then r5's
+    address, the retired record (board 12's last card, `retired.html`)."""
+    from urllib.parse import quote
+
+    from tests import browser
+    from tests import test_device_retire_v2 as RV
+    from tests import test_retire as RT
+    from tests import test_retire_screen as RS
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    world = _device_fx(RT.world, tmp_path, monkeypatch)
+    page = _device_fx(RV.page, _device_fx(RS.screen, world, tmp_path, monkeypatch), monkeypatch)
+    RV._targets(monkeypatch, tmp_path, [("r4", "192.0.2.14"), ("r5", "192.0.2.15")])
+    _device_boards([("device-retire", "DevRetire.dc.html", 1440, 1.0)])
+    card = _DEVICE_CARD
+    url = f"/v2/device/r5/retire?back=overview&reason={quote(RS.REASON)}"
+    import app as A
+    with browser.Served(A.app) as served:
+        with _DevicePage(served, 1440, 1.0) as p:
+            p.open("/v2/device/r5")
+            p.swap(url, f"{card} && {card}.querySelector('.op-gates')")
+            p.shot("device-retire-refused")
+        RS._export(page)
+        # The phone first: the desk's confirm retires r5.
+        for width, scale in ((390, 2.0), (1440, 1.0)):
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r5")
+                p.swap(url, f"{card} && {card}.querySelector('.op-confirm')")
+                p.shot("device-retire")
+                if width == 1440:
+                    RV._targets(monkeypatch, tmp_path, [("r4", "192.0.2.14")])
+                    p.click("#device-op .op-confirm",
+                            f"{card} && /What happened/.test({card}.textContent)")
+                    p.shot("device-retire-result")
+
+
+# --- C650 group C: device tabs overview, ask ---
+
+def test_tab_ask(tmp_path, monkeypatch):
+    """tab:ask beside board A (ReadsAsk: idle, refused as typed, the answer, the comparison,
+    the device held), E (ReadsPhone, 390), C582's reason field (ReadsReasonC582) and T2-A to
+    T2-D (Tier2Privileged: the card's choose, preview, result and changes-nothing states), on
+    test_device_v2's lab (r3), the device faked at the connection seam answering from r3's real
+    captures (tests/test_ask_the_device's and tests/test_privileged's). The comparison's
+    earlier answer is r3's `show ip ospf neighbor` capture with one neighbour's state edited
+    (FULL/BDR to 2WAY/DROTHER), said so."""
+    from urllib.parse import quote
+
+    from tests import browser
+    from tests import test_ask_the_device as TA
+    from tests import test_privileged as TP
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab_ = _c_device_lab(tmp_path, monkeypatch)
+    from modules.nsot import device_ops, reads
+    dev = TA.Device()
+    ospf = TA._text("operational", "r3__show_ip_ospf_neighbor.txt")
+    monkeypatch.setattr("modules.commands.run_device_command",
+                        lambda conn, c, **kw: conn.answer(c))
+    who = "operator@example.com"
+    dev.answers["show ip ospf neighbor"] = ospf.replace("200   FULL/BDR    ",
+                                                        "200   2WAY/DROTHER")
+    reads.run("Lab", ["r3"], ["show ip ospf neighbor"], who, session=dev)
+    dev.answers["show ip ospf neighbor"] = ospf
+    done = reads.run("Lab", ["r3"], ["show ip ospf neighbor"], who, session=dev)["id"]
+    with device_ops.hold("Lab", "r3", "deploy", "a-person@example.com", detail="a deploy"):
+        held = reads.run("Lab", ["r3"], ["show ip interface brief"], who, session=dev)["id"]
+    base = "/v2/device/r3?tab=ask"
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("tab-ask", "ReadsAsk.dc.html", lambda w: base, served,
+               widths=((1440, 1.0), (1280, 1.0)))
+        _shoot("tab-ask-refused", "", lambda w: base + "&command=" + quote(
+            "show running-config | redirect flash:x"), served, widths=((1440, 1.0),))
+        _shoot("tab-ask-answer", "ReadsPhone.dc.html", lambda w: f"{base}&run={done}", served,
+               widths=((1440, 1.0), (390, 2.0)))
+        _shoot("tab-ask-compare", "", lambda w: f"{base}&run={done}&compare=" + quote(
+            "show ip ospf neighbor"), served, widths=((1440, 1.0), (390, 2.0)))
+        _shoot("tab-ask-held", "", lambda w: f"{base}&run={held}", served,
+               widths=((1440, 1.0),))
+        _shoot("tab-ask-reason", "ReadsReasonC582.dc.html", lambda w: base + "&command=" + quote(
+            "send log 1 MERCURY TEST alert rule check"), served, widths=((1440, 1.0), (390, 2.0)))
+        # Tier 2 (T2-A to T2-D): the card as its Actions row opens it, in place of the tab.
+        t2 = TP.t2.__wrapped__(lab_, monkeypatch)
+        s = t2["session"]
+        s.reads["show interfaces GigabitEthernet2"] = [TP.COUNTERS_BEFORE, TP.COUNTERS_BEFORE,
+                                                       TP.COUNTERS_AFTER]
+        s.sends["clear counters GigabitEthernet2"] = TP.P.COUNTERS_PROMPT
+        s.reads["show debugging"] = TP._cap(TP.OPS, "r2__show_debugging.txt")
+        run = reads.run("Lab", ["r3"], ["show interfaces GigabitEthernet2"], who,
+                        session=s)["id"]
+        dbg = reads.run("Lab", ["r3"], ["show debugging"], who, session=s)["id"]
+        op = "/v2/device/r3?op=privileged&list=Lab"
+        cc = "&key=clear-counters&arg=GigabitEthernet2"
+        _shoot("tab-ask-t2-choose", "Tier2Privileged.dc.html", lambda w: op, served,
+               widths=((1440, 1.0), (390, 2.0)))
+        _shoot("tab-ask-t2-preview", "", lambda w: f"{op}{cc}&run={run}", served,
+               widths=((1440, 1.0), (390, 2.0)))
+        _shoot("tab-ask-t2-nothing", "", lambda w: f"{op}&key=undebug-all&arg=&run={dbg}",
+               served, widths=((1440, 1.0),))
+        h = TP.P.plan("Lab", "r3", "clear-counters", "GigabitEthernet2")["hash"]
+        rec = TP.P.apply("Lab", "r3", "clear-counters", "GigabitEthernet2", actor=who,
+                         confirmed_hash=h, reason=TP.REASON)
+        _shoot("tab-ask-t2-result", "", lambda w: f"{op}{cc}&result={rec['id']}", served,
+               widths=((1440, 1.0), (390, 2.0)))
+
+
+def _c_device_lab(tmp_path, monkeypatch):
+    """Group C's lab: tests/test_device_v2's (r3 with r2's real config as its committed golden,
+    Grafana's captured dashboards stored by the real reader, r3 answering), its fixture's body
+    run directly (the module's `lab` is Save's)."""
+    from tests import test_device_v2 as D
+    gen = D.lab.__wrapped__(tmp_path, monkeypatch)
+    return next(gen)
+
+
+def test_tab_overview(tmp_path, monkeypatch):
+    """tab:overview beside Device (its content under the tabs), DevicePhone, and the folded
+    boards (DeviceOverviewFolded, PhoneFolded), on the browser layout test's lab (tests/
+    test_profile_apply's: r2's real configuration as its golden and its parsed intent
+    committed; r6 in its real shape), r2 answering in the reachability store; then r6 with
+    `cdp run` in its golden and not in its intent (tests/test_overview_intent's case)."""
+    from tests import browser
+    from tests import test_device_v2 as D
+    from tests import test_overview_intent as O
+    from tests import test_profile_apply as P
+    from tests import test_v2_layout_in_a_browser as L
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab_ = P.lab.__wrapped__(monkeypatch, tmp_path)
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(L.R2), dict(L.R6)])
+    now = time.time()
+    iso = lambda s: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - s))  # noqa: E731
+    D._store("reachability", {"devices": {
+        a: {"answering": True, "since": iso(86400 * 2), "checked_at": iso(4),
+            "last_result": "answered"} for a in (L.R2["ip"], L.R6["ip"])}}, at=iso(4))
+    O._give_r6(lab_, "cdp run\n")
+    import app as A
+    with browser.Served(A.app) as served:
+        _shoot("tab-overview", "redesign/Device.dc.html", lambda w: "/v2/device/r2", served,
+               widths=((1440, 1.0), (1280, 1.0)))
+        _shoot("tab-overview", "redesign/DevicePhone.dc.html", lambda w: "/v2/device/r2",
+               served, widths=((390, 2.0),))
+        _shoot("tab-overview-folded", "redesign/DeviceOverviewFolded.dc.html",
+               lambda w: "/v2/device/r6", served, widths=((1440, 1.0),))
+        _shoot("tab-overview-folded", "redesign/PhoneFolded.dc.html",
+               lambda w: "/v2/device/r6", served, widths=((390, 2.0),))
+
+
+# --- C650 group D: tab intent, tab history, history ---
+
+_D_SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
+
+
+def _d_walk(name, served, url, states, boards=(),
+            widths=((1440, 1.0), (1280, 1.0), (390, 2.0))):
+    """Group D's walk: at each width, the boards drawn at that width (each board a (file,
+    width) pair), then the page at *url* and, in turn, each state of *states* (label, a JS
+    step run on the page, a Python step given the browser, or None; a JS condition that says
+    the state is drawn; or a function of the width giving them), each shot as
+    `<name>-<label>-page-<width>.png`."""
+    from tests.browser import Browser
+
+    os.makedirs(OUT, exist_ok=True)
+    with _Boards() as bs:
+        for width, scale in widths:
+            prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+            with Browser(prefs=prefs) as b:
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 1000})
+                for board, at in boards:
+                    if at != width:
+                        continue
+                    b.go(bs.url(board))
+                    _full(b, os.path.join(OUT, f"{name}-board-{board.split('/')[-1][:-8]}-"
+                                               f"{width}.png"))
+                if not url:
+                    continue
+                b.go(served.url(url))
+                for label, step, drawn in (states(width) if callable(states) else states):
+                    if callable(step):
+                        step(b)
+                    elif step:
+                        b.js(step + "; return 1")
+                    b.wait_for(f"return ({drawn}) && {_D_SETTLED}", 20)
+                    time.sleep(0.3)
+                    if width < 480:
+                        b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
+                             f"document.body.style.maxWidth = '{width}px'; return 1")
+                    _full(b, os.path.join(OUT, f"{name}-{label}-page-{width}.png"))
+
+
+def test_tab_intent(monkeypatch, tmp_path):
+    """C650 group D, tab:intent: H, the one intent editor (boards DevIntentEdit,
+    DevIntentFields, DevIntentStates, DevIntentDiffs; 7.4 Fleet page) beside r2's Intent tab on
+    the browser layout test's lab (tests/test_profile_apply's: r2's captured configuration, its
+    intent parsed from it): the read-only card, Edit opened and checked, a description edited,
+    an error typed, then committed; and, apart, intent moved under an open edit."""
+    from tests import browser
+    from tests import test_profile_apply as P
+    from tests import test_v2_layout_in_a_browser as L
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    P.lab.__wrapped__(monkeypatch, tmp_path)
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(L.R2), dict(L.R6)])
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    from modules.nsot import intent_edit
+    opened = intent_edit.open_doc("Lab", "r2")
+    text = opened["yaml"]
+    assert "description: " in text, text[:400]
+    # The extraction records r2's syslog block as the device holds it, with no heartbeat
+    # (C490); an authored document carries it whole, so it is given one first, as a person
+    # does in tests/test_intent_editor_v2's browser walk.
+    fixed = (text.replace("heartbeat: 0", "heartbeat: 300") if "heartbeat: 0" in text
+             else text.replace("  syslog:\n", "  syslog:\n    heartbeat: 300\n", 1))
+    got = intent_edit.commit("Lab", "r2", fixed, "the syslog heartbeat", opened["base"],
+                             "operator@example.com")
+    assert got["ok"], got
+    ta = "var t = document.querySelector('#ie-text'); "
+    typed = ("t.dispatchEvent(new Event('input', {bubbles: true}))")
+    checked = ("!!document.querySelector('#ie-check .ie-col, #ie-check .ie-err')")
+
+    def edit(width):
+        # Loopback0's description, a value of its own at each width (each width commits).
+        return (ta + "t.value = t.value.replace(/description: mgmt identity.*/, "
+                     f"'description: mgmt identity w{width}'); " + typed)
+
+    def edited(width):
+        return (f"!!document.querySelector('#ie-check .ie-col') && /identity w{width}/"
+                ".test(document.querySelector('#ie-check').textContent)")
+
+    bad = (ta + "t.value = t.value.replace(/\\n/, '\\nshutdown: [yes please\\n'); " + typed)
+    unbad = (ta + "t.value = t.value.replace('\\nshutdown: [yes please', ''); " + typed)
+    commit = ("document.querySelector('#intent-form input[name=summary]').value = "
+              "'the uplink\\'s real description'; "
+              "document.querySelector('#intent-form button[data-op=\"edit-intent\"]').click()")
+
+    def states(width):
+        return [
+            ("view", None, "!!document.querySelector('#intent .intent-doc')"),
+            ("open", "document.querySelector('.card-head a[data-op=\"edit-intent\"]').click()",
+             checked),
+            ("edited", edit(width), edited(width)),
+            ("error", bad, "!!document.querySelector('#ie-check .ie-err')"),
+            ("fixed", unbad, edited(width)),
+            ("done", commit, "/Committed to r2's intent/.test(document.body.textContent)"),
+        ]
+
+    import app as A
+    with browser.Served(A.app) as served:
+        _d_walk("tab-intent", served, "/v2/device/r2?tab=intent", states,
+                boards=(("DevIntentEdit.dc.html", 1440), ("DevIntentFields.dc.html", 1440),
+                        ("DevIntentStates.dc.html", 1440), ("DevIntentDiffs.dc.html", 1440)))
+        # Intent moved under an open edit (board H's state 3): another person commits a
+        # different line between the open and the commit.
+        from tests.browser import Browser
+        with Browser() as b:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+            b.go(served.url("/v2/device/r2?tab=intent&edit=1"))
+            b.wait_for(f"return {checked} && {_D_SETTLED}", 20)
+            opened = intent_edit.open_doc("Lab", "r2")
+            theirs = opened["yaml"].replace("domain_name: example.com",
+                                            "domain_name: lab.example", 1)
+            assert theirs != opened["yaml"]
+            assert intent_edit.commit("Lab", "r2", theirs, "their change", opened["base"],
+                                      "other@example.com")["ok"]
+            b.js(edit(1) + "; return 1")
+            b.wait_for(f"return {edited(1)} && {_D_SETTLED}", 20)
+            b.js(commit + "; return 1")
+            b.wait_for(f"return /not saved/.test(document.body.textContent) && {_D_SETTLED}",
+                       20)
+            _full(b, os.path.join(OUT, "tab-intent-moved-page-1440.png"))
+
+
+def _d_history_lab(tmp_path, monkeypatch):
+    """r3's records on tests/test_device_v2's lab, written by the real paths as
+    tests/test_device_history_v2 writes them: its golden (r2's real configuration, Source:
+    capture), an intent commit, a deploy receipt and a failed one. Returns the lab's
+    generator, to be closed after the shots."""
+    from tests import test_device_history_v2 as H
+    from tests import test_device_v2 as DV
+
+    gen = DV.lab.__wrapped__(tmp_path, monkeypatch)
+    lab_ = next(gen)
+    H._intent_commit(lab_)
+    H._receipt(outcome="failed", reason="verify did not pass: 1 line not read back",
+               at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 5)))
+    H._receipt(at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 9)))
+    return gen
+
+
+_D_ROWS = "!!document.querySelector('.hist-tl details.tl-row')"
+_D_OPEN = "document.querySelector('.hist-tl details.tl-row').open = true"
+
+
+def test_tab_history(tmp_path, monkeypatch):
+    """C650 group D, tab:history: board D (`HistoryTimeline.dc.html`, 1280; signed off
+    2026-10-03, "a device tab is the same timeline filtered to the device") beside r3's
+    History tab, r3's real records (`_d_history_lab`), its rows closed and the newest
+    opened."""
+    from tests import browser
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen = _d_history_lab(tmp_path, monkeypatch)
+    try:
+        import app as A
+        with browser.Served(A.app) as served:
+            _d_walk("tab-history", served, "/v2/device/r3?tab=history", [
+                ("rows", None, _D_ROWS), ("open", _D_OPEN, _D_ROWS)],
+                boards=(("HistoryTimeline.dc.html", 1280),),
+                widths=((1280, 1.0), (1440, 1.0), (390, 2.0)))
+    finally:
+        next(gen, None)
+
+
+def test_history(tmp_path, monkeypatch):
+    """C650 group D, history.html: boards D (`HistoryTimeline.dc.html`, 1280), the earlier
+    History board (`History.dc.html`, 1280) and 7.5's identity line
+    (`HistoryIdentity.dc.html`, 1440) beside History: the same real records as r3's tab
+    (`_d_history_lab`); then the browser layout test's widest timeline
+    (tests/test_v2_layout_in_a_browser's `_timeline`: a denied decision, a nine-device
+    golden marked known wrong, the identity line counting 52 commits), a row opened, the
+    identity filter on, and the Baselines tab on its `BASELINES`."""
+    from tests import browser
+    from tests import test_v2_layout_in_a_browser as L
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen = _d_history_lab(tmp_path, monkeypatch)
+    try:
+        import app as A
+        with browser.Served(A.app) as served:
+            _d_walk("history-real", served, "/v2/history?since=", [("rows", None, _D_ROWS)],
+                    widths=((1280, 1.0),))
+            from modules import reader_job
+            from routes import v2
+            monkeypatch.setattr(v2, "_history_timeline", L._timeline)
+            real = reader_job.read_cached
+            monkeypatch.setattr(reader_job, "read_cached", lambda name: (
+                L.BASELINES if name == "baseline-usability" else real(name)))
+            _d_walk("history", served, "/v2/history", [
+                ("rows", None, _D_ROWS), ("open", _D_OPEN, _D_ROWS)],
+                boards=(("HistoryTimeline.dc.html", 1280), ("History.dc.html", 1280),
+                        ("HistoryIdentity.dc.html", 1440)),
+                widths=((1280, 1.0), (1440, 1.0), (390, 2.0)))
+            _d_walk("history-unverified", served, "/v2/history?identity=unverified",
+                    [("rows", None, _D_ROWS)], widths=((1440, 1.0),))
+            _d_walk("history-kinds", served, "/v2/history", [(
+                "menu", "document.querySelector('details.hist-kinds').open = true",
+                "!!document.querySelector('details.hist-kinds[open]')")],
+                widths=((1280, 1.0),))
+            _d_walk("history-baselines", served, "/v2/history?tab=baselines", [
+                ("rows", None, "!!document.querySelector('.hist-bl details')")],
+                widths=((1280, 1.0), (390, 2.0)))
+    finally:
+        next(gen, None)
+
+
+# --- C650 group E2: credentials ---
+
+_E2_SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
+
+
+def _e2_walk(name, served, states, widths, boards=()):
+    """Group E2's walk: at each width, each board whose own width it is (*boards*: (file,
+    width)), then each state in turn (label, the page's address or "" to stay, a step run on
+    the page (JS text, or a callable given the browser) or None, a JS condition that says the
+    state is drawn, the widths it is shot at or () for all), each shot as
+    `<name>-<label>-page-<width>.png`."""
+    from tests.browser import Browser
+
+    os.makedirs(OUT, exist_ok=True)
+    with _Boards() as bs:
+        for width, scale in widths:
+            prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+            with Browser(prefs=prefs) as b:
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 1000})
+                for board, at in boards:
+                    if at == width:
+                        b.go(bs.url(board))
+                        _full(b, os.path.join(OUT, f"{name}-board-{board[:-8]}-{width}.png"))
+                for label, url, step, drawn, only in states:
+                    if only and width not in only:
+                        continue
+                    if url:
+                        b.go(served.url(url))
+                        b.wait_for(f"return !!window.htmx && !!window.Alpine && {_E2_SETTLED}",
+                                   20)
+                    if callable(step):
+                        step(b)
+                    elif step:
+                        b.js(step + "; return 1")
+                    b.wait_for(f"return ({drawn or 'true'}) && {_E2_SETTLED}", 30)
+                    # A click scrolls the page; the full shot is taken from the top, so the
+                    # sticky sidebar and bar are drawn where they stand at rest.
+                    b.js("window.scrollTo(0, 0); return 1")
+                    time.sleep(0.3)
+                    if width < 480:
+                        b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
+                             f"document.body.style.maxWidth = '{width}px'; return 1")
+                    _full(b, os.path.join(OUT, f"{name}-{label}-page-{width}.png"))
+                    if width < 480 and url:
+                        png = b._call("GET", f"/session/{b.session}/screenshot")
+                        with open(os.path.join(OUT, f"{name}-{label}-page-{width}-first.png"),
+                                  "wb") as fh:
+                            fh.write(base64.b64decode(png))
+
+
+def test_credentials(tmp_path, monkeypatch, capsys):
+    """Credentials › The break-glass record beside board 7 (`DevBreakglassExport.dc.html`) and
+    board 20 (`BreakglassRestore.dc.html`), on test_breakglass_export's lab (a real key, r1 and
+    s1's credentials, the real export, check, drill and record format; its fixture's lines
+    inline, Save's `lab` holding the name): a real export drilled by the CLI's own `drill` and
+    recorded, its download intact, then r1 rotated and job health judging the record stale
+    (the board's "not current"). The page; the export opened (A); the kept file checked (C,
+    posted as the form posts it); and the export's result (B, the browser's word posted)."""
+    import base64 as _b64
+
+    from tests import browser
+    from tests.test_breakglass_export import DEVICES, LIST, PASS
+    from tests.test_credentials_v2 import TestTheOfflineDrill
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from cryptography.fernet import Fernet
+
+    import app as A
+    from modules import breakglass_export as BE
+    from modules import reader_job
+
+    key = Fernet.generate_key()
+    (tmp_path / "key.key").write_bytes(key)
+    monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("modules.config.KEY_FILE", str(tmp_path / "key.key"))
+    monkeypatch.setattr(BE, "list_devices", lambda ln: [dict(d) for d in DEVICES])
+    token = Fernet(key).encrypt(b"a stored value").decode()
+    monkeypatch.setattr(BE, "live_stores",
+                        lambda data_dir="": {"credential_profiles.json": [token]})
+    lab_ = {"client": A.app.test_client(), "dir": tmp_path, "key": key}
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == LIST)
+    folder = tmp_path / "lists" / "lab"
+    folder.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(folder))
+    kept = tmp_path / "kept"
+    kept.mkdir()
+    line, d = TestTheOfflineDrill()._receipt(lab_, kept, capsys, monkeypatch)
+    assert "Not recorded" not in lab_["client"].post(
+        "/v2/credentials/drill", data={"list": LIST, "receipt": line}).get_data(as_text=True)
+    intact = {"list": LIST, "sha256": d["sha256"], "browser_sha256": d["sha256"],
+              "filename": d["filename"]}
+    assert "Downloaded intact" in lab_["client"].post(
+        "/v2/credentials/intact", data=intact).get_data(as_text=True)
+    # r1 rotated since, and job health's read after the export judging the record stale.
+    rotated = [dict(x) for x in DEVICES]
+    rotated[0]["password"] = "R1-Rotated-Value-55"
+    monkeypatch.setattr(BE, "list_devices", lambda ln: [dict(x) for x in rotated])
+    judged = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(time.time()) + 1))
+    stale = {"state": "ok", "doc": {"last_good": {"value_at": judged, "value": {"health": {
+        "jobs": [{"unit": f"breakglass:{LIST}/r1", "device": "r1",
+                  "state": "breakglass_stale"}]}}}}}
+    real = reader_job.read_cached
+    monkeypatch.setattr(reader_job, "read_cached",
+                        lambda name, *a, **k: stale if name == "job-health"
+                        else real(name, *a, **k))
+    time.sleep(2)
+    page = f"/v2/credentials?list={LIST}"
+    check = (
+        "var bin = atob(arguments[0]), a = new Uint8Array(bin.length);"
+        "for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);"
+        "var f = new FormData(); f.append('list', arguments[1]);"
+        "f.append('passphrase', arguments[2]);"
+        "f.append('file', new Blob([a]), arguments[3]);"
+        "fetch('/v2/credentials/check', {method: 'POST', body: f, "
+        "headers: {'HX-Request': 'true'}})"
+        ".then(function (r) { return r.text(); }).then(function (t) {"
+        "document.getElementById('bg-op').innerHTML = t; htmx.process("
+        "document.getElementById('bg-op')); })")
+
+    def checked(b):
+        b.js(check + "; return 1", _b64.b64encode(_b64.b64decode(d["file"])).decode(), LIST,
+             PASS, d["filename"])
+
+    done = ("htmx.ajax('POST', '/v2/credentials/intact', {target: '#bg-op', swap: 'innerHTML', "
+            f"values: {json.dumps(intact)}}})")
+    with browser.Served(A.app) as served:
+        _e2_walk("credentials", served, [
+            ("record", page, None, "!!document.querySelector('#bg-record') && "
+                                   "!!document.querySelector('#bg-drill')", ()),
+            ("export", page + "&open=export", None,
+             "!!document.querySelector('#bg-export [data-bg-pass]')", (1440, 390)),
+            ("check", page, checked, "!!document.querySelector('#bg-op .bg-verdict')",
+             (1440, 390)),
+            ("done", page, done, "/Downloaded intact/.test((document.querySelector("
+                                 "'#bg-op #bg-export') || {}).textContent || '')",
+             (1440, 390)),
+        ], widths=((1440, 1.0), (1280, 1.0), (390, 2.0)),
+            boards=(("DevBreakglassExport.dc.html", 1440), ("BreakglassRestore.dc.html", 1440)))
+
+
+# --- C650 group F1: landing ---
+
+_F1_SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
+
+
+def _f1_walk(served, name, path, widths, boards=(), states=(("", "", "true"),), dark=False):
+    """Group F1's walk: at each width each board shot, then the page at *path* (in the dark
+    theme when *dark*, chosen as the theme menu keeps it) and, in turn, each state of
+    *states* (label, a script run on the page or "", a condition that says it is drawn),
+    shot as `<name>[-<label>]-page-<width>.png`; a phone's page held to its column."""
+    from tests.browser import Browser
+
+    os.makedirs(OUT, exist_ok=True)
+    with _Boards() as bs:
+        for width, scale in widths:
+            prefs = {"layout.css.devPixelsPerPx": str(scale)} if scale != 1.0 else {}
+            with Browser(prefs=prefs) as b:
+                b._call("POST", f"/session/{b.session}/window/rect",
+                        {"width": width, "height": 1000})
+                for board in boards:
+                    b.go(bs.url(board))
+                    _full(b, os.path.join(OUT, f"{name}-board-{board.split('/')[-1][:-8]}-"
+                                               f"{width}.png"))
+                b.go(served.url(path))
+                if dark:
+                    b.js("try { localStorage.setItem('nmas.theme', 'dark'); } catch (e) {} "
+                         "return 1")
+                    b.go(served.url(path))
+                b.wait_for("return !!window.Alpine && " + _F1_SETTLED, 20)
+                if width < 480:
+                    b.js(f"document.documentElement.style.maxWidth = '{width}px'; "
+                         f"document.body.style.maxWidth = '{width}px'; return 1")
+                for label, step, drawn in states:
+                    if step:
+                        b.js(step + "; return 1")
+                    b.wait_for(f"return ({drawn}) && {_F1_SETTLED}", 20)
+                    time.sleep(0.4)
+                    shot = f"{name}-{label}" if label else name
+                    _full(b, os.path.join(OUT, f"{shot}-page-{width}.png"))
+                    if width < 480:
+                        png = b._call("GET", f"/session/{b.session}/screenshot")
+                        with open(os.path.join(OUT, f"{shot}-page-{width}-first.png"),
+                                  "wb") as fh:
+                            fh.write(base64.b64decode(png))
+
+
+def test_landing(tmp_path, monkeypatch):
+    """Needs attention (NSOT_GUI_BRIEF 13) beside `redesign/Main.dc.html` (1440),
+    `redesign/LandingPhone.dc.html` and `redesign/NavPhone.dc.html` (390), `BrandSidebar`,
+    `KnownNoise` and `C566Coverage` (1440). On the browser layout test's lab (tests/
+    test_profile_apply's: r2's real configuration and intent), with the management section
+    proposed and `_common.j2` committed as the shipped version from before P1 (tests/
+    test_template_bring's stale lab, so C566's row is raised by the real source), and every
+    other source as the payload check's provider builds it (`payload_providers.
+    needs_attention`: job health over the measured systemd shapes, a real drift run, an
+    approval, an overdue onboarding, a rollback block, a failed deploy, a denied baseline, an
+    authorisation, an unreadable source). Two receipts written through the real store."""
+    from tests import browser
+    from tests import payload_providers as PP
+    from tests import test_profile_apply as P
+    from tests.test_profile_reaches_the_program import _propose_management
+    from tests.test_template_bring import _commit_stale
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab_ = P.lab.__wrapped__(monkeypatch, tmp_path)
+    # The modules that bound the accessor when imported (test_device_v2's lab does the same).
+    for bound in ("modules.device", "modules.inventory", "modules.inventory.source_config"):
+        monkeypatch.setattr(f"{bound}.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    _propose_management(lab_)
+    _commit_stale(lab_)
+    PP.needs_attention(monkeypatch, tmp_path)
+    from modules import attention as A
+    from modules.nsot import listref, receipts
+
+    monkeypatch.setattr(A, "SOURCES", tuple(A.SOURCES) + (
+        lambda: A.template_behind_source(listref.resolve("Lab")),))
+    now = time.time()
+    iso = lambda s: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - s))  # noqa: E731
+    assert receipts.write("Lab", [
+        {"id": "f1a", "at": iso(5400), "action": "deploy", "device": "r6",
+         "actor": "operator@example.com", "outcome": "deployed", "program_lines": 4,
+         "reason": "", "golden_commit": "abc1234def"},
+        {"id": "f1b", "at": iso(600), "action": "restore", "device": "r2",
+         "actor": "operator@example.com", "outcome": "refused", "program_lines": 0,
+         "reason": "the device moved since the preview", "golden_commit": ""}])["ok"]
+    evidence = ("document.querySelector('#attention details.evidence').open = true",
+                "document.querySelector('#attention details.evidence').open")
+    drawer = ("document.querySelector('.menu-btn').click()",
+              "!!document.querySelector('.sidebar.open')")
+    import app as A_
+    with browser.Served(A_.app) as served:
+        _f1_walk(served, "landing", "/v2/", ((1440, 1.0), (1280, 1.0)),
+                 boards=("redesign/Main.dc.html",),
+                 states=(("", "", "true"), ("evidence",) + evidence))
+        _f1_walk(served, "landing-brand", "/v2/", ((1440, 1.0),),
+                 boards=("BrandSidebar.dc.html", "KnownNoise.dc.html", "C566Coverage.dc.html"))
+        _f1_walk(served, "landing-dark", "/v2/", ((1440, 1.0),), dark=True)
+        _f1_walk(served, "landing-phone", "/v2/", ((390, 2.0),),
+                 boards=("redesign/LandingPhone.dc.html", "redesign/NavPhone.dc.html"),
+                 states=(("", "", "true"), ("drawer",) + drawer))
+
+
+# --- C650 group F2: show_commands, show_commands_run ---
+
+def _f2_reads_lab(tmp_path, monkeypatch):
+    """Show commands' lab (tests/test_show_commands.py): test_device_v2's lab (r3, IOS-XE; r9,
+    IOS), its fixture's body called here (this module's `lab` is Save's), the sessions faked at
+    the connection seam answering from real captures, and board F's Loki stand-in (r3's line
+    arrives, r9's never; `lp`). A command whose answer is an exception raises it, so a read
+    fails as a device's would."""
+    from tests import test_device_v2 as D
+    from tests import test_show_commands as T
+
+    gen = D.lab.__wrapped__(tmp_path, monkeypatch)
+    built = next(gen)
+    sc = T.sc.__wrapped__(built, monkeypatch)
+    lp = T.lp.__wrapped__(sc, monkeypatch)
+
+    def answer(conn, command, **kw):
+        got = conn.answer(command)
+        if isinstance(got, Exception):
+            raise got
+        return got
+    monkeypatch.setattr("modules.commands.run_device_command", answer)
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    return gen, lp
+
+
+def test_show_commands_pick(tmp_path, monkeypatch):
+    """C548's board B (ReadsFleetPick, 1440) beside Show commands' pick card: three commands,
+    the third refused across devices, two saved sets; board F's footer (ReadsLogPath, 1440) with
+    Loki configured; board C582 (ReadsReasonC582, 1440): a send log at level 2 typed, then its
+    reason given beside a second line that is not a test. Phone width without a board: board E
+    and G draw only the device's Ask tab and the run's page."""
+    from urllib.parse import urlencode
+
+    from tests import browser
+    from tests import test_show_commands as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen, sc = _f2_reads_lab(tmp_path, monkeypatch)
+    try:
+        from modules.nsot import command_sets
+        for name, cmds, why in (
+                ("Routing health", ["show ip ospf neighbor", "show ip route summary"],
+                 "OSPF and the route table"),
+                ("Time", ["show clock"], "")):
+            assert command_sets.save("Lab", name, cmds, "operator@example.com", why)["ok"]
+        pick = "/v2/show-commands?" + urlencode(
+            {"list": "Lab", "command": ["show ip ospf neighbor", "show clock",
+                                        "show tech-support"]}, doseq=True)
+        asked = "/v2/show-commands?" + urlencode({"list": "Lab", "command": [T.URGENT]},
+                                                doseq=True)
+        given = "/v2/show-commands?" + urlencode(
+            {"list": "Lab", "command": [T.URGENT, "send log 2 MERCURY alert rule check"],
+             "reason": T.REASON}, doseq=True)
+        import app as A
+        with browser.Served(A.app) as served:
+            _shoot("show-commands", "ReadsFleetPick.dc.html", lambda w: pick, served,
+                   widths=((1440, 1.0), (1280, 1.0)))
+            _shoot("show-commands", "", lambda w: pick, served, widths=((390, 2.0),))
+            _shoot("show-commands-logpath", "ReadsLogPath.dc.html",
+                   lambda w: "/v2/show-commands?list=Lab", served, widths=((1440, 1.0),))
+            _shoot("show-commands-reason", "ReadsReasonC582.dc.html", lambda w: asked, served,
+                   widths=((1440, 1.0), (390, 2.0)))
+            _shoot("show-commands-reason-given", "", lambda w: given, served,
+                   widths=((1440, 1.0),))
+    finally:
+        next(gen, None)
+
+
+def test_show_commands_run(tmp_path, monkeypatch):
+    """C548's boards C (ReadsFleetResult), C2 (ReadsResultC2), D (ReadsCompare) and F's result
+    (ReadsLogPath), 1440, and E and G at 390 (ReadsPhone, ReadsLogPathPhone) beside a run's
+    page, runs started through the real route on Show commands' lab: two commands answered
+    alike and not; C2's OSPF captures (r9's IPv6 answer empty) as opened, with Dead Time
+    ticked, and against r3; r3 and r9 side by side and only the differences; a run with r3's
+    `show ip interface` failing (planted), its `show logging` past the cap (s1's capture
+    repeated) and r9 held by another operation; and the logging-path test's result."""
+    from tests import browser
+    from tests import test_show_commands as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    gen, sc = _f2_reads_lab(tmp_path, monkeypatch)
+    try:
+        from modules.nsot import device_ops
+        ans = sc["fleet"].answers
+        ans["r3"]["show ip ospf neighbor"] = T.OSPF
+        ans["r9"]["show ip ospf neighbor"] = T.OSPF_LATER
+        ans["r3"]["show ipv6 ospf neighbor"] = T._cap("r3__show_ipv6_ospf_neighbor.txt")
+        ans["r9"]["show ipv6 ospf neighbor"] = ""
+        _r, plain = T._run(sc, ["show clock", "show ip interface"])
+        _r, c2 = T._run(sc, ["show ip ospf neighbor", "show ipv6 ospf neighbor"])
+        logging_ = T._cap("s1__show_logging__after_clear_logging.txt")
+        ans["r3"]["show logging"] = logging_ * (40 * 1024 // len(logging_) + 1)
+        ans["r3"]["show ip interface"] = TimeoutError("did not answer in 120 s")
+        with device_ops.hold("Lab", "r9", "deploy", "operator@example.com",
+                             detail="a deploy, for this shot"):
+            _r, failed = T._run(sc, ["show clock", "show ip interface", "show logging"])
+        _r, logpath = T._test(sc)
+        import app as A
+        with browser.Served(A.app) as served:
+            _shoot("show-commands-run", "ReadsFleetResult.dc.html", lambda w: plain, served,
+                   widths=((1440, 1.0), (1280, 1.0)))
+            _shoot("show-commands-run", "ReadsPhone.dc.html", lambda w: plain, served,
+                   widths=((390, 2.0),))
+            _shoot("show-commands-run-failed", "", lambda w: failed, served,
+                   widths=((1440, 1.0),))
+            _shoot("show-commands-run-c2", "ReadsResultC2.dc.html", lambda w: c2, served,
+                   widths=((1440, 1.0), (1280, 1.0)))
+            _shoot("show-commands-run-c2", "ReadsLogPathPhone.dc.html", lambda w: c2, served,
+                   widths=((390, 2.0),))
+            run_id = c2.split("/run/", 1)[1].split("?", 1)[0]
+            r = sc["client"].post(f"/v2/show-commands/run/{run_id}/ignore?list=Lab",
+                                  data={"command": "show ip ospf neighbor",
+                                        "column": ["Dead Time"]},
+                                  headers={"HX-Request": "true"})
+            assert r.status_code == 200
+            _shoot("show-commands-run-c2-ignored", "", lambda w: c2, served,
+                   widths=((1440, 1.0),))
+            _shoot("show-commands-run-c2-against", "",
+                   lambda w: c2 + "&against=r3&show=differences", served, widths=((1440, 1.0),))
+            _shoot("show-commands-run-compare", "ReadsCompare.dc.html",
+                   lambda w: plain + "&left=r3&right=r9&command=show%20ip%20interface", served,
+                   widths=((1440, 1.0), (390, 2.0)))
+            _shoot("show-commands-run-logpath", "ReadsLogPath.dc.html", lambda w: logpath,
+                   served, widths=((1440, 1.0),))
+            _shoot("show-commands-run-logpath", "", lambda w: logpath, served,
+                   widths=((390, 2.0),))
+    finally:
+        next(gen, None)

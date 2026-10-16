@@ -114,7 +114,7 @@ C888 and C905, C906 (3 M), C883 to C886 (5 S). Left: about 2 L (C850's `applyCon
 
 | List | Now | At cutover |
 |---|---|---|
-| tests/test_board_fidelity.py `UNCHECKED` | 32 (the 16 the sub-agents drafted kept as notes for the sittings) | the walked screens out; the rest to the tail |
+| tests/test_board_fidelity.py `UNCHECKED` | **20** (W1's twelve recorded 2026-10-16) | the walked screens out; the rest to the tail |
 | modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | 17 / 2 | run_command's go with v1; the rest stay until built (not a cutover condition) |
 | tests/test_results_are_drawn.py `PENDING` | 8 | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
@@ -155,6 +155,8 @@ blocks cutover or is a security issue (B).
     words and rows), C899 (Devices' footer), C900 (reveals' reasons), C901 (W1's copy and
     fidelity notes), C902 to C904 (R1 to R3), C907 (Fields mode). C888 and C905 go with C882,
     before cutover.
+  - C914 to C919: W1's fidelity records' defects (the drill card's redraw, capture's stamp, a
+    file path on the Overview, raw operands, the phone menu, the tagged regions).
   - C876 (the manifest's name lookup, measured), C912 (Coverage Apply's preview reads per
     device, with C450), C908 to C911 (Needs attention's edges found fixing C543).
   - C872 (the scope bar and `settings`), C873 (the top bar after a delete), C874 (the picker's
@@ -233,6 +235,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C650 for W1 done**: twelve screens recorded from the boards, the operator's W1 captures and
+  the board shots (landing, Devices, bulk intent, the device page and its Ask, History, Intent
+  and Overview tabs, Show commands and its run, History, Credentials); `UNCHECKED` 32 → 20;
+  121 deviation lines in STANDING_APPROVAL_LOG; C914 to C919 (C) to the tail.
 - **C543, C544 done** (Needs attention's actions follow the outcome: an unsaved deploy offers
   Persist and clears on a save read back after it; a rollback offers Revert and Retry on v2).
   **C876 measured** and resolved to C (the tail), with C908 to C912 (C) to the tail.

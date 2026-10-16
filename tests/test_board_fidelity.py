@@ -28,7 +28,16 @@ FIDELITY = os.path.join(ROOT, "docs", "fidelity")
 RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
            "logs.html": "logs-tail.md", "dhcp.html": "dhcp.md", "onboard.html": "onboard.md",
            "history_ask_logs.html": "history-ask-logs.md",
-           "history_ask_metrics.html": "history-ask-metrics.md"}
+           "history_ask_metrics.html": "history-ask-metrics.md",
+           # C650: the screens the operator walked in W1 (2026-10-16), compared with their
+           # boards, the walk's captures and the shots.
+           "landing.html": "landing.md", "devices.html": "devices.md",
+           "bulk_intent.html": "bulk-intent.md", "device.html": "device.md",
+           "history.html": "history.md", "credentials.html": "credentials.md",
+           "show_commands.html": "show-commands.md",
+           "show_commands_run.html": "show-commands-run.md",
+           "tab:ask": "tab-ask.md", "tab:history": "tab-history.md",
+           "tab:intent": "tab-intent.md", "tab:overview": "tab-overview.md"}
 
 #: Components many screens share, each compared with its own boards (the operator, 2026-10-12:
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.
@@ -39,16 +48,22 @@ COMPONENTS = {"_run_stepper.html": "stepper.md",
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.
 UNCHECKED = {
-    "landing.html", "devices.html", "bulk_intent.html", "save.html", "device.html",
-    "about.html", "monitoring.html", "history.html", "credentials.html", "help.html",
-    "templates.html", "apply.html", "monitoring_profile.html", "show_commands.html",
-    "show_commands_run.html", "coverage.html", "coverage_deploy.html", "update.html",
+    "save.html", "about.html", "monitoring.html", "help.html", "templates.html", "apply.html",
+    "monitoring_profile.html", "coverage.html", "coverage_deploy.html", "update.html",
     "settings.html", "settings_installation.html", "netbox.html", "pending.html",
-    "reapply.html", "retired.html", "tab:ask", "tab:history", "tab:intent", "tab:logs",
-    "tab:monitoring", "tab:neighbours", "tab:netbox", "tab:overview",
+    "reapply.html", "retired.html", "tab:logs", "tab:monitoring", "tab:neighbours",
+    "tab:netbox",
 }
-#: Only shrinks.
-UNCHECKED_CEILING = 32
+#: Only shrinks: 32 until 2026-10-16, when the twelve screens of the operator's walk W1 were
+#: recorded (C650).
+UNCHECKED_CEILING = 20
+
+#: A device-page tab's record compares the template that draws the tab (templates/v2/device.html
+#: includes one per tab); a page's record compares the page's own template.
+TAB_TEMPLATES = {"tab:overview": "_overview.html", "tab:intent": "_intent.html",
+                 "tab:history": "_history.html", "tab:monitoring": "_monitoring.html",
+                 "tab:logs": "_logs.html", "tab:netbox": "_netbox.html",
+                 "tab:neighbours": "_neighbours.html", "tab:ask": "_ask.html"}
 
 VERDICTS = ("same", "deviation", "later")
 
@@ -79,12 +94,16 @@ def test_every_signed_off_screen_has_a_record_or_is_unchecked():
         sorted(set(SIGNED_OFF) ^ (set(RECORDS) | UNCHECKED))
     assert not set(RECORDS) & UNCHECKED
     assert len(UNCHECKED) <= UNCHECKED_CEILING, "UNCHECKED only shrinks"
+    tabs = {s for s in SIGNED_OFF if s.startswith("tab:")}
+    assert tabs <= set(TAB_TEMPLATES), sorted(tabs - set(TAB_TEMPLATES))
+    for tpl in TAB_TEMPLATES.values():
+        assert os.path.isfile(os.path.join(ROOT, "templates", "v2", tpl)), tpl
 
 
 def test_each_record_compares_the_templates_as_they_are():
     for screen, name in {**RECORDS, **COMPONENTS}.items():
         r = _record(name)
-        assert f"templates/v2/{screen}" in r["paths"], name
+        assert f"templates/v2/{TAB_TEMPLATES.get(screen, screen)}" in r["paths"], name
         assert templates_hash(r["paths"]) == r["digest"], (
             f"{name}: its templates changed since they were compared with the boards; compare "
             f"them again (tests/test_board_shots.py) and write the hash: "
