@@ -1146,8 +1146,28 @@ def baseline_source(log_fn=None) -> dict:
     blocker = ({"reasons": reasons or "the decision recorded no reason",
                 "commit": sha[:10], "at": _iso(at)}
                if decision.startswith("denied") else None)
+    # A partial operation's decision is not a denied Save All (C885, walk W1: s2's Mode B
+    # deploy, "8 device(s) not targeted", read as "the last Save All was denied" with "Save
+    # All alone will be refused again"; all nine were at intent and the next Save All earned
+    # one). Nothing was judged to depart, so its remedy is Save All alone.
+    from modules.nsot.repo import not_targeted_only
+    partial = not_targeted_only(reasons) if blocker else 0
+    if partial:
+        blocker.update(partial=partial, operation=_operation_words(source_line, body))
     usability = _baseline_usability_row(lst, blocker=blocker)
-    if decision.startswith("denied") and not usability["rows"]:
+    if partial and not usability["rows"]:
+        rows.append(row(
+            source="baseline", kind="denied", key=f"{lst}:last", level="warning",
+            what=(f"The last commit earned no baseline: {blocker['operation']} did not cover "
+                  "the network"),
+            cause=(f"{_not_covered_words(blocker)} That is a partial operation's decision, "
+                   "not a Save All denied for departures: no device was judged to depart "
+                   "from its intent"),
+            action={"label": "Save All takes one: it captures every device and earns a "
+                             "baseline if each is at its committed intent; if not, it records "
+                             "the denial and names the device and its lines"},
+            since=at, operands={"list": lst, "commit": sha[:10], "source": source_line}))
+    elif decision.startswith("denied") and not usability["rows"]:
         rows.append(row(
             source="baseline", kind="denied", key=f"{lst}:last", level="warning",
             what=f"The network's last baseline was not earned ({source_line or 'a save'})",
@@ -1172,6 +1192,28 @@ def baseline_source(log_fn=None) -> dict:
                                  + usability["checked"])
 
 
+def _operation_words(source: str, body: str) -> str:
+    """What the commit that decided was, in words: its `Source:` (`device_list.SOURCE_WORDS`)
+    and the devices it named (`Devices:`, else `Devices-Measured:`), as "a deploy to s2"."""
+    from modules.device_list import SOURCE_WORDS
+
+    how = SOURCE_WORDS.get(source, (source or "").replace("_", " ") or "a save")
+    named = next((ln.split(":", 1)[1].strip() for key in ("Devices: ", "Devices-Measured: ")
+                  for ln in (body or "").splitlines() if ln.startswith(key)), "")
+    names = [n for n in named.split(",") if n.strip()]
+    if not names:
+        return how
+    return f"{how} to {', '.join(names[:3])}" + (f" and {len(names) - 3} more"
+                                                  if len(names) > 3 else "")
+
+
+def _not_covered_words(blocker: dict) -> str:
+    """The sentence for a partial operation's decision (C885), naming its commit."""
+    return (f"The last commit ({blocker['operation']}, commit {blocker['commit']} at "
+            f"{blocker['at']}) did not cover the network ({blocker['partial']} device(s) not "
+            "targeted), so it earned no baseline: Save All takes one.")
+
+
 def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict:
     """No stored baseline can be re-applied (the operator, 2026-09-28): every
     one predates a credential rotation (the restore's guard refuses each,
@@ -1194,6 +1236,10 @@ def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict
         return {"rows": [], "checked": "no baseline is stored yet"}
     newest = next((b for b in value["baselines"] if not b["withdrawn"]), None)
     withdrawn = [b["tag"] for b in value["baselines"] if b["withdrawn"]]
+    # A partial operation's decision blocks nothing (C885): it is said as what it was, and
+    # the remedy is Save All alone.
+    partial = blocker if blocker and blocker.get("partial") else None
+    blocker = None if partial else blocker
     cause = (f"all {value['count']} stored baseline(s) predate a credential rotation or are "
              "withdrawn, so the restore's credential guard (C75) refuses part of any re-apply."
              + (f" The newest, {newest['tag']}, would change the credential on "
@@ -1202,7 +1248,8 @@ def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict
              + " A baseline's usefulness decays with every rotation."
              + (f" A new one cannot be earned right now: the last Save All was denied "
                 f"({blocker['reasons']}; commit {blocker['commit']} at {blocker['at']})."
-                if blocker else ""))
+                if blocker else "")
+             + (" " + _not_covered_words(partial) if partial else ""))
     action = ({"label": "Resolve each departure the denial names, one of two ways that mean "
                         "opposite things: change the DEVICE if intent is right (a line only the "
                         "device has is removed by hand: the tool never removes one), or Edit "

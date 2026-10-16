@@ -836,6 +836,27 @@ def _baseline_trailer(earned: bool, denied: list, baseline, source: str,
                                    or "no reason was recorded")
 
 
+#: A `Baseline: denied:` reason that says only that the commit did not cover the network:
+#: devices a deploy or restore did not target (`routes.deploy._baseline_earned`), and, for a
+#: restore, the same devices not measured against its ref.
+_COVERAGE_REASON = re.compile(r"(\d+) device\(s\) (?:not targeted|were not measured against )")
+
+
+def not_targeted_only(reasons: str) -> int:
+    """How many devices a denied baseline decision's *reasons* (the trailer after
+    "denied:") say were not targeted, when that is ALL they say; 0 otherwise (C885).
+
+    Such a denial is a partial operation's decision (a deploy to one device does not cover
+    the network), not a Save All denied for departures: nothing was judged to depart from its
+    intent, and Save All alone takes the baseline. A reason of any other kind (a device that
+    did not succeed, one that departs, one still differing from a ref) makes it a denial."""
+    parts = [p.strip() for p in (reasons or "").split("; ") if p.strip()]
+    found = [_COVERAGE_REASON.match(p) for p in parts]
+    if not parts or not all(found):
+        return 0
+    return max((int(m.group(1)) for m in found if "not targeted" in m.group(0)), default=0)
+
+
 def _covers_inventory(measured: list, inventory_size: int, skipped) -> bool:
     """Was EVERY device in the inventory actually measured?
 

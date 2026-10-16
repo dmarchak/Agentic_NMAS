@@ -269,6 +269,9 @@ GATES = {
     "onboard_v2.verify_preview": _g(N, "reads the pending device and computes what Verify would "
                                        "send; sends nothing"),
     "onboard_v2.abandon_preview": _g(N, "Abandon's dry run; removes nothing"),
+    "device_v2.persist_read": _g(N, "starts Persist's preview read: the device's running and "
+                                    "startup configurations, and `dir nvram:` when startup "
+                                    "keeps a certificate there; sends nothing that changes it"),
     "device_v2.reload_start": _g(N, "starts Reload's preview: reads the device's running and "
                                     "startup configurations, image and boot variable; sends "
                                     "nothing that changes it"),

@@ -237,6 +237,21 @@ def _setting(line: str) -> str:
     return ""
 
 
+def _kept(removed, added) -> list:
+    """The (section, line) pairs of *removed* a merge-only deploy of *added* leaves in place:
+    every one but a one-setting line an added line in its section replaces (C500's rule)."""
+    replaced = {(sec, _setting(line)) for sec, line in added if _setting(line)}
+    return [(sec, line) for sec, line in removed
+            if not (line and (sec, _setting(line)) in replaced)]
+
+
+def _masked_rows(rows: list) -> list:
+    """*rows* with each text masked (`redact_text`): a device's side is its golden, verbatim."""
+    from modules.redact import redact_text
+
+    return [dict(r, text=redact_text(r["text"])) for r in rows]
+
+
 def _rows_of(pairs, kind: str = "add") -> list:
     """Rows for (section, line) pairs, each section's line drawn once above its lines."""
     rows, last = [], None
@@ -330,9 +345,11 @@ def diffs(repo: str, hostname: str, committed_render, edited_render: str,
             else {"rows": [], "removed": [], "added": [], "masked": 0})
     deploy = change_rows(capture, edited_render)
     edit_added = set(edit["added"])
-    replaced_keys = {(sec, _setting(line)) for sec, line in edit["added"] if _setting(line)}
-    not_removed = [(sec, line) for sec, line in edit["removed"]
-                   if not (line and (sec, _setting(line)) in replaced_keys)]
+    not_removed = _kept(edit["removed"], edit["added"])
+    # How the device departs from this intent in lines a deploy keeps (C884): the device's
+    # lines the render lacks, but those a line the deploy sends replaces. A merge-only deploy
+    # sends nothing for them; only a removal (Mode B) takes them off.
+    departs = _kept(deploy["removed"], deploy["added"])
     from_edit = [p for p in deploy["added"] if p in edit_added]
     not_from = [p for p in deploy["added"] if p not in edit_added]
     same = (bool(edit["rows"]) and set(deploy["added"]) == edit_added and not not_removed)
@@ -354,6 +371,12 @@ def diffs(repo: str, hostname: str, committed_render, edited_render: str,
                       **origin["labels"].get((sec, line), {"words": "already pending"})}
                      for sec, line in not_from],
         "sent": sent,
+        # Everything a deploy would send, and how the device departs in lines it keeps.
+        "deploy_rows": _rows_of(deploy["added"]),
+        "departs_rows": _masked_rows(_rows_of(departs, "keep")),
+        # Lines: a section's own line counts only when none of its lines is listed.
+        "departs": len([p for p in departs
+                        if p[1] or not any(s == p[0] and l for s, l in departs)]),
         "golden": origin.get("golden"),
         "masked": deploy["masked"],
     }

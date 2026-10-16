@@ -678,6 +678,39 @@ def persist(name):
                                    c=_persist_card(ref, dev, _back(request.args))))
 
 
+@bp.route("/device/<name>/persist/read", methods=["POST"])
+def persist_read(name):
+    """Persist's preview read (C886): what the device runs against what it boots, read as a
+    job by Reload's own reads and compared by Reload's gate's comparison; the card's part
+    waits for its announcement. Reads only, sends nothing that changes the device."""
+    from modules import identity
+    from modules.nsot import persist_op
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""),
+                                      "v2/_persist_effect.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    job = persist_op.read_effect_start(ref.name, host, identity.identify(request).actor or "")
+    return _strict(render_template("v2/_persist_effect.html", c={
+        "state": "reading", "host": host, "list": ref.name, "job": job}))
+
+
+@bp.route("/device/<name>/persist/read/<job>", methods=["GET"])
+def persist_read_job(name, job):
+    """The part for its job (`capture_job.get`): still reading, what startup gains and loses,
+    or why it could not be read. Re-read when the job announces `persist_read`."""
+    from modules import device_actions
+    from modules.nsot import capture_job
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_persist_effect.html", c=device_actions.persist_effect(
+        ref, dev.get("hostname", ""), job, capture_job.get(job))))
+
+
 def _privileged_card(ref, dev, back, args):
     """Tier 2's card (routes/privileged_v2.py), drawn in place of the tab when the page opens
     with ``op=privileged`` (the menu row's href, without script)."""

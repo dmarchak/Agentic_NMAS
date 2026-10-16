@@ -103,6 +103,10 @@ ENTRY_POINTS = {
         "modules.netbox_client", fromlist=["x"])._sanitise_config(PLANTED),
     "modules/nsot/adopt.py:_masked": lambda: repr(__import__(
         "modules.nsot.adopt", fromlist=["x"])._masked([PLANTED])),
+    # The intent editor's committed result: the lines only the device holds (C884).
+    "modules/nsot/intent_edit.py:_masked_rows": lambda: repr(__import__(
+        "modules.nsot.intent_edit", fromlist=["x"])._masked_rows(
+            [{"kind": "keep", "text": PLANTED}])),
     "modules/nsot/adopt.py:_scrub": _adopt_scrub,
     "modules/nsot/adopt.py:_scrub_plan": _adopt_scrub_plan,
     "modules/breakglass_export.py:_scrub": lambda: __import__(

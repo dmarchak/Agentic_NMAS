@@ -2,8 +2,9 @@
 {%- from "v2/_run_stepper.html" import run_stepper -%}
 {#- The device page's Persist (7.3; the device-actions mockup signed off 2026-10-02): the card
     in place of the tab, from modules/device_actions.py over `persist_preview` and
-    `persist_result`, the same builders today's page draws. The preview contacts no device, so
-    it is drawn at once; the confirm saves and reads back, busy on itself, and the result
+    `persist_result`, the same builders today's page draws. The plan contacts no device, so
+    the card is drawn at once; its part "What saving changes in what it boots" then reads the
+    device as a job (C886); the confirm saves and reads back, busy on itself, and the result
     replaces the card. Cancel and Close put back the tab it replaced. -#}
 {%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
 {%- macro close_button(words) -%}
@@ -24,6 +25,14 @@
     {%- else %}
     <p>{{ c.none }}</p>
     {%- endif %}</div></div>
+  {%- if c.reads %}
+  {#- C886: what saving changes in what it boots, read on load as a job (_persist_effect.html). -#}
+  <div class="op-part"><h3>What saving changes in what it boots</h3><div>
+    <div class="op-effect" id="persist-effect" aria-busy="true"
+         hx-post="{{ url_for('device_v2.persist_read', name=c.host) }}" hx-trigger="load" hx-swap="outerHTML"
+         hx-vals='{{ {"list": c.list} | tojson }}'><p class="op-wait">Starting the read of {{ c.host }}'s startup and running configurations…</p></div>
+  </div></div>
+  {%- endif %}
   <div class="op-part"><h3>What will not happen</h3><div>
     {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}.</p>{% endfor %}</div></div>
   <div class="op-part"><h3>Operands</h3><div>

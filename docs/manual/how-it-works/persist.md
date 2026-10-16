@@ -2,7 +2,7 @@
 
 A device boots from its startup configuration, not from what it runs now. Persist saves the running configuration to startup on the device and proves it was saved, so a reload brings the device back as it is, with the credential the tool holds. It changes no configuration and writes nothing in the tool except a record of what the device answered.
 
-![Persist from the device page: the preview reads only the tool's own records and sends nothing; the apply holds the device, sends write memory, reads the startup and running configurations back, and records the outcome where job health reads it. A rotation's persistence is the same save and read-back.](diagrams/persist.svg)
+![Persist from the device page: the plan reads only the tool's own records and sends nothing, and the card then reads what saving changes; the apply holds the device, sends write memory, reads the startup and running configurations back, and records the outcome where job health reads it. A rotation's persistence is the same save and read-back.](diagrams/persist.svg)
 
 There are two paths that persist a device, and they do the same thing to it:
 
@@ -11,7 +11,9 @@ There are two paths that persist a device, and they do the same thing to it:
 
 ## The preview
 
-The preview contacts no device. Read: the list's registry, the device's inventory row (its address, Netmiko driver, account and stored credential) and the hourly startup check's last reading for the device, with its age. Sent: nothing. Recorded: nothing. It refuses, each as a named gate, a list that does not exist, a device not in that list's inventory, a row with no driver recorded and a row with no stored credential. You confirm the plan's hash, which binds the list, the device, its address, its driver and its account.
+The plan contacts no device. Read: the list's registry, the device's inventory row (its address, Netmiko driver, account and stored credential) and the hourly startup check's last reading for the device, with its age. Sent: nothing. Recorded: nothing. It refuses, each as a named gate, a list that does not exist, a device not in that list's inventory, a row with no driver recorded and a row with no stored credential. You confirm the plan's hash, which binds the list, the device, its address, its driver and its account.
+
+**What saving changes in what it boots.** On the redesigned page, once the plan can run, the card reads the device as a job, the same reads Reload's check makes. Read: the running configuration, `show startup-config`, and `dir nvram:` only when startup keeps a certificate as a file there. Sent: nothing but those show commands. Recorded: nothing. It compares the two as Reload's "running against startup" check does: `show startup-config`'s "Using N out of M bytes" line is not a difference, and a certificate startup keeps as a file in nvram: is the same certificate running prints inline, when `dir nvram:` lists the file. It lists the lines startup gains (only running holds them) and the lines it loses (only startup holds them, gone at the next reload), masked; names any certificate file `dir nvram:` does not list; and, when the two are the same, says so and that Persist still saves (`write memory`) and reads startup back. The confirm does not wait for it: what is sent is the save either way. Today's page does not draw it.
 
 ## The apply, in order
 

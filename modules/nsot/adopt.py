@@ -634,15 +634,20 @@ NOT_DOING = (
 
 def _read_device(device: dict, tool_username: str) -> dict:
     """READS ONLY, over the supplied credential: the running and startup
-    configs, the authentication settings and the tool account's lines."""
+    configs, `dir nvram:` when startup keeps a certificate there (C913: Reload's read,
+    `reload_op.nvram_read`, so the persist preview compares as Reload's gate does), the
+    authentication settings and the tool account's lines."""
     from modules.nsot import credential_rotation as CR
     from modules.nsot.onboard import _read_timeout
+    from modules.nsot.reload_op import nvram_read
 
     session = CR.open_original_session(device)
     try:
         t = _read_timeout()
+        startup = session.send_command("show startup-config", read_timeout=t) or ""
         return {"running": session.send_command("show running-config", read_timeout=t) or "",
-                "startup": session.send_command("show startup-config", read_timeout=t) or "",
+                "startup": startup,
+                "nvram": nvram_read(session, startup) or "",
                 "aaa": session.send_command("show running-config | include ^aaa",
                                             read_timeout=60) or "",
                 "vty": session.send_command("show running-config | section ^line vty",
@@ -713,11 +718,10 @@ def _hash(text: str) -> str:
 
 def _masked(lines) -> list:
     """Masked, and a comparison's `section :: line` read as a person reads it:
-    a global line alone, a nested one as `section > line`."""
-    from modules.redact import redact_text
+    a global line alone, a nested one as `section > line` (`persist_op.person_lines`)."""
+    from modules.nsot.persist_op import person_lines
 
-    return [redact_text(l[4:] if l.startswith(" :: ") else l.replace(" :: ", " > ", 1))
-            for l in lines]
+    return person_lines(lines)
 
 
 def plan(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
@@ -775,7 +779,7 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
     from modules.nsot import manifest as _m
     from modules.nsot import onboard
     from modules.nsot.listref import UnknownList, exists, resolve
-    from modules.nsot.roundtrip import configs_equivalent
+    from modules.nsot.persist_op import startup_effect
 
     out = {"device": hostname, "list": list_name, "mgmt_ip": mgmt_ip, "platform": platform,
            "tool_account": tool_username, "supplied_account": supplied_username,
@@ -937,24 +941,32 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
         gate("account", True, f"'{tool_username}' will be added, privilege {TOOL_PRIVILEGE}")
 
     # ---- persist: what saving makes the boot config (C184's rule) ----------
+    # The ONE comparison of startup with running, Reload's gate's and Persist's preview's
+    # (C913: `configs_equivalent` here counted `show startup-config`'s header and a
+    # certificate startup keeps as a file in nvram: as lines that differ).
     startup = seen.get("startup", "")
-    if "startup-config is not present" in startup or not startup.strip():
+    effect = startup_effect(startup, running, seen.get("nvram", ""))
+    if effect["state"] == "no_startup":
         out["persist"] = {"state": "no_startup", "only_running": [], "only_startup": [],
                           "sentence": ("the device has NO startup config: saving makes its "
                                        "whole running config, with the tool's account, the "
                                        "configuration it boots")}
     else:
-        eq = configs_equivalent(startup, running)
-        only_run, only_start = eq.get("only_right", []), eq.get("only_left", [])
+        only_run, only_start = effect["gains"], effect["loses"]
         out["persist"] = {
-            "state": "same" if eq.get("equal") else "differs",
-            "only_running": _masked(only_run), "only_startup": _masked(only_start),
+            "state": effect["state"],
+            "only_running": only_run, "only_startup": only_start,
+            "missing": effect["missing"],
             "sentence": ("the running and startup configs are the same: saving adds only the "
-                         "tool's account to what the device boots" if eq.get("equal") else
+                         "tool's account to what the device boots" if effect["state"] == "same"
+                         else
                          f"saving makes the RUNNING config the boot config: "
                          f"{len(only_run)} line(s) only the running config has become "
                          f"permanent, and {len(only_start)} line(s) only the startup config "
-                         "has are gone at the next reload")}
+                         "has are gone at the next reload"
+                         + "".join(f"; startup keeps {c['certificate']} of "
+                                   f"{c['chain'].split()[-1]} as {c['file']}, which `dir "
+                                   "nvram:` does not list" for c in effect["missing"]))}
     out["rw_kept"] = _masked(onboard.rw_communities(running))
 
     # ---- the network's monitoring profile (P.9 step c) --------------------

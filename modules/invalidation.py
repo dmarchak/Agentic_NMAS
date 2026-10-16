@@ -107,6 +107,8 @@ VOCABULARY = {
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
     "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
     "reload": "a Reload's preview or run from the Device page (P.14): finished, ready to read by id",
+    "persist_read": "Persist's preview read of what a device runs against what it boots (C886): "
+                    "finished, ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
     "device_progress": "an operation the app ran on a held device reached its next step: a running card redraws its stepper (C370)",
     "save": "a Save run from Devices (C593): finished, its result ready to read by id",
@@ -127,6 +129,7 @@ ANNOUNCERS = {
     "save": ("save", "goldens", "remote", "baselines", "drift", "device_state"),
     "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "reload": ("reload", "restarts", "device_state"),  # modules/nsot/reload_op.py: a preview's or run's end
+    "persist-read": ("persist_read",),         # modules/nsot/persist_op.py: the preview read's end
     # modules/nsot/template_coverage.py: a coverage check's end (Templates › Coverage).
     "template-coverage": ("templates",),
     "path-trace": ("path_trace",),             # modules/path_trace.py: a level read, and its end
@@ -313,6 +316,9 @@ DECLARED = {
                                           "the batch ANNOUNCES deploy_job as each device "
                                           "finishes, and what a restore changes at the end "
                                           "(ANNOUNCERS deploy-job)"),
+    "device_v2.persist_read": Nothing("starts Persist's preview read as a job; the job "
+                                      "ANNOUNCES persist_read when it finishes (ANNOUNCERS "
+                                      "persist-read)"),
     "device_v2.reload_start": Nothing("starts the preview's read as a job; the job ANNOUNCES "
                                       "reload when it finishes (ANNOUNCERS reload)"),
     "device_v2.reload_confirm": Nothing("starts the reload as a job and answers at once; the "

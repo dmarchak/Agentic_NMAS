@@ -45,26 +45,63 @@
   <form id="ie-ack-form" novalidate method="post" action="{{ url_for('intent_v2.acknowledge', name=host) }}" hx-post="{{ url_for('intent_v2.acknowledge', name=host) }}" hx-target="#intent" hx-swap="outerHTML" hx-include="#intent-form"></form>
 </section>
 {%- elif c.state == 'done' %}
+{#- C884: what a merge-only deploy sends and how the device departs in lines it keeps are
+    drawn apart. A deletion is never "what a deploy would send": when a deploy sends nothing,
+    the card is headed by the departure and Remove lines (Mode B)… is its action. -#}
+{%- set d = (c.p.diffs or {}) if c.p.ok else {} -%}
+{%- set sends = d.sent or 0 -%}
+{%- set departs = d.departs or 0 -%}
+{%- macro rows(list) -%}
+<div class="ie-diff">{% for r in list %}<div class="dr dr-{{ r.kind }}">{% if r.kind == 'add' %}<span class="dr-sign" aria-label="added">+</span>{% endif %}{{ r.text }}</div>{% endfor %}</div>
+{%- endmacro -%}
+{%- set removal_href = url_for('device_v2.device', name=host, tab='intent', op='deploy', focus='removal') -%}
 <section class="card intent intent-edit intent-done" id="intent" aria-labelledby="done-h">
   <div class="ie-hd"><h2 id="done-h">{% if c.r.changed %}Committed to {{ host }}'s intent {{ badge('done', 'ok') }}{% else %}Nothing to commit {{ badge('unchanged', 'muted') }}{% endif %}</h2></div>
   <div class="ie-split">
     <div>
       {%- if c.r.changed %}
       <p>Commit <span class="mono">{{ (c.r.commit or '')[:10] }}</span> "host_vars: {{ host }} {{ c.summary }}", as {{ c.actor }}.</p>
-      <p><strong>Nothing was sent to {{ host }}:</strong> its intent changed, {{ host }} did not{% if c.p.vs_device %}, so it now departs from intent until a deploy sends the lines beside{% endif %}.</p>
+      <p><strong>Nothing was sent to {{ host }}:</strong> its intent changed, {{ host }} did not
+      {%- if sends and departs %}, so it now departs from its intent: a deploy sends the lines it lacks, and keeps the lines only {{ host }} holds until you remove them (Mode B)
+      {%- elif sends %}, so it now departs from intent until a deploy sends the lines beside
+      {%- elif departs %}, so it now departs from its intent by the lines beside, which only {{ host }} holds. A deploy is merge-only and sends nothing for them: Remove lines (Mode B)… takes them off, only the lines you select, each with a reason
+      {%- endif %}.</p>
       {%- else %}
       <p>{{ c.r.message }}</p>
       {%- endif %}
     </div>
     <div>
+      {%- if not c.p.ok %}
       <h3 class="ie-k">What a deploy would send now</h3>
-      {%- if c.p.ok and c.p.vs_device %}<pre class="op-diff">{{ c.p.vs_device }}</pre>{% elif c.p.ok %}<p class="muted">Nothing: {{ host }} already holds what its intent renders.</p>{% else %}<p class="muted">Not read: {{ c.p.error }}.</p>{% endif %}
+      <p class="muted">Not read: {{ c.p.error }}.</p>
+      {%- elif departs and not sends %}
+      <h3 class="ie-k">How {{ host }} now departs from its intent</h3>
+      {{ rows(d.departs_rows) }}
+      <p class="muted small">{{ departs }} line{{ '' if departs == 1 else 's' }} {{ host }} holds that its intent does not, against its golden. A deploy sends nothing: it is merge-only.</p>
+      {%- elif sends %}
+      <h3 class="ie-k">What a deploy would send now</h3>
+      {{ rows(d.deploy_rows) }}
+      <p class="muted small">Against its golden, merge-only, {{ sends }} line{{ '' if sends == 1 else 's' }}.</p>
+      {%- if departs %}
+      <h3 class="ie-k">What a deploy keeps: only {{ host }} holds these</h3>
+      {{ rows(d.departs_rows) }}
+      <p class="small"><a class="btn" data-op="removal" href="{{ removal_href }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }} <span class="muted">{{ departs }} line{{ '' if departs == 1 else 's' }} a deploy does not remove</span></p>
+      {%- endif %}
+      {%- elif d %}
+      <h3 class="ie-k">What a deploy would send now</h3>
+      <p class="muted">Nothing: {{ host }} already holds what its intent renders.</p>
+      {%- else %}
+      <h3 class="ie-k">What a deploy would send now</h3>
+      <p class="muted">{{ c.p.message or 'Not rendered.' }}</p>
+      {%- endif %}
     </div>
   </div>
   <div class="ie-ft">
     <span class="muted small"><a href="{{ url_for('device_v2.device', name=host, tab='intent', edit=1) }}" hx-get="{{ url_for('intent_v2.edit', name=host) }}" hx-target="#intent" hx-swap="outerHTML">Edit again</a> · <a href="{{ url_for('device_v2.device', name=host, tab='history') }}">See it in History</a></span>
-    {%- if c.r.changed and c.p.vs_device %}
+    {%- if c.r.changed and sends %}
     <span class="op-act"><a class="btn btn-primary" data-op="deploy" href="{{ url_for('device_v2.device', name=host, op='deploy') }}">Plan a deploy…</a>{{ how('deploy', compact=True, op='a deploy') }}</span>
+    {%- elif c.r.changed and departs %}
+    <span class="op-act"><a class="btn btn-primary" data-op="removal" href="{{ removal_href }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}</span>
     {%- endif %}
   </div>
 </section>

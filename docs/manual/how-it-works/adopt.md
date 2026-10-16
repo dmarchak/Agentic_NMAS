@@ -45,8 +45,9 @@ the supplied login. Every reason to refuse is drawn at once, each by name.
    that was never settled; and NetBox writes must be on, because adoption records the device
    there before it joins the inventory.
 2. **The device, read with the supplied login.** Read: over SSH (Netmiko), as the supplied
-   account, `show running-config`, `show startup-config`, the `aaa` lines and the
-   `line vty` stanzas. Sent: nothing but those show commands. Recorded: nothing. A read
+   account, `show running-config`, `show startup-config`, `dir nvram:` when startup keeps
+   a certificate as a file there, the `aaa` lines and the `line vty` stanzas. Sent: nothing
+   but those show commands. Recorded: nothing. A read
    shorter than ten lines is refused as a failed read, and the device must call itself by
    the name you gave.
 3. **Can the tool's account work?** Read: the authentication lines just read. Sent:
@@ -64,10 +65,14 @@ the supplied login. Every reason to refuse is drawn at once, each by name.
    nothing. Recorded: nothing. An account by the tool's name (`nmas` by default) that the
    tool did not record adding is somebody's, and refuses. One the tool recorded adding means
    an earlier run is resumed.
-6. **What a save would make permanent.** Read: running against startup. Sent: nothing.
-   Recorded: nothing. The preview lists the lines a save would make permanent and the lines
-   it would lose at the next reload (or that the device has no startup configuration at
-   all), and the read-write SNMP communities it keeps.
+6. **What a save would make permanent.** Read: running against startup, compared as
+   Reload's "running against startup" check and Persist's preview compare them (the header
+   `show startup-config` prints is not a difference, and a certificate startup keeps as a
+   file in nvram: is the same certificate running prints inline, when `dir nvram:` lists
+   it). Sent: nothing. Recorded: nothing. The preview lists the lines a save would make
+   permanent and the lines it would lose at the next reload (or that the device has no
+   startup configuration at all), names a certificate file `dir nvram:` does not list, and
+   the read-write SNMP communities it keeps.
 7. **The monitoring profile's program.** Read: the network's committed profile against this
    capture. Sent: nothing. Recorded: nothing. The lines the device lacks are shown, masked.
 8. **What NetBox holds, and what the import would do.** Read: NetBox's device of that exact

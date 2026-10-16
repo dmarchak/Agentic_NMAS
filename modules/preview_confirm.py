@@ -2885,7 +2885,7 @@ def persist_preview(plan: dict, *, busy: str, request) -> dict:
              for key, title, ok_detail in GATES]
     gates.append(busy_gate({"busy": busy}))
     gates.append(gate("the device answers and the save reads back", "at_apply",
-                      "the preview does not contact the device; the apply connects, saves, "
+                      "the plan contacts no device; the apply connects, saves, "
                       "and reads the startup config back, and says what it found"))
     gates.append(gate("plan unchanged since this preview", "at_apply",
                       "the plan is computed again at apply, and a different hash refuses "

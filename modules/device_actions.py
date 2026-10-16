@@ -194,7 +194,8 @@ def _one_target(preview: dict, host: str, viewer: dict) -> dict:
 
 def persist_card(ref, host: str, preview: dict, viewer: dict) -> dict:
     """The persist card for *host* from `preview_confirm.persist_preview`'s preview. The
-    preview contacts no device, so the card is drawn at once, never as a job."""
+    plan contacts no device, so the card is drawn at once, never as a job; ``reads`` asks
+    its part to read what saving changes (C886) when the plan could run (`persist_effect`)."""
     t = _one_target(preview, host, viewer)
     program = t["target"].get("program") or {}
     confirm = preview.get("confirm") or {}
@@ -206,8 +207,28 @@ def persist_card(ref, host: str, preview: dict, viewer: dict) -> dict:
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
             "gates": t["gates"], "failing": t["failing"], "may": t["may"],
             "held": held(t["gates"]),
+            "reads": bool(t["chosen"].get("selectable")),
             "hash": (t["chosen"].get("select_data") or {}).get("hash", ""),
             "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
+
+
+def persist_effect(ref, host: str, job_id: str, got) -> dict:
+    """Persist's preview read for its job (`capture_job.get`, or None), as the card's part
+    draws it (C886): reading, what startup gains and loses, or why it was not read."""
+    part = {"host": host, "list": ref.name, "job": job_id}
+    if got is None:
+        return dict(part, state="failed", error=(
+            "this server holds no record of that read (it expired or the server restarted); "
+            "preview again"))
+    if got["state"] == "running":
+        return dict(part, state="reading")
+    if got["state"] == "failed":
+        return dict(part, state="failed", error=got.get("error") or "no reason was recorded")
+    e = got.get("payload") or {}
+    if not e.get("ok"):
+        return dict(part, state="failed", error=e.get("error") or "not read")
+    # `ok` is the state already ("read"), never drawn twice.
+    return dict(part, state="read", e={k: v for k, v in e.items() if k != "ok"})
 
 
 #: A persist result's state -> (its heading chip, its level).

@@ -470,6 +470,29 @@ def _intent_check(client, lab, _mp):
         assert r.status_code == 200, r.status_code
 
 
+def _persist_read(client, _lab, mp):
+    """Persist's preview read (C886), asked by a POST on load and drawn by its job's GET: r3
+    answering with r1's real running and startup (tests/test_persist_effect.py), one logging
+    line changed, so the lines startup gains and loses and the certificates kept as files are
+    all carried."""
+    from modules.nsot import capture_job
+    from tests import test_persist_effect as PE
+
+    pair = {k: PE._as(PE._read("r1", c), "r1", "r3")
+            for k, c in (("running", "show running-config"),
+                         ("startup", "show startup-config"))}
+    running = pair["running"].replace("\nlogging trap notifications\n",
+                                      "\nlogging trap informational\n")
+    mp.setattr("modules.connection.with_temp_connection",
+               lambda dev, fn: fn(PE.Device(running, pair["startup"])))
+    r = client.post("/v2/device/r3/persist/read", data={"list": "Lab"})
+    assert r.status_code == 200, r.status_code
+    get = unescape(re.search(r'hx-get="([^"]+)"', r.get_data(as_text=True)).group(1))
+    assert capture_job.wait(get.split("?", 1)[0].rsplit("/", 1)[1], 10)
+    r = client.get(get)
+    assert r.status_code == 200, r.status_code
+
+
 def _unlinked(client, _lab, _mp):
     """Pages and fragments a script asks for, not a link: the name chip's refresh, and the
     heartbeat page (unsigned, D3; linked from nothing yet)."""
@@ -536,4 +559,4 @@ def _deploy(client, lab, mp):
 
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
-PROVIDERS: list = [_reveal, _intent_check, _unlinked, _deploy]
+PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _deploy]

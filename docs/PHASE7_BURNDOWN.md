@@ -67,10 +67,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C882~~ | ~~B1: Topology drag jumps~~ **done** (see Checked off); C691 re-checked in W2 | | | | |
 | C888, C905 | C2 and R4: the rollout order kept client-side and bound at the confirm, then reordered by drag and drop (keeping Earlier/Later for touch and keyboard), on C882's shared guard (`window.NMAS_DRAG`: `hold`, `release`, `far`) | their browser tests | M | C882, C850 (landed) | — |
 | C883 | B2: Plan a deploy's "The batch is running…" before any confirm | drawn only while a batch runs | S | — | — |
-| C884 | B3: a deletion-only intent edit's committed card: "How s1 now departs", Mode B the primary action | its test | S | — | — |
-| C885 | B4: the baseline rows: "not targeted" told apart from "denied for departures" | its tests, from W1's real commits | S–M | — | — |
-| C886 | B5: Persist's preview lists the lines startup gains and loses | its test | S | C881 | — |
-| C913 | adopt's persist preview uses C881's comparison (C881's sibling; it blocks W3's adopt) | its test on a C8000v pair | S | C881 | — |
+| ~~C884, C885, C886, C913~~ | ~~B3, B4, B5 and adopt's comparison~~ **done** (see Checked off) | | | | |
+| C923 | Adopt's card draws the lines startup gains and loses (C886's part), as its manual says (it blocks W3's adopt) | its test | S | — | — |
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | C906 | Mercury checks each device's SSH host key (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key operation; NETCONF too) | its tests; walked on a device | M | — | B (the operator's: the re-key's words) |
@@ -156,6 +154,8 @@ blocks cutover or is a security issue (B).
     words and rows), C899 (Devices' footer), C900 (reveals' reasons), C901 (W1's copy and
     fidelity notes), C902 to C904 (R1 to R3), C907 (Fields mode). C888 and C905 go with C882,
     before cutover.
+  - C922 (UNKNOWN, an answer set aside mid-drag), C924 (UNKNOWN, the partial operation's row
+    beside a usable baseline), C925 (Persist's read on each draw), C926 (a raw exception).
   - C921 (UNKNOWN): "Partly done" over 2 of 2 deployed with no verify result; C920 and C851
     go with P.12 (D3).
   - C914 to C919: W1's fidelity records' defects (the drill card's redraw, capture's stamp, a
@@ -238,6 +238,11 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C884, C885, C886, C913 done** (B3: a deletion-only edit's card says how the device departs,
+  Mode B first; B4: a partial operation's baseline row names the commit and offers Save All;
+  B5: Persist's preview lists what startup gains and loses, from Reload's comparison; Adopt's
+  preview uses it too). C923 (B) into this section; C924 (UNKNOWN), C925, C926 (C) to the
+  tail; C927 (A) fixed.
 - **C882 (B1) done**: the drag's jump measured in a real browser (a redraw replaced the map
   under the pointer, and the drop saved the detached map's place); a shared guard holds a
   dragged region from every swap until release, and a drop more than one grid step from the

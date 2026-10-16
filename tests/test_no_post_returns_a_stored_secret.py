@@ -63,6 +63,8 @@ def _bodies(v):
                               "nothing started"),
         "device_v2.reload_start": (400, ("form", {}),
                                    "no network named: refused before any job starts"),
+        "device_v2.persist_read": (400, ("form", {}),
+                                   "no network named: refused before any job starts"),
         "templates_v2.bindings_preview": (400, ("form", {"list": LIST, "add_device": "zz",
                                                          "add_template": "cisco_iosxe/base.j2"}),
                                          "a device the network does not have: refused naming "

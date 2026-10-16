@@ -1102,12 +1102,17 @@ def test_device_rotate_persist(tmp_path, monkeypatch):
     its result. Persist's only board is the first canvas's `PersistRunningHelp`."""
     from tests import browser
     from tests import test_device_rotate_v2 as RV
+    from tests import test_persist_effect as PE
     from tests import test_persist_screen as PS
 
     if not browser.available()[0]:
         pytest.skip(browser.available()[1])
     from modules.nsot import device_ops
     _device_fx(RV.rot, _device_fx(PS.lab, tmp_path, monkeypatch), monkeypatch)
+    pair = PE._r2({"running": PE._read("r1", "show running-config"),
+                   "startup": PE._read("r1", "show startup-config")}, "r1")
+    running = pair["running"].replace("\nlogging trap notifications\n",
+                                      "\nlogging trap informational\n")
     _device_boards([("device-rotate-held", "DevRotateHeld.dc.html", 1440, 1.0),
                     ("device-persist", "redesign/PersistRunningHelp.dc.html", 1440, 1.0)])
     checks = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('.op-gates')"
@@ -1128,7 +1133,12 @@ def test_device_rotate_persist(tmp_path, monkeypatch):
                 p.shot("device-rotate")
                 p.click("#device-op .op-confirm", ok)
                 p.shot("device-rotate-result")
-                p.swap("/v2/device/r2/persist?back=overview", ready)
+                # C886: Persist's part reads what saving changes; r2 answers with r1's real
+                # pair (tests/test_persist_effect.py), one logging line changed in running.
+                monkeypatch.setattr("modules.connection.with_temp_connection",
+                                    lambda dev, fn: fn(PE.Device(running, pair["startup"])))
+                p.swap("/v2/device/r2/persist?back=overview",
+                       ready + " && document.querySelector('#persist-effect:not([aria-busy])')")
                 p.shot("device-persist")
                 p.click("#device-op .op-confirm", f"{_DEVICE_CARD} && "
                         f"/Recorded/.test({_DEVICE_CARD}.textContent)")
@@ -1557,6 +1567,21 @@ def test_tab_intent(monkeypatch, tmp_path):
             b.wait_for(f"return /not saved/.test(document.body.textContent) && {_D_SETTLED}",
                        20)
             _full(b, os.path.join(OUT, "tab-intent-moved-page-1440.png"))
+        # C884: a commit deleting a line r2 holds (Loopback0's description), which a merge-only
+        # deploy keeps: the deploy's lines, and apart, the line only r2 holds with Remove
+        # lines (Mode B)… beside it.
+        with Browser() as b:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+            b.go(served.url("/v2/device/r2?tab=intent&edit=1"))
+            b.wait_for(f"return {checked} && {_D_SETTLED}", 20)
+            b.js(ta + "t.value = t.value.replace(/description: mgmt identity.*/, "
+                      "\"description: ''\"); " + typed + "; return 1")
+            b.wait_for("return !!document.querySelector('#ie-check .ie-keep') && "
+                       + _D_SETTLED, 20)
+            b.js(commit + "; return 1")
+            b.wait_for("return /What a deploy keeps/.test(document.body.textContent) && "
+                       + _D_SETTLED, 20)
+            _full(b, os.path.join(OUT, "tab-intent-departs-page-1440.png"))
 
 
 def _d_history_lab(tmp_path, monkeypatch):

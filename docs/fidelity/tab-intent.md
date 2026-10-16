@@ -23,10 +23,17 @@ approved on canvas v52 and built: every diff line its own row, one diff when the
 both when they differ). The tab itself was approved with the device tabs on 2026-09-30
 (NSOT_STAGE7_PLAN 1g). The boards draw r3 on 192.0.2.x; the lab here is r2.
 Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-intent-view`,
-`-open`, `-edited`, `-error`, `-fixed`, `-done`), and `tab-intent-moved` at 1440.
+`-open`, `-edited`, `-error`, `-fixed`, `-done`), and `tab-intent-moved` and
+`tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html
-Templates sha256: `0e329e24bd2e1b381ebf40efffa04faee0379fd0be322d30d4948152684de071`
+Templates sha256: `eb3ecc8a08407ac19ce566aa969af0cbd42dfd49a4ccbdcd643bf285d2b5dccf`
+
+Compared again 2026-10-16 (C884) after `_intent_edit.html`'s committed result changed: what a
+deploy would send is drawn as rows (the lines it sends), and the lines only the device holds
+apart, with Remove lines (Mode B)…. `tab-intent-done` shot again at 1440, 1280 and 390, and a
+new shot, `tab-intent-departs` (1440): Loopback0's description deleted and committed. The two
+committed regions rewritten and one added; no other region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -50,7 +57,8 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Checks | six: parses and names r3; the schema; no secret and every character accepted; the template renders it, approved; at commit, the version opened; a verified person | three: the first three as one row; the template renders it ("not yet" with a deploy's blocking reasons); at commit (captures 24 and 25). Who commits is the footer's: Commit is drawn only for a person who may commit, else the footer says so | **deviation** (log: Tab intent: the checks) |
 | Lines intent does not model | not drawn | the lines a template cannot render, each with a tick box, "Write the ticked lines into the document" into its `unmodeled_ack` block (C481) | **deviation** (log: Tab intent: lines intent does not model, ticked to acknowledge) |
 | Footer | "Why, in one line", "Commits the document as you, with its reason. Nothing is sent to r3.", Commit to r3's intent | the same, the reason required, Commit busy on itself ("Committing…") | **same** |
-| Committed (state 2): the result | "Committed to r3's intent · done"; the commit as a link, "as operator@example.com (verified), just now"; "Nothing was sent", a Departs from intent chip; Edit again · See it in History; Plan a deploy of these 2 lines… | the same title and links; the commit's sha in words; the person without "(verified)" or a time; "it now departs from intent until a deploy sends the lines beside" in words; Plan a deploy… without a count (capture 26) | **deviation** (log: Tab intent: the committed result's words) |
-| Committed: what a deploy would send now | the program: the section and the line it sends | a unified diff of the golden against the edited render under "What a deploy would send now"; after an edit that only deletes, it shows `- description spare port`, says a deploy sends "the lines beside" and makes Plan a deploy… primary, though a merge-only deploy sends nothing (capture 26; C884) | **deviation** (log: Tab intent: the committed result's deploy diff (C884)) |
+| Committed (state 2): the result | "Committed to r3's intent · done"; the commit as a link, "as operator@example.com (verified), just now"; "Nothing was sent", a Departs from intent chip; Edit again · See it in History; Plan a deploy of these 2 lines… | the same title and links; the commit's sha in words; the person without "(verified)" or a time; "it now departs from intent until a deploy sends the lines beside" in words, or, when the device also holds lines intent no longer has, that a deploy keeps them until they are removed (Mode B); Plan a deploy… without a count (capture 26; shots `tab-intent-done`, `tab-intent-departs`) | **deviation** (log: Tab intent: the committed result's words) |
+| Committed: what a deploy would send now | the program: the section and the line it sends | the lines a deploy sends, each its own row under its section's line, marked +, and "Against its golden, merge-only, 3 lines" (shot `tab-intent-done` at 1440, 1280 and 390: the heartbeat applet and Loopback0's description). Until C884 a unified diff of the golden against the render, whose deletions read as sent (capture 26) | **same** |
+| Committed: what a deploy keeps (C884) | not drawn (the committed state draws a deploy to plan) | the lines only the device holds, which a merge-only deploy never removes, apart under "What a deploy keeps: only r2 holds these" with Remove lines (Mode B)… beside them, Plan a deploy… staying primary (shot `tab-intent-departs`: Loopback0's description deleted). When a deploy would send nothing, the card is headed "How s1 now departs from its intent", those lines its only rows, "A deploy sends nothing: it is merge-only", and Remove lines (Mode B)… is its primary action, opening the device page's deploy card at the removal: the operator's fix (tests/test_intent_committed_departs.py on s1's real capture; not shot, this lab always has lines to send) | **deviation** (log: Tab intent: what a deploy keeps, with Remove lines (Mode B)… (C884)) |
 | Intent moved (state 3) | "not saved"; you opened, it is now (a link), by whom, when and its subject, "Nothing was written"; your edit kept and their change side by side; Open with your edit on it, or Open alone when both change one line | the same, the new commit in words (shot `tab-intent-moved`; both forms: tests/test_intent_editor_v2.py's `TestCommitting`) | **same** |
 | Phone | no phone board; the board's columns stack under 900 px | the columns stack, the document first, then the check column and the footer | **same** |

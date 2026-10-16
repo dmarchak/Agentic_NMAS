@@ -174,6 +174,83 @@ def plan(list_name: str, hostname: str) -> dict:
     return out
 
 
+#: Persist's preview read (C886): the job's kind, the key it announces and its announcer
+#: (`invalidation.ANNOUNCERS`).
+READ_KIND = "persist preview"
+READ_KEYS = ("persist_read",)
+READ_ANNOUNCER = "persist-read"
+
+
+def person_lines(lines) -> list:
+    """A comparison's `section :: line` entries as a person reads them, masked
+    (`redact_text`): a global line alone, a nested one as `section > line`."""
+    from modules.redact import redact_text
+
+    return [redact_text(l[4:] if l.startswith(" :: ") else l.replace(" :: ", " > ", 1))
+            for l in lines]
+
+
+def startup_effect(startup: str, running: str, nvram_dir: str = "") -> dict:
+    """What saving *running* to startup changes in what the device boots, from the ONE
+    comparison of the two, Reload's gate's (`roundtrip.startup_is_running`, C881: startup's
+    "Using N bytes" header out, a certificate startup keeps as a file in nvram: the same
+    certificate running prints inline when *nvram_dir* lists it). Persist's preview (C886)
+    and Adopt's (C913) both draw it.
+
+    ``{"state": "same"|"differs"|"no_startup", "gains": [...], "loses": [...],
+    "present": [...], "missing": [...]}``: ``gains`` the lines only running holds (startup
+    gains them), ``loses`` those only startup holds (startup loses them), both masked;
+    ``present``/``missing`` the certificate pointers whose file `dir nvram:` lists or not."""
+    from modules.nsot import roundtrip
+
+    if "startup-config is not present" in (startup or "") or not (startup or "").strip():
+        return {"state": "no_startup", "gains": [], "loses": [], "present": [], "missing": []}
+    same = roundtrip.startup_is_running(startup, running, nvram_dir or "")
+    return {"state": "same" if same.get("equal") else "differs",
+            "gains": person_lines(same.get("only_right") or []),
+            "loses": person_lines(same.get("only_left") or []),
+            "present": [{k: p[k] for k in ("chain", "certificate", "file")}
+                        for p in same.get("present") or []],
+            "missing": [{k: p[k] for k in ("chain", "certificate", "file")}
+                        for p in same.get("missing") or []]}
+
+
+def read_effect(list_name: str, hostname: str, *, reader=None) -> dict:
+    """Persist's preview read (C886): one session reading what *hostname* runs and boots as
+    Reload's gate reads them (`reload_op.read_boot_pair`), and `startup_effect` over them.
+    Reads only, so it takes no hold. ``startup_effect``'s answer with ``host`` and
+    ``read_at``, or ``{"ok": False, "error"}``; *reader* replaces the device read in tests."""
+    from modules.connection import with_temp_connection
+    from modules.nsot import reload_op
+
+    device = reload_op._device(list_name, hostname)
+    if device is None:
+        return {"ok": False, "error": f"{hostname} is not in {list_name}'s inventory"}
+    try:
+        reads = (reader or (lambda d: with_temp_connection(
+            d, lambda conn: reload_op.read_boot_pair(conn, hostname))))(device)
+    except Exception as exc:                   # noqa: BLE001 (said on the card)
+        return {"ok": False, "error": f"{hostname} could not be read: "
+                                      f"{type(exc).__name__}: {exc}"}
+    out = startup_effect(reads.get("startup", ""), reads.get("running", ""),
+                         reads.get("nvram") or "")
+    return dict(out, ok=True, host=hostname,
+                read_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+
+
+def read_effect_start(list_name: str, hostname: str, actor: str) -> str:
+    """Persist's preview read as a job (it reads the device): its id; the card's part
+    redraws when the job announces `persist_read`."""
+    from modules.nsot import capture_job
+    from modules.outbound import mask_payload
+
+    return capture_job.start(list_name, f"reading {hostname}'s startup and running "
+                                        "configurations for a persist", actor,
+                             lambda _j: mask_payload(read_effect(list_name, hostname)),
+                             kind=READ_KIND, announce_keys=READ_KEYS,
+                             announcer=READ_ANNOUNCER)
+
+
 def apply(list_name: str, hostname: str, *, actor: str, confirmed_hash: str,
           persist=None, record=None) -> dict:
     """Save and read back the confirmed device, holding it, as *actor*.

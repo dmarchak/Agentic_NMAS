@@ -171,11 +171,13 @@ def baseline_words(decision: str, tags: list) -> dict:
     if d == "earned":
         return {"state": "earned", "words": "earned", "tag": tag}
     if d.startswith("denied"):
+        from modules.nsot.repo import not_targeted_only
+
         why = d.partition(":")[2].strip()
-        m = re.match(r"(\d+) device\(s\) not targeted", why)
-        if m:
-            return {"state": "not_taken", "words": f"not taken: {m.group(1)} not targeted",
-                    "tag": tag}
+        # Not taken only when not covering the network is ALL it says (C885's one reading).
+        n = not_targeted_only(why)
+        if n:
+            return {"state": "not_taken", "words": f"not taken: {n} not targeted", "tag": tag}
         m = re.search(r"\(([^)]*skipped)\)", why)
         return {"state": "denied", "words": "denied: " + (m.group(1) if m else why)[:80],
                 "tag": tag}

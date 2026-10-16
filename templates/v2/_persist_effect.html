@@ -1,0 +1,43 @@
+{#- Persist's preview, its "What saving changes in what it boots" part (C886): the lines
+    startup gains (only running holds them) and loses (only startup holds them), read as a job
+    by Reload's own reads and compared by Reload's gate's comparison
+    (`persist_op.startup_effect`, `roundtrip.startup_is_running`), masked. The part asks for
+    its read on load, waits for the job's announcement (`persist_read`) and replaces itself;
+    the card's confirm does not wait on it: what is sent is `write memory` either way. -#}
+{%- if c.state == 'reading' %}
+<div class="op-effect" id="persist-effect" aria-busy="true"
+     hx-get="{{ url_for('device_v2.persist_read_job', name=c.host, job=c.job) }}"
+     hx-trigger="nmas:persist_read from:body" hx-swap="outerHTML">
+  <p class="op-wait">Reading {{ c.host }}'s startup and running configurations…</p>
+</div>
+{%- elif c.state == 'read' %}
+{%- set e = c.e %}
+<div class="op-effect" id="persist-effect" title="Read from {{ c.host }} at {{ e.read_at }}, compared as Reload's check compares them">
+  {%- if e.state == 'no_startup' %}
+  <p>{{ c.host }} has no startup configuration: saving makes its whole running configuration what it boots.</p>
+  {%- elif e.state == 'same' %}
+  <p>Startup is already what {{ c.host }} runs: saving changes no line it boots. Persist still saves it (<span class="mono">write memory</span>) and reads startup back, checking it carries every account line running holds.</p>
+  {%- elif e.gains or e.loses %}
+  <p>Saving makes startup what {{ c.host }} runs: startup gains {{ e.gains | length }} line{{ '' if e.gains | length == 1 else 's' }} and loses {{ e.loses | length }}.</p>
+  {%- if e.gains %}
+  <p class="ie-sub">Startup gains, held only by running</p>
+  <pre class="op-diff">{% for l in e.gains %}<span class="op-add">+ {{ l }}</span>
+{% endfor %}</pre>
+  {%- endif %}
+  {%- if e.loses %}
+  <p class="ie-sub">Startup loses, held only by startup: gone at the next reload</p>
+  <pre class="op-diff">{% for l in e.loses %}<span class="op-del">- {{ l }}</span>
+{% endfor %}</pre>
+  {%- endif %}
+  {%- endif %}
+  {%- for m in e.missing %}
+  <p>Startup keeps {{ m.certificate }} of {{ m.chain.split()[-1] }} as <span class="mono">{{ m.file }}</span>, which <span class="mono">dir nvram:</span> does not list: a reload now would boot without it.</p>
+  {%- endfor %}
+  {%- if e.present %}
+  {%- set one = e.present | length == 1 %}
+  <p class="muted small">Startup keeps {{ e.present | length }} certificate{{ '' if one else 's' }} as {{ 'a file' if one else 'files' }} in nvram:, which running shows inline: the same certificate{{ '' if one else 's' }} stored two ways, not a difference.</p>
+  {%- endif %}
+</div>
+{%- else %}
+<div class="op-effect" id="persist-effect"><p class="muted">Couldn't load: {% if c.state == 'refused_list' %}the card names no network this server knows ({{ c.list or 'none given' }}){% else %}{{ c.error or 'no reason was recorded' }}{% endif %}.</p></div>
+{%- endif %}

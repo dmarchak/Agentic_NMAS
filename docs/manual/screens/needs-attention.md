@@ -53,6 +53,18 @@ between its rotate and its persist; the row appears only if the rotation ends th
 says how old the reading it stands on is ("read 2 min ago"), and a Save All that would record
 the same state as a baseline just taken says so in its preview, with when and by whom.
 
+**Baselines** (the newest `Baseline:` decision in the network's history, and the stored
+baselines' usability): a commit that did not earn a baseline is a row, with its commit and
+time. Its remedy depends on why. A deploy or restore that did not cover the network (devices
+"not targeted", and nothing else) is a partial operation's decision, not a denial: the row
+says so ("the last commit (a deploy to s2) did not cover the network, so it earned no
+baseline: Save All takes one"), and Save All alone takes one. A Save All denied because a
+device departs from its intent names each departure, and Save All will be refused again until
+each is resolved, by changing the device or the intent. When no stored baseline can be
+re-applied (each predates a credential rotation, or is withdrawn), one row says so and carries
+whichever of the two the last decision was. The row clears when a later decision earns a
+baseline.
+
 **Credentials** (hourly, metadata only, never a value): a credential with an expiry is a
 warning 30 days before it expires, a danger row 7 days before, and a danger row as soon as it
 has expired. One expiring more than a year out has no row. Where each expiry comes from:

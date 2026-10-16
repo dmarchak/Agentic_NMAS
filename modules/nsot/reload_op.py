@@ -106,13 +106,11 @@ def read_device(device: dict) -> dict:
     ``{"running", "startup", "version", "boot", "dirs": {path: text}}``.
     Reads only, so it takes no hold: the preview's job is a read, and the run that changes the
     device holds it (`run`)."""
-    from modules import config_read
     from modules.connection import with_temp_connection
-    from modules.nsot import normalize
 
     def read(conn):
-        out = {"running": config_read.read(conn, device.get("hostname", ""))}
-        out["startup"] = conn.send_command("show startup-config", **_READ) or ""
+        out = read_boot_pair(conn, device.get("hostname", ""))
+        nvram = out.pop("nvram")
         out["version"] = conn.send_command("show version", **_READ) or ""
         boot = conn.send_command("show boot", **_READ) or ""
         out["boot"] = "" if "Invalid input" in boot else boot
@@ -120,11 +118,35 @@ def read_device(device: dict) -> dict:
         for path in _images(out["version"], out["boot"]):
             if re.fullmatch(r"[\w.:/-]+", path):           # one token, as the device printed it
                 out["dirs"][path] = conn.send_command(f"dir {path}", **_READ) or ""
-        if normalize.certificate_pointers(out["startup"]):  # startup keeps a certificate there
-            out["dirs"][NVRAM] = conn.send_command(f"dir {NVRAM}", **_READ) or ""
+        if nvram is not None:                               # startup keeps a certificate there
+            out["dirs"][NVRAM] = nvram
         return out
 
     return with_temp_connection(device, read)
+
+
+def nvram_read(conn, startup: str):
+    """`dir nvram:` on *conn* when *startup* keeps a certificate as a file there
+    (`normalize.certificate_pointers`), else None, nothing sent: the read
+    `roundtrip.startup_is_running` needs to tell a certificate's storage from a difference."""
+    from modules.nsot import normalize
+
+    if not normalize.certificate_pointers(startup):
+        return None
+    return conn.send_command(f"dir {NVRAM}", **_READ) or ""
+
+
+def read_boot_pair(conn, hostname: str) -> dict:
+    """What a device runs and what it boots, read on *conn* as Reload's gate reads them:
+    the running configuration (`config_read.read`), `show startup-config`, and `dir nvram:`
+    when startup keeps a certificate there (`nvram_read`). ``{"running", "startup",
+    "nvram"}``, ``nvram`` None when not read. Persist's preview reads the same (C886)."""
+    from modules import config_read
+
+    out = {"running": config_read.read(conn, hostname)}
+    out["startup"] = conn.send_command("show startup-config", **_READ) or ""
+    out["nvram"] = nvram_read(conn, out["startup"])
+    return out
 
 
 def _images(version: str, boot: str) -> list:
