@@ -142,6 +142,10 @@ ROW_KINDS = {
     ("scheduled_rotation", "stopped"): ("a scheduled credential rotation stopped on a failure",
                                         "read the device's rotation result and settle the "
                                         "stage it names, then run Rotate due devices now"),
+    # C906: nothing was sent; every session to it is refused until a person reviews the key.
+    ("host_keys", "changed"): ("a device answered with an SSH host key Mercury does not hold",
+                               "re-key it on its page if it was rebuilt, or find what answers "
+                               "at its address"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -242,6 +246,9 @@ CLEARS = {
                                         "or the failed device's rotation is committed (its "
                                         "device page's Rotate); until then the timer starts "
                                         "no scheduled run"),
+    ("host_keys", "changed"): (("resolves",), "a session finds the device answering with the "
+                               "key Mercury holds: after a re-key on its page keeps the new "
+                               "one, or when the device answers with the held key again"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -2850,6 +2857,57 @@ def adjacency_source(cached=None) -> dict:
                     if settling else "")))
 
 
+# ---------------------------------------------------------------------------
+# Source: SSH host keys refused (C906)
+# ---------------------------------------------------------------------------
+
+def host_key_source(refused=None) -> dict:
+    """Each device whose last connection was REFUSED because it answered with an SSH host key
+    Mercury does not hold (`modules/host_keys.py`): nothing was sent to it, and every
+    operation and reader on it is refused until the key is reviewed. One file read; a record
+    that cannot be read is this source's error, which is itself a row."""
+    from modules import host_keys as hk
+
+    started = time.time()
+    label = "SSH host keys"
+    try:
+        keys = hk.read()["keys"] if refused is None else {}
+        got = (sorted((ip, dict(r)) for ip, r in keys.items() if r.get("refused"))
+               if refused is None else refused())
+    except hk.HostKeyStoreUnreadable as exc:
+        return source_result("host_keys", label, read_at=started,
+                             took_ms=int((time.time() - started) * 1000), error=str(exc))
+    rows = []
+    for ip, rec in got:
+        r = rec.get("refused") or {}
+        names = hk.names_for(ip)
+        hosts = sorted({h for _l, h in names})
+        lst = names[0][0] if len(names) == 1 else ""
+        who = ", ".join(hosts) or ip
+        action = {"label": (f"If {who} was rebuilt or its key generated anew, review the new "
+                            "key with Re-key… on its page; if not, find what answers at "
+                            f"{ip} before anything signs in to it")}
+        if len(hosts) == 1:
+            action["href"] = (f"/v2/device/{hosts[0]}?op=rekey"
+                              + (f"&list={lst}" if lst else ""))
+        rows.append(row(
+            source="host_keys", kind="changed", key=ip, level="danger",
+            what=(f"{who} answered with a different SSH host key: Mercury sent it nothing, and "
+                  "refuses every session to it until the key is reviewed"),
+            cause=(f"It answered with {r.get('fingerprint', '?')} ({r.get('type') or '?'}) on "
+                   f"port {r.get('port', '?')}, last at {r.get('at', '?')} "
+                   f"({r.get('count', 1)} time(s) since {r.get('first_at') or r.get('at', '?')},"
+                   f" last for {r.get('by') or 'an unrecorded caller'}); Mercury holds "
+                   f"{hk.held_words(rec)}."),
+            action=action, devices=hosts, since=_ts(r.get("first_at") or r.get("at")),
+            operands={"address": ip, "offered": r.get("fingerprint", ""),
+                      "held": rec.get("fingerprint", ""), "list": lst}))
+    return source_result("host_keys", label, read_at=started,
+                         took_ms=int((time.time() - started) * 1000), rows=rows,
+                         checked=(f"{len(keys)} device key(s) held, " if refused is None else "")
+                         + f"{len(rows)} refused at their last connection")
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, integrations_source, ci_source, redaction_source,
@@ -2857,7 +2915,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            remote_source, pushed_source,
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
-           records_source, scheduled_rotation_source)
+           records_source, scheduled_rotation_source, host_key_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -2900,6 +2958,8 @@ SOURCE_KEYS = {
     "records_source": ("records", "settings"),
     # A scheduled run's end (or a device in it) announces both (C724).
     "scheduled_rotation_source": ("rotation", "credentials"),
+    # A key kept, refused or replaced by any session or a re-key announces it (C906).
+    "host_key_source": ("host_keys",),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

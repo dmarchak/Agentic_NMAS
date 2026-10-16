@@ -430,14 +430,27 @@ def _free_slot(ip: str, sid: int) -> None:
                 pass
 
 
-def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None):
-    """Open ONE SSH session, counted, attributed, and within the budget.
+def _pin_host_key(conn, ip: str, owner: str) -> None:
+    """Every session checks the device's SSH host key against Mercury's record before it
+    signs in (C906): Netmiko builds its paramiko client with this policy and loads no other
+    key, so paramiko asks it on every connection, after the key exchange and before any
+    credential is sent. A first contact keeps the key; a different key is refused naming both
+    (`modules/host_keys.py`). A Netmiko session that is not SSH (a `_telnet` or `_serial`
+    driver) has no host key to check, and the credential would cross in clear: refused."""
+    from modules import host_keys
 
-    The only place in the program a Netmiko session is opened (a test holds
-    it to that). Closing it with ``disconnect()`` removes it from the count.
-    """
-    ip = params["ip"]
-    owner = owner or _caller_label()
+    protocol = getattr(conn, "protocol", "ssh")
+    if protocol != "ssh":
+        raise host_keys.HostKeyRefused(
+            f"refusing a {protocol} session to {ip}: it has no host key to check and would "
+            "send the credential in clear; Mercury opens SSH sessions only (C906). Nothing "
+            "was sent", ip=ip)
+    conn.key_policy = host_keys.policy(ip, owner, int(getattr(conn, "port", 22) or 22))
+
+
+def _claim(ip: str, owner: str, pool: dict = None, pool_lock=None) -> tuple:
+    """``(sid, budget)``: one session slot for *ip*, counted in this process and taken across
+    processes, or raise `SessionBudgetExceeded` naming who holds them."""
     budget = session_budget(ip)
     with _sessions_mu:
         held = _sessions.setdefault(ip, {})
@@ -463,6 +476,19 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
         now = time.time()
         held[sid] = {"owner": owner, "opened": now, "last_used": now,
                      "pool": pool, "pool_lock": pool_lock, "conn": None}
+    return sid, budget
+
+
+def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None):
+    """Open ONE SSH session, counted, attributed, within the budget, and with the device's
+    host key checked against Mercury's record before it signs in (C906).
+
+    The only place in the program a Netmiko session is opened (a test holds
+    it to that). Closing it with ``disconnect()`` removes it from the count.
+    """
+    ip = params["ip"]
+    owner = owner or _caller_label()
+    sid, budget = _claim(ip, owner, pool, pool_lock)
     try:
         # Looked up at CALL time, like the callers that used to open their own
         # sessions did, so a fake installed at the Netmiko boundary reaches here.
@@ -479,6 +505,7 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
         for attempt in (1, 2):
             conn = netmiko.ConnectHandler(**{"conn_timeout": CONNECT_TIMEOUT_S,
                                              "auto_connect": False, **params})
+            _pin_host_key(conn, ip, owner)
             floor_reads(conn)
             login = getattr(conn, "_open", None)
             if not callable(login):
@@ -521,6 +548,34 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
                 "%d kept for a person)", ip, owner, count, budget["budget"],
                 budget["lines"], RESERVED_FOR_PEOPLE)
     return conn
+
+
+def read_host_key(ip: str, *, port: int = 22, owner: str = "", timeout: float = None) -> dict:
+    """The SSH host key the device at *ip* presents NOW, ``{"type", "fingerprint", "key"}``,
+    read with NO credential: the transport's key exchange only, then closed (the re-key's
+    preview, C906). It takes a session slot like any session, so it counts against the
+    device's budget, and compares nothing: what it read is what the caller shows."""
+    import socket
+
+    import paramiko
+
+    from modules import host_keys
+
+    owner = owner or _caller_label()
+    bound = timeout or CONNECT_TIMEOUT_S
+    sid, _budget = _claim(ip, owner)
+    try:
+        sock = socket.create_connection((ip, port), timeout=bound)
+        transport = paramiko.Transport(sock)
+        try:
+            transport.start_client(timeout=bound)
+            key = transport.get_remote_server_key()
+        finally:
+            transport.close()
+            sock.close()
+    finally:
+        _drop(ip, sid, "host key read")
+    return host_keys.offered(key)
 
 
 class UnheldDeviceWrite(RuntimeError):

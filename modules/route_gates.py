@@ -119,6 +119,7 @@ GATES = {
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "v2.save_confirm": _g(C, "saves the running config to startup on each chosen device, reads it back, and records the running config as golden in one commit (C593, Devices › Save): changes what the devices boot"),
     "device_v2.persist_confirm": _g(C, "saves the running config to startup on a device and reads it back, from the v2 device page (7.3; the same apply as persist.apply)"),
+    "device_v2.rekey_confirm": _g(C, "keeps the SSH host key a device answers with now in place of the one Mercury holds (C906): every later session signs in to whatever presents it, so a person confirms it, bound to both keys"),
     "privileged_v2.confirm": _g(C, "sends one Tier 2 command (Run a privileged command…, NSOT_TIER2_PRIVILEGED) to a device, holding it, bound to the previewed plan and a stated reason; verified and recorded"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
 

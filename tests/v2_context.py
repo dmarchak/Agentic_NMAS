@@ -557,6 +557,30 @@ def _deploy(client, lab, mp):
     return {"GET /v2/device/<name>/deploy": seen}
 
 
+def _rekey(client, _lab, mp):
+    """The re-key card (C906) for r3, whose address answers with a key other than the one
+    Mercury holds, and its confirm's result. The device's key read is replaced (its own test
+    reads a real SSH server: tests/test_host_keys.py); the keys are real, generated here."""
+    import paramiko
+
+    from modules import host_keys
+    from modules.device import load_saved_devices
+    from modules.nsot.listref import resolve
+
+    ip = next(d["ip"] for d in load_saved_devices(resolve("Lab").csv_path)
+              if d.get("hostname") == "r3")
+    held, now = (paramiko.RSAKey.generate(1024) for _ in range(2))
+    host_keys.check(ip, held, owner="v2-context")
+    mp.setattr("modules.connection.read_host_key", lambda ip, **kw: host_keys.offered(now))
+    card = client.get("/v2/device/r3/rekey?back=overview")
+    assert card.status_code == 200, card.status_code
+    vals = re.search(r'"hash": "([0-9a-f]+)"', card.get_data(as_text=True))
+    assert vals, "the re-key card offers no confirm"
+    r = client.post("/v2/device/r3/rekey/confirm",
+                    data={"list": "Lab", "hash": vals.group(1), "back": "overview"})
+    assert r.status_code == 200, r.status_code
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
-PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _deploy]
+PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _deploy]

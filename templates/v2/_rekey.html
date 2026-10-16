@@ -1,0 +1,73 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Re-key (C906): the card in place of the tab, from modules/device_actions.py over
+    `rekey_preview` and `rekey_result`, in persist's card pattern. The preview reads the key the
+    device presents now with no credential; the two keys lead, since they are the decision. The
+    confirm keeps the new key, busy on itself, and the result replaces the card. Opened from
+    the Needs attention row a refused key raises (`?op=rekey`). -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- if c.state == 'preview' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title"
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='rekey', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="op-title">Re-key {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('rekey') }}{{ close_button('Cancel') }}</div></div>
+  <div class="op-part"><h3>What</h3><div>
+    <p>{{ c.summary }}</p>
+    <dl class="op-ops">
+      {%- for o in c.key_pair %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    </dl>
+    {%- if c.steps %}
+    <p class="op-wait">In the tool, in order; nothing is sent to the device:</p>
+    <ul class="op-list">{% for s in c.steps %}<li>{{ s }}</li>{% endfor %}</ul>
+    {%- else %}
+    <p>{{ c.none }}</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>What will not happen</h3><div>
+    {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}.</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Operands</h3><div>
+    <dl class="op-ops">
+      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    </dl></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in c.gates %}
+      <li>{{ badge({'pass': 'pass', 'fail': 'fail', 'at_apply': 'at confirm', 'not_applicable': 'n/a', 'not_reached': 'not reached'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger', 'at_apply': 'info'}.get(g.state, 'muted')) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ul></div></div>
+  <div class="op-ft">
+    {%- if c.may %}
+    <p class="op-note">{{ c.effect }} Bound to plan {{ c.hash }}: if the device answers with another key, or the record moves, before you confirm, nothing is kept.</p>
+    <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="rekey"
+            hx-post="{{ url_for('device_v2.rekey_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "hash": c.hash, "back": c.back} | tojson }}'{{ gate('confirm') }}><span class="op-idle">{{ c.button or ('Keep the new key for ' ~ c.host) }}</span><span class="op-busy">Reading {{ c.host }}'s key again and keeping it…</span></button>{{ how('rekey', compact=True, op='re-key') }}</span>
+    {%- else %}
+    <p class="op-note">Not available: {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}nothing can be re-keyed{% endfor %}.{% if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>
+    <span class="op-act"><button type="button" class="btn" data-op="rekey" hx-get="{{ url_for('device_v2.rekey', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('rekey', compact=True, op='re-key') }}</span>
+    {%- endif %}
+  </div>
+</section>
+{%- elif c.state == 'result' %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Re-key {{ c.host }} {{ badge(c.chip, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('rekey') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>{{ c.summary }} {{ stamp(c.at, c.at[11:19] ~ ' UTC') }}</p>
+    {%- if c.outcome != 'rekeyed' %}
+    <p><button type="button" class="btn" data-op="rekey" hx-get="{{ url_for('device_v2.rekey', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('rekey', compact=True, op='re-key') }}</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p></div></div>
+  <div class="op-part"><h3>Still true</h3><div><p>{{ c.not_watched }}</p></div></div>
+  <div class="op-ft"><p class="op-note">This card goes when you close it or leave the page; the record stays, and the device's History draws it.</p></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Re-key {{ c.host }} {{ badge('Nothing was kept', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('rekey') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'refused_list' %}Refused: the card names no list this server knows ({{ c.list or 'none given' }}), and a re-key keeps a key for a device of one list. Nothing was kept.
+  {%- elif c.state == 'refused_hash' %}Refused: the confirm carried no plan to be bound to. Nothing was kept.
+  {%- else %}Nothing was kept: {{ c.error }}.{% endif %}</p></div></div>
+</section>
+{%- endif %}

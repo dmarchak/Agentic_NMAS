@@ -11,6 +11,11 @@ Usage:
 
 Prints wall-clock time for each phase, once with fast_cli=True and once with
 fast_cli=False, so the two modes can be compared directly.
+
+It signs in only to a device whose SSH host key is already in the running user's
+`~/.ssh/known_hosts` (`ssh_strict`, C906): an unknown or changed key is refused before the
+credential is sent. Add the key first, checking that `ssh-keyscan <ip> | ssh-keygen -lf -`
+prints the fingerprint Mercury holds for the device (`<data>/ssh_host_keys.json`).
 """
 import sys
 import time
@@ -34,6 +39,9 @@ def main():
             secret=secret,
             port=22,
             fast_cli=fast_cli,
+            # C906: refuse a key the user's known_hosts does not hold, before signing in.
+            ssh_strict=True,
+            system_host_keys=True,
         )
         t1 = time.perf_counter()
         print(f"connect:            {t1 - t0:.2f}s")

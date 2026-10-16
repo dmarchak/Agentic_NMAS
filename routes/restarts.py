@@ -28,7 +28,9 @@ MAX_MINUTES = 24 * 60
 @bp.route("/planned", methods=["POST"])
 def planned():
     """Body: ``{"list", "devices": [...] or ["*"], "minutes", "why", "from"?,
-    "correction"?}``. ``from`` is a UTC time; absent, the window starts now."""
+    "correction"?, "new_host_keys"?}``. ``from`` is a UTC time; absent, the window starts
+    now. ``new_host_keys`` (true) says the devices come back with new SSH host keys (a lab
+    redeploy), so Mercury keeps one new key per device met inside the window (C906)."""
     from modules import identity
     from modules import restarts as R
     from modules.device import get_device_lists
@@ -53,10 +55,14 @@ def planned():
         if not start:
             return jsonify({"ok": False, "error": f"from {data['from']!r} is not a UTC time "
                                                   "like 2026-10-01T15:20Z"}), 400
+    new_keys = data.get("new_host_keys", False)
+    if not isinstance(new_keys, bool):
+        return jsonify({"ok": False, "error": "new_host_keys is true or false"}), 400
     actor = identity.request_actor()
     got = R.record_planned(devices, start, start + minutes * 60, actor, str(data.get("why") or ""),
                            "api", list_name=list_name,
-                           correction=str(data.get("correction") or ""))
+                           correction=str(data.get("correction") or ""),
+                           new_host_keys=new_keys)
     if not got["ok"]:
         return jsonify({"ok": False, "error": got["error"]}), 409
     log.info("planned restart recorded through the API by %s: %s", actor, got["record"])

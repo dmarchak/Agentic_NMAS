@@ -1,0 +1,466 @@
+"""SSH host keys: kept on first contact, compared on every connection after (C906).
+
+Mercury signed in to whatever answered at a device's address: `connection_params` passed no
+host-key option, so Netmiko's default (`AutoAddPolicy`, nothing loaded, nothing kept) took
+any key, and the NETCONF push set `hostkey_verify=False`. A device's credential went to
+anything on its path.
+
+**The rule.** The first time Mercury meets a device's key it KEEPS it (trust on first use,
+recorded with who and when). Every later connection compares the key the device presents
+with the one kept, before any credential is sent (paramiko asks the policy after the key
+exchange and before authentication), and a different key is REFUSED naming both
+fingerprints. A key that legitimately changed (a rebuilt device) is taken in one of two ways,
+each recorded: a person's reviewed re-key (`modules/nsot/rekey_op.py`, a card on the device's
+page), or a planned-restart window declared BEFORE the change that says the devices it covers
+come back with new host keys (`restarts.record_planned(new_host_keys=True)`: a lab redeploy,
+whose fresh disks make every key anew). A window accepts one new key per device, and never a
+key it was declared after Mercury had already refused.
+
+**The store** is ONE file for the installation, ``<data>/ssh_host_keys.json``, keyed by the
+address Mercury connects to, the way OpenSSH's `known_hosts` is: what a key proves is who
+answers at an address, and the one opener (`connection.open_ssh`) knows the address and not
+the network. Onboarding meets a device before it belongs to any network, and one host
+reaches one machine at one address, so two networks naming that address name the same
+machine; two records of it could disagree. Owner-only (written through `filestore`, mkstemp
+0600, replaced atomically), one writer (this module), every read-modify-write under one lock
+across processes (`filestore.PathLock`). A store that exists and cannot be read, or that
+someone else can write, REFUSES every connection rather than trusting: nothing kept could be
+compared, and keeping a key over an unreadable record is how every pin would be lost.
+
+Public keys are not secrets; the record still names no credential, and nothing here logs one.
+"""
+
+import base64
+import hashlib
+import json
+import logging
+import os
+import stat
+import time
+
+log = logging.getLogger(__name__)
+
+STORE = "ssh_host_keys.json"
+VERSION = 1
+
+#: The Netmiko/paramiko port a device's SSH answers on; NETCONF's is compared with the SAME
+#: record (one device, one SSH server identity).
+SSH_PORT = 22
+NETCONF_PORT = 830
+
+#: How a record came to hold its key.
+FIRST_CONTACT = "first contact"
+REKEYED = "re-keyed by a person"
+WINDOW = "a planned window that expected new host keys"
+
+
+class HostKeyRefused(RuntimeError):
+    """A device answered with a key Mercury does not hold, or the record cannot be compared:
+    the connection is closed before anything is sent."""
+
+    def __init__(self, message: str, *, ip: str = "", offered: dict = None,
+                 held: dict = None):
+        super().__init__(message)
+        self.ip = ip
+        self.offered = dict(offered or {})
+        self.held = dict(held or {})
+
+
+class HostKeyStoreUnreadable(HostKeyRefused):
+    """The record of host keys exists and cannot be read (or is writable by others)."""
+
+
+def _iso(ts: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+
+def _epoch(text: str) -> float:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def path() -> str:
+    from modules import config
+    return os.path.join(config.DATA_DIR, STORE)
+
+
+# ---------------------------------------------------------------------------
+# Fingerprints, as `ssh-keygen -l` prints them
+# ---------------------------------------------------------------------------
+
+def fingerprint_of(blob: bytes) -> str:
+    """``SHA256:<base64, unpadded>`` of a public key's wire form: `ssh-keygen -l`'s line."""
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
+def md5_of(blob: bytes) -> str:
+    """The colon-separated MD5 form, the one ncclient reports for an unknown key."""
+    return ":".join(f"{b:02x}" for b in hashlib.md5(blob).digest())
+
+
+def offered(key) -> dict:
+    """``{"type", "fingerprint", "key"}`` for a paramiko key: its type, its SHA256
+    fingerprint and its public blob (base64), which NETCONF verifies against."""
+    blob = key.asbytes()
+    return {"type": key.get_name(), "fingerprint": fingerprint_of(blob),
+            "key": base64.b64encode(blob).decode()}
+
+
+# ---------------------------------------------------------------------------
+# The store
+# ---------------------------------------------------------------------------
+
+def read() -> dict:
+    """``{"version", "keys": {address: record}}``. Absent is EMPTY (no key kept yet); a file
+    that cannot be read, is not a host-key record, or that a group or others may write,
+    raises `HostKeyStoreUnreadable`, never empty."""
+    p = path()
+    if not os.path.exists(p):
+        return {"version": VERSION, "keys": {}}
+    try:
+        mode = os.stat(p).st_mode
+        if mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise HostKeyStoreUnreadable(
+                f"Mercury's record of SSH host keys ({p}) may be written by others (mode "
+                f"{stat.S_IMODE(mode):o}, kept 0600), so no key in it can be trusted: nothing "
+                "was sent")
+        with open(p, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except HostKeyStoreUnreadable:
+        raise
+    except (OSError, ValueError) as exc:
+        raise HostKeyStoreUnreadable(
+            f"Mercury's record of SSH host keys ({p}) could not be read "
+            f"({type(exc).__name__}: {exc}), so no device's key can be compared: nothing was "
+            "sent. Repair or restore the file; Mercury never keeps a key over an unreadable "
+            "record") from exc
+    if not isinstance(doc, dict) or not isinstance(doc.get("keys"), dict):
+        raise HostKeyStoreUnreadable(
+            f"Mercury's record of SSH host keys ({p}) is not a host-key record (no `keys` "
+            "table), so no device's key can be compared: nothing was sent")
+    return doc
+
+
+def _write(doc: dict) -> None:
+    from modules.filestore import write_atomic
+    doc["version"] = VERSION
+    write_atomic(path(), json.dumps(doc, indent=1, sort_keys=True) + "\n")
+
+
+def _lock():
+    from modules.filestore import PathLock
+    return PathLock(path)
+
+
+def held(ip: str):
+    """The record kept for *ip*, or None. Raises `HostKeyStoreUnreadable`."""
+    rec = read()["keys"].get(ip)
+    return dict(rec) if rec else None
+
+
+def refused() -> list:
+    """Every record whose device last answered with a key Mercury refused, as
+    ``[(address, record)]``. Raises `HostKeyStoreUnreadable`."""
+    return sorted((ip, dict(rec)) for ip, rec in read()["keys"].items() if rec.get("refused"))
+
+
+def _announce() -> None:
+    """`host_keys`: a key was kept, replaced or refused, so Needs attention reads again."""
+    try:
+        from modules import invalidation
+        invalidation.announce(["host_keys"], "host-keys", True)
+    except RuntimeError:
+        pass                              # a host script's process: nobody to tell
+    except Exception:                     # noqa: BLE001 - a refusal never fails on telling
+        log.warning("host_keys: the change could not be announced", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# Who met the key, and which device answers at an address
+# ---------------------------------------------------------------------------
+
+def who(owner: str, ip: str) -> str:
+    """Who and what made this connection: the operation holding the device in this thread
+    and its actor, else the verified person of this request, else said as no verified person,
+    always with the code that opened the session (*owner*)."""
+    owner = owner or "an unnamed caller"
+    try:
+        from modules.nsot import device_ops
+        hold = device_ops.held_by_this_thread(ip)
+    except Exception:                     # noqa: BLE001 - attribution never blocks a connect
+        hold = None
+    if hold:
+        return (f"{hold.get('actor') or 'an unnamed actor'} "
+                f"({hold.get('operation') or 'an operation'}; {owner})")
+    try:
+        from modules import identity
+        actor = identity.request_actor()
+        if actor and actor != identity.UNAUTHENTICATED:
+            return f"{actor} ({owner})"
+    except Exception:                     # noqa: BLE001
+        pass
+    return f"no verified person ({owner})"
+
+
+def names_for(ip: str) -> list:
+    """``[(network, device)]`` whose inventory names *ip*: read only on a refusal or a
+    re-key, never on an ordinary connection."""
+    out = []
+    try:
+        from modules.device import get_device_lists, load_saved_devices
+        from modules.nsot import listref
+        for item in get_device_lists():
+            try:
+                ref = listref.resolve(item["name"])
+                rows = load_saved_devices(ref.csv_path)
+            except Exception:             # noqa: BLE001 - one unreadable list names fewer
+                continue
+            out += [(ref.name, d.get("hostname", "")) for d in rows
+                    if (d.get("ip") or "").strip() == ip and d.get("hostname")]
+    except Exception:                     # noqa: BLE001
+        log.debug("host_keys: no device named for %s", ip, exc_info=True)
+    return out
+
+
+def label(ip: str) -> str:
+    """"r1 (192.0.2.1)", or the address alone when no inventory names it."""
+    hosts = sorted({h for _l, h in names_for(ip)})
+    return f"{', '.join(hosts)} ({ip})" if hosts else ip
+
+
+def held_words(rec: dict) -> str:
+    """"SHA256:… (ssh-rsa, kept 2026-10-16 by …)"."""
+    return (f"{rec.get('fingerprint', '?')} ({rec.get('type', '?')}, kept "
+            f"{str(rec.get('kept_at', ''))[:10] or 'at an unrecorded time'} by "
+            f"{rec.get('kept_by') or 'an unrecorded caller'})")
+
+
+def refusal_words(ip: str, got: dict, rec: dict) -> str:
+    """The refusal, naming both operands (CLAUDE.md: a refusal names the comparison)."""
+    return (f"{label(ip)} answered with SSH host key {got.get('fingerprint')} "
+            f"({got.get('type')}) where Mercury holds {held_words(rec)}: nothing was sent. If "
+            "the device was rebuilt or its key generated anew, re-key it on its page "
+            "(Re-key…); otherwise something else answers at its address")
+
+
+# ---------------------------------------------------------------------------
+# The comparison: every SSH session's key, before any credential
+# ---------------------------------------------------------------------------
+
+def _window_for(ip: str, rec: dict, got: dict, now: float):
+    """The planned-restart window that accepts this new key, or None: declared to expect new
+    host keys, covering a device at *ip* now, not already used by this device's record, and
+    recorded BEFORE Mercury first refused this same key (a window declared after a refusal
+    is not a review of it: that is the re-key's)."""
+    try:
+        from modules import restarts
+        planned = restarts.planned_rows()
+    except Exception as exc:              # noqa: BLE001 - unreadable plans accept nothing
+        log.warning("host_keys: the planned-restart record could not be read (%s); no window "
+                    "can accept a new key", exc)
+        return None
+    refused_at = 0.0
+    prior = rec.get("refused") or {}
+    if prior.get("fingerprint") == got["fingerprint"]:
+        refused_at = _epoch(prior.get("first_at") or prior.get("at") or "")
+    for lst, host in names_for(ip):
+        for p in planned:
+            if not p.get("new_host_keys"):
+                continue
+            if not restarts._window_covers(p, host, now, lst):
+                continue
+            wid = f"{p.get('list', '')}|{p.get('recorded_at', '')}|{p.get('from', '')}"
+            if rec.get("window", {}).get("id") == wid:
+                continue                  # this window already took one new key for it
+            if refused_at and _epoch(p.get("recorded_at", "")) >= refused_at:
+                continue
+            return {"id": wid, "by": p.get("by", ""), "why": p.get("why", ""),
+                    "from": p.get("from", ""), "until": p.get("until", ""),
+                    "device": host, "list": lst}
+    return None
+
+
+def _retired(rec: dict, at: float, by: str, why: str) -> dict:
+    """An earlier key, kept in the record's history when a new one replaces it."""
+    old = {k: rec.get(k) for k in ("type", "fingerprint", "kept_at", "kept_by", "how")}
+    old.update(replaced_at=_iso(at), replaced_by=by, replaced_why=why)
+    return old
+
+
+def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT) -> dict:
+    """Compare the key *ip* presents with the one kept, before anything is sent.
+    ``{"state": "kept" | "matched" | "window", "record"}``; raises `HostKeyRefused` (a
+    different key, nothing sent, the refusal recorded for Needs attention) or
+    `HostKeyStoreUnreadable`."""
+    got = offered(key)
+    now = time.time()
+    with _lock():
+        doc = read()
+        rec = doc["keys"].get(ip)
+        if rec is None:
+            by = who(owner, ip)
+            rec = dict(got, ip=ip, kept_at=_iso(now), kept_by=by, how=FIRST_CONTACT,
+                       port=port, history=[])
+            doc["keys"][ip] = rec
+            _write(doc)
+            log.warning("ssh host key: kept %s's %s %s on first contact, for %s (C906)",
+                        ip, got["type"], got["fingerprint"], by)
+            state = "kept"
+        elif rec.get("fingerprint") == got["fingerprint"] and rec.get("type") == got["type"]:
+            if rec.get("refused"):
+                rec.pop("refused", None)
+                _write(doc)
+                log.info("ssh host key: %s answers with the key Mercury holds again; its "
+                         "refusal is cleared", ip)
+                state = "matched"
+            else:
+                return {"state": "matched", "record": dict(rec)}
+        else:
+            window = _window_for(ip, rec, got, now)
+            if window:
+                by = who(owner, ip)
+                new = dict(got, ip=ip, kept_at=_iso(now), kept_by=by, how=WINDOW,
+                           port=port, window=window,
+                           history=list(rec.get("history") or []) + [_retired(
+                               rec, now, by, f"replaced under the planned window declared by "
+                                             f"{window['by']}: {window['why']}")])
+                doc["keys"][ip] = new
+                _write(doc)
+                log.warning("ssh host key: %s answered with a new key %s (was %s), kept under "
+                            "the planned window declared by %s that expected new host keys",
+                            ip, got["fingerprint"], rec.get("fingerprint"), window["by"])
+                rec, state = new, "window"
+            else:
+                prior = rec.get("refused") or {}
+                same = prior.get("fingerprint") == got["fingerprint"]
+                rec["refused"] = {"type": got["type"], "fingerprint": got["fingerprint"],
+                                  "at": _iso(now), "by": who(owner, ip), "port": port,
+                                  "first_at": prior.get("first_at") if same else _iso(now),
+                                  "count": (int(prior.get("count") or 0) + 1) if same else 1}
+                _write(doc)
+                words = refusal_words(ip, got, rec)
+                log.error("ssh host key refused: %s", words)
+                _announce()
+                raise HostKeyRefused(words, ip=ip, offered=got, held=rec)
+    _announce()
+    return {"state": state, "record": dict(rec)}
+
+
+def policy(ip: str, owner: str = "", port: int = SSH_PORT):
+    """The paramiko policy every SSH session is opened with (`connection.open_ssh` sets it as
+    Netmiko's `key_policy`). With nothing loaded into the client, paramiko asks it for every
+    connection, after the key exchange and BEFORE authentication, so a refusal sends
+    nothing."""
+    import paramiko
+
+    class _Pinned(paramiko.MissingHostKeyPolicy):
+        def missing_host_key(self, client, hostname, key):
+            check(ip, key, owner=owner, port=port)
+
+    p = _Pinned()
+    p.nmas_ip = ip
+    return p
+
+
+# ---------------------------------------------------------------------------
+# NETCONF: the same record, never a first contact of its own
+# ---------------------------------------------------------------------------
+
+def _pinned_handler(device: str):
+    """ncclient's device handler for *device*, kept from replacing Mercury's unknown-host
+    answer. MEASURED against a real server (tests/test_host_keys.py): ncclient's IOS-XE
+    handler (and its CSR and IOS-XR ones) sets ``unknown_host_cb`` to a function that answers
+    True, "ignore the unknown host check", overriding the caller's, so `hostkey_verify=True`
+    with a pinned key still signed in to ANY key. This subclass lets the handler add what it
+    adds, then puts Mercury's answer back."""
+    from ncclient import manager
+
+    base = type(manager.make_device_handler({"name": device}))
+
+    class Pinned(base):
+        def add_additional_ssh_connect_params(self, kwargs):
+            ours = kwargs.get("unknown_host_cb")
+            super().add_additional_ssh_connect_params(kwargs)
+            if ours is not None:
+                kwargs["unknown_host_cb"] = ours
+
+    Pinned.__name__ = f"Pinned{base.__name__}"
+    return Pinned
+
+
+def netconf_args(ip: str, device: str = "iosxe") -> tuple:
+    """``(kwargs, seen)`` for `ncclient.manager.connect`: verify against the key kept for
+    *ip* (``hostkey_b64``), and refuse anything else (``unknown_host_cb``), before
+    authentication, with *device*'s handler kept from overriding that answer
+    (`_pinned_handler`). *seen* collects what the device offered when it was refused.
+    NETCONF keeps no key on first contact: a device with no record is refused, since its SSH
+    session (every operation reads over SSH first) is where a key is kept and attributed."""
+    rec = held(ip)
+    if rec is None:
+        raise HostKeyRefused(
+            f"{label(ip)} has no SSH host key on record, and NETCONF never keeps one: "
+            "nothing was sent. A session over SSH (any read of the device) keeps it first",
+            ip=ip)
+    seen = {}
+
+    def unknown_host(host, fingerprint):
+        seen["md5"] = fingerprint
+        return False
+
+    return {"hostkey_verify": True, "hostkey_b64": rec["key"],
+            "unknown_host_cb": unknown_host,
+            "device_params": {"name": device, "handler": _pinned_handler(device)}}, seen
+
+
+def netconf_refusal(ip: str, md5: str) -> HostKeyRefused:
+    """The refusal for a NETCONF session whose key was not the one kept. ncclient reports the
+    offered key's MD5 only, so both are named in that form, with the held key's SHA256."""
+    now = time.time()
+    with _lock():
+        doc = read()
+        rec = doc["keys"].get(ip) or {}
+        held_md5 = md5_of(base64.b64decode(rec.get("key") or "")) if rec.get("key") else "?"
+        if rec:
+            prior = rec.get("refused") or {}
+            rec["refused"] = {"type": "", "fingerprint": f"MD5:{md5}", "at": _iso(now),
+                              "by": who("pipeline:netconf", ip), "port": NETCONF_PORT,
+                              "first_at": prior.get("first_at") or _iso(now),
+                              "count": int(prior.get("count") or 0) + 1}
+            _write(doc)
+    _announce()
+    words = (f"{label(ip)} answered NETCONF (port {NETCONF_PORT}) with a host key whose MD5 is "
+             f"{md5}, where Mercury holds MD5 {held_md5}, {held_words(rec)}: nothing was "
+             "sent")
+    log.error("ssh host key refused: %s", words)
+    return HostKeyRefused(words, ip=ip, offered={"md5": md5}, held=rec)
+
+
+# ---------------------------------------------------------------------------
+# A reviewed re-key: replace the kept key, compare-and-swap
+# ---------------------------------------------------------------------------
+
+def replace(ip: str, *, expected: str, new: dict, by: str, why: str) -> dict:
+    """Keep *new* (``{"type", "fingerprint", "key"}``) for *ip* in place of the key whose
+    fingerprint is *expected*, as *by*, keeping the old one in the record's history.
+    ``{"ok", "error", "record"}``: refused, naming both, when the held key is not *expected*
+    (someone re-keyed or it was kept meanwhile). The re-key operation's record."""
+    now = time.time()
+    with _lock():
+        doc = read()
+        rec = doc["keys"].get(ip)
+        if rec is None or rec.get("fingerprint") != expected:
+            return {"ok": False, "error": (
+                f"Mercury now holds {held_words(rec) if rec else 'no key'} for {ip}, not the "
+                f"{expected} the preview showed: nothing was replaced")}
+        new_rec = dict({k: new[k] for k in ("type", "fingerprint", "key")}, ip=ip,
+                       kept_at=_iso(now), kept_by=by, how=REKEYED, port=SSH_PORT, why=why,
+                       history=list(rec.get("history") or []) + [_retired(rec, now, by, why)])
+        doc["keys"][ip] = new_rec
+        _write(doc)
+    log.warning("ssh host key: %s re-keyed by %s: %s -> %s (%s)", ip, by, expected,
+                new["fingerprint"], why)
+    _announce()
+    return {"ok": True, "error": "", "record": dict(new_rec)}

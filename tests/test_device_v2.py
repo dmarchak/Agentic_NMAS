@@ -727,7 +727,9 @@ class TestTheShippedScripts:
         # +4 2026-10-15 (P7-05): lists and active_list (the top bar's network picker, and
         # Settings' scope bar for lists), posture (Access and identity at rest), breakglass
         # (Credentials' break-glass record card).
-        assert len(keys) == 45
+        # +1 2026-10-16: host_keys (Needs attention and its count redraw when a device's SSH
+        # host key is kept, refused or re-keyed, C906).
+        assert len(keys) == 46
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

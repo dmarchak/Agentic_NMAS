@@ -76,6 +76,8 @@ VOCABULARY = {
     "settings": "settings and integrations",
     "posture": "the identity gates' recorded posture",
     "device_state": "what a device runs: anything read live from it",
+    "host_keys": "the SSH host key Mercury keeps for each device: kept on first contact, "
+                 "refused when it changed, replaced by a re-key (modules/host_keys.py, C906)",
     "breakglass": "the break-glass export log, its intact checks and its drills (job health's "
                   "break-glass rows read them)",
     "topology": "the topology graph and its layout (P.11's reader, the brief's redefinition)",
@@ -136,6 +138,8 @@ ANNOUNCERS = {
     # routes/adopt_v2.py: an adoption's end (the inventory row, its first golden, NetBox).
     "adopt": ("inventory", "goldens", "netbox", "remote"),
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
+    # modules/host_keys.py (C906): a device's key kept, refused or replaced, by any session.
+    "host-keys": ("host_keys",),
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
     # A restore run as a job (the v2 device page) also moves intent and approvals.
@@ -276,6 +280,8 @@ DECLARED = {
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
     "device_v2.persist_confirm": ("device_state",),   # the same apply
+    # C906: the key Mercury holds for the device, read by Needs attention and History.
+    "device_v2.rekey_confirm": ("host_keys",),
     # The Update button: a request is written now; the version moves when the
     # root-owned updater acts, and the page waits on /health for it.
     "update.apply": ("app_version",),

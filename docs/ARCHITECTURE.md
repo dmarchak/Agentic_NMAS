@@ -560,6 +560,19 @@ and others have left since too.
   `onboard.persist_on_device` saves and reads back (the ONE save, C53), and the outcome
   recorded where job health's rotation row reads it. Route `routes/persist.py`, client
   **[static/js/nmas_persist.js](static/js/nmas_persist.js)**
+- **[modules/host_keys.py](modules/host_keys.py)** — C906: every device session's SSH
+  host key, compared before any credential is sent. `connection.open_ssh` hands Netmiko its
+  policy (`_pin_host_key`): a first contact keeps the key (type, SHA256 fingerprint, when,
+  who), a different key is refused naming both and recorded for Needs attention
+  (`attention.host_key_source`), an unreadable or group-writable record refuses every
+  session. One owner-only file, `<data>/ssh_host_keys.json`, keyed by address, under one
+  lock across processes. The NETCONF push verifies against the same record and keeps none
+  (`netconf_args`, with ncclient's IOS-XE handler kept from accepting any key). A planned
+  window declared with `new_host_keys` (a lab redeploy) takes one new key per device;
+  otherwise a person re-keys on the device page,
+  **[modules/nsot/rekey_op.py](modules/nsot/rekey_op.py)** (preview reads the key with no
+  credential, confirm by hash over both keys, compare-and-swap, the old key kept in history,
+  History's `host_keys` source)
 - **[modules/readers/netbox_secrets.py](modules/readers/netbox_secrets.py)** — does
   NetBox hold a credential in any device's stored config context: hourly, over what
   NetBox HOLDS (never a list), judged by the secret-storage checker's own scan, slots
@@ -1062,7 +1075,8 @@ dashboard), `device.html` (1,239 — per-device page), and
   rejecting things, which is the habit that makes an approval queue worthless.
 - **Connection pool:** Netmiko SSH connections reused via `modules/connection.py`;
   the reachability reader (C92) tracks answering / not answering over
-  consecutive probes; `session_reaper` closes idle pooled sessions
+  consecutive probes; `session_reaper` closes idle pooled sessions. Every session's host
+  key is checked against `modules/host_keys.py`'s record before it signs in (C906)
 - **No auto-continue** (P.3 step 8): the agent looped tool calls until the task completed, and a
   question it asked was for a person. It used to answer its own confirmation questions with a canned
   "yes, continue"; only the continuation of a reply the token limit cut off remained. The agent

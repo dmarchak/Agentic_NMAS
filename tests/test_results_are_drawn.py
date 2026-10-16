@@ -209,6 +209,10 @@ PAGE_RECORD = {
                               ('id="device-op"', "c.record", "r.verify"), "device_v2.history"),
     "device_v2.persist_confirm": ("templates/v2/_persist.html",
                                   ('id="device-op"', "c.outcome", "c.record"), "device_v2.history"),
+    # C906's re-key: the result in place of the card; the key kept, and the one it replaced,
+    # read on the device's History (`history_sources.host_keys`).
+    "device_v2.rekey_confirm": ("templates/v2/_rekey.html",
+                                ('id="device-op"', "c.outcome", "c.record"), "device_v2.history"),
     # Devices › Save (C593): a job, its result drawn per device (each outcome and its detail)
     # with the commit it made; each persist row read back on the device's History.
     "v2.save_confirm": ("templates/v2/_save.html",

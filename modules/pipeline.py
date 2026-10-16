@@ -974,11 +974,18 @@ def _push_config(dev: dict, cmds: list[str], pool: dict, lock: Any) -> str:
     if transport != "netconf":
         return _push_via_netmiko(dev, cmds, pool, lock)
 
+    from modules.host_keys import HostKeyRefused
+
     try:
         import ncclient  # noqa: F401 — availability probe
         return _push_via_netconf(dev, cmds)
     except ImportError:
         log.debug("pipeline: ncclient not installed — using Netmiko SSH")
+    except HostKeyRefused:
+        # C906: something answered NETCONF with a key Mercury does not hold. Nothing was sent;
+        # the deploy stops here naming both keys, rather than carrying on over SSH as if a
+        # transport had merely failed.
+        raise
     except Exception as nc_exc:
         log.warning("pipeline: NETCONF push failed (%s) — falling back to SSH", nc_exc)
     return _push_via_netmiko(dev, cmds, pool, lock)
@@ -998,6 +1005,12 @@ def _push_via_netconf(dev: dict, cmds: list[str]) -> str:
     """
     from ncclient import manager as nc_mgr  # type: ignore[import]
 
+    from modules import host_keys
+
+    # C906: the device's host key is checked against the record its SSH sessions keep,
+    # before authentication; NETCONF never keeps a key of its own (`host_keys.netconf_args`,
+    # which also carries the IOS-XE device handler, kept from waving any key through).
+    verify, seen = host_keys.netconf_args(dev["ip"], "iosxe")
     config_xml = (
         "<config>"
         "<native xmlns=\"http://cisco.com/ns/yang/Cisco-IOS-XE-native\">"
@@ -1005,15 +1018,20 @@ def _push_via_netconf(dev: dict, cmds: list[str]) -> str:
         + "\n".join(cmds)
         + "</cli-config-data-block></native></config>"
     )
-    with nc_mgr.connect(
-        host            = dev["ip"],
-        username        = dev.get("username", ""),
-        password        = dev.get("password", ""),
-        port            = 830,
-        hostkey_verify  = False,
-        device_params   = {"name": "iosxe"},
-        timeout         = 60,
-    ) as m:
+    try:
+        session = nc_mgr.connect(
+            host            = dev["ip"],
+            username        = dev.get("username", ""),
+            password        = dev.get("password", ""),
+            port            = host_keys.NETCONF_PORT,
+            timeout         = 60,
+            **verify,
+        )
+    except Exception as exc:
+        if "md5" in seen:
+            raise host_keys.netconf_refusal(dev["ip"], seen["md5"]) from exc
+        raise
+    with session as m:
         reply = m.edit_config(target="running", config=config_xml)
         return f"NETCONF edit-config OK: {reply}"
 

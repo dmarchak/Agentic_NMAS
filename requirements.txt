@@ -33,6 +33,9 @@ Werkzeug==3.0.1
 # 2026-10-10 (the first lock overrode it to the host's 1.1.2).
 netmiko==4.3.0
 ncclient==0.6.15
+# Imported directly since C906 (2026-10-16): the host-key policy every session is opened with,
+# and the re-key's key read. The version both netmiko and ncclient already brought in.
+paramiko==2.12.0
 
 # Network utilities. (pysnmp left with the AI family's trap receiver, D15, 2026-10-14.)
 ping3==4.0.4

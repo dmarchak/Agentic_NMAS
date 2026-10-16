@@ -132,10 +132,17 @@ def read_reason(dev: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def record_planned(devices, start: float, end: float, by: str, why: str, via: str,
-                   list_name: str = "", correction: str = "") -> dict:
+                   list_name: str = "", correction: str = "",
+                   new_host_keys: bool = False) -> dict:
     """Record that *devices* (``["*"]`` for every device of *list_name*) will restart between
     *start* and *end* (epoch seconds), on purpose. Refuses a record with no person, no reason
     or an end before its start, because a planned window is what keeps an alert quiet.
+
+    *new_host_keys* says the devices come back with NEW SSH host keys (a rebuild from fresh
+    disks, as a lab redeploy is: each device generates its key as it boots).
+    Mercury then keeps one new key per device met inside the window instead of refusing it
+    (`modules/host_keys.py`, C906); a window says it before the change, or it accepts
+    nothing.
 
     **A window declared AFTER a restart it would cover is refused** (the operator,
     2026-10-02: "don't let a planned-restart window declared after the fact clear an
@@ -151,6 +158,8 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
                                       "why, and a window whose end is after its start"}
     row = {"devices": devices, "list": list_name, "from": _iso(start), "until": _iso(end),
            "by": by, "why": why.strip(), "via": via, "recorded_at": _iso(time.time())}
+    if new_host_keys:
+        row["new_host_keys"] = True
     seen = events()
     if seen["state"] == "unreadable":
         return {"ok": False, "error": "the restart record could not be read, so whether this "

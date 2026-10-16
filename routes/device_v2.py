@@ -282,6 +282,7 @@ def device(name):
                       _seed_card(ref, dev, tab) if op == "seed" else
                       _retire_card(ref, dev, tab, request.args) if op == "retire" else
                       _privileged_card(ref, dev, tab, request.args) if op == "privileged" else
+                      _rekey_card(ref, dev, tab) if op == "rekey" else
                       {"state": "starting", "op": "reload", "host": dev.get("hostname", ""),
                        "list": ref.name, "back": tab} if op == "reload" else None)
     return _strict(render_template("v2/device.html", **ctx))
@@ -764,6 +765,61 @@ def persist_confirm(name):
     return _strict(render_template("v2/_persist.html", c=c))
 
 
+@bp.route("/device/<name>/rekey", methods=["GET"])
+def rekey(name):
+    """The re-key card (C906): the SSH host key Mercury holds for the device beside the one it
+    answers with now (read with no credential, the key exchange only), what is known of why it
+    changed, and the confirm bound to both. Opened from the Needs attention row a refused key
+    raises, and from the device page with ``op=rekey``."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_rekey.html", c=_rekey_card(ref, dev, _back(request.args))))
+
+
+def _rekey_card(ref, dev, back):
+    """The re-key card for *dev*, drawn by the card's route and by the page itself."""
+    from modules import device_actions, identity
+    from modules.nsot import rekey_op
+    from modules.nsot.device_ops import busy_text
+    from modules.preview_confirm import confirm_part, rekey_preview
+
+    host = dev.get("hostname", "")
+    preview = rekey_preview(rekey_op.plan(ref.name, host), busy=busy_text(ref.name, host),
+                            request=request)
+    c = device_actions.rekey_card(ref, host, preview, viewer=dict(
+        confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""))
+    c.update(back=back)
+    return c
+
+
+@bp.route("/device/<name>/rekey/confirm", methods=["POST"])
+def rekey_confirm(name):
+    """Keep the key the device answers with now, as the verified person, holding the device,
+    bound to the two keys the card showed (`hash`): the key is read again and a different one
+    refuses with nothing kept. The result is drawn in place of the preview."""
+    from modules import device_actions, identity
+    from modules.nsot import rekey_op
+    from modules.preview_confirm import rekey_result
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_rekey.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    confirmed = (request.form.get("hash") or "").strip()
+    if not confirmed:
+        return _strict(render_template("v2/_rekey.html", c={
+            "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    actor = identity.identify(request).actor or ""
+    out = rekey_op.apply(ref.name, host, actor=actor, confirmed_hash=confirmed)
+    c = device_actions.rekey_result_card(ref, host, out,
+                                         rekey_result(out, out.get("plan") or {}, actor))
+    c.update(back=_back(request.form))
+    return _strict(render_template("v2/_rekey.html", c=c))
+
+
 def _rotate_starting(ref, dev, back):
     return {"state": "starting", "op": "rotate", "host": dev.get("hostname", ""),
             "list": ref.name, "back": back}
@@ -1008,6 +1064,8 @@ def when_free(name):
     if op == "retry":
         return _strict(render_template("v2/_retry.html",
                                        c=_retry_card(ref, dev, back, request.args)))
+    if op == "rekey":
+        return _strict(render_template("v2/_rekey.html", c=_rekey_card(ref, dev, back)))
     return _strict(render_template("v2/_capture.html", c={
         "state": "starting", "op": "capture", "host": dev.get("hostname", ""),
         "list": ref.name, "back": back}))

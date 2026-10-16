@@ -103,6 +103,8 @@ Verify reaches the device, which is the only proof its address and management in
 
 Onboarding adds nothing to Oxidized: its step went with Oxidized's retirement (2026-10-08). The first golden's commit is the device's backup.
 
+**The device's SSH host key.** The preview's SSH login is the first time Mercury meets the device, so it keeps the key the device presents, before it signs in, with when and who (see [Re-key](rekey#every-session)): from then on every session to that address compares the key and refuses a different one with nothing sent, the bootstrap credential included. A device whose address already has a key on record (an address a retired or abandoned device used) must answer with that key, or the preview and Verify are refused naming both keys. Re-key works from a device's page, which a pending device does not have yet, and retiring or abandoning a device does not yet forget its key: onboarding at a reused address is refused until that gap is built (it is in the register).
+
 A step that fails stops the run and names every step that did not run; the device stays pending, and Verify can run again. Every Verify and Abandon is recorded beside the list's repository and read back on the device's pending page (its last run) and on History.
 
 ## Then

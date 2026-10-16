@@ -2992,6 +2992,125 @@ def persist_result(result: dict, plan: dict, actor: str = "") -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Re-key (C906): the SSH host key a device answers with now, kept in place of the one held,
+# after a person has looked at both. `modules/nsot/rekey_op.py`.
+# ---------------------------------------------------------------------------
+
+REKEY_TITLES = {"program": "What the re-key does, in order",
+                "what_not": "What the re-key does NOT do",
+                "what": "What will be re-keyed"}
+REKEY_RESULT_TITLES = {"sent": "What was sent to the device",
+                       "checks": "The record, read back",
+                       "happened": "What was re-keyed", "did_not": "What the re-key did NOT do"}
+
+
+def rekey_preview(plan: dict, *, busy: str, request) -> dict:
+    """*plan*: `rekey_op.plan()`'s. One target, the device; its two keys are the operands."""
+    from modules.nsot.rekey_op import GATES, STEPS
+
+    name = plan.get("hostname") or "?"
+    refused = plan.get("refused_by") or {}
+    gates = [gate(title, "fail" if key in refused else "pass", refused.get(key) or ok_detail)
+             for key, title, ok_detail in GATES]
+    gates.append(busy_gate({"busy": busy}))
+    gates.append(gate("plan unchanged since this preview", "at_apply",
+                      "the key is read again at apply, and a different key, or a record that "
+                      "moved, refuses with nothing kept"))
+    selectable = bool(plan.get("ok")) and not busy
+    held = plan.get("held") or {}
+    now = plan.get("now") or {}
+    what_not = [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+                for n in plan.get("not_doing") or []]
+    target = {
+        "name": name,
+        "state": "rekeyable" if selectable else "refused",
+        "selectable": selectable,
+        "select_data": {"hash": plan.get("hash") or "", "list": plan.get("list_name") or ""},
+        "program": {"lines": [words for _k, words in STEPS],
+                    "caption": "In the tool, in order",
+                    "unit": "step(s); nothing is sent to the device",
+                    "none": "Nothing to do: " + "; ".join(plan.get("refusals") or ["no steps"])},
+        "operands": [
+            {"name": "list", "value": plan.get("list_name") or not_read(plan)},
+            {"name": "management address", "value": plan.get("ip") or "none recorded"},
+            {"name": "key Mercury holds",
+             "value": (f"{held.get('fingerprint')} ({held.get('type')}), kept "
+                       f"{held.get('kept_at') or 'at an unrecorded time'} by "
+                       f"{held.get('kept_by') or 'an unrecorded caller'} "
+                       f"({held.get('how') or 'how not recorded'})") if held.get("fingerprint")
+             else not_read(plan)},
+            {"name": "key the device answers with now",
+             "value": (f"{now.get('fingerprint')} ({now.get('type')})"
+                       if now.get("fingerprint") else not_read(plan))},
+            {"name": "since the key was kept", "value": plan.get("restart") or not_read(plan)},
+            {"name": "plan hash", "value": plan.get("hash") or "none"}],
+        "gates": gates,
+    }
+    confirm = confirm_part(request, "confirm")
+    if selectable:
+        confirm["effect"] = (
+            f"Re-keying makes {now.get('fingerprint')} the key Mercury trusts for {name}: every "
+            "later session signs in to whatever presents it. Confirm only when you know why "
+            "it changed: the device was rebuilt or its key generated anew (the restart "
+            "recorded since, above, says when).")
+        confirm["button"] = f"Keep the new key for {name}"
+    return build(
+        action="rekey",
+        summary=(f"Re-key {name}: keep the SSH host key it answers with now, "
+                 f"{now.get('fingerprint') or 'not read'}, in place of "
+                 f"{held.get('fingerprint') or 'the one held'}."),
+        targets=[target], what_not=what_not,
+        nothing_left_out="Nothing: the re-key states what it does not do on every run.",
+        confirm=confirm, titles=REKEY_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "You are confirming these two keys. The key is read "
+                                      "again at apply, and a different one refuses with "
+                                      "nothing kept."}]})
+
+
+def rekey_result(result: dict, plan: dict, actor: str = "") -> dict:
+    """*result*: `rekey_op.apply()`'s; *plan*: the plan it ran."""
+    name = (plan or {}).get("hostname") or "?"
+    state = result.get("state") or "unknown"
+    detail = result.get("detail") or "no reason was recorded"
+    held = (plan or {}).get("held") or {}
+    now = (plan or {}).get("now") or {}
+    if state == "rekeyed":
+        level, words = "success", "re-keyed"
+        summary = (f"{name} is re-keyed: Mercury now holds {now.get('fingerprint')} for it, and "
+                   f"keeps {held.get('fingerprint')} in the record's history.")
+    elif state == "not_verified":
+        level, words = "failed", "kept, NOT verified"
+        summary = (f"The new key was written for {name} and the record, read back, does not "
+                   f"hold it: {detail}. Preview again before its next session.")
+    else:
+        level, words = "failed", "refused: nothing was kept"
+        summary = f"{name} was not re-keyed: {detail}"
+    kept = state in ("rekeyed", "not_verified")
+    did_not = [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+               for n in (plan or {}).get("not_doing") or []]
+    return build_result(
+        action="rekey", level=level, summary=summary,
+        targets=[{"name": name, "outcome": state, "words": words,
+                  "reason": "" if state == "rekeyed" else detail,
+                  "sent": {"lines": [], "caption": "Sent to the device",
+                           "none": "Nothing was sent: the key was read before any sign-in."},
+                  "checks": ({"ran": True, "ok": state == "rekeyed",
+                              "statements": [detail], "issues": []} if kept else
+                             {"ran": False, "why": detail})}],
+        did_not=did_not,
+        nothing_left_out="Nothing: the re-key states what it does not do on every run.",
+        record={"commit": "", "tags": [], "baseline": "",
+                "statement": ((f"Mercury's record of host keys holds the new key, kept by "
+                               f"{actor or 'you'}, with the old one in its history; the "
+                               "device's History draws it.") if kept else
+                              "Nothing was recorded: nothing was kept.")},
+        not_watched=(f"Every later session to {name} compares its key with this one, and "
+                     "refuses a different key naming both."),
+        titles=REKEY_RESULT_TITLES)
+
+
+# ---------------------------------------------------------------------------
 # Rotate (7.3): a device's login credential rotated, recorded and persisted,
 # previewed and confirmed, run as a job. `modules/nsot/rotate_op.py`.
 # ---------------------------------------------------------------------------

@@ -1068,6 +1068,49 @@ def reloads(ctx):
     return _out(events)
 
 
+def host_keys(ctx):
+    """Each SSH host key Mercury kept for a device of the list (C906): on first contact, by a
+    person's re-key, or under a planned window that expected new keys, the key it replaced in
+    the record. The store is keyed by address, so the list's addresses name the devices."""
+    from modules import host_keys as _hk
+    words = {_hk.FIRST_CONTACT: "SSH host key kept on first contact",
+             _hk.REKEYED: "SSH host key re-keyed",
+             _hk.WINDOW: "SSH host key kept under a planned window"}
+    try:
+        keys = _hk.read()["keys"]
+    except _hk.HostKeyStoreUnreadable as exc:
+        return _out(errors=[str(exc)])
+    hosts = _hosts_by_address(ctx["ref"])
+    events = []
+    for ip, rec in sorted(keys.items()):
+        host = hosts.get(ip)
+        if not host or not _mine(ctx, host):
+            continue
+        for k in [rec] + list(reversed(rec.get("history") or [])):
+            if not _recent(ctx, k.get("kept_at")):
+                continue
+            current = k is rec
+            replaced = rec.get("history") or []
+            before = (replaced[-1] if current and replaced else {})
+            window = (rec.get("window") or {}) if current else {}
+            events.append(_event(
+                k.get("kept_at", ""), "hostkey",
+                words.get(k.get("how", ""), "SSH host key kept"), [host],
+                who=k.get("kept_by", ""), detail=f"{k.get('fingerprint', '')} ({k.get('type', '')})",
+                outcome="held" if current else "replaced",
+                record=[("Address", ip), ("Fingerprint", k.get("fingerprint")),
+                        ("Type", k.get("type")), ("How", k.get("how")),
+                        ("Replaced", before.get("fingerprint")),
+                        ("Why", rec.get("why") if current else k.get("replaced_why")),
+                        ("Window", f"{window.get('by', '')}: {window.get('why', '')}"
+                         if window else None),
+                        ("Replaced at", None if current else k.get("replaced_at")),
+                        ("Replaced by", None if current else k.get("replaced_by"))]))
+    events.sort(key=lambda e: epoch(e["at"]), reverse=True)
+    return _out(events[:ctx["limit"]], cut=[f"the host keys' newest {ctx['limit']}"]
+                if len(events) > ctx["limit"] else [])
+
+
 #: Every store History reads, in the order it asks them. A source absent here is read nowhere;
 #: `operation_stages.HISTORY` names one per operation, `WRITTEN_ELSEWHERE` the rest.
 SOURCES = {
@@ -1079,7 +1122,7 @@ SOURCES = {
     "updates": updates, "show_commands": show_commands, "privileged": privileged,
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
-    "saved_views": saved_views, "reveals": reveals,
+    "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1104,6 +1147,7 @@ KIND_GROUPS = (
                                ("layout", "Topology layouts", ("layout",)),
                                ("views", "Saved views", ("view",)),
                                ("reveals", "Reveals", ("reveal",)),
+                               ("hostkeys", "SSH host keys", ("hostkey",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("show_commands", "Show commands", ("show_commands",)))),

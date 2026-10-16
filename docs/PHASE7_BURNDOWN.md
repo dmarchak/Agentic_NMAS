@@ -72,7 +72,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | C931 | Seed on a network created on v2: the repository exists from creation, every git call on a config_repo pinned to it, a failed commit said (A, found writing W2) | its tests; W2 section H | M | — | — |
 | C933 to C936 | From writing W2 (B): NetBox's import count for a NetBox-sourced network; the write probe's remedy; "Just stop tracking"; editing a revoked template | each its test; walked in W2 | S each | — | — |
-| C906 | Mercury checks each device's SSH host key (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key operation; NETCONF too) | its tests; walked on a device | M | — | B (the operator's: the re-key's words) |
+| C906 | Mercury checks each device's SSH host key: **BUILT** (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key, NETCONF too) | deployed; every device's key kept on the host; the operator's next redeploy declares `--new-host-keys` | M | — | the redeploy's flag (the operator) |
+| C940 | onboarding at a reused address: Retire and Abandon forget the address's key, or the pending card offers the re-key (it blocks W3's throwaway onboarding) | its test | S | C906 | — |
 | **Harness: the checks on v2** | | | | | |
 | ~~P7-04~~ | ~~Criterion 4, payloads drawn on v2~~ **done** (see Checked off); its gaps are C867 to C869 below | | | | |
 | ~~P7-05~~ | ~~Criterion 5, invalidation~~ **done** (see Checked off) | | | | |
@@ -155,6 +156,8 @@ blocks cutover or is a security issue (B).
     words and rows), C899 (Devices' footer), C900 (reveals' reasons), C901 (W1's copy and
     fidelity notes), C902 to C904 (R1 to R3), C907 (Fields mode). C888 and C905 go with C882,
     before cutover.
+  - C939 (NETCONF's undecrypted password, dormant), C941 (UNKNOWN: whether a reload keeps a
+    key; W2's r6 reload measures it), C942 (the re-key card's board).
   - C932, C937 (UNKNOWN), C938 (W2's wording; each checked where W2 walks it).
   - C922 (UNKNOWN, an answer set aside mid-drag), C924 (UNKNOWN, the partial operation's row
     beside a usable baseline), C925 (Persist's read on each draw), C926 (a raw exception).

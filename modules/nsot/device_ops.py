@@ -609,6 +609,19 @@ def may_write(ip: str) -> bool:
                    for info in _held.values())
 
 
+def held_by_this_thread(ip: str):
+    """The hold THIS thread has on the device at *ip* (a copy of its record), or None: the
+    same test as `may_write`. Read by the host-key record (C906) to say which operation, and
+    for whom, first met a device's key."""
+    me = threading.get_ident()
+    with _mu:
+        for info in _held.values():
+            if info["thread"] == me and (not info["holder"].get("ip")
+                                         or info["holder"]["ip"] == ip):
+                return dict(info["holder"])
+    return None
+
+
 @contextlib.contextmanager
 def hold(list_name: str, hostname: str, operation: str, actor: str, detail: str = "",
          ip: str = ""):

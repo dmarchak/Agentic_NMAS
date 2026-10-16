@@ -5,6 +5,7 @@
     nmas-planned-restart <list> '*' --minutes 45 --why "lab redeploy" --by <operator>
     nmas-planned-restart <list> '*' --from 2026-10-01T15:20Z --minutes 110 --why "..."
         --correction "the redeploy was planned; the tool could not record it then"
+    nmas-planned-restart <list> '*' --minutes 45 --why "lab redeploy" --new-host-keys
 
 The restarts reader (modules/readers/restarts.py) calls a restart UNPLANNED unless the tool
 performed it or was told beforehand; this is the telling, for a redeploy or a hand reload.
@@ -49,6 +50,10 @@ def main(argv=None) -> int:
     ap.add_argument("--correction", default="",
                     help="why a window covering restarts the tool has ALREADY seen is recorded "
                          "late; without it such a window is refused")
+    ap.add_argument("--new-host-keys", action="store_true",
+                    help="the devices come back with NEW SSH host keys (a lab redeploy): Mercury "
+                         "keeps one new key per device met inside the window instead of "
+                         "refusing it (C906)")
     args = ap.parse_args(argv)
     if args.minutes <= 0 or args.minutes > 24 * 60:
         print("refused: --minutes is between 1 and 1440", file=sys.stderr)
@@ -65,7 +70,8 @@ def main(argv=None) -> int:
     by = args.by or f"{getpass.getuser()} (host login, not a verified identity)"
     out = restarts.record_planned(args.devices, now, now + args.minutes * 60, by, args.why,
                                   "nmas-planned-restart", list_name=args.list,
-                                  correction=args.correction)
+                                  correction=args.correction,
+                                  new_host_keys=args.new_host_keys)
     if not out["ok"]:
         print(f"refused: {out['error']}", file=sys.stderr)
         return 1
@@ -75,6 +81,9 @@ def main(argv=None) -> int:
     if r.get("correction"):
         print(f"as a correction, covering {len(out['covered'])} restart(s) already seen: "
               f"{r['correction']}")
+    if r.get("new_host_keys"):
+        print("expecting new SSH host keys: Mercury keeps one new key per device it meets "
+              "inside the window")
     return 0
 
 

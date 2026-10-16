@@ -250,6 +250,45 @@ def persist_result_card(ref, host: str, out: dict, result: dict) -> dict:
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
+def rekey_card(ref, host: str, preview: dict, viewer: dict) -> dict:
+    """The re-key card for *host* from `preview_confirm.rekey_preview`'s preview (C906), whose
+    plan read the device's key with no credential. The two keys lead: they are the decision."""
+    t = _one_target(preview, host, viewer)
+    program = t["target"].get("program") or {}
+    confirm = preview.get("confirm") or {}
+    operands = list(t["target"].get("operands") or [])
+    pair = [o for o in operands if o.get("name") in ("key Mercury holds",
+                                                     "key the device answers with now")]
+    return {"op": "rekey", "state": "preview", "host": host, "list": ref.name,
+            "summary": (preview.get("what") or {}).get("summary", ""),
+            "steps": list(program.get("lines") or []), "none": program.get("none", ""),
+            "key_pair": pair,
+            "what_not": t["what_not"],
+            "operands": [o for o in operands if o not in pair],
+            "gates": t["gates"], "failing": t["failing"], "may": t["may"],
+            "held": held(t["gates"]),
+            "hash": (t["chosen"].get("select_data") or {}).get("hash", ""),
+            "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
+
+
+#: A re-key result's state -> (its heading chip, its level).
+REKEY_WORDS = {"rekeyed": ("Re-keyed", "ok"),
+               "not_verified": ("Kept, NOT verified", "danger"),
+               "refused": ("Refused: nothing was kept", "warn")}
+
+
+def rekey_result_card(ref, host: str, out: dict, result: dict) -> dict:
+    """The result card from `rekey_op.apply`'s answer *out* and `rekey_result`'s *result*."""
+    state = out.get("state") or "unknown"
+    chip, level = REKEY_WORDS.get(state, ("Could not be established", "danger"))
+    return {"op": "rekey", "state": "result", "host": host, "list": ref.name,
+            "outcome": state, "chip": chip, "level": level,
+            "summary": (result.get("happened") or {}).get("summary", ""),
+            "record": (result.get("record") or {}).get("statement", ""),
+            "not_watched": result.get("not_watched", ""),
+            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+
 def held(gates: list) -> bool:
     """Whether a card was refused because another operation holds its device: it then
     listens for the hold's release (`device_holds`) and reads again."""

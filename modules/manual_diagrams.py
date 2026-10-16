@@ -971,6 +971,34 @@ def reload():
     ])
 
 
+def rekey():
+    return svg(470, (
+        "Re-keying a device. Every session compares the SSH host key the device presents with "
+        "the one Mercury holds, before any credential is sent: the first contact keeps it, a "
+        "different key is refused naming both. The re-key's preview reads the key the device "
+        "presents now with no credential and shows it beside the held one, with any restart "
+        "recorded since. You confirm both keys. The apply holds the device, reads the key "
+        "again and keeps nothing if it moved, replaces the held key, reads the record back, "
+        "and keeps the old key in the record's history."), [
+        lanes(20, 464),
+        band(20, 116, "Every session"),
+        device(262, 40, 118, 80, "The device", "presents its key", top=True),
+        *rows([(76, "read", None, "Its key, compared", "before any credential")]),
+        t(36, 108, "Different: refused, nothing sent", "sm"),
+        doc("box", 14, 150, 186, 40, "The preview reads it", "the key now, no credential"),
+        num(14, 150, 1),
+        person(14, 204, 186, 30, "You confirm both keys"), num(14, 204, 2),
+        _down(107, 236, 256),
+        band(258, 200, "The apply · the device held"),
+        device(262, 280, 118, 60, "The device", "", top=True),
+        *rows([(314, "read", 3, "Read again", "moved: nothing kept")]),
+        store(14, 344, 186, 40, "The held key replaced", "if it is still the one shown"),
+        num(14, 344, 4),
+        store(14, 398, 186, 40, "Read back, recorded", "the old key in its history"),
+        num(14, 398, 5),
+    ])
+
+
 def dhcp_reservation():
     return svg(470, (
         "Reserving an address. The preview asks Kea for its configuration and leases and reads "
@@ -1429,6 +1457,7 @@ DIAGRAMS = {
     "bring-template": bring_template,
     "edit-template": edit_template,
     "reload": reload,
+    "rekey": rekey,
     "dhcp-reservation": dhcp_reservation,
     "dhcp-subnet": dhcp_subnet,
     "dhcp-exclusion": dhcp_exclusion,

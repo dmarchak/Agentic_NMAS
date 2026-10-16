@@ -24,6 +24,8 @@
               'restarts',
               // A person acknowledged an event row (modules/acknowledgements.py).
               'acknowledgements',
+              // A device's SSH host key kept, refused or re-keyed (modules/host_keys.py, C906).
+              'host_keys',
               // What else moves a Needs attention row (attention.SOURCE_KEYS).
               'approvals', 'device_state', 'intent', 'inventory', 'pending', 'rolled_back',
               // A capture preview's reads finished (modules/nsot/capture_job.py): the
@@ -323,6 +325,7 @@
   function relayAdjacencies() { relay('adjacencies'); }
   function relayRestarts() { relay('restarts'); }
   function relayAcknowledgements() { relay('acknowledgements'); }
+  function relayHostKeys() { relay('host_keys'); }
   // What else moves a Needs attention row (attention.SOURCE_KEYS, the operator,
   // 2026-10-02): the page and the sidebar's count could not hear these.
   function relayApprovals() { relay('approvals'); }
@@ -417,6 +420,7 @@
     NMAS.subscribe('adjacencies', 'v2Adjacencies', relayAdjacencies);
     NMAS.subscribe('restarts', 'v2Restarts', relayRestarts);
     NMAS.subscribe('acknowledgements', 'v2Acknowledgements', relayAcknowledgements);
+    NMAS.subscribe('host_keys', 'v2HostKeys', relayHostKeys);
     NMAS.subscribe('approvals', 'v2Approvals', relayApprovals);
     NMAS.subscribe('device_state', 'v2DeviceState', relayDeviceState);
     NMAS.subscribe('intent', 'v2Intent', relayIntent);
