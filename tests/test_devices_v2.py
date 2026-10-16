@@ -63,6 +63,86 @@ class TestTheTrailerIsRead:
         # A name that is a prefix of another is not that other.
         assert _intent_of("r1", "no: r10 (+1)")["state"] == "at_intent"
 
+    def test_the_literal_read_is_the_pattern_it_replaced(self):
+        """C855: `_intent_of` compiled `(?:^no: |; )<host> \\(([^)]*)\\)` for each device it
+        was asked about (past `re`'s 512-entry cache, every time). Its literal read answers
+        as that pattern did, on trailers built to reach its corners: a host that prefixes
+        another or holds a pattern character, a nested or missing parenthesis, a host named
+        twice, a `; ` first, a newline."""
+        import random
+
+        from modules.device_list import _intent_of
+
+        def pattern(host, trailer):                # the reader before C855, verbatim
+            m = re.search(rf"(?:^no: |; ){re.escape(host)} \(([^)]*)\)", trailer)
+            return m.group(1) if m else None
+
+        hosts = ["r1", "r10", "r1.x", "a+b", "s(1)", "x)y", "e f"]
+        details = ["+1 -1", "-2", "unknown (no committed intent)", "unknown", "", "a\nb",
+                   "unknown (cut", "+3"]
+        rng, seen = random.Random(855), set()
+        for _ in range(4000):
+            parts = [f"{rng.choice(hosts)} ({rng.choice(details)})"[:rng.choice((99, 99, 6))]
+                     for _ in range(rng.randint(1, 4))]
+            trailer = rng.choice(("no: ", "no: ", "; ", "")) + rng.choice(("; ", ";", ", ")
+                                                                        ).join(parts)
+            for host in hosts:
+                want = pattern(host, trailer)
+                got = _intent_of(host, trailer)
+                seen.add(got["state"])
+                if want is None:
+                    assert got == {"state": "at_intent", "words": "at intent"}, (host, trailer)
+                elif want.startswith("unknown"):
+                    why = want[len("unknown"):].strip().lstrip("(").strip()
+                    assert got == {"state": "unknown", "words": "unknown",
+                                   "why": why or "not established"}, (host, trailer, got)
+                else:
+                    assert got == {"state": "departs", "words": f"departs ({want})"}, (
+                        host, trailer, got)
+        assert seen == {"at_intent", "departs", "unknown"}
+
+
+def _log(*records):
+    """`git log`'s output in `last_measured`'s format: each record (sha, ct, Source,
+    Device-Name, Devices, Devices-Measured, Intent-Match, Baseline)."""
+    return "".join("\x1f".join(r) + "\x1e\n" for r in records)
+
+
+class TestOneDevicesMeasurement:
+    """C855: the device page asks `last_measured` for ITS device (*only*) and gets exactly
+    that device's entry of the whole answer, by the same rule over the same log: every
+    trailer shape a save wrote, a host that prefixes another, a host named twice, a name
+    with a comma or a space, a device the log never measured."""
+
+    LOG = _log(
+        ("a" * 40, "500", "save_all", "", "r2", "r1,r2, r3",
+         "no: r2 (+1 -1); r3 (unknown (no committed intent))", ""),
+        ("b" * 40, "400", "capture", "r4", "", "", "yes (1 of 1)", "earned 2026-10-01"),
+        ("c" * 40, "300", "pipeline", "", "r5, r1 ,r6", "", "no: r6 (-2)", ""),
+        ("d" * 40, "200", "save", "", "r7", " , ", "no: r7 (+1)", ""),
+        ("e" * 40, "150", "repair", "r10,r1x", "", "r10,r1x,r8,r8", "no: r10 (+3)", ""),
+        ("f" * 40, "100", "", "", "", "", "", ""),
+        ("1" * 40, "50", "onboarding", "r9", "", "", "", ""))
+
+    def test_one_device_is_its_entry_of_all(self, monkeypatch):
+        from modules import device_list
+
+        monkeypatch.setattr("modules.nsot.repo.git", lambda *_a, **_k: (0, self.LOG, ""))
+        every, err = device_list.last_measured("/nowhere")
+        assert err == "" and set(every) == {"r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8",
+                                            "r9", "r10", "r1x"}, every
+        assert every["r1"]["sha"] == "aaaaaaa" and every["r6"]["changed"] is True
+        assert every["r1"]["changed"] is False and every["r4"]["baseline"] is True
+        for host in sorted(every) + ["r11", "r", "", " r1", "r1,r2", "r1 "]:
+            got = device_list.last_measured("/nowhere", only=host)
+            assert got == (({host: every[host]} if host in every else {}), ""), host
+
+    def test_an_unreadable_log_is_its_error_either_way(self, monkeypatch):
+        from modules import device_list
+
+        monkeypatch.setattr("modules.nsot.repo.git", lambda *_a, **_k: (128, "", "bad"))
+        assert device_list.last_measured("/nowhere", only="r1") == ({}, "bad")
+
 
 class TestTheListing:
     def test_a_departing_capture_reads_departs_as_of_its_last_capture(self, inv):

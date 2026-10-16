@@ -69,7 +69,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~P7-05~~ | ~~Criterion 5, invalidation~~ **done** (see Checked off) | | | | |
 | P7-07 | Criterion 10, the sidebar: ~~an order test~~ (done); the 37 findability questions walked | the walk, in W2 | walk | W1 | W |
 | **v2 gaps cutover needs** | | | | | |
-| C855 | criterion 11: the v2 device page's per-device work | test_scale's device-page calls-per-device pin at 0 per device | S–M | — | — |
+| ~~C855~~ | ~~criterion 11: the v2 device page's per-device work~~ **done** to 19 (see Checked off) | | | | |
+| C876 | criterion 11: the manifest's name lookup (the device page's last 19 calls per device) | measured first (UNKNOWN); an index if the loop measures O(N²) | S + M | — | — |
 | C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
 | C867 | v2's deploy card draws the plan's attribution (where each line came from) before the confirm | `UPSTREAM` in tests/test_v2_context_is_drawn.py loses those 5 keys | S–M | — | — |
@@ -133,6 +134,7 @@ blocks cutover or is a security issue (B).
   - C861, the batch deploy's "Back to Coverage" from every start: wording, leads nowhere wrong.
   - C870 (keys no interface ever drew; three missing icons) and C871 (the walk's lab lacks a
     break-glass record and a window): never drawn on today's pages either, or harness.
+  - C877, the device Overview computing its hardware twice: a fixed waste, not per device.
   - C872 (the scope bar and `settings`), C873 (the top bar after a delete), C874 (the picker's
     mark; UNKNOWN): the network picker and scope bar's edges; choosing and deleting work.
   - The board comparisons of screens no walk touches (C650's remainder).
@@ -198,3 +200,6 @@ blocks cutover or is a security issue (B).
   heard by the network picker and Settings' scope bar, `posture` by Installation's Access card,
   `breakglass` by the break-glass record card. **P7-07's test done**: the sidebar's order
   pinned, and nothing but its items and headings; the 37 questions go into W2.
+- **C855 done** (to 19 calls per device, from 460; the Devices list 1,298 → 627): the device
+  page reads its one device's measurement and rotation state. The 19 left are the manifest's
+  name lookup, C876 (UNKNOWN, into this section). C877 (C) to the tail.

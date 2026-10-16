@@ -118,6 +118,34 @@ def test_exactly_the_due_devices():
     assert not states["x9"]["due"] and states["x9"]["profile"] == ""
 
 
+def test_one_device_s_state_is_its_entry_among_all(monkeypatch):
+    """C855: the device page asks for ONE device's state from the row it found, and gets
+    exactly that device's entry among every device's, by the same rules: the policy, the
+    record's and the repository's rotations, on or off, outside a pilot set, due or not. The
+    network's inventory is NOT read (the page judged every device of it to draw one)."""
+    rot = {"r1": (NOW - 40 * DAY, SR._iso(NOW - 40 * DAY)),
+           "r2": (NOW - 5 * DAY, SR._iso(NOW - 5 * DAY))}
+    pols = {"role:router": _policy(), "role:switch": _policy(state="off")}
+    pols["role:router"]["devices"] = ["r1", "r3"]                    # r2 is outside the pilot
+    monkeypatch.setattr(SR, "policies", lambda: pols)
+    monkeypatch.setattr(SR, "last_rotations", lambda: rot)
+    monkeypatch.setattr(SR, "committed_rotations",
+                        lambda _l: {"r3": (NOW - 60 * DAY, SR._iso(NOW - 60 * DAY))})
+    monkeypatch.setattr("modules.credentials.list_profiles",
+                        lambda: [{"name": "role:router"}, {"name": "role:switch"}])
+
+    def no_inventory(*_a, **_k):
+        raise AssertionError("one device's state read the network's inventory")
+    monkeypatch.setattr("modules.device.load_saved_devices", no_inventory)
+    every = {s["device"]: s for s in SR.device_states(NOW, lists=["Lab"],
+                                                     devices_of=lambda _l: DEVICES)}
+    assert {s["outside"] for s in every.values()} == {True, False}
+    assert {s["due"] for s in every.values()} == {True, False}
+    for dev in DEVICES:
+        assert SR.device_state("Lab", dict(dev), now=NOW) == every[dev["hostname"]], dev
+    assert SR.device_state("Lab", {"hostname": "", "role": "router"}, now=NOW) is None
+
+
 def test_a_one_day_policy_makes_a_day_old_credential_due():
     rot = {"r1": (NOW - DAY - 60, ""), "r2": (NOW - 3600, ""), "r3": (NOW - 3600, "")}
     states = _states(pols={"role:router": _policy(days=1)}, rotations=rot)

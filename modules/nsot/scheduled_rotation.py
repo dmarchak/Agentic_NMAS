@@ -348,11 +348,12 @@ def device_states(now=None, *, lists=None, devices_of=None, rotations=None,
     return out
 
 
-def device_state(list_name: str, host: str, now=None) -> dict:
-    """One device's entry (its page's Credential line), or None."""
-    for s in device_states(now, lists=[list_name]):
-        if s["device"] == host:
-            return s
+def device_state(list_name: str, dev: dict, now=None) -> dict:
+    """One device's entry (its page's Credential line), from its inventory row *dev* (the page
+    found it there), or None for a row without a name: `device_states` on that one row, so
+    the page no longer reads and judges every device of the network to draw one (C855)."""
+    for s in device_states(now, lists=[list_name], devices_of=lambda _l: [dev]):
+        return s
     return None
 
 

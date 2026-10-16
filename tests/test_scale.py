@@ -76,17 +76,31 @@ TOLERANCE = 0.25
 #: - Devices: every row drawn (C450, 7.4's revised Devices board owed: summary, groups,
 #:   paging), so bytes and calls per device; bounding it fails this, with a new number.
 #:   31,250 bytes at 9 devices, 886,902 at 900; 23,416 calls at 9, 1,180,027 at 900.
-#: - A device's page: no byte per device, and CALLS per device, because its record reads
-#:   `device_list.last_measured` for EVERY device of the network to draw one (each a regex
-#:   compiled and searched per device in `_intent_of`): 0.03 s at 9 devices and 0.3 s at
-#:   900, measured 2026-10-15, a finding of P7-19.
+#:   627 calls per device since C855 (2026-10-15), from 1,298: `_intent_of` built and
+#:   compiled a pattern per device (past `re`'s 512-entry cache, every time); it reads the
+#:   trailer literally now. 23,506 calls at 9, 581,965 at 900.
+#: - A device's page: no byte per device, and 19 calls per device since C855 (2026-10-15),
+#:   from 460 (463 with the identities below). Those were its record reading EVERY device's
+#:   last measurement (`device_list.last_measured`, a pattern compiled per device in
+#:   `_intent_of`) and its Credential check judging every device's rotation policy
+#:   (`scheduled_rotation.device_state` over `device_states`) to draw one: 0.03 s at 9
+#:   devices, 0.3 s at 900 (P7-19). Both now read the one device: 48,698 calls at 9 and
+#:   461,042 at 900 before, 48,080 and 64,987 after. The 19 left is NAMED, not fixed: the
+#:   manifest is one file keyed by identity, so `manifest.find_by_name` passes over the
+#:   entries before the one it finds, about 7 calls an entry, three lookups a page (the
+#:   header's and the Overview's `hardware`, and `intent_check`): 0.14 ms a pass beside
+#:   0.5 ms to read the file, at 900 outside the profiler (2026-10-15). The measured
+#:   device's entry is the manifest's LAST (`scripts_scale_helper.identity_for`), so the
+#:   pin is the whole pass, never wherever a random identity sorted. Not in it: the same
+#:   pass over the inventory in `device_page.find_device` (3 calls a row before the match),
+#:   because the measured device is the inventory's first row.
 V2_PAGES = {
     # Its fixed bytes are not pinned (None): its rows come from the reader stores every test
     # in a worker shares, 49,813 bytes alone and 88,687 mid-suite (measured 2026-10-15). What
     # moves with the fleet is read within one environment, so its per-device pins hold.
     "/v2/": (None, 0, 1),
-    "/v2/devices": (22_610, 960, 1_298),
-    "/v2/device/cor0000": (33_319, 0, 460),
+    "/v2/devices": (22_610, 960, 627),
+    "/v2/device/cor0000": (33_319, 0, 19),
 }
 
 
@@ -287,8 +301,20 @@ class TestAV2PageDoesNoPerDeviceWork:
 
 class TestWhatMovesWithTheFleetIsPinned:
     """Asserting the STATUS QUO, per page: the fixed bytes, and the bytes and Python calls
-    each device adds. The day somebody bounds the Devices list, or stops the device page
-    reading every device, this fails and must be updated with a new number."""
+    each device adds. The day somebody bounds the Devices list, or finds a device's manifest
+    entry without a pass over the manifest, this fails and must be updated with a new number.
+
+    The device page's pin rests on its device's manifest entry being the LAST (V2_PAGES):
+    checked here, so a change to the identities cannot quietly shrink the pass it pays."""
+
+    def test_the_measured_device_s_manifest_entry_is_the_last(self):
+        from scripts_scale_helper import identity_for
+
+        fleet = build_fleet(max(SIZES))
+        measured = next(d for d in fleet if d["hostname"] == "cor0000")
+        for size in SIZES:
+            ids = sorted(identity_for(d) for d in fleet[:size])
+            assert len(set(ids)) == size and ids[-1] == identity_for(measured), (size, ids[-3:])
 
     @pytest.mark.parametrize("page", sorted(p for p, v in V2_PAGES.items() if v[0] is not None))
     def test_the_fixed_bytes(self, measured, page):

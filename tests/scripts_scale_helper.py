@@ -36,11 +36,21 @@ def golden_for(device: dict) -> str:
             f" ip address 10.{int(c) - 100}.{d}.1 255.255.255.255\n!\nend\n")
 
 
+def identity_for(device: dict) -> str:
+    """A fleet device's manifest identity, in the shape the tool mints (a uuid), fixed and
+    in REVERSE fleet order: the manifest is stored sorted by identity, and a lookup by name
+    (`manifest.find_by_name`) passes over the entries before the one it finds, so the first
+    device's entry, the device page's measured one, comes last and its page pays the whole
+    pass (C855). A random uuid put it anywhere, so the measurement moved between runs."""
+    return f"00000000-0000-4000-8000-{9999 - int(device['hostname'][-4:]):012d}"
+
+
 def commit_goldens(list_name: str, devices: list) -> dict:
     """One commit of a golden for each device the fleet does not mark `no_golden`."""
     from modules.nsot.repo import GoldenItem, save_golden
 
-    items = [GoldenItem(d["hostname"], golden_for(d), d["ip"], platform=d["platform"])
+    items = [GoldenItem(d["hostname"], golden_for(d), d["ip"], platform=d["platform"],
+                        device_uid=identity_for(d))
              for d in devices if d.get("_scale_state") != "no_golden"]
     out = save_golden(list_name, items, source="onboarding", actor="t", allow_new=True,
                       baseline=False)

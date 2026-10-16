@@ -12,7 +12,8 @@ number of reads, whatever its size:
 - ONE bounded `git log` over the commits carrying `Intent-Match:` (every save
   since C89, the decision a Save All records when nothing changed included):
   when each device was last MEASURED, by which workflow, and its state against
-  committed intent then (`last_measured()`, which the device page reads too);
+  committed intent then (`last_measured()`, which the device page reads too, for its
+  one device: `only=`, C855);
 - ONE `git ls-tree` over `host_vars/`: which devices have committed intent.
 
 **A measurement is any read the tool compared with the golden and recorded**
@@ -77,12 +78,46 @@ def _split(text: str) -> list:
     return [h.strip() for h in (text or "").split(",") if h.strip()]
 
 
-def last_measured(repo: str, bound: int = LOG_BOUND) -> tuple:
+#: The separator of a trailer's names with the space around it: `_names` reads a list as
+#: `_split` does, without a call per name.
+_COMMA = re.compile(r"\s*,\s*")
+
+
+def _listed(text: str) -> bool:
+    """Whether a trailer's comma-separated value names any device (`_split` non-empty)."""
+    return bool((text or "").replace(",", "").strip())
+
+
+def _names(text: str, only: str = None) -> list:
+    """The devices a trailer's value names (`_split`); with *only*, ``[only]`` if it is one
+    of them, else ``[]``: a test on the text, so one device's question costs no call per
+    device the trailer names (C855: a Save All's commit names the whole network)."""
+    if only is None:
+        return _split(text)
+    if not only or "," in only or only != only.strip():
+        return []                                 # `_split` yields no such name
+    return [only] if f",{only}," in "," + _COMMA.sub(",", (text or "").strip()) + "," else []
+
+
+def _measured_by(names: str, devices: str, measured: str, only: str = None) -> tuple:
+    """``(hosts, moved)``: the devices one measurement commit READ, and the set whose golden
+    MOVED. The one rule for the list and the page: `Devices-Measured:` names every device
+    read; before that trailer, `Device-Name:` (else `Devices:`) named only the goldens that
+    moved, and those are the devices read. With *only*, that device's part of the answer."""
+    moved = set(_names(names if _listed(names) else devices, only))
+    return (_names(measured, only) if _listed(measured) else sorted(moved)), moved
+
+
+def last_measured(repo: str, bound: int = LOG_BOUND, only: str = None) -> tuple:
     """``({device: {"at", "sha", "source", "how", "changed", "baseline", "intent"}}, error)``:
     each device's NEWEST measurement, from ONE bounded `git log` over the commits carrying
     `Intent-Match:` (only a save writes it). A device is measured by a commit that names it
     in `Devices-Measured:` (every device read) or, before that trailer, in `Device-Name:` /
-    `Devices:` (the goldens that moved). *changed* says whether its golden moved then."""
+    `Devices:` (the goldens that moved). *changed* says whether its golden moved then.
+
+    *only* (a device's page, C855) answers for that one device, ``{only: ...}`` or ``{}``, by
+    the same log and the same rule, with no work per device the log's commits name: the page
+    read every device's measurement to draw one, about 460 Python calls per device at 900."""
     from modules.nsot import repo as R
 
     fmt = _FIELD.join(["%H", "%ct", "%(trailers:key=Source,valueonly)",
@@ -101,9 +136,9 @@ def last_measured(repo: str, bound: int = LOG_BOUND) -> tuple:
         if len(parts) < 8:
             continue
         sha, ct, source, names, devices, measured, intent, baseline = parts[:8]
-        moved = set(_split(names) or _split(devices))
+        hosts, moved = _measured_by(names, devices, measured, only)
         source = source.strip()
-        for host in _split(measured) or sorted(moved):
+        for host in hosts:
             if host in seen:
                 continue
             changed = host in moved
@@ -111,6 +146,8 @@ def last_measured(repo: str, bound: int = LOG_BOUND) -> tuple:
                           "how": SOURCE_WORDS.get(source, source.replace("_", " ") or "a save"),
                           "changed": changed, "baseline": baseline.strip().startswith("earned"),
                           "intent": _intent_of(host, intent.strip())}
+        if only is not None and seen:
+            break                                 # the newest is the one asked for
     return seen, ""
 
 
@@ -120,16 +157,32 @@ def measured_words(m: dict) -> str:
             + (", which earned a baseline" if m.get("baseline") else ""))
 
 
+def _departure(host: str, trailer: str):
+    """*host*'s detail in a ``no: a (d1); b (d2)`` trailer, or None when it is not named: the
+    first ``no: <host> (`` at the start or ``; <host> (`` anywhere, up to the next ``)``.
+    Literal, so nothing is compiled per device (C855: a pattern built from each host was
+    compiled for every device, and past `re`'s 512-entry cache, compiled every time)."""
+    head = f"no: {host} ("
+    if trailer.startswith(head):
+        start = len(head)
+    else:
+        at = trailer.find(f"; {host} (")
+        if at < 0:
+            return None
+        start = at + len(host) + 4
+    end = trailer.find(")", start)
+    return None if end < 0 else trailer[start:end]
+
+
 def _intent_of(host: str, trailer: str) -> dict:
     """One device's state in a commit's `Intent-Match:` trailer."""
     if not trailer:
         return {"state": "unrecorded", "words": "not recorded at capture"}
     if trailer.startswith("yes"):
         return {"state": "at_intent", "words": "at intent"}
-    m = re.search(rf"(?:^no: |; ){re.escape(host)} \(([^)]*)\)", trailer)
-    if not m:
+    detail = _departure(host, trailer)
+    if detail is None:
         return {"state": "at_intent", "words": "at intent"}
-    detail = m.group(1)
     if detail.startswith("unknown"):
         # A short word in the row and the reason on its hover (the operator, 2026-10-02: the
         # whole sentence in a no-wrap badge pushed Last measured off the table). The trailer's

@@ -706,7 +706,7 @@ and others have left since too.
   one `ls-tree`; never per device). **A measurement is any save that read the device**
   (2026-10-02, the operator): a Save All that found it unchanged counts, so every save names
   each device it read in `Devices-Measured:`, and `device_list.last_measured()` is the one
-  reader (the Overview's Last measured uses it too); the selection
+  reader (the Overview's Last measured uses it too, for its one device: `only=`, C855); the selection
   plans a deploy on today's page until v2 carries one. **The device page's actions on v2**
   (7.3; the mockup signed off 2026-10-02), **[modules/device_actions.py](modules/device_actions.py)**
   and `templates/v2/_capture.html`: an operation's card drawn in place of the tab, from the

@@ -141,8 +141,9 @@ def records(ref, dev: dict) -> dict:
     golden = _last_commit(ref.repo_dir, f"golden/{host}.cfg")
     # WHEN IT WAS LAST MEASURED, beside when its golden last changed (2026-10-02): a Save
     # All that found it unchanged confirms the golden and moves only this. The same
-    # reader as the Devices list; a golden commit is a measurement too.
-    measured, err = device_list.last_measured(ref.repo_dir)
+    # reader as the Devices list; a golden commit is a measurement too. This device's alone
+    # (C855: it read every device's to draw one).
+    measured, err = device_list.last_measured(ref.repo_dir, only=host or "")
     m = measured.get(host)
     g_at = _epoch(golden.get("at") or "") if golden else 0
     if golden and (m is None or g_at > m["at"]):
@@ -294,7 +295,7 @@ def checks(ref, dev: dict) -> list:
     # Credential: its age and its next rotation under its profile's policy (C724).
     try:
         from modules.nsot import scheduled_rotation
-        cs = scheduled_rotation.device_state(ref.name, host)
+        cs = scheduled_rotation.device_state(ref.name, dev)
     except Exception as exc:                     # noqa: BLE001
         cs = {"_error": f"its credential age could not be read ({type(exc).__name__})"}
     if cs is None or cs.get("_error"):
