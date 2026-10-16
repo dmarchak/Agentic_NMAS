@@ -146,6 +146,10 @@ ROW_KINDS = {
     ("host_keys", "changed"): ("a device answered with an SSH host key Mercury does not hold",
                                "re-key it on its page if it was rebuilt, or find what answers "
                                "at its address"),
+    # The operator, 2026-10-16: a window took keys no person looked at, one by one.
+    ("host_key_windows", "window"): ("a planned window kept new SSH host keys that no person "
+                                     "has reviewed", "compare each new key with its device's, "
+                                                     "then acknowledge"),
 }
 
 #: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
@@ -249,6 +253,9 @@ CLEARS = {
     ("host_keys", "changed"): (("resolves",), "a session finds the device answering with the "
                                "key Mercury holds: after a re-key on its page keeps the new "
                                "one, or when the device answers with the held key again"),
+    ("host_key_windows", "window"): (("acknowledge",), "a person acknowledges it with a "
+                                     "reason, after comparing the keys; each key stays in "
+                                     "History with the one it replaced"),
 }
 
 #: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
@@ -258,7 +265,9 @@ CLEARS = {
 ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "repeated"),
                                ("operations", "interrupted"),
                                # Within its measured band, never for good (C433).
-                               ("grafana", "series")})
+                               ("grafana", "series"),
+                               # A window's new host keys, once it has closed (C906).
+                               ("host_key_windows", "window")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -2908,6 +2917,50 @@ def host_key_source(refused=None) -> dict:
                          + f"{len(rows)} refused at their last connection")
 
 
+def host_key_window_source(found=None) -> dict:
+    """Each CLOSED planned window that kept new SSH host keys (the operator, 2026-10-16): one
+    row, "<n> new host keys accepted during '<reason>'", until a person acknowledges it. The
+    summaries are written once, by a reader that sees the window close
+    (`host_keys.close_windows`); this only reads them, so a page read writes nothing. A
+    window that kept no key is in History and is no row: nothing was taken unreviewed. One
+    file read; a summaries file that cannot be read is this source's error, itself a row."""
+    from modules import host_keys as hk
+
+    started = time.time()
+    label = "SSH host keys kept under a planned window"
+    got = hk.summaries() if found is None else found()
+    took = int((time.time() - started) * 1000)
+    if got["state"] == "unreadable":
+        return source_result("host_key_windows", label, read_at=started, took_ms=took,
+                             error=(f"the windows' summaries ({hk.SUMMARIES}) could not be "
+                                    f"read: {got.get('error')}"))
+    rows = []
+    for s in got["rows"]:
+        keys = s.get("keys") or []
+        if not int(s.get("count") or 0):
+            continue
+        named = "; ".join(f"{k.get('device') or k.get('ip')} {k.get('fingerprint')} (was "
+                          f"{k.get('replaced') or 'none recorded'})" for k in keys[:10])
+        more = f"; and {len(keys) - 10} more" if len(keys) > 10 else ""
+        rows.append(row(
+            source="host_key_windows", kind="window", key=s["window"], level="warning",
+            what=hk.summary_words(s),
+            cause=(f"The planned window declared by {s.get('by') or 'an unrecorded person'} "
+                   f"({s.get('from', '?')} to {s.get('until', '?')}, closed "
+                   f"{s.get('closed_at', '?')}) expected new SSH host keys, so Mercury kept "
+                   f"each new key it met without a person reviewing it: {named}{more}."),
+            action={"label": ("Review each device's new key and the one it replaced in "
+                              "History, then acknowledge with what you found"),
+                    "href": "/v2/history?kind=hostkeys&since=30"},
+            devices=sorted({k.get("device") for k in keys if k.get("device")}),
+            since=_ts(s.get("closed_at")), event=s["window"],
+            operands={"window": s["window"], "list": s.get("list", ""),
+                      "count": int(s.get("count") or 0)}))
+    return source_result("host_key_windows", label, read_at=started, took_ms=took, rows=rows,
+                         checked=(f"{len(got['rows'])} closed window(s) that expected new "
+                                  f"keys, {len(rows)} of them kept one or more"))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, integrations_source, ci_source, redaction_source,
@@ -2915,7 +2968,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            remote_source, pushed_source,
            host_steps_source, adjacency_source, restart_source,
            interrupted_source, dashboard_roles_source, template_behind_source,
-           records_source, scheduled_rotation_source, host_key_source)
+           records_source, scheduled_rotation_source, host_key_source,
+           host_key_window_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -2960,6 +3014,8 @@ SOURCE_KEYS = {
     "scheduled_rotation_source": ("rotation", "credentials"),
     # A key kept, refused or replaced by any session or a re-key announces it (C906).
     "host_key_source": ("host_keys",),
+    # A window's summary written by its reader announces the same key (C906).
+    "host_key_window_source": ("host_keys",),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.
@@ -3130,7 +3186,8 @@ def _without_acknowledged(rows: list):
 #: The source each acknowledgeable row comes from, so an acknowledgement checks the row
 #: exists NOW (computed again, never taken from the browser).
 _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source",
-                "operations": "interrupted_source", "grafana": "grafana_source"}
+                "operations": "interrupted_source", "grafana": "grafana_source",
+                "host_key_windows": "host_key_window_source"}
 
 
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:

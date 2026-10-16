@@ -14,7 +14,10 @@ each recorded: a person's reviewed re-key (`modules/nsot/rekey_op.py`, a card on
 page), or a planned-restart window declared BEFORE the change that says the devices it covers
 come back with new host keys (`restarts.record_planned(new_host_keys=True)`: a lab redeploy,
 whose fresh disks make every key anew). A window accepts one new key per device, and never a
-key it was declared after Mercury had already refused.
+key it was declared after Mercury had already refused. Each key a window takes is in History
+with the key it replaced and the window's reason, and once the window has closed ONE summary
+("<n> new host keys accepted during '<reason>'") stays on Needs attention until a person
+acknowledges it (`close_windows`, written by a reader; the operator, 2026-10-16).
 
 **The store** is ONE file for the installation, ``<data>/ssh_host_keys.json``, keyed by the
 address Mercury connects to, the way OpenSSH's `known_hosts` is: what a key proves is who
@@ -250,6 +253,11 @@ def refusal_words(ip: str, got: dict, rec: dict) -> str:
 # The comparison: every SSH session's key, before any credential
 # ---------------------------------------------------------------------------
 
+def window_id(p: dict) -> str:
+    """One planned window's identity: its list, when it was recorded, and when it opens."""
+    return f"{p.get('list', '')}|{p.get('recorded_at', '')}|{p.get('from', '')}"
+
+
 def _window_for(ip: str, rec: dict, got: dict, now: float):
     """The planned-restart window that accepts this new key, or None: declared to expect new
     host keys, covering a device at *ip* now, not already used by this device's record, and
@@ -272,7 +280,7 @@ def _window_for(ip: str, rec: dict, got: dict, now: float):
                 continue
             if not restarts._window_covers(p, host, now, lst):
                 continue
-            wid = f"{p.get('list', '')}|{p.get('recorded_at', '')}|{p.get('from', '')}"
+            wid = window_id(p)
             if rec.get("window", {}).get("id") == wid:
                 continue                  # this window already took one new key for it
             if refused_at and _epoch(p.get("recorded_at", "")) >= refused_at:
@@ -286,6 +294,9 @@ def _window_for(ip: str, rec: dict, got: dict, now: float):
 def _retired(rec: dict, at: float, by: str, why: str) -> dict:
     """An earlier key, kept in the record's history when a new one replaces it."""
     old = {k: rec.get(k) for k in ("type", "fingerprint", "kept_at", "kept_by", "how")}
+    # A key kept under a window keeps its window and the key it replaced when it is replaced
+    # in turn, so History and the window's summary still name both (the operator, 2026-10-16).
+    old.update({k: rec[k] for k in ("window", "replaced") if rec.get(k)})
     old.update(replaced_at=_iso(at), replaced_by=by, replaced_why=why)
     return old
 
@@ -296,8 +307,11 @@ def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT) -> dict:
     different key, nothing sent, the refusal recorded for Needs attention) or
     `HostKeyStoreUnreadable`."""
     got = offered(key)
-    now = time.time()
     with _lock():
+        # The time is taken UNDER the lock: a window's summary (`close_windows`) counts its
+        # keys under this same lock once the window has closed, so no key can be kept under a
+        # window after its summary was written.
+        now = time.time()
         doc = read()
         rec = doc["keys"].get(ip)
         if rec is None:
@@ -323,7 +337,7 @@ def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT) -> dict:
             if window:
                 by = who(owner, ip)
                 new = dict(got, ip=ip, kept_at=_iso(now), kept_by=by, how=WINDOW,
-                           port=port, window=window,
+                           port=port, window=window, replaced=rec.get("fingerprint", ""),
                            history=list(rec.get("history") or []) + [_retired(
                                rec, now, by, f"replaced under the planned window declared by "
                                              f"{window['by']}: {window['why']}")])
@@ -464,3 +478,113 @@ def replace(ip: str, *, expected: str, new: dict, by: str, why: str) -> dict:
                 new["fingerprint"], why)
     _announce()
     return {"ok": True, "error": "", "record": dict(new_rec)}
+
+
+# ---------------------------------------------------------------------------
+# A window's keys, summed up once it has closed (the operator, 2026-10-16)
+# ---------------------------------------------------------------------------
+#
+# A window that expects new host keys takes each one without a person looking at it. Each is
+# in History (`history_sources.host_keys`: the device, the new key, the key it replaced, the
+# window's reason); once the window can take no more, ONE summary row says how many it took,
+# and Needs attention shows it until a person acknowledges it (`attention.host_key_source`).
+# The close is OBSERVED by a reader that runs each minute (`modules/readers/
+# host_key_windows.py`), never inferred when a page is read, and written once per window.
+
+#: The summaries, one line per closed window: append-only, owner-only (a person's name and
+#: reason are in it).
+SUMMARIES = "host_key_windows.jsonl"
+
+
+def summaries_path() -> str:
+    from modules import config
+    return os.path.join(config.DATA_DIR, SUMMARIES)
+
+
+def closes_at(p: dict) -> float:
+    """When window *p* can take no more keys: its end plus the slack in which a restart (and
+    so a new key) is still the plan's (`restarts.PLANNED_SLACK_SECONDS`, the slack
+    `_window_for` gives it through `restarts._window_covers`)."""
+    from modules import restarts
+    return restarts._epoch(p.get("until", "")) + restarts.PLANNED_SLACK_SECONDS
+
+
+def accepted_under(wid: str, doc: dict = None) -> list:
+    """Every key kept under window *wid*, held now or replaced since: ``[{"device", "list",
+    "ip", "type", "fingerprint", "replaced", "kept_at", "kept_by"}]``, by address. *replaced*
+    is the key it took the place of. Raises `HostKeyStoreUnreadable`."""
+    doc = read() if doc is None else doc
+    out = []
+    for ip, rec in sorted(doc["keys"].items()):
+        chain = list(rec.get("history") or []) + [rec]
+        for i, k in enumerate(chain):
+            w = k.get("window") or {}
+            if k.get("how") != WINDOW or w.get("id") != wid:
+                continue
+            before = k.get("replaced") or (chain[i - 1].get("fingerprint", "") if i else "")
+            out.append({"device": w.get("device", ""), "list": w.get("list", ""), "ip": ip,
+                        "type": k.get("type", ""), "fingerprint": k.get("fingerprint", ""),
+                        "replaced": before, "kept_at": k.get("kept_at", ""),
+                        "kept_by": k.get("kept_by", "")})
+    return out
+
+
+def summaries() -> dict:
+    """``{"state": "ok"|"absent"|"unreadable", "rows", "error"?}``: the closed windows'
+    summaries, oldest first. Unreadable is its own answer, never "none written"."""
+    from modules import restarts
+    return restarts._read_jsonl(summaries_path())
+
+
+def summary_words(s: dict) -> str:
+    """"2 new host keys accepted during 'lab redeploy'" (the operator's words)."""
+    n = int(s.get("count") or 0)
+    return f"{n} new host key{'' if n == 1 else 's'} accepted during '{s.get('why', '')}'"
+
+
+def close_windows(now: float = None, planned: list = None) -> dict:
+    """Write ONE summary for every window that expected new host keys and has CLOSED (its end
+    plus the slack has passed) and has none yet. ``{"written": [summary], "closed",
+    "open"}``. Idempotent across runs and processes: under the host-key record's lock (so no
+    key is kept meanwhile: `check` takes its time under it) and the summaries' own lock, a
+    window already summed up is skipped. Raises `HostKeyStoreUnreadable` or RuntimeError (a
+    record that cannot be read), so the reader's failure is a job-health row."""
+    from modules import restarts
+    from modules.config import open_secure
+    from modules.filestore import PathLock
+
+    planned = restarts.planned_rows() if planned is None else planned
+    expecting = [p for p in planned if p.get("new_host_keys")]
+    with _lock():
+        now = time.time() if now is None else now
+        closed = [p for p in expecting if now > closes_at(p)]
+        written = []
+        if closed:
+            doc = read()
+            with PathLock(summaries_path):
+                got = summaries()
+                if got["state"] == "unreadable":
+                    raise RuntimeError(f"the host-key windows' summaries ({summaries_path()}) "
+                                       f"could not be read ({got.get('error')}), so whether a "
+                                       "window was summed up already cannot be told: nothing "
+                                       "was written")
+                done = {r.get("window") for r in got["rows"]}
+                for p in closed:
+                    wid = window_id(p)
+                    if wid in done:
+                        continue
+                    keys = accepted_under(wid, doc)
+                    row = {"window": wid, "list": p.get("list", ""), "by": p.get("by", ""),
+                           "why": p.get("why", ""), "from": p.get("from", ""),
+                           "until": p.get("until", ""), "devices": list(p.get("devices") or []),
+                           "closed_at": _iso(closes_at(p)), "written_at": _iso(now),
+                           "count": len(keys), "keys": keys}
+                    with open_secure(summaries_path(), "a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(row, sort_keys=True) + "\n")
+                    done.add(wid)
+                    written.append(row)
+                    log.warning("ssh host keys: %s (window declared by %s, closed %s)",
+                                summary_words(row), row["by"], row["closed_at"])
+    if written:
+        _announce()
+    return {"written": written, "closed": len(closed), "open": len(expecting) - len(closed)}

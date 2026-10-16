@@ -83,7 +83,8 @@ def main(argv=None) -> int:
               f"{r['correction']}")
     if r.get("new_host_keys"):
         print("expecting new SSH host keys: Mercury keeps one new key per device it meets "
-              "inside the window")
+              "inside the window, each in History; once the window closes, Needs attention "
+              "says how many until a person acknowledges them")
     return 0
 
 

@@ -76,7 +76,9 @@ class TestEveryKindSaysHowItClears:
         from modules.attention import ACKNOWLEDGED_HERE, CLEARS
         assert ACKNOWLEDGED_HERE == {("restarts", "unplanned"), ("authorisations", "repeated"),
                                      ("operations", "interrupted"),
-                                     ("grafana", "series")}     # within its band (C433)
+                                     ("grafana", "series"),     # within its band (C433)
+                                     # A window's new SSH host keys (C906, 2026-10-16).
+                                     ("host_key_windows", "window")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

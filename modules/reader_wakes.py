@@ -54,6 +54,9 @@ WOKEN_BY = {
     "netbox-secrets": ("netbox", "settings"),
     # the planned-restart windows a person declares; Prometheus by settings.
     "restarts": ("restarts", "settings"),
+    # C906: the planned windows that expect new host keys; TIME closes a window, but a window
+    # recorded with a start in the past (a correction) may be closed the moment it is declared.
+    "host-key-windows": ("restarts",),
     # each network's receipts file and the records database's table: a deploy or restore
     # writes a receipt (v2 announces deploy_job; today's routes declare device_state); a move
     # or move back switches the store (a settings write). A capture writes none.

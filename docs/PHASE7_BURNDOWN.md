@@ -71,6 +71,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | ~~C931~~ | ~~Seed on a network created on v2~~ **done**, with C943 (see Checked off); W2 section H walks it | | | | |
+| C948 | the Stage 2 redeploy checklist brought to today's rules or retired (the operator's file: "do not edit"); `lab/REDEPLOY.md` is followed meanwhile | the operator's decision | S | — | the operator |
 | C944, C945 | the unused second `git init` removed; History's "could not be read" says why (no repository yet) | their tests | S each | — | — |
 | C933 to C936 | From writing W2 (B): NetBox's import count for a NetBox-sourced network; the write probe's remedy; "Just stop tracking"; editing a revoked template | each its test; walked in W2 | S each | — | — |
 | C906 | Mercury checks each device's SSH host key: **BUILT** (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key, NETCONF too) | deployed; every device's key kept on the host; the operator's next redeploy declares `--new-host-keys` | M | — | the redeploy's flag (the operator) |

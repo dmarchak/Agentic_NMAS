@@ -1068,6 +1068,37 @@ def reloads(ctx):
     return _out(events)
 
 
+def _host_key_window_summaries(ctx, hk) -> tuple:
+    """``(events, errors)``: each closed window's ONE summary of the keys it kept
+    (`host_keys.close_windows`), for this list, when it closed: the devices are those whose
+    keys it took, else every device of the window. An unreadable summaries file is an
+    error, never "none"."""
+    got = hk.summaries()
+    if got.get("state") == "unreadable":
+        return [], [f"the host-key windows' summaries could not be read: {got.get('error')}"]
+    out = []
+    for s in got.get("rows") or []:
+        if s.get("list") and s.get("list") != ctx["ref"].name:
+            continue
+        keys = s.get("keys") or []
+        devices = sorted({k.get("device") for k in keys if k.get("device")}) or \
+            list(s.get("devices") or [])
+        if not _recent(ctx, s.get("closed_at")) or not (
+                "*" in devices or any(_mine(ctx, d) for d in devices)):
+            continue
+        out.append(_event(
+            s.get("closed_at", ""), "hostkey", hk.summary_words(s), devices,
+            who=s.get("by", ""), detail=f"the planned window {s.get('from', '')} to "
+                                        f"{s.get('until', '')} closed",
+            outcome="window",
+            record=[("Window", f"{s.get('by', '')}: {s.get('why', '')}"),
+                    ("Keys", "; ".join(f"{k.get('device')}: {k.get('fingerprint')} (was "
+                                       f"{k.get('replaced') or 'none recorded'})"
+                                       for k in keys) or "none"),
+                    ("Written", s.get("written_at"))]))
+    return out, []
+
+
 def host_keys(ctx):
     """Each SSH host key Mercury kept for a device of the list (C906): on first contact, by a
     person's re-key, or under a planned window that expected new keys, the key it replaced in
@@ -1086,28 +1117,41 @@ def host_keys(ctx):
         host = hosts.get(ip)
         if not host or not _mine(ctx, host):
             continue
-        for k in [rec] + list(reversed(rec.get("history") or [])):
+        chain = list(rec.get("history") or []) + [rec]
+        for i in reversed(range(len(chain))):
+            k = chain[i]
             if not _recent(ctx, k.get("kept_at")):
                 continue
             current = k is rec
-            replaced = rec.get("history") or []
-            before = (replaced[-1] if current and replaced else {})
-            window = (rec.get("window") or {}) if current else {}
+            # The key this one took the place of: recorded with it since 2026-10-16, else the
+            # one before it in the record's history.
+            before = k.get("replaced") or (chain[i - 1].get("fingerprint", "") if i else "")
+            window = k.get("window") or {}
+            detail = f"{k.get('fingerprint', '')} ({k.get('type', '')})"
+            if window:
+                # The operator, 2026-10-16: every key a window takes is a row naming the new
+                # key, the one it replaced and the window's reason.
+                detail += (f", replacing {before or 'no recorded key'}, during "
+                           f"'{window.get('why', '')}'")
             events.append(_event(
                 k.get("kept_at", ""), "hostkey",
                 words.get(k.get("how", ""), "SSH host key kept"), [host],
-                who=k.get("kept_by", ""), detail=f"{k.get('fingerprint', '')} ({k.get('type', '')})",
+                who=k.get("kept_by", ""), detail=detail,
                 outcome="held" if current else "replaced",
                 record=[("Address", ip), ("Fingerprint", k.get("fingerprint")),
                         ("Type", k.get("type")), ("How", k.get("how")),
-                        ("Replaced", before.get("fingerprint")),
+                        ("Replaced", before),
                         ("Why", rec.get("why") if current else k.get("replaced_why")),
                         ("Window", f"{window.get('by', '')}: {window.get('why', '')}"
                          if window else None),
+                        ("Window from", window.get("from")),
+                        ("Window until", window.get("until")),
                         ("Replaced at", None if current else k.get("replaced_at")),
                         ("Replaced by", None if current else k.get("replaced_by"))]))
+    summed, errors = _host_key_window_summaries(ctx, _hk)
+    events += summed
     events.sort(key=lambda e: epoch(e["at"]), reverse=True)
-    return _out(events[:ctx["limit"]], cut=[f"the host keys' newest {ctx['limit']}"]
+    return _out(events[:ctx["limit"]], errors, cut=[f"the host keys' newest {ctx['limit']}"]
                 if len(events) > ctx["limit"] else [])
 
 

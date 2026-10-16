@@ -63,13 +63,18 @@ class SSHServer:
         self.sock.bind((IP, 0))
         self.sock.listen(8)
         self.port = self.sock.getsockname()[1]
-        threading.Thread(target=self._serve, daemon=True, name="test-ssh-server").start()
+        self.stopping = threading.Event()
+        self.thread = threading.Thread(target=self._serve, daemon=True, name="test-ssh-server")
+        self.thread.start()
 
     def _serve(self):
-        while True:
+        while not self.stopping.is_set():
             try:
                 client, _ = self.sock.accept()
             except OSError:
+                return
+            if self.stopping.is_set():
+                client.close()
                 return
             t = paramiko.Transport(client)
             t.add_server_key(self.key)
@@ -80,9 +85,22 @@ class SSHServer:
                 pass
 
     def close(self):
+        """Stop the accept loop BEFORE the socket's number is freed (CI #848): closing a
+        listening socket does not wake a thread blocked in `accept()` on Linux, so the loop
+        outlived the test, and its next `accept()` could run on the freed number, which the
+        next test's server took: it stole that server's connection, and werkzeug's own
+        `accept()` (told a connection was waiting) blocked for good, hanging its shutdown.
+        `shutdown()` wakes the blocked `accept()`; the loop is joined, then the socket closed."""
+        self.stopping.set()
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.thread.join(5)
         self.sock.close()
         for t in self.transports:
             t.close()
+        assert not self.thread.is_alive(), "the test SSH server's accept loop outlived its test"
 
 
 @pytest.fixture(scope="module")
