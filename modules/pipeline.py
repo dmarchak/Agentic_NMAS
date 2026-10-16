@@ -4,7 +4,7 @@ Nine-stage deployment pipeline with strict execution-order enforcement.
 
 Required stage order (immutable):
   1. netbox_query       – fetch device inventory and intended config from NetBox
-  2. template_render    – render Jinja2 templates; fall back to Python generators
+  2. template_render    – take the operator's confirmed command list; render nothing (C765)
   3. ci_gate            – validate rendered config locally; NO SSH before this passes
   4. pre_snapshot       – capture BGP neighbors, interface states, route table size
   5. config_diff        – diff rendered commands vs running config; abort if empty or
@@ -563,12 +563,15 @@ def _stage_netbox_query(ctx: PipelineContext) -> None:
 
 def _stage_template_render(ctx: PipelineContext) -> None:
     """
-    Render configuration commands for every device.
+    Take the confirmed command list; render nothing.
 
-    Looks for ``config_templates/{config_type}.j2`` first.  If the file exists,
-    renders it via Jinja2 (already available as a Flask dependency — no new
-    package needed).  Falls back to the existing Python generators in
-    ``modules.configure`` when no template file is found.
+    **The pipeline sends only a list the operator confirmed.** Its one caller,
+    ``routes/deploy._deploy_one`` (every deploy and restore), sets
+    ``ctx.confirmed_commands`` before it runs. The fallback that rendered a list
+    here when none was confirmed (``config_templates/{config_type}.j2``, else the
+    per-feature generators in ``modules/configure.py``) was reached by no route,
+    job or script once today's Configure tab's forms left at 7.8, and was
+    removed (C765, 2026-10-16): a context without a confirmed list is refused.
 
     **A confirmed command list is never re-rendered.** The NSoT deploy path
     (Phase 3c) computes its command list outside the pipeline entirely — it has
@@ -580,96 +583,19 @@ def _stage_template_render(ctx: PipelineContext) -> None:
     the pipeline would decide what to send after the operator approved
     something else.
 
-    The early return below is the intended path. The assignment at the end of
-    this function is also refused by the setter now, so deleting the return
-    would raise rather than quietly substitute.
+    The confirmed list wins by construction too: ``rendered_commands`` derives
+    from it, and an assignment over it is refused by the setter.
     """
-    from modules.configure import generate_config_commands
-
-    if ctx.confirmed_commands is not None:
-        if not ctx.confirmed_commands:
-            raise PipelineStageError(
-                "a confirmed command list was declared but is empty — refusing "
-                "to render a substitute for a list the operator confirmed")
-        log.info("pipeline[2/template_render]: %d confirmed command list(s) — "
-                 "not rendering", len(ctx.confirmed_commands))
-        return
-
-    tpl_path = _config_template_path(ctx.config_type)
-    rendered: dict[str, list[str]] = {}
-    errors:   list[str]            = []
-
-    for dev in ctx.selected_devices:
-        ip       = dev["ip"]
-        hostname = dev.get("hostname", ip)
-        p        = ctx.device_params(ip)
-        per_device = (ctx.intended_config.get("devices", {}).get(ip, {}) or {})
-        nb_dev     = per_device.get("device") or {}
-        # Stage 1 fetched these; stage 2 used to read only ["device"] and throw
-        # the rest away, so templates never saw an interface or an IP address.
-        render_ctx = per_device.get("context") or {}
-        try:
-            if tpl_path and os.path.isfile(tpl_path):
-                cmds = _render_jinja2(tpl_path, p, nb_dev, render_ctx)
-                log.debug("pipeline[2/template_render]: %s used Jinja2 template", hostname)
-            else:
-                cmds = generate_config_commands(ctx.config_type, p)
-                log.debug("pipeline[2/template_render]: %s used Python generator", hostname)
-
-            if not cmds:
-                errors.append(f"{hostname}: generator returned no commands")
-            else:
-                rendered[ip] = cmds
-        except Exception as exc:
-            errors.append(f"{hostname}: {exc}")
-
-    if errors:
+    if ctx.confirmed_commands is None:
         raise PipelineStageError(
-            f"Template render failed for {len(errors)} device(s): {errors}"
-        )
-
-    ctx.rendered_commands = rendered
-    log.info("pipeline[2/template_render]: %d device(s) rendered", len(rendered))
-
-
-def _config_template_path(config_type: str) -> str:
-    """Return path to ``config_templates/{config_type}.j2``, empty string if absent."""
-    root = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-    return os.path.join(root, "config_templates", f"{config_type}.j2")
-
-
-def _render_jinja2(tpl_path: str, params: dict, nb_device: dict,
-                   render_ctx: dict = None) -> list[str]:
-    """
-    Render a Jinja2 config template.
-
-    Jinja2 is part of Flask's dependency tree — no additional install required.
-
-    Templates receive the full render context (see
-    ``modules/nsot/context.py``): ``device``, ``interfaces`` (each with
-    ``ip_addresses``), ``site``, ``vars``, and ``params``. ``netbox`` is kept as
-    an alias for ``device`` so templates written against the previous signature
-    keep working.
-    """
-    from jinja2 import Environment, FileSystemLoader, StrictUndefined
-
-    env = Environment(
-        loader       = FileSystemLoader(os.path.dirname(tpl_path)),
-        undefined    = StrictUndefined,
-        trim_blocks  = True,
-        lstrip_blocks= True,
-    )
-    ctx = dict(render_ctx or {})
-    tpl      = env.get_template(os.path.basename(tpl_path))
-    rendered = tpl.render(
-        params     = params,
-        netbox     = nb_device,                    # backwards-compatible alias
-        device     = ctx.get("device", nb_device),
-        interfaces = ctx.get("interfaces", []),
-        site       = ctx.get("site", {}),
-        vars       = ctx.get("vars", {}),
-    )
-    return [line for line in rendered.splitlines() if line.strip()]
+            "no confirmed command list: the pipeline sends only a list the operator "
+            "confirmed, and renders none of its own (C765)")
+    if not ctx.confirmed_commands:
+        raise PipelineStageError(
+            "a confirmed command list was declared but is empty — refusing "
+            "to render a substitute for a list the operator confirmed")
+    log.info("pipeline[2/template_render]: %d confirmed command list(s) — "
+             "not rendering", len(ctx.confirmed_commands))
 
 
 # ---------------------------------------------------------------------------

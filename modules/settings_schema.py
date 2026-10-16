@@ -168,7 +168,10 @@ DEFAULTS: dict = {
     #: date is caught by refusal detection.
     "grafana_token_expires":  "",
     "grafana_embed_mode":     "link",    # link | iframe
-    "grafana_device_dashboard_url": "",  # supports {hostname} / {ip}
+    # `grafana_device_dashboard_url` was removed (C705, 2026-10-16): read by nothing since the
+    # monitoring stack panel left at 7.8; the device page draws its dashboard by UID below. A
+    # value an older build stored stays in the file, read by nothing (SEEDS_BY_VERSION: a key
+    # removed from DEFAULTS is not removed from any file), and a write naming it is refused.
     "grafana_verify_tls":     True,
     #: The device page's dashboard (NSOT_GUI_BRIEF 14.2, the operator,
     #: 2026-09-30), by UID, never by title: a dashboard with a template

@@ -1230,8 +1230,8 @@ both, with costs.
     dashboards it does hold, never a blank panel.
   - **Both are per-network settings after P.8**, since another lab's Grafana has its own
     dashboards. They replace `grafana_device_dashboard_url` (today a link template with
-    `{hostname}`, read only by the integration card's link), which is kept in the schema
-    as keys always are and read by nothing once the device dashboard is set.
+    `{hostname}`, read only by the integration card's link), read by nothing once that
+    link left at 7.8 and removed from the schema (C705, 2026-10-16).
 - **Full Grafana dashboards, embedded, for desktop deep dives.**
   - **The route (the operator's preference): Grafana under the NMAS's own origin:**
     - a reverse proxy at `/grafana/`, with Grafana's `root_url` and `serve_from_sub_path`

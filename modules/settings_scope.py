@@ -110,7 +110,7 @@ SCOPES: dict = {
     # ── Already dead, recorded (never split) ─────────────────────────────────────────────
     **_group(DEAD, "dead", "jenkins_step_shell", "wf_run_jenkins",
              "netbox_remove_on_list_delete", "oxidized_rest_url", "grafana_embed_mode",
-             "grafana_device_dashboard_url", "nsot_git_repo_path", "nsot_git_remote_url",
+             "nsot_git_repo_path", "nsot_git_remote_url",
              "nsot_git_branch", "nsot_git_auto_push", "nsot_git_auth_mode", "nsot_git_token"),
 }
 

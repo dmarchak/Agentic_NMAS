@@ -5,7 +5,9 @@ Two defects this covers:
 * ``_compact_device`` carries ``local_context_data`` but not the **merged**
   ``config_context``, which is what NetBox actually renders for a device.
 * Pipeline stage 1 fetched interfaces and stage 2 discarded them, reading only
-  ``["device"]``, so templates never saw an interface or an IP address.
+  ``["device"]``, so templates never saw an interface or an IP address. (Stage 2's
+  own template rendering, and its tests here, were removed with C765, 2026-10-16:
+  the pipeline renders nothing of its own.)
 """
 
 import pytest
@@ -122,36 +124,3 @@ class TestSiteAndFailure:
                             lambda: (False, "NetBox not configured", None, ""))
         built = build_render_context("R1")
         assert built["ok"] is False and "not configured" in built["error"]
-
-
-class TestTemplateRendering:
-    """The end the whole context exists for."""
-
-    def test_template_can_reach_interfaces_and_ips(self, nb, tmp_path):
-        from modules.pipeline import _render_jinja2
-
-        template = tmp_path / "t.j2"
-        template.write_text(
-            "hostname {{ device.name }}\n"
-            "{% for i in interfaces %}"
-            "{% for a in i.ip_addresses %}"
-            "interface {{ i.name }}\n ip address {{ a.address }}\n"
-            "{% endfor %}{% endfor %}"
-            "ntp server {{ device.config_context.ntp_servers[0] }}\n",
-            encoding="utf-8")
-
-        context = build_render_context("R1")["context"]
-        lines = _render_jinja2(str(template), {}, context["device"], context)
-
-        assert "hostname R1" in lines
-        assert " ip address 203.0.113.1/24" in lines
-        assert "ntp server 203.0.113.123" in lines
-
-    def test_netbox_alias_still_works(self, nb, tmp_path):
-        """Templates written against the old signature must keep rendering."""
-        from modules.pipeline import _render_jinja2
-
-        template = tmp_path / "t.j2"
-        template.write_text("hostname {{ netbox.name }}\n", encoding="utf-8")
-        context = build_render_context("R1")["context"]
-        assert _render_jinja2(str(template), {}, context["device"], context) == ["hostname R1"]

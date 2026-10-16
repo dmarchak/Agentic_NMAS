@@ -260,8 +260,9 @@ def test_a_held_device_is_skipped_and_the_rest_run(data, monkeypatch):
 def test_a_device_mid_restart_is_skipped(data, monkeypatch):
     from modules import restarts
     now = time.time()
-    if SR.in_backup_window(now):
-        pytest.skip("the real clock is inside the backup window, where no run starts")
+    # The planned window is real time (restarts reads the clock); outside the backup window
+    # by declaration, so the test never skips at 08:30 to 09:10 UTC (C982).
+    monkeypatch.setattr(SR, "in_backup_window", lambda now=None: False)
     assert restarts.record_planned(["r1"], now - 60, now + 600, by=SETTER,
                                    why="a planned reload for this test", via="test",
                                    list_name="Lab")["ok"]
@@ -655,8 +656,9 @@ def test_rotate_due_now_runs_as_a_job_through_rotate_op(data, monkeypatch):
     monkeypatch.setattr(SR, "off_intent", lambda _l, _h: "")
     states = _states(now=time.time())
     monkeypatch.setattr(SR, "device_states", lambda now=None, **_k: states)
-    if SR.in_backup_window():
-        pytest.skip("the real clock is inside the backup window, where no run starts")
+    # The run reads the real clock; outside the backup window by declaration, so the test
+    # never skips at 08:30 to 09:10 UTC (and the coverage it gives never falls then: C982).
+    monkeypatch.setattr(SR, "in_backup_window", lambda now=None: False)
     job, run_id = SR.start_now(actor=SETTER, confirmed="")
     assert capture_job.wait(job, 20)
     assert capture_job.get(job)["payload"]["result"]["state"] == "done"

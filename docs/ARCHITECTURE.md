@@ -329,9 +329,15 @@ and others have left since too.
   wired it: a document asserting a property the code no longer had.) Its
   `ci_gate` stage is a LOCAL dangerous-command check and its docstring says
   so (P.4 step 2). The Jenkins status read and the "syntax check" it used to
-  claim were removed with Jenkins.
-- **[modules/configure.py](modules/configure.py)** (1,093) — IOS config generator
-  for 10 feature types (its Jenkins script and XML generators went in P.4)
+  claim were removed with Jenkins. Its `template_render` stage takes the
+  confirmed list and renders nothing: a context without one is refused (C765,
+  2026-10-16).
+- **`modules/configure.py`, removed (C765, 2026-10-16)** — the per-feature IOS
+  command generator (18 feature types) that stage 2 fell back to when no
+  confirmed list was given. Its Jenkins script and XML generators went in P.4;
+  the generator itself was reached by no route, job or script once today's
+  Configure tab's forms left at 7.8 (every run of the pipeline confirms its list
+  first, held by tests/test_pipeline.py).
 
 #### Collectors and checks
 - **`modules/snmp_collector.py`** (763) — SNMP v1/v2c trap receiver + OID polling.

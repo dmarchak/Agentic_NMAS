@@ -200,7 +200,8 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   each device a request named (fixed show commands); the two audit routes read the pipeline's
   audit files, and their readers in `modules/pipeline.py` (`load_audit_entry`,
   `list_audit_entries`) went with them. Kept: `modules/configure.py`, whose generator the
-  pipeline's render stage still imports, and the pipeline's audit files themselves (stage 9
+  pipeline's render stage still imported (removed with that fallback on 2026-10-16, C765: no
+  route, job or script ran the pipeline without a confirmed list), and the pipeline's audit files themselves (stage 9
   still writes them under the data directory, readable on the host; History's receipts are the
   record a person reads). Today's Ansible tab (the playbook list, `/ai/playbooks`) was the AI
   agent's family, and went with it (D15, 2026-10-14). Proved before removal: nothing outside the tab's own pane and script named

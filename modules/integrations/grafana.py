@@ -13,8 +13,8 @@ class GrafanaIntegration(IntegrationClient):
     label = "Grafana"
     url_key = "grafana_url"
     secret_keys = ("grafana_token",)
-    plain_keys = ("grafana_embed_mode", "grafana_device_dashboard_url",
-                  "grafana_verify_tls", "grafana_fleet_dashboard_uid", "grafana_device_dashboard_uid",
+    plain_keys = ("grafana_embed_mode", "grafana_verify_tls",
+                  "grafana_fleet_dashboard_uid", "grafana_device_dashboard_uid",
                   "grafana_device_variable", "grafana_device_variable_value",
                   "grafana_token_expires")
     #: The one path `query` asks: Grafana's query endpoint, a read (History › Query's Code

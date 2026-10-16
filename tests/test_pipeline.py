@@ -26,7 +26,6 @@ from modules.pipeline import (
     _DANGEROUS_PATTERNS,
     _detect_routing_neighbors,
     _capture_operational_snapshot,
-    _config_template_path,
 )
 
 
@@ -576,16 +575,85 @@ class TestProtocolAgnosticVerify:
             _stage_verify(ctx)
 
 
-class TestTemplatePath:
+class TestThePipelineRendersNothingOfItsOwn:
+    """C765: the render fallback (a `config_templates/` template, else `modules/configure.py`'s
+    per-feature generators) ran only when no confirmed list was given, and no route, job or
+    script runs the pipeline without one. It was removed: stage 2 takes the confirmed list or
+    refuses, and every product site that runs the pipeline confirms its list first."""
 
-    def test_returns_string_path(self):
-        path = _config_template_path("interface")
-        assert isinstance(path, str)
-        assert path.endswith("interface.j2")
+    def test_a_context_without_a_confirmed_list_is_refused_by_name(self):
+        from modules.pipeline import _stage_template_render
 
-    def test_path_ends_in_config_templates_dir(self):
-        path = _config_template_path("bgp")
-        assert "config_templates" in path.replace("\\", "/")
+        ctx = _ctx(config_type="interface")
+        assert ctx.confirmed_commands is None
+        with pytest.raises(PipelineStageError, match="no confirmed command list"):
+            _stage_template_render(ctx)
+        assert ctx.rendered_commands == {}
+
+    def test_the_runner_stops_at_stage_two_and_sends_nothing(self, monkeypatch):
+        import modules.pipeline as P
+
+        monkeypatch.setattr(P, "_stage_netbox_query", lambda ctx: None)
+        sent = []
+        monkeypatch.setattr(P, "_stage_deploy", lambda ctx: sent.append(ctx))
+        monkeypatch.setattr(P, "_stage_audit_log", lambda ctx: None)
+        result = PipelineRunner(_ctx()).run()
+        assert result.final_status == "failed" and result.stages_failed == ["template_render"]
+        assert "no confirmed command list" in result.error and sent == []
+
+    def test_every_product_run_confirms_its_list_first(self):
+        """Parsed, never grepped: every function outside tests/ that calls `PipelineRunner(...)`
+        assigns `.confirmed_commands` on a line before that call. The population has a floor
+        (the one site today, `routes/deploy._deploy_one`), and the scan finds a planted site
+        that does not."""
+        import ast
+        import os
+
+        from tests import source_index
+
+        root = source_index.ROOT
+
+        def name_of(f):
+            return f.id if isinstance(f, ast.Name) else getattr(f, "attr", None)
+
+        def sites(source, rel):
+            out = []
+            for fn in ast.walk(ast.parse(source)):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                runs = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call)
+                        and name_of(n.func) == "PipelineRunner"]
+                if not runs:
+                    continue
+                confirmed = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                             for t in n.targets if isinstance(t, ast.Attribute)
+                             and t.attr == "confirmed_commands"]
+                out.append((f"{rel}:{fn.name}",
+                            all(any(c < r for c in confirmed) for r in runs)))
+            return out
+
+        def python(p):
+            # A script with no suffix is Python when its first line names it.
+            if p.endswith(".py"):
+                return True
+            with open(p, "rb") as fh:
+                return b"python" in fh.readline()
+
+        found, scanned = [], 0
+        paths = (source_index.tracked("modules", "routes", "scripts")
+                 + source_index.tracked(".", suffix=".py", recursive=False))
+        for p in paths:
+            if not python(p):
+                continue
+            scanned += 1
+            with open(p, encoding="utf-8") as fh:
+                found += sites(fh.read(), os.path.relpath(p, root))
+        assert scanned >= 300, f"the scan read only {scanned} files"
+        names = [n for n, _ok in found]
+        assert "routes/deploy.py:_deploy_one" in names, names
+        assert [n for n, ok in found if not ok] == []
+        planted = "def f(ctx):\n    return PipelineRunner(ctx).run()\n"
+        assert sites(planted, "planted") == [("planted:f", False)]
 
 
 class TestPreRenderedCommandsAreNotOverwritten:

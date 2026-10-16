@@ -3803,7 +3803,7 @@ per network, each new:**
   `rcn-lab-overview`). The page's selector changes the view, never this;
 - `grafana_device_dashboard_uid` and `grafana_device_variable`: the device page's
   dashboard, by UID, and the template variable the app sets (Default: `nmas-device`,
-  `device`; `rcn-lab1-snmp` was the original device dashboard, replaced 2026-09-30). They supersede `grafana_device_dashboard_url`, kept and read by nothing;
+  `device`; `rcn-lab1-snmp` was the original device dashboard, replaced 2026-09-30). They supersede `grafana_device_dashboard_url`, read by nothing and removed from the schema (C705, 2026-10-16);
 - `kea_writable_subnets`: the subnets where the tool may write reservations and pools, by
   family (the ZTP segment keeps D4's checks, and is never offered a pool);
 - saved queries (PromQL and LogQL), per network, pinnable to a device page.

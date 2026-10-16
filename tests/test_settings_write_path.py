@@ -199,6 +199,89 @@ class TestTheOrphanKeysAreDeclared:
         assert calls_in(L.write, "write_settings") == 1
 
 
+class TestARemovedKeyStaysInTheFileReadByNothing:
+    """C705: `grafana_device_dashboard_url` was removed the way the schema removes a key
+    (`SEEDS_BY_VERSION`: a key removed from DEFAULTS is not removed from any file). It is
+    declared nowhere, a write naming it is refused, and a value an older build stored stays in
+    the file, read by nothing, beside writes of every other key. The host's file held it,
+    empty, when measured on 2026-10-16."""
+
+    KEY = "grafana_device_dashboard_url"
+    STORED = "https://grafana.example/d/x?var-device={hostname}"
+
+    def test_it_is_declared_nowhere(self):
+        from modules import settings_scope
+        from modules.integrations import REGISTRY
+        from modules.settings_schema import DEFAULTS, SCHEMA
+
+        assert self.KEY not in DEFAULTS
+        assert self.KEY not in SCHEMA["properties"]
+        assert self.KEY not in settings_scope.SCOPES
+        owners = [name for name, cls in REGISTRY.items()
+                  if self.KEY in cls.plain_keys + cls.secret_keys]
+        assert owners == [], f"an integration still lists {self.KEY}: {owners}"
+        # The population is real: Grafana's own keys are each declared.
+        grafana = REGISTRY["grafana"]
+        assert len(grafana.plain_keys) >= 6
+        assert set(grafana.plain_keys) <= set(DEFAULTS)
+
+    def test_a_write_naming_it_is_refused_by_name(self, store):
+        from modules.settings_schema import ratify, write_settings
+
+        r = write_settings({self.KEY: "https://g/{hostname}"})
+        assert r["ok"] is False and r["refused"] == [self.KEY] and self.KEY in r["error"]
+        assert self.KEY not in store
+        assert ratify(self.KEY, actor="a@b")["ok"] is False
+
+    def test_a_stored_value_survives_a_write_and_a_migration(self, store, monkeypatch):
+        from modules import settings_schema as ss
+
+        store.update({self.KEY: self.STORED, "settings_schema_version": 1})
+        assert ss.write_settings({"grafana_verify_tls": False}, actor="a@b")["ok"] is True
+        assert store.get(self.KEY) == self.STORED and store.get("grafana_verify_tls") is False
+        monkeypatch.setattr(ss, "SCHEMA_VERSION", 2)
+        ss.migrate()
+        assert store.get(self.KEY) == self.STORED and store.get("settings_schema_version") == 2
+
+    def test_no_product_code_names_it(self):
+        """Parsed for Python (string constants, never comments), anchored as a word for
+        templates and scripts; a control key the product does read is found by the same scan."""
+        import ast
+        import os
+        import re
+
+        from tests import source_index
+
+        root = source_index.ROOT
+        files = (source_index.tracked("modules", "routes", "templates", "static/js", "scripts")
+                 + source_index.tracked(".", suffix=".py", recursive=False))
+
+        def names(key):
+            word = re.compile(rf"\b{re.escape(key)}\b")
+            hits, scanned = [], 0
+            for p in files:
+                rel = os.path.relpath(p, root)
+                if p.endswith(".py"):
+                    scanned += 1
+                    with open(p, encoding="utf-8") as fh:
+                        tree = ast.parse(fh.read())
+                    if any(isinstance(n, ast.Constant) and isinstance(n.value, str)
+                           and word.search(n.value) for n in ast.walk(tree)):
+                        hits.append(rel)
+                elif p.endswith((".html", ".js", ".sh")) or rel.startswith("scripts/"):
+                    scanned += 1
+                    with open(p, encoding="utf-8", errors="replace") as fh:
+                        if word.search(fh.read()):
+                            hits.append(rel)
+            return hits, scanned
+
+        hits, scanned = names(self.KEY)
+        assert scanned >= 300, f"the scan read only {scanned} files"
+        assert hits == [], f"product code still names {self.KEY}: {hits}"
+        control, _n = names("grafana_device_dashboard_uid")
+        assert "modules/settings_schema.py" in control
+
+
 class TestRatifyNeverChanges:
 
     def test_it_writes_the_value_already_in_force(self, store):
