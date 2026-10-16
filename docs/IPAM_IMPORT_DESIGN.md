@@ -177,9 +177,11 @@ The brief asks for a permissively licensed reader, openpyxl or a measured altern
 
 - **openpyxl is not a dependency today.** It is absent from `requirements.txt` and
   `requirements.lock`, and the CI interpreter's site-packages
-  (`<home>/.local/share/nmas-py312`) holds no copy, so its licence file could not be read here:
-  **its licence is to confirm from its own terms**, as is the licence of its dependency
-  et_xmlfile (to confirm). A new third-party licence is the operator's decision (CLAUDE.md, Phase
+  (`<home>/.local/share/nmas-py312`) holds no copy. **Its licence, read from its own terms on
+  2026-10-16:** MIT (openpyxl 3.1.5's `LICENCE.rst`), and its one dependency et_xmlfile 2.0.0
+  is MIT and includes Python standard-library code under the PSF licence; both read from the
+  published wheels and recorded in `docs/STANDING_APPROVAL_LOG.md`. A new third-party licence is
+  still the operator's decision to adopt (CLAUDE.md, Phase
   7 operating mode, stop 3). A new dependency enters as one line in `requirements.txt`, compiled
   into `requirements.lock` with hashes by the command in its header, and gets an entry in
   `docs/THIRD_PARTY.json`, which `tests/test_third_party_inventory.py` holds to the lock (its

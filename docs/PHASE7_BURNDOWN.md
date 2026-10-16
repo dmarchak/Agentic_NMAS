@@ -52,7 +52,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 
 | Item | Op | State |
 |---|---|---|
-| C794: Loki's own `detected_level` off (scripts/host-steps/c794-loki-detected-level-off.sh) | H | owed on the Update page; the operator's to run (their request) |
+| ~~C794: Loki's own `detected_level` off~~ | H | **done by the operator, 2026-10-16 ~19:36 UTC: PASS (10 of 10)**; and C964's `nmas-device` re-import done, its JSON model free of lab names, r1's panels drawn with data in Grafana and on Mercury's Monitoring page |
 | ~~C553: `clab-sync.path`~~ | H | **installed** on the NMAS host (read 2026-10-16: active, enabled, identical to a fresh render); the walk showing the sync start remains (W2) |
 | C549 (3): the Update confirm, in the root-owned updater | H | waits on the operator's reading of what the page drew (the row) |
 | C663: move `scripts/nmas-host` | CLAUDE.md paste | the operator's file |
@@ -75,6 +75,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C944, C945~~ | ~~the unused `git init`; History's header~~ **done** (see Checked off) | | | | |
 | ~~C957~~ | ~~History's timeline says "no repository yet"~~ **done** (see Checked off) | | | | |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
+| C1010 | Mercury's prefixes in NetBox carry no site (4.6.9 ignores `site`): send the scope fields, backfill Mercury's 3 through the sync, a read-back test; survey the other fields 4.2+ renamed | the operator's B, "fix now"; deployed and verified on the host | S | — | — |
 | ~~C954~~ | ~~v2's "stop tracking" for a NetBox removal~~ **done, built** (the operator's decision; see Checked off) | | | | |
 | ~~C955~~ | ~~Retire's preview counts live approvals only~~ **done** (see Checked off) | | | | |
 | ~~C906~~ | ~~Mercury checks each device's SSH host key~~ **done: deployed 1222a3f102, all nine devices' keys kept on the host** (see Checked off); the next redeploy declares `--new-host-keys` (lab/REDEPLOY.md) | | | | |

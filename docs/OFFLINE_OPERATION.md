@@ -266,9 +266,10 @@ with no cards and no TOTP accounts unable to make any change.
   **Recommended:** Keycloak gets its own database and role in that server (one PostgreSQL to
   patch, one backup), never Mercury's role. Its database joins the records backup and its
   restore test (that document's section 4); deleting or rotating a backup stays the operator's.
-- **Licence:** Keycloak is published under Apache-2.0, **to confirm from its own terms** before
-  it is adopted (a new third-party licence is the operator's decision, recorded in
-  `docs/THIRD_PARTY.json`).
+- **Licence:** Keycloak is published under the Apache License, Version 2.0, read from its own
+  `LICENSE.txt` on 2026-10-16 and recorded in `docs/STANDING_APPROVAL_LOG.md`. Adopting it
+  stays the operator's decision (a new third-party licence, recorded in `docs/THIRD_PARTY.json`
+  when approved). Red Hat's build carries its own subscription terms, not yet read.
 - **Red Hat's build of Keycloak** (for FIPS 140-2 mode and vendor support): its availability,
   subscription terms and FIPS mode on the chosen platform are **to confirm**.
 

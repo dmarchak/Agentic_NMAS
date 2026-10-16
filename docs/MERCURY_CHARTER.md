@@ -16,7 +16,7 @@ the other is re-labelled.
 | Facts | Owner | Mercury |
 |---|---|---|
 | Devices: existence, identity, role, site, platform, status; IPAM as decided | **NetBox** | reads them; writes only as the first step of a confirmed operation |
-| Intent, configurations (goldens, baselines), templates | **GitHub** (the network's repository) | the one writer, through confirmed operations, every write a commit |
+| Intent, configurations (goldens, baselines), templates | **The network's git repository**, its remote chosen by the deploying team: GitHub in this lab, an internal server for kits (the operator, 2026-10-16) | the one writer, through confirmed operations, every write a commit |
 | DHCP | **Kea** | the front end to its reservations |
 | Monitoring | **Prometheus / Grafana** | reads; generates targets and rules from the inventory |
 | Logs | **Loki** | reads |
@@ -45,8 +45,8 @@ split:
 
 ## What goes
 
-**Oxidized is retired.** It is a second, redundant configuration history, and GitHub owns
-configurations. Mercury's own scheduled read-and-compare replaces its polling.
+**Oxidized is retired.** It is a second, redundant configuration history, and the network's git
+repository owns configurations. Mercury's own scheduled read-and-compare replaces its polling.
 
 ## Mercury's own records
 

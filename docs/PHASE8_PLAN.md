@@ -335,6 +335,19 @@ section 12.2 audits the ten.
     - the reading that 12.1 decides 10.4's engine (gap 10);
     - the stricter reading of "never a dependency" for a host that admits no local tier (12.1).
 
+    **APPROVED by the operator, 2026-10-16, with one change to 12.1:**
+    - A host that cannot run a local model has AI off BY DEFAULT.
+    - An installation setting may allow hosted-only AI, set by an admin with a recorded reason.
+    - A network carrying a classification marking forces it off with no override.
+
+    Item 1's consequences are accepted:
+    - the gateway becomes local-first, with hosted adapters optional and off unless configured;
+    - time budgets are re-derived from local measurement;
+    - a feature that does not fit the local profile's context is split or not built, never
+      offered hosted-only.
+
+    Gap 10 is confirmed: `llama-server` is the engine.
+
 ### Decided, 2026-10-13 (the operator)
 
 | # | Decision |
@@ -777,9 +790,10 @@ existing section number moves.
 
 **What is whose.** 12.1's rule and the requirements in 12.3, 12.4 and 12.7 are the operator's
 words (**DECIDED**, 2026-10-16). Everything else here (the audit's needs, the four cards, the
-gaps' resolutions, the numbers) is this plan's proposal. It is **PROPOSED** until the operator
-approves it, as section 9's rule requires of every number before any code (decision 16). The
-one exception is gap 9, which the operator's own decision of 2026-10-16 answers (12.5).
+gaps' resolutions, the numbers) was this plan's proposal. **The operator approved it on
+2026-10-16 (decision 16, section 9), with one change to 12.1.** The numbers remain to be measured
+(12.6) before any code, as section 9's rule requires. Gap 9 is answered by the operator's own
+decision of 2026-10-16 (12.5).
 
 **The six design notes it draws on**, all FUTURE and written 2026-10-16:
 - [EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) sets the case: a Mercury instance per fly-away
@@ -825,10 +839,17 @@ Offline-first says every AI feature works with the network off. Both hold:
   local profile. A hosted score is shown beside the local one, never instead of it.
 - A feature that misses on the local profile is not built, on any profile.
 
-**A host that admits no local tier** runs with AI off (10.5), whatever hosted profile is
-configured: a hosted profile improves an answer the local profile already gives, and never
-stands in for it. *PROPOSED: this is the stricter reading of "never a dependency"; the operator
-may relax it per installation.*
+**A host that admits no local tier** (DECIDED, the operator, 2026-10-16, approving decision 16
+with this change):
+- AI is **off by default** (10.5).
+- An installation setting may allow **hosted-only AI**, set by an admin with a recorded reason
+  (the course's own labs call hosted APIs). It is never on by default and never set by Mercury.
+- A network carrying a **classification marking** forces AI off with no override
+  ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) section 9).
+
+Offline-first stays the rule for the core path: no feature may depend on a hosted model. A
+feature that does not fit the local profile's context is split or not built, never offered
+hosted-only.
 
 ### 12.2 Item 1's audit: every feature this plan names, against the rule
 
@@ -1048,8 +1069,8 @@ instructions.
 ### 12.5 The ten gaps, decided or deferred
 
 [BRINGUP_FROM_DOCUMENTS.md](BRINGUP_FROM_DOCUMENTS.md) section 16 names the first nine. The tenth
-came with this section's brief. "Decided" here means this plan's position, PROPOSED until the
-operator approves it (decision 16). Gap 9 is the exception: the operator's own decision answers it.
+came with this section's brief. "Decided" here was this plan's position; the operator approved
+it on 2026-10-16 (decision 16). Gap 9 is answered by the operator's own decision.
 
 | # | Gap | Resolution | Status |
 |---|---|---|---|
@@ -1062,7 +1083,7 @@ operator approves it (decision 16). Gap 9 is the exception: the operator's own d
 | 7 | **No document, scan or OCR input type** | A document reaches a prompt only as a text layer with coordinates, made by code before any prompt (BRINGUP_FROM_DOCUMENTS section 3). OCR is a deterministic step whose per-word confidence floor refuses unclear words. No image reaches a model, so every candidate in 10.2 can serve and every location can be checked. **Deferred:** the PDF, Word and OCR libraries, each a new third-party licence and so the operator's | the shape decided; the libraries deferred to the operator |
 | 8 | **Kit hardware tiers and a kit latency budget** (10.5 and 10.8 cover the lab host only) | 10.5's hardware check and section 7's 20% reserve apply unchanged on a kit: the wizard runs on whatever host the instance is. The interactive target for features 12 to 14 is a useful answer within 30 s (the operator's number); feature 11's budget comes from the kit measurement. **Deferred:** the kit's tiers and numbers, until 12.6's measurements are taken on a representative kit unit at headquarters staging | deferred to the measurement |
 | 9 | **Offline approval** (2.6 takes identity only from the access assertion) | **Answered by the operator's decision of 2026-10-16:** Keycloak per instance ([OFFLINE_OPERATION.md](OFFLINE_OPERATION.md) section 1.3), with smart card, "Log in with HQ" and local TOTP. 2.6's principle stands as "identity only from the instance's verified sign-in" (OFFLINE_OPERATION section 1.5's verified person), never from prompt text. Confirm by hash works offline. A kit operator confirms a standard playbook (EDGE_ARCHITECTURE section 6.1) and never holds `approve` (OFFLINE_OPERATION section 1.7) | DECIDED (the operator, 2026-10-16) |
-| 10 | **llama.cpp (10.4) is still PROPOSED**; only the origin rule (10.2) is decided | 12.1 quotes the operator naming `llama-server` as the local profile, which decides the engine; 10.4 carries a note. The model's delivery stays PROPOSED. A kit has only 10.4's import path: a supplied file with its sha256 and signature checked at staging, never a download. Tiers, reliability, isolation and the release gate also stay PROPOSED (decision 12). **For the operator to confirm** that this reading of 12.1 is intended. Each candidate's licence stays decision 13 (12.7) | decided by 12.1, the reading to confirm |
+| 10 | **llama.cpp (10.4) is still PROPOSED**; only the origin rule (10.2) is decided | 12.1 quotes the operator naming `llama-server` as the local profile, which decides the engine; 10.4 carries a note. The model's delivery stays PROPOSED. A kit has only 10.4's import path: a supplied file with its sha256 and signature checked at staging, never a download. Tiers, reliability, isolation and the release gate also stay PROPOSED (decision 12). **Confirmed by the operator, 2026-10-16: `llama-server` is the engine.** Each candidate's licence is read in 12.7 | DECIDED (the operator, 2026-10-16) |
 
 ### 12.6 Measurements owed before any choice (none taken)
 
@@ -1086,15 +1107,18 @@ are not repeated here.
 **Each candidate's licence is read from its own terms, on the pinned file.** The licences are
 never assumed to match one another (decision 13):
 
-| Candidate | Licence |
+Read 2026-10-16 from each one's own published terms, and recorded with its source in
+`docs/STANDING_APPROVAL_LOG.md`. A pinned file's own terms are read again when it is pinned.
+
+| Candidate | Licence, as read |
 |---|---|
-| gpt-oss-20b | recorded as Apache-2.0 (section 9, decision 13, still open); to confirm from its own terms on the pinned file |
-| Gemma 4 E4B | to confirm from its own terms (decision 13: Google's release, not yet read) |
-| Gemma 4 26B MoE | to confirm from its own terms (decision 13: Google's release, not yet read) |
-| Granite 4.0-H-Tiny | recorded as Apache-2.0 for Granite 4.0 (decision 13, still open); to confirm from its own terms on the pinned file |
-| Granite 4.0-H-Small | recorded as Apache-2.0 for Granite 4.0 (decision 13, still open); to confirm from its own terms on the pinned file |
-| `llama-server` (llama.cpp) | to confirm from its own terms |
-| an embedding model, if retrieval uses one | to confirm from its own terms; US origin (10.2) |
+| gpt-oss-20b | Apache 2.0 (its model card). Its repository's `USAGE_POLICY` adds one obligation: comply with all applicable law |
+| Gemma 4 E4B (`google/gemma-4-E4B-it`) | Apache 2.0 (its model card, linking Google's Gemma 4 licence page, which is the plain Apache License 2.0). The same site links a "Prohibited use" policy that states no scope; whether it binds Gemma 4 is an open question for the organisation |
+| Gemma 4 26B MoE (`google/gemma-4-26B-A4B-it`) | as Gemma 4 E4B |
+| Granite 4.0-H-Tiny | Apache 2.0 (its model card) |
+| Granite 4.0-H-Small | Apache 2.0 (its model card) |
+| `llama-server` (llama.cpp) | MIT (its `LICENSE`) |
+| an embedding model, if retrieval uses one | not chosen; read from its own terms when chosen; US origin (10.2) |
 
 A quantisation made by someone other than the publisher is a different artefact (10.2,
 PROPOSED). Its terms are read on that file.

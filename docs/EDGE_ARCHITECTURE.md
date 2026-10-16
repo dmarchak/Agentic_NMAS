@@ -658,9 +658,10 @@ change goes to exactly one kit's instance, through section 6.
   rows), `modules/readers/reachability.py`.
 - **Platforms:** every file in section 13.5's list, for PAN-OS.
 - **Settings and docs:** new settings in `modules/settings_schema.py` and docs/SETTINGS.md; the
-  manual pages for each new screen and operation (`docs/manual/`); docs/MERCURY_CHARTER.md, whose
-  sources-of-truth table names GitHub as the owner of intent and configurations: for a kit the
-  owner is headquarters' git server, a charter amendment that is the operator's.
+  manual pages for each new screen and operation (`docs/manual/`). docs/MERCURY_CHARTER.md's
+  sources-of-truth table was amended by the operator on 2026-10-16: intent is owned by the
+  network's git repository, its remote chosen by the deploying team (GitHub in the lab, an
+  internal server for kits).
 
 ## Tests it needs
 
