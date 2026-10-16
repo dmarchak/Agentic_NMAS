@@ -103,4 +103,7 @@ than 75 minutes away, or after 09:10 UTC.
    in History, then **Acknowledge** with what you found. The row goes; the keys and the summary
    stay in History.
 
-6. Then the post-items of `docs/STAGE2_SESSION_CHECKLIST.md` section 4, through Mercury.
+6. Then the post-items of `docs/STAGE2_SESSION_CHECKLIST.md` section 4, through Mercury (its
+   revision of 2026-10-16, C948). They are the same steps, not a second set: its 3.2 is steps 1
+   and 2 here, its 4.1 read is each device's first session inside the window, its 4.8 is step
+   3's Check now, and its 4.12 is steps 4 and 5.

@@ -71,7 +71,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | ~~C931~~ | ~~Seed on a network created on v2~~ **done**, with C943 (see Checked off); W2 section H walks it | | | | |
-| C948 | the Stage 2 redeploy checklist brought to today's rules or retired (the operator's file: "do not edit"); `lab/REDEPLOY.md` is followed meanwhile | the operator's decision | S | — | the operator |
+| ~~C948~~ | ~~the Stage 2 redeploy checklist brought to today's rules~~ **done, a dated revision** (the operator's decision; see Checked off) | | | | |
 | ~~C944, C945~~ | ~~the unused `git init`; History's header~~ **done** (see Checked off) | | | | |
 | ~~C957~~ | ~~History's timeline says "no repository yet"~~ **done** (see Checked off) | | | | |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
@@ -259,6 +259,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C948 done** (B, the operator's decision): the Stage 2 checklist rewritten as a dated
+  revision, every device read a Mercury read or screen, the planned window and host keys its
+  own items, section 2 withdrawn; two lab-host reads kept and labelled. C998 (UNKNOWN), C999 to
+  C1001 (C) to the tail.
 - **C991 done** (B, the operator's decision): the route's 500 says `holds: "unreadable"`, and
   `nmas-deploy` refuses on that field (exit 10, nothing moved); a service not answering still
   continues. C996 (C) and C997 (UNKNOWN: the gap between the ask and the restart) to the tail.

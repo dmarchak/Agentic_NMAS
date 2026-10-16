@@ -1157,6 +1157,12 @@ ones that were nearly wrong here:
   is what makes "every node came back as itself" a measurement rather than an
   impression.
 
+**Revised 2026-10-16 (C948, the operator's decision):** the checklist's device reads are
+Mercury's. 4.7 signs in through a Show commands read (`nmas-check-credential` was a shell
+step), 4.2 reads History's restarts (a device's uptime never dates an event), 3.2 declares the
+planned window before the redeploy, and section 2 is withdrawn: its script left the product with
+C663 step 2. The checklist's revision note says what changed and why.
+
 A checklist that is run once is a record. One that is re-run is a test.
 
 
