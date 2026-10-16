@@ -7,8 +7,10 @@ reload (booting a moment from history, the charter's Phase 2) builds on this wit
 it is not this.
 
 The preview (a job: it reads the device) reads the running and startup configurations, `show
-version` and `show boot`, and judges P.14's six gates, each drawn by name with what it found:
-1. running against startup (unsaved changes refuse; Persist… saves them first, previewed);
+version`, `show boot` and the `dir` reads (`read_device`), and judges P.14's six gates, each drawn by name with what it found:
+1. running against startup (unsaved changes refuse; Persist… saves them first, previewed; a
+   certificate startup keeps as a file in nvram: is the same certificate running shows inline
+   when `dir nvram:` lists the file, and refuses, named, when it does not);
 2. running against its golden and its committed intent (a departure is shown, and the stated
    reason is recorded as acknowledging it);
 3. the startup configuration carries every account line running holds (the startup check's
@@ -91,18 +93,22 @@ def _device(list_name: str, host: str):
 
 
 #: Every read the preview makes, each a whole command on Tier 1's allowlist; `dir` names an
-#: image path `show version` or `show boot` printed (`_images`), one token.
+#: image path `show version` or `show boot` printed (`_images`), one token, or `nvram:` when
+#: startup keeps a certificate as a file there (`normalize.certificate_pointers`).
 _READ = dict(read_timeout=60, strip_prompt=True, strip_command=True)
+NVRAM = "nvram:"
 
 
 def read_device(device: dict) -> dict:
     """ONE session: the running configuration (`config_read.read`), then `show
-    startup-config`, `show version`, `show boot` (a platform without it says so) and `dir` of
-    each image named. ``{"running", "startup", "version", "boot", "dirs": {path: text}}``.
+    startup-config`, `show version`, `show boot` (a platform without it says so), `dir` of
+    each image named, and `dir nvram:` when startup keeps a certificate as a file there.
+    ``{"running", "startup", "version", "boot", "dirs": {path: text}}``.
     Reads only, so it takes no hold: the preview's job is a read, and the run that changes the
     device holds it (`run`)."""
     from modules import config_read
     from modules.connection import with_temp_connection
+    from modules.nsot import normalize
 
     def read(conn):
         out = {"running": config_read.read(conn, device.get("hostname", ""))}
@@ -114,6 +120,8 @@ def read_device(device: dict) -> dict:
         for path in _images(out["version"], out["boot"]):
             if re.fullmatch(r"[\w.:/-]+", path):           # one token, as the device printed it
                 out["dirs"][path] = conn.send_command(f"dir {path}", **_READ) or ""
+        if normalize.certificate_pointers(out["startup"]):  # startup keeps a certificate there
+            out["dirs"][NVRAM] = conn.send_command(f"dir {NVRAM}", **_READ) or ""
         return out
 
     return with_temp_connection(device, read)
@@ -161,6 +169,31 @@ def _image_gate(reads: dict) -> dict:
                                            if b else ", and no boot variable is set")}
 
 
+def _unsaved_words(host: str, same: dict) -> str:
+    """Gate 1's detail from `roundtrip.startup_is_running`'s answer: a certificate startup
+    keeps as a file is the same certificate, said so; one whose file is absent is named; the
+    count of differing lines leaves the certificate storage out."""
+    present, missing = same.get("present") or [], same.get("missing") or []
+    unsaved = len(same.get("only_left") or []) + len(same.get("only_right") or [])
+    if same.get("equal"):
+        if not present:
+            return "they are the same: it boots what it runs"
+        n = len(present)
+        held = "present" if n == 1 else "both present" if n == 2 else f"all {n} present"
+        return (f"they are the same; startup keeps {host}'s {n} certificate{'s' * (n != 1)} as "
+                f"files in nvram: ({held}), running shows {'it' if n == 1 else 'them'} inline")
+    parts = []
+    if missing:
+        it = "it" if len(missing) == 1 else "them"
+        parts.append("startup keeps " + ", ".join(
+            f"{c['certificate']} of {c['chain'].split()[-1]} as {c['file']}" for c in missing)
+            + f", and `dir nvram:` does not list {it}: a reload would boot without {it}")
+    if unsaved:
+        parts.append(f"{unsaved} line(s) differ: a reload would boot startup and lose them; "
+                     "save them first (Persist…)")
+    return "; ".join(parts)
+
+
 def judge(list_name: str, host: str, platform: str, reads: dict, *, holding: bool = False) -> dict:
     """The six gates from *reads*, and the fingerprint the confirm is bound to. *holding*: the
     run judging under its own hold, which is not another operation's."""
@@ -170,13 +203,10 @@ def judge(list_name: str, host: str, platform: str, reads: dict, *, holding: boo
     repo = _repo(list_name)
     running, startup = reads.get("running", ""), reads.get("startup", "")
     gates = []
-    same = roundtrip.stored_is_device(startup, running)
-    unsaved = len(same.get("only_left") or []) + len(same.get("only_right") or [])
+    same = roundtrip.startup_is_running(startup, running, (reads.get("dirs") or {}).get(NVRAM, ""))
     gates.append({"name": "running against startup", "key": "unsaved",
                   "state": "pass" if same.get("equal") else "fail",
-                  "detail": ("they are the same: it boots what it runs" if same.get("equal")
-                             else f"{unsaved} line(s) differ: a reload would boot startup and "
-                                  "lose them; save them first (Persist…)")})
+                  "detail": _unsaved_words(host, same)})
     golden = R.golden_at(repo, host, "HEAD") or ""
     drift = roundtrip.stored_is_device(golden, running) if golden else {"equal": False}
     intent = intent_match(repo, list_name, host, running, platform)

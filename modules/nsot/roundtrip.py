@@ -361,6 +361,24 @@ def stored_is_device(stored: str, read: str) -> dict:
                               "\n".join(normalize.strip_provenance_comments(read or "")))
 
 
+def startup_is_running(startup: str, running: str, nvram_dir: str = "") -> dict:
+    """Does a device boot what it runs? *startup* and *running* as read from it, *nvram_dir*
+    its `dir nvram:` read.
+
+    :func:`stored_is_device` over two things it cannot see past on its own (W1, 2026-10-16:
+    every C8000v's Reload refused with "4 line(s) differ" after a successful Persist):
+    `show startup-config`'s own header line (`normalize.STARTUP_HEADER`), and a certificate
+    startup keeps as a file in nvram: where running prints it inline
+    (`normalize.certificate_storage`), which is the same certificate stored two ways. A
+    pointer whose file `dir nvram:` does not list is not the same: it is ``missing``, and
+    ``equal`` is False. ``only_left``/``only_right`` are startup's and running's remaining
+    lines, the certificate storage out of both; ``present`` and ``missing`` the pointers."""
+    certs = normalize.certificate_storage(startup, running, nvram_dir)
+    same = stored_is_device(normalize.strip_startup_header(startup), certs["running"])
+    return dict(same, equal=bool(same.get("equal")) and not certs["missing"],
+                present=certs["present"], missing=certs["missing"])
+
+
 def canonical_lines(text: str) -> list:
     """A config as path-qualified lines, for a diff a PERSON reads.
 

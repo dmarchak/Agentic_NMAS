@@ -69,6 +69,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C884 | B3: a deletion-only intent edit's committed card: "How s1 now departs", Mode B the primary action | its test | S | — | — |
 | C885 | B4: the baseline rows: "not targeted" told apart from "denied for departures" | its tests, from W1's real commits | S–M | — | — |
 | C886 | B5: Persist's preview lists the lines startup gains and loses | its test | S | C881 | — |
+| C913 | adopt's persist preview uses C881's comparison (C881's sibling; it blocks W3's adopt) | its test on a C8000v pair | S | C881 | — |
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | C906 | Mercury checks each device's SSH host key (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key operation; NETCONF too) | its tests; walked on a device | M | — | B (the operator's: the re-key's words) |

@@ -70,6 +70,7 @@ class TestTheFiltersStillWork:
         "show interfaces | include (line protocol|Internet address)",
         "show run | include hostname|interface", "show version | include Cisco | count",
         "show running-config", "sh ip int br", "sho clock", "dir flash:",
+        "dir nvram:",                  # Reload's read where startup keeps a certificate file
         "more flash:vlan.dat", "ping 192.0.2.1", "ping vrf clab-mgmt 192.0.2.1",
         "traceroute 192.0.2.1",
     ])

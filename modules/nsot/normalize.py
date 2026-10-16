@@ -402,6 +402,98 @@ def device_owned(text: str) -> list:
     return [h for h in excluded_unrenderable(text)
             if _opens_device_owned(h, h) or h.startswith("interface ")]
 
+
+#: The line `show startup-config` prints above the configuration, on both platforms (measured,
+#: tests/fixtures/transcripts: `Using 5438 out of 33554432 bytes` on a C8000v, `Using 3079 out
+#: of 262144 bytes, uncompressed size = 5981 bytes` on vIOS): how full nvram is, never
+#: configuration. Running's own headers (`Building configuration...`) are DIFF_PREFIXES'.
+STARTUP_HEADER = re.compile(r"Using \d+ out of \d+ bytes\b")
+
+
+def strip_startup_header(text: str) -> str:
+    """*text*, a `show startup-config` read, without :data:`STARTUP_HEADER` (top level only)."""
+    return "\n".join(line for line in (text or "").splitlines()
+                     if not STARTUP_HEADER.match(line))
+
+
+#: A certificate STARTUP keeps as a file (IOS-XE, measured on r1 and r6): inside a device-owned
+#: certificate chain, ` certificate ca 01 nvram:CiscoLicensi#1CA.cer`, where running prints the
+#: same certificate inline (` certificate ca 01`, its hex body, `quit`). Group 1 is the
+#: certificate's own line as running prints it (type and serial), group 2 the file.
+_CERT_POINTER = re.compile(r"^\s+(certificate\s.*?\S)\s+nvram:(\S+)\s*$")
+
+
+def certificate_pointers(startup: str) -> list:
+    """Every certificate *startup* keeps as a file in nvram:, in order: ``[{"chain",
+    "certificate", "file", "line"}]``, ``chain`` the block's header, ``line`` startup's own. Only inside a block
+    :func:`_opens_device_owned` opens: the one definition of the device's own blocks."""
+    found, chain = [], ""
+    for line in (startup or "").splitlines():
+        stripped = line.strip()
+        if not line[:1].isspace():
+            chain = stripped if _opens_device_owned(stripped, line) else ""
+            continue
+        m = _CERT_POINTER.match(line) if chain else None
+        if m:
+            found.append({"chain": chain, "certificate": " ".join(m.group(1).split()),
+                          "file": "nvram:" + m.group(2), "line": line})
+    return found
+
+
+def nvram_files(listing: str) -> set:
+    """The file names a `dir nvram:` read lists: each entry line's last word. An error read
+    lists nothing, so every file it was asked about is absent."""
+    if not listing or "%Error" in listing or "Invalid input" in listing:
+        return set()
+    return {line.split()[-1] for line in listing.splitlines()
+            if line.strip() and not line.lstrip().startswith(("Directory of", "%"))
+            and "bytes total" not in line}
+
+
+def certificate_storage(startup: str, running: str, nvram_dir: str) -> dict:
+    """Where startup and running differ only in how a certificate is STORED, not what it is.
+
+    IOS-XE writes a device-owned certificate chain's certificates to nvram: as files, and its
+    startup configuration holds a pointer (` certificate ca 01 nvram:CiscoLicensi#1CA.cer`)
+    where running prints the certificate inline. The same certificate: the same chain, the
+    same type and serial. Each pointer in *startup* (:func:`certificate_pointers`) whose
+    certificate *running* holds inline, in the same chain, has running's inline form (the
+    line, its deeper-indented body, its `quit`) replaced by startup's pointer line, so a
+    comparison over the result sees only what else differs. A pointer running holds no such
+    certificate for is left as it is: a different certificate is a difference.
+
+    *nvram_dir* is the device's `dir nvram:` read: a pointer whose file it lists is
+    ``present``; one it does not list is ``missing`` (the device would boot without it), named
+    by the caller. ``{"running": <text>, "present": [...], "missing": [...]}``, each entry
+    :func:`certificate_pointers`' shape."""
+    lines = (running or "").splitlines()
+    listed = nvram_files(nvram_dir)
+    present, missing = [], []
+    for ptr in certificate_pointers(startup):
+        start = next((i for i, l in enumerate(lines)
+                      if not l[:1].isspace() and l.strip() == ptr["chain"]), None)
+        if start is None:
+            continue
+        i, at = start + 1, None
+        while i < len(lines) and (lines[i][:1].isspace() or lines[i].strip() == "quit"):
+            if " ".join(lines[i].split()) == ptr["certificate"]:
+                at = i
+                break
+            i += 1
+        if at is None:
+            continue
+        depth = len(lines[at]) - len(lines[at].lstrip())
+        end = at + 1
+        while end < len(lines) and lines[end].strip() and (
+                len(lines[end]) - len(lines[end].lstrip()) > depth
+                or lines[end].strip() == "quit"):
+            end += 1
+        if end == at + 1:
+            continue                                   # no body: not the inline form
+        lines[at:end] = [ptr["line"]]
+        (present if ptr["file"][len("nvram:"):] in listed else missing).append(ptr)
+    return {"running": "\n".join(lines), "present": present, "missing": missing}
+
 #: Single lines that cannot come from intent.
 #:
 #: Includes NMAS's own golden header and the two lines IOS prints above a

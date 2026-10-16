@@ -244,6 +244,12 @@ def measured(tmp_path_factory):
             commit_goldens("Lab", fleet[done:size])
             rows["now"], done = fleet[:size], size
             for page in V2_PAGES:
+                # C875: one discarded request first. A once-per-process cost (a template's
+                # first compile, a cache's first fill, a record an earlier test left for the
+                # first read) landed on whichever size paid it, and moved the per-device count
+                # by +3.0 and -3.3 in three gates of one night while passing alone. The rule is
+                # work per request at steady state, so each size is measured warm.
+                client.get(page)
                 out[page][size] = measure(client, page, os.path.dirname(lab["repo"]), loads)
     finally:
         mp.undo()
