@@ -170,6 +170,35 @@ def test_a_failed_commit_puts_the_tree_back(world, monkeypatch):
     assert os.path.exists(os.path.join(repo, "golden", "r5.cfg"))
 
 
+def test_the_override_goes_before_the_commit_and_a_failed_commit_finishes_on_a_rerun(
+        world, monkeypatch):
+    """C981, measured: the override is cleared BEFORE the commit because the manifest's
+    release refuses while an override still references the device ("still referenced by
+    1 artefact(s): credential"). A commit that then fails leaves a part-retired device with
+    its override gone; running retire again finishes the exit from the commit on."""
+    from modules import credentials
+    R = world["R"]
+    overrides = {"192.0.2.15"}
+    monkeypatch.setattr(credentials, "has_device_override", lambda ip: ip in overrides)
+    monkeypatch.setattr(credentials, "clear_device_override",
+                        lambda ip: overrides.discard(ip) or {"ok": True})
+    p = RT.plan("Lab", "r5", "retired")
+    keys = [s["key"] for s in p["steps"] if not s["done"]]
+    assert keys.index("override") < keys.index("commit"), keys
+    real = R._commit_paths
+    monkeypatch.setattr(R, "_commit_paths", lambda *a, **k: {"ok": False, "error": "boom"})
+    out = RT.apply("Lab", "r5", reason="retired", actor="op",
+                   confirmed_hash=p["hash"], breakglass=_bg())
+    assert out["ok"] is False and out["failed_at"] == "commit"
+    assert out["done"] == ["override"] and not overrides, out
+    monkeypatch.setattr(R, "_commit_paths", real)
+    p2 = RT.plan("Lab", "r5", "retired")
+    assert [s["key"] for s in p2["steps"] if not s["done"]][0] == "commit", p2["steps"]
+    out = RT.apply("Lab", "r5", reason="retired", actor="op",
+                   confirmed_hash=p2["hash"], breakglass=_bg())
+    assert out["ok"], out
+
+
 def test_refusals(world):
     assert "reason is required" in RT.plan("Lab", "r5", "")["refusals"][0]
     assert "nothing to retire" in RT.plan("Lab", "zz", "x")["refusals"][0]

@@ -99,7 +99,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C963, C964~~ | ~~the heartbeat rules and the device dashboard~~ **done** (see Checked off); the dashboard's re-import is the operator's, after the deploy | | | | |
 | P7-09 | Criterion 14, the writeup: entries for 7.4 to 7.8, P.11, Show commands, Ask, Logs, DHCP, Update; 7.3 and 7.D closed | an entry per sub-task, forecasts checked | M | — | — |
 | ~~P7-16 (rest)~~ | ~~C705, C765, C176; the Scheduled section's 7.x rows read once~~ **done** (see Checked off) | | | | |
-| C981 | Retire clears the override before its commit (C106 (3)): measure the export, then order or explain | UNKNOWN settled; fixed if A | S | — | — |
+| ~~C981~~ | ~~Retire clears the override before its commit (C106 (3))~~ **closed, measured: deliberate** (see Checked off) | | | | |
 | **C650, during the walks** | each walked screen's fidelity record written from its sitting; `UNCHECKED` shrinks by the walked screens; the rest to the tail | records from W1 to W3 | S per screen | the sittings | W |
 | **The v1 removals (each tagged first, walked, ceilings lowered, the ratchet run)** | | | | | |
 | P7-20 | (4) the NetBox tab and `/netbox/safety/*`, `/netbox/status` | removed, walked | M | W2 | — |
@@ -206,8 +206,8 @@ blocks cutover or is a security issue (B).
     efe09b2). Each one's row is moved to Closed when it is next touched.
   - Close with a v1 removal in section 2: C140 (2), C181 and E1 with P7-21; C461 and D1 with
     P7-25; C33 with P7-23 or P7-27.
-  - Needed for cutover: C106's item (3), Retire clearing the override before its commit, now
-    C981 (UNKNOWN); the rest of C106 is Stage 9's.
+  - Needed for cutover: C106's item (3), Retire clearing the override before its commit:
+    C981, measured the same night and closed (deliberate). The rest of C106 is Stage 9's.
   - Out: C58 (Stage 7's tail, with C472); C25 (Stage 9, or D3's 7.10); A2, A4, C133, C150
     (NetBox Phase 1); A3 (D3's 7.10, waiting on C100); C212 (Lab tooling).
 
@@ -256,6 +256,9 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C981 closed** (overnight): the break-glass export does not hold an override, but the
+  override must go before the commit (the manifest's release refuses while it references the
+  device); a failed commit finishes on a rerun. A test pins the order.
 - **P7-16's rest done** (overnight): C705's key retired the schema's way (no bump; the host's
   empty value kept, read by nothing); C765 measured dead by a parsed call graph and
   `configure.py` removed, the pipeline refusing a context with no confirmed list; C176 closed as
