@@ -22,7 +22,8 @@ Settings › Installation › Connections, and nothing here runs until they are.
 
 ## Networks {#networks}
 
-Every network, with its devices, its last import's result (complete, PARTIAL or FAILED, never
+Every network, with its devices as the import reads them (its own list's, or, for a network
+whose inventory is NetBox, NetBox's, marked "from NetBox"), its last import's result (complete, PARTIAL or FAILED, never
 green over a partial) and how many removals are recorded for it (each opens as it was drawn at
 its apply).
 
@@ -31,7 +32,8 @@ its apply).
   what it is doing, and fills in with the preview when it is ready (every object to create or
   change, what is not done, and the checks at your confirm).
 - **Remove from NetBox…** does the same for a removal: every object it would delete, and what
-  each deletion takes with it.
+  each deletion takes with it. Stopping tracking instead (forgetting what {{product}} created,
+  deleting nothing) is not on v2 yet, and the preview says so.
 - **Import every network…** previews one import of them all.
 
 Confirm with **Import** or **Remove**: the plan is recomputed and compared, the one-shot

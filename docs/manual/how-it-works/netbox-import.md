@@ -111,9 +111,10 @@ is already gone, is dropped from the created record; a delete NetBox refuses is 
 reason and stays recorded. The removal is written to the removal record and drawn from it, so
 it can be read again from the NetBox tab.
 
-**Just stop tracking** is the other choice in the same dialog: it deletes nothing, and the
-tool forgets what it created for the list, so NetBox keeps every object. Those objects keep
-their `nmas-managed` tag but are no longer recorded, so Remove can never act on them again.
+**Stopping tracking is not on v2 yet.** It would delete nothing: the tool would forget what it
+created for the network, so NetBox keeps every object, with its `nmas-managed` tag but no
+longer recorded, and Remove could never act on them again. The Remove card's preview says so;
+its choices are **Remove**, or **Close** to leave NetBox as it is.
 
 ## What the import and Remove do not do {#not}
 

@@ -63,12 +63,12 @@ def open_doc(list_name: str, rel_path: str) -> dict:
 
 
 def revokes(repo: str, rel_path: str) -> list:
-    """The approvals a commit of *rel_path* revokes: every approved template whose import
-    closure holds it (`template_write.commit`'s own test), said before the commit."""
-    from modules.nsot import approval
+    """The approvals a commit of *rel_path* revokes, said before the commit: every template
+    still approved whose import closure holds it (`template_write.approvals_over`, the commit's
+    own test). An already revoked template is not among them (C936)."""
+    from modules.nsot import template_write
 
-    return sorted(p for p in approval.approved_templates(repo)
-                  if rel_path in approval.template_closure(repo, p))
+    return sorted(template_write.approvals_over(repo, rel_path))
 
 
 def check(list_name: str, rel_path: str, text: str) -> dict:

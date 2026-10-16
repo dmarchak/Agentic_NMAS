@@ -514,6 +514,14 @@ def approved_templates(repo: str) -> list:
     return sorted(_load(repo))
 
 
+def unrevoked_templates(repo: str) -> list:
+    """Template paths whose stored record is an approval, not a revocation's tombstone (C936).
+    Stale or not, each still stands as an approval in the record, so an edit under it revokes
+    it; a tombstone is already a revocation, and revoking it again would overwrite its reason."""
+    return sorted(p for p, record in _load(repo).items()
+                  if not (isinstance(record, dict) and record.get("revoked")))
+
+
 def revoke(repo: str, rel_path: str, reason: str = "", actor: str = "") -> dict:
     """Withdraw an approval and record **why**.
 

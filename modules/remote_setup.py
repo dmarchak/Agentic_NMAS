@@ -69,7 +69,9 @@ def connect(list_name: str, form: dict, actor: str) -> dict:
 
 def write_probe(list_name: str, actor: str) -> dict:
     """Every pre-push check and the write probe (`remote.verify`): ``{"ok", "checks": [{"name",
-    "ok", "detail"}]}``, each detail masked."""
+    "ok", "detail", "fix"}]}``, each detail and remedy masked. ``fix`` is what the failed check
+    says to do (C934: it was dropped here, so a failure was drawn without its remedy); a passing
+    check carries none."""
     from modules.nsot import remote as R
     from modules.redact import redact_text
 
@@ -78,7 +80,8 @@ def write_probe(list_name: str, actor: str) -> dict:
         raise Refused(out.get("error") or "the remote could not be verified")
     return {"ok": bool(out.get("ok")),
             "checks": [{"name": c.get("name", ""), "ok": bool(c.get("ok")),
-                        "detail": redact_text(str(c.get("detail") or ""))[:300]}
+                        "detail": redact_text(str(c.get("detail") or ""))[:300],
+                        "fix": "" if c.get("ok") else redact_text(str(c.get("fix") or ""))[:400]}
                        for c in out["checks"]]}
 
 

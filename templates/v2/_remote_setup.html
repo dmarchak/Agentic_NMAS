@@ -74,7 +74,7 @@
     <p class="set-label">The write probe {{ 'passed' if probed.ok else 'FAILED' }}</p>
     <ol class="set-steps">
       {%- for c in probed.checks %}
-      <li>{{ badge('pass' if c.ok else 'FAILS', 'ok' if c.ok else 'danger') }} <span><code>{{ c.name }}</code>{% if c.detail %}: {{ c.detail }}{% endif %}</span></li>
+      <li>{{ badge('pass' if c.ok else 'FAILS', 'ok' if c.ok else 'danger') }} <span><code>{{ c.name }}</code>{% if c.detail %}: {{ c.detail }}{% endif %}{% if c.fix %}<br><strong>To fix:</strong> {{ c.fix }}{% endif %}</span></li>
       {%- endfor %}
     </ol>
   </div>

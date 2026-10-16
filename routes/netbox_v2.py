@@ -20,24 +20,40 @@ log = logging.getLogger(__name__)
 bp = Blueprint("netbox_v2", __name__, url_prefix="/v2/netbox")
 
 
-def _networks() -> list:
-    """Every registered network: its devices, its last import's result, its removals."""
+def _devices(entry: dict) -> tuple:
+    """``(count, from_netbox)``: the network's devices as the import reads them
+    (`netbox_ops.list_devices`'s path, through `load_saved_devices`, the one dispatcher between a
+    local list and a NetBox-sourced one, which serves NetBox's from its cache and never waits on
+    NetBox). C933: this counted devices.csv alone, so a NetBox-sourced network read "no devices
+    to import". A network whose directory does not exist holds nothing and is not created by
+    asking (a read creates no list)."""
     import os
 
+    from modules.config import LISTS_DIR
+    from modules.device import load_saved_devices
+    from modules.inventory.source_config import is_netbox_sourced
+
+    folder = os.path.join(LISTS_DIR, entry["filename"])
+    if not os.path.isdir(folder):
+        return 0, False
+    return (len(load_saved_devices(os.path.join(folder, "devices.csv"))),
+            is_netbox_sourced(entry["name"]))
+
+
+def _networks() -> list:
+    """Every registered network: its devices, its last import's result, its removals."""
     from modules import netbox_guard
-    from modules.config import list_data_path
-    from modules.device import _load_devices_csv, get_device_lists
+    from modules.device import get_device_lists
     from modules.netbox_client import sync_status_with_results
 
     lists = (sync_status_with_results().get("lists") or {})
     out = []
     for entry in get_device_lists():
         name = entry["name"]
-        csv = os.path.join(list_data_path(name), "devices.csv")
         removals = netbox_guard.read_removals(name)
         last = lists.get(name) or {}
-        out.append({"name": name,
-                    "devices": len(_load_devices_csv(csv)) if os.path.exists(csv) else 0,
+        count, from_netbox = _devices(entry)
+        out.append({"name": name, "devices": count, "from_netbox": from_netbox,
                     "last": last.get("result"), "last_at": str(last.get("timestamp") or ""),
                     "removals": len(removals.get("rows") or []),
                     "removals_unreadable": removals.get("state") == "unreadable"})

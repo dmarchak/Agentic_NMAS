@@ -17,6 +17,18 @@ import logging
 log = logging.getLogger(__name__)
 
 
+def approvals_over(repo: str, rel_path: str) -> list:
+    """The approvals an edit of *rel_path* revokes: every template whose record is still an
+    approval (`approval.unrevoked_templates`) and whose import closure holds the file. The one
+    test the commit applies and the editor says before it (`template_edit.revokes`). C936: a
+    revoked template's tombstone was counted, so the editor said the edit revoked it again and
+    the commit overwrote the revocation's recorded reason, time and person."""
+    from modules.nsot import approval
+
+    return [p for p in approval.unrevoked_templates(repo)
+            if rel_path in approval.template_closure(repo, p)]
+
+
 def commit(list_name: str, repo: str, rel_path: str, content: str, *, actor: str,
            message: str = "", why: str = "") -> dict:
     """Write *content* at *rel_path* in the library, revoke every approval over it with *why*
@@ -30,15 +42,14 @@ def commit(list_name: str, repo: str, rel_path: str, content: str, *, actor: str
         return dict(result, status=400)
 
     revoked, not_revoked = [], []
-    for stored_path in approval.approved_templates(repo):
-        if rel_path in approval.template_closure(repo, stored_path):
-            done = approval.revoke(
-                repo, stored_path,
-                reason=(f"'{rel_path}' {why or 'was edited'}, and this template imports it; "
-                        "re-approval must validate the new content against every bound "
-                        "device"),
-                actor=actor)
-            (revoked if done.get("ok") else not_revoked).append(stored_path)
+    for stored_path in approvals_over(repo, rel_path):
+        done = approval.revoke(
+            repo, stored_path,
+            reason=(f"'{rel_path}' {why or 'was edited'}, and this template imports it; "
+                    "re-approval must validate the new content against every bound "
+                    "device"),
+            actor=actor)
+        (revoked if done.get("ok") else not_revoked).append(stored_path)
 
     got = repo_service.save_templates(
         list_name, [rel_path] + ([".approvals.json"] if revoked else []),

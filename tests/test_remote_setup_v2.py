@@ -114,6 +114,26 @@ class TestTheWriteProbe:
         assert "The write probe FAILED" in html and "key_scope" in html and "FAILS" in html
         assert "Sup3rS3cretCommunity" not in html
 
+    def test_a_failed_check_is_drawn_with_its_remedy_masked(self, networks, monkeypatch):
+        """C934: the write probe's remedy (`fix`) was dropped, so a failed check said what
+        failed and never what to do. The checks are `remote.check_write_probe`'s own words for
+        a read-only key, and a passing check's stray `fix` is not drawn."""
+        _connected(networks)
+        monkeypatch.setattr(R, "verify", lambda name, **kw: {"ok": False, "checks": [
+            {"name": "key_is_repo_scoped", "ok": True, "detail": "Hi acct/branch-config!",
+             "fix": "a remedy nobody needs"},
+            {"name": "write_works", "ok": False,
+             "detail": "ERROR: The key you are authenticating with has been marked as read only.",
+             "fix": "the deploy key is read-only. Enable 'Allow write access' on it in the "
+                    "repository's settings. snmp-server community Sup3rS3cretCommunity RO"}]})
+        _r, html = _post(networks, f"{BASE}/write-probe", {"list": "Branch"})
+        item = re.search(r"<li>[^<]*<span class=\"badge[^>]*>FAILS</span>.*?</li>", html)
+        assert item, html
+        assert ("<strong>To fix:</strong> the deploy key is read-only. Enable 'Allow write "
+                "access' on it") in item.group(0).replace("&#39;", "'")
+        assert "a remedy nobody needs" not in html
+        assert "Sup3rS3cretCommunity" not in html
+
 
 class TestPublication:
     def test_it_draws_counts_and_fingerprints_never_a_value(self, networks, scan):

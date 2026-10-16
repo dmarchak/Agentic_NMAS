@@ -5,6 +5,7 @@ job, the preview component, the one-shot token, the master switch, the import's 
 real code. A job's thread runs inline here, so each answer is there when the test reads it.
 """
 
+import json
 import re
 
 import pytest
@@ -80,6 +81,32 @@ class TestThePage:
             assert f"<td>{name}</td>" in html, name
         assert "Writes are <strong>off</strong>" in html and "Import every network…" in html
 
+    def test_each_network_counts_its_devices_from_its_own_source(self, networks, nb,
+                                                                  monkeypatch):
+        """C933: the count came from devices.csv alone, so a NetBox-sourced network read 0
+        with Import into NetBox… disabled ("no devices to import"). Branch is a local list (one
+        row in its devices.csv); Remote is NetBox-sourced, its devices served from the inventory
+        cache (replaced at that edge: no NetBox here), and has no devices.csv at all."""
+        from modules.inventory import source_config
+
+        source_config.save("Remote", {"source": "netbox"})
+        assert not (networks["dir"] / "lists" / "remote" / "devices.csv").exists()
+        served = [{"hostname": f"nb{i}", "ip": f"192.0.2.{20 + i}"} for i in range(3)]
+        monkeypatch.setattr("modules.inventory.load_netbox_devices",
+                            lambda name, use_cache=True: (list(served), [], {})
+                            if name == "Remote" else ([], [], {}))
+        html = re.sub(r"\s+", " ", networks["client"].get("/v2/netbox").get_data(as_text=True))
+        rows = dict(re.findall(r"<tr> <td>([^<]+)</td> <td>(.*?)</td>.*?</tr>", html))
+        assert rows["Branch"] == "1", rows
+        assert rows["Remote"] == '3 <span class="muted small">from NetBox</span>', rows
+        remote = re.search(r"<tr> <td>Remote</td>.*?</tr>", html).group(0)
+        assert "no devices" not in remote and " disabled" not in remote.split("Remove")[0]
+
+        served.clear()   # NetBox's devices not read yet (or none): said as that, not as a CSV's
+        html = re.sub(r"\s+", " ", networks["client"].get("/v2/netbox").get_data(as_text=True))
+        remote = re.search(r"<tr> <td>Remote</td>.*?</tr>", html).group(0)
+        assert 'disabled title="no devices read from NetBox for this network yet"' in remote
+
     def test_the_sidebar_no_longer_sends_netbox_to_today_s_page(self, networks, nb):
         html = networks["client"].get("/v2/devices").get_data(as_text=True)
         assert 'data-todays-page="netbox"' not in html
@@ -148,3 +175,27 @@ class TestRemove:
         assert r.status_code == 200 and "deleted from NetBox for Branch" in html, html
         page = networks["client"].get("/v2/netbox").get_data(as_text=True)
         assert "1 recorded" in page
+
+    def test_the_preview_names_only_the_choices_its_screen_has(self, networks, nb, monkeypatch):
+        """C935: v2's removal preview said "'Just stop tracking' is the other choice", a control
+        only today's NetBox dialog draws (its `forget_only`); v2's card has Remove and Close.
+        v2's preview says stopping tracking is not on v2 yet; today's, which draws the
+        button, still names it."""
+        import modules.netbox_client as nbc
+        monkeypatch.setattr(nbc, "remove_list_from_netbox", lambda name, **k: {
+            "ok": True, "deleted": [{"endpoint": "dcim/devices", "id": 7, "name": "r9"}],
+            "skipped": [], "failed": [], "complete": True, "dry_run": True})
+        _r, card = _post(networks, "/v2/netbox/preview", {"operation": "remove", "list": "Branch"})
+        card = re.sub(r"\s+", " ", networks["client"].get(
+            f"/v2/netbox/job/{_job(card)}").get_data(as_text=True)).replace("&#39;", "'")
+        assert "PERMANENTLY deleted" in card, "the preview is not drawn, so this proves nothing"
+        assert "Just stop tracking" not in card
+        assert ("Stopping tracking instead, which deletes nothing and has Mercury forget what it "
+                "created for this network so that NetBox keeps every object, is not on v2 yet: "
+                "the choice here is Remove, or Close to leave NetBox as it is.") in card
+
+        r = networks["client"].post("/netbox/safety/remove/preview", json={"list_name": "Branch"})
+        assert r.status_code == 200, r.get_data(as_text=True)[:400]
+        today = json.dumps(r.get_json())
+        assert "'Just stop tracking' is the other choice" in today
+        assert "not on v2 yet" not in today

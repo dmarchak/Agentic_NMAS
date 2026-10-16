@@ -1387,12 +1387,17 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
                  titles={"program": "What will be written to NetBox"})
 
 
-def netbox_removal_preview(d: dict, confirm: dict) -> dict:
+def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: bool = False) -> dict:
     """NetBox Remove's preview, drawn by the component (7.1). What the
     database takes WITH each delete (the cascade, `netbox_cascade`) is drawn
     only when there is some, as before: a clean, proven preview adds no
     alarm, or the operator learns to click through it. A cascade that could
-    not be established is its own statement, never "nothing"."""
+    not be established is its own statement, never "nothing".
+
+    *forget_offered*: the screen drawing this has the stop-tracking control (today's NetBox
+    dialog's "Just stop tracking", `forget_only`), so the preview names it as the other
+    choice. v2's Remove card has no such control (C935), and its preview says the choice is
+    not on v2 yet rather than naming a button that is not there."""
     name = d.get("list") or "the list"
     deleted, skipped = d.get("deleted") or [], d.get("skipped") or []
     # C130: a recorded object NetBox could not be READ is not gone. The
@@ -1474,8 +1479,12 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
         {"target": name, "kind": "no_device", "lines": [],
          "text": "No device is reached and nothing in git changes."},
         {"target": name, "kind": "forget", "lines": [],
-         "text": "'Just stop tracking' is the other choice: it deletes nothing, and Mercury "
-                 "forgets what it created for this list, so NetBox keeps every object."},
+         "text": ("'Just stop tracking' is the other choice: it deletes nothing, and Mercury "
+                  "forgets what it created for this list, so NetBox keeps every object."
+                  if forget_offered else
+                  "Stopping tracking instead, which deletes nothing and has Mercury forget "
+                  "what it created for this network so that NetBox keeps every object, is not "
+                  "on v2 yet: the choice here is Remove, or Close to leave NetBox as it is.")},
     ]
     gates = _nb_gates(d, "removal")
     if not deleted:

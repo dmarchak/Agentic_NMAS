@@ -127,7 +127,7 @@ class TestTheCommit:
     def test_it_commits_as_the_person_and_revokes_the_approvals_over_it(self, tl, monkeypatch):  # noqa: F811
         from modules.nsot import approval, templates_repo
 
-        monkeypatch.setattr(approval, "approved_templates", lambda repo: [REL])
+        monkeypatch.setattr(approval, "unrevoked_templates", lambda repo: [REL])
         html = _open(tl)
         base = _hidden(html, "base")
         assert "revokes the approval of" in html
@@ -140,6 +140,45 @@ class TestTheCommit:
         assert "Actor: test-person@example.invalid" in msg
         assert "committed" in out and "Approve cisco_ios/base.j2…" in out
         assert templates_repo.read_template(tl["repo"], REL).endswith("! edited on v2\n")
+
+    def test_editing_a_revoked_template_keeps_its_revocation_as_recorded(self, tl):  # noqa: F811
+        """C936: `revokes` counted a revocation's tombstone, so the editor said the edit
+        "revokes the approval" of a template already revoked, and the commit revoked it again,
+        overwriting the reason, time and person the revocation recorded. Approved, revoked
+        with a reason, then edited: the editor says no approval stands over it, and the
+        record is byte for byte the revocation's."""
+        import json
+
+        from modules.nsot import approval, templates_repo
+        from modules.nsot import template_edit
+        from tests.test_approvals_record import _head_record
+        from tests.test_template_approval import _commit_approvals, _devices
+
+        repo = tl["repo"]
+        assert approval.approve(repo, REL, _devices(["s1"]), actor="approver@example.invalid")["ok"]
+        _commit_approvals(repo)
+        assert REL in template_edit.revokes(repo, REL), "an approval is not counted: proves nothing"
+        assert approval.revoke(repo, REL, reason="W2: a defect found in its evidence",
+                               actor="revoker@example.invalid")["ok"]
+        _commit_approvals(repo)
+        recorded = _head_record(repo)[REL]
+        assert recorded["revoked"] is True
+
+        html = _open(tl)
+        assert "revokes the approval" not in html
+        assert "Commits it as you; no approval stands over it." in html
+        new = templates_repo.read_template(repo, REL) + "! edited while revoked\n"
+        r = _commit(tl, new, _hidden(html, "base"))
+        out = r.get_data(as_text=True)
+        assert r.status_code == 200, out[:600]
+        assert _head_record(repo)[REL] == recorded
+        with open(approval.approvals_path(repo), encoding="utf-8") as fh:
+            assert json.load(fh)[REL] == recorded
+        names = _git(repo, "show", "--name-only", "--format=", "HEAD").split()
+        assert names == [f"templates/{REL}"], names
+        assert "Approval revoked" not in out
+        assert approval.approval_status(repo, REL)["reason"] == (
+            "REVOKED: W2: a defect found in its evidence")
 
     def test_a_template_moved_since_it_was_opened_is_refused_naming_both(self, tl):  # noqa: F811
         from modules.nsot import templates_repo
