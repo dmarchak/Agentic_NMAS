@@ -13,9 +13,10 @@ What is held:
   a first commit, its own top level; the parent repository is untouched;
 - Seed on it commits the shipped files as the person, and History shows the commit with no
   uncommitted path;
-- a network made before this (a folder with no `.git`): History says its working tree could
-  not be read (never "clean"), and its first Seed makes the repository (the one init, as every
-  write path does) and commits; nothing reaches the parent;
+- a network made before this (a folder with no `.git`): History says it has no repository yet
+  and that its first commit makes it (C945; never "clean"), and its first Seed makes the
+  repository (the one init, as every write path does) and commits; nothing reaches the parent;
+  a repository git cannot read is said as "could not be read", with git's error (C945);
 - Seed's failed commit, and a status it could not read, are said as failed (a danger card
   naming the git error, HTTP 500), never "Nothing was added".
 """
@@ -97,6 +98,13 @@ def _card(r):
     return m.group(0)
 
 
+def _header(r):
+    """History's header, the remote card (`templates/v2/_history_remote.html`)."""
+    m = re.search(r'<section class="card hist-remote" id="hist-remote".*?</section>', _flat(r))
+    assert m, _flat(r)[:600]
+    return m.group(0)
+
+
 class TestANetworkIsBornARepository:
     def test_create_makes_its_repository(self, store):
         _create(store, "Site East")
@@ -139,6 +147,7 @@ class TestANetworkIsBornARepository:
         history = _flat(store["client"].get("/v2/history?list=Site%20East"))
         assert "template: seed library (" in history
         assert "could not be read" not in history and "are not committed" not in history
+        assert "No repository yet" not in history
         assert store["state"]() == store["before"]
 
 
@@ -156,10 +165,29 @@ def old(store):
 
 
 class TestANetworkWithNoRepository:
-    def test_history_says_its_tree_could_not_be_read(self, old):
-        history = _flat(old["client"].get("/v2/history?list=Old"))
-        assert "The working tree could not be read." in history, \
-            "a folder with no .git read as a clean repository"
+    def test_history_says_it_has_no_repository_yet_and_what_makes_one(self, old):
+        """C945: the header said "The working tree could not be read." with no cause; a folder
+        with no `.git` is a network whose first commit makes its repository, and says so."""
+        r = old["client"].get("/v2/history?list=Old")
+        assert r.status_code == 200
+        history = _header(r)
+        assert "No repository yet: the network's first commit makes it." in history, \
+            "a folder with no .git did not say it has no repository yet"
+        assert "could not be read" not in history and "Everything is committed" not in history
+        assert not (old["repo"] / ".git").exists(), "a read made the repository"
+        assert old["state"]() == old["before"]
+
+    def test_an_unreadable_repository_says_could_not_be_read_with_git_s_error(self, old):
+        """C945: any failure other than a missing `.git` keeps "could not be read", naming
+        git's error. Planted: a `.git` file pointing at a repository that is not there."""
+        (old["repo"] / ".git").write_text("gitdir: ../planted-for-c945\n", encoding="utf-8")
+        r = old["client"].get("/v2/history?list=Old")
+        assert r.status_code == 200
+        history = _header(r)
+        assert "The working tree could not be read: " in history, history
+        assert "not a git repository" in history and "planted-for-c945" in history, \
+            "the header did not carry git's error"
+        assert "No repository yet" not in history and "Everything is committed" not in history
         assert old["state"]() == old["before"]
 
     def test_its_first_seed_makes_the_repository_and_commits(self, old):

@@ -277,12 +277,22 @@ def _history_remote(ref) -> dict:
     if verify:
         verify = dict(verify, failed=[dict(f, detail=redact_text(str(f.get("detail") or "")))
                                       for f in verify.get("failed") or []])
-    out.update(push_failure=failure, last_verify=verify)
-    rc, text, _err = R.git(ref.repo_dir, "status", "--porcelain")
+    out.update(push_failure=failure, last_verify=verify, dirty_paths=[],
+               no_repository=False, unreadable="")
+    # A network with no repository yet (C945): its folder has no `.git`, the property
+    # `repo.run_git` names when a read fails there (C931), decided by the folder and never by
+    # git's words. Its first commit makes the repository; that is said, not "could not be read".
+    if not os.path.exists(os.path.join(ref.repo_dir, ".git")):
+        out["no_repository"] = True
+        return out
+    rc, text, err = R.git(ref.repo_dir, "status", "--porcelain")
+    if rc != 0:
+        out["unreadable"] = redact_text(err or f"git status exited {rc}")
+        return out
     paths = [l[3:].strip() for l in (text or "").splitlines() if l.strip()]
-    out["dirty"] = len(paths) if rc == 0 else None
+    out["dirty"] = len(paths)
     # Named here, never "see today's Git tab" (C637): the first five, and how many more.
-    out["dirty_paths"] = paths[:5] if rc == 0 else []
+    out["dirty_paths"] = paths[:5]
     return out
 
 

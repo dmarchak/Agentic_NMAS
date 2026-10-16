@@ -32,7 +32,16 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `cbc9307e3714d2b7e4bce3f6ff159cf6d47f766815733c904c39c680fa06d94b`
+Templates sha256: `3684d6332644eb70a00f3b5a5f0bfe72daa97d17153806c6919f36fae3838710`
+
+Compared again 2026-10-16 (C945) after `_history_remote.html` gained two states of its
+uncommitted clause: "No repository yet: the network's first commit makes it." for a network
+whose folder has no `.git`, and "The working tree could not be read: <git's error>." for any
+other failure (it read "The working tree could not be read." for both). Neither state is on a
+board or in a shot: board D draws the remote line in sync and committed. The header rendered
+from the template as it was and as it is, in five states (in sync and clean, 7 and 2 paths
+uncommitted, no remote and clean, ahead with a failed push): every byte the same. No region's
+verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

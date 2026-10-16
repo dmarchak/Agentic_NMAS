@@ -9,7 +9,8 @@
          hx-trigger="nmas:remote from:body, nmas:goldens from:body" hx-swap="outerHTML">
   <div class="hist-remote-row">
     <p class="hist-remote-words">{{ badge(lv[0], lv[1]) }}
-      {%- if remote.dirty is none %} The working tree could not be read.
+      {%- if remote.no_repository %} No repository yet: the network's first commit makes it.
+      {%- elif remote.dirty is none %} The working tree could not be read: <span class="mono small">{{ remote.unreadable }}</span>.
       {%- elif remote.dirty %} {{ remote.dirty }} path(s) are not committed: <span class="mono small">{{ remote.dirty_paths | join(', ') }}</span>{% if remote.dirty > remote.dirty_paths | length %} and {{ remote.dirty - remote.dirty_paths | length }} more{% endif %}.
       {%- else %} Everything is committed{% endif %} · {{ remote.d.clause }}
       {%- if remote.value_at %} <span class="muted small" title="{{ remote.d.detail }}">(checked {{ stamp(remote.value_at) }})</span>{% endif %}

@@ -7,7 +7,12 @@ the remote's state at the top.
 ## The remote {#remote}
 
 One sentence says whether everything is committed and whether it is pushed to the network's
-remote repository, with when that was last checked. **Verify the remote** runs the read-only
+remote repository, with when that was last checked. It names up to five paths that are not
+committed, and how many more. A network whose folder has no repository yet (one made before
+networks were created with theirs) says "No repository yet: the network's first commit makes
+it": its first save, seed or other commit through the tool makes the repository. Any other
+failure to read the folder says "The working tree could not be read", with git's own error.
+**Verify the remote** runs the read-only
 checks against it (the key's scope, a read, that it is private and the right repository).
 **Push now** appears while something is not pushed; it needs a person, and the sentence
 redraws once the remote is read again.

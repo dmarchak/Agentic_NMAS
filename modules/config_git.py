@@ -83,40 +83,9 @@ def _git(repo: str, *args) -> tuple[int, str, str]:
         return 1, "", str(exc)
 
 
-# ---------------------------------------------------------------------------
-# Repository initialisation
-# ---------------------------------------------------------------------------
-
-def init_config_repo(list_name: str) -> bool:
-    """Initialise (or verify) the git repo for a device list.  Idempotent."""
-    from modules.nsot.repo import repo_lock
-
-    repo = _repo_dir(list_name)
-    os.makedirs(repo, exist_ok=True)
-    with repo_lock(repo):                  # across processes (CONCURRENCY_AUDIT R1)
-        return _init_locked(repo, list_name)
-
-
-def _init_locked(repo: str, list_name: str) -> bool:
-    if os.path.isdir(os.path.join(repo, ".git")):
-        return True
-
-    # Try -b main first (git ≥ 2.28); fall back silently for older git
-    rc, _, _ = _git(repo, "init", "-b", "main")
-    if rc != 0:
-        _git(repo, "init")
-
-    # Seed so we always have a valid HEAD to diff against
-    gi = os.path.join(repo, ".gitignore")
-    if not os.path.exists(gi):
-        with open(gi, "w", encoding="utf-8") as fh:
-            fh.write("*.swp\n*.tmp\n")
-    _git(repo, "add", ".gitignore")
-    from modules.nsot.repo import commit as _commit
-    _commit(repo, "Initialize device configuration repository", list_name=list_name,
-            allow_empty=True, source="init")
-    log.info("config_git: repo initialised for list '%s'", list_name)
-    return True
+# A list's repository is created by `modules.nsot.repo.init_repo`, the one
+# `git init` (a network is born with it, C931). This module's own init, which
+# nothing called, was removed (C944).
 
 
 # ---------------------------------------------------------------------------

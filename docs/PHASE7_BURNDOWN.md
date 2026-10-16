@@ -72,7 +72,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | ~~C931~~ | ~~Seed on a network created on v2~~ **done**, with C943 (see Checked off); W2 section H walks it | | | | |
 | C948 | the Stage 2 redeploy checklist brought to today's rules or retired (the operator's file: "do not edit"); `lab/REDEPLOY.md` is followed meanwhile | the operator's decision | S | — | the operator |
-| C944, C945 | the unused second `git init` removed; History's "could not be read" says why (no repository yet) | their tests | S each | — | — |
+| ~~C944, C945~~ | ~~the unused `git init`; History's header~~ **done** (see Checked off) | | | | |
+| C957 | History's timeline says "no repository yet" for such a network, as the header now does (C945's sibling) | its test | S | — | — |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
 | C954 | v2's "stop tracking" for a NetBox removal: build it or retire it (CUTOVER row 60) | the operator's decision, then its test | S–M | — | the operator |
 | C955 | Retire's preview counts live approvals only (C936's sibling) | its test | S | — | — |
@@ -247,6 +248,8 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C944, C945 done** (B, overnight): the unused second `git init` removed; History's header
+  says "No repository yet" by the folder, not git's words. C957 (B) into this section.
 - **C933 to C936 done** (B, overnight 2026-10-16): NetBox counts each network from its own
   source; the write probe draws its remedy; the removal preview names only v2's choices; a
   revoked template's edit keeps its revocation. C954 (a decision), C955 (B), C956 (UNKNOWN).
