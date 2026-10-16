@@ -1,0 +1,63 @@
+{%- from "v2/_macros.html" import icon, stamp, how -%}
+{#- What the Overview's Drift row opens onto (C342, board C342Drift): the lines the drift run
+    kept for the device, masked; what its own log says about when and how it changed since its
+    golden (each line at the time Mercury received it); and the three choices, each opening the
+    device page's own card. `device_page.drift_detail`, `routes/device_v2.drift`. A READ: nothing
+    here reaches the device. A part that cannot be read says so in its place. -#}
+{%- if d.error %}
+<p class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<span>Couldn't load: {{ d.error }}.</span></p>
+{%- else %}
+{%- set host = d.host %}
+<div class="drift-parts">
+  <div class="drift-part">
+    <h3 class="drift-k">The lines</h3>
+    {%- set k = d.diff %}
+    {%- if k.error %}
+    <p class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<span>Couldn't load: {{ k.error }}.</span></p>
+    {%- elif k.absent %}
+    <p class="notice notice-muted">Not kept: {{ k.absent }}{% if k.queued_at %} (it was queued {{ stamp(k.queued_at) }}){% endif %}. Capture's preview reads {{ host }} and shows them against its golden.</p>
+    {%- else %}
+    <p class="drift-sum">{{ k.only_device }} line{{ '' if k.only_device == 1 else 's' }} only on {{ host }}, {{ k.only_golden }} only in its golden. Kept by the drift run {{ stamp(k.queued_at) }};
+      {%- if k.cut %} it was cut at 200 lines when it was kept, so it is not compared with the last run ({{ stamp(d.run_at) }}), which counted {{ k.run_lines }}.
+      {%- elif k.same %} the last run, {{ stamp(d.run_at) }}, counted the same {{ k.run_lines }}.
+      {%- else %} the last run, {{ stamp(d.run_at) }}, counted {{ k.run_lines if k.run_lines is not none else 'none' }} where these are {{ k.lines }}: {{ host }} may have moved since, and Capture's preview reads it now.{% endif %}</p>
+    <div class="drift-diff" role="group" aria-label="{{ host }}'s golden (-) against what it ran (+), masked">
+      {%- for r in k.rows %}<span class="dl-{{ r.kind }}"{% if r.masked %} title="A value in this line is masked"{% endif %}>{{ r.text }}</span>{% endfor -%}
+    </div>
+    <p class="drift-note">{% if k.masked %}<span class="drift-hint" title="Masked on the way out, by position and by value, as every screen masks configuration">{{ k.masked }} line{{ '' if k.masked == 1 else 's' }} masked</span>. {% endif %}
+      {%- if d.golden.sha %}Its golden is <a class="mono" href="{{ url_for('v2.history_page', device=host, list=d.list) }}">{{ d.golden.sha }}</a>, {{ stamp(d.golden.at) }}.{% endif %}</p>
+    {%- endif %}
+  </div>
+  <div class="drift-part">
+    <h3 class="drift-k">What {{ host }}'s log says</h3>
+    {%- set g = d.logs %}
+    {%- if not g.configured %}
+    <p class="notice notice-muted">No log store is configured, so {{ host }}'s own lines cannot be read here.</p>
+    {%- elif g.error %}
+    <p class="notice notice-warn" role="alert">{{ icon('warn', 16) }}<span>Couldn't load: {{ g.error }}.</span></p>
+    {%- else %}
+    <p class="drift-sum">{% if g.capped %}In the last {{ g.max_days }} days{% else %}Since its golden was recorded ({{ stamp(g.start_iso) }}){% endif %}: {{ g.lines | length }}{% if g.cut %} (the newest {{ g.limit }}; there are more){% endif %} line{{ '' if g.lines | length == 1 else 's' }} about its configuration or a restart.</p>
+    {%- if g.lines %}
+    <ul class="drift-logs">
+      {%- for l in g.lines %}
+      {#- The receive time itself, never an age the page redraws: when it changed is the point. #}
+      <li><span class="drift-when"><time datetime="{{ l.at_iso }}" title="{{ l.at_iso }}, received by Mercury · {{ host }}'s own time: {{ l.devts or 'not in the line' }}{{ ' (its clock not set)' if l.unsync }}">{{ l.at_iso[5:10] }} {{ l.at_iso[11:19] }} UTC</time></span><span class="drift-line">{% if l.mnemonic %}<span class="mono">{{ l.mnemonic }}</span> {% endif %}{{ l.text }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <p class="drift-note">Each at the time Mercury received it; {{ host }}'s own time is on hover{% if g.unsync %} ({{ g.unsync }} with a clock IOS marks as not set){% endif %}. <a href="{{ url_for('device_v2.device', name=host, tab='logs') }}">Every line from {{ host }}: its Logs tab</a></p>
+    {%- endif %}
+  </div>
+  <div class="drift-part">
+    <h3 class="drift-k">What to do</h3>
+    <div class="drift-choices">
+      <div class="drift-choice"><span class="drift-w">Keep it</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="capture" href="{{ url_for('device_v2.device', name=host, tab='overview', op='capture') }}" hx-get="{{ url_for('device_v2.capture', name=host, back='overview') }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Capture</span><span class="op-busy">Opening…</span></a>{{ how('capture', op='capture') }}</span>
+        <span class="muted small">{{ host }}'s golden becomes what it runs now; intent stays as it is, so the Intent check then shows anything that departs from it.</span></span></div>
+      <div class="drift-choice"><span class="drift-w">Put intent back</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="deploy" href="{{ url_for('device_v2.device', name=host, tab='overview', op='deploy') }}" hx-get="{{ url_for('device_v2.deploy', name=host, back='overview') }}" hx-target="#tab-body" hx-swap="innerHTML"><span class="op-idle">Plan a deploy…</span><span class="op-busy">Opening…</span></a>{{ how('deploy', compact=True, op='deploy') }}</span>
+        <span class="muted small">sends what intent holds and {{ host }} lacks. A deploy is planned against {{ host }}'s golden, and {{ host }} has moved since it: capture first, or the apply refuses with nothing sent.</span></span></div>
+      <div class="drift-choice"><span class="drift-w">Remove lines</span><span class="drift-act"><span class="drift-row"><a class="btn btn-small" data-op="removal" href="{{ url_for('device_v2.device', name=host, tab='overview', op='deploy', focus='removal') }}" hx-get="{{ url_for('device_v2.deploy', name=host, back='overview', focus='removal') }}" hx-target="this" hx-swap="outerHTML"><span class="op-idle">Remove lines (Mode B)…</span><span class="op-busy">Opening…</span></a>{{ how('removal', compact=True, op='removal') }}</span>
+        <span class="muted small">takes off {{ host }} the lines intent lacks, only those you tick, each with a reason. Capture first, so the lines {{ host }} holds now are the ones offered.</span></span></div>
+    </div>
+  </div>
+</div>
+{%- endif %}

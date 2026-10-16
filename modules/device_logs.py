@@ -215,6 +215,76 @@ def _iso(ns) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(ns) / 1e9))
 
 
+#: C342: the lines in which a device says its configuration changed or it restarted, by Cisco
+#: IOS's own mnemonics (the product's devices), never a lab's: configured from a terminal
+#: (CONFIG_I) or programmatically (CONFIG_P), a command the configuration logger recorded
+#: (CFGLOG_LOGGEDCMD), and a restart or a reload requested.
+CHANGE_MNEMONICS = ("%SYS-5-CONFIG_I", "%SYS-5-CONFIG_P", "%PARSER-5-CFGLOG_LOGGEDCMD",
+                    "%SYS-5-RESTART", "%SYS-5-RELOAD")
+CHANGE_PATTERN = "(?:" + "|".join(re.escape(m) for m in CHANGE_MNEMONICS) + "):"
+#: The page and the longest window the drift row asks over: Loki's own longest ask is 30 days
+#: (its default `max_query_length`, 721 h), as `label_since` asks.
+CHANGE_LIMIT = 50
+CHANGE_MAX_DAYS = 30
+
+
+def change_lines(dev: dict, since: float = None, *, now: float = None) -> dict:
+    """What the device's own log says about when and how it changed (C342, the device page's
+    drift row): its configuration and restart lines (`CHANGE_MNEMONICS`) from *since* (epoch
+    seconds: the moment its golden was recorded) to now, newest first, at most `CHANGE_LIMIT`.
+    Each line is masked and drawn at the time Mercury RECEIVED it, the device's own time beside
+    it (never the device clock, never its uptime). A window longer than Loki is asked over
+    starts `CHANGE_MAX_DAYS` back and says so (`capped`). A page returned full is cut and says
+    so. Never raises: Loki unconfigured, unaskable or unreadable is its own answer (`error`),
+    never "no lines". One device, read from Loki on a person's request; nothing reaches the
+    device."""
+    from modules.integrations.loki import LokiIntegration
+    from modules.redact import redact_text
+
+    host = dev.get("hostname", "")
+    now = time.time() if now is None else now
+    floor = now - CHANGE_MAX_DAYS * 86400
+    start = floor if since is None or since < floor else since
+    view = {"configured": True, "error": "", "lines": [], "cut": False, "limit": CHANGE_LIMIT,
+            "start_iso": _iso(int(start * 1e9)), "capped": since is None or since < floor,
+            "max_days": CHANGE_MAX_DAYS, "unsync": 0}
+    if not _NAME.match(host or ""):
+        view["error"] = f"the name {host!r} cannot be matched safely in a log query"
+        return view
+    loki = LokiIntegration()
+    if not loki.is_configured():
+        view["configured"] = False
+        return view
+    try:
+        sel = selector(host, start=start, client=loki)
+    except NoSyslogJob as exc:
+        view["error"] = f"the syslog job could not be found: {exc}"
+        return view
+    r = loki._get("loki/api/v1/query_range", query=f"{sel} |~ `{CHANGE_PATTERN}`",  # noqa: SLF001
+                  limit=CHANGE_LIMIT, start=int(start * 1e9), end=int(now * 1e9),
+                  direction="backward")
+    if not r.get("ok"):
+        detail = f" ({r['detail']})" if r.get("detail") else ""
+        view["error"] = f"Loki could not be asked: {r.get('error')}{detail}"
+        return view
+    try:
+        streams = (r["response"].json().get("data") or {}).get("result") or []
+    except (ValueError, AttributeError) as exc:
+        view["error"] = f"Loki's answer could not be read: {exc}"
+        return view
+    rows = []
+    for stream in streams:
+        for ns, line in stream.get("values") or []:
+            row = parse(redact_text(line), host)
+            row.update(ns=int(ns), at_iso=_iso(ns))
+            rows.append(row)
+    rows.sort(key=lambda x: x["ns"], reverse=True)
+    view["lines"] = rows[:CHANGE_LIMIT]
+    view["cut"] = len(rows) >= CHANGE_LIMIT
+    view["unsync"] = sum(1 for x in view["lines"] if x["unsync"])
+    return view
+
+
 def for_device(dev: dict, *, now: float = None) -> dict:
     """The Logs tab's view. Never raises; a source that could not be read is
     said, never drawn as a quiet device."""

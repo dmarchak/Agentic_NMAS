@@ -48,11 +48,20 @@
     <div class="card-head"><h2>Checks</h2></div>
     <ul class="checks">
       {% for c in checks %}
-      <li class="check check-{{ STATE_KIND.get(c.state, 'muted') }}">
-        <span class="check-ico">{% if c.state == 'ok' %}{{ icon('check', 16) }}{% elif c.state in ('warn', 'danger') %}{{ icon('warn', 16) }}{% else %}{{ icon('dot', 16) }}{% endif %}</span>
-        <span class="check-body"><strong>{{ c.name }}</strong>: {{ c.text }}
+      <li class="check check-{{ STATE_KIND.get(c.state, 'muted') }}{{ ' check-unreadable' if c.unreadable }}">
+        <span class="check-ico">{% if c.state == 'ok' %}{{ icon('check', 16) }}{% elif c.state in ('warn', 'danger') %}{{ icon('warn', 16) }}{% elif c.unreadable %}{{ icon('warn', 16) }}{% else %}{{ icon('dot', 16) }}{% endif %}</span>
+        <span class="check-body"><strong>{{ c.name }}</strong>: {% if c.unreadable %}<span class="check-unread">unreadable</span> {% endif %}{{ c.text }}
           {%- if c.on_device %}<span class="check-lines"><span class="muted">on the device, not in intent:</span>{% for l in c.on_device %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}
-          {%- if c.in_intent %}<span class="check-lines"><span class="muted">in intent, not on the device:</span>{% for l in c.in_intent %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}</span>
+          {%- if c.in_intent %}<span class="check-lines"><span class="muted">in intent, not on the device:</span>{% for l in c.in_intent %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}
+          {#- C342 (board C342Drift): a drifted row opens, in place, onto the lines the drift run
+              kept (masked), the device's own log about the change, and the three choices.
+              Asked once when opened (`device_v2.drift`, a read); kept open across a redraw. -#}
+          {%- if c.open %}
+          <details class="drift-open" data-keep="drift" hx-get="{{ url_for('device_v2.drift', name=device.hostname) }}" hx-trigger="toggle once" hx-target="find .drift-detail" hx-swap="innerHTML" data-what="the lines, the log and the choices">
+            <summary>The lines, what {{ device.hostname }}'s log says, and what to do</summary>
+            <div class="drift-detail"><p class="muted small">Reading the lines the drift run kept and {{ device.hostname }}'s log…</p></div>
+          </details>
+          {%- endif %}</span>
         {% if c.at %}<span class="check-at">{{ stamp(c.at) }}</span>{% endif %}
       </li>
       {% endfor %}

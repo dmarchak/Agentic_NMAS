@@ -93,7 +93,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
 | ~~C487, C493~~ | ~~Needs attention names each row's network; no store falls back~~ **done** (see Checked off) | | | | |
 | ~~C532~~ | ~~Devices list and device page agree on intent state (one comparison)~~ **done** (see Checked off) | | | | |
-| C342 | the device page's drift: masked diff and three choices | built from its board | M | — | B |
+| ~~C342~~ | ~~the device page's drift: masked diff and three choices~~ **done, built from its board C342Drift** (see Checked off) | | | | |
 | ~~C522~~ | ~~the 8 lone (i) cards~~ **done** (see Checked off) | | | | |
 | ~~C820, C821~~ | ~~the syslog job; an integration's 4xx reason~~ **done** (see Checked off) | | | | |
 | ~~C963, C964~~ | ~~the heartbeat rules and the device dashboard~~ **done** (see Checked off); the dashboard's re-import is the operator's, after the deploy | | | | |
@@ -256,6 +256,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C342 done** (overnight, board C342Drift drawn and signed off under the mode, canvas v134):
+  the Drift row opens in place onto the kept lines (masked), the device's own log since its
+  golden, and Capture / Plan a deploy… / Remove lines (Mode B)…. C986 (fixed with it: unreadable
+  drawn as no run); C983, C984, C985 (C) to the tail.
 - **C981 closed** (overnight): the break-glass export does not hold an override, but the
   override must go before the commit (the manifest's release refuses while it references the
   device); a failed commit finishes on a rerun. A test pins the order.
@@ -285,7 +289,8 @@ blocks cutover or is a security issue (B).
   approvals only, and the listing that counted tombstones is removed. C958, C959 (UNKNOWN),
   C960 (C) to the tail.
 - **P7-09 done** (fc70b56e): 11 writeup entries backfilled from the record; 7.3 and 7.D stay
-  open (Reload in W2; adopt, revert, retry in W3; 20 screens unchecked; C342's mockup).
+  open (Reload in W2; adopt, revert, retry in W3; 20 screens unchecked; C342's mockup, drawn
+  and built 2026-10-16).
 - **C944, C945 done** (B, overnight): the unused second `git init` removed; History's header
   says "No repository yet" by the folder, not git's words. C957 (B) into this section.
 - **C933 to C936 done** (B, overnight 2026-10-16): NetBox counts each network from its own

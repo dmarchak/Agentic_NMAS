@@ -1442,6 +1442,50 @@ def test_tab_overview(tmp_path, monkeypatch):
                lambda w: "/v2/device/r6", served, widths=((390, 2.0),))
 
 
+def test_tab_overview_drift(tmp_path, monkeypatch):
+    """C342 (board C342Drift, 1440) beside r3's Overview on test_device_v2's lab: the REAL drift
+    run with two minimal edits of r2's real configuration (tests/test_drift_overview's), the
+    Drift row closed, then opened (the kept lines masked, s3's real log lines as r3's, the three
+    choices); then the drift record unreadable."""
+    from tests import browser
+    from tests import test_device_v2 as D
+    from tests import test_drift_overview as T
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    lab_ = D.lab_setup(tmp_path, monkeypatch)
+    next(lab_)
+    T._drift(monkeypatch)
+    T.loki.__wrapped__(monkeypatch)
+    T._at_the_corpus(monkeypatch)
+    monkeypatch.setattr("modules.device_page._epoch", lambda iso: None)
+    from modules import drift_check
+    state = drift_check._state_file("Lab")
+    with open(state, encoding="utf-8") as fh:
+        good = fh.read()
+
+    def write(text, b):
+        with open(state, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        b.go(served.url("/v2/device/r3?list=Lab"))
+
+    def closed(b):
+        write(good, b)
+
+    def unreadable(b):
+        write('{"last_result": {"drifted_devices": [', b)
+
+    states = [("closed", closed, "document.querySelector('details.drift-open')"),
+              ("open", "document.querySelector('details.drift-open').open = true",
+               "document.querySelector('.drift-parts')"),
+              ("unreadable", unreadable, "document.querySelector('.check-unreadable')")]
+    import app as A
+    with browser.Served(A.app) as served:
+        _d_walk("tab-overview-drift", served, "/v2/device/r3?list=Lab", states,
+                boards=(("C342Drift.dc.html", 1440),),
+                widths=((1440, 1.0), (1280, 1.0), (390, 2.0)))
+
+
 # --- C650 group D: tab intent, tab history, history ---
 
 _D_SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"

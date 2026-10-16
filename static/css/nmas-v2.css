@@ -301,6 +301,41 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .check-danger .check-ico { color: var(--danger); }
 .check-danger strong { color: var(--danger); }
 .check-muted .check-ico { color: var(--ink-3); }
+/* C342: an unreadable record is its own mark and word, never a clean row's or a no-run row's. */
+.check-unread { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 0 6px;
+  border-radius: 8px; border: 1px dashed var(--ink-3); color: var(--ink-2); }
+/* C342 (board C342Drift): the drifted row opens onto its lines, its log and three choices. */
+.drift-open { margin-top: 4px; }
+.drift-open > summary { cursor: pointer; color: var(--accent); font-size: 12.5px; }
+.drift-detail { margin-top: 8px; padding-left: 12px; border-left: 3px solid var(--warn-mark); }
+.drift-parts { display: flex; flex-direction: column; gap: 12px; }
+.drift-k { margin: 0 0 4px; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600; }
+.drift-sum, .drift-note { margin: 0 0 6px; font-size: 12.5px; }
+.drift-note { margin: 4px 0 0; color: var(--ink-2); }
+.drift-hint { border-bottom: 1px dotted var(--ink-3); }
+.drift-diff { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r);
+  padding: 8px 12px; font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-x: auto; }
+.drift-diff > span { display: block; white-space: pre; }
+.drift-diff .dl-ctx { color: var(--ink-2); }
+.drift-diff .dl-add { color: var(--ok); font-weight: 500; }
+.drift-diff .dl-del { color: var(--danger); }
+.drift-diff .dl-hd, .drift-diff .dl-note { color: var(--ink-3); }
+.drift-logs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px;
+  font-size: 12.5px; }
+.drift-logs li { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 8px; }
+.drift-when { color: var(--ink-2); white-space: nowrap; }
+.drift-line { min-width: 0; overflow-wrap: anywhere; }
+.drift-line .mono { font-size: 12px; }
+.drift-choices { display: flex; flex-direction: column; gap: 8px; }
+.drift-choice { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.drift-w { font-weight: 600; font-size: 13px; }
+.drift-act { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.drift-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 700px) {
+  .drift-choice { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .drift-logs li { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
 .stamp { color: inherit; }
 
 .notice { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--r-card); padding: 10px 14px; font-size: 13px;

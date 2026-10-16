@@ -32,6 +32,30 @@ its checks (reachability, alerts, and its credential: how long since Mercury las
 or "never rotated by Mercury", and when its profile's rotation policy next makes it due; see
 [on a schedule](rotate#scheduled)).
 
+**Drift** is the network's last drift run's word on the device: clean at the last run, skipped,
+or how many lines it differs from its golden by. A drift record that cannot be read says
+**unreadable** with the reason: whether the device is at its golden is then not known, which is
+neither clean nor "no drift run recorded". A drifted row opens, in place, onto three parts,
+read when you open it (nothing is read from the device):
+
+- **The lines**: the difference the drift run kept, its golden (`-`) against what it ran (`+`),
+  every line masked as every other screen masks configuration (a value in a secret's position
+  reads `<redacted:…>`; how many lines carry one is said). The run that kept them is named, and
+  when the last run counted a different number of lines the part says the device may have moved
+  since: the drift queue keeps the first run's difference while its item waits. Once the item
+  is withdrawn, closed or expired (48 hours), the lines are not kept, and the part says why.
+- **What its log says**: the device's own lines since its golden was recorded (at most 30 days
+  back, newest first, 50 at most) in which it was configured (`%SYS-5-CONFIG_I`,
+  `%SYS-5-CONFIG_P`, a logged command) or restarted (`%SYS-5-RESTART`, `%SYS-5-RELOAD`), each
+  at the time Mercury received it, the device's own time on hover (a clock IOS marks as not set
+  is said). Loki not answering is "Couldn't load", never "no lines"; the Logs tab has every line.
+- **What to do**: keep it (**Capture**, its golden becomes what it runs), put intent back
+  (**Plan a deploy…**) or remove lines (**Remove lines (Mode B)…**), each opening the device
+  page's own card as the Actions menu does. A deploy is planned against the golden, and a
+  drifted device has moved since it, so capture first: a deploy planned before is refused at
+  apply with nothing sent ([Deploy a change](deploy), [Capture and Save All](capture),
+  [Remove lines (Mode B)](removal)).
+
 ## Intent {#intent}
 
 The device's intent as committed (a file edited on the host but never committed is never

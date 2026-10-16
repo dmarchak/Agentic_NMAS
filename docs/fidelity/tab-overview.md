@@ -24,8 +24,8 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 `tab-overview-folded-board-1440` and `-390` beside `tab-overview-folded-page-1440` and `-390`
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
-Templates compared: templates/v2/_overview.html
-Templates sha256: `6197b317965b812ef3f5edf73f43257cb45ce658b0182f8a00b3cec11881d656`
+Templates compared: templates/v2/_overview.html, templates/v2/_drift_detail.html
+Templates sha256: `7b80cb8910a644780954a4e977632d407d1dea3bb653810de745de17fe1f3a7f`
 
 Compared again 2026-10-16 (C532) after `_overview.html` gained an Intent state row under Last
 measured: the Devices list's state for this device, from the one function both draw
@@ -35,6 +35,18 @@ Intent check compares now; the tab redrawn on golden, intent and template commit
 its onboarding golden, beside the Intent check's live "matches its committed intent") and
 `tab-overview-folded-page-1440` (r6: "departs (-1)" beside the check naming `cdp run`). The
 Intent state region added; no other region's verdict changed.
+
+Compared again 2026-10-16 (C342) after the Drift row gained what it opens onto, built from board
+`C342Drift.dc.html` ("The device page's drift: the lines, the log and three choices", 1440, its
+phone column at 390; drawn by the agent and counted as signed off under the Phase 7 mode, logged
+in docs/STANDING_APPROVAL_LOG.md), with the new fragment `_drift_detail.html` compared with it.
+Shots (`tests/test_board_shots.py::test_tab_overview_drift`, on test_device_v2's lab: the real
+drift run over r2's real configuration with one description and the account's password edited,
+s3's real syslog lines as r3's): `tab-overview-drift-board-C342Drift-1440` beside
+`tab-overview-drift-closed-page-1440`, `-1280`, `-390`, `tab-overview-drift-open-page-1440`,
+`-1280`, `-390` and `tab-overview-drift-unreadable-page-1440`, `-1280`, `-390`. Board (a), at
+golden, is the Checks: Drift row above, unchanged. The Drift regions below were added; no other
+region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -49,6 +61,14 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Intent state (C532) | "None: r3 is at its intent", compared on the capture of 28 min ago, inside The difference; the header's "At intent" chip (the device page's own record) | a row of its own: the state's chip (the Devices list's, the same function), when intent moved and what the measurement read where it has moved, and the words saying the Intent check compares now | **deviation** (log: Device Overview: the recorded intent state is a row of its own (C532)) |
 | Address, model, platform | in the page's header only | also as rows here, each with its source (the golden's Chassis type line, the inventory) | **same** |
 | Checks: Drift | clean, against its golden, and when | the drift record's word for this device, with its time; "no drift run recorded for this list" where none is (the lab) | **same** |
+| Drift, closed (C342, board b) | the row's words and time, and "The lines, what r3's log says, and what to do" to open | the same, the disclosure opening in place and asking once (a read); kept open across a redraw | **same** |
+| Drift, open: the lines (C342, board c) | the counts only on r3 and only in its golden, the run that kept them and whether the last run counted the same; the diff masked; how many lines masked; the golden's sha | the same words and parts; the run's times as ages with the time on hover; the diff drawn whole as the run kept it (its own row below) | **deviation** (log: Device Overview drift: the run's times are ages, the clock time on hover) |
+| Drift, open: the diff's extent (C342, board c) | two hunks, one context line each | the unified diff as the run kept it: its header, three context lines each side, the run's own note when comment lines differ | **deviation** (log: Device Overview drift: the kept diff is drawn whole) |
+| Drift, open: the log (C342, board c) | each configuration or restart line at its receive time, the device's own time on hover; the window's words; Every line from r3: its Logs tab | the same; each receive time with its date | **deviation** (log: Device Overview drift: each log line's receive time carries its date) |
+| Drift, open: what to do (C342, board c) | Keep it: Capture with "How does capture work?"; Put intent back: Plan a deploy… (i); Remove lines: Remove lines (Mode B)… (i); each with its words, capture first for the last two | the same controls, words and links, each opening its card in place of the tab as the Actions menu does, carrying the network | **same** |
+| Drift, a source that cannot answer (C342, board c2) | "Not kept: …" for lines no longer kept; "Couldn't load: …" for Loki | the same, each in its part, the rest drawn; Loki not configured says so in its own words | **same** |
+| Drift, unreadable (C342, board d) | its own mark, the word unreadable, the reason, whether r3 is at its golden not known; nothing to open; apart from never run | the same, the mark the warn icon in grey | **deviation** (log: Device Overview drift: the unreadable mark is the warn icon in grey) |
+| Drift, phone (C342, board e) | one column, the open row's parts stacked, each choice's words under its button, the diff scrolling in its box | the same | **same** |
 | Checks: Freshness | Oxidized holds the approved config | not drawn: Oxidized's freshness reader was switched off 2026-10-08 (`reader_job.RETIRED`) with Oxidized's retirement, so no source exists | **deviation** (log: Device Overview: no Freshness check, its source retired) |
 | Checks: Heartbeat | last seen 3 min ago, its window 12 min | not drawn on the Overview (the heartbeat is the Logs tab's line and Monitoring's alert) | **deviation** (log: Device Overview: no Heartbeat, Last deploy or Neighbours check (a defect, register C650 follow-up)) |
 | Checks: Last deploy | verified 2 days ago, BGP held 180 s, receipt 38 | not drawn | **deviation** (log: Device Overview: no Heartbeat, Last deploy or Neighbours check (a defect, register C650 follow-up)) |

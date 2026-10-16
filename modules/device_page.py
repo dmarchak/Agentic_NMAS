@@ -233,6 +233,148 @@ def model_of(text: str, hostname: str, known: tuple = None) -> tuple:
     return "", f"{basis}, and {seen_why}", False
 
 
+def _drift_last(ref) -> dict:
+    """The network's last drift run, or ``{"_error": why}`` when its record cannot be read."""
+    try:
+        from modules import drift_check
+        state = drift_check._load_state(ref.name) or {}         # noqa: SLF001
+    except Exception as exc:                     # noqa: BLE001
+        return {"_error": f"the drift record could not be read ({type(exc).__name__})"}
+    if drift_check.UNREADABLE in state:
+        return {"_error": f"the drift record could not be read: {state[drift_check.UNREADABLE]}"}
+    return state.get("last_result") or {}
+
+
+def drift_row(ref, host: str) -> dict:
+    """The Overview's Drift row: the network's last run's word on *host*. A drifted row carries
+    ``open``: the row opens onto its lines, its log and the three choices (C342, fetched by
+    `drift_detail` when opened). Unreadable is ``unreadable`` with its reason, drawn apart from
+    a clean run and from a network never checked."""
+    last = _drift_last(ref)
+    if last.get("_error"):
+        return {"name": "Drift", "state": "unknown", "unreadable": True,
+                "text": last["_error"] + f"; whether {host} is at its golden is not known"}
+    if not last:
+        return {"name": "Drift", "state": "unknown", "text": "no drift run recorded for this list"}
+    drifted = {d.get("hostname"): d.get("diff_lines") for d in last.get("drifted_devices") or []}
+    skipped = [s if isinstance(s, str) else (s or {}).get("hostname") for s in last.get("skipped") or []]
+    if host in drifted:
+        return {"name": "Drift", "state": "warn", "at": last.get("timestamp"), "open": True,
+                "text": f"differs from its golden by {drifted[host]} line(s)"}
+    if host in skipped:
+        return {"name": "Drift", "state": "unknown", "at": last.get("timestamp"),
+                "text": "skipped by the last run"}
+    return {"name": "Drift", "state": "ok", "at": last.get("timestamp"),
+            "text": "clean at the last run"}
+
+
+#: The drift item's action type (`drift_check` queues one per drifted device).
+DRIFT_ITEM = "update_golden_config"
+_TRUNCATED = "[...truncated]"
+
+
+def _diff_rows(text: str) -> list:
+    """The kept diff as ``[{kind, text}]``, every line masked on the way out (secrets are
+    masked on the way OUT, C342). A diff line's first character is its mark (``+``, ``-``,
+    space), so the mark is set aside and the line itself masked: a pattern anchored at a
+    line's start (``enable secret``, a ``password`` line) never matches behind a mark."""
+    from modules.redact import redact_text
+
+    rows = []
+    for raw in (text or "").splitlines():
+        if raw.startswith(("--- ", "+++ ", "@@")):
+            rows.append({"kind": "hd", "text": redact_text(raw)})
+        elif raw[:1] in ("+", "-", " "):
+            rows.append({"kind": {"+": "add", "-": "del", " ": "ctx"}[raw[0]],
+                         "text": raw[0] + redact_text(raw[1:]), "masked": None})
+            rows[-1]["masked"] = rows[-1]["text"] != raw
+        else:                                    # a note the run appended ("~ ...")
+            rows.append({"kind": "note", "text": redact_text(raw)})
+    return rows
+
+
+def _kept_diff(ref, host: str, run_lines) -> dict:
+    """What the drift run kept for *host*: the pending drift item's diff (the queue keeps the
+    FIRST run's diff for a device while its item is pending, C337), masked, with its age and
+    whether the last run counted the same; or why none is kept. A read: the queue is read
+    whole and nothing is written (`approval_queue.read_list`)."""
+    from modules import approval_queue as Q
+
+    try:
+        items = Q.read_list(ref)
+    except Exception as exc:                     # noqa: BLE001
+        return {"error": f"the drift queue could not be read ({exc})"}
+    mine = sorted((e for e in items if e.get("action_type") == DRIFT_ITEM
+                   and host in (e.get("device_hostname"), (e.get("action_params") or {}).get("hostname"))),
+                  key=lambda e: float(e.get("created_ts") or 0))
+    now, life = time.time(), Q.EXPIRY_HOURS * 3600
+    pending = [e for e in mine if e.get("status") == "pending"
+               and not (e.get("created_ts") and float(e["created_ts"]) < now - life)]
+    if not pending:
+        last = mine[-1] if mine else None
+        if last is None:
+            why = f"the drift queue holds no item for {host}"
+        elif last.get("status") == "pending" or last.get("status") == "expired":
+            why = (f"the drift item for {host} expired {Q.EXPIRY_HOURS} h after it was "
+                   "queued")
+        elif last.get("status") == "withdrawn":
+            why = (f"the drift item for {host} was withdrawn"
+                   + (f": {last['withdrawn_reason']}" if last.get("withdrawn_reason") else ""))
+        elif last.get("status") == "approved":
+            why = (f"the drift item for {host} was closed"
+                   + (f" ({last['context']})" if last.get("context") else ""))
+        else:
+            why = f"the drift item for {host} is {last.get('status') or 'closed'}"
+        return {"absent": why, "queued_at": _iso(float(last["created_ts"]))
+                if last and last.get("created_ts") else None}
+    item = pending[-1]
+    raw = item.get("diff") or ""
+    cut = raw.rstrip().endswith(_TRUNCATED)
+    body = raw.rstrip()[:-len(_TRUNCATED)].rstrip("\n") if cut else raw
+    rows = _diff_rows(body)
+    same = (not cut and isinstance(run_lines, int) and len(rows) == run_lines)
+    return {"rows": rows, "cut": cut, "queued_at": _iso(float(item.get("created_ts") or 0))
+            if item.get("created_ts") else None,
+            "only_device": sum(1 for r in rows if r["kind"] == "add"),
+            "only_golden": sum(1 for r in rows if r["kind"] == "del"),
+            "masked": sum(1 for r in rows if r.get("masked")),
+            "lines": len(rows), "run_lines": run_lines, "same": same}
+
+
+def _epoch(iso: str):
+    """Epoch seconds from git's ISO time (``%cI``), or None."""
+    import datetime
+
+    try:
+        return datetime.datetime.fromisoformat(iso).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def drift_detail(ref, dev: dict, now: float = None) -> dict:
+    """What the Drift row opens onto (C342, board C342Drift): the lines the drift run kept
+    for the device (masked), what its own log says about when and how it changed since its
+    golden was recorded (Loki: `device_logs.change_lines`, each line at its receive time),
+    and the three choices' context (its network, its golden). A READ of stored records and
+    one Loki ask for one device, on a person's request: nothing reaches the device (the
+    lines are the drift run's; a fresh read is Capture's preview, a job)."""
+    from modules import device_logs
+
+    host = dev.get("hostname", "")
+    last = _drift_last(ref)
+    run_lines = next((d.get("diff_lines") for d in last.get("drifted_devices") or []
+                      if d.get("hostname") == host), None) if not last.get("_error") else None
+    golden = _last_commit(ref.repo_dir, f"golden/{host}.cfg")
+    logs = device_logs.change_lines(dev, since=_epoch(golden.get("at")), now=now)
+    # What the part draws of each line: its receive time, the device's own time and its mark.
+    logs["lines"] = [{k: line.get(k) for k in ("at_iso", "devts", "unsync", "mnemonic", "text")}
+                     for line in logs["lines"]]
+    return {"host": host, "list": ref.name, "run_at": last.get("timestamp"),
+            "diff": _kept_diff(ref, host, run_lines),
+            "golden": {"sha": golden.get("sha", ""), "at": golden.get("at", "")},
+            "logs": logs}
+
+
 def checks(ref, dev: dict) -> list:
     """The checks the Overview draws, each with its state, words, source and
     the time of the value it rests on. An unreadable source is its own row,
@@ -240,28 +382,9 @@ def checks(ref, dev: dict) -> list:
     host, ip = dev.get("hostname"), dev.get("ip")
     out = []
 
-    # Drift: this list's last run.
-    try:
-        from modules import drift_check
-        last = (drift_check._load_state(ref.name) or {}).get("last_result") or {}
-    except Exception as exc:                     # noqa: BLE001
-        last = {"_error": f"the drift record could not be read ({type(exc).__name__})"}
-    if last.get("_error"):
-        out.append({"name": "Drift", "state": "unknown", "text": last["_error"]})
-    elif not last:
-        out.append({"name": "Drift", "state": "unknown", "text": "no drift run recorded for this list"})
-    else:
-        drifted = {d.get("hostname"): d.get("diff_lines") for d in last.get("drifted_devices") or []}
-        skipped = [s if isinstance(s, str) else (s or {}).get("hostname") for s in last.get("skipped") or []]
-        if host in drifted:
-            out.append({"name": "Drift", "state": "warn", "at": last.get("timestamp"),
-                        "text": f"differs from its golden by {drifted[host]} line(s)"})
-        elif host in skipped:
-            out.append({"name": "Drift", "state": "unknown", "at": last.get("timestamp"),
-                        "text": "skipped by the last run"})
-        else:
-            out.append({"name": "Drift", "state": "ok", "at": last.get("timestamp"),
-                        "text": "clean at the last run"})
+    # Drift: this list's last run. An unreadable record is its own state (C342), never "no run"
+    # and never clean: `_load_state` answers ``{UNREADABLE: why}`` for a file it cannot read.
+    out.append(drift_row(ref, host))
 
     # Intent: does the committed golden match what the device SHOULD run (its
     # own intent and what it inherits from the profile)? Drift says device

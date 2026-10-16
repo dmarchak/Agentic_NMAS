@@ -581,6 +581,37 @@ def _rekey(client, _lab, mp):
     assert r.status_code == 200, r.status_code
 
 
+def _drift(client, _lab, _mp):
+    """The Overview's Drift row drifted and opened (C342): the REAL drift run of the lab's
+    network, r3 answering with its golden (r2's real configuration) with one description
+    edited, as tests/test_drift_overview.py runs it; then the Overview and what its row opens
+    onto. Its patches are undone before the next provider."""
+    import pytest
+
+    from modules import drift_check
+    from tests.test_intent_match import R2
+
+    golden = open(R2, encoding="utf-8").read()
+    running = golden.replace(" description P2P to s2 Gi0/2 - RIPng",
+                             " description temp test link", 1)
+    assert running != golden, "r2's capture moved: re-take the edit"
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr("modules.connection.get_persistent_connection",
+                   lambda dev, pool, lock: dev["hostname"])
+        mp.setattr("modules.commands.run_device_command",
+                   lambda conn, cmd: running if conn == "r3" else "")
+        mp.setattr("modules.config_read.check",
+                   lambda text, hostname, previous=None, strict=True: text)
+        result = drift_check.run_drift_check(triggered_by="v2-context", list_name="Lab")
+        drift_check._save_state({"last_check_ts": 1.0, "last_result": result}, "Lab")
+    finally:
+        mp.undo()
+    for url in ("/v2/device/r3/overview?list=Lab", "/v2/device/r3/drift?list=Lab"):
+        r = client.get(url)
+        assert r.status_code == 200, (url, r.status_code)
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
-PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _deploy]
+PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift, _deploy]

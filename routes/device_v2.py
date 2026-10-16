@@ -333,6 +333,25 @@ def overview(name):
     return _strict(render_template("v2/_overview.html", **_overview_ctx(ref, dev)))
 
 
+@bp.route("/device/<name>/drift", methods=["GET"])
+def drift(name):
+    """What the Overview's Drift row opens onto (C342): the lines the drift run kept, masked,
+    the device's own log about its change, and the three choices. A READ, asked when the row
+    is opened; a part it cannot read says so in place."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    try:
+        d = device_page.drift_detail(ref, dev)
+    except Exception as exc:                          # noqa: BLE001
+        from modules.redact import redact_text
+        log.warning("device_v2: drift detail for %s could not be read: %s", name, exc)
+        d = {"host": dev.get("hostname", ""), "list": ref.name,
+             "error": redact_text(f"{type(exc).__name__}: {exc}")}
+    return _strict(render_template("v2/_drift_detail.html", d=d))
+
+
 @bp.route("/device/<name>/monitoring", methods=["GET"])
 def monitoring(name):
     found, refusal = _device_or_404(name)
