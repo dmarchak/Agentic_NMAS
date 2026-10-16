@@ -70,6 +70,18 @@ from the plan, the register and the git history, after the fact, and each says
 where its sources ran out. They are marked *backfilled*. Entries written at
 close are marked *written at close*.
 
+A second backfill, on 2026-10-16 (docs/PHASE7_BURNDOWN.md, item P7-09), wrote
+the sub-tasks that had closed without an entry between 2026-09-30 and
+2026-10-15:
+- P.9's step (d) and P.11;
+- Ask the device with Show commands;
+- Remote set-up, Logs, DHCP, the fleet Monitoring page and its Profile;
+- criterion 13 and the 7.8 removals;
+- the Update operation.
+Each states its selection rule and what could not be recovered. It also records
+why 7.3 and 7.D are not closed. The rule had required each entry at its close,
+and it was not applied for these.
+
 ### Conventions
 
 - **Dates and times.** Git records commit times in local time (UTC−6). The
@@ -96,11 +108,14 @@ close are marked *written at close*.
 |---|---|---|
 | Before the P-items | Phases 0, 1, 2, 3a, 3b, 3c; Stage 2; 3.3; 4C; r6 phase 1; the branch site; Phase 2 (DHCP) | Backfilled below (Part 0) |
 | P-items | P.1 to P.6 | Backfilled below |
-| | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built; P.8's design document written 2026-10-04 (NSOT_P8_DESIGN.md) |
+| | P.7 (alert rules generated and tested), P.8 (per-list settings) | P.7 partly built and P.8 steps 1 to 8 built by 2026-10-05 (NSOT_STAGE7_PLAN.md section 11); no entry written for either. P.8's design document written 2026-10-04 (NSOT_P8_DESIGN.md) |
+| | P.9 step (d) | Backfilled 2026-10-16: built through (d4)'s add path. C290's change path waits on staged run 9, after cutover (D3) |
+| | P.11 (Topology) | Backfilled 2026-10-16: steps 1 and 2 and the operator's reviews. The page's walk is in W2; time travel and the wall are after cutover (D3) |
 | | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28), then a second batch across processes (R6, R3's store half, R11, R12, R14, R15, R16); the audit's medium rows, three decisions and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs; the v2 capture's preview half ran on the host (2026-10-03), its record half awaits a real change; persist and rotate on v2 await their real runs |
-| | 7.4 to 7.10 | Not started |
+| | 7.3 | Open (reread 2026-10-16). Sub-tasks written below: seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, and every device action on v2. Ask the device with Show commands was backfilled 2026-10-16, with where 7.3 stands. Left: Reload's walk (W2); the first real runs of adopt, revert and retry (W3) |
+| | 7.4 to 7.10 | Written: Devices › Save (7.4), Remote set-up (7.5), Logs (C652), DHCP (C529, open), the fleet Monitoring page, Monitoring › Profile (C566), criterion 13 (C738), the 7.8 removals of 2026-10-11 to 15 (open: today's two pages), and the Update operation. 7.6 and 7.7 have entries only where their sub-tasks closed inside 7.D (Settings › Installation, the six cutover blockers). 7.9 was removed at 7.8 (Configure). 7.10 is after cutover (D3) |
+| | 7.D | Open (reread 2026-10-16). Left: C650's board comparisons (20 UNCHECKED), C342's mockup, and P.12's mockups (after cutover) |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
 
@@ -2061,6 +2076,150 @@ prerequisite [git 1215d3e], its delete refused until staged run 9 measures it. C
 03:42 to 03:51 local (UTC-6) on 2026-10-01. Not recoverable: when (d2)'s build began (it
 was written in a session summarised before its first commit, after C290's at 03:21). (d4), the profile's IP SLA policy, waits on staged run 9.
 
+### P.9 — The monitoring profile, step (d): the fleet's Apply and the IP SLA policy
+
+*Backfilled 2026-10-16 from git, the register and the plan. (d4)'s add path closed on
+2026-10-01 at 7be9e90 and no entry was written then; the paragraph above stopped at (d3). The
+change path (C290) is still open, and P.9's remainder is after cutover (the operator's decision
+D3, 2026-10-15, docs/PHASE7_BURNDOWN.md section 1a).*
+
+1. **What it was.** (d1) to (d3) are described above. (d4) is the profile's IP SLA policy. The
+   operator split adding from changing (2026-10-01): a NEW probe is a new operation, merge-only,
+   so it does not wait on staged run 9; changing a running probe is C290's re-create and still
+   does [git 7be9e90].
+2. **How it was implemented.**
+   - `modules/nsot/ip_sla_policy.py` suggests probes from the profile's `ip_sla` policy. It has
+     three forms: peers (from the adjacencies committed intent implies, one probe per shared
+     network), the gateway (from the global static default), or none.
+   - Each probe runs every 60 s by default. One probe every 10 s had cost s3 about 12% of its
+     CPU.
+   - A switch's path to a router is placed on the router. A path an existing probe already
+     measures is skipped.
+   - Each suggestion carries its expected CPU cost: measured on vIOS, "not measured" on IOS-XE.
+   - The ticked suggestions are one intent commit (`Source: ip-sla`, as the person).
+   - A deploy scope, `ip_sla`, sends only IP SLA lines and names the rest of intent as held back.
+   - v2 drew it as Monitoring › IP SLA, linked from Coverage for the devices that run no probe
+     [git 7be9e90].
+3. **Issues encountered.** C297: a scoped plan never drew what its IP SLA re-create replaces. It
+   was found in the function being edited. C290's re-create was (d4)'s prerequisite (a running
+   operation cannot be edited in place). It was built the same night with its delete refused
+   until measured [OPEN_FINDINGS C290, C297].
+4. **How they were resolved.** C297 was fixed in the same commit, with a control that fails it
+   alone. C290 stays open: staged run 9 measures the delete on s1 and r2, and the row closes
+   when s3's golden reads `frequency 60`. C269 (`cdp run` in r1 to r4's own intent) stays the
+   operator's two steps [OPEN_FINDINGS C269, C290].
+5. **Numbers.**
+   - Commits (rule: subjects naming "P.9 (d"): five, 2986b5c (01:50 local, UTC−6, 2026-10-01)
+     to 7be9e90 (10:31). One of the five is the writeup's own (3e2973f). With 1215d3e (C290,
+     03:21) and 460fe67 (the batch confirm clicked in a real browser, 03:46), which the paragraph
+     above cites, the total is seven [git].
+   - Tests, counted as `def test` functions in each file at the commit named:
+     `tests/test_coverage_page.py` 10 at 2986b5c; `tests/test_profile_apply_v2.py` 28 at
+     3f27cb4; `tests/test_ip_sla_policy.py` 32 at 7be9e90, one of them parametrised three ways,
+     which is the commit's "34". (d4) had eleven controls, each failing only its aimed tests
+     [git 7be9e90's message].
+   - Findings: C297, found and fixed. None new in (d1) to (d3).
+   - **Estimate versus actual:** no forecast was made for (d), so nothing is checked.
+6. **Where it left the product.** A new IP SLA probe can be suggested, committed and sent from
+   v2, and nothing is sent to a device that its preview did not draw. Changing a running probe is
+   refused by name until staged run 9. The IP SLA page itself is to be replaced by the monitoring
+   templates (P.12, C322; CUTOVER's redesign routes), and P.12 is also after cutover (D3).
+
+### P.11 — Topology: a page of its own, NetworkX for analysis, the app for drawing
+
+*Backfilled 2026-10-16 from git, the register, docs/TESTING.md and CUTOVER. Steps 1 and 2 closed
+on 2026-10-10, each walked on the host, and no entry was written then. The operator's reviews
+of the page ran to 2026-10-12. C882, from the operator's walk W1, was fixed on 2026-10-15. The
+page's own walk is in W2. Time travel and the wall (board C) are not built: they are after
+cutover (D3).*
+
+1. **What it was.** The operator's requirement (2026-09-30): Topology is its own destination
+   under OBSERVE.
+   - NetworkX computes the graph on the server, and the app draws it natively.
+   - The population is the inventory.
+   - The topology service and today's Topology tab retire, so the graph has one owner.
+   - The research (b217f12), the brief and the mockups (2e6c2ca) came first. The boards were
+     approved on 2026-10-04 (UTC−6; ed57263) [NSOT_PLAN.md P.11; NSOT_TOPOLOGY_BRIEF.md].
+2. **How it was implemented.**
+   - **Step 1, the reader** [git 629c7a8]: `topology-graph`, every 60 s, builds one graph per
+     layer per network.
+     - The physical layer is the union of both ends' LLDP reports. A one-sided link is
+       classified, never dropped.
+     - OSPF, OSPFv3 and BGP come through the Neighbours tab's comparison.
+     - The analyses: islands with why, articulation points and bridges (each naming what it
+       cuts off), and betweenness. They took 1.1 s per layer at 900 devices and 1,355 links on
+       the laptop.
+     - It announces only on a change.
+     - NetworkX joined the lock first [git f829171], after the operator answered the licence
+       question (stop 3).
+   - **Step 2, the page** [git b79e335]: `/v2/topology` is drawn on the server from the
+     reader's stored value, never read per request. A person can mark an island expected, and
+     the declaration is recorded (`modules/topology_expected.py`).
+   - **After the operator's reviews:**
+     - The page was rebuilt to boards TopoDesktop and TopoPhone (C649, C658).
+     - RIP and RIPng come from a reader that asks only the devices whose intent configures them
+       (C662).
+     - Path… reads `show ip cef` hop by hop through the reads engine, as a job (C693, C694).
+     - A shared layout is saved for everyone and recorded (C661). It is placed by a grid-variant
+       spring layout (C670) and has a snap to grid (C691).
+     - A drag is never redrawn under the pointer (C882, through a shared `static/js/nmas_drag.js`).
+3. **Issues encountered** (twenty, all raised against the reader or the page):
+   - C648: the first host run drew an empty BGP layer and every non-participant as an island.
+   - C649: the page was built from the boards' written description and did not match them.
+     That registered C650: nothing compared a built screen with its board.
+   - C653: Mercury's host was drawn as a path between devices.
+   - C654 and C655: the map was too busy and could not be arranged.
+   - C656: a refused write still declared a change, and a result was wiped by its own page.
+   - C658: still not the boards, with the differences recorded as "deviations" instead of
+     fixed.
+   - C659: a link was drawn across r5's icon.
+   - C661: no arranging by people, and enforced bands.
+   - C662: no RIP or RIPng.
+   - C669: the page failed whole on the host ("KeyError: 0"), because the v2 layout store had
+     taken today's page's file name.
+   - C670: the spring layout took 32.8 s at 900 devices.
+   - C671: LLDP is lost on s1's and s2's Gi0/2, an observation.
+   - C687 and C688: two tooltips at once, and a held update's note outside its region.
+   - C691: no snap to grid.
+   - C693 and C694: Path… lit every equal-cost cabling path, not the path packets take, and
+     could not reach r5.
+   - C882: a drag jumped and saved a place the pointer never held.
+   [OPEN_FINDINGS]
+4. **How they were resolved.**
+   - Fifteen were fixed and closed [OPEN_FINDINGS, Closed].
+   - C691 is built but stays open until a drag with the switch on is walked on the host (W2).
+   - C654 and C655 were built (a597479, b8f3f0f) and then **withdrawn by the operator** on
+     seeing the result ("go back to the originally approved topology"). The page went back to
+     board v34, and C656's rule was kept.
+   - C671 stays a LAB observation. Its cause would be measured by changing a port, which is the
+     operator's.
+   - C650 became the fidelity records (`tests/test_board_fidelity.py`, docs/fidelity/), and
+     stays open while signed-off screens remain unchecked.
+5. **Numbers.**
+   - Commits (rule: subjects naming P.11, Topology, or one of the findings above, from f829171
+     at 11:33 local, UTC−6, on 2026-10-10 to 08e5382 at 01:15 on 2026-10-12, excluding 7.8's
+     removal commits): 23. Steps 1 and 2 themselves are seven of them, 11:33 to 13:38 on
+     2026-10-10, about 2 h. C882's fix (a45d899, 2026-10-15) is the 24th [git].
+   - **Not recoverable:** the hours. The 23 commits interleave with Logs, DHCP and the 7.8
+     removals.
+   - Tests (`def test` functions):
+     - at step 2's close (768bb5b): `tests/test_topology_graph.py` 23, `tests/test_topology_v2.py`
+       12 (14 cases), `tests/test_topology_expected.py` 4;
+     - at C882 (a45d899): 45 and 52;
+     - `tests/test_rip_reader.py` 11.
+   - Measured: the physical layer's 11 device pairs are exactly the lab's cabling. The layout at
+     900 devices went from 32.8 s to 2.47 s (C670) [OPEN_FINDINGS C670; git 629c7a8].
+   - **Estimate versus actual.** Section 11 of the plan (2026-10-02) put Topology among the
+     "read-only screens over stored sources", forecast at 4 to 8 commits a screen.
+     - Steps 1 and 2 took 7 commits, inside that forecast.
+     - Matching the boards and the operator's requests took 16 more, about three times the upper
+       end.
+     - The forecast's kind was wrong for what Topology became: expected islands, a shared layout
+       and a hop-by-hop trace that reads devices are writes and device reads.
+6. **Where it left the product.** The fleet map is one reader and one page under OBSERVE. The
+   topology service and today's Topology tab were removed (7.8, 2026-10-12), and Neighbours
+   reads RIP through Topology's adjacency code (C735). The page is walked in W2.
+
 ### P.15 — Several people at once (open): the decided fixes
 
 *Written 2026-10-02, when the last of the fixes the operator ordered closed (R5's per-device
@@ -3155,6 +3314,99 @@ The landing page drew every section 1a source from stored or cached values, each
   (0ccbcc3): Finish now names how many it removed, or that removing them failed.
 - Restore, revert and retry and seed still await their real runs.
 
+#### 7.3 — Ask the device (C547), and Show commands (C548) on the same reads engine
+
+*Backfilled 2026-10-16 from git, the register and docs/TESTING.md. The build closed on
+2026-10-08 (UTC) in four commits numbered "1 of 4" to "4 of 4", so the two screens have one
+entry. Show commands ran across devices on the host by 2026-10-13 (C548 closed 2026-10-15). Ask
+the device was walked by the operator in W1 on 2026-10-16 (C547 closed).*
+
+1. **What it was.** The device page's last tab, Ask the device, was drawn and did nothing, so
+   `/run_command` could not retire (C547). Today's Bulk Operation had no v2 home, so
+   `/bulk_execute` could not retire (C548). Both were raised by the operator on 2026-10-06. The
+   design (docs/NSOT_READS.md, boards A to E with R1 to R5) was signed off on 2026-10-08. It
+   gives one engine to two screens and, later, to the Stage 8 agent.
+2. **How it was implemented.**
+   - **The engine** [git 2999207], `modules/nsot/reads.py`. Each step is declared, and the
+     manual names each one:
+     - refuse first: every command passes the read-only allowlist whole, and `show tech-support`
+       is refused across devices;
+     - hold each device while it is read, and skip a held one by name;
+     - read through the one sender;
+     - mask with `redact_text`;
+     - cap each answer, a cut one keeping the SHA-256 of the whole;
+     - read concurrently, bounded per network;
+     - record every run, refused ones included, as who, when and what.
+   - Three network settings come from measurements: the cap (32 KiB), the workers (6) and the
+     retention (30 days).
+   - **Ask the device** [git 7d0eb12]: one card with one state at a time. A command is checked
+     as it is typed. Run is a job, the card busy on itself and listening for `reads`. The answer
+     is drawn in place, masked, with "Compare with the last answer".
+   - **Show commands** [git 2bb5d83], under OBSERVE:
+     - the devices are chosen by filter, and the run is bound to a fingerprint of the match, so
+       900 names never travel in a form;
+     - the answers are grouped by whole masked answer, the largest group first;
+     - Compare shows two devices side by side;
+     - saved sets are committed in the network's repository;
+     - History has a Show commands kind.
+   - **The agent's read tools** [git b4df3d8] ask the same engine "as the agent, for <person>".
+     Their own sessions, retries and pool went.
+3. **Issues encountered.**
+   - The real-browser shot at phone width found the side-by-side answers running past the card,
+     and two worded help links on one card.
+   - The operator's first real run (2026-10-08) found four more:
+     - C577: every device was compared with r1, a reference nobody chose.
+     - C578: the first group was green and the others amber, so a differing answer read as
+       failing.
+     - C579: an empty answer was a blank box.
+     - C580: OSPF's Dead Time put every device in a group of its own.
+   - The walk W1 found C889 (Compare matches the typed text only) and C890 (one read reported
+     0.41 s).
+4. **How they were resolved.**
+   - The two layout faults were fixed in the build commit.
+   - C577 to C580 were fixed the same day on board C2 (eadc5d4, with boards F and G).
+   - C889 is kept for after cutover, in Phase 8's input normalisation. C890 is UNKNOWN, its
+     measurement named [OPEN_FINDINGS C889, C890].
+   - Not done in the build:
+     - `reads.expire` on a schedule, a decision;
+     - per-platform normalisers, which wait on a measurement;
+     - the heavy-command warning's device half, which waits on a CPU reader;
+     - the agent's other device-reading tools.
+5. **Numbers.**
+   - Commits (rule: subjects naming C547 or C548 from 2026-10-07): four, 2999207 (21:19 local,
+     UTC−6, 2026-10-07) to b4df3d8 (22:22), 63 minutes of commit time. eadc5d4 (C577 to C580)
+     followed the next day. **Not recoverable:** when the build began before its first commit.
+   - Tests (`def test` functions at b4df3d8): `tests/test_reads_engine.py` 15,
+     `tests/test_ask_the_device.py` 11, `tests/test_show_commands.py` 14,
+     `tests/test_agent_reads_through_the_engine.py` 3; 43 in all.
+   - Controls, from the commit messages: the engine's five (refusal, hold, masking, cap and
+     bound, failing 5, 2, 2, 1 and 1 tests), Ask's three, Show commands' four, and the agent's
+     two.
+   - Findings: C547 and C548 closed. C577 to C580 found and fixed. C889 and C890 open.
+   - On the host, C548's condition was 21 runs across more than one device in the reads store,
+     the newest 2026-10-13 across 5 devices [OPEN_FINDINGS C548].
+   - **Estimate versus actual.** No forecast was made for this sub-task. Section 11 of the plan
+     forecast "operations made whole on a screen" from 7.1, about 11 commits each. An engine and
+     two screens took four commits, plus one revision.
+6. **Where it left the product.** One engine answers every read-only question a person or the
+   agent asks a device, refused, held, masked, capped and recorded the same way. Today's bulk
+   commands left at 7.8 (2026-10-15). `/run_command` goes with today's device page (P7-22).
+
+#### 7.3 — Where it stands, 2026-10-16 (not closed)
+
+*Written 2026-10-16 for the burn-down's P7-09, from the plan's section 11, CUTOVER's rows and the
+walk W1's record.* 7.3 does not close yet.
+- **What section 11 listed as left:**
+  - Ask the device: built and walked (above).
+  - Reload (P.14): built 2026-10-10 as one of the six cutover blockers (7.D, below). In W1 it was
+    refused on every C8000v by C881, which is fixed and verified on r6. Its walk is in W2
+    (CUTOVER row 68).
+  - Adopt's screen: built (board G, 2026-10-10), not run on the host. Its first real run is W3.
+- **The real runs still owed:** revert and retry have not run on the host (W3, CUTOVER's seed,
+  revert and retry row). Restore, seed, retire, capture, persist, rotate and deploy are walked
+  (CUTOVER).
+- **7.3 closes** when W2's reload and W3's adopt, revert and retry have run.
+
 ### 7.4 — Devices › Save (C593; the first of 7.4's fleet actions)
 
 1. **What it was.** Today's Devices page offered Save All, a whole-network capture that can earn a baseline. v2 had none (C593, raised by the operator walking C553). Board C ("one Save does both", approved 2026-10-04) made it one operation: each chosen device saves its running config to startup, the startup is read back, and the running config is recorded as its golden, one commit for the batch. Board A gave the Devices page a selection bar whose Actions carry it.
@@ -3165,6 +3417,412 @@ The landing page drew every section 1a source from stored or cached values, each
 6. **Where it left the product.** Devices › Save replaces today's Save All on v2, and a record without a save is offered only by the device page's Capture. Next are the C553 walk on v2 (the operator's) and the capture C596 needs. 7.4's other rows on board A (Edit intent for N, Apply the profile to N) are not drawn until their operations exist on v2.
 
 **Added 2026-10-09: C601.** The operator found the whole network's Save took no baseline. It committed `Source: save`, and the baseline decision wants one only for `save_all` (or two changed goldens), so the claim in point 1 above was false as built; the tests had asserted the commit and every outcome and never a baseline. Fixed the same day: the whole network saved together is `Source: save_all`, judged by measurement as today's Save All is, and the result card says earned or why not.
+
+### 7.5 — History › Remote set-up… (C631)
+
+*Backfilled 2026-10-16 from git and the register. Closed 2026-10-10 (UTC) in one commit. Not
+run on the host: its walk is W2, because a real run writes to GitHub, which is the operator's
+stop.*
+
+1. **What it was.** The remote's set-up had been decided "STAYS, CLI only" through
+   `scripts/nmas-remote`, a command that never existed. The cutover survey found it (C631). Its
+   acts are gated on a verified person, which a host command cannot carry. Without a screen,
+   after 7.8, connecting a remote, the write probe and acknowledging publication would have
+   been requests made by hand.
+2. **How it was implemented.** History's header opens a card, Remote set-up…
+   (`routes/remote_v2.py`, `modules/remote_setup.py`). It calls the same `modules/nsot/remote.py`
+   functions as today's routes:
+   - Connect;
+   - Run the write probe, each check drawn and masked;
+   - What a first push publishes: counts and fingerprints, never a value, with a typed
+     Acknowledge bound to what was shown;
+   - Turn on automatic pushing, offered only after a push.
+   The choice was logged in docs/STANDING_APPROVAL_LOG.md under the Phase 7 operating mode. It
+   revises the operator's decision 8 of 2026-10-05 [git 3cbd74a].
+3. **Issues encountered.**
+   - C636: the set-up took its SSH alias, owner, repository, branch and key path as typed, and
+     the alias reaches `ssh -T` and git's remote URL as an argument.
+   - C637: History's header told a person to "see today's Git tab" for uncommitted paths.
+4. **How they were resolved.**
+   - C636 was fixed at the one home both entry points share. `remote.adopt` refuses a field that
+     is not one token of its shape and writes nothing.
+   - C637 was fixed: the header names the first five uncommitted paths and how many more
+     [OPEN_FINDINGS C636, C637].
+5. **Numbers.** One commit, 3cbd74a (21:26 local, UTC−6, 2026-10-09). 13 tests in
+   `tests/test_remote_setup_v2.py`. Five controls, each failing its test: the typed words not
+   compared, the shown fingerprints not passed, the name not escaped, auto-push offered before a
+   push, and the old words back. Findings: C631, C636 and C637 closed. **Estimate versus
+   actual:** no forecast was made. Against section 11's 7.1-based rate for operations made whole
+   on a screen (about 11 commits each), it took one, over functions that already existed.
+6. **Where it left the product.** Every remote act has a v2 home for a verified person. Today's
+   connect route left at 7.8 (2026-10-15).
+
+### OBSERVE — Logs (C652)
+
+*Backfilled 2026-10-16 from git and the register. Closed 2026-10-10, walked on the host the same
+day.*
+
+1. **What it was.** The operator, 2026-10-10: the sidebar's Logs "should take you to the
+   queryable logs as approved on the canvas mock up, not the app's own logs". The approved view
+   is History › Query's board C, AskLogs ("Syslog by device"). Nothing drew it.
+2. **How it was implemented.**
+   - **Measured first, on the lab's Loki** (read-only): 3,054 lines in 24 h. Counts took 0.45 s
+     for a day, 1.4 s for 7 days and 9.4 s for 30 days, and a 31-day query was refused. So a
+     120-day view asked per request was not an option.
+   - **A reader**, `logs-summary`, counts each UTC day once by device and mnemonic, with the
+     heartbeats left out. It fills the past within the network's `logs_retention_days`, a
+     setting declared for this.
+   - **`/v2/logs`** draws the devices by line count. Its range says what the store can hold. A
+     device opens to its filters, its trend and its lines from Loki, at most 30 days asked,
+     masked.
+   - Mercury's own log stays in Settings › Installation › Diagnostics [git e9d4fbe;
+     OPEN_FINDINGS C652].
+3. **Issues encountered.** The walk on the host found two:
+   - the reader's first read took 71 s, of which the search for the store's first line took
+     38.8 s, walking forward from 760 days back;
+   - Newest showed each device's newest line of any severity in a table of errors.
+4. **How they were resolved.**
+   - The search walks back from now and stops at the first empty window: three queries for the
+     lab [git e112246].
+   - Newest follows the severity asked [git 65503e6].
+   - The lab's Logs retention was set to 730 days through the settings write path.
+5. **Numbers.**
+   - Commits (rule: subjects naming C652): five, 2384c35 (15:27 local, UTC−6, 2026-10-10; the
+     setting declared, in a commit shared with C649's walk) to d429392 (16:22): 55 minutes of
+     commit time.
+   - 14 tests in `tests/test_logs_v2.py`, on real captures of the lab's Loki. Four controls: three
+     in the build and one in the first-line fix. The Newest fix's commit names no control.
+   - docs/fidelity/logs.md compares the page with AskLogs region by region, with 7 deviations
+     logged.
+   - The walk drew 273 lines at error or worse from nine devices over 30 days.
+   - **Estimate versus actual.** Section 11 forecast read-only screens over stored sources at 4
+     to 8 commits each, and 8 to 16 h for about 8 of them, so 1 to 2 h a screen. Logs took four
+     commits after the setting, in under an hour: the low end of the commits and under the
+     hours.
+6. **Where it left the product.** The sidebar's Logs is the queryable syslog by device, counted
+   by a reader, never per request. The saved views of History › Query are not built.
+
+### Source of truth — DHCP on v2 (C529: steps 1, 2, 3 and 5; open)
+
+*Backfilled 2026-10-16 from git and the register. Built and walked on the host 2026-10-10 to 11
+(UTC−6 commit times), with two one-time host steps run and passed. C529 stays open: the confirms
+are a person's, in W2, and four NetBox parts are not built.*
+
+1. **What it was.** DHCP had no v2 screen, and a reservation could only be made by hand on the
+   host (the operator, 2026-10-06). The operator approved boards A to D (canvas v59) and
+   decided:
+   - DHCP moves to SOURCE OF TRUTH;
+   - Mercury writes its own files, applied by `config-reload` and read back;
+   - one careful host step moves every hand-written subnet into those files.
+2. **How it was implemented.**
+   - **Step 1** [git 4f9a699]: a reader asks each network's Kea through its Control Agent every
+     five minutes, both families. The read-only page draws board A (Subnets, Leases,
+     Reservations, Exclusions).
+   - **Step 2** [git ae306de]: a reservation is added, changed and removed. Each is previewed
+     against Kea, confirmed by hash as a verified person with a reason, and written to Mercury's
+     file for its subnet. Kea's own check tests it, then it is reloaded, read back everywhere Kea
+     holds reservations, and committed. A one-time host step gave each subnet its file.
+   - **Step 5** [git 713126c]: the one-time host step that moved Kea's subnets into Mercury's
+     files. It is proved by Kea's configuration, reservations and leases compared before and
+     after, equal in both families.
+   - **Step 3** [git 2fbff36, a62b6f8, 9f9017a]: board C's subnet edit, add and remove, and board
+     D's exclusions and conflicts, through one write path.
+   - **Measured first:** Kea's answer for an address a pool change strands. A throwaway
+     kea-dhcp4 2.4.1 ran in a network namespace, with the live Kea untouched. The holder's
+     renewals go unanswered until its lease expires, which with the lab's 365-day leases is up
+     to a year. Board C's preview says so.
+3. **Issues encountered.**
+   - C660: the reader counted only a subnet's own reservations.
+   - C680: step 2's Update-page check read the pre-move shape and asked again for a step that
+     was done.
+   - C681: each lab host start left another IPv6 lease. It was found while proving step 5.
+   - Kea stores an empty IPv6 hostname as ".".
+   - Beside the build, C679: `nmas-deploy --wait`'s bound was no longer from a measurement.
+4. **How they were resolved.**
+   - C660, C680 and C679 were fixed the same day. C681 closed on 2026-10-13, with the lab hosts'
+     DHCP client pinned to its IAID.
+   - The "." hostname is read as none.
+   - Not built:
+     - NetBox's virtual address beside intent's gateway;
+     - NetBox's VLAN name for a new prefix;
+     - NetBox's addresses as a conflict source;
+     - a conflict's Needs attention row.
+   [OPEN_FINDINGS C529, C660, C679, C680, C681]
+5. **Numbers.**
+   - Commits (rule: subjects naming C529 or C660 from 2026-10-10): 13, 4f9a699 (20:11 local,
+     UTC−6, 2026-10-10) to 67b9f60 (14:45, 2026-10-11). Two of them are shared: 65f9f91 (the
+     overnight morning report) and 787d9b3 (C679).
+   - Host steps: step 2, 7 of 7 PASS (10:58 UTC, 2026-10-11); step 5, 9 of 9 PASS (19:49 UTC, CI
+     #640).
+   - **Not recoverable:** the hours. The span is about 18 h 34 min of wall time, overnight, and
+     interleaved with Topology and 7.8.
+   - Tests (`def test` functions at 67b9f60): `tests/test_dhcp_v2.py` 21,
+     `tests/test_dhcp_reader.py` 9, `tests/test_dhcp_reservations.py` 26,
+     `tests/test_dhcp_subnets.py` 29, `tests/test_dhcp_exclusions.py` 10; 95 in all.
+   - Findings: C660, C679, C680 and C681, all closed.
+   - **Estimate versus actual.** Section 11 counted DHCP among the read-only screens (4 to 8
+     commits). Four days later the operator's decision of 2026-10-06 gave it writes and two host
+     steps. It took 13 commits, about twice the upper end. The forecast was made of a different
+     piece of work, and no re-forecast after the decision is recorded.
+6. **Where it left the product.** Mercury owns every Kea subnet and reservation through its own
+   files, each change previewed, confirmed, read back and recorded. The first real reservation
+   and the confirms are the operator's (W2). Boards L and M (discovery and serial
+   pre-provisioning) and the lease lifetimes (E19) followed as separate items.
+
+### Monitoring on v2 — the fleet page
+
+*Backfilled 2026-10-16 from git, the register and docs/TESTING.md. The page's own commits ran
+2026-10-01 to 2026-10-05. It has no fidelity record yet (`monitoring.html` is in
+`tests/test_board_fidelity.py`'s UNCHECKED).*
+
+1. **What it was.** `/v2/monitoring` first opened on Coverage (P.9 (d1)), and Coverage's cells
+   explained nothing (C286). The brief agreed that Monitoring opens on the fleet's dashboard.
+2. **How it was implemented.**
+   - **The fleet dashboard** [git 651acd2]: the page draws the dashboard that
+     `grafana_fleet_dashboard_uid` names, through the device page's own renderer (one
+     `panel_grid` macro), with a selector over every dashboard Grafana holds. Coverage is a tab
+     beside it.
+   - **Two tabs removed** [git ae26bbd]: IP SLA and Heartbeat were never in a mockup.
+   - **One range control** [git be5932f]: one macro for the fleet page and a device's tab. A
+     refused range is said at the control.
+   - **Per network** (P.8 step 8, boards A to E) [git b2eaa2b, 2d2a7b3, 5db178b]: each page reads
+     its own network's Grafana, carries the network in its address, and says when Grafana is not
+     configured.
+   - **The Profile tab** (C566) is the next entry. Today's Monitoring tab left at 7.8
+     (2026-10-12).
+3. **Issues encountered.**
+   - C286.
+   - C287: the dashboard roles had drifted a second time. The fleet tests used the original
+     device dashboard.
+   - C322: the Heartbeat tab measured inside its GET, 7.5 s, with nothing drawn busy.
+   - C338: the 390 px sweep's findings.
+   - C471: a per-network read of a reader not yet imported answered with Default's store.
+4. **How they were resolved.**
+   - C286, C287 and C471 were fixed.
+   - The roles are now a standing section of CLAUDE.md, and the role tests use each role's real
+     dashboard.
+   - C322 (the heartbeat's re-measure) and C338 stay open [OPEN_FINDINGS].
+5. **Numbers.**
+   - Commits (rule: the six above that change the fleet page's behaviour): 651acd2 (02:32 local,
+     UTC−6, 2026-10-01) to 5db178b (14:27, 2026-10-05). They interleave with other work, so the
+     hours are **not recoverable**.
+   - Tests: `tests/test_fleet_monitoring.py` 12 at 651acd2 and 19 at 2d2a7b3;
+     `tests/test_readers_per_network.py` 18 at 2d2a7b3.
+   - The fleet dashboard's key was absent on the host when read on 2026-10-01. Whether and when
+     it was set there is **not recorded** in the sources read.
+   - **Estimate versus actual:** no forecast was made.
+6. **Where it left the product.** Monitoring opens on each network's fleet dashboard, drawn
+   natively (criterion 8, met). Its board comparison is owed (C650).
+
+### Monitoring › Profile — a profile change carried end to end on v2 (C566)
+
+*Backfilled 2026-10-16 from git and the register. Built 2026-10-07 and walked on the host by the
+operator the next day (UTC).*
+
+1. **What it was.** v2 could not Propose the monitoring profile, could not bring a stale template
+   to the shipped version, and Coverage had no column for the management section. A profile
+   change therefore needed today's pages. The operator's rule: a v2 gap is built first. Boards A
+   to C were signed off on 2026-10-07 (canvas v80).
+2. **How it was implemented.**
+   - **Board C** [git 11280e0]: Coverage's Mgmt sources column, and "not rendered" where the
+     device's template drops a section, one judgement shared with the plan's "not sent".
+   - **Board B** [git 0d45771]: Templates › Bring in the shipped version. It is previewed as each
+     bound device's render with and without the shipped file, and confirmed only if both blobs
+     are the previewed ones. Approvals are revoked, and the write is one path shared with
+     today's editor.
+   - **Board A** [git 882cba5]: Monitoring › Profile, with Propose bound to its hash.
+   - **The row** [git 24d19cc]: Needs attention names a template that drops a profile section. A
+     layout check keeps every table cell inside its card.
+3. **Issues encountered.**
+   - C565, the day's first: a section the template cannot render was reported as "nothing to
+     send".
+   - The walk found two more:
+     - C568: Deploy missing templates refused every device, because an intent committed before
+       a schema key existed did not render;
+     - C569: after the deploy, Coverage and Back to Coverage opened today's page. A v2 failure was
+       redirected to today's index.
+   - **A rule broken:** 882cba5 was committed on top of CI #508's red run. 24d19cc is the forward
+     fix, and C567 (the hang with no stack) was recorded.
+4. **How they were resolved.**
+   - C565, C568 and C569 were fixed the same day.
+   - Measured after the walk, all nine goldens against the record taken before: r2 and s1 each
+     gained exactly two lines, and the other seven were unchanged line for line [OPEN_FINDINGS
+     C566].
+5. **Numbers.**
+   - Commits (rule: subjects naming C565, C566, C568 or C569): seven, 8f4b3ff (15:29 local, UTC−6,
+     2026-10-07) to fb3cf65 (19:59), 4 h 30 min. The four board commits took 45 minutes
+     (16:08 to 16:53).
+   - Tests: `tests/test_monitoring_profile_v2.py` 5, `tests/test_template_bring.py` 10 at 24d19cc,
+     and three more in `tests/test_profile_reaches_the_program.py`.
+   - Controls, from the commit messages: 2, 4, 4 and 1.
+   - Findings: C565, C566, C568 and C569 closed; C567 recorded.
+   - **Estimate versus actual.** No forecast was made. Against section 11's rate for operations
+     made whole on a screen (about 11 commits each), it took seven for two operations (Propose,
+     Bring in), a column and a row.
+6. **Where it left the product.** A profile change goes from Propose to the device on v2. The
+   operator's walk proved it on r2 and s1.
+
+### Stage 7 criterion 13 — every gated control drawn from `may` (C738)
+
+*Backfilled 2026-10-16 from git and the register. Closed 2026-10-13 in one commit.*
+
+1. **What it was.** Criterion 13 asks that every control is drawn from what its viewer may do.
+   Surveyed by parse, 82 controls on v2 sent a mutating request to a person-gated route, across
+   56 templates. 24 of those templates never consulted `may`, and the rest each wired it their
+   own way (C738, the operator's overnight list, item 6).
+2. **How it was implemented.** One Jinja global, `gate(kind)` (`preview_confirm.control_gate`),
+   asks `identity.may`, the gate's own function, once per request and kind. A refused control is
+   drawn disabled with its reason on it, never hidden. Every gated control carries the global with
+   its route's own kind. The change was one scripted edit of 53 templates, each changed line
+   reviewed as its original less the call. The fidelity records of the two board-built screens
+   it touched (Topology, DHCP) were compared again [git 00a650e].
+3. **Issues encountered.** The gate's first run caught two:
+   - a test that pinned a button's exact tag;
+   - an import of `markupsafe`, which the lock does not declare.
+4. **How they were resolved.**
+   - The call brings its own leading space, so a person's page is byte for byte what it was.
+   - The global returns an `__html__` string, so no new import is needed.
+5. **Numbers.**
+   - One commit, 00a650e (01:09 local, UTC−6, 2026-10-13): 62 files, +273 −84.
+   - 6 tests in `tests/test_controls_consult_may.py`, its scan with a floor of 80. Two controls
+     (the save button without its gate, and with another kind) each fail the scan.
+   - Findings: C738 closed.
+   - **Estimate versus actual:** no forecast was made.
+6. **Where it left the product.** No v2 control decides by itself whether its viewer may use it.
+   Every person may in today's mode, so the refused state is drawn only for an unverified or
+   service caller.
+
+### 7.8 — The removals, 2026-10-11 to 15 (open: today's two pages)
+
+*Backfilled 2026-10-16 from git, CUTOVER's "Removed at 7.8" and the register. 7.8 is open: today's
+two pages (`/`, `/device/<ip>`) go last, by rule, once their walks clear (P7-20 to P7-27).*
+
+1. **What it was.** 7.8 removes today's (v1) interface family by family, each only once its v2
+   home is on screen. The survey (2026-10-11) ranked the families: no caller first, then the
+   smallest change.
+2. **How it was implemented.**
+   - Each family left in its own commit and was named in CUTOVER's "Removed at 7.8" with that
+     commit's date.
+   - Each was proved before removal: nothing outside its own page and script named it. Each was
+     checked after: its paths are absent from the url_map.
+   - The families with data took a restore-point tag (`pre-remove/*`) and an archive host step
+     whose read-back must match before anything is deleted (D16).
+   - The tests that drove a property through a removed route were rebased onto the core or the
+     v2 route that does it now.
+   - The AI family went whole (D15, decided 2026-10-05), its shared pieces moved out first.
+3. **Issues encountered.**
+   - Found by the survey:
+     - C683: the backup store was still read by v2's intent editor and bulk intent;
+     - C684: CUTOVER said the pending-restart route had no caller, and one existed.
+   - Found while removing:
+     - C704: v2's Devices has no sortable columns, the operator's choice over drag-reorder;
+     - C714: a CRITICAL row for the topology service, which was retired on purpose;
+     - C632: two template routes still read the backup store;
+     - C798: nothing cleared a finished bulk operation;
+     - C783: code that the AI removal left with no caller;
+     - C784: the README described an earlier product;
+     - C781: the helpers moved out of the AI family were weakly tested (the nightly mutation
+       run).
+   - CI run #691 failed on c638aad. The renderer's removal left `deploy/topology/` empty, while
+     CLAUDE.md still names that path. The gate had passed on the laptop, whose empty folder was
+     still on disk. It was fixed forward (5cdd353): the path check asks git, not the disk.
+4. **How they were resolved.**
+   - C683 and C632 were fixed before Backups left.
+   - C684, C714, C783 and C784 were fixed.
+   - C798 was made moot by the removal.
+   - C704 and C781 are open [OPEN_FINDINGS].
+5. **Numbers.**
+   - Commits (rule: subjects naming 7.8): 30, from 37623c4 (15:59 local, UTC−6, 2026-10-11) to
+     1860533 (02:03, 2026-10-15). By day: 19 on 10-11 and 10-12, 6 on 10-13 (D16), and 5 on
+     10-14 and 10-15 (today's pages, parts 1 to 4, and Backups).
+   - Beside them: the AI family's removal (612e53e, with its two preparatory commits 4364e76 and
+     356bbc4), C714's integration removal (c961204) and one fix forward. 35 in all.
+   - Removed: the 29 entries of CUTOVER's "Removed at 7.8", plus Backups and the AI family, 31.
+   - `KNOWN_UNREACHABLE` fell from 49 to 0 (`tests/test_route_reachability.py`).
+   - Route decorators in `app.py` and `routes/` went from 475 (at 37623c4's parent) to 347 (at
+     1860533). That is a net figure: v2 routes added in the same days are inside it. The AI
+     family alone was 26.
+   - **Not recoverable:** the hours. The commits interleave with DHCP, Topology and the
+     overnight items.
+   - **Estimate versus actual.** Section 11 forecast "about 35 commits for 17" families, from
+     P.4's Jenkins cut, at about 2 commits a family.
+     - The commit count landed on the forecast: 35.
+     - The removals came to 31, not 17: the survey split the families more finely, and PLANNED
+       families became removals as their v2 homes were built.
+     - So about one commit per removal, half the forecast's rate. The two pages that remain are
+       the largest single removal.
+6. **Where it left the product.** What remains of today's interface is `templates/index.html`
+   (its Devices, NetBox and Git tabs), `templates/device.html`, `base.html`, 14 partials and 13
+   generated scripts (docs/PHASE7_BURNDOWN.md, "Where it stands").
+
+### The Update operation — the app updates itself from v2
+
+*Backfilled 2026-10-16 from git, the register and docs/TESTING.md. Built 2026-09-30 (the
+operator's item 7 that day) and changed through 2026-10-15. One requirement is open: C549's
+third, the confirm inside the root-owned updater, waits on the operator's reading of what the
+page drew (docs/PHASE7_BURNDOWN.md section 1c).*
+
+1. **What it was.** Needs attention knew the host was behind and sent a person to a terminal.
+   The operation lets a person update the app from v2, holding no privilege in the app.
+2. **How it was implemented.**
+   - **The app writes only a request file** [git b27c786]. Its preview is the app-pushed
+     reader's stored value, with six gates each refusing by name and the confirm bound to their
+     hash.
+   - **A root-owned updater** (`deploy/update/nmas-update`, started by a path unit) does the
+     rest:
+     - it reads the request without following a link;
+     - it asks CI again through its own copy of the gate;
+     - it runs git only as the service user;
+     - it restarts the app, confirms it by identity, and rolls back a version that is not up
+       within 120 s.
+   - **One lock** is shared with `nmas-deploy` (C242).
+   - **What C436 changed** (2026-10-04): the target is the newest commit CI passed, and the
+     updater lands exactly the commit confirmed.
+   - **C850** (2026-10-16): Update, Stop waiting and "It is done" moved onto the one confirm
+     pattern.
+3. **Issues encountered** [OPEN_FINDINGS]:
+   - **First real runs:**
+     - C243: the first run did nothing and said nothing. The button rendered disabled.
+     - C244: Check again reported the request, not the check.
+     - C246: the second run failed safely at checkout, because `runuser` was run by name.
+     - C251: a host step the release needed was said nowhere a terminal deploy looks.
+   - **After:**
+     - C274: a wait for an older release was drawn above the button.
+     - C279: Stop waiting was drawn with no wait in force.
+     - C285: an update available read as a fault.
+     - C346: one cause made two rows.
+     - C418: a release CI failed was offered.
+     - C436: during a work session nothing could ever be offered.
+     - C472: the host-step ticks were lost on a redraw.
+     - C505: two help links.
+     - C545: the gate sees device holds only.
+     - C549: an update read as vanished, which the records show succeeded.
+     - C795: the page dropped the host steps its checks read done.
+   - Measured beside them, C241: one restart took 574.7 s to confirm, with no cause recorded.
+4. **How they were resolved.**
+   - Every finding above was fixed, except three that are open: C241 (C, minor), C545 (C, measured
+     2026-10-06) and C549 (UNKNOWN).
+   - C472's Update half is fixed. Its row stays open for the other live regions it names.
+   - C243's fix added a static wiring rule over every v2 component, and the first real-browser
+     tests (`tests/browser.py`).
+5. **Numbers.**
+   - Commits (rule: commits touching `modules/update_op.py`, `deploy/update/`,
+     `routes/update.py` or the Update page's templates): 29, b27c786 (14:40 local, UTC−6,
+     2026-09-30) to 8e4d03e (20:19, 2026-10-15). Fourteen of them fell on 2026-09-30, and
+     several are shared with other work [git].
+   - Tests (`def test` functions):
+     - `tests/test_update_button.py`: 38 at b27c786, 51 at 58ae274, 103 at 8e4d03e;
+     - `tests/test_update_target.py`: 12 at 1f9230f (C436);
+     - `tests/test_update_when_ci_passes.py` 39 and `tests/test_update_available.py` 7, at
+       7981132.
+   - Measured for the rollback's bound: 120 restarts, p90 10.2 s, slowest normal 38.9 s
+     [git b27c786].
+   - **Not recorded** in the sources read: which real run first completed an update.
+   - **Estimate versus actual:** no forecast was made. It was the operator's item for the day,
+     outside the plan's forecast.
+6. **Where it left the product.** The host is updated from v2, to exactly the commit a person
+   confirmed and CI passed, by a root-owned program the app cannot alter. The operator's
+   reading of C549's confirm is still owed.
 
 ### 7.D — The GUI redesign (open)
 
@@ -3290,6 +3948,42 @@ The landing page drew every section 1a source from stored or cached values, each
    - **Today's-page links:** the gaps fell from seven to four (`tests/todays_page_links.py`).
    - **Estimate versus actual:** the forecast was 2 to 3 h a blocker, from the F boards' rate. Measured: about 1 h each for networks, NetBox, onboarding and templates, 15 minutes for Capture's reason, and about 1 h 40 min for Reload, the only one with a new device-changing run. That is the basis for forecasting the nice-to-haves, which are screens of the same kind.
 6. **Where it left the product.** Everything today's pages did that v2 must do before cutover is on v2. The four remaining today's-page links (Plan a deploy for several devices, Re-apply, Logs, DHCP) are nice-to-haves or C633. None of it is deployed yet, and none has run against a device or the real NetBox: the walk at the end of Phase 7 does that.
+
+#### 7.D — Where it stands, 2026-10-16 (not closed)
+
+*Written 2026-10-16 for the burn-down's P7-09, from the plan's section 11, the register and
+`tests/test_board_fidelity.py`.* 7.D does not close yet.
+- **Done:** the design of every screen built so far. Step 4's one open tab, Ask the device, is
+  built and walked (7.3, above).
+- **Left:**
+  - **The board comparisons (C650, open).** 20 signed-off screens are still UNCHECKED in
+    `tests/test_board_fidelity.py`. The ceiling is 20, down from 32 when W1's twelve were
+    recorded on 2026-10-16. The burn-down compares them in the walk sittings, and moves the
+    screens no walk touches to Stage 7's tail.
+  - **C342's drift panel:** its mockup is still owed (C, open).
+  - **The monitoring templates' mockups:** P.12, after cutover by D3.
+- **7.D closes** when C650's walked screens are recorded and the remainder is placed in the
+  tail. C342's mockup and P.12's go with whichever stage builds them.
+
+#### Sources read (P.9 (d), P.11, and the Stage 7 entries backfilled 2026-10-16)
+
+- `git log` subjects and bodies, with each entry's selection rule stated in it. Test counts are
+  `def test` functions in each file at the commit named (`git show <sha>:<path>`), which
+  undercounts parametrised cases.
+- OPEN_FINDINGS.md: the rows named, open and closed. docs/TESTING.md: the test files' rows.
+- docs/CUTOVER.md: the family rows and "Removed at 7.8".
+- NSOT_STAGE7_PLAN.md: section 11, its rows and its forecast.
+- docs/PHASE7_BURNDOWN.md: sections 1a to 1c.
+- `tests/test_board_fidelity.py`.
+
+#### Could not recover (the same entries)
+
+- The hours of Topology, DHCP, the 7.8 removals and the fleet Monitoring page. Their commits
+  interleave with each other and with the overnight items, and no start or stop was recorded
+  per item.
+- When the reads engine's build began, before its first commit.
+- Whether and when the fleet dashboard's key was set on the host.
+- Which real run of the Update button first completed an update.
 
 ## Part III. Side campaigns
 
