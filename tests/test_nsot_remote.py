@@ -865,13 +865,15 @@ class TestTheWriteProbeIsNotAReadOnlyCheck:
         self._config(lab)
         monkeypatch.setattr(R, "check_key_scope", lambda c: {"ok": True, "name": "key"})
         monkeypatch.setattr(R, "check_read", lambda c: {"ok": False, "name": "read_works",
-                                                        "detail": "ls-remote failed"})
+                                                        "detail": "ls-remote failed",
+                                                        "fix": "the key cannot read it."})
         monkeypatch.setattr(R, "check_private", lambda c: {"ok": True, "name": "private"})
         monkeypatch.setattr(R, "check_right_repository", lambda *a: {"ok": True, "name": "right"})
         R.verify("default", "/tmp/x", actor="a@b")
         rec = R.load_remote("default")["last_verify"]
         assert (rec["ok"], rec["by"], rec["write_probe"]) == (False, "a@b", False)
-        assert rec["failed"] == [{"name": "read_works", "detail": "ls-remote failed"}]
+        assert rec["failed"] == [{"name": "read_works", "detail": "ls-remote failed",
+                                  "fix": "the key cannot read it."}], "its remedy kept (C1016)"
         assert not R.load_remote("default").get("read_verified_at"), "a failure verifies nothing"
         monkeypatch.setattr(R, "check_read", lambda c: {"ok": True, "name": "read_works"})
         R.verify("default", "/tmp/x", actor="c@d")

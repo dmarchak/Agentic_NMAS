@@ -275,7 +275,9 @@ def _history_remote(ref) -> dict:
         failure = dict(failure, reason=redact_text(str(failure.get("reason") or "")))
     verify = rec.get("last_verify") or None
     if verify:
-        verify = dict(verify, failed=[dict(f, detail=redact_text(str(f.get("detail") or "")))
+        # Each failed check's remedy as the check wrote it (C1016), masked like its detail.
+        verify = dict(verify, failed=[dict(f, detail=redact_text(str(f.get("detail") or "")),
+                                           fix=redact_text(str(f.get("fix") or "")))
                                       for f in verify.get("failed") or []])
     out.update(push_failure=failure, last_verify=verify, dirty_paths=[],
                no_repository=False, unreadable="")

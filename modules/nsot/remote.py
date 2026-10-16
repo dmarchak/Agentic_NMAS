@@ -335,7 +335,11 @@ def check_write_probe(config: dict) -> dict:
     try:
         if _git(work, "init", "-q").returncode != 0:
             return {"ok": False, "name": "write_works",
-                    "detail": "could not create the probe repository"}
+                    "detail": "could not create the probe repository",
+                    "fix": f"git could not make a repository under "
+                           f"{os.path.dirname(work)} on this host: check that git runs "
+                           f"here and that folder is writable, then run the write probe "
+                           f"again."}
         tree = _git(work, "hash-object", "-t", "tree",
                      os.devnull).stdout.strip()
         commit = _git(work, "commit-tree", tree,
@@ -622,10 +626,14 @@ def verify(list_name: str, repo_dir: str = "", actor: str = "",
             if with_write_probe:
                 stored["verified_at"] = stamp
         # EVERY verify's outcome, passed or not (the operator, 2026-10-05): the History card
-        # draws it from here, so any redraw keeps the answer a person asked for.
+        # draws it from here, so any redraw keeps the answer a person asked for. Each failed
+        # check keeps its own remedy, `fix`, as the check wrote it (C1016: it was dropped
+        # here, so History drew a failed privacy check's HTTP codes and never "Make it
+        # private before pushing"); the check is the one place a remedy is defined.
         stored["last_verify"] = {
             "at": stamp, "by": actor, "ok": ok, "write_probe": bool(with_write_probe),
-            "failed": [{"name": c.get("name", ""), "detail": str(c.get("detail") or "")[:200]}
+            "failed": [{"name": c.get("name", ""), "detail": str(c.get("detail") or "")[:200],
+                        "fix": str(c.get("fix") or "")[:400]}
                        for c in checks if not c["ok"]]}
     # Onto the record as stored NOW (R18): the checks take seconds, and a push recorded
     # meanwhile is kept.

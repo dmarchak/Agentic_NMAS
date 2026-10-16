@@ -694,6 +694,10 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .hist-remote-said { margin: 6px 0 0; font-size: 13px; }
 .hist-remote-said.ok { color: var(--ok); }
 .hist-remote-said.bad { color: var(--danger); }
+/* A failed Verify: each failed check, and under it what to do (C1016). */
+.hist-remote-said > p { margin: 0; }
+.hist-remote-failed { margin: 2px 0 0; padding-left: 18px; }
+.hist-remote-failed li { margin: 2px 0; overflow-wrap: anywhere; }
 .hist-filter { display: flex; flex-direction: column; gap: 2px; }
 /* 7.5's identity line under the filters: the count in ink, the kinds as badges. */
 .hist-identity { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }

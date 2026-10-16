@@ -19,7 +19,8 @@ redraws once the remote is read again.
 
 Under it, from the network's own record, so they stay whatever redraws the card:
 - the last failed push: when, who and why. A successful push clears it.
-- the last Verify: when, who, and whether every check passed or which failed.
+- the last Verify: when, who, and whether every check passed or which failed, each failed
+  check with **To fix:** and what to do.
 
 ## Timeline {#timeline}
 

@@ -296,14 +296,18 @@ class TestThePage:
                                   "reason": "auth failed: password hunter2 refused"},
             "last_verify": {"at": "2026-10-05T18:01:00Z", "by": "c@d", "ok": False,
                             "write_probe": False,
-                            "failed": [{"name": "read_works", "detail": "ls-remote failed"}]}})
+                            "failed": [{"name": "read_works", "detail": "ls-remote failed",
+                                        "fix": "the key hunter2 cannot read the repository."}]}})
         html = client.get("/v2/history/remote").get_data(as_text=True)
         failed = re.search(r'<p class="hist-remote-said bad" id="remote-push-failed">(.*?)</p>',
                            html, re.S).group(1)
         assert "Last push failed" in failed and "(a@b)" in failed and "auth failed" in failed
-        assert "hunter2" not in html, "masked on the way out"
-        verify = re.search(r'id="remote-last-verify">(.*?)</p>', html, re.S).group(1)
-        assert "failed: read_works (ls-remote failed)" in verify and "(c@d)" in verify
+        assert "hunter2" not in html, "masked on the way out, the remedy too (C1016)"
+        verify = re.search(r'id="remote-last-verify">(.*?)</div>', html, re.S).group(1)
+        assert "failed:" in verify and "(c@d)" in verify
+        assert re.search(r"<li><code>read_works</code> \(ls-remote failed\)<br>"
+                         r"<strong>To fix:</strong> the key <redacted> cannot read", verify.replace(
+                             "&lt;", "<").replace("&gt;", ">")), verify
 
 
 class TestTheClientWords:
@@ -321,6 +325,12 @@ class TestTheClientWords:
         bad = self._outcome("verify", 200, {"ok": False, "checks": [
             {"ok": True, "name": "read_works"}, {"ok": False, "name": "is_private", "detail": "public"}]})
         assert bad["words"] == "Not verified: is_private (public)"
+        # Each failed check's own remedy, as the check wrote it (C1016).
+        fixed = self._outcome("verify", 200, {"ok": False, "checks": [
+            {"ok": False, "name": "is_private", "detail": "public",
+             "fix": "it is PUBLIC. Make it private before pushing."}]})
+        assert fixed["words"] == ("Not verified: is_private (public). To fix: it is PUBLIC. "
+                                  "Make it private before pushing.")
         assert self._outcome("push", 200, {"ok": True}) == {"ok": True, "words": "Pushed"}
         assert self._outcome("push", 403, {"error": "a person is required"})["words"] == \
             "Not pushed: a person is required"

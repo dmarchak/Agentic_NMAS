@@ -207,3 +207,285 @@ def test_history_s_header_names_uncommitted_paths_never_today_s_git_tab(networks
     assert got["dirty_paths"] == [line[3:] for line in status][:5]
     _r, page = _get(networks, "/v2/history")
     assert "today&#39;s Git tab" not in page and "today's Git tab" not in page
+
+
+# ---------------------------------------------------------------------------
+# C1016: a failed Verify draws each failed check's own remedy
+# ---------------------------------------------------------------------------
+
+DEFAULT = dict(GOOD, list="Default", ssh_alias="github-default", repo="default-config",
+               key_path="~/.ssh/default_deploy")
+TARGET = f"{DEFAULT['owner']}/{DEFAULT['repo']}"
+
+
+def _fake_github(monkeypatch, *, greeting=f"Hi {TARGET}! You've successfully authenticated.",
+                 ls_remote=(0, ""), origin="", have_commit=True, ancestor=True, root="",
+                 http=None, init=0, commit="c0ffee", push=0):
+    """The edges `remote`'s checks reach, as tests/test_nsot_remote.py fakes them: `_run`
+    answering each command by what it is (ssh's greeting, ls-remote, the application's own
+    origin, git's ancestry, the probe repository's commands), and `urlopen` answering the two
+    anonymous endpoints by code (``http``; an exception makes the probe unrunnable). The
+    defaults are a remote every check passes."""
+    import types
+    import urllib.error
+    import urllib.request
+
+    def P(stdout="", stderr="", rc=0):
+        return types.SimpleNamespace(stdout=stdout, stderr=stderr, returncode=rc)
+
+    def run(args, **_kw):
+        a = list(args)
+        if a[0] == "ssh":
+            return P(greeting, "", 1)
+        sub = a[3] if a[:2] == ["git", "-C"] else a[1]
+        if sub == "ls-remote":
+            rc, refs = ls_remote
+            return P(refs, "" if rc == 0 else "fatal: could not read", rc)
+        if sub == "remote":
+            return P(origin)
+        if sub == "cat-file":
+            return P(rc=0 if have_commit else 1)
+        if sub == "merge-base":
+            return P(rc=0 if ancestor else 1)
+        if sub == "rev-list":
+            return P(root)
+        if sub == "init":
+            return P(rc=init)
+        if sub == "hash-object":
+            return P("4b825dc642cb6eb9a060e54bf8d69288fbee4904\n")
+        if sub == "commit-tree":
+            return P(commit, "" if commit else "fatal: empty ident name not allowed")
+        if sub == "push":
+            return P("", "" if push == 0 else "ERROR: The key you are authenticating with has "
+                                                  "been marked as read only.", push)
+        raise AssertionError(f"an unexpected command: {a}")
+
+    monkeypatch.setattr(R, "_run", run)
+    codes = http or {"api": 404, "git": 401}
+
+    def urlopen(request, **_kw):
+        url = request.full_url
+        code = codes["api" if "api.github.com" in url else "git"]
+        if isinstance(code, Exception):
+            raise code
+        if code == 200:
+            return type("R", (), {"status": 200, "__enter__": lambda s: s,
+                                  "__exit__": lambda *a: False})()
+        raise urllib.error.HTTPError(url, code, "no", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+
+def _failed_with_fixes(card: str) -> dict:
+    """{check name: the "To fix:" words drawn under it} from a card's failed checks, parsed
+    from the list items, unescaped."""
+    from html import unescape
+
+    return {name: unescape(fix).strip() for name, fix in re.findall(
+        r"<li>(?:(?!</li>).)*?<code>(\w+)</code>(?:(?!</li>).)*?"
+        r"<strong>To fix:</strong> ((?:(?!</li>).)*?)(?:</span>)?\s*</li>", card)}
+
+
+def _history_verify(n) -> str:
+    _r, html = _get(n, "/v2/history/remote")
+    m = re.search(r'<div class="hist-remote-said bad" id="remote-last-verify">.*?</div>', html)
+    assert m, "History draws no failed Verify"
+    return m.group(0)
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+# Every way a read-only check Verify runs can fail, each produced through the real check by
+# the fakes above, with the words its remedy must carry (written here, independent of the
+# check's code) and how to call the check alone for the whole remedy.
+READ_ONLY_FAILURES = {
+    "no greeting": (dict(greeting="Permission denied (publickey)."),
+                    "key_authenticates", "does not authenticate. Check the key at",
+                    lambda c, n: R.check_key_scope(c)),
+    "an account-wide key": (dict(greeting="Hi acct! You've successfully authenticated."),
+                            "key_is_repo_scoped", "Use a deploy key scoped to acct/default-config",
+                            lambda c, n: R.check_key_scope(c)),
+    "another repository's key": (dict(greeting="Hi acct/some-other-repo! hello"),
+                                 "key_matches_repo", "scoped to acct/some-other-repo",
+                                 lambda c, n: R.check_key_scope(c)),
+    "an unreadable repository": (dict(ls_remote=(128, "")), "read_works",
+                                 "cannot read the repository", lambda c, n: R.check_read(c)),
+    "a public repository": (dict(http={"api": 200, "git": 401}), "repository_is_private",
+                            "Make it private before pushing", lambda c, n: R.check_private(c)),
+    "an unrunnable privacy probe": (dict(http={"api": OSError("no dns"), "git": 401}),
+                                    "repository_is_private", "Refusing: an unverified privacy",
+                                    lambda c, n: R.check_private(c)),
+    "this application's repository": (dict(origin=f"https://github.com/{TARGET}.git"),
+                                      "not_the_application_repo", "own source repository",
+                                      lambda c, n: R.check_right_repository(c, "Default", n)),
+    "an unrelated history": (dict(ls_remote=(0, "deadbeef" * 5 + "\trefs/heads/main\n"),
+                                  have_commit=False, ancestor=False, root="cafebabe\n"),
+                             "repository_is_empty_or_related", "Pushing would interleave",
+                             lambda c, n: R.check_right_repository(c, "Default", n)),
+}
+
+
+class TestAFailedVerifyDrawsItsFix:
+    """C1016: a failed Verify drew each check's name and detail and never its remedy, so a
+    PUBLIC repository's card showed two HTTP codes and not "Make it private before pushing".
+    Through the real routes and templates: POST /remote/verify (History's button), then
+    History's remote card as any redraw draws it, from the list's record."""
+
+    def _verify(self, n, monkeypatch, fakes):
+        _r, html = _post(n, f"{BASE}/connect", DEFAULT)
+        assert "Connected:" in html, html
+        _fake_github(monkeypatch, **fakes)
+        r = n["client"].post("/remote/verify", json={"list": "Default"})
+        assert r.status_code == 200
+        return r.get_json()
+
+    @pytest.mark.parametrize("case", sorted(READ_ONLY_FAILURES))
+    def test_each_read_only_check_s_failure_draws_its_remedy(self, networks, monkeypatch,
+                                                             case):
+        fakes, name, words, alone = READ_ONLY_FAILURES[case]
+        out = self._verify(networks, monkeypatch, fakes)
+        assert [c["name"] for c in out["checks"] if not c["ok"]] == [name], out
+        config = R.load_remote("Default")
+        expected = alone(config, R.os.path.join(networks["dir"], "lists", "default",
+                                                "config_repo")).get("fix") or ""
+        assert words in expected, "the check's own remedy carries the words"
+        drawn = _failed_with_fixes(_history_verify(networks))
+        assert drawn == {name: _norm(expected)}, drawn
+        # The button's own words carry it too, before the redraw replaces them.
+        js = _failed_words(out)
+        assert f"{name}" in js and f"To fix: {expected}" in js
+
+    def test_another_list_s_repository_and_an_unreadable_list_draw_their_remedies(
+            self, networks, monkeypatch):
+        """not_another_lists_repo's two failures: a list already pushing there, and a list
+        whose record cannot be read."""
+        assert R.adopt("Branch", ssh_alias="b", owner="acct", repo="default-config")["ok"]
+        self._verify(networks, monkeypatch, {})
+        drawn = _failed_with_fixes(_history_verify(networks))
+        assert list(drawn) == ["not_another_lists_repo"]
+        assert "already pushes to acct/default-config. Two networks must not share" in \
+            drawn["not_another_lists_repo"]
+        (networks["dir"] / "lists" / "branch" / "remote.json").write_text("{not json",
+                                                                         encoding="utf-8")
+        networks["client"].post("/remote/verify", json={"list": "Default"})
+        drawn = _failed_with_fixes(_history_verify(networks))
+        assert "Whether it already pushes to acct/default-config cannot be told" in \
+            drawn["not_another_lists_repo"]
+
+
+def _failed_words(out: dict) -> str:
+    """History's button's words for Verify's JSON answer, from the shipped script."""
+    import dukpy
+    from tests.payload_render import shipped
+
+    return dukpy.evaljs("var window = {};\n" + shipped("nmas_history.js")
+                        + f"\nwindow.NMAS_HISTORY.remoteOutcome('verify', 200, "
+                        + json.dumps(out) + ").words")
+
+
+WRITE_FAILURES = {
+    "no probe repository": (dict(init=1), "check that git runs here"),
+    "no probe commit": (dict(commit=""), "a local fault, not a permission one"),
+    "a read-only key": (dict(push=1), "Enable 'Allow write access'"),
+}
+
+
+class TestOneDefinitionOfEachRemedy:
+    """Each remedy is defined once, where its check decides the failure (`fix` in
+    `modules/nsot/remote.py`), and both cards draw that string: the set-up card's write probe
+    and History's last Verify."""
+
+    @pytest.mark.parametrize("case", sorted(WRITE_FAILURES))
+    def test_both_cards_draw_the_write_probe_s_remedy_from_the_check(self, networks,
+                                                                     monkeypatch, case):
+        fakes, words = WRITE_FAILURES[case]
+        _r, html = _post(networks, f"{BASE}/connect", DEFAULT)
+        _fake_github(monkeypatch, **fakes)
+        expected = _norm(R.check_write_probe(R.load_remote("Default")).get("fix") or "")
+        assert words in expected
+        _r, setup = _post(networks, f"{BASE}/write-probe", {"list": "Default"})
+        on_setup = _failed_with_fixes(setup)
+        on_history = _failed_with_fixes(_history_verify(networks))
+        assert on_setup == on_history == {"write_works": expected}, (on_setup, on_history)
+
+    def test_every_failed_check_carries_a_remedy(self):
+        """The shape, parsed: every result `remote.py` builds with ``"ok": False`` and a check
+        ``"name"`` carries a ``"fix"``, so no failure can reach a card without one."""
+        found = _failing_check_results(_source("modules/nsot/remote.py"))
+        assert len(found) >= 13, f"the scan found {len(found)}: too few to be the checks"
+        missing = [line for line, has_fix in found if not has_fix]
+        assert not missing, f"failed checks with no remedy at remote.py lines {missing}"
+
+    def test_the_scan_finds_a_failure_without_a_remedy(self):
+        planted = 'def check_x(c):\n    return {"ok": False, "name": "x", "detail": "d"}\n'
+        assert _failing_check_results(planted) == [(2, False)]
+
+    def test_no_remedy_is_written_a_second_time(self):
+        """Anchored on each remedy's literal words in `remote.py`, parsed and cut at its
+        sentence and clause marks: none appears in a template, a script, a route or another
+        module, where a second copy would drift."""
+        import os
+
+        from tests import source_index
+
+        home = os.path.join(source_index.ROOT, "modules", "nsot", "remote.py")
+        phrases = _remedy_phrases(_source(home))
+        assert "Make it private before pushing" in phrases, phrases
+        assert len(phrases) >= 15, phrases
+        others = [p for p in source_index.tracked("templates", suffix=".html")
+                  + source_index.tracked("static/js", suffix=".js", recursive=False)
+                  + source_index.tracked("routes", suffix=".py", recursive=False)
+                  + source_index.tracked("modules", "app.py", suffix=".py")
+                  if p != home]
+        assert len(others) > 100 and any(p.endswith("_history_remote.html") for p in others)
+        twice = {(phrase, path) for path in others for phrase in phrases
+                 if phrase in _source(path)}
+        assert not twice, twice
+
+    def test_the_phrase_scan_finds_a_planted_copy(self):
+        planted = ('def check_x(c):\n    return {"ok": False, "name": "x", '
+                   '"fix": f"{c} is public. Make it private before pushing."}\n')
+        assert "Make it private before pushing" in _remedy_phrases(planted)
+
+
+def _source(path: str) -> str:
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _remedy_phrases(source: str) -> set:
+    """The literal words of every ``"fix"`` value in *source*, parsed, cut at sentence and
+    clause marks, each piece of 20 characters or more."""
+    import ast
+
+    phrases = set()
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Dict):
+            continue
+        for k, v in zip(node.keys, node.values):
+            if not (isinstance(k, ast.Constant) and k.value == "fix"):
+                continue
+            for part in ast.walk(v):
+                if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                    for piece in re.split(r"[.:;?!(),—]", part.value):
+                        if len(piece.strip()) >= 20:
+                            phrases.add(piece.strip())
+    return phrases
+
+
+def _failing_check_results(source: str) -> list:
+    """[(line, carries a fix)] for each dict literal with ``"ok": False`` and a ``"name"``."""
+    import ast
+
+    out = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Dict):
+            continue
+        keys = {k.value: v for k, v in zip(node.keys, node.values)
+                if isinstance(k, ast.Constant)}
+        ok = keys.get("ok")
+        if "name" in keys and isinstance(ok, ast.Constant) and ok.value is False:
+            out.append((node.lineno, "fix" in keys))
+    return sorted(out)

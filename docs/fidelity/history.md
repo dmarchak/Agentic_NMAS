@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `225bbe33a2f41a8cebfa26634216b245488d6af7dcf5a6e540363df9feb14050`
+Templates sha256: `3430aaeaa23b3f79a8d67a92b5467a6870bab538f714b5c3f01152854ddf6203`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -60,6 +60,15 @@ shot: board D draws a network with a repository. The rows rendered from `timelin
 was and as it is, in five states each with and without a device (the layout test's widest
 timeline, a device's restart row, errors with a cut list, empty, empty with no repository
 key): every byte the same. No region's verdict changed.
+
+Compared again 2026-10-16 (C1016) after `_history_remote.html`'s failed Verify gained each
+failed check's remedy: the line "Last verified <when> (<who>): failed:" and under it one item
+per failed check, its name and detail and "To fix:" with the check's own remedy (the words the
+set-up card's write probe draws), where it was one line of names and details. The state is on
+no board or shot: board D draws the remote line in sync, and no shot has a failed Verify. The
+header rendered from the template as it was and as it is, in six states (in sync and clean, 7
+paths uncommitted, ahead with a failed push, Verify passed read-only, Verify passed with the
+write probe, no remote): every byte the same. No region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

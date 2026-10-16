@@ -75,7 +75,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C944, C945~~ | ~~the unused `git init`; History's header~~ **done** (see Checked off) | | | | |
 | ~~C957~~ | ~~History's timeline says "no repository yet"~~ **done** (see Checked off) | | | | |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
-| C1016 | a failed Verify of the remote draws no fix for the failed check (`repository_is_private`): draw each check's own remedy from where remedies are defined | B (security); before W2's step 22 | S | — | — |
+| ~~C1016~~ | ~~a failed Verify of the remote draws no fix~~ **done** (B, security; each failed check's own fix drawn under "To fix:") | | | | |
 | C1010 | Mercury's prefixes in NetBox carry no site (4.6.9 ignores `site`): send the scope fields, backfill Mercury's 3 through the sync, a read-back test; survey the other fields 4.2+ renamed | the operator's B, "fix now"; deployed and verified on the host | S | — | — |
 | ~~C954~~ | ~~v2's "stop tracking" for a NetBox removal~~ **done, built** (the operator's decision; see Checked off) | | | | |
 | ~~C955~~ | ~~Retire's preview counts live approvals only~~ **done** (see Checked off) | | | | |

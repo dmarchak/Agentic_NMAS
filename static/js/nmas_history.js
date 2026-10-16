@@ -18,9 +18,11 @@
     if (kind === 'verify') {
       var checks = body.checks || [];
       if (body.ok) return {ok: true, words: 'Verified: ' + checks.length + ' of ' + checks.length + ' checks passed'};
+      /* Each failed check with its own remedy, the `fix` its check wrote (C1016). */
       var bad = [];
       for (var i = 0; i < checks.length; i++) {
-        if (!checks[i].ok) bad.push(checks[i].name + (checks[i].detail ? ' (' + checks[i].detail + ')' : ''));
+        if (!checks[i].ok) bad.push(checks[i].name + (checks[i].detail ? ' (' + checks[i].detail + ')' : '')
+                                    + (checks[i].fix ? '. To fix: ' + checks[i].fix : ''));
       }
       return {ok: false, words: body.error ? body.error : 'Not verified: ' + bad.join('; ')};
     }

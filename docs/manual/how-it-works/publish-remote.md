@@ -130,9 +130,13 @@ it, because it is how you decide whether to publish.
 4. **It is the right repository**: not this application's own, not another list's, and empty
    or sharing this list's history.
 
-Read: the remote, four ways. Sent: nothing. Recorded: when all four pass, the time of the
-read-only verification. The button says **Verified: 4 of 4 checks passed**, or names each
-check that failed. The write probe is not among these; it is on the Remote card.
+Read: the remote, four ways. Sent: nothing. Recorded: every Verify's outcome, who asked, and
+each failed check with its remedy; when all four pass, the time of the read-only
+verification. The button says **Verified: 4 of 4 checks passed**, or names each check that
+failed with **To fix:** and what to do, the same words the write probe draws (a public
+repository, for example: "Make it private before pushing"). History's card keeps that answer
+under the remote line, so a redraw does not lose it. The write probe is not among these; it is
+on the Remote card.
 
 ## What the reader measures {#reader}
 

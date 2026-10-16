@@ -39,9 +39,18 @@
   {%- if remote.push_failure %}
   <p class="hist-remote-said bad" id="remote-push-failed">Last push failed {{ stamp(remote.push_failure.at) }}{% if remote.push_failure.by %} ({{ remote.push_failure.by }}){% endif %}: {{ remote.push_failure.reason or 'no reason recorded' }}</p>
   {%- endif %}
+  {#- A failed check is drawn with its own remedy, the `fix` its check wrote (C1016), as the
+      set-up card's write probe draws it. -#}
   {%- if remote.last_verify %}{% set v = remote.last_verify %}
-  <p class="hist-remote-said {{ 'ok' if v.ok else 'bad' }}" id="remote-last-verify">Last verified {{ stamp(v.at) }}{% if v.by %} ({{ v.by }}){% endif %}:
-    {%- if v.ok %} every check passed{% if not v.write_probe %} (the read-only checks; the write probe is a separate step){% endif %}.
-    {%- else %} failed: {% for f in v.failed %}{{ f.name }}{% if f.detail %} ({{ f.detail }}){% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</p>
+  {%- if v.ok %}
+  <p class="hist-remote-said ok" id="remote-last-verify">Last verified {{ stamp(v.at) }}{% if v.by %} ({{ v.by }}){% endif %}: every check passed{% if not v.write_probe %} (the read-only checks; the write probe is a separate step){% endif %}.</p>
+  {%- else %}
+  <div class="hist-remote-said bad" id="remote-last-verify"><p>Last verified {{ stamp(v.at) }}{% if v.by %} ({{ v.by }}){% endif %}: failed:</p>
+    <ul class="hist-remote-failed">
+      {%- for f in v.failed %}
+      <li><code>{{ f.name }}</code>{% if f.detail %} ({{ f.detail }}){% endif %}{% if f.fix %}<br><strong>To fix:</strong> {{ f.fix }}{% endif %}</li>
+      {%- endfor %}
+    </ul></div>
+  {%- endif %}
   {%- endif %}
 </section>
