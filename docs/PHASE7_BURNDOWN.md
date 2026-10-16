@@ -53,7 +53,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | Item | Op | State |
 |---|---|---|
 | C794: Loki's own `detected_level` off (scripts/host-steps/c794-loki-detected-level-off.sh) | H | owed on the Update page; the operator's to run (their request) |
-| C553: `clab-sync.path` on the lab host | H | not installed (read 2026-10-15); the agent may run it under the mode |
+| ~~C553: `clab-sync.path`~~ | H | **installed** on the NMAS host (read 2026-10-16: active, enabled, identical to a fresh render); the walk showing the sync start remains (W2) |
 | C549 (3): the Update confirm, in the root-owned updater | H | waits on the operator's reading of what the page drew (the row) |
 | C663: move `scripts/nmas-host` | CLAUDE.md paste | the operator's file |
 | C296: batch preview empty bullets | — | recommended: close as not reproduced |
@@ -77,7 +77,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
 | C954 | v2's "stop tracking" for a NetBox removal: build it or retire it (CUTOVER row 60) | the operator's decision, then its test | S–M | — | the operator |
 | ~~C955~~ | ~~Retire's preview counts live approvals only~~ **done** (see Checked off) | | | | |
-| C906 | Mercury checks each device's SSH host key: **BUILT** (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key, NETCONF too) | deployed; every device's key kept on the host; the operator's next redeploy declares `--new-host-keys` | M | — | the redeploy's flag (the operator) |
+| ~~C906~~ | ~~Mercury checks each device's SSH host key~~ **done: deployed 1222a3f102, all nine devices' keys kept on the host** (see Checked off); the next redeploy declares `--new-host-keys` (lab/REDEPLOY.md) | | | | |
 | ~~C940~~ | ~~onboarding at a reused address~~ **done** (see Checked off) | | | | |
 | **Harness: the checks on v2** | | | | | |
 | ~~P7-04~~ | ~~Criterion 4, payloads drawn on v2~~ **done** (see Checked off); its gaps are C867 to C869 below | | | | |
@@ -259,6 +259,15 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **Deployed 1222a3f102 (2026-10-16 17:01Z) and every commit since f208e393 verified on the
+  host:** no v2 page answers 5xx; C906 all nine devices' keys kept on first contact, the five
+  routers' equal to the night's fingerprints (closed); C931 Default's repository is its own
+  top; C487 the drift state is Default's own; C532 nine devices at intent, one state; C705's
+  key gone from the schema; C765's module absent; C342 r2's Drift detail draws; C537 the chip
+  answers htmx and is absent while idle; C987 three lock folders indexed (C995, C, found:
+  `probe-r1` is not its own slug); C988 the holds read, `/health/operations` 200. C881 (A1)
+  verified again on r6 with this release: a fresh Reload… preview, no reload sent, passes
+  "running against startup" and every gate. C553's unit found installed.
 - **C988 done** (B, overnight): only an absent holds store is "nothing held"; any other error
   raises naming the path, and every caller fails closed (Update refused, the wait kept, the list
   delete refused, the chip red, busy treated as held). C991 (B, the operator's decision:
