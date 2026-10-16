@@ -149,9 +149,12 @@ blocks cutover or is a security issue (B).
   (`docs/SITES_DESIGN.md`), C1004 flows (`docs/FLOWS_DESIGN.md`), C1005 the kit fleet
   (`docs/EDGE_ARCHITECTURE.md`, Phase 10 or later), C1006 the IPAM import
   (`docs/IPAM_IMPORT_DESIGN.md`), C1007 bring-up from provider documents
-  (`docs/BRINGUP_FROM_DOCUMENTS.md`), C1008 offline operation (`docs/OFFLINE_OPERATION.md`).
-  Found with them and measured next, read-only: C1009 and C1010 (UNKNOWN, NetBox writes); at
-  the tail, C1011 and C1012.
+  (`docs/BRINGUP_FROM_DOCUMENTS.md`), C1008 offline operation (`docs/OFFLINE_OPERATION.md`);
+  C1013, Phase 8 offline-first and the disconnected operator assistant (`docs/PHASE8_PLAN.md`
+  section 12).
+  Found with them, measured the same day read-only and now C at the tail: C1009 (no device
+  outside its network's site) and C1010 (Mercury's prefixes carry no site at all); with them,
+  C1011 and C1012.
 - **Stage 7's tail, after cutover (the operator, 2026-10-15), each with its reason:**
   - C450 and P7-08b, large-fleet Devices and Coverage (summary, groups, filter; `EXCUSED` 4):
     large-fleet scale, consistent with D3's 7.10; C704 (sortable columns) with them, since it

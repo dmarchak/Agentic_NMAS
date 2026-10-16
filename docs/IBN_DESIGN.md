@@ -479,7 +479,10 @@ must be testable, reproducible and explainable without a model.
   refuses the next call, by name). Which providers is the operator's (section 9). **A
   built-in local model ships with Mercury** (the operator, 2026-10-14), so AI works out of the
   box, offline and air-gapped, beside the paid providers. It runs behind the same gateway and
-  rules (the subsection below; docs/PHASE8_PLAN.md section 10).
+  rules (the subsection below; docs/PHASE8_PLAN.md section 10). *Amended 2026-10-16 (the
+  operator, offline-first; docs/PHASE8_PLAN.md section 12.1):* every AI feature must work fully
+  on the local profile with no network. A paid provider is an optional profile that may improve
+  a result, and never the core path's dependency.
 - **Masking before every prompt:** the prompt is masked by C733's keyed-digest index (every
   secret Mercury holds, matched by digest) and by `redact_text`'s positional rules. C745's
   unknown credential shapes are closed first.
@@ -516,7 +519,10 @@ must be testable, reproducible and explainable without a model.
 
 **PROPOSED, pending the operator:**
 - **Engine:** llama.cpp's `llama-server`, as its own service, bound to 127.0.0.1, with no
-  egress. It is served through the OpenAI-compatible adapter as "Local (built-in)".
+  egress. It is served through the OpenAI-compatible adapter as "Local (built-in)". *Note,
+  2026-10-16:* the operator's offline-first rule names `llama-server` as the local profile. That
+  reading decides the engine, and is the operator's to confirm (docs/PHASE8_PLAN.md section 12.5,
+  gap 10). The items below stay proposed.
 - **Delivery:**
   - never in the repository or an image;
   - the first-run wizard downloads a pinned file (sha256, and `model.sig` for Granite), or
@@ -670,7 +676,7 @@ deploy; rollback by revert; and a faster pre-approved path for urgent actions.
 | 1 | **Per-policy authority: yes.** |
 | 2 | **Auto-fix classes: management-plane configuration only** (logging hosts, SNMP, NTP, IP SLA probes); never routing, interface state, ACLs, AAA or credentials, or s3 and the management path (section 3's table, as decided). |
 | 3 | **The rails: approved**, with `docs/PHASE8_PLAN.md` section 7's changes (below). |
-| 4 | **Providers: Anthropic first, behind the provider-agnostic client;** a local model optional, later. *Amended 2026-10-14: a built-in local model ships with Mercury, US-origin only (below).* |
+| 4 | **Providers: Anthropic first, behind the provider-agnostic client;** a local model optional, later. *Amended 2026-10-14: a built-in local model ships with Mercury, US-origin only (below).* *Amended 2026-10-16 (the operator, offline-first; docs/PHASE8_PLAN.md section 12.1): the local profile is the core path every feature must pass on; Anthropic and any other hosted provider are optional profiles.* |
 | 5 | **Translate's first scope: management-plane services** (logging, SNMP, NTP and the like), not a routing statement. |
 | 6 | **Batfish: yes, for routing-affecting changes;** Mercury's own IOS checks stay for every change. Its licence (Apache-2.0) is accepted with the decision. |
 | 7 | **Loki's `severity` label and a stable trap label: yes, as a host step.** |
@@ -689,6 +695,8 @@ deploy; rollback by revert; and a faster pre-approved path for urgent actions.
   shape, per-model profiles as data, a curated list of only the models that passed the eval.
 - Pending: the engine, delivery, tiers, reliability, isolation and release gate
   (docs/PHASE8_PLAN.md section 9, decision 12); each candidate model's licence (decision 13).
+  *2026-10-16:* the engine is named by the operator's offline-first rule, a reading for the
+  operator to confirm (docs/PHASE8_PLAN.md section 12.5, gap 10).
 
 The numbers the operator changed (all in `docs/PHASE8_PLAN.md` section 7):
 - **No self-reported confidence gate** (the ≥ 0.9 gate is dropped); catalog selection is gated on
@@ -859,8 +867,11 @@ asking, decided before the model is called. Each item below is a decision for th
 (section 9, decision 13).
 
 1. **Roles from sign-in.** Today the access proxy's verified identity (Cloudflare Access); for
-   the public release, OIDC (Authentik, Active Directory groups). Each role is scoped by
-   network, site and device role:
+   the public release, OIDC (Authentik, Active Directory groups). *Amended 2026-10-16:*
+   Cloudflare Access needs the internet to sign anyone in (docs/OFFLINE_OPERATION.md section
+   1.1). The operator decided Keycloak per instance (docs/OFFLINE_OPERATION.md section 1.3), so
+   roles come from its token's groups, offline too (docs/PHASE8_PLAN.md section 12.5, gap 9).
+   Each role is scoped by network, site and device role:
    - **viewer:** read-only questions;
    - **engineer:** reads, and changes to intent through `propose_*` drafts;
    - **admin / approver:** approves changes, policies and remediation classes.
@@ -946,7 +957,11 @@ do nothing the person could not already do.** Each item is a decision for the op
    - and the request must come from a trusted peer (the tunnel connector's address; no
      localhost exemption). A forged key id is told apart from an unreachable key set.
 
-   OIDC replaces it for the public release. The person's role is looked up server-side BEFORE
+   OIDC replaces it for the public release. *Amended 2026-10-16:* that assertion cannot be
+   verified with no internet (docs/OFFLINE_OPERATION.md section 1.1). The operator decided
+   Keycloak per instance, whose signing keys are local (docs/OFFLINE_OPERATION.md sections 1.3
+   and 1.8). The item stands as "identity only from the instance's verified sign-in"
+   (docs/PHASE8_PLAN.md section 12.5, gap 9). The person's role is looked up server-side BEFORE
    the model is called (section 12). Nothing in prompt text affects identity or permissions.
 2. **The tool set is fixed per role before the call,** and every tool re-checks, at execution
    and as the person, that `may(permission, scope)` holds. A denial is audited (who, which

@@ -36,6 +36,8 @@ the deterministic core unchanged and Mercury fully usable offline.**
    rule already removes).
 3. **Offline parity.** Every workflow works without AI. AI is an accelerator, never a
    dependency: with the gateway off, every screen and operation works and says AI is off.
+   *Added 2026-10-16 (the operator): **offline-first.** Every AI feature also works fully on the
+   local profile with no network, and a cloud model is never a dependency (section 12).*
 4. **No open-ended assistant.** There is no general chat. AI appears only inside a named
    workflow, with specific inputs, a schema-constrained output and a defined action for each
    result.
@@ -52,7 +54,8 @@ the deterministic core unchanged and Mercury fully usable offline.**
 6. **The model is an untrusted component** (IBN_DESIGN section 13; the operator's decision 14).
    A fully compromised model can do nothing the person could not already do:
    - identity only from the verified Access assertion (verified server-side today:
-     `identity.identify`);
+     `identity.identify`); *2026-10-16: offline, from the instance's own Keycloak, by the
+     operator's decision (section 12.5, gap 9);*
    - tools fixed per role before the call, each re-checking `may` as the person and auditing
      denials;
    - approval only by confirm;
@@ -137,7 +140,7 @@ service (CLAUDE.md), so CI cannot call a model. Evals run two ways:
 
 | Sub-phase | Builds | Exit criteria (measured on the host) |
 |---|---|---|
-| **8.0 Foundations** (no user-facing AI; **E18, the records database, is its prerequisite**, decision 8) | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (provider-agnostic, Anthropic first, exact model versions pinned; a per-network switch, cost caps; the built-in local model behind the same gateway, section 10); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
+| **8.0 Foundations** (no user-facing AI; **E18, the records database, is its prerequisite**, decision 8) | roles from sign-in and `TOOLS_BY_ROLE` (IBN_DESIGN section 12), every tool bound on behalf of the asking person and filtered to their scope; the change-request queue and its board (viewer asks → flagged → filed → approver's queue → approve or decline); the security row for repeated or injection-like attempts; separation of duties per network; the gateway (provider-agnostic, Anthropic first, exact model versions pinned; a per-network switch, cost caps; the built-in local model behind the same gateway, section 10; *2026-10-16, offline-first: the local profile first and required, a hosted provider optional, section 12*); the prompt registry; the schema library; the MCP tool server; tracing (OpenTelemetry GenAI conventions); masking through C733's index (C745's shapes closed first); the eval harness (recorded in CI, live on the host) with a golden dataset from real lab incidents; the cost dashboard | the red-team set (IBN_DESIGN section 13: "I'm an admin", "ignore previous instructions", role-play, data-borne injections, link exfiltration) passes with zero unauthorised tool calls, proposals and external links, recorded in CI and live on the host; every tool re-checks `may` as the person and a denial is audited (shown by test); a viewer's session holds no `propose_*` tool and a misclassified change still changes nothing (shown by test); every tool call recorded as the asking person; no tool approves or reveals; the gateway refuses at a cap; masking shown on planted secrets of every shape; every tool read-only but `propose_*` (shown by test); a recorded and a live eval run end to end; the dashboard shows a test feature's cost per use |
 | **8.1 Assure** | the deterministic verifier model and compliance status first (history on E18); then, where cards justify it, natural-language questions → PromQL or LogQL read back by the E3/F3 builder before running, and alert correlation over deterministically grouped alerts | the verifiers' statuses on the host match the readers'; each AI feature past its observe threshold, or killed |
 | **8.2 Respond, observe** | the golden state rule's maintainer (IBN_DESIGN section 11): no baseline, no autonomy; convergence of the deviating lines only; the operational catalog; holds, windows and Capture-or-Revert for attributed drift; its state on Needs attention and each device page (a board first). All in observe mode ("would have converged"), on the deterministic policy engine (rotation's pattern). Plus AI root-cause proposals for novel deviations, approved by a person; incident record drafts; AI classification of deliberate vs unexplained drift, with evidence | each class's false-positive rate measured over its period; no convergence would have touched a secret line, the management path or routing; root-cause proposals' confirmed-true rate measured |
 | **8.3 Respond, enabled per class** | convergence and catalog classes enabled once observe mode meets the threshold; a verified action re-earns the baseline; AI selection only among actions that leave the golden state unchanged, if decision 9 is confirmed, after its own observe period | each enabled class within its rate and with no rail breached for its period |
@@ -197,6 +200,11 @@ Each card may refine its compared fields with its eval; the card scan (11.1's te
 them. Feature 1's pattern extends to Mercury's records (changes, rotations, approvals) and NetBox's
 inventory: a builder's query read back before running, with the same bounds (11.9).
 
+**Candidates 11 to 14** (added 2026-10-16, PROPOSED): document extraction, plain question to Tier
+1 reads, what is wrong in plain words, and a playbook proposal at the kit, with their cards in
+section 12.3. Every candidate, these and the ten above, must pass offline-first (section 12.1);
+section 12.2 audits the ten.
+
 **Removed by rule 2 (deterministic first), not built:**
 - **Change summaries:** a deterministic diff summary (sections and line counts per device)
   answers it.
@@ -214,7 +222,7 @@ inventory: a builder's query read back before running, with the same bounds (11.
 | The gateway | AI off per network by default; a global monthly cap of $50 and $25 per network; per-feature monthly caps of $5 (features 1, 2, 3, 4, 8) and $10 (features 5, 6, 7, 9, 10) | lab scale; a cap reached refuses the next call, by name |
 | Per-use budgets | as section 6's table, enforced by the gateway (a use over its token budget stops and reports) | each card's measured minimum context times 1.5 will replace the table's estimate |
 | Agent loops | at most 8 tool calls by default, 60 s wall time and the feature's token budget per run; a feature may raise the 8 only where its eval shows the need (decided 2026-10-13) | a run that hits a cap stops and reports |
-| Model tiers | small by default (Claude Haiku 5.5); medium (Claude Sonnet 5.5) only where the eval shows the small tier misses its target; large (Claude Opus 5.5) never by default; **exact model versions pinned, and any model change re-runs the full eval suite** (decided 2026-10-13); Anthropic first behind the provider-agnostic client; the built-in local model (section 10) offered beside it, only where it passed the eval, its score shown beside the hosted one | the smallest that meets the target |
+| Model tiers | small by default (Claude Haiku 5.5); medium (Claude Sonnet 5.5) only where the eval shows the small tier misses its target; large (Claude Opus 5.5) never by default; **exact model versions pinned, and any model change re-runs the full eval suite** (decided 2026-10-13); Anthropic first behind the provider-agnostic client; the built-in local model (section 10) offered beside it, only where it passed the eval, its score shown beside the hosted one. *Amended 2026-10-16 (the operator, offline-first, section 12.1): every feature must pass on the local profile; a hosted tier is optional and may improve a result, never the only working path* | the smallest that meets the target |
 | Evals | at least 30 golden cases per feature before observe mode; labelled replayed or synthesised cases allowed, with **at least 10 real cases per feature** (decided 2026-10-13); a prompt or model change merges only when the live score stays at or above target | measured, not argued |
 | Observe mode | at least 30 days AND the card's minimum uses (50 for frequent features, 20 for rare) | enough uses to measure a rate |
 | Kill | below the card's floor after its uses, or cost per accepted output above 2× budget, or (for features 4 and 7) one out-of-scope result reaching execution or confirm | removed, not left running |
@@ -319,6 +327,13 @@ inventory: a builder's query read back before running, with the same bounds (11.
     2026-10-15" below).
 15. **11.3's proposed detail:** a field marked `stated` whose words do not occur in the request
     is drawn as inferred, by code.
+16. **Section 12 (added 2026-10-16):**
+    - what each feature failing offline-first needs (12.2);
+    - candidates 11 to 14, their cards and ranking (12.3);
+    - the grounding design (12.4);
+    - the resolutions of gaps 1 to 8 (12.5);
+    - the reading that 12.1 decides 10.4's engine (gap 10);
+    - the stricter reading of "never a dependency" for a host that admits no local tier (12.1).
 
 ### Decided, 2026-10-13 (the operator)
 
@@ -433,6 +448,10 @@ the same OpenAI-compatible adapter as a hosted OpenAI-compatible provider (10.3)
 - Every adapter imports tools and prompts from the one registry (test 2, 10.9).
 
 ### 10.4 The engine and model delivery (PROPOSED, pending the operator)
+
+*Note, 2026-10-16:* the operator's offline-first rule names `llama-server` as the local profile
+(section 12.1). That reading decides the engine; the operator is to confirm it (section 12.5, gap
+10). The delivery below stays PROPOSED. A kit has only the import path.
 
 - **Engine:** llama.cpp's `llama-server`, as its own service or container, bound to 127.0.0.1,
   with no egress. Mercury reaches it through the OpenAI-compatible adapter as "Local (built-in)".
@@ -748,3 +767,426 @@ pattern sets the consistency floor, 11.1):
   Jenkins' absence by `tests/test_no_jenkins.py`; constrained decoding by 8.0's adapter tests
   (every call passes a schema). Planted cases: a card with no pattern; an `if confidence` in a
   validator.
+
+## 12. Offline-first, and the disconnected operator assistant (the operator, 2026-10-16)
+
+**The operator's request, 2026-10-16.** Documents only: nothing is built, no model was downloaded
+and no device was touched. It sits here, after sections 10 and 11, because that is where this plan
+adds a dated rule that crosses every feature; non-negotiable 3 (section 2) points here. No
+existing section number moves.
+
+**What is whose.** 12.1's rule and the requirements in 12.3, 12.4 and 12.7 are the operator's
+words (**DECIDED**, 2026-10-16). Everything else here (the audit's needs, the four cards, the
+gaps' resolutions, the numbers) is this plan's proposal. It is **PROPOSED** until the operator
+approves it, as section 9's rule requires of every number before any code (decision 16). The
+one exception is gap 9, which the operator's own decision of 2026-10-16 answers (12.5).
+
+**The six design notes it draws on**, all FUTURE and written 2026-10-16:
+- [EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) sets the case: a Mercury instance per fly-away
+  kit, offline by design, run by minimally trained kit operators.
+- [BRINGUP_FROM_DOCUMENTS.md](BRINGUP_FROM_DOCUMENTS.md) is the document extraction, and its
+  section 16 names the gaps that 12.5 decides.
+- [OFFLINE_OPERATION.md](OFFLINE_OPERATION.md) covers identity, updates and packages with no
+  internet.
+- [IPAM_IMPORT_DESIGN.md](IPAM_IMPORT_DESIGN.md) holds the staged plan that extracted values are
+  compared with. Its only AI use is BRINGUP_FROM_DOCUMENTS section 15's optional column-mapping
+  proposal, a headquarters use of feature 11's engine.
+- [SITES_DESIGN.md](SITES_DESIGN.md) and [FLOWS_DESIGN.md](FLOWS_DESIGN.md) plan no AI feature.
+
+Words used here, as in those notes: the **kit operator** is the person on site, **headquarters
+NetOps** builds the standard every kit runs, and **the operator** is this project's.
+
+### 12.1 The rule: offline-first is an acceptance rule for all of Phase 8 (DECIDED, the operator, 2026-10-16)
+
+- **Every AI feature works fully with the local profile and no network.** The local profile is
+  llama.cpp's `llama-server` reached through 10.3's OpenAI-compatible adapter, serving a US-origin
+  model only (10.2). Its file is in place by 10.4's import path, and the server is bound to
+  127.0.0.1 with no egress (10.4).
+- **A cloud model is an optional profile that may improve a result.** It is never a dependency
+  of the core path.
+- **Each feature's tests run against the local profile.** CI calls no model (section 4), so this
+  means two things:
+  - each feature's recorded responses include runs recorded from a local-profile model;
+  - its live evals on the host run through the local profile.
+- **A feature whose only working path is a cloud model does not pass.**
+
+**How it sits with non-negotiable 3.** Offline parity says every workflow works with AI off.
+Offline-first says every AI feature works with the network off. Both hold:
+- with AI off, the deterministic path answers;
+- with AI on and no network, the local profile answers.
+
+**What it changes for every card (section 3):**
+- The Tier and Budgets rows name a local candidate, its quantisation, and a context that fits the
+  local profile's context (8k by default, section 7, PROPOSED).
+- The latency budget is one the local profile meets on named reference hardware:
+  - the lab's NMAS host (10.8) for the lab;
+  - a representative kit compute unit for a kit (12.6).
+- The Success metric, the consistency floor (11.1) and the red-team gate (10.6) are met on the
+  local profile. A hosted score is shown beside the local one, never instead of it.
+- A feature that misses on the local profile is not built, on any profile.
+
+**A host that admits no local tier** runs with AI off (10.5), whatever hosted profile is
+configured: a hosted profile improves an answer the local profile already gives, and never
+stands in for it. *PROPOSED: this is the stricter reading of "never a dependency"; the operator
+may relax it per installation.*
+
+### 12.2 Item 1's audit: every feature this plan names, against the rule
+
+**Read 2026-10-16, against sections 2 to 11 as written.** One failure is common to every AI
+feature in section 6, and the plan as written allows it:
+- section 7 makes the hosted tiers the default ("small by default (Claude Haiku 5.5)"; "Anthropic
+  first"), and offers the local model "beside it, only where it passed";
+- 10.6 turns a card on per model.
+
+So a feature may turn on having passed on a hosted model alone, and no card is required to pass
+on the local profile. **Every row marked "fails" fails on that ground, plus what its own row
+adds.** The local-profile figures that matter:
+- the local profile's context is 8k tokens by default (section 7, PROPOSED);
+- the lab host fits the small tier only (10.8, estimated);
+- 10.8 estimates tens of seconds for a 3,000-token prompt on the small tier, where section 6's
+  shortest budgets are 3 to 5 s. Speed is unmeasured.
+
+Every feature's inputs and tools are already local:
+- Prometheus, Loki, NetBox and the config repository are on-premises services
+  (OFFLINE_OPERATION section 5);
+- E18 is on loopback;
+- no tool reaches the internet (non-negotiable 6).
+
+**The data path is therefore never what fails. The model path and the budgets are.**
+
+| Feature (where planned) | In and out vs the local context (8k) | Latency budget vs 10.8's estimate | Today, as written | What it needs to pass |
+|---|---|---|---|---|
+| 1. Natural language → PromQL or LogQL (section 6; 8.1), and its extension to Mercury's records and NetBox inventory (11.9) | 2k + 200: fits | 3 s: far below the estimate | **fails** | a latency budget the local small tier meets, measured (12.6, measurement 1); its eval, consistency and red-team runs on the local profile |
+| 2. Alert correlation (8.1) | 3k + 400: fits | 5 s: far below | **fails** | the same as 1 |
+| 3. Incident record draft (8.2) | 5k + 600: fits | 15 s: unmeasured | **fails** | a measured local latency; its eval on the local profile |
+| 4. AI catalog selection (8.3) | 3k + 300: fits | 5 s: far below | **fails** | the same as 1. Section 7's 95% agreement over 100 selections is measured on the local model itself; a hosted model's agreement does not carry over |
+| 5. Root-cause proposal (8.2) | 15k + 1.5k: **exceeds** | 60 s: unmeasured | **fails** | one of: a measured minimum context (section 4) small enough to fit; or a larger local context, its memory measured against section 7's 20% reserve. Plus a local candidate meeting 50% confirmed-true. Its tier is "medium" (a hosted Sonnet), and the large local tier does not fit the lab host (10.8) |
+| 6. A proposed pipeline check (8.2) | 8k + 1k: **exceeds** | 30 s: unmeasured | **fails** | the same as 5 |
+| 7. Natural language → intent (8.5) | 10k + 1.5k: **exceeds** (its few-shot examples count) | 20 s: unmeasured | **fails** | the same as 5 |
+| 8. A verifier draft (8.1) | 4k + 800: fits | 15 s: unmeasured | **fails** | a measured local latency; its eval on the local profile |
+| 9. Inferring higher-level intent (8.5) | 20k + 2k: **exceeds** | 60 s: unmeasured | **fails** | the device set split deterministically (by role or site) so each part fits the local context, or the larger local context as in 5 |
+| 10. Template draft for a new platform (8.5) | 30k + 6k: **far exceeds** | 120 s: unmeasured | **fails** | drafted section by section, since the round trip already compares section by section (`roundtrip.compare`, IBN_DESIGN section 1), each section within the local context; or a large local tier with a long context, which the lab host cannot admit (10.8) |
+| AI classification of deliberate vs unexplained drift (section 5, 8.2) | no card | no card | **fails** (no card, so not built: section 3) | a card, written offline-first from the start |
+| 8.0's gateway | n/a | n/a | **fails** ("Anthropic first") | the local profile as the first and required profile; each hosted adapter optional and off unless configured; 11.8's busy and degraded states naming the local model's own states (not admitted, unloaded, one request at a time) |
+| 8.0's eval harness and red-team set | n/a | n/a | **fails** ("live on the host" names no profile) | the live runs, and the exit criteria's red-team run, made through the local profile, with hosted runs optional beside them |
+| 8.0's prompt registry, schema library, MCP tool server, masking, cost dashboard | n/a | n/a | passes | none. The dashboard shows zero cost per token for the local profile, and latency and the one-at-a-time queue as its binding budgets (section 7) |
+| 8.0's tracing (OpenTelemetry GenAI conventions) | n/a | n/a | passes, if exported on-premises | an on-premises collector or none; never an external exporter (non-negotiable 6) |
+| 10.7's evaluation | n/a | n/a | passes | none: it already runs every candidate locally through `llama-server` |
+| Voice (11.6; deferred, IBN_DESIGN decision 11) | n/a | n/a | not assessable: deferred, and no speech-to-text engine is named | when it returns, a local speech-to-text model under 10.2's origin rule and its licence read, or voice off with no network |
+| The optional injection classifier (IBN_DESIGN section 13, item 5; approved with decision 14) | n/a | n/a | not assessable: no engine named | deterministic, or a local model under 10.2; never a hosted call |
+| The deterministic work: verifiers, the Respond engine, Activate, the intent compiler, Batfish, the single-node twin (8.1 to 8.5) | no model | no model | passes | none for this rule. Batfish's and the twin's images reach an offline host as OFFLINE_OPERATION section 4 says |
+| 11. Document extraction (new; 12.3) | measured per node region (BRINGUP_FROM_DOCUMENTS section 6.1) | from the kit measurement | passes by design: local by necessity and by rule (BRINGUP_FROM_DOCUMENTS section 6) | its measurements (12.6) |
+| 12 to 14. The disconnected operator assistant (new; 12.3) | estimated within 8k (12.3) | target 30 s | passes by design | its measurements (12.6) |
+
+**The list for the operator: the features that fail offline-first today, and what each needs.**
+
+Common to all of them:
+- (a) a card naming a local candidate, its quantisation and a context that fits the local
+  profile;
+- (b) its eval, consistency floor and red-team gate met on the local profile, on reference
+  hardware;
+- (c) not built if (b) fails, rather than offered on a hosted model alone.
+
+Beyond that:
+1. **Natural language → PromQL or LogQL** (with 11.9's records and inventory) **and alert
+   correlation:** budgets of 3 and 5 s, against 10.8's estimate of tens of seconds on the small
+   tier. Each needs a latency budget re-derived from the local measurement.
+2. **Incident record draft and verifier draft:** they fit the context, but their 15 s budgets are
+   unmeasured locally. Each needs the local measurement.
+3. **AI catalog selection:** a 5 s budget, as 1. Its 95% agreement must also be measured on the
+   local model; a hosted model's agreement does not carry over.
+4. **Root-cause proposal, the proposed pipeline check and natural language → intent:** 15k, 8k and
+   10k tokens of input exceed the local 8k context, and they are tiered "medium" (hosted). Each
+   needs one of: a measured minimum context that fits; or a larger local context with its memory
+   measured against the 20% reserve and a large-tier host (the lab host needs 32 GiB).
+5. **Inferring higher-level intent:** 20k tokens. It needs the device set split
+   deterministically into parts that each fit, or the larger context as in 4.
+6. **Template draft for a new platform:** 30k + 6k tokens. It needs drafting section by section
+   (the round trip already compares by section), or a large local tier with a long context.
+7. **AI drift classification (8.2):** it has no card. It needs one, offline-first from the start.
+8. **8.0's gateway:** "Anthropic first". The local profile must be first and required, and
+   hosted adapters optional and off unless configured.
+9. **8.0's eval harness and red-team exit criteria:** their live runs must name the local profile.
+
+### 12.3 The disconnected operator assistant: section 11.12's three patterns, no new one
+
+**The case** ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) sections 1 and 11):
+- minimally trained kit operators, offline, bringing a satellite link up;
+- the reduced, plain-language mode, selected by the token's group;
+- "Call headquarters with code <X>" wherever a decision is not theirs.
+
+**It is not a general assistant (non-negotiable 4).** It is four named workflows, each with its
+own input, a schema-constrained output and a defined action for each result. Each is reached from
+a screen the reduced mode already draws: status, Needs attention, and the guided bring-up's
+stepper. Each needs a board and the operator's sign-off (section 8). There is no chat box.
+
+**The kit operator's tools,** fixed by role before any call (non-negotiable 5; IBN_DESIGN section
+12):
+- the agent's Tier 1 reads: [NSOT_READS.md](NSOT_READS.md) section 11's reads, plus `verify` alone
+  of the extras (`modules/nsot/reads.py` `EXTRAS["agent"]`), and never `send log`;
+- retrieval from the signed runbook store (12.4);
+- one proposing tool, `propose_playbook`.
+
+There is no `propose_intent_change`, and nothing that approves or reveals. The kit operator never
+holds `approve` (OFFLINE_OPERATION section 1.7).
+
+**Translator, two workflows:**
+- **Feature 11: provider documents into values.** BRINGUP_FROM_DOCUMENTS's card (its section
+  6.3), unchanged:
+  - the parser profile is the deterministic path, and the local model is the fallback for a
+    format with no profile;
+  - it reads only text code has scoped to this node's region, and never a secret field;
+  - its output is locations and values, which code reads back from the text layer.
+- **Feature 12: a plain question into Tier 1 reads only.** "Is the satellite link up?" becomes the
+  read-only commands, read back, run and summarised.
+  - *Deterministic first:* headquarters' named checks answer the questions headquarters
+    foresaw, and a person picks them from a list. These are saved command sets
+    ([NSOT_READS.md](NSOT_READS.md) section 5), each with a deterministic verdict, plus the
+    guided bring-up's checks. The model maps a sentence onto one of them; only where none fits
+    does it compose Tier 1 reads.
+  - *The pattern is feature 1's (11.9):* the output is a structure, never free text. The engine's
+    allowlist refuses the whole command first (`readonly_commands`, for the agent). The commands
+    are read back in plain words, and the person runs them with one control.
+  - *The reads run as "the agent, for <person>"* through `reads.run(..., by="agent")`, which
+    opens no session of its own (NSOT_READS section 2).
+  - *The summary* answers yes, no or cannot tell, citing the read lines it rests on.
+  - *It can never produce a change:* its schema holds no change, its tools hold no `propose_*`,
+    and the engine refuses anything outside Tier 1 for the agent.
+
+**Analyst, one workflow:**
+- **Feature 13: what is wrong, in plain words.** It draws on the kit's Needs attention rows, the
+  readers' stored values they cite, its live reads, and headquarters' runbooks retrieved from the
+  signed store (12.4).
+  - *Deterministic first:* a lookup from each row's source and kind to its runbook section and
+    call-in code is built first, as section 6 removed "suggesting a remediation class" because
+    the taxonomy is a lookup. The model is for several rows at once, and for the operator's own
+    question about them.
+  - *Every claim names its source:* field provenance (11.3, extended to documents by 12.5's
+    gap 1), and evidence references checked deterministically (IBN_DESIGN section 10: a claim
+    citing something never fetched is dropped).
+  - *The Analyst floor applies:* 90% on structured fields (11.1).
+
+**Decision-maker, narrowed at the kit:**
+- **Feature 14: a playbook proposal.** It may only PROPOSE one of headquarters' signed standard
+  playbooks ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) section 6.1), with its bounded inputs
+  filled, for the kit operator to confirm.
+  - *Code decides whether it may be shown:* the playbook's signature verifies; its id is in the
+    signed catalog; every input is inside its bounds.
+  - *Anything else is refused before the operator sees it, never offered:* the model never
+    proposes outside a playbook's bounds, and never proposes an emergency change. An emergency
+    change stays the kit operator's own, with a reason (EDGE_ARCHITECTURE section 6.3).
+  - *The run is the playbook's own lifecycle:* preview, confirm by hash, verify, rollback,
+    record. It never acts and never approves.
+  - *The Decision-maker floor applies:* 95% (11.1).
+
+**The four cards, in section 6's shape.** They join section 6's list as candidates 11 to 14, and
+their ranking is the operator's (decision 7's form). Every number is a proposal. "Tier" means the
+local profile's admitted tier, and a hosted profile is optional (12.1).
+
+| # | Feature | Pattern (floor) | Inputs → output | Budget per use | Target | Observe → leave | Kill | Compared fields |
+|---|---|---|---|---|---|---|---|---|
+| 11 | Document extraction (BRINGUP_FROM_DOCUMENTS section 6.3) | Translator (95%) | one node region's text layer, the schema and the error contract → each non-secret field's value and cited location | tokens measured per region (12.6, measurement 7); latency from the kit measurement | 98% per-field exact match on the synthetic corpus; 0 values from outside the node's region reaching the confirm | at headquarters, beside parser profiles on formats that have one; 100 regions; 98% | below 95% after 100 regions; one out-of-region value reaching the confirm (zero tolerance) | each non-secret field's canonical value and its location; the error contract's kind |
+| 12 | Plain question → Tier 1 reads | Translator (95%) | the question (normalised, 11.7), the kit's device names and roles, the named checks and the platform's common reads, about 2k tokens → a named check, or reads per device, or the error contract; then the reads' answers, summarised deterministically first, about 3k tokens → `{answer, evidence_refs[], words}` | 2k in and 200 out, then 3k in and 300 out; 30 s of model time (the reads' own bounds apart, NSOT_READS section 11) | 80% of questions answered by a named check or a read set a person marks right; 0 commands the engine has to refuse | on the synthetic scenarios at headquarters, then on the lab's Ask the device; 30 days and 50 questions; 80% | below 65% after 50; any command the engine refused (it measures the model's discipline, since the engine already stops it) | the named check or the commands per device, whole; `answer`; `evidence_refs` |
+| 13 | What is wrong, in plain words | Analyst (90%) | the kit's Needs attention rows, the values they cite, the reads, the retrieved runbook passages, about 4k tokens → `{explanation, evidence_refs[], runbook_steps[], covered, call_in_code, needs_human}` | 4k in, 500 out, 30 s | 80% of explanations marked right by headquarters NetOps on the scenario set; 0 procedure steps from outside the store (by construction, 12.4) | at headquarters on the scenario set, then in the lab on Needs attention; 50 scenarios; 80% | below 65% after 50 | `evidence_refs`, `runbook_steps`, `covered`, `call_in_code`, `needs_human` (the explanation is prose) |
+| 14 | Playbook proposal at the kit | Decision-maker (95%) | the rows and reads, and the signed catalog's playbooks with each input's bounds, about 3k tokens → `{playbook, inputs, evidence_refs[], needs_human}` or "none fits", with its call-in code | 3k in, 300 out, 30 s | 95% measured agreement with headquarters NetOps' choice over at least 100 scenarios (section 7's rule for selection; confidence logged, never a gate) | at headquarters only, before any kit receives it; 100 scenarios; 95% | agreement below 90%; one proposal outside a playbook's bounds reaching the confirm (zero tolerance; code refuses it earlier, so reaching the confirm is a defect) | `playbook`, `inputs`, `evidence_refs` |
+
+**Owners:** headquarters NetOps is proposed for all four (decision 9 names owners). **The
+Problem row** of each card is measured, never guessed: a timed headquarters exercise on the
+synthetic scenarios (12.6, measurement 8).
+
+### 12.4 Grounding is the safety mechanism (DECIDED, the operator, 2026-10-16; the design PROPOSED)
+
+**The runbook store.**
+- Headquarters' runbooks and troubleshooting guides are a local, signed document store,
+  distributed with the build standard. They join the items listed in
+  [EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) section 4.
+- The kit verifies the store with section 10.2's one verifier before using it, and refuses a
+  store that does not verify, in plain words with a code.
+- Every passage carries an id, its step ids where it is a procedure, and headquarters' call-in
+  code.
+
+**The assistant answers only from that store and the kit's own data:** its Needs attention rows,
+the readers' stored values, its Tier 1 reads' answers, and its records.
+
+**It never improvises a procedure. This is enforced by construction, not by instruction:**
+- An answer's steps are `runbook_steps`: step ids retrieved in this run.
+- Code renders each step in the runbook's own signed words. The model writes no step text.
+- A step id that was not retrieved in this run is dropped, by IBN_DESIGN section 10's
+  evidence-reference rule applied to steps.
+
+**When nothing covers the question, it says so** ("This is not covered. Call headquarters with
+code <X>."). There are three such cases:
+- retrieval returns nothing, and then no model is called at all;
+- every step of the answer drops;
+- the model returns the error contract.
+
+The code is the store's code for the row or read that prompted the question, or the store's
+general code. A code is headquarters' data, never generated.
+
+**Retrieval is chosen by measurement on the kit's hardware** (12.6, measurement 6), under the same
+rules as the model:
+- **Keyword search** (a ranked term index): no model, so no origin question. Any library it needs
+  is a licence decision.
+- **Local embeddings:** an embedding model is a model, so 10.2's US-origin rule and its own
+  licence apply.
+- Deterministic first (section 2, rule 2) makes keyword search the baseline that embeddings must
+  beat on the measurement.
+
+**Plain words on every answer the kit operator sees** ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md)
+section 11's two audiences):
+- the kit operator reads the answer in plain words;
+- headquarters NetOps reads the evidence one level down: the references, the retrieved passages,
+  the reads.
+
+The eval's labelled cases carry a person's judgement of the plain words. No automatic readability
+score is relied on.
+
+**The red-team set (IBN_DESIGN section 13, item 8) gains two cases:** instructions planted in a
+runbook passage, and in a device's answer to a Tier 1 read. A signed store is still data, never
+instructions.
+
+### 12.5 The ten gaps, decided or deferred
+
+[BRINGUP_FROM_DOCUMENTS.md](BRINGUP_FROM_DOCUMENTS.md) section 16 names the first nine. The tenth
+came with this section's brief. "Decided" here means this plan's position, PROPOSED until the
+operator approves it (decision 16). Gap 9 is the exception: the operator's own decision answers it.
+
+| # | Gap | Resolution | Status |
+|---|---|---|---|
+| 1 | **Document provenance** (page, line, region): 11.3 covers words from the request only | 11.3 is extended to document inputs. A field read from a document carries `source_location`: the document's sha256, the page and line (or table cell), and the region id. Code reads the value at that location from the text layer, and refuses one that does not occur there or lies outside the region. For document input, 11.3's PROPOSED detail (a `stated` field's words must occur in the source) is a requirement. Feature 13's claims cite a runbook passage id or a kit datum the same way | decided |
+| 2 | **Value-level normalisation** (7, 07, N-007) | 11.7 stays character-level. A value's written forms are reduced by the feature's own deterministic parser, declared as data (the parser profile's node forms, in the build standard), after 11.7 and before any matching. Each reduction is recorded, as 11.7 records a removal. A model never normalises a value | decided |
+| 3 | **Ambiguity inside a document**, with a refusal and a call-in code | 11.2 is extended to document regions. Zero or several matching regions is code's question, whatever the model returned. **Who receives code's question is a property of the role:** a role that may not decide (the kit operator) gets a refusal naming a call-in code, never the question | decided |
+| 4 | **No card for document extraction** | It joins section 6's list as candidate 11, Translator (95%), with BRINGUP_FROM_DOCUMENTS section 6.3's card and 12.3's numbers. Its pattern placement is the operator's (11.12's form) | decided (placement for the operator) |
+| 5 | **Real cases versus classified documents** (section 7's "at least 10 real cases", section 4's recorded responses in CI) | For a feature whose real inputs may be classified (11, 12, 13 and 14 on a marked network), the real-case minimum is met inside the secure environment, by a run that records only numbers and sha256 values (BRINGUP_FROM_DOCUMENTS section 14's "Test this profile" shape). CI's recorded responses are of synthetic cases only. The release gate reads both. Section 7's rule is unchanged for features whose real cases can be published (the lab's) | decided |
+| 6 | **Few-shot examples from the config repository's history** would be classified | Shipped prompts carry synthetic examples only, marked as such (11.4 already allows labelled eval cases where real history holds none). An enclave may add its own reviewed examples under 11.5's review gate. They stay inside the enclave (EDGE_ARCHITECTURE section 9) and are data, so there is no per-model or per-site prompt fork (10.3) | decided |
+| 7 | **No document, scan or OCR input type** | A document reaches a prompt only as a text layer with coordinates, made by code before any prompt (BRINGUP_FROM_DOCUMENTS section 3). OCR is a deterministic step whose per-word confidence floor refuses unclear words. No image reaches a model, so every candidate in 10.2 can serve and every location can be checked. **Deferred:** the PDF, Word and OCR libraries, each a new third-party licence and so the operator's | the shape decided; the libraries deferred to the operator |
+| 8 | **Kit hardware tiers and a kit latency budget** (10.5 and 10.8 cover the lab host only) | 10.5's hardware check and section 7's 20% reserve apply unchanged on a kit: the wizard runs on whatever host the instance is. The interactive target for features 12 to 14 is a useful answer within 30 s (the operator's number); feature 11's budget comes from the kit measurement. **Deferred:** the kit's tiers and numbers, until 12.6's measurements are taken on a representative kit unit at headquarters staging | deferred to the measurement |
+| 9 | **Offline approval** (2.6 takes identity only from the access assertion) | **Answered by the operator's decision of 2026-10-16:** Keycloak per instance ([OFFLINE_OPERATION.md](OFFLINE_OPERATION.md) section 1.3), with smart card, "Log in with HQ" and local TOTP. 2.6's principle stands as "identity only from the instance's verified sign-in" (OFFLINE_OPERATION section 1.5's verified person), never from prompt text. Confirm by hash works offline. A kit operator confirms a standard playbook (EDGE_ARCHITECTURE section 6.1) and never holds `approve` (OFFLINE_OPERATION section 1.7) | DECIDED (the operator, 2026-10-16) |
+| 10 | **llama.cpp (10.4) is still PROPOSED**; only the origin rule (10.2) is decided | 12.1 quotes the operator naming `llama-server` as the local profile, which decides the engine; 10.4 carries a note. The model's delivery stays PROPOSED. A kit has only 10.4's import path: a supplied file with its sha256 and signature checked at staging, never a download. Tiers, reliability, isolation and the release gate also stay PROPOSED (decision 12). **For the operator to confirm** that this reading of 12.1 is intended. Each candidate's licence stays decision 13 (12.7) | decided by 12.1, the reading to confirm |
+
+### 12.6 Measurements owed before any choice (none taken)
+
+| # | Measurement | Method | Where it runs |
+|---|---|---|---|
+| 1 | **Seconds per answer and tokens per second** for gpt-oss-20b, Gemma 4 E4B and 26B MoE, and Granite 4.0-H-Tiny and H-Small, against a useful answer within 30 s | `llama-server` at Q4 (10.7), first 10.5's 30-second speed test. Then every scenario's question end to end at the profile's context, recording prompt and generation tokens per second, time to first token, and seconds per answer (median and 95th percentile). Each candidate is run where its tier is admitted | **CPU-only:** the lab's NMAS host for the small-tier candidates (10.8; the large tier needs the VM at 32 GiB, the operator's capacity decision), and a representative kit compute unit at headquarters staging. **Small GPU:** a representative kit unit with its GPU, at headquarters staging (10.8 records no GPU in the lab) |
+| 2 | **Memory** against the kit's budget | MemAvailable with the whole stack running and the model loaded at the profile's context, sampled for at least a day (10.8's sysstat method), against section 7's 20% reserve. Also `llama-server`'s resident size and KV cache at each context tried, and with the kit's C8000v if it shares the unit (BRINGUP_FROM_DOCUMENTS section 6.1) | the lab host for the method; the kit unit at headquarters staging for the numbers |
+| 3 | **Power** against the kit's budget | the unit's draw at its supply (a meter), idle, during one answer and during a sustained eval run, against the power budget in the kit's build (read at headquarters) | the kit unit at headquarters staging |
+| 4 | **Heat** against the kit's budget | the unit's temperature sensors and its CPU (or GPU) clock through a sustained eval run at the kit's rated ambient temperature, noting whether it throttles; measurement 1 repeated while throttled | the kit unit at headquarters staging |
+| 5 | **The consistency eval on a synthetic bring-up scenario set** | 11.1's eval, run N=5 times per case and compared on each card's compared fields (features 11 to 14), per candidate and quantisation, against the pattern's floor. The set is synthetic and public: BRINGUP_FROM_DOCUMENTS section 14's corpus, plus synthetic Needs attention states, reads, runbooks and questions, using documentation addresses only | recorded responses in CI; live on the lab host (small tier) and on the kit unit at headquarters |
+| 6 | **Retrieval: keyword search against local embeddings** | recall at k (the labelled passage among the top k) on a labelled synthetic question set over a synthetic runbook store; also seconds per query, memory and index build time | the lab host for the method; the kit unit for the choice |
+| 7 | **The minimum context of each assistant card** (section 4) | the context-removal run on the scenario set, against the local profile's 8k (section 7, PROPOSED) | CI (recorded) and live on the lab host |
+| 8 | **Today's time without AI** (each card's Problem) | a timed headquarters exercise on the synthetic scenarios: kit operators with paper runbooks and the deterministic screens. For the lab's features, 8.0's observe period | headquarters staging; the lab |
+| 9 | **Accuracy on real documents and runbooks** | "Test this profile"'s shape (BRINGUP_FROM_DOCUMENTS section 14): numbers and sha256 values only, never text | inside the secure environment |
+
+BRINGUP_FROM_DOCUMENTS's own "Measurements still owed" (its items 1 to 7) stand beside these and
+are not repeated here.
+
+### 12.7 Governance (DECIDED, the operator, 2026-10-16)
+
+**Each candidate's licence is read from its own terms, on the pinned file.** The licences are
+never assumed to match one another (decision 13):
+
+| Candidate | Licence |
+|---|---|
+| gpt-oss-20b | recorded as Apache-2.0 (section 9, decision 13, still open); to confirm from its own terms on the pinned file |
+| Gemma 4 E4B | to confirm from its own terms (decision 13: Google's release, not yet read) |
+| Gemma 4 26B MoE | to confirm from its own terms (decision 13: Google's release, not yet read) |
+| Granite 4.0-H-Tiny | recorded as Apache-2.0 for Granite 4.0 (decision 13, still open); to confirm from its own terms on the pinned file |
+| Granite 4.0-H-Small | recorded as Apache-2.0 for Granite 4.0 (decision 13, still open); to confirm from its own terms on the pinned file |
+| `llama-server` (llama.cpp) | to confirm from its own terms |
+| an embedding model, if retrieval uses one | to confirm from its own terms; US origin (10.2) |
+
+A quantisation made by someone other than the publisher is a different artefact (10.2,
+PROPOSED). Its terms are read on that file.
+
+**Authorisation to operate.** The model files, the inference server and Mercury would each need
+the organisation's authorisation to operate on a government network. That authorisation is the
+organisation's, outside this project. US origin is one input to it, not a substitute for it.
+
+**Shipped signed, evaluated first.**
+- What ships: the models (each file with its sha256, its profile and its eval result), the
+  runbooks and the eval set. All ship signed with the build standard
+  ([EDGE_ARCHITECTURE.md](EDGE_ARCHITECTURE.md) sections 4 and 10.2).
+- Each is evaluated at headquarters against the synthetic scenarios before any kit receives it.
+  This is 10.6's release gate per model and version, including the red-team set and 12.3's
+  cards.
+- A kit verifies every signature before loading anything. Its prompts, responses and records
+  stay inside the enclave (EDGE_ARCHITECTURE section 9).
+
+### 12.8 Proving it in the lab first
+
+**The same capabilities run on the NMAS host's small tier** (10.8: 4 vCPU, 15.6 GiB; the small
+tier only, its speed unmeasured):
+- **Ask the device's plain-question reads:** feature 12, on the device page's Ask the device tab
+  ([NSOT_READS.md](NSOT_READS.md) section 3), a board first (section 8);
+- **Runbook-grounded explanations on Needs attention:** feature 13, against a lab runbook store
+  signed with a lab key. The store holds the manual's pages (`docs/manual/`) and runbooks written
+  for the lab's Needs attention sources. The lab's runbooks are lab material under `lab/`, never
+  the product's;
+- **Document extraction against the synthetic corpus:** feature 11 (BRINGUP_FROM_DOCUMENTS section
+  14).
+
+The lab runs keep the lab's standing rules: Tier 1 reads never on s3, and no run in the backup
+window. The model is unloaded while a single-node twin runs (10.8).
+
+**The kit is later the same capabilities on different hardware, not a separate build.** The code,
+prompts, tools, cards and evals are the same. Only the profile (data, 10.3) and the tier the
+wizard admits (10.5) differ.
+
+### 12.9 What this changes elsewhere in this plan
+
+A dated note points here from each sentence the rule changes:
+- non-negotiable 3 (section 2);
+- non-negotiable 6's identity item (section 2; gap 9);
+- section 5's 8.0 row ("Anthropic first");
+- section 6's candidate list (candidates 11 to 14);
+- section 7's Model tiers row;
+- 10.4 (gap 10).
+
+Section 9 gains decision 16. IBN_DESIGN carries the same dated notes where it states a dependency
+on a hosted model or on the internet (its sections 7, 9, 12 and 13).
+
+### 12.10 The required tests (named now; written with the code)
+
+Each is written in 10.9's form: shown able to fail, with a planted case.
+
+1. **`tests/test_offline_first.py`**
+   - Checks:
+     - every card names its local-profile result (candidate, quantisation, score, consistency,
+       latency), beside any hosted one;
+     - every feature's recorded eval set holds runs from a local profile (the OpenAI-compatible
+       adapter to `llama-server`, origin `"US"`);
+     - the gateway answers every feature with every hosted adapter unreachable.
+   - Planted cases:
+     - a card whose recordings are all hosted fails;
+     - a gateway that refuses because a hosted provider is down while the local profile is
+       loaded fails.
+2. **`tests/test_assistant_reads_only.py`**
+   - Checks:
+     - feature 12's output reaches `reads.run` only as commands `readonly_commands` passes for
+       the agent;
+     - `send log`, configure mode, Tier 2 and Tier 3 are refused before any device is asked;
+     - the kit operator's tool set holds no `propose_intent_change` and nothing that approves
+       or reveals.
+   - Planted case: a recorded output carrying `configure terminal` that reaches the sender fails.
+3. **`tests/test_answers_are_grounded.py`**
+   - Checks:
+     - an answer's steps render only from step ids retrieved in this run, in the store's signed
+       words;
+     - an unretrieved id is dropped;
+     - with nothing retrieved, the answer is "not covered" with the store's code, and no model
+       is called;
+     - an unsigned or altered store is refused at load.
+   - Planted case: a recorded answer whose free-text steps are drawn as a procedure fails.
+4. **`tests/test_playbook_proposal_bounds.py`**
+   - Checks: feature 14's proposal is refused when its playbook is not in the signed catalog or
+     an input is outside its bounds, whatever the recorded output says, and it reaches only that
+     playbook's preview.
+   - Planted case: an out-of-bounds input that reaches the preview fails.
+5. **11.3's and 11.2's tests, extended** (gaps 1 and 3)
+   - Checks:
+     - a document value whose location lies outside its region, or whose value does not occur
+       there, is refused;
+     - two matching regions refuse with a call-in code for the kit operator's role.
+   - Planted cases: a resolver that takes the first region, and one that trusts a cited
+     location without reading it.
