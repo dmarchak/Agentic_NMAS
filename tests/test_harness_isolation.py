@@ -357,3 +357,76 @@ class TestNoOperationOutlivesItsTest:
     def test_2_the_next_test_sees_none_of_it(self):
         from modules import op_progress
         assert op_progress.get(self.PID) is None and op_progress.running() == []
+
+
+class TestNoServedRequestOutlivesItsTest:
+    """CI #850: a browser test's page sent `GET /templates` (the template editor's load) and
+    the test ended; the request, still running in the module's shared server, resolved the
+    network's folder after the test's patches were undone, and initialised and committed a
+    repository in the SHARED store, which the next test's store guard reported as its own.
+    Every served page's teardown runs `browser.close_socketio_sessions()` once the page is
+    left; it now waits for each request the served apps are still handling."""
+
+    @staticmethod
+    def _served(app):
+        from tests import browser
+        return browser.Served(app)
+
+    @staticmethod
+    def _get(url, got):
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=30) as r:
+            got.append(r.read())
+
+    def test_the_teardown_returns_after_the_request_it_found_running(self):
+        import threading
+        import time
+
+        from tests import browser
+
+        started, finished = threading.Event(), []
+
+        def app(environ, start_response):
+            started.set()
+            time.sleep(0.5)                       # the work the request does
+            finished.append(environ["PATH_INFO"])
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"ok"]
+
+        got = []
+        with self._served(app) as srv:
+            t = threading.Thread(target=self._get, args=(srv.url("/templates"), got))
+            t.start()
+            assert started.wait(10)
+            assert srv.in_flight() == ["GET /templates"]
+            browser.close_socketio_sessions()
+            assert finished == ["/templates"], "the teardown returned while the work ran"
+            assert srv.in_flight() == []
+            t.join(10)
+        assert got == [b"ok"]
+
+    def test_a_request_still_running_at_the_bound_is_named(self, monkeypatch):
+        import threading
+
+        from tests import browser
+
+        monkeypatch.setattr(browser, "REQUESTS_SECONDS", 0.5)
+        started, release = threading.Event(), threading.Event()
+
+        def app(environ, start_response):
+            started.set()
+            release.wait(10)
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"ok"]
+
+        got = []
+        with self._served(app) as srv:
+            t = threading.Thread(target=self._get, args=(srv.url("/stuck"), got))
+            t.start()
+            try:
+                assert started.wait(10)
+                with pytest.raises(AssertionError, match=r"GET /stuck"):
+                    browser.wait_for_requests()
+            finally:
+                release.set()
+                t.join(10)

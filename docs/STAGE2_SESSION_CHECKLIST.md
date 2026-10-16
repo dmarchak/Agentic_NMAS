@@ -14,6 +14,12 @@ is in this file. Nothing here is for an agent to run.
 If an item fails, the ban stays and the failure is measured. A checklist
 edited afterwards is a description.
 
+**Brought up to date 2026-10-16 on the operator's instruction (C948), between sessions:** the
+redeploy command is the one `lab/REDEPLOY.md` gives (`containerlab deploy … --reconfigure`,
+after the planned window it declares), and the device lists are the eight Mercury manages,
+r1 to r4 and s1 to s4: r5 is still in the topology and is rebuilt with it, but Mercury retired
+it, and r6 is a separate lab. The post-items are unchanged.
+
 ---
 
 ## Before you start
@@ -77,7 +83,7 @@ switch startup file gets SSH from the file.
 - [ ] **1.4** **Save All now**, so the pre-redeploy goldens are the comparison point.
       Record the commit: `________________`
 - [ ] **1.5** Record current uptimes, to compare against after:
-      `for n in r1 r2 r3 r4 r5 s1 s2 s3 s4; do echo -n "$n "; ssh ... 'show version | include uptime'; done`
+      `for n in r1 r2 r3 r4 s1 s2 s3 s4; do echo -n "$n "; ssh ... 'show version | include uptime'; done`
 - [ ] **1.6** You have time to finish. Do not start this with 20 minutes.
 
 ---
@@ -109,10 +115,10 @@ switch startup file gets SSH from the file.
       ```bash
       python3 scripts/nmas-check-startup-applies --all
       ```
-      Expect **APPLIES** for all nine.
+      Expect **APPLIES** for all eight.
       - the four switches pass because **nothing is injected** on vIOS — the
         stage short-circuits and never reads the launch script;
-      - the five routers pass **because the launch script carries the skip**.
+      - the four routers pass **because the launch script carries the skip**.
         That is the claim 2.1 established and this is where it is tested.
 - [ ] **2.3** Confirm the routers' pass is not vacuous — the reason text for
       a router must name the skip (`_skip_users_defined_in_startup`), not
@@ -125,7 +131,7 @@ switch startup file gets SSH from the file.
       python3 scripts/nmas-check-startup-applies --all   # routers: WILL NOT APPLY
       sed -i 's/_skip_users_defined_in_startupX/_skip_users_defined_in_startup/g' \
           ~/labs/lab/patches/c8000v-launch.py
-      python3 scripts/nmas-check-startup-applies --all   # all nine: APPLIES again
+      python3 scripts/nmas-check-startup-applies --all   # all eight: APPLIES again
       ```
       **A check that only ever passes has not been shown to work.** If the
       routers still say APPLIES with the marker hidden, it is reading
@@ -145,22 +151,25 @@ switch startup file gets SSH from the file.
 ## 3. The redeploy
 
 - [ ] **3.1** Last look: `docker ps --format '{{.Names}}\t{{.Status}}' | grep clab-rcn`
-- [ ] **3.2**
+- [ ] **3.2** First the planned window, on the NMAS host: `lab/REDEPLOY.md` step 1 (it
+      expects the new SSH host keys). Then, on the lab host, the one redeploy command:
       ```bash
       cd ~/labs/lab
-      containerlab destroy -t rcn-lab1.clab.yml --cleanup
-      containerlab deploy  -t rcn-lab1.clab.yml
+      containerlab deploy -t rcn-lab1.clab.yml --reconfigure
       ```
+      `--reconfigure` regenerates the lab's artifacts, so every node boots from its startup
+      file, as `destroy --cleanup` then `deploy` did, in one command. No `sudo`: the lab
+      host's user is in `clab_admins`. Never `docker restart` or `docker start` a node (C478).
 - [ ] **3.3** Start time recorded: `________________`
 
 ---
 
 ## 4. Post-items — all of them, in order
 
-- [ ] **4.1 All nine reach `Startup complete`.** Routers ~5–7 min, switches
+- [ ] **4.1 All eight reach `Startup complete`.** Routers ~5–7 min, switches
       ~4–5. Past **15 minutes is a failure**, not slowness.
       ```bash
-      for n in r1 r2 r3 r4 r5 s1 s2 s3 s4; do
+      for n in r1 r2 r3 r4 s1 s2 s3 s4; do
         echo -n "$n: "; docker logs clab-rcn-lab1-$n 2>&1 | grep -m1 "Startup complete" || echo "NOT YET"
       done
       ```
@@ -172,10 +181,10 @@ switch startup file gets SSH from the file.
       boot whose result no longer existed.
       → each device's uptime ≈ time since 3.3, not more.
 - [ ] **4.3 No `%CVAC-4-CLI_FAILURE` for a username line**, any router:
-      `for n in r1 r2 r3 r4 r5; do docker logs clab-rcn-lab1-$n 2>&1 | grep CVAC; done`
+      `for n in r1 r2 r3 r4; do docker logs clab-rcn-lab1-$n 2>&1 | grep CVAC; done`
       → nothing
 - [ ] **4.4 The skip fired** on each router:
-      `for n in r1 r2 r3 r4 r5; do echo -n "$n "; docker logs clab-rcn-lab1-$n 2>&1 | grep -ci "not injecting"; done`
+      `for n in r1 r2 r3 r4; do echo -n "$n "; docker logs clab-rcn-lab1-$n 2>&1 | grep -ci "not injecting"; done`
       → 1 each
 - [ ] **4.5 Each router's running config shows `secret 9`**, not `password 0`.
 - [ ] **4.6 Each switch's too.** Nothing is injected on vIOS, so a failure
@@ -190,10 +199,10 @@ switch startup file gets SSH from the file.
       powered off, and here it would pass while every router sat on
       `admin/admin` and unreachable.
       ```bash
-      for d in r1 r2 r3 r4 r5 s1 s2 s3 s4; do
+      for d in r1 r2 r3 r4 s1 s2 s3 s4; do
         python3 scripts/nmas-check-credential $d --expect accepted || echo "^^ $d"
       done
-      for d in r1 r2 r3 r4 r5; do
+      for d in r1 r2 r3 r4; do
         python3 scripts/nmas-check-credential $d --password admin --expect refused || echo "^^ $d"
       done
       ```

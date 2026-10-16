@@ -70,10 +70,18 @@ than 75 minutes away, or after 09:10 UTC.
 2. **On `<lab-host>`, as `<user>`, at once:**
 
    ```bash
-   cd <home>/labs/lab && sudo containerlab deploy -t rcn-lab1.clab.yml --reconfigure
+   cd <home>/labs/lab && containerlab deploy -t rcn-lab1.clab.yml --reconfigure
    ```
 
-   Never `docker restart` or `docker start` a node (C478).
+   Never `docker restart` or `docker start` a node (C478). **The one redeploy command**, the same
+   in `docs/STAGE2_SESSION_CHECKLIST.md` 3.2 (chosen 2026-10-16, awaiting the operator's
+   confirmation in STANDING_APPROVAL_LOG): `--reconfigure` regenerates the lab's artifacts, so
+   every node boots from its startup file, as the checklist's former `destroy --cleanup` then
+   `deploy` did, in one command (containerlab 0.79.0's help: "Regenerate configuration
+   artifacts and overwrite previous ones if any"); C478's fix already uses it. No `sudo`:
+   `<user>` is in `clab_admins` on `<lab-host>` (read 2026-10-16), which containerlab lets run
+   it; the lab folder is root-owned from earlier `sudo` runs, so if this refuses on permissions,
+   the same command with `sudo` is the fallback, and say so in the report.
 
 3. **Within the window (by `<until>` plus 15 minutes), once all eight answer** (the Devices page;
    expect about 24 minutes): Settings › Installation › Diagnostics › Drift checks › **Check now**

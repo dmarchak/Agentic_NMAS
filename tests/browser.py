@@ -112,18 +112,87 @@ def free_port() -> int:
     return port
 
 
+#: Every server this module serves now, so a test's teardown can wait for each one's requests.
+_LIVE: list = []
+
+
 class Served:
-    """The Flask app served on loopback on a thread, for the browser."""
+    """The Flask app served on loopback on a thread, for the browser.
+
+    **It knows which requests it is handling** (CI #850): a server is shared by a module's
+    tests, and a request the page sent before the test ended (a fetch the page makes on load)
+    was still running when the test's patches were undone. It resolved the network's folder
+    through the real `get_list_data_dir` and committed into the SHARED store, which the next
+    test's store guard reported as its own. :func:`wait_for_requests` waits for them."""
 
     def __init__(self, app):
         from werkzeug.serving import make_server
 
         self.port = free_port()
-        self.server = make_server("127.0.0.1", self.port, app, threaded=True)
+        self._lock = threading.Lock()
+        self._in_flight: dict = {}          # a request -> "METHOD /path"
+        self._threads: dict = {}            # a request -> the thread handling it
+        self._changed = time.monotonic()    # when a request last began or ended
+        self.server = make_server("127.0.0.1", self.port, app, threaded=True,
+                                  request_handler=self._handler())
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def _handler(self):
+        """werkzeug's request handler, recording each request for as long as werkzeug runs
+        it (`run_wsgi`: the view, its body written, and however it ends). Not the body's
+        `close()`: werkzeug 3.0.1 skips it when the client has gone (its drain of the socket
+        raises first, `serving.py`), and a page left at once had gone."""
+        from werkzeug.serving import WSGIRequestHandler
+
+        served = self
+
+        class Handler(WSGIRequestHandler):
+            def run_wsgi(self):
+                key = object()
+                with served._lock:
+                    served._in_flight[key] = f"{self.command} {self.path.split('?', 1)[0]}"
+                    served._threads[key] = threading.get_ident()
+                    served._changed = time.monotonic()
+                try:
+                    super().run_wsgi()
+                finally:
+                    with served._lock:
+                        served._in_flight.pop(key, None)
+                        served._threads.pop(key, None)
+                        served._changed = time.monotonic()
+        return Handler
+
+    def in_flight(self) -> list:
+        """The requests this server is handling now, as "METHOD /path"."""
+        with self._lock:
+            return sorted(self._in_flight.values())
+
+    def wait_idle(self, deadline: float) -> None:
+        """Return once no request has been in flight for :data:`QUIET_SECONDS`; raise,
+        naming each one, if any is still running at *deadline* (`time.monotonic()`)."""
+        import traceback
+
+        while True:
+            with self._lock:
+                running = sorted(self._in_flight.values())
+                where = [(self._in_flight[k], t) for k, t in self._threads.items()]
+                quiet = time.monotonic() - self._changed
+            if not running and quiet >= QUIET_SECONDS:
+                return
+            if time.monotonic() >= deadline:
+                frames = sys._current_frames()
+                stacks = "".join(f"\n--- {what}, where it is now ---\n"
+                                 + "".join(traceback.format_stack(frames[t])[-12:])
+                                 for what, t in where if t in frames)
+                raise AssertionError(
+                    f"the served app was still handling {running} {REQUESTS_SECONDS} s after "
+                    "the test's page was left: its work would outlive the test's patches and "
+                    "write where they no longer point (CI #850)" + stacks)
+            time.sleep(0.02)
 
     def __enter__(self):
         self.thread.start()
+        _LIVE.append(self)
         return self
 
     def url(self, path: str) -> str:
@@ -135,20 +204,50 @@ class Served:
         The page's socket.io sessions are closed server-side first, so no
         request thread stays blocked in a long poll; then the server stops,
         its socket closes, and its thread is joined with a limit."""
-        close_socketio_sessions()
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=SHUTDOWN_SECONDS)
+        try:
+            close_socketio_sessions()
+        finally:
+            if self in _LIVE:
+                _LIVE.remove(self)
+            self.server.shutdown()
+            self.server.server_close()
+            self.thread.join(timeout=SHUTDOWN_SECONDS)
 
 
 #: The teardown's bound: a server that does not stop within it is a leak the
 #: session-end guard names.
 SHUTDOWN_SECONDS = 5
 
+#: How long a test's teardown waits for the requests its page left running: 2.5x the slowest
+#: request any browser test's page made, 4.7 s (`GET /v2/monitoring/apply`, measured
+#: 2026-10-16 over the four shards at once on the laptop, 8,530 requests), rounded up.
+REQUESTS_SECONDS = 12
+#: No request may begin within this long of the last one ending before the server counts as
+#: idle: a request the page sent before it was left reaches the app one read and one parse
+#: after its bytes arrive, far inside it.
+QUIET_SECONDS = 0.2
+
+
+def wait_for_requests() -> None:
+    """Wait until every served app has finished each request in flight (CI #850). Called
+    from :func:`close_socketio_sessions`, which every served page's teardown runs once the
+    page is left, so the work a request does ends while the test's patches still hold."""
+    deadline = time.monotonic() + REQUESTS_SECONDS
+    for srv in list(_LIVE):
+        srv.wait_idle(deadline)
+
 
 def close_socketio_sessions() -> int:
     """Disconnect every engine.io session the app's socket.io server holds,
-    each long poll answered and ended. Returns how many."""
+    each long poll answered and ended, then wait for every request the served
+    apps are still handling (:func:`wait_for_requests`). Returns how many
+    sessions were closed."""
+    closed = _close_socketio_sessions()
+    wait_for_requests()
+    return closed
+
+
+def _close_socketio_sessions() -> int:
     try:
         import app as A
         eio = A.socketio.server.eio
