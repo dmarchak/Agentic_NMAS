@@ -1189,7 +1189,26 @@ device's own `flock` holder, so it needs no lock of its own and no atomic replac
   `flock` given back, nothing written), because no page would see that hold, nor its record if
   its process ended. The assumption it rests on: every process that holds devices runs this
   code (one checkout; Update and `nmas-deploy` refuse while any device is held).
-- Tests: tests/test_device_holds_index.py, with real second processes and nine controls.
+- **Absent is nothing held; unreadable raises (C988, 2026-10-16).** The folders, the lock files
+  and `interrupted.jsonl` were read as empty on ANY `OSError`, and a lock file that could not be
+  opened as "nobody holds it", so a permission error drew nothing running and the Update gate's
+  `held_anywhere()` would have passed. Now only `FileNotFoundError` is empty; any other error
+  raises `device_ops.HoldsUnreadable` naming the path (the root, a network's folder, a lock file
+  or the kept log), in `_list_folders`, `_candidates`, `holder`, `_leftover` and `interrupted`.
+  The root's entries are judged by the listing (`DirEntry.is_dir`), never by `os.path.isdir`,
+  which answered False for every network in a root that could be listed and not searched.
+  Indexing stops at a lock file it cannot `stat`, so no folder is said indexed past a record
+  it could not mark. Each caller fails closed or draws it: the Update gate refused with the
+  reason; a waiting update kept waiting; `/health/operations` 500 with the reason; a list
+  delete refused naming why; the In progress chip red naming the network (`read_all` the same,
+  `read` raising to its route's 500); Needs attention's and History's interrupted operations
+  "could not be read"; `busy_text` the device "treated as held", so every preview gating on it
+  (Save, Reload, Persist, Rotate, Retire, Seed, the golden and deploy pages) refuses it; the
+  scheduled rotation skips it. Two readers only HIDE rows on a hold (job health's rotation
+  rows; a pending receipt's), so an unreadable hold hides none of them.
+- Tests: tests/test_device_holds_index.py, with real second processes and nine controls;
+  tests/test_device_holds_unreadable.py (C988), with real unreadable folders and files and
+  sixteen controls.
 
 SQLite in WAL mode is warranted where a record is a state machine with more than one actor,
 or ephemeral state every process must see and consume once. Both need a local filesystem.

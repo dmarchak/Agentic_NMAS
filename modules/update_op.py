@@ -632,11 +632,18 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
                 f"by {wait.get('requested_by') or 'someone'}" if wait.get("target")
                 else f"the wait record could not be read ({wait['unreadable']})")
           if wait else "none"))
+    unread = ""
     if operations is None:
         from modules.nsot import device_ops
-        operations = device_ops.held_anywhere()
-    gate(OPERATIONS_GATE, not operations,
-         ("none" if not operations else
+        try:
+            operations = device_ops.held_anywhere()
+        except OSError as exc:
+            # Unreadable is not "nothing held" (C988): the restart might cut one off.
+            log.error("update: the device holds could not be read: %s", exc)
+            operations, unread = [], f"the device holds could not be read: {exc}"
+    gate(OPERATIONS_GATE, not operations and not unread,
+         (f"{unread}. Nothing can say no device is held, so the restart is refused until "
+          "they can be read" if unread else "none" if not operations else
           "the restart would end it half-applied: " + operations_words(operations)
           + ". Update when it finishes"))
     from modules import host_steps as HS
@@ -907,7 +914,13 @@ def release_deferred(clock=time.time, **plan_kw):
         ops = plan_kw.get("operations")
         if ops is None:
             from modules.nsot import device_ops
-            ops = device_ops.held_anywhere()
+            try:
+                ops = device_ops.held_anywhere()
+            except OSError as exc:
+                # Unreadable keeps it waiting, as held does (C988): never released blind.
+                log.warning("update: the waiting update is held back: the device holds "
+                            "could not be read: %s", exc)
+                return None
         if ops:
             log.info("update: the waiting update is held back while %s",
                      operations_words(ops))

@@ -1111,14 +1111,23 @@ def deploy_source(read=None, saves=None) -> dict:
 
 def _pending_is_named(lst: str, host: str, r: dict) -> bool:
     """Whether a pending receipt is accounted for elsewhere: its device is held now (its
-    batch is still running) or an interrupted operation on it started before the row."""
+    batch is still running) or an interrupted operation on it started before the row.
+
+    Holds that cannot be read (C988) name nothing: the pending receipt is drawn as its own
+    row, true either way, rather than hidden on a read that failed, and the interrupted
+    operations' source says the holds could not be read."""
     from modules.nsot import device_ops
 
-    if device_ops.holder(lst, host):
-        return True
-    at = _ts(r.get("at")) or 0
-    return any(i.get("device") == host and (i.get("started") or 0) <= at + 1
-               for i in device_ops.interrupted(lst))
+    try:
+        if device_ops.holder(lst, host):
+            return True
+        at = _ts(r.get("at")) or 0
+        return any(i.get("device") == host and (i.get("started") or 0) <= at + 1
+                   for i in device_ops.interrupted(lst))
+    except OSError as exc:
+        log.warning("attention: %s's hold could not be read (%s); its pending receipt is "
+                    "drawn as its own row", host, exc)
+        return False
 
 
 # ---------------------------------------------------------------------------

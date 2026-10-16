@@ -747,11 +747,17 @@ def _persist_action(device: str) -> dict:
 
 
 def _held_devices() -> set:
-    """Every device an operation holds now, in any list, lower-cased (a READ)."""
+    """Every device an operation holds now, in any list, lower-cased (a READ).
+
+    Unreadable holds (C988) are an empty set, deliberately: the set only HIDES rows (a
+    rotation's "persistence not attempted" while its own hold is between rotate and
+    persist), so an empty one shows more rows, every one true, and hides none."""
     from modules.nsot import device_ops
     try:
         return {(h.get("device") or "").lower() for h in device_ops.held_anywhere()}
-    except Exception:                                 # noqa: BLE001
+    except Exception as exc:                          # noqa: BLE001
+        log.warning("job health: the device holds could not be read (%s); no rotation row "
+                    "is held back for a hold", exc)
         return set()
 
 
@@ -910,8 +916,13 @@ def staged_rotation_rows(lists=None, holder=None) -> list:
     for item in entries:
         repo = os.path.join(LISTS_DIR, item["filename"], "config_repo")
         for s in cr.staged_devices(repo):
-            if holder(item["name"], s["device"]):
-                continue
+            try:
+                if holder(item["name"], s["device"]):
+                    continue
+            except OSError as exc:
+                # Unreadable (C988): the row is shown, true either way; the hold only hides it.
+                log.warning("job health: %s's hold could not be read (%s); its staged "
+                            "rotation row is shown", s["device"], exc)
             since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(s["since"]))
             # AN ADOPTION'S staged password names ITS recovery: the rotation's
             # works from an inventory row, which a device being adopted lacks,

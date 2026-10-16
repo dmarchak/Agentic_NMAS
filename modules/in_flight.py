@@ -51,7 +51,8 @@ def read(list_name: str, now: float = None) -> dict:
     """*list_name*'s held devices and running operations, and its recent receipts:
     ``{"running", "recent", "recent_state"}``. An operation that holds no device (a NetBox
     preview or import) is running too, in the same row shape. Raises on an unreadable lock
-    folder: the caller says it."""
+    folder (`device_ops.HoldsUnreadable`, C988; an absent one is nothing held): the caller
+    says it."""
     from modules import op_progress
     from modules.nsot import device_ops
 

@@ -511,9 +511,12 @@ def preview(now=None) -> dict:
     # The queue in its order (oldest password first), each device that would be skipped NOW
     # named with why: the run checks again when its turn comes.
     for c in chosen:
-        h = device_ops.holder(c["list"], c["device"])
-        why = (f"held by another operation: {device_ops.describe(h)}" if h
-               else restarting(c["list"], c["device"], now))
+        try:
+            h = device_ops.holder(c["list"], c["device"])
+            why = (f"held by another operation: {device_ops.describe(h)}" if h
+                   else restarting(c["list"], c["device"], now))
+        except OSError as exc:                     # C988: unreadable is treated as held
+            why = f"its hold could not be read ({exc}), so it is treated as held"
         if why:
             c["now"] = f"{why}: skipped when its turn comes unless that has ended"
     return {"chosen": chosen, "waiting": waiting, "hash": selection_hash(chosen),
@@ -702,7 +705,11 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
                 return finish("done", "stopped at the nightly backup window, 08:30 UTC: "
                                       "the rest wait for the next run")
             reason = ""
-            holder = held(lst, host)
+            try:
+                holder = held(lst, host)
+            except OSError as exc:                 # C988: unreadable is treated as held
+                holder, reason = None, (f"its hold could not be read ({exc}), so it is "
+                                        "treated as held")
             if holder:
                 reason = f"held by another operation: {device_ops.describe(holder)}"
             reason = reason or is_restarting(lst, host)

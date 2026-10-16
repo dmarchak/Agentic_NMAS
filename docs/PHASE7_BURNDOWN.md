@@ -89,7 +89,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C850~~ | ~~criterion 6: the Alpine confirm components to the one pattern~~ **done**, 4 → 1 (IP SLA's with P.12, D3) (see Checked off) | | | | |
 | ~~C537~~ | ~~the every-page in-flight indicator (D2), then C540's wording and C217's one row~~ **done: D2 met** (see Checked off); the command box and the rest stay in C537's row, to the tail | | | | |
 | ~~C987~~ | ~~the In progress chip's holds read grows with every lock file ever made~~ **done** (see Checked off) | | | | |
-| C988 | an unreadable lock folder reads as "nothing held" (the update gate's refusal): only an absent folder is empty, any other error raises and its caller says it | a test with an unlistable folder, each caller's words | S | — | — |
+| ~~C988~~ | ~~an unreadable lock folder reads as "nothing held"~~ **done** (see Checked off) | | | | |
+| C991 | `nmas-deploy` continues on `/health/operations`' 500, which since C988 is an unreadable holds store: refuse when the service answers and says it cannot read them | the operator's decision (continuing was chosen), then its test and Host-Step | S | — | the operator |
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
 | ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
@@ -258,6 +259,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C988 done** (B, overnight): only an absent holds store is "nothing held"; any other error
+  raises naming the path, and every caller fails closed (Update refused, the wait kept, the list
+  delete refused, the chip red, busy treated as held). C991 (B, the operator's decision:
+  `nmas-deploy` continues on that 500) into section 2; C992 (C) to the tail.
 - **C987 done** (B, overnight): the holds read probes only devices marked in the network's
   `holds/` folder (an empty marker per possible record, one writer each), 7.2 ms to 0.01 ms at
   900 lock files. C988 (B: an unreadable lock folder reads as nothing held) into section 2;

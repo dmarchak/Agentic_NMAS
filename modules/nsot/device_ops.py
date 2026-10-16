@@ -123,6 +123,23 @@ class DeviceBusy(RuntimeError):
         super().__init__(describe(holder))
 
 
+class HoldsUnreadable(OSError):
+    """A folder or lock file that says what is held could not be read (C988).
+
+    Only an ABSENT one means nothing is held: no device was ever held there. Any other error
+    (a permission, a lost mount, an I/O error) is raised as this, naming the path, and its
+    caller says it: the update refused, the delete refused, the chip red naming the network,
+    the device's operation refused. Read as "nothing held", a folder the app cannot list let
+    an update restart the app under a device another process held. An OSError, so a caller
+    that already catches one catches this; its words are ``<path>: <error>``."""
+
+    def __init__(self, path: str, exc: OSError):
+        super().__init__(exc.errno, exc.strerror or str(exc), path)
+
+    def __str__(self) -> str:
+        return f"{self.filename}: {self.strerror}"
+
+
 def describe(holder: dict, now: float = None) -> str:
     """The refusal, in the words a person acts on: who, what, since when, how
     long, and whether it is still MOVING. A lock with no age is a lock people
@@ -172,8 +189,17 @@ STEP_WORDS = {
 def busy_text(list_name: str, hostname: str) -> str:
     """What holds *hostname* now, in words, or "" when nothing does: the
     preview's gate says it BEFORE the confirm (C99), where it used to surface
-    only as the apply's refusal. It is checked again at apply, by the lock."""
-    found = holder(list_name, hostname)
+    only as the apply's refusal. It is checked again at apply, by the lock.
+
+    A hold that cannot be read is BUSY, in words (C988): every preview gating on this refuses
+    rather than offer an operation on a device another process may hold."""
+    try:
+        found = holder(list_name, hostname)
+    except OSError as exc:
+        log.error("device_ops: %s's hold could not be read (%s); it is treated as held",
+                  hostname, exc)
+        return (f"{hostname}'s hold could not be read ({exc}): it is treated as held, and "
+                "nothing is sent to it until it can be read")
     if not found:
         return ""
     return describe(found).split(" One operation per device")[0]
@@ -196,7 +222,10 @@ def _candidates(folder: str) -> list:
     """The lock files' names (without `.lock`) that may carry a record, in *folder*: its
     markers once it is indexed; before that, and whenever its markers cannot be listed, every
     lock file it has (the whole folder, read as it always was: never "nothing is held"
-    because an index could not be read). A READ."""
+    because an index could not be read). A READ.
+
+    An ABSENT folder is nothing held (no device was ever held in it); a folder that cannot be
+    listed raises :class:`HoldsUnreadable`, naming it (C988), never "nothing held"."""
     if os.path.exists(os.path.join(folder, INDEXED)):
         try:
             return sorted(os.listdir(os.path.join(folder, HOLDS_DIR)))
@@ -205,8 +234,10 @@ def _candidates(folder: str) -> list:
                         "file is read instead", folder, exc)
     try:
         names = os.listdir(folder)
-    except OSError:
+    except FileNotFoundError:
         return []
+    except OSError as exc:
+        raise HoldsUnreadable(folder, exc) from exc
     return sorted(n[:-5] for n in names if n.endswith(".lock"))
 
 
@@ -241,7 +272,11 @@ def _index(folder: str) -> None:
     """Mark every lock file in *folder* that carries a record, then say the folder is indexed.
     Only ever ADDS markers, so two at once, or one beside an acquire (which marks its own
     device before writing its record), cannot lose one: a record written after this read its
-    file was marked by its own holder first."""
+    file was marked by its own holder first.
+
+    A lock file gone since the listing has no record to mark; one that cannot be read raises
+    (C988), so the folder is not said indexed with a record left unmarked, which every reader
+    would then miss: it stays read in full."""
     from modules.config import secure_dir
 
     secure_dir(os.path.join(folder, HOLDS_DIR))
@@ -250,7 +285,7 @@ def _index(folder: str) -> None:
             continue
         try:
             size = os.stat(os.path.join(folder, n)).st_size
-        except OSError:
+        except FileNotFoundError:
             continue
         if size:
             _mark(folder, n[:-5])
@@ -282,7 +317,8 @@ def index_all() -> list:
 def held(list_name: str) -> list:
     """Every device held in *list_name* now: its holder, newest first. A READ: it asks the
     devices this process holds, and the devices MARKED in the list's folder (`_candidates`),
-    never every lock file the list ever had (C987); it creates nothing."""
+    never every lock file the list ever had (C987); it creates nothing. Raises
+    :class:`HoldsUnreadable` when what is held cannot be read (C988)."""
     out, seen = [], set()
     with _mu:
         for (lst, host), mine in _held.items():
@@ -334,19 +370,27 @@ INTERRUPTED_LOG = "interrupted.jsonl"
 
 
 def _list_folders() -> list:
-    """Every list folder that has ever held a device: the folder's own (safe) name."""
+    """Every list folder that has ever held a device: the folder's own (safe) name. No root
+    folder is no device ever held; one that cannot be listed raises :class:`HoldsUnreadable`
+    (C988). Each entry is judged by what the listing says it is (`DirEntry.is_dir`), never by
+    a `stat` that answers False when the root cannot be searched."""
     from modules import config
 
     root = os.path.join(config.DATA_DIR, "device_ops")
     try:
-        return sorted(n for n in os.listdir(root) if os.path.isdir(os.path.join(root, n)))
-    except OSError:
+        with os.scandir(root) as entries:
+            return sorted(e.name for e in entries if e.is_dir())
+    except FileNotFoundError:
         return []
+    except OSError as exc:
+        raise HoldsUnreadable(root, exc) from exc
 
 
 def held_anywhere() -> list:
     """Every device held now, in EVERY list, by any process (CONCURRENCY_AUDIT R5): what a
-    restart, an update or a deploy of the application would cut off half-way. A READ."""
+    restart, an update or a deploy of the application would cut off half-way. A READ. Raises
+    :class:`HoldsUnreadable` when any network's holds cannot be read (C988): the update gate
+    refuses on it, never passes."""
     out, seen = [], set()
     for folder in _list_folders():
         for h in held(folder):
@@ -363,15 +407,18 @@ def _leftover(path: str, hostname: str):
     `release()` empties the file before unlocking it, so a non-empty file that no process
     holds is an operation whose process ENDED while it held the device: a restart, an
     update, a crash. The kernel released the `flock`; the record of what was running is
-    the only trace left."""
+    the only trace left. A lock file gone is no record; one that cannot be opened raises
+    :class:`HoldsUnreadable` (C988), never "nothing interrupted"."""
     try:
         import fcntl
     except ImportError:
         return None
     try:
         fd = os.open(path, os.O_RDONLY)
-    except OSError:
+    except FileNotFoundError:
         return None
+    except OSError as exc:
+        raise HoldsUnreadable(path, exc) from exc
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
@@ -423,7 +470,8 @@ def interrupted(list_name: str) -> list:
     still in their lock file, and the ones kept when the next operation took the device.
     Each is the holder's record (device, operation, actor, started, progress, pid) with
     `found_at` (None while still in the lock file). A READ: it creates nothing, and probes
-    only the MARKED lock files (`_candidates`, C987)."""
+    only the MARKED lock files (`_candidates`, C987). Raises :class:`HoldsUnreadable` when a
+    folder, a lock file or the kept log cannot be read (C988)."""
     folder = _folder(list_name)
     out, seen = [], set()
 
@@ -434,11 +482,14 @@ def interrupted(list_name: str) -> list:
         seen.add(key)
         out.append(dict(rec, list=rec.get("list") or list_name, found_at=found_at))
 
+    kept = os.path.join(folder, INTERRUPTED_LOG)
     try:
-        with open(os.path.join(folder, INTERRUPTED_LOG), encoding="utf-8") as fh:
+        with open(kept, encoding="utf-8") as fh:
             lines = fh.read().splitlines()
     except FileNotFoundError:
         lines = []
+    except OSError as exc:
+        raise HoldsUnreadable(kept, exc) from exc
     for line in lines:
         try:
             entry = json.loads(line)
@@ -496,23 +547,28 @@ def _read_holder_file(path: str, hostname: str) -> dict:
 
 
 def holder(list_name: str, hostname: str):
-    """Who holds this device now, or None. A READ: it creates nothing."""
+    """Who holds this device now, or None. A READ: it creates nothing.
+
+    No lock file is nobody (the device was never held); one that cannot be opened raises
+    :class:`HoldsUnreadable` (C988): a lock file another user's process made, or a folder
+    that cannot be searched, is never "nobody holds it". The open itself is the test, never
+    `os.path.exists`, which answers False to both."""
     key = (_list_key(list_name), hostname)
     with _mu:
         mine = _held.get(key)
         if mine:
             return dict(mine["holder"])
     path = _path(list_name, hostname)
-    if not os.path.exists(path):
-        return None
     try:
         import fcntl
     except ImportError:
         return None
     try:
         fd = os.open(path, os.O_RDONLY)
-    except OSError:
+    except FileNotFoundError:
         return None
+    except OSError as exc:
+        raise HoldsUnreadable(path, exc) from exc
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)

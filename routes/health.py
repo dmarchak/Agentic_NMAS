@@ -109,8 +109,9 @@ def operations():
 
     try:
         ops = device_ops.held_anywhere()
-    except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "error": f"the holds could not be read: {exc}"}), 500
+    except Exception as exc:                  # noqa: BLE001 (C988: never "none held")
+        return jsonify({"ok": False,
+                        "error": f"the device holds could not be read: {exc}"}), 500
     return jsonify({"ok": True, "operations": [
         {"list": h.get("list", ""), "device": h.get("device", ""),
          "operation": h.get("operation", ""), "pid": h.get("pid"),

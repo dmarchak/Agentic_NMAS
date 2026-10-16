@@ -645,7 +645,15 @@ def _list_busy(list_name: str) -> str:
     from modules import drift_check
     from modules.nsot import device_ops
 
-    running = [device_ops.describe(h) for h in device_ops.held(list_name)]
+    try:
+        running = [device_ops.describe(h) for h in device_ops.held(list_name)]
+    except OSError as exc:
+        # Unreadable is not "nothing held" (C988): the delete is refused, naming why.
+        logger.error("List '%s' was not deleted: its device holds could not be read: %s",
+                     list_name, exc)
+        return (f"List '{list_name}' was not deleted: its device holds could not be read "
+                f"({exc}), so nothing can say no operation is writing to it. Nothing was "
+                "changed; delete it once they can be read.")
     drift = drift_check.running_now(list_name)
     if drift is not None:
         running.append("its drift run is in progress"
