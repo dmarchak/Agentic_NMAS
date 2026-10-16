@@ -1,4 +1,5 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
+{%- from "v2/_attribution.html" import attribution -%}
 {#- The batch Apply's preview (P.9 step d2), drawn server-side from the six
     parts routes.v2._apply_ctx builds with deploy_preview(): what happens, the
     rollout order, each device's exact program and what it holds back, the
@@ -75,7 +76,10 @@
     <p class="muted">{{ r.none }}</p>
     {%- endif %}
     {%- for n in r.notes %}
+    {%- if n.from_this_edit is defined %}{{ attribution(n) }}
+    {%- else %}
     <div class="apply-note"><p>{{ n.title }}</p>{% if n.lines %}<pre class="apply-program">{{ n.lines | join('\n') }}</pre>{% endif %}</div>
+    {%- endif %}
     {%- endfor %}
     {%- if r.superseded %}
     <fieldset class="apply-superseded">

@@ -73,7 +73,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C876 | criterion 11: the manifest's name lookup (the device page's last 19 calls per device) | measured first (UNKNOWN); an index if the loop measures O(N²) | S + M | — | — |
 | C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
-| C867 | v2's deploy card draws the plan's attribution (where each line came from) before the confirm | `UPSTREAM` in tests/test_v2_context_is_drawn.py loses those 5 keys | S–M | — | — |
+| ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | C868, C869 | the restore chooser's subject; the profile proposal's reads and skips | their `UNDRAWN` GAP entries gone | S each | — | — |
 | C860 | v2's Save draws C539's "a baseline was taken N min ago" warning (found writing W1) | the `/v2/devices/save` test with a baseline just taken | S | — | — |
 | C543, C544 | Needs attention's action words (Persist; Revert and Retry) | the rows' tests | S | — | — |
@@ -112,7 +112,7 @@ their sittings clear.
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | 8 | 0 (C522) |
 | tests/test_no_new_v1_capability.py controls / handlers / functions / fields | 43 / 31 / 333 / 20 | 0 (P7-27) |
 | tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | 93 / 14 / 31 (v1 routes) | 0 at P7-27 (the v1 check goes with today's pages) |
-| tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | 357 (17 GAP) / 16 / 23 (P7-04, 2026-10-16) | the GAP entries cutover needs (C868, C869) gone; `UPSTREAM` less C867's 5 |
+| tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | 362 (17 GAP) / **11** (C867) / 23 (2026-10-16) | the GAP entries cutover needs (C868, C869) gone; `UPSTREAM` 11 (met) |
 | tests/signed_off_screens.py `UNSIGNED` | 3 | 1 (not_found stays; heartbeat and ip_sla go with P.12, D3) |
 | modules/manual.py `ON_TODAYS_APP` | **0** (P7-19) | 0 |
 | tests/test_route_reachability.py `KNOWN_UNREACHABLE` / `NON_GUI` | 0 / 8 | 0 / 8 (D1 keeps two) |
@@ -135,6 +135,8 @@ blocks cutover or is a security issue (B).
   - C870 (keys no interface ever drew; three missing icons) and C871 (the walk's lab lacks a
     break-glass record and a window): never drawn on today's pages either, or harness.
   - C877, the device Overview computing its hardware twice: a fixed waste, not per device.
+  - C879, P7-04's upstream check comparing names: a check's blind spot, the case it missed
+    anchored.
   - C872 (the scope bar and `settings`), C873 (the top bar after a delete), C874 (the picker's
     mark; UNKNOWN): the network picker and scope bar's edges; choosing and deleting work.
   - The board comparisons of screens no walk touches (C650's remainder).
@@ -203,3 +205,6 @@ blocks cutover or is a security issue (B).
 - **C855 done** (to 19 calls per device, from 460; the Devices list 1,298 → 627): the device
   page reads its one device's measurement and rotation state. The 19 left are the manifest's
   name lookup, C876 (UNKNOWN, into this section). C877 (C) to the tail.
+- **C867 done, and C878 with it** (both A): the device deploy card and Devices › Plan a deploy
+  draw where each added line comes from before the confirm, through one macro; `UPSTREAM`
+  16 → 11. C879 (C) to the tail.

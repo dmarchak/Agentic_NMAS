@@ -163,6 +163,135 @@ class TestTheCard:
         assert "Deploy committed intent to r2" in page
 
 
+@pytest.fixture
+def profiled(lab, monkeypatch):  # noqa: F811
+    """r6 (r2's REAL capture without its SNMP and discovery lines) under the network's committed
+    monitoring profile, which supplies them; its golden lacks `ip ssh maxstartups 128`, which
+    its intent holds (pending before any edit). With `edit`, its intent then adds an NTP server
+    in a commit of its own (this edit); without, its one intent commit is its first."""
+    from modules.nsot import hostvars
+    from modules.nsot import repo as R
+    from modules.nsot.repo import GoldenItem, save_golden, save_host_vars
+    from tests.test_profile_apply import _commit_proposal
+
+    _commit_proposal()
+    r6 = lab["r6"]
+    assert "\nip ssh maxstartups 128\n" in r6
+    out = save_golden("Lab", [GoldenItem("r6", r6.replace("\nip ssh maxstartups 128\n", "\n"),
+                                         "203.0.113.16", platform="cisco_iosxe")],
+                      source="capture", actor="t", baseline=False)
+    assert out.get("commit"), out
+    monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
+    devices = [{"hostname": "r6", "ip": "203.0.113.16", "device_type": "cisco_xe",
+                "platform": "cisco_iosxe", "username": "admin"}]
+    monkeypatch.setattr("modules.device.load_saved_devices",
+                        lambda path=None: [dict(d) for d in devices])
+
+    def edit():
+        hv = hostvars.read_committed(lab["repo"], "r6")
+        hv["ntp_servers"] = list(hv.get("ntp_servers") or []) + ["192.0.2.99"]
+        hostvars.write_committed(lab["repo"], hv)
+        assert save_host_vars("Lab", ["r6"], actor="t", source="extraction")["ok"]
+        return R.git(lab["repo"], "log", "-1", "--format=%H %s", "--", "host_vars/r6.yml")[1]
+
+    return dict(lab, edit=edit)
+
+
+def _attribution(card):
+    """The attribution's part of the card: its heading, the edit's line, its warning, and each
+    line group by name, with the group's words and lines (unescaped)."""
+    assert "<div data-attribution>" in card, "the card draws no attribution"
+    i = card.index("<div data-attribution>")
+    part = card[i:card.index('id="expected"', i)]
+    groups = {g: html_mod.unescape(body) for g, body in
+              re.findall(r'<div data-attribution-group="(\w+)">(.*?)</div>', part, re.S)}
+    edit = re.search(r"<p[^>]*data-attribution-edit>(.*?)</p>", part, re.S)
+    warn = re.search(r'<div class="notice notice-warn">.*?<p>(.*?)</p>', part, re.S)
+    return {"part": part, "groups": groups, "edit": edit and edit.group(1),
+            "warn": warn and html_mod.unescape(warn.group(1))}
+
+
+def _pre(group):
+    m = re.search(r'<pre class="op-diff">(.*?)</pre>', group, re.S)
+    return m.group(1).split("\n") if m else []
+
+
+class TestTheAttribution:
+    """C867 (D4 again, on v2): where each added line comes from, drawn before the confirm, as
+    today's wizard drew it (static/js/nmas_preview_confirm.js): the edit's commit and subject,
+    its warning, the profile's lines apart, this edit's, and those already pending."""
+
+    def test_this_edits_line_and_the_pending_one_each_under_its_count(self, deploy):
+        from modules.nsot import repo as R
+        sha, subject = R.git(deploy["repo"], "log", "-1", "--format=%H %s", "--",
+                             "host_vars/r2.yml")[1].strip().split(" ", 1)
+        _r, card = _get(deploy, "/v2/device/r2/deploy")
+        a = _attribution(card)
+        assert card.index("<div data-attribution>") < card.index("Expected effects")
+        assert "Where the added lines come from" in a["part"]
+        assert a["edit"] == f"This edit: <code>{sha[:8]}</code> {subject}"
+        g = a["groups"]
+        assert set(g) == {"edit", "pending"}, "no profile group: r2's profile supplies nothing"
+        assert "From this edit: <strong>1</strong> line(s)" in g["edit"]
+        assert _pre(g["edit"]) == [" shutdown"]
+        assert ("Not from this edit: <strong>1</strong> line(s), already pending before it. "
+                "They are sent too.") in g["pending"]
+        assert _pre(g["pending"]) == ["lldp run"]
+        assert a["warn"] is None
+
+    def test_the_profiles_lines_are_drawn_apart_from_the_edits(self, profiled):
+        sha, subject = profiled["edit"]().strip().split(" ", 1)
+        _r, card = _get(profiled, "/v2/device/r6/deploy")
+        a = _attribution(card)
+        assert a["edit"] == f"This edit: <code>{sha[:8]}</code> {subject}"
+        g = a["groups"]
+        assert list(g) == ["profile", "edit", "pending"], "the profile's group first, apart"
+        inherited = _pre(g["profile"])
+        assert ("Inherited from the network's monitoring profile: "
+                f"<strong>{len(inherited)}</strong> line(s)") in g["profile"]
+        assert "lldp run" in inherited and "snmp-server trap-source Loopback0" in inherited
+        assert all(line.startswith(("snmp", "lldp")) for line in inherited), inherited
+        assert _pre(g["edit"]) == ["ntp server 192.0.2.99"]
+        assert "From this edit: <strong>1</strong> line(s)" in g["edit"]
+        assert _pre(g["pending"]) == ["ip ssh maxstartups 128"]
+        assert "Not from this edit: <strong>1</strong> line(s)" in g["pending"]
+        # Every line sent is in exactly one group: none rides along unattributed.
+        sent = re.findall(r'<span class="op-add">(.*?)</span>', card)
+        grouped = inherited + _pre(g["edit"]) + _pre(g["pending"])
+        assert sorted(html_mod.unescape(s) for s in sent) == sorted(grouped)
+
+    def test_a_first_intent_commit_warns_and_attributes_nothing_to_the_edit(self, profiled):
+        _r, card = _get(profiled, "/v2/device/r6/deploy")
+        a = _attribution(card)
+        assert a["warn"] and a["warn"].startswith("First committed intent for this device")
+        assert a["warn"].endswith("."), a["warn"]
+        g = a["groups"]
+        assert list(g) == ["profile", "edit", "pending"], list(g)
+        assert "From this edit: <strong>0</strong> line(s)" in g["edit"] and _pre(g["edit"]) == []
+        assert _pre(g["pending"]) == ["ip ssh maxstartups 128"]
+        assert "lldp run" in _pre(g["profile"])
+
+    def test_devices_plan_a_deploy_draws_the_same_attribution(self, deploy):
+        """C878: Devices › Plan a deploy (the batch preview, `_apply_preview.html`) carried the
+        attribution note whole and drew only its title; it draws it through the one macro."""
+        from modules.nsot import repo as R
+        sha, subject = R.git(deploy["repo"], "log", "-1", "--format=%H %s", "--",
+                             "host_vars/r2.yml")[1].strip().split(" ", 1)
+        r, page = _get(deploy, "/v2/devices/deploy?device=r2")
+        assert r.status_code == 200
+        assert "Where the added lines come from" in page
+        assert "<div data-attribution>" in page, "the batch preview draws only the note's title"
+        i = page.index("<div data-attribution>")
+        part = page[i:page.index("Not from this edit", i) + 400]
+        groups = {g: html_mod.unescape(body) for g, body in
+                  re.findall(r'<div data-attribution-group="(\w+)">(.*?)</div>', part, re.S)}
+        assert f"This edit: <code>{sha[:8]}</code> {subject}" in part
+        assert set(groups) == {"edit", "pending"}, list(groups)
+        assert "From this edit: <strong>1</strong> line(s)" in groups["edit"]
+        assert _pre(groups["edit"]) == [" shutdown"]
+        assert _pre(groups["pending"]) == ["lldp run"]
+
+
 class TestTheConfirm:
     def _confirm(self, lab, vals, **change):
         return lab["client"].post("/v2/device/r2/deploy/confirm", data=dict(vals, **change))

@@ -21,8 +21,8 @@ context is the payload and the template is the renderer (P7-04, 2026-10-15).
 * **Unreached:** a v2 template named in the product's code that no measured request renders is
   not examined at all; each is named in `UNREACHED`, a list that only shrinks.
 * **Anchors:** the deploy card's program, dangerous lines, residue and notes are carried AND
-  read (D4, C27); the fixture carries the plan's attribution, so its absence from the card is
-  measured, not assumed.
+  read (D4, C27), and the plan's attribution with them (C867, 2026-10-16); the fixture carries
+  the attribution, so whether the card draws it is measured, not assumed.
 """
 
 import pytest
@@ -342,11 +342,6 @@ UNDRAWN_CEILING = 362  # +5 2026-10-16: P7-05's two fragments, the same plumbing
 #: adapter nor its template.
 UPSTREAM = {
     DEPLOY: [
-        ("from_profile from_this_edit intent_commit intent_subject pre_existing",
-         "GAP (finding, D4 again): the plan's attribution, where each added line comes from; "
-         "deploy_preview puts it in a program note and device_actions.deploy_card keeps each "
-         "note's title and lines only, so the card draws the heading and nothing under it; "
-         "today's wizard drew it"),
         ("select_data hash secret removal prior verify",
          "today's wizard's selection data; the card reads the same facts from the plan entry "
          "and builds its confirm from the unmasked plan's hashes (routes/device_v2._deploy_card)"),
@@ -356,7 +351,7 @@ UPSTREAM = {
         ("selected children",
          "a removable line's tick and stanza size in the generic preview; the card builds its "
          "residue rows from the plan entry, with its own `picked` and `why_not`")]}
-UPSTREAM_CEILING = 16
+UPSTREAM_CEILING = 11  # -5 2026-10-16: C867, the plan's attribution carried and drawn
 
 _A_POST = "a POST's card: no GET draws it, and no provider in tests/v2_context.py makes it yet"
 _A_JOB = "a running or finished job's card: the lab starts no job, so no provider reaches it yet"
@@ -408,7 +403,7 @@ def _forward(measured):
 
 #: The adapters a card is built through, by route: {route: {python file: (function, ...)}}.
 ADAPTERS = {DEPLOY: {"modules/device_actions.py": ("deploy_card", "_one_target",
-                                                   "_declare_part")}}
+                                                   "_declare_part", "_deploy_notes")}}
 
 
 def _upstream(measured):
@@ -512,7 +507,10 @@ class TestAnchors:
     restore preview never drew the lines to be added), on v2's deploy card."""
 
     @pytest.mark.parametrize("key", ["sent", "dangerous", "residue", "notes", "what_not",
-                                     "confirm", "command_hash"])
+                                     "confirm", "command_hash",
+                                     # C867 (2026-10-16): the plan's attribution, in its note.
+                                     "attribution", "intent_commit", "intent_subject", "note",
+                                     "from_profile", "from_this_edit", "pre_existing"])
     def test_carried_and_read(self, measured, key):
         import app as A
 

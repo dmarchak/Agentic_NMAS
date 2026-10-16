@@ -1,5 +1,6 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
+{%- from "v2/_attribution.html" import attribution -%}
 {#- The device page's Deploy, with Mode B (7.3; the device-actions canvas, boards 5 and 6):
     the card in place of the tab, from modules/device_actions.py over THE plan
     (`routes.deploy.plan_devices`) and `deploy_preview`. The form plans again on each change
@@ -30,7 +31,11 @@
     <p>Exactly these {{ c.sent | length }} line(s), in order.</p>
     <pre class="op-diff">{% for l in c.sent %}<span class="op-add">{{ l }}</span>
 {% endfor %}</pre>
-    {%- for n in c.notes %}<p class="op-wait">{{ n.title }}</p>{% if n.lines %}<pre class="op-diff">{{ n.lines | join('\n') }}</pre>{% endif %}{% endfor %}
+    {%- for n in c.notes %}
+    {%- if n.attribution %}{{ attribution(n) }}
+    {%- else %}<p class="op-wait">{{ n.title }}</p>{% if n.lines %}<pre class="op-diff">{{ n.lines | join('\n') }}</pre>{% endif %}
+    {%- endif %}
+    {%- endfor %}
     {%- else %}
     <p>{{ c.none or 'Nothing to send: the device already holds every line its committed intent declares.' }}</p>
     {%- endif %}

@@ -470,6 +470,27 @@ def _declare_part(ref, entry: dict, pending: dict) -> dict:
     }
 
 
+def _deploy_notes(program: dict) -> list:
+    """The deploy program's notes for the card: a plain note's title and lines (a re-created
+    IP SLA operation's definition, a scoped plan's groups), and the plan's attribution (C867,
+    D4 again: the card kept the title alone): the edit's commit and subject, any warning, and
+    the added lines in their three groups, the monitoring profile's apart, each drawn before
+    the confirm as today's wizard drew them."""
+    out = []
+    for n in program.get("notes") or []:
+        note = {"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
+        if "from_this_edit" in n:
+            note.update(attribution=True,
+                        intent_commit=n.get("intent_commit") or "",
+                        intent_subject=n.get("intent_subject") or "",
+                        note=n.get("note") or "",
+                        from_profile=list(n.get("from_profile") or []),
+                        from_this_edit=list(n.get("from_this_edit") or []),
+                        pre_existing=list(n.get("pre_existing") or []))
+        out.append(note)
+    return out
+
+
 def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
                 reasons=None, danger_reasons=None, pending=None) -> dict:
     """The deploy card for *host* from `routes.deploy.plan_devices`'s *entry* and
@@ -506,8 +527,7 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
     return {"op": "deploy", "state": "preview", "host": host, "list": ref.name,
             "summary": summary,
             "sent": lines, "none": program.get("none", ""),
-            "notes": [{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
-                      for n in program.get("notes") or []],
+            "notes": _deploy_notes(program),
             "dangerous": dangerous, "residue": residue,
             # What the program is meant to do, derived (C506 phase 2), and declared (phase 3).
             "expected": program.get("expected") or {},
