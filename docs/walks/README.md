@@ -33,3 +33,4 @@ step that changes anything.
 | Sitting | Script |
 |---|---|
 | W1, Devices and device | [W1.md](W1.md) |
+| W2, Templates, NetBox, networks, the remote, Topology, r6's reload | [W2.md](W2.md) |

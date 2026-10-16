@@ -40,7 +40,7 @@ written from the sitting's results. Screens no walk touches move to Stage 7's ta
 | Sitting | Walks | Clears | Ready |
 |---|---|---|---|
 | **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **WALKED 2026-10-16** (23:20Z to 01:12Z): CUTOVER rows 42, 44 (Capture, Save All), 45, 46, 53, 54, 69 and C588, C547, C587, C444, C539 closed; section I (row 68) blocked by C881 and C691 held by C882, both into W2 |
-| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68) and a C691 drag re-check** | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | after C881 (verified on r6) and C882 are deployed; the script written then |
+| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68) and a C691 drag re-check** | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | **WRITTEN: docs/walks/W2.md** (51 steps); ready once C931 (seed on a new network) is deployed, since section H walks it |
 | W3 Onboarding and recovery | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs) | CUTOVER rows 52, 58, 59; C148; their screens' records; unblocks P7-24, P7-25 | after W2 |
 | (in any sitting) | ~~C539, C587, C588~~ (walked in W1); snap-to-grid (C691, into W2 after C882); DHCP confirms (C529) | those rows | W2 |
 
@@ -70,6 +70,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C923~~ | ~~Adopt's card draws the lines startup gains and loses~~ **done**, with C930 (see Checked off) | | | | |
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
+| C931 | Seed on a network created on v2: the repository exists from creation, every git call on a config_repo pinned to it, a failed commit said (A, found writing W2) | its tests; W2 section H | M | — | — |
+| C933 to C936 | From writing W2 (B): NetBox's import count for a NetBox-sourced network; the write probe's remedy; "Just stop tracking"; editing a revoked template | each its test; walked in W2 | S each | — | — |
 | C906 | Mercury checks each device's SSH host key (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key operation; NETCONF too) | its tests; walked on a device | M | — | B (the operator's: the re-key's words) |
 | **Harness: the checks on v2** | | | | | |
 | ~~P7-04~~ | ~~Criterion 4, payloads drawn on v2~~ **done** (see Checked off); its gaps are C867 to C869 below | | | | |
@@ -153,6 +155,7 @@ blocks cutover or is a security issue (B).
     words and rows), C899 (Devices' footer), C900 (reveals' reasons), C901 (W1's copy and
     fidelity notes), C902 to C904 (R1 to R3), C907 (Fields mode). C888 and C905 go with C882,
     before cutover.
+  - C932, C937 (UNKNOWN), C938 (W2's wording; each checked where W2 walks it).
   - C922 (UNKNOWN, an answer set aside mid-drag), C924 (UNKNOWN, the partial operation's row
     beside a usable baseline), C925 (Persist's read on each draw), C926 (a raw exception).
   - C921 (UNKNOWN): "Partly done" over 2 of 2 deployed with no verify result; C920 and C851

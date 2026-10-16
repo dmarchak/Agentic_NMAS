@@ -225,9 +225,17 @@ def measured(tmp_path_factory):
     from tests.interface_pages import as_a_verified_person
     from tests.test_profile_apply import lab_setup
 
+    from tests.v2_context import _store_aside, _store_back
+
     fleet = build_fleet(max(SIZES))
     mp = pytest.MonkeyPatch()
     out = {page: {} for page in V2_PAGES}
+    # C875: measured on the store a fresh install has, never what earlier tests in this worker
+    # left in the shared reader stores. Needs attention draws its rows from them, and each row
+    # an earlier test left was matched against the fleet, so the per-device count moved with
+    # test order (+3.0, -3.3, +3.3 in four gates of one night; a warm-up request alone did not
+    # hold it). The same set-aside P7-04's walk uses (tests/v2_context.py), restored exactly.
+    aside = _store_aside()
     try:
         as_a_verified_person(mp)
         lab = lab_setup(mp, tmp_path_factory.mktemp("scale"))
@@ -253,6 +261,7 @@ def measured(tmp_path_factory):
                 out[page][size] = measure(client, page, os.path.dirname(lab["repo"]), loads)
     finally:
         mp.undo()
+        _store_back(aside)
     return out
 
 
