@@ -246,7 +246,7 @@ class TestThePreview:
         lab["router"].startup.append("logging buffered 64000")
         p = _plan(lab)["persist"]
         assert p["state"] == "differs"
-        assert p["only_startup"] == ["logging buffered 64000"], p
+        assert p["loses"] == ["logging buffered 64000"], p
         assert "are gone at the next reload" in p["sentence"]
 
     def test_no_startup_config_says_the_whole_running_config_becomes_the_boot_config(self, lab):
@@ -679,6 +679,10 @@ class TestTheMonitoringProfileIsApplied:
         assert out["blocking"] == [] and self.LINE in out["program"]
         assert self.TRUE not in json.dumps(A.public(out))
         assert any("monitoring profile" in s for s in out["not_doing"])
+        # C930: the save after the profile's step makes its lines permanent too, so the persist
+        # sentence names them beside the account.
+        assert ("the tool's account and the monitoring profile's 1 line(s)"
+                in out["persist"]["sentence"]), out["persist"]["sentence"]
 
     def test_the_apply_sends_it_after_the_accounts_reads_it_back_and_records_it(self, profiled):
         out = _apply(profiled, send_profile=profiled["send"])

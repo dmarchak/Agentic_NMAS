@@ -944,39 +944,42 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
     # The ONE comparison of startup with running, Reload's gate's and Persist's preview's
     # (C913: `configs_equivalent` here counted `show startup-config`'s header and a
     # certificate startup keeps as a file in nvram: as lines that differ).
-    startup = seen.get("startup", "")
-    effect = startup_effect(startup, running, seen.get("nvram", ""))
-    if effect["state"] == "no_startup":
-        out["persist"] = {"state": "no_startup", "only_running": [], "only_startup": [],
-                          "sentence": ("the device has NO startup config: saving makes its "
-                                       "whole running config, with the tool's account, the "
-                                       "configuration it boots")}
-    else:
-        only_run, only_start = effect["gains"], effect["loses"]
-        out["persist"] = {
-            "state": effect["state"],
-            "only_running": only_run, "only_startup": only_start,
-            "missing": effect["missing"],
-            "sentence": ("the running and startup configs are the same: saving adds only the "
-                         "tool's account to what the device boots" if effect["state"] == "same"
-                         else
-                         f"saving makes the RUNNING config the boot config: "
-                         f"{len(only_run)} line(s) only the running config has become "
-                         f"permanent, and {len(only_start)} line(s) only the startup config "
-                         "has are gone at the next reload"
-                         + "".join(f"; startup keeps {c['certificate']} of "
-                                   f"{c['chain'].split()[-1]} as {c['file']}, which `dir "
-                                   "nvram:` does not list" for c in effect["missing"]))}
-    out["rw_kept"] = _masked(onboard.rw_communities(running))
-
+    # The answer as it is (gains, loses, present, missing: the card draws them with Persist's
+    # drawing, `_startup_effect.html`, C923), with Adopt's own leading sentence: what a save
+    # makes permanent here includes the tool's account.
     # ---- the network's monitoring profile (P.9 step c) --------------------
     # Computed from THIS capture (the device has no intent yet), masked for the
-    # preview; the truthful program stays in this module.
+    # preview; the truthful program stays in this module. Before the persist sentence: apply
+    # sends the profile's lines before the save, so the save makes them permanent too.
     from modules.nsot import profile_apply
     prof = profile_apply.for_capture(ref.name, hostname, platform, role, running,
                                      repo=ref.repo_dir)
     out["profile"] = {k: v for k, v in prof.items() if k != "commands"}
     out["_profile_commands"] = prof["commands"] if prof.get("applies") else []
+
+    startup = seen.get("startup", "")
+    effect = startup_effect(startup, running, seen.get("nvram", ""))
+    n_profile = len(out["_profile_commands"])
+    adds = ("the tool's account" + (f" and the monitoring profile's {n_profile} line(s)"
+                                    if n_profile else ""))
+    if effect["state"] == "no_startup":
+        sentence = ("the device has NO startup config: saving makes its whole running config, "
+                    f"with {adds}, the configuration it boots")
+    elif effect["state"] == "same":
+        sentence = ("the running and startup configs are the same: saving adds only "
+                    f"{adds} to what the device boots")
+    elif not effect["gains"] and not effect["loses"]:
+        # Only a certificate file startup points at is missing (the drawing names it): no
+        # line differs, so no count of lines is said.
+        sentence = (f"no line differs between running and startup: saving adds {adds} to "
+                    "what the device boots, and writes its certificates again")
+    else:
+        sentence = (f"saving makes the RUNNING config the boot config, with {adds}: "
+                    f"{len(effect['gains'])} line(s) only the running config has become "
+                    f"permanent, and {len(effect['loses'])} line(s) only the startup config "
+                    "has are gone at the next reload")
+    out["persist"] = dict(effect, sentence=sentence)
+    out["rw_kept"] = _masked(onboard.rw_communities(running))
 
     # ---- NetBox: what exists (to be recorded as adopted) and what changes ---
     existing = (netbox_existing or _netbox_existing)(hostname)

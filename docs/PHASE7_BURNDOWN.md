@@ -67,7 +67,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C882~~ | ~~B1: Topology drag jumps~~ **done** (see Checked off); C691 re-checked in W2 | | | | |
 | ~~C883, C888, C905~~ | ~~B2, C2 and R4: the batch preview's note, client-side order, drag and drop~~ **done** (see Checked off) | | | | |
 | ~~C884, C885, C886, C913~~ | ~~B3, B4, B5 and adopt's comparison~~ **done** (see Checked off) | | | | |
-| C923 | Adopt's card draws the lines startup gains and loses (C886's part), as its manual says (it blocks W3's adopt) | its test | S | — | — |
+| ~~C923~~ | ~~Adopt's card draws the lines startup gains and loses~~ **done**, with C930 (see Checked off) | | | | |
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | C906 | Mercury checks each device's SSH host key (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key operation; NETCONF too) | its tests; walked on a device | M | — | B (the operator's: the re-key's words) |
@@ -237,6 +237,8 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C923 done, with C930** (Adopt's card draws what startup gains and loses through Persist's
+  one drawing; its sentence names the monitoring profile's lines the save makes permanent).
 - **C883, C888, C905 done** (B2: the "running" note hidden by a CSS rule that overrode
   `hidden`, fixed globally; C2: the rollout order moves in the page and the confirm route binds
   it, refusing any order that is not exactly the confirmed devices; R4: drag and drop on C882's

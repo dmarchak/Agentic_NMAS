@@ -55,14 +55,23 @@ page 1440, 1280, 390), `device-restore-before`, `device-restore-running`,
 1440, 390), `device-revert-result`, `device-retry-none` (1440); `device-retire-refused`,
 `device-retire` (board 1440; page 1440, 390), `device-retire-result` (1440).
 Compared 2026-10-16.
-Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `4dc9b80f83ca26e36b161cf740340f6e6b4b3e01da174b7e70d028fa6a2468ae`
+Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
+Templates sha256: `3c8b9492d3270046ee55c3c61537d8d7f279fb0580ee3af0c41c4093bc554899`
 
 Compared again 2026-10-16 (C886) after `_persist.html` gained its part "What saving changes in
 what it boots", drawn by the new `_persist_effect.html` (now among the templates compared):
 `device-persist` shot again at 1440 and 390 beside PersistRunningHelp, r2 answering with r1's
 real pair, one logging line changed in running. The Persist region rewritten and its part
 recorded as a region of its own; no other region's verdict changed.
+
+Compared again 2026-10-16 (C923) after the part's lines, certificate files and the "not a
+difference" note moved into the macro `startup_lines` in the new `_startup_effect.html` (now
+among the templates compared), so that Adopt's card draws them with the same drawing; the
+leading sentences stay `_persist_effect.html`'s. The part rendered in ten states (reading,
+failed, a refused list, no startup, the same with two files, one file listed and one not,
+gains and losses with two files, gains only, losses only, a missing file only) before and
+after: every byte the same. `device-persist` shot again at 1440 and 390 beside
+PersistRunningHelp: the part as its region says. No region's verdict changed.
 
 The running cards draw the one stepper, compared with its boards in docs/fidelity/stepper.md.
 Reload… (`_reload.html`; the walk's section I, capture 30) and Run a privileged command…

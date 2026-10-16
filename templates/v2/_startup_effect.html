@@ -1,0 +1,26 @@
+{#- What saving changes in what a device boots, drawn once (C886, C923): the lines startup
+    gains (only running holds them) and loses (only startup holds them), a certificate file
+    `dir nvram:` does not list, and the certificates startup keeps as files that are no
+    difference. *e* is `persist_op.startup_effect`'s answer (Reload's gate's comparison,
+    `roundtrip.startup_is_running`), masked on the way out. Persist's preview
+    (`_persist_effect.html`) and Adopt's (`_adopt.html`) each say their own leading sentence
+    (what the operation still does, or the account it adds) and draw the rest here. -#}
+{%- macro startup_lines(e) -%}
+  {%- if e.gains %}
+  <p class="ie-sub">Startup gains, held only by running</p>
+  <pre class="op-diff">{% for l in e.gains %}<span class="op-add">+ {{ l }}</span>
+{% endfor %}</pre>
+  {%- endif %}
+  {%- if e.loses %}
+  <p class="ie-sub">Startup loses, held only by startup: gone at the next reload</p>
+  <pre class="op-diff">{% for l in e.loses %}<span class="op-del">- {{ l }}</span>
+{% endfor %}</pre>
+  {%- endif %}
+  {%- for m in e.missing %}
+  <p>Startup keeps {{ m.certificate }} of {{ m.chain.split()[-1] }} as <span class="mono">{{ m.file }}</span>, which <span class="mono">dir nvram:</span> does not list: a reload now would boot without it.</p>
+  {%- endfor %}
+  {%- if e.present %}
+  {%- set one = e.present | length == 1 %}
+  <p class="muted small">Startup keeps {{ e.present | length }} certificate{{ '' if one else 's' }} as {{ 'a file' if one else 'files' }} in nvram:, which running shows inline: the same certificate{{ '' if one else 's' }} stored two ways, not a difference.</p>
+  {%- endif %}
+{%- endmacro -%}

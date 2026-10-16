@@ -19,7 +19,11 @@ same chains, certificates and files as r6's), r6's real `dir nvram:`, and s1's r
 - vIOS: no `dir nvram:` sent, the same;
 - the control: the comparison it replaced counts r1's pair as 4 differing lines;
 - Adopt's preview (`/v2/adopt/preview`) over r1's pair: "the running and startup configs are
-  the same", `dir nvram:` read; a file missing, named; s1 sends no `dir nvram:`.
+  the same", `dir nvram:` read; a file missing, named; s1 sends no `dir nvram:`;
+- C923: Adopt's card draws the lines by Persist's drawing (`_startup_effect.html`): r1's pair
+  with a line changed, the gained and lost lines, a planted community masked; the same, its
+  words and no lines, the two files no difference; a missing file named once; and the
+  manual's step 6 still saying the preview lists them.
 """
 
 import html as _h
@@ -208,14 +212,14 @@ def adopting(monkeypatch):
     import app as nmas
     client = nmas.app.test_client()
 
-    def preview(session, hostname):
+    def preview(session, hostname, raw=False):
         holder["session"] = session
         r = client.post("/v2/adopt/preview", data={
             "list_name": T.LIST, "hostname": hostname, "mgmt_ip": T.IP,
             "platform": "cisco-ios-xe", "role": "router", "supplied_username": "admin",
             "supplied_password": "Typed-Once-7731"})
         assert r.status_code == 200, r.get_data(as_text=True)[:600]
-        return _words(r.get_data(as_text=True))
+        return r.get_data(as_text=True) if raw else _words(r.get_data(as_text=True))
     return preview
 
 
@@ -252,12 +256,90 @@ class TestAdoptsPreview:
         session = _AdoptSession(r1["running"], r1["startup"],
                                 DIR_NVRAM.replace("CiscoLicensi#1CA.cer", "something-else.cer"))
         words = adopting(session, "r1")
-        assert "0 line(s) only the running config has become permanent" in words
-        assert ("startup keeps certificate ca 01 of SLA-TrustPoint as nvram:CiscoLicensi#1CA.cer"
-                ", which `dir nvram:` does not list") in words
+        # Only a file is missing: no line differs, and no count of lines is said (C930).
+        assert ("no line differs between running and startup: saving adds the tool's account "
+                "to what the device boots, and writes its certificates again") in words
+        assert "0 line(s)" not in words
+        # C923: named by the card's drawing (`startup_lines`), no longer in the sentence too.
+        assert ("Startup keeps certificate ca 01 of SLA-TrustPoint as nvram:CiscoLicensi#1CA.cer "
+                ", which dir nvram: does not list") in words
+        assert words.count("nvram:CiscoLicensi#1CA.cer") == 1, "named once"
 
     def test_vios_sends_no_dir_nvram(self, adopting, s1):
         session = _AdoptSession(s1["running"], s1["startup"])
         words = adopting(session, "s1")
         assert "the running and startup configs are the same" in words
         assert "dir nvram:" not in session.sent
+
+
+def _save_part(html: str) -> str:
+    """Adopt's card's "What a save makes permanent" part, up to the next heading."""
+    m = re.search(r'What a save makes permanent</h3>(.*?)<h3 ', html, re.S)
+    assert m, "the card draws no save part"
+    return m.group(1)
+
+
+class TestAdoptsCardDrawsTheLines:
+    """C923: Adopt's card drew only the persist sentence, though docs/manual/how-it-works/
+    adopt.md step 6 says the preview lists the lines. It now draws them by Persist's own
+    drawing (`_startup_effect.html`'s `startup_lines`), through `/v2/adopt/preview` with the
+    real `_read_device` over r1's real pair."""
+
+    @pytest.fixture(autouse=True)
+    def _lab(self, monkeypatch, tmp_path):
+        from tests.test_adopt_apply import lab as adopt_lab
+        gen = adopt_lab.__wrapped__(monkeypatch, tmp_path)
+        next(gen)
+        yield
+        next(gen, None)
+
+    def test_the_lines_startup_gains_and_loses_are_drawn_masked(self, adopting, r1):
+        running = r1["running"].replace("\nlogging trap notifications\n",
+                                        "\nlogging trap informational\n")
+        running = running.replace("\nlogin on-success log\n",
+                                  f"\nlogin on-success log\nsnmp-server community {PLANTED} RO\n")
+        assert "logging trap informational" in running and PLANTED in running
+        html = adopting(_AdoptSession(running, r1["startup"]), "r1", raw=True)
+        part = _save_part(html)
+        words = _words(part)
+        assert ("saving makes the RUNNING config the boot config, with the tool's account: 2 "
+                "line(s) only the running config has become permanent, and 1 line(s) only the "
+                "startup config has are gone at the next reload") in words
+        assert "Startup gains, held only by running" in words
+        assert "Startup loses, held only by startup: gone at the next reload" in words
+        gains = re.findall(r'<span class="op-add">\+ ([^<]*)</span>', part)
+        loses = re.findall(r'<span class="op-del">- ([^<]*)</span>', part)
+        assert loses == ["logging trap notifications"], loses
+        assert "logging trap informational" in gains and len(gains) == 2, gains
+        assert any(g.startswith("snmp-server community ") for g in gains), gains
+        assert PLANTED not in html, "a secret's value is masked on the way out"
+
+    def test_the_same_draws_the_same_words_and_no_lines(self, adopting, r1):
+        html = adopting(_AdoptSession(r1["running"], r1["startup"]), "r1", raw=True)
+        words = _words(_save_part(html))
+        assert ("the running and startup configs are the same: saving adds only the tool's "
+                "account to what the device boots") in words
+        assert ("Startup keeps 2 certificates as files in nvram:, which running shows inline: "
+                "the same certificates stored two ways, not a difference.") in words
+        assert "Startup gains" not in words and "Startup loses" not in words
+        assert "op-add" not in html and "op-del" not in html
+
+    def test_a_missing_certificate_file_is_named(self, adopting, r1):
+        html = adopting(_AdoptSession(r1["running"], r1["startup"], DIR_NVRAM.replace(
+            "CiscoLicensi#1CA.cer", "something-else.cer")), "r1", raw=True)
+        words = _words(_save_part(html))
+        assert ("Startup keeps certificate ca 01 of SLA-TrustPoint as nvram:CiscoLicensi#1CA.cer "
+                ", which dir nvram: does not list: a reload now would boot without it.") in words
+        assert "Startup keeps 1 certificate as a file in nvram:" in words, "the other one"
+        assert "Startup gains" not in words, "no line differs: only the file is named"
+
+    def test_the_manual_says_what_the_card_draws(self):
+        """adopt.md step 6 stays true: it says the preview lists the lines, and names a file."""
+        import os
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "docs", "manual", "how-it-works", "adopt.md")
+        with open(path, encoding="utf-8") as fh:
+            step = " ".join(fh.read().split("6. **What a save would make permanent.**", 1)[1]
+                            .split("7. **", 1)[0].split())
+        assert "The preview lists the lines a save would make permanent" in step
+        assert "names a certificate file `dir nvram:` does not list" in step

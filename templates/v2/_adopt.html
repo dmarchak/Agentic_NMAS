@@ -1,5 +1,6 @@
 {%- from "v2/_macros.html" import icon, badge, how -%}
 {%- from "v2/_run_stepper.html" import run_stepper -%}
+{%- from "v2/_startup_effect.html" import startup_lines -%}
 {#- Devices › Adopt a device… (7.4's board G, signed off 2026-10-04; built 2026-10-10): the
     form (the supplied login typed, never drawn back), the preview (every gate by name, the
     program masked, what a save makes permanent, NetBox, what it does not do), the confirm
@@ -40,7 +41,14 @@
   <h3 class="set-label">What will be sent (masked)</h3>
   <ol class="set-steps mono small">{% for l in p.program %}<li>{{ l }}</li>{% endfor %}</ol>
   {%- endif %}
-  {%- if p.persist.sentence %}<h3 class="set-label">What a save makes permanent</h3><p class="small">{{ p.persist.sentence }}</p>{% endif %}
+  {%- if p.persist.sentence %}
+  <h3 class="set-label">What a save makes permanent</h3>
+  {#- C923: the lines startup gains and loses, and a certificate file `dir nvram:` does not
+      list, by Persist's preview's own drawing (`startup_lines`); the sentence is Adopt's. -#}
+  <div class="op-effect"><p class="small">{{ p.persist.sentence }}</p>
+  {{- startup_lines(p.persist) }}
+  </div>
+  {%- endif %}
   {%- if p.rw_kept %}<p class="small">Read-write SNMP communities it keeps (adopt removes none): {{ p.rw_kept | join('; ') }}</p>{% endif %}
   <h3 class="set-label">What it does not do</h3>
   <ul class="small">{% for n in p.not_doing %}<li>{{ n }}</li>{% endfor %}</ul>
