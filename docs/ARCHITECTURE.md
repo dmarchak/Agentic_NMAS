@@ -433,7 +433,13 @@ and others have left since too.
   last progress step and a "may be stuck" note, never queued and never
   forced. C101 enforces it where the write happens: `connection.open_ssh`
   refuses a non-read command or a config or save call on a session whose
-  thread does not hold the device
+  thread does not hold the device. C987: a read of what is held (the In
+  progress chip, `held_anywhere`, interrupted operations) probes only the
+  devices MARKED in the network's `holds/` folder, never every lock file the
+  network ever had: the holder marks its device after taking the `flock` and
+  before writing its record, and unmarks it after emptying the record and
+  before giving the `flock` up. A folder from before markers is read in full
+  until `index_all()` (at the app's start) or its first acquire indexes it
 - **[modules/outbound.py](modules/outbound.py)** — config text on its way out:
   masked unless a person reveals it with `?reveal=1`, recorded. The golden
   routes and the backup download call it (C56): one pattern, not two

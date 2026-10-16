@@ -1162,6 +1162,35 @@ thread and path), `write_atomic` (a temp per write, `fsync`, `os.replace`) and
 The backups index was locked and atomic (`PathLock`), and each backup file created with
 `open(filepath, "x")`; REMOVED 2026-10-15 with today's Backups (7.8, a8acc2a1).
 
+**The device holds' markers, `data/device_ops/<network>/holds/` (C987, 2026-10-16).** A lock
+file outlives its hold (R5 keeps it, so a crash's record can be told apart), and every read of
+the holds listed and probed every lock file a network ever had: the In progress chip, on every
+v2 page, cost about 40 ms at 900. Each network's folder now keeps one EMPTY marker per device
+whose lock file may carry a record, and a reader probes only those. It is not a JSON index, on
+purpose: a marker has no content to tear or corrupt, and each has one writer at a time, the
+device's own `flock` holder, so it needs no lock of its own and no atomic replace.
+- **The order is the guarantee.** Acquire: `flock`, then the marker, then the record. Release:
+  empty the record, then remove the marker, then give the `flock` up (an unmark after the
+  unlock could remove the NEXT holder's marker). So a record is never unmarked, and a marker
+  with no record reads as nothing.
+- **Each crash window.** After the `flock`, before the marker: the file is empty and the kernel
+  frees the `flock`; nothing to read, nothing lost. After the marker, before the record, or after
+  emptying the record, before the unmark: a marker on an empty, free file, read as nothing, and
+  removed by that device's next release. During the hold (R5's case): the marker and the record
+  both stay, and the read finds a free `flock` and a record, an interrupted operation, exactly
+  as before; the next acquire keeps it in `interrupted.jsonl` and its release clears the marker.
+- **A folder written before markers** has no `holds.indexed`, and is read in full (correct, and
+  as slow as before) until it is indexed: once at the app's start (`device_ops.index_all()`),
+  or by its first acquire. Indexing only ADDS markers (one per lock file with a record), so two
+  at once, or one beside an acquire, lose nothing: an acquire marks its own device before it
+  writes its record.
+- **Unreadable.** Markers that cannot be listed are never "nothing is held": the read falls back
+  to the whole folder and logs it. A marker that cannot be created refuses the acquire (the
+  `flock` given back, nothing written), because no page would see that hold, nor its record if
+  its process ended. The assumption it rests on: every process that holds devices runs this
+  code (one checkout; Update and `nmas-deploy` refuse while any device is held).
+- Tests: tests/test_device_holds_index.py, with real second processes and nine controls.
+
 SQLite in WAL mode is warranted where a record is a state machine with more than one actor,
 or ephemeral state every process must see and consume once. Both need a local filesystem.
 
@@ -1393,7 +1422,7 @@ l. "Today" is yes when two users, two tabs or a host CLI already reach it.
 | stores-25 | reader caches | one JSON per reader | `PathLock`, `write_atomic` | yes | SAFE | l | no |
 | stores-26 | fetch record, Update wait, heartbeat rules (the backups index REMOVED 2026-10-15 with today's Backups, a8acc2a1) | small files | `PathLock` or fingerprint and `write_atomic` | yes | SAFE | l | no |
 | stores-27 | append-only audit JSONL | receipts and audit logs | `O_APPEND` | partly | SAFE (receipts UNSAFE, R32) | l | receipts yes |
-| stores-28 | device hold files | `data/device_ops/*` | `flock`, holder writes | yes | SAFE | l | no |
+| stores-28 | device hold files | `data/device_ops/*` | `flock`, holder writes; the `holds/` markers written only by the device's `flock` holder, in order around its record (C987, section 3.4) | yes | SAFE | l | no |
 | stores-29 | per-device staging | staged credential, captures, intent | one file per held device | yes | SAFE | l | no |
 | stores-30 | list deletion (added on review) | the list's folder, the registry | NetBox and credential checks; holds and jobs not checked (device.py:566-605; app.py:1109-1173) | no | UNSAFE | m | yes |
 | stores-31 | Oxidized `router.db` (added on review) | `router.db` | atomic replace, no `flock` (scripts/nmas-oxidized-cred:156-210) | no | UNSAFE | m | yes |

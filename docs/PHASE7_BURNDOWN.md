@@ -88,7 +88,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C876~~ | ~~the manifest's name lookup~~ **measured**: quadratic but 0.43 s at 900 devices inside requests whose per-device git reads cost more (C912); resolved to C, moved to the tail | | | | |
 | ~~C850~~ | ~~criterion 6: the Alpine confirm components to the one pattern~~ **done**, 4 → 1 (IP SLA's with P.12, D3) (see Checked off) | | | | |
 | ~~C537~~ | ~~the every-page in-flight indicator (D2), then C540's wording and C217's one row~~ **done: D2 met** (see Checked off); the command box and the rest stay in C537's row, to the tail | | | | |
-| C987 | the In progress chip's holds read grows with every lock file ever made (measured: about 40 ms at 900): a holds index, so a read costs what is held | a fixed read at test_scale's size, a test that fails on the folder scan | M | — | — |
+| ~~C987~~ | ~~the In progress chip's holds read grows with every lock file ever made~~ **done** (see Checked off) | | | | |
+| C988 | an unreadable lock folder reads as "nothing held" (the update gate's refusal): only an absent folder is empty, any other error raises and its caller says it | a test with an unlistable folder, each caller's words | S | — | — |
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
 | ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
@@ -257,6 +258,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C987 done** (B, overnight): the holds read probes only devices marked in the network's
+  `holds/` folder (an empty marker per possible record, one writer each), 7.2 ms to 0.01 ms at
+  900 lock files. C988 (B: an unreadable lock folder reads as nothing held) into section 2;
+  C989 (UNKNOWN) and C990 (C) to the tail.
 - **C537 built, D2 met** (overnight, boards A, B, C of canvas v66, self-signed): every v2
   page's In progress chip from `/operations/in_flight`, live; finished results until opened,
   per person; the device page reopens a running or unopened card, and a freed Rotate card shows

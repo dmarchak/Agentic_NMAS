@@ -857,6 +857,14 @@ def _start_background_daemons():
     """
     session_reaper(interval=PING_INTERVAL)
 
+    # The device holds' markers (C987): a network's lock folder written before them is read
+    # in full by every page's In progress chip until it is indexed, once, here.
+    try:
+        from modules.nsot import device_ops as _device_ops
+        _device_ops.index_all()
+    except Exception as _e:
+        app.logger.error("Device holds were not indexed: %s", _e)
+
     # The drift checker
     try:
         from modules.drift_check import get_checker as _get_drift_checker

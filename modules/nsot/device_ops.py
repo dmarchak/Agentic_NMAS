@@ -26,6 +26,21 @@ dies, so a crash cannot leave a device locked for ever. Within one process
 the lock is re-entrant for the thread that holds it (onboarding's phase two
 rotates inside its own hold) and refuses any other thread. `fcntl` does not
 exist on Windows; there the lock is in-process only, and says so.
+
+**What is held is read from what is MARKED, never from every lock file (C987).** A lock
+file outlives its hold: `release()` empties it and keeps it, so a crash's non-empty
+leftover can be told apart (CONCURRENCY_AUDIT R5), and a network's folder holds one file
+for every device ever held. Listing them all, and probing each, made every page's In
+progress chip cost what was EVER held (about 40 ms at 900 files). So beside the lock files
+each network's folder keeps `holds/`, one empty marker per device whose lock file may carry
+a record: the holder creates it after taking the `flock` and BEFORE writing its record, and
+removes it after emptying the record and BEFORE giving the `flock` up. Its one writer at a
+time is the device's own `flock` holder, so the marker needs no lock of its own and has no
+content to corrupt. A reader lists `holds/` and probes only those devices: held (the
+`flock` is taken), a leftover (free, its record still there: the process ended), or a
+marker a crash left inside a window of microseconds (free and empty: nothing). A folder
+written before markers existed is read in full until it is indexed (`indexed()`): once at
+the app's start (`index_all()`), or by the first acquire in it.
 """
 
 import contextlib
@@ -164,27 +179,122 @@ def busy_text(list_name: str, hostname: str) -> str:
     return describe(found).split(" One operation per device")[0]
 
 
-def held(list_name: str) -> list:
-    """Every device held in *list_name* now: its holder, newest first. A READ:
-    it lists the list's lock files and asks each; it creates nothing."""
+#: Beside a network's lock files: one empty marker per device whose lock file may carry a
+#: record (held now, or left by a process that ended), and the file that says every such
+#: device is marked (C987, the module's docstring).
+HOLDS_DIR = "holds"
+INDEXED = "holds.indexed"
+
+
+def _folder(list_name: str) -> str:
     from modules import config
 
+    return os.path.join(config.DATA_DIR, "device_ops", _list_key(list_name))
+
+
+def _candidates(folder: str) -> list:
+    """The lock files' names (without `.lock`) that may carry a record, in *folder*: its
+    markers once it is indexed; before that, and whenever its markers cannot be listed, every
+    lock file it has (the whole folder, read as it always was: never "nothing is held"
+    because an index could not be read). A READ."""
+    if os.path.exists(os.path.join(folder, INDEXED)):
+        try:
+            return sorted(os.listdir(os.path.join(folder, HOLDS_DIR)))
+        except OSError as exc:
+            log.warning("device_ops: the markers in %s could not be listed (%s); every lock "
+                        "file is read instead", folder, exc)
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    return sorted(n[:-5] for n in names if n.endswith(".lock"))
+
+
+def indexed(list_name: str) -> bool:
+    """Whether *list_name*'s holds are read from its markers (True), or from every lock file
+    it has (False: written before markers existed, and not indexed yet)."""
+    return os.path.exists(os.path.join(_folder(list_name), INDEXED))
+
+
+def _mark(folder: str, name: str) -> None:
+    """Create the marker for lock file *name*; raises when it cannot be created."""
+    from modules.config import secure_dir
+
+    marks = os.path.join(folder, HOLDS_DIR)
+    secure_dir(marks)
+    os.close(os.open(os.path.join(marks, name), os.O_WRONLY | os.O_CREAT, 0o600))
+
+
+def _unmark(folder: str, name: str) -> None:
+    """Remove lock file *name*'s marker. A failure is logged and harmless: a marker on an
+    empty lock file nobody holds reads as nothing, and the device's next release removes it."""
+    try:
+        os.unlink(os.path.join(folder, HOLDS_DIR, name))
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        log.warning("device_ops: the marker of %s in %s was not removed (%s); it reads as "
+                    "nothing held", name, folder, exc)
+
+
+def _index(folder: str) -> None:
+    """Mark every lock file in *folder* that carries a record, then say the folder is indexed.
+    Only ever ADDS markers, so two at once, or one beside an acquire (which marks its own
+    device before writing its record), cannot lose one: a record written after this read its
+    file was marked by its own holder first."""
+    from modules.config import secure_dir
+
+    secure_dir(os.path.join(folder, HOLDS_DIR))
+    for n in os.listdir(folder):
+        if not n.endswith(".lock"):
+            continue
+        try:
+            size = os.stat(os.path.join(folder, n)).st_size
+        except OSError:
+            continue
+        if size:
+            _mark(folder, n[:-5])
+    os.close(os.open(os.path.join(folder, INDEXED), os.O_WRONLY | os.O_CREAT, 0o600))
+    log.info("device_ops: %s indexed: its holds are read from its markers", folder)
+
+
+def index_all() -> list:
+    """Index every network's folder that is not yet (once, at the app's start): a folder
+    written before markers existed is otherwise read in full on every page until its first
+    acquire. Returns the folders it indexed; a failure is logged, and that folder is read in
+    full, which is correct and slower."""
+    from modules import config
+
+    done = []
+    for name in _list_folders():
+        folder = os.path.join(config.DATA_DIR, "device_ops", name)
+        if os.path.exists(os.path.join(folder, INDEXED)):
+            continue
+        try:
+            _index(folder)
+            done.append(name)
+        except OSError as exc:
+            log.error("device_ops: %s could not be indexed (%s); its holds are read from "
+                      "every lock file", folder, exc)
+    return done
+
+
+def held(list_name: str) -> list:
+    """Every device held in *list_name* now: its holder, newest first. A READ: it asks the
+    devices this process holds, and the devices MARKED in the list's folder (`_candidates`),
+    never every lock file the list ever had (C987); it creates nothing."""
     out, seen = [], set()
     with _mu:
         for (lst, host), mine in _held.items():
             if lst == _list_key(list_name):
                 out.append(dict(mine["holder"]))
                 seen.add(host)
-    folder = os.path.join(config.DATA_DIR, "device_ops", _list_key(list_name))
-    try:
-        names = sorted(os.listdir(folder))
-    except OSError:
-        names = []
-    for name in names:
-        if not name.endswith(".lock"):
+    folder = _folder(list_name)
+    for name in _candidates(folder):
+        path = os.path.join(folder, name + ".lock")
+        if name in seen:
             continue
-        path = os.path.join(folder, name)
-        host = _read_holder_file(path, name[:-5]).get("device") or name[:-5]
+        host = _read_holder_file(path, name).get("device") or name
         if host in seen:
             continue
         found = holder(list_name, host)
@@ -312,10 +422,9 @@ def interrupted(list_name: str) -> list:
     """Every operation on *list_name* whose process ended while it held a device: the ones
     still in their lock file, and the ones kept when the next operation took the device.
     Each is the holder's record (device, operation, actor, started, progress, pid) with
-    `found_at` (None while still in the lock file). A READ: it creates nothing."""
-    from modules import config
-
-    folder = os.path.join(config.DATA_DIR, "device_ops", _list_key(list_name))
+    `found_at` (None while still in the lock file). A READ: it creates nothing, and probes
+    only the MARKED lock files (`_candidates`, C987)."""
+    folder = _folder(list_name)
     out, seen = [], set()
 
     def add(rec, found_at):
@@ -338,15 +447,10 @@ def interrupted(list_name: str) -> list:
             continue
         if isinstance(entry, dict) and isinstance(entry.get("record"), dict):
             add(entry["record"], entry.get("found_at"))
-    try:
-        names = sorted(os.listdir(folder))
-    except OSError:
-        names = []
-    for name in names:
-        if name.endswith(".lock"):
-            left = _leftover(os.path.join(folder, name), name[:-5])
-            if left:
-                add(left, None)
+    for name in _candidates(folder):          # a leftover's marker outlives its process
+        left = _leftover(os.path.join(folder, name + ".lock"), name)
+        if left:
+            add(left, None)
     return sorted(out, key=lambda r: r.get("started", 0) or 0)
 
 
@@ -464,6 +568,24 @@ def acquire(list_name: str, hostname: str, operation: str, actor: str,
                         os.close(fd)
                         raise DeviceBusy(found) from None
                     time.sleep(PROBE_WAIT_S)
+            # Marked BEFORE the record is written, so no record is ever unmarked (C987): a
+            # crash before the record leaves a marker on an empty file, which reads as
+            # nothing. A folder from before markers is indexed first, once; if that fails
+            # it is read in full, which is correct and slower. A hold that cannot be marked
+            # is refused: the pages would not see it, nor its record if its process ended.
+            folder, name = os.path.dirname(path), os.path.basename(path)[:-5]
+            if not os.path.exists(os.path.join(folder, INDEXED)):
+                try:
+                    _index(folder)
+                except OSError as exc:
+                    log.error("device_ops: %s could not be indexed (%s); its holds are read "
+                              "from every lock file", folder, exc)
+            try:
+                _mark(folder, name)
+            except OSError:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
+                raise
             # A record left in the file means the last holder's process ENDED while it
             # held the device (release empties it first). Kept before it is overwritten:
             # it is the only trace of an operation that did not finish (R5).
@@ -500,8 +622,13 @@ def release(list_name: str, hostname: str) -> None:
     if fd is not None:
         import fcntl
 
+        path = _path(list_name, hostname)
         try:
             os.ftruncate(fd, 0)
+            # Unmarked after the record is emptied and BEFORE the flock is given up (C987):
+            # once it is free, the next holder marks it, and a later unmark would hide that
+            # hold. A crash between the two leaves a marker on an empty file: nothing.
+            _unmark(os.path.dirname(path), os.path.basename(path)[:-5])
             fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
             os.close(fd)

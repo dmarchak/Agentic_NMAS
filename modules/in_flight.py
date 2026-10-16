@@ -221,8 +221,9 @@ def chip(networks, viewer: str, now: float = None) -> dict:
     """What the In progress chip draws for *viewer*: every operation running in every network
     (each held device once, C217), every job a device's page started that finished and
     *viewer* has not opened (kept as long as its job, `capture_job.KEEP_S`), and the networks
-    whose holds could not be read (never drawn as nothing running). A READ: it lists the lock
-    folders and this process's jobs; it writes nothing."""
+    whose holds could not be read (never drawn as nothing running). A READ: it probes the
+    devices each network has MARKED as held (`device_ops.held`, C987: never every lock file a
+    network ever had) and reads this process's jobs; it writes nothing."""
     from modules import op_progress
     from modules.nsot import capture_job, device_ops
 
