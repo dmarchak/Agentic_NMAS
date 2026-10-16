@@ -11,7 +11,11 @@
    - Snap to grid (board E, C691; the map carries data-snap while it is on): a dragged device's
      landing point is outlined, and on the drop it lands on the nearest grid point;
    - Labels Auto: the labels hide while the map is zoomed out (svg.topo-far);
-   - the view (pan and zoom) is kept, per network, across the region's redraws.
+   - the view (pan and zoom) is kept, per network, across the region's redraws;
+   - while a pointer is down on the map, nothing redraws it (C882, static/js/nmas_drag.js): an
+     announcement or a save's answer that arrives mid-drag is applied after the drop. A drop that
+     would land more than one grid step (FAR) from where the pointer let go is refused, put back,
+     and said above the map; nothing is saved.
    Strict CSP: no inline handler, attributes only. */
 (function (root) {
   'use strict';
@@ -24,6 +28,12 @@
      at: a name (12.5 units) stays about 7.5 pixels, readable. A wider box opens on the whole map
      (the board's 100%). */
   var READABLE = 0.6;
+  /* C882: the most a drop may land from where the pointer let go, in map units, on either axis:
+     one grid step (modules/topology_page.GRID). A correct drag lands exactly where the pointer
+     says (to a unit's rounding); in the walk, consecutive saved places moved 120 to 400 units on
+     an axis, and the measured cause some 360 (a redraw under the pointer). One step, so a
+     pointer between two dots may take either. */
+  var FAR = 40;
 
   /* PURE: a view box zoomed by *factor* about the point (px, py) in map units, its scale kept
      within the range relative to the whole map's width. */
@@ -129,9 +139,14 @@
   }
 
   /* On the drop with the grid on: the device lands on the nearest grid point. */
-  function land(svg, g) {
-    var mark = svg.querySelector('.topo-snapmark'), step = gridOf(svg);
+  function unmark(svg) {
+    var mark = svg.querySelector('.topo-snapmark');
     if (mark) mark.setAttribute('visibility', 'hidden');
+  }
+
+  function land(svg, g) {
+    var step = gridOf(svg);
+    unmark(svg);
     if (!step) return;
     var p = placeOf(g);
     shift(svg, g, snapTo(p[0], step) - parseFloat(g.getAttribute('data-x')),
@@ -175,12 +190,74 @@
     else form.submit();
   }
 
+  /* C882: where the pointer let go says where the device lands: its map position (read now, on
+     the map that is on the page) plus where on the device it was grabbed, snapped with the grid
+     on. '' when the device is there; else why it is refused, naming both places. */
+  function judgeDrop(p, clientX, clientY) {
+    var name = p.node.getAttribute('data-node');
+    var there = root.NMAS_DRAG ? root.NMAS_DRAG.stillThere(p.hold) : p.box.isConnected;
+    if (!there || !p.svg.isConnected || !p.node.isConnected) {
+      return name + ' was drawn again while it was dragged, so where it would land cannot be ' +
+        'trusted; nothing was saved. Drag it again';
+    }
+    var at = toMap(p.svg, clientX, clientY), step = gridOf(p.svg);
+    var want = [at.x + p.grab[0], at.y + p.grab[1]].map(function (v) {
+      return step ? snapTo(v, step) : Math.max(v, 20);
+    });
+    var landed = placeOf(p.node);
+    var off = root.NMAS_DRAG ? root.NMAS_DRAG.far(landed, want, FAR) : null;
+    if (!off) return '';
+    return name + ' would have landed at (' + Math.round(landed[0]) + ', ' +
+      Math.round(landed[1]) + '), but the pointer let go over (' + Math.round(want[0]) + ', ' +
+      Math.round(want[1]) + '): ' + off.by + ' map units apart, more than one grid step (' +
+      off.limit + '); nothing was saved. Drag it again';
+  }
+
+  /* A refused drop, said in the slot above the map (a refusal drawn inside the region would be
+     wiped by its next redraw); the next save's answer replaces it. */
+  function sayRefused(words) {
+    var slot = root.document.getElementById('topo-result');
+    if (!slot) return;
+    var doc = root.document, ns = 'http://www.w3.org/2000/svg';
+    var div = doc.createElement('div');
+    div.className = 'notice notice-danger set-result';
+    div.setAttribute('role', 'alert');
+    var ico = doc.createElementNS(ns, 'svg');
+    [['class', 'ico'], ['width', '16'], ['height', '16'], ['viewBox', '0 0 24 24'],
+     ['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '2'],
+     ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true']]
+      .forEach(function (a) { ico.setAttribute(a[0], a[1]); });
+    ['M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+     'M12 9v4', 'M12 17h.01'].forEach(function (d) {
+      var path = doc.createElementNS(ns, 'path');
+      path.setAttribute('d', d);
+      ico.appendChild(path);
+    });
+    var para = doc.createElement('p'), strong = doc.createElement('strong');
+    strong.textContent = 'Not moved:';
+    para.appendChild(strong);
+    para.appendChild(doc.createTextNode(' ' + words + '.'));
+    div.appendChild(ico);
+    div.appendChild(para);
+    slot.textContent = '';
+    slot.appendChild(div);
+  }
+
   /* ------------------------------------------------------------------ the pointer */
 
   var press = null;          // one pointer: a pan or a device's drag
   var touches = {};          // the pointers down on the map, for a pinch
   var pinch = null;
   var swallowClick = false;
+
+  /* C882: the map is held (nothing redraws it) from a press until it ends; *answered*: the
+     drop's own save redraws it, so nothing set aside meanwhile is asked for again. */
+  function holdMap(box, pointerId) {
+    return root.NMAS_DRAG ? root.NMAS_DRAG.hold(box, pointerId) : null;
+  }
+  function letGo(h, answered) {
+    if (h && root.NMAS_DRAG) root.NMAS_DRAG.release(h, answered);
+  }
 
   function onDown(evt) {
     var box = evt.target.closest && evt.target.closest('[data-topo-view]');
@@ -190,25 +267,34 @@
     touches[evt.pointerId] = {x: evt.clientX, y: evt.clientY};
     var ids = Object.keys(touches);
     if (ids.length === 2) {
-      // Two fingers: a pinch replaces whatever the first began.
+      // Two fingers: a pinch replaces whatever the first began, and keeps its hold.
       var a = touches[ids[0]], b = touches[ids[1]];
       pinch = {box: box, svg: svg, d: Math.hypot(a.x - b.x, a.y - b.y) || 1,
-               mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2};
+               mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2,
+               hold: press ? press.hold : holdMap(box, evt.pointerId)};
       press = null;
       return;
     }
     if (evt.button !== undefined && evt.button !== 0) return;
+    if (press) letGo(press.hold, false);
     var g = evt.target.closest('[data-node]');
     press = {box: box, svg: svg, id: evt.pointerId, x: evt.clientX, y: evt.clientY,
              view: readView(svg), node: (g && canMove(evt.pointerType)) ? g : null,
-             moved: false};
+             moved: false, hold: holdMap(box, evt.pointerId)};
     if (press.node) {
-      var p = toMap(svg, evt.clientX, evt.clientY);
+      var p = toMap(svg, evt.clientX, evt.clientY), at = placeOf(press.node);
       press.start = [p.x, p.y];
+      press.grab = [at[0] - p.x, at[1] - p.y];    // where on the device it was taken
       press.d0 = [parseFloat(press.node.getAttribute('data-dx') || 0),
                   parseFloat(press.node.getAttribute('data-dy') || 0)];
     }
     if (box.setPointerCapture) box.setPointerCapture(evt.pointerId);
+  }
+
+  /* The dragged device follows the pointer, in map units on the map as it is now. */
+  function follow(p, clientX, clientY) {
+    var at = toMap(p.svg, clientX, clientY);
+    shift(p.svg, p.node, p.d0[0] + at.x - p.start[0], p.d0[1] + at.y - p.start[1]);
   }
 
   function onMove(evt) {
@@ -241,8 +327,7 @@
       if (press.node) press.svg.classList.add('topo-moving');
     }
     if (press.node) {
-      var p = toMap(press.svg, evt.clientX, evt.clientY);
-      shift(press.svg, press.node, press.d0[0] + p.x - press.start[0], press.d0[1] + p.y - press.start[1]);
+      follow(press, evt.clientX, evt.clientY);
       markLanding(press.svg, press.node);
       return;
     }
@@ -256,17 +341,40 @@
 
   function onUp(evt) {
     delete touches[evt.pointerId];
-    if (pinch && Object.keys(touches).length < 2) pinch = null;
-    if (!press || evt.pointerId !== press.id) return;
-    press.box.classList.remove('topo-panning');
-    if (press.moved) {
-      swallowClick = true;
-      if (press.node) {
-        land(press.svg, press.node);
-        save(press.svg, press.node);
-      }
+    if (pinch && Object.keys(touches).length < 2) {
+      letGo(pinch.hold, false);
+      pinch = null;
     }
+    if (!press || evt.pointerId !== press.id) return;
+    var p = press;
     press = null;
+    p.box.classList.remove('topo-panning');
+    if (!p.moved || !p.node) {
+      if (p.moved) swallowClick = true;
+      letGo(p.hold, false);
+      return;
+    }
+    swallowClick = true;
+    if (evt.type === 'pointercancel') {
+      // Not a drop: the device goes back and nothing is saved.
+      unmark(p.svg);
+      shift(p.svg, p.node, p.d0[0], p.d0[1]);
+      p.svg.classList.remove('topo-moving');
+      letGo(p.hold, false);
+      return;
+    }
+    follow(p, evt.clientX, evt.clientY);
+    land(p.svg, p.node);
+    var refused = judgeDrop(p, evt.clientX, evt.clientY);
+    if (refused) {
+      shift(p.svg, p.node, p.d0[0], p.d0[1]);    // back where it was
+      p.svg.classList.remove('topo-moving');
+      sayRefused(refused);
+      letGo(p.hold, false);
+      return;
+    }
+    letGo(p.hold, true);
+    save(p.svg, p.node);
   }
 
   /* A press that panned, pinched or moved a device is not a click on what it began over. */
@@ -381,5 +489,5 @@
     root.document.addEventListener('htmx:afterSwap', ready);
   }
   root.NMAS_TOPOLOGY = {zoomAt: zoomAt, initial: initial, firstView: firstView, scaleOf: scaleOf,
-                        layoutJson: layoutJson, straight: straight, snapTo: snapTo};
+                        layoutJson: layoutJson, straight: straight, snapTo: snapTo, FAR: FAR};
 }(typeof window !== 'undefined' ? window : this));

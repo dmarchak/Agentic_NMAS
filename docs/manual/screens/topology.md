@@ -95,6 +95,13 @@ The map fills the window; a large network does not fit on one screen, so you mov
   turning it on moves nothing, and a layout saved before keeps every place until that device is
   moved. The switch is yours, kept in the page's address like Ports and Weak points, never in the
   network's layout; it is off until you press it.
+- **While you hold the mouse button down, the map is not redrawn.** Another person's move, the
+  topology reader's next read, or the answer to your previous drop waits until you let go; then
+  the map shows it. What you are dragging never jumps under the pointer.
+- **A drop far from the pointer is refused.** When you let go, the device lands where the pointer
+  has carried it (on the nearest dot with the grid on). If the place it would be saved at is more than one
+  grid step (40 map units) from there, on either axis, nothing is saved: the device goes back to
+  where it was, and a notice above the map names both places. Drag it again.
 - A device added since the layout was saved is **placed near its neighbours**; no device anyone
   placed moves.
 - **Reset layout** withdraws every person's moves: the map is laid out by the cabling again, for

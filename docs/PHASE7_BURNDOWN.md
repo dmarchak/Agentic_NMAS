@@ -64,7 +64,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 |---|---|---|---|---|---|
 | **From W1, first (the operator's sequence, 2026-10-16)** | | | | | |
 | ~~C881~~ | ~~A1: Reload's startup gate on IOS-XE~~ **done, verified on r6** (see Checked off) | | | | |
-| C882, C888, C905 | B1: Topology drag jumps (no live redraw mid-drag; a far drop refused), with C2 (rollout order kept client-side, bound at the confirm) and R4 (rollout order by drag and drop), which share its fix | the drag tests; C691 re-checked in W2 | M | — | — |
+| ~~C882~~ | ~~B1: Topology drag jumps~~ **done** (see Checked off); C691 re-checked in W2 | | | | |
+| C888, C905 | C2 and R4: the rollout order kept client-side and bound at the confirm, then reordered by drag and drop (keeping Earlier/Later for touch and keyboard), on C882's shared guard (`window.NMAS_DRAG`: `hold`, `release`, `far`) | their browser tests | M | C882, C850 (landed) | — |
 | C883 | B2: Plan a deploy's "The batch is running…" before any confirm | drawn only while a batch runs | S | — | — |
 | C884 | B3: a deletion-only intent edit's committed card: "How s1 now departs", Mode B the primary action | its test | S | — | — |
 | C885 | B4: the baseline rows: "not targeted" told apart from "denied for departures" | its tests, from W1's real commits | S–M | — | — |
@@ -237,6 +238,10 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C882 (B1) done**: the drag's jump measured in a real browser (a redraw replaced the map
+  under the pointer, and the drop saved the detached map's place); a shared guard holds a
+  dragged region from every swap until release, and a drop more than one grid step from the
+  pointer is refused. C922 (UNKNOWN) to the tail. The operator's re-check is W2's (C691).
 - **C881 (A1) done and verified on r6** (4e670a36, 2026-10-16 02:10Z): a fresh Reload…
   preview, no reload sent, passes "running against startup" ("startup keeps r6's 2
   certificates as files in nvram: (both present), running shows them inline") and every gate;

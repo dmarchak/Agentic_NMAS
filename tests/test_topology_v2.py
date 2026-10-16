@@ -26,6 +26,7 @@ on s3 Vlan99's subnet, as the lab's is). What boards TopoDesktop and TopoPhone d
 import json
 import os
 import re
+import time
 
 import pytest
 
@@ -827,6 +828,229 @@ def test_a_drag_with_the_grid_on_lands_on_a_grid_point_in_a_browser(web):
         assert x % 40 == 0 and y % 40 == 0, (x, y)
         assert b.js("return document.querySelector('svg.topo-map').getAttribute('data-snap')") \
             == "40"
+
+
+# C882 (the operator's walk W1, 2026-10-16): with Snap to grid on, a dragged device stuttered and
+# landed far from the pointer, saved for everyone and recorded. Measured in a real browser: the
+# map region redrew under the pointer (`topology` announced, or the last drop's save answering),
+# the drag went on moving the replaced map, whose screen offset was gone (getScreenCTM's e and f
+# 281 and 297 before, 0 and 60 detached), and the drop saved r1 at (760, 880) with the pointer
+# over (406, 555). The guard is static/js/nmas_drag.js, shared with any draggable list.
+
+#: What each browser test watches: the pointer's last place and where it went down, the map's
+#: requests as they finish, and r1's element as first drawn (a redraw replaces it).
+_WATCH = """
+window.__ptr = null; window.__down = null; window.__done = []; window.__r1 = null;
+document.addEventListener('pointermove', function (e) { window.__ptr = [e.clientX, e.clientY]; },
+                          true);
+document.addEventListener('pointerdown', function (e) { window.__down = [e.clientX, e.clientY];
+  var g = document.querySelector('svg.topo-map [data-node="r1"]');
+  window.__at = [+g.getAttribute('data-x') + +(g.getAttribute('data-dx') || 0),
+                 +g.getAttribute('data-y') + +(g.getAttribute('data-dy') || 0)]; }, true);
+document.addEventListener('htmx:afterRequest', function (e) {
+  window.__done.push(e.detail.requestConfig.verb.toUpperCase() + ' ' +
+                     e.detail.pathInfo.requestPath); });
+window.__r1 = document.querySelector('svg.topo-map [data-node="r1"]');
+"""
+
+#: Where the pointer says r1 lands, read from the browser's own geometry, never the script's
+#: drag state: the pointer's map place plus where on r1 it went down, on the map as drawn now.
+_WANT = """
+var s = document.querySelector('svg.topo-map'), m = s.getScreenCTM().inverse();
+function at(c) { var p = s.createSVGPoint(); p.x = c[0]; p.y = c[1]; p = p.matrixTransform(m);
+                 return [p.x, p.y]; }
+var now = at(window.__ptr), down = at(window.__down);
+return [now[0] + window.__at[0] - down[0], now[1] + window.__at[1] - down[1]];
+"""
+
+
+def _pointer(b, steps):
+    b._call("POST", f"/session/{b.session}/actions", {"actions": [{
+        "type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"},
+        "actions": steps}]})
+
+
+def _element(b, css):
+    return b._call("POST", f"/session/{b.session}/element", {"using": "css selector",
+                                                              "value": css})
+
+
+def _rows(web):
+    log = web["dir"] / "topology_layout_log.jsonl"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def _dot(v):
+    """The grid point nearest *v*, never nearer the edge than one step (board E's rule, worked
+    here from the step, independent of the script's snapTo)."""
+    return max(40, int(round(v / 40.0)) * 40)
+
+
+def _open_snapped(b, srv):
+    b._call("POST", f"/session/{b.session}/window/rect", {"width": 1440, "height": 1000})
+    b.go(srv.url("/v2/topology?list=Lab&snap=1"))
+    b.wait_for("return window.NMAS_TOPOLOGY && window.NMAS_DRAG && "
+               "document.querySelector('svg.topo-map')")
+    b.js(_WATCH)
+
+
+def test_an_announcement_mid_drag_waits_for_the_drop_in_a_browser(web):
+    """C882: r1 dragged with Snap to grid on while `topology` is announced (another person's
+    move, the reader's minute). The map is asked again and the answer arrives mid-drag, but
+    nothing is redrawn under the pointer: r1 is the element first drawn, where the pointer has
+    it. On the drop it lands on the dot under the pointer, and exactly one layout row is
+    saved."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        _open_snapped(b, srv)
+        _pointer(b, [{"type": "pointerMove", "origin": _element(b, '[data-node="r1"] .topo-ic'),
+                      "x": 3, "y": -4},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 30, "y": 10,
+                      "duration": 100}])
+        b.js("htmx.trigger(document.body, 'nmas:topology')")
+        b.wait_for("return window.__done.some(function (r) {"
+                   " return r.indexOf('GET /v2/topology/map') === 0; })")
+        assert b.js("return window.__r1.isConnected"), "the map was redrawn under the pointer"
+        _pointer(b, [{"type": "pointerMove", "origin": "pointer", "x": 90, "y": 60,
+                      "duration": 200}])
+        want = b.js(_WANT)
+        drawn = b.js("var g = window.__r1; return [+g.getAttribute('data-x') + "
+                     "+g.getAttribute('data-dx'), +g.getAttribute('data-y') + "
+                     "+g.getAttribute('data-dy')]")
+        assert abs(drawn[0] - want[0]) <= 1 and abs(drawn[1] - want[1]) <= 1, (drawn, want)
+        _pointer(b, [{"type": "pointerUp", "button": 0}])
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return !window.__r1.isConnected && "
+                   "document.body.textContent.indexOf('Arranged by') >= 0")
+        stored = json.loads((web["dir"] / "topology_layout.json").read_text())["positions"]
+        assert stored["r1"] == [_dot(want[0]), _dot(want[1])], (stored["r1"], want)
+        time.sleep(1.0)       # the save's own announcement redraws; nothing more is saved
+        assert len(_rows(web)) == 1, _rows(web)
+        assert b.js("var g = document.querySelector('svg.topo-map [data-node=\"r1\"]');"
+                    "return [+g.getAttribute('data-x'), +g.getAttribute('data-y')]") \
+            == stored["r1"]
+
+
+def test_a_save_answering_mid_drag_waits_for_the_next_drop_in_a_browser(web, monkeypatch):
+    """C882, the walk's own sequence: r1 dropped, and dragged again before the save answers
+    (held 0.8 s here). The answer arrives mid-drag and waits; the second drop lands on the dot
+    under the pointer; two drops, two layout rows."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules import topology_positions
+    real = topology_positions.save
+
+    def slow(*a, **k):
+        time.sleep(0.8)
+        return real(*a, **k)
+    monkeypatch.setattr(topology_positions, "save", slow)
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        _open_snapped(b, srv)
+        _pointer(b, [{"type": "pointerMove", "origin": _element(b, '[data-node="r1"] .topo-ic'),
+                      "x": 0, "y": 0},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 50, "y": 0,
+                      "duration": 100},
+                     {"type": "pointerUp", "button": 0},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 10, "y": 10,
+                      "duration": 50}])
+        b.js("window.__r1 = document.querySelector('svg.topo-map [data-node=\"r1\"]')")
+        b.wait_for("return window.__done.some(function (r) {"
+                   " return r.indexOf('POST /v2/topology/positions') === 0; })")
+        assert b.js("return window.__r1.isConnected"), "the save's answer redrew mid-drag"
+        _pointer(b, [{"type": "pointerMove", "origin": "pointer", "x": 90, "y": 60,
+                      "duration": 200}])
+        want = b.js(_WANT)
+        _pointer(b, [{"type": "pointerUp", "button": 0}])
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return !window.__r1.isConnected && window.__done.filter(function (r) {"
+                   " return r.indexOf('POST /v2/topology/positions') === 0; }).length === 2")
+        stored = json.loads((web["dir"] / "topology_layout.json").read_text())["positions"]
+        assert stored["r1"] == [_dot(want[0]), _dot(want[1])], (stored["r1"], want)
+        time.sleep(1.0)
+        assert len(_rows(web)) == 2, _rows(web)
+
+
+def test_a_drop_far_from_the_pointer_is_refused_and_put_back_in_a_browser(web):
+    """C882's second rule, client-side, where the pointer is known: a drop whose place is more
+    than one grid step from where the pointer let go is refused, said above the map naming both
+    places, r1 put back, nothing saved. Planted: r1's origin moved 300 units under the drag (what
+    the operator first suspected a redraw did)."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        _open_snapped(b, srv)
+        _pointer(b, [{"type": "pointerMove", "origin": _element(b, '[data-node="r1"] .topo-ic'),
+                      "x": 0, "y": 0},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 30, "y": 10,
+                      "duration": 100}])
+        b.js("var g = window.__r1; g.setAttribute('data-x', +g.getAttribute('data-x') + 300)")
+        _pointer(b, [{"type": "pointerMove", "origin": "pointer", "x": 40, "y": 20,
+                      "duration": 100},
+                     {"type": "pointerUp", "button": 0}])
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return document.querySelector('#topo-result [role=alert]')")
+        said = b.js("return document.getElementById('topo-result').textContent")
+        assert re.search(r"Not moved: r1 would have landed at \(\d+, \d+\), but the pointer let "
+                         r"go over \(\d+, \d+\): \d+ map units apart, more than one grid step "
+                         r"\(40\); nothing was saved\. Drag it again\.", said), said
+        assert b.js("return window.__r1.getAttribute('data-dx')") == "0"
+        time.sleep(0.5)
+        assert not (web["dir"] / "topology_layout.json").exists() and not _rows(web)
+        assert not any("positions" in r for r in b.js("return window.__done"))
+
+
+def test_a_pan_that_ends_asks_again_for_what_waited_in_a_browser(web):
+    """C882: a press on the map's empty space holds it too; an announcement answered during the
+    pan waits, and when the pointer comes up the map asks again and is redrawn (nothing saved)."""
+    from tests import browser
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        _open_snapped(b, srv)
+        _pointer(b, [{"type": "pointerMove", "origin": _element(b, "[data-topo-view]"),
+                      "x": -300, "y": -150},
+                     {"type": "pointerDown", "button": 0},
+                     {"type": "pointerMove", "origin": "pointer", "x": 40, "y": 20,
+                      "duration": 100}])
+        b.js("htmx.trigger(document.body, 'nmas:topology')")
+        b.wait_for("return window.__done.length >= 1")
+        assert b.js("return window.__r1.isConnected")
+        _pointer(b, [{"type": "pointerUp", "button": 0}])
+        b._call("DELETE", f"/session/{b.session}/actions")
+        b.wait_for("return !window.__r1.isConnected")
+        assert not (web["dir"] / "topology_layout.json").exists()
+
+
+def test_the_drag_guard_s_far_rule_and_the_map_s_step():
+    """The shared guard's pure rule (static/js/nmas_drag.js), executed from the shipped script:
+    per axis, within the limit passes (a diagonal step included), past it names how far; one
+    axis serves a list's index (C905). The map's limit is one grid step (topology_page.GRID)."""
+    import dukpy
+
+    from modules import topology_page
+    js = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "js")
+    drag = open(os.path.join(js, "nmas_drag.js"), encoding="utf-8").read()
+    got = dukpy.evaljs("var window = {};\n" + drag + "\nvar f = window.NMAS_DRAG.far;"
+                       "[f([40, 40], [40, 40], 40), f([80, 80], [40, 40], 40),"
+                       " f([121, 40], [40, 40], 40), f([40, 760], [40, 400], 40),"
+                       " f([3], [1], 1), f([2], [1], 1)]")
+    assert got == [None, None, {"by": 81, "limit": 40}, {"by": 360, "limit": 40},
+                   {"by": 2, "limit": 1}, None], got
+    topo = open(os.path.join(js, "nmas_topology.js"), encoding="utf-8").read()
+    assert dukpy.evaljs("var window = {};\n" + topo + "\nwindow.NMAS_TOPOLOGY.FAR") \
+        == topology_page.GRID == 40
 
 
 def test_a_map_taller_than_its_box_opens_whole_at_100_with_its_labels(web):
