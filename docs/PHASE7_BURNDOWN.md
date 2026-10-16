@@ -266,7 +266,8 @@ blocks cutover or is a security issue (B).
 - **C987 done** (B, overnight): the holds read probes only devices marked in the network's
   `holds/` folder (an empty marker per possible record, one writer each), 7.2 ms to 0.01 ms at
   900 lock files. C988 (B: an unreadable lock folder reads as nothing held) into section 2;
-  C989 (UNKNOWN) and C990 (C) to the tail.
+  C989 (measured on the host the same night: C, no interrupted log exists) and C990 (C) to
+  the tail.
 - **C537 built, D2 met** (overnight, boards A, B, C of canvas v66, self-signed): every v2
   page's In progress chip from `/operations/in_flight`, live; finished results until opened,
   per person; the device page reopens a running or unopened card, and a freed Rotate card shows
