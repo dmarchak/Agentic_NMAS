@@ -90,7 +90,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C537~~ | ~~the every-page in-flight indicator (D2), then C540's wording and C217's one row~~ **done: D2 met** (see Checked off); the command box and the rest stay in C537's row, to the tail | | | | |
 | ~~C987~~ | ~~the In progress chip's holds read grows with every lock file ever made~~ **done** (see Checked off) | | | | |
 | ~~C988~~ | ~~an unreadable lock folder reads as "nothing held"~~ **done** (see Checked off) | | | | |
-| C991 | `nmas-deploy` continues on `/health/operations`' 500, which since C988 is an unreadable holds store: refuse when the service answers and says it cannot read them | the operator's decision (continuing was chosen), then its test and Host-Step | S | — | the operator |
+| ~~C991~~ | ~~`nmas-deploy` continues on an unreadable holds store's 500~~ **done** (the operator's decision; see Checked off) | | | | |
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
 | ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
@@ -259,6 +259,9 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C991 done** (B, the operator's decision): the route's 500 says `holds: "unreadable"`, and
+  `nmas-deploy` refuses on that field (exit 10, nothing moved); a service not answering still
+  continues. C996 (C) and C997 (UNKNOWN: the gap between the ask and the restart) to the tail.
 - **Deployed 1222a3f102 (2026-10-16 17:01Z) and every commit since f208e393 verified on the
   host:** no v2 page answers 5xx; C906 all nine devices' keys kept on first contact, the five
   routers' equal to the night's fingerprints (closed); C931 Default's repository is its own

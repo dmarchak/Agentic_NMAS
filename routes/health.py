@@ -104,13 +104,17 @@ def operations():
     restart of this service would cut off half-applied, with no receipt, no golden and no
     rollback. `nmas-deploy` asks before it restarts, as the Update preview's gate does.
     The device, the operation, the list, since when and the holding process; never who (an
-    ungated read). A read of the lock files, so a separate route: `/health` is polled."""
+    ungated read). A read of the lock files, so a separate route: `/health` is polled.
+
+    Holds it cannot read answer 500 with ``"holds": "unreadable"`` (C988, C991): the field,
+    never the words, is what `nmas-deploy` refuses on, since a 500 without it (a fault
+    elsewhere in the process) is a service that cannot say, and a deploy repairs that."""
     from modules.nsot import device_ops
 
     try:
         ops = device_ops.held_anywhere()
     except Exception as exc:                  # noqa: BLE001 (C988: never "none held")
-        return jsonify({"ok": False,
+        return jsonify({"ok": False, "holds": "unreadable",
                         "error": f"the device holds could not be read: {exc}"}), 500
     return jsonify({"ok": True, "operations": [
         {"list": h.get("list", ""), "device": h.get("device", ""),

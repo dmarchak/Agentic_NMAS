@@ -254,7 +254,8 @@ only Needs attention uses it.
 preview has a gate, "no operation is running on a device", naming each holder, and a waiting
 update keeps waiting while one runs; `GET /health/operations` lists the holds (never who), and
 `nmas-deploy` asks it before it moves anything and refuses with exit 10 (a service that cannot
-say does not stop a deploy: a deploy is how it is repaired); `/server/restart` and
+say does not stop a deploy: a deploy is how it is repaired; one that answers it cannot read the
+holds is refused, C991); `/server/restart` and
 `/ai/restart` are removed. An operation whose process ended is no longer silent: a non-empty
 lock file nobody holds is listed by `device_ops.interrupted()`, kept in the list's
 `interrupted.jsonl` when the next operation takes the device, and drawn on Needs attention
@@ -1199,7 +1200,8 @@ device's own `flock` holder, so it needs no lock of its own and no atomic replac
   which answered False for every network in a root that could be listed and not searched.
   Indexing stops at a lock file it cannot `stat`, so no folder is said indexed past a record
   it could not mark. Each caller fails closed or draws it: the Update gate refused with the
-  reason; a waiting update kept waiting; `/health/operations` 500 with the reason; a list
+  reason; a waiting update kept waiting; `/health/operations` 500 with the reason and
+  `holds: "unreadable"`, on which `nmas-deploy` refuses with exit 10 (C991); a list
   delete refused naming why; the In progress chip red naming the network (`read_all` the same,
   `read` raising to its route's 500); Needs attention's and History's interrupted operations
   "could not be read"; `busy_text` the device "treated as held", so every preview gating on it

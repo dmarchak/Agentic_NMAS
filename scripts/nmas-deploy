@@ -47,9 +47,13 @@ Exit codes. Each means one thing; none is "probably fine":
  10  an operation holds a device (CONCURRENCY_AUDIT R5): the restart would end
      it half-applied, with no receipt, no golden and no rollback. Refused
      before the checkout moved, naming each one. Run it again when it ends.
-     When the service cannot say (not answering, or a version that predates
-     /health/operations), the deploy continues and says so: a deploy is how a
-     service that cannot answer is repaired
+     Also refused when the service ANSWERS that it cannot read the device
+     holds (/health/operations' 500 carrying holds "unreadable", C991): a
+     device may be held, so it is treated as held, naming the reason. When
+     the service cannot say (not answering, a version that predates
+     /health/operations, or any other error, whose reason is printed), the
+     deploy continues and says so: a deploy is how a service that cannot
+     answer is repaired
 
 "No run found" is exit 2, never a pass. That is the fail-open shape of the
 old Jenkins ci_gate, which was skipped silently whenever it could not ask
@@ -916,6 +920,16 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                       f"{operations_words(ops)}. The checkout was NOT moved: still at "
                       f"{head[:10]}. Run nmas-deploy again when it finishes (the in-flight "
                       "panel shows it).")
+    if state == "unreadable":
+        # It ANSWERED, and what it said is that it cannot read the holds (C991): a device may
+        # be held, so this is refused as held is, never continued as a service that cannot say.
+        row.update(operations_error=ops)
+        return finish(BUSY,
+                      f"NOT DEPLOYED: {SERVICE} answered that it cannot read the device holds, "
+                      "so an operation may hold a device, and the restart could end it "
+                      "half-applied (asked: which devices are held, wanted: none or a list; "
+                      f"answered: {ops}). The checkout was NOT moved: still at {head[:10]}. "
+                      "Run nmas-deploy again once /health/operations can read the holds.")
     if state == "unknown":
         print(f"Could not ask the service which operations hold a device ({ops}); "
               "continuing, since a deploy is how a service that cannot answer is repaired.")
@@ -1040,9 +1054,27 @@ def operations_words(ops):
                      for o in ops)
 
 
+#: What `/health/operations` answers in its ``holds`` field when it cannot read the device
+#: holds (routes/health.py, C988). This script runs apart from the app (the updater loads a
+#: root-owned copy), so the value is repeated here, and
+#: tests/test_device_holds_unreadable.py holds the two equal through the real route.
+HOLDS_UNREADABLE = "unreadable"
+
+
+def _body_of(exc):
+    """The JSON object an HTTP error carried, or {} (a 404 from an older version is HTML)."""
+    try:
+        body = json.loads(exc.read().decode())
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
 def _operations():
     """``("busy", [ops])`` when the running service holds a device, ``("clear", [])`` when
-    it says it holds none, ``("unknown", why)`` when it cannot say (R5)."""
+    it says it holds none, ``("unreadable", why)`` when it ANSWERS that it cannot read the
+    holds (C991: refused, a device may be held), ``("unknown", why)`` when it cannot say
+    (R5: not answering, a version that predates the route, any other failure)."""
     port = os.environ.get("NMAS_PORT", "5000")
     url = os.environ.get("NMAS_OPERATIONS_URL",
                          f"http://127.0.0.1:{port}/health/operations")
@@ -1051,8 +1083,15 @@ def _operations():
         with urllib.request.urlopen(req, timeout=10) as resp:
             body = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
+        body = _body_of(exc)
+        error = str(body.get("error") or "").strip()
+        if body.get("holds") == HOLDS_UNREADABLE:
+            return "unreadable", (f"/health/operations answered {exc.code} with holds "
+                                  f"{HOLDS_UNREADABLE!r}: "
+                                  + (error or "it gave no reason"))
         return "unknown", (f"/health/operations answered {exc.code}"
-                           + (": the running version predates it" if exc.code == 404 else ""))
+                           + (": the running version predates it" if exc.code == 404 else "")
+                           + (f": {error}" if error else ""))
     except (urllib.error.URLError, OSError, ValueError) as exc:
         return "unknown", f"the service is not answering ({exc})"
     if not isinstance(body, dict) or not body.get("ok"):

@@ -15,7 +15,8 @@ own; skipped as root, which `chmod` does not stop):
   unreadable kept log each raise, naming the path; `busy_text` says the device is treated as
   held; indexing never marks a folder done past a lock file it could not read;
 - each caller: the Update preview's operations gate refused with the reason, a waiting update
-  kept waiting, `/health/operations` 500 with the reason, the list delete refused naming why,
+  kept waiting, `/health/operations` 500 with the reason and `holds: "unreadable"` (which
+  `nmas-deploy` reads as a refusal, C991), the list delete refused naming why,
   the In progress chip red naming the network (`read_all` too, `read` raising), Needs
   attention's interrupted operations and History's say "could not be read", a pending receipt
   drawn as its own row, Save's plan and Reload's gate refuse the device, the scheduled
@@ -239,6 +240,32 @@ class TestHealthOperations:
         body = resp.get_json()
         assert resp.status_code == 500 and body["ok"] is False
         assert body["error"] == f"{WORDS}: {path}: Permission denied"
+        assert body.get("holds") == "unreadable", body
+
+    def test_nmas_deploy_refuses_on_exactly_this_answer(self, store, monkeypatch):
+        """C991: the route's REAL 500, status and body as Flask sends them, handed to
+        `nmas-deploy`'s reader (only `urlopen` faked): read as unreadable, naming the path,
+        never as a service that cannot say. The field is the two sides' one contract."""
+        import email.message
+        import io
+        import urllib.error
+        import urllib.request
+
+        import app as nmas
+        from tests.test_nmas_deploy import _script
+
+        path = _unlistable_folder(store)
+        resp = nmas.app.test_client().get("/health/operations")
+        deploy = _script()
+        assert resp.get_json().get("holds") == deploy.HOLDS_UNREADABLE, resp.get_json()
+
+        def answer(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, resp.status_code, "error",
+                                         email.message.Message(), io.BytesIO(resp.data))
+        monkeypatch.setattr(urllib.request, "urlopen", answer)
+        state, why = deploy._operations()
+        assert state == "unreadable", (state, why)
+        assert why.endswith(f"{WORDS}: {path}: Permission denied"), why
 
 
 class TestTheListDelete:

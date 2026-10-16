@@ -996,3 +996,79 @@ class TestTheApiAllowance:
         assert reason == ("rate-limited: GitHub allows this address 60 calls an hour "
                           "unauthenticated, all spent; the allowance resets at 18:56:52 UTC, "
                           "deploy again after it")
+
+
+class TestHoldsTheServiceCannotRead:
+    """C991 (the operator's decision, 2026-10-16), through the REAL reader of
+    `/health/operations` and the real deploy, only `urlopen` faked: a service that ANSWERS
+    that it cannot read the device holds (C988's 500, carrying ``holds: "unreadable"``) is
+    refused as held is, naming its reason; any other answer that is not a verdict (a 500
+    without the field, an older version's 404) and a service that does not answer still
+    continue, as designed, now printing the body's reason, not only the code."""
+
+    REASON = "the device holds could not be read: /srv/nmas/holds/lab: Permission denied"
+    URL = "http://127.0.0.1:5000/health/operations"
+
+    def _answer(self, monkeypatch, status, body):
+        import email.message
+        import io
+        import urllib.error
+        import urllib.request
+
+        def fake(req, timeout=None):
+            assert req.full_url == self.URL, req.full_url    # only the operations route
+            if status is None:
+                raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+            raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+            raise urllib.error.HTTPError(req.full_url, status, "error", email.message.Message(),
+                                         io.BytesIO(raw))
+        monkeypatch.setattr(urllib.request, "urlopen", fake)
+        monkeypatch.setenv("NMAS_OPERATIONS_URL", self.URL)
+
+    def _deploy(self, world, monkeypatch, status, body):
+        self._answer(monkeypatch, status, body)
+        sha = world.advance({"app.py": "v = 2\n"})
+        mods = []
+        code, restarted, _ = _run(world, {sha: _run_entry(sha)}, setup=mods.append,
+                                  operations=lambda: mods[0]._operations())
+        return sha, code, restarted
+
+    def test_an_answer_that_the_holds_cannot_be_read_refuses_naming_it(self, world, monkeypatch,
+                                                                       capsys):
+        _, code, restarted = self._deploy(world, monkeypatch, 500,
+                                          {"ok": False, "holds": "unreadable",
+                                           "error": self.REASON})
+        err = capsys.readouterr().err
+        assert code == 10 and _head(world) == world.base and not restarted
+        assert err.startswith("NOT DEPLOYED: flask-app.service answered that it cannot read "
+                              "the device holds"), err
+        assert self.REASON in err and "holds 'unreadable'" in err
+        assert f"The checkout was NOT moved: still at {world.base[:10]}." in err
+        with open(os.path.join(world.host, "data", "deploy_audit.jsonl")) as fh:
+            row = json.loads(fh.read().splitlines()[-1])
+        assert row["exit"] == 10 and row["operations_state"] == "unreadable"
+        assert self.REASON in row["operations_error"]
+
+    def test_a_500_without_the_field_continues_and_prints_its_reason(self, world, monkeypatch,
+                                                                     capsys):
+        sha, code, restarted = self._deploy(world, monkeypatch, 500,
+                                            {"ok": False, "error": "a fault elsewhere"})
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha and restarted
+        assert ("Could not ask the service which operations hold a device "
+                "(/health/operations answered 500: a fault elsewhere); continuing") in out
+
+    def test_an_older_versions_404_continues_saying_it_predates_the_route(self, world,
+                                                                         monkeypatch, capsys):
+        sha, code, restarted = self._deploy(world, monkeypatch, 404,
+                                            b"<!doctype html><title>404 Not Found</title>")
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha and restarted
+        assert ("(/health/operations answered 404: the running version predates it); "
+                "continuing") in out
+
+    def test_a_service_not_answering_continues(self, world, monkeypatch, capsys):
+        sha, code, restarted = self._deploy(world, monkeypatch, None, None)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha and restarted
+        assert "(the service is not answering (" in out and "continuing" in out
