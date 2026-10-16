@@ -8,7 +8,7 @@ Every SSH server proves who it is with its host key. {{product}} keeps each devi
 
 Every session to a device opens through one place, and its key is compared there, after the key exchange and before any credential is sent. This covers every operation, every reader and every host script that signs in to a device, and the NETCONF push (which compares against the same record and never keeps a key of its own).
 
-- **First contact.** No key is held for the device's address: the key it presents is kept, with its type, its fingerprint (SHA256, as `ssh-keygen -l` prints it), when, and who: the operation holding the device and its person, or the reader or script that opened the session, said as no verified person when there is none.
+- **First contact.** No key is held for the device's address (none was ever kept, or the one kept was forgotten when its device was [retired](retire) or its onboarding [abandoned](onboard#between-the-phases-the-device-boots)): the key it presents is kept, with its type, its fingerprint (SHA256, as `ssh-keygen -l` prints it), when, and who: the operation holding the device and its person, or the reader or script that opened the session, said as no verified person when there is none.
 - **The same key.** The session signs in.
 - **A different key.** Refused, naming both fingerprints: "r1 answered with SSH host key SHA256:… where {{product}} holds SHA256:… (kept … by …): nothing was sent." The refusal is the operation's own answer (its card, a reader's row), and a Needs attention row names the device until a session finds the key it holds.
 - **The record cannot be read.** Every session is refused, naming the record: no key could be compared, and keeping one over an unreadable record would lose every key it held.

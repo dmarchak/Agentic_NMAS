@@ -76,9 +76,9 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C957 | History's timeline says "no repository yet" for such a network, as the header now does (C945's sibling) | its test | S | — | — |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
 | C954 | v2's "stop tracking" for a NetBox removal: build it or retire it (CUTOVER row 60) | the operator's decision, then its test | S–M | — | the operator |
-| C955 | Retire's preview counts live approvals only (C936's sibling) | its test | S | — | — |
+| ~~C955~~ | ~~Retire's preview counts live approvals only~~ **done** (see Checked off) | | | | |
 | C906 | Mercury checks each device's SSH host key: **BUILT** (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key, NETCONF too) | deployed; every device's key kept on the host; the operator's next redeploy declares `--new-host-keys` | M | — | the redeploy's flag (the operator) |
-| C940 | onboarding at a reused address: Retire and Abandon forget the address's key, or the pending card offers the re-key (it blocks W3's throwaway onboarding) | its test | S | C906 | — |
+| ~~C940~~ | ~~onboarding at a reused address~~ **done** (see Checked off) | | | | |
 | **Harness: the checks on v2** | | | | | |
 | ~~P7-04~~ | ~~Criterion 4, payloads drawn on v2~~ **done** (see Checked off); its gaps are C867 to C869 below | | | | |
 | ~~P7-05~~ | ~~Criterion 5, invalidation~~ **done** (see Checked off) | | | | |
@@ -248,6 +248,12 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C940, C955 done** (B, overnight): Retire and Abandon forget the address's SSH host key
+  (recorded; kept when another device holds the address); Retire's preview counts live
+  approvals only, and the listing that counted tombstones is removed. C958, C959 (UNKNOWN),
+  C960 (C) to the tail.
+- **P7-09 done** (fc70b56e): 11 writeup entries backfilled from the record; 7.3 and 7.D stay
+  open (Reload in W2; adopt, revert, retry in W3; 20 screens unchecked; C342's mockup).
 - **C944, C945 done** (B, overnight): the unused second `git init` removed; History's header
   says "No repository yet" by the folder, not git's words. C957 (B) into this section.
 - **C933 to C936 done** (B, overnight 2026-10-16): NetBox counts each network from its own

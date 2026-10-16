@@ -2913,7 +2913,9 @@ def host_key_source(refused=None) -> dict:
                       "held": rec.get("fingerprint", ""), "list": lst}))
     return source_result("host_keys", label, read_at=started,
                          took_ms=int((time.time() - started) * 1000), rows=rows,
-                         checked=(f"{len(keys)} device key(s) held, " if refused is None else "")
+                         # A record whose key was forgotten (C940) holds none.
+                         checked=(f"{sum(1 for r in keys.values() if r.get('fingerprint'))} "
+                                  "device key(s) held, " if refused is None else "")
                          + f"{len(rows)} refused at their last connection")
 
 

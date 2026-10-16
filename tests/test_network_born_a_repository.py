@@ -185,8 +185,18 @@ class TestANetworkWithNoRepository:
         assert r.status_code == 200
         history = _header(r)
         assert "The working tree could not be read: " in history, history
-        assert "not a git repository" in history and "planted-for-c945" in history, \
-            "the header did not carry git's error"
+        # The expectation comes from git itself, by a path independent of the code under test:
+        # the same `git status` in the same folder, its own words (CI #853: the runner's git
+        # words it otherwise than the laptop's 2.53, so a hard-coded phrase failed there).
+        import html
+        from modules.redact import redact_text
+        own = subprocess.run(["git", "status", "--porcelain"], cwd=str(old["repo"]),
+                             capture_output=True, text=True,
+                             env=dict(os.environ, GIT_CEILING_DIRECTORIES=str(old["repo"].parent)))
+        assert own.returncode != 0 and own.stderr.strip(), "git read the planted .git file"
+        said = html.escape(redact_text(own.stderr.strip().splitlines()[0]), quote=False)
+        assert said in history, \
+            f"the header did not carry git's error ({said!r})"
         assert "No repository yet" not in history and "Everything is committed" not in history
         assert old["state"]() == old["before"]
 

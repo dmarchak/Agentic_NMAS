@@ -27,6 +27,10 @@ that stops part way is finished by running it again:
    (C176), but only when its content survives in the repository (the
    migration's verbatim backup or an equivalent committed golden), and says
    where; a file whose lines exist nowhere else is kept and named;
+3a. forgets the SSH host key Mercury kept for its address (C940: `host_keys.forget`, the
+   key kept in the record's history with who, when and why), so the next machine there is a
+   first contact; KEPT, and said, while another device in any network has the address, and
+   refused when whether one does cannot be read;
 4. deletes the CSV row, LAST, and only against a break-glass record that
    holds this device's CURRENT credential.
 
@@ -190,8 +194,10 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     # Scheme 3 (P.5) approves the TEMPLATE, never its devices: releasing one
     # changes no approval. This listed "this withdraws the approval ...
     # re-approve it" until 2026-09-28, which was true for r5's retirement
-    # (2026-09-25, scheme 2) and false from the next day on.
-    still_approved = [tpl for tpl in approval.approved_templates(repo)
+    # (2026-09-25, scheme 2) and false from the next day on. Only a LIVE approval stays
+    # approved: a revoked template's tombstone is no approval to keep (C955; C936's
+    # `unrevoked_templates`, the one listing of approvals that still stand).
+    still_approved = [tpl for tpl in approval.unrevoked_templates(repo)
                       if hostname in {b["device"] for b in
                                       templates_repo.devices_for_template(repo, tpl)}]
 
@@ -216,6 +222,18 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     legacy = _legacy_facts(list_name, list_dir, hostname, ip)
     if legacy.get("step"):
         step("legacy", legacy["step"], legacy["done"])
+    # The SSH host key Mercury kept for its address (C940): forgotten, so the next machine
+    # there is a first contact, unless another device in any network has the address (then
+    # the key is still that device's, said below). Before the row: a run that stops after the
+    # row could not be run again (no row, no identity, no files: "nothing to retire").
+    hk = _host_key_facts(ip, list_name, hostname)
+    if hk["state"] == "unreadable":
+        refuse("host_key", hk["words"])
+    elif hk["state"] == "shared":
+        out["not_doing"].append(hk["words"])
+    else:
+        step("host_key", hk["words"], hk["state"] == "none")
+    out["host_key"] = {k: hk.get(k) for k in ("state", "fingerprint", "others")}
     # Oxidized's router.db row (C398) is no longer a step: Oxidized is retired (Phase 3 step 2,
     # 2026-10-08), and its store goes with it (Phase 3 section 5's host steps).
     step("row", f"delete the CSV row for {ip} -- the only stored copy of its "
@@ -287,6 +305,20 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
             rel: _blob(os.path.join(repo, rel)) for rel in files},
         "row": bool(row), "identity": identity}).encode()).hexdigest()[:16]
     return out
+
+
+def _host_key_facts(ip: str, list_name: str, hostname: str) -> dict:
+    """What retiring does about the SSH host key Mercury kept for the device's address
+    (C940): `host_keys.forget_plan`, whose state is ``held`` (a step: forget it), ``none``
+    (the step done already), ``shared`` (another device has the address: KEPT, said as
+    not done) or ``unreadable`` (a refusal: could not read is not nothing there)."""
+    from modules import host_keys
+
+    try:
+        return host_keys.forget_plan(ip, network=list_name, device=hostname)
+    except Exception as exc:                   # noqa: BLE001 - said as the refusal
+        return {"state": "unreadable", "fingerprint": "", "others": [],
+                "words": f"the SSH host key Mercury kept for {ip} could not be checked: {exc}"}
 
 
 def _mask_facts(nb: dict) -> dict:
@@ -717,7 +749,8 @@ def _holds_the_device(func):
 #: plan's own sentence is the step's hover.
 STEP_WORDS = {"netbox_mask": "NetBox's copy masked", "override": "Override cleared",
               "declare": "Startup declared unmapped", "commit": "Intent and golden removed",
-              "legacy": "Legacy file deleted", "row": "Inventory row deleted"}
+              "legacy": "Legacy file deleted", "host_key": "SSH host key forgotten",
+              "row": "Inventory row deleted"}
 
 
 def result_run(host: str, out: dict, plan: dict):
@@ -897,6 +930,22 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
         except Exception as exc:               # noqa: BLE001
             return fail("legacy", exc)
         done.append("legacy")
+
+    if "host_key" in pending:
+        # The one write path (`host_keys.forget`, under the record's lock), compare-and-swap
+        # with the key the plan named; the key stays in the record's history with who, when
+        # and why (C940).
+        from modules import host_keys
+
+        try:
+            got = host_keys.forget(p["ip"], network=list_name, device=hostname, by=actor,
+                                   why=f"{hostname} retired by {actor}: {reason}",
+                                   expected=(p.get("host_key") or {}).get("fingerprint", ""))
+            if not got["ok"]:
+                raise RuntimeError(got["error"])
+            done.append("host_key")
+        except Exception as exc:               # noqa: BLE001
+            return fail("host_key", exc)
 
     if "row" in pending:
         try:

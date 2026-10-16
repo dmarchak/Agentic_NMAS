@@ -26,8 +26,9 @@ def world(tmp_path, monkeypatch):
         "device": {"id": 9, "name": h, "local_context_data": {}}})
     monkeypatch.setattr("modules.credentials.has_device_override", lambda ip: False)
     # One approved template, so the withdrawal branch RUNS: the bound set is
-    # still computed for real from the manifest.
-    monkeypatch.setattr("modules.nsot.approval.approved_templates",
+    # still computed for real from the manifest. The LIVE approvals (C955: retire
+    # lists only those; a revoked template's tombstone stays no approval).
+    monkeypatch.setattr("modules.nsot.approval.unrevoked_templates",
                         lambda repo: ["cisco_iosxe/base.j2"])
     settings = {"nsot_git_author_name": "NMAS",
                 "nsot_git_author_email": "n@l", "nsot_device_tag_retention": 50}

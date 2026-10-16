@@ -509,11 +509,6 @@ def _summary(result: dict) -> str:
     return "; ".join(parts) or "does not round-trip"
 
 
-def approved_templates(repo: str) -> list:
-    """Template paths carrying a stored record, revoked or not."""
-    return sorted(_load(repo))
-
-
 def unrevoked_templates(repo: str) -> list:
     """Template paths whose stored record is an approval, not a revocation's tombstone (C936).
     Stale or not, each still stands as an approval in the record, so an edit under it revokes

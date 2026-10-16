@@ -1114,18 +1114,40 @@ def host_keys(ctx):
     hosts = _hosts_by_address(ctx["ref"])
     events = []
     for ip, rec in sorted(keys.items()):
-        host = hosts.get(ip)
-        if not host or not _mine(ctx, host):
-            continue
         chain = list(rec.get("history") or []) + [rec]
+        # Whose each key was (C940): a key forgotten when its device left names that device
+        # and network, and so does every key before it at this address; a key after the last
+        # forgotten one is the device the inventory names at the address now.
+        owners, owner = [], hosts.get(ip)
+        for k in reversed(chain):
+            if k.get("forgotten"):
+                owner = (k.get("device") if k.get("network") == ctx["ref"].name else None)
+            owners.append(owner)
+        owners.reverse()
         for i in reversed(range(len(chain))):
-            k = chain[i]
-            if not _recent(ctx, k.get("kept_at")):
+            k, host = chain[i], owners[i]
+            if not host or not _mine(ctx, host):
+                continue
+            if k.get("forgotten") and _recent(ctx, k.get("replaced_at")):
+                events.append(_event(
+                    k.get("replaced_at", ""), "hostkey", "SSH host key forgotten", [host],
+                    who=k.get("replaced_by", ""),
+                    detail=f"{k.get('fingerprint', '')} ({k.get('type', '')}): "
+                           f"{k.get('replaced_why', '')}",
+                    outcome="forgotten",
+                    record=[("Address", ip), ("Fingerprint", k.get("fingerprint")),
+                            ("Type", k.get("type")), ("How", _hk.FORGOTTEN),
+                            ("Network", k.get("network")), ("Why", k.get("replaced_why")),
+                            ("Forgotten at", k.get("replaced_at")),
+                            ("Forgotten by", k.get("replaced_by"))]))
+            if not k.get("fingerprint") or not _recent(ctx, k.get("kept_at")):
                 continue
             current = k is rec
             # The key this one took the place of: recorded with it since 2026-10-16, else the
-            # one before it in the record's history.
-            before = k.get("replaced") or (chain[i - 1].get("fingerprint", "") if i else "")
+            # one before it in the record's history, unless that one was forgotten (a first
+            # contact after a forget replaced nothing).
+            before = k.get("replaced") or (chain[i - 1].get("fingerprint", "")
+                                           if i and not chain[i - 1].get("forgotten") else "")
             window = k.get("window") or {}
             detail = f"{k.get('fingerprint', '')} ({k.get('type', '')})"
             if window:
@@ -1137,7 +1159,8 @@ def host_keys(ctx):
                 k.get("kept_at", ""), "hostkey",
                 words.get(k.get("how", ""), "SSH host key kept"), [host],
                 who=k.get("kept_by", ""), detail=detail,
-                outcome="held" if current else "replaced",
+                outcome=("held" if current else
+                         "forgotten" if k.get("forgotten") else "replaced"),
                 record=[("Address", ip), ("Fingerprint", k.get("fingerprint")),
                         ("Type", k.get("type")), ("How", k.get("how")),
                         ("Replaced", before),

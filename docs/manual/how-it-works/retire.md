@@ -6,7 +6,7 @@ destroy the only stored copy of its credential. Retiring sends nothing to the de
 changes the tool's own records, and NetBox's stored copy of the device's credentials where
 the tool wrote them.
 
-![Retiring: nothing is sent to the device; the tool masks NetBox's stored credentials first, clears the credential override, commits the removal of the golden and intent (history keeps both), deletes the legacy file if it survives elsewhere, and deletes the inventory row last, only against a break-glass export holding the current credential.](diagrams/retire.svg)
+![Retiring: nothing is sent to the device; the tool masks NetBox's stored credentials first, clears the credential override, commits the removal of the golden and intent (history keeps both), deletes the legacy file if it survives elsewhere, forgets the SSH host key it kept for the device's address (the key stays in the record's history), and deletes the inventory row last, only against a break-glass export holding the current credential.](diagrams/retire.svg)
 
 ## How you start it {#start}
 
@@ -44,6 +44,9 @@ NOT do. It refuses when:
   host: the newest export of this list must have recorded a digest of this device's current
   credential (an export taken before the last rotation does not count). Export one first
   from the [break-glass export](breakglass-export).
+- **The SSH host key record, or any network's inventory, cannot be read.** Retiring forgets
+  the key the tool kept for the device's address unless another device has that address,
+  and "could not read" is not "no other device".
 - **Another operation holds the device.**
 
 The preview also reads, and states as read, what still watches the device after it leaves,
@@ -77,7 +80,16 @@ finished by running it again:
    content survives in the repository (the migration's verbatim backup or an equivalent
    committed golden), and the step says where. A file whose lines exist nowhere else is
    kept and named.
-5. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
+5. **The SSH host key** (`host_key`). Read: the tool's record of SSH host keys, and every
+   network's inventory and onboarding record. Sent: nothing. Recorded: the key the tool kept
+   for the device's address (see [Re-key](rekey#every-session)) is forgotten: it moves into
+   the record's history with when, who and why ("r5 retired by you: your reason"), and the
+   next machine to answer at that address is a first contact, its key kept as the first one
+   was. The preview names the key, by its fingerprint, and the apply forgets only that key.
+   When another device in any network has the same address, the key is still that device's:
+   it is KEPT, and the preview says so naming both devices. Before the row, so a run that
+   stops here can be run again.
+6. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
    Recorded: the device's row deleted from the list's inventory. LAST, and only against a
    break-glass record holding this device's current credential, because the row is the
    only stored copy. Deleting it also tells the app's Prometheus target keeper the
@@ -120,7 +132,10 @@ drops at its next regeneration, and the card says when:
 - The NetBox device, its credential masked: delete it in NetBox if it is gone for good.
 - A Grafana dashboard panel built by hand that names it: removed in Grafana by hand; the tool
   does not edit dashboards.
-- A template's approval: it stays, because an approval is of the template.
+- A template's approval: it stays, because an approval is of the template. Only a template
+  approved now is listed; a revoked one has no approval to keep.
+- The SSH host key the tool kept for its address, only when another device in any network
+  has that address: it is still that device's key.
 - Its credential, only in the break-glass record. Managing it again is onboarding or adopt,
   not an undo.
 

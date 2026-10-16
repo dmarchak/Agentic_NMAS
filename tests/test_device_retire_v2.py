@@ -29,6 +29,7 @@ import re
 
 import pytest
 
+from modules.nsot.approval import unrevoked_templates as _LIVE_APPROVALS
 from tests.conftest import TEST_PERSON
 from tests.test_retire_screen import REASON, _export, _state, screen  # noqa: F401
 from tests.test_retire import world  # noqa: F401
@@ -195,6 +196,39 @@ def test_a_held_card_keeps_the_reason_typed_when_it_reads_again(exported):
     _r, out = _get(exported, "/v2/device/r5/when-free?op=retire&back=history"
                              "&reason=returned+to+the+provider")
     assert 'value="returned to the provider"' in out
+
+
+class TestARevokedApprovalIsNotSaidToStay:
+    """C955 (C936's sibling): the card listed every template carrying an approvals record,
+    revoked or not (`approval.approved_templates`), so a revoked template was said to "stay
+    approved" under What survives. Only a live approval stays (`approval.unrevoked_templates`).
+    A real approve of r5's template against r5's real capture, then a real revoke."""
+
+    REL = "cisco_iosxe/base.j2"
+
+    def test_approved_it_survives_revoked_it_is_not_said(self, exported, monkeypatch):
+        from modules.nsot import approval
+        from tests.test_template_approval import _commit_approvals, _config
+
+        # The world lists one approval by hand; here the record is real.
+        monkeypatch.setattr(approval, "unrevoked_templates", _LIVE_APPROVALS)
+        repo = exported["repo"]
+        got = approval.approve(repo, self.REL, [{"device": "r5", "platform": "cisco_iosxe",
+                                                 "running_config": _config("r5")}],
+                               actor="approver@example.invalid")
+        assert got["ok"], got.get("error")
+        _commit_approvals(repo)
+        _r, card = _card(exported)
+        assert f"The approval of {self.REL}" in _part(card, "What survives"), \
+            "the control: a live approval is said to stay"
+        assert approval.revoke(repo, self.REL, reason="a defect found in its evidence",
+                               actor="approver@example.invalid")["ok"]
+        _commit_approvals(repo)
+        with open(approval.approvals_path(repo), encoding="utf-8") as fh:
+            assert json.load(fh)[self.REL]["revoked"], "the tombstone is in the record"
+        _r, card = _card(exported)
+        assert self.REL not in card, "a revoked template is said to stay approved"
+        assert "op-confirm" in card, "the retirement is still confirmable"
 
 
 class TestTheReadBack:

@@ -1727,7 +1727,12 @@ def real_steps(repo: str, actor: str) -> dict:
 #: the step whose success is a claim about all the others. Releasing the name
 #: first would leave the name free while a NetBox object and a commit still
 #: named the device -- which is exactly the state this flow exists to end.
-ABANDON_STEPS = ("intent", "netbox", "credentials", "identity")
+#:
+#: `host_key` (C940) forgets the SSH host key Mercury kept for the device's
+#: address (its preview's SSH login kept it), so the next machine there is a
+#: first contact; before `identity`, because a released name cannot be
+#: abandoned again to finish it.
+ABANDON_STEPS = ("intent", "netbox", "credentials", "host_key", "identity")
 
 #: P.6: a ZTP device's abandon. The reservation was written LAST, so it is
 #: removed FIRST, and removing it is also what stops the responder serving
@@ -2093,6 +2098,48 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
         _step("credentials", False, str(exc),
               "clear the device override in Settings -> Credentials")
 
+    # 3b. THE SSH HOST KEY (C940). The preview's SSH login kept the key the
+    #     device answered with at its address; kept after the device left, it
+    #     refused the next machine at that address as a changed key, and a
+    #     pending device has no page to re-key from. Forgotten through the one
+    #     write path (`host_keys.forget`), the key kept in the record's history
+    #     with who, when and why; KEPT, and said, while another device in any
+    #     network has the address. Every address the device could have been
+    #     met at, as the credential step clears every key.
+    try:
+        from modules import host_keys
+
+        said, failed = [], []
+        addresses = [a for a in dict.fromkeys([(entry or {}).get("mgmt_ip", ""),
+                                               (entry or {}).get("reserved_address", "")])
+                     if a]
+        for addr in addresses:
+            f = host_keys.forget_plan(addr, network=list_name, device=hostname)
+            if f["state"] == "unreadable":
+                failed.append(f["words"])
+            elif dry_run or f["state"] != "held":
+                said.append(("would " if f["state"] == "held" else "") + f["words"])
+            else:
+                got = host_keys.forget(
+                    addr, network=list_name, device=hostname, by=actor or "unknown",
+                    why=f"{hostname}'s onboarding abandoned by {actor or 'unknown'}",
+                    expected=f["fingerprint"])
+                if got["ok"]:
+                    said.append(f"forgot the SSH host key Mercury kept for {addr} "
+                                f"({f['fingerprint']}): the next machine there is a "
+                                "first contact")
+                else:
+                    failed.append(got["error"])
+        if failed:
+            _step("host_key", False, "; ".join(failed + said),
+                  "repair what is named above, then run abandon again")
+        else:
+            _step("host_key", True, "; ".join(said) or
+                  "no address recorded: no SSH host key to forget")
+    except Exception as exc:                   # noqa: BLE001
+        log.exception("abandon: host key step failed for %r", hostname)
+        _step("host_key", False, str(exc), "run abandon again")
+
     # 4. IDENTITY, last, and it re-derives the references itself.
     if dry_run:
         outstanding = _m.references(repo, identity, list_name)
@@ -2108,6 +2155,19 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
               "not released: the device's Kea reservation remains, and releasing "
               "the name would leave an address reserved for a device nobody "
               "knows", "remove the reservation, then run abandon again")
+        result["ok"] = False
+        result["error"] = ("abandon did not finish; %d step(s) remain"
+                           % len(result["remaining"]))
+        return result
+
+    if not all(st["ok"] for st in result["steps"] if st["step"] == "host_key"):
+        # A released name cannot be abandoned again, and a key left kept at its
+        # address refuses the next machine there with no remedy (C940).
+        _step("identity", False,
+              "not released: the SSH host key Mercury kept for its address could "
+              "not be forgotten, and a released name cannot be abandoned again to "
+              "forget it", "repair what the host_key step names, then run abandon "
+                           "again")
         result["ok"] = False
         result["error"] = ("abandon did not finish; %d step(s) remain"
                            % len(result["remaining"]))

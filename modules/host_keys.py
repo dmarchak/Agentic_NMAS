@@ -19,6 +19,12 @@ with the key it replaced and the window's reason, and once the window has closed
 ("<n> new host keys accepted during '<reason>'") stays on Needs attention until a person
 acknowledges it (`close_windows`, written by a reader; the operator, 2026-10-16).
 
+**A device that leaves** (Retire, or an onboarding Abandoned) has its address's key FORGOTTEN
+as a recorded step of that operation (`forget`, C940): the key moves into the record's
+history with when, who and why, and the next machine to answer at the address is a first
+contact. Never while any other device, in any network, has that address: the key is then
+still that device's, and the operation says so naming both.
+
 **The store** is ONE file for the installation, ``<data>/ssh_host_keys.json``, keyed by the
 address Mercury connects to, the way OpenSSH's `known_hosts` is: what a key proves is who
 answers at an address, and the one opener (`connection.open_ssh`) knows the address and not
@@ -159,9 +165,11 @@ def _lock():
 
 
 def held(ip: str):
-    """The record kept for *ip*, or None. Raises `HostKeyStoreUnreadable`."""
+    """The record kept for *ip*, or None: none kept, or the one kept was forgotten when its
+    device left (`forget`; the record then holds only its history). Raises
+    `HostKeyStoreUnreadable`."""
     rec = read()["keys"].get(ip)
-    return dict(rec) if rec else None
+    return dict(rec) if rec and rec.get("fingerprint") else None
 
 
 def refused() -> list:
@@ -208,19 +216,27 @@ def who(owner: str, ip: str) -> str:
     return f"no verified person ({owner})"
 
 
+def _networks():
+    """Every network in the registry as ``(ref, rows, error)``: its inventory's rows, or why
+    they could not be read. Raises when the registry itself cannot be read."""
+    from modules.device import get_device_lists, load_saved_devices
+    from modules.nsot import listref
+    for item in get_device_lists():
+        try:
+            ref = listref.resolve(item["name"])
+            yield ref, load_saved_devices(ref.csv_path), ""
+        except Exception as exc:          # noqa: BLE001 - said by the caller that needs it
+            yield None, [], f"{item.get('name', '?')}: {type(exc).__name__}: {exc}"
+
+
 def names_for(ip: str) -> list:
     """``[(network, device)]`` whose inventory names *ip*: read only on a refusal or a
     re-key, never on an ordinary connection."""
     out = []
     try:
-        from modules.device import get_device_lists, load_saved_devices
-        from modules.nsot import listref
-        for item in get_device_lists():
-            try:
-                ref = listref.resolve(item["name"])
-                rows = load_saved_devices(ref.csv_path)
-            except Exception:             # noqa: BLE001 - one unreadable list names fewer
-                continue
+        for ref, rows, error in _networks():
+            if error:
+                continue                  # one unreadable list names fewer
             out += [(ref.name, d.get("hostname", "")) for d in rows
                     if (d.get("ip") or "").strip() == ip and d.get("hostname")]
     except Exception:                     # noqa: BLE001
@@ -314,10 +330,13 @@ def check(ip: str, key, *, owner: str = "", port: int = SSH_PORT) -> dict:
         now = time.time()
         doc = read()
         rec = doc["keys"].get(ip)
-        if rec is None:
+        if rec is None or not rec.get("fingerprint"):
+            # Nothing kept, or the key kept was forgotten when its device left (`forget`,
+            # C940): the machine answering now is a first contact, and the record's history
+            # (the forgotten key, who forgot it and why) stays with it.
             by = who(owner, ip)
             rec = dict(got, ip=ip, kept_at=_iso(now), kept_by=by, how=FIRST_CONTACT,
-                       port=port, history=[])
+                       port=port, history=list((rec or {}).get("history") or []))
             doc["keys"][ip] = rec
             _write(doc)
             log.warning("ssh host key: kept %s's %s %s on first contact, for %s (C906)",
@@ -478,6 +497,130 @@ def replace(ip: str, *, expected: str, new: dict, by: str, why: str) -> dict:
                 new["fingerprint"], why)
     _announce()
     return {"ok": True, "error": "", "record": dict(new_rec)}
+
+
+# ---------------------------------------------------------------------------
+# A device that leaves: its address's key forgotten, kept in the history (C940)
+# ---------------------------------------------------------------------------
+#
+# Retire and Abandon kept the key of the device that left, so the next machine at its address
+# (a reused address, a throwaway onboarding) was refused as a changed key, and a pending device
+# has no page to re-key from: onboarding there was blocked with no remedy. Now each forgets it
+# as a recorded step, named in its preview: the key moves into the record's history with when,
+# who and why, the record holds no key, and the next machine to answer there is a first
+# contact (`check`). Never while any OTHER device, in any network, names the address: what a
+# key proves is who answers at an address, so that device's key is the same key.
+
+#: How a forgotten key is said in the record's history and on History.
+FORGOTTEN = "forgotten when its device left"
+
+
+def holders(ip: str, *, network: str = "", device: str = "") -> dict:
+    """Every device but *device* in *network* whose address is *ip*, in every network: its
+    inventory row, or its onboarding record (a pending device is in the manifest only).
+    ``{"others": [(network, device)], "unreadable": [why]}``. A network that cannot be read
+    is UNREADABLE, never "no other device": whether it names the address cannot be told."""
+    from modules.nsot import listref, manifest
+
+    ip = (ip or "").strip()
+    me = (listref.resolve(network).name if network else "", device)
+    others, unreadable = set(), []
+    try:
+        networks = list(_networks())
+    except Exception as exc:              # noqa: BLE001 - said as the refusal
+        return {"others": [], "unreadable": [f"the network registry: {exc}"]}
+    for ref, rows, error in networks:
+        if error:
+            unreadable.append(error)
+            continue
+        others |= {(ref.name, d.get("hostname", "")) for d in rows
+                   if (d.get("ip") or "").strip() == ip and d.get("hostname")}
+        path = manifest.manifest_path(ref.repo_dir)
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    entries = (json.load(fh) or {}).get("devices") or {}
+            except (OSError, ValueError, AttributeError) as exc:
+                unreadable.append(f"{ref.name}'s onboarding record ({path}): {exc}")
+                continue
+            others |= {(ref.name, e.get("name", "")) for e in entries.values()
+                       if isinstance(e, dict) and e.get("name") and ip in (
+                           (e.get("mgmt_ip") or "").strip(),
+                           (e.get("reserved_address") or "").strip())}
+    return {"others": sorted(o for o in others if o != me), "unreadable": unreadable}
+
+
+def forget_plan(ip: str, *, network: str, device: str) -> dict:
+    """What forgetting *ip*'s key for *device* leaving *network* would do, reading only:
+    ``{"state": "held" | "none" | "shared" | "unreadable", "words", "fingerprint",
+    "others"}``. *words* is the preview's sentence; *fingerprint* the key it would forget
+    (the apply's compare-and-swap)."""
+    ip = (ip or "").strip()
+    out = {"state": "none", "fingerprint": "", "others": [], "ip": ip}
+    if not ip:
+        return dict(out, words=f"{device} has no address: no SSH host key to forget")
+    try:
+        rec = held(ip)
+    except HostKeyStoreUnreadable as exc:
+        return dict(out, state="unreadable", words=str(exc))
+    if rec is None:
+        return dict(out, words=f"Mercury keeps no SSH host key for {ip}: nothing to forget")
+    found = holders(ip, network=network, device=device)
+    if found["unreadable"]:
+        return dict(out, state="unreadable", words=(
+            f"whether another device has {ip} could not be told ("
+            + "; ".join(found["unreadable"]) + "), so the SSH host key Mercury kept for it "
+            "cannot be forgotten: could not read is not no other device"))
+    if found["others"]:
+        names = ", ".join(f"{h} in {n}" for n, h in found["others"])
+        return dict(out, state="shared", others=found["others"], words=(
+            f"the SSH host key Mercury kept for {ip} ({rec.get('fingerprint')}) is KEPT, not "
+            f"forgotten: {device} in {network} leaves, and {ip} is also the address of "
+            f"{names}, so the key is still that device's"))
+    return dict(out, state="held", fingerprint=rec.get("fingerprint", ""), words=(
+        f"forget the SSH host key Mercury kept for {ip}: {held_words(rec)}. The next machine "
+        "to answer there is a first contact; the key stays in the record's history, with who "
+        "forgot it and why"))
+
+
+def forget(ip: str, *, network: str, device: str, by: str, why: str,
+           expected: str = "") -> dict:
+    """Forget the key kept for *ip* as *device* leaves *network*, as *by*, for *why*: the key
+    moves into the record's history (`_retired`, with the device and network it was
+    forgotten for) and the record holds no key. ``{"ok", "state", "error", "record",
+    "forgot"}``; *state* is ``forgotten``, ``none`` (nothing kept: done already), ``shared``
+    or ``unreadable`` (refused, naming why), or ``moved`` (the key held is not *expected*,
+    the one the preview showed: nothing forgotten)."""
+    from modules.nsot import listref
+
+    ip = (ip or "").strip()
+    network = listref.resolve(network).name if network else ""
+    plan = forget_plan(ip, network=network, device=device)
+    if plan["state"] in ("shared", "unreadable"):
+        return {"ok": False, "state": plan["state"], "error": plan["words"], "record": None,
+                "others": plan["others"]}
+    now = time.time()
+    with _lock():
+        doc = read()
+        rec = doc["keys"].get(ip)
+        if not rec or not rec.get("fingerprint"):
+            return {"ok": True, "state": "none", "error": "", "record": None,
+                    "words": f"Mercury keeps no SSH host key for {ip}: nothing to forget"}
+        if expected and rec.get("fingerprint") != expected:
+            return {"ok": False, "state": "moved", "record": None, "error": (
+                f"Mercury now holds {held_words(rec)} for {ip}, not the {expected} the "
+                "preview showed: nothing was forgotten")}
+        old = dict(_retired(rec, now, by, why), forgotten=True, device=device,
+                   network=network)
+        new = {"ip": ip, "history": list(rec.get("history") or []) + [old],
+               "forgotten_at": _iso(now), "forgotten_by": by, "forgotten_why": why}
+        doc["keys"][ip] = new
+        _write(doc)
+    log.warning("ssh host key: %s's %s forgotten by %s as %s left %s (%s)", ip,
+                old.get("fingerprint"), by, device, network, why)
+    _announce()
+    return {"ok": True, "state": "forgotten", "error": "", "record": dict(new),
+            "forgot": dict(old)}
 
 
 # ---------------------------------------------------------------------------

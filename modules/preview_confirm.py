@@ -2681,6 +2681,8 @@ RETIRE_GATES = (
     ("credentials", "the credential store can be read", "its override can be cleared"),
     ("netbox_mask", "NetBox holds no credential retire cannot mask",
      "its stored config context is masked, or will be, or holds none"),
+    ("host_key", "its SSH host key, and who else has its address, can be read",
+     "the key record and every network's inventory were read (C940)"),
 )
 BREAKGLASS_GATE = "a break-glass export holds its current credential"
 
@@ -2795,6 +2797,9 @@ RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its s
                                "in one commit",
                      "legacy": "deleted its file from the deprecated golden_configs/ store, "
                                "whose content survives in the repository (C176)",
+                     "host_key": "forgot the SSH host key Mercury kept for its address, kept "
+                                 "in the record's history: the next machine there is a first "
+                                 "contact (C940)",
                      "row": "deleted its CSV row, last"}
 
 
