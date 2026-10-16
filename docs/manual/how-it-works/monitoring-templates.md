@@ -163,7 +163,9 @@ device.
 1. **Derive.** Read: the connectors in Settings, every device's committed intent, the committed
    profile. Sent: nothing. Recorded: nothing. Each section is new, changed, as committed, or not
    proposed with why (its connector not configured; two versions across the fleet, whose choice
-   is not on v2 yet).
+   is not on v2 yet). The card says how many devices' committed intent it cross-checked, and
+   names each device it did not read with why (a device with no full committed intent): those
+   are not cross-checked, and not counted in what changes on the devices.
 2. **Measure what reaches the devices.** For each new or changed section, each device it applies
    to is rendered through its own template with and without it: a template that renders none
    of it is named, since the section would reach that device's intent and never its

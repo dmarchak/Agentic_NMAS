@@ -74,8 +74,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
-| C868, C869 | the restore chooser's subject; the profile proposal's reads and skips | their `UNDRAWN` GAP entries gone | S each | — | — |
-| C860 | v2's Save draws C539's "a baseline was taken N min ago" warning (found writing W1) | the `/v2/devices/save` test with a baseline just taken | S | — | — |
+| ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
 | C543, C544 | Needs attention's action words (Persist; Revert and Retry) | the rows' tests | S | — | — |
 | C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
 | C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
@@ -112,7 +111,7 @@ their sittings clear.
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | 8 | 0 (C522) |
 | tests/test_no_new_v1_capability.py controls / handlers / functions / fields | 43 / 31 / 333 / 20 | 0 (P7-27) |
 | tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | 93 / 14 / 31 (v1 routes) | 0 at P7-27 (the v1 check goes with today's pages) |
-| tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | 362 (17 GAP) / **11** (C867) / 23 (2026-10-16) | the GAP entries cutover needs (C868, C869) gone; `UPSTREAM` 11 (met) |
+| tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | **358** (C868, C869's GAP gone) / **11** (C867) / 23 (2026-10-16) | met: the GAP entries cutover needs gone; `UPSTREAM` 11; the rest reasoned or the tail's |
 | tests/signed_off_screens.py `UNSIGNED` | 3 | 1 (not_found stays; heartbeat and ip_sla go with P.12, D3) |
 | modules/manual.py `ON_TODAYS_APP` | **0** (P7-19) | 0 |
 | tests/test_route_reachability.py `KNOWN_UNREACHABLE` / `NON_GUI` | 0 / 8 | 0 / 8 (D1 keeps two) |
@@ -208,3 +207,8 @@ blocks cutover or is a security issue (B).
 - **C867 done, and C878 with it** (both A): the device deploy card and Devices › Plan a deploy
   draw where each added line comes from before the confirm, through one macro; `UPSTREAM`
   16 → 11. C879 (C) to the tail.
+- **C860, C868, C869 done** (A, B, B): v2's Save says when it would repeat the last baseline
+  (in words that claim only what it measured); the restore chooser draws each moment's message;
+  the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
+  362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
+  P7-27) opened.

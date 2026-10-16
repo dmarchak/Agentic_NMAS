@@ -10,13 +10,15 @@ It is built from two operations that already exist, never a third copy of either
 
 ## The plan
 
-1. **Plan** (`plan`). Read: the network's inventory (each device's address, driver, account and stored credential), the hourly startup check's last reading, the reachability reader's last reading and the holds. Sent: nothing. Recorded: nothing. Each device chosen goes into one group:
+1. **Plan** (`plan`). Read: the network's inventory (each device's address, driver, account and stored credential), the hourly startup check's last reading, the reachability reader's last reading and the holds; for every device of the network, also the repository's newest earned baseline and the manifest. Sent: nothing. Recorded: nothing. Each device chosen goes into one group:
    - **to save**;
    - **not answering: left out**, when the last reachability reading had it not answering;
    - **held by another operation: left out**, naming that operation and who runs it;
    - **cannot be saved from here: left out**, when it is not in the inventory, has no driver recorded or has no stored credential.
 
    The summary counts each group. For the devices to save, it says what the hourly startup check last read: whether each one's accounts (its `username` lines) were in startup. That check compares the accounts only, so whether the rest of startup differs from running is not measured; every device to save is saved whatever the check read.
+
+   For every device of the network, the plan leads with a warning when a Save would likely repeat the last baseline: the newest earned [baseline](baselines) still holds every committed golden (no golden has changed since) and every device to save had a golden in it. It names when that baseline was taken, by whom, and its tag. The plan reads no device, so it says that whether a device has changed since is not known there; if none has, this Save records the same state again. The confirm is still offered.
 2. **Confirm** (`confirm`). You confirm the plan's hash, as yourself. The hash binds each device to save with its address, driver and account. A plan that moved before the run (an address, a driver, an account, a hold or reachability) is refused with nothing sent; open Save again.
 
 ## The run, in order

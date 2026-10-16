@@ -1946,9 +1946,14 @@ def _structure_gate(structure: dict) -> dict:
                 "with your reason below")
 
 
-def _repeats_words(repeats: dict, now: float = None) -> str:
+def _repeats_words(repeats: dict, now: float = None, *, read: bool = True) -> str:
     """C539 (2): "A baseline was taken 2 min ago by X (baseline/…); nothing has changed since:
-    another Save All would record the same state." From `routes.golden.last_baseline_if_current`."""
+    another Save All would record the same state." From `routes.golden.last_baseline_if_current`.
+
+    *read*: the caller read every device and none differs from its golden (the capture
+    preview). v2's Save plan reads no device (C860), so with ``read=False`` the words claim only
+    what it measured: no golden has changed since the baseline, and whether a device has is not
+    known there."""
     import time
     from datetime import datetime
     now = time.time() if now is None else now
@@ -1959,8 +1964,13 @@ def _repeats_words(repeats: dict, now: float = None) -> str:
                else f"{mins // 60} h ago" if mins < 2880 else f"{mins // 1440} days ago")
     except (TypeError, ValueError):
         ago = f"at {repeats.get('at') or 'an unrecorded time'}"
-    return (f"A baseline was taken {ago} by {repeats.get('actor') or 'someone not recorded'} "
-            f"({repeats.get('tag')}); nothing has changed since: every device reads as its "
+    lead = (f"A baseline was taken {ago} by {repeats.get('actor') or 'someone not recorded'} "
+            f"({repeats.get('tag')})")
+    if not read:
+        return (f"{lead}, and no golden has changed since. This plan reads no device, so "
+                "whether one has changed since is not known here; if none has, this Save "
+                "records the same state again.")
+    return (f"{lead}; nothing has changed since: every device reads as its "
             "golden, so another Save All would record the same state.")
 
 

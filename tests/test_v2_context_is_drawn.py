@@ -154,16 +154,8 @@ UNDRAWN = {
                                   "card draws the host and the network"),
         ("refusals", "joined by the route into the card's error and drawn as 'Refused: ...' on "
                      "Preview")],
-    "GET /v2/device/<name>/restore": [
-        ("ip", CARD_IP),
-        ("subject", "GAP (finding): each restore moment's message, written by a person; the "
-                    "chooser draws its words, ref and claim only, and today's restore scope "
-                    "drew it")],
-    "GET /v2/device/<name>/restore/preview": [
-        ("ip", CARD_IP),
-        ("subject", "GAP (finding): each restore moment's message, written by a person; the "
-                    "chooser draws its words, ref and claim only, and today's restore scope "
-                    "drew it")],
+    "GET /v2/device/<name>/restore": [("ip", CARD_IP)],
+    "GET /v2/device/<name>/restore/preview": [("ip", CARD_IP)],
     "GET /v2/device/<name>/retire": [("ip", CARD_IP)],
     "GET /v2/device/<name>/seed": [
         ("ip", CARD_IP),
@@ -233,8 +225,6 @@ UNDRAWN = {
                             "step is computed; the host step is drawn")],
     "GET /v2/monitoring/profile/propose": [
         ("profile_blob", "the committed profile's blob id, folded into the proposal's hash"),
-        ("devices_read skipped", "GAP (finding): how many devices' intents were cross-checked, "
-                                 "and which were not read and why; today's page drew both"),
         ("receives", "GAP (minor): per changed section, how many devices' templates render it; "
                      "only the dropped are drawn")],
     "GET /v2/netbox": [
@@ -336,7 +326,10 @@ UNDRAWN = {
         ("stage status", "the check's HTTP status and failing stage; the card draws its error "
                          "with line and column")],
 }
-UNDRAWN_CEILING = 362  # +5 2026-10-16: P7-05's two fragments, the same plumbing as their pages
+#: +5 2026-10-16: P7-05's two fragments, the same plumbing as their pages. -4 2026-10-16:
+#: C868 (the restore chooser draws each moment's `subject`, on both routes) and C869 (the
+#: profile proposal draws `devices_read` and `skipped`).
+UNDRAWN_CEILING = 358
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.

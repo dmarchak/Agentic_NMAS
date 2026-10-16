@@ -9,6 +9,11 @@
   {%- if s.state == 'running' %} aria-busy="true" hx-get="{{ url_for('v2.save_job', job=s.job, list=s.list) }}" hx-trigger="nmas:save from:body, nmas:device_progress from:body" hx-swap="outerHTML" hx-include="find .save-filter"{% endif %}>
 {%- if s.state == 'plan' %}
   <h2 id="save-h">Before it runs</h2>
+  {%- if s.repeats %}
+  {#- C539 (2) on v2 (C860): the whole network, and no golden changed since the newest earned
+      baseline; drawn first, since it is the decision the confirm asks for. -#}
+  <div class="notice notice-warn save-repeats">{{ icon('warn', 16) }}<p>{{ s.repeats }}</p></div>
+  {%- endif %}
   <p>Each device saves its running config to startup (its own <span class="mono">write memory</span>), the startup is read back, and the running config is recorded as its golden: one commit for the batch. Its running configuration is not changed, so what the tool records and what a reboot brings back are the same.</p>
   <div class="save-sum">
     {%- for g in s.groups %}<div class="save-n save-{{ g.kind }}"><strong>{{ g.devices | length }}</strong>{{ g.words }}</div>{% endfor %}

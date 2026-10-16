@@ -34,7 +34,11 @@
       {%- for m in c.moments %}
       <li>
         <input type="radio" name="chosen" value="{{ m.ref }}" id="mo-{{ loop.index }}"{% if m.ref == c.chosen %} checked{% endif %}{% if m.why_not %} disabled title="Cannot be chosen: {{ m.why_not }}"{% endif %}>
-        <label for="mo-{{ loop.index }}"><strong>{{ m.words }}</strong> <span class="mono muted">{{ m.ref }}</span>{% if m.claim %} <span class="muted" title="{{ m.claim_detail }}">({{ m.claim }})</span>{% endif %}</label>
+        <label for="mo-{{ loop.index }}"><strong>{{ m.words }}</strong> <span class="mono muted">{{ m.ref }}</span>{% if m.claim %} <span class="muted" title="{{ m.claim_detail }}">({{ m.claim }})</span>{% endif %}
+          {#- C868: the message its tag records (what made it and through what, e.g. "golden r2
+              via capture"), as today's chooser drew it; the golden now's is only the words
+              "its golden now", so it is not repeated. -#}
+          {%- if m.subject and m.kind != 'head' %} <span class="op-moment-msg" title="The message recorded with this moment">· {{ m.subject }}</span>{% endif %}</label>
         {{ badge(m.badge, m.level) }}
         {%- if m.kind == 'head' %}<span class="muted small">Re-applying it sends nothing by construction (the program is a moment's golden against today's). To undo a hand change, capture {{ c.host }} first, then restore an earlier moment.</span>{% endif %}
         {%- if m.same_as_now %}<span class="muted small">The same golden as now: re-applying it sends nothing.</span>{% endif %}

@@ -254,6 +254,56 @@ class TestThePage:
             r.get_data(as_text=True)
 
 
+def _repeats(html):
+    """The plan's repeated-baseline notice in words, or None."""
+    m = re.search(r'<div class="notice notice-warn save-repeats">(.*?)</div>', html, re.S)
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", m.group(1))).strip() if m else None
+
+
+class TestTheRepeatedBaseline:
+    """C860, C539 (2) on v2: a Save of the whole network just after a baseline says so first,
+    with when, by whom and the tag. The plan reads no device, so it claims only what it
+    measured: no golden has changed since, and every device to save had one at the baseline."""
+
+    def test_a_baseline_just_taken_is_said_first_and_a_golden_since_ends_it(self, lab):
+        lab["rows"][:] = lab["rows"][:1]                     # r2 is the whole network
+        before = set(_tags(lab["repo"]))
+        assert _repeats(_page(lab, all=1)) is None, "no baseline taken yet: nothing to repeat"
+        status, _html = _run(lab, form=_form(_page(lab, all=1)))
+        assert status == 200
+        (tag,) = sorted(set(_tags(lab["repo"])) - before)
+        html = _page(lab, all=1)
+        said = _repeats(html)
+        assert said == (f"A baseline was taken just now by test-person@example.invalid ({tag}), "
+                        "and no golden has changed since. This plan reads no device, so whether "
+                        "one has changed since is not known here; if none has, this Save "
+                        "records the same state again."), said
+        # First: before the card says what Save does, the groups, or the confirm.
+        assert html.index("save-repeats") < html.index("Each device saves its running config")
+        assert "op-confirm" in html, "the confirm is still offered"
+        # A golden committed after the baseline (r2 off its intent, so no new baseline is
+        # earned): the baseline is no longer the state.
+        lab["running"]["r2"] = _broken(lab["captured"])
+        head = _head(lab["repo"])
+        assert _run(lab, "r2")[0] == 200
+        assert _head(lab["repo"]) != head and sorted(set(_tags(lab["repo"])) - before) == [tag]
+        assert _repeats(_page(lab, all=1)) is None, "a golden committed since the baseline"
+
+    def test_said_only_for_the_whole_network_and_a_baseline_holding_each_device(self, lab):
+        """The controls: a selection short of the network asks for no baseline, so it repeats
+        none; a device with no golden at the baseline (r3, never onboarded) would be recorded
+        new, so the Save would not repeat the baseline."""
+        lab["rows"][:] = lab["rows"][:1]
+        assert _run(lab, form=_form(_page(lab, all=1)))[0] == 200
+        assert _repeats(_page(lab, all=1)), "the baseline just taken"
+        lab["rows"][:] = [lab["rows"][0], {**lab["rows"][0], "hostname": "r3",
+                                           "ip": "192.0.2.13"}]
+        assert _repeats(_page(lab, "r2")) is None, "r2 alone is not the network"
+        html = _page(lab, all=1)
+        assert "Every device of Lab: the commit may earn a baseline." in html
+        assert _repeats(html) is None, "r3 had no golden at the baseline"
+
+
 class TestTheRun:
     def test_it_saves_holding_each_device_and_records_once_as_the_person(self, lab):
         lab["running"]["r2"] = _broken(lab["captured"])

@@ -105,6 +105,38 @@ def _run_card(list_name: str, job_id: str, rows: list, committing: bool, q: str)
                        "done": "through their turn, waiting for the commit"})
 
 
+def _repeats(list_name: str, fleet: bool, hosts: list) -> str:
+    """C539 (2) on v2 (C860): when the whole network is to be saved together (the plan's
+    `fleet`, the Save that asks for a baseline), the newest earned baseline's golden tree is
+    still HEAD's, and every device to save had a golden at that baseline, the words that say
+    so, else "". The capture preview's own reading and words
+    (`routes.golden.last_baseline_if_current`, `preview_confirm._repeats_words`); the plan reads
+    no device, so the words say only that no golden has changed since.
+
+    A device with no golden at the baseline would be recorded new, so the Save would not repeat
+    it: then nothing is said. Two reads whatever the fleet's size (the baseline's golden paths,
+    one `git ls-tree`; the manifest, once); a device the manifest does not name, or any read
+    that fails, says nothing rather than a repeat it cannot stand behind."""
+    if not fleet:
+        return ""
+    from modules.nsot import manifest as _mf
+    from modules.nsot.repo import git
+    from modules.preview_confirm import _repeats_words
+    from routes.golden import _repo_for, last_baseline_if_current
+
+    repo = _repo_for(list_name)
+    last = last_baseline_if_current(repo)
+    if not last:
+        return ""
+    rc, out, _err = git(repo, "ls-tree", "-r", "--name-only", last["tag"], "--", "golden")
+    held = set(out.splitlines()) if rc == 0 else set()
+    golden_of = {(e.get("name") or "").lower(): e.get("golden")
+                 for e in _mf.load(repo)["devices"].values()}
+    if not held or any(golden_of.get(h.lower()) not in held for h in hosts):
+        return ""
+    return _repeats_words(last, read=False)
+
+
 #: Outcomes a retry may help: the device answered nothing it should have, or was busy.
 RETRYABLE = ("not_persisted", "unread", "held", "not_answering")
 
@@ -121,7 +153,7 @@ def plan_card(list_name: str, hostnames: list, *, may: dict) -> dict:
                for key, words in STARTUP_GROUPS]
     return {"state": "plan" if hostnames else "empty", "list": list_name,
             "total": len(p["devices"]), "save": p["save"], "hash": p["hash"],
-            "fleet": p["fleet"], "may": may,
+            "fleet": p["fleet"], "may": may, "repeats": _repeats(list_name, p["fleet"], p["save"]),
             "groups": [{"key": key, "words": words, "kind": kind, "devices": by_group[key]}
                        for key, words, kind in PLAN_GROUPS if by_group[key]],
             "startup": [s for s in startup if s[2]],

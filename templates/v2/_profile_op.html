@@ -24,6 +24,14 @@
       </tbody>
     </table></div></div></div>
   <div class="op-part"><h3>On the devices</h3><div>
+    {#- C869: what the cross-check read, and each device it did not read with why, as today's
+        page drew both: a proposal that does not say what it skipped looks complete. -#}
+    <p class="prof-read">Cross-checked against the committed intent of {{ q.devices_read }} device{{ '' if q.devices_read == 1 else 's' }}{% if q.skipped %}; {{ q.skipped | length }} not read{% endif %}.</p>
+    {%- if q.skipped %}
+    <details class="prof-skipped" data-keep="prof-skipped"{% if q.skipped | length <= 8 %} open{% endif %}><summary>{{ badge(q.skipped | length ~ ' not read', 'warn') }} <span class="muted">not cross-checked, and not counted in what changes on the devices</span></summary>
+      <ul class="op-list">{% for why, group in q.skipped | groupby('why') %}<li>{{ why[:1] | upper }}{{ why[1:] }}: <span class="mono">{{ group | map(attribute='device') | join(', ') }}</span></li>{% endfor %}</ul>
+    </details>
+    {%- endif %}
     <p>The effective intent of {{ q.effect }} device{{ '' if q.effect == 1 else 's' }} changes.
       {%- if q.dropped %} <strong>{{ q.dropped | length }} of them would not receive {{ 'it' if q.changes | length == 1 else 'every change' }} yet:</strong> {{ 'its template renders' if q.dropped | length == 1 else 'their templates render' }} none of {% for r in q.changes if r.dropped %}the {{ r.words }} section{{ ', ' if not loop.last }}{% endfor %}. <a href="{{ url_for('templates_v2.page', list=q.list) }}">Bring in the shipped version on Templates</a>.{% endif %}</p>
     <p class="muted">Committing records the profile; Coverage then shows each section missing on the devices that lack it, and Apply sends it. Nothing is sent to a device from here.</p></div></div>

@@ -73,6 +73,38 @@ class TestPropose:
             html.find("On the devices"):][:500]
         assert _hidden(html, "hash")
 
+    def test_the_card_says_what_it_read_and_each_device_it_did_not_with_why(self, prof,
+                                                                             monkeypatch):
+        """C869: today's page drew how many devices' intents were cross-checked and each device
+        not read with why; a proposal that does not say what it skipped looks complete. r9 is
+        in the inventory with no committed intent."""
+        from modules.nsot import hostvars
+        rows = [{"hostname": h, "ip": f"203.0.113.{n}", "device_type": "cisco_xe",
+                 "platform": "cisco_iosxe"} for h, n in (("r2", 12), ("r6", 16), ("r9", 19))]
+        monkeypatch.setattr("modules.nsot.restore._devices_of",
+                            lambda ln: [dict(r) for r in rows])
+        # The expectation, from the repository rather than from the card's code.
+        assert [h for h in ("r2", "r6", "r9")
+                if hostvars.read_committed(prof["repo"], h) is not None] == ["r2", "r6"]
+        r, html = _get(prof, "/v2/monitoring/profile/propose")
+        assert r.status_code == 200
+        part = html[html.index("<h3>On the devices</h3>"):html.index("<h3>Checks</h3>")]
+        said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", part))
+        assert "Cross-checked against the committed intent of 2 devices; 1 not read." in said
+        assert 'class="prof-skipped"' in part, "each device not read is named"
+        skipped =part[part.index('class="prof-skipped"'):part.index("</details>")]
+        assert 'data-keep="prof-skipped" open><summary>' in skipped, "a few: drawn open"
+        assert re.search(r"No full committed intent to read: <span class=\"mono\">r9</span>",
+                         skipped), skipped
+
+    def test_with_every_device_read_nothing_is_said_skipped(self, prof):
+        """The control: r2 and r6 both carry committed intent, so nothing is skipped."""
+        _r, html = _get(prof, "/v2/monitoring/profile/propose")
+        part = html[html.index("<h3>On the devices</h3>"):html.index("<h3>Checks</h3>")]
+        said = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", part))
+        assert "Cross-checked against the committed intent of 2 devices." in said
+        assert "not read" not in said and "prof-skipped" not in part
+
     def test_the_confirm_commits_as_the_person(self, prof):
         from modules.nsot import profile
         _r, card = _get(prof, "/v2/monitoring/profile/propose")

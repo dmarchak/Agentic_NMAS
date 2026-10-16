@@ -120,6 +120,25 @@ class TestTheChooser:
         assert "The same golden as now: re-applying it sends nothing." in card, "today's own tag"
         assert "default-src" in r.headers.get("Content-Security-Policy", "")
 
+    @pytest.mark.parametrize("url", ["/v2/device/r2/restore", "/v2/device/r2/restore/preview"])
+    def test_each_moment_draws_the_message_recorded_with_it(self, history, url):
+        """C868: today's chooser drew each moment's message under its ref; v2's drew its words,
+        ref and claim only. The message is read here from git, not from the code drawing it."""
+        from modules.nsot.repo import git
+        r, card = _get(history, url)
+        assert r.status_code == 200 and "Restore r2 from a moment" in card
+        subject = git(history["repo"], "tag", "-l", "--format=%(subject)",
+                      history["middle"])[1].strip()
+        assert subject, "the moment's tag carries a message"
+        items = re.findall(r"<li>(.*?)</li>", card[card.index("op-moments"):], re.S)
+        row = next(i for i in items if f'value="{history["middle"]}"' in i)
+        drawn = re.escape(html_mod.escape(subject))
+        assert re.search(r'<span class="op-moment-msg"[^>]*>· ' + drawn + "</span>", row), row
+        # The control: the golden now's "subject" is the tool's own words for "Golden now",
+        # not a message anyone recorded, so it is not drawn.
+        head = next(i for i in items if 'value="HEAD"' in i)
+        assert "op-moment-msg" not in head and "its golden now" not in head
+
     def test_ticking_a_moment_names_it_on_the_button(self, history):
         _r, card = _get(history, f"/v2/device/r2/restore?chosen={history['middle']}")
         assert f">Preview {history['middle']}<" in card
