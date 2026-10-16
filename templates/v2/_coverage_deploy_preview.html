@@ -72,20 +72,22 @@
   </section>
   {%- endif %}
 
-  <div class="cdep-bar confirm" x-data="applyConfirm" data-url="{{ url_for('v2.profile_apply_confirm') }}"
-       data-body='{{ confirm_body | tojson if confirm_body else "" }}'
-       data-label="Deploy to {{ ready | length }} device{{ 's' if ready | length != 1 }}, in this order">
+  {#- The confirm is THE pattern (C850): htmx posts the body this preview drew, exactly those
+      fields, busy on itself; the deploy's card is drawn below (#apply-result), or the refusal
+      with nothing sent. A viewer `may` refuses sees it disabled with the reason on it. -#}
+  <div class="cdep-bar confirm">
     <span class="muted">{{ words.only }} Bound to these programs: if a device or a template changes before you confirm, nothing is sent and this preview is read again.</span>
     <span class="cdep-acts">
       <a class="btn" href="{{ url_for('v2.coverage') }}">Back</a>
-      {%- if confirm_body and preview.confirm.may %}
-      <button type="button" class="btn btn-primary" id="apply-confirm" data-op="monitoring-templates" x-on:click="confirm"
-              x-bind:disabled="locked" x-text="label">Deploy to {{ ready | length }} device{{ 's' if ready | length != 1 }}, in this order</button>{{ how('monitoring-templates', 'combined', compact=True, op='the combined deploy') }}
+      {%- if confirm_body %}
+      <span class="op-act"><button type="button" class="btn btn-primary" id="apply-confirm" data-op="monitoring-templates"
+              hx-post="{{ url_for('v2.profile_apply_confirm') }}" hx-target="#apply-result" hx-swap="innerHTML"
+              hx-vals='{{ {"list": confirm_body.list, "scope": confirm_body.scope, "order": confirm_body.order | tojson, "confirmations": confirm_body.confirmations | tojson, "command_hashes": confirm_body.command_hashes | tojson, "remove": confirm_body.remove | tojson, "authorise": confirm_body.authorise | tojson} | tojson }}'
+              hx-params="list,scope,order,confirmations,command_hashes,remove,authorise"
+              hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Deploy to {{ ready | length }} device{{ 's' if ready | length != 1 }}, in this order</span><span class="op-busy">Starting the deploy…</span></button>{{ how('monitoring-templates', 'combined', compact=True, op='the combined deploy') }}</span>
       {%- endif %}
     </span>
-    {%- if confirm_body and preview.confirm.may %}
-    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
-    {%- elif all_nothing %}
+    {%- if not confirm_body and all_nothing %}
     <p class="muted">{{ words.all_nothing }}</p>
     {%- elif not confirm_body %}
     <p class="apply-refused">{{ words.none_can }}</p>

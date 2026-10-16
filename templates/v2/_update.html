@@ -87,14 +87,20 @@
   <ul class="gate-list" id="update-gates">
     {%- for g in p.gates %}<li class="gate-{{ g.state }}">{{ icon('check' if g.state == 'pass' else 'warn', 14) }} <strong>{{ g.name }}</strong><span class="muted"> · {{ g.detail }}</span></li>{% endfor %}
   </ul>
-  <div class="confirm" x-data="update" data-hash="{{ p.hash }}" data-target="{{ f.target }}"
-       data-apply-url="{{ url_for('update.apply') }}" data-status-url="{{ url_for('update.status') }}"
+  {#- The confirm is THE pattern (C850, Stage 7 acceptance criterion 6): htmx posts the preview's
+      hash and the ticked host steps, the button is busy on itself until the answer, and the
+      answer is this panel drawn again (routes/update.py): the stepper following the request,
+      the wait, or the refusal with its reason. The component below only FOLLOWS: the updater's
+      record and /health while the app restarts under it, which no answer from the app can
+      draw. A refusal, and a request being followed, hold the panel against redraws nobody
+      asked for (`data-update-hold`, nmas_update.js); Check again releases a refusal's. -#}
+  {%- set refusal = refusal | default('') %}
+  <div class="confirm" x-data="update" data-target="{{ f.target }}"
+       data-status-url="{{ url_for('update.status') }}"
        data-health-url="{{ url_for('health.health') }}" data-timeout="{{ updater_timeout_s }}"
-       data-selectable="{{ 'yes' if (p.selectable or p.waitable) and confirm.may else 'no' }}"
-       data-when="{{ 'ci' if p.waitable else '' }}"
        data-waiting="{{ 'yes' if p.waiting.target else 'no' }}"{% if p.following %} data-follow-id="{{ p.following }}"{% endif %}
        data-waiting-words="{% if p.waiting.target %}Waiting for CI: the update to {{ p.waiting.target[:10] }} starts when CI passes (asked by {{ p.waiting.requested_by }}, {{ p.waiting.requested_at }}).{% endif %}"
-       data-label="Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}">
+       data-refusal="{{ refusal }}"{% if refusal %} data-update-hold="result"{% elif p.following %} data-update-hold="yes"{% endif %}>
     <p>{{ confirm.statement }}</p>
     {%- if p.wait_ended %}
     <div class="notice notice-warn" id="update-wait-ended">{{ icon('warn') }}<p>The wait for CI ended {{ stamp(p.wait_ended.ended_at) }}: {{ p.wait_ended.words }}.</p></div>
@@ -105,15 +111,21 @@
         with its reason, and once accepted the stepper follows the updater's own
         steps (its record names the step it is on). -#}
     {#- The button and its link are drawn together or not at all (C505's check: while waiting,
-        the link stayed beside the paragraph above). -#}
-    <span class="op-act" x-show="showButton"><button type="button" class="btn btn-primary" id="update-confirm" data-op="update" x-on:click="confirm"
-            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</button>{{ how('update') }}</span>
+        the link stayed beside the paragraph above). Not selectable: drawn disabled, the reason
+        above it ("Not now"); a viewer `may` refuses: disabled with the reason on it (gate()). -#}
+    <span class="op-act" x-show="showButton"{% if p.following %} x-cloak{% endif %}><button type="button" class="btn btn-primary" id="update-confirm" data-op="update"
+            hx-post="{{ url_for('update.apply') }}" hx-target="#update-panel" hx-swap="outerHTML"
+            hx-include="#update-host-steps" hx-vals='{{ {"hash": p.hash, "when": "ci" if p.waitable else ""} | tojson }}'
+            hx-disabled-elt="this"{% if confirm.may and not (p.selectable or p.waitable) %} disabled{% endif %}{{ gate('confirm') }}><span class="op-idle">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</span><span class="op-busy">Sending the request…</span></button>{{ how('update') }}</span>
     <p class="wait" id="update-waiting" x-show="waiting" x-cloak x-text="words" role="status" aria-live="polite"></p>
     {#- Stop waiting and its (i) are drawn together or not at all (C505: the (i) stayed when the
-        button was hidden, a second link beside Update). -#}
-    <span class="op-act" x-show="waiting" x-cloak><button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak data-op="update" x-on:click="stopWaiting"
-            x-bind:disabled="stopping" x-text="stopText">Stop waiting</button>{{ how('update', 'update-when-ci-passes', compact=True, op='waiting for CI') }}</span>
-    <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal"></p></div>
+        button was hidden, a second link beside Update). It posts the same route as Update and
+        carries the preview's hash as every confirm of that route does; it ends the wait in
+        force, whatever its target (update_op.stop_waiting reads no hash). -#}
+    <span class="op-act" x-show="waiting" x-cloak><button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak data-op="update"
+            hx-post="{{ url_for('update.apply') }}" hx-target="#update-panel" hx-swap="outerHTML"
+            hx-vals='{{ {"hash": p.hash, "when": "stop"} | tojson }}' hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">Stop waiting</span><span class="op-busy">Stopping…</span></button>{{ how('update', 'update-when-ci-passes', compact=True, op='waiting for CI') }}</span>
+    <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal">{{ refusal }}</p></div>
     {#- THE stepper (run_stepper), its steps drawn waiting; the script sets each step's state
         from the updater's record, the app being down for part of it (nmas_update.js). -#}
     <div data-update-steps x-show="running" x-cloak>{{ run_stepper(update_run) }}</div>
@@ -131,13 +143,22 @@
   <ul class="plain-list" id="update-owed-steps">
     {%- for s in owed.steps %}<li data-step-id="{{ s.id }}">{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}nothing can check it: say when it is done{% else %}checked: {{ s.check_detail }}{% endif %} <span class="mono">({% for x in s.shas or [s.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span>
       {%- if s.check_state == 'not_checkable' %}
-      <span x-data="stepDone" data-url="{{ url_for('update.step_done') }}" data-sha="{{ s.sha }}" data-step="{{ s.step }}">
-        <button type="button" class="btn btn-sm" data-op="update" x-on:click="say" x-bind:disabled="busy" x-text="label">It is done</button>{{ how('update', 'the-preview', compact=True, op='a host step') }}
-        <span class="muted" x-show="said" x-text="said" x-cloak></span>
-      </span>
+      {#- The one confirm pattern (C850): htmx posts the step, busy on itself; the answer is this
+          panel drawn again, the step moved under "Host steps said done", or the refusal below.
+          The step's words ride in hidden fields, escaped as the words above are (a commit's
+          trailer, drawn verbatim). -#}
+      <form class="update-step-done" hx-post="{{ url_for('update.step_done') }}" hx-target="#update-panel" hx-swap="outerHTML">
+        <input type="hidden" name="sha" value="{{ s.sha }}"><input type="hidden" name="step" value="{{ s.step }}">
+        <span class="op-act"><button type="submit" class="btn btn-sm" data-op="update" hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">It is done</span><span class="op-busy">Recording…</span></button>{{ how('update', 'the-preview', compact=True, op='a host step') }}</span>
+      </form>
       {%- endif %}</li>{% endfor %}
   </ul>
 </section>
+{%- endif %}
+{#- "It is done" refused: said with its reason, and held against redraws nobody asked for until
+    Check again (the step may no longer be on the list above, so it is said here). -#}
+{%- if step_refusal %}
+<div class="notice notice-danger" id="update-step-refused" role="alert" data-update-hold="result">{{ icon('warn') }}<p>Not recorded as done ("{{ step_refusal.step }}"): {{ step_refusal.error }}</p></div>
 {%- endif %}
 {%- if owed and owed.said_done %}
 <section class="card" id="update-said-done">

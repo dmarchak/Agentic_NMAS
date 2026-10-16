@@ -2,13 +2,20 @@
  *
  * Every stage is visible (the operator, 2026-09-30, after the first real run
  * failed without a word):
- *   click     the button disables and reads "Sending the request…";
- *   refused   the reason, on the page, and the button back;
+ *   click     the button is busy on itself, "Sending the request…" (htmx);
+ *   refused   the reason, on the page, and the button back (the server draws
+ *             the panel again with it);
  *   accepted  a STEPPER drawn from the updater's own steps (its record names
  *             the step it is on), with the seconds on the step running;
  *   outcome   the last step done or failed with its reason, then a reload
  *             that draws "The last update".
  * It waits on FACTS, never a timer: /health's commit and the updater's record.
+ *
+ * THE CONFIRM IS NOT HERE (C850, Stage 7 acceptance criterion 6): Update, Stop
+ * waiting and "It is done" are htmx posts in templates/v2/_update.html, each
+ * answered by the panel drawn again (routes/update.py). This file FOLLOWS what
+ * the answer draws: a request (`data-follow-id`) through the updater's record
+ * and /health while the app restarts under it, and a wait for CI.
  *
  * WIRING, the first run's defect: a component's data-* attributes are read
  * from `$root` (the x-data element). `$el` is the element carrying the
@@ -177,12 +184,15 @@
     var A = root.Alpine;
     A.data('update', function () {
       return {
-        phase: 'idle', words: '', refusal: '', started: 0, stopping: false,
+        phase: 'idle', words: '', refusal: '', started: 0,
         // A wait recorded before this page loaded: follow it. An update the
-        // wait released, still running: follow its stepper (a redraw can land
-        // between the release and this component hearing of it).
+        // wait released, or the one the confirm just requested (its answer
+        // names it), still running: follow its stepper (a redraw can land
+        // between the release and this component hearing of it). A refusal
+        // the server drew is said in the notice.
         init: function () {
           var el = this.$root;
+          this.refusal = el.getAttribute('data-refusal') || '';
           var follow = el.getAttribute('data-follow-id');
           if (follow) {
             el.setAttribute('data-update-hold', 'yes');
@@ -195,17 +205,9 @@
             this.follow();
           }
         },
-        // Read from $root, the x-data element: see the header.
-        get blocked() {
-          return this.$root.getAttribute('data-selectable') !== 'yes' || this.phase === 'asking';
-        },
-        get buttonText() {
-          return this.phase === 'asking' ? 'Sending the request…' : this.$root.getAttribute('data-label');
-        },
-        get showButton() { return this.phase === 'idle' || this.phase === 'asking'; },
+        get showButton() { return this.phase === 'idle'; },
         get running() { return this.phase === 'running' || this.phase === 'done'; },
         get waiting() { return this.phase === 'waiting'; },
-        get stopText() { return this.stopping ? 'Stopping…' : 'Stop waiting'; },
         get refused() { return this.refusal !== ''; },
         // UPDATE WHEN CI PASSES: the wait ends when the app-pushed reader
         // releases it, and that reader ANNOUNCES; the page reads the status on
@@ -245,70 +247,6 @@
           }
           root.document.body.addEventListener('nmas:app_version', heard);
         },
-        stopWaiting: function () {
-          var self = this, el = this.$root;
-          self.stopping = true;
-          root.fetch(el.getAttribute('data-apply-url'), {
-            method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-            body: JSON.stringify({when: 'stop'})
-          }).then(function (r) {
-            return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
-          }).then(function (got) {
-            self.stopping = false;
-            if (got[0] === 200) { root.location.reload(); return; }
-            self.refusal = 'Not stopped: ' + ((got[1] && got[1].error) || ('the server answered HTTP ' + got[0]));
-          }, function (e) {
-            self.stopping = false;
-            self.refusal = 'Not stopped: the request did not reach the app (' + e.message + ')';
-          });
-        },
-        confirm: function () {
-          var self = this, el = this.$root;
-          // The boxes are drawn in the PREVIEW, above this component: reading
-          // them from $root found none, so a ticked box never reached the
-          // request (the operator, 2026-09-30, a580660's step). Read them from
-          // the preview that holds both.
-          var scope = (el.closest && el.closest('#update-preview')) || el;
-          var boxes = scope.querySelectorAll('input[data-host-step]');
-          var ack = [];
-          for (var i = 0; i < boxes.length; i++) {
-            if (boxes[i].checked) ack.push(boxes[i].getAttribute('data-host-step'));
-          }
-          self.phase = 'asking';
-          self.refusal = '';
-          // HOLD the panel: the request's own answer announces app_version,
-          // and a re-fetch would replace this component and wipe what it
-          // shows (found by the real-browser test, 2026-09-30).
-          el.setAttribute('data-update-hold', 'yes');
-          root.fetch(el.getAttribute('data-apply-url'), {
-            method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-            body: JSON.stringify({hash: el.getAttribute('data-hash'), acknowledged: ack,
-                                  when: el.getAttribute('data-when') || ''})
-          }).then(function (r) {
-            return r.json().then(function (b) { return [r.status, b]; },
-                                 function () { return [r.status, null]; });
-          }).then(function (got) {
-            if (got[0] !== 202) {
-              self.phase = 'idle';
-              self.refusal = 'Not requested: ' + ((got[1] && got[1].error) || ('the server answered HTTP ' + got[0]));
-              el.setAttribute('data-update-hold', 'result');
-              return;
-            }
-            if (got[1] && got[1].waiting) {
-              self.phase = 'waiting';
-              self.words = got[1].message || '';
-              self.follow();
-              return;
-            }
-            self.phase = 'running';
-            self.started = Date.now();
-            self.poll(got[1].id);
-          }, function (e) {
-            self.phase = 'idle';
-            self.refusal = 'Not requested: the request did not reach the app (' + e.message + ')';
-            el.setAttribute('data-update-hold', 'result');
-          });
-        },
         poll: function (id) {
           var self = this, el = this.$root;
           var timeout = parseInt(el.getAttribute('data-timeout'), 10) || 900;
@@ -328,29 +266,6 @@
             if (r.reload) { root.setTimeout(function () { root.location.reload(); }, 1500); }
             else if (!r.done) { root.setTimeout(function () { self.poll(id); }, 2000); }
           });
-        }
-      };
-    });
-    // "It is done": a person says an AFTER host step no check can answer is
-    // done. Busy on itself; the panel re-draws from the announcement and the
-    // step leaves the list. Words only for a refusal.
-    A.data('stepDone', function () {
-      return {
-        busy: false, said: '',
-        get label() { return this.busy ? 'Recording…' : 'It is done'; },
-        say: function () {
-          var self = this, el = this.$root;
-          self.busy = true;
-          self.said = '';
-          root.fetch(el.getAttribute('data-url'), {
-            method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-            body: JSON.stringify({sha: el.getAttribute('data-sha'), step: el.getAttribute('data-step')})
-          }).then(function (r) {
-            return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
-          }).then(function (got) {
-            self.busy = false;
-            if (got[0] !== 200) self.said = 'Not recorded: ' + ((got[1] && got[1].error) || ('HTTP ' + got[0]));
-          }, function (e) { self.busy = false; self.said = 'Not recorded: ' + e.message; });
         }
       };
     });
@@ -420,15 +335,45 @@
     });
   }
 
+  /* Was this swap a redraw nobody asked for (a reader's or a job's announcement, `nmas:<key>`)?
+     The answer to the person's own Update, Stop waiting or "It is done" is what they asked
+     for, and always lands. PURE over the event's detail. */
+  function isAnnounced(d) {
+    var ev = d && d.requestConfig && d.requestConfig.triggeringEvent;
+    return !!(ev && typeof ev.type === 'string' && ev.type.indexOf('nmas:') === 0);
+  }
+
   /* A panel holding an update in flight ("yes"), or its finished stepper or refusal
      ("result"), is never swapped out from under the person reading it by a redraw nobody
      asked for. Check again releases a "result" hold, since its answer is a redraw. */
   function holdSwap(e) {
     var target = e.detail && e.detail.target;
+    if (!isAnnounced(e.detail)) return;
     if (target && target.querySelector
         && target.querySelector('[data-update-hold="yes"], [data-update-hold="result"]')) {
       e.detail.shouldSwap = false;
     }
+  }
+
+  /* The confirm's own request (Update, Stop waiting) announces app_version, and that redraw
+     can land BEFORE the confirm's answer, drawing the panel as if nothing had been asked and
+     losing the answer (found by the real-browser test, 2026-09-30). The panel is held from the
+     click until the answer swaps in, which replaces this element; an answer that could not be
+     drawn ("Couldn't load", said in place by nmas_v2.js) leaves it held as a result, released
+     by Check again. Only the component's own posts: its "How does this work?" link is an htmx
+     GET of the help panel, and holds nothing. */
+  function confirmOf(e) {
+    var elt = e.detail && e.detail.elt;
+    if (!elt || !elt.closest || !elt.hasAttribute || !elt.hasAttribute('hx-post')) return null;
+    return elt.closest('[x-data="update"]');
+  }
+  function holdWhileAsking(e) {
+    var c = confirmOf(e);
+    if (c) c.setAttribute('data-update-hold', 'yes');
+  }
+  function holdIfNotAnswered(e) {
+    var c = confirmOf(e);
+    if (c && root.document.body.contains(c)) c.setAttribute('data-update-hold', 'result');
   }
   function releaseResultHolds() {
     var held = root.document.querySelectorAll('[data-update-hold="result"]');
@@ -442,8 +387,10 @@
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('alpine:init', register);
     root.document.addEventListener('htmx:beforeSwap', holdSwap);
+    root.document.addEventListener('htmx:beforeRequest', holdWhileAsking);
+    root.document.addEventListener('htmx:afterRequest', holdIfNotAnswered);
   }
   root.NMAS_UPDATE = {stepStates: stepStates, TERMINAL: TERMINAL, checkLabel: checkLabel,
-                      waitOutcome: waitOutcome,
+                      waitOutcome: waitOutcome, isAnnounced: isAnnounced,
                       checkLateWords: checkLateWords, checkStillWords: checkStillWords};
 })(typeof window !== 'undefined' ? window : this);

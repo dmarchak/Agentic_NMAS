@@ -1,18 +1,14 @@
-/* The batch Apply's confirm (P.9 step d2; routes/v2.py).
+/* The batch Apply's page (P.9 step d2; routes/v2.py).
  *
- * The preview is drawn by the server, and so is the body this sends: the
- * capture and command hashes of the program on the screen, the removals
- * ticked and their reasons, in the rollout order (`data-body`, built by
- * routes.v2._apply_ctx). This only POSTs it, unchanged, as the person.
- *
- * The control is busy ON ITSELF ("Starting the batch…") until the server
- * answers; then the job's progress is drawn in place below (#apply-result),
- * redrawn as each device finishes. A refusal is said beside the button, in
- * the server's words, and the button comes back.
+ * THE CONFIRM IS NOT HERE (C850, Stage 7 acceptance criterion 6): the batch
+ * Apply, Coverage's Deploy missing and History's Re-apply post their confirm
+ * with htmx (the one pattern), the body the server drew from the hashes on
+ * the screen, and the server answers with the batch's card in #apply-result
+ * and the confirm drawn again as started. What stays here is `lockPreview`
+ * (C602), run when that answer says the batch started (`lockOnStart`).
  *
  * ES5, Alpine's CSP build: getters and argument-free methods only, every
  * data-* attribute read from `$root` (the x-data element; C243's rule).
- * `confirmOutcome` is PURE, executed in duktape by tests/test_profile_apply_v2.py.
  *
  * Also `ipslaPost`, Monitoring > IP SLA's two buttons (P.9 d4): commit the
  * policy, or commit the ticked suggested probes to intent and go to the
@@ -32,14 +28,6 @@
  */
 (function (root) {
   'use strict';
-
-  /* PURE. What the page does with the server's answer: *status* the HTTP
-     status, *body* the parsed JSON (or null). */
-  function confirmOutcome(status, body) {
-    if (status === 202 && body && body.ok && body.url) return {started: true, url: body.url, error: ''};
-    var why = body && body.error ? body.error : 'refused (HTTP ' + status + ')';
-    return {started: false, url: '', error: 'Nothing was sent: ' + why};
-  }
 
   /* PURE. The IP SLA page's POST body (P.9 d4): the server-drawn *base* (a
      JSON string), the policy fields the form holds (each "" when absent),
@@ -88,6 +76,16 @@
     var note = doc.getElementById('apply-locked');
     if (note) note.hidden = false;
     return n;
+  }
+
+  /* The confirm's answer swapped into #apply-result (C850): 202 is the batch started, so the
+     preview is locked (C602). A refusal (400) locks nothing: the person may plan again. PURE
+     over the event's detail: whether this swap started a batch. */
+  function startedBatch(d) {
+    return !!(d && d.target && d.target.id === 'apply-result' && d.xhr && d.xhr.status === 202);
+  }
+  function lockOnStart(e) {
+    if (startedBatch(e.detail)) lockPreview(root.document);
   }
 
   /* PURE. The Devices page's selection words: *names* the ticked devices; the menu's count. */
@@ -200,49 +198,13 @@
         }
       };
     });
-    root.Alpine.data('applyConfirm', function () {
-      return {
-        busy: false, started: false, error: '',
-        get locked() { return this.busy || this.started; },
-        get hasError() { return !!this.error; },
-        get label() {
-          if (this.busy) return 'Starting the batch…';
-          if (this.started) return 'Started: its progress is below';
-          return this.$root.getAttribute('data-label') || 'Apply';
-        },
-        confirm: function () {
-          var self = this;
-          if (self.locked) return;
-          self.busy = true;
-          self.error = '';
-          root.fetch(self.$root.getAttribute('data-url'), {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-            body: self.$root.getAttribute('data-body')
-          }).then(function (r) {
-            return r.json().then(function (b) { return confirmOutcome(r.status, b); },
-                                 function () { return confirmOutcome(r.status, null); });
-          }).then(function (o) {
-            self.busy = false;
-            self.started = o.started;
-            self.error = o.error;
-            if (o.started) lockPreview(root.document);
-            if (o.started && root.htmx) {
-              root.htmx.ajax('GET', o.url, {target: '#apply-result', swap: 'innerHTML'});
-            }
-          }, function (e) {
-            self.busy = false;
-            self.error = 'Nothing was sent: the request did not reach the server (' + e + ')';
-          });
-        }
-      };
-    });
   }
 
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('alpine:init', register);
+    root.document.addEventListener('htmx:afterSwap', lockOnStart);
   }
-  root.NMAS_APPLY = {confirmOutcome: confirmOutcome, ipslaBody: ipslaBody,
+  root.NMAS_APPLY = {startedBatch: startedBatch, ipslaBody: ipslaBody,
                      ipslaOutcome: ipslaOutcome, coverageWords: coverageWords,
                      deviceWords: deviceWords};
 })(typeof window !== 'undefined' ? window : this);

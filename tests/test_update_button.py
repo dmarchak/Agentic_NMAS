@@ -833,7 +833,11 @@ class TestThePage:
         html = r.get_data(as_text=True)
         assert r.status_code == 200 and "script-src 'self'" in r.headers["Content-Security-Policy"]
         assert "b" * 10 in html and "install python3-foo" in html and 'data-host-step="' + "c" * 40 in html
-        assert 'data-hash="' + fixed["hash"] in html and 'data-selectable="yes"' in html
+        # The confirm (C850): htmx posts the preview's hash, and a selectable plan draws it
+        # enabled.
+        button = re.search(r'<button\b[^>]*id="update-confirm"[^>]*>', html, re.S).group(0)
+        assert '"hash": "' + fixed["hash"] + '"' in button, button
+        assert " disabled" not in button and 'hx-post="/update/apply"' in button
         assert "It runs nothing from the repository as root" in html
         assert not re.search(r"<script(?![^>]*\bsrc=)", html) and " onclick=" not in html
 
@@ -860,21 +864,27 @@ class TestThePage:
         real = update_op.plan
         want = _plan()["hash"]
         monkeypatch.setattr(update_op, "plan", lambda **kw: real(**_plan_kw()))
-        r = A.app.test_client().post("/update/apply", json={"hash": want,
-                                                            "acknowledged": ["c" * 40]})
-        assert r.status_code == 202, r.get_json()
+        # The page's own fields (C850); the answer is the panel drawn again, following the
+        # request it wrote (its stepper), or the refusal, held against redraws.
+        r = A.app.test_client().post("/update/apply", data={"hash": want,
+                                                            "host_step": ["c" * 40]})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 202, html
         (name,) = os.listdir(tmp_path / "requests")
         doc = json.loads((tmp_path / "requests" / name).read_text())
         assert doc["requested_by"] == "test-person@example.invalid" and doc["target"] == "b" * 40
-        r = A.app.test_client().post("/update/apply", json={"hash": "0" * 16})
-        assert r.status_code == 409 and "has changed" in r.get_json()["error"]
+        assert f'data-follow-id="{doc["id"]}"' in html and 'data-update-hold="yes"' in html
+        r = A.app.test_client().post("/update/apply", data={"hash": "0" * 16})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 409 and "has changed" in html
+        assert 'data-update-hold="result"' in html and 'id="update-panel"' in html
 
     @pytest.mark.real_identity
     def test_nobody_verified_is_refused_before_anything_is_written(self, tmp_path, monkeypatch):
         import app as A
         from modules import update_op
         monkeypatch.setattr(update_op, "REQUEST_DIR", str(tmp_path / "requests"))
-        r = A.app.test_client().post("/update/apply", json={"hash": "x"})
+        r = A.app.test_client().post("/update/apply", data={"hash": "x"})
         assert r.status_code == 403 and not os.path.exists(tmp_path / "requests")
 
 
@@ -1200,8 +1210,8 @@ class TestClickingTheShippedButton:
         b.go(served_update["srv"].url("/v2/update"))
         b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
                    "&& !document.querySelector('#update-confirm').disabled")
-        assert b.js("return document.querySelector('#update-confirm').textContent.trim()") == \
-            "Update to bbbbbbbbbb"
+        assert b.js("return document.querySelector('#update-confirm .op-idle')"
+                    ".textContent.trim()") == "Update to bbbbbbbbbb"
         b.click("#update-confirm")
         text = b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
                           "return n && getComputedStyle(n).display !== 'none' && n.textContent")
@@ -1245,6 +1255,80 @@ class TestClickingTheShippedButton:
         b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
                    "return n && getComputedStyle(n).display !== 'none' && n.textContent")
         assert calls["apply"] == [(served_update["hash"], ["c" * 40], "test-person@example.invalid")]
+
+    def test_a_second_confirm_after_a_refusal_lands_on_the_held_panel(self, served_update):
+        """C850: a refusal holds the panel against redraws nobody asked for; the person's own
+        next confirm is not one, and its answer lands, saying the new reason."""
+        b, calls = served_update["b"], served_update["calls"]
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
+                   "&& !document.querySelector('#update-confirm').disabled")
+        b.click("#update-confirm")
+        b.wait_for("return document.querySelector('.confirm[data-update-hold=\"result\"]')")
+        calls["answer"] = {"ok": False, "reason": "a second reason, after the first"}
+        b.wait_for("return window.Alpine && !document.querySelector('#update-confirm').disabled")
+        b.click("#update-confirm")
+        said = b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
+                          "return n && getComputedStyle(n).display !== 'none' && "
+                          "n.textContent.indexOf('a second reason') >= 0 && n.textContent")
+        assert "Not requested: a second reason, after the first" in said
+        assert len(calls["apply"]) == 2
+
+    def test_a_redraw_while_the_request_is_asked_never_replaces_its_answer(
+            self, served_update, monkeypatch):
+        """C850: the request announces `app_version`, and that redraw can arrive before the
+        confirm's own answer, drawing the panel as if nothing had been asked. The panel is held
+        from the click until the answer swaps in; then the stepper follows the request."""
+        import threading
+
+        from modules import update_op
+        b, calls = served_update["b"], served_update["calls"]
+        calls["answer"] = {"ok": True, "id": "0123456789abcdef", "target": "b" * 40,
+                           "from": "a" * 40, "up_bound_s": 120, "updater_timeout_s": 900}
+        calls["status"]["outcome"] = {"state": "ok", "value": {
+            "id": "0123456789abcdef", "outcome": "running", "step": "ci"}}
+        asked, release = threading.Event(), threading.Event()
+        scripted = update_op.request
+
+        def held(h, ack, actor, **kw):
+            asked.set()
+            assert release.wait(20), "the test never released the request"
+            return scripted(h, ack, actor, **kw)
+        monkeypatch.setattr(update_op, "request", held)
+        try:
+            b.go(served_update["srv"].url("/v2/update"))
+            b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
+                       "&& !document.querySelector('#update-confirm').disabled")
+            b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
+                 "window.__redrawn = false; document.body.addEventListener('htmx:beforeSwap',"
+                 " function (e) { if (e.detail.pathInfo && /\\/v2\\/update\\/panel/.test("
+                 "e.detail.pathInfo.requestPath)) window.__redrawn = true; }); return 1")
+            b.click("#update-confirm")
+            assert asked.wait(10), "the confirm never reached the route"
+            b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")
+            b.wait_for("return window.__redrawn")
+            assert b.js("return document.querySelector('#update-panel').hasAttribute('data-old')"), \
+                "the redraw replaced the panel while its confirm was asked"
+        finally:
+            release.set()
+        cls = b.wait_for("var li=document.querySelector('[data-step=ci]');"
+                         "return li && li.className.indexOf('run-step-running') >= 0 && li.className")
+        assert cls == "run-step run-step-running"
+
+    def test_reading_how_it_works_holds_nothing(self, served_update):
+        """C850: only the confirm's own posts hold the panel; "How does this work?" beside the
+        button is an htmx GET of the help panel, and a redraw after it still lands."""
+        b = served_update["b"]
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
+                   "&& !document.querySelector('#update-confirm').disabled")
+        b.js("document.querySelector('.confirm .how-link').click(); return 1")
+        b.wait_for("return !document.querySelector('.htmx-request')")
+        assert b.js("return document.querySelector('[data-update-hold]')") is None
+        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
+             "htmx.trigger(document.body, 'nmas:app_version'); return 1")
+        b.wait_for("var p=document.querySelector('#update-panel');"
+                   "return p && !p.hasAttribute('data-old')")
 
     def test_an_accepted_request_draws_the_stepper_from_the_updaters_record(self, served_update):
         b, calls = served_update["b"], served_update["calls"]

@@ -207,24 +207,35 @@ class TestSayingItIsDone:
                             lambda root: {"state": "not_done", "detail": "absent"})
         monkeypatch.setattr(host_steps, "_log", lambda root, rng, limit, run=None: _log(("a" * 40, BODY)))
         c = A.app.test_client()
-        r = c.post("/update/host-step/done", json={"sha": "a" * 40, "step": "tell the team"})
-        assert r.status_code == 200 and "p@example.invalid" in r.get_json()["message"]
+        r = c.post("/update/host-step/done", data={"sha": "a" * 40, "step": "tell the team"})
+        # The answer is the Update panel drawn again (C850), the step said done by its person.
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200 and 'id="update-said-done"' in html
+        assert "said done by p@example.invalid" in html
         row = json.loads((store / "done.jsonl").read_text().splitlines()[0])
         assert row["by"] == "p@example.invalid" and row["step"] == "tell the team"
-        r = c.post("/update/host-step/done", json={
+        r = c.post("/update/host-step/done", data={
             "sha": "a" * 40, "step": "install the renderer as a symlink and restart it"})
-        assert r.status_code == 409 and "checks this step itself" in r.get_json()["error"]
-        r = c.post("/update/host-step/done", json={"sha": "a" * 40, "step": "invented"})
-        assert r.status_code == 409
+        html = r.get_data(as_text=True)
+        assert r.status_code == 409 and 'id="update-step-refused"' in html
+        assert "checks this step itself" in html
+        r = c.post("/update/host-step/done", data={"sha": "a" * 40, "step": "invented"})
+        assert r.status_code == 409 and "not one the running release owes" in r.get_data(
+            as_text=True)
 
 
 class TestTheBoxIsReadWhereItIsDrawn:
     def test_the_click_reads_the_boxes_from_the_preview_that_holds_them(self):
-        js = (ROOT / "static" / "js" / "nmas_update.js").read_text()
-        assert "el.closest('#update-preview')" in js
+        """The confirm is an htmx post (C850): it includes the list that holds the boxes, by
+        id, wherever the button sits, and each box is a field of that list."""
+        import re
         html = (ROOT / "templates" / "v2" / "_update.html").read_text()
+        button = re.search(r'<button\b[^>]*id="update-confirm"[^>]*>', html, re.S).group(0)
+        assert 'hx-include="#update-host-steps"' in button
         preview = html[html.index('id="update-preview"'):]
-        assert "data-host-step=" in preview[:preview.index("</section>")]
+        boxes = preview[:preview.index("</section>")]
+        boxes = boxes[boxes.index('id="update-host-steps"'):]
+        assert 'name="host_step"' in boxes[:boxes.index("</ul>")]
 
 
 class TestOneStepAskedTwiceIsOneRow:
@@ -278,7 +289,7 @@ class TestOneStepAskedTwiceIsOneRow:
         monkeypatch.setattr(identity, "request_actor", lambda: "p@example.invalid")
         (s,) = host_steps.owed("b" * 40)["steps"]
         r = A.app.test_client().post("/update/host-step/done",
-                                     json={"sha": s["sha"], "step": "tell the team"})
+                                     data={"sha": s["sha"], "step": "tell the team"})
         assert r.status_code == 200
         assert host_steps.owed("b" * 40)["steps"] == []
         (d,) = host_steps.owed("b" * 40)["said_done"]

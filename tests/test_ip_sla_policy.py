@@ -372,7 +372,8 @@ class TestTheCommit:
         lines = html_mod.unescape(prog).splitlines()
         assert lines[0] == "ip sla 2" and "ip sla schedule 2 life forever start-time now" in lines
         assert all(l.startswith(("ip sla", " ", "exit")) for l in lines), lines
-        body = json.loads(html_mod.unescape(re.search(r"data-body='([^']*)'", apply_page).group(1)))
+        from tests.v2_confirm import confirm_body
+        body = confirm_body(apply_page)
         assert body["scope"] == "ip_sla" and body["order"] == ["r2"]
         assert '<input type="hidden" name="scope" value="ip_sla">' in apply_page
 
@@ -422,16 +423,19 @@ class TestTheScopeIsCarried:
         r = lab["client"].get("/v2/monitoring/apply?list=Lab&device=r2&scope=<b>x</b>")
         assert r.status_code == 400
         assert "unknown scope" in r.get_data(as_text=True) and "<b>" not in r.get_data(as_text=True)
-        r = lab["client"].post("/v2/monitoring/apply/confirm", json={
+        from tests.v2_confirm import post_confirm
+        r = post_confirm(lab["client"], "/v2/monitoring/apply/confirm", {
             "list": "Lab", "scope": "everything", "order": ["r2"],
             "confirmations": {"r2": "x"}, "command_hashes": {"r2": "y"}})
-        assert r.status_code == 400 and "unknown scope" in r.get_json()["error"]
+        assert r.status_code == 400 and "unknown scope" in r.get_data(as_text=True)
+        assert "<b>" not in r.get_data(as_text=True)
 
     def test_the_confirm_hands_its_scope_to_the_job(self, lab, monkeypatch):
+        from tests.v2_confirm import post_confirm
         seen = {}
         monkeypatch.setattr("modules.deploy_job.start",
                             lambda *a, **k: seen.update(k) or "job1")
-        r = lab["client"].post("/v2/monitoring/apply/confirm", json={
+        r = post_confirm(lab["client"], "/v2/monitoring/apply/confirm", {
             "list": "Lab", "scope": "ip_sla", "order": ["r2"],
             "confirmations": {"r2": "x"}, "command_hashes": {"r2": "y"}})
         assert r.status_code == 202 and seen["scope"] == "ip_sla"

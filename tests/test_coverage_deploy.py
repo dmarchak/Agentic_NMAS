@@ -224,8 +224,9 @@ class TestThePage:
         # The bound statement, Back and the one confirm in the board's words.
         assert "Bound to these programs: if a device or a template changes before you confirm" in text
         assert '<a class="btn" href="/v2/monitoring/coverage">Back</a>' in text
-        assert ">Deploy to 1 device, in this order</button>" in text
-        body = json.loads(html_mod.unescape(re.search(r"data-body='([^']*)'", page).group(1)))
+        assert ">Deploy to 1 device, in this order</span>" in text
+        from tests.v2_confirm import confirm_body
+        body = confirm_body(page)
         assert body["scope"] == "templates" and body["order"] == ["r6"]
 
     def test_a_not_reporting_template_on_a_device_that_sends_is_named_on_its_card(
@@ -271,7 +272,8 @@ class TestTheConfirm:
         seen = {}
         monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
         monkeypatch.setattr("modules.deploy_job.start", lambda *a, **k: seen.update(k) or "job1")
-        r = lab["client"].post("/v2/monitoring/apply/confirm", json={
+        from tests.v2_confirm import post_confirm
+        r = post_confirm(lab["client"], "/v2/monitoring/apply/confirm", {
             "list": "Lab", "scope": "templates", "order": ["r6"],
             "confirmations": {"r6": "x"}, "command_hashes": {"r6": "y"}})
         assert r.status_code == 202 and seen["scope"] == "templates"
@@ -292,8 +294,9 @@ class TestTheConfirm:
         monkeypatch.setattr(rd, "_deploy_one", spy)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         _r, page = _page(lab, monkeypatch, r2_snmp_down)
-        body = json.loads(html_mod.unescape(re.search(r"data-body='([^']*)'", page).group(1)))
-        out = lab["client"].post("/v2/monitoring/apply/confirm", json=body).get_json()
+        from tests.v2_confirm import confirm_body, job_of, job_url, post_confirm
+        r = post_confirm(lab["client"], "/v2/monitoring/apply/confirm", confirm_body(page))
+        out = {"job": job_of(r), "url": job_url(job_of(r))}
         assert capture_job.wait(out["job"], 20)
         frag = lab["client"].get(out["url"]).get_data(as_text=True)
         step = re.search(r'<li class="run-row run-row-([a-z_]+)" data-row="r6">.*?'
@@ -347,7 +350,7 @@ def test_a_real_browser_deploys_from_coverage_s_own_button(lab, monkeypatch, r6_
             assert b.js("return document.querySelector('#apply-r6 .cdep-hd').textContent"
                         ".replace(/\\s+/g, ' ')").strip().startswith("1. r6 · one program: SNMP, LLDP, IP SLA")
             b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled")
+                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')")
             b.click("#apply-confirm")
             text = ""
             for _ in range(40):
@@ -427,7 +430,7 @@ def test_a_real_browser_pages_earlier_and_later_while_a_job_runs(lab, monkeypatc
         try:
             b.go(srv.url(f"/v2/monitoring/apply?list=Lab&scope={scope}&device=r6&device=r2"))
             b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled", 30)
+                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')", 30)
             before = b.js(order)
             assert len(before) == 2, (before, b.js(
                 "var n = document.querySelector('#apply-nothing') || "
@@ -448,7 +451,7 @@ def test_a_real_browser_pages_earlier_and_later_while_a_job_runs(lab, monkeypatc
             moved = b.js(order)
             assert moved == [before[1], before[0]], moved
             b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled", 30)
+                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')", 30)
             # The confirm starts the batch, held running at its first device.
             b.click("#apply-confirm")
             assert running.wait(30), "the batch never reached its first device"
@@ -507,7 +510,7 @@ def test_a_real_browser_finds_the_profile_apply_locked_while_its_batch_runs(
         try:
             b.go(srv.url("/v2/monitoring/apply?list=Lab&scope=profile&device=r6"))
             b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled", 30)
+                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')", 30)
             assert b.js("return document.querySelector('#apply-locked').hidden") is True
             b.click("#apply-confirm")
             assert running.wait(30), "the batch never reached its device"

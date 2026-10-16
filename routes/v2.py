@@ -423,31 +423,35 @@ def history_reapply():
 def history_reapply_confirm():
     """Start the confirmed re-apply as a job, as the verified person: each device's program is
     computed again and a different hash refuses that device alone, with nothing sent to it
-    (`deploy_job.start_restore`, a device's own Restore's job). 202 with the job's id."""
-    from flask import jsonify, request, url_for
+    (`deploy_job.start_restore`, a device's own Restore's job). Posted by htmx from the page's
+    confirm, the body the page drew in its fields (C850); answers 202 with the job's card,
+    drawn in place below the preview, or 400 with the refusal and nothing sent."""
+    from flask import request
 
     from modules import deploy_job, identity
     from modules.nsot import listref
 
-    data = request.get_json(silent=True) or {}
-    list_name, tag = (data.get("list") or "").strip(), (data.get("tag") or "").strip()
+    form = request.form
+    list_name, tag = (form.get("list") or "").strip(), (form.get("tag") or "").strip()
     if not list_name or not listref.exists(list_name) or not tag.startswith("baseline/"):
-        return jsonify({"ok": False, "error": (
+        return _apply_answer("", 400, refused=(
             "Nothing was sent: the confirm names no known network and baseline "
-            f"({list_name or 'no network'}, {tag or 'no baseline'}).")}), 400
-    confirmations = data.get("confirmations") or {}
-    hashes = data.get("command_hashes") or {}
+            f"({list_name or 'no network'}, {tag or 'no baseline'})."))
+    try:
+        data = _confirm_fields(form, ("confirmations", "command_hashes"))
+    except ValueError as exc:
+        return _apply_answer("", 400, refused=f"Nothing was sent: {exc}.")
+    confirmations, hashes = data["confirmations"], data["command_hashes"]
     if not confirmations or any(not hashes.get(d) for d in confirmations):
-        return jsonify({"ok": False, "error": (
+        return _apply_answer("", 400, refused=(
             "Nothing was sent: every device needs the capture and command hashes its preview "
-            "showed.")}), 400
+            "showed."))
     job = deploy_job.start_restore(
         list_name, tag, confirmations, hashes, authorise={}, un_onboard=None,
         actor=identity.request_actor(),
         actor_kind=getattr(identity.identify(request), "kind", ""),
         ident=identity.verified_identity())
-    return jsonify({"ok": True, "job": job,
-                    "url": url_for("v2.profile_apply_job", job=job)}), 202
+    return _apply_answer(job, 202, started_op="restore")
 
 
 @bp.route("/history", methods=["GET"])
@@ -983,8 +987,9 @@ def _update_ctx() -> dict:
             "update_run": update_op.run_card(p["facts"].get("target") or ""),
             "updater_timeout_s": update_op.UPDATER_TIMEOUT_S,
             # The host steps the person ticked, carried through a live redraw (C472): the
-            # panel's redraw sends its boxes, and each stays ticked exactly when it was.
-            "host_steps_ticked": set(request.args.getlist("host_step"))}
+            # panel's redraw sends its boxes, and each stays ticked exactly when it was. The
+            # confirm's own answer (routes/update.py) carries the boxes it posted the same way.
+            "host_steps_ticked": set(request.values.getlist("host_step"))}
 
 
 @bp.route("/update", methods=["GET"])
@@ -1272,7 +1277,7 @@ def _scope(req=None) -> str:
         return profile_apply.SCOPE
     got = req.args.get("scope")
     if got is None and req.method == "POST":
-        got = (req.get_json(silent=True) or {}).get("scope")
+        got = req.form.get("scope")
     got = (got or profile_apply.SCOPE).strip()
     if got not in SCOPE_WORDS:
         raise UnknownScope(f"unknown scope {got!r}: this page applies "
@@ -1481,50 +1486,40 @@ def profile_apply_preview():
     return _strict(render_template(part, **ctx))
 
 
-@bp.route("/monitoring/apply/confirm", methods=["POST"])
-def profile_apply_confirm():
-    """Start the confirmed batch as a job, as the verified person, in the
-    rollout order. Every device's program is computed again by the apply and
-    compared with the hash this confirm carries; a moved one is refused alone,
-    with nothing sent to it. Answers 202 with the job's id."""
-    from flask import jsonify, request
-
-    from modules import deploy_job, identity
-    from modules.nsot import listref
-
-    data = request.get_json(silent=True) or {}
-    try:
-        scope = _scope(request)
-    except UnknownScope as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    list_name = (data.get("list") or "").strip()
-    if not list_name or not listref.exists(list_name):
-        return jsonify({"ok": False, "error": (
-            "No known list named: the batch records into one list's repository, so the list "
-            "comes from the preview you confirmed. Nothing was sent.")}), 400
-    order = [d for d in (data.get("order") or []) if isinstance(d, str) and d]
-    confirmations = data.get("confirmations") or {}
-    hashes = data.get("command_hashes") or {}
-    if not order or any(d not in confirmations or not hashes.get(d) for d in order):
-        return jsonify({"ok": False, "error": (
-            "Nothing confirmed: every device needs the capture and command hashes its preview "
-            "showed. Nothing was sent.")}), 400
-    job = deploy_job.start(
-        list_name, order, confirmations, hashes,
-        authorise=data.get("authorise") or {}, remove=data.get("remove") or {},
-        scope=plan_scope(scope), actor=identity.request_actor(),
-        actor_kind=getattr(identity.identify(request), "kind", ""),
-        ident=identity.verified_identity())
-    from flask import url_for
-    return jsonify({"ok": True, "job": job,
-                    "url": url_for("v2.profile_apply_job", job=job)}), 202
+#: The confirm body's structured fields, each sent as JSON in its own form field (C850: the
+#: preview draws them into the confirm's `hx-vals`, as the device page's Deploy does), and what
+#: each is when absent.
+CONFIRM_JSON_FIELDS = {"order": [], "confirmations": {}, "command_hashes": {}, "remove": {},
+                       "authorise": {}}
 
 
-@bp.route("/monitoring/apply/job/<job>", methods=["GET"])
-def profile_apply_job(job):
-    """Where the batch is, in the rollout order, then its result: drawn from
-    the receipts the apply wrote. Redrawn when the job announces."""
-    from modules import deploy_job
+def _confirm_fields(form, names) -> dict:
+    """The confirm's structured fields, read from *form*: {name: value}. A field that is not
+    JSON of its kind raises ValueError naming it."""
+    import json
+
+    out = {}
+    for name in names:
+        default = CONFIRM_JSON_FIELDS[name]
+        raw = form.get(name)
+        try:
+            value = json.loads(raw) if raw else default
+        except ValueError:
+            raise ValueError(f"the field {name} is not readable JSON") from None
+        if not isinstance(value, type(default)):
+            raise ValueError(f"the field {name} is not a {type(default).__name__}")
+        out[name] = value
+    return out
+
+
+def _apply_answer(job: str, code: int = 200, started_op: str = "", refused: str = ""):
+    """The batch's card (`v2/_apply_job.html`): where it is, then its result; or, as the
+    confirm's answer, the batch just started (the confirm drawn again as started) or the
+    confirm refused with nothing sent."""
+    if refused:
+        return _strict(render_template("v2/_apply_job.html", j=None, job="", run=None,
+                                       arrivals=None, refused=refused), code)
+    from modules import arrival_watch, deploy_job
     got = deploy_job.state(job)
     if got and not (got.get("list") or "").strip():
         # C839: a record naming no network is refused, naming that, never a 500: where its
@@ -1533,10 +1528,60 @@ def profile_apply_job(job):
             f"Couldn't load: the batch {job} has a record that names no network (its `list` "
             "is missing or empty), so where it is cannot be read. What each device received "
             "is in its receipts and in the golden history.")), 409)
-    from modules import arrival_watch
     run = deploy_job.run_card(got, got["list"], q=request.args.get("q", "")) if got else None
     return _strict(render_template("v2/_apply_job.html", j=got, job=job, run=run,
-                                   arrivals=arrival_watch.state(job))), (200 if got else 404)
+                                   arrivals=arrival_watch.state(job), started_op=started_op),
+                   code if got or started_op else 404)
+
+
+@bp.route("/monitoring/apply/confirm", methods=["POST"])
+def profile_apply_confirm():
+    """Start the confirmed batch as a job, as the verified person, in the
+    rollout order. Every device's program is computed again by the apply and
+    compared with the hash this confirm carries; a moved one is refused alone,
+    with nothing sent to it. Posted by htmx from the preview's confirm, the body the preview
+    drew in its fields (C850); answers 202 with the job's card, drawn in place below the
+    preview, or 400 with the refusal and nothing sent."""
+    from flask import request
+
+    from modules import deploy_job, identity
+    from modules.nsot import listref
+
+    form = request.form
+    try:
+        scope = _scope(request)
+    except UnknownScope as exc:
+        return _apply_answer("", 400, refused=str(exc))
+    list_name = (form.get("list") or "").strip()
+    if not list_name or not listref.exists(list_name):
+        return _apply_answer("", 400, refused=(
+            "No known list named: the batch records into one list's repository, so the list "
+            "comes from the preview you confirmed. Nothing was sent."))
+    try:
+        data = _confirm_fields(form, CONFIRM_JSON_FIELDS)
+    except ValueError as exc:
+        return _apply_answer("", 400, refused=f"Nothing confirmed: {exc}. Nothing was sent.")
+    order = [d for d in data["order"] if isinstance(d, str) and d]
+    confirmations, hashes = data["confirmations"], data["command_hashes"]
+    if not order or any(d not in confirmations or not hashes.get(d) for d in order):
+        return _apply_answer("", 400, refused=(
+            "Nothing confirmed: every device needs the capture and command hashes its preview "
+            "showed. Nothing was sent."))
+    job = deploy_job.start(
+        list_name, order, confirmations, hashes,
+        authorise=data["authorise"], remove=data["remove"],
+        scope=plan_scope(scope), actor=identity.request_actor(),
+        actor_kind=getattr(identity.identify(request), "kind", ""),
+        ident=identity.verified_identity())
+    return _apply_answer(job, 202,
+                         started_op="deploy" if scope == "intent" else "monitoring-templates")
+
+
+@bp.route("/monitoring/apply/job/<job>", methods=["GET"])
+def profile_apply_job(job):
+    """Where the batch is, in the rollout order, then its result: drawn from
+    the receipts the apply wrote. Redrawn when the job announces."""
+    return _apply_answer(job)
 
 
 # ---------------------------------------------------------------------------

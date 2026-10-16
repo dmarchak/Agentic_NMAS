@@ -69,7 +69,7 @@ class TestTheOffer:
         real = update_op.plan
         monkeypatch.setattr(update_op, "plan", lambda **kw: real(**_kw()))
         html = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
-        assert 'data-when="ci"' in html and "when CI passes</button>" in html
+        assert '"when": "ci"' in html and "when CI passes</span>" in html
         assert "CI is still checking this release" in html
         assert 'title="PENDING: CI run #120' in html          # the cause, on hover
         assert 'id="update-why-not"' not in html
@@ -252,13 +252,19 @@ class TestTheRoute:
         monkeypatch.setattr(update_op, "plan", lambda **kw: real(**{**_kw(), **kw}))
         h = real(**_kw())["hash"]
         c = A.app.test_client()
-        r = c.post("/update/apply", json={"hash": h, "acknowledged": ["c" * 40], "when": "ci"})
-        assert r.status_code == 202 and r.get_json()["waiting"] is True
-        assert "starts when CI passes" in r.get_json()["message"]
-        r = c.post("/update/apply", json={"when": "stop"})
+        # The page's own fields (C850): the answer is the Update panel drawn again.
+        r = c.post("/update/apply", data={"hash": h, "host_step": ["c" * 40], "when": "ci"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 202 and update_op.deferred()["target"] == "b" * 40
+        assert 'data-waiting="yes"' in html and "starts when CI passes" in html
+        r = c.post("/update/apply", data={"hash": h, "when": "stop"})
+        html = r.get_data(as_text=True)
         assert r.status_code == 200 and update_op.deferred() == {}
-        r = c.post("/update/apply", json={"when": "stop"})
-        assert r.status_code == 409 and "nothing is waiting" in r.get_json()["error"]
+        assert 'data-waiting="no"' in html
+        r = c.post("/update/apply", data={"hash": h, "when": "stop"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 409 and "nothing is waiting" in html
+        assert 'data-update-hold="result"' in html
 
 
 class TestTheShippedClient:
@@ -284,10 +290,18 @@ class TestTheShippedClient:
         assert self._call(None, t)["state"] == "unknown"     # a failed read decides nothing
 
     def test_the_click_sends_when_and_the_component_has_a_stop(self):
-        js = self._js()
-        assert "when: el.getAttribute('data-when') || ''" in js
-        assert "body: JSON.stringify({when: 'stop'})" in js
-        assert "addEventListener('nmas:app_version', heard)" in js
+        """The confirm and Stop waiting are htmx posts of the page's fields (C850); the
+        component follows the wait."""
+        import re
+        from pathlib import Path
+        html = (Path(__file__).resolve().parent.parent / "templates/v2/_update.html").read_text()
+        update = re.search(r'<button\b[^>]*id="update-confirm"[^>]*>', html, re.S).group(0)
+        stop = re.search(r'<button\b[^>]*id="update-stop-waiting"[^>]*>', html, re.S).group(0)
+        assert '"when": "ci" if p.waitable else ""' in update
+        assert '"when": "stop"' in stop
+        for b in (update, stop):
+            assert 'hx-post="{{ url_for(\'update.apply\') }}"' in b
+        assert "addEventListener('nmas:app_version', heard)" in self._js()
 
 
 class TestAFailedReleaseReadsAsAFailure:

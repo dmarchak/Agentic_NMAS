@@ -69,7 +69,8 @@ def test_each_device_falls_in_one_state_the_counts_first(planned):
 
 def test_the_confirm_carries_only_the_devices_that_can_go(planned):
     _r, html = _page(planned)
-    body = json.loads(re.search(r"data-body='([^']*)'", html).group(1))
+    from tests.v2_confirm import confirm_body
+    body = confirm_body(html)
     assert set(body["confirmations"]) == {"r1", "r6"}
     assert body["command_hashes"] == {"r1": "h-r1", "r6": "h-r6"} and body["tag"] == TAG
     assert "Re-apply to 2 device(s)" in html
@@ -107,10 +108,14 @@ class TestTheConfirm:
         monkeypatch.setattr("modules.nsot.listref.exists", lambda n: n == "Lab")
         monkeypatch.setattr(deploy_job, "start_restore",
                             lambda *a, **k: got.update(args=a, kw=k) or "job9")
-        r = lab["client"].post("/v2/history/reapply/confirm", json={
+        from tests.v2_confirm import job_of, post_confirm
+        r = post_confirm(lab["client"], "/v2/history/reapply/confirm", {
             "list": "Lab", "tag": TAG, "confirmations": {"r1": "c-r1"},
             "command_hashes": {"r1": "h-r1"}})
-        assert r.status_code == 202 and r.get_json()["job"] == "job9"
+        # The answer is the job's card in place, and the confirm drawn again as started (C850).
+        html = r.get_data(as_text=True)
+        assert r.status_code == 202 and job_of(r) == "job9", html[:400]
+        assert 'id="apply-confirm" hx-swap-oob="true" disabled' in html
         assert got["args"][:4] == ("Lab", TAG, {"r1": "c-r1"}, {"r1": "h-r1"})
         assert got["kw"]["authorise"] == {} and got["kw"]["un_onboard"] is None
 
@@ -125,8 +130,10 @@ class TestTheConfirm:
         from modules import deploy_job
         monkeypatch.setattr("modules.nsot.listref.exists", lambda n: n == "Lab")
         monkeypatch.setattr(deploy_job, "start_restore", lambda *a, **k: pytest.fail("started"))
-        r = lab["client"].post("/v2/history/reapply/confirm", json=body)
-        assert r.status_code == 400 and "Nothing was sent" in r.get_json()["error"]
+        from tests.v2_confirm import post_confirm
+        r = post_confirm(lab["client"], "/v2/history/reapply/confirm", body)
+        html = r.get_data(as_text=True)
+        assert r.status_code == 400 and "Nothing was sent" in html and 'role="alert"' in html
 
 
 def test_history_s_re_apply_opens_it_on_v2():

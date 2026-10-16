@@ -380,7 +380,8 @@ class TestThePage:
         got = {}
         monkeypatch.setattr("modules.nsot.listref.exists", lambda n: True)
         monkeypatch.setattr(deploy_job, "start", lambda *a, **k: got.update(k) or "job1")
-        r = inv["client"].post("/v2/monitoring/apply/confirm", json={
+        from tests.v2_confirm import post_confirm
+        r = post_confirm(inv["client"], "/v2/monitoring/apply/confirm", {
             "list": "Lab", "scope": "intent", "order": ["r6"],
             "confirmations": {"r6": "c"}, "command_hashes": {"r6": "h"}})
         assert r.status_code == 202, r.get_data(as_text=True)

@@ -17,9 +17,10 @@ was written. Each one is, exactly one of:
   operation (`data-op`, the manual's "How does this work?"), draws its state from `may`
   (`gate()`, criterion 13), and the request carries the field the route binds the confirm to
   (`operation_stages`' hash stage: a hidden input, `hx-vals`, or the URL), so what is confirmed
-  is what was previewed. 30 routes when this was written;
+  is what was previewed. 30 routes when this was written; 34 after C850 (2026-10-16);
 - **a second implementation, named** (`SECOND_IMPLEMENTATIONS`, only shrinking): an Alpine
-  component that posts the confirm itself. Four when this was written (register finding, P7-06);
+  component that posts the confirm itself. Four when this was written (register finding C850,
+  P7-06); one after C850, IP SLA's, which goes with P.12 (D3);
 - **today's route, not named by any v2 template** (`LEGACY_HOMES`, exact): with the v2 route
   that does its job (itself in the pattern), or why it has none. Removed at cutover.
 
@@ -42,30 +43,25 @@ OPEN = re.compile(r"<(\w+)\b")
 XDATA = re.compile(r'\bx-data="(\w+)"')
 
 #: Measured 2026-10-15 (P7-06): the population, the routes reached in the pattern, and the
-#: scripts v2 loads. Floors: a scan that finds fewer has stopped seeing.
+#: scripts v2 loads; the pattern measured again 2026-10-16 after C850 (30 -> 34). Floors: a
+#: scan that finds fewer has stopped seeing.
 POPULATION_FLOOR = 55
-PATTERN_FLOOR = 30
+PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
 #: Confirms v2 posts some other way: the Alpine component (its x-data name) -> its script, the
 #: routes it posts, and why it is not the pattern. ONLY SHRINKS (ceiling below); each is a
 #: register finding to bring onto the pattern, or to remove with its screen.
+#: C850 (2026-10-16) brought the other three onto the pattern: `applyConfirm` (the batch
+#: Apply, Coverage's Deploy missing, the monitoring profile's apply and History's Re-apply) and
+#: Update's `update` and `stepDone`.
 SECOND_IMPLEMENTATIONS = {
-    "applyConfirm": ("static/js/nmas_apply.js",
-                     {"v2.profile_apply_confirm", "v2.history_reapply_confirm"},
-                     "the batch Apply, Coverage's Deploy missing and History's Re-apply post a "
-                     "JSON body by fetch and fetch the job card themselves"),
     "ipslaPost": ("static/js/nmas_apply.js", {"v2.ip_sla_commit", "v2.ip_sla_policy_set"},
                   "IP SLA's page, built without a board (signed_off_screens.UNSIGNED); it goes "
-                  "with the monitoring templates (P.12, D3)"),
-    "update": ("static/js/nmas_update.js", {"update.apply"},
-               "the Update follows the updater's own record while this app restarts under it, "
-               "which an htmx swap from the app cannot"),
-    "stepDone": ("static/js/nmas_update.js", {"update.step_done"},
-                 "a person saying a host step is done: no preview, and nothing previewed to "
-                 "bind (operation_stages: n/a)"),
+                  "with the monitoring templates after cutover (P.12, the operator's decision "
+                  "D3), so it is brought onto the pattern then, not converted here"),
 }
-SECOND_IMPLEMENTATIONS_CEILING = 4
+SECOND_IMPLEMENTATIONS_CEILING = 1
 
 #: A route in the pattern whose binding is held on the server, named in the URL, not carried by
 #: the request: route -> where it is held.

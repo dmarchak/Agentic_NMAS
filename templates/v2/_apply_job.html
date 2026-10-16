@@ -4,15 +4,26 @@
     rollout order, then its result, drawn from the receipts the apply wrote
     (preview_confirm.operation_result). Redrawn when the job announces
     `deploy_job` (each device finishing, and the end); "Check now" asks
-    when the live channel is down. -#}
+    when the live channel is down.
+    It is also the confirm's answer (C850: the one confirm pattern; the batch Apply, Coverage's
+    Deploy missing and History's Re-apply post their confirm with htmx into #apply-result):
+    `refused`, the confirm refused with nothing sent; `started_op`, the batch just started, and
+    the confirm button is drawn again in place (out of band) as started, never offered twice. -#}
 {%- set LEVEL = {'success': ('Done', 'ok'), 'partial': ('Partly done', 'warn'),
                  'failed': ('Failed', 'danger'), 'nothing': ('Nothing was changed', 'muted')} -%}
-{%- if not j %}
-<section class="card apply-job" id="apply-job">
+{%- if started_op %}
+<button type="button" class="btn btn-primary" id="apply-confirm" hx-swap-oob="true" disabled>Started: its progress is below</button>
+{%- endif %}
+{%- if refused %}
+<section class="card apply-job" id="apply-job" data-refused>
+  <div class="notice notice-danger" role="alert">{{ icon('warn') }}<p>{{ refused }}</p></div>
+</section>
+{%- elif not j %}
+<section class="card apply-job" id="apply-job" data-job="{{ job }}">
   <div class="notice notice-warn">{{ icon('warn') }}<p>This server has no record of that batch: it expired, or the server restarted while it ran. What each device received is in its receipts (each device's Changes) and in the golden history.</p></div>
 </section>
 {%- elif j.state == 'running' %}
-<section class="card apply-job" id="apply-job" hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
+<section class="card apply-job" id="apply-job" data-job="{{ job }}" hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
          hx-trigger="nmas:deploy_job from:body, nmas:device_progress from:body" hx-swap="outerHTML">
   <h2 class="apply-h">Applying, one device at a time</h2>
   {{ run_stepper(run) }}
@@ -21,7 +32,7 @@
             hx-target="#apply-job" hx-swap="outerHTML">Check now</button></p>
 </section>
 {%- elif j.state == 'failed' %}
-<section class="card apply-job" id="apply-job">
+<section class="card apply-job" id="apply-job" data-job="{{ job }}">
   <div class="notice notice-danger">{{ icon('warn') }}<p>The batch stopped with an error: {{ j.error }}. What reached each device before it stopped is in its receipts and the golden history; read them before applying again.</p></div>
 </section>
 {%- else %}
@@ -29,7 +40,7 @@
 {%- set lv = LEVEL.get(res.level, (res.level or 'unknown', 'muted')) %}
 {#- Coverage's combined deploy: the arrival watch (modules/arrival_watch.py) redraws the card
     as each first arrival lands, until it ends. -#}
-<section class="card apply-job" id="apply-job"
+<section class="card apply-job" id="apply-job" data-job="{{ job }}"
          {%- if arrivals and not arrivals.ended %} hx-get="{{ url_for('v2.profile_apply_job', job=job) }}" hx-trigger="nmas:deploy_job from:body" hx-swap="outerHTML"{% endif %}>
   <h2 class="apply-h">{{ badge(lv[0], lv[1]) }} {{ (res.happened or {}).summary }}</h2>
   {{ run_stepper(run) }}

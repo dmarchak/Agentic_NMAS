@@ -1039,6 +1039,8 @@ select { max-width: 100%; }
   flex-wrap: wrap; }
 .op-note { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 520px; }
 .op-act { display: inline-flex; align-items: center; }
+/* Update's "It is done" (C850): its form sits in the step's line, as its button did. */
+.update-step-done { display: inline; }
 /* Busy on itself until the answer arrives (htmx marks the requesting control). Keyed on the
    busy words themselves, never on one class of button (C400: a Preview button without the
    confirm's class showed "Planning the program…" at rest). */

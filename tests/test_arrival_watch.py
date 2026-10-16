@@ -21,8 +21,6 @@ the batch's end placed before or after it:
 """
 
 import copy
-import html as html_mod
-import json
 import re
 
 import pytest
@@ -144,8 +142,9 @@ class TestEndToEnd:
         monkeypatch.setattr(rd, "_deploy_one", spy)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         _r, page = _page(lab, monkeypatch, r2_snmp_down, devices=("r6",))
-        body = json.loads(html_mod.unescape(re.search(r"data-body='([^']*)'", page).group(1)))
-        out = lab["client"].post("/v2/monitoring/apply/confirm", json=body).get_json()
+        from tests.v2_confirm import confirm_body, job_of, job_url, post_confirm
+        r = post_confirm(lab["client"], "/v2/monitoring/apply/confirm", confirm_body(page))
+        out = {"job": job_of(r), "url": job_url(job_of(r))}
         assert capture_job.wait(out["job"], 20)
         assert list(started[0]) == ["r6"] and "ip_sla" in started[0]["r6"], started
         frag = lab["client"].get(out["url"]).get_data(as_text=True)

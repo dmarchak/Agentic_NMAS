@@ -68,9 +68,9 @@ def _page(lab, devices=("r6", "r2"), extra=""):
 
 
 def _body(page_html):
-    m = re.search(r"data-body='([^']*)'", page_html)
-    assert m, "the confirm carries its body"
-    return json.loads(html_mod.unescape(m.group(1)))
+    """The body the page's confirm posts (its `hx-vals`, C850), or None with no confirm."""
+    from tests.v2_confirm import confirm_body
+    return confirm_body(page_html)
 
 
 def _order(page_html):
@@ -95,7 +95,7 @@ class TestNothingToSend:
 
     def test_every_device_with_nothing_to_send_offers_no_confirm(self, idle):
         _r, page = _page(idle, devices=("r2",))
-        assert 'id="apply-confirm"' not in page and "data-body=''" in page
+        assert 'id="apply-confirm"' not in page and _body(page) is None
         assert "Nothing to apply: every device chosen already has every line the profile supplies." in page
         assert "Rollout order" not in page
 
@@ -158,7 +158,7 @@ class TestThePreview:
 
     def test_no_device_chosen_says_where_to_choose(self, ready):
         _r, page = _get(ready, "/v2/monitoring/apply?list=Lab")
-        assert "No device was chosen" in page and "data-body" not in page
+        assert "No device was chosen" in page and 'id="apply-confirm"' not in page
 
     def test_the_fragment_replans_under_the_strict_policy(self, ready):
         from modules import csp
@@ -181,7 +181,17 @@ class TestThePreview:
 
 
 def _confirm(lab, body):
-    return lab["client"].post("/v2/monitoring/apply/confirm", json=body)
+    """Post the confirm as the page's button does (C850)."""
+    from tests.v2_confirm import post_confirm
+    return post_confirm(lab["client"], "/v2/monitoring/apply/confirm", body)
+
+
+def _out(r):
+    """The job the confirm's answer drew, and where its card is read again."""
+    from tests.v2_confirm import job_of, job_url
+    job = job_of(r)
+    assert job, r.get_data(as_text=True)[:500]
+    return {"job": job, "url": job_url(job)}
 
 
 class TestTheConfirm:
@@ -207,8 +217,8 @@ class TestTheConfirm:
         _r, page = _page(ready, devices=("r2", "r6"), extra="&move=down:r2")
         assert _body(page)["order"] == ["r6", "r2"]
         r = _confirm(ready, _body(page))
-        assert r.status_code == 202, r.get_json()
-        out = r.get_json()
+        assert r.status_code == 202, r.get_data(as_text=True)
+        out = _out(r)
         assert capture_job.wait(out["job"], 20)
         assert reached == [("r6", "profile"), ("r2", "profile")]
         rr, frag = _get(ready, out["url"])
@@ -232,7 +242,7 @@ class TestTheConfirm:
         real = identity.request_actor
         monkeypatch.setattr(identity, "request_actor", lambda: seen.append(real()) or seen[-1])
         _r, page = _page(ready, devices=("r6",))
-        out = _confirm(ready, _body(page)).get_json()
+        out = _out(_confirm(ready, _body(page)))
         assert capture_job.wait(out["job"], 20)
         person = seen[0]
         assert person and person != "unauthenticated", seen
@@ -243,7 +253,7 @@ class TestTheConfirm:
         gate = threading.Event()
         self._spy(monkeypatch, gate)
         _r, page = _page(ready)                      # r6 first, then r2
-        out = _confirm(ready, _body(page)).get_json()
+        out = _out(_confirm(ready, _body(page)))
         try:
             # Wait for the state photographed below, r6 done AND r2 being applied (C422: "being
             # applied" alone is also r6's state before its spy returns, and under the gate's
@@ -274,7 +284,7 @@ class TestTheConfirm:
         _r, page = _page(ready)
         body = _body(page)
         body["command_hashes"]["r6"] = "0" * 16
-        out = _confirm(ready, body).get_json()
+        out = _out(_confirm(ready, body))
         assert capture_job.wait(out["job"], 20)
         assert reached == [("r2", "profile")]
         _rr, frag = _get(ready, out["url"])
@@ -288,12 +298,23 @@ class TestTheConfirm:
     def test_the_confirm_refuses_what_carries_nothing(self, ready):
         r = _confirm(ready, {"order": ["r6"], "confirmations": {"r6": "x"},
                              "command_hashes": {"r6": "y"}})
-        assert r.status_code == 400 and "No known list" in r.get_json()["error"]
+        assert r.status_code == 400 and "No known list" in r.get_data(as_text=True)
         r = _confirm(ready, {"list": "Nowhere", "order": ["r6"], "confirmations": {"r6": "x"},
                              "command_hashes": {"r6": "y"}})
         assert r.status_code == 400
         r = _confirm(ready, {"list": "Lab", "order": ["r6"], "confirmations": {"r6": "x"}})
-        assert r.status_code == 400 and "Nothing confirmed" in r.get_json()["error"]
+        assert r.status_code == 400 and "Nothing confirmed" in r.get_data(as_text=True)
+        # C850: each structured field arrives as JSON in its form field; one of another kind is
+        # refused naming it, drawn in place as a refusal (a fragment), never a 500.
+        r = _confirm(ready, {"list": "Lab", "order": {"r6": 1}, "confirmations": {"r6": "x"},
+                             "command_hashes": {"r6": "y"}})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 400 and "the field order is not a list" in html, html
+        assert 'role="alert"' in html and "Nothing was sent" in html
+        r = _confirm(ready, {"list": "Lab", "order": ["r6"], "confirmations": "{not json",
+                             "command_hashes": {"r6": "y"}})
+        assert r.status_code == 400 and "the field confirmations is not readable JSON" in \
+            r.get_data(as_text=True)
 
     def test_an_unknown_job_says_so(self, ready):
         r, frag = _get(ready, "/v2/monitoring/apply/job/nope")
@@ -334,30 +355,34 @@ class TestTheShippedClient:
     def _js(self):
         return open(os.path.join(ROOT, "static", "js", "nmas_apply.js"), encoding="utf-8").read()
 
-    def _outcome(self, status, body):
+    def _started(self, detail):
         import dukpy
         return dukpy.evaljs("var window = {};\n" + self._js()
-                            + f"\nwindow.NMAS_APPLY.confirmOutcome({status}, {json.dumps(body)})")
+                            + f"\nwindow.NMAS_APPLY.startedBatch({json.dumps(detail)})")
 
-    def test_a_started_job_is_followed(self):
-        assert self._outcome(202, {"ok": True, "url": "/v2/monitoring/apply/job/a"}) == {
-            "started": True, "url": "/v2/monitoring/apply/job/a", "error": ""}
-
-    def test_a_refusal_is_said_in_the_servers_words(self):
-        got = self._outcome(400, {"ok": False, "error": "Nothing confirmed: x"})
-        assert got["started"] is False and got["error"] == "Nothing was sent: Nothing confirmed: x"
-        assert self._outcome(500, None)["error"] == "Nothing was sent: refused (HTTP 500)"
+    def test_only_a_started_batch_locks_the_preview(self):
+        """The confirm's answer swapped into #apply-result (C850): 202 locks the preview
+        (C602); a refusal, or a swap anywhere else, does not."""
+        assert self._started({"target": {"id": "apply-result"}, "xhr": {"status": 202}}) is True
+        assert self._started({"target": {"id": "apply-result"}, "xhr": {"status": 400}}) is False
+        assert self._started({"target": {"id": "apply-job"}, "xhr": {"status": 202}}) is False
+        assert self._started(None) is False
 
     def test_the_component_reads_its_attributes_from_its_root(self):
         src = self._js()
         assert "this.$el" not in src and "self.$el" not in src
-        for attr in ("data-url", "data-body", "data-label"):
-            assert f"$root.getAttribute('{attr}')" in src
 
-    def test_the_frame_loads_it(self, ready):
+    def test_the_frame_loads_it_and_the_confirm_is_htmx(self, ready):
+        """The confirm is the one pattern (C850): htmx posts it, busy on itself, gated by
+        `may`, carrying the hashes the route binds it to; no Alpine component posts it."""
         _r, page = _page(ready)
         assert re.search(r'<script defer src="/static/js/nmas_apply\.js[^"]*"></script>', page)
-        assert 'x-data="applyConfirm"' in page
+        assert 'x-data="applyConfirm"' not in page and "applyConfirm" not in self._js()
+        from tests.v2_confirm import button
+        tag = button(page)
+        assert 'hx-post="/v2/monitoring/apply/confirm"' in tag
+        assert 'hx-target="#apply-result"' in tag and 'hx-disabled-elt="this"' in tag
+        assert _body(page)["command_hashes"].keys() == {"r6", "r2"}
 
 
 class TestASupersededLine:
@@ -391,7 +416,7 @@ class TestASupersededLine:
         rid = self._id(page)
         _r, ticked = _page(old, devices=("r6",), extra=f"&rm::r6={rid}")
         assert "will be removed" in ticked and f'name="why::r6::{rid}"' in ticked
-        assert "data-body=''" in ticked, "no reason yet: r6 cannot be confirmed"
+        assert _body(ticked) is None, "no reason yet: r6 cannot be confirmed"
         _r, why = _page(old, devices=("r6",),
                         extra=f"&rm::r6={rid}&why::r6::{rid}=the+old+collector+is+retired")
         body = _body(why)
@@ -414,7 +439,7 @@ class TestASupersededLine:
         rid = self._id(page)
         _r, why = _page(old, devices=("r6",),
                         extra=f"&rm::r6={rid}&why::r6::{rid}=the+old+collector+is+retired")
-        out = _confirm(old, _body(why)).get_json()
+        out = _out(_confirm(old, _body(why)))
         assert capture_job.wait(out["job"], 20)
         (remove, authorise), = seen
         assert remove == {"r6": [rid]} and authorise["r6"][0]["reason"] == "the old collector is retired"
@@ -453,15 +478,15 @@ class TestClickingTheShippedPage:
         try:
             b.go(srv.url("/v2/monitoring/apply?list=Lab&device=r6&device=r2"))
             b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled")
-            assert b.js("return document.querySelector('#apply-confirm').textContent.trim()") == \
-                "Apply to 2 device(s) in this order"
+                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')")
+            assert b.js("return document.querySelector('#apply-confirm .op-idle')"
+                        ".textContent.trim()") == "Apply to 2 device(s) in this order"
             # "Later" on r6, the first row: the server plans the batch again.
             b.click('button[aria-label="Move r6 later"]')
             b.wait_for("var a=document.querySelectorAll('#rollout li a');"
                        "return a.length === 2 && a[0].textContent === 'r2'")
             b.wait_for("var c=document.querySelector('#apply-confirm');"
-                       "return window.Alpine && c && !c.disabled")
+                       "return window.Alpine && c && !c.disabled && !document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')")
             b.click("#apply-confirm")
             text = ""
             for _ in range(40):
@@ -474,7 +499,10 @@ class TestClickingTheShippedPage:
                 time.sleep(0.25)
             assert "2 of 2 device(s) deployed" in text, text
             assert reached == ["r2", "r6"]
+            # The confirm drawn again by the answer (C850), never offered twice.
             assert b.js("return document.querySelector('#apply-confirm').disabled") is True
+            assert b.js("return document.querySelector('#apply-confirm').textContent.trim()") \
+                == "Started: its progress is below"
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()

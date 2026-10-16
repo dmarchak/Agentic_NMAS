@@ -63,7 +63,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ID | Item | Done means | Size | Deps | Op |
 |---|---|---|---|---|---|
 | **From W1, first (the operator's sequence, 2026-10-16)** | | | | | |
-| C881 | A1: Reload's "running against startup" on IOS-XE: certificate chains as `nvram:` pointers equal to inline, via the one device-owned definition; the wording | its test from r6's exact output; deployed; a fresh Reload… preview on r6 passes the gate (no reload sent) | M | — | — |
+| ~~C881~~ | ~~A1: Reload's startup gate on IOS-XE~~ **done, verified on r6** (see Checked off) | | | | |
 | C882, C888, C905 | B1: Topology drag jumps (no live redraw mid-drag; a far drop refused), with C2 (rollout order kept client-side, bound at the confirm) and R4 (rollout order by drag and drop), which share its fix | the drag tests; C691 re-checked in W2 | M | — | — |
 | C883 | B2: Plan a deploy's "The batch is running…" before any confirm | drawn only while a batch runs | S | — | — |
 | C884 | B3: a deletion-only intent edit's committed card: "How s1 now departs", Mode B the primary action | its test | S | — | — |
@@ -80,7 +80,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **v2 gaps cutover needs** | | | | | |
 | ~~C855~~ | ~~criterion 11: the v2 device page's per-device work~~ **done** to 19 (see Checked off) | | | | |
 | ~~C876~~ | ~~the manifest's name lookup~~ **measured**: quadratic but 0.43 s at 900 devices inside requests whose per-device git reads cost more (C912); resolved to C, moved to the tail | | | | |
-| C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
+| ~~C850~~ | ~~criterion 6: the Alpine confirm components to the one pattern~~ **done**, 4 → 1 (IP SLA's with P.12, D3) (see Checked off) | | | | |
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
@@ -118,7 +118,7 @@ C888 and C905, C906 (3 M), C883 to C886 (5 S). Left: about 2 L (C850's `applyCon
 | modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | 17 / 2 | run_command's go with v1; the rest stay until built (not a cutover condition) |
 | tests/test_results_are_drawn.py `PENDING` | 8 | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
-| tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | 4 | 0 (C850) |
+| tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | **1** (C850, 2026-10-16) | 1, IP SLA's `ipslaPost` with P.12 (D3); 0 after |
 | tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | **0** (P7-05, 2026-10-16) | 0 |
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | 8 | 0 (C522) |
 | tests/test_no_new_v1_capability.py controls / handlers / functions / fields | 43 / 31 / 333 / 20 | 0 (P7-27) |
@@ -155,6 +155,8 @@ blocks cutover or is a security issue (B).
     words and rows), C899 (Devices' footer), C900 (reveals' reasons), C901 (W1's copy and
     fidelity notes), C902 to C904 (R1 to R3), C907 (Fields mode). C888 and C905 go with C882,
     before cutover.
+  - C921 (UNKNOWN): "Partly done" over 2 of 2 deployed with no verify result; C920 and C851
+    go with P.12 (D3).
   - C914 to C919: W1's fidelity records' defects (the drill card's redraw, capture's stamp, a
     file path on the Overview, raw operands, the phone menu, the tagged regions).
   - C876 (the manifest's name lookup, measured), C912 (Coverage Apply's preview reads per
@@ -235,6 +237,13 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C881 (A1) done and verified on r6** (4e670a36, 2026-10-16 02:10Z): a fresh Reload…
+  preview, no reload sent, passes "running against startup" ("startup keeps r6's 2
+  certificates as files in nvram: (both present), running shows them inline") and every gate;
+  s1 (vIOS) passes too. r6's reload goes into W2.
+- **C850 done** (criterion 6: Update's two and the batch Apply's confirm in the one pattern;
+  `SECOND_IMPLEMENTATIONS` 4 → 1, IP SLA's with P.12). C920 (C) with P.12; C921 (UNKNOWN) to
+  the tail.
 - **C650 for W1 done**: twelve screens recorded from the boards, the operator's W1 captures and
   the board shots (landing, Devices, bulk intent, the device page and its Ask, History, Intent
   and Overview tabs, Show commands and its run, History, Credentials); `UNCHECKED` 32 → 20;

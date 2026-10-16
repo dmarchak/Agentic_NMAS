@@ -131,15 +131,20 @@
   {%- endif %}
   <p class="muted">{{ words.only }} Lines on the devices that their intent lacks are left as they are; Mode B removes them from a device's own deploy.</p>
 
-  <div class="confirm" x-data="applyConfirm" data-url="{{ url_for('v2.profile_apply_confirm') }}"
-       data-body='{{ confirm_body | tojson if confirm_body else "" }}'
-       data-label="{{ 'Deploy to' if scope == 'intent' else 'Apply to' }} {{ ready | length }} device(s) in this order">
+  {#- The confirm is THE pattern (C850, Stage 7 acceptance criterion 6): htmx posts the body this
+      preview drew from the hashes it shows (routes.v2._apply_ctx), exactly those fields
+      (`hx-params`, none of the form's), busy on itself until the answer; the batch's card is
+      drawn below (#apply-result), or the refusal with nothing sent. A viewer `may` refuses sees
+      it disabled with the reason on it (gate()). -#}
+  <div class="confirm">
     <p>{{ preview.confirm.statement }}</p>
-    {%- if confirm_body and preview.confirm.may %}
+    {%- if confirm_body %}
     {%- set op = 'deploy' if scope == 'intent' else 'monitoring-templates' %}
-    <button type="button" class="btn btn-primary" id="apply-confirm" data-op="{{ op }}" x-on:click="confirm"
-            x-bind:disabled="locked" x-text="label">{{ 'Deploy to' if scope == 'intent' else 'Apply to' }} {{ ready | length }} device(s) in this order</button>{{ how(op) }}
-    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+    <span class="op-act"><button type="button" class="btn btn-primary" id="apply-confirm" data-op="{{ op }}"
+            hx-post="{{ url_for('v2.profile_apply_confirm') }}" hx-target="#apply-result" hx-swap="innerHTML"
+            hx-vals='{{ {"list": confirm_body.list, "scope": confirm_body.scope, "order": confirm_body.order | tojson, "confirmations": confirm_body.confirmations | tojson, "command_hashes": confirm_body.command_hashes | tojson, "remove": confirm_body.remove | tojson, "authorise": confirm_body.authorise | tojson} | tojson }}'
+            hx-params="list,scope,order,confirmations,command_hashes,remove,authorise"
+            hx-disabled-elt="this"{{ gate('confirm') }}><span class="op-idle">{{ 'Deploy to' if scope == 'intent' else 'Apply to' }} {{ ready | length }} device(s) in this order</span><span class="op-busy">Starting the batch…</span></button>{{ how(op) }}</span>
     {%- elif all_nothing %}
     <p class="muted">{{ words.all_nothing }}</p>
     {%- elif not confirm_body %}

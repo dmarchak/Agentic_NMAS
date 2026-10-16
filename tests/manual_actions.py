@@ -219,6 +219,9 @@ NOT_AN_OPERATION = {
     ("_settings_refused.html", "Read the installation's settings again"): "opens Settings › Installation again, a read",
     ("_intent_edit.html", "Discard the edit"): "puts back the read-only Intent card, writing nothing",
     ("_intent_edit.html", "Back to the intent"): "puts back the read-only Intent card, a read",
+    ("_apply_job.html", "Started: its progress is below"): (
+        "the batch confirm drawn again by its answer (C850, out of band), disabled: it starts "
+        "nothing, and the confirm it replaces keeps its link beside it"),
     ("_intent_check.html", "Write the ticked lines into the document"): (
         "rewrites the editor's document (its unmodeled_ack block); the commit beside it, which "
         "carries the link, writes it"),
