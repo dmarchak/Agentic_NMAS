@@ -133,7 +133,10 @@ class TestThePreviewIsAJob:
 
         monkeypatch.setattr(G, "_capture_entry", entry)
         heard = []
-        monkeypatch.setattr(I, "_emitter", lambda event, msg: heard.append((event, msg)))
+        # The job's own announcements; every job's start and end also tell the top bar's In
+        # progress chip (`in_progress`, C537), which these tests are not about.
+        monkeypatch.setattr(I, "_emitter", lambda event, msg: (
+            msg.get("by") != "in-progress" and heard.append((event, msg))))
         yield lab, gate, heard
         gate.set()
 

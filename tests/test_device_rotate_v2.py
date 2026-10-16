@@ -139,7 +139,9 @@ class TestThePreview:
             html = _preview(rot)
             assert "alex@example.invalid" in html and "op-confirm" not in html
             assert "This preview reads again when that operation finishes" in html
-            assert 'hx-get="/v2/device/r2/when-free?op=rotate&amp;back=history&amp;list=Lab"' in html
+            # C537: it carries when it was drawn, so a rotation that ends since is shown.
+            assert re.search(r'hx-get="/v2/device/r2/when-free\?op=rotate&amp;back=history'
+                             r'&amp;since=\d+&amp;list=Lab"', html), html
             assert 'hx-trigger="nmas:device_holds from:body"' in html
             still = rot["client"].get("/v2/device/r2/when-free?op=rotate&back=history")
             assert still.status_code == 204 and still.get_data() == b""

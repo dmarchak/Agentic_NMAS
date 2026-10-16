@@ -270,15 +270,96 @@ class TestTheTopBarFits:
             " out.push((e.className||e.tagName)+' ends at '+Math.round(r.right)+' of '+W);});"
             "var who=d.getElementById('nmas-who').getBoundingClientRect();"
             "var jump=d.querySelector('.jump').getBoundingClientRect();"
+            "var btn=d.querySelector('.jump-btn').getBoundingClientRect();"
             "var pill=d.querySelector('.update-pill').getBoundingClientRect();"
             "return {inner: W, over: out, scroll: d.documentElement.scrollWidth,"
             " who: [Math.round(who.left), Math.round(who.right), who.width],"
-            " jump: Math.round(jump.width), pill: [Math.round(pill.right), pill.width]};")
+            " jump: Math.round(jump.width), btn: [Math.round(btn.right), btn.width],"
+            " pill: [Math.round(pill.right), pill.width]};")
         assert got["inner"] == width, got
         assert not got["over"], got
         assert got["who"][2] > 0 and got["who"][1] <= width, ("the avatar is not on the screen", got)
-        assert got["jump"] >= 60, ("the search box gave way to nothing usable", got)
+        if width <= 640:
+            # Board B (C537): at phone width the box is its button, on the screen...
+            assert got["jump"] == 0 and 0 < got["btn"][1] and got["btn"][0] <= width, (
+                "the go-to button is not on the screen", got)
+            # ...and opens the box the screen's width under the bar, its input focused.
+            b.js("document.getElementById('phone').contentDocument"
+                 ".querySelector('.jump-btn').click(); return 1")
+            b.wait_for("var d=document.getElementById('phone').contentDocument;"
+                       "return d.activeElement && d.activeElement.name === 'name'", 5)
+            box = b.js("var w=document.getElementById('phone').contentWindow;"
+                       "var r=w.document.querySelector('.jump').getBoundingClientRect();"
+                       "return [Math.round(r.left), Math.round(r.right), r.width];")
+            assert box[0] >= 0 and box[1] <= width and box[2] >= width - 60, (
+                "the opened box is not the screen's width", box)
+        else:
+            assert got["jump"] >= 60, ("the search box gave way to nothing usable", got)
         assert got["pill"][1] > 0 and got["pill"][0] <= width, ("Update available not shown", got)
+
+    @pytest.mark.parametrize("width", [320, 360, 390, 430, 768, 1280])
+    def test_the_in_progress_chip_fits_and_its_list_opens_on_the_screen(self, served, width,
+                                                                        monkeypatch):
+        """C537 (boards A and B): the chip at its widest (two running, one failed and one done
+        at once) beside everything else the bar carries, and its list, opened, on the screen.
+        The running rows are two real holds; the finished ones two kept jobs whose cards say
+        how they ended."""
+        from modules import device_actions
+        from modules.nsot import capture_job
+        from modules.nsot import device_ops as D
+
+        srv, b = served
+        monkeypatch.setattr("modules.integration_groups.network_names", lambda: ["Lab"])
+        done = [{"job": j, "list": "Lab", "device": d, "card": c, "kind": c, "state": "done",
+                 "actor": "ops@example.com", "started_at": 1.0e9, "finished_at": 1.0e9 + 60,
+                 "opened": set()} for j, d, c in (("j1", "r6", "deploy"), ("j2", "r2", "rotate"))]
+        monkeypatch.setattr(capture_job, "card_jobs", lambda now=None: done)
+        monkeypatch.setattr(device_actions, "job_card", lambda ref, host, card, job: (
+            {"state": "result", "level": "danger", "words": "rolled back"} if card == "deploy"
+            else {"state": "result", "level": "ok", "words": "rotated and persisted"}))
+        D.acquire("Lab", "r2", "rotate", "a-person-with-a-long-name@example.com")
+        D.acquire("Lab", "r6", "deploy", "ops@example.com")
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1200, "height": 900})
+            b.go(srv.url("/v2/devices"))
+            b.wait_for("return !!window.Alpine", 10)
+            b.js(f"var f=document.createElement('iframe'); f.id='phone'; f.width='{width}';"
+                 "f.height='700'; f.style.position='fixed'; f.style.left='0'; f.style.top='0';"
+                 "f.style.maxWidth='none'; f.style.border='0'; f.style.zIndex='9999';"
+                 "f.src=location.href; document.documentElement.appendChild(f);")
+            b.wait_for("var d=document.getElementById('phone').contentDocument;"
+                       "return d && d.querySelector('.topbar .ip-chip')"
+                       " && d.querySelector('.topbar .update-pill') && d.defaultView.Alpine", 15)
+            b.js("document.getElementById('phone').contentDocument"
+                 ".querySelector('#nmas-in-progress summary').click(); return 1")
+            got = b.js(
+                "var w=document.getElementById('phone').contentWindow, d=w.document;"
+                "var bar=d.querySelector('.topbar'), W=w.innerWidth, out=[], widths=[];"
+                "Array.from(bar.children).forEach(function(e){var r=e.getBoundingClientRect();"
+                "if (w.getComputedStyle(e).display!=='none') widths.push((e.className||e.tagName)"
+                "+' '+Math.round(r.width));"
+                "if (w.getComputedStyle(e).display!=='none' && r.right > W + 0.5)"
+                " out.push((e.className||e.tagName)+' ends at '+Math.round(r.right)+' of '+W);});"
+                "out = out.length ? out.concat(widths) : out;"
+                "var chip=d.querySelector('.ip-chip').getBoundingClientRect();"
+                "var menu=d.querySelector('.ip-menu').getBoundingClientRect();"
+                "var who=d.getElementById('nmas-who').getBoundingClientRect();"
+                "return {inner: W, over: out, chip: [Math.round(chip.left), Math.round(chip.right),"
+                " chip.width], menu: [Math.round(menu.left), Math.round(menu.right), menu.height],"
+                " who: [Math.round(who.right), who.width],"
+                " rows: d.querySelectorAll('.ip-menu .ip-row').length,"
+                " label: d.querySelector('.ip-chip').getAttribute('aria-label')};")
+        finally:
+            D.release("Lab", "r6")
+            D.release("Lab", "r2")
+        assert got["inner"] == width, got
+        assert got["label"] == "In progress: 2 running; 1 failed; 1 done", got
+        assert not got["over"], "; ".join(got["over"])
+        assert got["chip"][2] > 0 and got["chip"][1] <= width, ("the chip is off the screen", got)
+        assert got["who"][1] > 0 and got["who"][0] <= width, ("the avatar is off the screen", got)
+        assert got["menu"][2] > 0 and got["menu"][0] >= 0 and got["menu"][1] <= width, (
+            "its list runs off the screen", got)
+        assert got["rows"] == 4, got
 
 
 #: C502 (the operator, 2026-10-05: the Templates table's first column touched the card's left

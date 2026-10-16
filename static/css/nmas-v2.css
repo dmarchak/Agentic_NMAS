@@ -209,6 +209,59 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .avatar { width: 28px; height: 28px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); display: flex;
   align-items: center; justify-content: center; font-weight: 600; font-size: 12px; }
 .icon-btn { border: none; background: transparent; color: inherit; padding: 6px; border-radius: var(--r); cursor: pointer; display: inline-flex; }
+/* C537 (boards A and B): the In progress chip. Absent while nothing runs and nothing waits to be
+   opened; its colour the state to act on (red wins, then a partial, then running, green only
+   when every finished one is clean). A <details>, so it opens and closes with no script. */
+.ip-slot:empty { display: none; }
+.ip > summary { list-style: none; cursor: pointer; }
+.ip > summary::-webkit-details-marker { display: none; }
+.ip:not([open]) .ip-menu { display: none; }
+.ip-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 14px; padding: 4px 11px;
+  font-size: 12.5px; font-weight: 600; white-space: nowrap; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); }
+.ip-run { background: var(--accent-soft); color: var(--accent-ink); }
+.ip-ok { background: var(--ok-soft); color: var(--ok); }
+.ip-warn { background: var(--warn-soft); color: var(--warn); }
+.ip-danger { background: var(--danger-soft); color: var(--danger); }
+.ip-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.ip-part { display: inline-flex; align-items: center; gap: 3px; }
+.ip-part + .ip-part::before { content: "·"; margin-right: 3px; }
+/* Its own ink: at phone width the bar's is white on the dark bar, and the list is on a surface. */
+.ip-menu { left: auto; right: 0; width: 520px; max-width: calc(100vw - 32px); white-space: normal; gap: 2px; padding: 10px;
+  color: var(--ink); }
+.ip-head { margin: 8px 6px 2px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.ip-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--r); }
+.ip-row:hover { background: var(--hover); }
+.ip-what { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.ip-what small { display: block; color: var(--ink-2); font-size: 12px; }
+.ip-note { margin: 0 8px; font-size: 12.5px; color: var(--ink-3); }
+.ip-unread { margin: 4px 6px; font-size: 12.5px; color: var(--danger); }
+.ip-foot { border-top: 1px solid var(--line-2); margin-top: 6px; padding: 8px 6px 2px; display: flex; justify-content: space-between;
+  align-items: center; gap: 10px; font-size: 12.5px; }
+.op-reopened { margin: 0 0 8px; }
+.op-reopened .badge { white-space: normal; }   /* its sentence wraps at phone width */
+/* Narrower than the desk (board B): the chip is its marks and counts, its words on hover and to
+   a reader; the list opens the screen's width under the bar (`.ip .ip-menu`: after `.menu`'s
+   own position, which comes later in this file). Measured by test_v2_layout_in_a_browser. */
+.jump-btn { display: none; }
+@media (max-width: 860px) {
+  .ip-word { display: none; }
+  .ip .ip-menu { position: fixed; top: 52px; left: 16px; right: 16px; width: auto; max-width: none; }
+}
+@media (max-width: 640px) {
+  /* The chip is the mark of what to act on first and its count; the rest is in its list. */
+  .ip-more { display: none; }
+  .ip-lead::before { content: none; }
+  .ip-chip { padding: 4px 8px; }
+  /* Board B: the go-to box is its button, opening the screen's width under the bar. */
+  .jump-btn { display: inline-flex; }
+  .topbar > .jump { display: none; }
+  .topbar > .jump.open { display: flex; position: fixed; top: 52px; left: 16px; right: 16px; width: auto; z-index: 25;
+    box-shadow: var(--shadow); }
+  /* With the chip drawn the brand's mark gives way first, as it does at 360 px (every working
+     item must fit). */
+  .topbar:has(.ip-chip) .topbar-brand { display: none; }
+  .ip-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
 
 /* ---- the page ---- */
 .main { padding: 20px 32px 40px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }

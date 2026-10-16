@@ -1145,6 +1145,65 @@ def test_device_rotate_persist(tmp_path, monkeypatch):
                 p.shot("device-persist-result")
 
 
+def test_in_progress(tmp_path, monkeypatch):
+    """C537: the top bar's In progress chip (boards A, `TopBarDesktop`, and B, `TopBarPhone`)
+    and a device page reopening its card (board C, `Reattach`), on test_persist_screen's lab
+    with the rotate tests' fakes (tests/test_device_rotate_v2.py's `rot`), the rotation held at
+    its first step until the test lets it go: nothing running; the rotation confirmed on r2's
+    page and the person gone to Devices (the chip, its list opened); r2's page opened again
+    (the running card reopened); the rotation finished while the person is on Devices (the
+    chip's outcome, its list opened); r2's page opened again (the result reopened)."""
+    import threading
+
+    from tests import browser
+    from tests import test_device_rotate_v2 as RV
+    from tests import test_persist_screen as PS
+
+    if not browser.available()[0]:
+        pytest.skip(browser.available()[1])
+    from modules.nsot import capture_job
+    from modules.nsot import credential_rotation as cr
+    _device_fx(RV.rot, _device_fx(PS.lab, tmp_path, monkeypatch), monkeypatch)
+    monkeypatch.setattr("modules.integration_groups.network_names", lambda: ["Lab"])
+    gate, real = threading.Event(), cr.rotate
+    monkeypatch.setattr(cr, "rotate", lambda *a, **k: (gate.wait(120), real(*a, **k))[1])
+    _device_boards([("in-progress", "TopBarDesktop.dc.html", 1440, 1.0),
+                    ("in-progress-phone", "TopBarPhone.dc.html", 1440, 1.0),
+                    ("reattach", "Reattach.dc.html", 1440, 1.0)])
+    ready = f"{_DEVICE_CARD} && {_DEVICE_CARD}.querySelector('.op-confirm')"
+    chip = "document.querySelector('#nmas-in-progress .ip-chip')"
+    opened = "document.querySelector('#nmas-in-progress details[open] .ip-menu')"
+    import app as A
+    with browser.Served(A.app) as served:
+        for width, scale in ((1440, 1.0), (390, 2.0)):
+            gate.clear()
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/devices")
+                p.shot("in-progress-idle")
+                p.open("/v2/device/r2")
+                p.swap("/v2/device/r2/rotate?back=overview", ready)
+                p.click("#device-op .op-confirm", f"{_DEVICE_CARD} && "
+                        f"/Rotating/.test({_DEVICE_CARD}.textContent)")
+                p.open("/v2/devices")
+                p.until(chip, 15)
+                p.click("#nmas-in-progress summary", opened, 10)
+                p.shot("in-progress-running")
+                p.open("/v2/device/r2")
+                p.until("document.querySelector('.op-reopened')", 15)
+                p.shot("reattach-running")
+                p.open("/v2/devices")
+                p.until(chip, 15)
+                job = next(r["job"] for r in capture_job.card_jobs() if r["state"] == "running")
+                gate.set()
+                assert capture_job.wait(job, 30)
+                p.until(f"{chip} && /ip-ok/.test({chip}.className)", 15)
+                p.click("#nmas-in-progress summary", opened, 10)
+                p.shot("in-progress-finished")
+                p.open("/v2/device/r2")
+                p.until("document.querySelector('.op-reopened')", 15)
+                p.shot("reattach-result")
+
+
 def test_device_seed(tmp_path, monkeypatch):
     """Seed intent… (board 8) on the seed tests' lab (tests/test_device_seed_v2.py's `lab`:
     r2's real golden, its intent only the bootstrap block): the card from the menu's row at

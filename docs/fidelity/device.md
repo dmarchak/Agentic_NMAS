@@ -56,7 +56,20 @@ page 1440, 1280, 390), `device-restore-before`, `device-restore-running`,
 `device-retire` (board 1440; page 1440, 390), `device-retire-result` (1440).
 Compared 2026-10-16.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `3c8b9492d3270046ee55c3c61537d8d7f279fb0580ee3af0c41c4093bc554899`
+Templates sha256: `9225c83d85f1cb618e875eb88c3e8797a4d143114dda346f47be6c54cd54c5ca`
+
+Compared again 2026-10-16 (C537, C540) after `device.html` gained the line a reopened card
+carries and `_rotate.html` its running card's and held preview's changes (C540's words, and
+the held preview's redraw carrying when it was drawn, `since`), beside a third board on the
+second canvas (v66, page "C537/C538: In progress, Finish the job, the top bar"):
+`Reattach.dc.html` (board C, 1440: the confirm's words, the running card reopened, the result
+reopened), drawn and counted as signed off by the agent under the Phase 7 mode. Shots:
+`reattach-running` and `reattach-result` (1440 and 390, beside `reattach-board`) from
+tests/test_board_shots.py `test_in_progress`; `device-rotate-held`, `device-rotate` and
+`device-rotate-result` from `test_device_rotate_persist` again at 1440 and 390 (the held card
+redrawn by a deploy hold's release still draws a fresh preview: no rotation ran meanwhile).
+Five regions added below (the confirm's words, the running card reopened, the result reopened,
+a card freed by a rotation, Finish the job); no other region's verdict changed.
 
 Compared again 2026-10-16 (C886) after `_persist.html` gained its part "What saving changes in
 what it boots", drawn by the new `_persist_effect.html` (now among the templates compared):
@@ -116,6 +129,11 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Rotate: held | the card with "No other operation holds r3" failing by name, the holder, its start and last step; "reads again when it finishes; nothing is queued" | the same, the holder and process named; redrawn by the hold's release (shot `device-rotate` after the release) | **same** |
 | Rotate: What is sent | the account line masked and `write memory` | the account line masked ("username admin privilege 15 algorithm-type scrypt secret <generated>"), then the steps in order (verify, record, persist; capture 31); its operand "Who else logs in as it: Mercury: updated automatically" claims more than the readers do, which tried the old password for minutes after the walk's rotation (C892) | **deviation** (log: Device: Rotate's "Who else logs in as it" claims every reader is updated at once (C892)) |
 | Rotate: result | (not drawn on board 3) | rotated and persisted, what next: Export the break-glass record… | **same** |
+| Rotate: the confirm's words (C540; Reattach 1) | "It runs as a job, so this page can close: the In progress chip in the top bar keeps it in front of you while it runs, and its result until you open it; Needs attention keeps it there if it stops before it is persisted." | the same words on the confirm and on the running card (shot `device-rotate`); today's rotate page keeps naming its in-flight panel | **same** |
+| A running card reopened (Reattach 2) | the device's page opened again while the rotation runs: the running card in place of the tab, its stepper where the job is, "reopened: started by you at 21:03 UTC" in its head; nothing offers a second rotation | the same card and stepper in place of the tab (shot `reattach-running`), "Reopened: started by you at 08:34 UTC" on a line above the card | **deviation** (log: C537: the reopened card says so on a line above it) |
+| A result reopened (Reattach 3) | finished while the person was elsewhere: the result in place of the tab, "finished 21:04 UTC, while you were on Devices", "Kept in History; the chip's row clears now that you have opened it" | the result card as its job draws it (shot `reattach-result`), "Finished at 08:35 UTC, while you were elsewhere; started by you" on a line above it, the chip's row gone; the card's own footer kept | **deviation** (log: C537: the reopened card says so on a line above it) |
+| A card freed by a rotation (Reattach 3) | a card refused while s1 was held shows the same result once freed, never a fresh "Rotate s1" preview; Rotate again… stays in Actions | the same for Rotate: a held preview freed by a rotation that ended since it was drawn shows that rotation's card (tests/test_in_flight.py); a Plan a deploy… or Restore card freed keeps its form and plans again (C473) | **same** |
+| Finish the job (Reattach 3, C538) | the result's checklist (board D) | not drawn | **later** C538's Finish the job |
 | Persist | `PersistRunningHelp`: "Persist is running, step 4 of 7" (save, read back, the lab host's startup file, Oxidized's list and copy, record) beside How it works open | the card (what is sent, what will not happen, operands, checks), the confirm busy on itself while the device saves; the result on the one stepper (save, read back, recorded); How does this work? opens the manual's panel | **deviation** (log: Device: Persist saves on the device alone, within its request) |
 | Persist: what saving changes in what it boots (C886) | not drawn (the board's persist is a run in progress) | a part of its own between What and What will not happen, read on load as a job by Reload's own reads and compared as Reload's gate compares: "Saving makes startup what r2 runs: startup gains 1 line and loses 1", "Startup gains, held only by running" (`+ logging trap informational`), "Startup loses, held only by startup: gone at the next reload" (`- logging trap notifications`), and the 2 certificates startup keeps as files said to be no difference (shot `device-persist`, 1440 and 390); "Reading r2's startup and running configurations…" until its job announces; when the two are the same, what Persist still does; a read that fails, "Couldn't load:" with why. The confirm does not wait on it | **deviation** (log: Device: Persist's preview reads what saving changes, as a job (C886)) |
 | Seed | board 8: What, What will be committed (the first lines and the whole document folded), Reproduced, Device-owned, What it will not do, Operands, Checks, the confirm; the result: commit linked, Still true, What next | the same parts; the document's change a unified diff; the result's commit plain text | **same** |

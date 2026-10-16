@@ -143,7 +143,7 @@ def running(now: float = None) -> list:
     with _lock:
         _purge(now)
         ops = [dict(v) for v in _ops.values() if not v.get("finished_at")]
-    return [{"device": op["label"], "operation": op["kind"], "words": op["kind"],
+    return [{"id": op["id"], "device": op["label"], "operation": op["kind"], "words": op["kind"],
              "actor": op.get("actor", ""), "pid": None,
              "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(op["started_at"])),
              "held_for_s": round(now - op["started_at"]),

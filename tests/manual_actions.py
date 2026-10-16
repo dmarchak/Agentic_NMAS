@@ -223,6 +223,11 @@ NOT_AN_OPERATION = {
     ("_apply_job.html", "Started: its progress is below"): (
         "the batch confirm drawn again by its answer (C850, out of band), disabled: it starts "
         "nothing, and the confirm it replaces keeps its link beside it"),
+    # C537: the In progress chip's rows open a device's page, which reopens the card (a read).
+    ("_in_progress.html", "btn btn-small"): "Open its card, or Open <device>: opens the device's "
+                                            "page, where a running operation's card reopens, a read",
+    ("_in_progress.html", "Open the result"): "opens the device's page on the finished "
+                                              "operation's result, a read",
     ("_intent_check.html", "Write the ticked lines into the document"): (
         "rewrites the editor's document (its unmodeled_ack block); the commit beside it, which "
         "carries the link, writes it"),

@@ -3146,8 +3146,21 @@ ROTATE_NOT_DOING = (
 )
 
 
-def rotate_preview(plan: dict, *, busy: str, request) -> dict:
-    """*plan*: `rotate_op.plan()`'s. One target, the device."""
+#: What keeps a rotation in front of the person once its page closes, by the interface that
+#: draws the confirm (C540): only today's layout has the in-flight panel; v2 has the top bar's
+#: In progress chip (C537).
+ROTATE_KEPT = {
+    "today": "the in-flight panel and Needs attention keep it in front of you until it is "
+             "persisted.",
+    "v2": "the In progress chip in the top bar keeps it in front of you while it runs, and its "
+          "result until you open it; Needs attention keeps it there if it stops before it is "
+          "persisted.",
+}
+
+
+def rotate_preview(plan: dict, *, busy: str, request, drawn_on: str = "today") -> dict:
+    """*plan*: `rotate_op.plan()`'s. One target, the device. *drawn_on*: the interface that
+    draws the confirm (`ROTATE_KEPT`), so its words name what that interface has."""
     from modules.nsot import credential_rotation as cr
 
     name = plan.get("device") or "?"
@@ -3210,8 +3223,9 @@ def rotate_preview(plan: dict, *, busy: str, request) -> dict:
         confirm["effect"] = (
             f"After this {name} accepts ONLY the new password. The tool records it before "
             "anything else, and the break-glass record then holds the OLD one: export it "
-            "again. It runs as a job, so this window can close; the in-flight panel and "
-            "Needs attention keep it in front of you until it is persisted.")
+            "again. It runs as a job, so this " + ("page can close: " if drawn_on == "v2" else
+                                                   "window can close; ")
+            + ROTATE_KEPT[drawn_on])
         confirm["button"] = f"Rotate {name}"
     return build(
         action="rotate",

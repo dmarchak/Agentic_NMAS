@@ -20,7 +20,7 @@
 </section>
 {%- elif c.state == 'preview' %}
 <section class="op-card" id="device-op" aria-labelledby="op-title"
-         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='rotate', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='rotate', back=c.back, since=c.drawn_at) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
   <div class="op-hd"><h2 id="op-title">Rotate {{ c.host }}'s credential</h2>
     <div class="op-hd-actions">{{ how('rotate') }}{{ close_button('Cancel') }}</div></div>
   <div class="op-part"><h3>What</h3><div><p>{{ c.summary }}</p></div></div>
@@ -66,7 +66,7 @@
     <div class="op-hd-actions">{{ how('rotate') }}</div></div>
   <div class="op-part"><h3>Where it is</h3><div>
     {{ run_stepper(c.steps | one_run(c.host, 'Rotation progress')) }}
-    <p class="op-wait">It holds {{ c.host }} until it ends. This page can close; Needs attention keeps it in front of you until it is persisted.</p></div></div>
+    <p class="op-wait">It holds {{ c.host }} until it ends. This page can close: the In progress chip in the top bar keeps it in front of you while it runs, and its result until you open it; Needs attention keeps it there if it stops before it is persisted.</p></div></div>
 </section>
 {%- elif c.state == 'result' %}
 <section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">

@@ -1,0 +1,60 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- The In progress chip in every v2 page's top bar (C537; boards A and B, canvas v66, counted as
+    signed off 2026-10-16 under the Phase 7 mode). Drawn from `/operations/in_flight` asked by
+    htmx (`in_flight.chip`): absent while nothing runs and nothing waits to be opened; else the
+    count running, and the outcome of each operation a device's page started that finished
+    while this person was elsewhere (red wins), until they open it. The list opens under the
+    chip, full width at phone width; each row opens its device's page, which reopens its card.
+    A read that failed is drawn as unknown, never as nothing running (C99). -#}
+{%- if ip.shown %}
+{%- set c = ip.counts %}
+<details class="ip menu-wrap" data-keep="in-progress">
+  <summary class="ip-chip ip-{{ ip.level }}" aria-haspopup="dialog" aria-label="In progress: {{ ip.words }}" title="In progress: {{ ip.words }}">
+    {#- Each part its mark, count and word; at phone width only the part that leads (the
+        chip's own level: red, then amber, then running, then green) is drawn, the rest in
+        the list and the chip's label. -#}
+    {%- if ip.error %}<span class="ip-part ip-lead">{{ icon('warn', 14) }}<span class="ip-word">In progress unread</span></span>
+    {%- else %}
+    {%- set lead = 'unread' if ip.unread else ('failed' if c.failed else ('partial' if c.partial else ('running' if ip.running else 'done'))) %}
+    {%- if ip.running %}<span class="ip-part ip-{{ 'lead' if lead == 'running' else 'more' }}"><span class="ip-dot" aria-hidden="true"></span><span class="ip-n">{{ ip.running | length }}</span><span class="ip-word"> running</span></span>{% endif %}
+    {%- if c.failed %}<span class="ip-part ip-{{ 'lead' if lead == 'failed' else 'more' }}">{{ icon('x', 13) }}<span class="ip-n">{{ c.failed }}</span><span class="ip-word"> failed</span></span>{% endif %}
+    {%- if c.partial %}<span class="ip-part ip-{{ 'lead' if lead == 'partial' else 'more' }}">{{ icon('warn', 13) }}<span class="ip-n">{{ c.partial }}</span><span class="ip-word"> partial</span></span>{% endif %}
+    {%- if c.done %}<span class="ip-part ip-{{ 'lead' if lead == 'done' else 'more' }}">{{ icon('tick', 13) }}<span class="ip-n">{{ c.done }}</span><span class="ip-word"> done</span></span>{% endif %}
+    {%- if ip.unread %}<span class="ip-part ip-lead">{{ icon('warn', 13) }}<span class="ip-n">{{ ip.unread | length }}</span><span class="ip-word"> unread</span></span>{% endif %}
+    {%- endif %}
+  </summary>
+  <div class="menu ip-menu" role="dialog" aria-label="In progress">
+    {%- if ip.error %}
+    <p class="ip-unread" role="alert">Could not ask which operations are running: {{ ip.error }}. This is not the same as none running: an operation may be in progress on a device.</p>
+    {%- endif %}
+    {%- for n, why in ip.unread %}
+    <p class="ip-unread" role="alert">Could not read what runs in {{ n }}: {{ why }}. An operation may be running there.</p>
+    {%- endfor %}
+    {%- if ip.running %}
+    <p class="ip-head">Running now · {{ ip.running | length }}</p>
+    {%- for r in ip.running %}
+    <div class="ip-row">
+      <span class="ip-what"><strong>{{ r.device }}</strong> · {{ r.name }}{% if r.stalled %} {{ badge('no progress: may be stuck', 'danger') }}{% endif %}
+        <small>{{ r.step }} · {{ r.who }}{% if r.since %} · since {{ r.since }}{% endif %}{% if r.list %} · {{ r.list }}{% endif %}</small></span>
+      {%- if r.page %}
+      <a class="btn btn-small" href="{{ url_for('device_v2.device', name=r.device, list=r.list) }}">{{ 'Open its card' if r.card else 'Open ' ~ r.device }}</a>
+      {%- endif %}
+    </div>
+    {%- endfor %}
+    {%- endif %}
+    {%- if not ip.error %}
+    <p class="ip-head">Finished, not opened yet · {{ ip.finished | length }}</p>
+    {%- for f in ip.finished %}
+    <div class="ip-row">
+      <span class="ip-what">{{ badge(f.words, f.level) }} <strong>{{ f.device }}</strong> · {{ f.name }}
+        <small>{{ f.outcome }}{% if f.at %} at {{ f.at }}{% endif %} · {{ f.who }} · {{ f.list }}</small></span>
+      <a class="btn btn-small" href="{{ url_for('device_v2.device', name=f.device, list=f.list) }}">Open the result</a>
+    </div>
+    {%- else %}
+    <p class="ip-note">An operation that finishes while you are elsewhere stays here, with its outcome, until you open it.</p>
+    {%- endfor %}
+    {%- endif %}
+    <div class="ip-foot"><a href="{{ url_for('v2.history_page') }}">All recent operations (History)</a>{{ how('getting-started', 'in-progress') }}</div>
+  </div>
+</details>
+{%- endif %}

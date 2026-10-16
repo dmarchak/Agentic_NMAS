@@ -157,11 +157,19 @@ def _no_operation_outlives_its_test():
     later test in the process: night #7's clean run (2026-10-15, mutmut's second pytest session
     in one process) failed test_in_flight_reads_every_network on "NetBox (Lab): previewed for
     import", left by test_one_stepper. Cleared for every test, so no list of offending files is
-    kept."""
+    kept.
+
+    The same for `modules.nsot.capture_job`'s jobs (C537): a device's page reopens the card of
+    a job it started, running or finished and not opened, so a rotation one test ran on r2
+    would otherwise reopen on every later test's r2 page in the process."""
     yield
     progress = sys.modules.get("modules.op_progress")
     if progress is not None:
         progress._ops.clear()
+    jobs = sys.modules.get("modules.nsot.capture_job")
+    if jobs is not None:
+        with jobs._lock:
+            jobs._jobs.clear()
 
 
 @pytest.fixture(autouse=True)

@@ -43,7 +43,10 @@ RECORDS = {"topology.html": "topology.md", "history_syslog.html": "logs.md",
 #: the one stepper, "add it to the board-fidelity records"): component -> its record.
 COMPONENTS = {"_run_stepper.html": "stepper.md",
               # C718's Decline… and Undo decline… (canvas page C603, approved 2026-10-13).
-              "_decline.html": "decline.md"}
+              "_decline.html": "decline.md",
+              # C537's In progress chip in every v2 page's top bar (canvas v66, boards A and B,
+              # signed off under the Phase 7 mode 2026-10-16).
+              "_in_progress.html": "in-progress.md"}
 
 #: Signed-off screens built before the fidelity step and not yet compared with their boards
 #: (C650). Each is compared, and its differences fixed or logged, before it leaves this list.

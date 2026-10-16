@@ -14,7 +14,7 @@ You start it from the device's page: Actions > Rotate credential on the redesign
 
 ## The apply
 
-The apply runs as a job, holding the device from start to finish, so no other operation can touch it meanwhile. The window can close; the in-flight panel shows it, and its result is read by its job id when it finishes. It runs as you: the job carries your verified identity into its thread.
+The apply runs as a job, holding the device from start to finish, so no other operation can touch it meanwhile. The page can close: the top bar's In progress chip shows it while it runs and its result until you open it, and the device's page opens its card again ([What is running now](getting-started#in-progress)); its result is read by its job id when it finishes. It runs as you: the job carries your verified identity into its thread.
 
 1. **Preflight and confirmation, again** (`preflight`, `confirmation`). Read: everything the preview read, including the live account line. Sent: nothing. Recorded: nothing. A plan that moved since you confirmed refuses with nothing sent.
 2. **Generate** (`generate`). Read: nothing. Sent: nothing. Recorded: nothing. A 32-character password is generated from a fixed character set of letters, digits and punctuation, and checked by the same guards the deploy path uses before it is accepted.

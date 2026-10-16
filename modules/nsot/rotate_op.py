@@ -171,4 +171,5 @@ def start(list_name: str, hostname: str, *, actor: str, fingerprint: str, ident=
             return (work or run)(list_name, hostname, actor=actor, fingerprint=fingerprint)
 
     return capture_job.start(list_name, f"rotating {hostname}", actor, _work,
-                             kind=KIND, announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER)
+                             kind=KIND, announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER,
+                             device=hostname, card="rotate")

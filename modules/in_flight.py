@@ -12,7 +12,10 @@ A READ: it lists lock files and reads the receipt logs; it writes nothing.
 """
 
 import calendar
+import logging
 import time
+
+log = logging.getLogger(__name__)
 
 #: How far back "finished recently" reaches. Long enough to outlive a reload and a coffee;
 #: short enough that the panel is about now.
@@ -52,10 +55,46 @@ def read(list_name: str, now: float = None) -> dict:
     from modules import op_progress
     from modules.nsot import device_ops
 
+    from modules.nsot import capture_job
+
     now = time.time() if now is None else now
-    running = device_ops.in_flight(list_name, now) + op_progress.running(now)
+    running = merge([dict(r, list=list_name) for r in device_ops.in_flight(list_name, now)],
+                    op_progress.running(now), capture_job.card_jobs(now))
     rows, state = recent(list_name, now)
     return {"running": running, "recent": rows, "recent_state": state}
+
+
+def merge(holds: list, ops: list, jobs: list) -> list:
+    """One operation, one row (C217: a rotation on r2 drew its device's hold, "now:
+    persisting", true, AND its job's own row, "starting … may be stuck", false, because the
+    job registry never moves its step). A job a device's page started (`capture_job`'s *jobs*,
+    each with its list and device) that holds its device is drawn ONCE, as the hold's row,
+    which carries the device's real step, with the job's id and card on it; its job row goes.
+    One that has not taken its hold yet is drawn as its device's row, in the hold's words, and
+    never "may be stuck": its job is running, which is the only liveness it has (the job row's
+    step never moves). Every other row is kept as it is. Each hold row carries its ``list``."""
+    from modules.nsot.device_ops import OPERATION_WORDS
+
+    held = {(h.get("list", ""), h.get("device", "")): h for h in holds}
+    by_id = {j["job"]: j for j in jobs if j.get("state") == "running"}
+    out = [dict(h) for h in holds]
+    index = {(h.get("list", ""), h.get("device", "")): i for i, h in enumerate(out)}
+    rest = []
+    for op in ops:
+        job = by_id.get(op.get("id"))
+        key = (job["list"], job["device"]) if job else None
+        if key in held:
+            out[index[key]].update(job=job["job"], card=job["card"])
+        elif job:
+            rest.append(dict(op, device=job["device"], list=job["list"], operation=job["card"],
+                             words=OPERATION_WORDS.get(job["card"], job["card"]),
+                             job=job["job"], card=job["card"], stalled=False,
+                             text=f"{job['device']} is being "
+                                  f"{OPERATION_WORDS.get(job['card'], job['card'])} by "
+                                  f"{op.get('actor') or 'unknown'}: {op.get('step_words', '')}"))
+        else:
+            rest.append(op)
+    return out + rest
 
 
 def read_all(networks, now: float = None) -> dict:
@@ -63,7 +102,7 @@ def read_all(networks, now: float = None) -> dict:
     the recent receipts, newest first. A network whose read failed is named, never dropped:
     ``{"running", "recent", "unread": [(network, why)], "window_s"}``."""
     from modules import op_progress
-    from modules.nsot import device_ops
+    from modules.nsot import capture_job, device_ops
 
     now = time.time() if now is None else now
     running, recent_rows, unread = [], [], []
@@ -76,7 +115,138 @@ def read_all(networks, now: float = None) -> dict:
             recent_rows += [dict(r, list=name) for r in rows]
         except Exception as exc:                      # noqa: BLE001
             unread.append((name, f"{type(exc).__name__}: {exc}"))
-    running += op_progress.running(now)
+    running = merge(running, op_progress.running(now), capture_job.card_jobs(now))
     recent_rows.sort(key=lambda r: r.get("at", ""), reverse=True)
     return {"running": running, "recent": recent_rows, "unread": unread,
             "window_s": RECENT_SECONDS}
+
+
+# ---------------------------------------------------------------------------
+# The top bar's In progress chip (C537; boards A and B, canvas v66)
+# ---------------------------------------------------------------------------
+
+#: A hold's operation, as the In progress list names it.
+OPERATION_NAMES = {
+    "deploy": "Deploy", "restore": "Restore", "capture": "Capture",
+    "rotate": "Rotate credential", "onboard": "Onboard", "persist": "Persist",
+    "retire": "Retire", "save": "Save", "command": "A command that is not a read",
+    "bulk": "Bulk change", "reload": "Reload", "file": "File action",
+    "probe": "Removal probe", "read": "Show commands",
+}
+
+#: A hold's operation -> the device-page card whose stepper draws its steps.
+STEPPED = ("rotate", "deploy", "restore", "reload")
+
+
+def _clock(iso: str) -> str:
+    """``21:03 UTC`` from an ISO time; "" when it is not one."""
+    return f"{iso[11:16]} UTC" if len(iso or "") >= 16 else ""
+
+
+def _who(actor: str, viewer: str) -> str:
+    return "you" if actor and actor == viewer else (actor or "unknown")
+
+
+def _step(row: dict) -> str:
+    """The step a held device's operation is on, in the stepper's own words where its card
+    draws one (`device_actions.job_steps`: "Persist: … · step 6 of 6"), else the hold's own
+    words for its last progress."""
+    op = row.get("operation", "")
+    if op in STEPPED and row.get("list"):
+        from modules import device_actions
+        try:
+            steps = device_actions.job_steps(op, row["list"], row.get("device", ""))
+        except Exception:                             # noqa: BLE001 (the hold's words stand)
+            steps = []
+        for i, s in enumerate(steps):
+            if s.get("state") == "running":
+                waits = s.get("waits") or ""
+                return (f"{s['words']}" + (f": {waits}" if waits else "")
+                        + f" · step {i + 1} of {len(steps)}")
+    return row.get("step_words") or row.get("step") or "started"
+
+
+def running_row(row: dict, viewer: str) -> dict:
+    """One running operation as the list draws it: the device (or what the operation is
+    about), the operation's name, the step, who, since when, its network, and whether the
+    device's page reopens its card. An operation holding no device has no page to open."""
+    if row.get("list"):                               # a device's row (`merge` names its list)
+        return {"device": row.get("device", ""), "list": row.get("list", ""),
+                "name": OPERATION_NAMES.get(row.get("operation", ""),
+                                            row.get("operation") or "An operation"),
+                "step": _step(row), "who": _who(row.get("actor", ""), viewer),
+                "since": _clock(row.get("started", "")), "card": bool(row.get("job")),
+                "page": True, "stalled": bool(row.get("stalled"))}
+    return {"device": row.get("device", ""), "list": "",
+            "name": (row.get("operation") or "an operation")[:1].upper()
+                    + (row.get("operation") or "an operation")[1:],
+            "step": row.get("step_words") or row.get("step") or "started",
+            "who": _who(row.get("actor", ""), viewer), "since": _clock(row.get("started", "")),
+            "card": False, "page": False, "stalled": False}
+
+
+#: A finished card's level -> how the chip counts it ("never green over a partial").
+OUTCOMES = {"ok": "done", "warn": "partial", "danger": "failed"}
+
+
+def finished_row(job: dict, viewer: str) -> dict:
+    """A job a device's page started, finished and not opened by *viewer*: its outcome in its
+    own card's words and level (`device_actions.job_card`, the card the page will open), or
+    None when the result is no longer known (the card would say so)."""
+    from modules import device_actions
+    from modules.nsot import listref
+
+    try:
+        c = device_actions.job_card(listref.resolve(job["list"]), job["device"], job["card"],
+                                    job["job"])
+    except Exception:                                 # noqa: BLE001 (the row says it)
+        log.warning("in_flight: the result of job %s could not be read", job.get("job"),
+                    exc_info=True)
+        c = {"state": "failed", "error": "its result could not be read"}
+    if c.get("state") == "unknown":
+        return None
+    if c.get("state") == "failed":
+        level, words = "danger", "failed: " + (c.get("error") or "no reason was recorded")
+    else:
+        level = c.get("level") if c.get("level") in OUTCOMES else "danger"
+        words = c.get("words") or c.get("chip") or OUTCOMES[level]
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(job.get("finished_at") or 0))
+    return {"device": job["device"], "list": job["list"], "card": job["card"],
+            "name": OPERATION_NAMES.get(job["card"], job["card"]), "level": level,
+            "outcome": OUTCOMES[level], "words": words, "at": _clock(at),
+            "who": _who(job.get("actor", ""), viewer)}
+
+
+def chip(networks, viewer: str, now: float = None) -> dict:
+    """What the In progress chip draws for *viewer*: every operation running in every network
+    (each held device once, C217), every job a device's page started that finished and
+    *viewer* has not opened (kept as long as its job, `capture_job.KEEP_S`), and the networks
+    whose holds could not be read (never drawn as nothing running). A READ: it lists the lock
+    folders and this process's jobs; it writes nothing."""
+    from modules import op_progress
+    from modules.nsot import capture_job, device_ops
+
+    now = time.time() if now is None else now
+    holds, unread = [], []
+    for name in networks:
+        try:
+            holds += [dict(r, list=name) for r in device_ops.in_flight(name, now)]
+        except Exception as exc:                      # noqa: BLE001
+            unread.append((name, f"{type(exc).__name__}: {exc}"))
+    jobs = capture_job.card_jobs(now)
+    running = [running_row(r, viewer)
+               for r in merge(holds, op_progress.running(now), jobs)]
+    finished = [f for f in (finished_row(j, viewer) for j in jobs
+                            if j["state"] != "running" and viewer not in j["opened"]) if f]
+    counts = {k: sum(1 for f in finished if f["outcome"] == k) for k in OUTCOMES.values()}
+    # Red wins; then a partial; then anything running; green only when all is done and clean.
+    level = ("danger" if counts["failed"] or unread else "warn" if counts["partial"]
+             else "run" if running else "ok")
+    words = "; ".join(w for w in (
+        f"{len(running)} running" if running else "",
+        f"{counts['failed']} failed" if counts["failed"] else "",
+        f"{counts['partial']} partial" if counts["partial"] else "",
+        f"{counts['done']} done" if counts["done"] else "",
+        f"{len(unread)} network(s) unread" if unread else "") if w)
+    return {"running": running, "finished": finished, "unread": unread, "counts": counts,
+            "level": level, "words": words, "shown": bool(running or finished or unread)}

@@ -87,7 +87,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C855~~ | ~~criterion 11: the v2 device page's per-device work~~ **done** to 19 (see Checked off) | | | | |
 | ~~C876~~ | ~~the manifest's name lookup~~ **measured**: quadratic but 0.43 s at 900 devices inside requests whose per-device git reads cost more (C912); resolved to C, moved to the tail | | | | |
 | ~~C850~~ | ~~criterion 6: the Alpine confirm components to the one pattern~~ **done**, 4 → 1 (IP SLA's with P.12, D3) (see Checked off) | | | | |
-| C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
+| ~~C537~~ | ~~the every-page in-flight indicator (D2), then C540's wording and C217's one row~~ **done: D2 met** (see Checked off); the command box and the rest stay in C537's row, to the tail | | | | |
+| C987 | the In progress chip's cost at fleet size: measure `in_flight.chip` with 900 lock files | UNKNOWN settled | S | — | — |
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
 | ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
@@ -256,6 +257,12 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C537 built, D2 met** (overnight, boards A, B, C of canvas v66, self-signed): every v2
+  page's In progress chip from `/operations/in_flight`, live; finished results until opened,
+  per person; the device page reopens a running or unopened card, and a freed Rotate card shows
+  its result. C540 and C217 closed with it. C537 stays open for the command box (Ctrl-K),
+  results across a restart, and the operations that are not jobs: the tail. C987 (UNKNOWN, the
+  chip's cost) into section 2.
 - **C342 done** (overnight, board C342Drift drawn and signed off under the mode, canvas v134):
   the Drift row opens in place onto the kept lines (masked), the device's own log since its
   golden, and Capture / Plan a deploy… / Remove lines (Mode B)…. C986 (fixed with it: unreadable

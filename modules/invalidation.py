@@ -113,6 +113,8 @@ VOCABULARY = {
                     "finished, ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
     "device_progress": "an operation the app ran on a held device reached its next step: a running card redraws its stepper (C370)",
+    "in_progress": "an operation run as a job started or finished, or a person opened a finished "
+                   "one's result: the top bar's In progress chip reads again (C537)",
     "save": "a Save run from Devices (C593): finished, its result ready to read by id",
     "deploy_job": "a batch deploy run as a job (the v2 profile Apply): a device finished, or the batch, "
                   "its progress and result ready to read by id",
@@ -138,6 +140,8 @@ ANNOUNCERS = {
     # routes/adopt_v2.py: an adoption's end (the inventory row, its first golden, NetBox).
     "adopt": ("inventory", "goldens", "netbox", "remote"),
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
+    # modules/nsot/capture_job.py (C537): every job's start and end, for the In progress chip.
+    "in-progress": ("in_progress",),
     # modules/host_keys.py (C906): a device's key kept, refused or replaced, by any session.
     "host-keys": ("host_keys",),
     # modules/deploy_job.py: each device finishing, and at the end what a

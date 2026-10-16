@@ -47,9 +47,10 @@ _lock = threading.Lock()
 
 def start(list_name: str, order: list, confirmations: dict, command_hashes: dict, *,
           authorise: dict, remove: dict, scope: str, actor: str, actor_kind: str,
-          ident, declare: dict = None) -> str:
+          ident, declare: dict = None, card: str = "") -> str:
     """Start the batch, in *order*, and return the job's id at once. *declare*: each device's
-    declared effects (C506 phase 3), checked again at apply and folded into its hash."""
+    declared effects (C506 phase 3), checked again at apply and folded into its hash. *card*:
+    the one device's page card that started it (C537: that page reopens it)."""
     from modules import identity
     from modules.nsot import capture_job
 
@@ -120,8 +121,10 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
         return mask_payload({"ok": True, "list": list_name, **report})
 
     kind = KINDS.get(scope, KIND)
+    one = order[0] if card and len(order) == 1 else ""
     job = capture_job.start(list_name, label, actor, work, kind=kind,
-                            announce_keys=DONE_KEYS, announcer=ANNOUNCER)
+                            announce_keys=DONE_KEYS, announcer=ANNOUNCER,
+                            device=one, card=card if one else "")
     log.info("deploy job %s: %s on %s started by %s", job, kind, label, actor)
     return job
 
@@ -133,7 +136,7 @@ RESTORE_DONE_KEYS = ("deploy_job", "device_state", "intent", "baselines", "drift
 
 def start_restore(list_name: str, ref: str, confirmations: dict, command_hashes: dict, *,
                   authorise: dict, un_onboard: list, actor: str, actor_kind: str,
-                  ident) -> str:
+                  ident, card: str = "") -> str:
     """A restore (re-apply *ref*) run as a JOB, as the v2 device page's deploy is (board 10):
     the same apply as `/golden/restore/apply` (`restore.build_targets`, `routes.deploy.
     run_targets`: the program computed again and refused alone if its hash moved, the device
@@ -162,8 +165,10 @@ def start_restore(list_name: str, ref: str, confirmations: dict, command_hashes:
         return mask_payload({"ok": True, "list": list_name, "ref": ref, "mode": "re-apply",
                              **report})
 
+    one = devices[0] if card and len(devices) == 1 else ""
     job = capture_job.start(list_name, label, actor, work, kind="restore",
-                            announce_keys=RESTORE_DONE_KEYS, announcer=ANNOUNCER)
+                            announce_keys=RESTORE_DONE_KEYS, announcer=ANNOUNCER,
+                            device=one, card=card if one else "")
     log.info("deploy job %s: restore %s started by %s", job, label, actor)
     return job
 

@@ -45,14 +45,20 @@ def _purge(now: float) -> None:
 
 
 def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture preview",
-          announce_keys: tuple = ANNOUNCE_KEYS, announcer: str = ANNOUNCER) -> str:
+          announce_keys: tuple = ANNOUNCE_KEYS, announcer: str = ANNOUNCER,
+          device: str = "", card: str = "") -> str:
     """Run ``work(job_id) -> payload`` on its own thread and return the id at
     once. *payload* is the response as the page reads it (masked by the
     caller). A raising *work* is the job's `failed` state with its reason.
 
     *kind*, *announce_keys* and *announcer* let another operation run as a job
     (the rotate screen's apply, 7.3): one registry, each job announcing its
-    own keys, each announcer declared in `invalidation.ANNOUNCERS`."""
+    own keys, each announcer declared in `invalidation.ANNOUNCERS`.
+
+    *device* and *card* (C537): a job one device's page started, and the card that draws it
+    there (`rotate`, `deploy`, `restore`, `reload`), so the device's page reopens that card
+    while it runs and its result until each person has opened it (`for_device`), and the top
+    bar's In progress chip lists it (`card_jobs`)."""
     from modules import identity, op_progress
 
     # The identity THIS request's gate verified, carried into the job's thread, so a commit
@@ -67,8 +73,10 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
         _jobs[job_id] = {"job": job_id, "list": list_name, "state": "running",
                          "kind": kind, "keys": tuple(announce_keys), "announcer": announcer,
                          "started_at": now, "finished_at": None, "payload": None,
-                         "error": "", "announced": None, "thread": None}
+                         "error": "", "announced": None, "thread": None,
+                         "device": device, "card": card, "actor": actor, "opened": set()}
     op_progress.start(job_id, kind, label, actor=actor, counts="")
+    _announce_moved()
 
     def run():
         state, payload, error = "done", None, ""
@@ -85,6 +93,7 @@ def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture 
                            finished_at=time.time())
         op_progress.finish(job_id, state)
         _announce(job_id, state == "done")
+        _announce_moved()
 
     t = threading.Thread(target=run, name=f"{announcer}-{job_id[:8]}", daemon=True)
     with _lock:
@@ -115,6 +124,59 @@ def _announce(job_id: str, ok: bool) -> None:
             job["announced"] = heard
 
 
+#: Announced when a job starts or finishes (C537): the top bar's In progress chip reads again.
+MOVED_KEYS = ("in_progress",)
+MOVED_ANNOUNCER = "in-progress"
+
+
+def _announce_moved() -> None:
+    """Tell open pages a job started or finished (`in_progress`), so the In progress chip
+    reads again. Never raised: with no emitter (a script, a test) there is nobody to tell."""
+    try:
+        from modules import invalidation
+        invalidation.announce(MOVED_KEYS, by=MOVED_ANNOUNCER, ok=True)
+    except RuntimeError:
+        pass
+    except Exception as exc:                      # noqa: BLE001
+        log.warning("a job's start or end was not announced to the In progress chip: %s", exc)
+
+
+def card_jobs(now: float = None) -> list:
+    """Every job a device's page started that is still kept (running, or finished inside
+    `KEEP_S`), newest first: ``{"job", "list", "device", "card", "kind", "state", "actor",
+    "started_at", "finished_at", "opened"}``. A READ of this process's registry."""
+    now = time.time() if now is None else now
+    with _lock:
+        _purge(now)
+        rows = [{"job": k, "list": v["list"], "device": v.get("device", ""),
+                 "card": v.get("card", ""), "kind": v["kind"], "state": v["state"],
+                 "actor": v.get("actor", ""), "started_at": v["started_at"],
+                 "finished_at": v["finished_at"], "opened": set(v.get("opened") or ())}
+                for k, v in _jobs.items() if v.get("card") and v.get("device")]
+    return sorted(rows, key=lambda r: r["started_at"], reverse=True)
+
+
+def for_device(list_name: str, device: str, card: str = "", now: float = None):
+    """The newest kept job *device*'s page started in *list_name* (of *card* when named), or
+    None."""
+    return next((r for r in card_jobs(now) if r["list"] == list_name and r["device"] == device
+                 and (not card or r["card"] == card)), None)
+
+
+def mark_opened(job_id: str, viewer: str) -> bool:
+    """*viewer* has seen *job_id*'s result, so the chip stops listing it for them. Kept in
+    memory beside the job it marks, so it lasts exactly as long as the result it is about.
+    When it is news, every open page's chip reads again (`in_progress`): this person's other
+    tabs drop the row too. True when it was news."""
+    with _lock:
+        job = _jobs.get(job_id)
+        if job is None or job.get("finished_at") is None or viewer in job["opened"]:
+            return False
+        job["opened"].add(viewer)
+    _announce_moved()
+    return True
+
+
 def get(job_id: str):
     """The job as the page reads it, or None when this server has no record
     of it (never started here, expired, or the server restarted)."""
@@ -122,7 +184,8 @@ def get(job_id: str):
     with _lock:
         _purge(now)
         job = _jobs.get(job_id)
-        job = ({k: v for k, v in job.items() if k not in ("thread", "keys", "announcer")}
+        job = ({k: v for k, v in job.items()
+                if k not in ("thread", "keys", "announcer", "opened")}
                if job else None)
     if job is None:
         return None

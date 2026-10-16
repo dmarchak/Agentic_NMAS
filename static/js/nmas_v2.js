@@ -76,7 +76,10 @@
               'posture',
               // A break-glass export, its intact check or a drill logged: Credentials' record
               // card reads the log again at once; job health's judgement follows (P7-05).
-              'breakglass'];
+              'breakglass',
+              // A job started or finished, or a result was opened (C537): the top bar's In
+              // progress chip reads again.
+              'in_progress'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -355,6 +358,7 @@
   function relayActiveList() { relay('active_list'); }
   function relayPosture() { relay('posture'); }
   function relayBreakglass() { relay('breakglass'); }
+  function relayInProgress() { relay('in_progress'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -448,6 +452,7 @@
     NMAS.subscribe('active_list', 'v2ActiveList', relayActiveList);
     NMAS.subscribe('posture', 'v2Posture', relayPosture);
     NMAS.subscribe('breakglass', 'v2Breakglass', relayBreakglass);
+    NMAS.subscribe('in_progress', 'v2InProgress', relayInProgress);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
@@ -485,11 +490,22 @@
         // The side help panel (NSOT_GUI_BRIEF 10a): an info link loads its
         // manual section into it (htmx) and opens it here.
         help: false,
+        // At phone width the go-to box is its button (board B, C537): open or not.
+        jumpOpen: false,
         get drawerClass() { return this.drawer ? 'open' : ''; },
+        get jumpClass() { return this.jumpOpen ? 'open' : ''; },
+        get jumpExpanded() { return this.jumpOpen ? 'true' : 'false'; },
         open: function () { this.drawer = true; },
         close: function () { this.drawer = false; this.help = false; },
         openHelp: function () { this.help = true; },
-        closeHelp: function () { this.help = false; },
+        closeHelp: function () { this.help = false; this.jumpOpen = false; },
+        toggleJump: function () {
+          var self = this;
+          this.jumpOpen = !this.jumpOpen;
+          if (this.jumpOpen) {
+            this.$nextTick(function () { if (self.$refs.jumpbox) self.$refs.jumpbox.focus(); });
+          }
+        },
         jump: function () {
           var form = this.$el.closest ? this.$el.closest('form') : this.$el;
           var box = form.querySelector('input[name="name"]');

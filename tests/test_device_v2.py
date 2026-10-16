@@ -729,7 +729,9 @@ class TestTheShippedScripts:
         # (Credentials' break-glass record card).
         # +1 2026-10-16: host_keys (Needs attention and its count redraw when a device's SSH
         # host key is kept, refused or re-keyed, C906).
-        assert len(keys) == 46
+        # +1 2026-10-16: in_progress (the top bar's In progress chip reads again when a job
+        # starts, finishes or its result is opened, C537).
+        assert len(keys) == 47
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

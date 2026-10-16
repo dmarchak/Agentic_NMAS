@@ -35,6 +35,37 @@ The choice is yours alone. It is remembered for you, as the verified person you 
 and never moves anyone else's pages: two people can look at two networks at once. A page whose
 address names a network shows that one, whatever you chose.
 
+## What is running now {#in-progress}
+
+An operation keeps running when you leave its page, so the top bar of every page says what is
+running and what finished while you were elsewhere. With nothing running and nothing waiting
+for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
+
+- **"2 running"** (blue, with a dot): operations running now, in every network, by anyone.
+  Opening the chip lists each one: the device, the operation, the step it is on (in its
+  stepper's own words, "step 6 of 6"), who started it, and since when. **Open its card** opens
+  the device's page, which shows that operation's card where it runs; an operation that holds
+  no device (a NetBox preview, a Save of many devices) is listed without one.
+- **A cross, a warning sign or a tick, with a count**: an operation a device's page started
+  that finished while you were elsewhere, with its outcome in its card's own words. Red wins:
+  one failed operation makes the chip red, a partial one amber, and it is green only when every
+  finished one is clean. **Open the result** opens the device's page on that result. Once you
+  have seen a result (on its card, or on the device's page), the chip stops listing it for you,
+  and only for you: someone else who has not seen it still has it on their chip.
+- **Unread**: the tool could not read what runs in a network. That is not the same as nothing
+  running there, and the chip says which network and why.
+
+The chip reads again the moment an operation starts or finishes, at each step, and when a
+device is released, over the live connection; it never asks on a timer. A finished result is
+kept for 30 minutes, in the running app's memory: after that, or after the app restarts, it is
+in History (All recent operations), and a state an operation left behind (a rotation not yet
+persisted) is a Needs attention row.
+
+A device's page opened while that device has an operation running, or one finished you have
+not seen, opens THAT card in place of its tab, wherever you came from: the chip, a bookmark or
+the Devices list. A card that was refused because another rotation held the device shows that
+rotation's result when it ends, never a fresh offer to rotate again.
+
 ## Everything is read from what is committed
 
 Every reader takes intent and goldens as COMMITTED in git, never a file edited on the host's

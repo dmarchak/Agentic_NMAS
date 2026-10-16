@@ -310,6 +310,8 @@ def rotate_card(ref, host: str, preview: dict, viewer: dict) -> dict:
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
             "gates": t["gates"], "failing": t["failing"], "may": t["may"],
             "held": held(t["gates"]),
+            # When this card was drawn: freed, it shows a rotation that ended since (C537).
+            "drawn_at": int(time.time()),
             "fingerprint": (t["chosen"].get("select_data") or {}).get("fingerprint", ""),
             "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
 
@@ -954,6 +956,39 @@ def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict
     if c.get("state") == "deploying":
         c["state"] = "restoring"
     return c
+
+
+#: The cards a device's page reopens for its job (C537 (3)): each built as its own job route
+#: builds it, so the reopened card is the card.
+REOPENS = ("rotate", "deploy", "restore", "reload")
+
+
+def job_card(ref, host: str, card: str, job_id: str) -> dict:
+    """*card*'s card for job *job_id* on *host*: running with its stepper, its result, or why
+    there is none, exactly as that card's job route draws it."""
+    from modules import deploy_job
+    from modules.nsot import capture_job
+
+    if card == "rotate":
+        return rotate_job_card(ref, host, job_id, capture_job.get(job_id))
+    if card == "deploy":
+        return deploy_job_card(ref, host, job_id, deploy_job.state(job_id))
+    if card == "restore":
+        return restore_job_card(ref, host, job_id, deploy_job.state(job_id))
+    if card == "reload":
+        return reload_job_card(ref, host, job_id, capture_job.get(job_id))
+    raise ValueError(f"no card reopens a {card!r} job (REOPENS: {', '.join(REOPENS)})")
+
+
+def reopened_words(job: dict, viewer: str) -> str:
+    """What the reopened card says about itself (board C): who started it and when while it
+    runs; when it finished once it has."""
+    who = "you" if job.get("actor") and job.get("actor") == viewer else (
+        job.get("actor") or "an unknown person")
+    if job.get("state") == "running":
+        return f"Reopened: started by {who} at {_iso(job['started_at'])[11:16]} UTC"
+    return (f"Finished at {_iso(job.get('finished_at') or 0)[11:16]} UTC, while you were "
+            f"elsewhere; started by {who}")
 
 
 def deploy_job_card(ref, host: str, job_id: str, got) -> dict:

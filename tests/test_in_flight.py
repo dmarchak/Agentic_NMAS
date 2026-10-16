@@ -230,3 +230,235 @@ class TestAnUnselectableTargetSaysWhy:
         with pytest.raises(P.PreviewIncomplete, match="nothing says why"):
             P.build(action="t", summary="s", targets=[silent], what_not=[],
                     nothing_left_out="n", confirm={"statement": "c"})
+
+
+# ---------------------------------------------------------------------------
+# v2 (C537): the top bar's In progress chip, a device page reopening its card, C217's one row
+# and C540's words. Boards A, B and C (canvas v66), counted as signed off 2026-10-16.
+# ---------------------------------------------------------------------------
+
+from tests.test_device_rotate_v2 import _confirm, _preview, rot  # noqa: E402,F401
+from tests.test_persist_screen import lab  # noqa: E402,F401
+
+HX = {"HX-Request": "true"}
+
+
+class TestOneOperationOneRow:
+    """C217: a rotation on r2 drew its hold's row ("now: persisting", true) AND its job's own
+    ("starting … may be stuck", false, the job registry never moving its step)."""
+
+    JOB = {"job": "j1", "list": "Lab", "device": "r2", "card": "rotate", "state": "running"}
+    OP = {"id": "j1", "device": "rotating r2", "operation": "credential rotation",
+          "words": "credential rotation", "actor": "ops@example.com", "step_words": "starting",
+          "stalled": True}
+
+    def test_a_device_job_holding_its_device_is_its_hold_s_row(self):
+        from modules import in_flight as F
+        hold = {"device": "r2", "list": "Lab", "operation": "rotate", "words": "rotated",
+                "step_words": "persisting", "stalled": False}
+        rows = F.merge([hold], [dict(self.OP)], [dict(self.JOB)])
+        assert len(rows) == 1, rows
+        assert rows[0]["step_words"] == "persisting" and rows[0]["job"] == "j1"
+        assert rows[0]["stalled"] is False
+
+    def test_one_not_holding_yet_is_its_device_s_row_in_words_and_never_stuck(self):
+        from modules import in_flight as F
+        (row,) = F.merge([], [dict(self.OP)], [dict(self.JOB)])
+        assert (row["device"], row["list"], row["words"]) == ("r2", "Lab", "rotated")
+        assert row["stalled"] is False and row["text"].startswith("r2 is being rotated by")
+
+    def test_an_operation_on_no_device_is_kept_as_it_is(self):
+        from modules import in_flight as F
+        op = dict(self.OP, id="other")
+        assert F.merge([], [op], [dict(self.JOB)]) == [op]
+
+
+def _until(check, bound_s=10.0):
+    """Wait for *check()* to be true; the bound (10 s) is far past a fake rotation's
+    milliseconds, and a firing bound fails naming what it waited on."""
+    import time as _t
+    end = _t.time() + bound_s
+    while _t.time() < end:
+        if check():
+            return
+        _t.sleep(0.01)
+    raise AssertionError(f"waited {bound_s} s for {check.__doc__ or check}")
+
+
+@pytest.fixture
+def chip(rot, monkeypatch):  # noqa: F811
+    """The rotate world (`tests/test_device_rotate_v2.rot`), its network the only one, a
+    rotation that waits on a gate, and a person looking whom the test names."""
+    import threading
+
+    from modules.nsot import credential_rotation as cr
+    monkeypatch.setattr("modules.integration_groups.network_names", lambda: ["Lab"])
+    who = {"viewer": ""}
+    monkeypatch.setattr("routes.operations.viewer_key", lambda: who["viewer"])
+    gate = threading.Event()
+    real = cr.rotate
+
+    def slow(*a, **k):
+        gate.wait(10)
+        return real(*a, **k)
+    monkeypatch.setattr(cr, "rotate", slow)
+    yield dict(rot, gate=gate, who=who)
+    gate.set()
+    # Every rotation this test started ends here, while its fakes are still in place.
+    from modules.nsot import capture_job
+    for job in [r["job"] for r in capture_job.card_jobs() if r["state"] == "running"]:
+        assert capture_job.wait(job, 30), f"job {job} did not end within 30 s"
+
+
+def _bar(c):
+    r = c["client"].get("/operations/in_flight", headers=HX)
+    assert r.status_code == 200
+    return r.get_data(as_text=True)
+
+
+def _start(c):
+    """Confirm a rotation of r2 and return its job id once it holds r2."""
+    import re as _re
+    waiting = _confirm(c, _preview(c)).get_data(as_text=True)
+    job = _re.search(r"/rotate/job/([0-9a-f]+)", waiting).group(1)
+
+    def held():
+        """r2 held by the rotation"""
+        return D.holder("Lab", "r2") is not None
+    _until(held)
+    return job
+
+
+def _run_out(c, job):
+    """Let the rotation finish, without drawing its card anywhere."""
+    from modules.nsot import capture_job
+    c["gate"].set()
+    assert capture_job.wait(job, 30)
+
+
+class TestTheChip:
+    def test_nothing_running_and_nothing_waiting_draws_nothing(self, chip):
+        assert "ip-chip" not in _bar(chip)
+        d = chip["client"].get("/operations/in_flight").get_json()
+        assert d["ok"] is True and d["running"] == [], "today's JSON is unchanged"
+
+    def test_every_v2_page_asks_for_it_and_hears_every_change(self, chip):
+        page = chip["client"].get("/v2/devices").get_data(as_text=True)
+        slot = page[page.index('id="nmas-in-progress"') - 60:page.index('id="nmas-in-progress"') + 400]
+        assert 'hx-get="/operations/in_flight"' in slot
+        for key in ("in_progress", "device_holds", "device_progress"):
+            assert f"nmas:{key} from:body" in slot, key
+        assert "every " not in slot[slot.index("hx-trigger"):slot.index("hx-swap")], "no timer"
+
+    def test_a_running_rotation_is_one_row_its_step_and_a_way_back_to_its_card(self, chip):
+        _start(chip)
+        html = _bar(chip)
+        assert 'class="ip-chip ip-run"' in html and "In progress: 1 running" in html
+        assert html.count('class="ip-row"') == 1, "one operation, one row (C217)"
+        assert "<strong>r2</strong> · Rotate credential" in html
+        assert "Read the account" in html and "step 1 of 6" in html
+        assert 'href="/v2/device/r2?list=Lab"' in html and "Open its card" in html
+        d = chip["client"].get("/operations/in_flight?list_name=Lab").get_json()
+        assert [r["device"] for r in d["running"]] == ["r2"], "today's panel: one row too"
+
+    def test_one_finished_elsewhere_shows_its_outcome_until_it_is_opened(self, chip):
+        _run_out(chip, _start(chip))
+        html = _bar(chip)
+        assert 'class="ip-chip ip-ok"' in html and "In progress: 1 done" in html
+        assert "rotated and persisted" in html and "Open the result" in html
+        page = chip["client"].get("/v2/device/r2").get_data(as_text=True)
+        body = page[page.index('id="tab-body"'):]
+        assert "op-card op-ok" in body and "Finished at" in body, "the page opens the result"
+        assert "ip-chip" not in _bar(chip), "opened: the chip lets it go"
+        again = chip["client"].get("/v2/device/r2").get_data(as_text=True)
+        assert "Finished at" not in again, "an opened result is not reopened"
+
+    def test_red_wins(self, chip):
+        from modules.nsot import credential_rotation as cr
+        chip["rot"]["persist_state"] = cr.ROTATED_UNVERIFIED
+        _run_out(chip, _start(chip))
+        html = _bar(chip)
+        assert 'class="ip-chip ip-danger"' in html and "1 failed" in html
+
+    def test_opened_is_each_person_s_own(self, chip):
+        _run_out(chip, _start(chip))
+        chip["who"]["viewer"] = "a@example.invalid"
+        chip["client"].get("/v2/device/r2")
+        assert "ip-chip" not in _bar(chip)
+        chip["who"]["viewer"] = "b@example.invalid"
+        assert "Open the result" in _bar(chip), "someone who has not seen it still has it"
+
+    def test_its_card_drawn_in_place_opens_it(self, chip):
+        """Watching the card when the result arrives is opening it."""
+        job = _start(chip)
+        _run_out(chip, job)
+        chip["client"].get(f"/v2/device/r2/rotate/job/{job}?back=overview")
+        assert "ip-chip" not in _bar(chip)
+
+    def test_an_unreadable_network_is_never_nothing_running(self, chip, monkeypatch):
+        monkeypatch.setattr(D, "in_flight", lambda *a, **k: 1 / 0)
+        html = _bar(chip)
+        assert 'class="ip-chip ip-danger"' in html
+        assert "Could not read what runs in Lab: ZeroDivisionError" in html
+
+    def test_a_failed_read_is_unknown_never_nothing(self, chip, monkeypatch):
+        monkeypatch.setattr("modules.in_flight.chip", lambda *a, **k: 1 / 0)
+        html = _bar(chip)
+        assert "Could not ask which operations are running" in html
+        assert "not the same as none running" in html
+
+
+class TestTheChipHearsEveryChange:
+    def test_a_job_s_start_its_end_and_its_result_opened_are_announced(self, monkeypatch):
+        """The chip re-reads on `in_progress`, never on a timer: a job's start and its end each
+        announce it, and so does a person opening its result (their other tabs)."""
+        from modules import invalidation as I
+        from modules.nsot import capture_job
+        heard = []
+        monkeypatch.setattr(I, "_emitter", lambda event, msg: heard.append(msg))
+        job = capture_job.start("Lab", "rotating r2", "a@example.invalid", lambda j: {},
+                                announce_keys=("rotation",), announcer="rotation",
+                                device="r2", card="rotate")
+        assert capture_job.wait(job, 10)
+        moved = [m for m in heard if m["keys"] == ["in_progress"]]
+        assert len(moved) == 2 and {m["by"] for m in moved} == {"in-progress"}, heard
+        assert capture_job.mark_opened(job, "a@example.invalid") is True
+        assert capture_job.mark_opened(job, "a@example.invalid") is False, "once is news"
+        assert len([m for m in heard if m["keys"] == ["in_progress"]]) == 3
+
+
+class TestTheDevicePageReopens:
+    def test_a_running_rotation_reopens_its_running_card_never_a_second_rotation(self, chip):
+        _start(chip)
+        page = chip["client"].get("/v2/device/r2?tab=history").get_data(as_text=True)
+        body = page[page.index('id="tab-body"'):]
+        assert "Rotating r2's credential" in body and "Reopened: started by" in body
+        assert "/rotate/preview" not in body and "op-confirm" not in body
+
+    def test_a_card_freed_by_a_rotation_shows_that_rotation_never_rotate_again(self, chip):
+        import re as _re
+        job = _start(chip)
+        held = _preview(chip)                    # drawn while r2 is held by the rotation
+        since = _re.search(r"since=(\d+)", held).group(1)
+        _run_out(chip, job)
+        free = chip["client"].get(f"/v2/device/r2/when-free?op=rotate&back=history&since={since}")
+        out = free.get_data(as_text=True)
+        assert "op-card op-ok" in out and "rotated and persisted" in out
+        assert "/rotate/preview" not in out
+        later = int(since) + 3600                # a card drawn after it ended: a fresh one
+        fresh = chip["client"].get(f"/v2/device/r2/when-free?op=rotate&back=history&since={later}")
+        assert 'hx-post="/v2/device/r2/rotate/preview?list=Lab"' in fresh.get_data(as_text=True)
+
+
+class TestC540TheConfirmNamesWhatExists:
+    def test_v2_names_the_chip_and_today_s_the_panel(self):
+        from modules.preview_confirm import rotate_preview
+        from tests.test_rotate_screen import _plan
+        v2 = rotate_preview(_plan(), busy="", request=None, drawn_on="v2")["confirm"]["effect"]
+        today = rotate_preview(_plan(), busy="", request=None)["confirm"]["effect"]
+        assert "In progress chip in the top bar" in v2 and "in-flight panel" not in v2
+        assert "in-flight panel" in today and "In progress chip" not in today
+
+    def test_the_v2_card_says_it(self, chip):
+        html = _preview(chip)
+        assert "In progress chip in the top bar" in html and "in-flight panel" not in html

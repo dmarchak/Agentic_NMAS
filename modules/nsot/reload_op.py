@@ -464,6 +464,7 @@ def confirm_and_start(list_name: str, host: str, fingerprint: str, reason: str, 
                                     reason=reason))
 
     job = capture_job.start(list_name, f"reloading {host}", actor, work, kind=KIND,
-                            announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER)
+                            announce_keys=ANNOUNCE_KEYS, announcer=ANNOUNCER,
+                            device=host, card="reload")
     log.info("reload: %s/%s started by %s as job %s", list_name, host, actor, job)
     return {"job": job}

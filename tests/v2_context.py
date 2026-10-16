@@ -612,6 +612,20 @@ def _drift(client, _lab, _mp):
         assert r.status_code == 200, (url, r.status_code)
 
 
+def _in_progress(client, _lab, mp):
+    """The top bar's In progress chip (C537) while r3 is held by a deploy: the walk's pages
+    ask for it with nothing running, when it draws nothing. Its list carries the running row;
+    a finished row is a kept job's, drawn by tests/test_in_flight.py's rotation."""
+    from modules.nsot import device_ops
+
+    mp.setattr("modules.integration_groups.network_names", lambda: ["Lab"])
+    with device_ops.hold("Lab", "r3", "deploy", "operator@example.com"):
+        r = client.get("/operations/in_flight", headers={"HX-Request": "true",
+                                                         "Accept": "text/html"})
+    assert r.status_code == 200 and "ip-chip" in r.get_data(as_text=True), r.status_code
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
-PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift, _deploy]
+PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
+                   _in_progress, _deploy]

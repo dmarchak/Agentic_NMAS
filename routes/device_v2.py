@@ -284,8 +284,52 @@ def device(name):
                       _privileged_card(ref, dev, tab, request.args) if op == "privileged" else
                       _rekey_card(ref, dev, tab) if op == "rekey" else
                       {"state": "starting", "op": "reload", "host": dev.get("hostname", ""),
-                       "list": ref.name, "back": tab} if op == "reload" else None)
+                       "list": ref.name, "back": tab} if op == "reload" else
+                      # C537 (3), board C: no card asked for, and this device has an operation
+                      # running, or one finished this person has not opened: THAT card.
+                      _reopened(ref, dev, tab) if not op else None)
     return _strict(render_template("v2/device.html", **ctx))
+
+
+def _reopened(ref, dev, back, card: str = "", after: float = None):
+    """The card of the job *dev*'s page last started (of *card* when named), when it is
+    running, or finished and not yet opened by the person looking (or, given *after*, finished
+    since then, opened or not): drawn as its own job route draws it, saying it was reopened,
+    and marked opened once its result is drawn. None otherwise, or when the job's result is no
+    longer known (the tab is drawn as usual)."""
+    from modules import device_actions
+    from modules.nsot import capture_job
+    from routes.operations import viewer_key
+
+    host = dev.get("hostname", "")
+    job = capture_job.for_device(ref.name, host, card)
+    if job is None:
+        return None
+    viewer = viewer_key()
+    done = job["state"] != "running"
+    if done and ((job["finished_at"] or 0) < after if after is not None
+                 else viewer in job["opened"]):
+        return None
+    c = device_actions.job_card(ref, host, job["card"], job["job"])
+    if c.get("state") == "unknown":
+        return None
+    c.update(back=back, ip=dev.get("ip", ""),
+             reopened=device_actions.reopened_words(job, viewer))
+    if done:
+        capture_job.mark_opened(job["job"], viewer)
+    return c
+
+
+def _opened(c: dict) -> dict:
+    """A job route drew *c*: once it is a result (or a failure), the person looking has
+    opened it, and the In progress chip stops listing it for them (C537)."""
+    from modules.nsot import capture_job
+    from routes.operations import viewer_key
+
+    if c.get("job") and c.get("state") not in ("unknown", "rotating", "deploying",
+                                                "restoring", "reloading", "reading"):
+        capture_job.mark_opened(c["job"], viewer_key())
+    return c
 
 
 @bp.route("/device/<name>/actions", methods=["GET"])
@@ -872,7 +916,7 @@ def rotate_preview(name):
         return refusal
     host = dev.get("hostname", "")
     preview = _preview(rotate_op.plan(ref.name, host), busy=busy_text(ref.name, host),
-                       request=request)
+                       request=request, drawn_on="v2")
     c = device_actions.rotate_card(ref, host, mask_payload(preview), viewer=dict(
         confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""))
     c.update(back=_back(request.form), ip=dev.get("ip", ""))
@@ -922,7 +966,7 @@ def rotate_job_card(name, job):
     ref, dev = found
     c = device_actions.rotate_job_card(ref, dev.get("hostname", ""), job, capture_job.get(job))
     c.update(back=_back(request.args), ip=dev.get("ip", ""))
-    return _strict(render_template("v2/_rotate.html", c=c))
+    return _strict(render_template("v2/_rotate.html", c=_opened(c)))
 
 
 # ---------------------------------------------------------------------------
@@ -1020,7 +1064,7 @@ def reload_job_card(name, job):
     c = device_actions.reload_job_card(ref, dev.get("hostname", ""), job, capture_job.get(job),
                                        may=confirm_part(request, "confirm"))
     c.update(back=_back(request.args))
-    return _reload_card(c)
+    return _reload_card(_opened(c))
 
 
 @bp.route("/device/<name>/reload/confirm", methods=["POST"])
@@ -1064,7 +1108,15 @@ def when_free(name):
     if op == "persist":
         return _strict(render_template("v2/_persist.html", c=_persist_card(ref, dev, back)))
     if op == "rotate":
-        return _strict(render_template("v2/_rotate.html", c=_rotate_starting(ref, dev, back)))
+        # C537 (board C): freed by a rotation that ran meanwhile, the card shows what that
+        # rotation did (running still, or its result), never a fresh "Rotate" preview.
+        try:
+            since = float(request.args.get("since") or "")
+        except ValueError:
+            since = None
+        ran = _reopened(ref, dev, back, card="rotate", after=since) if since else None
+        return _strict(render_template("v2/_rotate.html",
+                                       c=ran or _rotate_starting(ref, dev, back)))
     if op == "deploy":
         # The held card's redraw sends its form (C473): the ticks and reasons survive.
         return _strict(render_template("v2/_deploy.html",
@@ -1264,7 +1316,8 @@ def deploy_confirm(name):
         authorise={host: authorise} if authorise else {}, remove={host: remove} if remove else {},
         scope="", actor=identity.identify(request).actor or "",
         actor_kind=getattr(identity.identify(request), "kind", ""),
-        ident=identity.verified_identity(), declare={host: declare} if declare else None)
+        ident=identity.verified_identity(), declare={host: declare} if declare else None,
+        card="deploy")
     return _strict(render_template("v2/_deploy.html", c={
         "state": "deploying", "op": "deploy", "host": host, "list": ref.name, "job": job,
         "back": _back(request.form), "steps": device_actions.job_steps("deploy", ref.name, host)}))
@@ -1397,7 +1450,7 @@ def restore_confirm(name):
         authorise={host: authorise} if authorise else {}, un_onboard=un_onboard,
         actor=identity.identify(request).actor or "",
         actor_kind=getattr(identity.identify(request), "kind", ""),
-        ident=identity.verified_identity())
+        ident=identity.verified_identity(), card="restore")
     return _strict(render_template("v2/_restore.html", c={
         "op": "restore", "state": "restoring", "host": host, "list": ref.name, "job": job,
         "moment": moment, "moment_words": "golden now" if moment == "HEAD" else moment,
@@ -1417,7 +1470,7 @@ def restore_job_card(name, job):
     c = device_actions.restore_job_card(ref, dev.get("hostname", ""), job, deploy_job.state(job),
                                         moment=request.args.get("moment", ""))
     c.update(back=_back(request.args), ip=dev.get("ip", ""))
-    return _strict(render_template("v2/_restore.html", c=c))
+    return _strict(render_template("v2/_restore.html", c=_opened(c)))
 
 
 # ---------------------------------------------------------------------------
@@ -1706,4 +1759,4 @@ def deploy_job_card(name, job):
     ref, dev = found
     c = device_actions.deploy_job_card(ref, dev.get("hostname", ""), job, deploy_job.state(job))
     c.update(back=_back(request.args), ip=dev.get("ip", ""))
-    return _strict(render_template("v2/_deploy.html", c=c))
+    return _strict(render_template("v2/_deploy.html", c=_opened(c)))
