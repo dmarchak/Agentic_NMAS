@@ -74,8 +74,8 @@ than 75 minutes away, or after 09:10 UTC.
    ```
 
    Never `docker restart` or `docker start` a node (C478). **The one redeploy command**, the same
-   in `docs/STAGE2_SESSION_CHECKLIST.md` 3.2 (chosen 2026-10-16, awaiting the operator's
-   confirmation in STANDING_APPROVAL_LOG): `--reconfigure` regenerates the lab's artifacts, so
+   in `docs/STAGE2_SESSION_CHECKLIST.md` 3.2 (chosen 2026-10-16, confirmed by the operator
+   the same day, STANDING_APPROVAL_LOG): `--reconfigure` regenerates the lab's artifacts, so
    every node boots from its startup file, as the checklist's former `destroy --cleanup` then
    `deploy` did, in one command (containerlab 0.79.0's help: "Regenerate configuration
    artifacts and overwrite previous ones if any"); C478's fix already uses it. No `sudo`:

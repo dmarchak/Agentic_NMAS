@@ -339,8 +339,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 ## Module map (compact; full map in docs/ARCHITECTURE.md)
 
 - **Legacy core:** `app.py` (routes, SocketIO; new routes go in `routes/`), `netbox_client.py`
-  (three write chokepoints), `pipeline.py` (the 9-stage deploy every deploy and restore runs),
-  `configure.py`.
+  (three write chokepoints), `pipeline.py` (the 9-stage deploy every deploy and restore runs;
+  it sends only a confirmed list).
 - **Stores and safety:** `settings_schema.py`, `secrets_store.py`, `credentials.py`, `filestore.py`,
   `netbox_guard.py`, `netbox_authz.py`, `outbound.py`, `redact.py`, `identity.py`, `route_gates.py`,
   `csp.py`, `readonly_commands.py`, `connection.py` (`open_ssh`), `config_read.py`, `fanout.py`,
