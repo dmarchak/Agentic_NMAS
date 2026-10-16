@@ -75,7 +75,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C944, C945~~ | ~~the unused `git init`; History's header~~ **done** (see Checked off) | | | | |
 | ~~C957~~ | ~~History's timeline says "no repository yet"~~ **done** (see Checked off) | | | | |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
-| C954 | v2's "stop tracking" for a NetBox removal: build it or retire it (CUTOVER row 60) | the operator's decision, then its test | S–M | — | the operator |
+| ~~C954~~ | ~~v2's "stop tracking" for a NetBox removal~~ **done, built** (the operator's decision; see Checked off) | | | | |
 | ~~C955~~ | ~~Retire's preview counts live approvals only~~ **done** (see Checked off) | | | | |
 | ~~C906~~ | ~~Mercury checks each device's SSH host key~~ **done: deployed 1222a3f102, all nine devices' keys kept on the host** (see Checked off); the next redeploy declares `--new-host-keys` (lab/REDEPLOY.md) | | | | |
 | ~~C940~~ | ~~onboarding at a reused address~~ **done** (see Checked off) | | | | |
@@ -259,6 +259,13 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C954 done** (B, the operator's decision: build it): the Remove card's Stop tracking
+  instead…, its own preview (deletes nothing in NetBox; each object forgotten named), confirmed
+  by hash holding the network's writer, through today's one forget path given the confirmed
+  entries. CUTOVER row 60 true. C1002 (C) to the tail.
+- **C991 verified on the host** (deployed c889a844c4, 2026-10-16 17:37Z): the deploy's reader
+  answers `clear` against the live service; the updater's copy re-installed (its Host-Step-After)
+  and `nmas-update-check` reads ok, matching this release.
 - **C948 done** (B, the operator's decision): the Stage 2 checklist rewritten as a dated
   revision, every device read a Mercury read or screen, the planned window and host keys its
   own items, section 2 withdrawn; two lab-host reads kept and labelled. C998 (UNKNOWN), C999 to

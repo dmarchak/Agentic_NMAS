@@ -198,6 +198,8 @@ DECLARED = {
     "remote.verify": ("remote",),
     "remote.verify_write": ("remote",),
     "remote_v2.connect": ("remote",),
+    # An import, a removal, or Stop tracking (C954: Mercury's created and removal records and
+    # the network's last import, which the NetBox page draws); settings when writes come on.
     "netbox_v2.confirm": ("netbox", "settings"),
     "remote_v2.write_probe": ("remote",),
     "remote_v2.acknowledge": ("remote",),

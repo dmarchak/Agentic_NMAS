@@ -4,20 +4,22 @@
 {#- A NetBox job's card (modules/netbox_jobs): previewing (the dry run running), previewed (the
     preview component's parts, and the confirm bound to its one-shot token, which may turn writes
     on), refused, importing, and its result. While it runs it redraws when the job announces
-    `netbox`; once it holds an answer it stays until closed. -#}
+    `netbox`; once it holds an answer it stays until closed. A removal's preview offers Stop
+    tracking instead… (C954): its own preview job (`forget`), drawn in this card, whose confirm
+    deletes nothing in NetBox and never asks for writes. -#}
 {%- set op = job.operation or '' %}
 {%- set label = 'every network' if op == 'import_all' else (job.list or '') %}
 {%- set live = job.state in ('previewing', 'importing') %}
 <section class="card" id="netbox-job" aria-labelledby="h-netbox-job"
   {%- if live %} hx-get="{{ url_for('netbox_v2.job', job_id=job.id) }}" hx-trigger="nmas:netbox from:body" hx-swap="outerHTML"{% endif %}>
-  <div class="card-head"><h2 id="h-netbox-job">{{ 'Remove from NetBox' if op == 'remove' else 'Import into NetBox' }}{% if label %}: {{ label }}{% endif %}</h2>
+  <div class="card-head"><h2 id="h-netbox-job">{{ {'remove': 'Remove from NetBox', 'forget': 'Stop tracking in NetBox'}.get(op, 'Import into NetBox') }}{% if label %}: {{ label }}{% endif %}</h2>
     <a class="btn btn-small" href="{{ url_for('netbox_v2.page') }}">Close</a></div>
   {%- if refused %}
-  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ refused }}. Nothing was written to NetBox.</div></div>
+  <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>Not done:</strong> {{ refused }}. {{ "Nothing was forgotten, and nothing was sent to NetBox." if op == 'forget' else "Nothing was written to NetBox." }}</div></div>
   {%- endif %}
   {%- if job.state == 'previewing' %}
   {{ run_stepper(run) }}
-  <p class="muted">A dry run of the real {{ 'removal' if op == 'remove' else 'import' }} against the real NetBox, writing nothing. This card fills in when it is ready.</p>
+  <p class="muted">{% if op == 'forget' %}A read of Mercury's own record of what it created for this network; NetBox is not asked.{% else %}A dry run of the real {{ 'removal' if op == 'remove' else 'import' }} against the real NetBox, writing nothing.{% endif %} This card fills in when it is ready.</p>
   {%- elif job.state == 'refused' %}
   <p class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<span>{{ job.error or 'Not previewed' }}.</span></p>
   {%- elif job.state == 'unknown' %}
@@ -27,17 +29,30 @@
   {{ preview_parts(pv, 'What will be written to NetBox') }}
   <form class="set-form" method="post" action="{{ url_for('netbox_v2.confirm', job_id=job.id) }}"
         hx-post="{{ url_for('netbox_v2.confirm', job_id=job.id) }}" hx-target="#netbox-job" hx-swap="outerHTML">
-    {%- if not job.writes_allowed %}
+    {%- if not job.writes_allowed and op != 'forget' %}
     <span class="set-label">Writes</span>
     <div><label class="set-switch"><input type="checkbox" name="permit_writes"> turn NetBox writes on with this confirm</label><span class="set-origin">they are off for every network; without this the confirm is refused, and with it they come on only once the token and the plan both pass</span></div>
     {%- endif %}
     <div class="set-foot set-form-note">
       {%- if pv.confirm.may %}
+      {%- if op == 'forget' %}
+      <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="netbox-import" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Stop tracking</span><span class="op-busy">Forgetting…</span></button>{{ how('netbox-import', 'stop-tracking', op='stopping tracking') }}</span>
+      {%- else %}
       <span class="op-act"><button type="submit" class="btn {{ 'btn-danger' if op == 'remove' else 'btn-primary' }} btn-small" data-op="netbox-import" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">{{ 'Remove' if op == 'remove' else 'Import' }}</span><span class="op-busy">{{ 'Removing…' if op == 'remove' else 'Starting the import…' }}</span></button>{{ how('netbox-import', 'remove-apply' if op == 'remove' else 'apply', op='confirming') }}</span>
       {%- endif %}
-      <span class="muted small">{{ pv.confirm.statement }} The plan is recomputed at your confirm; if NetBox moved, nothing is written.</span>
+      {%- endif %}
+      <span class="muted small">{{ pv.confirm.statement }} {{ "Mercury's record is read again at your confirm; if it changed, nothing is forgotten." if op == 'forget' else "The plan is recomputed at your confirm; if NetBox moved, nothing is written." }}</span>
     </div>
   </form>
+  {%- if op == 'remove' %}
+  <form class="set-form" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+    <input type="hidden" name="operation" value="forget"><input type="hidden" name="list" value="{{ job.list }}">
+    <div class="set-foot set-form-note">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">{{ forget_control }}</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'stop-tracking', compact=True, op='stopping tracking') }}</span>
+      <span class="muted small">Deletes nothing in NetBox: Mercury forgets what it created for {{ job.list }}. Previewed on its own before anything changes.</span>
+    </div>
+  </form>
+  {%- endif %}
   {%- elif job.state == 'importing' %}
   {{ run_stepper(run) }}
   <p class="muted">Writing to NetBox. This card fills in when it ends.</p>

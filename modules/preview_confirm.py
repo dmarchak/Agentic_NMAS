@@ -1224,6 +1224,58 @@ def onboard_verify_preview(plan: dict, confirm: dict) -> dict:
                  titles={"program": "What Verify sends"})
 
 
+def _netbox_forget_result(row: dict, record_status: dict = None) -> dict:
+    """Stop tracking (today's Just stop tracking, v2's Stop tracking: C954), drawn from the
+    ROW that records it: which entries Mercury's created record dropped, and that NetBox was
+    sent nothing. A row written before the entries were recorded says only that it forgot."""
+    name = row.get("list") or "the list"
+    forgotten = row.get("forgotten") or []
+
+    def _line(o):
+        return f"{o.get('endpoint', '')} #{o.get('id')} {o.get('name', '')}".strip()
+    if not row.get("ok"):
+        level = "failed"
+        why = (row.get("error") or "no reason").rstrip(". ")
+        summary = (f"Nothing was forgotten for {name}: {why}. Mercury's record and NetBox are "
+                   "as they were.")
+    elif forgotten:
+        level = "success"
+        summary = (f"Mercury forgot {len(forgotten)} object(s) it created for {name}. Nothing "
+                   "was deleted from NetBox: they stay there with their nmas-managed tag, and "
+                   "Remove can never act on them again.")
+    elif "forgotten" in row:
+        level = "nothing"
+        summary = (f"Nothing was deleted from NetBox, and Mercury's record held nothing for "
+                   f"{name} to forget.")
+    else:
+        level, summary = "nothing", (f"Nothing was deleted from NetBox. Mercury no longer "
+                                     f"records the objects it created for {name}.")
+    target = {"name": name,
+              "outcome": {"success": "deployed"}.get(level, level),
+              "words": {"success": "no longer tracked", "failed": "not forgotten",
+                        "nothing": "nothing forgotten"}[level],
+              "sent": {"lines": [_line(o) for o in forgotten], "program_hash": "",
+                       "caption": f"{len(forgotten)} record entr(ies) forgotten",
+                       "none": "Nothing was forgotten, and nothing was sent to NetBox."},
+              "checks": {"ran": False, "ok": bool(row.get("ok")), "statements": [],
+                         "why": "nothing was sent to NetBox, so there is nothing to read back"}}
+    rs = record_status or {"ok": True}
+    statement = (f"Recorded {row.get('at', '?')} by {row.get('actor') or 'an unrecorded actor'} "
+                 "in the removal record, with each entry forgotten; NetBox's changelog holds "
+                 "nothing, since nothing was sent to it." if rs.get("ok") else
+                 f"THE REMOVAL RECORD WAS NOT WRITTEN: {rs.get('error') or 'no reason'}. "
+                 "Mercury's created record has changed; nothing else holds which entries.")
+    return build_result(
+        action="netbox_forget", level=level, summary=summary, targets=[target],
+        did_not=[{"target": name, "kind": "netbox",
+                  "text": "Nothing was deleted from NetBox: every object stays there with its "
+                          "nmas-managed tag. Delete them in NetBox itself if they should go."}],
+        nothing_left_out="",
+        record={"commit": "", "tags": [], "baseline": "", "statement": statement},
+        not_watched="NetBox is not read: what it holds is unchanged by this.",
+        titles={"sent": "What Mercury forgot", "checks": "What was read back"})
+
+
 def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
     """A NetBox Remove, drawn by the result component (7.1, C121), from the
     ROW that records it, so the result at apply and the one read back later
@@ -1235,9 +1287,8 @@ def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
                                 row.get("failed") or [])
     name = row.get("list") or "the list"
     if row.get("forget_only"):
-        level, summary = "nothing", (f"Nothing was deleted from NetBox. Mercury no longer "
-                                     f"records the objects it created for {name}.")
-    elif not row.get("ok"):
+        return _netbox_forget_result(row, record_status)
+    if not row.get("ok"):
         level, summary = "failed", f"The removal for {name} did not run: {row.get('error') or 'no reason'}"
     elif failed:
         level = "partial" if deleted else "failed"
@@ -1387,17 +1438,17 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
                  titles={"program": "What will be written to NetBox"})
 
 
-def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: bool = False) -> dict:
+def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: str = "") -> dict:
     """NetBox Remove's preview, drawn by the component (7.1). What the
     database takes WITH each delete (the cascade, `netbox_cascade`) is drawn
     only when there is some, as before: a clean, proven preview adds no
     alarm, or the operator learns to click through it. A cascade that could
     not be established is its own statement, never "nothing".
 
-    *forget_offered*: the screen drawing this has the stop-tracking control (today's NetBox
-    dialog's "Just stop tracking", `forget_only`), so the preview names it as the other
-    choice. v2's Remove card has no such control (C935), and its preview says the choice is
-    not on v2 yet rather than naming a button that is not there."""
+    *forget_offered*: the words of the stop-tracking control the screen drawing this has
+    (today's NetBox dialog's "Just stop tracking", `forget_only`; v2's Remove card's "Stop
+    tracking instead…", C954), so the preview names it as the other choice. Empty: the screen
+    has none, and the preview says so rather than naming a button that is not there (C935)."""
     name = d.get("list") or "the list"
     deleted, skipped = d.get("deleted") or [], d.get("skipped") or []
     # C130: a recorded object NetBox could not be READ is not gone. The
@@ -1481,10 +1532,14 @@ def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: bool = Fal
         {"target": name, "kind": "forget", "lines": [],
          "text": ("'Just stop tracking' is the other choice: it deletes nothing, and Mercury "
                   "forgets what it created for this list, so NetBox keeps every object."
-                  if forget_offered else
-                  "Stopping tracking instead, which deletes nothing and has Mercury forget "
-                  "what it created for this network so that NetBox keeps every object, is not "
-                  "on v2 yet: the choice here is Remove, or Close to leave NetBox as it is.")},
+                  if forget_offered == "Just stop tracking" else
+                  f"'{forget_offered}' is the other choice, previewed on its own: it deletes "
+                  "nothing, and Mercury forgets what it created for this network, so NetBox "
+                  "keeps every object (with its nmas-managed tag) and Remove can never act on "
+                  "them again." if forget_offered else
+                  "Stopping tracking (deleting nothing, and having Mercury forget what it "
+                  "created for this network) is not a choice on this screen: the choice here "
+                  "is Remove, or Close to leave NetBox as it is.")},
     ]
     gates = _nb_gates(d, "removal")
     if not deleted:
@@ -1537,6 +1592,85 @@ def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: bool = Fal
                                                 "NetBox shows tagged nmas-managed. An object it "
                                                 "did not create, or whose tag is gone, is left "
                                                 "alone, named below with why."}]})
+
+
+def netbox_forget_preview(d: dict, confirm: dict) -> dict:
+    """v2's Stop tracking (C954), drawn by the component (7.1): it deletes nothing in NetBox,
+    and Mercury forgets every object its created record holds for the network
+    (`netbox_ops.forget_plan`). Each object is named, with the counts by type leading (the
+    list collapses where it is drawn when it is long), and where the data survives is said:
+    NetBox keeps every object, and the removal record keeps the entries forgotten."""
+    name = d.get("list") or "the network"
+    forgets = d.get("forgets") or []
+    n = len(forgets)
+    by_type: dict = {}
+    for o in forgets:
+        by_type[o.get("endpoint", "")] = by_type.get(o.get("endpoint", ""), 0) + 1
+    counts = ", ".join(f"{ep} {c}" for ep, c in sorted(by_type.items()))
+    minutes = max(1, round((d.get("expires_in") or 300) / 60))
+    if forgets:
+        summary = (f"Deletes nothing in NetBox. Mercury forgets {n} object(s) it created for "
+                   f"{name}, which keep their nmas-managed tag in NetBox and which Remove can "
+                   "never act on again.")
+    else:
+        summary = (f"Mercury's record holds nothing it created in NetBox for {name}: there is "
+                   "nothing to forget.")
+        confirm = dict(confirm, may=False, statement=f"Nothing to confirm: Mercury's record "
+                                                     f"holds nothing for {name}.")
+    what_not = [
+        {"target": name, "kind": "netbox", "lines": [],
+         "text": "Nothing is sent to NetBox: every object stays there as it is, with its "
+                 "nmas-managed tag, and NetBox's changelog records nothing."},
+        {"target": name, "kind": "survives", "lines": [],
+         "text": f"Where the data survives: NetBox keeps every object. Mercury's created-object "
+                 f"record (netbox_created_ids.json) drops these {n} entries, and the removal "
+                 "record (netbox_removals.jsonl) keeps who forgot them, when, and each entry, "
+                 "read again under this network's Removals on this page."},
+        {"target": name, "kind": "never_again", "lines": [],
+         "text": "Mercury cannot take this back: an import afterwards finds these objects in "
+                 "NetBox and updates them, and an update never records an object as created, "
+                 "so Remove never deletes them. Delete them in NetBox itself if they should go."},
+        {"target": name, "kind": "last_import", "lines": [],
+         "text": f"{name}'s last import result is cleared from this page."},
+        {"target": name, "kind": "other_records", "lines": [],
+         "text": "What Mercury updated (netbox_modified.json) and adopted (netbox_adopted.json) "
+                 "is not changed: neither was ever removable."},
+        {"target": name, "kind": "no_device", "lines": [],
+         "text": "No device is reached and nothing in git changes."},
+        {"target": name, "kind": "remove", "lines": [],
+         "text": "Remove from NetBox… is the other choice: it deletes these objects from NetBox."},
+    ]
+    gates = [
+        gate("Mercury's created-object record, read", "pass",
+             f"{n} entr(ies) for {name}; NetBox is not asked"),
+        gate("NetBox writes permitted for this instance", "not_applicable",
+             "nothing is written to NetBox: this changes Mercury's own record"),
+        gate("Mercury's record unchanged since this preview", "at_apply",
+             "read again when you confirm and its hash compared; if it changed, nothing is "
+             "forgotten and you are asked to preview again"),
+        gate("no other NetBox write holds this network", "at_apply",
+             "an import or removal running for it refuses this, naming who"),
+        gate("a one-shot confirmation", "at_apply",
+             f"valid {minutes} minute(s), once, for exactly these entries"),
+    ]
+    target = {
+        "name": name, "state": "ready" if forgets else "unchanged", "selectable": bool(forgets),
+        "program": {"lines": [_nb_line("forget", o) for o in forgets], "dangerous": [],
+                    "authorised": [], "authorisation_error": "", "notes": [],
+                    "caption": "What Mercury forgets", "unit": "record entr(ies) forgotten",
+                    "none": "Nothing: " + summary},
+        "operands": [
+            {"name": "Network", "value": name},
+            {"name": "Forgets", "value": str(n)},
+            {"name": "By type", "value": counts or "none"},
+            {"name": "Deletes in NetBox", "value": "0"},
+            {"name": "Plan hash", "value": (d.get("plan_hash") or "")[:16]},
+        ],
+        "gates": gates,
+    }
+    return build(action="netbox_forget", summary=summary, targets=[target],
+                 what_not=what_not, nothing_left_out="", confirm=confirm,
+                 titles={"program": "What Mercury forgets (nothing is deleted from NetBox)"})
 
 
 #: What phase 1 of onboarding creates, per completed step, in words (C86).

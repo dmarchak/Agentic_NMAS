@@ -180,7 +180,7 @@ GATES = {
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),
     "netbox_safety.apply_import_all": _g(A, "writes to NetBox"),
     "netbox_safety.apply_removal": _g(A, "deletes from NetBox"),
-    "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, from v2's NetBox page"),
+    "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, or (Stop tracking, C954) has Mercury forget what it created, from v2's NetBox page"),
 
     # ---- configure: the tool's own settings, gates, inventory, records ---
     "settings_v2.group_switch": _g(K, "switches a network's settings group (inherit, its own with its values and secrets, not applicable), bound to its preview and recorded"),
@@ -304,7 +304,7 @@ GATES = {
     "netbox_safety.preview_import": _g(N, "a dry run"),
     "netbox_safety.preview_import_all": _g(N, "a dry run"),
     "netbox_safety.preview_removal": _g(N, "a dry run"),
-    "netbox_v2.preview": _g(N, "starts a dry run of an import or removal on a thread; writes nothing"),
+    "netbox_v2.preview": _g(N, "starts a dry run of an import or removal, or a read of what Stop tracking would forget, on a thread; writes nothing"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),
     "inventory.refresh": _g(N, "the refresh interval does this anyway; it only happens earlier"),

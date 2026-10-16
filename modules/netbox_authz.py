@@ -73,13 +73,15 @@ def _normalize(value):
 
 
 def compute_plan_hash(plan: dict) -> str:
-    """Return a stable SHA-256 over the operations a plan describes.
+    """Return a stable SHA-256 over the operations a plan describes: its creates, updates
+    and deletes, or Stop tracking's forgets.
 
     Order-insensitive: entries are sorted, because the plan is built from a
     thread pool and the same NetBox state must always produce the same hash.
     """
     entries = []
-    for kind in ("creates", "updates", "deletes"):
+    # "forgets": Stop tracking's plan (C954), the created-record entries it would drop.
+    for kind in ("creates", "updates", "deletes", "forgets"):
         for entry in (plan or {}).get(kind, []):
             entries.append(json.dumps({
                 "kind":     kind,

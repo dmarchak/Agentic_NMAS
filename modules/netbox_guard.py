@@ -841,25 +841,49 @@ def get_adopted(list_name: str) -> tuple:
             for r in rows or []], ""
 
 
-def forget_created(list_name: str, endpoint: str = "", obj_id: int = None) -> None:
-    """Drop entries from the created-id record.
+def forget_created(list_name: str, endpoint: str = "", obj_id: int = None,
+                   entries=None) -> list:
+    """Drop entries from the created-id record; the entries dropped, as
+    ``[{"endpoint", "id", "name"}, ...]``.
 
     With no endpoint, forgets the whole list — this is what "remove from NMAS's
-    records without deleting anything in NetBox" does.
+    records without deleting anything in NetBox" does. *entries*
+    (``[(endpoint, id), ...]``) forgets exactly those and nothing else (C954:
+    v2's Stop tracking forgets the set its confirm was bound to, so an object an
+    import recorded after the preview stays recorded).
     """
+    def _rows(ep, rows):
+        return [{"endpoint": ep, "id": e.get("id"), "name": e.get("name", "")} for e in rows]
+
     with _created_lock:
         data = _load_created_for_write()
         slug = list_slug(list_name)
         if slug not in data:
-            return
-        if not endpoint:
+            return []
+        if entries is not None:
+            wanted = {(str(ep).strip("/"), oid) for ep, oid in entries}
+            dropped = []
+            for ep in list(data[slug]):
+                keep = [e for e in data[slug][ep] if (ep, e.get("id")) not in wanted]
+                dropped += _rows(ep, [e for e in data[slug][ep] if (ep, e.get("id")) in wanted])
+                if keep:
+                    data[slug][ep] = keep
+                else:
+                    data[slug].pop(ep)
+            if not data[slug]:
+                data.pop(slug)
+        elif not endpoint:
+            dropped = [r for ep, rows in data[slug].items() for r in _rows(ep, rows)]
             data.pop(slug, None)
         elif obj_id is None:
-            data[slug].pop(endpoint.strip("/"), None)
+            ep = endpoint.strip("/")
+            dropped = _rows(ep, data[slug].pop(ep, []))
         else:
             ep = endpoint.strip("/")
+            dropped = _rows(ep, [e for e in data[slug].get(ep, []) if e.get("id") == obj_id])
             data[slug][ep] = [e for e in data[slug].get(ep, []) if e.get("id") != obj_id]
         _save_created(data)
+        return dropped
 
 
 def has_managed_tag(obj: dict) -> bool:
@@ -1069,7 +1093,10 @@ def record_removal(list_name: str, actor: str, result: dict, *,
            "ok": bool(result.get("ok")), "error": result.get("error", ""),
            "complete": bool(result.get("complete", result.get("ok"))),
            "deleted": _objs("deleted"), "skipped": _objs("skipped"),
-           "failed": _objs("failed"), "message": result.get("message", "")}
+           "failed": _objs("failed"), "message": result.get("message", ""),
+           # Stop tracking (C954): each entry Mercury's created record dropped, so the
+           # record says WHICH objects it no longer tracks, not only that it forgot.
+           "forgotten": _objs("forgotten")}
     try:
         from modules.config import open_secure
         with open_secure(_REMOVALS_FILE, "a", encoding="utf-8") as fh:

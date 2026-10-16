@@ -178,9 +178,9 @@ class TestRemove:
 
     def test_the_preview_names_only_the_choices_its_screen_has(self, networks, nb, monkeypatch):
         """C935: v2's removal preview said "'Just stop tracking' is the other choice", a control
-        only today's NetBox dialog draws (its `forget_only`); v2's card has Remove and Close.
-        v2's preview says stopping tracking is not on v2 yet; today's, which draws the
-        button, still names it."""
+        only today's NetBox dialog draws (its `forget_only`), while v2's card had Remove and
+        Close. C954 built v2's own: the card draws Stop tracking instead…, a preview of its own,
+        and the removal preview names THAT control; today's still names its button."""
         import modules.netbox_client as nbc
         monkeypatch.setattr(nbc, "remove_list_from_netbox", lambda name, **k: {
             "ok": True, "deleted": [{"endpoint": "dcim/devices", "id": 7, "name": "r9"}],
@@ -189,13 +189,211 @@ class TestRemove:
         card = re.sub(r"\s+", " ", networks["client"].get(
             f"/v2/netbox/job/{_job(card)}").get_data(as_text=True)).replace("&#39;", "'")
         assert "PERMANENTLY deleted" in card, "the preview is not drawn, so this proves nothing"
-        assert "Just stop tracking" not in card
-        assert ("Stopping tracking instead, which deletes nothing and has Mercury forget what it "
-                "created for this network so that NetBox keeps every object, is not on v2 yet: "
-                "the choice here is Remove, or Close to leave NetBox as it is.") in card
+        assert "Just stop tracking" not in card and "not on v2 yet" not in card
+        assert ("'Stop tracking instead…' is the other choice, previewed on its own: it deletes "
+                "nothing, and Mercury forgets what it created for this network, so NetBox keeps "
+                "every object (with its nmas-managed tag) and Remove can never act on them "
+                "again.") in card
+        # The control the words name is on the card: a preview of its own, never a confirm.
+        form = re.search(r'<form[^>]*hx-post="/v2/netbox/preview"[^>]*>(.*?)</form>', card).group(1)
+        assert '<input type="hidden" name="operation" value="forget">' in form
+        assert '<input type="hidden" name="list" value="Branch">' in form
+        assert '<span class="op-idle">Stop tracking instead…</span>' in form
 
         r = networks["client"].post("/netbox/safety/remove/preview", json={"list_name": "Branch"})
         assert r.status_code == 200, r.get_data(as_text=True)[:400]
         today = json.dumps(r.get_json())
         assert "'Just stop tracking' is the other choice" in today
-        assert "not on v2 yet" not in today
+        assert "Stop tracking instead" not in today
+
+
+@pytest.fixture
+def tracked(nb, monkeypatch, tmp_path):
+    """Branch's created record holding three objects Mercury made, each in a FakeNetBox and
+    tagged nmas-managed, and Default's one entry, which Branch's Stop tracking must leave.
+    Everything from the route to the record is the real code (`remove_list_from_netbox` too);
+    NetBox is the fake, so every request it was sent is counted."""
+    import modules.netbox_client as nbc
+    from modules import netbox_guard as guard
+    from tests.fake_netbox import FakeNetBox
+
+    fake = FakeNetBox()
+    monkeypatch.setattr(nbc, "_session_from_config", lambda cfg: fake)
+    monkeypatch.setattr(nbc, "_managed_tag_ids", {})
+    monkeypatch.setattr(nbc, "_SYNC_STATUS_FILE", str(tmp_path / "netbox_sync_status.json"))
+    tag = [{"slug": guard.MANAGED_TAG_SLUG, "name": guard.MANAGED_TAG}]
+    objs = [("dcim/devices", fake.seed("dcim/devices", {"name": "r9", "tags": tag})),
+            ("dcim/interfaces", fake.seed("dcim/interfaces", {"name": "Gi1", "tags": tag})),
+            ("ipam/ip-addresses", fake.seed("ipam/ip-addresses",
+                                            {"name": "192.0.2.9/24", "tags": tag}))]
+    for ep, o in objs:
+        guard.record_created("Branch", ep, o["id"], o["name"])
+    other = fake.seed("dcim/devices", {"name": "x1", "tags": tag})
+    guard.record_created("Default", "dcim/devices", other["id"], "x1")
+    return {"fake": fake, "objs": objs, "other": other}
+
+
+def _held(network):
+    from modules import netbox_guard as guard
+    return sorted((ep, e["id"]) for ep, rows in guard.get_created(network).items() for e in rows)
+
+
+def _sent_nothing(fake):
+    return not (fake.deletes or fake.posts or fake.patches)
+
+
+def _forget_card(networks):
+    _r, card = _post(networks, "/v2/netbox/preview", {"operation": "forget", "list": "Branch"})
+    job = _job(card)
+    html = networks["client"].get(f"/v2/netbox/job/{job}").get_data(as_text=True)
+    return job, re.sub(r"\s+", " ", html).replace("&#39;", "'")
+
+
+class TestStopTracking:
+    """C954: v2's Stop tracking, the Remove card's second choice. It deletes nothing in NetBox
+    and has Mercury forget what it created for the network: previewed from Mercury's created
+    record, confirmed by a verified person by the hash of exactly those entries, done through
+    today's one path (`netbox_ops.remove`'s `forget_only`), recorded in the removal record."""
+
+    def test_the_preview_says_what_it_does_with_its_counts(self, networks, nb, tracked):
+        before = _held("Branch")
+        job, card = _forget_card(networks)
+        assert "Stop tracking in NetBox: Branch" in card
+        assert ("Deletes nothing in NetBox. Mercury forgets 3 object(s) it created for Branch, "
+                "which keep their nmas-managed tag in NetBox and which Remove can never act on "
+                "again.") in card
+        for ep, o in tracked["objs"]:
+            assert f"<li>forget {ep} #{o['id']} {o['name']}</li>" in card, (ep, o)
+        assert ("<dt>By type</dt><dd>dcim/devices 1, dcim/interfaces 1, "
+                "ipam/ip-addresses 1</dd>") in card
+        assert "<dt>Deletes in NetBox</dt><dd>0</dd>" in card
+        assert ("Where the data survives: NetBox keeps every object. Mercury's created-object "
+                "record (netbox_created_ids.json) drops these 3 entries") in card
+        assert "x1" not in card, "another network's entry is not this network's to forget"
+        # Its confirm: one button, no writes switch (nothing is sent to NetBox).
+        assert '<span class="op-idle">Stop tracking</span>' in card
+        assert "turn NetBox writes on with this confirm" not in card
+        assert f'hx-post="/v2/netbox/job/{job}/confirm"' in card
+        # A preview changes nothing anywhere.
+        assert _held("Branch") == before and _sent_nothing(tracked["fake"])
+
+    def test_a_long_list_leads_with_its_count_and_collapses(self, networks, nb, tracked):
+        """CLAUDE.md, large fleets: 3 lines are drawn open; 30 collapse under their count."""
+        from modules import netbox_guard as guard
+        _job_id, card = _forget_card(networks)
+        assert "<details" not in card.split("What Mercury forgets")[1].split("By type")[0]
+        for i in range(27):
+            guard.record_created("Branch", "dcim/interfaces", 500 + i, f"Gi{i + 2}")
+        _job_id, card = _forget_card(networks)
+        assert ('<details class="set-details" data-keep="preview-program-netbox_forget-Branch">'
+                '<summary class="small">30 record entr(ies) forgotten: show each</summary>') in card
+        assert "Mercury forgets 30 object(s)" in card
+
+    def test_confirm_forgets_exactly_those_and_deletes_nothing(self, networks, nb, tracked):
+        from modules import netbox_guard as guard
+        from tests.conftest import TEST_PERSON
+        job, _card = _forget_card(networks)
+        r, html = _post(networks, f"/v2/netbox/job/{job}/confirm")
+        html = html.replace("&#39;", "'")
+        assert r.status_code == 200, html
+        assert ("Mercury forgot 3 object(s) it created for Branch. Nothing was deleted from "
+                "NetBox") in html
+        assert _held("Branch") == [], "Branch's entries are forgotten"
+        assert _held("Default") == [("dcim/devices", tracked["other"]["id"])], \
+            "another network's record is untouched"
+        # Nothing reached NetBox: the fake recorded no DELETE (nor any write), every object is
+        # still there, and the master switch was neither needed nor turned on.
+        assert tracked["fake"].deletes == [] and _sent_nothing(tracked["fake"])
+        for ep, o in tracked["objs"]:
+            assert o in tracked["fake"].store[ep]
+        assert nb["switch"]["on"] is False
+        # The removal record names who, and each entry forgotten.
+        row = guard.read_removals("Branch")["rows"][0]
+        assert row["forget_only"] is True and row["ok"] is True and row["deleted"] == []
+        assert row["actor"] == TEST_PERSON
+        assert sorted((o["endpoint"], o["id"]) for o in row["forgotten"]) == \
+            sorted((ep, o["id"]) for ep, o in tracked["objs"])
+        page = networks["client"].get("/v2/netbox").get_data(as_text=True)
+        assert "1 recorded" in page
+
+    def test_a_record_that_moved_is_refused_and_nothing_forgotten(self, networks, nb, tracked):
+        from modules import netbox_guard as guard
+        job, _card = _forget_card(networks)
+        guard.record_created("Branch", "dcim/interfaces", 99, "Gi9")   # an import, meanwhile
+        r, html = _post(networks, f"/v2/netbox/job/{job}/confirm")
+        html = html.replace("&#39;", "'")
+        assert r.status_code == 409, html
+        assert ("Mercury's record of what it created for Branch changed since the preview: the "
+                "preview's entries hashed ") in html
+        assert "the record's 4 entries now hash " in html and ": preview again. Nothing was " \
+            "forgotten, and nothing was sent to NetBox." in html
+        assert len(_held("Branch")) == 4, "nothing was forgotten"
+        assert _sent_nothing(tracked["fake"])
+        assert guard.read_removals("Branch")["rows"] == []
+
+    def test_only_the_confirmed_entries_are_forgotten(self, networks, nb, tracked):
+        """The forget is handed the confirmed set, so an entry recorded after the check is kept
+        (the hash check and the forget share one writer's hold; this is the narrower seam)."""
+        from modules import netbox_ops
+        (ep0, o0), (ep1, o1), (ep2, o2) = tracked["objs"]
+        out = netbox_ops.remove("Branch", {"forget_only": True}, "ops@example.com",
+                                only=[(ep0, o0["id"]), (ep1, o1["id"])])
+        assert out["ok"] and sorted((o["endpoint"], o["id"]) for o in out["forgotten"]) == \
+            sorted([(ep0, o0["id"]), (ep1, o1["id"])])
+        assert _held("Branch") == [(ep2, o2["id"])]
+
+    def test_a_non_person_is_refused(self, networks, nb, tracked, monkeypatch):
+        from modules import identity
+        job, _card = _forget_card(networks)
+        svc = identity.Identity(actor="service:abc.access", kind="service",
+                                service_id="abc.access", verified=True, outcome="ok",
+                                peer="198.51.100.7", peer_trusted=True, header_present=True)
+        monkeypatch.setattr(identity, "identify", lambda _r: svc)
+        r = networks["client"].post(f"/v2/netbox/job/{job}/confirm",
+                                    headers={"HX-Request": "true"})
+        assert r.status_code == 403, r.get_data(as_text=True)[:400]
+        assert len(_held("Branch")) == 3 and _sent_nothing(tracked["fake"])
+
+    def test_a_confirm_is_used_once(self, networks, nb, tracked):
+        job, _card = _forget_card(networks)
+        assert _post(networks, f"/v2/netbox/job/{job}/confirm")[0].status_code == 200
+        r, html = _post(networks, f"/v2/netbox/job/{job}/confirm")
+        assert r.status_code == 409 and "not one ready to confirm" in html
+
+    def test_another_writer_on_the_network_refuses_it(self, networks, nb, tracked):
+        """One NetBox writer per network (R21): an import holding Branch refuses Stop tracking,
+        naming it, and nothing is forgotten."""
+        import _thread
+        import threading
+
+        from modules import netbox_guard as guard
+        job, _card = _forget_card(networks)
+        holding, release, done = threading.Event(), threading.Event(), threading.Event()
+
+        def hold():
+            try:
+                with guard.list_writer("Branch", "list import", "someone@example.com"):
+                    holding.set()
+                    release.wait(10)
+            finally:
+                done.set()
+        # The fixture makes threading.Thread run inline (`_Inline`); this holder must not.
+        _thread.start_new_thread(hold, ())
+        try:
+            assert holding.wait(10)
+            r, html = _post(networks, f"/v2/netbox/job/{job}/confirm")
+        finally:
+            release.set()
+            done.wait(10)
+        assert r.status_code == 409, html
+        assert "list import by someone@example.com is writing Branch" in html
+        assert len(_held("Branch")) == 3
+
+    def test_nothing_recorded_offers_nothing_to_confirm(self, networks, nb, tracked):
+        from modules import netbox_guard as guard
+        guard.forget_created("Branch")
+        _job_id, card = _forget_card(networks)
+        assert ("Mercury's record holds nothing it created in NetBox for Branch: there is "
+                "nothing to forget.") in card
+        assert "Nothing to confirm: Mercury's record holds nothing for Branch." in card
+        assert '<span class="op-idle">Stop tracking</span>' not in card

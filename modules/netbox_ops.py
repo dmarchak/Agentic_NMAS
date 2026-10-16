@@ -8,7 +8,9 @@ checks the master switch (a person may turn it on WITH this confirm, `permit_wri
 on only after the token and the recomputed plan both pass, C330), consumes the token, recomputes
 the plan and refuses if it moved. An import then runs on a thread (`start_import`), reporting
 under its progress id; a removal runs in the request (`remove`). Every write carries the
-verified person and the authority it stood on.
+verified person and the authority it stood on. Stop tracking (`forget`, C954) is previewed and
+confirmed the same way, bound to a hash of Mercury's created record for the network; it writes
+that record, never NetBox, so the master switch is not one of its gates.
 """
 
 import logging
@@ -20,7 +22,7 @@ log = logging.getLogger(__name__)
 #: Pseudo-list name for the all-lists import, so a token issued for it cannot be replayed
 #: against a single named list.
 ALL_LISTS = "__all_lists__"
-OPERATIONS = ("import", "import_all", "remove")
+OPERATIONS = ("import", "import_all", "remove", "forget")
 
 
 class Refused(Exception):
@@ -79,14 +81,20 @@ def authorization_for(operation: str, list_name: str, plan: dict) -> dict:
             "expires_in": issued["expires_in"], "plan_hash": plan_hash}
 
 
-def authorize(data: dict, operation: str, list_name: str, recompute, actor: str) -> None:
+def authorize(data: dict, operation: str, list_name: str, recompute, actor: str,
+              switch: bool = True, moved=None) -> None:
     """Check the master switch, consume the token, re-verify the plan, and only then turn the
-    switch on if the person permitted it. Raises `Refused`."""
-    from modules.netbox_authz import consume_token, verify_plan_unchanged
+    switch on if the person permitted it. Raises `Refused`.
+
+    *switch* False: the operation writes nothing to NetBox (Stop tracking, C954), so the master
+    switch is neither checked nor turned on; the token and the recomputed plan still are.
+    *moved(approved_hash, current_hash, current_plan)* words a moved plan's refusal, naming
+    both operands."""
+    from modules.netbox_authz import compute_plan_hash, consume_token, verify_plan_unchanged
     from modules.netbox_guard import writes_allowed
 
-    permit = bool(data.get("permit_writes")) and not writes_allowed()
-    if not writes_allowed() and not permit:
+    permit = switch and bool(data.get("permit_writes")) and not writes_allowed()
+    if switch and not writes_allowed() and not permit:
         raise Refused({
             "ok": False, "blocked": True,
             "error": "NetBox writes are off for every network (Writes allowed, on "
@@ -109,6 +117,8 @@ def authorize(data: dict, operation: str, list_name: str, recompute, actor: str)
     if not unchanged:
         log.warning("netbox_ops: plan hash mismatch for %s on '%s' — aborted", operation,
                     list_name)
+        if moved is not None:
+            err = moved(approved_hash, compute_plan_hash(current_plan), current_plan)
         raise Refused({"ok": False, "stale": True, "error": err}, 409)
     if permit:
         from modules.settings_schema import write_settings
@@ -125,6 +135,30 @@ def _removal_plan(result: dict) -> dict:
                          "id": o.get("id")} for o in result.get("deleted", [])]}
 
 
+def forget_plan(list_name: str) -> dict:
+    """Stop tracking's plan (C954): ``{"forgets": [{"endpoint", "id", "name"}, ...]}``, every
+    object Mercury's created record holds for *list_name*, read from that record alone (NetBox
+    is not asked: nothing is sent to it). Raises `Refused` when the record cannot be read,
+    which is not "it holds nothing"."""
+    from modules.netbox_guard import recorded_objects
+
+    held, reason = recorded_objects(list_name)
+    if reason:
+        raise Refused({"ok": False, "error": f"{reason}: nothing can be forgotten until it "
+                                             "can be read"}, 500)
+    return {"forgets": sorted(({"endpoint": ep, "id": oid, "name": name or ""}
+                               for ep, oid, name in held),
+                              key=lambda o: (o["endpoint"], str(o["id"])))}
+
+
+def _forget_moved(list_name: str):
+    def words(approved: str, now: str, plan: dict) -> str:
+        return (f"Mercury's record of what it created for {list_name} changed since the "
+                f"preview: the preview's entries hashed {approved[:12]}, the record's "
+                f"{len(plan.get('forgets') or [])} entries now hash {now[:12]}: preview again")
+    return words
+
+
 def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "") -> dict:
     """The preview's facts: ``{"ok", "list", "device_count"?, "plan", ...authorization}``, the
     raw dry run kept here (the caller masks what it draws). Raises `Refused`."""
@@ -134,6 +168,13 @@ def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "") -
 
     if operation not in OPERATIONS:
         raise Refused({"ok": False, "error": f"no operation {operation!r}"}, 404)
+    if operation == "forget":
+        # Reads Mercury's own record only: NetBox is not asked, so it need not be configured.
+        if not list_name:
+            raise Refused({"ok": False, "error": "list_name is required"}, 400)
+        plan = forget_plan(list_name)
+        return {"ok": True, "list": list_name, "forgets": plan["forgets"],
+                **authorization_for("forget", list_name, plan)}
     if not configured():
         raise Refused({"ok": False, "error": "NetBox is not configured — set URL and API token "
                        "first."}, 400)
@@ -269,16 +310,19 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
     return {"ok": True, "status": "started", "list": name, "device_count": len(devices)}
 
 
-def remove(list_name: str, data: dict, actor: str, where: str = "the NetBox tab") -> dict:
+def remove(list_name: str, data: dict, actor: str, where: str = "the NetBox tab",
+           only=None) -> dict:
     """Confirm and run a removal of what Mercury created and recorded for *list_name*, in the
     request. Returns the sync's result; raises `Refused`. `data["forget_only"]` drops Mercury's
-    record of them instead, which deletes nothing and needs neither the switch nor a token."""
+    record of them instead, which deletes nothing and needs neither the switch nor a token
+    (today's Just stop tracking); v2's Stop tracking confirms by hash first (`forget`) and
+    forgets exactly the confirmed entries (*only*)."""
     from modules.netbox_client import remove_list_from_netbox
 
     if not list_name:
         raise Refused({"ok": False, "error": "list_name is required"}, 400)
     if data.get("forget_only"):
-        return remove_list_from_netbox(list_name, forget_only=True, actor=actor)
+        return remove_list_from_netbox(list_name, forget_only=True, actor=actor, only=only)
     authorize(data, "remove", list_name, actor=actor,
               recompute=lambda: _removal_plan(remove_list_from_netbox(list_name, dry_run=True,
                                                                       actor=actor)))
@@ -289,3 +333,33 @@ def remove(list_name: str, data: dict, actor: str, where: str = "the NetBox tab"
     except Exception as exc:                          # noqa: BLE001
         log.exception("netbox_ops: removal failed for '%s'", list_name)
         return {"ok": False, "error": str(exc)}
+
+
+def forget(list_name: str, data: dict, actor: str) -> dict:
+    """Confirm and run v2's Stop tracking (C954): Mercury forgets the objects it created for
+    *list_name*, deleting nothing in NetBox. The confirm is bound to a hash of the record's
+    entries the preview read (`forget_plan`): the token is consumed, the record read again and
+    hashed, and a record that moved is refused, naming both hashes. The master switch is not a
+    gate: nothing is sent to NetBox. One NetBox writer per list holds from the check to the
+    forget, so an import cannot record between them. The forgetting itself is `remove`'s
+    `forget_only`, today's Just stop tracking, given exactly the confirmed entries. Returns its
+    result; raises `Refused`."""
+    from modules import netbox_guard as nbg
+
+    if not list_name:
+        raise Refused({"ok": False, "error": "list_name is required"}, 400)
+    read = {}
+
+    def recompute():
+        read["plan"] = forget_plan(list_name)
+        return read["plan"]
+    try:
+        with nbg.list_writer(list_name, "stop tracking", actor):
+            authorize(data, "forget", list_name, recompute, actor, switch=False,
+                      moved=_forget_moved(list_name))
+            only = [(o["endpoint"], o["id"]) for o in read["plan"]["forgets"]]
+            return remove(list_name, {"forget_only": True}, actor, only=only)
+    except nbg.NetBoxBusy as exc:
+        raise Refused({"ok": False, "busy": True, "error": (
+            f"Not forgotten: {exc}. Mercury's record was not changed; confirm again once it "
+            "finishes")}, 409) from None

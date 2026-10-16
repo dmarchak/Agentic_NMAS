@@ -9,7 +9,8 @@ Importing each network into NetBox, and removing what {{product}} put there: the
   object it would create or change, and confirming is one-shot: it is refused if NetBox
   changed since the preview.
 - **Remove** deletes only what {{product}} created (tagged AND in {{product}}'s own record), and names
-  everything a deletion would take with it.
+  everything a deletion would take with it. **Stop tracking** instead deletes nothing: {{product}}
+  forgets what it created, and NetBox keeps it.
 - **Writes are off unless switched on.** A confirm here can turn them on, with your permission,
   and they come on only once its token and plan both pass; they are turned off on
   Settings › Installation's NetBox card. Every write records who and on what basis.
@@ -32,11 +33,25 @@ its apply).
   what it is doing, and fills in with the preview when it is ready (every object to create or
   change, what is not done, and the checks at your confirm).
 - **Remove from NetBox…** does the same for a removal: every object it would delete, and what
-  each deletion takes with it. Stopping tracking instead (forgetting what {{product}} created,
-  deleting nothing) is not on v2 yet, and the preview says so.
+  each deletion takes with it. Its card also offers **Stop tracking instead…** (below).
 - **Import every network…** previews one import of them all.
 
 Confirm with **Import** or **Remove**: the plan is recomputed and compared, the one-shot
 confirmation is used, and only then are writes turned on if you asked for that. An import then
 runs on, and its card fills in with each network's result when it ends. See
 [Import into NetBox, or remove](netbox-import).
+
+## Stop tracking {#stop-tracking}
+
+**Stop tracking instead…**, on a Remove card, is for objects that should stay in NetBox but no
+longer be {{product}}'s: it deletes nothing in NetBox. Its own preview names the count and each
+object {{product}} would forget, by type (collapsed under its count when the list is long), and
+says where the data survives. NetBox keeps every object, with its `nmas-managed` tag, and the
+removal record keeps who forgot which entries and when (the network's Removals). It also says
+what cannot be taken back: Remove can never act on these objects again, and a later import only
+updates them. Delete them in NetBox itself if they should go.
+
+Confirm with **Stop tracking**. Nothing is written to NetBox, so no writes switch is drawn. The
+record is read again and compared with the preview's; if it changed (an import recorded
+another object, say), nothing is forgotten and you preview again. See
+[Stop tracking](netbox-import#stop-tracking).

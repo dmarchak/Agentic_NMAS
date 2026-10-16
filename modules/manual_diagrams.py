@@ -368,15 +368,17 @@ def drift_check():
 
 
 def netbox_import():
-    return svg(540, (
+    return svg(600, (
         "Importing into NetBox, and removing. The import builds every object from committed "
         "goldens, never from a live device. Its preview is a dry run against NetBox that writes "
         "nothing and issues a one-time confirmation bound to the plan's hash, valid five "
         "minutes. Confirming re-plans, refuses if NetBox moved, then writes, tagging what it "
         "creates and recording what it created and what it changed. Remove deletes only objects "
         "both tagged and recorded as created by the tool, and names what NetBox would take "
-        "with them."), [
-        lanes(20, 534, left="THE TOOL", right="NETBOX"),
+        "with them. Stop tracking, Remove's other choice, deletes nothing: the tool forgets "
+        "the objects it created, which stay in NetBox, tagged, and Remove can never act on "
+        "them again."), [
+        lanes(20, 594, left="THE TOOL", right="NETBOX"),
         band(20, 134, "Preview · writes nothing"),
         repo(14, 44, 186, 44, "Goldens", "committed, never a device"), num(14, 50, 1),
         _down(107, 90, 108),
@@ -391,13 +393,16 @@ def netbox_import():
         arrow("rec", 202, 270, 248, 274),
         store(14, 268, 186, 34, "Created", "tagged nmas-managed"), num(14, 268, 4),
         store(14, 312, 186, 34, "Modified", "with what it was before"), num(14, 312, 5),
-        band(376, 150, "Remove"),
+        band(376, 210, "Remove"),
         doc("box", 14, 400, 186, 40, "Preview", "tagged AND recorded only"), num(14, 400, 6),
         t(14, 462, "Each delete names what NetBox takes", "sm"),
         t(14, 475, "with it; a person's objects are skipped.", "sm"),
         svc(250, 420, 130, 36, "NetBox", "deletes"),
         arrow("rec", 202, 438, 248, 438),
-        t(14, 506, "No device is contacted by either.", "sm"),
+        store(14, 492, 186, 34, "Or Stop tracking", "the tool forgets, by hash"), num(14, 492, 7),
+        t(214, 506, "NetBox keeps every object,", "sm"),
+        t(214, 519, "tagged; nothing is sent.", "sm"),
+        t(14, 566, "No device is contacted by any of them.", "sm"),
     ])
 
 

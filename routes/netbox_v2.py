@@ -7,6 +7,8 @@ a preview job (`modules/netbox_jobs.py`, the real dry run on a thread), drawn in
 when the job announces ``netbox``; the confirm is bound to that preview's one-shot token, gated
 ``approve`` as today's, and may turn NetBox writes on with it (C619: v2 could turn them off and not
 on). The work is `modules/netbox_ops.py`'s, the one code path today's NetBox tab calls too.
+A Remove card also offers Stop tracking instead… (C954): its own preview job and the same
+confirm, deleting nothing in NetBox and having Mercury forget what it created for the network.
 """
 
 import logging
@@ -74,7 +76,8 @@ def _card(job: dict, code: int = 200, **ctx):
 
     progress = op_progress.get(job.get("id", "")) if job.get("id") else None
     return _strict(render_template("v2/_netbox_job.html", job=job,
-                                   run=netbox_jobs.run_card(job, progress), **ctx), code)
+                                   run=netbox_jobs.run_card(job, progress),
+                                   forget_control=netbox_jobs.FORGET_CONTROL, **ctx), code)
 
 
 @bp.route("", methods=["GET"])
@@ -86,15 +89,16 @@ def page():
 
 @bp.route("/preview", methods=["POST"])
 def preview():
-    """Start a preview job (import, import every network, or remove) and draw its card."""
+    """Start a preview job (import, import every network, remove, or forget: the Remove card's
+    Stop tracking instead…, C954) and draw its card."""
     from modules import identity, netbox_jobs
     from modules.preview_confirm import confirm_part
 
     operation = (request.form.get("operation") or "").strip()
     list_name = (request.form.get("list") or "").strip()
-    if operation not in ("import", "import_all", "remove"):
+    if operation not in ("import", "import_all", "remove", "forget"):
         return _card({"state": "refused", "error": f"no operation {operation!r}: import, "
-                      "import_all or remove"}, 404)
+                      "import_all, remove or forget"}, 404)
     if operation != "import_all":
         from modules.nsot import listref
         if not listref.exists(list_name):
@@ -115,8 +119,9 @@ def job(job_id):
 
 @bp.route("/job/<job_id>/confirm", methods=["POST"])
 def confirm(job_id):
-    """Confirm the previewed job: the import starts, or the removal runs; writes may come on
-    with it when the person permits them."""
+    """Confirm the previewed job: the import starts, the removal runs, or Mercury stops
+    tracking what it created (C954, which writes nothing to NetBox); writes may come on with an
+    import or removal when the person permits them."""
     from modules import identity, netbox_jobs, netbox_ops
 
     data = {"permit_writes": request.form.get("permit_writes") == "on"}
@@ -124,6 +129,8 @@ def confirm(job_id):
     try:
         if current.get("operation") == "remove":
             done = netbox_jobs.remove(job_id, data, identity.request_actor())
+        elif current.get("operation") == "forget":
+            done = netbox_jobs.forget(job_id, data, identity.request_actor())
         else:
             done = netbox_jobs.start_import(job_id, data, identity.request_actor())
     except netbox_ops.Refused as exc:

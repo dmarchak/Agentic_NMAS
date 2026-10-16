@@ -158,7 +158,10 @@ SIGNED_OFF = {
                                   "APPROVAL_LOG.md). The connection and the master switch; every "
                                   "network with its devices, last import and removals; Import "
                                   "into NetBox…, Remove from NetBox… and Import every network…, "
-                                  "each a preview job and a confirm that may turn writes on"),
+                                  "each a preview job and a confirm that may turn writes on. "
+                                  "C954 (2026-10-16, its own board, NetboxStopTracking, counted "
+                                  "as signed off the same way): the Remove card's Stop tracking "
+                                  "instead…, its preview, confirm, result and refusal"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),

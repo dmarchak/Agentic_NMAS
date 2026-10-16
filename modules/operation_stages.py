@@ -290,6 +290,8 @@ STAGES = {
         "n/a: a deletion; recovery is the tested backup (P.2)",
         "modules.netbox_guard.record_removal"),
     # v2's NetBox page (cutover blocker 2): the same core as today's routes, its preview a job.
+    # Its Stop tracking (C954) is bound by the same token (`netbox_ops.forget` calls
+    # `authorize`, the master switch aside), and recorded by `netbox_guard.record_removal`.
     "netbox_v2.confirm": Stages(
         "netbox_v2.preview", "token in modules.netbox_ops.authorize",
         "MISSING: NetBox is not read back after an import; write failures are counted (C8)",

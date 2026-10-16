@@ -3665,7 +3665,7 @@ def remove_device_from_netbox(list_name: str, hostname: str,
 
 def remove_list_from_netbox(list_name: str, dry_run: bool = False,
                             forget_only: bool = False, actor: str = "",
-                            authority: str = "") -> dict:
+                            authority: str = "", only=None) -> dict:
     """Remove a device list's objects from NetBox — NMAS-created objects only.
 
     An object is deleted only when **both** are true:
@@ -3686,14 +3686,28 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
         dry_run: report what would be deleted without deleting anything.
         forget_only: delete nothing; just drop NMAS's record of the list, so
             NetBox keeps every object and NMAS stops claiming ownership.
+        only: with *forget_only*, the ``[(endpoint, id), ...]`` to forget and
+            nothing else (v2's Stop tracking, bound to its preview: C954).
     """
     from modules import netbox_guard as _guard
 
     if forget_only:
-        _guard.forget_created(list_name)
-        _clear_sync_status(list_name)
-        log.info("netbox: forgot created-object record for list '%s' (nothing deleted)", list_name)
-        return {"ok": True, "list": list_name, "forget_only": True,
+        # It writes Mercury's record, not NetBox: no master switch, no authority. It is still
+        # one writer per list (R21), so an import running for the list is not cut across.
+        try:
+            with _guard.list_writer(list_name, "stop tracking", actor):
+                forgotten = _guard.forget_created(list_name, entries=only)
+                _clear_sync_status(list_name)
+        except _guard.NetBoxBusy as exc:
+            return {"ok": False, "busy": True, "forget_only": True, "list": list_name,
+                    "error": f"Not forgotten: {exc}. Mercury's record was not changed."}
+        except _guard.CreatedRecordUnreadable as exc:
+            return {"ok": False, "forget_only": True, "list": list_name,
+                    "error": f"Mercury's created-object record could not be read, so nothing "
+                             f"was forgotten: {exc}"}
+        log.info("netbox: forgot %d created-object record entr(ies) for list '%s' (nothing "
+                 "deleted)", len(forgotten), list_name)
+        return {"ok": True, "list": list_name, "forget_only": True, "forgotten": forgotten,
                 "devices": 0, "deleted_devices": 0,
                 "message": "Mercury no longer tracks these objects. Nothing was deleted from NetBox."}
 

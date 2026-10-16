@@ -344,5 +344,5 @@ def _preview(operation: str, d: dict) -> dict:
     confirm = confirm_part(request, "approve")
     if operation == "remove":
         # Today's dialog draws "Just stop tracking" (forget_only) beside Confirm (C935).
-        return netbox_removal_preview(d, confirm, forget_offered=True)
+        return netbox_removal_preview(d, confirm, forget_offered="Just stop tracking")
     return netbox_import_preview(d, confirm, all_lists=operation == "import_all")

@@ -80,7 +80,7 @@ Four records, each answering one question, kept apart so that none can be read a
 - **Adopted** (`netbox_adopted.json`): objects that already existed when a device was
   [adopted](adopt). Written by adoption, never by the import, and never removable.
 - **Removed** (`netbox_removals.jsonl`): every Remove, what it deleted, left alone and could
-  not delete, and who.
+  not delete, and who; and every [Stop tracking](#stop-tracking), with each entry it forgot.
 
 ## Remove: preview {#remove-preview}
 
@@ -111,14 +111,53 @@ is already gone, is dropped from the created record; a delete NetBox refuses is 
 reason and stays recorded. The removal is written to the removal record and drawn from it, so
 it can be read again from the NetBox tab.
 
-**Stopping tracking is not on v2 yet.** It would delete nothing: the tool would forget what it
-created for the network, so NetBox keeps every object, with its `nmas-managed` tag but no
-longer recorded, and Remove could never act on them again. The Remove card's preview says so;
-its choices are **Remove**, or **Close** to leave NetBox as it is.
+The Remove card has a second choice, **Stop tracking instead…**, which deletes nothing: see
+the next section. Its third is **Close**, which leaves NetBox and the tool's records as they
+are.
+
+## Stop tracking {#stop-tracking}
+
+Stop tracking deletes nothing in NetBox. The tool forgets the objects it created for the
+network: they stay in NetBox with their `nmas-managed` tag, but no longer in the created
+record, and Remove can never act on them again, because removal needs both. It writes the
+tool's own record, never NetBox, so the master switch and a NetBox authority are not among its
+gates. The confirmation, the re-read and the verified person are.
+
+**Preview.** Pressing **Stop tracking instead…** on a Remove card starts its own preview.
+1. **Read what the tool created for this network.** Read: the created record
+   (`netbox_created_ids.json`), this network's entries only. Sent: nothing; NetBox is not asked.
+   Recorded: nothing. A record that cannot be read refuses the preview, which is not the same
+   as "it holds nothing". If it holds nothing, the preview says there is nothing to forget and
+   offers no confirm.
+2. **Bind a one-time confirmation** to a hash of exactly those entries, valid for 5 minutes and
+   usable once.
+3. **Draw the preview.** The count, and the counts by type. Each object by type, id and name,
+   collapsed under its count when there are more than 20. Where the data survives (NetBox keeps
+   every object, and the removal record keeps each entry forgotten). That nothing the tool can
+   do afterwards takes it back: a later import finds these objects in NetBox and updates them,
+   and an update never records an object as created. That the network's last import result is
+   cleared from this page.
+
+**Confirm and apply.** **Stop tracking** confirms as the verified person; a service or an
+unverified caller is refused before anything is read.
+1. **Hold the network.** One NetBox writer per network: an import or removal running for it
+   refuses this, naming who, and nothing changes.
+2. **The confirmation is consumed**, as for the import.
+3. **The record is read again** and hashed. If it changed since the preview (an import recorded
+   another object, say), the refusal names both hashes and the count now, and nothing is
+   forgotten: preview again.
+4. **Forget exactly the confirmed entries.** Recorded: the created record drops those entries
+   and no others, so an entry added since the preview stays. The network's last import result
+   is cleared. This is the same code as today's Just stop tracking, given the confirmed set.
+5. **The result is recorded** in the removal record as a stop-tracking removal, with who, when
+   and each entry forgotten, and drawn from it: on the card, and later under the network's
+   Removals.
 
 ## What the import and Remove do not do {#not}
 
 - The import deletes nothing. Remove is its own operation.
+- Stop tracking deletes nothing and sends nothing to NetBox; it changes only the tool's
+  created record, and cannot be taken back from the tool.
 - Neither reaches a device: everything is built from committed goldens.
 - Nothing the tool only updated or adopted is ever deleted: Remove needs an object the tool
   created and tagged.

@@ -9,7 +9,9 @@ A preview's answer is the preview component's own dict (`preview_confirm.netbox_
 `netbox_removal_preview`), MASKED (`outbound.mask_payload`) after the token is bound to the
 truthful plan, with the token beside it: a capability this server issued for the confirm to hand
 back, never a stored secret. A removal runs in its request (it deletes only what Mercury created
-and recorded), and its result is the recorded removal's own.
+and recorded), and its result is the recorded removal's own. So does Stop tracking (`forget`,
+C954), the Remove card's second choice: previewed from Mercury's created record alone, confirmed
+by its hash, deleting nothing in NetBox, recorded as a forget-only removal.
 """
 
 import json
@@ -22,6 +24,10 @@ import uuid
 log = logging.getLogger(__name__)
 
 STATES = ("previewing", "previewed", "refused", "importing", "imported", "failed")
+
+#: The Remove card's second choice (C954): its words, as the card draws them and the removal
+#: preview names them.
+FORGET_CONTROL = "Stop tracking instead…"
 
 #: The phases `netbox_client` reports through `op_progress` while it reads and plans or writes,
 #: in order: (its phase words, the step's key, the step's words). THE stepper's steps (the one
@@ -48,6 +54,9 @@ def run_card(job: dict, progress) -> dict:
     if op == "remove":
         # The removal's dry run reads what Mercury created and recorded; it names no phase.
         steps, current = (("read", "What it created, read"), ("preview", "The preview")), 0
+    elif op == "forget":
+        # Stop tracking reads Mercury's created record alone (C954); it names no phase.
+        steps, current = (("read", "Mercury's record, read"), ("preview", "The preview")), 0
     elif state == "previewing":
         steps = tuple((k, w + (" read and planned" if k == "devices" else ""))
                       for _ph, k, w in PHASES) + (("preview", "The preview"),)
@@ -113,12 +122,15 @@ def start_preview(operation: str, list_name: str, actor: str, confirm: dict) -> 
     """Start a preview job; its id. *confirm* is who would confirm, read in the request."""
     from modules import netbox_ops, op_progress
     from modules.outbound import mask_payload
-    from modules.preview_confirm import netbox_import_preview, netbox_removal_preview
+    from modules.preview_confirm import (netbox_forget_preview, netbox_import_preview,
+                                         netbox_removal_preview)
 
     job_id = new_id()
     label = "every network" if operation == "import_all" else list_name
-    op_progress.start(job_id, "previewed for " + ("removal" if operation == "remove" else
-                                                  "import"), f"NetBox ({label})", actor=actor)
+    op_progress.start(job_id, "previewed for " + {"remove": "removal",
+                                                  "forget": "stopping tracking"}.get(
+                                                      operation, "import"),
+                      f"NetBox ({label})", actor=actor)
     op_progress.on_phase(job_id, _announce)           # THE stepper redraws as the phase moves
     _write(job_id, {"state": "previewing", "operation": operation, "list": list_name,
                     "actor": actor})
@@ -127,7 +139,10 @@ def start_preview(operation: str, list_name: str, actor: str, confirm: dict) -> 
         try:
             d = netbox_ops.dry_run(operation, list_name, actor, progress_id=job_id)
             if operation == "remove":
-                pv = netbox_removal_preview(d, confirm)
+                # v2's Remove card offers Stop tracking beside it (C954).
+                pv = netbox_removal_preview(d, confirm, forget_offered=FORGET_CONTROL)
+            elif operation == "forget":
+                pv = netbox_forget_preview(d, confirm)
             else:
                 pv = mask_payload(netbox_import_preview(d, confirm,
                                                         all_lists=operation == "import_all"))
@@ -202,6 +217,27 @@ def remove(job_id: str, data: dict, actor: str) -> dict:
     result = netbox_ops.remove(job["list"], dict(data, token=job.get("token", "")), actor,
                                where="v2's NetBox page")
     status = netbox_guard.record_removal(job["list"], actor, result)
+    drawn = netbox_removal_result(status["row"], status)
+    _write(job_id, dict(job, state="imported" if result.get("ok") else "failed", token="",
+                        removal=drawn))
+    _announce()
+    return read(job_id)
+
+
+def forget(job_id: str, data: dict, actor: str) -> dict:
+    """Confirm the previewed Stop tracking *job_id* (C954) and run it in the request
+    (`netbox_ops.forget`: bound to the preview's hash, deleting nothing in NetBox); its result
+    recorded in the removal record as forget-only, with each entry forgotten, and drawn from
+    that row. Raises `netbox_ops.Refused`."""
+    from modules import netbox_guard, netbox_ops
+    from modules.preview_confirm import netbox_removal_result
+
+    job = read(job_id)
+    if job.get("state") != "previewed" or job.get("operation") != "forget":
+        raise netbox_ops.Refused({"ok": False, "error": "that preview is not one ready to "
+                                  "confirm: preview again"}, 409)
+    result = netbox_ops.forget(job["list"], dict(data, token=job.get("token", "")), actor)
+    status = netbox_guard.record_removal(job["list"], actor, result, forget_only=True)
     drawn = netbox_removal_result(status["row"], status)
     _write(job_id, dict(job, state="imported" if result.get("ok") else "failed", token="",
                         removal=drawn))

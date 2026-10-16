@@ -8,7 +8,13 @@
 <p><strong>{{ pv.what.summary }}</strong></p>
 {%- for t in pv.targets %}
 <h3 class="set-label">{{ (pv.titles or {}).get('program', program_title) }}</h3>
-{%- if t.program.lines %}
+{%- if t.program.lines | length > 20 %}
+{#- A long list collapses (CLAUDE.md, large fleets; C954): its count leads, each line one
+    level down. -#}
+<details class="set-details" data-keep="preview-program-{{ pv.action }}-{{ t.name }}"><summary class="small">{{ t.program.lines | length }} {{ t.program.unit or 'line(s)' }}: show each</summary>
+<ol class="set-steps mono small">{% for l in t.program.lines %}<li>{{ l }}</li>{% endfor %}</ol>
+</details>
+{%- elif t.program.lines %}
 <ol class="set-steps mono small">{% for l in t.program.lines %}<li>{{ l }}</li>{% endfor %}</ol>
 {%- else %}<p class="muted small">{{ t.program.none }}</p>{% endif %}
 {%- for n in t.program.notes or [] %}
