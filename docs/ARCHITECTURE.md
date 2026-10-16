@@ -716,7 +716,12 @@ and others have left since too.
   platform, intent state AS OF ITS LAST MEASUREMENT and when that was (the golden's last
   change on hover), pending onboardings as rows, searched and filtered, from a FIXED number of
   reads (one bounded `git log` over `golden/`, one over the commits carrying `Intent-Match:`,
-  one `ls-tree`; never per device). **A measurement is any save that read the device**
+  one `ls-tree`, and since C532 one bounded `git log` over intent, the profile and the
+  template library with one `rev-list` to order them; never per device). **One owner of the
+  intent state, `device_list.intent_state()` (C532)**: the Devices row and the device page's
+  Overview both draw it, the page beside its live Intent check; a commit after the
+  measurement to what it was judged against makes it "intent changed since measured", never
+  the stale trailer. **A measurement is any save that read the device**
   (2026-10-02, the operator): a Save All that found it unchanged counts, so every save names
   each device it read in `Devices-Measured:`, and `device_list.last_measured()` is the one
   reader (the Overview's Last measured uses it too, for its one device: `only=`, C855); the selection

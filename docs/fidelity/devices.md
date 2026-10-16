@@ -26,7 +26,16 @@ Shots: board A at 1440 and 1280, the first board at 1440, its phone board at 390
 (`devices-selected-page-*`), each phone shot also as its first screen.
 Compared 2026-10-16.
 Templates compared: templates/v2/devices.html, templates/v2/_devices.html
-Templates sha256: `52c3023957423afdd19ee219d9c5502646409a0659677e227e1820e56d7e4e21`
+Templates sha256: `a16bd2d3969b27e45413baaef7d7654277465b46ca222c74ba637f3c02b24aaf`
+
+Compared again 2026-10-16 (C532) after `_devices.html` drew the intent state from the one
+function the device page draws too (`device_list.intent_state`): a new chip, "intent changed
+since measured" (info colour; what moved, when, and what the measurement read on its hover), where a commit to the device's
+intent, the monitoring profile or the template library follows its last measurement; the list
+redrawn on intent and template commits as well; the badge colours from `_macros.html`'s one
+table. Shots `devices-page-1440`, `-390-first`: r2 in Save's lab reads "intent changed since
+measured by onboarding, golden changed" (its intent was committed after its onboarding golden).
+The Intent region rewritten; no other region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan, named).
@@ -48,7 +57,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Select every device shown | a checkbox in the table's head | not drawn: the head's first cell is the screen reader's "Select"; agreed as request R1 on 2026-10-16 (tri-state, "Select the <n> shown") | **later** C902 (the select-all checkbox, an agreed request, after cutover) |
 | Columns | tick, Device (name · role), Status, Address, Platform, Intent, Startup, Last measured | the same eight, in the same order; at the operator's half width (capture 12) the table runs past the card and Last measured's header reads "Last" | **same** |
 | Status | answering, not answering "since 09:41" | the same chips, "since 18 h ago" when the reader knows it; "not probed yet" for a device the reachability reader has not read | **same** |
-| Intent | a chip: at intent, departs, unknown, no intent | the chip, and after it which measurement it was read at ("by Save All, no change, which earned a baseline" in capture 29; "by a save, golden changed" here), its reason on hover | **deviation** (log: Devices: the intent state says which measurement) |
+| Intent | a chip: at intent, departs, unknown, no intent | the chip, and after it which measurement it was read at ("by Save All, no change, which earned a baseline" in capture 29; "by onboarding, golden changed" here), its reason on hover; since C532 a fifth chip, "intent changed since measured", where what the measurement judged against has moved since (r2 here) | **deviation** (log: Devices: the intent state says which measurement), and since C532 (log: Devices: a fifth intent chip, intent changed since measured) |
 | Startup | saved, not saved (its detail on hover), unknown | "accounts saved", "accounts not saved" (the check's detail on hover), "not checked", each with the reading's age | **deviation** (log: Devices: the Startup column names what it compares) |
 | Last measured | "12 min ago" | the age, the golden's last change and the measurement's commit on hover | **same** |
 | Pending onboarding | r7 with its chip, no tick, "not reached yet" | no tick for a pending row (compared by the template and tests/test_devices_v2.py's TestAPendingDevicesPage; the lab has none) | **same** |

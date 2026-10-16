@@ -25,7 +25,9 @@ still true against intent, and what to do next. **Persist and Rotate run here to
 ## Overview {#overview}
 
 What the tool knows about the device, each fact with where it came from: its last golden, its
-intent state, whether its golden matches its intent, the monitoring profile it inherits, and
+intent state (the state the Devices list shows for it, from its last measurement, or "intent
+changed since measured" when its intent, the profile or the template library has moved since),
+whether its golden matches its intent now (the Intent check), the monitoring profile it inherits, and
 its checks (reachability, alerts, and its credential: how long since Mercury last rotated it,
 or "never rotated by Mercury", and when its profile's rotation policy next makes it due; see
 [on a schedule](rotate#scheduled)).

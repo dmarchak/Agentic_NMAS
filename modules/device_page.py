@@ -143,19 +143,19 @@ def records(ref, dev: dict) -> dict:
     # All that found it unchanged confirms the golden and moves only this. The same
     # reader as the Devices list; a golden commit is a measurement too. This device's alone
     # (C855: it read every device's to draw one).
-    measured, err = device_list.last_measured(ref.repo_dir, only=host or "")
-    m = measured.get(host)
-    g_at = _epoch(golden.get("at") or "") if golden else 0
-    if golden and (m is None or g_at > m["at"]):
-        m = {"at": g_at, "sha": golden["sha"], "how": device_list.SOURCE_WORDS.get(
-            golden.get("source") or "", golden.get("source") or "a save"),
-             "changed": True, "baseline": False}
+    # ITS INTENT STATE is the Devices list's, by the one function (C532): the list drew a
+    # stale departure while this page's live comparison said it matched. The Intent check
+    # below is the live comparison; this is the recorded one, and the page says which.
+    got = device_list.reads(ref.repo_dir, only=host or "")
+    m = device_list.newest_measurement(host, got)
+    err = got["error"]
     return {"intent": _last_commit(ref.repo_dir, f"host_vars/{host}.yml"),
             "profile": _last_commit(ref.repo_dir, _profile.PROFILE_REL),
             "golden": golden,
             "measured": ({"iso": _iso(m["at"]), "sha": m["sha"],
                           "words": device_list.measured_words(m)} if m and not err else None),
-            "measured_error": err}
+            "measured_error": err,
+            "intent_state": device_list.intent_state(host, got)}
 
 
 _CHASSIS = re.compile(r"^! Chassis type: *(\S.*?)\s*$", re.M)
@@ -902,14 +902,6 @@ def fleet_panel_data(list_name: str, uid: str, panel_id: int, range_text: str,
 
 #: How many of each record the timeline reads; a timeline cut says so.
 HISTORY_LIMIT = 30
-
-
-def _epoch(iso: str) -> float:
-    from datetime import datetime
-    try:
-        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def history(ref, dev: dict, limit: int = None) -> dict:

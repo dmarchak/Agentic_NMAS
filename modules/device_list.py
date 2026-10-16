@@ -14,16 +14,31 @@ number of reads, whatever its size:
   when each device was last MEASURED, by which workflow, and its state against
   committed intent then (`last_measured()`, which the device page reads too, for its
   one device: `only=`, C855);
-- ONE `git ls-tree` over `host_vars/`: which devices have committed intent.
+- ONE `git ls-tree` over `host_vars/`: which devices have committed intent;
+- ONE bounded `git log` over what a device's intent is rendered from (its
+  `host_vars/`, the network's monitoring profile, the template library) since the
+  oldest measurement, and ONE `git rev-list` over the same window to order those
+  commits against the measurements (C532).
 
 **A measurement is any read the tool compared with the golden and recorded**
 (2026-10-02, the operator: the list read only golden commits, so a Save All
 that found a device unchanged, the best evidence there is, did not count). The
-intent state is the newest measurement's, and says which and when; an intent
-commit since then is the device page's live comparison (its Overview), never
-this list's claim. A changing commit before 2026-10-02 named only the devices
-whose golden moved (`Devices-Measured:` names every device read since), so an
-older unchanged read in a changing Save All is not recoverable.
+intent state is the newest measurement's, and says which and when. A changing
+commit before 2026-10-02 named only the devices whose golden moved
+(`Devices-Measured:` names every device read since), so an older unchanged read in
+a changing Save All is not recoverable.
+
+**One owner of a device's intent state (C532): `intent_state()`**, which the list
+and the device page both draw. The list said s1 "departs (+1)" from its last
+measurement's `Intent-Match:` trailer while s1's page, comparing live, said it
+matched: an intent commit after the measurement had made the trailer stale, and
+the list drew it as current through every refresh. So the recorded state is drawn
+only while nothing it was judged against has moved since; once the device's
+committed intent, the monitoring profile or the template library has a commit
+after its measurement, the state is **intent changed since measured**, naming
+what moved and when, never the stale departure or the stale "at intent" (the
+wrong state that looks right). The device page draws the same state beside its
+live comparison and says which is which.
 """
 
 import logging
@@ -36,33 +51,52 @@ log = logging.getLogger(__name__)
 #: this many golden commits ago says so rather than guessing.
 LOG_BOUND = 400
 
+#: How many commits the read of what moved a device's intent takes (C532), newest first,
+#: since the oldest measurement it is compared with. Those are intent, profile and template
+#: commits only; a window that fills is truncated, and a device measured before its oldest
+#: commit says its state is not established rather than guessing.
+INTENT_BOUND = 400
+
+#: How many commits, newest first since the oldest measurement, are read to ORDER an intent
+#: commit against a measurement (C532). Two commits in one second have one commit time, and
+#: an intent edit and the capture after it often do; their place in history decides. Beyond
+#: this window, commit times decide, and a tie there is said as moved (the answer that sends
+#: a person to measure again, never the one that keeps a stale state).
+ORDER_BOUND = 2000
+
 _FIELD, _RECORD = "\x1f", "\x1e"
 
 
-def _golden_history(repo: str) -> tuple:
-    """``({device: {"at", "sha", "intent"}}, error)`` from one bounded `git log` over
-    `golden/`: the commit that last CHANGED each device's golden."""
+def _golden_history(repo: str, only: str = None) -> tuple:
+    """``({device: {"at", "sha", "commit", "source", "intent"}}, error, full)`` from one
+    bounded `git log` over `golden/`: the commit that last CHANGED each device's golden.
+    *full* says the read returned its whole bound (so it may be truncated). *only* answers
+    for one device by the same log and rule, as `last_measured` does (C855)."""
     from modules.nsot import repo as R
 
     fmt = _FIELD.join(["%H", "%ct", "%(trailers:key=Device-Name,valueonly,separator=%x2c)",
                        "%(trailers:key=Devices,valueonly,separator=%x2c)",
-                       "%(trailers:key=Intent-Match,valueonly)"]) + _RECORD
+                       "%(trailers:key=Intent-Match,valueonly)",
+                       "%(trailers:key=Source,valueonly)"]) + _RECORD
     rc, out, err = R.git(repo, "log", f"-n{LOG_BOUND}", f"--format={fmt}", "--", "golden/")
     if rc != 0:
-        return {}, (err or out or "git log failed").strip()
+        return {}, (err or out or "git log failed").strip(), False
+    records = out.split(_RECORD)
     seen = {}
-    for record in out.split(_RECORD):
+    for record in records:
         parts = record.strip("\n").split(_FIELD)
-        if len(parts) < 5:
+        if len(parts) < 6:
             continue
-        sha, ct, names, devices, intent = parts[:5]
-        hosts = [h.strip() for h in (names or devices).split(",") if h.strip()]
+        sha, ct, names, devices, intent, source = parts[:6]
         intent = intent.strip()
-        for host in hosts:
+        for host in _names(names or devices, only):
             if host in seen:
                 continue
-            seen[host] = {"at": int(ct or 0), "sha": sha[:7], "intent": _intent_of(host, intent)}
-    return seen, ""
+            seen[host] = {"at": int(ct or 0), "sha": sha[:7], "commit": sha,
+                          "source": source.strip(), "intent": _intent_of(host, intent)}
+        if only is not None and seen:
+            break                                 # the newest is the one asked for
+    return seen, "", sum(1 for r in records if r.strip("\n")) >= LOG_BOUND
 
 
 #: A save's `Source:` in words, for "measured by ...". Anything else reads as its slug.
@@ -142,7 +176,7 @@ def last_measured(repo: str, bound: int = LOG_BOUND, only: str = None) -> tuple:
             if host in seen:
                 continue
             changed = host in moved
-            seen[host] = {"at": int(ct or 0), "sha": sha[:7], "source": source,
+            seen[host] = {"at": int(ct or 0), "sha": sha[:7], "commit": sha, "source": source,
                           "how": SOURCE_WORDS.get(source, source.replace("_", " ") or "a save"),
                           "changed": changed, "baseline": baseline.strip().startswith("earned"),
                           "intent": _intent_of(host, intent.strip())}
@@ -192,14 +226,189 @@ def _intent_of(host: str, trailer: str) -> dict:
     return {"state": "departs", "words": f"departs ({detail})"}
 
 
-def _with_intent(repo: str) -> tuple:
+def _with_intent(repo: str, only: str = None) -> tuple:
+    """``(devices with committed intent, error)``: one `git ls-tree` over `host_vars/`, or
+    over *only*'s one file (the device page: no line per device of the network)."""
     from modules.nsot import repo as R
 
-    rc, out, err = R.git(repo, "ls-tree", "--name-only", "HEAD", "host_vars/")
+    rc, out, err = R.git(repo, "ls-tree", "--name-only", "HEAD",
+                         "host_vars/" if only is None else f"host_vars/{only}.yml")
     if rc != 0:
         return set(), (err or "git ls-tree failed").strip()
     return {line.rsplit("/", 1)[-1][:-4] for line in out.splitlines()
             if line.endswith(".yml")}, ""
+
+
+def _intent_paths() -> list:
+    """What a device's intent is RENDERED from, as `git log` pathspecs: committed intent
+    (`host_vars/`), the network's monitoring profile every device inherits, and the template
+    library that renders it, less the approvals record (approving a template renders nothing
+    differently). `intent_match` reads exactly these to compare a golden with intent; a
+    secret's VALUE is not in git and is not among them."""
+    from modules.nsot import approval, profile, templates_repo
+
+    return ["host_vars/", profile.PROFILE_REL, templates_repo.TEMPLATES_REL + "/",
+            f":(exclude){approval.APPROVALS_REL}"]
+
+
+def _intent_moves(repo: str, floor: int, only: str = None) -> tuple:
+    """``({"devices": {device: move}, "network": move or None, "reach": at or None}, error)``:
+    the newest commit since *floor* (the oldest measurement asked about) that moved each
+    device's own committed intent, and the newest that moved what every device inherits
+    (the profile or the template library). Each move is ``{"commit", "sha", "at", "what"}``.
+    *reach* is the oldest commit time read when the read filled `INTENT_BOUND` (it may be
+    truncated there), else None. One bounded `git log`, whatever the network's size.
+
+    *only* (the device page) reads the SAME window and answers for that one device by a
+    test on each commit's text, so the page and the list agree even where the window is
+    truncated, with no work per device a commit names (a bulk intent change names them all)."""
+    from modules.nsot import profile, templates_repo
+    from modules.nsot import repo as R
+
+    fmt = _RECORD + _FIELD.join(["%H", "%ct"])
+    rc, out, err = R.git(repo, "log", f"-n{INTENT_BOUND}", f"--since=@{int(floor)}",
+                         f"--format={fmt}", "--name-only", "--", *_intent_paths())
+    if rc != 0:
+        return {"devices": {}, "network": None, "reach": None}, (
+            err or out or "git log failed").strip()
+    # `R.git` strips its output, and `str.strip` counts the separator as space: the first
+    # record's leading one is gone, so empties are dropped rather than the first.
+    records = [r for r in out.split(_RECORD) if r.strip("\n")]
+    reach = None
+    if len(records) >= INTENT_BOUND:
+        reach = int(records[-1].partition("\n")[0].partition(_FIELD)[2] or 0)
+    profile_line, library = f"\n{profile.PROFILE_REL}\n", f"\n{templates_repo.TEMPLATES_REL}/"
+    mine = f"\nhost_vars/{only}.yml\n" if only is not None else ""
+    devices, network = {}, None
+    for record in records:
+        head, _nl, paths = record.strip("\n").partition("\n")
+        sha, _sep, ct = head.partition(_FIELD)
+        at, text = int(ct or 0), f"\n{paths}\n"
+        if network is None and (profile_line in text or library in text):
+            network = {"commit": sha, "sha": sha[:7], "at": at,
+                       "what": ("the network's monitoring profile" if profile_line in text
+                                else "the template library")}
+        if only is None:
+            for path in paths.splitlines():
+                if path.startswith("host_vars/") and path.endswith(".yml"):
+                    host = path[len("host_vars/"):-len(".yml")]
+                    if host not in devices:
+                        devices[host] = _own_move(host, sha, at)
+        elif only and only not in devices and mine in text:
+            devices[only] = _own_move(only, sha, at)
+        if only is not None and network is not None and (only in devices or not only):
+            break                                   # the newest of each is all it needs
+    return {"devices": devices, "network": network, "reach": reach}, ""
+
+
+def _own_move(host: str, sha: str, at: int) -> dict:
+    return {"commit": sha, "sha": sha[:7], "at": at,
+            "what": f"its committed intent (host_vars/{host}.yml)"}
+
+
+def _order(repo: str, floor: int) -> tuple:
+    """``({full sha: place, newest first}, error)``: one `git rev-list` since *floor*, the
+    order commits of one second cannot be told apart by (`ORDER_BOUND`)."""
+    from modules.nsot import repo as R
+
+    rc, out, err = R.git(repo, "rev-list", f"-n{ORDER_BOUND}", f"--since=@{int(floor)}",
+                         "HEAD")
+    if rc != 0:
+        return {}, (err or out or "git rev-list failed").strip()
+    return {sha: i for i, sha in enumerate(out.split())}, ""
+
+
+def reads(repo: str, only: str = None) -> dict:
+    """Everything `intent_state` decides from, for the whole network or for *only* (the
+    device page), in a fixed number of git reads whatever the network's size: the golden
+    history, the measurements, which devices have committed intent, and (when any device has
+    been measured) what moved their intent since, in order."""
+    history, gold_err, full = _golden_history(repo, only)
+    measured, meas_err = last_measured(repo, only=only)
+    with_intent, intent_err = _with_intent(repo, only)
+    out = {"history": history, "history_full": full, "measured": measured,
+           "error": gold_err or meas_err, "with_intent": with_intent,
+           "intent_error": intent_err,
+           "moves": {"devices": {}, "network": None, "reach": None}, "order": {},
+           "moves_error": ""}
+    ats = [v["at"] for v in history.values()] + [v["at"] for v in measured.values()]
+    if ats and not out["error"]:
+        floor = min(ats)
+        out["moves"], moves_err = _intent_moves(repo, floor, only)
+        out["order"], order_err = _order(repo, floor)
+        out["moves_error"] = moves_err or order_err
+    return out
+
+
+def newest_measurement(host: str, got: dict):
+    """*host*'s newest MEASUREMENT in *got* (`reads`), or None: a save that read it, whether
+    or not its golden moved. A golden commit the measurement log does not reach (before C89
+    wrote `Intent-Match:`) is still a measurement, so the newer of the two counts."""
+    h, m = got["history"].get(host), got["measured"].get(host)
+    if h and (m is None or h["at"] > m["at"]):
+        return {"at": h["at"], "sha": h["sha"], "commit": h["commit"], "source": h["source"],
+                "how": SOURCE_WORDS.get(h["source"], h["source"].replace("_", " ") or "a save"),
+                "changed": True, "baseline": False, "intent": h["intent"]}
+    return m
+
+
+def _after(a: dict, b: dict, order: dict) -> bool:
+    """Whether commit *a* came after commit *b*: by their place in history where `_order`
+    read both, else by commit time; a tie there is said as after (see `ORDER_BOUND`)."""
+    if a["commit"] == b["commit"]:
+        return False
+    ia, ib = order.get(a["commit"]), order.get(b["commit"])
+    if ia is not None and ib is not None:
+        return ia < ib
+    if ia is not None or ib is not None:
+        return ia is not None                    # the one outside the window is the older
+    return a["at"] >= b["at"]
+
+
+def intent_state(host: str, got: dict) -> dict:
+    """THE intent state of *host* (C532), from *got* (`reads`): what the Devices list draws
+    in its row and the device page beside its live comparison. ``{"state", "words"}``, with
+    ``"why"`` for the hover where there is one; `STATES` lists the states.
+
+    The state its newest measurement recorded (`Intent-Match:`), only while nothing that
+    measurement judged against has moved since: a commit after it to the device's intent,
+    the monitoring profile or the template library makes it ``intent_moved``, naming what
+    and when, because the recorded "departs" or "at intent" may no longer be true."""
+    if got["error"]:
+        return {"state": "unknown", "words": "unknown: the history could not be read"}
+    if got["intent_error"]:
+        return {"state": "unknown", "words": "unknown",
+                "why": f"committed intent could not be listed ({got['intent_error']})"}
+    if host not in got["with_intent"]:
+        return {"state": "no_intent", "words": "no intent"}
+    m = newest_measurement(host, got)
+    if m is None:
+        return {"state": "no_golden", "words": (
+            f"no golden in the last {LOG_BOUND} golden commits" if got["history_full"]
+            else "no golden")}
+    recorded = dict(m["intent"])
+    if got["moves_error"]:
+        return {"state": "unknown", "words": "unknown",
+                "why": (f"what moved its intent since it was measured could not be read "
+                        f"({got['moves_error']}); it recorded {recorded['words']}")}
+    own, network = got["moves"]["devices"].get(host), got["moves"]["network"]
+    move = (own if network is None or (own and _after(own, network, got["order"]))
+            else network)
+    if move and _after(move, m, got["order"]):
+        return {"state": "intent_moved", "words": "intent changed since measured",
+                "since": _iso(move["at"]), "recorded": recorded,
+                "why": (f"{move['what']} changed in {move['sha']} at {_iso(move['at'])}, "
+                        f"after its last measurement ({m['sha']}, {_iso(m['at'])}). Its "
+                        "device page compares it now; a "
+                        "capture or Save All measures it again")}
+    reach = got["moves"]["reach"]
+    if reach is not None and m["at"] <= reach:
+        return {"state": "unknown", "words": "unknown",
+                "why": (f"whether its intent changed since it was measured ({_iso(m['at'])}) "
+                        f"is not established: the read of intent commits reaches back "
+                        f"{INTENT_BOUND} commits, to {_iso(reach)}; it recorded "
+                        f"{recorded['words']}")}
+    return recorded
 
 
 def _status(reach: dict, ip: str) -> dict:
@@ -214,7 +423,8 @@ def _iso(ts) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts)) if ts else ""
 
 
-STATES = ("at_intent", "departs", "no_intent", "no_golden", "pending", "unknown")
+STATES = ("at_intent", "departs", "intent_moved", "unrecorded", "no_intent", "no_golden",
+          "pending", "unknown")
 
 
 #: The Startup column (C593, board A: "Startup is the hourly startup check's last reading").
@@ -270,15 +480,16 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
     except Exception as exc:                      # noqa: BLE001
         return {"list": ref.name, "error": f"the inventory could not be read: {exc}",
                 "rows": [], "total": 0, "platforms": [], "counts": {}}
-    history, gold_err = _golden_history(ref.repo_dir)
-    measured, meas_err = last_measured(ref.repo_dir)
-    hist_err = gold_err or meas_err
+    got = reads(ref.repo_dir)
+    history, hist_err = got["history"], got["error"]
     if hist_err:
         errors.append(f"the golden history could not be read ({hist_err}): intent states and "
                       "measurement ages are unknown")
-    with_intent, err = _with_intent(ref.repo_dir)
-    if err:
-        errors.append(f"committed intent could not be listed ({err})")
+    if got["intent_error"]:
+        errors.append(f"committed intent could not be listed ({got['intent_error']})")
+    if got["moves_error"]:
+        errors.append(f"what moved intent since each measurement could not be read "
+                      f"({got['moves_error']}): intent states are unknown")
     reach, _at, _why = _cached("reachability")
     try:
         pending = manifest.pending_devices(ref.repo_dir)
@@ -300,23 +511,8 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
     for dev in inventory:
         host = dev.get("hostname", "")
         h = history.get(host)
-        # The newest MEASUREMENT: a save that read the device, whether or not its golden
-        # moved. A golden commit older than the measurement log's reach (before C89 wrote
-        # `Intent-Match:`) is still a measurement, so the newer of the two counts.
-        m = measured.get(host)
-        if h and (m is None or h["at"] > m["at"]):
-            m = {"at": h["at"], "sha": h["sha"], "source": "", "how": "a save",
-                 "changed": True, "baseline": False, "intent": h["intent"]}
-        if hist_err:
-            intent = {"state": "unknown", "words": "unknown: the history could not be read"}
-        elif host not in with_intent:
-            intent = {"state": "no_intent", "words": "no intent"}
-        elif h is None and m is None:
-            intent = {"state": "no_golden", "words": (
-                "no golden" if len(history) < LOG_BOUND else
-                f"no golden in the last {LOG_BOUND} golden commits")}
-        else:
-            intent = dict(m["intent"])
+        m = newest_measurement(host, got)
+        intent = intent_state(host, got)          # THE state, the device page's too (C532)
         rows.append({"name": host, "pending": False, "status": _status(reach, dev.get("ip", "")),
                      "address": dev.get("ip", ""), "platform": platform_for_device(dev) or "",
                      "role": dev.get("role", ""), "intent": intent,

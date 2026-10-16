@@ -92,7 +92,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
 | ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
 | ~~C487, C493~~ | ~~Needs attention names each row's network; no store falls back~~ **done** (see Checked off) | | | | |
-| C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
+| ~~C532~~ | ~~Devices list and device page agree on intent state (one comparison)~~ **done** (see Checked off) | | | | |
 | C342 | the device page's drift: masked diff and three choices | built from its board | M | — | B |
 | ~~C522~~ | ~~the 8 lone (i) cards~~ **done** (see Checked off) | | | | |
 | ~~C820, C821~~ | ~~the syslog job; an integration's 4xx reason~~ **done** (see Checked off) | | | | |
@@ -249,6 +249,11 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C532 done** (overnight): one function, `device_list.intent_state`, draws the Devices list's
+  intent chip and the device page's Intent state row from one bounded read, so the two agree;
+  intent changed since the last measurement is its own state, never green. C974, C975 (C, fixed
+  with it); C976 (C, later: a header chip) and C977 (UNKNOWN: a template edit moves every
+  device) to the tail.
 - **C487, C493 done** (overnight): a network's store never adopts another's (one helper,
   `network_store`; the survey found drift state and the approval queue WRITING into the wrong
   network); every Needs attention row names its device's network. C972 (C), C973 (UNKNOWN).

@@ -108,6 +108,13 @@
 
 {% set STATE_KIND = {'ok': 'ok', 'warn': 'warn', 'danger': 'danger', 'unknown': 'muted'} %}
 
+{#- A device's intent state (`device_list.intent_state`, C532) as a badge's colour: one table
+    for the Devices list and the device page, which draw the one state. "intent changed since
+    measured" is never green: what it recorded may no longer be true. -#}
+{% set INTENT_KIND = {'at_intent': 'ok', 'departs': 'warn', 'intent_moved': 'info',
+                      'no_intent': 'muted', 'no_golden': 'warn', 'pending': 'info',
+                      'unknown': 'muted', 'unrecorded': 'muted'} %}
+
 {#- "Check again": ask origin and CI now (routes/update.check). Its x-data and
     its attributes sit on one element, the component's $root. *c* is
     routes/v2.check_state(): busy while a run on request is owed an answer

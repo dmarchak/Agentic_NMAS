@@ -25,7 +25,16 @@ Shots: `tab-overview-board-1440`, `-1280` beside `tab-overview-page-1440`, `-128
 (r6, the difference drawn; every tab still drawn).
 Compared 2026-10-16.
 Templates compared: templates/v2/_overview.html
-Templates sha256: `90f4f7fb9cad688fe35d2807021c7905a7b3873744efd4bef38053235e2a5ed0`
+Templates sha256: `6197b317965b812ef3f5edf73f43257cb45ce658b0182f8a00b3cec11881d656`
+
+Compared again 2026-10-16 (C532) after `_overview.html` gained an Intent state row under Last
+measured: the Devices list's state for this device, from the one function both draw
+(`device_list.intent_state`), saying it is the list's, from the last measurement, and that the
+Intent check compares now; the tab redrawn on golden, intent and template commits as well. Shots
+`tab-overview-page-1440`, `-390` (r2: "intent changed since measured", its intent committed after
+its onboarding golden, beside the Intent check's live "matches its committed intent") and
+`tab-overview-folded-page-1440` (r6: "departs (-1)" beside the check naming `cdp run`). The
+Intent state region added; no other region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
@@ -37,6 +46,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | Committed intent | commit sha, age, by whom; `host_vars/r3.yml` and what it holds (4 interfaces, OSPF 1, BGP 65003, syslog block) | the commit sha, age, Source and Actor; "none committed … not deployable" without one; the profile commit it inherits on its own row; what intent holds is not summarised | **deviation** (log: Device Overview: the intent's summary line is not drawn (a defect, register C650 follow-up)) |
 | The device | captured when, recorded as golden sha; "A golden is a record of the device, not a target" | Golden (sha, age, Source, Actor) and Last measured (when, by which operation); the card's foot "A golden is a record of what the device runs; intent is what it should run" | **same** |
 | The difference | "None: r3 is at its intent", compared on the capture of 28 min ago | the Intent row of Checks: "matches its committed intent", or warn naming each line on the device and not in intent (r6's `cdp run`) and the reverse | **deviation** (log: Device Overview: the difference drawn as the Intent check) |
+| Intent state (C532) | "None: r3 is at its intent", compared on the capture of 28 min ago, inside The difference; the header's "At intent" chip (the device page's own record) | a row of its own: the state's chip (the Devices list's, the same function), when intent moved and what the measurement read where it has moved, and the words saying the Intent check compares now | **deviation** (log: Device Overview: the recorded intent state is a row of its own (C532)) |
 | Address, model, platform | in the page's header only | also as rows here, each with its source (the golden's Chassis type line, the inventory) | **same** |
 | Checks: Drift | clean, against its golden, and when | the drift record's word for this device, with its time; "no drift run recorded for this list" where none is (the lab) | **same** |
 | Checks: Freshness | Oxidized holds the approved config | not drawn: Oxidized's freshness reader was switched off 2026-10-08 (`reader_job.RETIRED`) with Oxidized's retirement, so no source exists | **deviation** (log: Device Overview: no Freshness check, its source retired) |

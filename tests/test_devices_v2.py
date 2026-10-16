@@ -175,7 +175,9 @@ class TestTheListing:
         assert rows["r9"]["intent"]["state"] == "no_intent" and rows["r9"]["measured"] is None
 
     def test_the_reads_are_fixed_whatever_the_size(self, inv, monkeypatch):
-        """The scale rule: three git reads for two devices and for sixty."""
+        """The scale rule: five git reads for two devices and for sixty (the golden history,
+        the measurements, committed intent, and since C532 what moved intent since each
+        measurement and the order to judge it by)."""
         from modules import device_list
         from modules.nsot import repo as R
         real, calls = R.git, []
@@ -190,7 +192,7 @@ class TestTheListing:
         inv["rows"] += [{"hostname": f"x{i}", "ip": f"192.0.2.{i}", "platform": "cisco_ios"}
                         for i in range(60)]
         device_list.listing(_ref())
-        assert two == calls == ["log", "log", "ls-tree"], (two, calls)
+        assert two == calls == ["log", "log", "ls-tree", "log", "rev-list"], (two, calls)
 
     def test_an_unreadable_history_is_unknown_never_no_golden(self, inv, monkeypatch):
         from modules import device_list
@@ -343,7 +345,9 @@ class TestThePage:
         _r, html = self._get(inv, "/v2/devices/table")
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', html).group(1))
         src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
-        assert keys == ["reachability", "goldens", "inventory"]   # inventory: a drained mark
+        # inventory: a drained mark; intent and templates: what an intent state is judged
+        # against moved (C532), so the state becomes "intent changed since measured".
+        assert keys == ["reachability", "goldens", "intent", "templates", "inventory"]
         for k in keys:
             assert k in invalidation.VOCABULARY and f"NMAS.subscribe('{k}'" in src
 
@@ -435,3 +439,148 @@ class TestAPendingDevicesPage:
     def test_a_name_neither_in_the_inventory_nor_pending_is_still_a_404(self, inv, monkeypatch):
         monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(self.PENDING)])
         assert inv["client"].get("/v2/device/r99").status_code == 404
+
+
+NTP = "ntp server 192.0.2.123"
+
+
+def _ntp_into_intent(lab, host="r2"):
+    """A real intent commit: *host*'s committed intent gains the NTP server."""
+    from modules.nsot import hostvars
+    from modules.nsot.repo import save_host_vars
+    hv = hostvars.read_committed(lab["repo"], host)
+    hv["ntp_servers"] = list(hv.get("ntp_servers") or []) + ["192.0.2.123"]
+    hostvars.write_committed(lab["repo"], hv)
+    assert save_host_vars("Lab", [host], actor="t", source="extraction")["ok"]
+
+
+def _commit_file(lab, rel, text):
+    """A real commit of one file through `repo.commit` (its config check included)."""
+    from modules.nsot import repo as R
+    path = os.path.join(lab["repo"], rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with R.repo_lock(lab["repo"]):
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        assert R.git(lab["repo"], "add", "--", rel)[0] == 0
+        rc, _sha, err = R.commit(lab["repo"], f"test: {rel}\n\nSource: test\nActor: t\n",
+                                 list_name="Lab", paths=[rel], publish_now=False)
+    assert rc == 0, err
+
+
+class TestOneIntentState:
+    """C532: the Devices list said s1 "departs (+1)" from its last measurement's trailer while
+    s1's page, comparing live, said it matched: an intent commit after the measurement left the
+    list drawing a stale departure. ONE function (`device_list.intent_state`) decides a device's
+    intent state, and the list's row and the device page are both drawn from it. On a real
+    repository; the expected words come from git and from the commits each step made."""
+
+    def _both(self, inv, host="r2"):
+        """(the list's row state, the device page's state, the device page's HTML)."""
+        from modules import device_page
+        from modules.device_list import listing
+        row = {r["name"]: r for r in listing(_ref())["rows"]}[host]["intent"]
+        dev = next(dict(r) for r in inv["rows"] if r["hostname"] == host)
+        page = device_page.records(_ref(), dev)["intent_state"]
+        html = inv["client"].get(f"/v2/device/{host}").get_data(as_text=True)
+        return row, page, html
+
+    def _texts(self, inv):
+        return {"r2": inv["captured"].replace("\nend", f"\n{NTP}\nend"), "r6": inv["r6"]}
+
+    def test_a_stale_departure_is_said_by_both_and_a_new_measurement_clears_it(self, inv):
+        texts = self._texts(inv)
+        # 1. A golden that departs: r2 runs an NTP server its intent lacks.
+        _capture("r2", texts["r2"])
+        row, page, _html = self._both(inv)
+        assert row == page and row["state"] == "departs", (row, page)
+        measured = _git(inv["repo"], "log", "-1", "--format=%h %ct", "--", "golden/r2.cfg").split()
+        # 2. An intent commit after it: the trailer's departure is no longer known to be true.
+        _ntp_into_intent(inv)
+        intent = _git(inv["repo"], "log", "-1", "--format=%h", "--", "host_vars/r2.yml").strip()
+        row, page, html = self._both(inv)
+        assert row == page, (row, page)
+        assert row["state"] == "intent_moved" and row["words"] == "intent changed since measured"
+        assert row["recorded"]["state"] == "departs"
+        assert row["why"].startswith(
+            f"its committed intent (host_vars/r2.yml) changed in {intent} at "), row["why"]
+        assert f"after its last measurement ({measured[0]}, " in row["why"], row["why"]
+        # The device page draws that state and its live comparison, and says which is which.
+        assert "<dt>Intent state</dt>" in html and "intent changed since measured" in html
+        assert "the Intent check compares it now" in html
+        assert "<strong>Intent</strong>: matches its committed intent" in html
+        # The Overview redraws when what decides the state moves.
+        trigger = re.search(r'id="overview"[^>]*hx-trigger="([^"]*)"', html, re.S).group(1)
+        assert {"goldens", "intent", "templates"} <= set(re.findall(r"nmas:(\w+) from:body",
+                                                                    trigger)), trigger
+        table = inv["client"].get("/v2/devices/table").get_data(as_text=True)
+        assert ">intent changed since measured</span>" in table and ">departs (" not in table
+        assert "; that measurement read departs (-1)\"" in table     # what it recorded, on hover
+        # 3. A new measurement that matches: both say "at intent".
+        out = _save_all(inv, texts)
+        assert out.get("commit"), out
+        row, page, html = self._both(inv)
+        assert row == page == {"state": "at_intent", "words": "at intent"}, (row, page)
+        assert "intent changed since measured" not in html
+
+    def test_commits_in_one_second_are_ordered_by_history(self, inv, monkeypatch):
+        """An intent edit and the capture after it often share a commit time: their place in
+        history decides, never the conservative tie."""
+        monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-10-16T12:00:00+0000")
+        texts = self._texts(inv)
+        _capture("r2", texts["r2"])
+        _ntp_into_intent(inv)
+        row, page, _html = self._both(inv)
+        assert row == page and row["state"] == "intent_moved", (row, page)
+        _save_all(inv, texts)
+        times = set(_git(inv["repo"], "log", "-3", "--format=%ct").split())
+        assert len(times) == 1, times                 # the three commits share one second
+        row, page, _html = self._both(inv)
+        assert row == page == {"state": "at_intent", "words": "at intent"}, (row, page)
+
+    def test_the_template_library_moves_every_device_and_an_approval_moves_none(self, inv):
+        from modules.nsot import templates_repo
+        texts = self._texts(inv)
+        _ntp_into_intent(inv)
+        _save_all(inv, texts)
+        before = {h: self._both(inv, h)[0]["state"] for h in ("r2", "r6")}
+        assert "intent_moved" not in before.values(), before
+        # Approving a template renders nothing differently.
+        _commit_file(inv, "templates/.approvals.json", '{"approvals": {}}\n')
+        assert {h: self._both(inv, h)[0]["state"] for h in ("r2", "r6")} == before
+        # An edit to the library does: every device's recorded state may no longer hold.
+        rel = templates_repo.template_for_device(inv["repo"], "r2", "cisco_iosxe")
+        body = templates_repo.read_template(inv["repo"], rel)
+        _commit_file(inv, f"templates/{rel}", body + "{# C532 #}\n")
+        for host in ("r2", "r6"):
+            row, page, _html = self._both(inv, host)
+            assert row == page and row["state"] == "intent_moved", (host, row, page)
+            assert row["why"].startswith("the template library changed in "), row["why"]
+
+    def test_a_truncated_read_of_intent_commits_says_not_established(self, inv, monkeypatch):
+        """A read that returns its whole bound may be truncated: a device measured before its
+        oldest commit and not seen in it says so, never "at intent"."""
+        from modules import device_list
+        texts = self._texts(inv)
+        _save_all(inv, texts)
+        _ntp_into_intent(inv, "r6")
+        _ntp_into_intent(inv, "r2")
+        monkeypatch.setattr(device_list, "INTENT_BOUND", 1)
+        r6, page6, _html = self._both(inv, "r6")
+        assert r6 == page6 and r6["state"] == "unknown", r6
+        assert "is not established: the read of intent commits reaches back 1 commits" in r6["why"]
+        r2, _page, _html = self._both(inv, "r2")
+        assert r2["state"] == "intent_moved", r2
+
+    def test_after_orders_by_history_then_by_time(self):
+        from modules.device_list import _after
+        a = {"commit": "a" * 40, "at": 100}
+        b = {"commit": "b" * 40, "at": 100}
+        assert _after(a, b, {"a" * 40: 0, "b" * 40: 1}) is True
+        assert _after(a, b, {"a" * 40: 1, "b" * 40: 0}) is False
+        assert _after(a, b, {"a" * 40: 0}) is True       # b older than the window
+        assert _after(a, b, {"b" * 40: 0}) is False      # a older than the window
+        assert _after(a, a, {}) is False                 # one commit is not after itself
+        assert _after(dict(a, at=99), b, {}) is False
+        assert _after(dict(a, at=101), b, {}) is True
+        assert _after(a, b, {}) is True                  # a tie nothing orders: said as moved

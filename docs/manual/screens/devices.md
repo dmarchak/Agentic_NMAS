@@ -29,9 +29,14 @@ was checked instead of raising it as a row.
 A measurement is any save that read the device and compared it with its golden: a capture,
 a deploy's or restore's read after the push, and a Save All that found it unchanged (which
 records its decision in a commit of its own, naming every device it read). The intent state
-is the newest measurement's, read from that commit, never by reading the device now. A
-capture or Save All (see [Capture and Save All](capture)) brings it up to date. The device
-page's Overview compares the golden with intent live and says when it was last measured.
+is the newest measurement's, read from that commit, never by reading the device now, and it
+is drawn only while nothing that measurement was judged against has moved since. When the
+device's committed intent, the network's monitoring profile or the template library has a
+commit after it, the row says **intent changed since measured** instead, and its hover names
+what changed, when, and what the measurement had read: the recorded "departs" or "at intent"
+may no longer be true. A capture or Save All (see [Capture and Save All](capture)) brings it
+up to date. The device page's Overview shows the same state, from the same reading, beside
+its Intent check, which compares the golden with intent now.
 
 A Save All that changed some goldens before 2026-10-02 named only those devices, so an
 unchanged device's read in it is not recoverable; its last measurement reads as the save

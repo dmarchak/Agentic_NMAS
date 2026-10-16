@@ -1,7 +1,8 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, STATE_KIND, info -%}
-{#- Re-fetched whenever a reader it draws from announces (nmas_v2.js). -#}
+{%- from "v2/_macros.html" import icon, badge, stamp, STATE_KIND, INTENT_KIND, info -%}
+{#- Re-fetched whenever a reader it draws from announces (nmas_v2.js), and when a golden,
+    intent or the template library moves its intent state (C532). -#}
 <div class="grid-2" id="overview" hx-get="{{ url_for('device_v2.overview', name=device.hostname) }}" hx-swap="outerHTML"
-     hx-trigger="nmas:reachability from:body, nmas:alerts from:body, nmas:drift from:body">
+     hx-trigger="nmas:reachability from:body, nmas:alerts from:body, nmas:drift from:body, nmas:goldens from:body, nmas:intent from:body, nmas:templates from:body">
 <p class="tab-help">{{ info('device-page', 'overview', 'About this tab') }}</p>
   <section class="card">
     <div class="card-head"><h2>Around this device</h2></div>
@@ -30,6 +31,12 @@
         <span class="muted">· by {{ records.measured.words }}</span>
         {%- elif records.measured_error %}<span class="muted">could not be read · {{ records.measured_error }}</span>
         {%- else %}never <span class="muted">· no save has read it</span>{% endif -%}
+      </dd></div>
+      {#- The Devices list's state, by the one function (C532); the Intent check compares now. -#}
+      {%- set ist = records.intent_state %}
+      <div><dt>Intent state</dt><dd>{{ badge(ist.words, INTENT_KIND.get(ist.state, 'muted'), title=ist.why) }}
+        {%- if ist.since %} <span class="muted">· {{ stamp(ist.since) }}; its last measurement read {{ ist.recorded.words }}</span>{% endif %}
+        <span class="muted">· the state the Devices list shows, from its last measurement; the Intent check compares it now</span>
       </dd></div>
       <div><dt>Address</dt><dd><span class="mono">{{ device.ip }}</span></dd></div>
       <div><dt>Model</dt><dd>{% if hw.model %}{{ hw.model }} <span class="muted">· from {{ hw.model_from }}{% if hw.model_commit %} (<span class="mono">{{ hw.model_commit }}</span>){% endif %}</span>{% else %}not recorded <span class="muted">· {{ hw.model_from }}</span>{% endif %}</dd></div>
