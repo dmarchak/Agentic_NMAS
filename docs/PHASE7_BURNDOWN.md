@@ -292,7 +292,8 @@ blocks cutover or is a security issue (B).
   device) to the tail.
 - **C487, C493 done** (overnight): a network's store never adopts another's (one helper,
   `network_store`; the survey found drift state and the approval queue WRITING into the wrong
-  network); every Needs attention row names its device's network. C972 (C), C973 (UNKNOWN).
+  network); every Needs attention row names its device's network. C972 (C), C973 (UNKNOWN; measured on
+  the host the same night: C, no restart covered by another network's window).
 - **C963, C964 done** (B, overnight): the heartbeat rules measure the syslog job and refuse
   without one; the device dashboard's job is a variable and its platforms a join, and the app
   carries a variable's declared All value. C969 (UNKNOWN), C970, C971 (C) to the tail.
