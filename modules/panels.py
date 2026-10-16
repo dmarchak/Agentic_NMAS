@@ -442,7 +442,9 @@ def variable_values(dashboard: dict, device_var: str, device_value: str,
     """Every variable a device page fills: the device variable with the
     device, a text box with its written default, a data source with its
     current value or the default of its plugin type, and any other with its
-    current value (`$__all` as `.*`)."""
+    current value. All (`$__all`, or none) is the variable's declared all value, as Grafana
+    sends it, else `.*` (C964: Loki refuses a selector whose only matcher is `.*`, so
+    nmas-device's `syslog_job` declares `.+`)."""
     out = {}
     for v in dashboard.get("variables") or []:
         name = v.get("name")
@@ -459,7 +461,7 @@ def variable_values(dashboard: dict, device_var: str, device_value: str,
             if isinstance(cur, list):
                 cur = cur[0] if len(cur) == 1 else ".*"
             if cur in (None, "", "$__all"):
-                cur = ".*" if v.get("type") != "datasource" else ""
+                cur = (v.get("all_value") or ".*") if v.get("type") != "datasource" else ""
             if cur != "":
                 out[name] = str(cur)
     return out

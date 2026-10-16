@@ -39,11 +39,15 @@ PATTERN = re.compile(r"containerlab|\bclab\b|\bclab[_-]|vrnetlab|\brcn[-_]|csci\
 #: configuration's choice (Alloy's, Prometheus's), so a query naming one works on the network
 #: that chose it and reads nothing anywhere else. The shape, not a list of names: a `job`
 #: matcher holding a literal value (LogQL, PromQL, Alloy's `job = "..."`), or a constant
-#: named `JOB` assigned a string. Not a job named: a value built from code (`{`), and the
-#: selector-needs-a-label wildcards `.+` and `.*`.
+#: named `JOB` assigned a string. Not a job named: a value built from code (`{`), the
+#: selector-needs-a-label wildcards `.+` and `.*`, and a dashboard template variable (`$name`,
+#: `${name}`: Grafana fills it at view time from what the data source holds, C964).
 JOB_LITERAL = re.compile(r"""\bjob\s*=~?\s*\\?["'`](?P<value>[^"'`\\{]*)|"""
                          r"""\bJOB\s*=\s*["'](?P<constant>[^"']*)["']""")
 WILDCARDS = {".+", ".*"}
+#: One alternative of a matcher's value that is a template variable: `$name`, or the `$` the
+#: value pattern stops at before `{name}`.
+TEMPLATE_VARIABLE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?")
 
 
 def product_jobs() -> set:
@@ -62,7 +66,8 @@ def names_a_job(line: str, own=None) -> bool:
         value = m.group("value") if m.group("value") is not None else m.group("constant")
         if not value or value in WILDCARDS:
             continue                                  # built from code, empty, or a wildcard
-        if set(value.split("|")) - own:
+        named = {v for v in value.split("|") if not TEMPLATE_VARIABLE.fullmatch(v)}
+        if named - own:
             return True
     return False
 
@@ -97,17 +102,11 @@ INVENTORY = {
     "scripts/host-steps/c663-step3b-topology.sh": (4, LAB_VALUES, REMOVE,
                                                    "renames the renderer's unit and link"),
     # Found by C820's widening (2026-10-16): the job names the lab's collectors chose, written
-    # into queries. `device_logs` measures its job from Loki now; these still name the lab's.
-    "deploy/grafana/build_nmas_device.py": (5, LAB_VALUES, GENERIC,
-                                            "the device dashboard's syslog and SNMP panels name "
-                                            "the lab's syslog job and its platform SNMP jobs"),
-    "deploy/grafana/nmas-device.json": (5, LAB_VALUES, GENERIC,
-                                        "the built device dashboard, the same five queries"),
+    # into queries. `device_logs` and the heartbeat rules (C963) measure their job from Loki,
+    # and the device dashboard (C964) reads its jobs from the data sources at view time.
     "modules/host_steps.py": (5, LAB_VALUES, GENERIC,
                               "the severity and trap label checks name the lab's syslog and "
                               "trap jobs"),
-    "scripts/nmas-heartbeat-rules": (1, LAB_VALUES, GENERIC,
-                                     "the heartbeat alert rules name the lab's syslog job"),
     "scripts/host-steps/c722-device-label.sh": (10, LAB_VALUES, REMOVE,
                                                 "a one-shot host step writing the lab's Alloy "
                                                 "configuration and counting its syslog job"),
@@ -211,11 +210,16 @@ class TestTheCheckCanFail:
                     'up{job=~"cisco_8000v|cisco_vios_l2", device="r1"}',
                     'labels = { job = "snmptrapd", host = "$HOSTLABEL" }',
                     '{job=~\\".*snmptrapd\\", device=~\\".+\\"}',
-                    "{job=`site_syslog`}", 'up{job=~"ospf|lldp"}'):
+                    "{job=`site_syslog`}", 'up{job=~"ospf|lldp"}',
+                    # C964: a template variable beside a name still names the name.
+                    '{job=~"$syslog_job|site_syslog"}'):
             assert names_a_job(hit, own) and lab_specific(hit, own), hit
         for miss in ('{job=~".+"}', '{job=~".*", device="r1"}', "f'{{job=\"{JOB}\"}}'",
                      'up{job=~"ospf|ospfv3|bgp"}', 'data-job="{{ job }}"', 'job="", run=None',
-                     "SOME_JOB = 'x'", "the job is measured from Loki"):
+                     "SOME_JOB = 'x'", "the job is measured from Loki",
+                     # C964: a dashboard variable, filled by Grafana from the data source.
+                     '{job=~"$syslog_job"} |~ `\\d+: $device: `', '{job=~"${syslog_job}"}',
+                     'SYSLOG = \'{job=~\\"$syslog_job\\"}\''):
             assert not names_a_job(miss, own), miss
 
     def test_the_products_own_jobs_come_from_the_targets_it_writes(self):

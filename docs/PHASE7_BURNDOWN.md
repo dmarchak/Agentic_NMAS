@@ -96,7 +96,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | C342 | the device page's drift: masked diff and three choices | built from its board | M | — | B |
 | ~~C522~~ | ~~the 8 lone (i) cards~~ **done** (see Checked off) | | | | |
 | ~~C820, C821~~ | ~~the syslog job; an integration's 4xx reason~~ **done** (see Checked off) | | | | |
-| C963, C964 | the heartbeat rules and the device dashboard take the measured syslog job and platforms, not the lab's names (found by C820's wider scan) | each its test; the lab-specifics inventory shrinks | S each | — | — |
+| ~~C963, C964~~ | ~~the heartbeat rules and the device dashboard~~ **done** (see Checked off); the dashboard's re-import is the operator's, after the deploy | | | | |
 | P7-09 | Criterion 14, the writeup: entries for 7.4 to 7.8, P.11, Show commands, Ask, Logs, DHCP, Update; 7.3 and 7.D closed | an entry per sub-task, forecasts checked | M | — | — |
 | P7-16 (rest) | C705, C765, C176; the Scheduled section's 7.x rows read once | each closed or placed | S | — | — |
 | **C650, during the walks** | each walked screen's fidelity record written from its sitting; `UNCHECKED` shrinks by the walked screens; the rest to the tail | records from W1 to W3 | S per screen | the sittings | W |
@@ -249,6 +249,9 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C963, C964 done** (B, overnight): the heartbeat rules measure the syslog job and refuse
+  without one; the device dashboard's job is a variable and its platforms a join, and the app
+  carries a variable's declared All value. C969 (UNKNOWN), C970, C971 (C) to the tail.
 - **C957, C820, C821 done** (B, overnight): the timeline says "No repository yet" by the one
   `.git` test; the syslog job is measured from Loki, not named in code (the lab-specifics scan
   widened); a plain-text integration refusal reaches the person masked. C963, C964 (B) into

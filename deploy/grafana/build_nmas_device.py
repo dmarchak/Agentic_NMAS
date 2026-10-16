@@ -20,6 +20,9 @@ Rules the panels follow (tests/test_nmas_device_dashboard.py holds them):
   fallback: `telemetry or (snmp unless on(device) telemetry)`, per device.
   Each series carries `via` ("gRPC telemetry" or "SNMP") and every panel says
   its source, so two collectors are never compared unawares.
+- No collector's job is named (C964): the syslog job is the `syslog_job`
+  variable, read from Loki when the dashboard is viewed, every job by default;
+  the SNMP platform jobs are the ones holding the device's own `sysUpTime`.
 - Only native panel types (stat, timeseries, table, and rows), units and
   meaningful thresholds on every value, plain titles, and a `noValue` sentence
   saying why a panel can be empty for a device.
@@ -38,6 +41,29 @@ TC = "Cisco_IOS_XE_process_cpu_oper:cpu_usage_cpu_utilization_"
 NOT_NULL = 'ifName!~"Nu[0-9].*|Vo[0-9].*"'
 PROM = {"type": "prometheus", "uid": "${DS_PROMETHEUS}"}
 LOKI = {"type": "loki", "uid": "${DS_LOKI}"}
+
+#: C964: NO job is named here (a job's name is its collector's configuration's choice, so a
+#: panel naming the lab's read nothing on another network). The syslog job is the `syslog_job`
+#: variable, which Grafana reads from Loki at view time: the jobs whose streams carry a
+#: `device` label, every one by default (`.+`). Loki cannot ask "the jobs holding syslog
+#: lines" in a variable query (a stream selector only, no line filter), and the device label
+#: is an Alloy relabel another network may not have; so All is every job, the device's own
+#: line pattern (`\d+: <device>: `) selecting its lines in whichever job holds them, and the
+#: list lets a person narrow it. Measured on the lab's Loki (2026-10-16): one job, the same
+#: under both questions; `{job=~".+"}` with r3's pattern read 417 lines over 24 h in 0.17 s.
+SYSLOG = '{job=~"$syslog_job"}'
+#: The SNMP platform jobs are the jobs holding this device's own `sysUpTime` (SNMPv2-MIB's
+#: system group, which a platform module walks and a routing, LLDP or IP SLA module does not):
+#: a property of the data, joined in the query, so it is exact in Grafana and in the NMAS
+#: device page alike. A template variable would be exact only in Grafana: the device page
+#: draws the panels itself and fills a query variable's All as `.*` (it never asks a variable's
+#: options). Measured on the lab's Prometheus (2026-10-16): 7 jobs carry a `device` label, and
+#: `sysUpTime` is in exactly the 2 platform jobs the panel named before.
+PLATFORM_JOBS = f'group by (job, device) (last_over_time(sysUpTime{{{D}}}[1d]))'
+#: The two variables' questions: every device Prometheus scrapes under its own name, and the
+#: Loki jobs whose streams carry a device label.
+DEVICES = 'label_values(up{device=~".+"}, device)'
+SYSLOG_JOBS = 'label_values({device=~".+"}, job)'
 
 
 def via(expr: str, source: str) -> str:
@@ -149,16 +175,19 @@ def build() -> dict:
                     f"or ({{__name__=~\"ospfNbrState|ospfv3NbrState\", {D}}} > 4 < 8) "
                     f"or (cbgpPeer2State{{{D}}} != 6 and on(device, cbgpPeer2RemoteAddr) "
                     f"cbgpPeer2AdminStatus{{{D}}} == 2)) or vector(0)")
-    syslog_crit = ('sum(count_over_time({job="network_syslog"} |~ `\\d+: $device: ` '
+    syslog_crit = (f'sum(count_over_time({SYSLOG} |~ `\\d+: $device: ` '
                    '|~ `%[A-Z0-9_]+-[0-2]-` [24h])) or vector(0)')
 
     # ---- at a glance ------------------------------------------------------
     row("At a glance", 0)
     panel("stat", "Answering SNMP", (0, 1, 4, 4),
-          [{"expr": f'max by (device) (up{{job=~"cisco_8000v|cisco_vios_l2", {D}}})', "legendFormat": "via SNMP"}],
+          [{"expr": f"max by (device) (up{{{D}}} and on(job, device) {PLATFORM_JOBS})",
+            "legendFormat": "via SNMP"}],
           unit="none", maps=mapping({1: ("Yes", "green"), 0: ("No", "red")}), valid=(0, 1),
-          no_value="Not a target: its configuration has no SNMP. Needs attention says what to do.",
-          description="Whether this device answered the last SNMP scrape (30 s).")
+          no_value="Not a target: its configuration has no SNMP, or it has not answered SNMP in "
+                   "a day. Needs attention says what to do.",
+          description="Whether this device answered the last SNMP scrape (30 s) of its platform "
+                      "job: the job that reads its uptime.")
     # CPU AT A GLANCE IS IOS'S OWN (the operator's measurement on r3,
     # 2026-09-30): `show processes cpu` read 2/6/15% while `show processes cpu
     # platform` read 40/41/70%, with ucode_pkt_PQF0 alone at 90%+. That is the
@@ -331,7 +360,7 @@ def build() -> dict:
     # ---- one level down -----------------------------------------------------
     row("Detail", 52)
     panel("timeseries", "Syslog lines by severity", (0, 53, 12, 7),
-          [{"expr": ('sum by (sev) (count_over_time({job="network_syslog"} |~ `\\d+: $device: ` '
+          [{"expr": (f'sum by (sev) (count_over_time({SYSLOG} |~ `\\d+: $device: ` '
                      '| regexp `%[A-Z0-9_]+-(?P<sev>[0-7])-` [$__interval]))'),
             "legendFormat": "severity {{sev}} (via syslog)", "datasource": LOKI, "queryType": "range"}],
           unit="none", no_value="No syslog line from this device in the range.",
@@ -378,12 +407,15 @@ def build() -> dict:
         "editable": True, "schemaVersion": 39, "version": 1, "refresh": "30s",
         "time": {"from": "now-1h", "to": "now"}, "timezone": "",
         "templating": {"list": [{
+            # Every device Prometheus scrapes under its own name (C964: no job named).
             "name": "device", "label": "Device", "type": "query", "datasource": PROM,
-            "query": {"query": 'label_values(up{job=~"cisco_8000v|cisco_vios_l2"}, device)',
-                      "refId": "device"},
-            "definition": 'label_values(up{job=~"cisco_8000v|cisco_vios_l2"}, device)',
+            "query": {"query": DEVICES, "refId": "device"}, "definition": DEVICES,
             "refresh": 2, "sort": 1, "multi": False, "includeAll": False,
-            "current": {}, "options": []}]},
+            "current": {}, "options": []}, {
+            "name": "syslog_job", "label": "Syslog job", "type": "query", "datasource": LOKI,
+            "query": SYSLOG_JOBS, "definition": SYSLOG_JOBS,
+            "refresh": 2, "sort": 1, "multi": False, "includeAll": True, "allValue": ".+",
+            "current": {"selected": True, "text": "All", "value": "$__all"}, "options": []}]},
         "annotations": {"list": []},
         "panels": list(_panels),
     }

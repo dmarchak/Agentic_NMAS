@@ -19,6 +19,9 @@ def _load():
 
 H = _load()
 INTERVAL = 300
+#: The job matcher the rules are built with: measured from Loki in the product (C963), any
+#: network's name here (the lab's is the conftest's captured one).
+SYSLOG = 'job="site_syslog"'
 
 #: Real inter-arrival ranges from the operator's interval run, 2026-09-25.
 MEASURED = {"r2": (299.8, 300.1), "s1": (316.3, 321.9), "s2": (317.4, 321.9),
@@ -64,7 +67,7 @@ class TestTheWindowIsTheDevicesOwn:
     def test_an_inseparable_device_is_named_and_never_false_alarms_on_one_miss(self):
         m = H.measure(_gaps(300.0, 460.0), INTERVAL)
         assert m["basis"] == "inseparable" and m["window"] > 2 * 460
-        rule = H.rule_for("sx", "uid", INTERVAL, m)
+        rule = H.rule_for("sx", "uid", INTERVAL, m, SYSLOG)
         assert rule["labels"]["window_basis"] == "inseparable"
         assert "may go unseen" in rule["annotations"]["description"]
 
@@ -77,7 +80,7 @@ class TestANewDeviceGetsAProvisionalRuleNamedAsSuch:
         assert new["basis"] == "provisional"
         assert new["assumed_rate"] == infos["s3"]["rate"], "the SLOWEST measured"
         assert new["window"] > infos["s3"]["window"] * 0.9
-        rule = H.rule_for("new", "uid", INTERVAL, new)
+        rule = H.rule_for("new", "uid", INTERVAL, new, SYSLOG)
         assert rule["labels"]["window_basis"] == "provisional"
         d = rule["annotations"]["description"]
         assert "PROVISIONAL" in d and "ASSUMPTION" in d and "not a measurement" in d
@@ -89,7 +92,7 @@ class TestANewDeviceGetsAProvisionalRuleNamedAsSuch:
 
     def test_every_device_has_exactly_one_rule_with_a_valid_uid(self):
         infos = H.windows({h: _gaps(*MEASURED[h]) for h in MEASURED}, INTERVAL)
-        rules = H.build(infos, "loki-uid", INTERVAL)["groups"][0]["rules"]
+        rules = H.build(infos, "loki-uid", INTERVAL, SYSLOG)["groups"][0]["rules"]
         uids = [r["uid"] for r in rules]
         assert sorted(r["labels"]["device"] for r in rules) == sorted(MEASURED)
         assert len(set(uids)) == len(MEASURED)
@@ -98,7 +101,7 @@ class TestANewDeviceGetsAProvisionalRuleNamedAsSuch:
 
     def test_every_rule_carries_its_basis_and_window(self):
         infos = H.windows({h: _gaps(*MEASURED[h]) for h in MEASURED}, INTERVAL)
-        doc = H.build(infos, "loki-uid", INTERVAL)
+        doc = H.build(infos, "loki-uid", INTERVAL, SYSLOG)
         for rule in doc["groups"][0]["rules"]:
             assert rule["labels"]["window_basis"] in H.BASES
             assert int(rule["labels"]["window_seconds"]) == \
@@ -152,7 +155,7 @@ class TestAMovedRateIsANamedState:
     def test_installed_reads_back_what_build_wrote(self):
         import yaml
         infos = H.windows({h: _gaps(*MEASURED[h]) for h in MEASURED}, INTERVAL)
-        doc = yaml.safe_load(H.render(H.build(infos, "uid", INTERVAL)))
+        doc = yaml.safe_load(H.render(H.build(infos, "uid", INTERVAL, SYSLOG)))
         got = H.installed(doc)
         assert {h: got[h][:2] for h in got} == {
             h: (infos[h]["window"], infos[h]["basis"]) for h in infos}
@@ -200,7 +203,7 @@ class TestTheHostMatchIsAnchored:
         assert not pat.search(LINE.format(h="swxa"))
 
     def test_the_query_is_a_raw_regex(self):
-        assert "|~ `" in H.query_for("r1")
+        assert "|~ `" in H.query_for("r1", SYSLOG)
 
 
 class TestRefusals:
@@ -209,20 +212,20 @@ class TestRefusals:
 
     def test_an_empty_population_is_refused_not_written(self):
         with pytest.raises(ValueError, match="empty"):
-            H.build({}, "uid", INTERVAL)
+            H.build({}, "uid", INTERVAL, SYSLOG)
 
     def test_no_datasource_is_refused(self):
         with pytest.raises(ValueError, match="datasource"):
-            H.build({"r1": self.INFO}, "", INTERVAL)
+            H.build({"r1": self.INFO}, "", INTERVAL, SYSLOG)
 
     @pytest.mark.parametrize("interval", [0, None, 30])
     def test_an_unusable_interval_is_refused(self, interval):
         with pytest.raises(ValueError, match="heartbeat interval"):
-            H.build({"r1": self.INFO}, "uid", interval)
+            H.build({"r1": self.INFO}, "uid", interval, SYSLOG)
 
     def test_an_unusable_name_is_refused(self):
         with pytest.raises(ValueError):
-            H.build({'r1"} or vector(1) #': self.INFO}, "uid", INTERVAL)
+            H.build({'r1"} or vector(1) #': self.INFO}, "uid", INTERVAL, SYSLOG)
 
     def test_no_loki_refuses_rather_than_guessing(self, monkeypatch, capsys):
         monkeypatch.setattr("sys.argv", ["x", "--datasource-uid", "u"])
@@ -306,7 +309,7 @@ class TestOnlyTheHeartbeatLineCounts:
         return re.findall(r"\|~ `([^`]*)`", query)
 
     def test_the_heartbeat_matches_and_the_error_naming_the_applet_does_not(self):
-        pats = self._regexes(H.query_for("s4"))
+        pats = self._regexes(H.query_for("s4", SYSLOG))
         assert len(pats) == 2, pats
         assert all(re.search(p, self.BEAT) for p in pats)
         assert not all(re.search(p, self.NOT_A_BEAT) for p in pats)
@@ -320,7 +323,8 @@ class TestOnlyTheHeartbeatLineCounts:
 
     def test_the_rule_uses_the_same_anchored_query(self):
         rule = H.rule_for("s4", "uid", 300, {"basis": "measured", "window": 900,
-                                             "lo": 390, "hi": 430, "n": 40, "rate": 0.75})
+                                             "lo": 390, "hi": 430, "n": 40, "rate": 0.75},
+                          SYSLOG)
         assert H.HEARTBEAT_LINE in yaml.safe_dump(rule, width=10_000)
 
 
@@ -344,7 +348,7 @@ class TestAConfigurationChangeIsNotAMeasurement:
         assert H.gaps_from(arrivals, config_events=[arrivals[0] - 1000]) == H.gaps_from(arrivals)
 
     def test_the_config_query_is_anchored_to_the_device(self):
-        q = H.config_query_for("s4")
+        q = H.config_query_for("s4", SYSLOG)
         assert H.host_pattern("s4") in q and "CONFIG_I" in q
 
 
@@ -422,12 +426,12 @@ class TestARestartIsNotAMeasurement:
         # never calls it is this project's commonest shape).
         rules = tmp_path / "rules.yaml"
         doc = H.build({"s3": {"basis": "measured", "window": 1337, "lo": 515.1, "hi": 575.5,
-                              "n": 40, "rate": 0.55}}, "uid", 300)
+                              "n": 40, "rate": 0.55}}, "uid", 300, SYSLOG)
         rules.write_text(H.render(doc), encoding="utf-8")
         monkeypatch.setattr(H, "_loki_url", lambda arg: "http://loki.invalid")
         monkeypatch.setattr(H, "expected_devices", lambda: ({"s3"}, []))
         monkeypatch.setattr(H, "loki_arrivals", lambda url, h, hours=6, query="":
-                            [] if query else list(s3["arrivals"]))
+                            [] if H.CONFIG_EVENT in query else list(s3["arrivals"]))
         monkeypatch.setattr(H, "prometheus_restarts",
                             lambda hosts, hours=6: ({"s3": self._windows(s3)}, ""))
         monkeypatch.setattr("modules.settings_schema.get_setting",
@@ -505,7 +509,7 @@ class TestAWeekIsMeasuredByItsSpreadNotItsExtremes:
 
     def test_the_rule_says_the_trade(self, week):
         doc = yaml.safe_load(H.render(H.build(
-            {"s3": H.measure(week["s3"], INTERVAL)}, "uid", INTERVAL)))
+            {"s3": H.measure(week["s3"], INTERVAL)}, "uid", INTERVAL, SYSLOG)))
         text = str(doc)
         assert "0.5th to 99.5th percentile over 7 days" in text
         assert "a double miss inside a burst of the shortest may go unseen" in text
@@ -535,8 +539,129 @@ class TestACutLokiReadIsRefused:
     def test_a_full_page_raises_naming_the_cut(self, monkeypatch):
         monkeypatch.setattr("requests.get", self._fake(5000))
         with pytest.raises(RuntimeError, match="the read is cut, not complete"):
-            H.loki_arrivals("http://loki.invalid", "s3")
+            H.loki_arrivals("http://loki.invalid", "s3", query=H.query_for("s3", SYSLOG))
 
     def test_a_partial_page_is_the_answer(self, monkeypatch):
         monkeypatch.setattr("requests.get", self._fake(4999))
-        assert len(H.loki_arrivals("http://loki.invalid", "s3")) == 4999
+        got = H.loki_arrivals("http://loki.invalid", "s3", query=H.query_for("s3", SYSLOG))
+        assert len(got) == 4999
+
+
+# ---------------------------------------------------------------------------
+# C963: the syslog job is measured from the Loki the windows are measured from.
+# ---------------------------------------------------------------------------
+
+JOBS_CAPTURE = "tests/fixtures/loki/syslog_jobs.json"
+
+
+class _Answer:
+    def __init__(self, body, status=200):
+        self.status_code, self._body = status, body
+        self.text = "" if status == 200 else str(body)
+
+    def json(self):
+        return self._body
+
+
+def planted_loki(monkeypatch, jobs, asked=None):
+    """`requests.get` as a Loki whose count by job (`device_logs.job_query`) is the lab's real
+    answer (`syslog_jobs.json`) with its one row's job renamed to each of *jobs* (a minimal
+    edit; none: no row). *jobs* None: Loki does not answer. Every query asked is appended to
+    *asked*."""
+    import copy
+    import json
+
+    import requests
+
+    from modules import device_logs
+
+    cap = json.load(open(JOBS_CAPTURE, encoding="utf-8"))
+    row = cap["body"]["data"]["result"][0]
+    body = copy.deepcopy(cap["body"])
+    body["data"]["result"] = [dict(copy.deepcopy(row), metric={"job": j}) for j in jobs or ()]
+
+    def get(url, params=None, timeout=None, **_kw):
+        if asked is not None:
+            asked.append((params or {}).get("query"))
+        if jobs is None:
+            raise requests.ConnectionError("planted: nothing listening")
+        assert (params or {}).get("query") == device_logs.job_query(), params
+        return _Answer(body)
+    monkeypatch.setattr("requests.get", get)
+
+
+@pytest.mark.usefixtures("syslog_job_measured")
+class TestTheSyslogJobIsMeasured:
+    """C963: `JOB = "network_syslog"` was the lab's name in the rules, so on a network whose
+    syslog job is named otherwise every heartbeat rule read nothing and alerted for ever. The
+    job is now asked of Loki (`device_logs.syslog_jobs`, C820's one question) and every query
+    and rule takes it; none found, or Loki unable to say, writes nothing."""
+
+    def _run(self, monkeypatch, tmp_path, *extra):
+        out = tmp_path / "rules.yaml"
+        queries = []
+
+        def arrivals(url, h, hours=6, query=""):
+            queries.append(query)
+            return [] if H.CONFIG_EVENT in query else _arrivals(_gaps(299.8, 300.1))
+        monkeypatch.setattr(H, "_loki_url", lambda arg: "http://loki.invalid")
+        monkeypatch.setattr(H, "expected_devices", lambda: ({"s1", "r2"}, []))
+        monkeypatch.setattr(H, "prometheus_restarts", lambda hosts, hours=6: ({}, ""))
+        monkeypatch.setattr(H, "loki_arrivals", arrivals)
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: 300 if key == "syslog_heartbeat_seconds"
+                            else default)
+        monkeypatch.setattr("sys.argv", ["nmas-heartbeat-rules", "--datasource-uid", "u",
+                                         "--out", str(out), *extra])
+        return out, queries
+
+    def test_another_networks_job_is_read_from_loki_and_written_into_every_rule(
+            self, monkeypatch, tmp_path, capsys):
+        planted_loki(monkeypatch, ["site_syslog"])
+        out, queries = self._run(monkeypatch, tmp_path)
+        assert H.main() == H.EXIT_OK
+        assert 'syslog job measured from Loki: job="site_syslog"' in capsys.readouterr().out
+        assert len(queries) == 4 and all(q.startswith('{job="site_syslog"} ') for q in queries)
+        rules = yaml.safe_load(out.read_text())["groups"][0]["rules"]
+        assert len(rules) == 2
+        for r in rules:
+            assert r["data"][0]["model"]["expr"].startswith(
+                'sum(count_over_time({job="site_syslog"} |= "NMAS-HEARTBEAT"'), r
+        assert "network_syslog" not in out.read_text()
+
+    def test_two_jobs_are_both_read(self, monkeypatch, tmp_path):
+        planted_loki(monkeypatch, ["alpha_syslog", "site_syslog"])
+        _out, queries = self._run(monkeypatch, tmp_path)
+        assert H.main() == H.EXIT_OK
+        assert queries and all(q.startswith('{job=~"alpha_syslog|site_syslog"} ')
+                               for q in queries)
+
+    @pytest.mark.parametrize("mode", [(), ("--check",)])
+    def test_no_job_holding_syslog_refuses_and_writes_or_checks_nothing(
+            self, monkeypatch, tmp_path, capsys, mode):
+        planted_loki(monkeypatch, [])
+        out, queries = self._run(monkeypatch, tmp_path, *mode)
+        assert H.main() == H.EXIT_UNPROVEN
+        said = capsys.readouterr().out
+        assert said.startswith("UNPROVEN: the syslog job could not be measured from "
+                               "http://loki.invalid: no job in Loki holds a device's syslog "
+                               "line"), said
+        assert "refuses to write or check one" in said
+        assert queries == [] and not out.exists()
+
+    def test_a_loki_that_cannot_be_asked_refuses_naming_why(self, monkeypatch, tmp_path, capsys):
+        planted_loki(monkeypatch, None)
+        out, queries = self._run(monkeypatch, tmp_path)
+        assert H.main() == H.EXIT_UNPROVEN
+        said = capsys.readouterr().out
+        assert ("Loki could not be asked which job holds the devices' syslog: could not ask "
+                "http://loki.invalid (ConnectionError)") in said, said
+        assert queries == [] and not out.exists()
+
+    def test_a_rule_or_a_query_without_a_job_is_refused(self):
+        with pytest.raises(ValueError, match="never assumed"):
+            H.query_for("r1", "")
+        with pytest.raises(ValueError, match="never assumed"):
+            H.build({"r1": TestRefusals.INFO}, "uid", INTERVAL, "")
+        with pytest.raises(ValueError, match="no query"):
+            H.loki_arrivals("http://loki.invalid", "r1", query="")

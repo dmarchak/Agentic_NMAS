@@ -18,6 +18,8 @@ import sys
 
 import dukpy
 
+from tests.test_telemetry_fold import stored  # noqa: F401 (the fixture)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JSON = os.path.join(ROOT, "deploy", "grafana", "nmas-device.json")
 BUILDER = os.path.join(ROOT, "deploy", "grafana", "build_nmas_device.py")
@@ -41,8 +43,83 @@ class TestTheFile:
     def test_its_own_uid_and_the_device_variable(self):
         d = _doc()
         assert d["uid"] == "nmas-device" and d["title"] == "NMAS device"
-        assert [v["name"] for v in d["templating"]["list"]] == ["device"]
+        assert [v["name"] for v in d["templating"]["list"]] == ["device", "syslog_job"]
         assert {i["name"] for i in d["__inputs"]} == {"DS_PROMETHEUS", "DS_LOKI"}
+
+
+def _target(title):
+    (t,) = next(p for p in _content() if p["title"] == title)["targets"]
+    return t
+
+
+class TestNoCollectorsJobIsNamed:
+    """C964: the builder named the lab's syslog job and its two platform SNMP jobs, so on
+    another network the syslog panels, "Answering SNMP" and the device list read nothing. The
+    syslog job is now a variable Grafana reads from Loki at view time (every job by default),
+    and the platform jobs are the ones holding the device's own sysUpTime, joined in the query."""
+
+    def _variable(self, name):
+        return next(v for v in _doc()["templating"]["list"] if v["name"] == name)
+
+    def test_no_query_or_variable_names_a_job(self):
+        """By the lab-specifics scan's own shape (`names_a_job`), every expression and every
+        variable's question; the floor: every Loki target and the variables were read."""
+        from tests.test_lab_specifics import names_a_job
+        exprs = [t["expr"] for p in _content() for t in p["targets"]]
+        exprs += [v["definition"] for v in _doc()["templating"]["list"]]
+        assert len(exprs) >= 29
+        assert [e for e in exprs if names_a_job(e)] == []
+
+    def test_the_syslog_job_is_lokis_every_job_by_default(self):
+        v = self._variable("syslog_job")
+        assert v["datasource"]["type"] == "loki" and v["type"] == "query"
+        assert v["query"] == v["definition"] == 'label_values({device=~".+"}, job)'
+        assert v["includeAll"] is True and v["allValue"] == ".+"
+        assert v["current"]["value"] == "$__all"
+        loki = [p for p in _content() if p["datasource"]["type"] == "loki"]
+        assert len(loki) == 2
+        for p in loki:
+            assert p["targets"][0]["expr"].count('{job=~"$syslog_job"} |~ `\\d+: $device: `') == 1
+
+    def test_answering_snmp_reads_the_job_holding_the_devices_uptime(self):
+        expr = _target("Answering SNMP")["expr"]
+        assert expr == ('max by (device) (up{device="$device"} and on(job, device) '
+                        'group by (job, device) (last_over_time(sysUpTime{device="$device"}[1d])))')
+
+    def test_the_device_list_is_every_device_prometheus_scrapes(self):
+        v = self._variable("device")
+        assert v["definition"] == v["query"]["query"] == 'label_values(up{device=~".+"}, device)'
+
+    def test_the_device_page_sends_lokis_all_value_never_an_empty_matcher(self, stored):
+        """Through the app's own reader and request (`device_page.panel_data`): the variable's
+        All reaches Loki as `.+`. Loki refuses a selector whose only matcher is `.*` (measured
+        on the lab's Loki, 2026-10-16: "queries require at least one regexp or equality matcher
+        that does not have an empty-compatible value"), which is what All was sent as."""
+        from modules import device_page
+        from tests.test_telemetry_fold import _Grafana
+
+        class Asked(_Grafana):
+            bodies = []
+
+            def query(self, body):
+                self.bodies.append(body)
+                return super().query(body)
+        g = Asked()
+        pid = next(p["id"] for p in stored["panels"] if p["title"] == "Critical syslog lines, last 24 h")
+        _payload, code = device_page.panel_data({"hostname": "r3", "ip": "192.0.2.13"}, "Default",
+                                                "nmas-device", pid, "1h", client=g)
+        assert code == 200
+        (q,) = g.bodies[0]["queries"]
+        assert q["expr"].startswith('sum(count_over_time({job=~".+"} |~ `\\d+: r3: `'), q["expr"]
+
+    def test_all_is_the_declared_all_value_else_any(self):
+        from modules import panels
+        dash = {"variables": [
+            {"name": "a", "type": "query", "current": "$__all", "all_value": ".+"},
+            {"name": "b", "type": "query", "current": None, "all_value": ""},
+            {"name": "c", "type": "query", "current": ["$__all"], "all_value": "x|y"},
+            {"name": "d", "type": "query", "current": "one", "all_value": ".+"}]}
+        assert panels.variable_values(dash, "", "") == {"a": ".+", "b": ".*", "c": "x|y", "d": "one"}
 
 
 class TestTheOperatorsRules:

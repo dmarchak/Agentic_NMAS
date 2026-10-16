@@ -105,7 +105,9 @@ def _variables(model: dict) -> list:
         out.append({"name": v.get("name"), "type": v.get("type"),
                     "query": q if isinstance(q, str) else (q or {}).get("query") or "",
                     "current": (v.get("current") or {}).get("value"),
-                    "multi": bool(v.get("multi"))})
+                    "multi": bool(v.get("multi")),
+                    # What Grafana sends for All when the dashboard declares it (C964).
+                    "all_value": v.get("allValue") or ""})
     return out
 
 

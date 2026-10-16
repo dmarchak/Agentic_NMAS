@@ -80,15 +80,37 @@
           "uid": "${DS_PROMETHEUS}"
         },
         "query": {
-          "query": "label_values(up{job=~\"cisco_8000v|cisco_vios_l2\"}, device)",
+          "query": "label_values(up{device=~\".+\"}, device)",
           "refId": "device"
         },
-        "definition": "label_values(up{job=~\"cisco_8000v|cisco_vios_l2\"}, device)",
+        "definition": "label_values(up{device=~\".+\"}, device)",
         "refresh": 2,
         "sort": 1,
         "multi": false,
         "includeAll": false,
         "current": {},
+        "options": []
+      },
+      {
+        "name": "syslog_job",
+        "label": "Syslog job",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "query": "label_values({device=~\".+\"}, job)",
+        "definition": "label_values({device=~\".+\"}, job)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
         "options": []
       }
     ]
@@ -114,7 +136,7 @@
       "id": 2,
       "type": "stat",
       "title": "Answering SNMP",
-      "description": "Whether this device answered the last SNMP scrape (30 s).",
+      "description": "Whether this device answered the last SNMP scrape (30 s) of its platform job: the job that reads its uptime.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -128,7 +150,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "none",
-          "noValue": "Not a target: its configuration has no SNMP. Needs attention says what to do.",
+          "noValue": "Not a target: its configuration has no SNMP, or it has not answered SNMP in a day. Needs attention says what to do.",
           "min": 0,
           "max": 1,
           "mappings": [
@@ -159,7 +181,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max by (device) (up{job=~\"cisco_8000v|cisco_vios_l2\", device=\"$device\"})",
+          "expr": "max by (device) (up{device=\"$device\"} and on(job, device) group by (job, device) (last_over_time(sysUpTime{device=\"$device\"}[1d])))",
           "legendFormat": "via SNMP"
         }
       ],
@@ -486,7 +508,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({job=\"network_syslog\"} |~ `\\d+: $device: ` |~ `%[A-Z0-9_]+-[0-2]-` [24h])) or vector(0)",
+          "expr": "sum(count_over_time({job=~\"$syslog_job\"} |~ `\\d+: $device: ` |~ `%[A-Z0-9_]+-[0-2]-` [24h])) or vector(0)",
           "legendFormat": "via syslog",
           "queryType": "range"
         }
@@ -1665,7 +1687,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "sum by (sev) (count_over_time({job=\"network_syslog\"} |~ `\\d+: $device: ` | regexp `%[A-Z0-9_]+-(?P<sev>[0-7])-` [$__interval]))",
+          "expr": "sum by (sev) (count_over_time({job=~\"$syslog_job\"} |~ `\\d+: $device: ` | regexp `%[A-Z0-9_]+-(?P<sev>[0-7])-` [$__interval]))",
           "legendFormat": "severity {{sev}} (via syslog)",
           "queryType": "range"
         }

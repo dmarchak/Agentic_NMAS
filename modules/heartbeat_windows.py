@@ -117,9 +117,17 @@ def plan(H=None, installed_path: str = "") -> dict:
     if not hosts:
         raise Refused("no device is told to heartbeat: a file with no rules reads like a fleet "
                       "that is all heartbeating, and is never written")
+    from modules.device_logs import NoSyslogJob
+
+    try:
+        job = H.syslog_job(loki)                      # C963: measured, never named
+    except NoSyslogJob as exc:
+        raise Refused(f"the syslog job could not be measured from {loki}: {exc} (a window "
+                      "measured from a guessed job is a guess)") from exc
     restarts, note = H.prometheus_restarts(hosts)
-    got = read_each(lambda h: H.gaps_from(H.loki_arrivals(loki, h),
-                                          H.loki_arrivals(loki, h, query=H.config_query_for(h)),
+    got = read_each(lambda h: H.gaps_from(H.loki_arrivals(loki, h, query=H.query_for(h, job)),
+                                          H.loki_arrivals(loki, h,
+                                                          query=H.config_query_for(h, job)),
                                           restarts.get(h, ())),
                     hosts, name="heartbeat-remeasure")
     failed = next((g for g in got if isinstance(g, Failed)), None)
@@ -128,7 +136,7 @@ def plan(H=None, installed_path: str = "") -> dict:
                       "computed from the devices that answered is a guess about the rest")
     fresh = H.windows(dict(zip(hosts, got)), heartbeat)
     try:
-        doc = H.build(fresh, uid, heartbeat)
+        doc = H.build(fresh, uid, heartbeat, job)
     except ValueError as exc:
         raise Refused(str(exc)) from exc
     text = H.render(doc)

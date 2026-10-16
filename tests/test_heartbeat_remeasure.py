@@ -32,15 +32,20 @@ def lab(monkeypatch, tmp_path):
     written = tmp_path / "written" / "nmas-heartbeat.yaml"
     installed = tmp_path / "etc" / "nmas-heartbeat.yaml"
     installed.parent.mkdir()
+    from tests.conftest import CAPTURED_SYSLOG_JOB
     doc = H.build({"s3": {"basis": "measured", "window": 1337, "lo": 515.1, "hi": 575.5,
-                          "n": 40, "rate": 0.55}}, "lokiuid1", 300)
+                          "n": 40, "rate": 0.55}}, "lokiuid1", 300,
+                  f'job="{CAPTURED_SYSLOG_JOB}"')
     installed.write_text(H.render(doc), encoding="utf-8")
     monkeypatch.setattr(H, "OUT", str(written))
     monkeypatch.setattr(H, "_loki_url", lambda arg: "http://loki.invalid")
     monkeypatch.setattr(H, "expected_devices", lambda: ({"s3", "s9"}, []))
-    state = {"arrivals": list(s3["arrivals"])}
-    monkeypatch.setattr(H, "loki_arrivals", lambda url, h, hours=6, query="":
-                        [] if query or h != "s3" else list(state["arrivals"]))
+    state = {"arrivals": list(s3["arrivals"]), "queries": []}
+
+    def arrivals(url, h, hours=6, query=""):
+        state["queries"].append(query)
+        return [] if H.CONFIG_EVENT in query or h != "s3" else list(state["arrivals"])
+    monkeypatch.setattr(H, "loki_arrivals", arrivals)
     monkeypatch.setattr(H, "prometheus_restarts", lambda hosts, hours=6: ({"s3": restarts}, ""))
     monkeypatch.setattr(HW, "_script", lambda: H)
     monkeypatch.setattr(HW, "INSTALLED", str(installed))
@@ -78,6 +83,28 @@ class TestThePreview:
         monkeypatch.setattr(lab["H"], "_loki_url", lambda arg: "")
         with pytest.raises(lab["HW"].Refused, match="no Loki to measure from"):
             _plan(lab)
+
+    @pytest.mark.usefixtures("syslog_job_measured")
+    def test_the_job_is_measured_from_loki_and_every_query_and_rule_takes_it(self, lab,
+                                                                             monkeypatch):
+        """C963: the preview asks Loki which job holds the devices' syslog, never a name."""
+        from tests.test_heartbeat_rules import planted_loki
+        planted_loki(monkeypatch, ["site_syslog"])
+        p = _plan(lab)
+        assert lab["state"]["queries"]
+        assert all(q.startswith('{job="site_syslog"} ') for q in lab["state"]["queries"])
+        assert '{job="site_syslog"} |= "NMAS-HEARTBEAT"' in p["text"]
+        assert "network_syslog" not in p["text"]
+
+    @pytest.mark.usefixtures("syslog_job_measured")
+    def test_no_syslog_job_is_refused_by_name_and_nothing_measured(self, lab, monkeypatch):
+        from tests.test_heartbeat_rules import planted_loki
+        planted_loki(monkeypatch, [])
+        with pytest.raises(lab["HW"].Refused,
+                           match="the syslog job could not be measured from http://loki.invalid: "
+                                 "no job in Loki holds a device's syslog line"):
+            _plan(lab)
+        assert lab["state"]["queries"] == []
 
     def test_an_unknown_datasource_is_refused_never_guessed(self, lab, monkeypatch):
         lab["installed"].unlink()
