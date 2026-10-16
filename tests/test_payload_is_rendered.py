@@ -1,5 +1,11 @@
 """Stage 7.0 (3): if a payload carries it, the screen shows it.
 
+**Today's (v1) pages only.** This measures today's JSON routes against today's JavaScript
+renderers, and stays until those pages go: its lists (`UNDRAWN`, `PHANTOM`, the empty records)
+shrink to nothing at P7-27, when the index and the Bootstrap pages are removed. v2 draws on the
+server, and the same property is measured there by `test_v2_context_is_drawn.py` (P7-04,
+2026-10-15): every key a v2 route's context carries is read by its template, or declared.
+
 Four instances of one failure were recorded before this check existed, each
 a key computed by the server, carried to the browser and drawn nowhere:
 * D4: the deploy wizard dropped `commands`, `dangerous` and `attribution`;

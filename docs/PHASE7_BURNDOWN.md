@@ -65,13 +65,15 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
 | **Harness: the checks on v2** | | | | | |
-| P7-04 | Criterion 4, payloads drawn: the check extended to v2's render context | the check reads v2; the lists shrink to v2's real gaps | M–L | — | — |
+| ~~P7-04~~ | ~~Criterion 4, payloads drawn on v2~~ **done** (see Checked off); its gaps are C867 to C869 below | | | | |
 | P7-05 | Criterion 5, invalidation: `NOT_YET_SUBSCRIBED` (active_list, lists, posture, breakglass) to 0 | each key has a v2 subscriber | S–M | P7-26 for `lists` | — |
 | P7-07 | Criterion 10, the sidebar: an order test; the 37 findability questions walked | the test; the walk folded into a sitting | S + walk | — | W |
 | **v2 gaps cutover needs** | | | | | |
 | C855 | criterion 11: the v2 device page's per-device work | test_scale's device-page calls-per-device pin at 0 per device | S–M | — | — |
 | C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
+| C867 | v2's deploy card draws the plan's attribution (where each line came from) before the confirm | `UPSTREAM` in tests/test_v2_context_is_drawn.py loses those 5 keys | S–M | — | — |
+| C868, C869 | the restore chooser's subject; the profile proposal's reads and skips | their `UNDRAWN` GAP entries gone | S each | — | — |
 | C860 | v2's Save draws C539's "a baseline was taken N min ago" warning (found writing W1) | the `/v2/devices/save` test with a baseline just taken | S | — | — |
 | C543, C544 | Needs attention's action words (Persist; Revert and Retry) | the rows' tests | S | — | — |
 | C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
@@ -108,7 +110,8 @@ their sittings clear.
 | tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | 4 | 0 (P7-05) |
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | 8 | 0 (C522) |
 | tests/test_no_new_v1_capability.py controls / handlers / functions / fields | 43 / 31 / 333 / 20 | 0 (P7-27) |
-| tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | 93 / 14 / 31 (v1 routes) | re-based on v2 (P7-04) |
+| tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | 93 / 14 / 31 (v1 routes) | 0 at P7-27 (the v1 check goes with today's pages) |
+| tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | 357 (17 GAP) / 16 / 23 (P7-04, 2026-10-16) | the GAP entries cutover needs (C868, C869) gone; `UPSTREAM` less C867's 5 |
 | tests/signed_off_screens.py `UNSIGNED` | 3 | 1 (not_found stays; heartbeat and ip_sla go with P.12, D3) |
 | modules/manual.py `ON_TODAYS_APP` | **0** (P7-19) | 0 |
 | tests/test_route_reachability.py `KNOWN_UNREACHABLE` / `NON_GUI` | 0 / 8 | 0 / 8 (D1 keeps two) |
@@ -128,6 +131,8 @@ blocks cutover or is a security issue (B).
     that stop), C179 (subsets said): refinements of screens that already work.
   - P7-30, the designed v2 error page: the plain error answer serves until then.
   - C861, the batch deploy's "Back to Coverage" from every start: wording, leads nowhere wrong.
+  - C870 (keys no interface ever drew; three missing icons) and C871 (the walk's lab lacks a
+    break-glass record and a window): never drawn on today's pages either, or harness.
   - The board comparisons of screens no walk touches (C650's remainder).
   - D3's plan items: 7.10, P.12 (with C322, heartbeat and ip_sla), P.7, P.8 step 9, P.9, P.11
     step 3, P.15's rest.
@@ -182,3 +187,8 @@ blocks cutover or is a security issue (B).
   delete; deleting is the operator's), counted by the read-only census
   `scripts/host-steps/c730-golden-archive-census.sh` after the release is deployed. C862 opened
   (UNKNOWN: whether the key reads older versions; the census settles it).
+- **P7-04 done** (criterion 4 on v2): tests/test_v2_context_is_drawn.py records each v2 route's
+  render context on a real walk (120 pages, 927 fragments, four providers) and parses what its
+  templates read: 117 routes, 3,119 keys; `UNDRAWN` 357 each reasoned (17 GAP), `UPSTREAM` 16
+  (the deploy card's adapter), `UNREACHED` 23. Found: C867 (A), C868, C869 (B), into this
+  section; C870, C871 (C), the tail.
