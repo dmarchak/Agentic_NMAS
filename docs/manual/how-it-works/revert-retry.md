@@ -24,7 +24,8 @@ repaired, because whether any device's program is one that was rolled back is th
 Both operations are under the device page's Actions: **Revert intent…** and **Retry
 rolled-back change…**. They are offered only while a block stands on the device; otherwise
 each row says why it is not offered (no block, or the record of blocks cannot be read). A
-deploy or restore whose verify failed and rolled back offers both in its result too. Each
+deploy or restore whose verify failed and rolled back offers both in its result too, and so
+does the block's row on Needs attention, each button opening its card on the device's page. Each
 opens its card in place of the tab: the preview below, then the confirm, then the result in
 the same card. A revert whose block still stands says so, and offers another revert or a
 deploy plan.

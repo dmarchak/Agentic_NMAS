@@ -563,7 +563,12 @@ class TestRollbackBlocksAsASource:
         r = res["rows"][0]
         assert r["level"] == "warning" and r["devices"] == ["r2"]
         assert "C118 measurement" in r["cause"] and r["since"]
-        assert r["action"]["known"] is False and "7.3" in r["action"]["label"]
+        # C544: both ways out, each its card on the v2 device page, never "no screen yet".
+        assert r["action"]["known"] is True and "no screen" not in r["action"]["label"]
+        assert {k: r["action"][k] for k in ("open", "device", "list")} == {
+            "open": "revert_retry", "device": "r2", "list": "Lab"}
+        assert "Revert intent…" in r["action"]["label"]
+        assert "Retry with a reason…" in r["action"]["label"]
         assert res["checked"] == "list Lab: 1 standing, 0 no longer blocking"
 
     def test_a_block_whose_change_is_gone_is_counted_not_listed(self, blocked):
@@ -605,7 +610,10 @@ class TestDeploysAsASource:
         r = by_dev["s3"]
         assert r["level"] == "warning" and r["operands"]["sent_lines"] == 0
         assert r["what"].startswith("The last deploy to s3: refused")
-        assert "Changes tab" in r["action"]["label"]
+        # A refusal reads its receipt and plans again, on the v2 device page's History tab
+        # (v2 has no Changes tab), and offers no Persist: nothing was sent.
+        assert "History tab" in r["action"]["label"] and "open" not in r["action"]
+        assert r["action"]["href"] == "/v2/device/s3?tab=history"
         assert "1 clean" in res["checked"] and "2 device(s)" in res["checked"]
 
     def _row(self, host, outcome, sent, at, **kw):

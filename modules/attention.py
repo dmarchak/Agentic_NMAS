@@ -75,6 +75,10 @@ ROW_KINDS = {
                               "revert the failed intent, or authorise a retry"),
     ("deploys", "failed"): ("the last deploy or restore to a device did not succeed",
                             "read its receipt, then plan again"),
+    # C543: verified and running, and NOT in startup, so a reload loses it; Persist saves it.
+    ("deploys", "unsaved"): ("a change verified and running on a device is not saved to "
+                             "startup, so a reload loses it",
+                             "persist it from the device's page"),
     ("baseline", "denied"): ("the last baseline was not earned", "resolve each departure, then Save All"),
     ("baseline", "unusable"): ("no stored baseline can be re-applied", "take a current baseline"),
     ("authorisations", "repeated"): ("one line is authorised again and again",
@@ -175,6 +179,9 @@ CLEARS = {
                               "(reverted or edited), or a retry is authorised with a reason"),
     ("deploys", "failed"): (("resolves",), "a later deploy or restore to the device finishes "
                             "clean"),
+    ("deploys", "unsaved"): (("resolves",), "a save of the device after the deploy reads its "
+                             "startup config back saved (its page's Persist, or Save), or a "
+                             "later deploy or restore to it finishes clean"),
     ("baseline", "denied"): (("resolves",), "a later save earns a baseline"),
     ("baseline", "unusable"): (("resolves",), "a stored baseline can be re-applied: a new one "
                                "is earned"),
@@ -838,11 +845,14 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
 # Source: rollback blocks
 # ---------------------------------------------------------------------------
 
-#: Revert intent and retry are the remedies, and both are routes with no
-#: page yet; 7.3's Device actions are their home (C164). Stated, not hidden.
-_ROLLBACK_ACTION = {"label": "Revert the intent that failed, or authorise a retry: "
-                             "neither has a screen yet (7.3's Device actions)",
-                    "known": False}
+def _rollback_action(lst: str, host: str) -> dict:
+    """Revert intent and Retry are the remedies, each a card on the device's page since 7.3
+    (C544): the row offers both, as the deploy's result card does (`open`, drawn as the two
+    buttons of `v2/_attention.html`)."""
+    return {"label": "Revert intent… if the change was wrong, or Retry with a reason… if it "
+                     "was right and the failure was elsewhere: each opens its card on the "
+                     "device's page",
+            "open": "revert_retry", "device": host, "list": lst}
 
 
 def rollback_source(notes=None) -> dict:
@@ -888,7 +898,7 @@ def rollback_source(notes=None) -> dict:
                    + (f" ({note['reason']})" if note.get("reason") else "")
                    + ("; whether the note still applies could not be computed"
                       if unknown else "")),
-            action=_ROLLBACK_ACTION, devices=[host], since=_ts(note.get("at")),
+            action=_rollback_action(lst, host), devices=[host], since=_ts(note.get("at")),
             operands={"list": lst, "failed_lines": len(note.get("commands") or []),
                       "intent_commit": (note.get("intent_commit") or "")[:10]}))
     n_stale = len(got.get("stale") or {})
@@ -904,17 +914,61 @@ def rollback_source(notes=None) -> dict:
 # Source: a deploy or restore that did not finish clean
 # ---------------------------------------------------------------------------
 
-def deploy_source(read=None) -> dict:
+def _saved_since(saves=None) -> tuple:
+    """``({device: epoch}, why_not)``: when each device's latest save was read back SAFE
+    (its startup config carrying what it runs), from the save record its page's Persist, Save,
+    adopt and a rotation's persistence write (`onboard._record_native_persist`,
+    `credential_rotation.record_outcome`). A record that cannot be read is *why_not*, and
+    counts no save (C543: the unsaved row stays rather than clear on a save nobody can see)."""
+    from modules.nsot import credential_rotation as cr
+
+    try:
+        records = cr.rotation_records_as_known() if saves is None else saves()
+    except Exception as exc:                       # noqa: BLE001
+        return {}, f"the save record could not be read ({type(exc).__name__}: {exc})"
+    out = {}
+    for rec in records:
+        at = _ts(rec.get("at"))
+        if rec.get("device") and at and rec.get("state") in (cr.SAVE_PERSISTED,
+                                                              cr.ROTATED_PERSISTED):
+            out[rec["device"]] = max(at, out.get(rec["device"], 0))
+    return out, ""
+
+
+def _only_unsaved(r: dict) -> bool:
+    """A receipt row whose ONE fault is the save to startup (C511, C543): deployed, verified,
+    the program it confirmed, and not saved. Judged by the result's own decision with the
+    save taken as done, so the two cannot disagree about what else would make it not clean."""
+    from modules.nsot import receipts
+    from modules.preview_confirm import result_level
+
+    return (r.get("outcome") == "deployed" and not receipts.is_pending(r)
+            and (r.get("saved_startup") or {}).get("state") == "not_saved"
+            and result_level([dict(r, saved_startup={"state": "saved"})],
+                             receipt_ok=True) == "success")
+
+
+def _persist_action(lst: str, host: str, label: str) -> dict:
+    """Persist on the device's page (`open`, drawn as its button in `v2/_attention.html`)."""
+    return {"label": label, "open": "persist", "device": host, "list": lst}
+
+
+def deploy_source(read=None, saves=None) -> dict:
     """Each device's LATEST deploy or restore receipt, judged by the ONE
     decision the result screen uses (`preview_confirm.result_level`): a row
     unless it finished clean. A later clean run supersedes an earlier
     failure, so a device leaves the page by being deployed, not by aging.
     Danger when a program was SENT (the device may be part-changed), warning
     when nothing was (a refusal changed nothing, and the change it was for
-    still has not landed)."""
+    still has not landed).
+
+    The action follows the outcome (C543): a change verified and running and NOT saved to
+    startup is its own kind, `unsaved`, a warning whose action is Persist on the device's
+    page, and a save read back SAFE after the receipt clears it; any other fault reads its
+    receipt and plans again, offering Persist too when the change is also unsaved."""
     from modules.config import get_current_list_name
     from modules.nsot import receipts
-    from modules.preview_confirm import OUTCOME_WORDS, result_level
+    from modules.preview_confirm import OUTCOME_WORDS, SAVED_STARTUP_WORDS, result_level
 
     started = time.time()
     try:
@@ -929,7 +983,10 @@ def deploy_source(read=None) -> dict:
     latest = {}
     for r in got.get("rows") or []:                # newest first
         latest.setdefault(r.get("device") or "?", r)
-    rows, pending_named = [], 0
+    rows, pending_named, saved_later = [], 0, 0
+    # Read only when a device's one fault is the save: one read of one record, not per device.
+    saved_at, saves_unread = ((_saved_since(saves)) if any(
+        _only_unsaved(r) for r in latest.values()) else ({}, ""))
     for host, r in sorted(latest.items()):
         if receipts.is_pending(r) and _pending_is_named(lst, host, r):
             # Written as the device finished, its batch's commit not recorded yet: its batch
@@ -938,6 +995,30 @@ def deploy_source(read=None) -> dict:
             pending_named += 1
             continue
         if result_level([r], receipt_ok=True) == "success":
+            continue
+        saved = r.get("saved_startup") or {}
+        unsaved_words = (SAVED_STARTUP_WORDS["not_saved"] + ": "
+                         + (saved.get("detail") or "no reason was recorded")
+                         if saved.get("state") == "not_saved" else "")
+        if _only_unsaved(r):
+            # At or after the receipt's last line, to the second both are recorded in: the
+            # deploy held the device until then, so a save of it in that second came after.
+            if saved_at.get(host, 0) >= (_ts(r.get("completed_at") or r.get("at"))
+                                         or float("inf")):
+                saved_later += 1                   # saved since, by a Persist or a Save
+                continue
+            rows.append(row(
+                source="deploys", kind="unsaved", key=f"{lst}:{host}", level="warning",
+                what=(f"The last {r.get('action') or 'deploy'} to {host} is running and NOT "
+                      "saved to startup: a reload loses it"),
+                cause=unsaved_words + (f"; {saves_unread}" if saves_unread else ""),
+                action=_persist_action(lst, host, (
+                    f"Persist {host}: Persist… on its device page saves what it runs to "
+                    "startup and reads it back")),
+                devices=[host], since=_ts(r.get("at")),
+                operands={"list": lst, "action": r.get("action"),
+                          "outcome": r.get("outcome", ""),
+                          "sent_lines": r.get("program_lines") or 0, "by": r.get("actor")}))
             continue
         outcome = r.get("outcome", "")
         rb = r.get("rollback") or {}
@@ -958,17 +1039,24 @@ def deploy_source(read=None) -> dict:
             # Pending, held by nothing and named by no interrupted operation: the line that
             # completes it could not be written (its result said RECEIPT NOT WRITTEN).
             "its receipt was written as the device finished and never completed with its "
-            "batch's commit" if receipts.is_pending(r) else "") if x) or \
+            "batch's commit" if receipts.is_pending(r) else "",
+            # C543: said with whatever else is wrong, never dropped from the cause.
+            unsaved_words) if x) or \
             f"its receipt records {outcome or 'no outcome'} with no reason"
         words = OUTCOME_WORDS.get(outcome, outcome.replace('_', ' ') or 'no outcome')
         if receipts.is_pending(r):
             words = ("sent" if outcome == "deployed" else words) + ", " + receipts.PENDING_WORDS
+        # The receipt is read on the device page's History tab (v2 has no Changes tab).
+        read_it = "Read its receipt on the device's History tab, then plan again"
         rows.append(row(
             source="deploys", kind="failed", key=f"{lst}:{host}",
             level="danger" if r.get("sent") else "warning",
             what=f"The last {r.get('action') or 'deploy'} to {host}: {words}",
             cause=cause,
-            action={"label": "Read its receipt on the device's Changes tab, then plan again"},
+            action=(_persist_action(lst, host, read_it + f"; what {host} runs now is not "
+                                    "saved to startup, and Persist… on its device page saves "
+                                    "it meanwhile") if unsaved_words else
+                    {"label": read_it, "href": f"/v2/device/{host}?tab=history"}),
             devices=[host], since=_ts(r.get("at")),
             operands={"list": lst, "action": r.get("action"), "outcome": outcome,
                       "sent_lines": r.get("program_lines") if r.get("sent") else 0,
@@ -978,10 +1066,14 @@ def deploy_source(read=None) -> dict:
                          checked=(f"list {lst}: no deploy or restore recorded"
                                   if got.get("state") == "absent" else
                                   f"list {lst}: the latest receipt of {len(latest)} device(s), "
-                                  f"{len(latest) - len(rows) - pending_named} clean"
+                                  f"{len(latest) - len(rows) - pending_named - saved_later} "
+                                  "clean"
                                   + (f", {pending_named} commit PENDING (a batch still "
                                      "running, or an interrupted operation named under "
                                      "Operations that did not finish)" if pending_named
+                                     else "")
+                                  + (f", {saved_later} not saved to startup by the deploy "
+                                     "and saved since (a save read it back)" if saved_later
                                      else "")))
 
 
@@ -2732,7 +2824,8 @@ SOURCE_KEYS = {
     "approvals_source": ("approvals", "drift"),
     "pending_onboarding_source": ("pending", "inventory"),
     "rollback_source": ("rolled_back", "intent"),
-    "deploy_source": ("deploy_job", "goldens"),
+    # device_state: a Persist (its route invalidates it) clears an unsaved row (C543).
+    "deploy_source": ("deploy_job", "goldens", "device_state"),
     "baseline_source": ("baselines", "goldens"),
     "authorisation_source": ("deploy_job", "goldens"),
     "grafana_source": ("alerts", "inventory"),   # inventory: a device marked drained

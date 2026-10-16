@@ -171,7 +171,9 @@ the run ends. Its stages, in the order the code declares them:
 9. `save_startup`. Read: nothing. Sent: `write memory`, on a fresh SSH session, to each device
    whose push completed, once verify did not fail. Recorded: whether each saved. A save that
    fails leaves the change running and NOT in startup (a reload would lose it): said in the
-   result, never rolled back over, since the change itself passed.
+   result, never rolled back over, since the change itself passed. Needs attention keeps a
+   row for it whose button opens Persist on the device's page, until a save of the device
+   reads its startup config back saved (Persist, or Save) or a later deploy finishes clean.
 10. `save_golden`. Read: `post_snapshot`'s running configuration. Sent: nothing. Recorded: the
    capture, staged in `.nsot/staging/post_deploy/` and handed to the batch, which commits once
    for every device (see [What is recorded](#what-is-recorded)). It runs when verify did not

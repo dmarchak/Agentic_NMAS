@@ -78,12 +78,12 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | P7-07 | Criterion 10, the sidebar: ~~an order test~~ (done); the 37 findability questions walked | the walk, in W2 | walk | W1 | W |
 | **v2 gaps cutover needs** | | | | | |
 | ~~C855~~ | ~~criterion 11: the v2 device page's per-device work~~ **done** to 19 (see Checked off) | | | | |
-| C876 | criterion 11: the manifest's name lookup (the device page's last 19 calls per device) | measured first (UNKNOWN); an index if the loop measures O(N²) | S + M | — | — |
+| ~~C876~~ | ~~the manifest's name lookup~~ **measured**: quadratic but 0.43 s at 900 devices inside requests whose per-device git reads cost more (C912); resolved to C, moved to the tail | | | | |
 | C850 | criterion 6: the four Alpine confirm components to the one pattern (`SECOND_IMPLEMENTATIONS` 4 → 0) | the one-confirm test's list empty | L (`applyConfirm`) + S–M | IP SLA's with P.12 (D3) | — |
 | C537 | the every-page in-flight indicator (D2), then C540's wording and C217's one row | built from canvas v66; `/operations/in_flight` has a v2 caller | L | — | B (self-signed) |
 | ~~C867~~ | ~~v2's deploy card draws the plan's attribution~~ **done**, with C878 (the batch preview's) (see Checked off) | | | | |
 | ~~C868, C869, C860~~ | ~~the restore chooser's message; the profile proposal's reads and skips; v2's Save's repeated-baseline warning~~ **done** (see Checked off) | | | | |
-| C543, C544 | Needs attention's action words (Persist; Revert and Retry) | the rows' tests | S | — | — |
+| ~~C543, C544~~ | ~~Needs attention's action words~~ **done** (see Checked off) | | | | |
 | C487, C493 | Needs attention names each row's network; no reader falls back to a global store | survey and fix; per-row test | M | — | — |
 | C532 | Devices list and device page agree on intent state (one comparison) | one function, both drawn from it | M | — | — |
 | C342 | the device page's drift: masked diff and three choices | built from its board | M | — | B |
@@ -154,6 +154,8 @@ blocks cutover or is a security issue (B).
     words and rows), C899 (Devices' footer), C900 (reveals' reasons), C901 (W1's copy and
     fidelity notes), C902 to C904 (R1 to R3), C907 (Fields mode). C888 and C905 go with C882,
     before cutover.
+  - C876 (the manifest's name lookup, measured), C912 (Coverage Apply's preview reads per
+    device, with C450), C908 to C911 (Needs attention's edges found fixing C543).
   - C872 (the scope bar and `settings`), C873 (the top bar after a delete), C874 (the picker's
     mark; UNKNOWN): the network picker and scope bar's edges; choosing and deleting work.
   - The board comparisons of screens no walk touches (C650's remainder).
@@ -230,6 +232,9 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C543, C544 done** (Needs attention's actions follow the outcome: an unsaved deploy offers
+  Persist and clears on a save read back after it; a rollback offers Revert and Retry on v2).
+  **C876 measured** and resolved to C (the tail), with C908 to C912 (C) to the tail.
 - **W1 walked by the operator** (2026-10-16, 23:20Z to 01:12Z): C588, C547, C587, C444, C539
   closed; CUTOVER rows 42, 44, 45, 46, 53, 54, 69 walked; section I (row 68) and C691 into W2.
   27 findings registered (C881 to C907), sequenced above: C881 first, then C882 to C886 with
