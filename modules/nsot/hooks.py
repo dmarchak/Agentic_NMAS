@@ -136,15 +136,16 @@ def changed_paths(context: dict, run=None) -> tuple:
     """``(paths, error)``: the files changed by the commit(s) a hook's *context* carries, every
     held commit's (``shas``, C728) or its one (``sha``), in order, each once. The one reading
     a hook makes of what a commit changed."""
-    import subprocess
+    from modules.nsot.repo import run_git
 
     repo = context.get("repo") or ""
     shas = [s for s in (context.get("shas") or [context.get("sha")]) if s]
     paths = []
     for sha in shas:
-        p = (run or subprocess.run)(["git", "-C", repo, "diff-tree", "--no-commit-id",
-                                     "--name-only", "-r", "--root", sha],
-                                    capture_output=True, text=True, timeout=15)
+        # *run*, when given, takes `repo.run_git`'s arguments (C931: every git call on a
+        # list's repository is pinned to it).
+        p = (run or run_git)(repo, "diff-tree", "--no-commit-id", "--name-only", "-r",
+                             "--root", sha, timeout=15)
         if p.returncode != 0:
             return paths, f"git diff-tree {sha[:10]} exited {p.returncode}"
         paths += [x for x in p.stdout.split() if x not in paths]

@@ -371,6 +371,20 @@ def _git_ro(cwd: str, *args) -> tuple:
         return 1, "", str(exc)
 
 
+def _git_list_repo(repo: str, *args) -> tuple:
+    """`_git_ro` on a LIST's repository: read-only too (no `.gitignore` top-up), but pinned
+    to *repo* (`repo.run_git`, C931), never the repository a folder with no `.git` sits in."""
+    import subprocess
+
+    from modules.nsot.repo import run_git
+
+    try:
+        p = run_git(repo, *args, timeout=30)
+        return p.returncode, p.stdout.strip(), p.stderr.strip()
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 1, "", str(exc)
+
+
 def _blob_of_file(path: str) -> str:
     """The git blob id of *path*'s raw bytes.
 
@@ -389,17 +403,18 @@ def _blob_of_file(path: str) -> str:
     return out if rc == 0 else ""
 
 
-def _history(cwd: str, rel: str) -> list:
+def _history(cwd: str, rel: str, git=None) -> list:
     """``[(commit, iso date, blob)]`` for *rel*, newest first; commits where
-    the path did not exist are skipped."""
-    rc, out, _ = _git_ro(cwd, "log", "--format=%H %cI", "--", rel)
+    the path did not exist are skipped. *git*: `_git_ro` (the application's checkout) unless
+    given; a list's repository passes `_git_list_repo`."""
+    git = git or _git_ro
+    rc, out, _ = git(cwd, "log", "--format=%H %cI", "--", rel)
     if rc != 0:
         return []
     rows = []
     for line in out.splitlines():
         commit, _, date = line.partition(" ")
-        rc, blob, _ = _git_ro(cwd, "rev-parse", "--verify", "-q",
-                              f"{commit}:{rel}")
+        rc, blob, _ = git(cwd, "rev-parse", "--verify", "-q", f"{commit}:{rel}")
         if rc == 0 and blob:
             rows.append((commit, date, blob))
     return rows
@@ -501,7 +516,8 @@ def seed_status(repo: str, builtin_root: str = "") -> dict:
                           "changed since and the change has not reached it"})
             continue
         base = next(((c, d, b) for c, d, b in
-                     _history(repo, f"templates/{rel}") if b in shipped), None)
+                     _history(repo, f"templates/{rel}", git=_git_list_repo)
+                     if b in shipped), None)
         if base is None:
             report["unclassified"].append({**entry, "state": "no_common_base",
                 "reason": "no version of this network's copy ever equalled a "

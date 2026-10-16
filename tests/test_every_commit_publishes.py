@@ -36,8 +36,9 @@ CHOKEPOINT = ("modules/nsot/repo.py", "commit")
 #: with the reason.
 DEFERS_WITHOUT_PUBLISHING = {
     ("modules/nsot/repo.py", "_init_repo_locked"): (
-        "its first commit and its .gitignore top-up run only on a write path, whose own "
-        "commit follows and pushes the branch, carrying them"),
+        "its first commit and its .gitignore top-up run on a write path, whose own commit "
+        "follows and pushes the branch, carrying them, or at a network's creation (C931), "
+        "when the network has no remote to push to and its first push carries them"),
 }
 #: Commits in ANOTHER repository than a list's NSoT repository (the one the push hook serves),
 #: with the reason. Each must still be found by the scan (no ghosts).

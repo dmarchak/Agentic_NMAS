@@ -11,7 +11,6 @@ Usage::
 """
 
 import os
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,8 +27,7 @@ PASS, FAIL, WARN = "PASS", "FAIL", "WARN"
 
 
 def _git(repo, *args):
-    out = subprocess.run(["git", "-C", repo, *args],
-                         capture_output=True, text=True)
+    out = _repo.run_git(repo, *args)        # pinned to the list's repository (C931)
     return out.returncode, out.stdout.strip()
 
 

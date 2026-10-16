@@ -1,0 +1,204 @@
+"""C931: a network's repository exists from the moment the network does, and Seed says what
+it did, through the real app, on a store inside a planted parent repository (on the host the
+store, `data/`, sits inside the application's checkout and is ignored there).
+
+Found 2026-10-16 writing walk W2: Templates › "Seed the library…" on a network created on v2
+committed nothing and said the network had every shipped file. Create made the folder and no
+repository, so Seed's `git status` climbed to the repository holding the store, read it clean,
+and the four copied files sat uncommitted under a card saying "unchanged".
+
+What is held:
+
+- a network created on v2 (preview, then Create) has a `config_repo` that is a repository with
+  a first commit, its own top level; the parent repository is untouched;
+- Seed on it commits the shipped files as the person, and History shows the commit with no
+  uncommitted path;
+- a network made before this (a folder with no `.git`): History says its working tree could
+  not be read (never "clean"), and its first Seed makes the repository (the one init, as every
+  write path does) and commits; nothing reaches the parent;
+- Seed's failed commit, and a status it could not read, are said as failed (a danger card
+  naming the git error, HTTP 500), never "Nothing was added".
+"""
+
+import json
+import os
+import re
+import subprocess
+
+import pytest
+
+
+def _sh(cwd, *args):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    p = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, env=env)
+    return p.returncode, p.stdout.strip(), p.stderr.strip()
+
+
+def _flat(r):
+    return re.sub(r"\s+", " ", r.get_data(as_text=True))
+
+
+@pytest.fixture
+def store(tmp_path, monkeypatch):
+    """The settings store inside a parent repository that ignores it, holding Default."""
+    from modules import config, device
+
+    parent = tmp_path / "checkout"
+    data = parent / "store"
+    (data / "lists" / "default").mkdir(parents=True)
+    _sh(parent, "init", "-q", "-b", "main")
+    (parent / ".gitignore").write_text("store/\n")
+    (parent / "README").write_text("the application\n")
+    _sh(parent, "add", ".gitignore", "README")
+    _sh(parent, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "app")
+
+    monkeypatch.setattr(config, "DATA_DIR", str(data))
+    monkeypatch.setattr(config, "LISTS_DIR", str(data / "lists"))
+    settings = data / "user_settings.json"
+    settings.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(settings))
+    registry = data / "device_lists.json"
+    registry.write_text(json.dumps({"current_list": "Default", "lists": {"Default": "default"}}),
+                        encoding="utf-8")
+    monkeypatch.setattr(device, "DEVICE_LISTS_CONFIG", str(registry))
+    monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+
+    def state():
+        return {"head": _sh(parent, "rev-parse", "HEAD")[1],
+                "log": _sh(parent, "log", "--oneline", "--all")[1],
+                "index": _sh(parent, "ls-files", "--stage")[1],
+                "status": _sh(parent, "status", "--porcelain")[1],
+                "tags": _sh(parent, "tag", "-l")[1]}
+    import app as A
+    return {"client": A.app.test_client(), "data": data, "registry": registry,
+            "state": state, "before": state()}
+
+
+def _create(store, name):
+    c = store["client"]
+    pv = _flat(c.post("/v2/settings/networks/new/preview", data={"name": name},
+                      headers={"HX-Request": "true"}))
+    fp = re.search(r'name="fingerprint" value="([0-9a-f]+)"', pv).group(1)
+    r = c.post("/v2/settings/networks/new", data={"name": name, "fingerprint": fp},
+               headers={"HX-Request": "true"})
+    assert r.status_code == 200 and f"Created {name}" in _flat(r), _flat(r)[:600]
+
+
+def _seed(store, name):
+    c = store["client"]
+    html = c.get(f"/v2/templates/seed?list={name}").get_data(as_text=True)
+    sig = re.search(r'name="signature" value="([^"]*)"', html).group(1)
+    return c.post("/v2/templates/seed", data={"list": name, "signature": sig})
+
+
+def _card(r):
+    m = re.search(r'<section class="op-card[^"]*" id="tpl-card".*?</section>', _flat(r))
+    assert m, _flat(r)[:600]
+    return m.group(0)
+
+
+class TestANetworkIsBornARepository:
+    def test_create_makes_its_repository(self, store):
+        _create(store, "Site East")
+        repo = store["data"] / "lists" / "site_east" / "config_repo"
+        assert (repo / ".git").is_dir(), "a network created on v2 has no repository"
+        rc, top, _e = _sh(repo, "rev-parse", "--show-toplevel")
+        assert rc == 0 and os.path.realpath(top) == os.path.realpath(repo)
+        assert _sh(repo, "rev-parse", "--verify", "HEAD")[0] == 0, "no first commit"
+        assert store["state"]() == store["before"], "the parent repository was written"
+
+    def test_a_repository_git_could_not_make_refuses_the_network(self, store, monkeypatch):
+        """No network without its repository: the folder this call made is removed (so the
+        name stays free, C639) and nothing is registered."""
+        monkeypatch.setattr("modules.nsot.repo.init_repo", lambda repo: True)
+        c = store["client"]
+        pv = _flat(c.post("/v2/settings/networks/new/preview", data={"name": "Site East"},
+                          headers={"HX-Request": "true"}))
+        fp = re.search(r'name="fingerprint" value="([0-9a-f]+)"', pv).group(1)
+        r = c.post("/v2/settings/networks/new", data={"name": "Site East", "fingerprint": fp},
+                   headers={"HX-Request": "true"})
+        assert r.status_code == 409
+        assert "git could not make lists/site_east/config_repo a repository" in _flat(r)
+        assert not (store["data"] / "lists" / "site_east").exists()
+        assert "Site East" not in json.loads(store["registry"].read_text())["lists"]
+
+    def test_seed_commits_the_library_and_history_shows_it(self, store):
+        from modules.nsot import approve_op, templates_repo
+        _create(store, "Site East")
+        repo = str(store["data"] / "lists" / "site_east" / "config_repo")
+        r = _seed(store, "Site East")
+        card = _card(r)
+        assert r.status_code == 200 and "seeded" in card, card
+        assert "Nothing was added" not in card
+        msg = _sh(repo, "log", "-1", "--format=%B")[1]
+        assert msg.startswith("template: seed library (")
+        assert "Actor: test-person@example.invalid" in msg
+        assert set(approve_op.committed_templates(repo)) == \
+            {p for p in templates_repo.seed_paths() if p.endswith(".j2")}
+        assert _sh(repo, "status", "--porcelain")[1] == "", "seeded files left uncommitted"
+        history = _flat(store["client"].get("/v2/history?list=Site%20East"))
+        assert "template: seed library (" in history
+        assert "could not be read" not in history and "are not committed" not in history
+        assert store["state"]() == store["before"]
+
+
+@pytest.fixture
+def old(store):
+    """A network made before networks were born with a repository: registered, its folder
+    holding a `config_repo` with no `.git` (the copied library, never committed)."""
+    folder = store["data"] / "lists" / "old"
+    (folder / "config_repo").mkdir(parents=True)
+    (folder / "devices.csv").write_text("hostname,ip\n", encoding="utf-8")
+    reg = json.loads(store["registry"].read_text())
+    reg["lists"]["Old"] = "old"
+    store["registry"].write_text(json.dumps(reg), encoding="utf-8")
+    return dict(store, repo=folder / "config_repo")
+
+
+class TestANetworkWithNoRepository:
+    def test_history_says_its_tree_could_not_be_read(self, old):
+        history = _flat(old["client"].get("/v2/history?list=Old"))
+        assert "The working tree could not be read." in history, \
+            "a folder with no .git read as a clean repository"
+        assert old["state"]() == old["before"]
+
+    def test_its_first_seed_makes_the_repository_and_commits(self, old):
+        r = _seed(old, "Old")
+        card = _card(r)
+        assert r.status_code == 200 and "seeded" in card and "Nothing was added" not in card
+        assert (old["repo"] / ".git").is_dir()
+        assert _sh(old["repo"], "log", "-1", "--format=%s")[1].startswith(
+            "template: seed library (")
+        assert _sh(old["repo"], "status", "--porcelain")[1] == ""
+        assert old["state"]() == old["before"], "the parent repository was written"
+
+
+class TestAFailedSeedIsSaid:
+    def test_a_failed_commit_is_said_naming_the_error(self, store, monkeypatch):
+        _create(store, "Site East")
+        monkeypatch.setattr("modules.nsot.repo.save_templates", lambda *a, **k: {
+            "ok": False, "error": "commit failed: fatal: planted for C931"})
+        r = _seed(store, "Site East")
+        card = _card(r)
+        assert r.status_code == 500 and "op-danger" in card, card
+        assert "Not done" in card
+        assert ("Seeding Site East&#39;s library failed: nothing was committed: commit failed: "
+                "fatal: planted for C931") in card
+        assert "Nothing was added" not in card and "unchanged" not in card
+
+    def test_an_unreadable_status_is_said_naming_the_error(self, store, monkeypatch):
+        from modules.nsot import repo as R
+        _create(store, "Site East")
+        real = R.git
+
+        def git(repo, *args):
+            if args[:1] == ("status",):
+                return 128, "", "fatal: status planted for C931"
+            return real(repo, *args)
+        monkeypatch.setattr(R, "git", git)
+        r = _seed(store, "Site East")
+        card = _card(r)
+        assert r.status_code == 500 and "op-danger" in card, card
+        assert "the repository&#39;s status could not be read (fatal: status planted for C931)" \
+            in card
+        assert "Nothing was added" not in card

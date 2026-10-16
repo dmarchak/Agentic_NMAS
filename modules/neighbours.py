@@ -110,7 +110,7 @@ def committed_intents(repo: str) -> tuple:
     device (the scale rule). A document that does not parse is left out and
     named in *error*."""
     from modules.nsot import hostvars
-    from modules.nsot.repo import GIT_TIMEOUT, _git_env, git
+    from modules.nsot.repo import GIT_TIMEOUT, _git_env, git, run_git
 
     rc, out, err = git(repo, "ls-tree", "HEAD", "host_vars/")
     if rc != 0:
@@ -125,9 +125,9 @@ def committed_intents(repo: str) -> tuple:
     if not entries:
         return {}, ""
     try:
-        proc = subprocess.run(["git", "-C", repo, "cat-file", "--batch"],
-                              input="".join(f"{sha}\n" for _h, sha in entries).encode(),
-                              capture_output=True, timeout=GIT_TIMEOUT, env=_git_env())
+        proc = run_git(repo, "cat-file", "--batch", text=False,
+                       input="".join(f"{sha}\n" for _h, sha in entries).encode(),
+                       timeout=GIT_TIMEOUT, env=_git_env())
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {}, f"the committed intent could not be read ({exc})"
     if proc.returncode != 0:

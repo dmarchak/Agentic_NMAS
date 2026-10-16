@@ -62,7 +62,6 @@ pre-commit scope decides whether a commit caused it.
 import logging
 import os
 import re
-import subprocess
 
 log = logging.getLogger(__name__)
 
@@ -133,8 +132,9 @@ def tree_files(repo: str) -> list:
     (`git ls-files`), never the gitignored scratch; a folder that is not a git repository is
     walked whole."""
     if os.path.isdir(os.path.join(repo, ".git")):
-        got = subprocess.run(["git", "-C", repo, "ls-files", "-z", "--cached", "--others",
-                              "--exclude-standard"], capture_output=True, timeout=60)
+        from modules.nsot.repo import run_git
+        got = run_git(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard",
+                      text=False, timeout=60)
         if got.returncode == 0:
             names = [n for n in got.stdout.decode("utf-8", "replace").split("\0") if n]
             return sorted({n for n in names if os.path.isfile(os.path.join(repo, n))})
@@ -831,8 +831,10 @@ def touched_paths(repo: str, paths=()) -> list:
     """What a commit is about to take in *repo*: the index's changes, and with *paths* (a
     `git commit -- <paths>`, which takes them from the working tree) those paths' changes and
     new files. Governed areas only."""
+    from modules.nsot.repo import run_git
+
     def names(*args):
-        got = subprocess.run(["git", "-C", repo, *args], capture_output=True, timeout=60)
+        got = run_git(repo, *args, text=False, timeout=60)
         if got.returncode != 0:
             return []
         return [n for n in got.stdout.decode("utf-8", "replace").split("\0") if n]

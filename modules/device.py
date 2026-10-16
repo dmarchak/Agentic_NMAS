@@ -617,6 +617,19 @@ def create_device_list(list_name: str) -> tuple[bool, str]:
     list_dir = os.path.join(_lists_dir(), slug)
     os.makedirs(list_dir, exist_ok=True)
     _ensure_devices_csv(list_dir)
+    # The repository exists from the moment the network does (C931), made by the one init
+    # (`repo.init_repo`), before the network is registered, so nothing can reach it first. A
+    # network with no `.git` was a folder inside whatever repository holds the store: Seed
+    # read the APPLICATION's status, committed nothing and said the network had every file.
+    from modules.nsot.repo import init_repo
+    repo = os.path.join(list_dir, "config_repo")
+    init_repo(repo)
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        import shutil
+        shutil.rmtree(list_dir, ignore_errors=True)      # this call made it, holding nothing
+        return False, (f"'{list_name}' was not created: git could not make lists/{slug}/"
+                       "config_repo a repository (it has no .git after `git init`); see the "
+                       "application log")
 
     lists[list_name] = slug
     config["lists"] = lists

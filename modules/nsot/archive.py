@@ -33,9 +33,10 @@ def unpushed_tool_tags(repo: str, remote: str = "origin", timeout: int = 30) -> 
         return []
     import subprocess
 
+    from modules.nsot.repo import run_git
+
     try:
-        got = subprocess.run(["git", "-C", repo, "ls-remote", "--tags", remote],
-                             capture_output=True, text=True, timeout=timeout)
+        got = run_git(repo, "ls-remote", "--tags", remote, timeout=timeout)
     except subprocess.TimeoutExpired:
         return []
     if got.returncode != 0:
@@ -215,10 +216,9 @@ def _push_locked(context: dict, list_name: str, config: dict) -> dict:
 
 def committed_bytes(repo: str, sha: str, rel: str):
     """The bytes of *rel* at commit *sha*, or None when that commit has no such file."""
-    import subprocess
+    from modules.nsot.repo import run_git
 
-    out = subprocess.run(["git", "-C", repo, "show", f"{sha}:{rel}"], capture_output=True,
-                         timeout=60, check=False)
+    out = run_git(repo, "show", f"{sha}:{rel}", text=False, timeout=60)
     return out.stdout if out.returncode == 0 else None
 
 

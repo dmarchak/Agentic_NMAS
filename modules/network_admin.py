@@ -64,12 +64,11 @@ def create(name: str, fingerprint: str, actor: str, verified: str) -> dict:
 
 
 def _git_count(repo_dir: str, *args) -> int:
-    import subprocess
+    from modules.nsot.repo import run_git
 
     if not os.path.isdir(os.path.join(repo_dir, ".git")):
         return 0
-    out = subprocess.run(["git", "-C", repo_dir, *args], capture_output=True, text=True,
-                         timeout=60)
+    out = run_git(repo_dir, *args, timeout=60)
     if out.returncode != 0:
         return 0
     lines = [l for l in out.stdout.splitlines() if l.strip()]

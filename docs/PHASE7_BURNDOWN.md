@@ -40,7 +40,7 @@ written from the sitting's results. Screens no walk touches move to Stage 7's ta
 | Sitting | Walks | Clears | Ready |
 |---|---|---|---|
 | **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **WALKED 2026-10-16** (23:20Z to 01:12Z): CUTOVER rows 42, 44 (Capture, Save All), 45, 46, 53, 54, 69 and C588, C547, C587, C444, C539 closed; section I (row 68) blocked by C881 and C691 held by C882, both into W2 |
-| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68) and a C691 drag re-check** | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | **WRITTEN: docs/walks/W2.md** (51 steps); ready once C931 (seed on a new network) is deployed, since section H walks it |
+| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68) and a C691 drag re-check** | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | **WRITTEN: docs/walks/W2.md** (51 steps); **ready once C931 and C906 are deployed** (section H walks C931's seed; section K's reload meets C906's host keys) |
 | W3 Onboarding and recovery | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs) | CUTOVER rows 52, 58, 59; C148; their screens' records; unblocks P7-24, P7-25 | after W2 |
 | (in any sitting) | ~~C539, C587, C588~~ (walked in W1); snap-to-grid (C691, into W2 after C882); DHCP confirms (C529) | those rows | W2 |
 
@@ -70,7 +70,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C923~~ | ~~Adopt's card draws the lines startup gains and loses~~ **done**, with C930 (see Checked off) | | | | |
 | **Security** | | | | | |
 | ~~C730~~ | ~~the golden archives in MinIO masked (D6)~~ **done** (see Checked off) | | | | |
-| C931 | Seed on a network created on v2: the repository exists from creation, every git call on a config_repo pinned to it, a failed commit said (A, found writing W2) | its tests; W2 section H | M | — | — |
+| ~~C931~~ | ~~Seed on a network created on v2~~ **done**, with C943 (see Checked off); W2 section H walks it | | | | |
+| C944, C945 | the unused second `git init` removed; History's "could not be read" says why (no repository yet) | their tests | S each | — | — |
 | C933 to C936 | From writing W2 (B): NetBox's import count for a NetBox-sourced network; the write probe's remedy; "Just stop tracking"; editing a revoked template | each its test; walked in W2 | S each | — | — |
 | C906 | Mercury checks each device's SSH host key: **BUILT** (trust on first use, a changed key refused naming both fingerprints, a reviewed re-key, NETCONF too) | deployed; every device's key kept on the host; the operator's next redeploy declares `--new-host-keys` | M | — | the redeploy's flag (the operator) |
 | C940 | onboarding at a reused address: Retire and Abandon forget the address's key, or the pending card offers the re-key (it blocks W3's throwaway onboarding) | its test | S | C906 | — |
@@ -243,6 +244,9 @@ blocks cutover or is a security issue (B).
   the profile proposal says what it cross-checked and lists what it did not read. `UNDRAWN`
   362 → 358. Three board deviations logged. C880 (UNKNOWN; today's capture preview, moot at
   P7-27) opened.
+- **C931 done (A), with C943**: a network is born with its repository, and every git call on a
+  network's repository is pinned to it, never climbing to the app checkout (measured on the
+  host: nothing ever landed there). C944, C945 (B) into this section; C946 (C) to the tail.
 - **C923 done, with C930** (Adopt's card draws what startup gains and loses through Persist's
   one drawing; its sentence names the monitoring profile's lines the save makes permanent).
 - **C883, C888, C905 done** (B2: the "running" note hidden by a CSS rule that overrode

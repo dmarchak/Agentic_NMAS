@@ -156,6 +156,10 @@ def artifact_for(hostname, capture, repo, platform, template, host_vars=None):
                           template_root=src["root"])
 
 
+class StatusUnreadable(RuntimeError):
+    """`git status` failed: what is untracked is not known, so nothing may be said of it."""
+
+
 def _untracked_templates(repo: str) -> tuple:
     """``(untracked, modified)`` paths under ``templates/``.
 
@@ -171,11 +175,12 @@ def _untracked_templates(repo: str) -> tuple:
     """
     from modules.nsot import repo as repo_service
 
-    rc, out, _ = repo_service.git(repo, "status", "--porcelain", "-uall",
-                                  "--", "templates")
+    rc, out, err = repo_service.git(repo, "status", "--porcelain", "-uall",
+                                    "--", "templates")
     untracked, modified = [], []
     if rc != 0:
-        return untracked, modified
+        # Never "nothing untracked" (C931): an unreadable status is not an empty one.
+        raise StatusUnreadable(f"the repository's status could not be read ({err or rc})")
     for line in out.splitlines():
         if not line.strip():
             continue
@@ -215,11 +220,22 @@ def _seed_and_commit(list_name: str, repo: str, actor: str = "nmas") -> dict:
 
     *actor*: who seeds: ``nmas`` when today's page seeds on its read, the verified person on
     v2's Seed the library… (cutover blocker 5).
+
+    **A failure is said, never "nothing to add"** (C931): ``result["error"]`` names it when
+    the status could not be read or the commit failed. The repository is made first, by the
+    one init (`repo.init_repo`), so a network created before networks were born with one is
+    a repository from its first seed: seeding is a write, and every write path inits.
     """
     from modules.nsot import repo as repo_service, templates_repo
 
+    repo_service.init_repo(repo)
     result = templates_repo.seed_templates(repo)   # idempotent; never overwrites
-    untracked, modified = _untracked_templates(repo)
+    try:
+        untracked, modified = _untracked_templates(repo)
+    except StatusUnreadable as exc:
+        log.error("templates: seeding committed nothing in %s: %s", repo, exc)
+        return dict(result, untracked=[], uncommitted_edits=[], not_seeding=[],
+                    error=f"nothing was committed: {exc}")
     # Only what the seed library provides (C345): any other untracked file under
     # templates/ (a damaged record's copy, a write's temp, a person's new file) is not
     # seeding's, and a commit labelled "seed library" must not carry it.
@@ -245,6 +261,12 @@ def _seed_and_commit(list_name: str, repo: str, actor: str = "nmas") -> dict:
     result["commit"] = commit.get("commit", "")
     if not commit.get("ok"):
         log.error("templates: seeding committed nothing: %s", commit.get("error"))
+        result["error"] = f"nothing was committed: {commit.get('error') or 'the commit failed'}"
+    elif not result["commit"]:
+        # `_commit_paths` found nothing to commit after staging what was untracked: a
+        # contradiction, said as the failure it is, never as "the network had every file".
+        result["error"] = ("nothing was committed: git staged no change for the "
+                           f"{len(untracked)} untracked file(s) it had just listed")
     return result
 
 

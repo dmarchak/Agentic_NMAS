@@ -109,10 +109,15 @@ def main(argv=None) -> int:
 
     grep = re.compile(args.grep) if args.grep else None
     stanza = re.compile(args.stanza) if args.stanza else None
+    try:                                   # pinned to the list's repository (C931)
+        from modules.nsot.repo import run_git
+    except ImportError:                    # a host checkout from before run_git existed
+        run_git = None
     missing = 0
     for path in args.paths:
-        got = subprocess.run(["git", "-C", repo, "show", f"{args.rev}:{path}"],
-                             capture_output=True, text=True, check=False)
+        got = (run_git(repo, "show", f"{args.rev}:{path}") if run_git else
+               subprocess.run(["git", "-C", repo, "show", f"{args.rev}:{path}"],
+                              capture_output=True, text=True, check=False))
         if got.returncode:
             print(f"nmas-config-read: {path} is not in {args.rev}", file=sys.stderr)
             missing += 1

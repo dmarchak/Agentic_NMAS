@@ -248,7 +248,7 @@ def remote_url(config: dict) -> str:
 # Verification
 # ---------------------------------------------------------------------------
 
-def _run(args, timeout=45, **kw):
+def _run(args, timeout=45, pin="", **kw):
     # An identity is supplied for the write probe's throwaway repository:
     # `commit-tree` refuses without one, and the probe must not depend on the
     # calling user having a global git config. It never reaches a real repo.
@@ -256,8 +256,18 @@ def _run(args, timeout=45, **kw):
                GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15",
                GIT_AUTHOR_NAME="nmas", GIT_AUTHOR_EMAIL="nmas@localhost",
                GIT_COMMITTER_NAME="nmas", GIT_COMMITTER_EMAIL="nmas@localhost")
+    if pin:
+        from modules.nsot.repo import pinned_env
+        env = pinned_env(pin, env)
     return subprocess.run(args, capture_output=True, text=True,
                           timeout=timeout, env=env, **kw)
+
+
+def _git(repo_dir: str, *args, timeout=45):
+    """git in *repo_dir*, pinned to it (`repo.pinned_env`, C931): a list folder with no
+    `.git` is never read or pushed as the repository it sits in. Through `_run`, the one
+    seam this module's tests replace."""
+    return _run(["git", "-C", repo_dir, *args], timeout=timeout, pin=repo_dir)
 
 
 def check_key_scope(config: dict) -> dict:
@@ -323,22 +333,22 @@ def check_write_probe(config: dict) -> dict:
     work = tempfile.mkdtemp(prefix="nmas-writeprobe-")
     ref = "refs/nmas/writeprobe"
     try:
-        if _run(["git", "-C", work, "init", "-q"]).returncode != 0:
+        if _git(work, "init", "-q").returncode != 0:
             return {"ok": False, "name": "write_works",
                     "detail": "could not create the probe repository"}
-        tree = _run(["git", "-C", work, "hash-object", "-t", "tree",
-                     os.devnull]).stdout.strip()
-        commit = _run(["git", "-C", work, "commit-tree", tree,
-                       "-m", "nmas write probe"]).stdout.strip()
+        tree = _git(work, "hash-object", "-t", "tree",
+                     os.devnull).stdout.strip()
+        commit = _git(work, "commit-tree", tree,
+                       "-m", "nmas write probe").stdout.strip()
         if not commit:
-            detail = _run(["git", "-C", work, "commit-tree", tree,
-                           "-m", "nmas write probe"]).stderr.strip()
+            detail = _git(work, "commit-tree", tree,
+                           "-m", "nmas write probe").stderr.strip()
             return {"ok": False, "name": "write_works",
                     "detail": f"could not build the probe commit: {detail}"[:200],
                     "fix": "the probe repository could not create a commit; "
                            "this is a local fault, not a permission one."}
-        push = _run(["git", "-C", work, "push", remote_url(config),
-                     f"{commit}:{ref}"])
+        push = _git(work, "push", remote_url(config),
+                     f"{commit}:{ref}")
         if push.returncode != 0:
             return {"ok": False, "name": "write_works",
                     "detail": (push.stderr or "")[:200],
@@ -346,7 +356,7 @@ def check_write_probe(config: dict) -> dict:
                            "access' on it in the repository's settings."}
         # Remove the ref. The two objects stay unreachable and are collected
         # by GitHub's own gc; nothing readable was ever published.
-        cleanup = _run(["git", "-C", work, "push", remote_url(config), f":{ref}"])
+        cleanup = _git(work, "push", remote_url(config), f":{ref}")
         return {"ok": True, "name": "write_works",
                 "detail": f"empty-tree probe accepted; ref removed "
                           f"({'clean' if cleanup.returncode == 0 else 'ref left behind'})",
@@ -468,8 +478,8 @@ def remote_heads(remote_refs: list) -> list:
 
 
 def _have_commit(repo_dir: str, sha: str) -> bool:
-    return _run(["git", "-C", repo_dir, "cat-file", "-e",
-                 f"{sha}^{{commit}}"]).returncode == 0
+    return _git(repo_dir, "cat-file", "-e",
+                 f"{sha}^{{commit}}").returncode == 0
 
 
 def _is_ancestor(repo_dir: str, older: str, newer: str) -> bool:
@@ -477,8 +487,8 @@ def _is_ancestor(repo_dir: str, older: str, newer: str) -> bool:
 
     ``merge-base --is-ancestor`` answers both: a commit is its own ancestor.
     """
-    return _run(["git", "-C", repo_dir, "merge-base", "--is-ancestor",
-                 older, newer]).returncode == 0
+    return _git(repo_dir, "merge-base", "--is-ancestor",
+                 older, newer).returncode == 0
 
 
 def _relatedness(repo_dir: str, remote_refs: list) -> dict:
@@ -551,8 +561,8 @@ def _shared_root(repo_dir: str, remote_refs: list) -> dict:
     same history -- and useless when it does not, which is what made it the
     wrong primary test.
     """
-    local_root = _run(["git", "-C", repo_dir, "rev-list", "--max-parents=0",
-                       "HEAD"]).stdout.split()
+    local_root = _git(repo_dir, "rev-list", "--max-parents=0",
+                       "HEAD").stdout.split()
     remote_shas = {l.split()[0] for l in remote_refs}
     if set(local_root) & remote_shas:
         return {"ok": True, "name": "repository_is_empty_or_related",
@@ -639,7 +649,7 @@ def _blobs_of_golden(repo_dir: str):
     nobody asked. Deduplicating by blob sha keeps the work proportional to
     distinct CONTENT rather than to commits × files.
     """
-    proc = _run(["git", "-C", repo_dir, "rev-list", "--objects", "--all"],
+    proc = _git(repo_dir, "rev-list", "--objects", "--all",
                 timeout=120)
     seen = {}
     for line in proc.stdout.splitlines():
@@ -683,7 +693,7 @@ def snmp_access_modes(repo_dir: str, ref: str, hosts: list) -> dict:
 
     per_device, totals = {}, {"RO": 0, "RW": 0, "unqualified": 0}
     for host in hosts:
-        text = _run(["git", "-C", repo_dir, "show", f"{ref}:golden/{host}.cfg"],
+        text = _git(repo_dir, "show", f"{ref}:golden/{host}.cfg",
                     timeout=60).stdout
         found = modes_re.findall(text)
         bare = len(bare_re.findall(text))
@@ -785,12 +795,12 @@ def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
     # the question. "Is this string still serving as a secret" is.
     current = set()
     at_head = {}                         # value -> devices whose HEAD golden holds it
-    proc = _run(["git", "-C", repo_dir, "ls-tree", "-r", "--name-only",
-                 "HEAD", "golden"], timeout=60)
+    proc = _git(repo_dir, "ls-tree", "-r", "--name-only",
+                 "HEAD", "golden", timeout=60)
     for name in proc.stdout.splitlines():
         if not name.strip():
             continue
-        text = _run(["git", "-C", repo_dir, "show", f"HEAD:{name}"],
+        text = _git(repo_dir, "show", f"HEAD:{name}",
                     timeout=60).stdout
         for _kind, pattern, _recoverable in SECRET_SHAPES:
             for match in pattern.finditer(text):
@@ -807,7 +817,7 @@ def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
     by_value = {}                        # (kind, value) -> recoverable, devices
     for sha, path in blobs.items():
         device = os.path.basename(path)[:-4]
-        text = _run(["git", "-C", repo_dir, "cat-file", "-p", sha],
+        text = _git(repo_dir, "cat-file", "-p", sha,
                     timeout=60).stdout
         for kind, pattern, recoverable in SECRET_SHAPES:
             for match in pattern.finditer(text):
@@ -867,10 +877,10 @@ def first_push_preview(list_name: str, repo_dir: str = "") -> dict:
                                         "config_repo")
 
     def count(*args):
-        out = _run(["git", "-C", repo_dir, *args], timeout=120).stdout
+        out = _git(repo_dir, *args, timeout=120).stdout
         return len([l for l in out.splitlines() if l.strip()])
 
-    tags = [t for t in _run(["git", "-C", repo_dir, "tag", "-l"],
+    tags = [t for t in _git(repo_dir, "tag", "-l",
                             timeout=60).stdout.splitlines() if t.strip()]
     by_prefix = {}
     for tag in tags:
@@ -886,11 +896,11 @@ def first_push_preview(list_name: str, repo_dir: str = "") -> dict:
         "owner_repo": f"{config['owner']}/{config['repo']}",
         "branch": config.get("branch", "main"),
         "commits": count("rev-list", "--count", "HEAD") and int(
-            _run(["git", "-C", repo_dir, "rev-list", "--count", "HEAD"],
+            _git(repo_dir, "rev-list", "--count", "HEAD",
                  timeout=60).stdout.strip() or 0),
         "commits_touching_golden": int(
-            _run(["git", "-C", repo_dir, "rev-list", "--count", "HEAD", "--",
-                  "golden"], timeout=60).stdout.strip() or 0),
+            _git(repo_dir, "rev-list", "--count", "HEAD", "--",
+                  "golden", timeout=60).stdout.strip() or 0),
         "tags": len(tags),
         "tags_by_prefix": by_prefix,
         "notes": count("for-each-ref", "refs/notes"),
@@ -958,7 +968,7 @@ def acknowledge(list_name: str, *, actor: str, actor_kind: str,
                 + (f"; not shown: {', '.join(new)}" if new else "")
                 + (f"; shown and no longer there: {', '.join(gone)}" if gone else "")
                 + ". Open the acknowledgement again to read what it now covers.")}
-    head = _run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
+    head = _git(repo_dir, "rev-parse", "HEAD",
                 timeout=60).stdout.strip()
 
     # Written to the record as stored NOW, under its lock (R18): the scan may have created the
@@ -1208,22 +1218,22 @@ def _push_locked(list_name: str, actor: str, repo_dir: str, url: str, branch: st
               if len(l.split()) > 1}
 
     # HEAD read ONCE under the lock; that sha is pushed and recorded (R18).
-    head = _run(["git", "-C", repo_dir, "rev-parse", "HEAD"], timeout=60).stdout.strip()
+    head = _git(repo_dir, "rev-parse", "HEAD", timeout=60).stdout.strip()
     if not head:
         return {"ok": False, "error": "HEAD could not be read, so nothing was pushed",
                 "stage": "push_main"}
-    main_push = _run(["git", "-C", repo_dir, "push", "--follow-tags", url,
-                      f"{head}:refs/heads/{branch}"], timeout=600)
+    main_push = _git(repo_dir, "push", "--follow-tags", url,
+                      f"{head}:refs/heads/{branch}", timeout=600)
     if main_push.returncode != 0:
         return {"ok": False, "error": (main_push.stderr or "")[:400],
                 "stage": "push_main"}
 
-    note_refs = [l for l in _run(["git", "-C", repo_dir, "for-each-ref",
-                                  "--format=%(refname)", "refs/notes"],
+    note_refs = [l for l in _git(repo_dir, "for-each-ref",
+                                  "--format=%(refname)", "refs/notes",
                                  timeout=60).stdout.splitlines() if l.strip()]
     notes_pushed = 0
     if note_refs:
-        notes = _run(["git", "-C", repo_dir, "push", url, "refs/notes/*:refs/notes/*"],
+        notes = _git(repo_dir, "push", url, "refs/notes/*:refs/notes/*",
                      timeout=300)
         notes_pushed = len(note_refs) if notes.returncode == 0 else 0
 

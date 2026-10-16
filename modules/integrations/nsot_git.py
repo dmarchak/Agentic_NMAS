@@ -47,6 +47,7 @@ class NsotGitIntegration(IntegrationClient):
         from modules.config import LISTS_DIR
         from modules.device import get_device_lists
         from modules.nsot import remote as R
+        from modules.nsot.repo import run_git
 
         try:
             lists = get_device_lists()
@@ -62,8 +63,7 @@ class NsotGitIntegration(IntegrationClient):
                 parts.append(f"{name}: no repository yet (nothing committed)")
                 continue
             try:
-                out = subprocess.run(["git", "-C", repo, "rev-parse", "--short", "HEAD"],
-                                     capture_output=True, text=True, timeout=10, check=False)
+                out = run_git(repo, "rev-parse", "--short", "HEAD", timeout=10)
             except (OSError, subprocess.TimeoutExpired) as exc:
                 bad.append(f"{name}: git could not read {repo} ({type(exc).__name__})")
                 continue

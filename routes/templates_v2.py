@@ -296,6 +296,11 @@ def seed():
             f"now {now or 'unreadable'}): look again")), 409)
     actor = identity.request_actor()
     got = _seed_and_commit(name, approve_op.repo_for(name), actor=actor)
+    if got.get("error"):
+        # Said as the failure it is (C931): never "Nothing was added" over a commit that did
+        # not happen, the files left uncommitted on disk.
+        return _region(name, {"state": "seed_failed", "list": name,
+                              "why": f"Seeding {name}'s library failed: {got['error']}"}, 500)
     return _region(name, {"state": "seeded", "list": name, "actor": actor,
                           "added": got.get("untracked") or [], "commit": got.get("commit", ""),
                           "left": got.get("uncommitted_edits") or []})

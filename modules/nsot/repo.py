@@ -240,6 +240,49 @@ def with_actor_verification(message: str) -> str:
     return message + (line + "\n" if message.endswith("\n") else "\n" + line)
 
 
+#: The variables git itself names as local to ONE repository (`git rev-parse --local-env-vars`,
+#: git 2.53, measured 2026-10-16). Inherited from a caller (a git hook sets GIT_DIR and
+#: GIT_INDEX_FILE for ITS repository), any of them would point a list's git at another one.
+REPO_LOCAL_ENV = ("GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS",
+                  "GIT_CONFIG_COUNT", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE",
+                  "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
+                  "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+                  "GIT_SHALLOW_FILE", "GIT_COMMON_DIR")
+
+
+def pinned_env(repo: str, env=None) -> dict:
+    """*env* (or this process's) with git pinned to *repo* (C931): the repository-local
+    variables removed, and ``GIT_CEILING_DIRECTORIES`` set to *repo*'s parent, so git looks
+    for a repository in *repo* itself and never climbs above it.
+
+    Without it, a list folder with no ``.git`` was a folder inside whatever repository holds
+    it: on the host, ``data/`` sits inside the application's checkout, so a status read the
+    APPLICATION's state (clean: ``data/`` is ignored there) and a commit or a tag landed in
+    the application's repository (measured with a planted parent repository, 2026-10-16)."""
+    out = dict(os.environ if env is None else env)
+    for name in REPO_LOCAL_ENV:
+        out.pop(name, None)
+    out["GIT_CEILING_DIRECTORIES"] = os.path.dirname(os.path.realpath(repo))
+    return out
+
+
+def run_git(repo: str, *args, env=None, timeout=GIT_TIMEOUT, text=True, input=None):
+    """THE git subprocess on a list's repository: ``git -C <repo> <args>`` pinned to *repo*
+    (`pinned_env`), returning the `subprocess.CompletedProcess`. Every git call on a list's
+    repository comes through here (`tests/test_git_is_pinned_to_its_repository.py`, an AST
+    scan with a floor); *env* is the caller's own environment before pinning.
+
+    Raises what `subprocess.run` raises (`FileNotFoundError`, `TimeoutExpired`). A failure in
+    a folder with no ``.git`` names the folder: git's own words say only "not a git
+    repository"."""
+    proc = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=text,
+                          input=input, timeout=timeout, env=pinned_env(repo, env))
+    if proc.returncode != 0 and not os.path.exists(os.path.join(repo, ".git")):
+        said = f"{repo} is not a git repository (it has no .git): "
+        proc.stderr = (said if text else said.encode()) + (proc.stderr or ("" if text else b""))
+    return proc
+
+
 def git(repo: str, *args) -> tuple:
     """Run a git command in *repo*. Returns ``(rc, stdout, stderr)``."""
     if "commit" in args and "-m" in args:
@@ -249,10 +292,7 @@ def git(repo: str, *args) -> tuple:
     _clear_stale_lock(repo)
     ensure_repo_hygiene(repo)
     try:
-        proc = subprocess.run(
-            ["git", "-C", repo, *args],
-            capture_output=True, text=True, timeout=GIT_TIMEOUT, env=_git_env(),
-        )
+        proc = run_git(repo, *args, env=_git_env())
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
     except FileNotFoundError:
         return 127, "", "git is not installed or not on PATH"
@@ -273,10 +313,7 @@ def git_raw(repo: str, *args) -> tuple:
     _clear_stale_lock(repo)
     ensure_repo_hygiene(repo)
     try:
-        proc = subprocess.run(
-            ["git", "-C", repo, *args],
-            capture_output=True, text=True, timeout=GIT_TIMEOUT, env=_git_env(),
-        )
+        proc = run_git(repo, *args, env=_git_env())
         return proc.returncode, proc.stdout, proc.stderr.strip()
     except FileNotFoundError:
         return 127, "", "git is not installed or not on PATH"
@@ -376,7 +413,9 @@ def _init_repo_locked(repo: str) -> bool:
     if not os.path.isdir(os.path.join(repo, ".git")):
         rc, _, _ = git(repo, "init", "-b", "main")
         if rc != 0:
-            git(repo, "init")
+            rc, _, err = git(repo, "init")
+            if rc != 0:
+                log.error("repo: git init failed in %s: %s", repo, err)
 
     for sub in ("golden", "host_vars", "intended", ".nsot", "infra"):
         os.makedirs(os.path.join(repo, sub), exist_ok=True)

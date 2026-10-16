@@ -45,6 +45,7 @@ def writers(monkeypatch):
     """{route: [paths it changed]} over every argument-free GET."""
     import app as A
     from modules import config
+    from modules.nsot import hooks
 
     def _no_network(*a, **k):
         raise OSError("tests do not touch a network")
@@ -72,6 +73,10 @@ def writers(monkeypatch):
             shutil.copytree(saved, store)
             before = _tree(store)
             client.get(rule)
+            # A GET that commits (`/templates` seeds, and since C931 its seed really commits)
+            # starts the post-commit hooks on a thread: their writes are the route's, and a
+            # hook still writing raced the next route's reset ("Directory not empty").
+            assert hooks.wait_for_hooks() == [], f"{rule}'s post-commit hooks did not finish"
             after = _tree(store)
             changed = sorted(k for k in set(before) | set(after)
                              if before.get(k) != after.get(k))

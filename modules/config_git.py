@@ -37,7 +37,6 @@ import json
 import logging
 import os
 import re
-import subprocess
 import time
 from typing import Optional
 
@@ -68,7 +67,9 @@ def _repo_dir(list_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _git(repo: str, *args) -> tuple[int, str, str]:
-    """Run git in *repo*; return (rc, stdout, stderr)."""
+    """Run git in *repo*, pinned to it (`repo.run_git`, C931); return (rc, stdout, stderr)."""
+    from modules.nsot.repo import run_git
+
     env = os.environ.copy()
     env["GIT_AUTHOR_NAME"]     = _GIT_AUTHOR_NAME
     env["GIT_AUTHOR_EMAIL"]    = _GIT_AUTHOR_EMAIL
@@ -76,11 +77,7 @@ def _git(repo: str, *args) -> tuple[int, str, str]:
     env["GIT_COMMITTER_EMAIL"] = _GIT_AUTHOR_EMAIL
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     try:
-        r = subprocess.run(
-            ["git"] + list(args),
-            cwd=repo, capture_output=True, text=True,
-            env=env, timeout=30,
-        )
+        r = run_git(repo, *args, env=env, timeout=30)
         return r.returncode, r.stdout.strip(), r.stderr.strip()
     except Exception as exc:
         return 1, "", str(exc)

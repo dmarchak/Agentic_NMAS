@@ -55,10 +55,11 @@ def _lists() -> dict:
 
 
 def _git(repo: str, *args, timeout=LOCAL_GIT_TIMEOUT_S):
+    from modules.nsot.repo import run_git
+
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
     env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
-    proc = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True,
-                          timeout=timeout, env=env)
+    proc = run_git(repo, *args, env=env, timeout=timeout)
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 

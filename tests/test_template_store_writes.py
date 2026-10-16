@@ -91,6 +91,10 @@ def test_the_listing_says_the_bindings_are_unreadable(tmp_path, monkeypatch):
         fh.write("platforms: [\n")
     monkeypatch.setattr(troutes, "_active_list", lambda *a: "Lab")
     monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
+    # The page seeds on its read, and seeding now makes the repository and commits (C931),
+    # through the list's folder: the same folder, never the store.
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path))
+    monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
     r = A.app.test_client().get("/templates")
     assert r.status_code == 409, r.get_data(as_text=True)[:300]
     assert "bindings.yml could not be read" in r.get_json()["error"]
