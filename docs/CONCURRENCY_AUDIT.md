@@ -385,7 +385,9 @@ confirms-27). `capture_job._jobs` (modules/nsot/capture_job.py:31-33), `deploy_j
 (modules/deploy_job.py:39-40) and `op_progress._ops` (modules/op_progress.py:24-25) are
 module dicts. Rotation runs through `capture_job` (modules/nsot/rotate_op.py:100-106). A GET
 that lands on another worker answers that the job finished more than 30 minutes ago or the
-server restarted (routes/golden.py:520-527; routes/rotate.py:96-103; routes/v2.py:652-653),
+server restarted (routes/golden.py:520-527; routes/rotate.py:96-103, REMOVED 2026-10-17 with
+today's rotate routes at 7.8, P7-24, whose answer v2's rotate job card gives,
+`device_actions.rotate_job_card`; routes/v2.py:652-653),
 while the job is running. The person loses the preview they were about to confirm, or the
 progress of a batch changing devices. Device holds still refuse a second run.
 

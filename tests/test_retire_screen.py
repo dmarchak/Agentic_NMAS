@@ -4,6 +4,11 @@ CSV, manifest and credential store (test_retire's world).
 The operator (2026-09-28): the screen uses the EXPORT LOG for the break-glass
 check, and says so, because it cannot open a record on the operator's
 laptop: "the screen trusts the export log, the CLI trusts the record".
+
+The preview and result models are read through the v2 device page's Retire card
+(`/v2/device/<name>/retire` and its confirm; `tests/v2_card_models.py`): today's JSON routes,
+POST /retire/preview and /retire/apply, and their client, nmas_retire.js, left at 7.8
+(2026-10-17, P7-24). What the card draws is tests/test_device_retire_v2.py's.
 """
 
 import ast
@@ -15,8 +20,8 @@ import pytest
 
 from modules import breakglass as bg
 from modules.nsot import retire as RT
-from tests.payload_render import lift, render_preview, render_result, shipped
 from tests.test_retire import PW, _bg, world  # noqa: F401  (the fixture)
+from tests.v2_card_models import spying, the_one
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REASON = "ISP PE, outside our administrative boundary"
@@ -43,9 +48,19 @@ def _export(screen, pw=PW, hosts=("r4", "r5")):
 
 
 def _preview(screen, reason=REASON):
-    r = screen["client"].post("/retire/preview", json={"device": "r5", "reason": reason})
-    assert r.status_code == 200, r.get_data(as_text=True)
-    return r.get_json()["preview"]
+    """The preview model the v2 Retire card is drawn from (`device_actions.retire_card`'s
+    third argument, masked), through GET /v2/device/r5/retire with the reason typed; the
+    card's HTML is kept as ``screen["preview_html"]``."""
+    from urllib.parse import quote
+
+    from modules import device_actions
+
+    with spying(device_actions, "retire_card") as calls:
+        r = screen["client"].get(f"/v2/device/r5/retire?reason={quote(reason)}")
+    assert r.status_code == 200, r.get_data(as_text=True)[:400]
+    screen["preview_html"] = r.get_data(as_text=True)
+    args, _kw = the_one(calls, "retire_card")
+    return args[2]
 
 
 def _gate(p, name):
@@ -78,8 +93,11 @@ class TestThePreview:
                       "is not withdrawn", "Advisory: its golden shows the "
                       "NMAS-HEARTBEAT applet"):
             assert claim in said, claim
-        html = render_preview(p)
-        assert "Oxidized" not in html and "is not withdrawn" in html
+        html = screen["preview_html"]
+        assert "Oxidized" not in html
+        # The approval that stays (the model's "is not withdrawn") is drawn under What survives.
+        assert ("The approval of cisco_iosxe/base.j2</strong>: stays"
+                in html[html.index("What survives"):])
         # Today's Backups left (7.8, 2026-10-15): retire no longer promises to keep them.
         assert "backup" not in said.lower() and "backups are kept" not in html
 
@@ -146,9 +164,8 @@ class TestThePreview:
 
     def test_no_credential_value_leaves(self, screen):
         _export(screen)
-        text = screen["client"].post("/retire/preview", json={
-            "device": "r5", "reason": REASON}).get_data(as_text=True)
-        assert PW not in text
+        p = _preview(screen)
+        assert PW not in screen["preview_html"] and PW not in json.dumps(p)
 
 
 RT_GATE = "a break-glass export holds its current credential"
@@ -170,16 +187,25 @@ class TestEveryRefusalHasAGate:
 
 class TestTheApply:
     def _apply(self, screen, p, **over):
+        """The result model the v2 Retire card's result is drawn from
+        (`device_actions.retire_result_card`'s third argument, masked), through POST
+        /v2/device/r5/retire/confirm with the list, reason and hash the preview carries;
+        the card's HTML is kept as ``screen["result_html"]``."""
+        from modules import device_actions
+
         data = p["what"]["targets"][0]["select_data"]
-        body = {"list_name": data["list"], "device": "r5", "reason": data["reason"],
-                "hash": data["hash"], **over}
-        return screen["client"].post("/retire/apply", json=body)
+        body = {"list": data["list"], "reason": data["reason"], "hash": data["hash"], **over}
+        with spying(device_actions, "retire_result_card") as calls:
+            r = screen["client"].post("/v2/device/r5/retire/confirm", data=body)
+        assert r.status_code == 200, r.get_data(as_text=True)[:400]
+        screen["result_html"] = r.get_data(as_text=True)
+        args, _kw = the_one(calls, "retire_result_card")
+        return args[2]
 
     def test_it_retires_against_the_log_and_says_so(self, screen):
         from modules.device import load_saved_devices
         _export(screen)
-        r = self._apply(screen, _preview(screen))
-        res = r.get_json()["result"]
+        res = self._apply(screen, _preview(screen))
         assert res["level"] == "success", res
         assert [d["hostname"] for d in load_saved_devices(screen["csv"])] == ["r4"]
         (t,) = res["targets"]
@@ -190,9 +216,10 @@ class TestTheApply:
         assert f"Actor: test-person@example.invalid" in body and "Retired-Device: r5" in body
         assert res["record"]["commit"] and res["record"]["commit"] in \
             screen["R"].git(screen["repo"], "rev-parse", "HEAD")[1]
-        html = render_result(res)
-        # The Not-Done list drawn again, after the fact.
-        assert "Oxidized" not in html and "NetBox device 9 is KEPT" in html
+        html = screen["result_html"]
+        # The Not-Done list drawn again, after the fact (v2: Still to remove).
+        assert "Oxidized" not in html
+        assert "<strong>The NetBox device 9</strong>: KEPT" in html[html.index("Still to remove"):]
 
     def test_the_result_says_nothing_of_oxidized(self):
         """C513 was about the result's Oxidized line; Oxidized is retired (Phase 3 step 2,
@@ -225,20 +252,20 @@ class TestTheApply:
             if row["hostname"] == "r5":
                 row["password"] = device.fernet.encrypt(b"rotated-again-77").decode()
         device.write_devices_csv(rows, screen["csv"])
-        res = self._apply(screen, p).get_json()["result"]
+        res = self._apply(screen, p)
         assert res["level"] == "failed"
         assert "OLDER credential" in res["targets"][0]["reason"]
         assert "r5" in {d["hostname"] for d in device.load_saved_devices(screen["csv"])}
 
     def test_a_different_reason_is_a_different_plan(self, screen):
         _export(screen)
-        res = self._apply(screen, _preview(screen), reason="something else").get_json()["result"]
+        res = self._apply(screen, _preview(screen), reason="something else")
         assert res["level"] == "failed" and "the plan changed" in res["targets"][0]["reason"]
 
-    def test_no_list_named_does_nothing(self, screen):
-        _export(screen)
-        r = self._apply(screen, _preview(screen), list_name="")
-        assert r.status_code == 400 and "Nothing was done" in r.get_json()["error"]
+    # test_no_list_named_does_nothing (POST /retire/apply with no list, 400) left with the
+    # route (P7-24): v2's confirm refuses a confirm without its list or hash, writing nothing,
+    # in tests/test_device_retire_v2.py (TestTheConfirm.test_a_confirm_without_its_list_or_
+    # hash_is_refused).
 
     def test_the_cli_basis_is_named_as_the_record(self, screen):
         p = RT.plan("Lab", "r5", REASON)
@@ -249,22 +276,39 @@ class TestTheApply:
 
 
 class TestTheShippedClient:
-    def _button(self, preview, reason):
-        import dukpy
-        js = (lift(shipped("nmas_preview_confirm.js"), "previewConfirmButton") + "\n"
-              + lift(shipped("nmas_retire.js"), "retireButton"))
-        return dukpy.evaljs(js + f"\nretireButton({json.dumps(preview)}, {json.dumps(reason)})")
+    """v2's Retire card (today's client, nmas_retire.js's retireButton, held these until it
+    left with its routes at 7.8, 2026-10-17, P7-24)."""
+
+    @staticmethod
+    def _confirm_vals(html):
+        import html as html_mod
+        import re
+        m = re.search(r"hx-vals='([^']*)'", html[html.index("op-confirm"):])
+        return json.loads(html_mod.unescape(m.group(1)))
 
     def test_a_reason_changed_after_the_preview_cannot_be_confirmed(self, screen):
+        """The confirm carries the reason its plan was drawn with; the reason's field plans
+        again on change (the card is drawn again for the new reason), and a confirm carrying
+        another reason than its plan's is refused at apply (TestTheApply's
+        test_a_different_reason_is_a_different_plan)."""
         _export(screen)
         p = _preview(screen)
-        assert self._button(p, REASON) == {"disabled": False, "text": "Retire r5"}
-        assert self._button(p, REASON + " (edited)") == {
-            "disabled": True, "text": "Preview again: the reason changed"}
+        html = screen["preview_html"]
+        vals = self._confirm_vals(html)
+        assert vals["reason"] == REASON and vals["hash"] == \
+            p["what"]["targets"][0]["select_data"]["hash"]
+        form = html[html.index('<form class="op-form"'):html.index("</form>")]
+        assert 'hx-get="/v2/device/r5/retire?list=Lab"' in form and 'hx-trigger="change"' in form
+        assert 'name="reason"' in form
+        edited = _preview(screen, reason=REASON + " (edited)")
+        assert self._confirm_vals(screen["preview_html"])["reason"] == REASON + " (edited)"
+        assert edited["what"]["targets"][0]["select_data"]["hash"] != vals["hash"]
 
     def test_a_refused_preview_cannot_be_confirmed(self, screen):
-        out = self._button(_preview(screen), REASON)
-        assert out["disabled"] and "refused" in out["text"]
+        p = _preview(screen)
+        assert not p["what"]["targets"][0]["selectable"]
+        assert "op-confirm" not in screen["preview_html"]
+        assert "Refused until the break-glass record holds r5" in screen["preview_html"]
 
     def test_the_device_page_offers_it(self):
         """v2's device page's Actions menu (today's device page's Retire… button until it

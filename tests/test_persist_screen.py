@@ -5,6 +5,11 @@ save of a startup config, whose own tests drive its session).
 
 The remedy the worst Needs attention rows name (`not_safe_to_reboot`), until
 now reachable only as `nmas-persist-native` on the host.
+
+The preview and result models are read through the v2 device page's Persist card
+(`/v2/device/<name>/persist` and its confirm; `tests/v2_card_models.py`): today's JSON routes,
+POST /persist/preview and /persist/apply, left at 7.8 (2026-10-17, P7-24). What the card draws
+is tests/test_device_persist_v2.py's.
 """
 
 import ast
@@ -15,7 +20,7 @@ import threading
 import pytest
 
 from modules.nsot import persist_op as PO
-from tests.payload_render import render_preview, render_result
+from tests.v2_card_models import spying, the_one
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PW = "Persist-Pw-7h3x9q"
@@ -70,17 +75,34 @@ def lab(tmp_path, monkeypatch):
 
 
 def _preview(lab, device="r2"):
-    r = lab["client"].post("/persist/preview", json={"device": device})
-    assert r.status_code == 200, r.get_data(as_text=True)
-    return r.get_json()["preview"]
+    """The preview model the v2 Persist card is drawn from (`device_actions.persist_card`'s
+    third argument, masked), through GET /v2/device/<name>/persist; the card's HTML is kept
+    as ``lab["preview_html"]``."""
+    from modules import device_actions
+
+    with spying(device_actions, "persist_card") as calls:
+        r = lab["client"].get(f"/v2/device/{device}/persist")
+    assert r.status_code == 200, r.get_data(as_text=True)[:400]
+    lab["preview_html"] = r.get_data(as_text=True)
+    args, _kw = the_one(calls, "persist_card")
+    return args[2]
 
 
 def _apply(lab, preview, device="r2"):
+    """The result model the v2 Persist card's result is drawn from
+    (`device_actions.persist_result_card`'s fourth argument, masked), through POST
+    /v2/device/<name>/persist/confirm with the list and hash the preview carries; the card's
+    HTML is kept as ``lab["result_html"]``."""
+    from modules import device_actions
+
     data = preview["what"]["targets"][0]["select_data"]
-    r = lab["client"].post("/persist/apply", json={"list_name": data["list"], "device": device,
-                                                  "hash": data["hash"]})
-    assert r.status_code == 200, r.get_data(as_text=True)
-    return r.get_json()["result"]
+    with spying(device_actions, "persist_result_card") as calls:
+        r = lab["client"].post(f"/v2/device/{device}/persist/confirm",
+                               data={"list": data["list"], "hash": data["hash"]})
+    assert r.status_code == 200, r.get_data(as_text=True)[:400]
+    lab["result_html"] = r.get_data(as_text=True)
+    args, _kw = the_one(calls, "persist_result_card")
+    return args[3]
 
 
 def _gate(p, name):
@@ -103,8 +125,8 @@ class TestThePreview:
                       "no golden is committed"):
             assert claim in said, claim
         assert p["what"]["targets"][0]["selectable"] is True
-        html = render_preview(p)
-        assert "no credential is rotated" in html
+        html = lab["preview_html"]
+        assert "No credential is rotated" in html[html.index("What will not happen"):]
 
     def test_it_contacts_no_device(self, lab, monkeypatch):
         """A preview is safe to repeat because it reads only the inventory and
@@ -153,10 +175,20 @@ class TestThePreview:
             "the check's record could not be read")
 
     def test_each_refusal_is_a_named_gate(self, lab):
+        import app as A
+        from modules.preview_confirm import persist_preview
+
         p = _preview(lab, device="s9")
         assert p["what"]["targets"][0]["selectable"] is False
         assert _gate(p, "its platform driver is recorded")["state"] == "fail"
-        p = _preview(lab, device="nope")
+        # A device the list does not hold: v2's card is never drawn for it (the device page
+        # answers 404 naming it), and the plan still refuses it by its named gate, the model
+        # every caller of `persist_op.plan` draws.
+        r = lab["client"].get("/v2/device/nope/persist")
+        assert r.status_code == 404 and "nope" in r.get_data(as_text=True)
+        with A.app.test_request_context("/"):
+            from flask import request
+            p = persist_preview(PO.plan("Lab", "nope"), busy="", request=request)
         assert _gate(p, "the device is in this list's inventory")["state"] == "fail"
 
     def test_every_refusal_key_the_plan_makes_is_a_gate(self):
@@ -185,8 +217,13 @@ class TestThePreviewAndTheResultAgree:
         p = _preview(lab)
         result = _apply(lab, p)
         assert p["targets"][0]["program"]["lines"] == result["targets"][0]["sent"]["lines"]
-        html = render_preview(p)
-        assert "Sent to the device (1 line(s) sent)" in html, html[:2000]
+        # v2's card draws what is sent as its lines, each once, and the reads after it apart
+        # (today's renderer drew the count, "Sent to the device (1 line(s) sent)", until it
+        # left with the routes, P7-24).
+        html = lab["preview_html"]
+        what = html[html.index("<h3>What</h3>"):html.index("What will not happen")]
+        assert what.count('<span class="op-add">') == 1, what
+        assert "write memory (the device&#39;s own save)" in what
         assert "(3 line(s))" not in html
 
     def test_a_captioned_program_that_does_not_say_what_it_counts_is_refused(self):
@@ -214,9 +251,8 @@ class TestTheApply:
         (rec,) = lab["records"]
         assert rec["device"] == "r2" and rec["state"] == "persisted"
         assert rec["via"] == "device page" and rec["actor"]
-        html = render_result(result)
-        assert "write memory (the device&#39;s own save)" in html or \
-            "write memory (the device's own save)" in html
+        assert result["targets"][0]["sent"]["lines"] == ["write memory (the device's own save)"]
+        assert "r2 is persisted" in lab["result_html"]
 
     def test_a_read_back_that_does_not_match_leads_with_it(self, lab):
         lab["state"]["answer"] = {"ok": False, "state": "not_persisted",
@@ -259,11 +295,10 @@ class TestTheApply:
         assert lab["sent"] == [] and lab["records"] == []
         assert "someone@example.com" in result["happened"]["summary"]
 
-    def test_the_apply_needs_its_list(self, lab):
-        r = lab["client"].post("/persist/apply", json={"device": "r2", "hash": "x"})
-        assert r.status_code == 400 and "never from whichever list is active" in \
-            r.get_json()["error"]
-        assert lab["sent"] == []
+    # test_the_apply_needs_its_list (POST /persist/apply with no list, 400) left with the route
+    # (P7-24): v2's confirm refuses a write naming no list or an unknown one, with nothing sent,
+    # in tests/test_device_persist_v2.py (TestTheConfirm.test_a_write_naming_no_list_or_no_plan_
+    # is_refused).
 
 
 class TestTheDevicePageOffersIt:

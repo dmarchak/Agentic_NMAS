@@ -71,7 +71,9 @@ class TestTheRouteTable:
     def test_the_population_is_the_whole_table_with_its_ungated_recorders(self):
         pairs = _every_endpoint_and_method()
         endpoints = {r.endpoint for r, _m in pairs}
-        assert len(pairs) >= 320, len(pairs)        # 359 on 2026-10-16; a floor, not a count
+        # 359 on 2026-10-16; 310 on 2026-10-17 after 7.8's removals (P7-20 to P7-24); a floor,
+        # not a count, kept about 10% under the measurement, as it was.
+        assert len(pairs) >= 280, len(pairs)
         assert set(UNGATED_RECORDERS) <= endpoints
         assert "settings_v2.network_create" in endpoints
         assert {route_gates.GATES[e].kind for e in UNGATED_RECORDERS} == {route_gates.NOT_DEVICE}
@@ -125,7 +127,8 @@ class TestTheRouteTable:
             elif not gated and got != (False, identity.UNVERIFIED, "none", None):
                 wrong.append((rule.endpoint, method, got))
         assert not wrong, wrong[:12]
-        assert refused >= 100, refused            # 118 gated on 2026-10-16; a floor
+        # 118 gated on 2026-10-16; 98 on 2026-10-17 after 7.8's removals; a floor
+        assert refused >= 88, refused
 
 
 # ------------------------------------------------------------------ through the real app

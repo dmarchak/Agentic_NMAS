@@ -201,8 +201,6 @@ DECLARED = {
     "remote_v2.acknowledge": ("remote",),
     "remote_v2.auto_push": ("remote",),
     # Intent, templates and deploys.
-    "retire.apply": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
-    "templatize.seed_apply": ("intent", "remote"),
     "templatize.profile_propose_apply": ("intent", "remote"),
     "v2.ip_sla_policy_set": ("intent", "remote"),
     "v2.ip_sla_commit": ("intent", "remote"),
@@ -226,10 +224,10 @@ DECLARED = {
     "templates_v2.seed": ("templates", "remote"),
     # Today's template editor's save and Approve (templates.write_template, templates.approve)
     # and intent editor's commit (templatize.edit_committed) left at 7.8 (2026-10-17, P7-23).
+    # Today's device-action JSON routes (retire, persist and rotate's preview and apply,
+    # templatize's seed, revert and retry) left the same day (P7-24): the device_v2 entries.
     "v2.profile_propose_commit": ("intent", "remote"),
-    "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "bulk_intent_v2.apply": ("intent", "remote"),
-    "templatize.retry_apply": ("rolled_back",),
     "device_v2.revert_confirm": ("intent", "remote", "rolled_back"),
     "device_v2.retry_confirm": ("rolled_back",),
     "device_v2.seed_confirm": ("intent", "remote"),
@@ -276,8 +274,7 @@ DECLARED = {
     # The third measured case, a drift run's state (today's /drift/check/sync until 7.8).
     "settings_v2.diag_drift_check": ("drift",),
     # A device and its files.
-    "persist.apply": ("device_state",),
-    "device_v2.persist_confirm": ("device_state",),   # the same apply
+    "device_v2.persist_confirm": ("device_state",),   # persist_op.apply
     # C906: the key Mercury holds for the device, read by Needs attention and History.
     "device_v2.rekey_confirm": ("host_keys",),
     # The Update button: a request is written now; the version moves when the
@@ -294,10 +291,9 @@ DECLARED = {
     "breakglass.export": ("breakglass",),
     "v2.profile_apply_confirm": Nothing("starts a job and answers at once; the batch deploys and ANNOUNCES deploy_job as each device finishes, and what a deploy changes at the end (ANNOUNCERS)"),
     "v2.save_confirm": Nothing("starts a job and answers at once; the Save ANNOUNCES save when it finishes, with the commit and what each device boots (ANNOUNCERS save)"),
-    "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "device_v2.restore_confirm": Nothing("starts a job and answers at once; the restore ANNOUNCES deploy_job as it finishes, and what a restore changes (ANNOUNCERS deploy-job)"),
     "device_v2.deploy_confirm": Nothing("starts a job and answers at once; the deploy ANNOUNCES deploy_job as it finishes, and what a deploy changes (ANNOUNCERS)"),
-    "device_v2.rotate_confirm": Nothing("the same confirm as rotate.apply: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
+    "device_v2.rotate_confirm": Nothing("rotate_op.confirm_and_start: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "credential_profiles_v2.rotate_due_confirm": Nothing("starts the run as a job and answers at once; the run ANNOUNCES rotation and credentials after each device and when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     # Reads sent as POST: a body carries the question, and nothing is stored.
@@ -352,20 +348,10 @@ DECLARED = {
     "intent_v2.check": Nothing("checks and renders an intent edit as it is typed"),
     "intent_v2.acknowledge": Nothing("rewrites the editor's document; the commit writes it"),
     "intent_v2.reopen": Nothing("opens the editor again; writes nothing"),
-    "rotate.preview": Nothing("computes the rotation plan and reads the device's account line; writes nothing"),
-    "persist.preview": Nothing("computes the persist plan from the inventory and the "
-                               "startup check's record; contacts no device and writes nothing"),
     "update.check": Nothing("starts the app-pushed reader, which announces app_version itself "
                             "when it finishes"),
     "jobs.job_finished": Nothing("starts the job-health reader, which announces job_health "
                                  "itself when it finishes"),
-    "retire.preview": Nothing("computes the retire plan from the repository, the CSV, the credential store, the settings and the export log; writes nothing"),
-    "templatize.revert_preview": Nothing("computes the revert of one intent commit from git; "
-                                         "writes nothing"),
-    "templatize.retry_preview": Nothing("reads the rollback record and the retry log; writes "
-                                        "nothing"),
-    "templatize.seed_preview": Nothing("parses committed goldens from git and computes the "
-                                       "intent a seed would commit; writes nothing"),
     "templatize.profile_propose_preview": Nothing("computes the network's monitoring profile "
                                                   "from committed intent; writes nothing"),
     "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "

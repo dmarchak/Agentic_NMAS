@@ -134,34 +134,20 @@ def _bodies(v):
                           "no remote configured: a configured one would start ssh, which the "
                           "harness refuses and counts as a failure; the remote is an alias "
                           "and a key PATH, never a stored secret"),
-        "retire.preview": (200, ("json", {"list_name": LIST, "device": "r1",
-                                          "reason": "leaving management"}),
-                           "r1's retire plan: its steps, the credential gate, the export log"),
-        "rotate.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
-                           "r1's rotation plan: its preflight (the live read refused by the "
-                           "suite's network guard, drawn as a failed gate), the masked program"),
+        # Today's retire, rotate and persist previews (retire.preview, rotate.preview,
+        # persist.preview) and templatize's seed, revert and retry previews left at 7.8
+        # (2026-10-17, P7-24): the device page's cards are GETs (rotate's preview, a POST,
+        # is device_v2.rotate_preview above), read in `swept` below for r1 (V2_CARDS).
         "jobs.job_finished": (409, ("json", {"unit": "nmas-startup-check"}),
                               "a declared job, and the reader jobs do not run in the test "
                               "process: refused by name, nothing read"),
         "update.check": (409, ("json", {}),
                          "the reader jobs do not run in the test process: refused by name, "
                          "nothing asked (no network, no store)"),
-        "persist.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
-                            "r1's persist plan: its steps, the inventory gates and the "
-                            "startup check's last reading; no device contacted"),
         "templatize.profile_propose_preview": (200, ("json", {"list_name": LIST}),
                                                "the monitoring profile the planted fleet's "
                                                "committed intent agrees on, and each device's "
                                                "stored secret compared IN MEMORY, never shown"),
-        "templatize.seed_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"]}),
-                                    "r1's committed golden parsed into the intent a seed "
-                                    "would commit (r1 already seeded: shown, not selectable)"),
-        "templatize.revert_preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
-                                      "r1's intent commits and the revert of the newest, "
-                                      "computed from git"),
-        "templatize.retry_preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
-                                     "r1's rollback record (none: nothing to retry) and its "
-                                     "retry history"),
         # Today's Validate (templates.validate) and intent editor preview
         # (templatize.preview_committed_edit) left at 7.8 (2026-10-17, P7-23): Templates ›
         # Edit…'s check above and the Intent tab's check below.
@@ -235,16 +221,24 @@ def _setup(v, mp, client):
 
     # A list that has what a real list has.
     templates_repo.seed_templates(repo)
-    # r1's intent is SEEDED from its golden (C148), the one path to full intent.
-    pv = client.post("/templatize/seed/preview", json={"list_name": LIST, "devices": ["r1"]})
+    # r1's intent is SEEDED from its golden (C148), the one path to full intent: its device
+    # page's Seed intent… card and its confirm (today's /templatize/seed/* left at 7.8,
+    # 2026-10-17, P7-24).
+    import html as html_mod
+    import re
+    pv = client.get(f"/v2/device/r1/seed?list={LIST}")
     assert pv.status_code == 200, pv.get_data(as_text=True)[:300]
-    seed_hash = pv.get_json()["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    r = client.post("/templatize/seed/apply",
-                    json={"list_name": LIST, "confirmations": {"r1": seed_hash}})
-    assert r.status_code == 200, r.get_data(as_text=True)[:300]
+    card = pv.get_data(as_text=True)
+    # The card for r1 UNSEEDED, its golden parsed into the document a seed would commit: the
+    # one moment the seed card reaches r1's config (afterwards it says r1 has full intent).
+    v["_seed_card"] = (pv.status_code, card)
+    vals = json.loads(html_mod.unescape(re.search(
+        r"hx-vals='([^']*)'", card[card.index("op-confirm"):]).group(1)))
+    r = client.post("/v2/device/r1/seed/confirm", data=vals)
+    assert r.status_code == 200 and "op-ok" in r.get_data(as_text=True), \
+        r.get_data(as_text=True)[:300]
     # Approve sends the fingerprint and the check its card showed (R12's client half), on
     # Templates › Approve… (today's /templates/approve left at 7.8, 2026-10-17, P7-23).
-    import re
     card = client.get(f"/v2/templates/approve?list={LIST}&path=cisco_ios/base.j2").get_data(
         as_text=True)
     shown = {k: re.search(rf'name="{k}" value="([^"]*)"', card).group(1)
@@ -383,6 +377,18 @@ def _drive(v, person, writes=None):
     return out
 
 
+#: The device page's action cards for r1 whose previews were today's `not_device` POSTs
+#: (retire.preview, persist.preview, templatize.seed_preview, revert_preview, retry_preview)
+#: until they left at 7.8 (2026-10-17, P7-24): op -> the card's GET.
+V2_CARDS = {
+    "seed": f"/v2/device/r1/seed?list={LIST}",
+    "revert": f"/v2/device/r1/revert?list={LIST}",
+    "retry": f"/v2/device/r1/retry?list={LIST}",
+    "retire": f"/v2/device/r1/retire?list={LIST}&reason=leaving+management",
+    "persist": f"/v2/device/r1/persist?list={LIST}",
+}
+
+
 @pytest.fixture(scope="module")
 def swept():
     import app as A
@@ -434,9 +440,22 @@ def swept():
                 rp = A.app.test_client().get(
                     f"/v2/device/r1/restore/preview?list={LIST}"
                     f"&moment={values['_first_golden']}")
+            # The device page's action cards whose previews were today's `not_device` POSTs
+            # until they left at 7.8 (2026-10-17, P7-24): each read for r1, as nobody and as a
+            # person, over the same planted stores.
+            cards = {"seed_unseeded:person": values["_seed_card"]}
+            for who_name, ident in (("anon", identity.Identity(peer="198.51.100.7")),
+                                    ("person", who)):
+                with pytest.MonkeyPatch.context() as c_mp:
+                    c_mp.setattr(identity, "identify", lambda _r, i=ident: i)
+                    client = A.app.test_client()
+                    for op, url in V2_CARDS.items():
+                        r = client.get(url)
+                        cards[f"{op}:{who_name}"] = (r.status_code, r.get_data(as_text=True))
             yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
                    "person": person, "tests": tests, "drift_run": drift_run,
-                   "restore_preview": (rp.status_code, rp.get_data(as_text=True))}
+                   "restore_preview": (rp.status_code, rp.get_data(as_text=True)),
+                   "cards": cards}
     finally:
         mp.undo()
 
@@ -538,6 +557,17 @@ class TestNoPostReturnsAStoredSecret:
 
     def test_no_integrations_test_returns_one(self, swept):
         hits = _hits(swept["tests"], swept["planted"])
+        assert hits == [], "\n".join(f"{k} <- {s}" for k, s in hits)
+
+    def test_no_device_action_card_returns_one(self, swept):
+        """The previews today's POSTs answered (P7-24), as v2's cards draw them for r1: each
+        drawn (its card, as nobody and as a person), and no planted value in any."""
+        cards = swept["cards"]
+        assert len(cards) == 2 * len(V2_CARDS) + 1 and len(V2_CARDS) >= 5
+        undrawn = {k: (s, t[:200]) for k, (s, t) in cards.items()
+                   if s != 200 or 'id="device-op"' not in t}
+        assert undrawn == {}, undrawn
+        hits = _hits(cards, swept["planted"])
         assert hits == [], "\n".join(f"{k} <- {s}" for k, s in hits)
 
     def test_every_store_is_planted(self, swept):

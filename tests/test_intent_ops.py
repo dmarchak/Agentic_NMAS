@@ -7,17 +7,22 @@ rollback block with a stated reason. Two defects found building them: C213
 (the retry log erased by one torn read) and C214 (any revert lifted the
 rollback block). And C215, the deploy plan reading the ACTIVE list's
 inventory, is pinned here with the plan's own `_artifact_for`.
+
+The preview and result models are read through the v2 device page's Revert intent… and Retry
+rolled-back change… cards (`/v2/device/<name>/revert` and `/retry` and their confirms;
+`tests/v2_card_models.py`): today's JSON routes, POST /templatize/revert/* and
+/templatize/retry/*, and their client, nmas_intent_ops.js, left at 7.8 (2026-10-17, P7-24).
+What the cards draw is tests/test_device_revert_retry_v2.py's.
 """
 
-import json
 import os
 import subprocess
 
 import pytest
 
 from tests.conftest import TEST_PERSON
-from tests.payload_render import lift, render_preview, render_result, shipped
 from tests.test_seed_intent import LIST, build_seed_lab
+from tests.v2_card_models import spying, the_one
 
 HOST = "r2"
 FAILED = ["interface GigabitEthernet2", " description CHANGED-BY-A", "exit"]
@@ -60,14 +65,43 @@ def lab(tmp_path, monkeypatch):
     repo = lab["repo"]
     lab["a"] = _edit(repo, _set_description("CHANGED-BY-A"), "host_vars: r2 describe Gi2")
     lab["b"] = _edit(repo, _add_ntp, "host_vars: r2 add an NTP server")
-    return lab
+    # Served as the v2 device page reads it: r2 in the list 'Lab' (test_device_seed_v2's own
+    # setting-up).
+    from tests.test_device_seed_v2 import _serve
+    return _serve(lab, monkeypatch)
 
 
-def _preview(lab, kind, **body):
-    r = lab["client"].post(f"/templatize/{kind}/preview",
-                           json={"list_name": LIST, "device": HOST, **body})
+def _preview(lab, kind, **args):
+    """``{"preview": <model>, "commits": [...]}``: the model the v2 card for *kind* (revert or
+    retry) is drawn from (`device_actions.intent_op_card`'s fourth argument, masked; a revert
+    card's commits too), through GET /v2/device/r2/<kind> with *args* (sha, reason); the
+    card's HTML is kept as ``lab["preview_html"]``."""
+    from urllib.parse import urlencode
+
+    from modules import device_actions
+
+    with spying(device_actions, "intent_op_card") as calls:
+        r = lab["client"].get(f"/v2/device/{HOST}/{kind}?{urlencode(args)}")
     assert r.status_code == 200, r.get_data(as_text=True)[:400]
-    return r.get_json()
+    lab["preview_html"] = r.get_data(as_text=True)
+    a, kw = the_one(calls, "intent_op_card")
+    assert a[0] == kind
+    return {"preview": a[3], "commits": kw.get("commits") or []}
+
+
+def _confirm(lab, kind, body):
+    """The result model the v2 card's result is drawn from (`device_actions.
+    intent_op_result_card`'s fourth argument, masked), through POST
+    /v2/device/r2/<kind>/confirm with *body*; the card's HTML is kept as
+    ``lab["result_html"]``."""
+    from modules import device_actions
+
+    with spying(device_actions, "intent_op_result_card") as calls:
+        r = lab["client"].post(f"/v2/device/{HOST}/{kind}/confirm", data=body)
+    assert r.status_code == 200, r.get_data(as_text=True)[:400]
+    lab["result_html"] = r.get_data(as_text=True)
+    a, _kw = the_one(calls, "intent_op_result_card")
+    return a[3]
 
 
 def _target(d):
@@ -106,7 +140,10 @@ class TestRevertPreview:
         assert "Nothing is sent to the device" in said and "later intent commit is kept" in said
         assert _git(lab["repo"], "rev-parse", "HEAD") == head, "a preview commits nothing"
         assert "host_vars" not in _git(lab["repo"], "status", "--porcelain")
-        assert "What will be committed as its intent" in render_preview(d["preview"])
+        html = lab["preview_html"]
+        committed = html[html.index("<h3>What will be committed"):
+                         html.index("<h3>What it will not do")]
+        assert "CHANGED-BY-A" in committed
 
     def test_the_default_commit_is_the_one_the_rollback_names(self, lab):
         from modules.nsot import hostvars
@@ -125,14 +162,12 @@ class TestRevertPreview:
 class TestRevertApply:
     def _apply(self, lab, d, **over):
         data = _target(d)["select_data"]
-        body = {"list_name": data["list"], "device": HOST, "sha": data["sha"],
-                "hash": data["hash"], **over}
-        return lab["client"].post("/templatize/revert/apply", json=body)
+        return _confirm(lab, "revert", {"list": data["list"], "sha": data["sha"],
+                                        "hash": data["hash"], **over})
 
     def test_it_undoes_one_commit_and_keeps_the_later_one(self, classify):
         lab = classify
-        r = self._apply(lab, _preview(lab, "revert", sha=lab["a"][:12]))
-        res = r.get_json()["result"]
+        res = self._apply(lab, _preview(lab, "revert", sha=lab["a"][:12]))
         assert res["level"] == "success", res
         from modules.nsot import hostvars
         now = hostvars.read_committed(lab["repo"], HOST)
@@ -147,12 +182,13 @@ class TestRevertApply:
         head = _git(lab["repo"], "rev-parse", "HEAD").strip()
         assert head[:12] in res["record"]["statement"] and "Source: revert" in \
             res["record"]["statement"]
-        assert "What was reverted" in render_result(res)
+        html = lab["result_html"]
+        assert head[:12] in html[html.index("<h3>Recorded"):]
 
     def test_c214_a_standing_block_is_not_lifted_by_a_revert(self, classify):
         lab = classify
         _note(lab, "blocking")
-        res = self._apply(lab, _preview(lab, "revert", sha=lab["b"][:12])).get_json()["result"]
+        res = self._apply(lab, _preview(lab, "revert", sha=lab["b"][:12]))
         from modules.nsot import hostvars
         assert hostvars.rolled_back_note(lab["repo"], HOST) is not None, "the block stands"
         assert res["level"] == "partial"
@@ -161,7 +197,7 @@ class TestRevertApply:
     def test_c214_a_block_measured_gone_is_cleared(self, classify):
         lab = classify
         _note(lab, "no longer applies")
-        res = self._apply(lab, _preview(lab, "revert", sha=lab["a"][:12])).get_json()["result"]
+        res = self._apply(lab, _preview(lab, "revert", sha=lab["a"][:12]))
         from modules.nsot import hostvars
         assert hostvars.rolled_back_note(lab["repo"], HOST) is None
         assert res["level"] == "success" and "lifted" in res["happened"]["summary"]
@@ -171,7 +207,7 @@ class TestRevertApply:
         _edit(lab["repo"], lambda doc: doc.update(domain_name="moved.example"),
               "host_vars: r2 domain")
         head = _git(lab["repo"], "rev-parse", "HEAD")
-        res = self._apply(lab, d).get_json()["result"]
+        res = self._apply(lab, d)
         assert res["targets"][0]["outcome"] == "moved"
         assert _git(lab["repo"], "rev-parse", "HEAD") == head
 
@@ -180,7 +216,7 @@ class TestRevertApply:
         d = _preview(lab, "revert", sha=lab["a"][:12])
         monkeypatch.setattr("modules.nsot.repo.save_host_vars",
                             lambda *a, **k: {"ok": False, "error": "planted"})
-        res = self._apply(lab, d).get_json()["result"]
+        res = self._apply(lab, d)
         assert res["targets"][0]["outcome"] == "failed" and res["level"] == "failed"
         assert _git(lab["repo"], "status", "--porcelain") == before, "no residue"
 
@@ -200,31 +236,32 @@ class TestRevertApply:
         t.start()
         try:
             assert held.wait(10)
-            res = self._apply(lab, d).get_json()["result"]
+            res = self._apply(lab, d)
         finally:
             done.set()
             t.join(10)
         assert res["targets"][0]["outcome"] == "busy"
         assert _git(lab["repo"], "log", "-1", "--format=%s").startswith("host_vars: r2 add")
 
-    def test_the_apply_needs_its_list(self, lab):
-        r = lab["client"].post("/templatize/revert/apply",
-                               json={"device": HOST, "sha": "x", "hash": "y"})
-        assert r.status_code == 400 and "never from whichever list is active" in \
-            r.get_json()["error"]
+    # test_the_apply_needs_its_list (POST /templatize/revert/apply with no list, 400) left with
+    # the route (P7-24): v2's confirm refuses a confirm without its list or hash, in
+    # tests/test_device_revert_retry_v2.py (test_a_confirm_without_its_list_or_hash_is_refused).
 
     def test_a_device_the_list_does_not_hold_is_refused(self, lab):
-        r = lab["client"].post("/templatize/revert/preview",
-                               json={"list_name": LIST, "device": "r9"})
-        assert r.status_code == 404 and "not in Lab's inventory" in r.get_json()["error"]
+        """v2's card for a device the list does not hold is never drawn: the device page
+        answers 404 naming it (today's POST /templatize/revert/preview answered 404 "not in
+        Lab's inventory" until it left, P7-24)."""
+        for kind in ("revert", "retry"):
+            r = lab["client"].get(f"/v2/device/r9/{kind}")
+            assert r.status_code == 404 and "r9" in r.get_data(as_text=True), kind
+            assert "op-confirm" not in r.get_data(as_text=True), kind
 
 
 class TestRetry:
     def _apply(self, lab, d, reason):
         data = _target(d)["select_data"]
-        return lab["client"].post("/templatize/retry/apply", json={
-            "list_name": data["list"], "device": HOST, "hash": data["hash"],
-            "reason": reason}).get_json()["result"]
+        return _confirm(lab, "retry", {"list": data["list"], "hash": data["hash"],
+                                       "reason": reason})
 
     def test_no_block_is_nothing_to_retry(self, lab):
         t = _target(_preview(lab, "retry"))
@@ -267,7 +304,7 @@ class TestRetry:
         log = hostvars.retry_log(lab["repo"])
         assert [(e["device"], e["actor"], e["reason"]) for e in log] == [
             (HOST, TEST_PERSON, "the link was down for maintenance")]
-        assert "stated reason, as testimony" in render_result(res)
+        assert "stated reason, as testimony" in lab["result_html"]
         _note(lab, "blocking")
         ops = {o["name"]: o["value"] for o in
                _preview(lab, "retry")["preview"]["targets"][0]["operands"]}
@@ -352,31 +389,33 @@ class TestC215ThePlanReadsItsOwnList:
 
 
 class TestTheShippedClient:
-    def _button(self, kind, preview, reason):
-        import dukpy
-        js = (lift(shipped("nmas_preview_confirm.js"), "previewConfirmButton") + "\n"
-              + lift(shipped("nmas_intent_ops.js"), "intentOpButton"))
-        return dukpy.evaljs(js + f"\nintentOpButton({json.dumps(kind)}, "
-                                 f"{json.dumps(preview)}, {json.dumps(reason)})")
+    """v2's Revert and Retry cards (today's client, nmas_intent_ops.js's intentOpButton and
+    revertCommitChooser, held these until it left with its routes at 7.8, 2026-10-17,
+    P7-24)."""
 
     def test_a_retry_needs_a_reason_typed(self, classify):
         lab = classify
         _note(lab, "blocking")
-        p = _preview(lab, "retry")["preview"]
-        assert self._button("retry", p, "  ") == {"disabled": True,
-                                                   "text": "State a reason first"}
-        assert self._button("retry", p, "the link was down")["disabled"] is False
+        _preview(lab, "retry", reason="  ")
+        assert "op-confirm" not in lab["preview_html"]
+        _preview(lab, "retry", reason="the link was down")
+        assert "op-confirm" in lab["preview_html"]
 
-    def test_the_commit_chooser_escapes_and_marks_the_rolled_back_commit(self):
-        import dukpy
-        js = lift(shipped("nmas_intent_ops.js"), "esc") + "\n" + lift(
-            shipped("nmas_intent_ops.js"), "revertCommitChooser")
-        html = dukpy.evaljs(js + "\nrevertCommitChooser(" + json.dumps([
-            {"sha": "aaa", "date": "d", "subject": "<b>x</b>", "rolled_back": True},
-            {"sha": "bbb", "date": "d", "subject": "y", "rolled_back": False}]) + ", 'bbb')")
-        assert "&lt;b&gt;x&lt;/b&gt;" in html and "<b>x" not in html
-        assert "(the change a rollback undid)" in html
-        assert '<option value="bbb" selected>' in html
+    def test_the_commit_chooser_escapes_and_marks_the_rolled_back_commit(self, lab):
+        from modules.nsot import hostvars
+
+        hostile = _edit(lab["repo"], lambda doc: doc.update(domain_name="hostile.example"),
+                        "host_vars: <b>x</b>")
+        hostvars.record_rolled_back(lab["repo"], HOST, lab["a"], commands=FAILED)
+        _preview(lab, "revert", sha=lab["b"][:12])
+        html = lab["preview_html"]
+        chooser = html[html.index("<h3>Which change"):html.index("<h3>What will be committed")]
+        assert hostile and "&lt;b&gt;x&lt;/b&gt;" in chooser and "<b>x" not in chooser
+        (marked,) = [o for o in chooser.split("<option")[1:]
+                     if "(the change a rollback undid)" in o]
+        assert lab["a"][:12] in marked
+        (chosen,) = [o for o in chooser.split("<option")[1:] if " selected>" in o]
+        assert lab["b"][:12] in chosen
 
     def test_the_device_page_offers_both(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

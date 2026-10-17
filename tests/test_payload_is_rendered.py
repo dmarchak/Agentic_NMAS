@@ -90,7 +90,6 @@ PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "removableHt
           "programHtml", "operandsHtml",
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 CAP = "nmas_capture.js"
-SEED = "nmas_seed.js"
 DW, GR1 = "partials__deploy_wizard.1.js", "partials__golden_repo.1.js"
 
 RENDERS = {
@@ -160,17 +159,10 @@ RENDERS = {
         ((CAP, "previewCapture", "ad"),),
         adapters={"modules/preview_confirm.py": ("capture_result", "_intent_words",
                                                  "build_result")}),
-    "POST /templatize/seed/preview": Render(
-        lambda mp, tmp: P.seed_preview(mp, tmp),
-        {SEED: ("previewSeed", "seedSelection", "refreshButton"), PC: PC_FNS},
-        ((SEED, "previewSeed", "d"),), maps=("select_data",),
-        adapters={"modules/preview_confirm.py": ("seed_preview", "_fidelity_words", "build")}),
-    "POST /templatize/seed/apply": Render(
-        lambda mp, tmp: P.seed_apply(mp, tmp),
-        {SEED: ("previewSeed",), PC: PC_RESULT_FNS},
-        ((SEED, "previewSeed", "ad"),),
-        adapters={"modules/preview_confirm.py": ("seed_result", "_fidelity_words",
-                                                 "build_result")}),
+    # POST /templatize/seed/preview and /templatize/seed/apply left this table at 7.8
+    # (2026-10-17, P7-24) with their renderer, nmas_seed.js. v2 draws the same preview and
+    # result server-side: the device page's Seed intent… card (`device_actions.seed_card`,
+    # `seed_result_card`; tests/test_v2_context_is_drawn.py, tests/test_device_seed_v2.py).
     # GET /deploy/receipts left this table at 7.8 (2026-10-17, P7-22) with today's device
     # page's Changes tab, its renderer; a device's receipts are its v2 History tab's rows.
     # Today's re-apply dialog's preview (POST /golden/restore/preview), the device page's
@@ -407,7 +399,6 @@ EMPTY_IN_FIXTURE = {
                                                               "description; a secret-position "
                                                               "removal is reached in "
                                                               "test_removal_pipeline.py"),
-    "POST /templatize/seed/apply result.record.tags": (S_, "a seed takes no tag: tags mark a network snapshot, and an intent commit is not one"),
     "POST /golden/capture/apply result.did_not.items[].lines": (S_, "the first did-not item is r2's departure from intent, whose lines are drawn under its checks; the baseline item carries no lines"),
     "POST /deploy/apply result.did_not.items[].lines": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
     "POST /deploy/apply result.targets[].rollback.commands": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
@@ -682,7 +673,8 @@ class TestThePopulation:
         # tests/test_v2_context_is_drawn.py's).
         # 15 since GET /deploy/receipts left the same day with today's device page (P7-22).
         # 13 since today's template library's two payloads left the same day (P7-23).
-        assert len(RENDERS) >= 13
+        # 11 since today's seed preview and result left the same day (P7-24).
+        assert len(RENDERS) >= 11
         total = sum(len(_keys(r, p)) for r, (p, _, _) in measured.items())
         assert total >= 150, total
 

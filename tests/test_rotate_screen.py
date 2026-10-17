@@ -6,9 +6,15 @@ Built assuming a fourth failure mode exists (the operator): every state is
 named with its one action, the apply is a job (rotate plus persist can pass
 the 100 s edge limit), the device is held across rotate AND persist, and the
 job carries the confirming person's VERIFIED identity into its thread.
+
+The preview and result models are read through the v2 device page's Rotate card (its preview,
+confirm and job routes; `tests/v2_card_models.py`) on test_persist_screen's inventory (Lab's
+r2): today's JSON routes, POST /rotate/preview and /rotate/apply and GET /rotate/result/<job>,
+left at 7.8 (2026-10-17, P7-24). What the card draws is tests/test_device_rotate_v2.py's.
 """
 
 import os
+import re
 import threading
 
 import pytest
@@ -16,7 +22,8 @@ import pytest
 from modules.nsot import capture_job
 from modules.nsot import credential_rotation as cr
 from modules.nsot import rotate_op as RO
-from tests.payload_render import render_preview, render_result
+from tests.test_persist_screen import lab as inventory  # noqa: F401 (the fixture: Lab's r2)
+from tests.v2_card_models import spying, the_one
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NEW = "N3w-Rotated-Value-77"
@@ -39,9 +46,7 @@ def _plan(ok=True, fingerprint="fp-abc123"):
 
 
 @pytest.fixture
-def lab(monkeypatch):
-    import app as A
-
+def lab(inventory, monkeypatch):  # noqa: F811
     state = {"plan": _plan(), "rotate_state": cr.ROTATED_PENDING_PERSIST,
              "persist_state": cr.ROTATED_PERSISTED, "password": NEW, "calls": []}
     monkeypatch.setattr(RO, "plan", lambda l, h: dict(state["plan"]))
@@ -72,28 +77,43 @@ def lab(monkeypatch):
     monkeypatch.setattr(cr, "persist", persist)
     monkeypatch.setattr(cr, "platform_of", lambda l, h: "cisco_iosxe")
     monkeypatch.setattr(RO, "_inventory_password", lambda l, h: state["password"])
-    return {"client": A.app.test_client(), "state": state}
+    return dict(inventory, state=state)
 
 
 def _preview(lab):
-    r = lab["client"].post("/rotate/preview", json={"device": "r2"})
-    assert r.status_code == 200, r.get_data(as_text=True)
-    return r.get_json()["preview"]
+    """The preview model the v2 Rotate card is drawn from (`device_actions.rotate_card`'s
+    third argument, masked), through POST /v2/device/r2/rotate/preview; the card's HTML is
+    kept as ``lab["preview_html"]``."""
+    from modules import device_actions
+
+    with spying(device_actions, "rotate_card") as calls:
+        r = lab["client"].post("/v2/device/r2/rotate/preview", data={"list": "Lab"})
+    assert r.status_code == 200, r.get_data(as_text=True)[:400]
+    lab["preview_html"] = r.get_data(as_text=True)
+    args, _kw = the_one(calls, "rotate_card")
+    return args[2]
 
 
 def _apply(lab, preview):
+    """v2's confirm, POST /v2/device/r2/rotate/confirm, with the list and fingerprint the
+    preview carries."""
     data = preview["what"]["targets"][0]["select_data"]
-    return lab["client"].post("/rotate/apply", json={"list_name": data["list"], "device": "r2",
-                                                     "fingerprint": data["fingerprint"]})
+    return lab["client"].post("/v2/device/r2/rotate/confirm",
+                              data={"list": data["list"], "fingerprint": data["fingerprint"]})
 
 
 def _finish(lab, r):
-    assert r.status_code == 202, r.get_data(as_text=True)
-    job = r.get_json()["job"]
+    """The started job, waited for: its result model, the one v2's job card draws
+    (`device_actions.rotate_job_card` reads the job's payload); the card's HTML is kept as
+    ``lab["result_html"]``."""
+    assert r.status_code == 200, r.get_data(as_text=True)[:400]
+    job = re.search(r"/rotate/job/([0-9a-f]+)", r.get_data(as_text=True)).group(1)
     assert capture_job.wait(job, 30)
-    got = lab["client"].get(f"/rotate/result/{job}").get_json()
+    got = capture_job.get(job)
     assert got["state"] == "done", got
-    return got["result"]
+    lab["result_html"] = lab["client"].get(f"/v2/device/r2/rotate/job/{job}").get_data(
+        as_text=True)
+    return got["payload"]["result"]
 
 
 class TestThePreview:
@@ -102,8 +122,11 @@ class TestThePreview:
         target = p["targets"][0]
         assert target["program"]["lines"] == cr.masked_commands("admin", 15, "secret")
         assert "<generated>" in " ".join(target["program"]["lines"])
-        html = render_preview(p)
-        assert "will be sent" in html, "a program that IS sent keeps the deploy's sentence"
+        # v2's card heads the program "What is sent" (a program that IS sent; today's renderer
+        # said "will be sent" until it left with the routes, P7-24), its password masked.
+        html = lab["preview_html"]
+        sent = html[html.index("What is sent"):html.index("Operands")]
+        assert "&lt;generated&gt;" in sent
         said = " ".join(i["text"] for i in p["what_not"]["items"])
         assert "the template is not changed" in said and "DEAD credential" in said
 
@@ -129,8 +152,8 @@ class TestTheApplyIsAJob:
         assert "export it again" in result["happened"]["summary"], "the break-glass record"
         assert result["targets"][0]["sent"]["lines"] == cr.masked_commands("admin", 15, "secret")
         assert NEW not in str(result)
-        html = render_result(result)
-        assert "abc1234def56" in html
+        html = lab["result_html"]
+        assert "abc1234def56" in html and NEW not in html
 
     def test_the_device_is_held_across_rotate_and_persist(self, lab):
         _finish(lab, _apply(lab, _preview(lab)))
@@ -141,7 +164,7 @@ class TestTheApplyIsAJob:
         p = _preview(lab)
         lab["state"]["plan"] = _plan(fingerprint="fp-moved")
         r = _apply(lab, p)
-        assert r.status_code == 409 and "fp-abc123 -> fp-moved" in r.get_json()["error"]
+        assert r.status_code == 409 and "fp-abc123 -&gt; fp-moved" in r.get_data(as_text=True)
         assert lab["state"]["calls"] == []
 
     def test_a_refused_plan_starts_nothing(self, lab):
@@ -149,18 +172,19 @@ class TestTheApplyIsAJob:
         lab["state"]["plan"] = _plan(ok=False)
         r = _apply(lab, p)
         assert r.status_code == 409 and lab["state"]["calls"] == []
-        assert r.get_json()["error"].startswith("Refused before anything was sent: "
-                                                "live_user_line_read")
+        assert ("Refused before anything was sent: live_user_line_read"
+                in r.get_data(as_text=True))
 
-    def test_the_apply_needs_its_list(self, lab):
-        r = lab["client"].post("/rotate/apply", json={"device": "r2", "fingerprint": "x"})
-        assert r.status_code == 400 and "never from whichever list is active" in \
-            r.get_json()["error"]
+    # test_the_apply_needs_its_list (POST /rotate/apply with no list, 400) left with the route
+    # (P7-24): v2's confirm refuses a write naming no list or an unknown one, with nothing sent,
+    # in tests/test_device_rotate_v2.py (TestTheConfirm.test_a_write_naming_no_list_or_no_plan_
+    # is_refused).
 
     def test_a_job_this_server_does_not_know_points_at_the_record(self, lab):
-        r = lab["client"].get("/rotate/result/nope")
-        assert r.status_code == 404
-        assert "restarted" in r.get_json()["error"] and "rotation row" in r.get_json()["error"]
+        """v2's job card for a job this server has no record of (today's GET
+        /rotate/result/<job> said the same until it left, P7-24)."""
+        html = lab["client"].get("/v2/device/r2/rotate/job/0123abcd").get_data(as_text=True)
+        assert "restarted" in html and "rotation row" in html
 
 
 class TestEveryStateIsNamedWithItsAction:

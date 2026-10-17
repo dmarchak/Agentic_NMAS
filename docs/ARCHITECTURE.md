@@ -509,9 +509,10 @@ and others have left since too.
   document and the golden, parsed again at apply, one commit of exactly the
   seeded files (`Source: seed`). Only absent or bootstrap-only intent is
   seeded; what the template does not model is named, never blocked here.
-  Client: **[static/js/nmas_seed.js](static/js/nmas_seed.js)**, today's device
-  page's Seed intent until that page left at 7.8 (P7-22, 2026-10-17; nothing opens it
-  now, and it goes with its routes, P7-24); v2's is Actions › Seed intent…
+  Its one screen is each device page's Actions › Seed intent… (`routes/device_v2.py`), one
+  device per card; today's routes (POST /templatize/seed/preview and /apply, which could
+  also seed every device of a list lacking full intent) and their client `nmas_seed.js` left
+  at 7.8 (P7-24, 2026-10-17; restore point tag `pre-remove/v1-actions`)
 - **[modules/nsot/rotate_op.py](modules/nsot/rotate_op.py)** — 7.3: ROTATE from the
   Device page, `credential_rotation` as one operation: a preview (the plan's preflight,
   which READS the account's line live, and the program with the password masked), a
@@ -519,9 +520,12 @@ and others have left since too.
   persist can pass the 100 s edge limit), holding the device across both, carrying the
   person's verified identity into the thread (`identity.carried()`, so the commit reads
   `Actor-Verified: access`), announcing `rotation`, every state drawn with its one
-  action. `nmas-rotation-recover` (C210) settles a credential a dead job staged. Route
-  `routes/rotate.py`, client **[static/js/nmas_rotate.js](static/js/nmas_rotate.js)**;
-  the job registry is `capture_job`, which takes a kind and its announce keys
+  action. `nmas-rotation-recover` (C210) settles a credential a dead job staged. Its screen
+  is each device page's Actions › Rotate credential… (`routes/device_v2.py`: the preview,
+  `confirm_and_start` and the job's card); today's `routes/rotate.py` and
+  `nmas_rotate.js` left at 7.8 (P7-24, 2026-10-17; restore point tag
+  `pre-remove/v1-actions`). The job registry is `capture_job`, which takes a kind and its
+  announce keys
 - **[modules/breakglass_export.py](modules/breakglass_export.py)** — 7.3: the
   break-glass export from the BROWSER. Built, sealed and VERIFIED in memory (the sealed
   bytes opened with the passphrase and every device, credential digest and the escrowed
@@ -541,8 +545,11 @@ and others have left since too.
   device. A revert computes with `hostvars.plan_revert()` (one computation for preview and
   apply) and MEASURES the block after its commit, clearing it only when it no longer
   blocks (C214: the old route cleared it after any revert). One classifier for the list
-  and both screens, `routes/templatize.note_applicability()`. Client
-  **[static/js/nmas_intent_ops.js](static/js/nmas_intent_ops.js)**
+  and both screens, `routes/templatize.note_applicability()`. Its screens are each device
+  page's Actions › Revert intent… and Retry rolled-back change… (`routes/device_v2.py`);
+  today's routes (POST /templatize/revert/* and /templatize/retry/*) and their client
+  `nmas_intent_ops.js` left at 7.8 (P7-24, 2026-10-17; restore point tag
+  `pre-remove/v1-actions`)
 - **[modules/nsot/adopt.py](modules/nsot/adopt.py)** — 7.3, ADOPT (being built): bring a
   device the tool did not build into management. Step 1, `add_tool_account()`: ADD the tool's
   own account (`nmas`, never the supplied name) through the SUPPLIED credential, with rotation's
@@ -576,8 +583,10 @@ and others have left since too.
   from the Device page, the operation `nmas-persist-native` runs on the host: a preview
   that contacts no device, a confirm bound to the plan's hash, the device held while
   `onboard.persist_on_device` saves and reads back (the ONE save, C53), and the outcome
-  recorded where job health's rotation row reads it. Route `routes/persist.py`, client
-  **[static/js/nmas_persist.js](static/js/nmas_persist.js)**
+  recorded where job health's rotation row reads it. Its screen is each device page's
+  Actions › Persist (`routes/device_v2.py`); today's `routes/persist.py` and
+  `nmas_persist.js` left at 7.8 (P7-24, 2026-10-17; restore point tag
+  `pre-remove/v1-actions`)
 - **[modules/host_keys.py](modules/host_keys.py)** — C906: every device session's SSH
   host key, compared before any credential is sent. `connection.open_ssh` hands Netmiko its
   policy (`_pin_host_key`): a first contact keeps the key (type, SHA256 fingerprint, when,
@@ -606,11 +615,10 @@ and others have left since too.
   checker's scan); authority: the modification record; read back after the write
 - **[modules/nsot/retire.py](modules/nsot/retire.py)** — C11 (7.3): the
   whole exit, one implementation for two entry points. `nmas-retire` OPENS
-  the break-glass record; the device page's Retire… (v2's card; today's
-  `routes/retire.py` and **[static/js/nmas_retire.js](static/js/nmas_retire.js)**,
-  which nothing opens since today's device page left at 7.8, P7-22) trusts the
-  EXPORT LOG (`breakglass_logged`) and says so, because it cannot reach a
-  file on a laptop
+  the break-glass record; the device page's Retire… (v2's card, `routes/device_v2.py`;
+  today's `routes/retire.py` and `nmas_retire.js` left at 7.8, P7-24, 2026-10-17,
+  restore point tag `pre-remove/v1-actions`) trusts the EXPORT LOG
+  (`breakglass_logged`) and says so, because it cannot reach a file on a laptop
 - **[modules/nsot/removal.py](modules/nsot/removal.py)** — Mode B (7.3
   step 2): removing a line the device has and intent lacks, SELECTED units (residue leaves, whole stanzas) to the exact
   program, verbatim, each refusal with its reason (IOS will not remove it, a

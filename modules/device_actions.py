@@ -753,7 +753,8 @@ def restore_card(ref, host: str, moment: str, plan: dict, viewer: dict, *,
 # ---------------------------------------------------------------------------
 # Revert and Retry (7.3; the device-actions canvas, board 11): the two ways out of a rollback,
 # each committing or recording only (nothing sent to the device), drawn from the builders
-# today's routes use (`preview_confirm.revert_preview`/`retry_preview` and their results).
+# `preview_confirm.revert_preview`/`retry_preview` and their results (today's routes, which
+# shared them, left at 7.8 on 2026-10-17, P7-24).
 # ---------------------------------------------------------------------------
 
 #: An intent operation's result level -> the card's level.

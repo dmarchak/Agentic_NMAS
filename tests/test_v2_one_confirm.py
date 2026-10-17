@@ -51,7 +51,9 @@ XDATA = re.compile(r'\bx-data="(\w+)"')
 #: (7.8, P7-22). 52 -> 51 the same day (P7-21): today's re-apply (`golden.restore_apply`, a
 #: confirm) left at 7.8. 51 -> 49 the same day (P7-23), the population measured 49: today's
 #: Approve (`templates.approve`) and intent editor save (`templatize.edit_committed`) left at 7.8.
-POPULATION_FLOOR = 49
+#: 49 -> 43 the same day (P7-24), the population measured 43: today's persist, retire and
+#: rotate applies and templatize's seed, revert and retry applies left at 7.8.
+POPULATION_FLOOR = 43
 PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
@@ -84,15 +86,11 @@ LEGACY_HOMES = {
     "onboard.abandon": "onboard_v2.abandon",
     "onboard.create": "onboard_v2.create",
     "onboard.verify": "onboard_v2.verify",
-    "persist.apply": "device_v2.persist_confirm",
-    "retire.apply": "device_v2.retire_confirm",
-    "rotate.apply": "device_v2.rotate_confirm",
     # templates.approve (templates_v2.approve) and templatize.edit_committed (intent_v2.commit)
-    # left at 7.8 (2026-10-17, P7-23).
+    # left at 7.8 (2026-10-17, P7-23); persist.apply, retire.apply, rotate.apply and
+    # templatize's seed_apply, revert_apply and retry_apply the same day (P7-24): their homes
+    # were device_v2's persist, retire, rotate, seed, revert and retry confirms.
     "templatize.profile_propose_apply": "v2.profile_propose_commit",
-    "templatize.retry_apply": "device_v2.retry_confirm",
-    "templatize.revert_apply": "device_v2.revert_confirm",
-    "templatize.seed_apply": "device_v2.seed_confirm",
 }
 
 

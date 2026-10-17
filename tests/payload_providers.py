@@ -227,29 +227,6 @@ def capture_preview_start(mp, tmp):
     return d
 
 
-def seed_preview(mp, tmp):
-    """C148: r2's real golden with only onboarding's bootstrap committed as
-    its intent, so the preview carries a whole document against it, and one
-    line the parser does not model, so what the template misses is carried."""
-    from tests.test_seed_intent import LIST, UNMODELLED, build_seed_lab
-
-    lab = build_seed_lab(mp, tmp, unmodelled=UNMODELLED)
-    return _ok(lab["client"].post("/templatize/seed/preview",
-                                  json={"list_name": LIST, "devices": ["r2"]}))
-
-
-def seed_apply(mp, tmp):
-    """The same, confirmed and committed: a seed's result, partial."""
-    from tests.test_seed_intent import LIST, UNMODELLED, build_seed_lab
-
-    lab = build_seed_lab(mp, tmp, unmodelled=UNMODELLED)
-    d = _ok(lab["client"].post("/templatize/seed/preview",
-                               json={"list_name": LIST, "devices": ["r2"]}))
-    h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    return _ok(lab["client"].post("/templatize/seed/apply",
-                                  json={"list_name": LIST, "confirmations": {"r2": h}}))
-
-
 def capture_apply(mp, tmp):
     """The same, confirmed and recorded: a departing capture's result."""
     from tests.test_capture import build_capture_lab, run_capture_preview

@@ -108,15 +108,13 @@ GATES = {
                                "v2 page (the same core as onboard.verify)", "onboard_verify"),
     "onboard_v2.abandon": _g(C, "deletes the pending device's records from NetBox and the "
                                 "repository, from its v2 page", "onboard_abandon"),
-    "rotate.apply": _g(C, "rotates a device's login credential: the device then accepts only the new password"),
     "device_v2.restore_confirm": _g(C, "re-applies a moment (its golden now, an older golden or a baseline) to one device from the v2 device page (7.3; THE restore plan and apply, run as a job, in the list its preview was drawn in, C396), merge-only, every line needing a reason (a dangerous line, an account added back) with its stated reason in the hash"),
     "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; the same plan and apply as deploy.apply and the batch apply, run as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
-    "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; the same confirm as rotate.apply): the device then accepts only the new password"),
+    "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; rotate_op.confirm_and_start): the device then accepts only the new password"),
     "credential_profiles_v2.rotate_due_confirm": _g(C, "rotates every due device's login credential (C724, Rotate due devices now), one at a time through the device page's rotation, bound to the previewed list's hash"),
     "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
-    "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "v2.save_confirm": _g(C, "saves the running config to startup on each chosen device, reads it back, and records the running config as golden in one commit (C593, Devices › Save): changes what the devices boot"),
-    "device_v2.persist_confirm": _g(C, "saves the running config to startup on a device and reads it back, from the v2 device page (7.3; the same apply as persist.apply)"),
+    "device_v2.persist_confirm": _g(C, "saves the running config to startup on a device and reads it back, from the v2 device page (7.3; persist_op.apply)"),
     "device_v2.rekey_confirm": _g(C, "keeps the SSH host key a device answers with now in place of the one Mercury holds (C906): every later session signs in to whatever presents it, so a person confirms it, bound to both keys"),
     "privileged_v2.confirm": _g(C, "sends one Tier 2 command (Run a privileged command…, NSOT_TIER2_PRIVILEGED) to a device, holding it, bound to the previewed plan and a stated reason; verified and recorded"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
@@ -125,9 +123,9 @@ GATES = {
     # Today's template editor (templates.approve, templates.write_template, templates.validate)
     # and intent editor (templatize.edit_committed, templatize.preview_committed_edit) left at
     # 7.8 (2026-10-17, P7-23): Templates › Approve… and Edit… (templates_v2) and each device's
-    # Intent tab (intent_v2).
-    "retire.apply": _g(A, "retires a device: removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row, the only stored copy of its credential"),
-    "templatize.seed_apply": _g(A, "commits a device's first full intent, parsed from its committed golden"),
+    # Intent tab (intent_v2). Today's device-action JSON routes (retire, persist and rotate's
+    # preview and apply, templatize's seed, revert and retry) left at 7.8 (2026-10-17, P7-24):
+    # each device page's Actions (the device_v2 entries).
     "templatize.profile_propose_apply": _g(A, "commits the network's monitoring profile, intent every device inherits (P.9 step b)"),
     "v2.ip_sla_policy_set": _g(A, "commits the monitoring profile's IP SLA policy, which decides the probes suggested (P.9 d4)"),
     "v2.ip_sla_commit": _g(A, "commits suggested IP SLA probes into the devices' intent (P.9 d4)"),
@@ -160,14 +158,12 @@ GATES = {
     "reads_v2.show_commands_save_set": _g(K, "commits a saved command set to the network's "
                                              "repository as the person (R3); sends nothing"),
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),
-    "templatize.revert_apply": _g(A, "commits the inverse of one intent commit's change"),
     "bulk_intent_v2.apply": _g(A, "commits one change to the ticked devices' intent, from "
                                   "Devices (board D; routes.templatize.bulk_apply_of)"),
-    "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; the same apply as templatize.revert_apply, in the list its card carries)"),
-    "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; the same apply as templatize.retry_apply, in the list its card carries)"),
-    "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; the same apply as templatize.seed_apply, in the list its card carries)"),
-    "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; the same apply as retire.apply, in the list its card carries): removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row against the export log"),
-    "templatize.retry_apply": _g(A, "lifts a blocked change (the lines a rollback undid) so it may be sent again"),
+    "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; intent_ops.revert_apply, in the list its card carries)"),
+    "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; intent_ops.retry_apply, in the list its card carries)"),
+    "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; seed.apply, in the list its card carries)"),
+    "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; retire.apply, in the list its card carries): removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row against the export log"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
     # the old one-click route is gone, because nothing in it asked whether the
     # state being enshrined was the one intended.
@@ -248,7 +244,7 @@ GATES = {
 
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
     "deploy.plan": _g(N, "computes a program; sends nothing"),
-    "device_v2.rotate_preview": _g(N, "reads the device's account line live for the rotation's plan, from the v2 device page (the same plan as rotate.preview); changes nothing"),
+    "device_v2.rotate_preview": _g(N, "reads the device's account line live for the rotation's plan, from the v2 device page (rotate_op.plan); changes nothing"),
     "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (the same job as golden.capture_preview); records nothing"),
     "golden.capture_preview": _g(N, "reads each device's running config and computes a "
                                     "capture preview; records nothing"),
@@ -279,18 +275,12 @@ GATES = {
     "intent_v2.check": _g(N, "checks and renders an edit as it is typed; writes nothing"),
     "intent_v2.acknowledge": _g(N, "rewrites the document in the editor (its unmodeled_ack block); writes nothing"),
     "intent_v2.reopen": _g(N, "opens the editor on what is committed now with the person's edit on it; writes nothing"),
-    "retire.preview": _g(N, "computes the retire plan and reads the export log; writes nothing"),
-    "rotate.preview": _g(N, "computes the rotation plan and READS the device's account line; changes nothing"),
-    "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
     "attention.acknowledge": _g(K, "records that a person acknowledged one event row on Needs attention, with a reason; the row leaves the page and the event stays in its record"),
     "restarts.planned": _g(K, "records a planned-restart window, so the restarts it covers are not reported as unexpected, and sets a Grafana silence on its devices' alerts as the caller, with the reason (B3); a window covering a restart already seen needs a correction with its reason", operation="planned_restart"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
     "jobs.job_finished": _g(N, "a host job ended: runs the job-health reader now; reads systemd and the stores, moves nothing, and accepts only a declared job's unit"),
-    "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),
     "templatize.profile_propose_preview": _g(N, "reads committed intent and compares stored values in memory; writes nothing"),
-    "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),
-    "templatize.retry_preview": _g(N, "reads the rollback record and the retry log; writes nothing"),
     "netbox_v2.preview": _g(N, "starts a dry run of an import or removal, or a read of what Stop tracking would forget, on a thread; writes nothing"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),

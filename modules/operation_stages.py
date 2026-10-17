@@ -41,11 +41,10 @@ STAGES = {
         "device_v2.restore_preview", "command_hash", "modules.pipeline._stage_verify",
         "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
     # ---- Device operations of their own
-    "persist.apply": Stages(
-        "persist.preview", "hash", "modules.nsot.onboard.persist_on_device",
-        "n/a: a save cannot be undone; the preview says it carries the running config as it is",
-        "modules.nsot.persist_op.apply"),
-    # The v2 device page's Persist (7.3): the same plan and apply, drawn as a card.
+    # Today's persist, rotate and retire routes (persist.apply, rotate.apply, retire.apply) and
+    # templatize's seed, revert and retry applies left at 7.8 (2026-10-17, P7-24): the v2 device
+    # page's confirms below, each over the same operation.
+    # The v2 device page's Persist (7.3): persist_op's plan and apply, drawn as a card.
     # Tier 2, "Run a privileged command…" (boards T2-A to T2-D; NSOT_TIER2_PRIVILEGED): one
     # recoverable command on one device, its before-state read and kept, verified by the
     # measured rule.
@@ -69,11 +68,7 @@ STAGES = {
         "v2.save", "hash", "modules.nsot.onboard.persist_on_device",
         "n/a: a save cannot be undone; the plan says it carries each running config as it is",
         "modules.nsot.save_op.run"),
-    "rotate.apply": Stages(
-        "rotate.preview", "fingerprint", "modules.nsot.credential_rotation.verify_new_credential",
-        "modules.nsot.credential_rotation.revert_commands",
-        "modules.nsot.credential_rotation.record_outcome"),
-    # The v2 device page's Rotate (7.3): the same confirm, plan and job, drawn as a card.
+    # The v2 device page's Rotate (7.3): rotate_op's confirm, plan and job, drawn as a card.
     "device_v2.rotate_confirm": Stages(
         "device_v2.rotate_preview", "fingerprint",
         "modules.nsot.credential_rotation.verify_new_credential",
@@ -136,10 +131,6 @@ STAGES = {
     "onboard_v2.abandon": Stages(
         "onboard_v2.abandon_preview", "fingerprint", "n/a: nothing reached the device",
         "n/a: abandon is itself the undo of Create", "modules.nsot.onboard.record_run"),
-    "retire.apply": Stages(
-        "retire.preview", "hash",
-        "n/a: retirement changes no device; the NetBox mask is read back inside the apply",
-        "n/a: one commit; a failed commit restores the tree", "modules.nsot.repo.commit"),
     # DHCP › Reservations (C529 step 2, board B): the preview plans against Kea and Mercury's
     # file; the apply plans again under the file's lock and compares the hash, tests the
     # candidate with Kea's own check, reloads, reads every reservation back, and restores the
@@ -178,10 +169,6 @@ STAGES = {
         "device_v2.capture_start", "hash",
         "n/a: records what the device holds; the apply re-reads it and refuses a moved capture",
         FORWARD, "modules.nsot.repo.save_golden"),
-    "templatize.seed_apply": Stages(
-        "templatize.seed_preview", "confirmations", NO_DEVICE,
-        "n/a: a failed commit puts the file back; a seeded intent is corrected forward",
-        "modules.nsot.seed.apply"),
     # Devices › Change a setting on the ticked devices (7.4's board D): the same core.
     "bulk_intent_v2.apply": Stages(
         "bulk_intent_v2.preview", "hash", NO_DEVICE,
@@ -194,10 +181,7 @@ STAGES = {
         "intent_v2.check",
         "base",   # the blob the editor opened; a moved intent is refused naming both
         NO_DEVICE, FORWARD, "modules.nsot.repo.save_host_vars"),
-    "templatize.revert_apply": Stages(
-        "templatize.revert_preview", "hash", NO_DEVICE, FORWARD,
-        "modules.nsot.intent_ops.revert_apply"),
-    # The v2 device page's Revert and Retry (7.3, board 11): the same applies, carrying the list.
+    # The v2 device page's Revert and Retry (7.3, board 11): intent_ops' applies, the list carried.
     "device_v2.revert_confirm": Stages(
         "device_v2.revert", "hash", NO_DEVICE, FORWARD, "modules.nsot.intent_ops.revert_apply"),
     "device_v2.retire_confirm": Stages(
@@ -210,10 +194,6 @@ STAGES = {
         "modules.nsot.seed.apply"),
     "device_v2.retry_confirm": Stages(
         "device_v2.retry", "hash", NO_DEVICE,
-        "n/a: a retry is a recorded decision; a new rollback re-records the block",
-        "modules.nsot.intent_ops.retry_apply"),
-    "templatize.retry_apply": Stages(
-        "templatize.retry_preview", "hash", NO_DEVICE,
         "n/a: a retry is a recorded decision; a new rollback re-records the block",
         "modules.nsot.intent_ops.retry_apply"),
     "templatize.profile_propose_apply": Stages(
@@ -312,11 +292,9 @@ HISTORY = {
     "v2.profile_apply_confirm": ("receipts", "golden"),
     "device_v2.deploy_confirm": ("receipts", "golden"),
     "device_v2.restore_confirm": ("receipts", "golden"),
-    "persist.apply": ("rotation",),
     "device_v2.persist_confirm": ("rotation",),
     "device_v2.rekey_confirm": ("host_keys",),
     "v2.save_confirm": ("rotation", "golden"),
-    "rotate.apply": ("rotation", "golden", "intent"),
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
     "credential_profiles_v2.rotate_due_confirm": ("rotation", "golden", "intent"),
     "onboard.verify": ("onboarding", "golden"),
@@ -340,19 +318,14 @@ HISTORY = {
     "device_v2.capture_confirm": ("golden", "measured"),
     "onboard.create": ("intent",),
     "onboard_v2.create": ("intent",),
-    "templatize.seed_apply": ("intent",),
     "intent_v2.commit": ("intent",),
     "bulk_intent_v2.apply": ("intent",),
-    "templatize.revert_apply": ("intent",),
-    "templatize.retry_apply": ("retries",),
     "device_v2.revert_confirm": ("intent",),
     "device_v2.retry_confirm": ("retries",),
     "device_v2.seed_confirm": ("intent",),
     "device_v2.retire_confirm": ("n/a: a retired device has no History tab; its address shows its retired record, read from the retire commit (C185)"),
     "v2.ip_sla_commit": ("intent",),
     "v2.decline_confirm": ("intent",),
-    "retire.apply": ("n/a: a retired device has no page to hold a History tab; its record is "
-                     "the retire commit, read by the legacy golden history (C185)"),
     # B8: the network's own record of each removal (the removal record), and of each import,
     # Remove and Stop tracking confirmed on v2's NetBox page (its job record), on History.
     "netbox_v2.confirm": ("netbox",),

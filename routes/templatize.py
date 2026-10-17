@@ -1,13 +1,11 @@
-"""Templatize blueprint: SEED INTENT and bulk intent (its coverage report went at 7.8; Templates ›
-Coverage is its home; today's committed-intent editor went at 7.8 on 2026-10-17, P7-23: each
-device's Intent tab).
+"""Templatize blueprint: the monitoring profile's JSON routes, the rollback record's notes and
+bulk intent's core (its coverage report went at 7.8; Templates › Coverage is its home; today's
+committed-intent editor went at 7.8 on 2026-10-17, P7-23: each device's Intent tab; today's
+seed, revert and retry routes went the same day, P7-24: each device page's Actions).
 
-Phase 3a made it read-only (extractions to a gitignored staging area) and 3b
-added a reviewed commit. Both halves had no screen, and the commit refused
-anything without a verified person, so seeding a device's first intent had no
-working path (C148). Seed intent replaces them as one previewed, confirmed
-operation; revert and retry commit here too, and bulk intent's core
-(`bulk_plan_of`, `bulk_apply_of`) lives here for v2's Change a setting.
+Bulk intent's core (`bulk_plan_of`, `bulk_apply_of`) lives here for v2's Change a setting, and
+`rolled_back_notes` for Needs attention. The profile routes stay while today's index offers its
+Propose… (its Needs attention panel, `static/js/nmas_profile.js`).
 """
 
 import logging
@@ -33,70 +31,9 @@ def _active_list(payload=None) -> str:
     return name.strip() or get_current_list_name()
 
 
-# ---------------------------------------------------------------------------
-# Seed intent (C148): a device's first full intent, from its committed golden
-# ---------------------------------------------------------------------------
-#
-# It replaces extract, staged, rendered and the reviewed commit: four routes
-# with no screen, the last refusing anything without a verified person, so no
-# onboarded device could be made deployable from the interface. One operation
-# now, previewed and confirmed by hash (modules/nsot/seed.py).
-
-@bp.route("/seed/preview", methods=["POST"])
-def seed_preview():
-    """What seeding each device would commit. Reads git only: no session, no
-    write. No `devices` is every device in the list whose intent is absent or
-    only the bootstrap."""
-    from modules.nsot import seed
-    from modules.nsot.restore import _devices_of
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import seed_preview as _parts
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)        # a read may derive its list
-    inventory = _devices_of(list_name)
-    wanted = [d for d in (data.get("devices") or []) if d]
-    unknown = sorted(set(wanted) - {d.get("hostname") for d in inventory})
-    if unknown:
-        return jsonify({"ok": False, "error": f"not in {list_name}: {', '.join(unknown)}"}), 404
-    devices = [d for d in inventory if not wanted or d.get("hostname") in set(wanted)]
-    entries = [seed.public(seed.entry_for(list_name, d)) for d in devices]
-    if not wanted:
-        entries = [e for e in entries if e["intent_state"] != seed.FULL]
-        if not entries:
-            return jsonify({"ok": True, "list": list_name, "preview": None,
-                            "nothing": (f"Every device in {list_name} has full committed "
-                                        f"intent ({len(devices)} device(s)): nothing to seed.")})
-    for e in entries:
-        e["list"] = list_name
-    return jsonify(mask_payload({"ok": True, "list": list_name,
-                                 "preview": _parts(entries, request=request), "nothing": ""}))
-
-
-@bp.route("/seed/apply", methods=["POST"])
-def seed_apply():
-    """Seed the confirmed devices: each golden parsed AGAIN, one whose seed
-    moved refused, ONE commit of exactly the seeded files as the verified
-    person. The list is CARRIED from the preview, never derived: this ends
-    in a commit, and a write may not infer its list."""
-    from modules.nsot import seed
-    from modules.nsot.restore import _devices_of
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import seed_result
-
-    data = request.get_json(silent=True) or {}
-    list_name = (data.get("list_name") or "").strip()
-    if not list_name:
-        return jsonify({"ok": False, "error": (
-            "No list named: a seed commits intent into one list's repository, so the "
-            "list comes from the preview that was confirmed, never from whichever "
-            "list is active. Nothing was committed.")}), 400
-    confirmations = {k: v for k, v in (data.get("confirmations") or {}).items() if k}
-    if not confirmations:
-        return jsonify({"ok": False, "error": "Nothing confirmed: nothing committed"}), 400
-    done = seed.apply(list_name, _devices_of(list_name), confirmations, request_actor())
-    return jsonify(mask_payload({"ok": True, "list": list_name,
-                                 "result": seed_result(done["outcomes"], done["save"])}))
+# Seed intent (C148): today's two routes (POST /seed/preview and /seed/apply) left at 7.8 on
+# 2026-10-17 (P7-24; restore point tag `pre-remove/v1-actions`). Its home is each device page's
+# Actions › Seed intent… (`routes/device_v2.py`), over the same `modules/nsot/seed.py`.
 
 
 # ---------------------------------------------------------------------------
@@ -193,110 +130,10 @@ def profile_read():
 # over the same `modules/nsot/intent_edit.py`.
 
 
-# ---------------------------------------------------------------------------
-# Revert and retry (7.3): the two ways out of a rollback, previewed and
-# confirmed from the Device page (modules/nsot/intent_ops.py). They replace
-# `/committed/<h>/revert` and `/rolled-back/<h>/retry`, two routes with no
-# screen; the revert route also cleared the rollback block after ANY revert
-# commit, whatever it undid (C214).
-# ---------------------------------------------------------------------------
-
-def _intent_op_args(data: dict, *, carried: bool, action: str):
-    """``(list_name, device, error_response)``. A preview may derive its list;
-    an apply CARRIES it, because it ends in a commit or a lifted block."""
-    from modules.nsot.restore import _devices_of
-
-    list_name = (data.get("list_name") or "").strip()
-    if carried and not list_name:
-        return "", "", (jsonify({"ok": False, "error": (
-            f"No list named: {action} changes one list's record, so the list comes from the "
-            "preview that was confirmed, never from whichever list is active. Nothing was "
-            "changed.")}), 400)
-    list_name = list_name or _active_list(data)
-    device = (data.get("device") or "").strip()
-    if not device:
-        return list_name, "", (jsonify({"ok": False, "error": "No device named"}), 400)
-    if device not in {d.get("hostname") for d in _devices_of(list_name)}:
-        return list_name, device, (jsonify({"ok": False, "error": (
-            f"{device} is not in {list_name}'s inventory: nothing to {action}")}), 404)
-    return list_name, device, None
-
-
-@bp.route("/revert/preview", methods=["POST"])
-def revert_preview():
-    """What undoing one intent commit would commit. Reads git only."""
-    from modules.nsot import intent_ops
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import revert_preview as _parts
-
-    data = request.get_json(silent=True) or {}
-    list_name, device, err = _intent_op_args(data, carried=False, action="revert")
-    if err:
-        return err
-    entry = intent_ops.public(intent_ops.revert_entry(list_name, device,
-                                                      (data.get("sha") or "").strip()))
-    return jsonify(mask_payload({"ok": True, "list": list_name,
-                                 "commits": entry.get("commits") or [],
-                                 "preview": _parts(entry, list_name=list_name,
-                                                   request=request)}))
-
-
-@bp.route("/revert/apply", methods=["POST"])
-def revert_apply():
-    """Revert the confirmed commit as the verified person: computed again,
-    refused if it moved, one commit, the block measured after it."""
-    from modules.nsot import intent_ops
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import revert_result
-
-    data = request.get_json(silent=True) or {}
-    list_name, device, err = _intent_op_args(data, carried=True, action="revert")
-    if err:
-        return err
-    sha, confirmed = (data.get("sha") or "").strip(), (data.get("hash") or "").strip()
-    if not sha or not confirmed:
-        return jsonify({"ok": False, "error": "Nothing confirmed: nothing committed"}), 400
-    out = intent_ops.revert_apply(list_name, device, sha, confirmed, request_actor())
-    return jsonify(mask_payload({"ok": True, "list": list_name, "result": revert_result(out)}))
-
-
-@bp.route("/retry/preview", methods=["POST"])
-def retry_preview():
-    """The block a retry would lift, whether it blocks anything now, and how
-    often this device was retried before. Reads the record only."""
-    from modules.nsot import intent_ops
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import retry_preview as _parts
-
-    data = request.get_json(silent=True) or {}
-    list_name, device, err = _intent_op_args(data, carried=False, action="retry")
-    if err:
-        return err
-    entry = intent_ops.retry_entry(list_name, device)
-    return jsonify(mask_payload({"ok": True, "list": list_name,
-                                 "preview": _parts(entry, list_name=list_name,
-                                                   request=request)}))
-
-
-@bp.route("/retry/apply", methods=["POST"])
-def retry_apply():
-    """Authorise the retry as the verified person, with a reason in the shape
-    of one. The ONLY way a standing block lifts while the failed change is
-    still in intent."""
-    from modules.nsot import intent_ops
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import retry_result
-
-    data = request.get_json(silent=True) or {}
-    list_name, device, err = _intent_op_args(data, carried=True, action="retry")
-    if err:
-        return err
-    confirmed = (data.get("hash") or "").strip()
-    if not confirmed:
-        return jsonify({"ok": False, "error": "Nothing confirmed: nothing authorised"}), 400
-    out = intent_ops.retry_apply(list_name, device, confirmed,
-                                 (data.get("reason") or "").strip(), request_actor())
-    return jsonify(mask_payload({"ok": True, "list": list_name, "result": retry_result(out)}))
+# Revert and retry: today's four routes (POST /revert/preview and /revert/apply, POST
+# /retry/preview and /retry/apply) left at 7.8 on 2026-10-17 (P7-24; restore point tag
+# `pre-remove/v1-actions`). Their home is each device page's Actions, Revert intent… and Retry
+# rolled-back change… (`routes/device_v2.py`), over the same `modules/nsot/intent_ops.py`.
 
 
 # The two JSON reads of the rollback record (GET /rolled-back and /rolled-back/retries) left

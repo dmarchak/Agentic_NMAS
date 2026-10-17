@@ -72,9 +72,9 @@ def register_blueprints(app) -> list:
     from routes.health import bp as health_bp
     from routes.operations import bp as operations_bp
     from routes.attention import bp as attention_bp
-    from routes.retire import bp as retire_bp
-    from routes.persist import bp as persist_bp
-    from routes.rotate import bp as rotate_bp
+    # Today's retire, persist and rotate JSON routes (/retire/*, /persist/*, /rotate/*) left at
+    # 7.8 (2026-10-17, P7-24; restore point tag `pre-remove/v1-actions`): each device page's
+    # Actions (`routes/device_v2.py`) runs the same operations.
     from routes.breakglass import bp as breakglass_bp
     from routes.device_v2 import bp as device_v2_bp
     from routes.v2 import bp as v2_bp
@@ -100,8 +100,8 @@ def register_blueprints(app) -> list:
                templatize_bp, deploy_bp, identity_bp,
                remote_bp,
                onboard_bp, jobs_bp, health_bp,
-               operations_bp, attention_bp, retire_bp, persist_bp,
-               rotate_bp, breakglass_bp, device_v2_bp, v2_bp, update_bp, restarts_bp,
+               operations_bp, attention_bp, breakglass_bp, device_v2_bp, v2_bp, update_bp,
+               restarts_bp,
                settings_v2_bp, intent_v2_bp, templates_v2_bp, reads_v2_bp, privileged_v2_bp,
                remote_v2_bp, network_v2_bp, netbox_v2_bp, onboard_v2_bp, adopt_v2_bp,
                bulk_intent_v2_bp, credential_profiles_v2_bp, topology_v2_bp, logs_v2_bp,

@@ -10,6 +10,12 @@ committed as exactly the seeded files by the verified person.
 
 The fixture is r2's REAL configuration as its golden, with the committed
 intent onboarding writes (probe-r1a's measured shape).
+
+The preview and result models are read through the v2 device page's Seed intent… card
+(`/v2/device/<name>/seed` and its confirm; `tests/v2_card_models.py`): today's JSON routes,
+POST /templatize/seed/preview and /apply, and their client, nmas_seed.js, left at 7.8
+(2026-10-17, P7-24). v2 seeds one device per card; what the card draws is
+tests/test_device_seed_v2.py's.
 """
 
 import os
@@ -18,8 +24,8 @@ import subprocess
 import pytest
 
 from tests.conftest import TEST_PERSON
-from tests.payload_render import render_preview, render_result
 from tests.test_intent_match import R2
+from tests.v2_card_models import spying, the_one
 
 LIST = "Lab"
 #: A real IOS line the parser does not model (measured: it lands in `unmodeled`).
@@ -35,15 +41,22 @@ def _git(repo, *args):
 
 @pytest.fixture
 def lab(tmp_path, monkeypatch):
-    return build_seed_lab(monkeypatch, tmp_path)
+    return _on_v2(build_seed_lab(monkeypatch, tmp_path), monkeypatch)
+
+
+def _on_v2(lab, monkeypatch):
+    """*lab* served on the v2 device page: test_device_seed_v2's own setting-up (its network
+    known, r2 its inventory)."""
+    from tests.test_device_seed_v2 import _serve
+    return _serve(lab, monkeypatch)
 
 
 def build_seed_lab(monkeypatch, tmp_path, intent=None, unmodelled=""):
     """The real app, list 'Lab' holding r2: its real config as the committed
     golden, and ONLY onboarding's bootstrap as its committed intent (or
     *intent*). *unmodelled* is a line added to the golden that the parser does
-    not model, so a seed the template cannot reproduce is reachable. Also the
-    payload check's provider (`payload_providers.seed_*`)."""
+    not model, so a seed the template cannot reproduce is reachable. Also the v2 seed card's
+    lab (tests/test_device_seed_v2.py) and others'."""
     import yaml
 
     import app as A
@@ -76,21 +89,38 @@ def build_seed_lab(monkeypatch, tmp_path, intent=None, unmodelled=""):
             "device": device}
 
 
-def _preview(lab, devices=("r2",)):
-    r = lab["client"].post("/templatize/seed/preview",
-                           json={"list_name": LIST, "devices": list(devices)})
+def _preview(lab, device="r2"):
+    """``{"preview": <model>}``: the preview model the v2 Seed card is drawn from
+    (`device_actions.seed_card`'s third argument, masked), through GET
+    /v2/device/<name>/seed; the card's HTML is kept as ``lab["preview_html"]``."""
+    from modules import device_actions
+
+    with spying(device_actions, "seed_card") as calls:
+        r = lab["client"].get(f"/v2/device/{device}/seed")
     assert r.status_code == 200, r.get_data(as_text=True)[:300]
-    return r.get_json()
+    lab["preview_html"] = r.get_data(as_text=True)
+    args, _kw = the_one(calls, "seed_card")
+    return {"preview": args[2]}
 
 
 def _target(d, name="r2"):
     return next(t for t in d["preview"]["what"]["targets"] if t["name"] == name)
 
 
-def _apply(lab, confirmations, list_name=LIST):
-    r = lab["client"].post("/templatize/seed/apply",
-                           json={"list_name": list_name, "confirmations": confirmations})
-    return r.status_code, r.get_json()
+def _apply(lab, confirmations):
+    """``(status, {"result": <model>})``: v2's confirm, POST /v2/device/<name>/seed/confirm,
+    for the one device in *confirmations*, carrying its list; the model is the one the result
+    card is drawn from (`device_actions.seed_result_card`'s third argument, masked), and the
+    card's HTML is kept as ``lab["result_html"]``."""
+    from modules import device_actions
+
+    ((device, h),) = confirmations.items()
+    with spying(device_actions, "seed_result_card") as calls:
+        r = lab["client"].post(f"/v2/device/{device}/seed/confirm",
+                               data={"list": LIST, "hash": h})
+    lab["result_html"] = r.get_data(as_text=True)
+    args, _kw = the_one(calls, "seed_result_card")
+    return r.status_code, {"result": args[2]}
 
 
 def _secret_values():
@@ -114,10 +144,10 @@ class TestThePreview:
         assert ops["committed intent now"] == "only the bootstrap onboarding wrote"
         assert ops["from golden"] == _git(lab["repo"], "log", "-1", "--format=%H",
                                           "--", "golden")[:12]
-        html = render_preview(d["preview"])
-        assert "What will be committed as its intent" in html
-        assert "+interfaces:" in html and "-bootstrap:" in html
-        assert "Nothing is sent to any device" in html
+        html = lab["preview_html"]
+        committed = html[html.index("<h3>What will be committed"):html.index("<h3>Reproduced")]
+        assert "interfaces:" in committed and '<span class="op-del">-bootstrap:' in committed
+        assert "Nothing is sent to any device" in html[html.index("What it will not do"):]
 
     def test_it_writes_nothing(self, lab):
         head, status = _git(lab["repo"], "rev-parse", "HEAD"), _git(lab["repo"], "status",
@@ -127,11 +157,12 @@ class TestThePreview:
         assert _git(lab["repo"], "status", "--porcelain") == status
 
     def test_no_secret_value_leaves(self, lab):
+        import json
+
         values = _secret_values()
         assert values, "the floor: r2's real config carries secrets"
-        text = lab["client"].post("/templatize/seed/preview",
-                                  json={"list_name": LIST, "devices": ["r2"]}
-                                  ).get_data(as_text=True)
+        d = _preview(lab)
+        text = lab["preview_html"] + json.dumps(d)
         assert not [v for v in values if v in text]
 
     def test_a_device_with_full_intent_is_shown_and_not_selectable(self, lab):
@@ -141,16 +172,20 @@ class TestThePreview:
         assert t["state"] == "has_intent" and not t["selectable"]
         assert "edit it instead" in t["why_not"]
 
-    def test_no_devices_names_what_it_left_out_when_everything_has_intent(self, lab):
-        _apply(lab, {"r2": _target(_preview(lab))["select_data"]["hash"]})
-        d = lab["client"].post("/templatize/seed/preview", json={"list_name": LIST}).get_json()
-        assert d["preview"] is None and "nothing to seed" in d["nothing"]
+    # test_no_devices_names_what_it_left_out_when_everything_has_intent left with POST
+    # /templatize/seed/preview (P7-24): its form with no devices named (every device of the
+    # list without full intent) was the route's own, and no page sent it (nmas_seed.js's
+    # previewSeed had no caller once today's device page left, P7-22). v2 seeds one device per
+    # card; a device with full intent is not offered, said above.
 
     def test_a_device_with_no_golden_says_capture_it_first(self, lab, monkeypatch):
         other = {"hostname": "r9", "ip": "203.0.113.19", "platform": "cisco_iosxe"}
         monkeypatch.setattr("modules.nsot.restore._devices_of",
                             lambda ln: [dict(lab["device"]), other])
-        t = _target(_preview(lab, ("r9",)), "r9")
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path=None: [dict(lab["device"], username="admin"),
+                                               dict(other, username="admin")])
+        t = _target(_preview(lab, "r9"), "r9")
         assert t["state"] == "unseedable" and not t["selectable"]
         assert "capture it first" in t["why_not"]
 
@@ -269,11 +304,10 @@ class TestTheApply:
         target = out["result"]["targets"][0]
         assert target["outcome"] == "busy" and "someone@example.com" in target["reason"]
 
-    def test_no_list_named_commits_nothing(self, lab):
-        head = _git(lab["repo"], "rev-parse", "HEAD")
-        code, out = _apply(lab, {"r2": "x"}, list_name="")
-        assert code == 400 and "never from whichever list is active" in out["error"]
-        assert _git(lab["repo"], "rev-parse", "HEAD") == head
+    # test_no_list_named_commits_nothing (POST /templatize/seed/apply with no list, 400) left
+    # with the route (P7-24): v2's confirm refuses a confirm without its list or hash, committing
+    # nothing, in tests/test_device_seed_v2.py (TestTheConfirm's
+    # test_a_confirm_without_its_list_or_hash_is_refused).
 
     def test_a_failed_commit_puts_the_file_back_and_says_so(self, lab, monkeypatch):
         import modules.nsot.repo as repo_mod
@@ -297,7 +331,8 @@ class TestWhatTheTemplateDoesNotModel:
 
     @pytest.fixture
     def partial(self, tmp_path, monkeypatch):
-        return build_seed_lab(monkeypatch, tmp_path, unmodelled=UNMODELLED)
+        return _on_v2(build_seed_lab(monkeypatch, tmp_path, unmodelled=UNMODELLED),
+                      monkeypatch)
 
     def test_the_preview_names_the_line_and_stays_selectable(self, partial):
         d = _preview(partial)
@@ -359,9 +394,8 @@ class TestTheResultAndTheScreen:
     def test_the_result_names_the_commit_and_what_the_template_misses(self, lab):
         _code, out = _apply(lab, {"r2": _target(_preview(lab))["select_data"]["hash"]})
         commit = _git(lab["repo"], "rev-parse", "HEAD")
-        html = render_result(out["result"])
-        assert commit[:12] in html and "Source: seed" in html
-        assert "What was committed as intent" in html
+        html = lab["result_html"]
+        assert commit[:12] in html[html.index("<h3>Recorded"):] and "Source: seed" in html
         t = out["result"]["targets"][0]
         assert t["checks"]["ran"] and t["checks"]["statements"][0].startswith("template: ")
 
@@ -373,7 +407,10 @@ class TestTheResultAndTheScreen:
         assert "('Seed intent…', 'seed', 'seeding')" in menu
 
     def test_the_old_routes_are_gone(self, lab):
+        """Phase 3's four, and today's two seed routes (7.8, 2026-10-17, P7-24)."""
         c = lab["client"]
         for method, url in (("post", "/templatize/extract/r2"), ("post", "/templatize/commit/r2"),
-                            ("get", "/templatize/staged"), ("get", "/templatize/rendered/r2")):
+                            ("get", "/templatize/staged"), ("get", "/templatize/rendered/r2"),
+                            ("post", "/templatize/seed/preview"),
+                            ("post", "/templatize/seed/apply")):
             assert getattr(c, method)(url, json={"list_name": LIST}).status_code == 404, url

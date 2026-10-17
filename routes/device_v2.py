@@ -802,8 +802,8 @@ def _persist_card(ref, dev, back):
 @bp.route("/device/<name>/persist/confirm", methods=["POST"])
 def persist_confirm(name):
     """Save the device's running config to startup and read it back, as the verified person,
-    holding the device, bound to the plan the card showed (`hash`): the same apply as
-    `/persist/apply`. The result is drawn in place of the preview."""
+    holding the device, bound to the plan the card showed (`hash`): `persist_op.apply`. The
+    result is drawn in place of the preview."""
     from modules import device_actions, identity
     from modules.nsot import persist_op
     from modules.outbound import mask_payload
@@ -926,7 +926,7 @@ def rotate_preview(name):
 @bp.route("/device/<name>/rotate/confirm", methods=["POST"])
 def rotate_confirm(name):
     """Start the confirmed rotation as a job, as the verified person, bound to the plan's
-    fingerprint: the same confirm as `/rotate/apply` (`rotate_op.confirm_and_start`). The card
+    fingerprint: THE confirm, `rotate_op.confirm_and_start`. The card
     then waits for the job's announcement."""
     from modules import identity
     from modules.nsot import rotate_op
@@ -1495,8 +1495,8 @@ def _viewer():
 
 
 def _revert_card(ref, dev, back, fields):
-    """The revert card: THE revert preview (`intent_ops.revert_entry`, the builder today's
-    route uses) for the chosen commit, masked on the way out, the confirm built from its hash."""
+    """The revert card: THE revert preview (`intent_ops.revert_entry`, the builder
+    `intent_ops.revert_apply` computes again) for the chosen commit, masked on the way out, the confirm built from its hash."""
     from modules import device_actions
     from modules.nsot import intent_ops
     from modules.outbound import mask_payload
@@ -1548,8 +1548,8 @@ def revert(name):
 
 @bp.route("/device/<name>/revert/confirm", methods=["POST"])
 def revert_confirm(name):
-    """Revert the confirmed commit as the verified person, in the list the card CARRIES: the
-    same apply as `/templatize/revert/apply` (`intent_ops.revert_apply`: computed again,
+    """Revert the confirmed commit as the verified person, in the list the card CARRIES:
+    `intent_ops.revert_apply` (computed again,
     refused if it moved, one intent commit, the block measured after it). Nothing is sent."""
     from modules import device_actions, identity
     from modules.nsot import intent_ops
@@ -1589,7 +1589,7 @@ def retry(name):
 @bp.route("/device/<name>/retry/confirm", methods=["POST"])
 def retry_confirm(name):
     """Authorise the retry as the verified person, with the stated reason, in the list the card
-    CARRIES: the same apply as `/templatize/retry/apply` (`intent_ops.retry_apply`: the block
+    CARRIES: `intent_ops.retry_apply` (the block
     must be the one previewed, the reason in the shape of one). Nothing is sent."""
     from modules import device_actions, identity
     from modules.nsot import intent_ops
@@ -1619,8 +1619,8 @@ def retry_confirm(name):
 # ---------------------------------------------------------------------------
 
 def _seed_card(ref, dev, back):
-    """The seed card: THE seed preview (`seed.entry_for`, the builder today's route uses)
-    for this device, masked on the way out, the confirm bound to its seed hash."""
+    """The seed card: THE seed preview (`seed.entry_for`, the builder `seed.apply` computes
+    again) for this device, masked on the way out, the confirm bound to its seed hash."""
     from modules import device_actions
     from modules.nsot import seed
     from modules.outbound import mask_payload
@@ -1649,9 +1649,9 @@ def seed(name):
 
 @bp.route("/device/<name>/seed/confirm", methods=["POST"])
 def seed_confirm(name):
-    """Seed the confirmed device as the verified person, in the list the card CARRIES: the
-    same apply as `/templatize/seed/apply` (`seed.apply`: the device held, its golden parsed
-    again, a moved seed refused, one intent commit). Nothing is sent."""
+    """Seed the confirmed device as the verified person, in the list the card CARRIES:
+    `seed.apply` (the device held, its golden parsed again, a moved seed refused, one intent
+    commit). Nothing is sent."""
     from modules import device_actions, identity
     from modules.nsot import seed as seed_op
     from modules.outbound import mask_payload
@@ -1679,8 +1679,8 @@ def seed_confirm(name):
 # ---------------------------------------------------------------------------
 
 def _retire_card(ref, dev, back, fields):
-    """The retire card: THE retire plan (`retire.plan`, the one today's route uses) with the
-    reason typed so far, masked on the way out, the confirm bound to the plan's hash."""
+    """The retire card: THE retire plan (`retire.plan`, the one `scripts/nmas-retire` uses)
+    with the reason typed so far, masked on the way out, the confirm bound to the plan's hash."""
     from modules import device_actions
     from modules.nsot import retire
     from modules.nsot.device_ops import busy_text
@@ -1713,7 +1713,7 @@ def retire(name):
 @bp.route("/device/<name>/retire/confirm", methods=["POST"])
 def retire_confirm(name):
     """Retire the device as the verified person, with its reason, in the list the card
-    CARRIES: the same apply as `/retire/apply` (`retire.apply`: the plan computed again and
+    CARRIES: `retire.apply` (the plan computed again and
     refused if it moved, the row deleted last against the export log). Once its commit
     landed, Prometheus's targets are regenerated and read back. Nothing is sent."""
     from modules import device_actions, identity

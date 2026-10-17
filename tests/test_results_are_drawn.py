@@ -67,36 +67,14 @@ RESULT_COMPONENT = {
     # Capture (7.1 step 4): Save All is its whole-fleet form, and the one-click
     # route it replaced is gone. The record read back is the golden history.
     "golden.capture_apply": ("static/js/nmas_capture.js", "previewCapture", "golden.history"),
-    # Seed intent (C148): its record is the committed intent it wrote, which
-    # the intent editor reads back from HEAD.
-    # Retire (7.3): its record is the retire commit, which the device's golden
-    # history still reads back by name after the golden is gone (C185: no
-    # page links a RETIRED device's history yet).
-    "retire.apply": ("static/js/nmas_retire.js", "runApply", "golden.history"),
-    # Persist (7.3, C164): its record is the rotation record job health's
-    # `rotation:<device>` row reads, drawn on the device's History (`history_sources.rotation`;
-    # the live job-health route it was served by left at 7.8, 2026-10-15).
-    "persist.apply": ("static/js/nmas_persist.js", "runApply", "device_v2.history"),
-    # Rotate (7.3): a job; its result is read by id, and its record is the
-    # rotation record job health's `rotation:<device>` row reads, on the device's History.
-    "rotate.apply": ("static/js/nmas_rotate.js", "runApply", "device_v2.history"),
-    # A seed's record is the intent commit it wrote, drawn on the device's History (its
-    # `intent` source); today's intent editor's read, the reader before, left at 7.8
-    # (2026-10-17, P7-23).
-    "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed", "device_v2.history"),
+    # Today's retire, persist, rotate and seed (retire.apply, persist.apply, rotate.apply,
+    # templatize.seed_apply) and revert and retry (templatize.revert_apply, retry_apply) left at
+    # 7.8 (2026-10-17, P7-24) with their scripts: each device page's card draws its result and
+    # History reads its record (PAGE_RECORD's device_v2 entries).
     # The monitoring profile's proposal (P.9 step b): its record is the profile
     # commit, read back by the committed-profile reader the modal offers.
     "templatize.profile_propose_apply": ("static/js/nmas_profile.js", "previewProfilePropose",
                                          "templatize.profile_read"),
-    # Revert and retry (7.3): drawn by the component. A revert's record is
-    # the intent commit it wrote, drawn on the device's History (its `intent` source; today's
-    # intent editor, which read it back from HEAD, left at 7.8, 2026-10-17, P7-23); a retry's
-    # is the retry log, drawn on the device's History (`history_sources`; its JSON reader left
-    # at 7.8, 2026-10-15).
-    "templatize.revert_apply": ("static/js/nmas_intent_ops.js", "runApply",
-                                "device_v2.history"),
-    "templatize.retry_apply": ("static/js/nmas_intent_ops.js", "runApply",
-                               "device_v2.history"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read
     # back is the device's pending row.
     "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",

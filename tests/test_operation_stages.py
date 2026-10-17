@@ -80,9 +80,10 @@ def test_the_gaps_only_shrink():
 
 def test_the_operations_that_change_a_device_have_every_stage(app):
     """The deploy pipeline's entry points and rotate carry all five, no gap. A restore is the
-    v2 device page's (today's golden.restore_apply left at 7.8, 2026-10-17)."""
+    v2 device page's (today's golden.restore_apply left at 7.8, 2026-10-17), and so is a
+    rotation (today's rotate.apply left at 7.8, 2026-10-17, P7-24)."""
     for ep in ("deploy.apply", "device_v2.restore_confirm", "v2.profile_apply_confirm",
-               "rotate.apply"):
+               "device_v2.rotate_confirm"):
         assert not any(v.startswith(("MISSING", "n/a")) for v in S.STAGES[ep]), ep
 
 
@@ -95,17 +96,19 @@ class TestTheControls:
 
     def test_a_reference_to_nothing_is_found(self, app):
         stages = dict(S.STAGES)
-        stages["persist.apply"] = S.STAGES["persist.apply"]._replace(
-            preview="persist.no_such_preview", hash="no_such_field",
+        stages["device_v2.persist_confirm"] = S.STAGES["device_v2.persist_confirm"]._replace(
+            preview="device_v2.no_such_preview", hash="no_such_field",
             record="modules.nsot.persist_op.no_such_function")
         got = problems(stages, app, population())
-        assert any("persist.apply.preview" in p for p in got)
-        assert any("persist.apply.hash" in p for p in got)
-        assert any("persist.apply.record" in p for p in got)
+        assert any("device_v2.persist_confirm.preview" in p for p in got)
+        assert any("device_v2.persist_confirm.hash" in p for p in got)
+        assert any("device_v2.persist_confirm.record" in p for p in got)
 
     def test_a_stage_with_no_reason_is_found(self, app):
         stages = dict(S.STAGES)
-        # Its example was today's /run_command until it left at 7.8 (P7-22, 2026-10-17).
-        stages["persist.apply"] = S.STAGES["persist.apply"]._replace(verify="n/a:")
-        assert "persist.apply.verify: says 'n/a:' with no reason" in problems(
+        # Its example was today's /run_command until it left at 7.8 (P7-22, 2026-10-17), then
+        # today's persist.apply until it left the same day (P7-24).
+        stages["device_v2.persist_confirm"] = S.STAGES["device_v2.persist_confirm"]._replace(
+            verify="n/a:")
+        assert "device_v2.persist_confirm.verify: says 'n/a:' with no reason" in problems(
             stages, app, population())

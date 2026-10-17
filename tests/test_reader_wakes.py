@@ -87,8 +87,8 @@ PAIRS = [
     ("breakglass.export", "job-health"),                   # the record current again (C536)
     ("v2.credentials_intact", "job-health"),
     ("v2.credentials_drill", "job-health"),
-    ("persist.apply", "job-health"),                       # the save record
-    ("device_v2.persist_confirm", "job-health"),
+    ("device_v2.persist_confirm", "job-health"),           # the save record (today's
+                                                           # persist.apply left, P7-24)
     ("attention.acknowledge", "grafana-alerts"),           # the band re-read (C533)
     ("restarts.planned", "restarts"),
     ("netbox_v2.confirm", "netbox-secrets"),               # today's import route until 7.8

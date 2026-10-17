@@ -159,12 +159,14 @@ class TestEveryWriterCommitsOnlyItsOwn:
         assert set(files) <= {"golden/r2.cfg", "golden/r2-new.cfg", ".nsot/manifest.json"}
         assert _still_uncommitted(lab)
 
-    def test_a_seed(self, lab):
-        d = lab["client"].post("/templatize/seed/preview",
-                               json={"list_name": LIST, "devices": ["r2"]}).get_json()
-        h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
-        out = lab["client"].post("/templatize/seed/apply", json={
-            "list_name": LIST, "confirmations": {"r2": h}}).get_json()
+    def test_a_seed(self, lab, monkeypatch):
+        """Through v2's Seed intent… card and its confirm (today's /templatize/seed/* left at
+        7.8, 2026-10-17, P7-24)."""
+        from tests.test_seed_intent import _apply, _on_v2, _preview
+
+        _on_v2(lab, monkeypatch)
+        h = _preview(lab)["preview"]["what"]["targets"][0]["select_data"]["hash"]
+        _code, out = _apply(lab, {"r2": h})
         assert out["result"]["targets"][0]["outcome"] == "seeded"
         assert _files(lab["repo"], "HEAD") == ["host_vars/r2.yml"]
         assert _still_uncommitted(lab)

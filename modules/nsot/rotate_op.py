@@ -132,7 +132,7 @@ def run(list_name: str, hostname: str, *, actor: str, fingerprint: str,
 
 def confirm_and_start(list_name: str, hostname: str, confirmed: str, *, actor: str,
                       ident=None) -> dict:
-    """THE confirm, for `/rotate/apply` and the v2 device page's card alike: the plan
+    """THE confirm, for the v2 device page's card (today's /rotate/apply left at 7.8): the plan
     computed again (its preflight reads the device), refused with nothing sent if it fails or
     its fingerprint moved, else the rotation started as a job whose payload is
     ``{"ok", "list", "result"}`` (`rotate_result`, masked). ``{"job", "plan"}``, or
