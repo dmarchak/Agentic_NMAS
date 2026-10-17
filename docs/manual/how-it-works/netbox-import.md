@@ -14,11 +14,11 @@ Every write the tool makes to NetBox passes through one of three chokepoints (cr
 delete), and each refuses unless both hold:
 
 - **The master switch**, `netbox_allow_writes`, is on. It means "this instance may write to
-  NetBox at all", is off by default, and is a saved setting (Settings, Integrations, or the
-  "Permit NetBox writes" box in the confirm dialog). Turning it on does not approve any
-  operation.
+  NetBox at all", is off by default, and is a saved setting (turned on by the "turn NetBox
+  writes on with this confirm" box on a NetBox confirm, and off on Settings › Installation ›
+  Connections, the NetBox connection card). Turning it on does not approve any operation.
 - **The write declares its authority**: the confirmation it stands on. For the import and
-  Remove that is the NetBox tab's one-time confirmation, by the person who gave it. A write
+  Remove that is the NetBox page's one-time confirmation, by the person who gave it. A write
   that names no authority is refused where it happens.
 
 A dry run is always allowed, because it writes nothing.
@@ -59,7 +59,7 @@ A dry run is always allowed, because it writes nothing.
    then each device one after another (devices share objects that are created on first use,
    so they are written in order). Each write carries the person who confirmed and the
    confirmation it stands on.
-6. **The result is recorded** as the list's import record, which the NetBox tab's card draws:
+6. **The result is recorded** as the list's import record, which the NetBox page's network row draws:
    devices created and updated, every write that did not land (`complete` is false if any),
    what was skipped, and the notes (for example a site the tool did not create, which it uses
    and does not move). The import's own record (its job, kept by the NetBox page) names who
@@ -129,7 +129,7 @@ The permit box, the master switch, the confirmation and the recomputed plan work
 import. Then each planned object is deleted, in order. A deleted object, and one NetBox says
 is already gone, is dropped from the created record; a delete NetBox refuses is named with its
 reason and stays recorded. The removal is written to the removal record and drawn from it, so
-it can be read again from the NetBox tab.
+it can be read again from the NetBox page (a network's recorded removals).
 
 The Remove card has a second choice, **Stop tracking instead…**, which deletes nothing: see
 the next section. Its third is **Close**, which leaves NetBox and the tool's records as they

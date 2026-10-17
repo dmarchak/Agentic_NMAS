@@ -136,19 +136,20 @@ def assert_writes_allowed(operation: str = "write") -> None:
             f"NetBox {operation} blocked: writes are off for every network (Writes allowed, "
             "on Settings › Installation › Connections, NetBox connection). Use the import "
             "preview, which asks for confirmation before writing and can turn writes on with "
-            "it (today's NetBox import: v2 does not offer one yet, C619)."
+            "it (Source of truth › NetBox, Import into NetBox…, C619)."
         )
     # THE CONFIRMATION IS CHECKED WHERE THE WRITE HAPPENS (C155, the operator's
-    # decision). The one-shot token was consumed by the NetBox tab's routes
-    # before they called the writer, and this checked only the switch, so any
-    # other path wrote on the switch alone. Every path now declares the
-    # confirmation it stands on (`for_list(..., authority=...)`): the tab's
-    # token, a person's Verify or Abandon, a host script's --apply. A path that
-    # declares none is refused here, on first use.
+    # decision). The one-shot token was consumed by the NetBox routes (today's
+    # tab's then, which left at 7.8; v2's NetBox page's confirm now) before they
+    # called the writer, and this checked only the switch, so any other path
+    # wrote on the switch alone. Every path now declares the confirmation it
+    # stands on (`for_list(..., authority=...)`): the NetBox page's token, a
+    # person's Verify or Abandon, a host script's --apply. A path that declares
+    # none is refused here, on first use.
     if not get_current_authority():
         raise NetBoxWriteUnauthorised(
             f"NetBox {operation} refused: this write declares no authority. Every "
-            "NetBox write names the confirmation it stands on (the NetBox tab's "
+            "NetBox write names the confirmation it stands on (the NetBox page's "
             "one-time confirmation, a person's Verify or Abandon, or a host "
             "script's --apply); a path that names none is refused here (C155).")
 

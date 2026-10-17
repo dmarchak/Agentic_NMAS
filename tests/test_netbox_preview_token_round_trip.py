@@ -1,5 +1,5 @@
 """The NetBox import's confirmation survives the trip: a REAL preview's token,
-driven into the REAL apply (2026-09-28).
+driven into the REAL confirm (2026-09-28).
 
 The operator: "This confirmation has expired or was already used", repeatedly,
 5 seconds after a preview. Measured on the host, the token was issued and
@@ -9,9 +9,19 @@ So since C77's sweep every import preview sent `<redacted:token>`, and the
 import could not be confirmed at all. Each half was tested alone (the preview
 for secrets, the apply for tokens); nothing drove one into the other, the
 `/deploy/plan` -> `/deploy/apply` seam lesson again.
+
+Today's NetBox tab, whose routes this drove, left at 7.8 (2026-10-17). v2's NetBox
+page keeps the token on the server, in the preview job's record, and masks the
+preview it draws (`netbox_jobs.start_preview`): the same seam, so it is driven the
+same way, through v2's preview and confirm routes (tests/test_netbox_v2.py's `nb`).
 """
 
+import re
+
 import pytest
+
+from tests.test_netbox_v2 import _job, _post, nb  # noqa: F401 (nb: the fixture)
+from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 PLAN = {"creates": [{"endpoint": "dcim/devices", "name": "r9", "id": -2, "payload": {}}],
         "updates": [], "deletes": [], "create_count": 1, "update_count": 0,
@@ -20,44 +30,40 @@ PLAN = {"creates": [{"endpoint": "dcim/devices", "name": "r9", "id": -2, "payloa
 
 
 @pytest.fixture
-def client(monkeypatch):
-    from modules import netbox_guard
+def every_network(nb, monkeypatch):
+    """The all-networks import's sync, faked at the same edge as one network's."""
     import modules.netbox_client as nbc
-    import routes.netbox_safety as ns
 
-    monkeypatch.setattr(nbc, "get_netbox_config", lambda: {"url": "http://127.0.0.1:9",
-                                                           "token": "t"})
-    monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
-    devices = [{"hostname": "r9", "ip": "192.0.2.9"}]
-    monkeypatch.setattr("modules.netbox_ops.list_devices", lambda name: ("Default", devices))
-    monkeypatch.setattr("modules.netbox_ops.all_lists_with_devices", lambda: [("Default", devices)])
-    ran = []
-    monkeypatch.setattr(nbc, "sync_list_to_netbox",
-                        lambda name, devs, dry_run=False, **k: (ran.append(dry_run), {"plan": PLAN})[1])
-    monkeypatch.setattr(nbc, "sync_all_lists_to_netbox",
-                        lambda items, dry_run=False, **k: (ran.append(dry_run), {"plan": PLAN})[1])
-    monkeypatch.setattr(nbc, "set_sync_running", lambda *a, **k: None)
-    import app as A
-
-    return A.app.test_client(), ran
+    def sync_all(items, dry_run=False, **k):
+        if not dry_run:
+            nb["sent"].append("every network")
+        return {"plan": nb["plan"]["value"]}
+    monkeypatch.setattr(nbc, "sync_all_lists_to_netbox", sync_all)
+    return nb
 
 
 @pytest.mark.parametrize("op", ["import", "import_all"])
-def test_the_token_a_preview_returns_confirms_the_apply(client, op):
-    c, ran = client
-    body = {"list_name": "Default"} if op == "import" else {}
-    d = c.post(f"/netbox/safety/{op}/preview", json=body).get_json()
-    assert d["ok"], d
-    assert not d["token"].startswith("<redacted"), "the confirmation was masked on its way out"
-    r = c.post(f"/netbox/safety/{op}/apply", json=dict(body, token=d["token"]))
-    assert r.status_code == 200, r.get_json()
-    assert r.get_json()["status"] == "started"
+def test_the_token_a_preview_holds_confirms_the_import(networks, every_network, op):
+    from modules import netbox_jobs
+
+    every_network["switch"]["on"] = True
+    _r, card = _post(networks, "/v2/netbox/preview", {"operation": op, "list": "Branch"})
+    job = _job(card)
+    held = netbox_jobs.read(job)
+    assert held["state"] == "previewed", held
+    assert held["token"] and not held["token"].startswith("<redacted"), \
+        "the confirmation was masked where it is kept"
+    r, html = _post(networks, f"/v2/netbox/job/{job}/confirm")
+    assert r.status_code == 200, html
+    assert every_network["sent"] == ["Branch" if op == "import" else "every network"]
+    assert netbox_jobs.read(job)["state"] == "imported"
 
 
-def test_the_preview_is_still_masked(client, monkeypatch):
+def test_the_preview_is_still_masked(networks, nb, monkeypatch):
     """The fix moved the mask, it did not remove it: a planted secret in the
-    preview is still masked; only the token passes intact."""
+    preview is masked in the card drawn; only the kept token passes intact."""
     import modules.preview_confirm as pc
+    from modules import netbox_jobs
 
     real = pc.netbox_import_preview
 
@@ -67,7 +73,11 @@ def test_the_preview_is_still_masked(client, monkeypatch):
         return p
 
     monkeypatch.setattr(pc, "netbox_import_preview", planted)
-    c, _ran = client
-    d = c.post("/netbox/safety/import/preview", json={"list_name": "Default"}).get_json()
-    assert "PlantedC0mmunity" not in str(d["preview"])
-    assert not d["token"].startswith("<redacted")
+    _r, card = _post(networks, "/v2/netbox/preview", {"operation": "import", "list": "Branch"})
+    job = _job(card)
+    card = re.sub(r"\s+", " ", networks["client"].get(f"/v2/netbox/job/{job}").get_data(
+        as_text=True))
+    assert "snmp-server community" in card, "the planted line is not drawn, so this proves nothing"
+    assert "PlantedC0mmunity" not in card
+    assert "PlantedC0mmunity" not in str(netbox_jobs.read(job)["preview"])
+    assert not netbox_jobs.read(job)["token"].startswith("<redacted")

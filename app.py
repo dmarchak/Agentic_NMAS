@@ -762,21 +762,11 @@ def select_device_list_route():
 # rows; the checker (modules/drift_check.py) is unchanged.
 
 
-# ---------------------------------------------------------------------------
-# NetBox source-of-truth sync
-# ---------------------------------------------------------------------------
-
-@app.route("/netbox/status", methods=["GET"])
-def netbox_status():
-    """Return the last-sync summary for every list (plus in-progress markers)."""
-    from modules.netbox_client import sync_status_with_results, get_netbox_config
-    cfg = get_netbox_config()
-    return jsonify({
-        "configured": bool(cfg["url"] and cfg["token"]),
-        "url":        cfg["url"],
-        "status":     sync_status_with_results(),
-        "lists":      get_device_lists(),
-    })
+# Today's NetBox tab and its routes (GET /netbox/status, and the /netbox/safety/* blueprint,
+# routes/netbox_safety.py) left at 7.8 (2026-10-17). Source of truth › NetBox (/v2/netbox,
+# routes/netbox_v2.py) draws each network's last import and its removals, and previews and
+# confirms Import, Import every network, Remove and Stop tracking through the same core,
+# modules/netbox_ops.py.
 
 
 # ---------------------------------------------------------------------------

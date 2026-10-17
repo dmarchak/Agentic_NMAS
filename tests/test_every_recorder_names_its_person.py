@@ -43,8 +43,8 @@ UNVERIFIED_REQUEST = identity.Identity(outcome="no_header",
 
 #: The routes the survey of 2026-10-16 found recording `request_actor()` with an ungated
 #: (``not_device``) gate, each of which recorded "unauthenticated" for a verified person.
-UNGATED_RECORDERS = ("netbox_v2.preview", "remote.verify", "netbox_safety.preview_import",
-                     "netbox_safety.preview_import_all", "netbox_safety.preview_removal",
+#: Today's three NetBox previews (`netbox_safety.preview_*`) left at 7.8 (2026-10-17).
+UNGATED_RECORDERS = ("netbox_v2.preview", "remote.verify",
                      "adopt_v2.preview", "onboard_v2.abandon_preview")
 
 

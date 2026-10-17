@@ -61,7 +61,7 @@ Outside services, stated so an absence is not read as unexamined:
 - **Prometheus**: written only through the `file_sd` target files (R37, live-18).
 - **Kea**: written only through `modules/nsot/ztp.py`'s fragment and its
   `kea.command("config-reload")` (:553; R22).
-- **NetBox**: written by the NetBox tab, onboarding phase two, adopt, retire's mask and
+- **NetBox**: written by the NetBox page (today's NetBox tab until 7.8, 2026-10-17), onboarding phase two, adopt, retire's mask and
   `scripts/nmas-netbox-mask-context` (R21, widened on review).
 - **Oxidized**: written through the root helper that edits `router.db` (R40, added on
   review).
@@ -1037,6 +1037,14 @@ hold is compared with the reviewed one's fingerprint and refused naming what mov
 (`routes.onboard.create_run`, `modules.nsot.onboard.plan_moved`); v2's Abandon is bound to its
 dry run (`abandon_onboarding(confirmed=)`). Today's unbound Create leaves at 7.8.
 
+*The NetBox half left with today's NetBox tab, 2026-10-17 (7.8):* today's unbound forget
+(`/netbox/safety/remove/apply` with `forget_only`) went with its routes. v2's Stop tracking
+(C954) is its only home: previewed from Mercury's created record, confirmed by a one-shot token
+bound to the hash of exactly those entries, the record read again and hashed under the
+network's NetBox writer, refused naming both hashes if it moved, and given exactly the
+confirmed entries to forget (tests/test_netbox_v2.py, `TestStopTracking`). The onboarding half
+(today's Create) stays.
+
 **R37. Per-process caches and helpers** (stores-12, stores-15, live-16 to live-19, live-21,
 locks-12, locks-22). The redaction value table is cached 30 s per process and invalidated
 only in the process that wrote a credential (modules/redact.py:161-167, 207-211), so a host
@@ -1257,7 +1265,8 @@ deploy paths already take holds first and commit second.
 | Template save, bindings save | nothing | n/a | no | UNSAFE medium (R14) |
 | Template approve | nothing from the client | n/a | no | UNSAFE medium (R12) |
 | NetBox import, import all, Remove | one-shot token bound to plan hash and list | plan recomputed; no lock against a second import | yes | binding SAFE; R21 |
-| NetBox forget | nothing | n/a | yes | UNSAFE low (R36) |
+| NetBox forget (today's Just stop tracking: REMOVED 2026-10-17 with today's NetBox tab) | nothing | n/a | yes | gone; v2's Stop tracking below |
+| v2's Stop tracking (C954) | hash of the record's entries the preview read, a one-shot token | yes: under the network's NetBox writer | yes | SAFE |
 | Approval queue approve and reject | status check only | no | no | UNSAFE medium (R4) |
 | Freshness authorise | divergence fingerprint, expiring | n/a | derived | binding SAFE; store and list R33, R34 |
 | Break-glass export | plan hash, sealed bytes verified | n/a | n/a | SAFE |

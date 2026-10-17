@@ -29,6 +29,7 @@ import os
 import pytest
 
 from tests.js_source import read_shipped
+from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -342,7 +343,8 @@ class TestTheOperatorCanSEEIt:
     Since 7.1 the consequence is built server-side
     (`preview_confirm.netbox_removal_preview`) and drawn by the one preview
     component, so these draw that component over the adapter's output, and
-    the wiring test drives the REAL route (`payload_providers`).
+    the wiring test drives the REAL route, v2's NetBox page, and reads the card
+    it draws (today's NetBox tab's route left at 7.8, 2026-10-17).
     """
 
     @staticmethod
@@ -409,13 +411,50 @@ class TestTheOperatorCanSEEIt:
         html = self._render(None)
         assert "NOT asked" in html and "nothing further" not in html
 
-    def test_the_real_route_carries_the_cascade_into_what_is_drawn(self, monkeypatch, tmp_path):
+    def test_the_real_route_carries_the_cascade_into_what_is_drawn(self, networks, monkeypatch,
+                                                                   tmp_path):
         """**The wiring.** Deleting the old renderer's call site once left every
-        renderer test green (they executed it directly). This drives the REAL
-        /netbox/safety/remove/preview, whose dry run and cascade query run
-        against a FakeNetBox holding the 2026-09-24 shape."""
+        renderer test green (they executed it directly). This drives v2's REAL
+        removal preview (/v2/netbox/preview and its job's card; today's
+        /netbox/safety/remove/preview did until it left at 7.8, 2026-10-17), whose dry
+        run and cascade query run against a FakeNetBox holding the 2026-09-24 shape:
+        Mercury created and tagged r6; the database would take its interface and that
+        interface's address with it, neither of which Mercury created; and a site it
+        recorded carries no tag, so it is left alone."""
+        import re
+
+        import modules.netbox_client as nbc
+        from modules import netbox_guard
         from tests import payload_providers as P
 
-        html = self._draw(P.netbox_remove_preview(monkeypatch, tmp_path)["preview"])
+        class _Inline:
+            def __init__(self, target=None, **_k):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        for name in ("_CREATED_IDS_FILE", "_MODIFIED_FILE", "_ADOPTED_FILE", "_REMOVALS_FILE"):
+            monkeypatch.setattr(netbox_guard, name, str(tmp_path / name.strip("_").lower()))
+        monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
+        monkeypatch.setattr(nbc, "set_sync_running", lambda *a, **k: None)
+        monkeypatch.setattr("modules.netbox_jobs.threading.Thread", _Inline)
+        nb = P._netbox_behind(monkeypatch)
+        tag = [{"slug": netbox_guard.MANAGED_TAG_SLUG, "name": netbox_guard.MANAGED_TAG}]
+        dev = nb.seed("dcim/devices", {"name": "r6", "tags": tag})
+        site = nb.seed("dcim/sites", {"name": "branch", "slug": "branch", "tags": []})
+        iface = nb.seed("dcim/interfaces", {"name": "Gi2", "device": {"id": dev["id"]}})
+        nb.seed("ipam/ip-addresses", {"address": "10.0.0.15/24",
+                                      "assigned_object_type": "dcim.interface",
+                                      "assigned_object_id": iface["id"]})
+        netbox_guard.record_created("Branch", "dcim/devices", dev["id"], "r6")
+        netbox_guard.record_created("Branch", "dcim/sites", site["id"], "branch")
+        r = networks["client"].post("/v2/netbox/preview",
+                                    data={"operation": "remove", "list": "Branch"},
+                                    headers={"HX-Request": "true"})
+        job = re.search(r"/v2/netbox/job/([0-9a-f]{32})", r.get_data(as_text=True)).group(1)
+        html = re.sub(r"\s+", " ", networks["client"].get(f"/v2/netbox/job/{job}").get_data(
+            as_text=True))
         assert "10.0.0.15/24" in html and "ALSO DELETED BY NETBOX" in html
-        assert "delete dcim/devices #1 r6" in html
+        assert f"delete dcim/devices #{dev['id']} r6" in html
+

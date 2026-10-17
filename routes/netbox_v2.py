@@ -6,7 +6,8 @@ import's result, and Import into NetBox… / Remove from NetBox…, with Import 
 a preview job (`modules/netbox_jobs.py`, the real dry run on a thread), drawn in a card that redraws
 when the job announces ``netbox``; the confirm is bound to that preview's one-shot token, gated
 ``approve`` as today's, and may turn NetBox writes on with it (C619: v2 could turn them off and not
-on). The work is `modules/netbox_ops.py`'s, the one code path today's NetBox tab calls too.
+on). The work is `modules/netbox_ops.py`'s, the one code path today's NetBox tab called too,
+until it left at 7.8 (2026-10-17).
 A Remove card also offers Stop tracking instead… (C954): its own preview job and the same
 confirm, deleting nothing in NetBox and having Mercury forget what it created for the network.
 """

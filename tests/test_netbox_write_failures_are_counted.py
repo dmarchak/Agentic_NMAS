@@ -24,6 +24,7 @@ import pytest
 from modules import netbox_client as nc
 from modules import netbox_guard
 from tests.fake_netbox import FakeNetBox, FakeResponse
+from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 
 class RefusingNetBox(FakeNetBox):
@@ -264,47 +265,28 @@ class TestTheOutcomeReachesTheScreen:
         assert r["level"] != "success"
         assert any(i["kind"] == "uncounted" for i in r["did_not"]["items"])
 
-    def test_the_status_route_carries_the_result(self, monkeypatch, tmp_path):
+    def test_the_netbox_page_draws_a_stored_partial_import_as_partial(self, networks,
+                                                                       monkeypatch, tmp_path):
+        """The screen half of C85, on v2's NetBox page (today's NetBox tab's GET /netbox/status
+        and its sync card, which this drove, left at 7.8, 2026-10-17): the network's row takes
+        its badge from the stored import's RESULT level, and says its summary; the write path
+        never persists a result."""
         import json as _json
+        import re
 
-        import app as A
         from modules import netbox_client as nb
 
         path = tmp_path / "netbox_sync_status.json"
-        path.write_text(_json.dumps({"lists": {"Default": self._summary(
+        path.write_text(_json.dumps({"lists": {"Branch": self._summary(
             write_failures=[{"device": "r2", "write": "vlan 100", "error": "x"}],
             partial=["r2"], complete=False)}}), encoding="utf-8")
         monkeypatch.setattr(nb, "_SYNC_STATUS_FILE", str(path))
-        body = A.app.test_client().get("/netbox/status").get_json()
-        result = body["status"]["lists"]["Default"]["result"]
-        assert result["level"] == "partial"
+        html = re.sub(r"\s+", " ", networks["client"].get("/v2/netbox").get_data(as_text=True))
+        row = re.search(r"<tr> <td>Branch</td>.*?</tr>", html).group(0)
+        assert '<span class="badge badge-warn">PARTIAL</span>' in row, row
+        summary = nb.sync_status_with_results()["lists"]["Branch"]["result"]["happened"]["summary"]
+        assert summary.replace("'", "&#39;") in row, (summary, row)
+        other = re.search(r"<tr> <td>Default</td>.*?</tr>", html).group(0)
+        assert "never imported" in other
         # The write path never persists a result: the file is unchanged.
-        assert "result" not in _json.loads(path.read_text())["lists"]["Default"]
-
-    def test_the_sync_card_takes_its_colour_from_the_result(self):
-        """The screen half of C85, from the shipped source: the badge is the
-        result's level and the outcome is drawn by the component."""
-        from tests.payload_render import lift, shipped
-
-        card = lift(shipped("index.4.js"), "loadNetboxTab")
-        assert "previewConfirmResultLevel(summary.result)" in card
-        assert "previewConfirmResultHtml(summary.result" in card
-        assert "summary.failed && summary.failed.length ? 'warning text-dark' : 'success'" not in card
-
-    def test_every_summary_key_the_card_reads_is_carried(self, monkeypatch, tmp_path):
-        """The card drew `scanned 0/9` beside `devices updated 9` for every
-        import: it read `summary.scanned`, a key the summary never carried
-        (it carries `synced`), and `|| 0` drew the miss as a zero (the
-        operator's reading, 2026-09-28). The payload check's reverse direction
-        sees depth-one reads only, and this is a nested one. So: every
-        `summary.<key>` the card reads is a key the REAL stored summary carries."""
-        import re
-
-        from tests import payload_providers as P
-        from tests.payload_render import lift, shipped
-
-        card = lift(shipped("index.4.js"), "loadNetboxTab")
-        reads = set(re.findall(r"\bsummary\.([a-z_]+)", card))
-        carried = set(P.netbox_status(monkeypatch, tmp_path)["status"]["lists"]["Default"])
-        assert len(reads) >= 6, reads
-        assert reads - carried == set(), f"read and never carried: {reads - carried}"
+        assert "result" not in _json.loads(path.read_text())["lists"]["Branch"]

@@ -45,7 +45,7 @@ def provenance(list_name: str, obj_id: int, tags) -> dict:
     if tagged and recorded:
         return {"state": "created", "kind": "info", "error": "",
                 "words": "Mercury created this record (tagged nmas-managed and in its record), "
-                         "so the NetBox tab's Remove can delete it."}
+                         "so the NetBox page's Remove from NetBox… can delete it."}
     if is_adopted:
         return {"state": "adopted", "kind": "muted", "error": "",
                 "words": "Adopted: the record existed before Mercury managed the device. "

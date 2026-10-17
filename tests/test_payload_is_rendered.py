@@ -83,7 +83,6 @@ def _post(path, body):
     return lambda mp, tmp: _answer(P._client().post(path, json=body))
 
 
-NBS = "partials__netbox_safety_modal.1.js"
 PC = "nmas_preview_confirm.js"
 PC_RESULT_FNS = ("previewConfirmResultHtml", "sentHtml", "checksHtml", "resultSection",
                  "pair", "previewConfirmResultLevel", "title")
@@ -96,7 +95,6 @@ SEED = "nmas_seed.js"
 RS = "nmas_restore_scope.js"
 DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js",
                      "partials__golden_repo.2.js", "partials__golden_repo.3.js")
-I1, I4 = "index.1.js", "index.4.js"
 
 RENDERS = {
     "GET /attention": Render(
@@ -238,26 +236,6 @@ RENDERS = {
          PC: PC_FNS},
         (("partials__onboard_wizard.1.js", "onboardRefresh", "d"),),
         adapters={"modules/preview_confirm.py": ("onboard_preview", "build")}),
-    # 7.1: the NetBox safety modal on the component. Each preview is built
-    # server-side, so the adapter's reads count as drawn.
-    "POST /netbox/safety/import/preview": Render(
-        lambda mp, tmp: P.netbox_import_preview(mp, tmp),
-        {NBS: ("netboxPreviewImport", "_nbShowPreview"), PC: PC_FNS},
-        ((NBS, "netboxPreviewImport", "d"), (NBS, "_nbShowPreview", "d")),
-        adapters={"modules/preview_confirm.py": ("netbox_import_preview", "_nb_gates",
-                                                 "_nb_line", "build")}),
-    "POST /netbox/safety/import_all/preview": Render(
-        lambda mp, tmp: P.netbox_import_all_preview(mp, tmp),
-        {NBS: ("netboxPreviewImport", "_nbShowPreview"), PC: PC_FNS},
-        ((NBS, "netboxPreviewImport", "d"), (NBS, "_nbShowPreview", "d")),
-        adapters={"modules/preview_confirm.py": ("netbox_import_preview", "_nb_gates",
-                                                 "_nb_line", "build")}),
-    "POST /netbox/safety/remove/preview": Render(
-        lambda mp, tmp: P.netbox_remove_preview(mp, tmp),
-        {NBS: ("netboxPreviewRemoval", "_nbShowPreview"), PC: PC_FNS},
-        ((NBS, "netboxPreviewRemoval", "d"), (NBS, "_nbShowPreview", "d")),
-        adapters={"modules/preview_confirm.py": ("netbox_removal_preview", "_nb_gates",
-                                                 "_nb_line", "build")}),
     "GET /inventory/source/<list>": Render(
         _get("/inventory/source/Default"),
         {"partials__inventory_source.1.js": ("loadInventorySource", "applyInventorySourceUI",
@@ -267,18 +245,9 @@ RENDERS = {
         _get("/onboard/platforms"),
         {"partials__onboard_wizard.1.js": ("openOnboardWizard", "onboardPlatformOptions")},
         (("partials__onboard_wizard.1.js", "openOnboardWizard", "d"),)),
-    # A STORED PARTIAL IMPORT (C85). This entry used `_get("/netbox/status")`
-    # on a store with no import, so `status` was empty (declared "NetBox is
-    # not configured in the fixture") and the summary C8 filled with
-    # `write_failures`, `partial` and `complete` was never examined: the
-    # forward check would have named them as drawn nowhere, had the fixture
-    # reached them. C72's class, found by a positive control on 2026-09-27.
-    "GET /netbox/status": Render(
-        lambda mp, tmp: P.netbox_status(mp, tmp),
-        {I4: ("loadNetboxTab",), PC: PC_RESULT_FNS},
-        ((I4, "loadNetboxTab", "nbs"),),
-        maps=("lists",),
-        adapters={"modules/preview_confirm.py": ("netbox_sync_result", "build_result")}),
+    # Today's NetBox tab's four payloads (the three previews on the component, 7.1, and the
+    # stored partial import its sync card drew, C85) left with the tab at 7.8 (2026-10-17):
+    # v2's NetBox page draws them server-side (tests/test_v2_context_is_drawn.py).
 }
 
 #: Keys carried and correctly not drawn, EVERYWHERE, in both directions. At
@@ -343,14 +312,6 @@ UNDRAWN = {
         ("list", LIST)],
     "GET /golden/capture/preview/<job>": [("list", LIST)],
     "POST /golden/capture/apply": [("list", LIST)],
-    "GET /netbox/status": [
-        ("filename", "the list's legacy CSV name; nothing needs it on screen, "
-                     "and 7.8 removes the legacy lists API"),
-        ("config_template_id", "NetBox's internal id for the config template NMAS "
-                               "installs; the template is named in NetBox itself"),
-        ("last_sync", "the newest of the per-list timestamps, each drawn on its "
-                      "own list's badge"),
-        ("list", LIST)],
     "GET /onboard/pending": [
         ("counts total overdue stale thresholds",
          "the banner derives its counts from the rows; the server's counts "
@@ -547,36 +508,6 @@ EMPTY_IN_FIXTURE = {
     "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
     "POST /onboard/plan host_vars": (R_, "the plan carries no intent for a device "
                                          "not yet onboarded; drawn in 7.4"),
-    "POST /netbox/safety/import/preview preview.explain": (R_, "no concept is taught on the NetBox safety "
-                                            "modal yet; the concepts harness names it"),
-    "POST /netbox/safety/import/preview preview.targets[].program.authorised": (S_, "a NetBox write is sent to no "
-                                            "device, so no line is authorised"),
-    "POST /netbox/safety/import/preview preview.targets[].program.dangerous": (S_, "a NetBox write is sent to no "
-                                            "device, so no line is dangerous"),
-    "POST /netbox/safety/import/preview preview.what.targets[].select_data": (R_, "the one-shot token binds the plan's "
-                                            "hash, carried beside the preview, not per target"),
-    "POST /netbox/safety/import/preview preview.targets[].program.notes": (S_, "an import has no cascade; notes "
-                                            "carry only a removal's"),
-    "POST /netbox/safety/import/preview preview.what_not.items[].lines": (S_, "an import's what-not items are "
-                                            "sentences; a removal's carry lines"),
-    "POST /netbox/safety/import_all/preview preview.explain": (R_, "no concept is taught on the NetBox safety "
-                                            "modal yet; the concepts harness names it"),
-    "POST /netbox/safety/import_all/preview preview.targets[].program.authorised": (S_, "a NetBox write is sent to no "
-                                            "device, so no line is authorised"),
-    "POST /netbox/safety/import_all/preview preview.targets[].program.dangerous": (S_, "a NetBox write is sent to no "
-                                            "device, so no line is dangerous"),
-    "POST /netbox/safety/import_all/preview preview.what.targets[].select_data": (R_, "the one-shot token binds the plan's "
-                                            "hash, carried beside the preview, not per target"),
-    "POST /netbox/safety/import_all/preview preview.targets[].program.notes": (S_, "an import has no cascade; notes "
-                                            "carry only a removal's"),
-    "POST /netbox/safety/import_all/preview preview.what_not.items[].lines": (S_, "an import's what-not items are "
-                                            "sentences; a removal's carry lines"),
-    "POST /netbox/safety/remove/preview preview.targets[].program.authorised": (S_, "a NetBox write is sent to no "
-                                            "device, so no line is authorised"),
-    "POST /netbox/safety/remove/preview preview.targets[].program.dangerous": (S_, "a NetBox write is sent to no "
-                                            "device, so no line is dangerous"),
-    "POST /netbox/safety/remove/preview preview.what.targets[].select_data": (R_, "the one-shot token binds the plan's "
-                                            "hash, carried beside the preview, not per target"),
     "GET /onboard/pending runs.finished[].result.did_not.items": (R_, "the finished runs "
         "in the fixture both succeeded; a failed run's items are drawn under r7's last run"),
     "GET /onboard/pending runs.finished[].result.record.tags": (S_, "an onboarding run "
@@ -670,7 +601,10 @@ EMPTY_IN_FIXTURE = {
 # `settings_read_failure` with it.
 # 32 -> 31: P7-03 (2026-10-15): the NetBox removal preview's `explain` carries
 # provenance-limits-remove, drawn by v2's preview parts (tests/test_concepts_are_taught.py).
-EMPTY_RECORDS_CEILING = 31
+# 31 -> 26: 7.8 (2026-10-17): today's NetBox tab's three previews left with their routes, and
+# their five records (the two imports' `explain` and per-target `select_data`, the removal's
+# `select_data`).
+EMPTY_RECORDS_CEILING = 26
 
 
 def _empty_paths(obj, path=""):
@@ -749,7 +683,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 94  # +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 90  # -4: today's NetBox tab (7.8, 2026-10-17), /netbox/status's filename, config_template_id, last_sync and list, with the route. Before: +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 14  # 2026-10-15: /identity/posture's config_withheld_reason left with the route (7.8). Before: 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
 
 

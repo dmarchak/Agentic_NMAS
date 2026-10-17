@@ -192,8 +192,9 @@ class TestTheNetBoxScreenDescribesWhatImportDoes:
             if path.endswith("netbox_client.py"):
                 continue                 # the definitions, and the all-lists fan-out within
             found += calls(open(path, encoding="utf-8").read())
-        # 6 calls measured 2026-10-15: modules/netbox_ops.py's four, routes/netbox_safety.py's two.
-        assert len(found) >= 6, found
+        # 4 calls measured 2026-10-17: modules/netbox_ops.py's four (routes/netbox_safety.py's two
+        # left with today's NetBox tab at 7.8; 6 measured 2026-10-15).
+        assert len(found) >= 4, found
         assert not [c for c in found if c[1]], found
         planted = "sync_list_to_netbox('Lab', devs, status_cache=STATUS)"
         assert calls(planted) == [("sync_list_to_netbox", True)]

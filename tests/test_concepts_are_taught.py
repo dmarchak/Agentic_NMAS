@@ -175,8 +175,8 @@ class _Inline:
 
 def _netbox_remove(request):
     """Source of truth › NetBox › Remove…'s preview card, through the REAL removal dry run and
-    cascade query against the fake NetBox (payload_providers.netbox_remove_preview's state:
-    NMAS created and tagged r6; a site it recorded carries no tag, so it is left alone)."""
+    cascade query against the fake NetBox (NMAS created and tagged r6; a site it recorded
+    carries no tag, so it is left alone)."""
     import modules.netbox_client as nbc
     from modules import netbox_guard
     from tests import payload_providers as P

@@ -1,6 +1,7 @@
-"""NetBox import and removal: the ONE code path today's routes (routes/netbox_safety.py) and v2's
-NetBox page (routes/netbox_v2.py) both call (cutover blocker 2, 2026-10-10: moved out of the
-routes, behaviour unchanged, so two entry points share one path).
+"""NetBox import and removal: the ONE code path v2's NetBox page (routes/netbox_v2.py, through
+modules/netbox_jobs.py) calls (cutover blocker 2, 2026-10-10: moved out of today's routes,
+behaviour unchanged, so two entry points shared one path; today's NetBox tab and its routes,
+routes/netbox_safety.py, left at 7.8, 2026-10-17).
 
 Each is a dry run of the real sync against the real NetBox (`dry_run`), which writes nothing and
 returns a one-shot token bound to a hash of that exact plan, then a confirm (`authorize`) that
@@ -42,19 +43,18 @@ def configured() -> bool:
 
 
 def list_devices(list_name: str):
-    """``(name, devices)`` for a list name, or the active list's for none; ``(None, None)``
-    for a name no list has. Mirrors `app.netbox_sync`'s lookup."""
+    """``(name, devices)`` for a list name; ``(None, None)`` for a name no list has, or for
+    none. A write path carries its list: the active list's fallback for no name served only
+    today's Import Current List, which left with today's NetBox tab at 7.8 (2026-10-17)."""
     from modules.config import LISTS_DIR
-    from modules.device import get_current_device_list, get_device_lists, load_saved_devices
+    from modules.device import get_device_lists, load_saved_devices
 
-    if list_name:
-        match = next((l for l in get_device_lists() if l["name"] == list_name), None)
-        if not match:
-            return None, None
-        return list_name, load_saved_devices(os.path.join(LISTS_DIR, match["filename"],
-                                                          "devices.csv"))
-    name, csv_path = get_current_device_list()
-    return name, load_saved_devices(csv_path)
+    match = next((l for l in get_device_lists() if l["name"] == list_name), None) \
+        if list_name else None
+    if not match:
+        return None, None
+    return list_name, load_saved_devices(os.path.join(LISTS_DIR, match["filename"],
+                                                      "devices.csv"))
 
 
 def all_lists_with_devices() -> list:
@@ -222,7 +222,7 @@ def dry_run(operation: str, list_name: str, actor: str, progress_id: str = "") -
 
 
 def start_import(operation: str, list_name: str, data: dict, actor: str,
-                 progress_id: str = "", where: str = "the NetBox tab", on_end=None) -> dict:
+                 progress_id: str = "", where: str = "v2's NetBox page", on_end=None) -> dict:
     """Confirm and start an import (one list, or every list) on a thread: ``{"ok", "status":
     "started", "list", "device_count"}``. Raises `Refused`. *on_end(outcome)* runs when it ends."""
     from modules import netbox_guard as nbg
@@ -310,13 +310,14 @@ def start_import(operation: str, list_name: str, data: dict, actor: str,
     return {"ok": True, "status": "started", "list": name, "device_count": len(devices)}
 
 
-def remove(list_name: str, data: dict, actor: str, where: str = "the NetBox tab",
+def remove(list_name: str, data: dict, actor: str, where: str = "v2's NetBox page",
            only=None) -> dict:
     """Confirm and run a removal of what Mercury created and recorded for *list_name*, in the
     request. Returns the sync's result; raises `Refused`. `data["forget_only"]` drops Mercury's
-    record of them instead, which deletes nothing and needs neither the switch nor a token
-    (today's Just stop tracking); v2's Stop tracking confirms by hash first (`forget`) and
-    forgets exactly the confirmed entries (*only*)."""
+    record of exactly the entries *only* instead, which deletes nothing and needs neither the
+    switch nor a token of its own: its one caller, v2's Stop tracking (`forget`), has confirmed
+    by hash first. (Today's Just stop tracking called it unbound; it left with today's NetBox
+    tab at 7.8, 2026-10-17.)"""
     from modules.netbox_client import remove_list_from_netbox
 
     if not list_name:
@@ -342,7 +343,7 @@ def forget(list_name: str, data: dict, actor: str) -> dict:
     hashed, and a record that moved is refused, naming both hashes. The master switch is not a
     gate: nothing is sent to NetBox. One NetBox writer per list holds from the check to the
     forget, so an import cannot record between them. The forgetting itself is `remove`'s
-    `forget_only`, today's Just stop tracking, given exactly the confirmed entries. Returns its
+    `forget_only`, given exactly the confirmed entries. Returns its
     result; raises `Refused`."""
     from modules import netbox_guard as nbg
 

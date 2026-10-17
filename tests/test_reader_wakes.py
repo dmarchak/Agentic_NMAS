@@ -91,7 +91,7 @@ PAIRS = [
     ("device_v2.persist_confirm", "job-health"),
     ("attention.acknowledge", "grafana-alerts"),           # the band re-read (C533)
     ("restarts.planned", "restarts"),
-    ("netbox_safety.apply_import", "netbox-secrets"),
+    ("netbox_v2.confirm", "netbox-secrets"),               # today's import route until 7.8
     ("settings_v2.install_save", "integrations"),          # today's /settings until 7.8
     ("settings_v2.group_save", "integrations"),
     ("deploy-job", "adjacencies"),                         # a deploy's intent and goldens

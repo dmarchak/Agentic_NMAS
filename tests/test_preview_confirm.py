@@ -234,8 +234,9 @@ class TestConfirmSaysWho:
 #: approved order. RETROFIT_PENDING only shrinks.
 RETROFITTED = {"deploy": "partials__deploy_wizard.1.js",
                "restore": "partials__golden_repo.3.js",
-               "onboarding": "partials__onboard_wizard.1.js",
-               "netbox import/remove": "partials__netbox_safety_modal.1.js"}
+               "onboarding": "partials__onboard_wizard.1.js"}
+# "netbox import/remove" (partials__netbox_safety_modal.1.js) left with today's NetBox tab at
+# 7.8 (2026-10-17): v2's NetBox page draws its previews with `preview_parts`.
 RETROFIT_PENDING = {
     # Bulk intent left 2026-10-10: deferred to Fleet (7.4) by the operator, its screen was
     # built there, on v2 (Devices › Change a setting, routes/bulk_intent_v2.py), never on

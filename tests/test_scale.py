@@ -65,7 +65,11 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
 #: and security posture partials, its script), the Logs tab and the status bar left (7.8).
 #: Those two figures were today's index's, and left with its measurement (P7-19, 2026-10-15);
 #: the extracted script stays pinned until today's pages, the only ones loading it, go.
-EXTRACTED_SCRIPT_BYTES = 199_435
+#:
+#: 132,580 extracted since 2026-10-17: today's NetBox tab left (7.8): index.4.js's NetBox
+#: section and the import and removal dialog's script (about 19 kB). It had been about
+#: 151 kB, inside the 25% tolerance of 199,435, and fell outside it here.
+EXTRACTED_SCRIPT_BYTES = 132_580
 TOLERANCE = 0.25
 
 #: v2's pages, measured 2026-10-15 (P7-19) at 9 and 900 devices: {page: (fixed bytes, bytes
@@ -371,9 +375,10 @@ class TestTheExtractedScript:
         total = sum(_os.path.getsize(f)
                     for f in tracked("static/js/gen", suffix=".js", recursive=False,
                                      root="."))
-        # The floor is the extraction's, not a size target: 150 kB, below the 199,435 left
-        # after the AI family's tabs (D15) and far above what one template's inline block was.
-        assert total > 150_000, (
+        # The floor is the extraction's, not a size target: 125 kB, below the 132,580 left
+        # after today's NetBox tab (7.8, 2026-10-17; 150 kB below the 199,435 left after the AI
+        # family's tabs, D15) and far above what one template's inline block was.
+        assert total > 125_000, (
             f"only {total} bytes are extracted — the inline script has "
             "returned to the templates")
         assert abs(total - EXTRACTED_SCRIPT_BYTES) < EXTRACTED_SCRIPT_BYTES * TOLERANCE

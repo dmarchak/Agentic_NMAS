@@ -461,7 +461,7 @@ class TestEveryReferencedHelperExists:
 
     ROUTE_MODULES = ["routes.deploy", "routes.golden", "routes.templatize",
                      "routes.templates", "routes.inventory",
-                     "routes.netbox_safety", "routes.settings_integrations"]
+                     "routes.netbox_v2", "routes.settings_integrations"]
 
     @pytest.mark.parametrize("module_name", ROUTE_MODULES)
     def test_module_imports(self, module_name):

@@ -274,22 +274,8 @@ STAGES = {
         "MISSING: no hash binds the save to the version opened (CONCURRENCY_AUDIT R14)",
         NO_DEVICE, FORWARD, "modules.nsot.repo.save_templates"),
     # ---- NetBox
-    "netbox_safety.apply_import": Stages(
-        "netbox_safety.preview_import", "token in modules.netbox_ops.authorize",
-        "MISSING: NetBox is not read back after an import; write failures are counted (C8)",
-        "n/a: NetBox writes are not transactional; recovery is the tested backup (P.2)",
-        "modules.netbox_guard.record_modified"),
-    "netbox_safety.apply_import_all": Stages(
-        "netbox_safety.preview_import_all", "token in modules.netbox_ops.authorize",
-        "MISSING: NetBox is not read back after an import; write failures are counted (C8)",
-        "n/a: NetBox writes are not transactional; recovery is the tested backup (P.2)",
-        "modules.netbox_guard.record_modified"),
-    "netbox_safety.apply_removal": Stages(
-        "netbox_safety.preview_removal", "token in modules.netbox_ops.authorize",
-        "MISSING: deletions are counted, and the cascade is not re-read after (C150)",
-        "n/a: a deletion; recovery is the tested backup (P.2)",
-        "modules.netbox_guard.record_removal"),
-    # v2's NetBox page (cutover blocker 2): the same core as today's routes, its preview a job.
+    # v2's NetBox page (cutover blocker 2), its preview a job, over `modules/netbox_ops.py`
+    # (today's NetBox tab's three apply routes, the same core, left at 7.8, 2026-10-17).
     # Its Stop tracking (C954) is bound by the same token (`netbox_ops.forget` calls
     # `authorize`, the master switch aside), and recorded by `netbox_guard.record_removal`.
     "netbox_v2.confirm": Stages(
@@ -379,13 +365,8 @@ HISTORY = {
     "v2.decline_confirm": ("intent",),
     "retire.apply": ("n/a: a retired device has no page to hold a History tab; its record is "
                      "the retire commit, read by the legacy golden history (C185)"),
-    "netbox_safety.apply_import": ("n/a: a NetBox object's record, kept per object with its "
-                                   "provenance, which the device's NetBox tab draws"),
-    "netbox_safety.apply_import_all": ("n/a: NetBox objects' records, kept per object with "
-                                       "their provenance, drawn on each device's NetBox tab"),
     # B8: the network's own record of each removal (the removal record), and of each import,
     # Remove and Stop tracking confirmed on v2's NetBox page (its job record), on History.
-    "netbox_safety.apply_removal": ("netbox",),
     "netbox_v2.confirm": ("netbox",),
     "templatize.profile_propose_apply": PROFILE,
     "v2.ip_sla_policy_set": PROFILE,

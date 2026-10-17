@@ -223,29 +223,6 @@ def deploy_receipts(mp):
     return _ok(_client().get("/deploy/receipts"))
 
 
-def netbox_status(mp, tmp):
-    """The NetBox tab's read, with a stored PARTIAL import (C85): one device
-    fully written, one with a write that did not land, one not imported."""
-    import json
-
-    from modules import netbox_client as nb
-
-    path = tmp / "netbox_sync_status.json"
-    path.write_text(json.dumps({"last_sync": "2026-09-27 12:00:00", "lists": {"Default": {
-        "ok": True, "list": "Default", "region": "rcn", "site": "lab", "total": 3, "synced": 2,
-        "created": 1, "updated": 1,
-        "failed": [{"hostname": "s9", "error": "400 bad request"}],
-        "write_failures": [{"device": "r2", "write": "cable Gi2 -> s4:Gi1/0", "error": "400"}],
-        "partial": ["r2"], "complete": False, "config_template_id": 7,
-        "ipam": {"interfaces": 12, "prefixes": 4, "ips": 9, "vrfs": 1, "vlans": 2,
-                 "cables": 3, "tunnels": 0},
-        "notes": ["site adopted, not re-parented"], "timestamp": "2026-09-27 12:00:00",
-        "netbox_url": "https://netbox.example.invalid/dcim/sites/1/",
-        "ipam_url": "https://netbox.example.invalid/ipam/prefixes/"}}}), encoding="utf-8")
-    mp.setattr(nb, "_SYNC_STATUS_FILE", str(path))
-    return _client().get("/netbox/status").get_json()
-
-
 def capture_preview(mp, tmp):
     """7.1 step 4: r2's real config with the host's exact break, so the
     preview carries a golden diff AND a departure from committed intent."""
@@ -354,80 +331,6 @@ def _netbox_behind(mp):
     mp.setattr(nbc, "_session_from_config", lambda cfg: nb)
     mp.setattr(nbc, "_managed_tag_ids", {})
     return nb
-
-
-def _import_dry_run(nb, hosts):
-    """The REAL dry run of the device upsert (the import's own code), for r1
-    already in NetBox (an update) and r2 new (creates)."""
-    from modules import netbox_guard
-    from modules.netbox_client import _upsert_device
-
-    site = nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
-    role = nb.seed("dcim/device-roles", {"name": "Router", "slug": "router"})
-    nb.seed("dcim/devices", {"name": "r1", "serial": "SER0001", "site": {"id": site["id"]}})
-    with netbox_guard.dry_run() as plan, netbox_guard.for_list("Default"):
-        for i, host in enumerate(hosts, start=1):
-            _upsert_device(nb, "http://127.0.0.1:9", hostname=host, ip=f"203.0.113.{i}",
-                           facts={"manufacturer": "Cisco", "model": "C8000v",
-                                  "platform": "IOS-XE", "serial": f"SER{i:04d}",
-                                  "sw_version": "17.6"},
-                           interfaces=[{"name": f"GigabitEthernet{i}", "ip": f"203.0.113.{i}",
-                                        "prefix_len": 24, "enabled": True}],
-                           site_id=site["id"], role_id=role["id"], ipam_stats={})
-    return {"ok": True, "plan": plan.summary()}
-
-
-def netbox_import_preview(mp, tmp):
-    """7.1: the import preview on the component. The list's devices and the
-    sync are stood in for by the real device upsert run dry, so the plan
-    carries a real update (r1, already in NetBox) and real creates (r2)."""
-    import modules.netbox_client as nbc
-    import routes.netbox_safety as ns
-
-    nb = _netbox_behind(mp)
-    devices = [{"hostname": "r1", "ip": "203.0.113.1"}, {"hostname": "r2", "ip": "203.0.113.2"}]
-    mp.setattr(ns, "_load_list_devices", lambda name: ("Default", devices))
-    mp.setattr(nbc, "sync_list_to_netbox",
-               lambda name, devs, dry_run=False, **k: _import_dry_run(nb, ["r1", "r2"]))
-    return _ok(_client().post("/netbox/safety/import/preview", json={"list_name": "Default"}))
-
-
-def netbox_import_all_preview(mp, tmp):
-    import modules.netbox_client as nbc
-    import routes.netbox_safety as ns
-
-    nb = _netbox_behind(mp)
-    mp.setattr(ns, "_all_lists_with_devices",
-               lambda: [("Default", [{"hostname": "r1"}, {"hostname": "r2"}])])
-    mp.setattr(nbc, "sync_all_lists_to_netbox",
-               lambda items, dry_run=False, **k: _import_dry_run(nb, ["r1", "r2"]))
-    return _ok(_client().post("/netbox/safety/import_all/preview", json={}))
-
-
-def netbox_remove_preview(mp, tmp):
-    """7.1: the removal preview on the component, through the REAL removal
-    dry run and cascade query. NMAS created and tagged a device; the
-    database would take its interface and that interface's address with it,
-    neither of which NMAS created (the 2026-09-24 incident's shape); and a
-    site NMAS recorded carries no tag, so it is left alone."""
-    from modules import netbox_guard
-
-    nb = _netbox_behind(mp)
-    tag = [{"slug": netbox_guard.MANAGED_TAG_SLUG, "name": netbox_guard.MANAGED_TAG}]
-    dev = nb.seed("dcim/devices", {"name": "r6", "tags": tag})
-    site = nb.seed("dcim/sites", {"name": "branch", "slug": "branch", "tags": []})
-    iface = nb.seed("dcim/interfaces", {"name": "Gi2", "device": {"id": dev["id"]}})
-    nb.seed("ipam/ip-addresses", {"address": "10.0.0.15/24",
-                                  "assigned_object_type": "dcim.interface",
-                                  "assigned_object_id": iface["id"]})
-    netbox_guard.record_created("Default", "dcim/devices", dev["id"], "r6")
-    netbox_guard.record_created("Default", "dcim/sites", site["id"], "branch")
-    try:
-        return _ok(_client().post("/netbox/safety/remove/preview",
-                                  json={"list_name": "Default"}))
-    finally:
-        netbox_guard.forget_created("Default")
-
 
 
 def needs_attention(mp, tmp):

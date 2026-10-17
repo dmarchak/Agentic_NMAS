@@ -126,11 +126,6 @@ def _bodies(v):
                                    "the first golden against HEAD: a program that adds its "
                                    "community, and HEAD's as residue"),
         "inventory.refresh": (200, ("json", {}), "a local list: refused as not NetBox-sourced"),
-        "netbox_safety.preview_import": (200, ("json", {"list_name": LIST}),
-                                         "a dry-run import of r1 from its golden"),
-        "netbox_safety.preview_import_all": (200, ("json", {}), "the same, every list"),
-        "netbox_safety.preview_removal": (200, ("json", {"list_name": LIST}),
-                                          "a dry-run removal"),
         "onboard.plan": (200, ("json", {"list_name": LIST, "hostname": "r8",
                                         "platform": "cisco_ios"}),
                          "a plan for a new device; creates nothing"),
@@ -198,7 +193,10 @@ REACHES = {"deploy.plan", "device_v2.capture_start",
 # `netbox_safety.preview_import` LEFT this set in 7.1: its response no longer
 # carries the dry run's object payloads (each device's golden rode in
 # `local_context_data`), only the preview drawn from them, so there is no
-# stored config in it to mask. The sweep still drives it for a planted value.
+# stored config in it to mask. The sweep drove it for a planted value until today's NetBox
+# routes left at 7.8 (2026-10-17); v2's NetBox preview card is held to a planted value by
+# tests/test_netbox_preview_token_round_trip.py, and its preview job is driven here only to
+# its refusal (`netbox_v2.preview` above).
 
 #: The two masks: the outbound redactor's, and the template preview's
 #: (`render_artifact.MASK`, which JSON carries escaped).
@@ -554,8 +552,12 @@ class TestNoPreviewWritesTheStore:
     after, as a person. A route not in MAY_WRITE that changes any file fails.
     Measured the first time: every preview clean, and `drift_check_sync`, a
     check run, the only writer (it left at 7.8, 2026-10-15). Positive control,
-    run by hand: with C134's fix removed, this names
-    `netbox_safety.preview_import` writing `netbox_sync_status.json`."""
+    run by hand: with C134's fix removed, this named
+    `netbox_safety.preview_import` writing `netbox_sync_status.json`; that route
+    left with today's NetBox tab at 7.8 (2026-10-17), and v2's preview job is
+    driven here only to its refusal, so C134 itself is held by
+    tests/test_import_preview_is_what_happens.py and C130 by
+    tests/test_removal_reads_before_it_forgets.py."""
 
     def test_no_undeclared_route_writes_the_store(self, swept):
         writers = {k.split(":")[0]: v for k, v in swept["writes"].items() if v}

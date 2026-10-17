@@ -165,6 +165,20 @@ class TestRefusals:
         _r, card = _post(networks, "/v2/netbox/preview", {"operation": "import", "list": "Lab-3"})
         assert "has no devices" in card
 
+    def test_the_core_never_falls_back_to_the_active_network(self, networks, nb):
+        """A write path carries its list (CLAUDE.md): an import named for no network is
+        refused as no network, never run on the active one. `netbox_ops.list_devices` read the
+        active network for no name, for today's Import Current List, until today's NetBox tab
+        left at 7.8 (2026-10-17)."""
+        from modules import netbox_ops
+        for call in (lambda: netbox_ops.dry_run("import", "", "ops@example.com"),
+                     lambda: netbox_ops.start_import("import", "", {}, "ops@example.com")):
+            with pytest.raises(netbox_ops.Refused) as refused:
+                call()
+            assert refused.value.status == 404, refused.value.payload
+            assert refused.value.payload["error"] == "Device list not found"
+        assert nb["sent"] == []
+
 
 class TestRemove:
     def test_preview_then_remove_is_recorded_and_drawn(self, networks, nb, monkeypatch):
@@ -183,9 +197,10 @@ class TestRemove:
 
     def test_the_preview_names_only_the_choices_its_screen_has(self, networks, nb, monkeypatch):
         """C935: v2's removal preview said "'Just stop tracking' is the other choice", a control
-        only today's NetBox dialog draws (its `forget_only`), while v2's card had Remove and
+        only today's NetBox dialog drew (its `forget_only`), while v2's card had Remove and
         Close. C954 built v2's own: the card draws Stop tracking instead…, a preview of its own,
-        and the removal preview names THAT control; today's still names its button."""
+        and the removal preview names THAT control. (Today's dialog, which named its own
+        button, left with today's NetBox tab at 7.8, 2026-10-17.)"""
         import modules.netbox_client as nbc
         monkeypatch.setattr(nbc, "remove_list_from_netbox", lambda name, **k: {
             "ok": True, "deleted": [{"endpoint": "dcim/devices", "id": 7, "name": "r9"}],
@@ -205,12 +220,6 @@ class TestRemove:
         assert '<input type="hidden" name="operation" value="forget">' in form
         assert '<input type="hidden" name="list" value="Branch">' in form
         assert '<span class="op-idle">Stop tracking instead…</span>' in form
-
-        r = networks["client"].post("/netbox/safety/remove/preview", json={"list_name": "Branch"})
-        assert r.status_code == 200, r.get_data(as_text=True)[:400]
-        today = json.dumps(r.get_json())
-        assert "'Just stop tracking' is the other choice" in today
-        assert "Stop tracking instead" not in today
 
 
 @pytest.fixture
@@ -259,7 +268,7 @@ class TestStopTracking:
     """C954: v2's Stop tracking, the Remove card's second choice. It deletes nothing in NetBox
     and has Mercury forget what it created for the network: previewed from Mercury's created
     record, confirmed by a verified person by the hash of exactly those entries, done through
-    today's one path (`netbox_ops.remove`'s `forget_only`), recorded in the removal record."""
+    the one path (`netbox_ops.remove`'s `forget_only`), recorded in the removal record."""
 
     def test_the_preview_says_what_it_does_with_its_counts(self, networks, nb, tracked):
         before = _held("Branch")

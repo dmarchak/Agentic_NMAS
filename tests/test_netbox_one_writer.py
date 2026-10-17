@@ -68,7 +68,9 @@ def test_the_import_is_refused_and_writes_nothing(held_elsewhere, monkeypatch):
 
 
 def test_the_import_confirm_refuses_before_starting_its_thread(held_elsewhere, monkeypatch):
-    import app as nmas
+    """Through the import's confirm core (`netbox_ops.start_import`, which v2's NetBox page's
+    confirm calls; today's /netbox/safety/import/apply did until 7.8, 2026-10-17)."""
+    from modules import netbox_ops
 
     monkeypatch.setattr("modules.netbox_client.get_netbox_config",
                         lambda: {"url": "http://192.0.2.8", "token": "t"})
@@ -76,9 +78,10 @@ def test_the_import_confirm_refuses_before_starting_its_thread(held_elsewhere, m
     monkeypatch.setattr("modules.netbox_ops.authorize", lambda *a, **k: None)
     monkeypatch.setattr(threading, "Thread",
                         lambda *a, **k: pytest.fail("an import thread started"))
-    r = nmas.app.test_client().post("/netbox/safety/import/apply", json={"list_name": "Lab"})
-    body = r.get_json()
-    assert r.status_code == 409 and body["busy"] is True, body
+    with pytest.raises(netbox_ops.Refused) as refused:
+        netbox_ops.start_import("import", "Lab", {}, "b@example.invalid")
+    body = refused.value.payload
+    assert refused.value.status == 409 and body["busy"] is True, body
     assert "import by operator@example.invalid is writing Lab's NetBox objects" in body["error"]
 
 

@@ -3404,7 +3404,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
     }
 
     # A PREVIEW RECORDS NOTHING (C134). This summary is the RECORD of an
-    # import, the one the NetBox tab's sync card draws as its result and reads
+    # import, the one the NetBox page's network row draws as its result and reads
     # back later. The dry run ran this same function, so every import preview
     # overwrote the last real import's record with a claim that an import had
     # happened: measured on the host 2026-09-28, `ok: True, updated 9` stamped
@@ -3974,7 +3974,7 @@ def _merge_plans(plans) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Status persistence (surfaced by the NetBox tab)
+# Status persistence (surfaced by the NetBox page, /v2/netbox)
 # ---------------------------------------------------------------------------
 
 def _record_sync_status(list_name: str, summary: dict) -> None:

@@ -44,8 +44,10 @@ XDATA = re.compile(r'\bx-data="(\w+)"')
 
 #: Measured 2026-10-15 (P7-06): the population, the routes reached in the pattern, and the
 #: scripts v2 loads; the pattern measured again 2026-10-16 after C850 (30 -> 34). Floors: a
-#: scan that finds fewer has stopped seeing.
-POPULATION_FLOOR = 55
+#: scan that finds fewer has stopped seeing. Population floor 55 -> 53 on 2026-10-17, the
+#: population measured 53: today's NetBox tab's import, import-all and removal applies (each
+#: in it by its served preview in `operation_stages`) left at 7.8.
+POPULATION_FLOOR = 53
 PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
@@ -76,9 +78,6 @@ LEGACY_HOMES = {
     "deploy.apply": "device_v2.deploy_confirm",
     "golden.capture_apply": "device_v2.capture_confirm",
     "golden.restore_apply": "device_v2.restore_confirm",
-    "netbox_safety.apply_import": "netbox_v2.confirm",
-    "netbox_safety.apply_import_all": "netbox_v2.confirm",
-    "netbox_safety.apply_removal": "netbox_v2.confirm",
     "onboard.abandon": "onboard_v2.abandon",
     "onboard.create": "onboard_v2.create",
     "onboard.verify": "onboard_v2.verify",

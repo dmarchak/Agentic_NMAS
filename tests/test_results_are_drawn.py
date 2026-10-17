@@ -106,13 +106,8 @@ RESULT_COMPONENT = {
                        "onboard.pending"),
     "onboard.abandon": ("static/js/gen/partials__onboard_wizard.2.js", "onboardShowRunResult",
                         "onboard.pending"),
-    # NetBox Remove (C121): drawn from the recorded row; the record re-read
-    # on the NetBox tab.
-    "netbox_safety.apply_removal": ("static/js/nmas_netbox_removals.js",
-                                    "showNetboxRemovalResult", "netbox_safety.removals"),
-    "netbox_safety.apply_import": ("static/js/gen/index.4.js", "loadNetboxTab", "netbox_status"),
-    "netbox_safety.apply_import_all": ("static/js/gen/index.4.js", "loadNetboxTab",
-                                       "netbox_status"),
+    # Today's NetBox Remove and imports (C121) left with today's NetBox tab at 7.8
+    # (2026-10-17): v2's NetBox confirm (`netbox_v2.confirm`, below) draws them.
 }
 
 #: The bar: changes nothing durable AND has no operands worth re-reading.
@@ -325,7 +320,6 @@ GREEN_TOASTS = {
     ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
     # Today's Settings modal's "Settings saved" and its posture panel's ratification left with
     # the modal at 7.8 (2026-10-15).
-    ("static/js/gen/partials__netbox_safety_modal.1.js", "Import started for"): "says STARTED; the outcome is the sync card's (C85)",
     ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
     ("templates/partials/onboard_wizard.html", ".cfg downloaded"): "a file download",
 }
@@ -480,7 +474,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 8, len(calls)           # the scan can see them (8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        assert len(calls) >= 7, len(calls)           # the scan can see them (7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

@@ -121,7 +121,7 @@ class TestWhoOwnsIt:
         from modules import netbox_guard
         netbox_guard.record_created(LIST, "dcim/devices", 11, "r6")
         p = _view("r6")["provenance"]
-        assert p["state"] == "created" and "Remove can delete it" in p["words"]
+        assert p["state"] == "created" and "the NetBox page's Remove from NetBox… can delete it" in p["words"]
 
     def test_tagged_but_not_recorded_disagrees_and_is_never_called_nmass(self, nb):
         p = _view("r6")["provenance"]

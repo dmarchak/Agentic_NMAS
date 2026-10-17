@@ -182,8 +182,6 @@ EXEMPT = {
     ('tests/fixtures/operational/s3__show_ip_route_connected.txt', '3df061570391'): ('CAPTURE', ('address',)),
     # tests/fixtures/operational/s3__show_lldp_neighbors_detail.txt
     ('tests/fixtures/operational/s3__show_lldp_neighbors_detail.txt', '4959e9033714'): ('CAPTURE', ('address',)),
-    # tests/payload_providers.py
-    ('tests/payload_providers.py', '5b7e7d75c9fb'): ('VRNETLAB', ('address',)),
     # tests/test_bgp_hold_watch.py
     ('tests/test_bgp_hold_watch.py', 'aa384372a7d4'): ('INVENTED', ('address',)),
     ('tests/test_bgp_hold_watch.py', 'df6e6b6b53ef'): ('INVENTED', ('address',)),
@@ -251,6 +249,9 @@ EXEMPT = {
     ('tests/test_netbox_cascade.py', '40dd625818b3'): ('VRNETLAB', ('address',)),
     ('tests/test_netbox_cascade.py', '402a97924a53'): ('VRNETLAB', ('address',)),
     ('tests/test_netbox_cascade.py', 'd6eea5c31407'): ('VRNETLAB', ('address',)),
+    # The wiring test's seeded address, moved from tests/payload_providers.py's
+    # removal provider with today's NetBox tab (7.8, 2026-10-17).
+    ('tests/test_netbox_cascade.py', '5b7e7d75c9fb'): ('VRNETLAB', ('address',)),
     # tests/test_netbox_census.py
     ('tests/test_netbox_census.py', '30a2d52dbdaf'): ('INVENTED', ('address',)),
     ('tests/test_netbox_census.py', '37547ed2ec84'): ('INVENTED', ('address',)),

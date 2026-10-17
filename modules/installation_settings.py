@@ -358,7 +358,7 @@ CARD_SAVE_STEPS = ("check", "write", "record")
 #: A card's Replace…: the new secret checked, stored, recorded, then the card's Test.
 CARD_REPLACE_STEPS = ("check", "store", "record", "test")
 #: NetBox's Turn off: the master switch written off, then recorded. Turning it on is an
-#: authorised NetBox write's confirm (routes/netbox_safety.py), never this card.
+#: authorised NetBox write's confirm (routes/netbox_v2.py's confirm), never this card.
 WRITES_OFF_STEPS = ("write", "record")
 #: The fields a restart reads (the result says the change waits for one).
 RESTART_KEYS = ("flask_host", "flask_port")

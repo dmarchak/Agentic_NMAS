@@ -146,50 +146,56 @@ class TestPlanReverification:
 
 
 class TestMasterSwitchIndependence:
-    """Confirming must never turn the master switch on by itself."""
+    """Confirming must never turn the master switch on by itself. Through
+    `netbox_ops.authorize`, the one confirm v2's NetBox page calls (today's
+    route-level `_authorize` wrapped it until the NetBox tab left at 7.8,
+    2026-10-17)."""
 
     # The switch moving only with a confirm that passes, and never with a plain one, is
-    # driven through the real routes in test_netbox_switch_after_confirm.py (C330).
+    # driven through the core with the real switch in test_netbox_switch_after_confirm.py
+    # (C330).
+
+    @staticmethod
+    def _authorize(data, recompute):
+        from modules import netbox_ops
+        try:
+            netbox_ops.authorize(data, "import", "Lab", recompute, actor="ops@example.com")
+        except netbox_ops.Refused as exc:
+            return False, exc.payload, exc.status
+        return True, None, 0
 
     def test_master_switch_checked_before_token_is_burned(self, monkeypatch):
         """An unauthorized instance must not consume the operator's token."""
         from modules import netbox_guard
-        from routes.netbox_safety import _authorize
         monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: False)
 
         token = issue_token("import", "Lab", "hash1")["token"]
-        ok, err, status = _authorize({"token": token}, "import", "Lab",
-                                     recompute=lambda: {})
+        ok, err, status = self._authorize({"token": token}, recompute=lambda: {})
         assert ok is False and status == 403
         assert netbox_authz.active_token_count() == 1, "token was burned despite 403"
 
     def test_authorize_rejects_missing_token(self, monkeypatch):
         from modules import netbox_guard
-        from routes.netbox_safety import _authorize
         monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
-        ok, err, status = _authorize({}, "import", "Lab", recompute=lambda: {})
+        ok, err, status = self._authorize({}, recompute=lambda: {})
         assert ok is False and status == 400
 
     def test_authorize_rejects_changed_plan(self, monkeypatch):
         from modules import netbox_guard
-        from routes.netbox_safety import _authorize
         monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
 
         approved = compute_plan_hash(_plan("R1", "R2"))
         token = issue_token("import", "Lab", approved)["token"]
-        ok, err, status = _authorize({"token": token}, "import", "Lab",
-                                     recompute=lambda: _plan("R1"))
+        ok, err, status = self._authorize({"token": token}, recompute=lambda: _plan("R1"))
         assert ok is False and status == 409
         assert "NetBox changed since preview" in err["error"]
         assert err["stale"] is True
 
     def test_authorize_accepts_matching_plan(self, monkeypatch):
         from modules import netbox_guard
-        from routes.netbox_safety import _authorize
         monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
 
         plan = _plan("R1", "R2")
         token = issue_token("import", "Lab", compute_plan_hash(plan))["token"]
-        ok, err, status = _authorize({"token": token}, "import", "Lab",
-                                     recompute=lambda: plan)
+        ok, err, status = self._authorize({"token": token}, recompute=lambda: plan)
         assert ok is True and err is None

@@ -1351,7 +1351,8 @@ def _nb_gates(d: dict, what: str) -> list:
         gate("NetBox writes permitted for this instance", "pass" if d.get("writes_allowed")
              else "at_apply",
              "the saved switch is on" if d.get("writes_allowed") else
-             "the saved switch is OFF: the 'Permit NetBox writes' box below turns it on "
+             "the saved switch is OFF: the 'turn NetBox writes on with this confirm' box "
+             "below turns it on "
              "when you confirm, and without it the confirm is refused"),
         gate("NetBox unchanged since this preview", "at_apply",
              "the plan is recomputed when you confirm and its hash compared; if NetBox "
@@ -1450,9 +1451,10 @@ def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: str = "") 
     not be established is its own statement, never "nothing".
 
     *forget_offered*: the words of the stop-tracking control the screen drawing this has
-    (today's NetBox dialog's "Just stop tracking", `forget_only`; v2's Remove card's "Stop
-    tracking instead…", C954), so the preview names it as the other choice. Empty: the screen
-    has none, and the preview says so rather than naming a button that is not there (C935)."""
+    (v2's Remove card's "Stop tracking instead…", C954), so the preview names it as the other
+    choice. Empty: the screen has none, and the preview says so rather than naming a button
+    that is not there (C935). Today's NetBox dialog's "Just stop tracking" left with it at 7.8
+    (2026-10-17)."""
     name = d.get("list") or "the list"
     deleted, skipped = d.get("deleted") or [], d.get("skipped") or []
     # C130: a recorded object NetBox could not be READ is not gone. The
@@ -1534,10 +1536,7 @@ def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: str = "") 
         {"target": name, "kind": "no_device", "lines": [],
          "text": "No device is reached and nothing in git changes."},
         {"target": name, "kind": "forget", "lines": [],
-         "text": ("'Just stop tracking' is the other choice: it deletes nothing, and Mercury "
-                  "forgets what it created for this list, so NetBox keeps every object."
-                  if forget_offered == "Just stop tracking" else
-                  f"'{forget_offered}' is the other choice, previewed on its own: it deletes "
+         "text": (f"'{forget_offered}' is the other choice, previewed on its own: it deletes "
                   "nothing, and Mercury forgets what it created for this network, so NetBox "
                   "keeps every object (with its nmas-managed tag) and Remove can never act on "
                   "them again." if forget_offered else
@@ -2002,7 +2001,7 @@ def netbox_sync_result(summary: dict) -> dict:
     """A NetBox import's outcome as a result (C85, 7.1 step 2).
 
     The import runs on a thread, so its result is the stored summary, read
-    whenever the NetBox tab is. C8 put `write_failures`, `partial` and
+    whenever the NetBox page is. C8 put `write_failures`, `partial` and
     `complete` into that summary so a partial import could not read as clean;
     the card read `failed` and drew green, so the fix never reached the
     screen. Here `complete` decides the level, every write that did not land

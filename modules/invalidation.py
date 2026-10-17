@@ -251,10 +251,8 @@ DECLARED = {
     "onboard_v2.verify": ("pending", "inventory", "credentials", "netbox",
                           "device_state", "baselines") + _COMMIT,
     "onboard_v2.abandon": ("pending", "intent", "credentials", "remote"),
-    # NetBox.
-    "netbox_safety.apply_import": ("netbox",),
-    "netbox_safety.apply_import_all": ("netbox",),
-    "netbox_safety.apply_removal": ("netbox",),
+    # NetBox. Today's NetBox tab's import and removal routes (/netbox/safety/*) left at 7.8
+    # (2026-10-17); v2's NetBox page's confirm (`netbox_v2.confirm`) is declared with v2's routes.
     # Today's NetBox Test (/netbox/test_connection), which persisted the auth scheme that
     # worked, left with today's Settings modal at 7.8 (2026-10-15); the NetBox card's Test
     # (settings_v2.install_test, below) keeps nothing.
@@ -381,9 +379,6 @@ DECLARED = {
                                                   "from committed intent; writes nothing"),
     "bulk_intent_v2.preview": Nothing("previews the change for the ticked devices; the apply "
                                       "commits"),
-    "netbox_safety.preview_import": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
-    "netbox_safety.preview_import_all": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
-    "netbox_safety.preview_removal": Nothing("a NetBox dry run: reads, and issues a one-shot token"),
     "settings_v2.group_test": Nothing("tests an integration's connection and reports in the card"),
     "settings_v2.install_test": Nothing("tests an Installation card's service and reports in the card; keeps nothing"),
     "settings_v2.platforms_preview": Nothing("previews a map change from each list's last inventory; writes nothing"),

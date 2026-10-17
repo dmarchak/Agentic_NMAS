@@ -3,18 +3,18 @@ operator, 2026-09-28: "a slow operation that says what it's doing is usable; a
 fast one that goes blank isn't").
 
 Measured on the host: a 9-device import preview took 54 s, 303 requests to
-NetBox at 176 ms mean, behind a bare spinner. The page gives each request an
-id, the sync reports under it (`modules.op_progress`: requests counted at the
-session, the device it is on), the modal polls it, and the in-flight panel
-(C99) lists it with every device operation.
+NetBox at 176 ms mean, behind a bare spinner. Each preview has an id (v2's
+NetBox page: its job's; today's modal sent its own until today's NetBox tab left
+at 7.8, 2026-10-17), the sync reports under it (`modules.op_progress`: requests
+counted at the session, the device it is on), the job's card draws it on the one
+stepper, and the in-flight panel (C99) lists it with every device operation.
 """
-
-import json
 
 import pytest
 
 from tests.fake_netbox import FakeNetBox
-from tests.js_source import read_shipped
+from tests.test_netbox_v2 import nb  # noqa: F401 (the fixture: NetBox faked at its edge)
+from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 PID = "0123456789abcdef01234567"
 
@@ -102,16 +102,14 @@ def test_the_real_sync_counts_its_requests(monkeypatch):
 
 
 class TestTheRoutes:
-    def _client(self, monkeypatch):
-        from modules import netbox_guard
-        import modules.netbox_client as nbc
-        import routes.netbox_safety as ns
+    """Through v2's NetBox page (today's NetBox tab, whose preview took the page's
+    `progress_id` and whose /netbox/safety/progress/<id> the modal polled, left at 7.8,
+    2026-10-17): a preview job reports under its own id, and its card draws it on the one
+    stepper (tests/test_one_stepper.py holds the card's every state)."""
 
-        monkeypatch.setattr(nbc, "get_netbox_config", lambda: {"url": "http://127.0.0.1:9",
-                                                               "token": "t"})
-        monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
-        monkeypatch.setattr(ns, "_load_list_devices",
-                            lambda name: ("Default", [{"hostname": "r9", "ip": "192.0.2.9"}]))
+    @pytest.fixture
+    def page(self, networks, nb, monkeypatch):
+        import modules.netbox_client as nbc
 
         def fake_sync(name, devs, dry_run=False, progress_id="", **k):
             from modules import op_progress
@@ -119,52 +117,29 @@ class TestTheRoutes:
             return {"plan": {"creates": [], "updates": [], "deletes": []}}
 
         monkeypatch.setattr(nbc, "sync_list_to_netbox", fake_sync)
-        import app as A
-        return A.app.test_client()
+        return networks["client"]
 
-    def test_a_preview_reports_under_the_page_s_id(self, monkeypatch):
-        c = self._client(monkeypatch)
-        c.post("/netbox/safety/import/preview", json={"list_name": "Default", "progress_id": PID})
-        d = c.get(f"/netbox/safety/progress/{PID}").get_json()
-        assert d["state"] == "finished" and d["progress"]["requests"] == 1
-        assert d["progress"]["outcome"] == "done"
+    def test_a_preview_reports_under_its_job_s_id(self, page):
+        import re
 
-    def test_an_unknown_id_is_unknown_never_not_running(self, monkeypatch):
-        c = self._client(monkeypatch)
-        d = c.get("/netbox/safety/progress/ffffffffffffffffffffffff").get_json()
-        assert d == {"ok": True, "state": "unknown", "progress": None}
-
-    def test_the_in_flight_panel_lists_it(self, monkeypatch):
         from modules import op_progress
 
-        c = self._client(monkeypatch)
+        card = page.post("/v2/netbox/preview", data={"operation": "import", "list": "Branch"},
+                         headers={"HX-Request": "true"}).get_data(as_text=True)
+        job = re.search(r"/v2/netbox/job/([0-9a-f]{32})", card).group(1)
+        got = op_progress.get(job)
+        assert got["requests"] == 1 and got["outcome"] == "done", got
+        assert got["finished_at"]
+
+    def test_an_unknown_job_is_unknown_never_not_running(self, page):
+        html = page.get("/v2/netbox/job/" + "f" * 32).get_data(as_text=True)
+        assert "This job is not known here" in html and "preview again" in html
+
+    def test_the_in_flight_panel_lists_it(self, page):
+        from modules import op_progress
+
         op_progress.start(PID, "previewed for import", "NetBox (Default)", actor="p")
-        d = c.get("/operations/in_flight").get_json()
+        d = page.get("/operations/in_flight").get_json()
         assert any(r["device"] == "NetBox (Default)" for r in d["running"]), d["running"]
 
 
-class TestTheShippedText:
-    def _text(self, payload):
-        import dukpy
-
-        from tests.payload_render import lift
-
-        src = read_shipped("static/js/gen/partials__netbox_safety_modal.1.js")
-        return dukpy.evaljs(lift(src, "nbProgressText") + f"\nnbProgressText({json.dumps(payload)})")
-
-    def test_every_state_says_something(self):
-        from modules import op_progress
-
-        op_progress.start(PID, "previewed for import", "NetBox (Lab)")
-        op_progress.update(PID, devices_total=9, devices_done=3, current="r4",
-                           phase="reading and planning each device")
-        op_progress.tick(PID)
-        running = {"ok": True, "state": "running", "progress": op_progress.get(PID)}
-        assert self._text(running).startswith("1 request(s) to NetBox so far; device 4 of 9 (r4)")
-        op_progress.finish(PID)
-        assert self._text({"ok": True, "state": "finished",
-                           "progress": op_progress.get(PID)}).startswith("Done in ")
-        assert self._text({"ok": True, "state": "unknown", "progress": None}).startswith("Waiting")
-        # A failed poll is said, never drawn as nothing.
-        assert "Could not read its progress" in self._text({"ok": False})
-        assert "Could not read its progress" in self._text(None)

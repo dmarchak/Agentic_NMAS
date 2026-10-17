@@ -109,18 +109,21 @@ back as a responder that proposes and never confirms (docs/PHASE8_PLAN.md).
 ### NetBox import (gated)
 
 ```
-Click "Import to NetBox (discovery)"
-  → routes/netbox_safety.py  preview
-      └─ sync_list_to_netbox(dry_run=True)
+Source of truth › NetBox: "Import into NetBox…"
+  → routes/netbox_v2.py  preview  → modules/netbox_jobs.py  (a job, on a thread)
+      └─ netbox_ops.dry_run → sync_list_to_netbox(dry_run=True)
            └─ netbox_guard.dry_run()      thread-local
                 └─ _nb_post/_nb_patch     record intent, return synthetic id
-  → modal shows create/update preview
+  → the job's card shows the create/update preview
   → confirm (optionally enabling writes)
-  → sync_list_to_netbox()                 background thread
+  → netbox_ops.start_import → sync_list_to_netbox()   background thread
        └─ _nb_post  → assert_writes_allowed()
                     → inject nmas-managed tag
                     → record created id
 ```
+
+Today's NetBox tab (`routes/netbox_safety.py`, its dialog and its removals panel) drove the
+same core until it left at 7.8 (2026-10-17, restore tag `pre-remove/v1-netbox`).
 
 The dry run is the same code path as the real import, which is why the preview
 is accurate.
@@ -957,7 +960,7 @@ and others have left since too.
   panel's scope, which starts empty):
   **[static/js/nmas_restore_scope.js](static/js/nmas_restore_scope.js)**
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
-  `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`,
+  `inventory.py`, `golden.py`, `templatize.py`,
   `templates.py`, `deploy.py`, `freshness.py`, `devices_view.py` (the device
   list's regions, redrawn in place), `list_param.py` (a read of an unknown
   list refused, C51), `retire.py` (7.3: retire, previewed and confirmed), `templatize.py` (seed, revert and retry among the intent routes),
@@ -1107,9 +1110,10 @@ NetBox reads are unrestricted. **Writes are fail-closed** and go through exactly
 three chokepoints in `netbox_client.py`: `_nb_post`, `_nb_patch`, `_nb_delete`.
 
 Two independent conditions must both hold before a write from the **NetBox
-tab** (import, import-all, Remove) executes. **Only there** (C155, measured
+page** (import, import-all, Remove; today's NetBox tab until it left at 7.8,
+2026-10-17) executes. **Only there** (C155, measured
 2026-09-28): the chokepoints check the master switch alone, and the token is
-consumed by the NetBox tab's routes before they call the writer, so any other
+consumed by the NetBox routes before they call the writer, so any other
 path that reaches a writer passes on the switch: onboarding's phase 2 and
 Abandon, the host scripts, and list deletion's opt-in NetBox removal (which
 deletes with no preview and no token when `netbox_remove_on_list_delete` is
@@ -1117,7 +1121,7 @@ on or a request carries `remove_from_netbox`). The sentence said "before
 any write" until then. **Since the same day the check IS where the write
 happens** (the operator's decision, the C101 move): `assert_writes_allowed()`
 refuses a real write that declares no AUTHORITY (`for_list(..., authority=)`),
-and each path names the confirmation it stands on: the NetBox tab's one-time
+and each path names the confirmation it stands on: the NetBox page's one-time
 token, a person's Verify (onboarding phase 2) or Abandon, or a host script's
 `--apply`. The created-object and modification records store it beside the
 actor, so a NetBox write says WHO and ON WHAT BASIS, as a commit does:
@@ -1145,8 +1149,8 @@ actor, so a NetBox write says WHO and ON WHAT BASIS, as a commit does:
   own record. A region, site, VRF, or device a human curated is reported as
   skipped. Removal previously deleted everything in the site regardless of origin.
 - Deleting a device list **never deletes NetBox objects** (C155, the
-  operator's decision, 2026-09-28): removal has one home, the NetBox tab's
-  previewed and confirmed Remove. A list that still owns recorded objects is
+  operator's decision, 2026-09-28): removal has one home, the NetBox page's
+  previewed and confirmed Remove from NetBox…. A list that still owns recorded objects is
   REFUSED, naming them, because forgetting the record while the objects stay
   leaves them tagged and unrecorded, out of Remove's reach for good. Until
   then an opt-in setting deleted them with no preview and no token, and its

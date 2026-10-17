@@ -61,7 +61,6 @@ def register_blueprints(app) -> list:
     csp.install(app)
 
     from routes.settings_integrations import bp as integrations_bp
-    from routes.netbox_safety import bp as netbox_safety_bp
     from routes.inventory import bp as inventory_bp
     from routes.golden import bp as golden_bp
     from routes.templatize import bp as templatize_bp
@@ -98,7 +97,7 @@ def register_blueprints(app) -> list:
     from routes.logs_v2 import bp as logs_v2_bp
     from routes.dhcp_v2 import bp as dhcp_v2_bp
 
-    for bp in (integrations_bp, netbox_safety_bp, inventory_bp, golden_bp,
+    for bp in (integrations_bp, inventory_bp, golden_bp,
                templatize_bp, templates_bp, deploy_bp, identity_bp,
                remote_bp,
                onboard_bp, jobs_bp, health_bp,
