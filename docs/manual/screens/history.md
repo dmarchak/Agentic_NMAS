@@ -8,7 +8,11 @@ the remote's state at the top.
 
 One sentence says whether everything is committed and whether it is pushed to the network's
 remote repository, with when that was last checked. It names up to five paths that are not
-committed, and how many more. A network whose folder has no repository yet (one made before
+committed, and how many more, and lists each with what it is and what clears it: a golden no
+save committed (Capture as golden on the device's page records it through the save path),
+intent not committed (save it from the device's Intent tab), a template not committed (save it
+again from Templates' Edit…), Mercury's own record (committed with the network's next commit),
+or a file nothing in Mercury writes (changed outside Mercury on the host). A network whose folder has no repository yet (one made before
 networks were created with theirs) says "No repository yet: the network's first commit makes
 it": its first save, seed or other commit through the tool makes the repository. Any other
 failure to read the folder says "The working tree could not be read", with git's own error.

@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `1853be7cc70b37fa4be36ddfb37c0e0f6750031f7123944642454ea817765cd5`
+Templates sha256: `6a448609b62db7fda7b875e667b98cb6db107e60b70f8bfdcac9a7e5b505d35d`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -99,6 +99,18 @@ drew a NetBox row (the Kind menu's deviation). The rows rendered from `timeline_
 with the template as it was and as it is, for 672 rows (every kind drawn before, NetBox now
 among them, each with eight outcomes and three marks, half with a device, with an error line):
 every byte the same. No region's verdict changed.
+
+Compared again 2026-10-17 (C1136) after `_history_remote.html` gained, under the header's row,
+a list of the uncommitted paths (the first five) each with what it is and what clears it, by
+the folder it is in (a golden: Capture as golden; intent: the device's Intent tab; a template:
+Templates' Edit…; Mercury's own record: the network's next commit; anything else: changed
+outside Mercury on the host), as today's Git tab said until it left at 7.8 (P7-21). The state
+is on no board or shot: board D draws the remote line in sync and committed. The header
+rendered from the template as it was and as it is, in seven states (in sync and clean, in sync
+with 7 paths uncommitted, the uncommitted state, ahead with a failed push, no remote, Verify
+passed, and uncommitted with two paths described): every byte the same but the last, which
+gains the list (its chip unchanged, "not committed"). The remote line's region reads
+**deviation** as before (its log line names the set-up and these additions).
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

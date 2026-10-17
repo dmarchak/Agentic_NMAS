@@ -14,6 +14,7 @@ status bar did, with what to do, until it left at 7.8, 2026-10-17).
 import ast
 import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -158,6 +159,34 @@ class TestTheStatusNamesWhatIsLeft:
         h = self._header(lab, monkeypatch)
         assert h["dirty"] == 1 and h["dirty_paths"] == ["golden/r1.cfg"], h
         assert h["d"]["state"] == "uncommitted" and h["d"]["level"] == "warning", h["d"]
+
+    def test_each_uncommitted_path_says_what_it_is_and_what_clears_it(self, lab, monkeypatch):
+        """C1136 (found 2026-10-17 removing today's Git tab, P7-21): History's header named an
+        uncommitted path bare, where today's tab said what each was and what to do. A golden,
+        an intent file, a template, Mercury's own record and a file nothing in Mercury writes:
+        the drawn header says each one's meaning, never a terminal step."""
+        import flask
+
+        import app as A
+        path = _seed(lab)
+        with open(path, "a") as fh:
+            fh.write(" edited on the host\n")
+        for rel in ("host_vars/r1.yml", "templates/x.j2", ".nsot/reloads.jsonl", "notes.txt"):
+            os.makedirs(os.path.join(lab, os.path.dirname(rel) or "."), exist_ok=True)
+            with open(os.path.join(lab, rel), "w") as fh:
+                fh.write("x\n")
+        h = self._header(lab, monkeypatch)
+        means = {i["path"].split("/", 1)[0]: i["means"] for i in h.get("dirty_items") or []}
+        assert set(means) == {"golden", "host_vars", "templates", ".nsot", "notes.txt"}, means
+        with A.app.test_request_context("/v2/history?list=lab"):
+            html = flask.render_template("v2/_history_remote.html",
+                                         remote=dict(h, list="lab", configured=True))
+        import html as html_mod
+        words = html_mod.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)))
+        for expect in ("Capture as golden", "Intent tab", "Source of truth › Templates",
+                       "with the network's next commit", "changed outside Mercury"):
+            assert expect in words, (expect, words)
+        assert "git checkout" not in words and "git commit" not in words
 
     def test_clean_is_clean(self, lab, monkeypatch):
         _seed(lab)

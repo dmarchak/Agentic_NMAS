@@ -31,6 +31,15 @@
     </div>
     {%- endif %}
   </div>
+  {#- Each uncommitted path with what it is and what clears it (C1136: today's Git tab said so
+      until it left at 7.8, P7-21); the first five, the count above says how many more. -#}
+  {%- if remote.dirty_items %}
+  <ul class="hist-remote-said hist-uncommitted" id="remote-uncommitted">
+    {%- for i in remote.dirty_items %}
+    <li><span class="mono small">{{ i.path }}</span>: {{ i.means }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
   {#- The last failed push and the last Verify, from the list's record, so a redraw keeps the
       answer (a push's own answer redraws this card). A successful push clears the failure. -#}
   {%- if remote.record_unreadable %}

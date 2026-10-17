@@ -123,7 +123,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **The v1 removals (each tagged first, walked, ceilings lowered, the ratchet run)** | | | | | |
 | ~~P7-20~~ | ~~(4) the NetBox tab and `/netbox/safety/*`, `/netbox/status`~~ **removed 2026-10-17** (restore tag `pre-remove/v1-netbox`; walked by GETs on the host after its deploy) | | | | |
 | ~~P7-21~~ | ~~(5) Git, the Remote card, Baselines~~ **removed 2026-10-17** (restore tag `pre-remove/v1-git`; today's re-apply and restore routes with it; C1132, C1133, C1135 (B) and C1134 fixed with it; walked by GETs on the host after its deploy) | | | | |
-| C1136 | History's header names uncommitted paths without what each means or what to do (today's Git tab did): found removing it | each path said with what it is and what clears it; history.md compared again | S | — | — |
+| ~~C1136~~ | ~~History's header names uncommitted paths without what each means~~ **done 2026-10-17** (each path with what it is and what clears it; history.md compared again) | | | | |
 | ~~P7-22~~ | ~~(7) today's device page (`/device/<ip>`, `/run_command`, `/deploy/receipts`)~~ **removed 2026-10-17** (restore tag `pre-remove/v1-device`; run_command's MISSING, HISTORY_MISSING and PENDING entries gone; C1127 and C1128, receipts masked on the way out, fixed with it; walked by GETs on the host after its deploy) | | | | |
 | P7-23 | (8a) template and intent editors | removed | M | W2, C444 | — |
 | P7-24 | (8b) device-action JSON (capture, seed, revert, retry, profile, persist, rotate, retire) | removed | M | W4 (the operator, 2026-10-17: waits on W4 and the operator), P7-22 | — |

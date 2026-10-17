@@ -253,6 +253,23 @@ def _history_filters(request) -> dict:
     return f
 
 
+#: What an uncommitted path is, by the folder it is in, and what clears it (C1136). Every write
+#: Mercury makes commits in its own call, so a path left over is a finding.
+_UNCOMMITTED_MEANS = {
+    "golden": "a golden no save committed; readers of the working tree take it as the device's "
+              "golden. Capture as golden on the device's page records what it holds through the "
+              "save path.",
+    "host_vars": "intent not committed; a deploy reads committed intent only. Save it from the "
+                 "device's Intent tab to commit it.",
+    "templates": "a template not committed; its approval is refused while it differs. Save it "
+                 "again from Source of truth › Templates (Edit…).",
+    ".nsot": "Mercury's own record (identity changes, reloads), committed with the network's "
+             "next commit.",
+}
+_UNCOMMITTED_ELSE = ("nothing in Mercury writes here, so it was changed outside Mercury on this "
+                     "host; whoever administers the host commits or removes it.")
+
+
 def _history_remote(ref) -> dict:
     """The header: the remote's one sentence (``remote_publication.describe``),
     and whether anything is uncommitted (one ``git status``)."""
@@ -285,7 +302,7 @@ def _history_remote(ref) -> dict:
         verify = dict(verify, failed=[dict(f, detail=redact_text(str(f.get("detail") or "")),
                                            fix=redact_text(str(f.get("fix") or "")))
                                       for f in verify.get("failed") or []])
-    out.update(push_failure=failure, last_verify=verify, dirty_paths=[],
+    out.update(push_failure=failure, last_verify=verify, dirty_paths=[], dirty_items=[],
                no_repository=False, unreadable="")
     # A network with no repository yet (C945): its folder has no `.git`, the property
     # `repo.run_git` names when a read fails there (C931), decided by the folder and never by
@@ -308,6 +325,10 @@ def _history_remote(ref) -> dict:
     out["dirty"] = len(paths)
     # Named here, never "see today's Git tab" (C637): the first five, and how many more.
     out["dirty_paths"] = paths[:5]
+    # Each with what it is and what clears it (C1136: today's Git tab said so, and left at 7.8,
+    # P7-21), by the folder it is in; never a terminal step.
+    out["dirty_items"] = [{"path": p, "means": _UNCOMMITTED_MEANS.get(
+        p.split("/", 1)[0], _UNCOMMITTED_ELSE)} for p in paths[:5]]
     # Never "in sync" beside paths no commit holds (B5): the sentence says what is on the
     # remote and what is on this host only.
     out["d"] = RP.describe(pub, uncommitted=len(paths))
