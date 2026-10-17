@@ -74,7 +74,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C1029~~ | ~~B7: a deleted network's Settings page stays live, with Save~~ **done** (410, when, by whom, where its data is, no actions; every write naming it refused; walked at W3) | | | | |
 | ~~C1030~~ | ~~B8: the NetBox import is missing from History~~ **done** (a NetBox source: imports, removals, Stop tracking; walked at W3) | | | | |
 | ~~C932~~ | ~~B9: Remove from NetBox offered over a `not_reached` reach~~ **done** (Remove only when every delete's reach is established; "Remove is not offered:" in words) | | | | |
-| C1097 | Remove from NetBox is never offered on this lab: six types' cascades unmeasured (`netbox_cascade.UNMEASURED`), and every lab removal includes one | one changelog measurement per type on the lab's NetBox, recorded in `CASCADES` | S | after C932 | W |
+| ~~C1097~~ | ~~Remove from NetBox is never offered on this lab~~ **demoted to C** (the operator, 2026-10-16 UTC−6: cutover does not need NetBox Remove; Stop tracking covers it, and Remove stays withheld while any cascade is unmeasured; no NetBox writes for it) | | | | |
 | **From W1 (the operator's sequence, 2026-10-16)** | | | | | |
 | ~~C881~~ | ~~A1: Reload's startup gate on IOS-XE~~ **done, verified on r6** (see Checked off) | | | | |
 | ~~C882~~ | ~~B1: Topology drag jumps~~ **done** (see Checked off); C691 re-checked in W2 | | | | |

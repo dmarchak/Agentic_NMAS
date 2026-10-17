@@ -177,7 +177,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   screen is not done without them. [tests/test_manual.py; tests/test_v2_layout_in_a_browser.py]
 - **A v2 control is busy on itself until the answer arrives (never a timer) and the result
   updates in place; no narration beside it, provenance on hover; no toast.**
-  [no toast: tests/test_v2_pages.py; busy: tests/test_update_button.py (Update, About) only]
+  [no toast: tests/test_v2_pages.py; busy: tests/test_v2_busy_on_itself.py (every pressed control that posts, and the scripts' posting components), tests/test_update_button.py (Update, About)]
 - **Every v2 page is under `csp.STRICT_POLICY`, draws the viewer through `identity.viewer()`, and
   colours by tokens with dark values; libraries are vendored, never a CDN.** [per-page tests, e.g.
   tests/test_device_v2.py; tests/test_v2_theme.py; tests/test_csp.py] [why](docs/LESSONS.md#strict-pages-and-vendored-libraries)
