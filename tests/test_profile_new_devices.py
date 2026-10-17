@@ -228,50 +228,46 @@ class TestTheRoutes:
             "ok": True, "config": pending["before"], "error": ""})
         return pending
 
+    # v2's pending page's Verify… (today's /onboard/verify/<host> and its preview, which these
+    # drove, left at 7.8 on 2026-10-17, P7-25), drawn as the page draws it.
+
     def test_the_preview_route_draws_the_program_masked_with_its_fingerprint(self, routed):
-        r = routed["client"].post("/onboard/verify/r7/preview", json={"list_name": "Lab"})
-        assert r.status_code == 200, r.get_json()
-        prev = r.get_json()["preview"]
-        (t,) = prev["what"]["targets"]
-        assert t["selectable"] and t["select_data"]["list"] == "Lab"
-        assert len(t["select_data"]["fingerprint"]) == 16
-        lines = prev["targets"][0]["program"]["lines"]
-        assert any(l.startswith("snmp-server community <redacted") for l in lines)
+        import re
+
+        r = routed["client"].post("/v2/onboard/r7/verify/preview", data={"list_name": "Lab"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200, html[:500]
+        fp = re.search(r'name="fingerprint" value="([0-9a-f]+)"', html)
+        assert fp and len(fp.group(1)) == 16, html[-1500:]
+        assert '<input type="hidden" name="list_name" value="Lab">' in html
+        assert "snmp-server community &lt;redacted" in html
         community = next(c.split()[2] for c in routed["program"]
                          if c.startswith("snmp-server community"))
-        assert community not in r.get_data(as_text=True)
+        assert community not in html
         assert routed["sent"] == [] and routed["rotated"] == []
 
     def test_a_preview_of_a_device_that_did_not_answer_says_why(self, routed, monkeypatch):
         monkeypatch.setattr("modules.nsot.onboard.verify_device", lambda *a, **k: {
-            "answered": False, "state": "did_not_answer", "error": "no answer on 22",
-            "causes": [{"cause": "the management interface", "why": "w", "command": "c"}]})
-        r = routed["client"].post("/onboard/verify/r7/preview", json={"list_name": "Lab"})
-        d = r.get_json()
-        assert r.status_code == 409 and d["error"] == "no answer on 22"
-        assert d["causes"][0]["cause"] == "the management interface"
+            "answered": False, "state": "did_not_answer", "error": "no <answer> on 22",
+            "causes": [{"cause": "the management interface", "why": "w",
+                        "command": "show ip int"}]})
+        r = routed["client"].post("/v2/onboard/r7/verify/preview", data={"list_name": "Lab"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 409
+        assert "<strong>Not verified:</strong> no &lt;answer&gt; on 22" in html, html[-1500:]
+        # Each cause drawn in words, with what settles it (today's wizard drew these; the
+        # page drew the cause's mapping as stored until this was rebased, C1150).
+        assert "the management interface" in html and "show ip int" in html
+        assert "{&#39;cause&#39;" not in html and "{'cause'" not in html
 
     def test_verify_refuses_with_no_preview_and_carries_the_one_it_was_given(self, routed,
                                                                               monkeypatch):
         c = routed["client"]
-        r = c.post("/onboard/verify/r7", json={"list_name": "Lab"})
-        assert r.status_code == 400 and "preview" in r.get_json()["error"]
+        r = c.post("/v2/onboard/r7/verify", data={"list_name": "Lab"})
+        assert r.status_code == 400 and "preview" in r.get_data(as_text=True)
         seen = {}
         monkeypatch.setattr("modules.nsot.onboard.run_phase_two",
                             lambda repo, host, lst, **k: seen.update(k) or {
                                 "ok": False, "reason": "x", "steps": []})
-        c.post("/onboard/verify/r7", json={"list_name": "Lab", "fingerprint": "abc"})
+        c.post("/v2/onboard/r7/verify", data={"list_name": "Lab", "fingerprint": "abc"})
         assert seen["confirmed"] == "abc"
-
-    def test_the_shipped_refusal_names_the_reason_and_the_causes_escaped(self):
-        import os
-
-        import dukpy
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        src = open(os.path.join(root, "static", "js", "gen", "partials__onboard_wizard.2.js"),
-                   encoding="utf-8").read()
-        from tests.payload_render import lift
-        js = lift(src, "onboardVerifyRefusalHtml")
-        html = dukpy.evaljs(js + "\nonboardVerifyRefusalHtml({error: 'no <answer>', causes: "
-                                 "[{cause: 'the interface', why: 'w', command: 'show ip int'}]})")
-        assert "no &lt;answer&gt;" in html and "the interface" in html and "show ip int" in html

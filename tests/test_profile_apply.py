@@ -15,6 +15,7 @@ import subprocess
 import pytest
 
 from tests.test_capture import R2, build_capture_lab
+from tests import deploy_core
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -173,7 +174,7 @@ class TestTheScopedDeploy:
         r6["ntp_servers"] = list(r6.get("ntp_servers") or []) + ["192.0.2.99"]
         hostvars.write_committed(lab["repo"], r6)
         assert save_host_vars("Lab", ["r6"], actor="t", source="extraction")["ok"]
-        body = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
+        body = deploy_core.post_plan(json={"devices": ["r6"], "scope": "profile",
                                                         "list_name": "Lab"}).get_json()
         (d,) = body["devices"]
         assert body["scope"] == "profile" and not d.get("refused"), d.get("refused")
@@ -184,7 +185,7 @@ class TestTheScopedDeploy:
         assert "ntp server 192.0.2.99" in held
         assert not any("192.0.2.99" in c for c in d["commands"])
         # The unscoped plan WOULD send it: the scope, not the fixture, holds it back.
-        whole = lab["client"].post("/deploy/plan", json={"devices": ["r6"]}).get_json()
+        whole = deploy_core.post_plan(json={"devices": ["r6"]}).get_json()
         assert any("ntp server 192.0.2.99" in c for c in whole["devices"][0]["commands"])
 
     def test_the_scoped_preview_names_both_commits_it_renders_from(self, lab):
@@ -194,7 +195,7 @@ class TestTheScopedDeploy:
         from modules.nsot import hostvars
         from modules.nsot import repo as R
         _commit_proposal()
-        body = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
+        body = deploy_core.post_plan(json={"devices": ["r6"], "scope": "profile",
                                                         "list_name": "Lab"}).get_json()
         ops = {o["name"]: o["value"] for t in body["preview"]["targets"] for o in t["operands"]}
         assert ops["intent commit"] == hostvars.intent_change(lab["repo"], "r6")["sha"][:12]
@@ -202,16 +203,30 @@ class TestTheScopedDeploy:
         assert ops["profile commit"] == profile_sha.strip()[:12] and ops["intent commit"] != "none"
 
     def test_no_committed_profile_refuses_by_name(self, lab):
-        body = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
+        body = deploy_core.post_plan(json={"devices": ["r6"], "scope": "profile",
                                                         "list_name": "Lab"}).get_json()
         assert "has no committed monitoring profile" in body["devices"][0]["refused"]
 
-    def test_an_unknown_scope_is_refused_by_name(self, lab):
+    def test_an_unknown_scope_is_refused_by_name(self, lab, monkeypatch):
+        """On v2's batch Apply (today's /deploy/plan and /deploy/apply refused it the same
+        way until they left with the deploy wizard at 7.8, 2026-10-17, P7-25): the preview
+        and the confirm each refuse a scope they do not apply, naming it, with nothing sent."""
+        import html as html_mod
+
+        from tests.v2_confirm import job_of, post_confirm
+
+        # The lab's list is not in the registry (tests/test_profile_apply_v2.py does the same).
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
         c = lab["client"]
-        r = c.post("/deploy/plan", json={"devices": ["r6"], "scope": "everything"})
-        assert r.status_code == 400 and "unknown deploy scope" in r.get_json()["error"]
-        r = c.post("/deploy/apply", json={"confirmations": {"r6": "x"}, "scope": "everything"})
-        assert r.status_code == 400 and "nothing sent" in r.get_json()["error"]
+        r = c.get("/v2/monitoring/apply?scope=everything&list=Lab&device=r6")
+        assert r.status_code == 400 and "unknown scope 'everything'" in html_mod.unescape(
+            r.get_data(as_text=True)), r.get_data(as_text=True)[:300]
+        r = post_confirm(c, "/v2/monitoring/apply/confirm?list=Lab", {
+            "scope": "everything", "list": "Lab", "order": ["r6"],
+            "confirmations": {"r6": "x"}, "command_hashes": {"r6": "y"}})
+        text = r.get_data(as_text=True)
+        assert r.status_code == 400 and "unknown scope" in text, text[:300]
+        assert job_of(r) == "", "nothing was started"
 
     def test_the_apply_holds_the_confirmed_scope(self, lab, monkeypatch):
         """The seam: the scoped plan's command hash is accepted by a SCOPED apply,
@@ -228,7 +243,7 @@ class TestTheScopedDeploy:
         hostvars.write_committed(lab["repo"], r6)
         assert save_host_vars("Lab", ["r6"], actor="t", source="extraction")["ok"]
         c = lab["client"]
-        plan = c.post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
+        plan = deploy_core.post_plan(json={"devices": ["r6"], "scope": "profile",
                                             "list_name": "Lab"}).get_json()
         (d,) = plan["devices"]
         conf = {"confirmations": {"r6": d["capture_hash"]},
@@ -241,9 +256,9 @@ class TestTheScopedDeploy:
         monkeypatch.setattr(rd, "_deploy_one", spy)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
-        unscoped = c.post("/deploy/apply", json=conf).get_json()
+        unscoped = deploy_core.post_apply(json=conf).get_json()
         assert reached == [] and "r6" in json.dumps(unscoped)
-        c.post("/deploy/apply", json=dict(conf, scope="profile"))
+        deploy_core.post_apply(json=dict(conf, scope="profile"))
         assert reached == ["profile"]
 
 
@@ -269,12 +284,11 @@ class TestTheShippedClients:
                      json={"list_name": "Lab", "hash": h}).get_json()["result"]
         html = dukpy.evaljs("var window = {};\n" + self._js("static/js/nmas_preview_confirm.js")
                             + f"\nwindow.previewConfirmResultHtml({json.dumps(res)}, {{}})")
-        assert 'data-nmas-open="profile_apply"' in html and 'data-nmas-device="r6"' in html
-        assert 'data-nmas-list="Lab"' in html and "Apply monitoring profile…" in html
+        # C1161: its opener left with today's deploy wizard (P7-25), so the next step is a link
+        # to v2's Monitoring › Apply for the same network and devices, never a dead button.
+        assert 'href="/v2/monitoring/apply?list=Lab&device=r6"' in html, html[-600:]
+        assert "Apply monitoring profile…" in html and 'data-nmas-open="profile_apply"' not in html
 
-    def test_the_apply_opener_takes_several_devices(self):
-        src = self._js("static/js/gen/partials__deploy_wizard.1.js")
-        assert re.search(r"String\(device \|\| ''\)\.split\(','\)", src)
 
     def test_the_client_is_loaded_and_a_refusal_is_never_toast_only(self):
         base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
@@ -361,7 +375,7 @@ class TestEveryDetectorReadsWhatTheParserWrites:
 
     def test_the_scoped_apply_to_r6_sends_lldp_and_not_cdp(self, lab):
         _commit_proposal()
-        d = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
+        d = deploy_core.post_plan(json={"devices": ["r6"], "scope": "profile",
                                                      "list_name": "Lab"}).get_json()["devices"][0]
         sent = [c.strip() for c in d["commands"]]
         assert "lldp run" in sent and "cdp run" not in sent and "snmp ifmib ifindex persist" in sent

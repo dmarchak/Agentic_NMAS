@@ -163,16 +163,15 @@ class TestAnHttpErrorKeepsItsStatus:
 
     def test_a_wrong_method_is_405_not_500(self):
         import app as A
-        resp = A.app.test_client().get("/deploy/apply")
+        resp = A.app.test_client().get("/attention/acknowledge")   # POST only (/deploy/apply until 7.8)
         assert resp.status_code == 405, resp.status_code
 
     def test_a_real_exception_is_still_500(self, monkeypatch):
         """Control: the catch-all still catches what it is for."""
         import app as A
-        import routes.deploy as rd
 
         def _boom(*a, **k):
             raise RuntimeError("boom")
-        monkeypatch.setitem(A.app.view_functions, "deploy.plan", _boom)
-        resp = A.app.test_client().post("/deploy/plan", json={})
+        monkeypatch.setitem(A.app.view_functions, "attention.acknowledge", _boom)
+        resp = A.app.test_client().post("/attention/acknowledge", json={})
         assert resp.status_code == 500

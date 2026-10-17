@@ -9,7 +9,8 @@ moved, if it is not the one reviewed. The result says the device is PENDING and 
 A pending device's page: Verify… (phase 2's preview, then its confirm bound to the preview's
 fingerprint), Get the bootstrap config… (a reveal, a person, recorded), and Abandon… (its dry run
 drawn as the preview, the confirm bound to it). Every action is `routes/onboard.py`'s core, the
-one code path today's wizard and banner call too.
+one code path (today's wizard and pending banner, which called it too, left at 7.8 on
+2026-10-17, P7-25).
 """
 
 import logging
@@ -110,7 +111,7 @@ def preview():
     f = _form()
     if request.form.get("edit"):
         return _add(f=f)
-    out, status = plan_of(f, bound=True)
+    out, status = plan_of(f)
     if not out.get("ok"):
         return _add(status, f=f, refused=out.get("error") or "the plan could not be made")
     return _add(f=f, pv=out)
@@ -128,9 +129,9 @@ def create():
         return _add(403, f=f, refused=refusal.get("error", "a person must create"))
     out, status = create_run(dict(f, shown=request.form.get("shown", ""),
                                   fingerprint=request.form.get("fingerprint", "")),
-                             ident.actor, bound=True)
+                             ident.actor)
     if status != 200 and not out.get("result"):
-        again, _s = plan_of(f, bound=True)
+        again, _s = plan_of(f)
         return _add(status, f=f, refused=out.get("error") or "not created",
                     pv=again if again.get("ok") else None)
     return _add(status, f=f, done=out)

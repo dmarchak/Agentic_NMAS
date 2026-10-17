@@ -35,7 +35,8 @@ OPENERS = {
                          "document.querySelector('#bg-drill input[name=receipt]')"),
     # Today's intent editor (`intent_editor`, today's index's `open=intent_editor`) left at 7.8
     # (2026-10-17, P7-23): the v2 Intent tab's editor is `intent_edit` below.
-    "deploy_plan": "document.querySelector('#deployPlanModal.show #deployPlanBody')",
+    # Today's deploy plan (`deploy_plan`) left with today's deploy wizard at 7.8 (2026-10-17,
+    # P7-25): the v2 device page's Deploy… is `deploy_card` below.
     # C566 board A: Propose on v2, the card open in place on Monitoring › Profile.
     # C566 board C: Bring in the shipped version, its card open in place on Templates.
     "template_bring": ("document.querySelector('#tpl-card h2') && /Bring in the shipped/"
@@ -159,7 +160,6 @@ def _open_index(served, query):
 class TestEachOpenerActsInARealBrowser:
     @pytest.mark.parametrize("name, query", [
         ("breakglass_export", "open=breakglass_export&list=Lab"),
-        ("deploy_plan", "open=deploy_plan&device=r2&list=Lab"),
         ("profile_propose", "/v2/monitoring/profile?propose=1"),
         ("template_bring", "/v2/templates?bring=_common.j2"),
         # The v2 device page's cards, loaded as their links load without script.
@@ -188,20 +188,12 @@ class TestEachOpenerActsInARealBrowser:
             b = _open_index(page, query)
         b.wait_for(f"return !!({OPENERS[name]})", 15)
 
-    def test_a_link_naming_another_list_is_refused_naming_both(self, page, monkeypatch):
-        """The page shows another list than the link's (a list that does not exist at all is
-        refused by the server before any page, `routes/list_param.py`)."""
-        import app as A
-        from modules import config
-        monkeypatch.setattr(A, "get_current_device_list", lambda: (
-            "Other", os.path.join(config.get_list_data_dir("Lab"), "devices.csv")))
-        # Today's deploy plan (P7-25's) since today's intent editor, this test's vehicle before,
-        # left at 7.8 (2026-10-17, P7-23).
-        b = _open_index(page, "open=deploy_plan&device=r2&list=Lab")
-        b.wait_for("var t = document.getElementById('toastContainer'); "
-                   "return t && t.textContent.indexOf('Other') >= 0 && "
-                   "t.textContent.indexOf('Lab') >= 0", 10)
-        assert not b.js("return !!document.querySelector('#deployPlanModal.show')")
+    # test_a_link_naming_another_list_is_refused_naming_both left 2026-10-17 (P7-25): it
+    # held the refusal of today's dispatcher (templates/partials/device_nsot_actions.html),
+    # whose last opener, deploy_plan, left with today's deploy wizard; the dispatcher opens
+    # nothing now, so nothing is left to refuse (its code leaves with P7-27). The one opener
+    # today's index still has, breakglass_export, goes to Credentials for the link's own
+    # network, which needs no refusal.
 
     def test_the_rotate_results_export_opens_the_export(self, page):
         from tests.test_device_rotate_v2 import CARD, SETTLED, TestInARealBrowser

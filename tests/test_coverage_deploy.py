@@ -20,6 +20,7 @@ import pytest
 from tests.test_coverage_grid import _box, _cell, _table, r2_snmp_down  # noqa: F401
 from tests.test_coverage_reporting import read  # noqa: F401 (the fixture)
 from tests.test_profile_apply import _commit_proposal, lab  # noqa: F401 (the fixture)
+from tests import deploy_core
 
 
 def _strip_ip_sla(text: str) -> str:
@@ -54,7 +55,7 @@ def r6_probe_unsent(lab):
 
 
 def _plan(lab, scope, devices=("r6",)):
-    body = lab["client"].post("/deploy/plan", json={"devices": list(devices), "scope": scope,
+    body = deploy_core.post_plan(json={"devices": list(devices), "scope": scope,
                                                     "list_name": "Lab"}).get_json()
     return body
 
@@ -111,9 +112,9 @@ class TestOneProgram:
         monkeypatch.setattr(rd, "_deploy_one", spy)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
-        lab["client"].post("/deploy/apply", json=dict(conf, scope="profile"))
+        deploy_core.post_apply(json=dict(conf, scope="profile"))
         assert reached == [], "the profile's program is not the one confirmed"
-        lab["client"].post("/deploy/apply", json=dict(conf, scope="templates"))
+        deploy_core.post_apply(json=dict(conf, scope="templates"))
         assert reached == ["templates"]
 
 
@@ -139,10 +140,10 @@ class TestOneChangeRolledBackAsOne:
         monkeypatch.setattr("modules.nsot.deploy.run_batch", run_batch)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
-        lab["client"].post("/deploy/apply", json=dict(self._conf(lab), scope="templates"))
+        deploy_core.post_apply(json=dict(self._conf(lab), scope="templates"))
         assert seen == [(1, True, "Lab")], "the batch carries its list (P.8)"
         (p,) = _plan(lab, "profile")["devices"]
-        lab["client"].post("/deploy/apply", json={
+        deploy_core.post_apply(json={
             "confirmations": {"r6": p["capture_hash"]}, "command_hashes": {"r6": p["command_hash"]},
             "list_name": "Lab", "scope": "profile"})
         assert seen[-1][0] == 2 and seen[-1][1] is False, "every other scope: the list's limit"
@@ -161,7 +162,7 @@ class TestOneChangeRolledBackAsOne:
         monkeypatch.setattr("modules.pipeline.PipelineRunner", Runner)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
-        lab["client"].post("/deploy/apply", json=dict(self._conf(lab), scope="templates"))
+        deploy_core.post_apply(json=dict(self._conf(lab), scope="templates"))
         assert caught and caught[-1].read_back_all is True
 
 

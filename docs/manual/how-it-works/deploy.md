@@ -10,16 +10,15 @@ its golden in the list's repository, and the deploy record.
 ## Before the deploy: the plan
 
 You change intent and commit it (the Intent tab's **Edit**, see
-[Edit a device's intent](edit-intent)). Then you open the plan from one of four places: **Actions › Plan a deploy…** on a device's
+[Edit a device's intent](edit-intent)). Then you open the plan from one of three places: **Actions › Plan a deploy…** on a device's
 v2 page, whose card plans that one device (the same plan, drawn in place of the tab, the
-stages shown as they run); the **Deploy plan** button on a device's row in today's device
-list; the v2 Devices list's selection bar, **Plan a deploy for the ticked devices…**, which
+stages shown as they run); the v2 Devices list's selection bar, **Plan a deploy for the ticked devices…**, which
 opens Devices › Plan a deploy with them (every device's whole committed intent, one preview in
 a rollout order you set, one confirm, the batch run as a job); or Monitoring > Coverage's **Apply**, which
 plans only the monitoring profile's lines (see
-[Monitoring templates](monitoring-templates)). The browser posts the device names to
-`/deploy/plan`, and the server answers from git and the credential store. Planning opens no
-device session:
+[Monitoring templates](monitoring-templates)). The page asks the server for the plan
+(`/v2/device/<device>/deploy` for one device, `/v2/monitoring/apply/preview` for several), and
+the server answers from git and the credential store. Planning opens no device session:
 
 1. **Read the committed golden.** Read: the device's golden as committed at HEAD in the list's
    repository (never the working file), and the device's row in this list's inventory for its
@@ -70,8 +69,10 @@ is not detected before the push. Capture the device first (see
 
 ## Confirm and apply {#confirm-and-apply}
 
-You tick each device to deploy and press **Deploy confirmed devices**. The browser posts the
-hashes it was shown, from the plan it drew (never fetched again), to `/deploy/apply`. The apply
+You press the card's **Deploy N line(s) to <device>** (or, for several devices, the batch
+Apply's confirm). The browser posts the hashes it was shown, carried in the card it drew (never
+fetched again), to `/v2/device/<device>/deploy/confirm` (or `/v2/monitoring/apply/confirm`),
+which starts the apply as a job. The apply
 needs a verified person: the request's Cloudflare Access assertion, checked, from a trusted
 peer. That person is the actor recorded everywhere below.
 
@@ -244,7 +245,7 @@ After the last device, in this order:
 ## Many devices at once
 
 A batch deploys one device after another (`deploy_max_workers`, default 1), in the order the
-confirm lists them: on today's wizard, the order of the plan; on Devices › Plan a deploy and
+confirm lists them: on Devices › Plan a deploy and
 the monitoring profile's Apply, the order you set by dragging a device's grip or with Earlier
 and Later, which changes the page and plans nothing (no device's program or hash depends on
 its place); on Coverage's Deploy missing, the order Earlier and Later plan again. The order is
@@ -259,9 +260,8 @@ the change, a sent line not read back). A drifted device (its stored capture mov
 preview, or the device changed since its capture) is skipped with nothing sent and does not
 count. Sequential on purpose: a bad
 change stops after the first devices it breaks, instead of reaching the whole fleet at once.
-Today's wizard waits for the whole batch in one request, with the in-flight panel showing what
-runs; the v2 Apply runs as a job, answering at once and drawing each device's start and finish
-as it happens.
+The Apply runs as a job, answering at once and drawing each device's start and finish as it
+happens.
 
 ## What a deploy does not do {#what-a-deploy-does-not-do}
 

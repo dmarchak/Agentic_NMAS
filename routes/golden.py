@@ -678,7 +678,7 @@ def restore_plan(list_name: str, ref: str, devices_asked, *, un_onboard=None,
     from modules.nsot.restore import build_targets
     from routes.deploy import _capture_hash
 
-    # Per device, exactly as /deploy/plan: an authorisation for one device
+    # Per device, exactly as the deploy plan (`plan_devices`): an authorisation for one device
     # never covers another. It is folded into the command hash, so the apply
     # (run_targets) recomputes both, and a restore can now carry a dangerous
     # line that a person authorised. It could not before (P.3 step 4).

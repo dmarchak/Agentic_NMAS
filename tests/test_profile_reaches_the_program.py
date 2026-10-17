@@ -20,6 +20,7 @@ import subprocess
 import pytest
 
 from tests.test_profile_apply import lab  # noqa: F401 (the fixture)
+from tests import deploy_core
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LINES = {"ip ssh source-interface Loopback0", "ip tftp source-interface Loopback0"}
@@ -38,7 +39,7 @@ def _propose_management(lab):  # noqa: F811
 
 
 def _plan(lab, **kw):  # noqa: F811
-    body = lab["client"].post("/deploy/plan", json={"devices": ["r2"], "list_name": "Lab",
+    body = deploy_core.post_plan(json={"devices": ["r2"], "list_name": "Lab",
                                                     **kw}).get_json()
     (d,) = body["devices"]
     return body, d

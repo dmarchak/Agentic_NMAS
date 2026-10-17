@@ -17,7 +17,7 @@ Panels subscribe to keys (`static/js/nmas_invalidation.js`) and re-fetch on
 the RESPONSE, never on a timer: a response means the write is done.
 
 **The declaration names data, not panels.** The panel that issued a call is
-usually not the one that is now wrong (Verify lives in the pending banner;
+usually not the one that is now wrong (Verify lives on the pending device's page;
 what went stale was the device list). And **declaring too much costs one
 spare re-fetch, while declaring too little is the defect**, so an uncertain
 route declares the data it plausibly touches.
@@ -145,7 +145,7 @@ ANNOUNCERS = {
     # modules/host_keys.py (C906): a device's key kept, refused or replaced, by any session.
     "host-keys": ("host_keys",),
     # modules/deploy_job.py: each device finishing, and at the end what a
-    # deploy changes (as /deploy/apply declares).
+    # deploy changes (the keys today's /deploy/apply declared until 7.8).
     # A restore run as a job (the v2 device page) also moves intent and approvals.
     # modules/arrival_watch.py: the combined deploy's watch, as each first arrival lands.
     "arrival-watch": ("deploy_job",),
@@ -232,14 +232,9 @@ DECLARED = {
     "device_v2.retry_confirm": ("rolled_back",),
     "device_v2.seed_confirm": ("intent", "remote"),
     "device_v2.retire_confirm": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
-    "deploy.apply": ("device_state", "baselines", "drift", "rolled_back") + _COMMIT,
-    # Onboarding. Verify runs phase 2, which PROMOTES: the device list is the
-    # first of the three measured cases.
-    "onboard.create": ("pending", "intent", "credentials", "remote"),
-    "onboard.verify": ("pending", "inventory", "credentials", "netbox",
-                       "device_state", "baselines") + _COMMIT,
-    "onboard.abandon": ("pending", "intent", "credentials", "remote"),
-    # Onboarding on v2 (cutover blocker 3): the same cores, so the same keys.
+    # Onboarding on v2 (cutover blocker 3). Verify runs phase 2, which PROMOTES: the device list
+    # is the first of the three measured cases. Today's onboarding routes and its deploy wizard
+    # (onboard.*, deploy.plan, deploy.apply) left at 7.8 (2026-10-17, P7-25).
     "onboard_v2.create": ("pending", "intent", "credentials", "remote"),
     "onboard_v2.verify": ("pending", "inventory", "credentials", "netbox",
                           "device_state", "baselines") + _COMMIT,
@@ -297,7 +292,6 @@ DECLARED = {
     "credential_profiles_v2.rotate_due_confirm": Nothing("starts the run as a job and answers at once; the run ANNOUNCES rotation and credentials after each device and when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     # Reads sent as POST: a body carries the question, and nothing is stored.
-    "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),
     "golden.capture_preview": Nothing("starts a job that reads each device's running config "
                                       "and computes a preview; it records nothing, and the "
                                       "job ANNOUNCES capture_preview when it finishes "
@@ -305,13 +299,10 @@ DECLARED = {
     "device_v2.capture_start": Nothing("starts the same capture preview job for one device "
                                        "(golden.capture_preview); it records nothing, and the "
                                        "job ANNOUNCES capture_preview when it finishes"),
-    "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "device_v2.golden_reveal": Nothing("draws one golden version in place INSIDE History's "
                                        "timeline, the region `reveals` redraws: announcing it "
                                        "would wipe the version it just drew; the timeline "
                                        "lists the reveal (C837) when it is next drawn"),
-    "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
-                                      "it writes nothing"),
     "v2.history_reapply_confirm": Nothing("starts the re-apply as a job and answers at once; "
                                           "the batch ANNOUNCES deploy_job as each device "
                                           "finishes, and what a restore changes at the end "

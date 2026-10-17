@@ -58,8 +58,8 @@ KINDS = ("confirm", "approve", "publish_remote")
 #: (step 3): {endpoint: (the shipped file, the function that draws the
 #: result, the route that reads the record back)}. Checked from source.
 RESULT_COMPONENT = {
-    "deploy.apply": ("static/js/gen/partials__deploy_wizard.1.js", "_renderDeployResult",
-                     "device_v2.history"),
+    # Today's deploy wizard's apply (deploy.apply) left at 7.8 (2026-10-17, P7-25): the device
+    # page's Deploy… and the batch Apply draw THE apply's result in place (PAGE_RECORD).
     # Today's re-apply (golden.restore_apply) left at 7.8 (2026-10-17, P7-21): v2's
     # device_v2.restore_confirm and History's Re-apply… draw a restore's result (PAGE_RECORD).
     # The import runs on a thread; its result is the stored summary, drawn on
@@ -75,18 +75,10 @@ RESULT_COMPONENT = {
     # commit, read back by the committed-profile reader the modal offers.
     "templatize.profile_propose_apply": ("static/js/nmas_profile.js", "previewProfilePropose",
                                          "templatize.profile_read"),
-    # Onboarding's Create (C86): phase 1, drawn as pending; the record read
-    # back is the device's pending row.
-    "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",
-                       "onboard.pending"),
-    # Onboarding's Verify and Abandon (7.1): drawn from the row the route
-    # recorded in the onboarding run record, and read back by the pending
-    # banner (each row's last run; a run that took its device off the list
-    # under "finished recently").
-    "onboard.verify": ("static/js/gen/partials__onboard_wizard.2.js", "onboardShowRunResult",
-                       "onboard.pending"),
-    "onboard.abandon": ("static/js/gen/partials__onboard_wizard.2.js", "onboardShowRunResult",
-                        "onboard.pending"),
+    # Revert and retry (today's templatize.revert_apply and .retry_apply, P7-24) and today's
+    # onboarding Create, Verify and Abandon (onboard.create, .verify, .abandon, P7-25) left
+    # with their scripts at 7.8 (2026-10-17): the v2 device page's and onboard_v2's draw their
+    # results in place (PAGE_RECORD).
     # Today's NetBox Remove and imports (C121) left with today's NetBox tab at 7.8
     # (2026-10-17): v2's NetBox confirm (`netbox_v2.confirm`, below) draws them.
 }
@@ -303,7 +295,9 @@ GREEN_TOASTS = {
     # approval's) with it (P7-23), both at 7.8 on 2026-10-17: Settings' New network… and Delete
     # this network…, and Templates' Edit… and Approve…, draw their results in place.
     ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
-    ("templates/partials/onboard_wizard.html", ".cfg downloaded"): "a file download",
+    # Today's bootstrap download (".cfg downloaded", a file download) left with today's
+    # onboarding wizard at 7.8 (2026-10-17, P7-25): v2's Get the bootstrap config… reveals it
+    # in place, recorded.
 }
 
 #: (file, the unescaped interpolation) -> where. Only shrinks.
@@ -380,7 +374,7 @@ class TestTheToastBar:
 
     def test_the_bar_refuses_a_gated_action(self):
         """Control: the bar is live, not an empty dict passing vacuously."""
-        refused = toast_refusals({"deploy.apply": "the toast says how many devices"})
+        refused = toast_refusals({"device_v2.deploy_confirm": "the toast says how many devices"})  # deploy.apply until 7.8
         assert refused and "never enough" in refused[0]
 
 
@@ -416,7 +410,14 @@ class TestColourAndEscaping:
     def test_the_false_onboarding_toast_is_gone(self):
         """The one FALSE_GREEN entry, fixed: its literal is absent from the
         shipped file (a removed entry cannot come back unnoticed)."""
-        assert "'Device onboarded.'" not in _read("static/js/gen/partials__onboard_wizard.1.js")
+        # Today's wizard, the file it was held in, left at 7.8 (2026-10-17, P7-25): every
+        # shipped script and template is held now, and v2's Create says PENDING
+        # (tests/test_onboard_wizard_renders.py, `TestCreateDrawsItsResult`).
+        paths = source_index.tracked("static/js", "templates", root=ROOT)
+        assert len(paths) > 50
+        for path in paths:
+            if path.endswith((".js", ".html")) and ".min." not in path:
+                assert "Device onboarded." not in open(path, encoding="utf-8").read(), path
 
     def test_each_unescaped_interpolation_is_still_there(self):
         """A loop, not a parametrisation: with the list empty (the last entry
@@ -456,7 +457,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 2, len(calls)           # the scan can see them (2 since today's list bar's create and delete (P7-26) and today's template editor's save and approval toasts (P7-23) left, 7.8, 2026-10-17; 6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        assert len(calls) >= 1, len(calls)           # the scan can see them (1 since today's onboarding wizard's bootstrap download left, 7.8, P7-25, 2026-10-17; 2 since today's list bar's create and delete (P7-26) and today's template editor's save and approval toasts (P7-23) left, 7.8, 2026-10-17; 6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

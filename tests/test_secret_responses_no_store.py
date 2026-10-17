@@ -33,7 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The calls that make a view a reveal: the cores every conditional reveal goes through.
 REVEAL_CORES = {"_serve_config", "config_text", "bootstrap_reveal"}
 #: The population's floor (2026-10-15: 10 reveal-gated endpoints, 3 conditional GETs).
-FLOOR_GATED, FLOOR_CONDITIONAL = 10, 3
+FLOOR_GATED, FLOOR_CONDITIONAL = 10, 2   # 3 -> 2: today's onboard.bootstrap left at 7.8 (P7-25)
 
 
 @pytest.fixture(scope="module")
@@ -98,8 +98,9 @@ class TestThePopulation:
         assert len(_gated()) >= FLOOR_GATED, _gated()
         conditional = [ep for ep in _conditional(flask_app) if ep not in _gated()]
         assert len(conditional) >= FLOOR_CONDITIONAL, conditional
-        # The planted case the parse must find: today's bootstrap GET and the golden GETs.
-        assert {"onboard.bootstrap", "golden.version", "golden.diff"} <= set(conditional)
+        # The planted case the parse must find: the golden GETs (today's bootstrap GET, the
+        # third, left with today's onboarding at 7.8, 2026-10-17, P7-25).
+        assert {"golden.version", "golden.diff"} <= set(conditional)
 
     def test_every_member_says_no_store(self, flask_app):
         """The scan: a newly reveal-gated route, or a view newly calling a reveal core,

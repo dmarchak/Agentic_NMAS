@@ -14,11 +14,17 @@ little.
 Same seam as `/onboard/create` sending `body: '{}'`, and as `loadOnboardPending`
 having no caller: two halves each tested on their own, and the defect living
 only in the relationship.
+
+Today's two routes left with the deploy wizard at 7.8 (2026-10-17, P7-25); the plan drives
+the apply through the cores every v2 deploy runs (`tests/deploy_core.py`: `plan_devices` and
+`apply_batch`), so the handshake tested is v2's.
 """
 
 import hashlib
 
 import pytest
+
+from tests import deploy_core
 
 CAPTURE = (
     "hostname r6\n"
@@ -55,7 +61,7 @@ def client(monkeypatch):
 
 
 def _plan(client):
-    response = client.post("/deploy/plan", json={"devices": ["r6"]})
+    response = deploy_core.post_plan(json={"devices": ["r6"]})
     assert response.status_code == 200
     body = response.get_json()
     assert body["ok"] is True
@@ -73,8 +79,7 @@ class TestTheCaptureHashHandshake:
         """**The one that was missing.** If the two sides ever hash different
         things, this is the only test that can tell."""
         device = _plan(client)
-        result = client.post("/deploy/apply",
-                             json={"confirmations": {"r6": device["capture_hash"]},
+        result = deploy_core.post_apply(json={"confirmations": {"r6": device["capture_hash"]},
                                    "command_hashes": {"r6": device["command_hash"]}})
         body = result.get_json()
         assert body["ok"] is True
@@ -86,8 +91,7 @@ class TestTheCaptureHashHandshake:
         """**The floor.** Without it the test above passes against a guard
         that was deleted."""
         device = _plan(client)
-        result = client.post("/deploy/apply",
-                             json={"confirmations": {"r6": "0" * 16},
+        result = deploy_core.post_apply(json={"confirmations": {"r6": "0" * 16},
                                    "command_hashes": {"r6": device["command_hash"]}})
         body = result.get_json()
         assert "r6" not in body.get("deployed", [])
@@ -99,8 +103,7 @@ class TestTheCaptureHashHandshake:
         the whole capture, so this JSON response held the device's
         `username ... secret 9` line. The hashes are what a reader needs."""
         device = _plan(client)
-        result = client.post("/deploy/apply",
-                             json={"confirmations": {"r6": "0" * 16},
+        result = deploy_core.post_apply(json={"confirmations": {"r6": "0" * 16},
                                    "command_hashes": {"r6": device["command_hash"]}})
         text = result.get_data(as_text=True)
         body = result.get_json()
@@ -117,90 +120,19 @@ class TestTheCaptureHashHandshake:
         """A client that failed to read `capture_hash` sends `''`. That must
         skip, not deploy — and it is the shape a rendering bug produces."""
         _plan(client)
-        result = client.post("/deploy/apply",
-                             json={"confirmations": {"r6": ""}})
+        result = deploy_core.post_apply(json={"confirmations": {"r6": ""}})
         body = result.get_json()
         assert "r6" not in body.get("deployed", [])
 
 
 class TestTheClientSendsWhatTheRouteReads:
-    """The wizard's payload, parsed from the shipped source.
-
-    `/onboard/create` sent `body: '{}'` and could only ever answer 409; the
-    renderer test executed the render and the ordering test called the function
-    directly, and the defect lived in the seam between them.
-    """
-
-    @staticmethod
-    def _wizard_js():
-        from tests.js_source import read_shipped
-
-        return read_shipped("static/js/gen/partials__deploy_wizard.1.js")
-
-    @staticmethod
-    def _select_box(monkeypatch):
-        """The device's tick as the SHIPPED renderer draws it from a real
-        `/deploy/plan` (7.1: the one preview-confirm renderer), with the
-        plan entry it was drawn from."""
-        import re
-
-        from tests import payload_providers as P
-        from tests.payload_render import render_preview
-
-        plan = P.deploy_plan(monkeypatch)
-        entry = plan["devices"][0]
-        html = render_preview(plan["preview"], {"selectable": True})
-        box = re.search(r'<input [^>]*data-pc-select[^>]*data-device="%s"[^>]*>'
-                        % re.escape(entry["device"]), html).group(0)
-        return box, entry
-
-    def test_the_apply_call_sends_confirmations(self, monkeypatch):
-        source = self._wizard_js()
-        assert "confirmations[b.dataset.device] = b.dataset.hash" in source
-        box, entry = self._select_box(monkeypatch)
-        assert entry["capture_hash"] and f'data-hash="{entry["capture_hash"]}"' in box, \
-            "the checkbox no longer carries the hash the plan published"
-
-    def test_the_apply_call_sends_command_hashes(self):
-        """**It did not, from the day the wizard was written.**
-
-        `/deploy/apply` recomputes the command fingerprint and compares it
-        *only* when `command_hashes` is supplied:
-
-            expected = command_hashes.get(hostname)
-            if expected is not None:
-                ...
-
-        The wizard sent `{confirmations}` and nothing else, so from the only
-        client that reaches this route the comparison **never ran** — and the
-        deploy path's central claim, that the program is recomputed at apply
-        and refused if anything moved, was not exercised. A plan left open
-        while the device changed, or two people planning the same device,
-        applied against a program nobody had read.
-        """
-        source = self._wizard_js()
-        apply_call = source[source.index("async function applyDeploy"):]
-        assert "command_hashes: commandHashes" in apply_call
-        assert "b.dataset.commandHash" in apply_call
-
-    def test_the_hashes_come_from_the_DOM_not_a_re_fetch(self, monkeypatch):
-        """**Designed in, not added after.**
-
-        The confirmed values must be the ones the operator was *shown*.
-        Re-fetching the plan at confirm time would recompute against whatever
-        is current and agree with itself — the comparison would pass by
-        construction, which is exactly the failure a confirm hash exists to
-        prevent.
-        """
-        source = self._wizard_js()
-        apply_call = source[source.index("async function applyDeploy"):]
-        assert "/deploy/plan" not in apply_call, (
-            "applyDeploy re-fetches the plan — the comparison then passes by "
-            "construction")
-        box, entry = self._select_box(monkeypatch)
-        assert entry["command_hash"] and \
-            f'data-command-hash="{entry["command_hash"]}"' in box, \
-            "the card no longer carries the plan's command hash into the DOM"
+    """What a confirm sends is what its card drew. Today's deploy wizard's three tests here
+    (its apply sent the confirmations, the command hashes, and both from the DOM, never a
+    re-fetch) left with the wizard at 7.8 (2026-10-17, P7-25). v2's are the device page's
+    Deploy… card, whose confirm carries the capture and command hash it drew
+    (tests/test_device_deploy_v2.py, `test_a_reason_plans_again_and_offers_the_confirm_bound_to
+    _that_program`), and the batch Apply's, which posts the body its preview drew (C850,
+    tests/test_profile_apply_v2.py)."""
 
     def test_the_restore_path_does_send_them(self):
         """The positive anchor: the payload is not impossible to build, and
@@ -404,21 +336,20 @@ class TestTheCommandFingerprintRefusalSaysWhatMoved:
         return nmas.app.test_client()
 
     def _plan(self, client):
-        return client.post("/deploy/plan",
-                           json={"devices": ["r6"]}).get_json()["devices"][0]
+        return deploy_core.post_plan(json={"devices": ["r6"]}).get_json()["devices"][0]
 
     def test_the_matching_pair_deploys(self, client):
         """**The floor.** Sending both hashes must not refuse a plan that has
         not moved — otherwise this fix makes every deploy impossible."""
         device = self._plan(client)
-        result = client.post("/deploy/apply", json={
+        result = deploy_core.post_apply(json={
             "confirmations": {"r6": device["capture_hash"]},
             "command_hashes": {"r6": device["command_hash"]}}).get_json()
         assert "r6" in result.get("deployed", []), result.get("refused")
 
     def test_a_stale_command_hash_is_refused_with_both_operands(self, client):
         device = self._plan(client)
-        result = client.post("/deploy/apply", json={
+        result = deploy_core.post_apply(json={
             "confirmations": {"r6": device["capture_hash"]},
             "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
         refused = result.get("refused") or []
@@ -432,7 +363,7 @@ class TestTheCommandFingerprintRefusalSaysWhatMoved:
         """The capture is byte-identical, so the difference is in the intent
         or the template — and saying so is one place to look instead of two."""
         device = self._plan(client)
-        result = client.post("/deploy/apply", json={
+        result = deploy_core.post_apply(json={
             "confirmations": {"r6": device["capture_hash"]},
             "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
         entry = (result.get("refused") or [])[0]
@@ -441,7 +372,7 @@ class TestTheCommandFingerprintRefusalSaysWhatMoved:
 
     def test_a_moved_capture_is_attributed_to_the_device(self, client):
         device = self._plan(client)
-        result = client.post("/deploy/apply", json={
+        result = deploy_core.post_apply(json={
             "confirmations": {"r6": "0" * 16},
             "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
         entry = (result.get("refused") or [])[0]
@@ -453,7 +384,7 @@ class TestTheCommandFingerprintRefusalSaysWhatMoved:
         """New behaviour on a path that used to succeed reads as a malfunction
         unless it says what it did."""
         device = self._plan(client)
-        result = client.post("/deploy/apply", json={
+        result = deploy_core.post_apply(json={
             "confirmations": {"r6": device["capture_hash"]},
             "command_hashes": {"r6": "deadbeefdeadbeef"}}).get_json()
         reason = (result.get("refused") or [])[0]["reason"]
@@ -488,38 +419,18 @@ class TestTheSpecificReasonReachesTheSCREEN:
                             template_approved=True),
              self.CAPTURE, {"hostname": h, "ip": "203.0.113.1"}), ""))
         nmas.app.config["TESTING"] = False
-        client = nmas.app.test_client()
-        device = client.post("/deploy/plan",
-                             json={"devices": ["r1"]}).get_json()["devices"][0]
-        return client.post("/deploy/apply", json={
+        device = deploy_core.post_plan(json={"devices": ["r1"]}).get_json()["devices"][0]
+        return deploy_core.post_apply(json={
             "confirmations": {"r1": device["capture_hash"]},
             "command_hashes": {"r1": "deadbeefdeadbeef"}}).get_json()
 
     @staticmethod
     def _render(report):
-        import json as _json
-
-        from tests.js_source import read_shipped
-
-        source = read_shipped(
-            "static/js/gen/partials__deploy_wizard.1.js")
-
-        def _lift(name):
-            start = source.index(f"function {name}(")
-            depth, i, seen = 0, source.index("{", start), False
-            while i < len(source):
-                if source[i] == "{":
-                    depth += 1
-                    seen = True
-                elif source[i] == "}":
-                    depth -= 1
-                    if seen and depth == 0:
-                        break
-                i += 1
-            return source[start:i + 1]
-
         # 7.1 step 2: the result is the shared component's, built from the
-        # receipt rows the apply wrote, and escaped by it.
+        # receipt rows the apply wrote, and escaped by it. (Its read of today's deploy
+        # wizard's script, which it no longer used, left with the wizard at 7.8. v2's device
+        # page draws the same reason: tests/test_device_deploy_v2.py,
+        # `test_a_program_that_moved_is_refused_with_nothing_sent`.)
         from tests.payload_render import render_result
         return render_result(report["result"])
 

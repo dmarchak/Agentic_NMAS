@@ -124,19 +124,13 @@ class TestTheBootstrapConfig:
         assert r.status_code == 503, (r.status_code, page[:300])
         assert "the reveal could not be recorded, so nothing is shown" in H.unescape(page)
 
-    def test_today_s_unrecorded_shows_nothing_and_answers_503(self, pending, unwritable):
-        r = pending.get("/onboard/bootstrap/bp1?list_name=probe")
-        assert BOOT_SECRET not in r.get_data(as_text=True)
-        assert r.status_code == 503
-        assert r.get_json()["config"] == "" and "could not be recorded" in r.get_json()["error"]
+    # Today's reveal (GET /onboard/bootstrap/<host>) and its two assertions left with today's
+    # pending banner at 7.8 (2026-10-17, P7-25); v2's, above and below, call the same core.
 
     def test_recorded_it_reveals(self, pending, writable):
         r = pending.post("/v2/onboard/bp1/bootstrap", data={"list_name": "probe"})
         assert r.status_code == 200 and BOOT_SECRET in r.get_data(as_text=True)
         assert r.headers.get("Cache-Control") == NO_STORE, "a revealed bootstrap may be kept"
         assert "reveals" in r.headers.get("X-NMAS-Invalidates", ""), "History is not told"
-        got = pending.get("/onboard/bootstrap/bp1?list_name=probe")
-        assert got.status_code == 200 and BOOT_SECRET in got.get_json()["config"]
-        assert got.headers.get("Cache-Control") == NO_STORE
         assert BOOT_SECRET not in writable.read_text(), "the record holds the value"
         assert '"list": "probe"' in writable.read_text()

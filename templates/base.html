@@ -99,9 +99,8 @@
     {% endwith %}
   </div>
 
-  {# The deploy plan (Phase 3c), on every page: the Device page and Needs
-     attention open it scoped to the monitoring profile (P.9 step b). #}
-  {% include 'partials/deploy_wizard.html' %}
+  {#- Today's deploy wizard left at 7.8 (2026-10-17, P7-25): a device's Deploy… and the batch
+      Apply's page (/v2/monitoring/apply, scope intent). -#}
 
   <!-- Bootstrap JS -->
   <script src="/static/js/bootstrap.bundle.min.js"></script>

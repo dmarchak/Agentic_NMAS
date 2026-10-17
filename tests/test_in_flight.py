@@ -143,10 +143,11 @@ class TestTheWiring:
 
     APPLIES = {
         "static/js/nmas_capture.js": "/golden/capture/apply",
-        "static/js/gen/partials__deploy_wizard.1.js": "/deploy/apply",
         # Today's re-apply dialog (partials__golden_repo.3.js, /golden/restore/apply) left at
-        # 7.8 (2026-10-17): v2's restore is a job its card follows on the one stepper.
-        "static/js/gen/partials__onboard_wizard.2.js": "/onboard/verify/",
+        # 7.8 (2026-10-17): v2's restore is a job its card follows on the one stepper. Today's
+        # deploy wizard (/deploy/apply) and onboarding banner's Verify (/onboard/verify/) left
+        # at 7.8 (2026-10-17, P7-25): v2's deploy is a job its card follows, and v2's Verify is
+        # busy on itself until its answer (tests/test_v2_busy_on_itself.py).
     }
 
     def test_each_apply_is_wrapped(self):

@@ -215,7 +215,9 @@ class TestTheConvertedReadsRunAtOnce:
     # was app.py's Refresh Hostnames read, removed at 7.8 (2026-10-12).
     CONVERTED = [("modules/nsot/startup_check.py", "read_each(lambda lr: check(lr[1])"),
                  ("scripts/nmas-golden-state", "read_each(one, devices"),
-                 ("routes/onboard.py", "read_each(_ztp.progress, ztp_rows"),
+                 # routes/onboard.py's pending banner read (read_each(_ztp.progress, …)) left
+                 # with today's pending banner at 7.8 (2026-10-17, P7-25); v2's pending page
+                 # reads one device.
                  ("scripts/nmas-heartbeat-rules", "read_each(lambda h: gaps_from(")]
 
     def test_each_uses_the_helper(self):

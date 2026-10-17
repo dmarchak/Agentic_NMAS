@@ -14,6 +14,7 @@ import threading
 import pytest
 
 from tests import test_p3_wizard_draws_the_program as W
+from tests import deploy_core
 
 GI03 = "interface GigabitEthernet0/3"
 CAPTURE = W.CAPTURE.replace("end\n", f"{GI03}\n description retired uplink\n"
@@ -57,7 +58,7 @@ def _plan(client, remove=None, authorise=None):
         body["remove"] = {"s4": remove}
     if authorise is not None:
         body["authorise"] = {"s4": authorise}
-    out = client.post("/deploy/plan", json=body).get_json()
+    out = deploy_core.post_plan(json=body).get_json()
     assert out["ok"], out
     return out, out["devices"][0]
 
@@ -109,7 +110,7 @@ class TestThePlan:
 
 class TestTheApply:
     def _apply(self, client, d, remove, authorise):
-        return client.post("/deploy/apply", json={
+        return deploy_core.post_apply(json={
             "confirmations": {"s4": d["capture_hash"]},
             "command_hashes": {"s4": d["command_hash"]},
             "remove": {"s4": remove}, "authorise": {"s4": authorise}}).get_json()
@@ -347,7 +348,7 @@ class TestSelectionById:
         _, d0 = _plan(client, [], [SHUT])
         rid = _removable(d0, "description retired uplink")["id"]
         _, d = _plan(client, [rid], [SHUT, REASON])
-        out = client.post("/deploy/apply", json={
+        out = deploy_core.post_apply(json={
             "confirmations": {"s4": d["capture_hash"]}, "command_hashes": {"s4": d["command_hash"]},
             "remove": {"s4": [rid]}, "authorise": {"s4": [SHUT, REASON]}}).get_json()
         assert "s4" in out.get("deployed", []), out
@@ -417,51 +418,6 @@ class TestTheReceiptCarriesTheIds:
         assert rm["id"] == "abc123abc123" and "OLDCOMMUNITY" not in rm["line"]
 
 
-def _shared_wizard_state(src):
-    """The wizard's scope state and `_deployCommon`, SHIPPED (P.9 step b): every
-    plan and apply request carries them."""
-    start = src.index("function _deployCommon(")
-    end = src.index("\n}\n", start) + 2
-    return "var _deployScope = '', _deployList = '';\n" + src[start:end] + "\n"
-
-
-class TestTheWizardSendsTheIdsItsHashCovers:
-    """The shipped `applyDeploy`, EXECUTED: the request it sends carries the
-    removal IDs from the RENDERED plan's payload. A source check that the
-    code reading them exists passed with the send removed (the control)."""
-
-    def test_the_apply_request_carries_the_rendered_plans_ids(self):
-        import json as _json
-
-        import dukpy
-
-        from tests.js_source import read_shipped
-        src = read_shipped("static/js/gen/partials__deploy_wizard.1.js")
-        start = src.index("async function applyDeploy(")
-        end = src.index("\n}\n", start) + 2
-        fn = (src[start:end].replace("async function", "function")
-              .replace("await fetch(", "fetch(").replace("await r.json()", "r.json()"))
-        assert "await" not in fn, "only the asynchrony is stripped"
-        stubs = _shared_wizard_state(src) + """
-        var sent = null;
-        var _deployPlan = {devices: [{device: 's4', authorised: [%s],
-                                      removals: {ids: ['2d7f42a57dbd']}}]};
-        var box = {dataset: {device: 's4', hash: 'h1', commandHash: 'c1'}};
-        var el = {disabled: false, textContent: '', innerHTML: ''};
-        var document = {querySelectorAll: function () { return [box]; },
-                        getElementById: function () { return el; }};
-        function inFlightBusy() {}
-        function showToast() {}
-        function _renderDeployResult() {}
-        function fetch(url, opts) { sent = opts.body; return {json: function () { return {ok: true}; }}; }
-        """ % _json.dumps(REASON)
-        body = dukpy.evaljs(stubs + fn + "\napplyDeploy(); sent")
-        sent = _json.loads(body)
-        assert sent["remove"] == {"s4": ["2d7f42a57dbd"]}
-        assert sent["authorise"] == {"s4": [REASON]}
-        assert sent["command_hashes"] == {"s4": "c1"}
-
-
 class TestOneTickOneSentence:
     """The operator, on r2's acceptance run: the removal asked for one decision
     twice (the line's tick, then a second box in the program). The tick where
@@ -488,39 +444,12 @@ class TestOneTickOneSentence:
         html = self._html(client)
         assert [m for m in _boxes(html) if 'data-line="shutdown"' in m]
 
-    def test_the_wizard_re_plans_with_a_removals_reason_and_no_box(self):
-        """The shipped `_reauthoriseDevice`, EXECUTED with one removal reason
-        typed and no box anywhere: the reason reaches the re-plan."""
-        import json as _json
-
-        import dukpy
-
-        from tests.js_source import read_shipped
-        src = read_shipped("static/js/gen/partials__deploy_wizard.1.js")
-        start = src.index("async function _reauthoriseDevice(")
-        end = src.index("\n}\n", start) + 2
-        fn = (src[start:end].replace("async function", "function")
-              .replace("await fetch(", "fetch(").replace("await r.json()", "r.json()"))
-        assert "await" not in fn
-        stubs = _shared_wizard_state(src) + """
-        var sent = null;
-        var _deployPlan = {devices: [{device: 's4'}]};
-        var reason = {value: 'the uplink was retired last week',
-                      dataset: {authDevice: 's4', line: 'no description retired uplink'}};
-        var tick = {checked: true, dataset: {removeDevice: 's4', removeId: 'abc123abc123'}};
-        var document = {querySelectorAll: function (sel) {
-          if (sel.indexOf('data-auth-removal') >= 0) return [reason];
-          if (sel.indexOf('data-remove-id') >= 0) return [tick];
-          return [];
-        }};
-        function showToast() {}
-        function _renderDeployPlan() {}
-        function _updateDeploySummary() {}
-        function fetch(url, opts) { sent = opts.body; return {json: function () { return {ok: false, error: 'x'}; }}; }
-        """
-        body = _json.loads(dukpy.evaljs(stubs + fn + "\n_reauthoriseDevice('s4'); sent"))
-        assert body["authorise"] == {"s4": [REASON]}
-        assert body["remove"] == {"s4": ["abc123abc123"]}
+    # Today's deploy wizard's `_reauthoriseDevice` (a removal's reason reaching the re-plan),
+    # executed here, left with the wizard at 7.8 (2026-10-17, P7-25), as did the class that
+    # executed its `applyDeploy` (the apply carried the rendered plan's removal IDs). v2's
+    # Deploy… card carries each removal by id with its reason into the hash and the apply:
+    # tests/test_device_deploy_v2.py, `test_a_ticked_line_is_removed_with_its_own_reason_in
+    # _the_hash` and `test_it_runs_as_a_job_as_the_person_and_draws_the_result`.
 
 
 def _removal_id(d):

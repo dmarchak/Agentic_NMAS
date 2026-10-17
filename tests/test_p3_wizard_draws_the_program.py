@@ -7,9 +7,17 @@ The wizard drew `to_add`, collapsed: the diff standing in for what is sent.
 carried to the browser and drawn nowhere, and apply sent no `authorise`, so a
 program containing `shutdown` could never be deployed from the GUI at all.
 
-Driven with a REAL `/deploy/plan` payload: the artifact and its intent are
+Driven with a REAL plan payload: the artifact and its intent are
 stubbed, and `merge_commands`, `dangerous_in`, `command_fingerprint` and the
 authorisation checks are the real ones.
+
+Today's wizard and its two routes left at 7.8 (2026-10-17, P7-25): the plan and apply here are
+the cores v2's deploys run (`tests/deploy_core.py`), and the card is drawn by the shipped
+preview component. The two tests that read the wizard's own script (its apply sent the
+authorisation from the rendered plan; a ticked box re-planned the batch) left with it; v2's
+Deploy… card carries each reason into the hash it binds the confirm to
+(tests/test_device_deploy_v2.py, `test_a_reason_plans_again_and_offers_the_confirm_bound_to
+_that_program`, `test_a_ticked_line_is_removed_with_its_own_reason_in_the_hash`).
 """
 
 import json
@@ -18,8 +26,9 @@ import re
 
 import pytest
 
+from tests import deploy_core
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WIZARD = os.path.join(ROOT, "static", "js", "gen", "partials__deploy_wizard.1.js")
 
 CAPTURE = ("hostname s4\n"
            "interface GigabitEthernet0/1\n"
@@ -74,7 +83,7 @@ def _plan(client, authorise=None):
     body = {"devices": ["s4"]}
     if authorise is not None:
         body["authorise"] = authorise
-    out = client.post("/deploy/plan", json=body).get_json()
+    out = deploy_core.post_plan(json=body).get_json()
     assert out["ok"], out
     return out, out["devices"][0]
 
@@ -93,7 +102,7 @@ class TestAuthorisationEndToEnd:
     def test_an_authorised_shutdown_deploys_and_reaches_the_pipeline(self, client):
         _, d = _plan(client, {"s4": [SHUT]})
         assert d["authorisation_ok"] is True
-        out = client.post("/deploy/apply", json={
+        out = deploy_core.post_apply(json={
             "confirmations": {"s4": d["capture_hash"]},
             "command_hashes": {"s4": d["command_hash"]},
             "authorise": {"s4": [SHUT]}}).get_json()
@@ -102,7 +111,7 @@ class TestAuthorisationEndToEnd:
 
     def test_withdrawing_the_authorisation_after_the_plan_is_refused(self, client):
         _, d = _plan(client, {"s4": [SHUT]})
-        out = client.post("/deploy/apply", json={
+        out = deploy_core.post_apply(json={
             "confirmations": {"s4": d["capture_hash"]},
             "command_hashes": {"s4": d["command_hash"]},
             "authorise": {}}).get_json()
@@ -113,7 +122,7 @@ class TestAuthorisationEndToEnd:
         """A box ticked without a re-plan: the hash is for the UNauthorised
         program, so the apply's recompute with the authorisation disagrees."""
         _, d = _plan(client)
-        out = client.post("/deploy/apply", json={
+        out = deploy_core.post_apply(json={
             "confirmations": {"s4": d["capture_hash"]},
             "command_hashes": {"s4": d["command_hash"]},
             "authorise": {"s4": [SHUT]}}).get_json()
@@ -126,26 +135,12 @@ class TestAuthorisationEndToEnd:
         """Register C24: it used to vanish from the report."""
         import routes.deploy as rd
         monkeypatch.setattr(rd, "_artifact_for", lambda *a, **k: (None, "no golden config"))
-        out = client.post("/deploy/apply", json={"confirmations": {"s4": "x"}}).get_json()
+        out = deploy_core.post_apply(json={"confirmations": {"s4": "x"}}).get_json()
         row = next(r for r in out["results"] if r["device"] == "s4")
         assert row["outcome"] == "refused"
         assert "no golden config" in row["reason"] and "Nothing was sent" in row["reason"]
         assert out["total"] == 1
 
-
-def _lift(src: str, name: str) -> str:
-    start = src.index(f"function {name}(")
-    depth, i, seen = 0, src.index("{", start), False
-    while i < len(src):
-        if src[i] == "{":
-            depth += 1
-            seen = True
-        elif src[i] == "}":
-            depth -= 1
-            if seen and depth == 0:
-                break
-        i += 1
-    return src[start:i + 1]
 
 
 def _card(plan):
@@ -203,32 +198,6 @@ class TestTheWizardDrawsIt:
         assert "From this edit: <strong>1</strong>" in html
         assert "Not from this edit: <strong>1</strong>" in html
         assert "abcdef12" in html and "host_vars: s4 shut Gi0/2" in html
-
-
-class TestTheWizardSendsTheAuthorisationItsHashCovers:
-    SRC = open(WIZARD, encoding="utf-8").read()
-
-    def test_apply_sends_authorise_from_the_rendered_plan(self):
-        fn = _lift(self.SRC, "applyDeploy")
-        assert "command_hashes: commandHashes, authorise, remove}" in fn
-        # And the removals (Mode B) the rendered plan's hash covers, by ID,
-        # from the payload, never from the boxes.
-        assert "(entry || {}).removals || {}).ids" in fn
-        assert "(_deployPlan || {}).devices" in fn
-        assert "data-auth-device" not in fn, "read from the plan, never from the boxes"
-
-    def test_ticking_a_box_re_plans_with_every_box(self):
-        """7.1: the whole batch is re-planned with the authorisation map read
-        from every box, and redrawn by the one renderer. A device whose command
-        hash moved is left unticked, so it is confirmed as now shown."""
-        fn = _lift(self.SRC, "_reauthoriseDevice")
-        assert "fetch('/deploy/plan'" in fn
-        assert "input[type=checkbox][data-auth-device]" in fn
-        assert "input[type=checkbox][data-remove-id]" in fn and "authorise, remove})" in fn
-        assert "_deployCommon()" in fn, "the re-plan carries the plan's scope and list (P.9 b)"
-        assert "input[data-auth-reason]" in fn and "reason:" in fn, "each line carries its reason"
-        assert "_renderDeployPlan(d)" in fn
-        assert "kept[b.dataset.device] === b.dataset.commandHash" in fn
 
 
 class TestTheRestorePathCanAuthorise:

@@ -51,9 +51,10 @@ XDATA = re.compile(r'\bx-data="(\w+)"')
 #: (7.8, P7-22). 52 -> 51 the same day (P7-21): today's re-apply (`golden.restore_apply`, a
 #: confirm) left at 7.8. 51 -> 49 the same day (P7-23), the population measured 49: today's
 #: Approve (`templates.approve`) and intent editor save (`templatize.edit_committed`) left at 7.8.
-#: 49 -> 43 the same day (P7-24), the population measured 43: today's persist, retire and
-#: rotate applies and templatize's seed, revert and retry applies left at 7.8.
-POPULATION_FLOOR = 43
+#: 49 -> 39 the same day: today's persist, retire and rotate applies and templatize's
+#: seed, revert and retry applies (P7-24), and today's deploy apply and onboarding
+#: Create, Verify and Abandon (P7-25) left at 7.8.
+POPULATION_FLOOR = 39
 PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
@@ -81,11 +82,9 @@ BOUND_ON_THE_SERVER = {
 #: Today's routes no v2 template names: route -> (the v2 route that does its job, in the
 #: pattern) or (None, why it has none). Exact. They go at cutover (docs/CUTOVER.md).
 LEGACY_HOMES = {
-    "deploy.apply": "device_v2.deploy_confirm",
     "golden.capture_apply": "device_v2.capture_confirm",
-    "onboard.abandon": "onboard_v2.abandon",
-    "onboard.create": "onboard_v2.create",
-    "onboard.verify": "onboard_v2.verify",
+    # persist.apply, retire.apply and rotate.apply (P7-24), deploy.apply and
+    # onboard.abandon, .create and .verify (P7-25) left at 7.8 (2026-10-17).
     # templates.approve (templates_v2.approve) and templatize.edit_committed (intent_v2.commit)
     # left at 7.8 (2026-10-17, P7-23); persist.apply, retire.apply, rotate.apply and
     # templatize's seed_apply, revert_apply and retry_apply the same day (P7-24): their homes

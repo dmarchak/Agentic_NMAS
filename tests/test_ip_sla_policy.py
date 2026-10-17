@@ -24,6 +24,8 @@ import re
 
 import pytest
 
+from tests import deploy_core
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
 PLAT = {h: ("cisco_ios" if h.startswith("s") else "cisco_iosxe")
@@ -487,7 +489,7 @@ class TestTheProbeIsWhatTheDevicePrints:
         assert _policy(lab).status_code == 200
         _r, page = _page(lab)
         assert TestTheCommit._commit(None, lab, page).get_json()["ok"]
-        plan = lab["client"].post("/deploy/plan", json={"devices": ["r2"], "scope": "ip_sla",
+        plan = deploy_core.post_plan(json={"devices": ["r2"], "scope": "ip_sla",
                                                          "list_name": "Lab"}).get_json()
         (d,) = plan["devices"]
         caught = []
@@ -501,7 +503,7 @@ class TestTheProbeIsWhatTheDevicePrints:
         monkeypatch.setattr("modules.pipeline.PipelineRunner", Runner)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
-        lab["client"].post("/deploy/apply", json={
+        deploy_core.post_apply(json={
             "confirmations": {"r2": d["capture_hash"]}, "command_hashes": {"r2": d["command_hash"]},
             "list_name": "Lab", "scope": "ip_sla"})
         assert caught, "the apply reached the pipeline"

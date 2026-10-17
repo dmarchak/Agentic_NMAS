@@ -64,7 +64,8 @@ def test_each_cut_route_is_404(method, path):
 
 def test_the_404_check_can_see_a_route_that_exists():
     """Control: a live mutating route is not 404 for the same call."""
-    assert _client().post("/deploy/plan", json={}).status_code != 404
+    # (/deploy/plan was the example until it left with the deploy wizard at 7.8, P7-25.)
+    assert _client().post("/attention/acknowledge", json={}).status_code != 404
 
 
 def _shipped_files():

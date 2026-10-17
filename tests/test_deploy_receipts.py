@@ -18,6 +18,7 @@ import pytest
 from modules.nsot import receipts
 from modules.nsot.deploy import command_fingerprint
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture, for the History read-back)
+from tests import deploy_core
 
 PROGRAM = ["interface GigabitEthernet0/2", " shutdown", "exit",
            "snmp-server community Sup3rS3cretCommunity RO"]
@@ -141,14 +142,14 @@ class TestTheApplyWritesIt:
         P.deploy_plan(mp)       # installs the artifact stubs
         # The fixture's program holds `shutdown`, so the plan the operator
         # confirms carries its authorisation, as the wizard's re-plan does.
-        plan = P._client().post("/deploy/plan", json={
+        plan = deploy_core.post_plan(json={
             "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
         device = plan["devices"][0]
         assert device["authorisation_ok"] is True
         mp.setattr(rd, "_deploy_one", deploy_one)
         if commit is not None:
             mp.setattr(rd, "_commit_batch_golden", commit)
-        return plan, P._client().post("/deploy/apply", json={
+        return plan, deploy_core.post_apply(json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": device["command_hash"]},
             "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]},

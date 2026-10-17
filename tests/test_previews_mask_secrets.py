@@ -17,6 +17,8 @@ import json
 
 import pytest
 
+from tests import deploy_core
+
 ADDED = "ADDEDPLANT77"
 #: The added community's authorisation, named by its MASKED line (the browser
 #: never sees the value) and carrying a reason (C79, C140).
@@ -43,8 +45,8 @@ def _deploy_plan(monkeypatch):
     monkeypatch.setattr(rd, "_attribute_additions", lambda *a, **k: dict(w.ATTRIBUTION))
     # The fixture's program shuts an interface: authorised, so the only
     # refusal left open to the apply below is the command hash.
-    plan = P._ok(P._client().post("/deploy/plan", json={
-        "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}))
+    plan = deploy_core.plan({
+        "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}})
     return plan, intent, capture
 
 
@@ -105,7 +107,7 @@ class TestTheHashIsStillOfWhatIsSent:
 
         plan, _intent, _capture = _deploy_plan(monkeypatch)
         device = plan["devices"][0]
-        body = P._client().post("/deploy/apply", json={
+        body = deploy_core.post_apply(json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": device["command_hash"]},
             "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
@@ -120,7 +122,7 @@ class TestTheHashIsStillOfWhatIsSent:
 
         plan, _intent, _capture = _deploy_plan(monkeypatch)
         device = plan["devices"][0]
-        body = P._client().post("/deploy/apply", json={
+        body = deploy_core.post_apply(json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": "0" * 16},
             "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
@@ -137,7 +139,7 @@ class TestTheApplyResponsesAreMaskedToo:
 
         plan, _intent, _capture = _deploy_plan(monkeypatch)
         device = plan["devices"][0]
-        body = P._client().post("/deploy/apply", json={
+        body = deploy_core.post_apply(json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": device["command_hash"]},
             "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
@@ -146,6 +148,43 @@ class TestTheApplyResponsesAreMaskedToo:
         assert rows and any("snmp-server community <redacted" in c
                             for c in rows[0].get("commands") or []), rows
         assert ADDED not in json.dumps(body)
+
+    def test_the_deploy_job_masks_its_result(self):
+        """The apply's one line, pinned where v2's deploy result is made: the deploy job
+        (`deploy_job.start`, run by the device page's Deploy… and the batch Apply's confirm).
+        Today's /deploy/apply carried it, and the test above drove it, until the route left
+        with the deploy wizard at 7.8 (2026-10-17, P7-25); the test above now drives the core
+        through `tests/deploy_core.py`, which masks as this job does."""
+        import ast
+        import inspect
+        import textwrap
+
+        from modules import deploy_job
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(deploy_job.start)))
+        work = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+                    and n.name == "work")
+        # The job's own answer: the return in its body, not one in a nested callback.
+        (ret,) = [n for n in work.body if isinstance(n, ast.Return)]
+        assert isinstance(ret.value, ast.Call) and getattr(ret.value.func, "id", "") == \
+            "mask_payload", ast.dump(ret.value)[:200]
+
+    @pytest.mark.parametrize("where", ["routes.v2._apply_ctx", "routes.device_v2._deploy_card"])
+    def test_each_v2_deploy_preview_masks_what_it_draws(self, where):
+        """The plan's one line, pinned where v2 draws a deploy preview: the batch Apply's page
+        and the device page's Deploy… card each pass the plan and its preview through
+        `mask_payload` before drawing them (today's /deploy/plan did, until 7.8)."""
+        import ast
+        import importlib
+        import inspect
+        import textwrap
+
+        mod_name, fn_name = where.rsplit(".", 1)
+        fn = getattr(importlib.import_module(mod_name), fn_name)
+        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+        masked = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                  and getattr(n.func, "id", "") == "mask_payload"]
+        assert masked and any("preview" in ast.dump(n) for n in masked), where
 
     def test_the_restore_job_masks_its_result(self):
         """The same one line, pinned where a restore's result is made: the restore job

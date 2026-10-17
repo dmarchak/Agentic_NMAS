@@ -76,8 +76,8 @@ def test_create_holds_the_hostname_from_its_plan_to_its_last_step():
 
 
 def test_a_second_create_for_a_held_name_is_refused(phase_two, monkeypatch, tmp_path):
-    """Through the route: another operation holds bp1, so Create refuses naming it and
-    nothing is planned or minted."""
+    """Through v2's Create (today's /onboard/create until 7.8, 2026-10-17, P7-25): another
+    operation holds bp1, so Create refuses naming it and nothing is planned or minted."""
     import app as nmas
     from routes import onboard
 
@@ -87,6 +87,17 @@ def test_a_second_create_for_a_held_name_is_refused(phase_two, monkeypatch, tmp_
                         lambda *a, **k: (type("I", (), {"actor": "t"})(), None))
     monkeypatch.setattr("modules.nsot.onboard.build_plan",
                         lambda **k: pytest.fail("planned under another's hold"))
-    r = nmas.app.test_client().post("/onboard/create", json={"hostname": "bp1"})
-    body = r.get_json()
-    assert r.status_code == 409 and body["error"].startswith("Not created: "), body
+    monkeypatch.setattr("modules.nsot.onboard.run_onboarding",
+                        lambda *a, **k: pytest.fail("minted under another's hold"))
+    out, status = onboard.create_run({"hostname": "bp1", "list_name": "probe"}, "t")
+    assert status == 409 and out["error"].startswith("Not created: "), out
+
+    # The page: the refusal drawn in place. After it, v2's route reads the plan again to
+    # redraw the review beside it (a read, outside any hold), so here that read fails.
+    def _read_again(**k):
+        raise RuntimeError("the review is read again for the page")
+    monkeypatch.setattr("modules.nsot.onboard.build_plan", _read_again)
+    r = nmas.app.test_client().post("/v2/onboard/create", data={"hostname": "bp1",
+                                                                "list_name": "probe"})
+    html = r.get_data(as_text=True)
+    assert r.status_code == 409 and out["error"] in html.replace("&#39;", "'"), html[:800]

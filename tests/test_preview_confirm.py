@@ -182,9 +182,14 @@ class TestTheCaptureGateSaysWhatItCompares:
         assert "skipped as drifted, with nothing sent" in gate["detail"]
 
     def test_no_screen_claims_the_device_is_re_read(self):
-        # Today's re-apply dialog (partials__golden_repo.3.js) left at 7.8 (2026-10-17).
-        for f in ("partials__deploy_wizard.1.js",):
-            assert "Each device is re-read" not in shipped(f), f
+        # Today's re-apply dialog (partials__golden_repo.3.js) and deploy wizard
+        # (partials__deploy_wizard.1.js) left at 7.8 (2026-10-17); v2's templates are held.
+        from tests.source_index import tracked
+
+        v2 = tracked("templates/v2", suffix=".html", recursive=False)
+        assert len(v2) > 50
+        for f in v2:
+            assert "Each device is re-read" not in open(f, encoding="utf-8").read(), f
         src = open(os.path.join(ROOT, "modules", "preview_confirm.py"), encoding="utf-8").read()
         assert "a changed device is skipped" not in src
 
@@ -233,8 +238,14 @@ class TestConfirmSaysWho:
 
 #: Screens moved onto the component, and the ones still to move, in the
 #: approved order. RETROFIT_PENDING only shrinks.
-RETROFITTED = {"deploy": "partials__deploy_wizard.1.js",
-               "onboarding": "partials__onboard_wizard.1.js"}
+RETROFITTED = {"capture": "nmas_capture.js", "profile propose": "nmas_profile.js"}
+# "seed" (nmas_seed.js), "retire" (nmas_retire.js) and "revert and retry"
+# (nmas_intent_ops.js) left with today's device-action routes at 7.8 (2026-10-17, P7-24): the
+# v2 device page's cards draw them server-side.
+# "deploy" (partials__deploy_wizard.1.js) and "onboarding" (partials__onboard_wizard.1.js), the
+# first two retrofitted, left with today's deploy wizard and onboarding at 7.8 (2026-10-17,
+# P7-25): v2's device page Deploy…, batch Apply and Add device draw THE plans server-side. The
+# today's screens still shipped that call the component take their place here (measured).
 # "restore" (partials__golden_repo.3.js, today's re-apply dialog) left at 7.8 (2026-10-17,
 # P7-21): the v2 device page's restore card (board 9, `templates/v2/_restore.html`) and
 # History's Re-apply… page draw THE restore plan server-side.
@@ -279,14 +290,20 @@ class TestNoSecondImplementation:
         for screen, f in RETROFIT_PENDING.items():
             assert f is None or os.path.exists(os.path.join(GEN, f)), screen
 
-    def test_the_old_deploy_renderers_are_gone(self):
-        src = shipped(RETROFITTED["deploy"])
-        for gone in ("function _programHtml", "function _attributionHtml",
-                     "function _deviceCard"):
-            assert gone not in src, gone
+    def test_the_old_renderers_are_gone_everywhere(self):
+        """The deploy wizard's own renderers and onboarding's review, which the component
+        replaced (7.1), were held gone in their two scripts until both scripts left at 7.8
+        (2026-10-17, P7-25); held now across every script still shipped."""
+        from tests.source_index import tracked
 
-    def test_the_old_onboarding_review_is_gone(self):
-        assert "function onboardReviewHtml" not in shipped(RETROFITTED["onboarding"])
+        scripts = (tracked("static/js", suffix=".js", recursive=False)
+                   + tracked(GEN, suffix=".js", recursive=False))
+        assert len(scripts) > 10
+        for path in scripts:
+            src = open(path, encoding="utf-8").read()
+            for gone in ("function _programHtml", "function _attributionHtml",
+                         "function _deviceCard", "function onboardReviewHtml"):
+                assert gone not in src, (path, gone)
 
 
 class TestAProgramSentNowhereDoesNotSaySent:

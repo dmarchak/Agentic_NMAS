@@ -64,10 +64,8 @@ def register_blueprints(app) -> list:
     from routes.inventory import bp as inventory_bp
     from routes.golden import bp as golden_bp
     from routes.templatize import bp as templatize_bp
-    from routes.deploy import bp as deploy_bp
     from routes.identity import bp as identity_bp
     from routes.remote import bp as remote_bp
-    from routes.onboard import bp as onboard_bp
     from routes.jobs import bp as jobs_bp
     from routes.health import bp as health_bp
     from routes.operations import bp as operations_bp
@@ -97,9 +95,9 @@ def register_blueprints(app) -> list:
     from routes.dhcp_v2 import bp as dhcp_v2_bp
 
     for bp in (integrations_bp, inventory_bp, golden_bp,
-               templatize_bp, deploy_bp, identity_bp,
+               templatize_bp, identity_bp,
                remote_bp,
-               onboard_bp, jobs_bp, health_bp,
+               jobs_bp, health_bp,
                operations_bp, attention_bp, breakglass_bp, device_v2_bp, v2_bp, update_bp,
                restarts_bp,
                settings_v2_bp, intent_v2_bp, templates_v2_bp, reads_v2_bp, privileged_v2_bp,

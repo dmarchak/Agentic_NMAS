@@ -1,29 +1,32 @@
-"""Stage 4C.4 — every blocking reason ON SCREEN, with Create disabled.
+"""Stage 4C.4 — every blocking reason ON SCREEN, with Create withheld.
 
 **A refusal the operator cannot see is not a refusal.** 4C.1 made
 `blocking_reasons` carry every reason at once; that property is worth nothing
-if the wizard shows one of them, or none.
+if the review shows one of them, or none.
 
-So this file **executes the shipped renderer** — `onboardReviewHtml` and
-`onboardCanCreate`, lifted out of the rendered page, not a copy — in duktape,
-against a plan with several blockers. Asserting the plan object is right is
-what the agent panel's tests did for three rounds while the screen said
-nothing.
+So this file **draws the review as the page draws it**: the server's adapter
+(`preview_confirm.onboard_preview`) through v2's preview parts
+(`templates/v2/_preview_parts.html`) inside Add device's card
+(`templates/v2/_onboard_add.html`), against a plan with several blockers.
+Asserting the plan object is right is what the agent panel's tests did for
+three rounds while the screen said nothing.
 
-Both functions are pure by design: a plan in, HTML or a boolean out. That is
-the shape a renderer has to have to be testable at all, and the reason the
-button's state is computed separately from the HTML — whether Create is
-allowed is a decision about the plan, not a detail of how the plan is drawn.
+Today's onboarding wizard, which drew the same preview with today's renderer
+(`nmas_preview_confirm.js`) and decided Create with `onboardCanCreate`, left at
+7.8 on 2026-10-17 (P7-25), with its routes. Its properties are held here on v2:
+Create is offered only for a preview with no refusal, and the core rebuilds and
+refuses at Create whatever the page sent (`routes/onboard.create_run`). Removed
+with it, each named where it went: the wizard's own form scripts (v2's form is
+held by tests/test_onboard_v2.py, `TestTheFormAndThePlanReadTheSameFields`),
+today's toolbar button (v2's Add device… with an empty list:
+tests/test_controls_do_something.py), today's /onboard/platforms and
+/onboard/lists (v2's form draws the platforms and the page's own network).
 """
 
 import json
 import re
 
 import pytest
-
-from tests.js_source import with_loaded_scripts
-
-dukpy = pytest.importorskip("dukpy")
 
 
 BLOCKED = {
@@ -45,185 +48,178 @@ CLEAN = dict(BLOCKED, hostname="r6", platform="cisco_iosxe",
              cred_source="default profile",
              onboardable=True, blocking_reasons=[])
 
+MAY = {"may": True, "actor": "ops@example.com", "kind": "person",
+       "statement": "You are confirming as ops@example.com."}
 
-@pytest.fixture(scope="module")
-def page():
+
+def _card(plan, config=""):
+    """Add device's card, drawn by v2 with the review of *plan* (`None`: no review)."""
+    from flask import render_template
+
     import app as nmas
-
-    return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-
-
-@pytest.fixture(scope="module")
-def js(page):
-    """The two pure functions, lifted from the rendered page verbatim."""
-    out = []
-    for name in ("onboardCanCreate",):
-        start = page.index(f"function {name}(")
-        depth, i, seen = 0, page.index("{", start), False
-        while i < len(page):
-            if page[i] == "{":
-                depth += 1
-                seen = True
-            elif page[i] == "}":
-                depth -= 1
-                if seen and depth == 0:
-                    break
-            i += 1
-        out.append(page[start:i + 1])
-    return "\n".join(out)
-
-
-_COMPONENT = None
-
-
-def _html(js, plan, config="", raw=False):
-    """The review as the operator sees it (7.1): the server's adapter
-    (`preview_confirm.onboard_preview`) drawn by the SHIPPED preview
-    component. It was `onboardReviewHtml`, a second renderer."""
-    import os
-
     from modules.preview_confirm import onboard_preview
 
-    global _COMPONENT
-    if _COMPONENT is None:
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        _COMPONENT = open(os.path.join(root, "static", "js", "nmas_preview_confirm.js")).read()
-    preview = onboard_preview(plan, config, {"may": True, "actor": "ops@example.com",
-                                             "kind": "person",
-                                             "statement": "You are confirming as ops@example.com."})
+    f = {"list_name": "probe", "hostname": (plan or {}).get("hostname", "")}
+    pv = None if plan is None else {"preview": onboard_preview(plan, config, MAY),
+                                    "shown": "{}", "fingerprint": "f" * 64}
+    with nmas.app.test_request_context("/v2/onboard/preview", method="POST"):
+        return render_template("v2/_onboard_add.html", f=f, pv=pv, platforms=[])
+
+
+def _html(plan, config="", raw=False):
+    """The review as the operator sees it: the VISIBLE text, unless the test is about the
+    markup itself (escaping)."""
     import html as _h
-    out = dukpy.evaljs("var window = {};\n" + _COMPONENT
-                       + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}});")
-    # The VISIBLE text, unless the test is about the markup itself (escaping):
-    # the component escapes quotes as well as <, > and &.
+
+    out = _card(plan, config)
     return out if raw else _h.unescape(out)
 
 
-def _can_create(js, plan):
-    return dukpy.evaljs(js + f"\nonboardCanCreate({json.dumps(plan)});")
+def _can_create(plan):
+    """Whether the card offers Create (the one step that writes)."""
+    host = (plan or {}).get("hostname", "")
+    return bool(re.search(r'<span class="op-idle">Create ' + re.escape(host) + "</span>",
+                          _card(plan)))
 
 
 class TestEveryReasonIsOnScreen:
     """The acceptance that matters."""
 
-    def test_all_four_reasons_render(self, js):
-        html = _html(js, BLOCKED)
+    def test_all_four_reasons_render(self):
+        html = _html(BLOCKED)
         for reason in BLOCKED["blocking_reasons"]:
             head = reason.split("—")[0].strip()[:40]
             assert head in html, f"missing from the screen: {reason}"
 
-    def test_the_count_is_stated(self, js):
-        flat = re.sub(r"\s+", " ", _html(js, BLOCKED))
+    def test_the_count_is_stated(self):
+        flat = re.sub(r"\s+", " ", _html(BLOCKED))
         assert "4 reasons this device cannot be onboarded" in flat
 
-    def test_it_says_why_they_are_all_shown(self, js):
+    def test_it_says_why_they_are_all_shown(self):
         """So the operator knows to fix them in one pass rather than
         expecting a queue of one-at-a-time refusals."""
-        flat = re.sub(r"\s+", " ", _html(js, BLOCKED))
+        flat = re.sub(r"\s+", " ", _html(BLOCKED))
         assert "all of them, so they can be fixed in one pass" in flat
 
-    def test_one_reason_reads_singular(self, js):
+    def test_one_reason_reads_singular(self):
         plan = dict(BLOCKED, blocking_reasons=["no management address"])
-        flat = re.sub(r"\s+", " ", _html(js, plan))
+        flat = re.sub(r"\s+", " ", _html(plan))
         assert "1 reason this device" in flat
 
-    def test_a_clean_plan_shows_no_blocker_block(self, js):
+    def test_a_clean_plan_shows_no_blocker_block(self):
         """The panel must not become permanent furniture."""
-        assert "cannot be onboarded" not in _html(js, CLEAN)
+        assert "cannot be onboarded" not in _html(CLEAN)
 
 
-class TestCreateIsDisabledWhenBlocked:
+class TestCreateIsWithheldWhenBlocked:
 
-    def test_a_blocked_plan_cannot_create(self, js):
-        assert _can_create(js, BLOCKED) is False
+    def test_a_blocked_plan_cannot_create(self):
+        assert _can_create(BLOCKED) is False
 
-    def test_a_clean_plan_can(self, js):
-        assert _can_create(js, CLEAN) is True
+    def test_a_clean_plan_can(self):
+        assert _can_create(CLEAN) is True
 
-    def test_a_missing_plan_cannot(self, js):
-        assert _can_create(js, None) is False
+    def test_a_missing_plan_cannot(self):
+        """No review drawn: the card is the form, and offers no Create."""
+        assert _can_create(None) is False and 'name="hostname"' in _card(None)
 
-    def test_onboardable_must_be_exactly_true(self, js):
-        """Not truthy. A plan carrying a string, or a stale field, must not
-        open the one step that writes."""
-        assert _can_create(js, dict(CLEAN, onboardable="yes")) is False
+    def test_each_refusal_is_a_failed_gate_beside_the_withheld_create(self):
+        """Where today's footer said "Create is disabled: … blocking reason(s) above", v2
+        draws each refusal as a failed gate and does not draw Create at all."""
+        flat = re.sub(r"\s+", " ", _html(BLOCKED))
+        assert flat.count("FAILS") == len(BLOCKED["blocking_reasons"])
+        assert "each is a failed gate below" in flat
 
-    def test_the_button_is_bound_to_it(self, page):
-        assert "btn.disabled = !onboardCanCreate(d.plan)" in page
+    def test_create_rebuilds_and_refuses_whatever_the_page_sent(self):
+        """Today's `onboardCanCreate` required `onboardable` to be exactly true in the browser;
+        the decision that counts is the server's: Create rebuilds the plan and refuses one that
+        is not onboardable, whatever was posted (parsed: the refusal precedes the steps)."""
+        import ast
+        import inspect
+        import textwrap
 
-    def test_the_footer_says_why_it_is_disabled(self, page):
-        flat = re.sub(r"\s+", " ", page)
-        assert "Create is disabled:" in flat
-        assert "blocking reason(s) above" in flat
+        from routes import onboard
+
+        src = textwrap.dedent(inspect.getsource(onboard.create_run))
+        tree = ast.parse(src)
+        refuse = next(n for n in ast.walk(tree) if isinstance(n, ast.If)
+                      and "onboardable" in ast.unparse(n.test))
+        run = next(n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                   and getattr(n.func, "id", "") == "run_onboarding")
+        assert refuse.lineno < run.lineno
+        assert ast.unparse(refuse.test) == "not plan.onboardable"
 
 
 class TestNothingHasBeenCreatedYet:
-    """Review is the only step that creates anything, so Back is always safe
+    """Review is the only step before Create, so going back is always safe
     — and the review step says so, the same promise the deploy plan makes."""
 
-    def test_the_promise_is_on_the_review_step(self, js):
-        flat = re.sub(r"\s+", " ", _html(js, CLEAN))
+    def test_the_promise_is_on_the_review_step(self):
+        flat = re.sub(r"\s+", " ", _html(CLEAN))
         assert "Nothing has been created yet." in flat
         assert "This is what will be." in flat
 
-    def test_it_says_back_is_safe(self, js):
-        flat = re.sub(r"\s+", " ", _html(js, CLEAN))
+    def test_it_says_back_is_safe(self):
+        flat = re.sub(r"\s+", " ", _html(CLEAN))
         assert "you can go Back from here without undoing anything" in flat
 
-    def test_it_is_shown_even_when_blocked(self, js):
+    def test_it_is_shown_even_when_blocked(self):
         """A blocked plan has created nothing either, and an operator looking
         at four refusals is exactly who needs telling."""
-        flat = re.sub(r"\s+", " ", _html(js, BLOCKED))
+        flat = re.sub(r"\s+", " ", _html(BLOCKED))
         assert "Nothing has been created yet." in flat
 
 
 class TestTheReviewShowsWhatWillBeCreated:
 
-    def test_the_bootstrap_config_is_shown(self, js):
-        html = _html(js, CLEAN, "hostname r6\n!\nend\n")
+    def test_the_bootstrap_config_is_shown(self):
+        html = _html(CLEAN, "hostname r6\n!\nend\n")
         assert "hostname r6" in html
 
-    def test_the_placeholder_secret_is_explained(self, js):
+    def test_the_placeholder_secret_is_explained(self):
         """The real credential is minted at create time and never sent to the
         browser — so the config on screen is not the config that boots."""
-        flat = re.sub(r"\s+", " ", _html(js, CLEAN))
+        flat = re.sub(r"\s+", " ", _html(CLEAN))
         assert "placeholder" in flat
         assert "never sent to the browser" in flat
 
-    def test_the_csv_row_is_explained_on_a_netbox_list(self, js):
+    def test_the_csv_row_is_explained_on_a_netbox_list(self):
         """Two quite different flows, and the difference is visible rather
         than smoothed over."""
         plan = dict(CLEAN, source_kind="netbox", writes_csv=False,
                     inventory_note=("identity is read-only on a NetBox list "
                                     "— the device arrives on the next refresh"))
-        flat = re.sub(r"\s+", " ", _html(js, plan))
+        flat = re.sub(r"\s+", " ", _html(plan))
         assert "identity is read-only on a NetBox list" in flat
 
-    def test_a_local_list_says_the_row_comes_after_it_answers(self, js):
+    def test_a_local_list_says_the_row_comes_after_it_answers(self):
         """The row this screen used to promise outright."""
         plan = dict(CLEAN, inventory_note="after it answers — promotion "
                                           "adds the row, not onboarding")
-        flat = re.sub(r"\s+", " ", _html(js, plan))
+        flat = re.sub(r"\s+", " ", _html(plan))
         assert "after it answers" in flat
         assert "Adds to inventory" in flat
 
-    def test_the_credential_source_is_shown(self, js):
+    def test_the_credential_source_is_shown(self):
         """`_cred_source` exists so the origin is visible."""
-        assert "default profile" in _html(js, CLEAN)
+        assert "default profile" in _html(CLEAN)
 
-    def test_a_reason_is_escaped(self, js):
+    def test_a_reason_is_escaped(self):
         plan = dict(BLOCKED, blocking_reasons=["<script>alert(1)</script>"])
-        html = _html(js, plan, raw=True)
+        html = _html(plan, raw=True)
         assert "<script>alert(1)</script>" not in html
         assert "&lt;script&gt;" in html
 
 
-class TestItIsAToolbarActionNotATab:
+class TestToday_sIndexHasNoOnboardingTab:
     """Stage 7 reorganises around device-centric and fleet-level views.
     Onboarding is fleet-level; a thirteenth tab is what that redesign exists
-    to undo."""
+    to undo. (Today's toolbar button left with the wizard at 7.8, 2026-10-17, P7-25.)"""
 
-    def test_no_new_tab_pane_was_added(self, page):
+    def test_no_new_tab_pane_was_added(self):
+        import app as nmas
+
+        page = nmas.app.test_client().get("/").get_data(as_text=True)
         panes = re.findall(r'data-bs-target="#(\w+Pane)"', page)
         assert "onboardPane" not in panes
         # 12 until P.4 removed the Jenkins tab; 11 until 7.8 removed the History tab with
@@ -234,112 +230,81 @@ class TestItIsAToolbarActionNotATab:
         # 2 since 2026-10-17: the NetBox tab left (7.8); 1 the same day: the Git tab left (7.8,
         # P7-21), Devices alone.
         assert len(set(panes)) == 1, sorted(set(panes))
-
-    def test_the_toolbar_button_exists(self, page):
-        assert 'onclick="openOnboardWizard()"' in page
-
-    def test_it_is_available_with_an_empty_device_list(self, page):
-        """An empty list is exactly when somebody needs to add a device, and
-        the button would be absent when it is most useful.
-
-        Asserted against the SOURCE, where the block structure is still
-        visible, and matched on the tag at the START OF A LINE. A plain
-        substring search found the tag quoted inside the comment that
-        explains this very decision — fourth time prose about code has
-        matched a grep for code in this project, and the tell each time is a
-        pattern that can appear in English.
-        """
-        import io
-        import os
-        import re
-
-        src = io.open(os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "templates", "index.html"),
-            encoding="utf-8").read()
-
-        button = re.search(r'^\s*<button[^>]*openOnboardWizard\(\)', src, re.M)
-        assert button
-        # Stage 7.0 moved both `if devices` blocks into partials, so the list
-        # can be redrawn in place. The guard is followed to where it lives:
-        # in index.html the button must precede any guard left there, and the
-        # guards must still EXIST (in the partials), or this passes by
-        # finding none.
-        guard = re.search(r"^\s*\{% if devices %\}", src, re.M)
-        assert guard is None or button.start() < guard.start(), (
-            "the onboard button is inside the `if devices` block — it would "
-            "be absent from an empty list")
-        partials = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "templates", "partials")
-        guards = [n for n in ("device_toolbar.html", "device_table.html")
-                  if re.search(r"^\s*\{% if devices %\}", io.open(
-                      os.path.join(partials, n), encoding="utf-8").read(), re.M)]
-        assert guards == ["device_toolbar.html", "device_table.html"]
-        assert "openOnboardWizard" not in "".join(
-            io.open(os.path.join(partials, n), encoding="utf-8").read()
-            for n in guards)
+        assert "openOnboardWizard" not in page and "onboardPendingBanner" not in page
 
 
-class TestTheRoutes:
+class TestTheCores:
+    """The cores v2's Add device calls (`routes/onboard.py`; today's /onboard/plan,
+    /onboard/platforms and /onboard/create, which called them too, left at 7.8)."""
 
-    @pytest.fixture
-    def client(self):
-        import app as nmas
+    def test_plan_creates_nothing_and_says_what_would_be(self, monkeypatch):
+        from routes.onboard import plan_of
 
-        return nmas.app.test_client()
-
-    def test_plan_creates_nothing_and_says_what_would_be(self, client,
-                                                         monkeypatch):
         monkeypatch.setattr("modules.integrations.get_integration",
                             lambda name: None)
-        # `list_name` is required as of the target-list change: the wizard
+        import app as nmas
+
+        # `list_name` is required as of the target-list change: the form
         # carries it rather than inheriting whichever list is active.
-        body = client.post("/onboard/plan",
-                           json={"list_name": "Default", "hostname": "r6",
-                                 "platform": "cisco_iosxe",
-                                 "mgmt_ip": "203.0.113.6"}).get_json()
-        assert body["ok"] is True
+        with nmas.app.test_request_context("/v2/onboard/preview", method="POST"):
+            body, status = plan_of({"list_name": "Default", "hostname": "r6",
+                                    "platform": "cisco_iosxe", "mgmt_ip": "203.0.113.6"})
+        assert status == 200 and body["ok"] is True
         assert "blocking_reasons" in body["plan"]
 
-    def test_a_blocked_platform_is_listed_not_omitted(self, client, monkeypatch):
+    def test_a_blocked_platform_is_listed_not_omitted(self, monkeypatch):
         """An absent option teaches the operator the tool does not support
         their device, which is a different and wrong lesson. No platform is
-        blocked since stage D (C712), so one is planted to show the listing."""
+        blocked since stage D (C712), so one is planted to show the listing, and
+        Add device's form draws it disabled with its reason."""
         from modules.nsot import onboard
+        from routes.onboard import platform_choices
+
         monkeypatch.setitem(onboard.BLOCKED_PENDING_MEASUREMENT, "cisco_ios",
                             "planted: a measurement this test pretends is owed")
-        body = client.get("/onboard/platforms").get_json()
-        blocked = [p for p in body["platforms"] if p["blocked"]]
+        blocked = [p for p in platform_choices() if p["blocked"]]
         assert [p["reason"] for p in blocked] == \
             ["planted: a measurement this test pretends is owed"], blocked
+        import app as nmas
 
-    def test_no_platform_is_blocked_now(self, client):
+        html = nmas.app.test_client().get("/v2/onboard/new?list=Default").get_data(
+            as_text=True)
+        assert re.search(r'<option value="%s" disabled>[^<]*\(not yet: planted: a measurement'
+                         % re.escape(blocked[0]["platform"]), html), html[-2000:]
+
+    def test_no_platform_is_blocked_now(self):
         """C712: a switch (cisco_ios) is offered like any other platform."""
-        body = client.get("/onboard/platforms").get_json()
-        assert not [p for p in body["platforms"] if p["blocked"]]
-        assert any(p.get("dialect", p.get("platform")) == "cisco_ios" or "cisco-ios" ==
-                   p.get("name") for p in body["platforms"]), body["platforms"]
+        from routes.onboard import platform_choices
+
+        platforms = platform_choices()
+        assert not [p for p in platforms if p["blocked"]]
+        assert any(p.get("dialect") == "cisco_ios" for p in platforms), platforms
 
     @pytest.mark.real_identity
+    def test_create_requires_a_person(self):
+        import app as nmas
 
-    def test_create_requires_a_person(self, client):
-        assert client.post("/onboard/create", json={}).status_code == 403
+        assert nmas.app.test_client().post("/v2/onboard/create", data={}).status_code == 403
 
-    def test_create_refuses_a_plan_it_has_rebuilt_and_found_blocked(
-            self, client, monkeypatch):
+    def test_create_refuses_a_plan_it_has_rebuilt_and_found_blocked(self, monkeypatch):
         """**Rebuilt at confirm, not carried from the review.** The stores can
         change between the screen and the confirm — the same reason the
         deploy path recomputes its program at apply rather than trusting what
-        was shown."""
-        from modules import identity as ident_mod
+        was shown. Bound to its review, and blocked: refused, naming every reason."""
+        import types
 
-        monkeypatch.setattr(ident_mod, "require",
-                            lambda request, action="", operation="": (
-                                type("I", (), {"actor": "a@b"})(), None))
-        # A list, so the rebuild gets as far as the plan -- but no hostname
-        # and no platform, which is what this test is about.
-        r = client.post("/onboard/create", json={"list_name": "Default"})
-        assert r.status_code == 409
-        assert r.get_json()["blocking_reasons"]
+        from modules.nsot import onboard as O
+        from routes.onboard import create_run
+
+        plan = types.SimpleNamespace(**{**BLOCKED, "summary": dict(BLOCKED),
+                                        "host_vars": {}, "bootstrap_config": ""})
+        monkeypatch.setattr(O, "build_plan", lambda **k: plan)
+        monkeypatch.setattr(O, "run_onboarding",
+                            lambda *a, **k: pytest.fail("created a blocked plan"))
+        shown = O.plan_shown(plan)
+        out, status = create_run({"list_name": "Default", "shown": shown,
+                                  "fingerprint": O.plan_fingerprint(shown)}, "a@b")
+        assert status == 409 and out["blocking_reasons"] == BLOCKED["blocking_reasons"]
 
     def test_create_runs_the_real_steps(self):
         """Not stand-ins. The whole of 4C.7 is that the real adapters satisfy
@@ -348,171 +313,39 @@ class TestTheRoutes:
 
         from routes import onboard
 
-        assert calls_in(onboard.create_run, "run_onboarding") == 1   # the core both pages call
+        assert calls_in(onboard.create_run, "run_onboarding") == 1   # the core v2 calls
         assert calls_in(onboard.create_run, "real_steps") == 1
 
 
-# ---------------------------------------------------------------------------
-# Every field the payload sends must also trigger a re-validation
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="module")
-def form_js(page):
-    """`ONBOARD_FIELDS` and `onboardFormPayload`, lifted from the page."""
-    start = page.index("const ONBOARD_FIELDS = {")
-    end = page.index("}", page.index("mgmt_interface:", start)) + 2
-    fields = page[start:end]
-
-    fstart = page.index("function onboardFormPayload(")
-    depth, i, seen = 0, page.index("{", fstart), False
-    while i < len(page):
-        if page[i] == "{":
-            depth += 1
-            seen = True
-        elif page[i] == "}":
-            depth -= 1
-            if seen and depth == 0:
-                break
-        i += 1
-    return fields + "\n" + page[fstart:i + 1]
-
-
-class TestTheFormIsReadAndWatchedFromOneList:
-    """4C.8 added three fields to the form and to the payload, and left the
-    listener array as the original four ids.
-
-    The values were **sent** correctly, so nothing about the payload was
-    wrong — but nothing asked for them to be re-sent. An operator filling in
-    the netmask watched *"no network mask"* sit there unchanged and would
-    reasonably conclude the wizard was broken. Measured on the live page,
-    mid-probe, by the operator.
-
-    Asserted here by executing the shipped source, because a defect in which
-    two lists disagree cannot be seen by reading either one.
-    """
-
-    ALL_IDS = ("obList", "obHostname", "obPlatform", "obMgmtIp", "obMgmtMask",
-               "obMgrIntf", "obMgrGw", "obMgmtIntf",
-               # Phase 2. Ordinary entries on purpose, so they re-validate
-               # like the rest -- a field read and sent but watched by nothing
-               # is what left "no network mask" on screen while the payload
-               # was already correct.
-               "obAddrSource", "obMgmtMac",
-               # Asked since C225, never guessed from the platform.
-               "obRole")
-
-    def _stub_dom(self, values):
-        return ("var __bound = [];\n"
-                "var __els = %s;\n"
-                "var document = { getElementById: function (id) {\n"
-                "  if (!(id in __els)) { return null; }\n"
-                "  return { value: __els[id],\n"
-                "           addEventListener: function (ev, fn) {\n"
-                "             __bound.push(id + ':' + ev); } };\n"
-                "} };\n" % json.dumps(values))
-
-    def test_the_payload_reads_every_field_on_the_form(self, form_js):
-        values = {i: "v-" + i for i in self.ALL_IDS}
-        out = dukpy.evaljs(self._stub_dom(values) + form_js
-                           + "\nJSON.stringify(onboardFormPayload());")
-        payload = json.loads(out)
-        assert set(payload) == {"list_name", "hostname", "platform", "mgmt_ip",
-                                "mgmt_mask", "manager_interface",
-                                "manager_gateway", "mgmt_interface",
-                                "address_source", "mgmt_mac", "role"}
-        # Every value arrives, not just every key. A builder reading the
-        # wrong id would return the right shape full of empty strings.
-        assert "" not in payload.values(), payload
-
-    def test_every_field_the_payload_reads_is_also_bound(self, form_js):
-        """**The defect, as an assertion.**
-
-        The binding loop and the payload builder now walk the same object, so
-        this is true by construction — which is the point. It is asserted
-        anyway because "by construction" was also true of `_plan_args()` and
-        `onboardFormPayload()`, and the third list still drifted.
-        """
-        values = {i: "x" for i in self.ALL_IDS}
-        binder = ("Object.keys(ONBOARD_FIELDS).forEach(function (key) {\n"
-                  "  var el = document.getElementById(ONBOARD_FIELDS[key]);\n"
-                  "  if (el) { el.addEventListener('input', function () {});\n"
-                  "            el.addEventListener('change', function () {}); }\n"
-                  "});\n")
-        out = dukpy.evaljs(self._stub_dom(values) + form_js + "\n" + binder
-                           + "JSON.stringify([__bound, "
-                             "Object.keys(ONBOARD_FIELDS).length]);")
-        bound, count = json.loads(out)
-        bound_ids = {b.split(":")[0] for b in bound}
-
-        assert count == len(self.ALL_IDS), (
-            f"ONBOARD_FIELDS has {count} entries and the form has "
-            f"{len(self.ALL_IDS)} — a field was added to one and not the other")
-        assert bound_ids == set(self.ALL_IDS), (
-            "fields read but never watched: "
-            f"{sorted(set(self.ALL_IDS) - bound_ids)}. Filling one of these "
-            "in would not clear its blocking reason.")
-
-    def test_the_target_list_value_arrives(self, form_js):
-        """Named separately from the loop above because it is the field whose
-        absence is worst.
-
-        A payload carrying the right KEY and an empty value would send
-        `list_name: ""`, and the route refuses that -- but before
-        `_target_list()` existed it fell through to the active list, which is
-        the whole defect. The value arriving is the property; the key is not.
-        """
-        values = {i: "x" for i in self.ALL_IDS}
-        values["obList"] = "nmas-probe"
-        out = dukpy.evaljs(self._stub_dom(values) + form_js
-                           + "\nJSON.stringify(onboardFormPayload());")
-        assert json.loads(out)["list_name"] == "nmas-probe"
-
-    def test_a_field_missing_from_the_dom_is_survived(self, form_js):
-        """The wizard must not throw when a field is absent — the review
-        would then render nothing at all, which is worse than a stale
-        reason."""
-        values = {i: "x" for i in self.ALL_IDS if i != "obMgrGw"}
-        out = dukpy.evaljs(self._stub_dom(values) + form_js
-                           + "\nJSON.stringify(onboardFormPayload());")
-        assert json.loads(out)["manager_gateway"] == ""
-
-
 class TestTheTargetListIsCarriedNeverDerived:
-    """`PipelineContext.list_name`'s rule, applied to the wizard.
+    """`PipelineContext.list_name`'s rule, applied to onboarding.
 
     The pipeline asked `get_current_list_name()` after the push and committed
-    one network's captures into another's repository. The wizard inherited
+    one network's captures into another's repository. Today's wizard inherited
     the active list the same way, and the asymmetry is worse: onboarding into
     the wrong list leaves a commit, a NetBox object and a CSV row, and the
     repair is the provenance-based Remove -- the mechanism the Stage 4C probe
     exists to prove and which has therefore never run.
     """
 
-    def _post(self, path, payload):
-        import app as nmas
-
-        client = nmas.app.test_client()
-        return client.post(path, json=payload)
-
     def test_plan_refuses_a_request_with_no_list(self):
-        r = self._post("/onboard/plan", {"hostname": "r6",
-                                         "platform": "cisco-ios-xe"})
-        assert r.status_code == 400, r.status_code
-        assert "target list" in (r.get_json() or {}).get("error", "").lower()
+        from routes.onboard import plan_of
+
+        body, status = plan_of({"hostname": "r6", "platform": "cisco-ios-xe"})
+        assert status == 400, status
+        assert "target list" in body.get("error", "").lower()
 
     @pytest.mark.real_identity
-
     def test_create_refuses_before_it_even_looks_at_the_list(self):
         """**403, not 400, and that ordering is correct.**
 
-        `/onboard/create` is the path that writes, so the identity gate runs
+        Create is the path that writes, so the identity gate runs
         before input validation — an unauthenticated caller is refused
-        without the route parsing their payload at all. The first version of
-        this test asserted 400 and was wrong about the code rather than the
-        other way round.
-        """
-        r = self._post("/onboard/create", {"hostname": "r6",
-                                           "platform": "cisco-ios-xe"})
+        without the route parsing their payload at all."""
+        import app as nmas
+
+        r = nmas.app.test_client().post("/v2/onboard/create",
+                                        data={"hostname": "r6", "platform": "cisco-ios-xe"})
         assert r.status_code == 403, r.status_code
 
     def test_the_refusal_itself_is_unit_tested(self):
@@ -526,7 +359,7 @@ class TestTheTargetListIsCarriedNeverDerived:
                 _target_list(payload)
         assert _target_list({"list_name": " nmas-probe "}) == "nmas-probe"
 
-    def test_no_route_falls_back_to_the_active_list(self):
+    def test_no_core_falls_back_to_the_active_list(self):
         """The negative-space assertion, **parsed rather than grepped**.
 
         The first version was `"get_current_list_name" not in source` and
@@ -535,30 +368,20 @@ class TestTheTargetListIsCarriedNeverDerived:
         needs an anchor, and the best anchor is a parse: a docstring naming a
         function is a mention, not a call.
 
-        That is the fourth instance of this shape in the project and the
-        first where the prose and the checker were written in the same edit.
-        """
+        The whole module since today's pending read (the one that might derive the list) left
+        at 7.8 (2026-10-17, P7-25): every function in it is a write path's or a reveal's."""
         import ast
         import inspect
 
         import routes.onboard as mod
 
-        # SCOPED TO THE WRITE PATH, deliberately.
-        #
-        # A READ may derive the active list: `/onboard/pending` listing what
-        # is pending "here" means the list the page is showing, and a
-        # listing leaves nothing behind. The rule is about writes —
-        # onboarding into the wrong list leaves a commit and a NetBox
-        # object. A module-wide scan said otherwise and would have forced
-        # the read to carry a list the page does not always know.
-        WRITE_PATH = ("_plan_args", "_target_list", "plan", "create")
+        WRITE_PATH = ("_plan_args", "_target_list", "plan_of", "create_run", "verify_run",
+                      "abandon_run", "bootstrap_reveal")
 
         referenced, defined = set(), set()
         for node in ast.walk(ast.parse(inspect.getsource(mod))):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 defined.add(node.name)
-                if node.name not in WRITE_PATH:
-                    continue
                 for inner in ast.walk(node):
                     if isinstance(inner, ast.Name):
                         referenced.add(inner.id)
@@ -576,17 +399,6 @@ class TestTheTargetListIsCarriedNeverDerived:
             assert name in defined, (name, sorted(defined))
         assert len(referenced) > 20, len(referenced)
 
-    def test_the_lists_endpoint_answers(self):
-        import app as nmas
-
-        body = nmas.app.test_client().get("/onboard/lists").get_json()
-        assert body.get("ok") is True, body
-        assert isinstance(body.get("lists"), list)
-        assert body["lists"], "no lists returned — the select would be empty"
-        row = body["lists"][0]
-        for key in ("name", "slug", "device_count", "is_current"):
-            assert key in row, (key, row)
-
 
 ADVISED = dict(CLEAN, advisories=[
     "You cannot deploy to this device until 'cisco_iosxe/base.j2' is "
@@ -596,47 +408,42 @@ ADVISED = dict(CLEAN, advisories=[
 
 class TestAnAdvisoryIsShownAndDoesNotBlock:
     """An advisory list that can swallow a refusal is this change's failure
-    mode, so both halves are executed in the shipped renderer."""
+    mode, so both halves are drawn as the page draws them."""
 
-    def test_the_advisory_reaches_the_screen(self, js):
-        # Whitespace-normalised: the heading wraps in the template source, so
-        # a raw substring match tests the line breaks rather than the words.
-        html = " ".join(_html(js, ADVISED).split())
+    def test_the_advisory_reaches_the_screen(self):
+        html = " ".join(_html(ADVISED).split())
         assert "cannot deploy to this device" in html
         assert "this does not block onboarding" in html
 
-    def test_create_stays_enabled(self, js):
-        assert _can_create(js, ADVISED) is True
+    def test_create_stays_offered(self):
+        assert _can_create(ADVISED) is True
 
-    def test_an_advisory_is_not_drawn_as_a_refusal(self, js):
-        """Different colour and a different heading, or the operator learns
-        to read a yellow box as a red one — and then stops reading both."""
-        html = _html(js, ADVISED)
-        # Marked as an advisory, in words and in markup (7.1: the component's
-        # `data-pc-not` kind), and never as a refusal.
-        assert 'data-pc-not="advisory"' in html and "does not block onboarding" in html
-        assert 'data-pc-not="refused"' not in html
+    def test_an_advisory_is_not_drawn_as_a_refusal(self):
+        """Different words, or the operator learns to read a note as a refusal — and then
+        stops reading both."""
+        html = " ".join(_html(ADVISED).split())
+        assert "Worth knowing (this does not block onboarding)" in html
+        assert "Not created:" not in html and "FAILS" not in html
         assert "cannot be onboarded" not in html
 
-    def test_a_refusal_alongside_an_advisory_is_still_a_refusal(self, js):
+    def test_a_refusal_alongside_an_advisory_is_still_a_refusal(self):
         """**The control.** Both lists populated: the refusal must appear,
-        Create must be disabled, and the advisory must not displace it."""
+        Create must be withheld, and the advisory must not displace it."""
         both = dict(ADVISED, onboardable=False,
                     blocking_reasons=["no management address — the device "
                                       "would be created and unreachable"])
-        html = _html(js, both)
-        assert 'data-pc-not="refused"' in html and 'data-pc-gate="fail"' in html
-        assert "no management address" in html
+        html = " ".join(_html(both).split())
+        assert "Not created: no management address" in html and "FAILS" in html
         assert "cannot deploy to this device" in html
-        assert _can_create(js, both) is False
+        assert _can_create(both) is False
         # The refusal is drawn ABOVE the note, so a long advisory cannot push
         # it off the top of the panel.
-        assert html.index('data-pc-not="refused"') < html.index('data-pc-not="advisory"')
+        assert html.index("Not created: no management address") < \
+            html.index("Worth knowing (this does not block onboarding)")
 
-    def test_no_advisories_draws_no_box(self, js):
+    def test_no_advisories_draws_no_note(self):
         """A panel that always carries a note is a panel nobody reads."""
-        html = _html(js, CLEAN)
-        assert 'data-pc-not="advisory"' not in html
+        assert "Worth knowing" not in _html(CLEAN)
 
 
 class TestTheReviewStatesWhatKeaSaid:
@@ -663,13 +470,13 @@ class TestTheReviewStatesWhatKeaSaid:
         plan.update(kw)
         return plan
 
-    def test_the_reservation_claim_is_on_screen(self, js):
-        html = _html(js, self._dhcp_plan())
+    def test_the_reservation_claim_is_on_screen(self):
+        html = _html(self._dhcp_plan())
         assert "Kea reservation aa:bb:cc:00:02:40" in html
         assert "10.255.0.40" in html
 
-    def test_a_refused_reservation_is_shown_as_refused(self, js):
-        html = _html(js, self._dhcp_plan(
+    def test_a_refused_reservation_is_shown_as_refused(self):
+        html = _html(self._dhcp_plan(
             address_claim=("DHCP, and Kea has NO reservation for "
                            "aa:bb:cc:00:02:40 — a dynamic lease moves and "
                            "this record would not"),
@@ -677,9 +484,9 @@ class TestTheReviewStatesWhatKeaSaid:
         assert "NO reservation" in html
         assert "dynamic lease moves" in html
 
-    def test_static_is_unchanged(self, js):
+    def test_static_is_unchanged(self):
         """**The floor.** The DHCP branch must not capture the static case."""
-        html = _html(js, self._dhcp_plan(
+        html = _html(self._dhcp_plan(
             address_source="static", mgmt_ip="203.0.113.32",
             mgmt_mask="255.255.255.0", address_claim="ignored for static"))
         assert "203.0.113.32 255.255.255.0" in html
@@ -688,9 +495,9 @@ class TestTheReviewStatesWhatKeaSaid:
 
 class TestCreateDrawsItsResult:
     """C86 (7.1's onboarding retrofit): Create is PHASE 1. Its toast said
-    "Device onboarded." while the device was pending and never reached. The
-    real route and the real `run_onboarding`, with the plan and the step
-    adapters stubbed, drawn by the SHIPPED result component."""
+    "Device onboarded." while the device was pending and never reached. v2's
+    Create route and the real `run_onboarding`, with the plan and the step
+    adapters stubbed, drawn by v2's result parts in Add device's card."""
 
     @pytest.fixture
     def create(self, monkeypatch, tmp_path):
@@ -698,51 +505,47 @@ class TestCreateDrawsItsResult:
 
         import app as nmas
         from modules import identity as ident_mod
+        from modules.nsot import onboard as O
 
         monkeypatch.setattr(ident_mod, "require",
                             lambda request, action="", operation="": (
                                 types.SimpleNamespace(actor="ops@example.com"), None))
         monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path))
         plan = types.SimpleNamespace(onboardable=True, hostname="r7", address_source="static",
-                                     mgmt_ip="203.0.113.7", mgmt_mac="", blocking_reasons=[])
-        monkeypatch.setattr("modules.nsot.onboard.build_plan", lambda **kw: plan)
+                                     mgmt_ip="203.0.113.7", mgmt_mac="", blocking_reasons=[],
+                                     summary={"hostname": "r7"}, host_vars={})
+        monkeypatch.setattr(O, "build_plan", lambda **kw: plan)
         monkeypatch.setattr("routes.onboard._plan_args", lambda data, ln, secret="": {})
+        shown = O.plan_shown(plan)
 
         def steps(commit_raises=None):
             def commit(p):
                 if commit_raises:
                     raise RuntimeError(commit_raises)
                 return "a1b2c3d4e5f60718293a"
-            monkeypatch.setattr("modules.nsot.onboard.real_steps", lambda repo, actor="": {
+            monkeypatch.setattr(O, "real_steps", lambda repo, actor="": {
                 "bind_credentials": lambda p: None, "commit": commit, "render": lambda p: ""})
-            return nmas.app.test_client().post("/onboard/create",
-                                               json={"list_name": "Default"})
+            r = nmas.app.test_client().post("/v2/onboard/create", data={
+                "list_name": "Default", "hostname": "r7", "shown": shown,
+                "fingerprint": O.plan_fingerprint(shown)})
+            import html as _h
+            return r.status_code, " ".join(_h.unescape(r.get_data(as_text=True)).split())
         return steps
 
-    def _draw(self, result):
-        import os
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        src = open(os.path.join(root, "static", "js", "nmas_preview_confirm.js")).read()
-        return dukpy.evaljs("var window = {};\n" + src
-                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
-
     def test_a_complete_phase_one_is_pending_never_onboarded(self, create):
-        r = create()
-        d = r.get_json()
-        assert r.status_code == 200 and d["result"]["level"] == "partial"
-        assert "PENDING" in d["result"]["happened"]["summary"]
-        html = self._draw(d["result"])
-        assert "Partly done" in html and "press Verify" in html
+        status, html = create()
+        assert status == 200
+        assert "PENDING" in html and "press Verify" in html
         # The false claim, exactly: never that THIS device is onboarded. (A
         # bare "onboarded." matched the true sentence "only a device the
         # tool has REACHED is onboarded.")
         assert "Device onboarded" not in html and "r7 is onboarded" not in html
         assert "a1b2c3d4e5f6" in html            # the commit, in the record
+        # What Create wrote, each on no device (W4 step 9 reads these lines).
+        assert "What was created (on no device)" in html and "commit: " in html
 
     def test_a_failed_create_names_where_and_why(self, create):
-        r = create(commit_raises="git refused: no identity")
-        d = r.get_json()
-        assert r.status_code == 500 and d["result"]["level"] == "failed"
-        html = self._draw(d["result"])
-        assert "Not done" in html and "git refused: no identity" in html
+        status, html = create(commit_raises="git refused: no identity")
+        assert status == 500
+        assert "git refused: no identity" in html
         assert "Abandon removes it" in html      # credentials were written first

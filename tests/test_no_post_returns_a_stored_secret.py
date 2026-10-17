@@ -53,9 +53,9 @@ def _head_golden():
 #: test, so a new computing POST cannot go unswept by being new.
 def _bodies(v):
     return {
-        "deploy.plan": (200, ("json", {"devices": ["r1"], "list_name": LIST}),
-                        "committed intent renders a community the device does not hold: "
-                        "the program adds one, and the device's is residue"),
+        # Today's deploy plan (deploy.plan) left with the deploy wizard at 7.8 (2026-10-17,
+        # P7-25): the v2 device page's Deploy… is a GET, read in `swept` below with this body's
+        # device; its committed intent renders a community the device does not hold.
         "settings_v2.diag_drift_check": (409, ("form", {}),
                                          "the network filled in ('zz') is none, so it is "
                                          "refused naming the networks; it starts nothing"),
@@ -124,12 +124,9 @@ def _bodies(v):
         # Today's restore preview (golden.restore_preview) left at 7.8 (2026-10-17): the v2
         # device page's restore preview is a GET, read in `swept` below with this body's moment.
         "inventory.refresh": (200, ("json", {}), "a local list: refused as not NetBox-sourced"),
-        "onboard.plan": (200, ("json", {"list_name": LIST, "hostname": "r8",
-                                        "platform": "cisco_ios"}),
-                         "a plan for a new device; creates nothing"),
-        "onboard.verify_preview": (409, ("json", {"list_name": LIST}),
-                                   "r1 is managed, never onboarded: refused by name before "
-                                   "anything is reached"),
+        # Today's onboarding plan and Verify preview (onboard.plan, onboard.verify_preview)
+        # left at 7.8 (2026-10-17, P7-25); v2's (onboard_v2.preview, onboard_v2.verify_preview)
+        # are declared with v2's routes.
         "remote.verify": (200, ("json", {}),
                           "no remote configured: a configured one would start ssh, which the "
                           "harness refuses and counts as a failure; the remote is an alias "
@@ -168,7 +165,10 @@ def _bodies(v):
 #: The drift run (today's `drift_check_sync` until 7.8, 2026-10-15) was never among them: it
 #: answers with counts and queues the diff as an approval item, which the GET sweep covers;
 #: its result is held to no planted value by `TestTheDriftRun` below.
-REACHES = {"deploy.plan", "device_v2.capture_start", "golden.capture_preview"}
+REACHES = {"device_v2.capture_start", "golden.capture_preview"}
+# `deploy.plan` LEFT this set 2026-10-17 with today's deploy wizard (7.8, P7-25): THE plan is
+# drawn by the v2 device page's Deploy… card, a GET, read by the fixture below and held by
+# `test_the_v2_deploy_preview_drew_the_masked_slot_and_no_value`.
 # `templatize.preview_committed_edit` LEFT this set 2026-10-17 with today's intent editor (7.8,
 # P7-23): the Intent tab's check (`intent_v2.check`, in the population) draws the edit's diffs
 # with the masked lines left uncompared, never a rendered secret slot.
@@ -440,6 +440,9 @@ def swept():
                 rp = A.app.test_client().get(
                     f"/v2/device/r1/restore/preview?list={LIST}"
                     f"&moment={values['_first_golden']}")
+                # THE deploy plan as the device page's Deploy… draws it (a GET; today's POST
+                # /deploy/plan was in the population until it left at 7.8, 2026-10-17, P7-25).
+                dp = A.app.test_client().get(f"/v2/device/r1/deploy?list={LIST}")
             # The device page's action cards whose previews were today's `not_device` POSTs
             # until they left at 7.8 (2026-10-17, P7-24): each read for r1, as nobody and as a
             # person, over the same planted stores.
@@ -455,6 +458,7 @@ def swept():
             yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
                    "person": person, "tests": tests, "drift_run": drift_run,
                    "restore_preview": (rp.status_code, rp.get_data(as_text=True)),
+                   "deploy_preview": (dp.status_code, dp.get_data(as_text=True)),
                    "cards": cards}
     finally:
         mp.undo()
@@ -505,12 +509,14 @@ class TestThePopulation:
         declared = set(_bodies(swept["values"]))
         assert population - declared == set(), "undeclared: give each a body that reaches it"
         assert declared - population == set(), "declared but no longer in the population"
-        assert len(population) >= 30, len(population)
+        # 29 measured 2026-10-17 once P7-24's and P7-25's POSTs left together; a floor.
+        assert len(population) >= 27, len(population)
 
     def test_the_known_computing_posts_are_in_it(self):
-        """The anchor: C77's deploy plan is in the population the gate table gives (its
-        restore preview, the other, left at 7.8 and is read as v2's GET in `swept`)."""
-        assert {"deploy.plan", "golden.capture_preview"} <= set(_population())
+        """The anchor: the capture preview and Add device's review are in the population the
+        gate table gives (C77's deploy plan and restore preview, the first two, left at 7.8
+        and are read as v2's GETs in `swept`)."""
+        assert {"golden.capture_preview", "onboard_v2.preview"} <= set(_population())
 
     def test_every_integration_is_driven_or_named(self, swept):
         from modules.integrations import REGISTRY
@@ -535,7 +541,17 @@ class TestEveryRouteReachedItsState:
         missing = sorted(k for k in REACHES
                          if not any(m in swept["person"][k][1] for m in MASKS))
         assert missing == [], missing
-        assert len(REACHES) >= 3   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632); 6 -> 5: templates.preview's POST left (7.8, 2026-10-15); 5 -> 4: golden.restore_preview left (7.8, 2026-10-17), the v2 restore preview held below; 4 -> 3: templatize.preview_committed_edit left with today's intent editor (7.8, 2026-10-17, P7-23)
+        assert len(REACHES) >= 2   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632); 6 -> 5: templates.preview's POST left (7.8, 2026-10-15); 5 -> 4: golden.restore_preview left (7.8, 2026-10-17), the v2 restore preview held below; 4 -> 3: templatize.preview_committed_edit left with today's intent editor (7.8, 2026-10-17, P7-23); 3 -> 2: deploy.plan left with today's deploy wizard (7.8, 2026-10-17, P7-25), the v2 deploy preview held below
+
+    def test_the_v2_deploy_preview_drew_the_masked_slot_and_no_value(self, swept):
+        """THE deploy plan as the v2 device page draws it (`device_v2.deploy`), held as
+        REACHES held today's POST /deploy/plan: committed intent renders a community r1 does
+        not hold, so the program adds it, and the card draws it masked, and no planted value."""
+        status, text = swept["deploy_preview"]
+        assert status == 200, text[:300]
+        assert 'id="device-op"' in text and "snmp-server community" in text, text[:300]
+        assert any(m in text for m in MASKS), text[:300]
+        assert [s for v, s in swept["planted"].items() if v in text] == []
 
     def test_the_v2_restore_preview_drew_the_masked_slot_and_no_value(self, swept):
         """THE restore plan as the v2 device page draws it (`device_v2.restore_preview`), held

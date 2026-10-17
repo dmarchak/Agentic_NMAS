@@ -24,9 +24,9 @@ FORWARD = "n/a: a commit, corrected by a forward commit"
 
 STAGES = {
     # ---- Device changes through the deploy pipeline
-    "deploy.apply": Stages(
-        "deploy.plan", "command_hashes", "modules.pipeline._stage_verify",
-        "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
+    # Today's deploy wizard (deploy.apply, its preview deploy.plan) left at 7.8 (2026-10-17,
+    # P7-25): device_v2.deploy_confirm and v2.profile_apply_confirm (the batch Apply) run THE
+    # plan and apply.
     # Today's re-apply (golden.restore_apply, its preview golden.restore_preview) left at 7.8
     # (2026-10-17, P7-21): device_v2.restore_confirm below and v2.history_reapply_confirm.
     "v2.profile_apply_confirm": Stages(
@@ -82,22 +82,9 @@ STAGES = {
         "modules.nsot.credential_rotation.verify_new_credential",
         "modules.nsot.credential_rotation.revert_commands",
         "modules.nsot.credential_rotation.record_outcome"),
-    "onboard.verify": Stages(
-        "onboard.verify_preview", "fingerprint in routes.onboard.verify_run",
-        "modules.nsot.onboard.verify_device",
-        "n/a: a failed step stops the phase with the device pending and nothing promoted; the "
-        "rotation reverts on its held session", "modules.nsot.onboard.record_run"),
-    "onboard.create": Stages(
-        "onboard.plan",
-        "MISSING: Create rebuilds the plan from the same fields; no hash binds it to the preview "
-        "(CONCURRENCY_AUDIT R36)",
-        "n/a: phase 1 reaches no device", "modules.nsot.onboard.abandon_onboarding",
-        "MISSING: Create's run is read back from the pending row, never recorded as a run"),
-    "onboard.abandon": Stages(
-        "MISSING: a dry run exists on the same route (`dry_run`), and no screen draws it as a "
-        "preview", "MISSING: no hash binds the abandon to what was shown",
-        "n/a: nothing reached the device", "n/a: abandon is itself the undo of Create",
-        "modules.nsot.onboard.record_run"),
+    # Today's onboarding (onboard.verify, onboard.create, onboard.abandon, with their previews
+    # onboard.verify_preview and onboard.plan) left at 7.8 (2026-10-17, P7-25), and with it
+    # three MISSING gaps (Create's hash, Abandon's preview and hash): onboard_v2's below.
     # History › Baselines › Re-apply (2026-10-10): THE restore plan and job, every device a
     # baseline holds, as one batch.
     "v2.history_reapply_confirm": Stages(
@@ -257,6 +244,8 @@ STAGES = {
 }
 
 #: The gaps, counted: the test pins this number, so it can only go down.
+# 6 -> 2 2026-10-17, measured: today's onboarding took its four with it (7.8, P7-25: Create's hash and
+# run record, Abandon's preview and hash); v2's Create keeps the shared run-record gap.
 # 10 -> 6 2026-10-17, measured: today's template editor took its three gaps (Approve's hash, the
 # save's preview and hash) and today's intent editor its hash gap with them (7.8, P7-23).
 # 17 -> 10 2026-10-17, measured: today's /run_command took its four LEGACY gaps with it (7.8,
@@ -269,7 +258,7 @@ STAGES = {
 # +1 2026-10-10: v2's Create shares today's Create's missing run record (one core); v2's
 # Create and Abandon bind their confirms, so today's two hash gaps and Abandon's preview gap
 # leave with today's routes at 7.8.
-MISSING_CEILING = 6
+MISSING_CEILING = 2
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +277,6 @@ PROFILE = "n/a: changes the network's monitoring profile, which no device's reco
 
 HISTORY = {
     # ---- confirm: sends to a device
-    "deploy.apply": ("receipts", "golden"),
     "v2.profile_apply_confirm": ("receipts", "golden"),
     "device_v2.deploy_confirm": ("receipts", "golden"),
     "device_v2.restore_confirm": ("receipts", "golden"),
@@ -297,8 +285,6 @@ HISTORY = {
     "v2.save_confirm": ("rotation", "golden"),
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
     "credential_profiles_v2.rotate_due_confirm": ("rotation", "golden", "intent"),
-    "onboard.verify": ("onboarding", "golden"),
-    "onboard.abandon": ("onboarding",),
     "onboard_v2.verify": ("onboarding", "golden"),
     "adopt_v2.confirm": ("onboarding", "golden"),
     "device_v2.reload_confirm": ("reloads", "restart_windows", "restarts"),
@@ -316,7 +302,6 @@ HISTORY = {
     # ---- approve: a decision a later device change acts on
     "golden.capture_apply": ("golden", "measured"),
     "device_v2.capture_confirm": ("golden", "measured"),
-    "onboard.create": ("intent",),
     "onboard_v2.create": ("intent",),
     "intent_v2.commit": ("intent",),
     "bulk_intent_v2.apply": ("intent",),

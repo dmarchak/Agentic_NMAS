@@ -19,13 +19,9 @@ import os
 
 import pytest
 
-dukpy = pytest.importorskip("dukpy")
-
 from modules.settings_schema import DEFAULTS as _DEFAULTS  # noqa: E402
 from modules.nsot.onboard import (ANSWERED, DID_NOT_ANSWER,  # noqa: E402
                                   REFUSED_CREDENTIAL)
-
-from tests.js_source import with_loaded_scripts
 
 
 @pytest.fixture
@@ -189,150 +185,71 @@ class TestPromotionOnlyOnAnAnswer:
 
 
 # ---------------------------------------------------------------------------
-# The banner, executed
+# A pending device on v2. Today's pending banner (`pendingBannerHtml`, its loader and its
+# Verify and Abandon buttons, executed here in five classes) left with today's onboarding at
+# 7.8 (2026-10-17, P7-25). Its properties, each on v2: an unreadable read is said, never drawn
+# as none pending (below); every pending device, in any state, offers Verify… and Abandon…
+# (below); Abandon asks first, as a dry run drawn with its confirm bound to it
+# (tests/test_onboard_v2.py, `TestAbandon`); each action carries the network the page shows
+# (tests/test_devices_v2.py, `test_the_pending_page_says_where_it_is_and_what_is_next`); a
+# pending device is reached from the Devices list, whose every row links its page
+# (tests/test_devices_v2.py, `test_every_rows_link_answers`); the interface is checked for its
+# spelling, never against the device, said on Add device's form.
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
-def banner_js():
-    """`pendingBannerHtml` and `pendingAgeText`, lifted from the page."""
-    import re as _re
+class TestAPendingDeviceOnV2:
 
-    import app as nmas
-
-    page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-    out = []
-    for name in ("pendingAgeText", "pendingBannerHtml"):
-        start = page.index(f"function {name}(")
-        depth, i, seen = 0, page.index("{", start), False
-        while i < len(page):
-            if page[i] == "{":
-                depth += 1
-                seen = True
-            elif page[i] == "}":
-                depth -= 1
-                if seen and depth == 0:
-                    break
-            i += 1
-        out.append(page[start:i + 1])
-    return "\n".join(out)
-
-
-def _banner(js, data):
-    return dukpy.evaljs(js + f"\npendingBannerHtml({json.dumps(data)});")
-
-
-def _row(name="bp1", state="in_flight", age=60):
-    return {"name": name, "mgmt_ip": "203.0.113.31", "state": state,
-            "age_seconds": age, "onboarded_at": "2026-09-23T10:00:00Z"}
-
-
-class TestTheBannerDistinguishesErrorFromEmpty:
-    """**The banner's own wrong-and-looks-right state**: rendering "no
-    pending devices" because the query failed — a reassuring sentence
-    produced by a broken read.
-
-    Same correction as the drift panel's "all 9 device(s) clean" over a
-    ten-device inventory, and the agent panel's disabled read returning
-    `[]`. A device may be waiting and invisible, which is the one thing this
-    banner exists to prevent.
-    """
-
-    def test_a_failed_query_says_so(self, banner_js):
-        html = _banner(banner_js, {"ok": False, "error": "manifest unreadable"})
-        assert "could not be read" in html
-        assert "manifest unreadable" in html
-        assert "alert-danger" in html
-
-    def test_a_failed_query_says_it_is_not_the_same_as_none(self, banner_js):
-        html = " ".join(_banner(banner_js,
-                                {"ok": False, "error": "x"}).split())
-        assert "not</em> the same as none being pending" in html
-
-    def test_a_missing_payload_is_an_error_not_an_empty_list(self, banner_js):
-        """`undefined` must not fall through to the empty branch."""
-        for bad in (None, {}, {"pending": []}):
-            html = _banner(banner_js, bad)
-            assert "could not be read" in html, bad
-
-    def test_genuinely_empty_renders_nothing(self, banner_js):
-        """The control. A banner that always drew something would pass every
-        test above and be ignored within a week."""
-        assert _banner(banner_js, {"ok": True, "pending": []}) == ""
-
-
-class TestTheBannerIsActionable:
-
-    def test_in_flight_is_listed_quietly(self, banner_js):
-        html = _banner(banner_js, {"ok": True, "pending": [_row()]})
-        assert "alert-secondary" in html
-        assert "overdue" not in html and "stale" not in html
-
-    def test_overdue_is_flagged(self, banner_js):
-        html = _banner(banner_js,
-                       {"ok": True, "pending": [_row(state="overdue",
-                                                     age=90000)]})
-        assert "alert-warning" in html
-        assert "overdue" in html
-
-    def test_every_row_offers_abandon(self, banner_js):
-        """**Changed deliberately from the opposite assertion.**
-
-        It was offered only at `stale`, on the reasoning that a destructive
-        action beside a five-minute-old device invites use. That is wrong in
-        the direction that matters: the operator who has just onboarded the
-        wrong thing is the one who needs abandon, and the window in which
-        they are certain it was a mistake is minutes, not a week.
-
-        Gating it at seven days left `curl` or waiting as the only recovery
-        for a fresh mistake — the flow's own recovery path unreachable
-        exactly when it is most useful. The confirm in `onboardAbandon()` is
-        what stops a misclick; an age gate never was.
-        """
-        for state, age in (("in_flight", 60), ("overdue", 90000),
-                           ("stale", 999999)):
-            html = _banner(banner_js,
-                           {"ok": True, "pending": [_row(state=state,
-                                                         age=age)]})
-            assert "onboardAbandon" in html, state
-
-    def test_abandon_still_asks_before_it_acts(self):
-        """The thing that actually stops a misclick, asserted in the shipped
-        source rather than assumed."""
-        import re as _re
+    @staticmethod
+    def _page(monkeypatch, tmp_path, row):
+        import types
 
         import app as nmas
 
-        page = with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-        body = page[page.index("async function onboardAbandon("):]
-        body = body[:body.index("\n}")]
-        assert "confirm(" in body
-        assert "NetBox" in body, "the confirm must say what it removes"
+        ref = types.SimpleNamespace(name="probe", repo_dir=str(tmp_path))
+        monkeypatch.setattr("modules.device_page.find_pending",
+                            lambda name, ref=None, _r=(ref, row): _r)
+        r = nmas.app.test_client().get("/v2/device/" + row["name"])
+        assert r.status_code == 200, r.status_code
+        return r.get_data(as_text=True)
 
-    def test_every_row_offers_verify(self, banner_js):
-        for state in ("in_flight", "overdue", "stale"):
-            html = _banner(banner_js,
-                           {"ok": True, "pending": [_row(state=state)]})
-            assert "onboardVerify" in html, state
+    @staticmethod
+    def _row(name="bp1", state="in_flight", age=60):
+        return {"identity": "uid:" + name, "name": name, "mgmt_ip": "203.0.113.31",
+                "address_source": "static", "state": state, "age_seconds": age,
+                "onboarded_at": "2026-09-23T10:00:00Z", "credential_findable": True}
 
-    def test_the_age_is_shown_not_just_the_state(self, banner_js):
-        html = _banner(banner_js, {"ok": True,
-                                   "pending": [_row(age=7200)]})
-        assert "2 hours" in html
+    def test_a_failed_read_says_so_never_none_pending(self, monkeypatch):
+        """The banner's own wrong-and-looks-right state: "no pending devices" because the
+        query failed. v2's Devices list says the read failed, beside what it could read."""
+        import app as nmas
 
-    def test_the_unverified_interface_is_stated(self, banner_js):
-        """The honest version of the guarantee that could not be made at
-        plan time."""
-        html = " ".join(_banner(banner_js,
-                                {"ok": True, "pending": [_row()]}).split())
-        assert "unverified" in html
-        assert "never against the device" in html
+        def boom(repo):
+            raise ValueError("manifest unreadable")
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", boom)
+        html = nmas.app.test_client().get("/v2/devices/table").get_data(as_text=True)
+        assert "pending onboardings could not be read (manifest unreadable)" in html
 
-    def test_the_name_is_escaped(self, banner_js):
-        html = _banner(banner_js,
-                       {"ok": True,
-                        "pending": [_row(name="<script>alert(1)</script>")]})
-        assert "<script>alert(1)</script>" not in html
-        assert "&lt;script&gt;" in html
+    def test_a_readable_empty_read_says_nothing_of_the_sort(self, monkeypatch):
+        """The control: a read that answered draws no failure."""
+        import app as nmas
+
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [])
+        html = nmas.app.test_client().get("/v2/devices/table").get_data(as_text=True)
+        assert "pending onboardings could not be read" not in html
+
+    @pytest.mark.parametrize("state,age", [("in_flight", 60), ("overdue", 90000),
+                                           ("stale", 999999)])
+    def test_every_pending_device_offers_verify_and_abandon(self, monkeypatch, tmp_path,
+                                                            state, age):
+        """Abandon is offered from the first minute: the operator who has just onboarded the
+        wrong thing is the one who needs it, and its dry run is what stops a misclick."""
+        html = self._page(monkeypatch, tmp_path, self._row(state=state, age=age))
+        assert 'hx-post="/v2/onboard/bp1/verify/preview' in html, state
+        assert 'hx-post="/v2/onboard/bp1/abandon/preview' in html, state
+
+    def test_the_name_is_escaped(self, monkeypatch, tmp_path):
+        html = self._page(monkeypatch, tmp_path, self._row(name="<i>bp1"))
+        assert "<i>bp1" not in html and "&lt;i&gt;bp1" in html
 
 
 # ---------------------------------------------------------------------------
@@ -471,109 +388,6 @@ class TestPhaseOneReachesNoExternalSystem:
                 elif isinstance(node, ast.Import):
                     names.update(a.name for a in node.names)
             assert not any("netbox" in n for n in names), (name, names)
-
-
-class TestTheBannerHasAnEntryPoint:
-    """`loadOnboardPending` had exactly two callers, and both were buttons
-    **inside the banner it draws** — so the banner could only appear after
-    you had used a control that only exists once it has appeared.
-
-    The div sat in the DOM, empty, while the manifest held a pending device
-    and the Template library listed it as bound. That is the state `pending`
-    was built to prevent, and the banner's own design test — *"pending for
-    ever and nobody notices"* — was defeated before it ever ran.
-
-    Not client-side suppression like the agent panel, and not two readers
-    disagreeing: **a renderer with no caller.** `test_onboard_phase2.py`
-    could not see it, because it executes `pendingBannerHtml` directly —
-    testing the render and not the wiring, the same seam as `/onboard/create`
-    sending `body: '{}'`.
-    """
-
-    def _page(self):
-        import app as nmas
-
-        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-
-    def test_something_outside_the_banner_calls_it(self):
-        """The property: at least one caller that is not one of the banner's
-        own buttons, or the banner is unreachable."""
-        import re as _re
-
-        page = self._page()
-        callers = [m.start() for m in
-                   _re.finditer(r"loadOnboardPending\s*\(", page)]
-        assert len(callers) >= 3, (
-            f"only {len(callers)} reference(s) — the definition plus its own "
-            f"buttons means nothing draws it on load")
-        assert "DOMContentLoaded" in page
-
-    def test_it_runs_on_page_load(self):
-        page = self._page()
-        block = page[page.index("id=\"onboardPendingBanner\""):]
-        block = block[:block.index("async function loadOnboardPending")]
-        assert "DOMContentLoaded" in block
-        assert "loadOnboardPending" in block
-
-    def test_it_reruns_when_the_device_list_changes(self):
-        """Pending is per list. A banner showing another list's devices is
-        worse than none."""
-        page = self._page()
-        block = page[page.index("id=\"onboardPendingBanner\""):]
-        block = block[:block.index("async function loadOnboardPending")]
-        assert "deviceListSelect" in block
-        assert "devices-tab" in block
-
-    def test_the_endpoint_answers_without_a_list_name(self):
-        """The page does not always know the list at load time, and a READ
-        may derive the active one — a listing leaves nothing behind. The
-        write path still refuses."""
-        import app as nmas
-
-        body = nmas.app.test_client().get("/onboard/pending").get_json()
-        assert body.get("ok") is True, body
-        assert "list" in body, "the response must say which list it answered for"
-
-
-class TestTheBannerCarriesTheListIntoItsActions:
-    """Both buttons read `#obList` — the WIZARD's select, empty until
-    `openOnboardWizard()` populates it. From the banner the modal has never
-    been opened, so every action it offers sent `list_name: ''` and was
-    refused.
-
-    **`carried, never derived`, failing in the direction the rule is for:**
-    the value was in hand — `/onboard/pending` echoes the list it answered
-    for, and that response drew the row — and was dropped on the way to the
-    call. The same shape as `loadOnboardPending` having no caller: the
-    feature renders and nothing it offers works.
-    """
-
-    def _page(self):
-        import app as nmas
-
-        return with_loaded_scripts(nmas.app.test_client().get("/").get_data(as_text=True))
-
-    def test_both_buttons_are_given_the_list(self, banner_js):
-        html = _banner(banner_js,
-                       {"ok": True, "list": "nmas-probe",
-                        "pending": [_row(state="stale", age=999999)]})
-        assert "onboardVerify('bp1', 'nmas-probe')" in html
-        assert "onboardAbandon('bp1', 'nmas-probe')" in html
-
-    def test_neither_action_falls_back_to_the_wizards_select(self):
-        """A fallback would make the banner work by accident once the wizard
-        had been opened, and fail otherwise — which is how this shipped."""
-        page = self._page()
-        for fn in ("onboardVerify", "onboardAbandon"):
-            sig = page[page.index(f"async function {fn}("):]
-            sig = sig[:sig.index(")") + 1]
-            assert "listName" in sig, (fn, sig)
-
-    def test_the_list_is_escaped_like_the_name(self, banner_js):
-        html = _banner(banner_js,
-                       {"ok": True, "list": "<script>x</script>",
-                        "pending": [_row()]})
-        assert "<script>x</script>" not in html
 
 
 class TestARefusalNamesTheCallersOperation:

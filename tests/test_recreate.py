@@ -25,6 +25,8 @@ import threading
 
 import pytest
 
+from tests import deploy_core
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S3 = open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "s3.cfg"),
           encoding="utf-8").read()
@@ -228,7 +230,7 @@ def client(monkeypatch):
 
 
 def _route_plan(client):
-    out = client.post("/deploy/plan", json={"devices": ["s3"]}).get_json()
+    out = deploy_core.post_plan(json={"devices": ["s3"]}).get_json()
     assert out["ok"], out
     return out, out["devices"][0]
 
@@ -247,7 +249,7 @@ class TestThePlanRoute:
     def test_a_scoped_plan_still_draws_what_the_re_create_replaces(self, client, measured):
         # C297: the scoped branch ASSIGNED its notes over the re-create's, so a
         # scoped plan re-creating an operation never drew what it replaces.
-        out = client.post("/deploy/plan", json={"devices": ["s3"], "scope": "ip_sla"}).get_json()
+        out = deploy_core.post_plan(json={"devices": ["s3"], "scope": "ip_sla"}).get_json()
         assert out["ok"], out
         d = out["devices"][0]
         assert d["commands"] == PROGRAM and len(d["recreates"]) == 1
@@ -272,7 +274,7 @@ class TestThePlanRoute:
 
     def test_the_apply_recomputes_the_same_program(self, client, measured):
         _out, d = _route_plan(client)
-        res = client.post("/deploy/apply", json={
+        res = deploy_core.post_apply(json={
             "confirmations": {"s3": d["capture_hash"]},
             "command_hashes": {"s3": d["command_hash"]}}).get_json()
         assert "s3" in res.get("deployed", []), res

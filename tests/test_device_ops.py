@@ -21,6 +21,8 @@ import pytest
 
 from modules.nsot import device_ops as D
 
+from tests import deploy_core
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -150,7 +152,7 @@ class TestEveryChangingPathHoldsIt:
         device = plan["devices"][0]
         ran = _spy_pipeline(monkeypatch)
         with Holder("Default", "s4"):
-            body = P._client().post("/deploy/apply", json={
+            body = deploy_core.post_apply(json={
                 "confirmations": {"s4": device["capture_hash"]},
                 "command_hashes": {"s4": device["command_hash"]},
                 "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()

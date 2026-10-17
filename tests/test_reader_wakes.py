@@ -82,8 +82,9 @@ PAIRS = [
     ("rotation", "job-health"),                            # a rotation job's announcement
     ("rotation", "credential-health"),
     ("rotation", "baseline-usability"),
-    ("onboard.verify", "job-health"),                      # onboarding: break-glass, rotation
-    ("onboard.verify", "credential-health"),
+    ("onboard_v2.verify", "job-health"),                   # onboarding: break-glass, rotation
+    #                                                        (today's onboard.verify until 7.8)
+    ("onboard_v2.verify", "credential-health"),
     ("breakglass.export", "job-health"),                   # the record current again (C536)
     ("v2.credentials_intact", "job-health"),
     ("v2.credentials_drill", "job-health"),

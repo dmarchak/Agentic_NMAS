@@ -98,7 +98,7 @@ class TestEveryMutatingEndpointIsDeclared:
             assert gate.reason.strip(), f"{name} has no reason"
 
     @pytest.mark.parametrize("endpoint,kind", [
-        ("deploy.apply", "confirm"),
+        ("device_v2.deploy_confirm", "confirm"),    # today's deploy.apply until 7.8 (P7-25)
         ("device_v2.restore_confirm", "confirm"),   # today's golden.restore_apply until 7.8
         ("golden.capture_apply", "approve"),
         ("bulk_intent_v2.apply", "approve"),
@@ -107,7 +107,7 @@ class TestEveryMutatingEndpointIsDeclared:
         ("reads_v2.ask_run", "reveal"),
         ("reads_v2.show_commands_run", "reveal"),   # today's /bulk_execute's home (7.8)
         ("remote.push", "publish_remote"),
-        ("deploy.plan", "not_device"),
+        ("onboard_v2.preview", "not_device"),       # today's deploy.plan until 7.8 (P7-25)
     ])
     def test_anchors(self, endpoint, kind):
         """Named expectations, including the one that failed on 2026-09-26."""
@@ -170,8 +170,10 @@ class TestTheTableAgreesWithEveryInRouteGate:
     def test_the_scan_finds_the_in_route_gates(self):
         # 10 measured: remote x5, onboard x4, ratify (freshness left in Phase 3). A grep finds
         # 13 lines: one is a docstring naming require(), and one is the golden
-        # reveal helper, which GET views call and which is not a view itself.
-        assert len(self._in_route_calls()) >= 10
+        # reveal helper, which GET views call and which is not a view itself. 7 measured
+        # 2026-10-17: today's onboarding routes' four left at 7.8 (P7-25); v2's Create, Verify
+        # and Abandon (onboard_v2) carry theirs.
+        assert len(self._in_route_calls()) >= 7
 
     def test_kinds_and_operations_agree(self):
         from modules.route_gates import GATES
@@ -192,7 +194,7 @@ class TestTheTableAgreesWithEveryInRouteGate:
 # ---------------------------------------------------------------------------
 
 REFUSED_WITHOUT_IDENTITY = [
-    "/deploy/apply",
+    "/v2/device/s1/deploy/confirm",  # today's /deploy/apply until 7.8 (2026-10-17, P7-25)
     "/v2/history/reapply/confirm",   # today's /golden/restore/apply until 7.8 (2026-10-17)
     "/golden/capture/apply",
     "/v2/show-commands/run",        # many devices' reads: today's /bulk_execute left at 7.8
@@ -211,8 +213,9 @@ class TestRefusedBeforeInput:
         assert body.get("requires_identity") is True, (path, body)
 
     def test_a_not_device_route_is_not_refused_by_the_gate(self):
-        resp = _app().test_client().post("/deploy/plan", json={})
-        assert resp.status_code != 403, resp.get_json(silent=True)
+        # Add device's review (today's /deploy/plan was the example until 7.8, P7-25).
+        resp = _app().test_client().post("/v2/onboard/preview", data={})
+        assert resp.status_code != 403, resp.get_data(as_text=True)[:300]
 
     def test_an_undeclared_route_is_refused_at_run_time(self):
         from flask import Flask
@@ -265,8 +268,7 @@ class TestEveryGatedEndpointRefusesWithoutIdentity:
         reqs = _gated_requests(_app())
         # 87 measured 2026-09-26: 121 mutating endpoints, 34 of them not_device
         assert len({e for _, _, e, _ in reqs}) >= 76, len(reqs)  # C102 removed three gated routes; C104 the manual commit; Auto-Create; approve-all hands off (C105)
-        assert any(e == "deploy.apply_deploy" or u == "/deploy/apply"
-                   for _, u, e, _ in reqs)
+        assert any(e == "device_v2.deploy_confirm" for _, u, e, _ in reqs)
 
     def test_every_one_is_403_and_no_view_runs(self, monkeypatch):
         app = _app()
@@ -286,15 +288,16 @@ class TestEveryGatedEndpointRefusesWithoutIdentity:
 
 
 class TestAPersonPasses:
-    def test_deploy_apply_reaches_its_own_validation(self):
+    def test_deploy_confirm_reaches_its_own_validation(self):
         """The default harness identity is a verified person: the gate lets
-        the request through, and the route's own input check answers."""
-        resp = _app().test_client().post("/deploy/apply", json={})
-        assert resp.status_code != 403, resp.get_json(silent=True)
+        the request through, and the route's own input check answers (the device page's
+        Deploy confirm; today's /deploy/apply until 7.8, P7-25)."""
+        resp = _app().test_client().post("/v2/device/s1/deploy/confirm", data={})
+        assert resp.status_code != 403, resp.get_data(as_text=True)[:300]
 
 
 class TestAServiceIsNotAPerson:
-    @pytest.mark.parametrize("path", ["/deploy/apply",
+    @pytest.mark.parametrize("path", ["/v2/device/s1/deploy/confirm",
                                       "/v2/settings/installation/card/netbox/save",
                                       "/v2/devices/change/apply"])
     def test_a_service_is_refused(self, monkeypatch, path):
@@ -404,13 +407,13 @@ class TestTheActorIsTheVerifiedOne:
         from flask import g
         from modules import identity
         seen = {}
-        import routes.deploy as D
+        from flask import jsonify
 
-        def spy():
+        def spy(**_kw):
             seen["actor"] = identity.request_actor()
-            return D.jsonify({"ok": False}), 400
-        monkeypatch.setitem(_app().view_functions, "deploy.apply", spy)
-        _app().test_client().post("/deploy/apply", json={})
+            return jsonify({"ok": False}), 400
+        monkeypatch.setitem(_app().view_functions, "device_v2.deploy_confirm", spy)
+        _app().test_client().post("/v2/device/s1/deploy/confirm", data={})
         from tests.conftest import TEST_PERSON
         assert seen["actor"] == TEST_PERSON
 

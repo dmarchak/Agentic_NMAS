@@ -12,13 +12,13 @@ Through the real `/deploy/apply` over the plan-apply seam's artifact, and the re
 
 from tests.test_deploy_plan_apply_seam import _plan, client  # noqa: F401 (the fixture)
 from tests.test_device_ops import _spy_pipeline
+from tests import deploy_core
 
 
 def test_a_deploy_without_the_hash_is_refused_and_nothing_sent(client, monkeypatch):  # noqa: F811
     ran = _spy_pipeline(monkeypatch)
     device = _plan(client)
-    body = client.post("/deploy/apply",
-                       json={"confirmations": {"r6": device["capture_hash"]}}).get_json()
+    body = deploy_core.post_apply(json={"confirmations": {"r6": device["capture_hash"]}}).get_json()
     row = next(r for r in body["results"] if r["device"] == "r6")
     assert row["outcome"] == "refused"
     assert "needs the command hash the preview showed" in row["reason"]
@@ -27,8 +27,7 @@ def test_a_deploy_without_the_hash_is_refused_and_nothing_sent(client, monkeypat
 
 def test_the_same_apply_with_the_hash_deploys(client, monkeypatch):  # noqa: F811
     device = _plan(client)
-    body = client.post("/deploy/apply",
-                       json={"confirmations": {"r6": device["capture_hash"]},
+    body = deploy_core.post_apply(json={"confirmations": {"r6": device["capture_hash"]},
                              "command_hashes": {"r6": device["command_hash"]}}).get_json()
     assert "r6" in body.get("deployed", []), body.get("by_outcome")
 

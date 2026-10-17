@@ -1416,7 +1416,7 @@ def _coverage_words(list_name: str, rows: list) -> None:
 
 def _apply_ctx(req, scope: str = None) -> dict:
     """The batch preview: every device's profile-scoped plan, as
-    `/deploy/plan` with scope `profile` computes it, masked on the way out
+    `routes.deploy.plan_devices` with scope `profile` computes it, masked on the way out
     AFTER every hash is computed, and the confirm body built from those
     hashes, so the confirm sends exactly what this preview showed."""
     from modules.nsot import listref

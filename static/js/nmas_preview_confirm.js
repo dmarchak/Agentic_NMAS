@@ -570,8 +570,7 @@
   /* The operations a next step may open, by the key the server names, and
      the words on their button. Opened by the one listener each operation's
      client installs (`data-nmas-open`); the server never names code. */
-  var NEXT_OPENS = {breakglass_export: 'Export the break-glass record…',
-                    profile_apply: 'Apply monitoring profile…'};
+  var NEXT_OPENS = {breakglass_export: 'Export the break-glass record…'};
   var NEXT_CLASS = {breakglass_export: 'btn-outline-danger'};
 
   /* A result's next step, drawn apart (C219): never under "What did not
@@ -579,6 +578,9 @@
   function nextHtml(n) {
     if (!n || !n.text) return '';
     var args = n.args || {};
+    /* A next step whose operation lives on v2 now: a link there (profile_apply's opener left
+       with today's deploy wizard at 7.8, P7-25, C1161). */
+    var NEXT_V2 = {profile_apply: ['Apply monitoring profile…', '/v2/monitoring/apply']};
     return '<div class="alert alert-info py-2 px-3 small" data-pr-next><strong>Next:</strong> '
       + esc(n.text)
       + (NEXT_OPENS[n.open]
@@ -586,7 +588,13 @@
            + ' ms-1" data-nmas-open="' + esc(n.open) + '" data-nmas-list="' + esc(args.list || '')
            + '" data-nmas-device="' + esc((args.devices || []).join(',')) + '">'
            + esc(NEXT_OPENS[n.open]) + '</button>'
-         : '')
+         : NEXT_V2[n.open]
+           ? ' <a class="btn btn-sm btn-outline-primary ms-1" href="' + NEXT_V2[n.open][1]
+             + '?list=' + encodeURIComponent(args.list || '')
+             + (args.devices || []).map(function (d) {
+                 return '&device=' + encodeURIComponent(d); }).join('')
+             + '">' + esc(NEXT_V2[n.open][0]) + '</a>'
+           : '')
       + '</div>';
   }
 

@@ -194,12 +194,17 @@ class TestThePage:
         assert re.search(r'<a class="nav-item active" href="/v2/monitoring" aria-current="page">', html)
 
 
-def test_todays_opener_takes_several_device_parameters():
-    """The form sends `device=r2&device=r6`; the opener read only the first."""
-    import os
-    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                            "static", "js", "gen", "partials__deploy_wizard.1.js")).read()
-    assert "openProfileApply(q.getAll('device').join(','), q.get('list') || '')" in src
+def test_the_apply_page_takes_several_device_parameters():
+    """The form sends `device=r2&device=r6`; today's opener once read only the first. Today's
+    deploy wizard, which opened it, left at 7.8 (2026-10-17, P7-25): the batch Apply's page
+    reads every one, in the order sent, each once."""
+    import app as nmas
+    from flask import request
+    from routes.v2 import _apply_args
+
+    with nmas.app.test_request_context(
+            "/v2/monitoring/apply?scope=profile&list=Lab&device=r2&device=r6&device=r2"):
+        assert _apply_args(request)["order"] == ["r2", "r6"]
 
 
 def _no_probe_in_intent(lab, host):

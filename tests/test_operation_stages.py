@@ -81,17 +81,18 @@ def test_the_gaps_only_shrink():
 def test_the_operations_that_change_a_device_have_every_stage(app):
     """The deploy pipeline's entry points and rotate carry all five, no gap. A restore is the
     v2 device page's (today's golden.restore_apply left at 7.8, 2026-10-17), and so is a
-    rotation (today's rotate.apply left at 7.8, 2026-10-17, P7-24)."""
-    for ep in ("deploy.apply", "device_v2.restore_confirm", "v2.profile_apply_confirm",
-               "device_v2.rotate_confirm"):
+    rotation (today's rotate.apply left at 7.8, 2026-10-17, P7-24; today's deploy.apply the
+    same day, P7-25)."""
+    for ep in ("device_v2.deploy_confirm", "device_v2.restore_confirm",
+               "v2.profile_apply_confirm", "device_v2.rotate_confirm"):
         assert not any(v.startswith(("MISSING", "n/a")) for v in S.STAGES[ep]), ep
 
 
 class TestTheControls:
     def test_an_undeclared_gated_route_is_found(self, app):
         stages = dict(S.STAGES)
-        stages.pop("deploy.apply")
-        assert "deploy.apply: gated confirm with no stages declared" in problems(
+        stages.pop("device_v2.deploy_confirm")   # deploy.apply until 7.8 (P7-25)
+        assert "device_v2.deploy_confirm: gated confirm with no stages declared" in problems(
             stages, app, population())
 
     def test_a_reference_to_nothing_is_found(self, app):

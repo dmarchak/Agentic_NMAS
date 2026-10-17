@@ -14,6 +14,7 @@ import os
 import pytest
 
 from tests.test_capture import build_capture_lab
+from tests import deploy_core
 
 
 def _set_description(repo, iface, text):
@@ -68,7 +69,7 @@ class TestTheBlockIsReadAndEnforced:
 
     def test_the_route_draws_the_refusal(self, lab):
         client = lab[0]["client"]
-        body = client.post("/deploy/plan", json={"devices": ["r2"]}).get_json()
+        body = deploy_core.post_plan(json={"devices": ["r2"]}).get_json()
         text = str(body)
         assert "rolled back" in text, text[:600]
         # Named for what it blocks (C118): a change, never the device.

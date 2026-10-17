@@ -27,6 +27,7 @@ from modules.nsot.render_artifact import (
 )
 
 from tests.js_source import read_shipped
+from tests import deploy_core
 
 FLEET = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
 
@@ -459,13 +460,15 @@ class TestEveryReferencedHelperExists:
     on some other test happening to import the right thing.
     """
 
-    ROUTE_MODULES = ["routes.deploy", "routes.golden", "routes.templatize",
+    ROUTE_MODULES = ["routes.golden", "routes.templatize",
                      "routes.inventory",
                      "routes.netbox_v2", "routes.settings_integrations"]
     #: Route files that serve nothing since their routes left, kept for the helpers the deploy
     #: path calls: `routes.templates` (today's template editor's routes left at 7.8,
-    #: 2026-10-17, P7-23; its `artifact_for` and golden and platform reads stay).
-    HELPER_MODULES = ["routes.templates"]
+    #: 2026-10-17, P7-23; its `artifact_for` and golden and platform reads stay) and
+    #: `routes.deploy` (today's deploy wizard's two routes left at 7.8, 2026-10-17, P7-25; THE
+    #: plan and apply stay, `plan_devices`, `apply_batch` and `run_targets`).
+    HELPER_MODULES = ["routes.templates", "routes.deploy"]
 
     @pytest.mark.parametrize("module_name", ROUTE_MODULES)
     def test_module_imports(self, module_name):
@@ -531,23 +534,28 @@ class TestARequestReachesTheWire:
     An AST presence test catches that deletion. It does not catch a function
     that exists but is no longer called, is called with the wrong arguments, or
     is bypassed by a second path someone added. This does, because it makes the
-    request the test subject: POST /deploy/plan for a real command list and
-    hash, POST /deploy/apply with that hash, and assert the exact program
-    arrives at the transport.
+    request the test subject: v2's batch Apply page (`/v2/monitoring/apply`, scope
+    `intent`) for a real command list and the hashes its confirm carries, that confirm posted
+    as the page's button posts it, and the exact program asserted at the transport once the
+    job it starts has run. (Until 7.8 the requests were today's POST /deploy/plan and
+    /deploy/apply, which left with the deploy wizard on 2026-10-17, P7-25.)
 
     Only the transport and the stages that would open a socket are replaced.
     Everything between the route and them — artifact build, `prepare_device`,
     `merge_commands`, `assert_merge_only`, `plan_batch`, `run_batch`,
-    `_deploy_one`, `PipelineRunner` — is the real code.
+    `_deploy_one`, `PipelineRunner` — is the real code, and so are the page's
+    preview, its confirm and the deploy job.
     """
 
     DEVICE = "s1"
     IP = "203.0.113.21"
     EDIT = "NSoT-managed route seam"
+    PAGE = "/v2/monitoring/apply?scope=intent&list=Lab&device=s1"
+    CONFIRM = "/v2/monitoring/apply/confirm?list=Lab"
 
     @pytest.fixture
     def wired(self, tmp_path, monkeypatch):
-        import flask
+        import app as nmas
         from modules.nsot import hostvars, manifest, templates_repo
         from modules.nsot.parsers import get_parser
         from modules import pipeline as P
@@ -589,6 +597,7 @@ class TestARequestReachesTheWire:
         monkeypatch.setattr("modules.config.get_list_data_dir",
                             lambda name: str(list_dir))
         monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
         monkeypatch.setattr("modules.device.get_current_device_list",
                             lambda: ("Lab", str(list_dir / "devices.csv")))
         monkeypatch.setattr("modules.device.load_saved_devices",
@@ -614,27 +623,41 @@ class TestARequestReachesTheWire:
                       "_stage_save_golden"):
             monkeypatch.setattr(P, stage, lambda ctx: None)
 
-        app = flask.Flask(__name__)
-        app.register_blueprint(RD.bp)
-        return app.test_client(), seen
+        return nmas.app.test_client(), seen
 
-    def _plan(self, client):
-        response = client.post("/deploy/plan", json={"devices": [self.DEVICE]})
-        assert response.status_code == 200, response.data
-        body = response.get_json()
-        return next(d for d in body["devices"] if d["device"] == self.DEVICE)
+    def _offered(self, client):
+        """The page's preview and the body its confirm carries, with the core's plan entry
+        for the device (the program the page draws, from the same `plan_devices`)."""
+        from tests.v2_confirm import confirm_body
+
+        r = client.get(self.PAGE)
+        assert r.status_code == 200, r.get_data(as_text=True)[:500]
+        body = confirm_body(r.get_data(as_text=True))
+        assert body, "the page offers no confirm"
+        planned = deploy_core.plan({"devices": [self.DEVICE]}, "Lab")["devices"][0]
+        assert body["command_hashes"] == {self.DEVICE: planned["command_hash"]}, body
+        return body, planned
+
+    def _run(self, client, body):
+        """Post the confirm as the button does and let the job it starts finish: the job's
+        card, as History's link reads it."""
+        from modules.nsot import capture_job
+        from tests.v2_confirm import job_of, job_url, post_confirm
+
+        r = post_confirm(client, self.CONFIRM, body)
+        assert r.status_code == 202, r.get_data(as_text=True)[:500]
+        job = job_of(r)
+        assert job and capture_job.wait(job, 30), job
+        return client.get(job_url(job)).get_data(as_text=True)
 
     def test_the_plans_program_is_what_arrives_at_the_transport(self, wired):
         client, seen = wired
 
-        planned = self._plan(client)
+        body, planned = self._offered(client)
         assert planned["deployable"] is True, planned.get("blocking_reasons")
         assert planned["commands"], "the plan published no program to follow"
 
-        response = client.post("/deploy/apply", json={
-            "confirmations": {self.DEVICE: planned["capture_hash"]},
-            "command_hashes": {self.DEVICE: planned["command_hash"]}})
-        assert response.status_code == 200, response.data
+        self._run(client, body)
 
         assert len(seen) == 1, (
             f"expected exactly one push from one request, got {len(seen)}. "
@@ -648,10 +671,8 @@ class TestARequestReachesTheWire:
         """Guards against a seam that passes an empty list end to end."""
         client, seen = wired
 
-        planned = self._plan(client)
-        client.post("/deploy/apply", json={
-            "confirmations": {self.DEVICE: planned["capture_hash"]},
-            "command_hashes": {self.DEVICE: planned["command_hash"]}})
+        body, _planned = self._offered(client)
+        self._run(client, body)
 
         arrived = "\n".join(seen[0]["commands"])
         assert self.EDIT in arrived
@@ -659,20 +680,24 @@ class TestARequestReachesTheWire:
 
     def test_a_stale_hash_stops_the_request_before_the_wire(self, wired):
         """The refusal is part of the route's job, so it is part of this test."""
+        import html
+
         client, seen = wired
 
-        planned = self._plan(client)
-        response = client.post("/deploy/apply", json={
-            "confirmations": {self.DEVICE: planned["capture_hash"]},
-            "command_hashes": {self.DEVICE: "not-the-hash-you-confirmed"}})
+        body, _planned = self._offered(client)
+        body["command_hashes"] = {self.DEVICE: "not-the-hash-you-confirmed"}
+        card = html.unescape(self._run(client, body))
 
-        body = response.get_json()
         assert seen == [], "a refused device must never reach the transport"
-        assert body["refused"][0]["device"] == self.DEVICE
-        assert "changed since you confirmed" in body["refused"][0]["reason"]
+        assert "changed since you confirmed" in card, card[-1500:]
 
     def test_an_unconfirmed_device_reaches_nothing(self, wired):
+        from tests.v2_confirm import post_confirm
+
         client, seen = wired
-        response = client.post("/deploy/apply", json={"confirmations": {}})
+        body, _planned = self._offered(client)
+        response = post_confirm(client, self.CONFIRM, dict(body, confirmations={}))
         assert response.status_code == 400
+        assert "Nothing was sent" in response.get_data(as_text=True)
         assert seen == []
+

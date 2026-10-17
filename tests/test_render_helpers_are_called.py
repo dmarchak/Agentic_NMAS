@@ -96,8 +96,10 @@ class TestEveryRenderHelperIsCalled:
         assert len(files) >= 10, f"only {len(files)} templates found"
         helpers = declared_helpers()
         # 8 -> 5 2026-10-17 (P7-23), 5 measured: the helpers today's template editor and
-        # intent editor declared left with them at 7.8.
-        assert len(helpers) >= 5, \
+        # intent editor declared left with them at 7.8. 5 -> 1 the same day (P7-25), 1 measured
+        # (renderInventoryBanner): today's onboarding wizard's and pending banner's helpers
+        # (pendingBannerHtml among them) left with them at 7.8.
+        assert len(helpers) >= 1, \
             f"the helper pattern matched only {sorted(helpers)}"
         # The five that motivated this sweep must be among them, or the
         # pattern has drifted away from the thing it was built for.
@@ -105,10 +107,12 @@ class TestEveryRenderHelperIsCalled:
         # by the preview component from the server's adapter now; driftDetailHtml
         # left with today's drift panel at 7.8, 2026-10-15; _gBaselineCoverage, the fourth, with
         # today's Baselines panel at 7.8, 2026-10-17; templateRowHtml, the fifth, with today's
-        # template editor at 7.8, 2026-10-17, P7-23: their NAMES are still pinned to the
+        # template editor at 7.8, 2026-10-17, P7-23; pendingBannerHtml, the first's banner, with
+        # today's onboarding at 7.8, 2026-10-17, P7-25: their NAMES are still pinned to the
         # pattern.)
-        for known in ("pendingBannerHtml",):
+        for known in ("renderInventoryBanner",):
             assert known in helpers, f"{known} is no longer recognised"
+        assert _HELPER.match("pendingBannerHtml")
         assert _HELPER.match("_gBaselineCoverage") and _HELPER.match("nbCascadeHtml")
         assert _HELPER.match("templateRowHtml")
 

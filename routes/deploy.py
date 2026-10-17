@@ -1,37 +1,31 @@
-"""Deploy-from-template blueprint — Phase 3c.
+"""THE deploy plan and apply — Phase 3c. **No blueprint** since 7.8.
 
-The only route family in the NSoT work that reaches a device. Everything before
-this point was deliberately inert; this is where the contract built in 3b is
-either honoured or not.
+Flow: **plan** (`plan_devices`: per-device diff and deployability, read-only) → a person
+confirms → **apply** (`apply_batch`, `run_targets`: fresh capture, drift check, push, verify,
+golden save). Nothing is pushed without a confirmation bound to what the person saw.
 
-Flow: **plan** (per-device diff and deployability, read-only) → operator
-confirms per device → **apply** (fresh capture, drift check, push, verify,
-golden save). Nothing is pushed without a confirmation token bound to what the
-operator actually saw.
+Today's deploy wizard and its two routes (POST /deploy/plan, POST /deploy/apply) left at 7.8 on
+2026-10-17 (P7-25; restore point tag `pre-remove/v1-onboarding`). Every caller is v2's or a
+job's: the device page's Deploy… (`routes/device_v2.py`); the batch Apply's page, which applies
+the monitoring profile too (`routes/v2.py`); `modules/deploy_job.py`, the job each confirm
+runs; the restore plan, Re-apply… included (`routes/golden.py`, `modules/nsot/restore.py`);
+and the intent core (`routes/templatize.py`).
 """
 
 import hashlib
 import logging
 import os
 
-from flask import Blueprint, jsonify, request
+from flask import request
 
 from modules.identity import request_actor
 
 log = logging.getLogger(__name__)
 
-bp = Blueprint("deploy", __name__, url_prefix="/deploy")
-
 
 def _repo_for(list_name: str) -> str:
     from modules.config import get_list_data_dir
     return os.path.join(get_list_data_dir(list_name), "config_repo")
-
-
-def _active_list(payload=None) -> str:
-    from modules.config import get_current_list_name
-    name = (payload or {}).get("list_name") or request.args.get("list_name") or ""
-    return name.strip() or get_current_list_name()
 
 
 def _capture_hash(text: str) -> str:
@@ -472,8 +466,8 @@ def _effects_and_declared(list_name: str, hostname: str, commands, raw, intents=
 def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                  remove: dict = None, scope: str = "", declare: dict = None) -> list:
     """Every device's plan entry: its exact program, hashes, gates and what it
-    holds back. THE plan, for `/deploy/plan` and the v2 batch preview (P.9 d2)
-    alike. Reads captured configs only; contacts no device."""
+    holds back. THE plan, for the device page's Deploy… and the v2 batch preview (P.9
+    d2) alike. Reads captured configs only; contacts no device."""
     from modules.nsot.deploy import (DeployRefused, NotAuthorised,
                                      assert_authorised, command_fingerprint,
                                      dangerous_in, merge_diff,
@@ -641,57 +635,14 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
     return devices
 
 
-@bp.route("/plan", methods=["POST"])
-def plan():
-    """Per-device diff and deployability. Reads captured configs only."""
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    hostnames = data.get("devices") or []
-    # Per device, always. Authorising a line for one device must never
-    # authorise it for another in the same batch.
-    authorise = data.get("authorise") or {}
-    # Mode B (7.3 step 2): the lines a person SELECTED for removal, per device,
-    # as `{device: [{chain, line}]}`. Never inferred from the residue: each is a
-    # decision, and each needs a stated reason (through `authorise`).
-    remove = data.get("remove") or {}
-    if not hostnames:
-        return jsonify({"ok": False, "error": "No devices selected"}), 400
-    # P.9 step (b): "profile" sends only the network's monitoring profile's
-    # lines. Anything else is refused by name, never read as the whole intent.
-    from modules.nsot import profile_apply
-    scope = (data.get("scope") or "").strip()
-    if scope not in SCOPES:
-        return jsonify({"ok": False, "error": (
-            f"unknown deploy scope {scope!r}: the plan sends the device's whole intent, or "
-            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines, with "
-            f"scope 'ip_sla' only its IP SLA probes, or with scope "
-            f"{profile_apply.TEMPLATES!r} both")}), 400
-
-    devices = plan_devices(list_name, hostnames, authorise=authorise, remove=remove,
-                           scope=scope)
-
-    # The six parts, built ONCE by the shared contract (Stage 7.1); the
-    # wizard draws `preview` with the one renderer. `devices` stays: apply's
-    # wiring and older callers read it.
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import deploy_preview
-    # Masked on the way out, AFTER every hash is computed from the truthful
-    # program (C77): the preview carried a secret the program adds, and
-    # residue, verbatim.
-    return jsonify(mask_payload({
-        "ok": True, "list": list_name, "devices": devices, "scope": scope,
-        "deployable_count": sum(1 for d in devices if d.get("deployable")),
-        "preview": deploy_preview(devices, request, scope=scope)}))
-
-
 def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 authorise: dict = None, remove: dict = None, scope: str = "",
                 actor: str, actor_kind: str = "", on_device=None,
                 declare: dict = None) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
-    failed devices). THE apply, for `/deploy/apply` and the v2 batch confirm
-    (P.9 d2), which runs it as a job: the actor and how it was verified come
+    failed devices). THE apply, for the device page's Deploy… and the v2 batch
+    confirm (P.9 d2), each run as a job: the actor and how it was verified come
     in as arguments, since a job's thread has no request to read them from."""
     from modules.nsot import profile as _profile, profile_apply
     from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
@@ -867,48 +818,12 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     return report
 
 
-@bp.route("/apply", methods=["POST"])
-def apply():
-    """Deploy the confirmed devices through the pipeline.
-
-    *confirmations* maps device → the capture hash shown in the plan. A device
-    whose fresh capture no longer matches is skipped and reported, never
-    deployed against a diff the operator did not see.
-    """
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    confirmations = data.get("confirmations") or {}
-    if not confirmations:
-        return jsonify({"ok": False,
-                        "error": "Nothing confirmed — deploy refused"}), 400
-
-    # One-shot discipline, the same shape as the Phase 0 plan token: the
-    # operator confirmed one exact command list, so that exact list is what
-    # may be sent. Recomputed here and compared, never trusted from the
-    # request — a hash the client supplies proves only what the client saw.
-    command_hashes = data.get("command_hashes") or {}
-    authorise = data.get("authorise") or {}
-    remove = data.get("remove") or {}                      # Mode B, as at plan
-    from modules.nsot import profile_apply
-    scope = (data.get("scope") or "").strip()              # P.9 step (b), as at plan
-    if scope not in SCOPES:
-        return jsonify({"ok": False, "error": f"unknown deploy scope {scope!r}: nothing sent"}), 400
-
-    from modules import identity
-    report = apply_batch(list_name, confirmations, command_hashes, authorise=authorise,
-                         remove=remove, scope=scope, actor=identity.request_actor(),
-                         actor_kind=getattr(identity.identify(request), "kind", ""))
-    # Masked on the way out (C77's apply side, measured 2026-09-27: a planted
-    # community came back in `results[].commands`). The receipts and the
-    # golden commit are written above from the truthful report; nothing
-    # reads this response back into a confirm.
-    from modules.outbound import mask_payload
-    return jsonify(mask_payload({"ok": True, "list": list_name, **report}))
-
-
-# GET /deploy/receipts (the receipt store read back for today's device page's Changes tab) left
-# with that page at 7.8 on 2026-10-17 (P7-22): a device's receipts are its v2 History tab's
-# rows (`history_sources.receipts`), read in-process.
+# Today's deploy wizard's two routes, POST /deploy/plan and POST /deploy/apply, left at 7.8 on
+# 2026-10-17 (P7-25; restore point tag `pre-remove/v1-onboarding`), and GET /deploy/receipts
+# with today's device page (P7-22). Their homes: the device page's Deploy… and the batch
+# Apply's page (`/v2/monitoring/apply`, scope `intent`), over `plan_devices` and `apply_batch`
+# above, the one plan and the one apply; a device's receipts are its History tab's rows
+# (`history_sources.receipts`).
 
 
 def _prior_authorised(list_name: str, hostname: str, lines) -> dict:

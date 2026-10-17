@@ -30,6 +30,7 @@ from tests import payload_providers as P
 # test_device_revert_retry_v2's served lab with a block standing, and the fixtures it needs.
 from tests.test_device_revert_retry_v2 import blocked, page  # noqa: F401
 from tests.test_intent_ops import classify, lab  # noqa: F401
+from tests import deploy_core
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 S4_CFG = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "s4.cfg")
@@ -137,11 +138,11 @@ def _apply(mp, **pipeline):
         "tags": ["golden/s4/20260927T000000Z"], "baseline": False,
         "baseline_reasons": ["the batch targeted 1 of 9 inventory devices"]})
     auth = {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}
-    plan = P._ok(P._client().post("/deploy/plan", json={"devices": ["s4"], "authorise": auth}))
+    plan = deploy_core.plan({"devices": ["s4"], "authorise": auth})
     device = plan["devices"][0]
-    out = P._ok(P._client().post("/deploy/apply", json={
+    out = deploy_core.apply({
         "confirmations": {"s4": device["capture_hash"]},
-        "command_hashes": {"s4": device["command_hash"]}, "authorise": auth}))
+        "command_hashes": {"s4": device["command_hash"]}, "authorise": auth})
     from modules.config import get_current_list_name
     from modules.nsot import receipts
     (row,) = [r for r in receipts.read(get_current_list_name())["rows"]

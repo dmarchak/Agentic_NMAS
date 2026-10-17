@@ -20,6 +20,7 @@ import time
 import pytest
 
 from tests.test_profile_apply import _commit_proposal, lab  # noqa: F401 (the fixture)
+from tests import deploy_core
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -105,7 +106,7 @@ class TestThePreview:
         r, page = _page(ready)
         assert r.status_code == 200
         assert _order(page) == ["r6", "r2"]
-        plan = ready["client"].post("/deploy/plan", json={
+        plan = deploy_core.post_plan(json={
             "devices": ["r6", "r2"], "scope": "profile", "list_name": "Lab"}).get_json()
         want = {d["device"]: d for d in plan["devices"]}
         body = _body(page)

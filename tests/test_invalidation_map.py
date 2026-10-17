@@ -123,9 +123,11 @@ class TestEveryMutatingRouteDeclares:
     def test_the_three_measured_cases_are_declared(self):
         from modules import deploy_job
 
-        assert "inventory" in I.keys_for("onboard.verify")
-        for endpoint in ("deploy.apply", "golden.capture_apply"):
-            assert "remote" in I.keys_for(endpoint), endpoint
+        # Onboarding's Verify and the deploy are v2's since today's routes left at 7.8
+        # (2026-10-17, P7-25): Verify declares, and a deploy is a job that announces.
+        assert "inventory" in I.keys_for("onboard_v2.verify")
+        assert "remote" in I.keys_for("golden.capture_apply")
+        assert "remote" in deploy_job.DONE_KEYS
         # A restore is a job (today's golden.restore_apply left at 7.8, 2026-10-17): the job
         # announces what it changed as it finishes.
         assert "remote" in deploy_job.RESTORE_DONE_KEYS
@@ -172,7 +174,8 @@ class TestTheResponseCarriesIt:
         refusal announcing an invalidation claims a write that did not
         happen (found when the payload check's fixture was refused and its
         refusal carried `invalidates`)."""
-        r = client.post("/deploy/apply", json={})
+        # A confirm that sends to a device (today's /deploy/apply until 7.8, 2026-10-17).
+        r = client.post("/v2/device/s1/deploy/confirm", data={})
         assert r.status_code == 403
         assert I.HEADER not in r.headers
         assert "invalidates" not in (r.get_json() or {})

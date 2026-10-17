@@ -13,7 +13,7 @@ deploy record.
 You open the deploy plan for the device (see [Deploy a change](deploy)), or, on the device
 page, Actions › **Remove lines (Mode B)…**, which opens the same card at its lines left on the
 device (a device holding nothing removable opens nothing, and the row says so). On the device
-page that part is "Left on the device"; on today's page it is "What will NOT happen". It
+page that part is "Left on the device". It
 lists the device's residue: every line the device has, by its committed
 golden, that intent lacks, under its section, and every stanza whose header intent lacks as
 one unit, its lines implied. Each unit has a box, identified by an ID rather than its text,
@@ -21,8 +21,9 @@ because the plan is masked and a line in a secret position could never be sent b
 text. The monitoring profile's Apply offers the same boxes for a device's lines the profile
 supersedes, never ticked for you.
 
-- **Ticked**, it will be removed. Ticking plans the device again (the browser posts the ticked
-  IDs to `/deploy/plan`), and the line appears at the end of the program with a reason field:
+- **Ticked**, it will be removed. Ticking plans the device again (the card asks for the plan
+  with the ticked IDs, `/v2/device/<device>/deploy?rm=<id>`), and the line appears at the end
+  of the program with a reason field:
   one decision, one control, so the tick chooses it and the reason says why. Typing the reason
   plans the device again so the hash covers it. A reason must be at least three words and not
   a copy of the line.

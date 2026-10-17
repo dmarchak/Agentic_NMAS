@@ -31,20 +31,8 @@
 <!-- Page header with search -->
 <div class="mb-4 d-flex justify-content-between align-items-center">
   <h2 class="text-primary mb-0">Saved Devices</h2>
-  {# Onboarding is FLEET-LEVEL, so it is a toolbar action rather than a
-     thirteenth tab -- Stage 7 reorganises around device-centric and
-     fleet-level views, and a new tab is what that redesign exists to undo.
-     Deliberately OUTSIDE the devices guard below: an empty list is exactly
-     when somebody needs to add a device, and the button would otherwise be
-     absent when it is most useful. #}
-  <div class="d-flex gap-2 align-items-center mb-2">
-    <button class="btn btn-outline-primary btn-sm" onclick="openOnboardWizard()"
-            id="onboardWizardBtn">
-      Onboard a device
-    </button>
-    <span class="text-muted small">Plans and reviews first — nothing is
-      created until you press Create.</span>
-  </div>
+  {#- Today's Onboard a device, its wizard and its pending banner left at 7.8 (2026-10-17,
+      P7-25): Devices › Add device… and each pending device's page on v2. -#}
 
   <div id="deviceToolbarRegion" style="display: contents">
   {% include 'partials/device_toolbar.html' %}
@@ -62,8 +50,6 @@
 {#- Today's template library and editor and its intent editor left at 7.8 (2026-10-17, P7-23):
     Source of truth › Templates and each device's Intent tab. -#}
 {% include 'partials/device_nsot_actions.html' %}
-{% include 'partials/onboard_wizard.html' %}
-{% include 'partials/onboard_pending.html' %}
 
 <!-- Devices arrive and leave (C102, decided 2026-09-27). Add Device and
      Discover Subnet were removed: they produced half-managed devices, one

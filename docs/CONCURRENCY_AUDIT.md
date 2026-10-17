@@ -126,7 +126,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
 | R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | WRITER LOCK FIXED 2026-10-04 (tests/test_netbox_one_writer.py); the shared token store is 9.S's | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
 | R22 | m | stores | Kea ZTP fragment | the fragment, Kea's running config | none | no | FIXED 2026-10-04 (was UNSAFE; tests/test_ztp_fragment_lock.py) | yes | PathLock from read to read-back |
-| R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | HOLD FIXED 2026-10-04 (tests/test_onboard_serialised.py); binding Abandon to its dry run not built | yes | Hold the hostname; bind Abandon to its dry run |
+| R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | HOLD FIXED 2026-10-04 (tests/test_onboard_serialised.py); Abandon BOUND to its dry run 2026-10-17 (v2's confirm, and `abandon_run` refuses one without; tests/test_onboard_v2.py) | yes | Hold the hostname; bind Abandon to its dry run |
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
 | R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | KEY AND PROBE FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py); the lease and a recorded takeover DECIDED and its card APPROVED 2026-10-04 (not built); takeover by rank recorded for 9.I | yes | Lease, recorded release, canonical key, no flock probe |
@@ -143,7 +143,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R33 | l | stores, intent | Small stores with unlocked read-modify-write | variables, collector config, freshness authorisations, topology layout, agent and AI stores, `source.json`, retire's declaration, integration cards | none or in-process only | no | UNSAFE | yes | PathLock, `write_atomic`, `read_json_for_write` |
 | R34 | l | approvals | Queue detail | queue | handoff ids not bound to the device; closures unattributed; freshness authorise derives its list | n/a | UNSAFE | yes | Bind ids to devices; record actor on every transition; carry the list |
 | R35 | l | git, confirms | Repository housekeeping and the migration confirm | `index.lock`, `.gitignore`, migration marker | 120 s stale-lock window and its check-then-remove; readers append `.gitignore`; marker read before the lock; migrate's confirm is an unbound boolean | partly | UNSAFE | partly (not the migration on this host) | Clear and top up only under the write lock; re-check the marker inside it; bind the confirm to the dry run |
-| R36 | l | confirms | Unbound low-impact confirms | NetBox record, onboarding commit | NetBox forget has no preview; Create not bound to the review | n/a | UNSAFE | yes | Preview and hash both |
+| R36 | l | confirms | Unbound low-impact confirms | NetBox record, onboarding commit | NetBox forget has no preview; Create not bound to the review | n/a | FIXED 2026-10-17: both unbound forms left at 7.8 (today's forget with the NetBox tab, P7-20; today's Create with the onboarding wizard, P7-25); v2's bind, and the cores refuse an unbound one (tests/test_netbox_v2.py, tests/test_onboard_v2.py) | yes | Preview and hash both |
 | R37 | l | live, stores, locks | Per-process caches and helpers | redaction cache, NetBox inventory cache, sync status, keeper, heartbeat, agent, `op_progress` | in-process | no | UNSAFE-MULTI-PROCESS (some today) | partly | Single runner; caches keyed on file generation |
 
 ### High findings
@@ -736,10 +736,11 @@ plausible, not reproduced.
   for the name is refused by name, before planning or minting anything.
 - **Controls**, each failing its aimed tests: Abandon without its hold (the identity released
   under phase two); Create without its hold.
-- **Not built: binding Abandon to its dry run** (confirms-12). The route takes Abandon with
-  no hash of what its dry run showed. That needs the confirm to carry one, which v2's
-  onboarding screen will draw (canvas "7.4 Fleet", awaiting sign-off), so it waits for that
-  screen.
+- **Binding Abandon to its dry run** (confirms-11), BUILT on v2 (2026-10-10: its confirm
+  carries the dry run's fingerprint, `abandon_onboarding(confirmed=)`), and ENFORCED in the core
+  since today's unbound Abandon left at 7.8 (2026-10-17, P7-25): `routes.onboard.abandon_run`
+  refuses an Abandon that carries none, removing nothing (tests/test_onboard_v2.py,
+  `TestTheCoresBindEveryConfirm`).
 
 **R24. git's own locks surface as raw failures** (git-2, git-5). `git()` runs once with no
 retry (repo.py:164-181). `_git_env` does not set `GIT_OPTIONAL_LOCKS=0` (repo.py:105-118), so
@@ -1075,7 +1076,10 @@ confirm and compares no hash with the reviewed plan (routes/onboard.py:526-536).
 v2's Create (2026-10-10, cutover blocker 3) is bound: the plan rebuilt under the hostname's
 hold is compared with the reviewed one's fingerprint and refused naming what moved
 (`routes.onboard.create_run`, `modules.nsot.onboard.plan_moved`); v2's Abandon is bound to its
-dry run (`abandon_onboarding(confirmed=)`). Today's unbound Create leaves at 7.8.
+dry run (`abandon_onboarding(confirmed=)`). Today's unbound Create left at 7.8 (2026-10-17,
+P7-25), and with it the unbound form in the cores: `create_run` binds every Create to its review
+and `abandon_run` refuses an Abandon with no dry run's fingerprint
+(tests/test_onboard_v2.py, `TestTheCoresBindEveryConfirm`).
 
 *The NetBox half left with today's NetBox tab, 2026-10-17 (7.8):* today's unbound forget
 (`/netbox/safety/remove/apply` with `forget_only`) went with its routes. v2's Stop tracking
@@ -1083,7 +1087,7 @@ dry run (`abandon_onboarding(confirmed=)`). Today's unbound Create leaves at 7.8
 bound to the hash of exactly those entries, the record read again and hashed under the
 network's NetBox writer, refused naming both hashes if it moved, and given exactly the
 confirmed entries to forget (tests/test_netbox_v2.py, `TestStopTracking`). The onboarding half
-(today's Create) stays.
+(today's Create) left at 7.8 the same day (P7-25), above. R36 is FIXED.
 
 **R37. Per-process caches and helpers** (stores-12, stores-15, live-16 to live-19, live-21,
 locks-12, locks-22). The redaction value table is cached 30 s per process and invalidated
@@ -1297,8 +1301,8 @@ deploy paths already take holds first and commit second.
 | Persist | identity hash | after the check | yes | SAFE |
 | Retire | plan hash | yes | yes | SAFE |
 | Onboarding verify (phase two) | fingerprint of a fresh capture | yes | yes | SAFE |
-| Onboarding create | rebuilt from the form, no hash | no | yes | UNSAFE low (R36) |
-| Onboarding abandon | none; no hold | no | yes | UNSAFE medium (R23) |
+| Onboarding create | the plan rebuilt under the hostname's hold, compared with the review's fingerprint (today's unbound form left at 7.8, 2026-10-17) | yes | yes | SAFE (R36 fixed) |
+| Onboarding abandon | the dry run's fingerprint, compared holding the device (today's unbound form left at 7.8, 2026-10-17) | yes | yes | SAFE (R23's binding, R36) |
 | Bulk intent | plan hash including blobs | no lock to the commit | yes | UNSAFE medium (R15) |
 | Profile propose, IP SLA policy, IP SLA commit | proposal hash, profile hash | no | yes | UNSAFE low (R15) |
 | Intent editor save | nothing | n/a | no | UNSAFE high (R2) |
@@ -1541,8 +1545,8 @@ l. "Today" is yes when two users, two tabs or a host CLI already reach it.
 | confirms-8 | commit lock for confirms | repo | `threading.Lock`; abandon unlocked | no | UNSAFE | h | yes |
 | confirms-9 | bulk intent | `host_vars` | hash outside the lock | no | UNSAFE | m | yes |
 | confirms-10 | profile propose, IP SLA | profile, `host_vars` | hash outside the lock | no | UNSAFE | l | yes |
-| confirms-11 | onboarding Abandon | NetBox, repo, credentials, Kea | identity gate only | no | UNSAFE | m | yes |
-| confirms-12 | onboarding Create | credentials, repo, Kea | plan rebuilt, no hash | no | UNSAFE | l | yes |
+| confirms-11 | onboarding Abandon | NetBox, repo, credentials, Kea | the dry run's fingerprint, refused without (2026-10-17, P7-25) | yes | SAFE | m | no |
+| confirms-12 | onboarding Create | credentials, repo, Kea | the review's fingerprint, refused without (2026-10-17, P7-25) | yes | SAFE | l | no |
 | confirms-13 | onboarding Verify | device, records | fingerprint under the hold | yes | SAFE | l | no |
 | confirms-14 | capture apply | repo, queue | re-read under the hold | yes | SAFE | l | no |
 | confirms-15 | seed, revert, retry | repo, records | hash under the hold | partly | SAFE | l | no |

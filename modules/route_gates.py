@@ -76,13 +76,11 @@ C, A, K, R, P, N = ("confirm", "approve", "configure", "reveal",
 #: Every mutating endpoint. Grouped by kind; within a group, by subsystem.
 GATES = {
     # ---- confirm: sends to a device -------------------------------------
-    "deploy.apply": _g(C, "pushes a confirmed program to devices"),
     # Today's re-apply (golden.restore_apply) left at 7.8 (2026-10-17, P7-21): v2's
     # device_v2.restore_confirm and v2.history_reapply_confirm run the same restore as a job.
-    "onboard.verify": _g(C, "reaches the device and rotates its credential",
-                         "onboard_verify"),
-    "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
-                          "onboard_abandon"),
+    # Today's deploy wizard (deploy.plan, deploy.apply) and onboarding (onboard.plan, .create,
+    # .verify_preview, .verify, .abandon) left at 7.8 (2026-10-17, P7-25): device_v2's and
+    # v2's deploy, and onboard_v2's, below.
     "v2.history_view_save": _g(K, "saves a History › Query view (a link to a read) for the "
                                   "network, with a title, recorded (C667)"),
     "v2.history_view_pin": _g(K, "pins or unpins a saved History › Query view for everyone, "
@@ -105,11 +103,11 @@ GATES = {
                                          "clients then receive (C529 step 2, board B)",
                                       "dhcp_reservation"),
     "onboard_v2.verify": _g(C, "reaches the pending device and rotates its credential, from its "
-                               "v2 page (the same core as onboard.verify)", "onboard_verify"),
+                               "v2 page (`routes.onboard.verify_run`)", "onboard_verify"),
     "onboard_v2.abandon": _g(C, "deletes the pending device's records from NetBox and the "
                                 "repository, from its v2 page", "onboard_abandon"),
     "device_v2.restore_confirm": _g(C, "re-applies a moment (its golden now, an older golden or a baseline) to one device from the v2 device page (7.3; THE restore plan and apply, run as a job, in the list its preview was drawn in, C396), merge-only, every line needing a reason (a dangerous line, an account added back) with its stated reason in the hash"),
-    "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; the same plan and apply as deploy.apply and the batch apply, run as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
+    "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; THE plan and apply (`routes.deploy.plan_devices`, `apply_batch`) the batch apply runs too, as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
     "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; rotate_op.confirm_and_start): the device then accepts only the new password"),
     "credential_profiles_v2.rotate_due_confirm": _g(C, "rotates every due device's login credential (C724, Rotate due devices now), one at a time through the device page's rotation, bound to the previewed list's hash"),
     "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
@@ -169,7 +167,6 @@ GATES = {
     # state being enshrined was the one intended.
     "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
     "device_v2.capture_confirm": _g(A, "commits a device's confirmed capture as its golden, from the v2 device page (7.3; the same apply as golden.capture_apply)"),
-    "onboard.create": _g(A, "commits a new device's identity and intent", "onboard_device"),
     "onboard_v2.create": _g(A, "commits a new device's identity and intent, from v2's Add device",
                             "onboard_device"),
     "netbox_v2.confirm": _g(A, "writes to or deletes from NetBox as previewed, or (Stop tracking, C954) has Mercury forget what it created, from v2's NetBox page"),
@@ -243,12 +240,10 @@ GATES = {
     "remote_v2.auto_push": _g(P, "switches automatic publishing on, from History's set-up card (C631)"),
 
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
-    "deploy.plan": _g(N, "computes a program; sends nothing"),
     "device_v2.rotate_preview": _g(N, "reads the device's account line live for the rotation's plan, from the v2 device page (rotate_op.plan); changes nothing"),
     "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (the same job as golden.capture_preview); records nothing"),
     "golden.capture_preview": _g(N, "reads each device's running config and computes a "
                                     "capture preview; records nothing"),
-    "onboard.plan": _g(N, "builds a plan; creates nothing"),
     "templates_v2.coverage_check": _g(N, "measures how much of each device's golden its "
                                          "template reproduces, as a job; reads git, keeps the "
                                          "answer, reaches no device"),
@@ -268,8 +263,6 @@ GATES = {
                                            "moves; writes nothing"),
     "templates_v2.edit_check": _g(N, "renders a template edit for its devices in a copy of the "
                                      "library outside the repository; writes nothing"),
-    "onboard.verify_preview": _g(N, "reads the pending device and computes what Verify would "
-                                    "send (P.9 step c); sends nothing"),
     "bulk_intent_v2.preview": _g(N, "computes the change's preview for the ticked devices; "
                                     "writes nothing"),
     "intent_v2.check": _g(N, "checks and renders an edit as it is typed; writes nothing"),
@@ -307,7 +300,7 @@ def enforce():
 
     Runs before the route, so before its input validation: an unidentified
     caller learns nothing about what a valid body would have been. That is
-    the order ``/onboard/create`` already had.
+    the order today's onboarding Create (left at 7.8) already had.
     """
     from flask import g, request
     from modules import identity

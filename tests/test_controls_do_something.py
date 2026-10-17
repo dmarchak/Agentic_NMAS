@@ -130,10 +130,12 @@ class TestTheEmptyListNamesAControlThatExists:
         assert re.search(r'<a class="btn" data-op="onboard" href="/v2/onboard/new[^"]*"[^>]*>'
                          r'Add device…</a>', html)
 
-    def test_it_names_onboard_a_device_and_the_page_has_it(self):
+    def test_today_s_empty_list_names_v2_s_add_device_and_no_control_of_its_own(self):
+        """Today's Onboard a device left with its wizard at 7.8 (2026-10-17, P7-25): today's
+        empty list names v2's Add device… (asserted on v2 above) and no control on its own
+        page, so it never names one that is not there."""
         table = open(os.path.join(ROOT, "templates", "partials", "device_table.html"),
                      encoding="utf-8").read()
-        assert "Add one below" not in table
-        assert '"Onboard a device" above adds one' in table
-        assert re.search(r"openOnboardWizard\(\)[^<]*>\s*Onboard a device", _index()) or \
-            "Onboard a device" in _index()
+        assert "Add one below" not in table and '"Onboard a device"' not in table
+        assert "Devices › Add device… on the new interface adds one" in table
+        assert "Onboard a device" not in _index() and "openOnboardWizard" not in _index()

@@ -393,15 +393,10 @@ class TestEveryActionHasItsLink:
         assert 'x-on:click="openHelp"' in worded[0]
 
 
-class TestTodaysPagesCarryTheLink:
-    def test_the_onboarding_wizard_and_the_pending_banner(self):
-        wiz = open(os.path.join(ROOT, "templates", "partials", "onboard_wizard.html"),
-                   encoding="utf-8").read()
-        banner = open(os.path.join(ROOT, "static", "js", "gen", "partials__onboard_pending.1.js"),
-                      encoding="utf-8").read()
-        for text in (wiz, banner):
-            assert 'href="/v2/help/onboard"' in text and 'target="_blank"' in text
-            assert "How does this work?" in text
+# Today's onboarding wizard and pending banner, whose "How does this work?" links the class
+# here held, left at 7.8 (2026-10-17, P7-25). v2's Add device… and each pending device's
+# actions carry theirs (`test_the_rendered_page_draws_the_words_and_opens_the_panel` above,
+# and the how() scan over every v2 template).
 
 
 class TestTheIndexListsEverything:

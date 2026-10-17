@@ -68,7 +68,8 @@ class TestTheFileMergesCompletions:
 
 
 class _Apply:
-    """`/deploy/apply` for s4, through the real route, with the device and the commit faked."""
+    """The apply for s4, through THE apply v2's deploys run (`apply_batch`; today's
+    /deploy/apply until 7.8, 2026-10-17, P7-25), with the device and the commit faked."""
 
     @staticmethod
     def run(mp, deploy_one, commit):
@@ -86,8 +87,10 @@ class TestTheApplyWritesEachDeviceAsItFinishes:
         def commit(*_a, **_k):
             raise RuntimeError("the process ended here")
 
-        _plan, out = _Apply.run(monkeypatch, _deployed, commit)
-        assert out["ok"] is False, out          # the route answers the error, after the push
+        # The apply raises the commit's error after the push (the job that runs it answers
+        # it as its failure); the receipt was written as the device finished.
+        with pytest.raises(RuntimeError, match="the process ended here"):
+            _Apply.run(monkeypatch, _deployed, commit)
         rows = receipts.read("Default")["rows"]
         assert [(r["device"], r["commit_state"], r["sent"]) for r in rows] == \
             [("s4", "pending", True)], "the device was pushed and its receipt must say so"

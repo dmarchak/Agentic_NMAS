@@ -217,9 +217,11 @@ class TestTheThreeGradedPathsAreReachable:
 
     The first, today's template preview (`showRenderPreview`), left with today's template
     editor at 7.8 (2026-10-17, P7-23): a device's render against its golden is its Intent
-    tab's check and its Deploy… plan on v2. The other two stay until P7-25 and P7-27."""
+    tab's check and its Deploy… plan on v2. The second, today's deploy plan
+    (`openDeployPlan`), left with today's deploy wizard at 7.8 (2026-10-17, P7-25): a
+    device's Deploy… on v2 (tests/test_device_deploy_v2.py). The third stays until P7-27."""
 
-    GRADED = ("openDeployPlan", "showGoldenHistory")
+    GRADED = ("showGoldenHistory",)
 
     def test_each_is_defined(self, todays_page):
         _html, scripts = todays_page
@@ -241,6 +243,12 @@ class TestTheThreeGradedPathsAreReachable:
         for name in self.GRADED:
             hits = re.findall(r"nsotAction\('" + name + r"', '([^']+)'", html)
             assert sorted(hits) == ["r1", "s4"], (name, hits)
+
+    def test_the_deploy_plan_left_with_its_wizard(self, todays_page):
+        """Nothing on today's page names the removed wizard's opener, so no button calls a
+        function the page no longer defines (the dispatcher would report it, loudly)."""
+        html, scripts = todays_page
+        assert "openDeployPlan" not in html and "openDeployPlan" not in _definitions(scripts)
 
     def test_an_offline_device_keeps_them(self, todays_page):
         """All three read captured artifacts and open no socket, so an

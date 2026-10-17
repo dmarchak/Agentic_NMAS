@@ -17,6 +17,7 @@ import pytest
 from modules import pipeline
 from modules.nsot import verify_scope as V
 from tests.test_bgp_hold_watch import R3, _summary, world  # noqa: F401  (the fixture)
+from tests import deploy_core
 
 VTY = ["line vty 0 4", " logging synchronous", " login local", " length 0",
        " transport input all", "exit"]
@@ -291,7 +292,7 @@ class TestTheShippedScreensDrawIt:
         assert "Sections: line vty 0 4" in html
 
     def test_the_real_deploy_plan_carries_it(self, tmp_path, monkeypatch):
-        """Through the REAL /deploy/plan on r2's real config (the capture lab):
+        """Through THE plan (/deploy/plan until 7.8) on r2's real config (the capture lab):
         an intent edit to the vty lines plans a quick verify."""
         from modules.nsot import hostvars
         from modules.nsot.parsers import get_parser
@@ -304,7 +305,7 @@ class TestTheShippedScreensDrawIt:
             "line vty 2 4\n", "line vty 2 4\n exec-timeout 30 0\n", 1))
         hostvars.write_committed(cap["repo"], hv)
         assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
-        r = cap["client"].post("/deploy/plan", json={"devices": ["r2"], "list_name": "Lab"})
+        r = deploy_core.post_plan(json={"devices": ["r2"], "list_name": "Lab"})
         assert r.status_code == 200, r.get_data(as_text=True)[:400]
         t = r.get_json()["preview"]["targets"][0]
         assert "exec-timeout 30 0" in "\n".join(t["program"]["lines"]), (t["program"]["none"],

@@ -1,27 +1,28 @@
-"""routes/onboard.py — the onboarding wizard, Phase 4 / Stage 4C.4.
+"""routes/onboard.py — onboarding's cores, Phase 4 / Stage 4C.4. **No blueprint** since 7.8.
 
-**Two routes that create nothing and one that does.** `/plan` and
-`/platforms` are pure reads; `/create` is the only path that writes, and it
-refuses a plan `build_plan()` has not cleared.
+**Two cores that create nothing and one that does.** `plan_of` and
+`platform_choices` are pure reads; `create_run` is the only one that writes, and it
+refuses a plan `build_plan()` has not cleared, or one that is not the plan previewed.
 
 **A refusal the operator cannot see is not a refusal.** `blocking_reasons`
-already carries every reason at once (4C.1); this blueprint's job is to get
+already carries every reason at once (4C.1); these cores' job is to get
 all of them onto the screen, with the create action disabled, rather than
 leaving the plan object to be right in private.
 
-Reached from a **button on the Devices toolbar**, not a thirteenth tab.
-Onboarding is fleet-level, Stage 7 reorganises around exactly that
-distinction, and a new tab is the thing that redesign exists to undo.
+Today's onboarding wizard, its pending banner and their nine routes (/onboard/platforms,
+/pending, /bootstrap/<host>, /verify/<host> and its preview, /abandon/<host>, /lists, /plan,
+/create) left at 7.8 on 2026-10-17 (P7-25; restore point tag `pre-remove/v1-onboarding`).
+Their home is v2 (`routes/onboard_v2.py`): Devices › Add device… (the plan's review, then
+Create bound to it) and a pending device's page (Verify…, Get the bootstrap config…,
+Abandon…), each calling the cores below; the pending page's last run is `_run_history`
+(`routes/device_v2.py`).
 """
 
 import logging
 
-from flask import Blueprint, jsonify, request
-from modules.outbound import no_store
+from flask import request
 
 log = logging.getLogger(__name__)
-
-bp = Blueprint("onboard", __name__, url_prefix="/onboard")
 
 
 def _dialect(platform: str) -> str:
@@ -86,7 +87,7 @@ def _target_list(data, what: str = "plan") -> str:
     the time. It was very nearly made, and was caught only because the hard
     stop at step 6 exists to be read.
 
-    So an absent list is refused rather than guessed. The wizard always sends
+    So an absent list is refused rather than guessed. Add device always sends
     one; it is a field like any other.
     """
     name = ((data or {}).get("list_name") or "").strip()
@@ -102,8 +103,8 @@ def _target_list(data, what: str = "plan") -> str:
 def _plan_args(data, list_name: str, *, secret: str) -> dict:
     """The request fields `build_plan` needs, derived ONCE.
 
-    Both `/onboard/plan` and `/onboard/create` build a plan from the same
-    request, and `/onboard/create` rebuilds it deliberately -- the state can
+    Both `plan_of` and `create_run` build a plan from the same
+    request, and `create_run` rebuilds it deliberately -- the state can
     change between the review and the confirm. That only works while the two
     builds read the request the same way: a field added to one and not the
     other means the operator confirms a plan that differs from the one they
@@ -140,20 +141,13 @@ def _plan_args(data, list_name: str, *, secret: str) -> dict:
     )
 
 
-@bp.route("/platforms", methods=["GET"])
-def platforms():
-    """What can be onboarded, and what cannot — with the reason.
+def platform_choices() -> list:
+    """Each platform a device can be onboarded as, blocked ones listed with their reason;
+    v2's Add device draws this one list.
 
     A platform blocked pending a measurement is **listed and disabled**, not
     omitted: an absent option teaches the operator the tool does not support
-    their device, which is a different and wrong lesson.
-    """
-    return jsonify({"ok": True, "platforms": platform_choices()})
-
-
-def platform_choices() -> list:
-    """Each platform a device can be onboarded as, blocked ones listed with their reason;
-    today's wizard and v2's Add device draw this one list."""
+    their device, which is a different and wrong lesson."""
     from modules.nsot.onboard import BLOCKED_PENDING_MEASUREMENT
     from modules.nsot.platform import platform_for_device
     from modules.settings_schema import get_setting
@@ -203,89 +197,9 @@ def _repo_for(list_name: str) -> str:
     return os.path.join(get_list_data_dir(list_name), "config_repo")
 
 
-@bp.route("/pending", methods=["GET"])
-def pending():
-    """Devices onboarded and never reached, with age and state.
-
-    **An error here must not render as an empty list.** The banner's
-    wrong-and-looks-right state is showing "no pending devices" because the
-    query failed — a reassuring sentence produced by a broken read, which is
-    the shape this project has corrected in the drift panel ("all 9 clean"
-    over ten devices) and the agent panel (a disabled read returning `[]`).
-    So a failure answers `ok: false` with the reason, and the client is
-    required to draw that differently from an empty list.
-    """
-    # A READ MAY DERIVE THE ACTIVE LIST; a write may not.
-    #
-    # `_target_list()` refuses an absent list because onboarding into the
-    # wrong one leaves a commit and a NetBox object behind. Listing pending
-    # devices leaves nothing, and the page asking "what is pending here"
-    # means the list it is showing — so the fallback is correct rather than
-    # a relaxation. The list is echoed in the response so a caller can see
-    # which one it got.
-    from modules.config import get_current_list_name
-
-    list_name = (request.args.get("list_name") or "").strip() \
-        or get_current_list_name()
-    try:
-        from modules.nsot.manifest import (PENDING_OVERDUE_SECONDS,
-                                           PENDING_STALE_SECONDS,
-                                           pending_devices)
-
-        rows = pending_devices(_repo_for(list_name))
-        # P.6: a ZTP device's row says where it has got to, each fact from its
-        # own source. A failure to ask is carried as that, per row, never as
-        # a missing field that would render as "nothing to report".
-        ztp_rows = [r for r in rows if r.get("address_source") == "ztp"]
-        if ztp_rows:
-            from modules.fanout import Failed, read_each
-            from modules.nsot import ztp as _ztp
-
-            # Each row's Kea reads AT ONCE (the concurrency rule, C199).
-            for r, got in zip(ztp_rows, read_each(_ztp.progress, ztp_rows,
-                                                  name="onboard-pending")):
-                r["ztp"] = got if not isinstance(got, Failed) else {
-                    "stage": "unknown",
-                    "summary": f"its progress could not be read: {got.error}"}
-        runs = _run_history(_repo_for(list_name), {r["name"] for r in rows})
-        for r in rows:
-            r["last_run"] = runs["last"].get(r["name"])
-        return jsonify({"ok": True, "list": list_name, "pending": rows,
-                        # Absent and unreadable are different facts: an
-                        # unreadable record is drawn as that, never as "none".
-                        "runs": {"state": runs["state"], "error": runs["error"],
-                                 "finished": runs["finished"]},
-                        "counts": {"total": len(rows),
-                                   "overdue": sum(1 for r in rows
-                                                  if r["state"] != "in_flight")},
-                        "thresholds": {"overdue": PENDING_OVERDUE_SECONDS,
-                                       "stale": PENDING_STALE_SECONDS}})
-    except Exception as exc:                   # noqa: BLE001
-        log.exception("onboard: could not list pending devices")
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@bp.route("/bootstrap/<hostname>", methods=["GET"])
-@no_store
-def bootstrap(hostname):
-    """The config a pending device was onboarded with. **A reveal.**
-
-    It carries the one-time bootstrap credential in the clear, because a
-    node cannot boot a masked password — so this is gated and audited
-    exactly like `/golden/version/<host>?reveal=1`, and for the same reason.
-    Requires a person by default: a service credential leaking would
-    otherwise hand over the credential of every device still pending.
-
-    Re-rendered rather than stored. See `bootstrap_artifact()` for why the
-    config and the credential must share a lifetime.
-    """
-    out, status = bootstrap_reveal(hostname, request.args, request)
-    return jsonify(out), status
-
-
 def bootstrap_reveal(hostname: str, data, req) -> tuple:
     """``(answer, status)``: the bootstrap config, revealed to a person and recorded; the one
-    code path today's banner and v2's pending page share."""
+    path, for v2's pending page."""
     from modules import identity as ident_mod, reveal_audit
 
     try:
@@ -321,27 +235,9 @@ def bootstrap_reveal(hostname: str, data, req) -> tuple:
     return {**out, "revealed_by": ident.actor}, 200
 
 
-@bp.route("/verify/<hostname>", methods=["POST"])
-def verify(hostname):
-    """Phase 2: reach the device and promote it if it answered.
-
-    Requires a person: promotion puts a device into the population the tool
-    polls, backs up and deploys to, and reaching it uses a credential.
-    """
-    from modules import identity as ident_mod
-
-    ident, refusal = ident_mod.require(request, action="confirm",
-                                       operation="onboard_verify")
-    if refusal is not None:
-        return refusal
-
-    out, status = verify_run(hostname, request.get_json(silent=True) or {}, ident)
-    return jsonify(out), status
-
-
 def verify_run(hostname: str, data, ident) -> tuple:
     """``(answer, status)``: Verify (phase 2) for a verified person, as previewed. The one code
-    path today's route and v2's pending page share."""
+    path, for v2's pending page."""
     try:
         list_name = _target_list(data, "verify")
     except NoTargetList as exc:
@@ -368,17 +264,8 @@ def verify_run(hostname: str, data, ident) -> tuple:
             200 if out.get("ok") else 409)
 
 
-@bp.route("/verify/<hostname>/preview", methods=["POST"])
-def verify_preview(hostname):
-    """Verify's preview (P.9 step c): reach the device, read it, and show what
-    phase 2 will send (the RW removal and the network's monitoring profile,
-    masked) with the fingerprint Verify's confirm sends back. Sends nothing."""
-    out, status = verify_preview_of(hostname, request.get_json(silent=True) or {}, request)
-    return jsonify(out), status
-
-
 def verify_preview_of(hostname: str, data, req) -> tuple:
-    """``(answer, status)``: Verify's preview, masked; the one code path both pages share."""
+    """``(answer, status)``: Verify's preview, masked; for v2's pending page."""
     try:
         list_name = _target_list(data, "verify")
     except NoTargetList as exc:
@@ -397,23 +284,10 @@ def verify_preview_of(hostname: str, data, req) -> tuple:
             plan, preview_confirm.confirm_part(req))}), 200
 
 
-@bp.route("/abandon/<hostname>", methods=["POST"])
-def abandon(hostname):
-    """Undo an onboarding. Requires a person: it deletes from NetBox."""
-    from modules import identity as ident_mod
-
-    ident, refusal = ident_mod.require(request, action="confirm",
-                                       operation="onboard_abandon")
-    if refusal is not None:
-        return refusal
-
-    out, status = abandon_run(hostname, request.get_json(silent=True) or {}, ident.actor)
-    return jsonify(out), status
-
-
 def abandon_run(hostname: str, data, actor: str, confirmed: str = "") -> tuple:
-    """``(answer, status)``: Abandon, or its dry run (``dry_run``); the one code path today's
-    route and v2's pending page share. *confirmed* binds it to the dry run shown (v2)."""
+    """``(answer, status)``: Abandon, or its dry run (``dry_run``), for v2's pending page.
+    *confirmed* binds it to the dry run shown: an Abandon without one is refused, removing
+    nothing (today's unbound Abandon left at 7.8 on 2026-10-17)."""
     try:
         list_name = _target_list(data, "abandon")
     except NoTargetList as exc:
@@ -423,6 +297,10 @@ def abandon_run(hostname: str, data, actor: str, confirmed: str = "") -> tuple:
 
     repo = _repo_for(list_name)
     dry_run = bool(data.get("dry_run"))
+    if not dry_run and not confirmed:
+        return {"ok": False, "error": (
+            "Abandon confirms what its preview showed, and no preview fingerprint was sent: "
+            "preview first. Nothing was removed")}, 400
     try:
         out = abandon_onboarding(repo, hostname, list_name, actor=actor, dry_run=dry_run,
                                  **({"confirmed": confirmed} if confirmed else {}))
@@ -437,7 +315,7 @@ def abandon_run(hostname: str, data, actor: str, confirmed: str = "") -> tuple:
 def _recorded_run(repo: str, kind: str, list_name: str, hostname: str, actor: str,
                   out: dict) -> dict:
     """Record the run, then draw its result FROM the recorded row (7.1), so
-    the result now and the one the pending banner reads back later are one
+    the result now and the one the device's pending page reads back later are one
     computation. The record failing is part of the result, never silent."""
     from modules.nsot.onboard import record_run
     from modules.preview_confirm import onboard_run_result
@@ -447,8 +325,8 @@ def _recorded_run(repo: str, kind: str, list_name: str, hostname: str, actor: st
 
 
 def _run_history(repo: str, pending_names: set) -> dict:
-    """What the pending banner reads back: each pending device's last run,
-    and the runs that took a device OFF the list (promoted or abandoned),
+    """What a pending device's page reads back (`routes/device_v2.py`): each pending
+    device's last run, and the runs that took a device OFF the list (promoted or abandoned),
     newest first. A row that leaves the list takes its result with it
     otherwise, and those are the results most worth reading again."""
     from modules.nsot.onboard import read_runs, run_heading
@@ -468,48 +346,10 @@ def _run_history(repo: str, pending_names: set) -> dict:
             "finished": finished}
 
 
-@bp.route("/lists", methods=["GET"])
-def onboard_lists():
-    """The lists that can be onboarded into, and which one is active.
-
-    Its own endpoint rather than reusing `/device_lists`, for the reason
-    `/onboard/platforms` is: this blueprint answers `{"ok": ...}` and the
-    wizard reads one shape. `is_current` is a **default for the select**,
-    not a decision -- the operator chooses, and the request carries it.
-    """
-    try:
-        from modules.device import get_device_lists
-
-        lists = get_device_lists() or []
-        return jsonify({
-            "ok": True,
-            "lists": [{"name": row.get("name", ""),
-                       "slug": row.get("filename", ""),
-                       "device_count": row.get("device_count", 0),
-                       "is_current": bool(row.get("is_current"))}
-                      for row in lists],
-        })
-    except Exception as exc:                   # noqa: BLE001
-        log.exception("onboard: could not list device lists")
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-@bp.route("/plan", methods=["POST"])
-def plan():
-    """Build a plan and return it. **Creates nothing.**
-
-    Called on every step change, so the review step shows a plan computed
-    from what the operator has entered rather than a stale one — the same
-    reason the deploy plan recomputes at apply.
-    """
-    out, status = plan_of(request.get_json(silent=True) or {})
-    return jsonify(out), status
-
-
-def plan_of(data, *, bound: bool = False) -> tuple:
-    """``(answer, status)``: the plan and its review for the request's fields; the one code
-    path today's wizard and v2's Add device share. *bound* (v2) adds ``shown`` and
-    ``fingerprint``, what its Create sends back (today's wizard sends neither)."""
+def plan_of(data) -> tuple:
+    """``(answer, status)``: the plan and its review for the request's fields (v2's Add
+    device), with ``shown`` and ``fingerprint``, what its Create sends back. **Creates
+    nothing.**"""
     from modules.nsot.onboard import build_plan, plan_fingerprint, plan_shown
 
     try:
@@ -526,7 +366,7 @@ def plan_of(data, *, bound: bool = False) -> tuple:
         log.exception("onboard: plan failed")
         return {"ok": False, "error": str(exc)}, 500
 
-    shown = plan_shown(built) if bound else ""
+    shown = plan_shown(built)
     return {
         "ok": True,
         "plan": built.summary,
@@ -537,7 +377,7 @@ def plan_of(data, *, bound: bool = False) -> tuple:
         # separate `bootstrap_config` key went with the old review). It
         # carries only the placeholder secret, by construction.
         "preview": _onboard_preview(built.summary, built.bootstrap_config),
-        **({"shown": shown, "fingerprint": plan_fingerprint(shown)} if bound else {}),
+        "shown": shown, "fingerprint": plan_fingerprint(shown),
     }, 200
 
 
@@ -546,30 +386,11 @@ def _onboard_preview(summary: dict, bootstrap_config: str) -> dict:
     return onboard_preview(summary, bootstrap_config, confirm_part(request, "approve"))
 
 
-@bp.route("/create", methods=["POST"])
-def create():
-    """The only step that creates anything.
-
-    Requires a **person**: this puts a device into NetBox, a credential into
-    the store and a commit into the repository. `approve` is the action kind —
-    a human putting their name to something that changes state.
-    """
-    from modules import identity as ident_mod
-
-    ident, refusal = ident_mod.require(request, action="approve",
-                                       operation="onboard_device")
-    if refusal:
-        return jsonify(refusal), 403
-
-    out, status = create_run(request.get_json(silent=True) or {}, ident.actor)
-    return jsonify(out), status
-
-
-def create_run(data, actor: str, *, bound: bool = False) -> tuple:
-    """``(answer, status)``: Create (phase 1) for a verified person; the one code path today's
-    wizard and v2's Add device share. *bound* (v2) refuses unless the plan rebuilt under the
-    hold is the one previewed: the request's ``shown`` and ``fingerprint`` (7.1's binding;
-    today's wizard rebuilds without one, CONCURRENCY_AUDIT R36)."""
+def create_run(data, actor: str) -> tuple:
+    """``(answer, status)``: Create (phase 1) for a verified person (v2's Add device). Refused
+    unless the plan rebuilt under the hold is the one previewed: the request's ``shown`` and
+    ``fingerprint`` (7.1's binding). Today's wizard, which rebuilt without one
+    (CONCURRENCY_AUDIT R36), left at 7.8 on 2026-10-17, and with it the unbound form."""
     import os
 
     from modules.config import get_list_data_dir
@@ -594,11 +415,10 @@ def create_run(data, actor: str, *, bound: bool = False) -> tuple:
             # recomputes its program at apply rather than trusting what was shown.
             # secret="" -- the real one is minted by the credentials step.
             plan = build_plan(**args)
-            if bound:
-                moved = plan_moved(data.get("shown") or "", data.get("fingerprint") or "", plan)
-                if moved:
-                    return {"ok": False, "moved": True,
-                            "error": f"Not created: {moved}. Nothing was changed."}, 409
+            moved = plan_moved(data.get("shown") or "", data.get("fingerprint") or "", plan)
+            if moved:
+                return {"ok": False, "moved": True,
+                        "error": f"Not created: {moved}. Nothing was changed."}, 409
             if not plan.onboardable:
                 return {"ok": False, "error": "; ".join(plan.blocking_reasons),
                         "blocking_reasons": plan.blocking_reasons}, 409

@@ -82,12 +82,12 @@ collectors' ports and communities) have no writer or reader since the AI family'
 ### Config push: the confirmed deploy path, and nothing else
 
 ```
-/deploy/plan                 routes/deploy.py
+plan_devices                 routes/deploy.py (the device page's Deploy…, the batch Apply)
   → render committed intent  the network's template, the monitoring profile merged
   → the exact program        merge-only additions, re-creates, selected removals
   → gates, each by name      fidelity, approval, ASCII, dangerous lines, credentials, holder
   → preview                  drawn by the shared preview-confirm component, masked
-/deploy/apply                a verified person confirms the program's hash
+apply_batch                  a verified person confirms the program's hash; run as a job
   → recompute and compare    refused, naming what moved
   → modules/pipeline.py      9 stages: snapshot, push, verify (scoped), rollback on failure
   → one golden commit        save_golden(), the baseline decided in the commit
@@ -634,8 +634,9 @@ and others have left since too.
   a secret-position line's text could never be sent back
 - **[modules/deploy_job.py](modules/deploy_job.py)** — P.9 (d2), 2026-10-01: a batch deploy
   run as a JOB, in the ROLLOUT ORDER the v2 preview set (`/v2/monitoring/apply`, Monitoring >
-  Coverage's batch Apply), through `routes.deploy.apply_batch`, the one apply `/deploy/apply` also
-  calls (and `plan_devices`, the one plan): the confirm answers at once, the person's identity
+  Coverage's batch Apply), through `routes.deploy.apply_batch`, the one apply the device page's
+  Deploy… also runs (and `plan_devices`, the one plan; today's /deploy/plan and /deploy/apply,
+  which called them too, left at 7.8, P7-25, 2026-10-17): the confirm answers at once, the person's identity
   carried into the thread, each device's start and finish recorded and announced (`deploy_job`), so
   the page draws done, running and pending devices in order, then the result from the receipts.
   Client **[static/js/nmas_apply.js](static/js/nmas_apply.js)**
@@ -852,8 +853,10 @@ and others have left since too.
   device configured differently (a connector left empty falls back to what the fleet agrees on,
   saying so; two versions never reconciled by the tool), confirmed by hash and
   committed as the person; APPLY it as the deploy scoped to the profile's lines (`scope: profile`
-  on `/deploy/plan` and `/deploy/apply`), recomputed at apply and where it connects. Client
-  **[static/js/nmas_profile.js](static/js/nmas_profile.js)**; the apply is the deploy wizard
+  given to `plan_devices` and `apply_batch`, the batch Apply's page `/v2/monitoring/apply`),
+  recomputed at apply and where it connects. Client
+  **[static/js/nmas_profile.js](static/js/nmas_profile.js)**; the apply was today's deploy wizard
+  until it left at 7.8 (P7-25, 2026-10-17)
 - **[modules/nsot/startup_source.py](modules/nsot/startup_source.py)** — C319, plan item 4
   (2026-10-01): what each lab startup file is built FROM: the device's golden at the list's newest
   EARNED baseline (not withdrawn, not deleted, `Baseline: earned`), every credential family
@@ -981,7 +984,11 @@ and others have left since too.
   `templates.py` (no blueprint since today's template editor's routes left at 7.8, P7-23,
   2026-10-17: the render's pairing with its approval, `artifact_for`, the golden and
   platform reads the intent editor and bulk intent share, and Seed the library…'s
-  `_seed_and_commit`), `deploy.py`, `freshness.py`, `devices_view.py` (the device
+  `_seed_and_commit`), `deploy.py` (no blueprint since today's deploy wizard's two routes
+  left at 7.8, P7-25, 2026-10-17: THE plan and apply, `plan_devices`, `apply_batch` and
+  `run_targets`), `onboard.py` (no blueprint since today's onboarding wizard's and pending
+  banner's nine routes left the same day: the cores v2's Add device… and pending page call,
+  each confirm bound), `freshness.py`, `devices_view.py` (the device
   list's regions, redrawn in place), `list_param.py` (a read of an unknown
   list refused, C51), `retire.py` (7.3: retire, previewed and confirmed), `templatize.py` (seed, revert and retry among the intent routes),
   `persist.py` (7.3: persist, previewed and confirmed),
@@ -1005,7 +1012,11 @@ dashboard), and `templates/partials/` for new UI. Today's per-device page, `devi
 left at 7.8 (P7-22, 2026-10-17): a device's page is `templates/v2/device.html`. Today's
 template editor and intent editor (`partials/template_editor.html`,
 `partials/intent_editor.html`) left at 7.8 (P7-23, 2026-10-17), and with them the vendored
-CodeMirror they loaded: Source of truth › Templates and each device's Intent tab.
+CodeMirror they loaded: Source of truth › Templates and each device's Intent tab. Today's
+deploy wizard, onboarding wizard and pending banner (`partials/deploy_wizard.html`,
+`partials/onboard_wizard.html`, `partials/onboard_pending.html`) left at 7.8 (P7-25,
+2026-10-17): each device's Deploy…, the batch Apply, Devices › Add device… and a pending
+device's page.
 
 
 ### Key Architecture Decisions

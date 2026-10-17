@@ -75,29 +75,32 @@ NOT_FROM_THE_FORM = {
     # LEGITIMATE. Set by the route from the list's own source.json, not by the
     # operator.
     "source_kind",
-    # ⚠ A GAP UNDER EXEMPTION, not a clean one — and this check found it on its
-    # first run, which is the argument for having it.
-    #
-    # `domain` is read here and defaults to `rcn.lab`, and the wizard has no
-    # field for it. Unlike the two above there is no reason a person could not
-    # set it: it is carried on the plan precisely so the bootstrap artefact is
-    # re-renderable, and a second lab with a different DNS domain would get
-    # `rcn.lab` silently. Exempted rather than silently widening the check,
-    # so it reads as a recorded gap with a name.
-    "domain",
+    # `domain` was exempted here as a recorded gap: today's wizard had no field for it, so a
+    # second lab with another DNS domain got `rcn.lab` silently. v2's Add device… has the
+    # field (required), so with the wizard gone at 7.8 (2026-10-17, P7-25) the gap is closed
+    # and the exemption with it.
 }
 
 
 class TestTheOnboardFormCanSupplyEverythingThePlanReads:
 
+    """The form is v2's Add device… (`routes/onboard_v2.FIELDS`, the fields its template draws,
+    held to it by tests/test_onboard_v2.py); today's wizard's `ONBOARD_FIELDS`, the client this
+    held until 7.8 (2026-10-17, P7-25), left with it."""
+
     SERVER = ("routes/onboard.py", "_plan_args")
-    CLIENT = ("static/js/gen/partials__onboard_wizard.1.js", "ONBOARD_FIELDS")
+
+    @staticmethod
+    def _client():
+        from routes.onboard_v2 import FIELDS
+
+        return set(FIELDS)
 
     def test_the_scan_finds_something(self):
         """**The floor.** Both sides are set differences, and either being
         empty satisfies every assertion below."""
         server = server_request_fields(*self.SERVER)
-        client = client_sent_fields(*self.CLIENT)
+        client = self._client()
         assert len(server) >= 8, f"parsed only {sorted(server)} from the route"
         assert len(client) >= 8, f"parsed only {sorted(client)} from the form"
 
@@ -105,31 +108,31 @@ class TestTheOnboardFormCanSupplyEverythingThePlanReads:
         """**The defect, as an assertion.** `address_source` and `mgmt_mac`
         were read here and sendable by nothing a person can reach."""
         server = server_request_fields(*self.SERVER)
-        client = client_sent_fields(*self.CLIENT)
+        client = self._client()
         unreachable = sorted(server - client - NOT_FROM_THE_FORM)
         assert not unreachable, (
-            "the route reads these and the wizard cannot send them, so only "
+            "the core reads these and the form cannot send them, so only "
             f"curl can reach the feature: {unreachable}. Add them to "
-            "ONBOARD_FIELDS, or name them in NOT_FROM_THE_FORM with a reason.")
+            "the form and FIELDS, or name them in NOT_FROM_THE_FORM with a reason.")
 
     def test_the_form_sends_nothing_the_server_ignores(self):
         """The other direction. A field the operator fills in that the route
         never reads is a control that does nothing — the same lie as a
         greyed-out button, wearing a placeholder."""
         server = server_request_fields(*self.SERVER)
-        client = client_sent_fields(*self.CLIENT)
+        client = self._client()
         ignored = sorted(client - server - {"list_name"})
         assert not ignored, (
-            f"the wizard sends these and the route ignores them: {ignored}")
+            f"the form sends these and the core ignores them: {ignored}")
 
     def test_phase_2s_fields_are_on_both_sides(self):
         """A positive anchor. "No offenders" is also what a scan that could
         not run produces, so the fields this test was written for are named."""
         server = server_request_fields(*self.SERVER)
-        client = client_sent_fields(*self.CLIENT)
-        for field in ("address_source", "mgmt_mac"):
+        client = self._client()
+        for field in ("address_source", "mgmt_mac", "domain"):
             assert field in server, f"{field} is not read by _plan_args"
-            assert field in client, f"{field} is not sent by the wizard"
+            assert field in client, f"{field} is not sent by the form"
 
     def test_every_exemption_is_named_not_a_wildcard(self):
         assert NOT_FROM_THE_FORM, "an empty exemption set hides nothing usefully"

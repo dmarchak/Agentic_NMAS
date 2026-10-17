@@ -12,6 +12,7 @@ import copy
 import pytest
 
 from tests.test_capture import build_capture_lab
+from tests import deploy_core
 
 
 def _intent(repo):
@@ -73,7 +74,7 @@ class TestThePlanInherits:
         assert profile.commit_profile("Lab", doc, "op@example.com", "NTP")["ok"]
         _a, program = _program()
         assert "ntp server 192.0.2.123" in program
-        body = lab["client"].post("/deploy/plan", json={"devices": ["r2"]}).get_json()
+        body = deploy_core.post_plan(json={"devices": ["r2"]}).get_json()
         att = None
         notes = [n for t in body["preview"]["targets"] for n in (t.get("program") or {}).get("notes") or []]
         inherited = [l for n in notes for l in n.get("from_profile") or []]
@@ -152,7 +153,7 @@ def test_the_shipped_preview_draws_the_inherited_lines_apart(lab):
     assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
     assert profile.commit_profile("Lab", _profile_from(intent, ntp={"ntp_servers": ["192.0.2.123"]}),
                                   "op@example.com", "NTP")["ok"]
-    preview = lab["client"].post("/deploy/plan", json={"devices": ["r2"]}).get_json()["preview"]
+    preview = deploy_core.post_plan(json={"devices": ["r2"]}).get_json()["preview"]
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "js",
                             "nmas_preview_confirm.js"), encoding="utf-8").read()
     out = dukpy.evaljs("var window = {};\n" + src + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}})")

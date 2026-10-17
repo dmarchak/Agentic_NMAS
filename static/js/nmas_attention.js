@@ -139,11 +139,12 @@
     if (a.open === 'app_update') {
       html += ' <a class="btn btn-sm btn-outline-primary py-0 ms-1" data-nmas-update href="/v2/update">Update…</a>';
     }
-    // The monitoring profile (P.9 step b): apply it, or propose it first.
+    // The monitoring profile (P.9 step b): apply it, or propose it first. Apply opens v2's
+    // Monitoring › Apply (its opener here left with today's deploy wizard at 7.8, P7-25, C1161).
     if (a.open === 'profile_apply') {
-      html += ' <button type="button" class="btn btn-sm btn-outline-primary py-0 ms-1" '
-        + 'data-nmas-open="profile_apply" data-nmas-device="' + esc(a.device || '') + '" '
-        + 'data-nmas-list="' + esc(a.list || '') + '">Preview…</button>';
+      html += ' <a class="btn btn-sm btn-outline-primary py-0 ms-1" href="/v2/monitoring/apply?list='
+        + encodeURIComponent(a.list || '') + '&device=' + encodeURIComponent(a.device || '')
+        + '">Preview…</a>';
     }
     if (a.open === 'profile_propose') {
       html += ' <button type="button" class="btn btn-sm btn-outline-primary py-0 ms-1" '

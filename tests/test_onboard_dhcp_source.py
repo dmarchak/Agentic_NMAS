@@ -437,44 +437,27 @@ class TestThePendingRowSaysWhatIsExpected:
     known **yet**, and for a DHCP device the second is the normal state until
     it boots."""
 
-    @staticmethod
-    def _row_html(row):
-        import json as _json
+    @pytest.fixture
+    def _row_html(self, monkeypatch, tmp_path):
+        """The pending device's page on v2 (today's pending banner drew the row until it left
+        at 7.8, 2026-10-17, P7-25), for one pending *row*."""
+        import types
 
-        import dukpy as _dukpy
+        import app as nmas
 
-        from tests.js_source import read_shipped
+        def draw(row):
+            row = dict(row, identity="uid:" + row["name"], onboarded_at="2026-10-01T09:00:00Z",
+                       credential_findable=True)
+            ref = types.SimpleNamespace(name="probe", repo_dir=str(tmp_path))
+            monkeypatch.setattr("modules.device_page.find_pending",
+                                lambda name, ref=None, _r=(ref, row): _r)
+            r = nmas.app.test_client().get(f"/v2/device/{row['name']}")
+            assert r.status_code == 200, r.status_code
+            return r.get_data(as_text=True)
+        return draw
 
-        source = read_shipped(
-            "static/js/gen/partials__onboard_pending.1.js")
-        start = source.index("function pendingBannerHtml")
-        depth, i, seen = 0, source.index("{", start), False
-        while i < len(source):
-            if source[i] == "{":
-                depth += 1
-                seen = True
-            elif source[i] == "}":
-                depth -= 1
-                if seen and depth == 0:
-                    break
-            i += 1
-        fn = source[start:i + 1]
-        stub = """
-        var document = { createElement: function () { return {
-          set textContent(v) { this._t = v == null ? '' : String(v); },
-          get innerHTML() { return this._t.replace(/&/g,'&amp;')
-            .replace(/</g,'&lt;').replace(/>/g,'&gt;'); } }; } };
-        """
-        # `pending`, not `devices` — the key the banner reads. Getting it
-        # wrong renders the empty string, which is what a passing test
-        # against no rows would also do.
-        payload = {"ok": True, "list": "probe", "pending": [row]}
-        return _dukpy.evaljs(
-            stub + _lift_pending(source) + fn
-            + f"\npendingBannerHtml({_json.dumps(payload)});")
-
-    def test_a_dhcp_row_names_the_reservation(self):
-        html = self._row_html({
+    def test_a_dhcp_row_names_the_reservation(self, _row_html):
+        html = _row_html({
             "name": "bp-dhcp-a", "mgmt_ip": "", "address_source": "dhcp",
             "mgmt_mac": "aa:bb:cc:00:02:40",
             "reserved_address": "10.255.0.40",
@@ -482,50 +465,31 @@ class TestThePendingRowSaysWhatIsExpected:
         assert "awaiting DHCP" in html
         assert "10.255.0.40" in html
 
-    def test_a_dhcp_row_without_a_recorded_reservation_says_so(self):
-        html = self._row_html({
+    def test_a_dhcp_row_without_a_recorded_reservation_says_so(self, _row_html):
+        html = _row_html({
             "name": "bp-dhcp-a", "mgmt_ip": "", "address_source": "dhcp",
             "mgmt_mac": "aa:bb:cc:00:02:40", "reserved_address": "",
             "state": "in_flight", "age_seconds": 30})
         assert "awaiting DHCP" in html
         assert "aa:bb:cc:00:02:40" in html
 
-    def test_a_static_row_still_shows_its_address(self):
+    def test_a_static_row_still_shows_its_address(self, _row_html):
         """**The floor.** The DHCP branch must not capture the static case."""
-        html = self._row_html({
+        html = _row_html({
             "name": "bp-onboard-c", "mgmt_ip": "203.0.113.31",
             "address_source": "static", "state": "in_flight",
             "age_seconds": 30})
         assert "203.0.113.31" in html
         assert "awaiting DHCP" not in html
 
-    def test_a_static_row_with_no_address_says_that_rather_than_nothing(self):
-        html = self._row_html({
+    def test_a_static_row_with_no_address_says_that_rather_than_nothing(self, _row_html):
+        html = _row_html({
             "name": "x", "mgmt_ip": "", "address_source": "static",
             "state": "in_flight", "age_seconds": 30})
         assert "no address recorded" in html
 
 
-def _lift_pending(source):
-    """`pendingAgeText` and `esc`, which the banner calls."""
-    out = []
-    for name in ("pendingAgeText",):   # `esc` is defined inside the banner
-        try:
-            start = source.index(f"function {name}(")
-        except ValueError:
-            continue
-        depth, i, seen = 0, source.index("{", start), False
-        while i < len(source):
-            if source[i] == "{":
-                depth += 1
-                seen = True
-            elif source[i] == "}":
-                depth -= 1
-                if seen and depth == 0:
-                    break
-            i += 1
-        out.append(source[start:i + 1])
-    return "\n".join(out) + "\n"
+
 
 
 class TestTheAddressIsDiscoveredFromTheLeaseNotTheReservation:
@@ -841,13 +805,18 @@ class TestAnUnfindableStagedCredentialIsFlaggedBeforeVerify:
         finally:
             creds.has_device_override = original
 
-    def test_the_banner_says_what_to_do_about_it(self):
-        from tests.js_source import read_shipped
+    def test_the_pending_page_says_what_to_do_about_it(self):
+        """Today's pending banner said it until it left at 7.8 (2026-10-17, P7-25); v2's
+        pending page says it (drawn: tests/test_devices_v2.py,
+        `test_a_credential_that_cannot_be_found_says_re_create`)."""
+        import os
 
-        js = read_shipped("static/js/gen/partials__onboard_pending.1.js")
-        assert "credential_findable === false" in js
-        assert "Abandon and re-create" in js
-        assert "nothing has reached" in js, \
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        page = open(os.path.join(root, "templates", "v2", "pending.html"),
+                    encoding="utf-8").read()
+        assert "p.credential_findable == false" in page
+        assert "Abandon and re-create" in page
+        assert "nothing has reached" in page, \
             "the row must say the recovery is safe, or it reads as destructive"
 
 
@@ -928,91 +897,23 @@ class TestADhcpPlanCarriesNoStaticAddress:
         assert plan.onboardable, plan.blocking_reasons
 
 
-class TestTheRevealRunsOnOpenNotOnlyOnChange:
-    """A select's initial value is set without firing `change`, so this
-    appeared on the **second** use and never the first — which is why building
-    and testing the fields did not reveal it."""
-
-    @staticmethod
-    def _js():
-        from tests.js_source import read_shipped
-
-        return read_shipped("static/js/gen/partials__onboard_wizard.1.js")
-
-    def test_the_wizard_calls_it_on_open(self):
-        js = self._js()
-        opener = js[js.index("async function openOnboardWizard"):]
-        assert "onboardAddressSourceChanged();" in opener[:900], \
-            "the reveal runs only on change, so a remembered value is not applied"
-
-    @staticmethod
-    def _run_reveal(source_value):
-        """EXECUTES the shipped function against a stub DOM whose select
-        holds *source_value*, and returns what the form then shows. A text
-        match on the function's spelling passed and failed with rewrites
-        that changed nothing; what the operator sees is the property."""
-        import dukpy
-
-        js = TestTheRevealRunsOnOpenNotOnlyOnChange._js()
-        start = js.index("function onboardAddressSourceChanged")
-        fn = js[start:js.index("\n}\n", start) + 3]
-        harness = """
-        var els = {};
-        function mk(id, value) { els[id] = {id: id, value: value || '',
-            style: {display: ''}, textContent: ''}; return els[id]; }
-        mk('obAddrSource', dukpy.source); mk('obMacRow'); mk('obMgmtIp', '192.0.2.9');
-        mk('obMgmtMask', '255.255.255.0'); mk('obMgmtMac', 'aa:bb:cc:00:02:50');
-        mk('obMacHelpDhcp'); mk('obMacHelpZtp'); mk('obMgmtIpLabel');
-        var ipBox = {style: {display: ''}}, maskBox = {style: {display: ''}};
-        var document = {getElementById: function (id) { return els[id] || null; },
-          querySelectorAll: function (sel) {
-            return sel === '.ob-address' ? [ipBox] : (sel === '.ob-static-only' ? [maskBox] : []); }};
-        """ + fn + """
-        onboardAddressSourceChanged();
-        ({mac: els.obMacRow.style.display, ip: ipBox.style.display,
-          mask: maskBox.style.display, label: els.obMgmtIpLabel.textContent,
-          ipv: els.obMgmtIp.value, maskv: els.obMgmtMask.value,
-          macv: els.obMgmtMac.value})
-        """
-        return dukpy.evaljs(harness, source=source_value)
-
-    @pytest.mark.parametrize("source,shown,cleared", [
-        ("static", {"mac": "none", "ip": "", "mask": ""}, {"macv"}),
-        ("dhcp", {"mac": "", "ip": "none", "mask": "none"}, {"ipv", "maskv"}),
-        ("ztp", {"mac": "", "ip": "", "mask": "none"}, {"maskv"}),
-    ])
-    def test_it_reads_the_selects_CURRENT_value(self, source, shown, cleared):
-        out = self._run_reveal(source)
-        assert {k: out[k] for k in shown} == shown, out
-        for key in ("ipv", "maskv", "macv"):
-            assert (out[key] == "") == (key in cleared), (source, key, out)
-
-    def test_ztp_relabels_the_address_as_the_one_to_reserve(self):
-        assert self._run_reveal("ztp")["label"] == "Address to reserve"
-        assert self._run_reveal("static")["label"] == "Management IP"
-
-    def test_hidden_static_fields_are_CLEARED_not_just_hidden(self):
-        """A hidden field still has a value, and autofill puts one there — so
-        hiding alone leaves the payload carrying an address the operator cannot
-        see and did not choose for this device."""
-        js = self._js()
-        fn = js[js.index("function onboardAddressSourceChanged"):]
-        block = fn[:fn.index("\n}")]
-        assert "obMgmtIp" in block and "value = ''" in block
-
-    def test_the_mac_is_cleared_when_static_is_chosen(self):
-        js = self._js()
-        fn = js[js.index("function onboardAddressSourceChanged"):]
-        assert "obMgmtMac" in fn[:fn.index("\n}")]
+class TestTheFormsPlaceholdersNameNoFleetAddress:
+    """Today's wizard's address-source reveal (its `onboardAddressSourceChanged`, run on open
+    and on change, hiding and clearing the fields the source does not use) left with the wizard
+    at 7.8 (2026-10-17, P7-25), and its six tests with it. v2's Add device… draws every field
+    with what it is for, and the plan drops what the source does not use whatever the form
+    sent (`TestADhcpPlanCarriesNoStaticAddress` above), so a hidden value cannot reach it."""
 
     def test_no_placeholder_names_a_real_fleet_address(self):
         """`10.255.0.31` is bp-onboard-c's address from the first probe — a
         torn-down device. A placeholder naming a live range invites typing that
         exact address, and an address that used to belong to something is the
-        worst kind to reuse by accident."""
-        from tests.js_source import read_shipped
+        worst kind to reuse by accident. (Held on today's wizard until 7.8; v2's form now.)"""
+        import os
 
-        form = read_shipped("templates/partials/onboard_wizard.html")
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        form = open(os.path.join(root, "templates", "v2", "_onboard_add.html"),
+                    encoding="utf-8").read()
         for real in ("10.255.0.31", "10.255.0.32", "10.255.1."):
             assert f'placeholder="{real}' not in form, real
         assert 'placeholder="192.0.2.10"' in form, \

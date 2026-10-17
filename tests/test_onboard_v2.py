@@ -462,18 +462,55 @@ class TestTheBootstrapReveal:
 
 class TestOneCodePath:
 
-    def test_each_v2_action_calls_today_s_core(self):
+    def test_each_v2_action_calls_the_one_core(self):
+        """Today's routes, which called the same cores, left at 7.8 (2026-10-17, P7-25): v2's
+        actions are the cores' only callers, and routes/onboard.py serves no route."""
         from tests.astcheck import calls_in
 
-        from routes import onboard as v1, onboard_v2 as v2
+        from routes import onboard as core, onboard_v2 as v2
 
-        assert calls_in(v2.preview, "plan_of") == 1 and calls_in(v1.plan, "plan_of") == 1
-        assert calls_in(v2.create, "create_run") == 1 and calls_in(v1.create, "create_run") == 1
-        assert calls_in(v2.verify, "verify_run") == 1 and calls_in(v1.verify, "verify_run") == 1
+        assert calls_in(v2.preview, "plan_of") == 1
+        assert calls_in(v2.create, "create_run") == 1
+        assert calls_in(v2.verify, "verify_run") == 1
         assert calls_in(v2.abandon, "abandon_run") == 1
-        assert calls_in(v1.abandon, "abandon_run") == 1
         assert calls_in(v2.verify_preview, "verify_preview_of") == 1
-        assert calls_in(v1.verify_preview, "verify_preview_of") == 1
+        assert not hasattr(core, "bp")
+
+
+class TestTheCoresBindEveryConfirm:
+    """Today's wizard created and abandoned unbound (CONCURRENCY_AUDIT R36, confirms-11 and
+    -12); with it gone the cores bind every confirm, so no caller can send an unbound one."""
+
+    def test_a_create_without_its_preview_is_refused_creating_nothing(self, monkeypatch,
+                                                                      tmp_path):
+        from modules.nsot import onboard as O
+        from routes import onboard
+
+        ran = []
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path))
+        monkeypatch.setattr(O, "build_plan", lambda **k: _plan())
+        monkeypatch.setattr(O, "real_steps", lambda repo, actor="": {})
+        monkeypatch.setattr(O, "run_onboarding",
+                            lambda *a, **k: ran.append(1) or {"ok": True, "completed": []})
+        out, status = onboard.create_run(dict(FORM), "<operator>")
+        assert status == 409 and out.get("moved") and "preview first" in out["error"], out
+        assert ran == []
+
+    def test_an_abandon_without_its_dry_run_is_refused_removing_nothing(self, monkeypatch,
+                                                                        tmp_path):
+        from modules.nsot import onboard as O
+        from routes import onboard
+
+        ran = []
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path))
+        monkeypatch.setattr(O, "abandon_onboarding",
+                            lambda *a, **k: ran.append(k) or {"ok": True, "steps": [],
+                                                              "moved": True})
+        out, status = onboard.abandon_run("bp1", {"list_name": "probe"}, "<operator>")
+        assert status == 400 and "preview first" in out["error"], out
+        assert ran == []
+        onboard.abandon_run("bp1", {"list_name": "probe", "dry_run": "1"}, "<operator>")
+        assert ran and ran[0]["dry_run"] is True
 
 
 def test_the_binding_is_canonical_json():

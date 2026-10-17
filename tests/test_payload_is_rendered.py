@@ -90,7 +90,7 @@ PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "removableHt
           "programHtml", "operandsHtml",
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 CAP = "nmas_capture.js"
-DW, GR1 = "partials__deploy_wizard.1.js", "partials__golden_repo.1.js"
+GR1 = "partials__golden_repo.1.js"   # DW (today's deploy wizard's script, P7-25) and SEED (nmas_seed.js, P7-24) left at 7.8
 
 RENDERS = {
     "GET /attention": Render(
@@ -111,35 +111,12 @@ RENDERS = {
                                            "_incidents",
                                            "integrations_source", "ci_source",
                                            "reachability_source", "_without_acknowledged")}),
-    "GET /onboard/pending": Render(
-        lambda mp, tmp: P.onboard_pending(mp, tmp),
-        # 7.1: each Verify and Abandon result, read back from the run record,
-        # drawn by the result component and built server-side.
-        {"partials__onboard_pending.1.js": ("loadOnboardPending", "pendingBannerHtml"),
-         PC: PC_RESULT_FNS},
-        (("partials__onboard_pending.1.js", "pendingBannerHtml", "data"),),
-        adapters={"modules/preview_confirm.py": ("onboard_run_result", "onboard_verify_result",
-                                                 "onboard_abandon_result",
-                                                 "_run_record_statement", "build_result")}),
-    "POST /deploy/plan": Render(
-        # With one removal SELECTED (Mode B, 7.3 step 2), so the plan carries
-        # its removal fields; the base plan's residue is exactly that line, so
-        # nothing is left out and `what_not` stays empty, as before.
-        lambda mp, tmp: P.deploy_plan_with_removal(mp),
-        {DW: ("openDeployPlan", "_renderDeployPlan", "_reauthoriseDevice",
-              "_updateDeploySummary", "applyDeploy"), PC: PC_FNS},
-        ((DW, "openDeployPlan", "d"), (DW, "_renderDeployPlan", "plan")),
-        maps=("select_data",),
-        adapters={"modules/preview_confirm.py": ("deploy_preview", "_deploy_gates",
-                                                 "_removal_words", "expected_part")}),
-    "POST /deploy/apply": Render(
-        lambda mp, tmp: P.deploy_apply(mp),
-        {DW: ("applyDeploy", "_renderDeployResult"), PC: PC_RESULT_FNS},
-        ((DW, "_renderDeployResult", "report"),),
-        maps=("by_outcome", "routing_protocols", "neighbours"),
-        adapters={"modules/preview_confirm.py": ("operation_result", "build_result",
-                                                 "result_level"),
-                  "modules/nsot/receipts.py": ("rows_for", "_checks")}),
+    # GET /onboard/pending, POST /deploy/plan, POST /deploy/apply, POST /onboard/plan and GET
+    # /onboard/platforms left this table at 7.8 (2026-10-17, P7-25) with today's pending
+    # banner, deploy wizard and onboarding wizard, their renderers. v2 draws each server-side:
+    # a pending device's page (its ZTP stage and last run), the device page's Deploy… and the
+    # batch Apply (THE plan's preview, and the job's result), and Add device… (the review and
+    # the platforms) (tests/test_v2_context_is_drawn.py).
     # C188 step 2: the POST starts a job and answers at once; the preview is
     # the job's result, read by its id when the job announces it finished.
     "POST /golden/capture/preview": Render(
@@ -186,28 +163,11 @@ RENDERS = {
         _get("/golden/history/r1"),
         {GR1: ("showGoldenHistory",)},
         ((GR1, "showGoldenHistory", "d"),)),
-    "POST /onboard/plan": Render(
-        # With a mask, so the plan renders a config and the program part has
-        # lines (without one the fixture reached only the render refusal).
-        _post("/onboard/plan", {"list_name": "Default", "hostname": "bp-x",
-                                "platform": "cisco_iosxe", "mgmt_ip": "203.0.113.6",
-                                "mgmt_mask": "255.255.255.0",
-                                "manager_interface": "GigabitEthernet2"}),
-        # 7.1: the review is the shared preview, built server-side from the
-        # plan's summary, so the adapter's reads count as drawn.
-        {"partials__onboard_wizard.1.js": ("onboardRefresh", "onboardCanCreate"),
-         PC: PC_FNS},
-        (("partials__onboard_wizard.1.js", "onboardRefresh", "d"),),
-        adapters={"modules/preview_confirm.py": ("onboard_preview", "build")}),
     "GET /inventory/source/<list>": Render(
         _get("/inventory/source/Default"),
         {"partials__inventory_source.1.js": ("loadInventorySource", "applyInventorySourceUI",
                                              "renderInventoryBanner")},
         (("partials__inventory_source.1.js", "loadInventorySource", "d"),)),
-    "GET /onboard/platforms": Render(
-        _get("/onboard/platforms"),
-        {"partials__onboard_wizard.1.js": ("openOnboardWizard", "onboardPlatformOptions")},
-        (("partials__onboard_wizard.1.js", "openOnboardWizard", "d"),)),
     # Today's NetBox tab's four payloads (the three previews on the component, 7.1, and the
     # stored partial import its sync card drew, C85) left with the tab at 7.8 (2026-10-17):
     # v2's NetBox page draws them server-side (tests/test_v2_context_is_drawn.py).
@@ -260,59 +220,11 @@ UNDRAWN = {
         ("list", LIST)],
     "GET /golden/capture/preview/<job>": [("list", LIST)],
     "POST /golden/capture/apply": [("list", LIST)],
-    "GET /onboard/pending": [
-        ("counts total overdue stale thresholds",
-         "the banner derives its counts from the rows; the server's counts "
-         "and thresholds are unread duplicates, drawn or dropped in 7.4"),
-        ("onboarded_at", "the banner draws the age (age_seconds), not the time")],
-    # (`stage`, a ztp row's stage word, left this list in 7.1 by being DRAWN
-    # beside its summary. This check matches key NAMES, and the result
-    # builder reads its own `stage`, so it would have passed as "read"
-    # without the banner drawing it.)
-    "GET /onboard/platforms": [
-        ("dialect", "the config dialect beside the slug; the wizard offers slugs"),
-        ("ok", OK)],
     # GET /templates' four and GET /templates/approval/<path>'s two left with the routes and
     # today's template library (7.8, 2026-10-17, P7-23).
-    "POST /deploy/apply": [
-        ("capture_confirmed capture_current current_hash moved",
-         "a refusal's operands: its `reason` sentence names them and which "
-         "side moved, and that IS drawn (test_deploy_plan_apply_seam)"),
-        ("by_outcome workers deployed total",
-         "counts and groupings of the rows; the result's summary sentence counts "
-         "the receipt rows it draws one by one (7.1 step 2)"),
-        ("routing_neighbors routing_protocol",
-         "verify's single-protocol summary, superseded by `routing_protocols`, "
-         "which the result draws per protocol, before and after"),
-        ("golden_commit", "each device's copy of the batch commit, which the "
-                          "result's record part draws once"),
-        ("receipts", "the receipt write status, drawn as the record part's "
-                     "receipt line (`record.receipt`)"),
-        ("list", LIST)],
-    "POST /deploy/plan": [
-        ("complete", "the conjunction of two gates drawn by name (template "
-                     "reproduces the device; every line modelled or acknowledged)"),
-        ("deployable_count", "the summary sentence recomputes it from the "
-                             "devices the preview draws"),
-        ("derived expected unexpected",
-         "C506 phase 2, the plan's Expected effects: drawn by the v2 deploy card "
-         "(templates/v2/_deploy.html, #expected, from preview_confirm.expected_part) and reached "
-         "in tests/test_expected_effects_plan.py; today's v1 deploy page gains no capability "
-         "(the v1 rule), so it does not"),
-        ("declared ends moves offers to",
-         "C506 phase 3, what a person may declare and has declared: drawn by the v2 deploy card "
-         "(templates/v2/_deploy.html, #expected, from device_actions._declare_part) and reached "
-         "in tests/test_declared_effects.py; the v1 deploy page gains no capability"),
-        ("check expects read",
-         "C506 phase 4, What verify checks: drawn by the v2 deploy card (templates/v2/_deploy.html, "
-         "#expected, its table, from preview_confirm.expected_part) and reached in "
-         "tests/test_verify_checks.py; the v1 deploy page gains no capability")],
-    "POST /onboard/plan": [
-        ("host_vars", "the intent phase 1 will commit; the review draws the "
-                      "bootstrap config, and 7.4 draws the intent too"),
-        ("mgmt_mac reservation_address reservation_state ztp_server ztp_subnet_id",
-         "structured forms of the address claim, which is drawn in words"),
-        ("writes_csv", "a phase-1 fact the review states in prose")],
+    # GET /onboard/pending's six, GET /onboard/platforms' two, POST /deploy/apply's fourteen,
+    # POST /deploy/plan's thirteen and POST /onboard/plan's seven left with the routes and today's
+    # pending banner, onboarding wizard and deploy wizard (7.8, 2026-10-17, P7-25).
 }
 
 #: {route: [(keys, reason)]}: a renderer reads a key its fixture's payload
@@ -346,102 +258,19 @@ EMPTY_IN_FIXTURE = {
     "GET /attention acknowledged": (R_, "no row is acknowledged in the fixture; "
                                        "tests/test_acknowledge.py acknowledges one through the real "
                                        "route and reads both pages"),
-    "POST /deploy/plan preview.targets[].program.notes[].from_profile": (
-        S_, "this provider's lab commits no monitoring profile (P.9); the lines are "
-            "reached through the real /deploy/plan and drawn by the shipped renderer in "
-            "tests/test_monitoring_profile_plan.py"),
     "GET /golden/history/<host> history": (R_, "no golden commit for the device in "
                                                "the fixture; 7.3's History draws it"),
     "GET /inventory/source/<list> config.device_order": (S_, _STRINGS),
     "GET /inventory/source/<list> stale_devices": (R_, "a local list has no stale "
                                                        "NetBox devices; a map of records"),
-    "POST /deploy/plan devices[].blocking_reasons": (S_, _STRINGS),
-    "POST /deploy/plan devices[].expected_effects.up": (S_, _STRINGS),
-    "POST /deploy/plan devices[].expected_effects.adjacencies_drop": (
-        R_, "the fixture's program shuts no interface (C506 phase 2); an adjacency over a shut "
-            "interface and a BGP session sourced from one are reached in "
-            "tests/test_expected_effects_plan.py and drawn by the v2 deploy card"),
-    "POST /deploy/plan devices[].expected_effects.may_form": (
-        R_, "the fixture's program brings no interface up (C506 phase 2); reached in "
-            "tests/test_expected_effects_plan.py"),
-    # C506 phase 3: nothing is declared in the fixtures' plans and runs, and their programs
-    # drop and bring up nothing; each declaration, offer and outcome is reached in
-    # tests/test_declared_effects.py.
-    "POST /deploy/plan devices[].declared": (R_, "nothing is declared in the fixture's plan"),
-    "POST /deploy/plan devices[].expected_effects.declared": (
-        R_, "nothing is declared in the fixture's plan"),
-    "POST /deploy/plan devices[].expected_effects.offers.moves": (
-        R_, "the fixture's program drops no adjacency, so none can be declared to move"),
-    "POST /deploy/plan devices[].expected_effects.offers.ends": (
-        R_, "the fixture's committed intent gives the device no adjacency with an identity"),
-    "POST /deploy/plan devices[].expected_effects.offers.to": (S_, _STRINGS),
-    "POST /deploy/apply result.targets[].checks.declared_moves": (
-        R_, "no move is declared in the fixture's run"),
-    "POST /deploy/apply result.targets[].checks.notes": (S_, _STRINGS),
-    # C506 phase 4: the fixtures' runs record no verify by name; reached in
-    # tests/test_verify_checks.py.
-    "POST /deploy/apply result.targets[].checks.expected_effects": (
-        R_, "the fixture's verify records no expected effects"),
-    "POST /deploy/apply result.targets[].checks.interfaces": (
-        R_, "the fixture's verify compared no interface by name"),
-    "POST /deploy/plan devices[].excluded_unrenderable": (S_, _STRINGS),
-    "POST /deploy/plan devices[].masked_refs": (S_, _STRINGS),
-    "POST /deploy/plan devices[].shares_key[].chain": (S_, _STRINGS),
-    "POST /deploy/plan devices[].stale_acknowledgements": (S_, _STRINGS),
-    "POST /deploy/plan devices[].unacknowledged": (S_, _STRINGS),
-    "POST /deploy/plan devices[].unmodeled": (S_, _STRINGS),
-    "POST /deploy/plan devices[].unsendable": (S_, _STRINGS),
-    "POST /deploy/plan devices[].removals.refused": (R_, "the base plan's one selection is a "
-                                                      "measured shape and is removed; a "
-                                                      "REFUSED selection is reached in "
-                                                      "test_removal_pipeline.py"),
-    "POST /deploy/plan devices[].removals.secret_position": (R_, "the base plan removes a "
-                                                              "description; a secret-position "
-                                                              "removal is reached in "
-                                                              "test_removal_pipeline.py"),
+    # POST /deploy/plan's, POST /deploy/apply's, POST /onboard/plan's and GET /onboard/pending's
+    # (forty-three, eleven of them records: C506's declarations, offers and verify checks, C140's
+    # aggregate, Mode B's refused and secret-position removals, the onboarding review's concept
+    # and confirm data, the finished runs' items) left with their routes and today's wizards and
+    # pending banner at 7.8 (2026-10-17, P7-25). Each is reached on v2 in the test named for it
+    # (tests/test_declared_effects.py, test_verify_checks.py, test_authorised_lines.py,
+    # test_removal_pipeline.py).
     "POST /golden/capture/apply result.did_not.items[].lines": (S_, "the first did-not item is r2's departure from intent, whose lines are drawn under its checks; the baseline item carries no lines"),
-    "POST /deploy/apply result.did_not.items[].lines": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
-    "POST /deploy/apply result.targets[].rollback.commands": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
-    "POST /deploy/apply result.targets[].rollback.remaining": (S_, "no rollback in the fixture; an incomplete rollback's remaining lines are drawn in test_pipeline (TestARollbackSaysWhatItAchieved)"),
-    "POST /deploy/apply result.targets[].rollback.not_undone": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
-    "POST /onboard/plan host_vars": (R_, "the plan carries no intent for a device "
-                                         "not yet onboarded; drawn in 7.4"),
-    "GET /onboard/pending runs.finished[].result.did_not.items": (R_, "the finished runs "
-        "in the fixture both succeeded; a failed run's items are drawn under r7's last run"),
-    "GET /onboard/pending runs.finished[].result.record.tags": (S_, "an onboarding run "
-        "makes no tag"),
-    "POST /onboard/plan preview.explain": (R_, "no concept is taught on the onboarding "
-                                               "review yet; the concepts harness names it"),
-    "POST /onboard/plan preview.targets[].program.authorised": (S_, "a startup config is "
-                                               "sent to no device, so nothing is authorised"),
-    "POST /onboard/plan preview.targets[].program.dangerous": (S_, "a startup config is "
-                                               "sent to no device, so no line is dangerous"),
-    "POST /onboard/plan preview.targets[].program.notes": (S_, "the caption says what the "
-                                               "config is; there are no per-line notes"),
-    "POST /onboard/plan preview.what.targets[].select_data": (R_, "Create rebuilds the plan "
-                                               "and refuses a changed one, so nothing is "
-                                               "carried to confirm by hash (its gate says so)"),
-    "POST /onboard/plan preview.what_not.items[].lines": (S_, "onboarding's what-not items "
-                                               "are sentences, never config lines"),
-    # C140 / C79 (2026-09-28): the authorisation's reason and its aggregate.
-    "POST /deploy/plan devices[].prior_authorised.lines": (R_, "no receipt precedes the "
-        "plan in the fixture; each {count, last_at, last_actor, last_reason} is reached "
-        "through real receipts in test_authorised_lines.py"),
-    "POST /deploy/plan preview.targets[].program.prior.lines": (R_, "as above: the "
-        "preview's copy of the aggregate, reached in test_authorised_lines.py"),
-    "POST /deploy/plan preview.targets[].program.secret": (S_, "a deploy never flags a "
-        "secret line: an account added from intent is additive (C75); only a restore "
-        "does (C79), and the restore provider reaches it"),
-    # C315 (2026-10-02): eighteen more the first-item-then-intersection walker
-    # hid, each empty in one row and ABSENT from another, never held.
-    **{f"{route} {base}.{k}": (S_, _DEPLOY_CHECKS)
-       for route, base in (("POST /deploy/apply", "result.targets[].checks"),)
-       for k in ("from_intent", "intent_unmet", "issues", "pending_convergence",
-                 "unreadable")},
-    "POST /deploy/apply results[].pending_convergence": (S_, _DEPLOY_CHECKS),
-    "POST /deploy/apply results[].verify.issues": (S_, _DEPLOY_CHECKS),
-    "GET /onboard/pending pending[].last_run.result.record.tags": (S_, "an onboarding run "
-        "makes no tag"),
 }
 # 14 -> 13: `GET /netbox/status status` is reached (a stored import, C85).
 # 13 -> 15: the onboarding review on the component (7.1) has no concept to
@@ -492,7 +321,10 @@ EMPTY_IN_FIXTURE = {
 # dialog, and its two records (the per-device and the preview's copy of C140's aggregate).
 # 21 -> 20: 7.8 (2026-10-17, P7-23): GET /templates left with today's template library, and its
 # one record (the bindings' `overrides`).
-EMPTY_RECORDS_CEILING = 20
+# 20 -> 3: 7.8 (2026-10-17, P7-25): POST /deploy/plan, POST /deploy/apply, POST /onboard/plan and
+# GET /onboard/pending left with today's deploy wizard, onboarding wizard and pending banner, and
+# their seventeen records.
+EMPTY_RECORDS_CEILING = 3
 
 
 def _empty_paths(obj, path=""):
@@ -571,7 +403,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 58  # -6: today's template library (7.8, 2026-10-17, P7-23), /templates' bindings, overrides, platforms and size and /templates/approval's path and ok, with the routes. Before: -6: today's device page (7.8, 2026-10-17, P7-22), /deploy/receipts's expected_effects, failed_at_once, interfaces, unexpected_settle, declared_moves and notes, with the route. Before: -20: today's Git tab, Remote card and Baselines (7.8, P7-21, 2026-10-17), with their routes: /golden/baselines' eight, /remote/status's list, and /golden/restore/preview's eleven. Before: -4: today's NetBox tab (7.8, 2026-10-17), /netbox/status's filename, config_template_id, last_sync and list, with the route. Before: +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 17  # -41: today's deploy wizard, onboarding wizard and pending banner (7.8, 2026-10-17, P7-25), /deploy/apply's fourteen, /deploy/plan's thirteen, /onboard/plan's seven, /onboard/pending's six and /onboard/platforms' two, with the routes (41 measured). Before: -6: today's template library (7.8, 2026-10-17, P7-23), /templates' bindings, overrides, platforms and size and /templates/approval's path and ok, with the routes. Before: -6: today's device page (7.8, 2026-10-17, P7-22), /deploy/receipts's expected_effects, failed_at_once, interfaces, unexpected_settle, declared_moves and notes, with the route. Before: -20: today's Git tab, Remote card and Baselines (7.8, P7-21, 2026-10-17), with their routes: /golden/baselines' eight, /remote/status's list, and /golden/restore/preview's eleven. Before: -4: today's NetBox tab (7.8, 2026-10-17), /netbox/status's filename, config_template_id, last_sync and list, with the route. Before: +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 0  # 2026-10-17 (P7-23): /templates/approval's actor, approved_at and evidence left with the route and today's template library (7.8). Before: 2026-10-17: /remote/status's eleven left with the route and today's Remote card (7.8, P7-21). Before: 2026-10-15: /identity/posture's config_withheld_reason left with the route (7.8). Before: 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
 
 
@@ -673,10 +505,13 @@ class TestThePopulation:
         # tests/test_v2_context_is_drawn.py's).
         # 15 since GET /deploy/receipts left the same day with today's device page (P7-22).
         # 13 since today's template library's two payloads left the same day (P7-23).
-        # 11 since today's seed preview and result left the same day (P7-24).
-        assert len(RENDERS) >= 11
+        # 6 since today's seed preview and result (P7-24) and today's deploy
+        # wizard's, onboarding wizard's and pending banner's five (P7-25) left
+        # the same day.
+        assert len(RENDERS) >= 6
         total = sum(len(_keys(r, p)) for r, (p, _, _) in measured.items())
-        assert total >= 150, total
+        # 146 measured 2026-10-17 after P7-24's and P7-25's renderers left together; a floor.
+        assert total >= 140, total
 
     def test_every_payload_is_a_real_answer(self, measured):
         """An error payload has `ok` and `error` and nothing to render; a
@@ -697,17 +532,16 @@ class TestThePopulation:
 
 
 class TestAnchors:
-    """The four recorded instances. Each key is carried AND read."""
+    """Each key is carried AND read. The four recorded instances (the deploy plan's `commands`,
+    `dangerous` and `attribution`, the pending read's `list`) and the deploy plan's preview
+    keys left with POST /deploy/plan and GET /onboard/pending at 7.8 (2026-10-17, P7-25): v2's
+    deploy card draws THE plan server-side (tests/test_v2_context_is_drawn.py,
+    tests/test_p3_wizard_draws_the_program.py). The capture preview, the same preview
+    component on today's page, holds the shape here."""
 
     @pytest.mark.parametrize("route,key", [
-        ("POST /deploy/plan", "commands"), ("POST /deploy/plan", "dangerous"),
-        ("POST /deploy/plan", "attribution"), ("GET /onboard/pending", "list"),
-        # 7.1: the program reaches the screen THROUGH the preview; the adapter
-        # reads `commands` and the renderer draws `lines` and the split.
-        ("POST /deploy/plan", "preview"), ("POST /deploy/plan", "lines"),
-        # The restore preview's `commands` (C27) left with POST /golden/restore/preview at 7.8
-        # (2026-10-17): the v2 restore card draws the program server-side.
-        ("POST /deploy/plan", "from_this_edit")])
+        ("GET /golden/capture/preview/<job>", "preview"),
+        ("GET /golden/capture/preview/<job>", "lines")])
     def test_carried_and_read(self, measured, route, key):
         payload, names, _ = measured[route]
         assert key in _keys(route, payload), f"the fixture cannot carry {key}"
@@ -770,4 +604,7 @@ class TestTheFixturesReachTheState:
 
     def test_the_scan_finds_something(self, measured):
         """The floor: a walker that saw nothing would satisfy both directions."""
-        assert len(self._found(measured)) >= 20
+        # 20 -> 6 2026-10-17 (P7-25), 6 measured: the four payloads of today's deploy wizard,
+        # onboarding wizard and pending banner held the rest; 5 measured once P7-24's seed
+        # payloads left too (the same day).
+        assert len(self._found(measured)) >= 5

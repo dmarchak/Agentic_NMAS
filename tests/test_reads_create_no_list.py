@@ -162,7 +162,9 @@ class TestTheRefusal:
     def test_an_unknown_list_is_refused_by_name(self, client):
         """Not an empty listing: "none pending" for a mistyped list is a claim
         about a list nobody has, in the words of one about a list they do."""
-        r = client.get(f"/onboard/pending?list_name={UNKNOWN}")
+        # A read that stays (today's /onboard/pending, the first example, left at 7.8 on
+        # 2026-10-17, P7-25).
+        r = client.get(f"/inventory/source/x?list_name={UNKNOWN}")
         body = r.get_json()
         assert r.status_code == 404
         assert body["ok"] is False and body["unknown_list"] == UNKNOWN
@@ -180,11 +182,11 @@ class TestTheRefusal:
         """The control that the refusal is not a closed gate: the default
         list, by display name AND by slug, answers normally."""
         for name in ("Default", "default"):
-            r = client.get(f"/onboard/pending?list_name={name}")
-            assert r.status_code == 200, (name, r.get_json())
+            r = client.get(f"/v2/devices?list={name}")
+            assert r.status_code == 200, (name, r.get_data(as_text=True)[:300])
 
     def test_no_argument_reads_the_active_list(self, client):
-        assert client.get("/onboard/pending").status_code == 200
+        assert client.get("/v2/devices").status_code == 200
 
     def test_a_write_is_not_this_hooks_business(self):
         """A POST naming a list is judged by its own route (onboarding refuses

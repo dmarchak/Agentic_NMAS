@@ -6,14 +6,15 @@ test store would return a thin payload that cannot carry the keys that
 failed before (a fixture that cannot exhibit the case), the provider reuses
 the fixture an existing test already built for that route:
 
-* `/deploy/plan` and `/deploy/apply`: test_p3_wizard_draws_the_program's
+* the deploy plan and apply (`tests/deploy_core.py`: THE cores v2's deploys run; today's
+  /deploy/plan and /deploy/apply left at 7.8, 2026-10-17): test_p3_wizard_draws_the_program's
   artifact and intent, with the real merge, dangerous-line and attribution
   code, so `commands`, `dangerous` and `attribution` are present;
 * `/golden/restore/preview`: test_p3_restore_is_guarded's two targets, one
   deployable and one blocked, so `commands` is present (C27);
-* `/onboard/pending`: a ztp row and a static row, so the list echo and the
-  per-row progress are present.
 """
+
+from tests import deploy_core
 
 
 def _client():
@@ -41,44 +42,11 @@ def deploy_plan(mp):
     mp.setattr(rd, "_artifact_for", _fake)
     mp.setattr("modules.nsot.deploy.prepare_device", lambda a: {"config": w.INTENT})
     mp.setattr(rd, "_attribute_additions", lambda *a, **k: dict(w.ATTRIBUTION))
-    return _ok(_client().post("/deploy/plan", json={"devices": ["s4"]}))
+    return deploy_core.plan({"devices": ["s4"]})
 
 
-
-#: Mode B's selection in the base plan (7.3 step 2): the residue fixture's
-#: extra line, a measured shape on cisco_ios, removed with a stated reason.
-REMOVAL = {"chain": ["interface GigabitEthernet0/3"], "line": " description retired uplink"}
-REMOVAL_REASON = {"line": "no description retired uplink",
-                  "reason": "the uplink was retired last week"}
-
-
-def deploy_plan_with_removal(mp):
-    """The residue fixture with its one residue line SELECTED for removal, so
-    the plan carries Mode B's fields (removed, keys, the program's tail) and
-    no residue remains in what will not happen."""
-    import routes.deploy as rd
-    from modules.nsot.render_artifact import build_artifact
-    from tests import test_p3_wizard_draws_the_program as w
-
-    # And C201's collision, from s1's real pair: the device holds `ipv6 cef`
-    # beside `ipv6 unicast-routing`, and intent keeps only the second, so the
-    # first is named (`shares_key`) rather than hidden.
-    capture = w.CAPTURE.replace("end\n", "ipv6 unicast-routing\nipv6 cef\n"
-                                          "interface GigabitEthernet0/3\n"
-                                          " description retired uplink\nend\n")
-    intent = w.INTENT.replace("end\n", "ipv6 unicast-routing\nend\n")
-    assert capture != w.CAPTURE and intent != w.INTENT
-
-    def _fake(list_name, hostname, cache=None):
-        artifact = build_artifact(hostname, capture, "cisco_ios", template_approved=True)
-        return (artifact, capture, {"hostname": hostname, "ip": "203.0.113.24"}), ""
-
-    mp.setattr(rd, "_artifact_for", _fake)
-    mp.setattr("modules.nsot.deploy.prepare_device", lambda a: {"config": intent})
-    mp.setattr(rd, "_attribute_additions", lambda *a, **k: dict(w.ATTRIBUTION))
-    return _ok(_client().post("/deploy/plan", json={
-        "devices": ["s4"], "remove": {"s4": [REMOVAL]},
-        "authorise": {"s4": [REMOVAL_REASON]}}))
+# Mode B's base plan (`deploy_plan_with_removal`, its one residue line selected for removal)
+# left with POST /deploy/plan's entry in the payload check at 7.8 (2026-10-17, P7-25).
 
 
 def deploy_plan_with_residue(mp):
@@ -101,7 +69,7 @@ def deploy_plan_with_residue(mp):
     mp.setattr(rd, "_artifact_for", _fake)
     mp.setattr("modules.nsot.deploy.prepare_device", lambda a: {"config": w.INTENT})
     mp.setattr(rd, "_attribute_additions", lambda *a, **k: dict(w.ATTRIBUTION))
-    return _ok(_client().post("/deploy/plan", json={"devices": ["s4"]}))
+    return deploy_core.plan({"devices": ["s4"]})
 
 
 def deploy_apply(mp):
@@ -115,8 +83,8 @@ def deploy_apply(mp):
     import routes.deploy as rd
 
     deploy_plan(mp)          # installs the artifact stubs
-    plan = _ok(_client().post("/deploy/plan", json={
-        "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}))
+    plan = deploy_core.plan({
+        "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}})
     device = plan["devices"][0]
     assert device["authorisation_ok"] is True, device
 
@@ -147,57 +115,17 @@ def deploy_apply(mp):
     # s4 deploys; s3 is refused because the program moved since it was
     # confirmed, so the payload carries BOTH a deployed row and a refusal's
     # operands, and the check can examine each.
-    return _ok(_client().post("/deploy/apply", json={
+    return deploy_core.apply({
         "confirmations": {"s4": device["capture_hash"], "s3": device["capture_hash"]},
         "command_hashes": {"s4": device["command_hash"], "s3": "0000000000000000"},
         "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}], "s3": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]},
-    }))
+    })
 
 
 # The restore preview's, the golden panel's (GET /golden/baselines) and the restore points'
 # providers left at 7.8 (2026-10-17, P7-21) with their routes and the payload check's entries.
-
-
-def onboard_pending(mp, tmp_path):
-    from tests.test_ztp_onboarding import ENTRY
-
-    mp.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / name))
-    mp.setattr("modules.config.LISTS_DIR", str(tmp_path))
-    (tmp_path / "probe").mkdir(exist_ok=True)
-    rows = [dict(ENTRY, age_seconds=10, state="in_flight", onboarded_at="x",
-                 credential_findable=True),
-            {"name": "r7", "address_source": "static", "mgmt_ip": "192.0.2.7",
-             "age_seconds": 90000, "state": "overdue", "onboarded_at": "x",
-             "credential_findable": True}]
-    mp.setattr("modules.nsot.manifest.pending_devices", lambda repo: rows)
-    mp.setattr("modules.nsot.ztp.progress",
-               lambda row: {"stage": "reserved_not_leased", "summary": "reserved"})
-    # 7.1: runs in the REAL record, through the real recorder, so a pending
-    # row carries its last run and the finished list is not empty: r7 did
-    # not answer (still pending), r9 was onboarded and r8 abandoned (both
-    # off the list, so read back only under "finished").
-    from modules.nsot.onboard import PHASE_TWO_STEPS, record_run
-
-    repo = str(tmp_path / "probe" / "config_repo")
-    record_run(repo, "verify", "probe", "r7", "p@example.com", {
-        "ok": False, "reason": "did not answer", "mgmt_ip": "192.0.2.7",
-        "steps": [{"step": "verify", "ok": False, "detail": "did_not_answer"}]
-        + [{"step": st, "ok": False, "detail": "did not run"} for st in PHASE_TWO_STEPS[1:]],
-        "verify": {"state": "did_not_answer", "error": "tcp/22 refused",
-                   "credential_source": "override",
-                   "causes": [{"cause": "the device has not booted", "why": "nothing answers",
-                               "where": "console", "command": "show version"}],
-                   "recovery": {"available": False, "note": "no recovery is needed"}}})
-    record_run(repo, "verify", "probe", "r9", "p@example.com", {
-        "ok": True, "reason": "", "mgmt_ip": "192.0.2.9", "promoted": True,
-        "golden": {"ok": True, "commit": "0123456789abcdef"},
-        "steps": [{"step": st, "ok": True, "detail": ""} for st in PHASE_TWO_STEPS],
-        "verify": {"state": "answered", "credential_source": "override"}})
-    record_run(repo, "abandon", "probe", "r8", "p@example.com", {
-        "ok": True, "released": "r8", "remaining": [],
-        "steps": [{"step": "intent", "ok": True, "detail": "removed host_vars/r8.yml"},
-                  {"step": "identity", "ok": True, "detail": "released 'r8'"}]})
-    return _ok(_client().get("/onboard/pending?list_name=probe"))
+# The pending read's (GET /onboard/pending) left with today's pending banner at 7.8 (2026-10-17,
+# P7-25).
 
 
 def capture_preview(mp, tmp):

@@ -333,6 +333,13 @@ class TestTheConfirm:
         assert reached == [], "nothing was sent"
         _r, out = _get(deploy, f"/v2/device/r2/deploy/job/{job}")
         assert "refused" in out and "op-ok" not in out
+        # The refusal's reason reaches the screen, naming which side moved and that nothing was
+        # sent (rebased from today's wizard's result, tests/test_deploy_plan_apply_seam.py's
+        # TestTheSpecificReasonReachesTheSCREEN, when the wizard left at 7.8).
+        text = html_mod.unescape(out)
+        assert "the exact command list changed since you confirmed it" in text, text[-1500:]
+        assert "captured config is unchanged" in text and "intent or the template" in text
+        assert "Nothing was sent" in text
 
     def test_a_failed_verify_rolled_back_offers_its_two_ways_out(self, deploy, monkeypatch):
         from modules.nsot import capture_job

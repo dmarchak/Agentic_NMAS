@@ -828,9 +828,11 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
     """Devices onboarded and never reached. `in_flight` (under a day) is the
     normal state of an onboarding and is counted, not listed; overdue, stale
     and a staged credential nothing can find are rows. ZTP progress is not
-    asked here: it asks Kea per device (section 0a); the pending banner
-    carries it."""
+    asked here: it asks Kea per device (section 0a); the pending device's
+    page carries it, and each row opens that page (Verify…, Abandon…; today's
+    pending banner, which the rows named with no link, left at 7.8)."""
     import os
+    from urllib.parse import quote
 
     from modules.config import get_list_data_dir
     from modules.nsot.manifest import pending_devices
@@ -849,6 +851,7 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
     for d in devices:
         name, state = d.get("name") or d.get("identity") or "?", d.get("state")
         since = _ts(d.get("onboarded_at"))
+        page = f"/v2/device/{quote(name, safe='')}?list={quote(lst, safe='')}"
         if d.get("credential_findable") is False:
             rows.append(row(
                 source="onboarding", kind="credential", key=f"{lst}:{name}:credential", level="danger",
@@ -856,7 +859,8 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
                 cause=("the credential staged for it is not where verification looks, so "
                        "Verify would try a profile the device refuses; nothing has reached "
                        "the device, so there is nothing to undo"),
-                action={"label": "Abandon it and onboard it again, from the pending banner"},
+                action={"label": "Abandon it and onboard it again, from its page",
+                        "href": page},
                 devices=[name], since=since, operands={"list": lst, "state": state}))
         elif state in ("overdue", "stale"):
             hours = int((d.get("age_seconds") or 0) // 3600)
@@ -865,7 +869,7 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
                 what=f"{name} was onboarded {hours} h ago and has never been reached",
                 cause=("it is in the manifest and git and not in the inventory: nothing "
                        "polls, backs up or drift-checks it until Verify reaches it"),
-                action={"label": "Verify it, or Abandon it, from the pending banner"},
+                action={"label": "Verify it, or Abandon it, from its page", "href": page},
                 devices=[name], since=since, operands={"list": lst, "state": state,
                                                        "address_source": d.get("address_source")}))
     quiet = sum(1 for d in devices if d.get("state") == "in_flight"

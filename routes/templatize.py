@@ -43,7 +43,7 @@ def _active_list(payload=None) -> str:
 # PROPOSE: a profile derived from what the fleet's committed intent agrees on,
 # previewed, confirmed by hash, committed as the verified person. Nothing is
 # sent to a device; APPLY is the deploy plan scoped to the profile
-# (`/deploy/plan` with `scope: profile`).
+# (`routes.deploy.plan_devices` with `scope: profile`, the batch Apply's page).
 
 @bp.route("/profile/propose/preview", methods=["POST"])
 def profile_propose_preview():

@@ -12,11 +12,11 @@ it by id.
 is recorded (`progress`) and ANNOUNCED (`deploy_job`), so the page redraws
 where the batch is: done (with its outcome), running, or not reached, never a
 spinner. At the end the job announces every key a deploy changes, as
-`/deploy/apply` declares them.
+today's `/deploy/apply` declared them until 7.8 (2026-10-17).
 
 **The person behind it.** The confirm's verified identity is carried into the
 thread (`identity.carried`), so the golden commit reads `Actor-Verified:
-access` and the receipts name the person, as at `/deploy/apply`.
+access` and the receipts name the person, as a request's confirm does.
 
 In memory: a restart loses the job, and its page says so; the receipts and
 the golden history are the record.
@@ -37,7 +37,7 @@ KINDS = {"profile": KIND, "ip_sla": "IP SLA send", "templates": "monitoring temp
 ANNOUNCER = "deploy-job"
 #: Announced as each device finishes: the page's progress moved.
 PROGRESS_KEYS = ("deploy_job",)
-#: Announced at the end: what a deploy changes (`/deploy/apply`'s declaration).
+#: Announced at the end: what a deploy changes (today's `/deploy/apply` declared these).
 DONE_KEYS = ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
              "goldens", "remote")
 

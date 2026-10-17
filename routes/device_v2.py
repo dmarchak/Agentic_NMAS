@@ -1285,7 +1285,7 @@ def deploy(name):
 @bp.route("/device/<name>/deploy/confirm", methods=["POST"])
 def deploy_confirm(name):
     """Deploy the confirmed program as the verified person, as a job holding the device (the
-    same apply as `/deploy/apply` and the batch apply, `deploy_job`): the program is computed
+    same apply as the batch apply, `apply_batch` in `deploy_job`): the program is computed
     again and a different hash refuses with nothing sent. Answers with the card that follows
     the job."""
     import json

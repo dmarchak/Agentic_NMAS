@@ -4,23 +4,21 @@ again.
 Both were a toast (Verify's failure was drawn, until the banner reloaded).
 Now each run is RECORDED (`onboarding_runs.jsonl`, beside the list's
 repository), the route draws its result FROM the recorded row with the result
-component, and the pending banner reads it back: each pending row's last run,
-and, for a run that took its device off the list (promoted or abandoned),
-"finished recently". The row cannot hold those two, and they are the results
-most worth reading again.
+component, and it is read back: each pending device's page draws its last run,
+and every run, one that took its device off the list (promoted or abandoned)
+included, is a row of the network's History (today's pending banner read both
+back until it left at 7.8, 2026-10-17, P7-25). The row cannot hold those two,
+and they are the results most worth reading again.
 
 The record is masked on the way in and created 0600; absent and unreadable
 are different facts, and an unreadable record is drawn as that, never as
 "no runs". A record that could not be written is part of the result.
 """
 
-import json
 import os
 import stat
 
 import pytest
-
-from tests.js_source import read_shipped
 
 PERSON = "test-person@example.invalid"
 
@@ -84,24 +82,39 @@ class TestTheRecord:
 
 
 class TestTheRoutesDrawFromTheRecordedRow:
+    """v2's pending page's Verify and Abandon (today's /onboard/verify and /onboard/abandon,
+    which these drove, left at 7.8 on 2026-10-17, P7-25): the record is written by the route,
+    as the verified person; the result is the core's, drawn from the recorded row."""
+
     def test_a_verify_is_recorded_and_its_result_is_the_recorded_rows(self, lab, monkeypatch):
+        import types
+
         from modules.nsot.onboard import read_runs
+        from routes.onboard import verify_run
 
         monkeypatch.setattr("modules.nsot.onboard.run_phase_two",
                             lambda repo, host, lst, **k: {
                                 "ok": False, "reason": "the capture timed out",
                                 "mgmt_ip": "192.0.2.7", "steps": _steps(1)})
-        r = _client().post("/onboard/verify/r7", json={"list_name": "probe", "fingerprint": "f"})
+        r = _client().post("/v2/onboard/r7/verify",
+                           data={"list_name": "probe", "fingerprint": "f", "actor": "forged"})
         assert r.status_code == 409
-        d = r.get_json()
-        rows = read_runs(str(lab / "probe" / "config_repo"))["rows"]
+        repo = str(lab / "probe" / "config_repo")
+        rows = read_runs(repo)["rows"]
         assert [row["kind"] for row in rows] == ["verify"]
         assert rows[0]["actor"] == PERSON, "the VERIFIED person, never a body field"
+        d, status = verify_run("r7", {"list_name": "probe", "fingerprint": "f"},
+                               types.SimpleNamespace(actor=PERSON, kind="person"))
+        assert status == 409
         assert d["result"]["level"] == "partial", "verify ran then capture failed: never green"
         assert "stopped at capture" in d["result"]["happened"]["summary"]
         assert f"by {PERSON}" in d["result"]["record"]["statement"]
 
     def test_a_record_that_could_not_be_written_is_part_of_the_result(self, lab, monkeypatch):
+        import types
+
+        from routes.onboard import verify_run
+
         monkeypatch.setattr("modules.nsot.onboard.run_phase_two",
                             lambda repo, host, lst, **k: {"ok": False, "reason": "x",
                                                           "steps": _steps(0)})
@@ -110,11 +123,13 @@ class TestTheRoutesDrawFromTheRecordedRow:
         # without the failure ever happening.
         monkeypatch.setattr("modules.nsot.onboard.runs_path",
                             lambda repo: str(lab / "probe"))
-        d = _client().post("/onboard/verify/r7", json={"list_name": "probe", "fingerprint": "f"}).get_json()
+        d, _status = verify_run("r7", {"list_name": "probe", "fingerprint": "f"},
+                                types.SimpleNamespace(actor=PERSON, kind="person"))
         assert d["result"]["record"]["statement"].startswith("THE RUN RECORD WAS NOT WRITTEN")
 
     def test_an_abandon_is_recorded_and_a_dry_run_is_not(self, lab, monkeypatch):
         from modules.nsot.onboard import read_runs
+        from routes.onboard import abandon_run
 
         monkeypatch.setattr("modules.nsot.onboard.abandon_onboarding",
                             lambda repo, host, lst, **k: {
@@ -123,11 +138,12 @@ class TestTheRoutesDrawFromTheRecordedRow:
                                 "steps": [{"step": "identity", "ok": True,
                                            "detail": "released 'r8'"}]})
         c = _client()
-        c.post("/onboard/abandon/r8", json={"list_name": "probe", "dry_run": True})
+        c.post("/v2/onboard/r8/abandon/preview", data={"list_name": "probe"})
         repo = str(lab / "probe" / "config_repo")
         assert read_runs(repo)["state"] == "absent", "a dry run removes nothing: no record"
-        d = c.post("/onboard/abandon/r8", json={"list_name": "probe"}).get_json()
+        c.post("/v2/onboard/r8/abandon", data={"list_name": "probe", "fingerprint": "f"})
         assert read_runs(repo)["rows"][0]["kind"] == "abandon"
+        d, _status = abandon_run("r8", {"list_name": "probe"}, PERSON, confirmed="f")
         assert d["result"]["level"] == "success"
         assert "the name 'r8' is free" in d["result"]["happened"]["summary"]
 
@@ -145,53 +161,58 @@ class TestTheRoutesDrawFromTheRecordedRow:
         assert lines == ["netbox: refused -- to finish: run abandon again"]
 
 
-class TestThePendingBannerReadsItBack:
-    def _banner(self, data):
-        import dukpy
+class TestTheRunsAreReadBack:
+    """Today's pending banner read the runs back (each pending row's last run, and the runs
+    that took their device off the list) until it left at 7.8 (2026-10-17, P7-25). On v2 a
+    pending device's page draws its last run, and an unreadable record as that
+    (tests/test_onboard_v2.py, `test_the_page_draws_today_s_banner_facts`); every run, the
+    finished ones included, is a row of the network's History (`history_sources.onboarding`),
+    held here against the real record."""
 
-        from tests.payload_render import lift
+    def _history(self, repo):
+        import types
 
-        src = read_shipped("static/js/gen/partials__onboard_pending.1.js")
-        return dukpy.evaljs("var window = {};\n" + read_shipped("static/js/nmas_preview_confirm.js")
-                            + "\nvar previewConfirmResultHtml = window.previewConfirmResultHtml;\n"
-                            + "\n".join(lift(src, n) for n in ("pendingAgeText",
-                                                               "pendingBannerHtml"))
-                            + f"\npendingBannerHtml({json.dumps(data)})")
+        from modules import history_sources
 
-    def test_a_pending_rows_last_run_and_a_finished_run_are_drawn(self, monkeypatch, tmp_path):
-        from tests import payload_providers as P
+        return history_sources.onboarding({"ref": types.SimpleNamespace(repo_dir=repo),
+                                           "limit": 50, "device": "", "members": None})
 
-        data = P.onboard_pending(monkeypatch, tmp_path)
-        r7 = next(r for r in data["pending"] if r["name"] == "r7")
-        assert r7["last_run"]["kind"] == "verify"
-        assert {f["device"] for f in data["runs"]["finished"]} == {"r8", "r9"}, \
-            "the runs that took their device off the list are read back"
-        html = self._banner(data)
-        assert 'data-onboard-run="verify"' in html and 'data-onboard-finished' in html
-        assert "r7 did not answer" in html
-        assert "r9 is onboarded" in html and "r8 is abandoned" in html
+    def test_every_run_the_finished_ones_included_is_a_history_row(self, lab):
+        from modules.nsot.onboard import PHASE_TWO_STEPS, record_run
 
-    def test_nothing_pending_still_shows_what_finished(self):
-        from modules.preview_confirm import onboard_abandon_result
+        repo = str(lab / "probe" / "config_repo")
+        record_run(repo, "verify", "probe", "r7", PERSON, {
+            "ok": False, "reason": "did not answer", "steps": _steps(0, "did_not_answer")})
+        record_run(repo, "verify", "probe", "r9", PERSON, {
+            "ok": True, "promoted": True, "golden": {"ok": True, "commit": "0123456789abcdef"},
+            "steps": [{"step": st, "ok": True, "detail": ""} for st in PHASE_TWO_STEPS]})
+        record_run(repo, "abandon", "probe", "r8", PERSON, {
+            "ok": True, "released": "r8", "remaining": [],
+            "steps": [{"step": "identity", "ok": True, "detail": "released 'r8'"}]})
+        got = self._history(repo)
+        assert got["errors"] == []
+        by = {e["devices"][0]: e for e in got["events"]}
+        assert set(by) == {"r7", "r8", "r9"}, by
+        assert by["r7"]["what"] == "Onboarding verify: stopped" and by["r7"]["outcome"] == \
+            "failed"
+        assert by["r9"]["what"] == "Onboarding verify: done" and by["r8"]["what"] == \
+            "Onboarding abandon: done"
+        assert all(e["who"] == PERSON for e in got["events"])
 
-        row = {"at": "t", "kind": "abandon", "device": "r8", "actor": PERSON, "ok": True,
-               "released": "r8", "steps": [{"step": "identity", "ok": True, "detail": ""}]}
-        html = self._banner({"ok": True, "list": "probe", "pending": [], "runs": {
-            "state": "ok", "finished": [{"at": "t", "kind": "abandon", "by": PERSON,
-                                         "device": "r8",
-                                         "result": onboard_abandon_result(row)}]}})
-        assert "r8 is abandoned" in html
+    def test_an_unreadable_record_is_said_never_none(self, lab):
+        from modules.nsot.onboard import runs_path
 
-    def test_an_unreadable_record_is_drawn_as_that(self):
-        html = self._banner({"ok": True, "list": "probe", "pending": [],
-                             "runs": {"state": "unreadable", "error": "bad json",
-                                      "finished": []}})
-        assert "data-onboard-runs-unreadable" in html and "not the same as none" in html
+        repo = str(lab / "probe" / "config_repo")
+        with open(runs_path(repo), "w", encoding="utf-8") as fh:
+            fh.write("{not json\n")
+        got = self._history(repo)
+        assert got["events"] == [] and got["errors"]
+        assert got["errors"][0].startswith("the onboarding runs could not be read")
 
-    def test_nothing_pending_and_nothing_recorded_draws_nothing(self):
-        """The floor: an empty banner stays empty."""
-        assert self._banner({"ok": True, "list": "probe", "pending": [],
-                             "runs": {"state": "absent", "finished": []}}) == ""
+    def test_nothing_recorded_is_nothing_and_no_error(self, lab):
+        """The floor: an absent record draws no row and no failure."""
+        got = self._history(str(lab / "probe" / "config_repo"))
+        assert got["events"] == [] and got["errors"] == []
 
 
 class TestAPromotedDeviceIsNeverDrawnAsPending:

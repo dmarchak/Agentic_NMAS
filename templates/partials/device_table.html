@@ -38,10 +38,8 @@
            (a golden config, committed intent) and open no socket, so an
            unreachable device is exactly when its history is most worth looking
            at. Template preview and Edit intent left at 7.8 (2026-10-17, P7-23):
-           Source of truth › Templates and the device's Intent tab. #}
-          <button class="btn btn-sm btn-outline-warning"
-                  title="Build the deploy plan for this device. Shows the exact commands; sends nothing."
-                  onclick="nsotAction('openDeployPlan', '{{ d['hostname'] }}', true)">Deploy plan</button>
+           Source of truth › Templates and the device's Intent tab. Deploy plan left with
+           today's deploy wizard (2026-10-17, P7-25): the device's Deploy… on v2. #}
           <button class="btn btn-sm btn-outline-secondary"
                   title="Every golden commit for this device"
                   onclick="nsotAction('showGoldenHistory', '{{ d['hostname'] }}')">Golden history</button>
@@ -52,5 +50,5 @@
   </tbody>
 </table>
 {% else %}
-<p class="text-muted">No devices in this list yet. "Onboard a device" above adds one.</p>
+<p class="text-muted">No devices in this list yet. Devices › Add device… on the new interface adds one.</p>
 {% endif %}

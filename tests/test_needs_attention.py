@@ -528,6 +528,20 @@ class TestPendingOnboardingsAsASource:
         assert r["level"] == "danger" and "Abandon" in r["action"]["label"]
         assert "0 within their first day" in res["checked"]
 
+    def test_each_row_opens_the_pending_devices_page_not_todays_banner(self, monkeypatch):
+        """Verify… and Abandon… are the pending device's page's (v2); today's pending banner,
+        which the rows named with no link, left at 7.8 (2026-10-17, P7-25)."""
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "W4 walk")
+        res = A.pending_onboarding_source(
+            lambda: [_pending("bp-a", "overdue"),
+                     _pending("bp-b", "in_flight", credential_findable=False)])
+        assert len(res["rows"]) == 2
+        for r in res["rows"]:
+            name = r["devices"][0]
+            assert "banner" not in r["action"]["label"], r["action"]
+            assert "page" in r["action"]["label"], r["action"]
+            assert r["action"]["href"] == f"/v2/device/{name}?list=W4%20walk", r["action"]
+
     def test_a_manifest_that_raises_is_the_unreadable_row(self, monkeypatch):
         monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
 

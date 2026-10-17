@@ -27,6 +27,7 @@ from modules.nsot.deploy import (DEPLOYED, FAILED, SKIPPED_DRIFTED, CircuitBreak
                                  DeviceMoved, device_moved_reason)
 from tests.test_coverage_deploy import _plan, r6_probe_unsent  # noqa: F401 (the fixture)
 from tests.test_profile_apply import lab  # noqa: F401 (the fixture)
+from tests import deploy_core
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 R1 = open(os.path.join(ROOT, "tests", "fixtures", "configs", "r1_c8000v.cfg"),
@@ -200,7 +201,7 @@ class TestTheApply:
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
         (d,) = _plan(lab, "profile")["devices"]
-        return lab["client"].post("/deploy/apply", json={
+        return deploy_core.post_apply(json={
             "confirmations": {"r6": d["capture_hash"]},
             "command_hashes": {"r6": d["command_hash"]},
             "list_name": "Lab", "scope": "profile"}).get_json()
@@ -246,8 +247,18 @@ class TestTheScreensSayItIsCompared:
         assert "is compared with that capture" in CAPTURE_GATE_DETAIL
         assert "not compared" not in CAPTURE_GATE_DETAIL
 
-    def test_the_wizard_no_longer_says_a_device_change_is_not_detected(self):
-        js = open(os.path.join(ROOT, "static", "js", "gen", "partials__deploy_wizard.1.js"),
-                  encoding="utf-8").read()
-        assert "NOT detected" not in js and not re.search(r"save its golden first", js)
-        assert "compared with that capture before anything is sent" in js
+    def test_no_screen_says_a_device_change_is_not_detected(self):
+        """Today's deploy wizard said so until this was fixed, and left at 7.8 (2026-10-17,
+        P7-25); the screens that remain (v2's templates and scripts, the shared preview) are
+        held to it, the gate above being what they draw."""
+        from tests.source_index import tracked
+
+        paths = (tracked("templates/v2", suffix=".html", recursive=False)
+                 + [p for p in tracked("static/js", suffix=".js", recursive=False)
+                    if os.path.basename(p).startswith("nmas_")]
+                 + [os.path.join(ROOT, "modules", "preview_confirm.py")])
+        assert len(paths) > 50, "the screens were not found"
+        for path in paths:
+            text = open(path, encoding="utf-8").read()
+            assert "NOT detected" not in text and not re.search(r"save its golden first",
+                                                                 text), path

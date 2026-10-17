@@ -303,62 +303,46 @@ class TestThePendingRow:
         assert out["stage"] == "unknown" and "could not be asked" in out["summary"]
 
 
-class TestThePendingRoute:
-    def _get(self, monkeypatch, progress, tmp_path):
-        import app as nmas
-        monkeypatch.setattr("modules.config.get_list_data_dir",
-                            lambda name: str(tmp_path / name))
-        # The list must EXIST: a read naming a list that does not is refused
-        # (register C51), and this list was only ever a patched path.
-        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
-        (tmp_path / "probe").mkdir(exist_ok=True)
-        rows = [dict(ENTRY, age_seconds=10, state="in_flight", onboarded_at="x"),
-                {"name": "r7", "address_source": "static", "mgmt_ip": "192.0.2.7",
-                 "age_seconds": 10, "state": "in_flight", "onboarded_at": "x"}]
-        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: rows)
-        monkeypatch.setattr("modules.nsot.ztp.progress", progress)
-        r = nmas.app.test_client().get("/onboard/pending?list_name=probe")
-        return r.status_code, r.get_json()
+def _pending_page(monkeypatch, tmp_path, row):
+    """A pending device's page on v2, for one manifest *row*."""
+    import types
 
-    def test_only_the_ztp_row_carries_progress(self, monkeypatch, tmp_path):
-        status, body = self._get(monkeypatch, lambda row: {"stage": "reserved_not_leased",
-                                                          "summary": "reserved"}, tmp_path)
-        assert status == 200 and body["ok"]
-        by = {r["name"]: r for r in body["pending"]}
-        assert by["bp-ztp-a"]["ztp"]["stage"] == "reserved_not_leased"
-        assert "ztp" not in by["r7"]
+    import app as nmas
 
-    def test_a_progress_that_raised_is_carried_as_unknown(self, monkeypatch, tmp_path):
+    ref = types.SimpleNamespace(name="probe", repo_dir=str(tmp_path))
+    row = dict(row, identity="uid:" + row["name"], credential_findable=True)
+    monkeypatch.setattr("modules.device_page.find_pending",
+                        lambda name, ref=None, _r=(ref, row): _r)
+    r = nmas.app.test_client().get("/v2/device/" + row["name"])
+    assert r.status_code == 200, r.status_code
+    return r.get_data(as_text=True)
+
+
+class TestThePendingPageDrawsZtpProgress:
+    """Today's /onboard/pending carried each ZTP row's progress, and its banner drew it, until
+    both left at 7.8 (2026-10-17, P7-25): a pending device's page on v2 asks it for a ZTP
+    device and draws its stage and summary (and test_onboard_v2's banner-facts test)."""
+
+    def test_only_a_ztp_device_carries_progress(self, monkeypatch, tmp_path):
+        asked = []
+        monkeypatch.setattr("modules.nsot.ztp.progress", lambda row: asked.append(
+            row["name"]) or {"stage": "reserved_not_leased", "summary": "reserved"})
+        html = _pending_page(monkeypatch, tmp_path, dict(
+            ENTRY, age_seconds=10, state="in_flight", onboarded_at="2026-10-01T09:00:00Z"))
+        assert "reserved not leased" in html and asked == ["bp-ztp-a"]
+        html = _pending_page(monkeypatch, tmp_path, {
+            "name": "r7", "address_source": "static", "mgmt_ip": "192.0.2.7",
+            "age_seconds": 10, "state": "in_flight", "onboarded_at": "2026-10-01T09:00:00Z"})
+        assert asked == ["bp-ztp-a"] and "<dt>ZTP</dt>" not in html
+
+    def test_a_progress_that_raised_is_drawn_as_unknown_with_its_reason(self, monkeypatch,
+                                                                       tmp_path):
         def boom(row):
             raise OSError("Kea down")
-        status, body = self._get(monkeypatch, boom, tmp_path)
-        assert status == 200 and body["ok"], "one row's failure is not the list's"
-        row = [r for r in body["pending"] if r["name"] == "bp-ztp-a"][0]
-        assert row["ztp"]["stage"] == "unknown" and "Kea down" in row["ztp"]["summary"]
-
-
-from tests.test_onboard_phase2 import _banner, banner_js  # noqa: E402,F401
-
-
-class TestTheBannerDrawsIt:
-    def _data(self, ztp):
-        row = dict(ENTRY, age_seconds=10, state="in_flight", onboarded_at="x",
-                   credential_findable=True)
-        if ztp is not None:
-            row["ztp"] = ztp
-        return {"ok": True, "list": "probe", "pending": [row],
-                "counts": {"total": 1, "overdue": 0}}
-
-    def test_the_summary_is_drawn(self, banner_js):
-        html = _banner(banner_js, self._data({"stage": "fetched_not_reached",
-                                              "summary": "fetched its config at T"}))
-        assert "fetched its config at T" in html
-        # The stage word is drawn beside it (7.1: it was carried and not drawn).
-        assert "<span data-ztp-stage>fetched_not_reached</span>" in html
-
-    def test_a_row_with_no_progress_says_so(self, banner_js):
-        html = _banner(banner_js, self._data(None))
-        assert "its progress was not reported" in html
+        monkeypatch.setattr("modules.nsot.ztp.progress", boom)
+        html = _pending_page(monkeypatch, tmp_path, dict(
+            ENTRY, age_seconds=10, state="in_flight", onboarded_at="2026-10-01T09:00:00Z"))
+        assert "unknown" in html and "its progress could not be read: Kea down" in html
 
 
 class TestPhaseTwoIsUnchanged:
@@ -612,16 +596,11 @@ def test_a_phase_two_stop_is_logged_with_its_step_and_reason(tmp_path, monkeypat
     assert any("phase 2 for bp-nobody stopped at verify" in r.getMessage() for r in caplog.records)
 
 
-class TestTheVerifyFailureStaysOnScreen:
-    """Executed in duktape: the shipped functions, with the asynchrony
-    stripped and nothing else changed. Since 7.1 the route returns a result
-    built by `onboard_verify_result` from the recorded row, drawn by the
-    result component; the payloads here are built by that real builder."""
-
-    @staticmethod
-    def _js():
-        from tests.js_source import read_shipped
-        return read_shipped("static/js/gen/partials__onboard_wizard.2.js")
+class TestTheVerifyResultStaysOnScreen:
+    """v2's Verify draws its result in place on the pending device's page, from the recorded
+    row (`onboard_verify_result`, the real builder here), and leaves it there. Today's
+    banner's Verify, executed here until it left at 7.8 (2026-10-17, P7-25), reloaded the
+    banner on no result and toasted the level; v2 draws a refusal in place, naming why."""
 
     @staticmethod
     def _payload(run):
@@ -636,72 +615,55 @@ class TestTheVerifyFailureStaysOnScreen:
                     "actor": "p@example.com", "mgmt_ip": "192.0.2.50", "steps": steps}, **run)
         return dict(run, steps=steps, result=onboard_verify_result(row))
 
-    def _run(self, payload):
-        import dukpy
+    @staticmethod
+    def _run(monkeypatch, payload, status=409):
+        import html as _h
+        import types
 
-        from tests.js_source import read_shipped
+        import app as nmas
+        from routes import onboard as core
 
-        js = self._js()
-        # The CONFIRM (P.9 step c: Verify opens a preview first, and its confirm
-        # sends the fingerprint), and every function after it up to Abandon.
-        start = js.index("async function onboardVerifyConfirm")
-        end = js.index("async function onboardAbandon")
-        code = js[start:end].replace("async function", "function").replace("await ", "")
-        assert "await" not in code
-        harness = ("var window = {};\n" + read_shipped("static/js/nmas_preview_confirm.js") + """
-        var previewConfirmResultHtml = window.previewConfirmResultHtml;
-        var previewConfirmResultLevel = window.previewConfirmResultLevel;
-        var calls = [], banner = {innerHTML: ''};
-        var document = {getElementById: function (id) {
-            return id === 'onboardPendingBanner' ? banner : null; }};
-        function fetch(url, opts) { return {json: function () { return dukpy.payload; }}; }
-        function showToast(t, k) { calls.push('toast:' + k); }
-        function loadOnboardPending(l) { calls.push('reload:' + l); }
-        function inFlightBusy(on) { calls.push('busy:' + on); }
-        """ + code + """
-        onboardVerifyConfirm('bp-ztp-a', 'ztp-a', 'a1b2c3d4e5f60718');
-        ({calls: calls, html: banner.innerHTML})
-        """)
-        return dukpy.evaljs(harness, payload=payload)
+        who = types.SimpleNamespace(actor="p@example.com", kind="person", peer="192.0.2.5",
+                                    is_identified=True)
+        monkeypatch.setattr("modules.identity.require", lambda *a, **k: (who, None))
+        monkeypatch.setattr(core, "verify_run", lambda name, data, ident: (payload, status))
+        r = nmas.app.test_client().post("/v2/onboard/bp-ztp-a/verify", data={
+            "list_name": "ztp-a", "fingerprint": "a1b2c3d4e5f60718"})
+        return " ".join(_h.unescape(r.get_data(as_text=True)).split())
 
-    def test_a_failure_is_left_on_screen_not_reloaded_over(self):
-        out = self._run(self._payload({"ok": False, "reason": "did not answer", "steps": [
-            {"step": "verify", "ok": False, "detail": "did_not_answer"}],
+    def test_a_failure_is_left_on_screen_with_its_reason(self, monkeypatch):
+        html = self._run(monkeypatch, self._payload({
+            "ok": False, "reason": "did not answer", "steps": [
+                {"step": "verify", "ok": False, "detail": "did_not_answer"}],
             "verify": {"state": "did_not_answer", "error": "tcp/22 refused", "causes": [
                 {"cause": "not booted", "why": "nothing answers", "where": "console",
                  "command": "show version"}]}}))
-        assert "reload:ztp-a" not in out["calls"], out["calls"]
-        assert "toast:danger" in out["calls"], "a failure drawn in the failure colour"
-        assert "did not answer" in out["html"] and "Back to the pending list" in out["html"]
-        assert "nothing about it has changed" in out["html"]
-        assert "tcp/22 refused" in out["html"] and "1. not booted" in out["html"]
+        assert "did not answer" in html and "nothing about it has changed" in html, html[-2000:]
+        assert "tcp/22 refused" in html and "not booted" in html
+        assert "is onboarded" not in html
 
-    def test_a_stop_after_verify_names_the_step_and_the_reason(self):
-        out = self._run(self._payload({"ok": False, "reason": "the capture timed out", "steps": [
-            {"step": "verify", "ok": True, "detail": "answered"},
-            {"step": "capture", "ok": False, "detail": "timeout"}],
+    def test_a_stop_after_verify_names_the_step_and_the_reason(self, monkeypatch):
+        html = self._run(monkeypatch, self._payload({
+            "ok": False, "reason": "the capture timed out", "steps": [
+                {"step": "verify", "ok": True, "detail": "answered"},
+                {"step": "capture", "ok": False, "detail": "timeout"}],
             "verify": {"state": "answered"}}))
-        assert "stopped at capture" in out["html"]
-        assert "the capture timed out" in out["html"]
-        assert "nothing about it has changed" not in out["html"]
-        assert "toast:warning" in out["calls"], "some steps ran: partly done, never green"
+        assert "stopped at capture" in html and "the capture timed out" in html
+        assert "nothing about it has changed" not in html
 
-    def test_a_success_is_drawn_and_left_too(self):
-        """The row it came from is gone once promoted, so the result stays
-        until the operator goes back; the pending banner reads it again under
-        "finished recently"."""
+    def test_a_success_is_drawn_and_left_too(self, monkeypatch):
         from modules.nsot.onboard import PHASE_TWO_STEPS
 
-        out = self._run(self._payload({"ok": True, "golden": {"commit": "0123456789ab"},
-                                       "steps": [{"step": st, "ok": True, "detail": ""}
-                                                 for st in PHASE_TWO_STEPS],
-                                       "verify": {"state": "answered"}}))
-        assert "toast:success" in out["calls"]
-        assert "is onboarded" in out["html"] and "Back to the pending list" in out["html"]
+        html = self._run(monkeypatch, self._payload({
+            "ok": True, "golden": {"commit": "0123456789ab"},
+            "steps": [{"step": st, "ok": True, "detail": ""} for st in PHASE_TWO_STEPS],
+            "verify": {"state": "answered"}}), status=200)
+        assert "is onboarded" in html and "Open bp-ztp-a's page" in html
 
-    def test_no_result_is_a_toast_with_its_reason_never_a_blank(self):
-        out = self._run({"ok": False, "error": "requires a verified person"})
-        assert out["calls"][-2:] == ["toast:danger", "reload:ztp-a"]
+    def test_no_result_is_a_refusal_with_its_reason_never_a_blank(self, monkeypatch):
+        html = self._run(monkeypatch, {"ok": False, "error": "requires a verified person"},
+                         status=403)
+        assert "<strong>Not verified:</strong> requires a verified person" in html
 
 
 class TestAZtpRenderUsesTheStrongerCredentialForm:
