@@ -968,6 +968,86 @@ def saved_views(ctx):
                  for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
 
 
+def _netbox_import(name, j):
+    """One import's row (B8) from its job record (`netbox_jobs.history`): its result as the
+    NetBox page's card draws it, read from the job, never recomputed."""
+    result = (j.get("results") or {}).get(name) or {}
+    said = str((result.get("happened") or {}).get("summary") or "")
+    every = j.get("operation") == "import_all"
+    head = "NetBox import" + (" of every network" if every else "")
+    if j.get("state") == "importing":
+        what, outcome = (f"{head} started: it has recorded no end (running, or cut off by a "
+                         "restart of the app)"), "running"
+    elif j.get("outcome") == "failed":
+        # The result beside a failed import is the network's LAST recorded one, which may be an
+        # earlier import's: it is not drawn as this one's.
+        what, outcome = f"{head} failed before it finished: the app's log names why", "failed"
+    else:
+        what = f"{head}: " + (said or "it ended and recorded no result")
+        outcome = result.get("level") or "nothing recorded"
+    # A confirmed job's `actor` is who confirmed it, `previewed_by` who previewed it (B2's
+    # shape); a record without `previewed_by` predates that, and its `actor` previewed it.
+    confirmed = "previewed_by" in j
+    who = j.get("actor") or ""
+    if who and not confirmed:
+        who += " (who previewed it: this record predates naming who confirmed it)"
+    return _event(j.get("started_at") if j.get("state") == "importing" else j.get("at"),
+                  "netbox", what, [], who=who, outcome=outcome,
+                  record=[("Network", "every network" if every else name),
+                          ("Outcome", outcome), ("Started", j.get("started_at")),
+                          ("Ended", j.get("at") if j.get("state") != "importing" else ""),
+                          ("Confirmed by", j.get("actor") if confirmed else ""),
+                          ("Previewed by", j.get("previewed_by") if confirmed
+                           else j.get("actor")), ("Job", j.get("id"))])
+
+
+def _netbox_removal(r):
+    """One Remove or Stop tracking's row (C954) from the removal record, in the words its
+    result is drawn in on the NetBox page (`netbox_removal_result`, the same computation)."""
+    from modules.preview_confirm import netbox_removal_result
+
+    drawn = netbox_removal_result(r)
+    forget = bool(r.get("forget_only"))
+    what = ("NetBox: stopped tracking: " if forget else "NetBox removal: ") + \
+        str((drawn.get("happened") or {}).get("summary") or "")
+    return _event(r.get("at"), "netbox", what, [], who=r.get("actor", ""),
+                  outcome=drawn.get("level", ""),
+                  record=[("Network", r.get("list")), ("Outcome", drawn.get("level")),
+                          ("Operation", "Stop tracking (deletes nothing in NetBox)" if forget
+                           else "Remove from NetBox"),
+                          ("Deleted", str(len(r.get("deleted") or [])) if not forget else ""),
+                          ("Left alone", str(len(r.get("skipped") or [])) if not forget else ""),
+                          ("Refused by NetBox", str(len(r.get("failed") or []))
+                           if r.get("failed") else ""),
+                          ("Forgotten", str(len(r.get("forgotten") or [])) if forget else ""),
+                          ("Error", r.get("error"))])
+
+
+def netbox(ctx):
+    """Each import of this network into NetBox, and each Remove from NetBox and Stop tracking
+    (C954), from the records those operations write (B8: the operator's import was in neither
+    History nor any record History read): who confirmed it, when, its counts in the NetBox
+    page's own words, and its outcome. The network's own records, so no device's History lists
+    them; an import of every network is each network's it names."""
+    from modules import netbox_guard, netbox_jobs
+    if ctx.get("device"):
+        return _out()
+    name = ctx["ref"].name
+    events, errors = [], []
+    got = netbox_jobs.history(name)
+    if got["error"]:
+        errors.append(f"the NetBox import record could not be read: {got['error']}")
+    events += [_netbox_import(name, j) for j in got["rows"]]
+    removals = netbox_guard.read_removals(name)
+    if removals["state"] == "unreadable":
+        errors.append(f"the NetBox removal record could not be read: {removals['error']}")
+    events += [_netbox_removal(r) for r in removals["rows"]]
+    events = [e for e in events if _recent(ctx, e["at"])]
+    events.sort(key=lambda e: epoch(e["at"]), reverse=True)
+    return _out(events[:ctx["limit"]], errors,
+                cut=[f"NetBox's newest {ctx['limit']}"] if len(events) > ctx["limit"] else [])
+
+
 #: The reveal record's kinds this view leaves to another, each with why. Every other kind, a
 #: new one included, is drawn by `reveals` (who, when, which object; never a value).
 REVEALS_ELSEWHERE = {
@@ -1273,6 +1353,7 @@ SOURCES = {
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
+    "netbox": netbox,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1300,6 +1381,7 @@ KIND_GROUPS = (
                                ("hostkeys", "SSH host keys", ("hostkey",)),
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
+                               ("netbox", "NetBox imports and removals", ("netbox",)),
                                ("show_commands", "Show commands", ("show_commands",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}

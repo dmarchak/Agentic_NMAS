@@ -383,10 +383,10 @@ HISTORY = {
                                    "provenance, which the device's NetBox tab draws"),
     "netbox_safety.apply_import_all": ("n/a: NetBox objects' records, kept per object with "
                                        "their provenance, drawn on each device's NetBox tab"),
-    "netbox_safety.apply_removal": ("n/a: removes NetBox objects; the removal record is per "
-                                    "object, drawn on the NetBox tab"),
-    "netbox_v2.confirm": ("n/a: NetBox objects' records, kept per object with their provenance, "
-                          "drawn on each device's NetBox tab and, for a removal, on the NetBox page"),
+    # B8: the network's own record of each removal (the removal record), and of each import,
+    # Remove and Stop tracking confirmed on v2's NetBox page (its job record), on History.
+    "netbox_safety.apply_removal": ("netbox",),
+    "netbox_v2.confirm": ("netbox",),
     "templatize.profile_propose_apply": PROFILE,
     "v2.ip_sla_policy_set": PROFILE,
     "templates.approve": TEMPLATE,

@@ -26,7 +26,10 @@ Under it, from the network's own record, so they stay whatever redraws the card:
 
 Every record the tool keeps, across every device, newest first, for the time you choose (7 days
 by default). It also holds the records that belong to no one device: a commit to the monitoring
-profile or the templates, a Save All's baseline decision, an update of the app. A device's
+profile or the templates, a Save All's baseline decision, an update of the app, and each
+[import into NetBox, Remove from NetBox and Stop tracking](netbox-import) of this network (kind
+**NetBox**: who confirmed it, when it started and ended, and its counts in the NetBox page's
+own words; an import of every network is on each network's timeline it names). A device's
 History tab is this same timeline filtered to that device, read by the same code, so the two
 can never show different things.
 
@@ -58,7 +61,7 @@ Filters:
     runs cut off midway, and authorised retries.
   - **What happened to a device:** restarts and planned windows.
   - **Decisions and records:** approvals, acknowledgements, break-glass exports, reveals,
-    baseline decisions and app updates.
+    baseline decisions, app updates, and NetBox imports and removals.
 - **Since.**
 
 **Every kind** and **Commits only** are one click away. Each filter is part of the page's

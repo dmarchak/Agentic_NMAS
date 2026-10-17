@@ -26,7 +26,17 @@
   <p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>This job is not known here{% if job.error %} ({{ job.error }}){% endif %}: preview again.</span></p>
   {%- elif job.state == 'previewed' %}
   {%- set pv = job.preview %}
+  {#- A target that cannot be selected is never confirmed (C932; B9: a removal whose cascade was
+      not established): Remove is not offered, the reason in words, and Read again. -#}
+  {%- set blocked = (pv.what or {}).targets | default([]) | rejectattr('selectable') | list %}
   {{ preview_parts(pv, 'What will be written to NetBox') }}
+  {%- if op == 'remove' and blocked %}
+  <div class="notice notice-warn set-result" role="status">{{ icon('warn', 16) }}<div><strong>Remove is not offered:</strong> {{ blocked[0].why_not }}.
+    <form method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
+      <input type="hidden" name="operation" value="remove"><input type="hidden" name="list" value="{{ job.list }}">
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">Read again</span><span class="op-busy">Reading…</span></button>{{ how('netbox-import', 'remove-preview', compact=True, op='a removal preview') }}</span>
+    </form></div></div>
+  {%- else %}
   <form class="set-form" method="post" action="{{ url_for('netbox_v2.confirm', job_id=job.id) }}"
         hx-post="{{ url_for('netbox_v2.confirm', job_id=job.id) }}" hx-target="#netbox-job" hx-swap="outerHTML">
     {%- if not job.writes_allowed and op != 'forget' %}
@@ -34,7 +44,7 @@
     <div><label class="set-switch"><input type="checkbox" name="permit_writes"> turn NetBox writes on with this confirm</label><span class="set-origin">they are off for every network; without this the confirm is refused, and with it they come on only once the token and the plan both pass</span></div>
     {%- endif %}
     <div class="set-foot set-form-note">
-      {%- if pv.confirm.may %}
+      {%- if pv.confirm.may and not blocked %}
       {%- if op == 'forget' %}
       <span class="op-act"><button type="submit" class="btn btn-primary btn-small" data-op="netbox-import" hx-disabled-elt="this"{{ gate('approve') }}><span class="op-idle">Stop tracking</span><span class="op-busy">Forgetting…</span></button>{{ how('netbox-import', 'stop-tracking', op='stopping tracking') }}</span>
       {%- else %}
@@ -44,6 +54,7 @@
       <span class="muted small">{{ pv.confirm.statement }} {{ "Mercury's record is read again at your confirm; if it changed, nothing is forgotten." if op == 'forget' else "The plan is recomputed at your confirm; if NetBox moved, nothing is written." }}</span>
     </div>
   </form>
+  {%- endif %}
   {%- if op == 'remove' %}
   <form class="set-form" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
     <input type="hidden" name="operation" value="forget"><input type="hidden" name="list" value="{{ job.list }}">

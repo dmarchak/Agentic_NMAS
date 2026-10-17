@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `a1685bce90b41b6190f37b13f0e044f3b979cae20bf47e93afd16e4d6eb02085`
+Templates sha256: `4ce66ade2512e836f3ae655a186363fe65f562c3d3caaf84cd9589c029e81611`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -79,6 +79,17 @@ the template as it was and as it is, in six states (in sync and clean, in sync w
 uncommitted as the old `describe` drew it, ahead with a failed push, no remote, Verify passed,
 and the new uncommitted state): every byte the same but the new state's chip ("not pushed" as
 it was, "not committed" now). No region's verdict changed.
+
+Compared again 2026-10-17 (C1030, the operator's B8 from W2) after the timeline gained a NetBox source: `_timeline.html`
+draws its kind as "NetBox" in words, and a failed or partial NetBox row in danger, as every
+other kind's failure; `_history_timeline.html` redraws on the `netbox` key, so an import that
+lands while the page is open appears. The kind menu gains "NetBox imports and removals" under
+Decisions and records (`history_sources.KIND_GROUPS`, not a template). No board or shot draws a
+NetBox row: board D's kinds predate it, as do the other kinds recorded since (the Kind menu's
+deviation). The rows rendered from `timeline_rows` and the card as they were and as they are,
+for 648 rows (every kind drawn before, each with eight outcomes and three marks, half with a
+device, with an error line): every byte the same, but the card's `hx-trigger`, which gains
+`nmas:netbox from:body`. No region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

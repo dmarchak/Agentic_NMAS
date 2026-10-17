@@ -33,12 +33,16 @@ its apply).
   what it is doing, and fills in with the preview when it is ready (every object to create or
   change, what is not done, and the checks at your confirm).
 - **Remove from NetBox…** does the same for a removal: every object it would delete, and what
-  each deletion takes with it. Its card also offers **Stop tracking instead…** (below).
+  each deletion takes with it. Its card also offers **Stop tracking instead…** (below). When an
+  object could not be read, or what a deletion takes with it could not be established, the
+  card says **Remove is not offered** and why, with **Read again**
+  ([how](netbox-import#remove-preview)).
 - **Import every network…** previews one import of them all.
 
 Confirm with **Import** or **Remove**: the plan is recomputed and compared, the one-shot
 confirmation is used, and only then are writes turned on if you asked for that. An import then
-runs on, and its card fills in with each network's result when it ends. See
+runs on, and its card fills in with each network's result when it ends. Each import, Remove
+and Stop tracking is also a **NetBox** row on the network's [History](history) timeline. See
 [Import into NetBox, or remove](netbox-import).
 
 ## Stop tracking {#stop-tracking}

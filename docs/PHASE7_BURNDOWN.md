@@ -72,8 +72,9 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C1028~~ | ~~B6: a network's History draws another's rotation and persist rows~~ **done** (every shared store told by the network's own devices; an unreadable inventory said; walked at W3 on a non-default network) | | | | |
 | ~~C1074~~ | ~~a read re-creates a deleted network's folder~~ **done** (the accessor never makes a deleted network's folder; the host's empty `lists/w2_walk` removed after the deploy) | | | | |
 | ~~C1029~~ | ~~B7: a deleted network's Settings page stays live, with Save~~ **done** (410, when, by whom, where its data is, no actions; every write naming it refused; walked at W3) | | | | |
-| C1030 | B8: the NetBox import is missing from History | a NetBox source in the timeline (import, removal, stop tracking); a test | S | — | W |
-| C932 | B9: Remove from NetBox offered over a `not_reached` reach (raised from UNKNOWN by W2's step 19) | Remove drawn only when the preview can be confirmed, the unread reach said in words; a test | S | — | W |
+| ~~C1030~~ | ~~B8: the NetBox import is missing from History~~ **done** (a NetBox source: imports, removals, Stop tracking; walked at W3) | | | | |
+| ~~C932~~ | ~~B9: Remove from NetBox offered over a `not_reached` reach~~ **done** (Remove only when every delete's reach is established; "Remove is not offered:" in words) | | | | |
+| C1097 | Remove from NetBox is never offered on this lab: six types' cascades unmeasured (`netbox_cascade.UNMEASURED`), and every lab removal includes one | one changelog measurement per type on the lab's NetBox, recorded in `CASCADES` | S | after C932 | W |
 | **From W1 (the operator's sequence, 2026-10-16)** | | | | | |
 | ~~C881~~ | ~~A1: Reload's startup gate on IOS-XE~~ **done, verified on r6** (see Checked off) | | | | |
 | ~~C882~~ | ~~B1: Topology drag jumps~~ **done** (see Checked off); C691 re-checked in W2 | | | | |

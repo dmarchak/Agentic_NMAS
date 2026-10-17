@@ -12,6 +12,10 @@ back, never a stored secret. A removal runs in its request (it deletes only what
 and recorded), and its result is the recorded removal's own. So does Stop tracking (`forget`,
 C954), the Remove card's second choice: previewed from Mercury's created record alone, confirmed
 by its hash, deleting nothing in NetBox, recorded as a forget-only removal.
+
+An import's job record is also its record for History (B8, `history`): who confirmed it
+(``actor``, with ``previewed_by`` beside it), when it started and ended, and its result; a removal's and a Stop
+tracking's is the removal record (`netbox_guard.record_removal`).
 """
 
 import json
@@ -118,6 +122,44 @@ def new_id() -> str:
     return uuid.uuid4().hex
 
 
+#: The import jobs History draws (B8): confirmed, so started, running or ended. A preview, a
+#: refusal and a removal or Stop tracking are not imports (the removal record holds those two).
+IMPORT_OPERATIONS = ("import", "import_all")
+IMPORT_STATES = ("importing", "imported", "failed")
+
+
+def history(list_name: str) -> dict:
+    """Every confirmed import that wrote, or tried to write, *list_name* into NetBox, read from
+    the jobs' own records (B8): ``{"rows": [...newest first], "error"}``. An import of every
+    network is *list_name*'s when its results name it. One read of the store per call, whatever
+    the number of devices; a record that cannot be read is counted in *error*, never skipped
+    as if absent. No store yet is no import yet, which is not an error."""
+    folder = _dir()
+    if not os.path.isdir(folder):
+        return {"rows": [], "error": ""}
+    rows, bad = [], []
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".json"))
+    except OSError as exc:
+        return {"rows": [], "error": f"the NetBox job records could not be listed: {exc}"}
+    for name in names:
+        try:
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError) as exc:
+            bad.append(f"{name}: {exc}")
+            continue
+        if doc.get("operation") not in IMPORT_OPERATIONS or doc.get("state") not in IMPORT_STATES:
+            continue
+        mine = (list_name in (doc.get("results") or {}) if doc["operation"] == "import_all"
+                else doc.get("list") == list_name)
+        if mine:
+            rows.append(dict(doc, id=name[:-len(".json")]))
+    rows.sort(key=lambda r: str(r.get("at") or ""), reverse=True)
+    return {"rows": rows, "error": (f"{len(bad)} NetBox job record(s) could not be read "
+                                    f"({bad[0]})" if bad else "")}
+
+
 def start_preview(operation: str, list_name: str, actor: str, confirm: dict) -> str:
     """Start a preview job; its id. *confirm* is who would confirm, read in the request."""
     from modules import netbox_ops, op_progress
@@ -183,7 +225,10 @@ def start_import(job_id: str, data: dict, actor: str) -> dict:
             "import", "import_all"):
         raise netbox_ops.Refused({"ok": False, "error": "that preview is not one ready to "
                                   "confirm: preview again"}, 409)
-    job = _confirmed(previewed, actor)
+    # Who confirmed it (B2's `_confirmed`: `actor` the confirmer, `previewed_by` the preview's
+    # caller) and when it started (B8): the record History draws (`history`).
+    job = dict(_confirmed(previewed, actor),
+               started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     operation, list_name = job["operation"], job["list"]
     op_progress.start(job_id, "re-checked, then imported",
                       f"NetBox ({'every network' if operation == 'import_all' else list_name})",
@@ -225,6 +270,15 @@ def remove(job_id: str, data: dict, actor: str) -> dict:
     if job.get("state") != "previewed" or job.get("operation") != "remove":
         raise netbox_ops.Refused({"ok": False, "error": "that preview is not one ready to "
                                   "confirm: preview again"}, 409)
+    # A preview whose target cannot be selected (B9, C932: an object not read, what the deletes
+    # take with them not established, nothing to delete) is refused here too, not only by the
+    # card not drawing Remove: a confirm posted without the card must not run it.
+    blocked = [t for t in (((job.get("preview") or {}).get("what") or {}).get("targets") or [])
+               if not t.get("selectable")]
+    if blocked:
+        raise netbox_ops.Refused({"ok": False, "error": (
+            "that preview cannot be confirmed: " + (blocked[0].get("why_not") or "it says why")
+            + ". Nothing was deleted; read again")}, 409)
     result = netbox_ops.remove(job["list"], dict(data, token=job.get("token", "")), actor,
                                where="v2's NetBox page")
     status = netbox_guard.record_removal(job["list"], actor, result)

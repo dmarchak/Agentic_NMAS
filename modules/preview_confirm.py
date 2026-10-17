@@ -137,7 +137,8 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
     """The preview. *targets* is ``[{"name", "state", "selectable",
     "select_data", "program": {"lines", "dangerous", "authorised", "none",
     "notes"}, "operands": [{"name", "value"}], "gates": [gate(...)]}]``;
-    *what_not* is ``[{"target", "kind", "text", "lines"}]``."""
+    *what_not* is ``[{"target", "kind", "text", "lines"}]``. A target that cannot be selected
+    may name why itself (``why_not``)."""
     if not summary:
         raise PreviewIncomplete("part 1 (what) has no summary")
     if not targets:
@@ -161,7 +162,10 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
             raise PreviewIncomplete(f"part 5 (gates) for {name} is empty")
     if not (confirm or {}).get("statement"):
         raise PreviewIncomplete("part 6 (confirm) has no statement")
-    why_not = {t["name"]: _why_not(t, what_not) for t in targets if not t.get("selectable")}
+    # A builder that knows the one reason its target cannot be selected says it (`why_not`,
+    # B9: a NetBox removal whose cascade was not established); else its failing gates or part 2.
+    why_not = {t["name"]: t.get("why_not") or _why_not(t, what_not)
+               for t in targets if not t.get("selectable")}
     explain = explain or {}
     unknown = set(explain) - set(PARTS)
     if unknown:
@@ -1565,9 +1569,37 @@ def netbox_removal_preview(d: dict, confirm: dict, *, forget_offered: str = "") 
     gates.insert(1, gate("every recorded object read from NetBox", "fail" if unreadable else "pass",
                          f"{len(unreadable)} could not be read: not gone, and not forgotten"
                          if unreadable else "read, or answered 404 (gone)"))
+    # B9 (C932, raised to B by the operator in W2): Remove is offered only when what the deletes
+    # take with them is ESTABLISHED. Not asked, or asked and not answered for some, is not
+    # "nothing", and a delete whose consequence is unknown is not confirmed by a person who
+    # cannot read it. The reason names the comparison and both operands.
+    unknown = bool(deleted) and cascade_gate["state"] != "pass"
+    why_not = ""
+    if unreadable:
+        why_not = (f"every object Mercury recorded for {name} must be read from NetBox, and "
+                   f"{len(unreadable)} could not be (not gone, and not forgotten)")
+    elif unknown and not d.get("cascade"):
+        why_not = (f"what NetBox's database takes with each of the {len(deleted)} delete(s) must "
+                   f"be established, and NetBox was not asked for any of the {len(deleted)}: not "
+                   "asked is not the same as nothing")
+    elif unknown:
+        counted = {}
+        for reason in unproven:
+            counted[str(reason)] = counted.get(str(reason), 0) + 1
+        said = "; ".join(f"{r} (×{n})" if n > 1 else r for r, n in counted.items())
+        why_not = (f"what NetBox's database takes with each of the {len(deleted)} delete(s) must "
+                   f"be established, and {len(unproven)} answer(s) could not be: {said}. Not "
+                   "established is not the same as nothing")
+    elif not deleted:
+        why_not = summary.rstrip(".")
+    if unknown and not unreadable:
+        # The headline leads with what blocks it, as for an unreadable object.
+        summary = ("This removal cannot be confirmed: what NetBox takes with these deletes is "
+                   "not established. " + summary)
     target = {
-        "name": name, "state": "blocked" if unreadable else "ready" if deleted else "unchanged",
-        "selectable": bool(deleted) and not unreadable,
+        "name": name,
+        "state": "blocked" if unreadable or unknown else "ready" if deleted else "unchanged",
+        "selectable": bool(deleted) and not unreadable and not unknown, "why_not": why_not,
         "program": {"lines": [_nb_line("delete", o) for o in deleted], "dangerous": [],
                     "authorised": [], "authorisation_error": "", "notes": notes,
                     "caption": "What NetBox will be told to delete",

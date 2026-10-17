@@ -23,7 +23,7 @@
 {%- endfor %}
 <dl class="set-facts">{% for o in t.operands %}<dt>{{ o.name }}</dt><dd>{{ o.value }}</dd>{% endfor %}</dl>
 <h3 class="set-label">Checked now, and at your confirm</h3>
-<ol class="set-steps">{% for g in t.gates %}<li>{{ badge({'pass': 'passed', 'at_apply': 'at confirm', 'fail': 'FAILS'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger'}.get(g.state, 'neutral')) }} <span>{{ g.name }}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>{% endfor %}</ol>
+<ol class="set-steps">{% for g in t.gates %}<li>{{ badge({'pass': 'passed', 'at_apply': 'at confirm', 'fail': 'FAILS', 'not_reached': 'not established', 'not_applicable': 'not applicable'}.get(g.state, g.state | replace('_', ' ')), {'pass': 'ok', 'fail': 'danger', 'not_reached': 'warn'}.get(g.state, 'neutral')) }} <span>{{ g.name }}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>{% endfor %}</ol>
 {%- endfor %}
 {%- if pv.what_not['items'] %}
 <h3 class="set-label">What it does not do</h3>

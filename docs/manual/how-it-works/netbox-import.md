@@ -62,7 +62,9 @@ A dry run is always allowed, because it writes nothing.
 6. **The result is recorded** as the list's import record, which the NetBox tab's card draws:
    devices created and updated, every write that did not land (`complete` is false if any),
    what was skipped, and the notes (for example a site the tool did not create, which it uses
-   and does not move).
+   and does not move). The import's own record (its job, kept by the NetBox page) names who
+   confirmed it and when it started and ended, and History's timeline draws it from there, as
+   a **NetBox** row on the network's timeline, never another's.
 
 Each prefix is placed at the list's site, as NetBox 4.2 and later hold a prefix's site (its
 scope). NetBox answers each write with the prefix as stored, and a prefix stored without the
@@ -88,6 +90,8 @@ Four records, each answering one question, kept apart so that none can be read a
   [adopted](adopt). Written by adoption, never by the import, and never removable.
 - **Removed** (`netbox_removals.jsonl`): every Remove, what it deleted, left alone and could
   not delete, and who; and every [Stop tracking](#stop-tracking), with each entry it forgot.
+  History's timeline draws each as a **NetBox** row of its network, in the words its result
+  is drawn in here.
 
 ## Remove: preview {#remove-preview}
 
@@ -106,9 +110,18 @@ Four records, each answering one question, kept apart so that none can be read a
    delete. Sent: nothing. Recorded: nothing. NetBox deletes some objects with their parent
    (an interface takes its addresses; a device takes its interfaces). The preview names each,
    and names in capitals any the tool did NOT create. For a type whose behaviour has not been
-   measured (tunnels, prefixes, VLANs, VRFs, sites, regions) it says so, which is not the same
-   as nothing.
+   measured (tunnels, prefixes, VLANs, VRFs, sites, regions), or a question NetBox did not
+   answer, it says so, which is not the same as nothing.
 4. **Bind a one-time confirmation** to a hash of the planned deletes, as for the import.
+5. **Offer Remove only when every answer is in.** Remove is offered only when every recorded
+   object was read, and what NetBox takes with each planned delete was established. Otherwise
+   the card says **Remove is not offered**, with the comparison and both sides of it: for
+   example, "what NetBox's database takes with each of the 4 delete(s) must be established,
+   and 1 answer(s) could not be: ipam/prefixes: what a delete takes with it has not been
+   measured on this NetBox". **Read again** previews the removal anew. A confirm sent without
+   the card is refused the same way, and nothing is deleted. **Stop tracking instead…** stays
+   offered: it deletes nothing. A check that did not establish its answer reads **not
+   established**.
 
 ## Remove: confirm and apply {#remove-apply}
 
