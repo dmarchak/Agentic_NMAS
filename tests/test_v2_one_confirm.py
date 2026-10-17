@@ -46,8 +46,10 @@ XDATA = re.compile(r'\bx-data="(\w+)"')
 #: scripts v2 loads; the pattern measured again 2026-10-16 after C850 (30 -> 34). Floors: a
 #: scan that finds fewer has stopped seeing. Population floor 55 -> 53 on 2026-10-17, the
 #: population measured 53: today's NetBox tab's import, import-all and removal applies (each
-#: in it by its served preview in `operation_stages`) left at 7.8.
-POPULATION_FLOOR = 53
+#: in it by its served preview in `operation_stages`) left at 7.8. 53 -> 52 the same day, the
+#: population measured 52: today's /run_command (gated confirm) left with today's device page
+#: (7.8, P7-22).
+POPULATION_FLOOR = 52
 PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
@@ -84,9 +86,6 @@ LEGACY_HOMES = {
     "persist.apply": "device_v2.persist_confirm",
     "retire.apply": "device_v2.retire_confirm",
     "rotate.apply": "device_v2.rotate_confirm",
-    "run_command": (None, "the terminal's single command, removed at 7.8: v2 sends no typed "
-                          "text (CLAUDE.md, no terminal steps); Run a privileged command… is "
-                          "privileged_v2.confirm, an allowlisted recorded run"),
     "templates.approve": "templates_v2.approve",
     "templatize.edit_committed": "intent_v2.commit",
     "templatize.profile_propose_apply": "v2.profile_propose_commit",

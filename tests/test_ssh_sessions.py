@@ -313,39 +313,8 @@ class TestJobHealthCountsThem:
                          "max_age_minutes": 0, "detail": "holds no SSH session now"}]
 
 
-class TestTheFlashListingIsARead:
-    """C101: it asked `dir ?`, which the read-only allowlist refuses (`?` is
-    inline help and leaves a partial command at the prompt). It now asks
-    `show file systems`, parsed from real C8000v and vIOS captures."""
-
-    def _read(self, host):
-        return open(os.path.join(ROOT, "tests", "fixtures", "operational",
-                                 f"{host}__show_file_systems.txt"), encoding="utf-8").read()
-
-    def test_the_default_filesystem_first_aliases_folded(self):
-        from modules.device import parse_file_systems
-
-        assert parse_file_systems(self._read("r1")) == ["bootflash:", "webui:", "nvram:"]
-        assert parse_file_systems(self._read("s1")) == ["flash0:", "flash1:", "flash2:",
-                                                        "flash3:", "nvram:"]
-
-    def test_every_command_it_sends_is_a_read(self, monkeypatch):
-        from modules import device
-        from modules.readonly_commands import refusal
-
-        sent = []
-
-        class Conn:
-            def send_command(self, cmd, **kw):
-                sent.append(cmd)
-                return self_read if cmd == "show file systems" else "Directory of bootflash:/\n"
-            send_command_timing = send_command
-        self_read = self._read("r1")
-        monkeypatch.setattr("modules.connection.with_temp_connection",
-                            lambda dev, func: func(Conn()))
-        fs, _files, chosen = device.get_device_context({"ip": "192.0.2.1"})
-        assert chosen == "bootflash:" and fs[0] == "bootflash:"
-        assert sent and all(refusal(c) == "" for c in sent), sent
+# C101's flash listing (`show file systems`, parsed, in place of `dir ?`) left at 7.8 with today's
+# device page, its one reader (P7-22, 2026-10-17); its captures stay, tests/test_command_tiers.py's.
 
 
 class TestATransportThatNeverCameUpIsTriedOnce:

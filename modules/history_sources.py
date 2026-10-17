@@ -493,7 +493,17 @@ def decisions(ctx):
 # ---------------------------------------------------------------------------- the stores
 
 def receipts(ctx):
+    """The deploy and restore receipts. Each text a row carries (its reason, a removed line, an
+    authorised line and its reason, its source ref) is masked again on the way out: the rows
+    are masked at write, and this is the second layer, as GET /deploy/receipts's was until it
+    left with today's device page at 7.8 (P7-22, 2026-10-17). A row written before masking,
+    or by hand, never draws a secret."""
     from modules.nsot import receipts as R
+    from modules.redact import redact_text
+
+    def m(value):
+        return redact_text(str(value)) if value not in (None, "") else ""
+
     got = R.read(ctx["ref"].name, device=ctx["device"], limit=ctx["limit"])
     if got["state"] == "unreadable":
         return _out(errors=[f"the deploy receipts could not be read: {got.get('error', '')}"])
@@ -512,19 +522,19 @@ def receipts(ctx):
                    who=r.get("actor", ""),
                    detail=(f"{r.get('program_lines', 0)} line(s) sent"
                            + (f"; {len(removals)} removed (Mode B)" if removals else "")
-                           + (f"; {r['reason']}" if r.get("reason") else "")),
+                           + (f"; {m(r['reason'])}" if r.get("reason") else "")),
                    sha=r.get("golden_commit", ""), outcome=r.get("outcome", ""),
                    marks=(["Mode B"] if removals else []) + (["rolled back"] if rb.get("performed") else []),
                    record=[("Program", f"{r.get('program_lines', 0)} line(s), hash "
                                        f"{(r.get('program_hash') or '')[:12]}"),
                            ("Matches what was confirmed", {True: "yes", False: "NO"}.get(
                                r.get("matches_confirmed"))),
-                           ("Removed (Mode B)", "; ".join(x.get("line", "") for x in removals)),
-                           ("Authorised", "; ".join(f"{a.get('line')}: {a.get('reason')}"
+                           ("Removed (Mode B)", "; ".join(m(x.get("line")) for x in removals)),
+                           ("Authorised", "; ".join(f"{m(a.get('line'))}: {m(a.get('reason'))}"
                                                     for a in r.get("authorised") or [])),
                            ("Rollback", rb.get("state") if rb.get("performed") else ""),
                            ("Commit", (r.get("golden_commit") or "")[:12]),
-                           ("Source ref", r.get("source_ref"))])
+                           ("Source ref", m(r.get("source_ref")))])
         e["pending"] = pending
         events.append(e)
     return _out(events, cut=[f"the receipts' newest {ctx['limit']}"]

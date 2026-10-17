@@ -380,6 +380,9 @@ class TestTheShippedClient:
 
     def test_the_device_page_offers_both(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        page = open(os.path.join(root, "templates", "device.html"), encoding="utf-8").read()
-        assert 'onclick="openRevert(this.dataset.hostname)"' in page
-        assert 'onclick="openRetry(this.dataset.hostname)"' in page
+        # v2's device page's Actions menu (today's device page's two buttons until it left at
+        # 7.8, P7-22); which of them it offers is tests/test_actions_menu_live.py's.
+        menu = open(os.path.join(root, "templates", "v2", "_actions_menu.html"),
+                    encoding="utf-8").read()
+        assert "hx-get=\"{{ url_for('device_v2.revert'," in menu
+        assert "hx-get=\"{{ url_for('device_v2.retry'," in menu

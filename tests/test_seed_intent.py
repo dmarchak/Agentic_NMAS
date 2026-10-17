@@ -366,9 +366,11 @@ class TestTheResultAndTheScreen:
         assert t["checks"]["ran"] and t["checks"]["statements"][0].startswith("template: ")
 
     def test_the_device_page_offers_it(self, lab):
-        page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                 "templates", "device.html"), encoding="utf-8").read()
-        assert 'onclick="previewSeed([this.dataset.hostname])"' in page
+        """v2's device page's Actions menu (today's device page's Seed intent button until it
+        left at 7.8, P7-22)."""
+        menu = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                 "templates", "v2", "_actions_menu.html"), encoding="utf-8").read()
+        assert "('Seed intent…', 'seed', 'seeding')" in menu
 
     def test_the_old_routes_are_gone(self, lab):
         c = lab["client"]

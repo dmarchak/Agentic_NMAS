@@ -190,8 +190,11 @@ class TestTheScreensReachIt:
         assert "previewCapture(null)" in body and "fetch(" not in body
 
     def test_the_device_page_has_a_capture_button(self):
-        page = open(os.path.join(ROOT, "templates", "device.html"), encoding="utf-8").read()
-        assert 'onclick="previewCapture([this.dataset.hostname])"' in page
+        """v2's device page's Actions menu (today's device page's Capture as golden button
+        until it left at 7.8, P7-22)."""
+        menu = open(os.path.join(ROOT, "templates", "v2", "_actions_menu.html"),
+                    encoding="utf-8").read()
+        assert "('Capture', 'capture', 'capture')" in menu
 
     def test_the_old_one_click_route_is_gone(self):
         import app as A

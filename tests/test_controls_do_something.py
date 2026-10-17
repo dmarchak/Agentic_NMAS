@@ -88,12 +88,31 @@ class TestEverySettingsControlIsRead:
 
 
 class TestBootstrapLoadsOnce:
-    def test_the_device_page_adds_no_second_bootstrap(self):
-        device = open(os.path.join(ROOT, "templates", "device.html"), encoding="utf-8").read()
-        assert "bootstrap.min.css" not in device and "bootstrap.bundle" not in device
+    def test_base_supplies_bootstrap_once(self):
+        # Today's device page, which once added a second bundle, left at 7.8 (P7-22).
         base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
         assert base.count("bootstrap.bundle.min.js") == 1 and \
             base.count("bootstrap.min.css") == 1, "base.html supplies both, once"
+
+
+class TestTodaysListOpensTheDevicesV2Page:
+    def test_manage_opens_the_v2_device_page_in_its_list(self, monkeypatch):
+        """Today's device page (/device/<ip>) left at 7.8 (P7-22, 2026-10-17): an answering
+        device's Manage on today's list opens its v2 page in the list the index shows, never a
+        removed route (the index draws Manage only for a device that answers, so this test
+        makes r3 answer)."""
+        import app as A
+        ip = "192.0.2.13"
+        monkeypatch.setattr(A, "get_current_device_list", lambda: ("Lab", "/nonexistent.csv"))
+        monkeypatch.setattr(A, "load_saved_devices", lambda *a, **k: [
+            {"ip": ip, "hostname": "r3", "device_type": "cisco_xe", "username": "u",
+             "password": "", "secret": ""}])
+        monkeypatch.setitem(A.device_status_cache, ip, True)
+        r = A.app.test_client().get("/", headers={"Accept": "text/html"})
+        assert r.status_code == 200
+        link = re.search(r'<a id="btn-%s" href="([^"]*)"' % re.escape(ip), r.get_data(as_text=True))
+        assert link, "no Manage link drawn for the answering device"
+        assert link.group(1) == "/v2/device/r3?list=Lab", link.group(1)
 
 
 class TestTheEmptyListNamesAControlThatExists:

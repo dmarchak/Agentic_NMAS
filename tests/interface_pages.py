@@ -15,8 +15,8 @@ A page is new to the population the commit that links it, with nothing listed he
 Measured 2026-10-15: 119 pages, in about 3.5 s.
 
 **Today's pages while they exist** (`TODAYS_PAGES`), each rendered with a device as it was
-before (with no device the index's per-device loop renders nothing and the device page
-redirects). A page whose route is gone contributes nothing, and so does one that redirects
+before (with no device the index's per-device loop renders nothing). Today's device page left
+at 7.8 (2026-10-17, P7-22); the index is the one left. A page whose route is gone contributes nothing, and so does one that redirects
 into v2 (`/` at cutover); any other answer is a failure, never a page quietly left out.
 
 What it cannot see, stated: a v2 page reached only by a form or a script (a batch's Apply,
@@ -43,8 +43,9 @@ MAX_PAGES = 300
 #: Today's device for today's pages (route_references' fixture device since Stage 7.0).
 FIXTURE_DEVICE = {"ip": "192.0.2.1", "hostname": "r1", "device_type": "cisco_ios",
                   "username": "admin", "password": "", "secret": ""}
-#: Today's pages, until Phase 7 removes them (P7-22 the device page, P7-27 the index).
-TODAYS_PAGES = ("/", f"/device/{FIXTURE_DEVICE['ip']}")
+#: Today's pages, until Phase 7 removes them (P7-27 the index; today's device page,
+#: /device/<ip>, left at 7.8 on 2026-10-17, P7-22).
+TODAYS_PAGES = ("/",)
 
 _LINK = re.compile(r'<a\b[^>]*\bhref="(/v2/[^"#]*)"')
 _CACHE: dict = {}
@@ -86,8 +87,6 @@ def _todays(app_module, monkeypatch, client) -> dict:
 
     monkeypatch.setattr(app_module, "load_saved_devices",
                         lambda *a, **k: [dict(FIXTURE_DEVICE)], raising=False)
-    monkeypatch.setattr(app_module, "get_device_context",
-                        lambda d, *a, **k: (["flash:"], [], "flash:"), raising=False)
     adapter = app_module.app.url_map.bind("localhost")
     out = {}
     for path in TODAYS_PAGES:

@@ -60,7 +60,7 @@
         + '<button type="button" class="btn-close float-end" aria-label="Hide"'
         + ' onclick="inFlightDismiss()"></button>'
         + '<strong>Finished in the last ' + Math.round((d.window_s || 1800) / 60)
-        + ' min</strong>. Each receipt is on its device\'s page, Changes tab:'
+        + ' min</strong>. Each receipt is on its device\'s page, History tab:'
         + '<ul class="mb-0 ps-3">'
         + recent.map(function (r) {
             return '<li>' + esc(r.device) + ': ' + esc(r.action) + ' by '

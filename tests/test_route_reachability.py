@@ -72,6 +72,11 @@ NON_GUI = {
                                           "integration's stored state with curl"),
     "GET /favicon.ico": (None, "requested by browsers by convention; no page "
                                "references it and none needs to"),
+    # Today's index: the root address. Its last page link, today's device page's Back to
+    # Devices, left with that page at 7.8 (P7-22, 2026-10-17), and no v2 page links to today's
+    # pages (C569). P7-27 makes it a redirect into /v2/.
+    "GET /": ("app.py", "the root address a person types or bookmarks, and the address "
+                        "app.py opens in a browser on a desktop start"),
 }
 
 A, B, C, D = "(a) no entry point", "(b) credentials", \

@@ -97,11 +97,17 @@ def _recent() -> dict:
     """The last deploys and restores of the active list, from their receipts."""
     from modules.nsot import listref, receipts
 
+    from modules.redact import redact_text
+
     ref = listref.active()
     got = receipts.read(ref.name, limit=RECENT_RECEIPTS)
-    # The rows as the receipts hold them (masked at write); the template reads
-    # device, action, outcome, at, actor, reason and program_lines.
-    return {"state": got["state"], "rows": list(got.get("rows") or []), "list": ref.name}
+    # The rows as the receipts hold them (masked at write), the reason masked again on the way
+    # out (C1128: a row written before masking, or by hand, is the second layer's case, as
+    # History's receipts are); the template reads device, action, outcome, at, actor, reason
+    # and program_lines.
+    rows = [dict(r, reason=redact_text(str(r["reason"]))) if r.get("reason") else r
+            for r in got.get("rows") or []]
+    return {"state": got["state"], "rows": rows, "list": ref.name}
 
 
 def _page(template: str, **ctx):

@@ -906,28 +906,9 @@ def apply():
     return jsonify(mask_payload({"ok": True, "list": list_name, **report}))
 
 
-@bp.route("/receipts", methods=["GET"])
-def receipts_read():
-    """The receipt store, read back (7.1 step 3): what each deploy and restore
-    sent, whether it matched what was confirmed, and what verify checked,
-    drawn by the same result component as at apply. Masked on the way out
-    (the rows are masked at write; this is the second layer). A READ, so it
-    may derive the active list."""
-    from modules.nsot import receipts
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import receipt_history
-
-    list_name = _active_list({"list_name": request.args.get("list_name", "")})
-    device = (request.args.get("device") or "").strip()
-    try:
-        limit = max(1, min(int(request.args.get("limit", 20)), 200))
-    except ValueError:
-        limit = 20
-    got = receipts.read(list_name, device=device, limit=limit)
-    body = {"ok": got["state"] != "unreadable", "list": list_name, "device": device,
-            "state": got["state"], "error": got.get("error", ""),
-            "changes": receipt_history(got["rows"], device) if got["state"] == "ok" else []}
-    return jsonify(mask_payload(body)), (200 if body["ok"] else 500)
+# GET /deploy/receipts (the receipt store read back for today's device page's Changes tab) left
+# with that page at 7.8 on 2026-10-17 (P7-22): a device's receipts are its v2 History tab's
+# rows (`history_sources.receipts`), read in-process.
 
 
 def _prior_authorised(list_name: str, hostname: str, lines) -> dict:

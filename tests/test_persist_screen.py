@@ -268,7 +268,8 @@ class TestTheApply:
 
 class TestTheDevicePageOffersIt:
     def test_the_button_and_the_client_are_shipped(self):
-        page = open(os.path.join(ROOT, "templates", "device.html")).read()
-        assert 'onclick="openPersist(this.dataset.hostname)"' in page
-        base = open(os.path.join(ROOT, "templates", "base.html")).read()
-        assert "js/nmas_persist.js" in base
+        """v2's device page's Actions menu (today's device page's Persist… button until it
+        left at 7.8, P7-22)."""
+        menu = open(os.path.join(ROOT, "templates", "v2", "_actions_menu.html"),
+                    encoding="utf-8").read()
+        assert "('Persist', 'persist', 'persist')" in menu

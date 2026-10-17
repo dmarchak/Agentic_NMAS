@@ -60,10 +60,11 @@ state (``clear ip ospf process`` drops adjacencies, ``clear counters`` erases
 the evidence a diagnosis reads, ``debug`` loads the device) and are NOT here
 (NSOT_FEATURE_AUDIT 3a).
 
-Used by the agent's ``execute_*`` tools, and as a REFUSAL by ``/run_command`` (C570,
-2026-10-08: it, and today's bulk commands until they left at 7.8 on 2026-10-15, had used it
-only to decide whether to hold the device, and then ran anything;
-``tests/test_device_text_is_refused.py``). The connection layer's guard
+Used as a REFUSAL by the reads engine (``modules/nsot/reads.py``, which v2's Ask tab and
+Show commands run), before any device is asked. Today's ``/run_command`` (until it left at
+7.8 with today's device page, 2026-10-17) and today's bulk commands (until 2026-10-15) had
+used it only to decide whether to hold the device, and then ran anything, until C570
+(2026-10-08; ``tests/test_device_text_is_refused.py``). The connection layer's guard
 (``connection._guard_writes``) refuses any unheld non-read on every session besides.
 """
 

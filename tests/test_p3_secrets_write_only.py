@@ -10,7 +10,9 @@ modal and `/settings` left at 7.8 (2026-10-15).
 B16, found while sweeping the GET routes for this step: `/run_command/<ip>`
 ran any exec-mode command (reload, delete, copy, clear) from a URL. The gate
 table covers mutating METHODS, so a GET that changes a device was outside it,
-and a link an operator logged in to Access followed would have run it.
+and a link an operator logged in to Access followed would have run it. The route left at 7.8
+with today's device page (2026-10-17); its two checks hold v2's Ask tab, the one place a
+person types a command for one device.
 """
 
 import ast
@@ -133,18 +135,25 @@ class TestNoGetSendsWhatTheRequestNamed:
         assert _sends_request_text('def f():\n    x = request.args.get("v")\n'
                                    '    run_device_command(c, "show clock")\n') is False
 
-    def test_run_command_is_a_gated_post(self):
+    # Today's /run_command, B16's route, left at 7.8 with today's device page (P7-22,
+    # 2026-10-17). The one place a person types a command for one device is v2's Ask tab, and
+    # these two hold it to what B16 asked of its predecessor.
+
+    def test_ask_is_a_gated_post(self):
         import app as A
-        from modules.route_gates import GATES
-        assert GATES["run_command"].kind == "confirm"
-        assert A.app.test_client().get("/run_command/192.0.2.1?command=reload").status_code == 405
+        from modules.route_gates import GATES, NOT_DEVICE
+        assert GATES["reads_v2.ask_run"].kind not in (NOT_DEVICE, "configure")
+        methods = {m for r in A.app.url_map.iter_rules() if r.endpoint == "reads_v2.ask_run"
+                   for m in r.methods} - {"HEAD", "OPTIONS"}
+        assert methods == {"POST"}, methods
 
     @pytest.mark.real_identity
     def test_without_a_person_it_is_refused_before_any_device(self, monkeypatch):
         import app as A
+        from modules.nsot import reads
         reached = []
-        monkeypatch.setattr(A, "run_device_command", lambda *a, **k: reached.append(a))
-        resp = A.app.test_client().post("/run_command/192.0.2.1", data={"command": "reload"})
+        monkeypatch.setattr(reads, "start", lambda *a, **k: reached.append(a) or {})
+        resp = A.app.test_client().post("/v2/device/r1/ask", data={"command": "reload"})
         assert resp.status_code == 403 and reached == []
 
 

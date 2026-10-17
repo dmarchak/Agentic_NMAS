@@ -126,7 +126,8 @@ class TestTheShippedPanel:
         row = {"device": "r2", "action": "restore", "outcome": "deployed",
                "at": "2026-09-27T18:53:37Z", "actor": "ops@example.com"}
         html = _panel({"ok": True, "running": [], "recent": [row], "window_s": 1800})
-        assert "Changes tab" in html and "18:53:37 UTC" in html and "deployed" in html
+        # The History tab since today's device page and its Changes tab left (7.8, P7-22).
+        assert "History tab" in html and "18:53:37 UTC" in html and "deployed" in html
         assert _panel({"ok": True, "running": [], "recent": [row]},
                       {"r2|2026-09-27T18:53:37Z": True}) == ""
 

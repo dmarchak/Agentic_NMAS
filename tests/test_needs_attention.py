@@ -769,7 +769,8 @@ class TestRepeatedAuthorisationsAsASource:
         [r] = res["rows"]
         assert r["devices"] == ["s4"] and r["operands"]["count"] == 3
         assert r["since"] == "2026-09-20T10:00:00Z" and "still the same port" in r["cause"]
-        assert r["level"] == "warning" and "Changes tab" in r["action"]["label"]
+        # The History tab (C908): no page has had a Changes tab since today's device page left.
+        assert r["level"] == "warning" and "History tab" in r["action"]["label"]
         assert "2 device(s)" in res["checked"]
 
     def test_twice_is_not_a_pattern(self, store):

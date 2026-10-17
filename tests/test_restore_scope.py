@@ -199,8 +199,11 @@ class TestTheBaselineScopeStartsEmpty:
 
 class TestTheScreensReachIt:
     def test_the_device_page_has_restore_from(self):
-        page = open(os.path.join(ROOT, "templates", "device.html"), encoding="utf-8").read()
-        assert 'onclick="openRestoreFrom(this.dataset.hostname)"' in page
+        """v2's device page's Actions menu (today's device page's Restore from… button until
+        it left at 7.8, P7-22)."""
+        menu = open(os.path.join(ROOT, "templates", "v2", "_actions_menu.html"),
+                    encoding="utf-8").read()
+        assert "('Restore from…', 'restore', 'restore')" in menu
 
     def test_the_component_is_loaded_on_every_page(self):
         base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()

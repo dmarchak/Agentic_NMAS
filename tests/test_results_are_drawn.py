@@ -59,9 +59,9 @@ KINDS = ("confirm", "approve", "publish_remote")
 #: result, the route that reads the record back)}. Checked from source.
 RESULT_COMPONENT = {
     "deploy.apply": ("static/js/gen/partials__deploy_wizard.1.js", "_renderDeployResult",
-                     "deploy.receipts_read"),
+                     "device_v2.history"),
     "golden.restore_apply": ("static/js/gen/partials__golden_repo.3.js", "_showRestoreResult",
-                             "deploy.receipts_read"),
+                             "device_v2.history"),
     # The import runs on a thread; its result is the stored summary, drawn on
     # the sync card whenever the NetBox tab is read (C85).
     # Capture (7.1 step 4): Save All is its whole-fleet form, and the one-click
@@ -131,10 +131,10 @@ PAGE_RECORD = {
     # The monitoring profile's batch Apply (P.9 d2): a job, its result drawn
     # from the receipts the apply wrote (each device's outcome, what was sent
     # and checked, the record), and the receipts read back on each device's
-    # Changes.
+    # History (today's device page's Changes and GET /deploy/receipts left at 7.8, P7-22).
     "v2.profile_apply_confirm": ("templates/v2/_apply_job.html",
                                  ('id="apply-job"', "res.targets", "res.record"),
-                                 "deploy.receipts_read"),
+                                 "device_v2.history"),
     # The IP SLA policy (P.9 d4): committed to the profile; the page redraws
     # and states the policy now in force from the committed profile.
     "v2.ip_sla_policy_set": ("templates/v2/ip_sla.html",
@@ -286,7 +286,6 @@ PAGE_RECORD = {
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.
 PENDING = {
     # -- drawn in place, gone when the window closes or the page moves on --
-    "run_command": "the device page re-rendered with the output",
     "templatize.edit_committed": "the editor's status line names the commit",
     "remote.push": "the remote panel's output box",
     "remote.auto_push": "the remote panel's output box",
@@ -315,7 +314,6 @@ FALSE_GREEN = {
 #: (file, a literal from the call); a scan finds them all, both ways.
 GREEN_TOASTS = {
     ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create and delete); the bulk run's STARTED and its finished toast left with today's bulk commands (7.8, 2026-10-15)",
-    ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
     ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
     ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
     # Today's Settings modal's "Settings saved" and its posture panel's ratification left with
@@ -332,7 +330,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 8, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 8 since today's bulk commands left (7.8, 2026-10-15); 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
+CEILINGS = {"PENDING": 7, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 7 since today's /run_command left with today's device page (7.8, 2026-10-17, P7-22); 8 since today's bulk commands left (7.8, 2026-10-15); 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
 
 
 def _population():
@@ -474,7 +472,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 7, len(calls)           # the scan can see them (7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        assert len(calls) >= 6, len(calls)           # the scan can see them (6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

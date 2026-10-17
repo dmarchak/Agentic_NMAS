@@ -156,11 +156,9 @@ class TestTheApplyWritesEachDeviceAsItFinishes:
                                                           "r2": pending["run_id"]}
         assert {r["device"]: r["commit_state"] for r in rows} == {"r1": "no_golden",
                                                                 "r2": "no_golden"}
-        from modules.preview_confirm import receipt_history
-        assert len(receipt_history(rows)) == 1, "one batch, though it committed nothing"
-        # Each row keeps the time its own device finished; the run still groups them.
-        apart = [dict(rows[0], at="2026-10-02T10:00:00Z"), dict(rows[1], at="2026-10-02T10:05:00Z")]
-        assert len(receipt_history(apart)) == 1
+        # The grouping of rows into one batch by their run (`receipt_history`) left at 7.8 with
+        # its one caller, GET /deploy/receipts (P7-22, 2026-10-17): v2's History draws each
+        # device's own row. The shared run id above is what a later grouping reads.
 
     def test_the_running_stepper_says_the_record_is_not_committed_yet(self, monkeypatch):
         from modules import deploy_job

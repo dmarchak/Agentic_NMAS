@@ -41,7 +41,7 @@ written from the sitting's results. Screens no walk touches move to Stage 7's ta
 |---|---|---|---|
 | **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **WALKED 2026-10-16** (23:20Z to 01:12Z): CUTOVER rows 42, 44 (Capture, Save All), 45, 46, 53, 54, 69 and C588, C547, C587, C444, C539 closed; section I (row 68) blocked by C881 and C691 held by C882, both into W2 |
 | W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68), C881's Reload… preview with no reload sent, a C691 drag re-check, and B1 to B5 (C882 to C886) walked on v2**; the host keys (C906); C532's intent state, C342's Drift row, C537's In progress chip, C954's Stop tracking preview | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; W1's A1 and B1 to B5 by the operator's eyes; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | **WALKED 2026-10-16** (21:12Z to 2026-10-17 00:22Z, against ae8175bdbc): CUTOVER rows 49, 50, 56, 57, 61, 62, 68 and 70 and C691, C667, C941 closed; C881, C882, C884, C931, C811 and W1's B1 to B5 confirmed; P7-07 walked; rows 48 and 60 walked, closing with C1024, C1023 and C932; C1010's backfill confirmed (read-back pending). Found: A1 C1022, B1 to B8 C1023 to C1030, B9 C932 (section 2), and C1031 to C1073 (section 4) |
-| ~~W3 W2's fixes~~ | **done 2026-10-17** (05:16 to 06:18 UTC on fecab2f79e, docs/walks/W3.md): A1 and B1 to B9 walked on the host; CUTOVER rows 48 and 60 closed; C1018 and C677 settled; one B found (C1109, the settle period) | | |
+| ~~W3 W2's fixes~~ | **done 2026-10-17** (W4's script written the same day, docs/walks/W4.md) (05:16 to 06:18 UTC on fecab2f79e, docs/walks/W3.md): A1 and B1 to B9 walked on the host; CUTOVER rows 48 and 60 closed; C1018 and C677 settled; one B found (C1109, the settle period) | | |
 | W4 Onboarding and recovery | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs); C553's clab-sync start; C529's DHCP confirms (docs/walks/W4.md) | CUTOVER rows 52, 58, 59; C148; their screens' records; unblocks P7-24, P7-25 | after W3 |
 | (in any sitting) | ~~C539, C587, C588~~ (walked in W1); ~~snap-to-grid (C691)~~ (walked in W2); DHCP confirms (C529, in W4) | those rows | W4 |
 
@@ -123,10 +123,10 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **The v1 removals (each tagged first, walked, ceilings lowered, the ratchet run)** | | | | | |
 | ~~P7-20~~ | ~~(4) the NetBox tab and `/netbox/safety/*`, `/netbox/status`~~ **removed 2026-10-17** (restore tag `pre-remove/v1-netbox`; walked by GETs on the host after its deploy) | | | | |
 | P7-21 | (5) Git, the Remote card, Baselines | removed, walked | M | W1, W2 | — |
-| P7-22 | (7) today's device page (`/device/<ip>`, `/run_command`, `/deploy/receipts`) | removed; run_command's MISSING, HISTORY_MISSING, PENDING entries gone | M | W1 (C547) | — |
+| ~~P7-22~~ | ~~(7) today's device page (`/device/<ip>`, `/run_command`, `/deploy/receipts`)~~ **removed 2026-10-17** (restore tag `pre-remove/v1-device`; run_command's MISSING, HISTORY_MISSING and PENDING entries gone; C1127 and C1128, receipts masked on the way out, fixed with it; walked by GETs on the host after its deploy) | | | | |
 | P7-23 | (8a) template and intent editors | removed | M | W2, C444 | — |
-| P7-24 | (8b) device-action JSON (capture, seed, revert, retry, profile, persist, rotate, retire) | removed | M | W3, P7-22 | — |
-| P7-25 | (8c) deploy wizard, onboarding, inventory source | removed | M–L | W1, W3 | — |
+| P7-24 | (8b) device-action JSON (capture, seed, revert, retry, profile, persist, rotate, retire) | removed | M | W4 (the operator, 2026-10-17: waits on W4 and the operator), P7-22 | — |
+| P7-25 | (8c) deploy wizard, onboarding, inventory source | removed | M–L | W1, W4 (waits on W4 and the operator) | — |
 | P7-26 | (8d) networks; the global active list frozen | removed | S | W2 | — |
 | P7-27 | (9) the pages: `/` (302 to `/v2/`), `/attention`, `index.html`, `base.html`, the last partials and scripts, vendored Bootstrap; `test_no_new_v1_capability` becomes "nothing outside templates/v2" | criteria 1, 2, 16 close; the v1 ceilings at 0 | M | all above | — |
 
@@ -136,21 +136,30 @@ their sittings clear. **Recomputed 2026-10-16 after W1:** done since: P7-04, P7-
 test, C730, C855, C860, C867, C868, C869 (about 1 L, 4 M, 5 S); added by W1: C881, C882 with
 C888 and C905, C906 (3 M), C883 to C886 (5 S). Left: about 2 L (C850's `applyConfirm`, C537),
 12 M and 14 S, plus W2 and W3. **Added by W2 (2026-10-17):** C1022, C1023, C1025 (3 M), C1024
-(S to M), C1026 to C1030 and C932 (6 S); W2 itself done, W3 left.
+(S to M), C1026 to C1030 and C932 (6 S); W2 itself done, W3 left. **Recomputed 2026-10-17
+overnight:** W2's A1 and B1 to B9 fixed and walked in W3; W3 done (CUTOVER rows 48 and 60
+closed); its B, C1109, fixed; C1121 and C1123 found and fixed; P7-20 removed; C650's W1 to W3
+records written; P7-09's entries written. **Cutover-blocking rows: 3, each with its owner:**
+C553 (A, the lab sync's start: W4 section H, then the agent's read of its event file); C650 (A,
+the four W4 screens' records: W4, then the agent); C148 (B, onboarding through deploy, break and
+rollback: W4 sections G to L). **Left:** P7-21, P7-22, P7-23, P7-26 (the agent, tonight); W4 (the
+operator); after W4, P7-24 and P7-25 (waiting on W4 and the operator), then P7-27; the
+closing entries of 7.3, 7.4, 7.D and 7.8. The operator's three: C549 (3), C663, C296 (section
+1c).
 
 ## 3. The shrinking lists (distance to cutover)
 
 | List | Now | At cutover |
 |---|---|---|
 | tests/test_board_fidelity.py `UNCHECKED` | **15** (W2 and W3's five recorded 2026-10-17; 20 before, W1's twelve recorded 2026-10-16): 4 for W4, 11 to the tail | the walked screens out; the rest to the tail |
-| modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | 17 / 2 | run_command's go with v1; the rest stay until built (not a cutover condition) |
-| tests/test_results_are_drawn.py `PENDING` | 8 | 0 (all v1 handlers) |
+| modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | **10 / 1** (P7-22, 2026-10-17: run_command's gone; only `v2.heartbeat_apply` lacks a history; 17 / 2 before) | run_command's go with v1; the rest stay until built (not a cutover condition) |
+| tests/test_results_are_drawn.py `PENDING` | **7** (P7-22, 2026-10-17; 8 before) | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
 | tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | **1** (C850, 2026-10-16) | 1, IP SLA's `ipslaPost` with P.12 (D3); 0 after |
 | tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | **0** (P7-05, 2026-10-16) | 0 |
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | **0** (C522, 2026-10-16) | 0 (met) |
-| tests/test_no_new_v1_capability.py controls / handlers / functions / fields | **36 / 26 / 314 / 19** (P7-20, 2026-10-17; 43 / 31 / 333 / 20 before) | 0 (P7-27) |
-| tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | **90 / 14 / 26** (v1 routes; P7-20, 2026-10-17) | 0 at P7-27 (the v1 check goes with today's pages) |
+| tests/test_no_new_v1_capability.py controls / handlers / functions / fields | **25 / 18 / 312 / 17** (P7-22, 2026-10-17; 36 / 26 / 314 / 19 after P7-20; 43 / 31 / 333 / 20 before) | 0 (P7-27) |
+| tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | **84 / 14 / 23** (v1 routes; P7-22, 2026-10-17; 90 / 14 / 26 after P7-20) | 0 at P7-27 (the v1 check goes with today's pages) |
 | tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | **358** (C868, C869's GAP gone) / **11** (C867) / 23 (2026-10-16) | met: the GAP entries cutover needs gone; `UPSTREAM` 11; the rest reasoned or the tail's |
 | tests/signed_off_screens.py `UNSIGNED` | 3 | 1 (not_found stays; heartbeat and ip_sla go with P.12, D3) |
 | modules/manual.py `ON_TODAYS_APP` | **0** (P7-19) | 0 |
@@ -431,3 +440,14 @@ blocks cutover or is a security issue (B).
   confirmed by the import. Rows 48 and 60 walked and held open by C1024, C1023 and C932. 52
   findings registered (A1 C1022; B1 to B8 C1023 to C1030; B9 is C932, raised; C1031 to C1073),
   sequenced above: C1022 first, then the Bs; the Cs to the tail.
+- **W2's A1 and B1 to B9 fixed** (2026-10-17: ed75c7ec, 202ecb26, 977006fa, b9fe9c42, 24bf6922,
+  cef98d32), deployed and walked in W3. C1089 measured (fecab2f7, the token writes as Editor);
+  the reload's failure path never green (fecab2f7).
+- **W3 walked by the operator** (2026-10-17 05:16 to 06:18 UTC, against fecab2f79e; evidence in
+  `W3-2026-10-17/`): A1 and B1 to B9 walked on the host; CUTOVER rows 48 and 60 closed; C1018,
+  C677 and C1108 closed; one B, C1109 (the settle period), fixed in 5c181256 and deployed; C1110
+  to C1120 registered, the Cs to the tail.
+- **Overnight, 2026-10-17:** W4's script (6ce34f13) with C1121 (B, DHCP's confirm) fixed; P7-20
+  removed (f764fafd, tag `pre-remove/v1-netbox`, walked by GETs on the host: 10 paths as
+  expected) with C1123 (B) fixed; C650's W1 to W3 records (5e1413d0, UNCHECKED 20 to 15);
+  P7-09's entries (96c0b719).

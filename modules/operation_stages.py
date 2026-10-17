@@ -11,7 +11,8 @@ approve endpoints EXACTLY, and resolves every reference:
 - `verify`, `rollback`, `record`: an importable `module.attribute`.
 Any stage may instead be `n/a: <why>` (the stage does not apply, said in words) or
 `MISSING: <why>` (a gap, named; the gaps are counted and only shrink). Most of the gaps are
-the legacy routes 7.8 removes, and the NetBox writes, which nothing reads back.
+today's onboarding and editor routes 7.8 removes, and the NetBox writes, which nothing reads
+back.
 """
 
 from collections import namedtuple
@@ -19,7 +20,6 @@ from collections import namedtuple
 Stages = namedtuple("Stages", "preview hash verify rollback record")
 
 NO_DEVICE = "n/a: changes no device"
-LEGACY = "MISSING: a legacy route with no preview or confirm, removed in 7.8 (docs/CUTOVER.md)"
 FORWARD = "n/a: a commit, corrected by a forward commit"
 
 STAGES = {
@@ -283,11 +283,11 @@ STAGES = {
         "MISSING: NetBox is not read back after an import; write failures are counted (C8)",
         "n/a: NetBox writes are not transactional; recovery is the tested backup (P.2)",
         "modules.netbox_guard.record_modified"),
-    # ---- Legacy device routes, removed or replaced at cutover
-    "run_command": Stages(LEGACY, LEGACY, LEGACY, "n/a: a command is not undone", LEGACY),
 }
 
 #: The gaps, counted: the test pins this number, so it can only go down.
+# 17 -> 10 2026-10-17, measured: today's /run_command took its four LEGACY gaps with it (7.8,
+# P7-22), and the ceiling had not followed today's NetBox tab's three (14 measured before this).
 # 21 -> 17 2026-10-15, measured: today's /bulk_execute took its four LEGACY gaps with it (7.8).
 # 46 -> 21 2026-10-15, measured: today's /templates/bindings took its two gaps with it at 7.8,
 # and the ceiling had not followed the 7.8 removals before it (23 measured before this one).
@@ -296,7 +296,7 @@ STAGES = {
 # +1 2026-10-10: v2's Create shares today's Create's missing run record (one core); v2's
 # Create and Abandon bind their confirms, so today's two hash gaps and Abandon's preview gap
 # leave with today's routes at 7.8.
-MISSING_CEILING = 17
+MISSING_CEILING = 10
 
 
 # ---------------------------------------------------------------------------
@@ -312,8 +312,6 @@ MISSING_CEILING = 17
 NOT_A_DEVICE = "n/a: changes the app, a list or its settings, never one device's record"
 TEMPLATE = "n/a: changes a template or its approval, never one device's record"
 PROFILE = "n/a: changes the network's monitoring profile, which no device's record holds"
-NO_RECORD = ("MISSING: a legacy route that keeps no per-device record of what it did; "
-             "removed in 7.8 (docs/CUTOVER.md)")
 
 HISTORY = {
     # ---- confirm: sends to a device
@@ -345,7 +343,6 @@ HISTORY = {
                                   "record; the network's repository keeps it "
                                   "(dhcp/exclusions.yml)"),
     "update.step_done": NOT_A_DEVICE,
-    "run_command": NO_RECORD,
     # ---- approve: a decision a later device change acts on
     "golden.capture_apply": ("golden", "measured"),
     "device_v2.capture_confirm": ("golden", "measured"),
@@ -456,5 +453,6 @@ WRITTEN_ELSEWHERE = {
 #: routes removed at 7.8; 9 -> 7, 2026-10-13: Device files' upload and delete removed at 7.8;
 #: 7 -> 5 the same day: Bulk file actions' upload and delete; 5 -> 3, 2026-10-14: the assistant's
 #: chat and agent run, removed with the AI family, D15; 3 -> 2, 2026-10-15: today's bulk
-#: commands, /bulk_execute, removed at 7.8).
-HISTORY_MISSING_CEILING = 2
+#: commands, /bulk_execute, removed at 7.8; 2 -> 1, 2026-10-17: today's /run_command, removed
+#: at 7.8 with today's device page, P7-22).
+HISTORY_MISSING_CEILING = 1

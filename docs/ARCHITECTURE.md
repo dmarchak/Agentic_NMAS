@@ -463,8 +463,10 @@ and others have left since too.
 - **[modules/readonly_commands.py](modules/readonly_commands.py)** — C61:
   the ONE read-only command allowlist, whole command: verb, every output
   modifier after a `|`, no URL, no target-less ping, no line editing. The
-  agent's tools used it (until the AI family's removal, D15, 2026-10-14); the lens,
-  `/run_command` and `bulk_execute` adopt it in 7.3
+  agent's tools used it (until the AI family's removal, D15, 2026-10-14); the reads engine
+  (`modules/nsot/reads.py`: v2's Ask tab and Show commands) refuses by it before any device.
+  Today's `/run_command` and `bulk_execute`, which adopted it in 7.3, left at 7.8
+  (2026-10-17 and 2026-10-15)
 - **[modules/nsot/authorisation.py](modules/nsot/authorisation.py)** — C140,
   C79: the ONE mechanism for a line that needs an authorisation (a dangerous
   line, or a secret a restore would add): its key, the reason's shape rule,
@@ -507,8 +509,9 @@ and others have left since too.
   document and the golden, parsed again at apply, one commit of exactly the
   seeded files (`Source: seed`). Only absent or bootstrap-only intent is
   seeded; what the template does not model is named, never blocked here.
-  Client: **[static/js/nmas_seed.js](static/js/nmas_seed.js)**, the Device
-  page's Seed intent
+  Client: **[static/js/nmas_seed.js](static/js/nmas_seed.js)**, today's device
+  page's Seed intent until that page left at 7.8 (P7-22, 2026-10-17; nothing opens it
+  now, and it goes with its routes, P7-24); v2's is Actions › Seed intent…
 - **[modules/nsot/rotate_op.py](modules/nsot/rotate_op.py)** — 7.3: ROTATE from the
   Device page, `credential_rotation` as one operation: a preview (the plan's preflight,
   which READS the account's line live, and the program with the password masked), a
@@ -603,8 +606,9 @@ and others have left since too.
   checker's scan); authority: the modification record; read back after the write
 - **[modules/nsot/retire.py](modules/nsot/retire.py)** — C11 (7.3): the
   whole exit, one implementation for two entry points. `nmas-retire` OPENS
-  the break-glass record; the Device page's Retire… (`routes/retire.py`,
-  **[static/js/nmas_retire.js](static/js/nmas_retire.js)**) trusts the
+  the break-glass record; the device page's Retire… (v2's card; today's
+  `routes/retire.py` and **[static/js/nmas_retire.js](static/js/nmas_retire.js)**,
+  which nothing opens since today's device page left at 7.8, P7-22) trusts the
   EXPORT LOG (`breakglass_logged`) and says so, because it cannot reach a
   file on a laptop
 - **[modules/nsot/removal.py](modules/nsot/removal.py)** — Mode B (7.3
@@ -951,13 +955,15 @@ and others have left since too.
   One renderer: **[static/js/nmas_preview_confirm.js](static/js/nmas_preview_confirm.js)**
   Its RESULT half (7.1 steps 2 and 3): `operation_result()` builds what
   happened FROM the receipt rows the apply wrote, the server computes the
-  level (colour is only drawn, never decided in the browser), and
-  `receipt_history()` serves the record back (`GET /deploy/receipts`, the
-  Device page's Changes tab)
-  Capture's client (7.1 step 4, Device page and Save All):
+  level (colour is only drawn, never decided in the browser). The record is
+  read back on the v2 device page's History tab (`history_sources.receipts`,
+  each row's texts masked again on the way out); today's `GET /deploy/receipts`
+  and its `receipt_history()`, the device page's Changes tab, left with today's
+  device page at 7.8 (P7-22, 2026-10-17)
+  Capture's client (7.1 step 4, Save All on today's index):
   **[static/js/nmas_capture.js](static/js/nmas_capture.js)**. Restore scope
-  (7.1 step 5, C80: the Device page's "Restore from…" and the Baselines
-  panel's scope, which starts empty):
+  (7.1 step 5, C80: today's device page's "Restore from…", its one opener until
+  that page left at 7.8, and the Baselines panel's scope, which starts empty):
   **[static/js/nmas_restore_scope.js](static/js/nmas_restore_scope.js)**
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
   `inventory.py`, `golden.py`, `templatize.py`,
@@ -981,8 +987,8 @@ today's bulk commands, 7.8, 2026-10-15)
 #### Templates
 `base.html` (2,442 — layout + AI chat panel, the panel removed with the AI family, D15,
 2026-10-14), `index.html` (8,045 — main
-dashboard), `device.html` (1,239 — per-device page), and
-`templates/partials/` for new UI.
+dashboard), and `templates/partials/` for new UI. Today's per-device page, `device.html`,
+left at 7.8 (P7-22, 2026-10-17): a device's page is `templates/v2/device.html`.
 
 
 ### Key Architecture Decisions

@@ -27,7 +27,9 @@
       <td>
         <div class="d-flex flex-wrap gap-1">
         {% if d["online"] %}
-          <a id="btn-{{ d['ip'] }}" href="{{ url_for('manage_device', ip=d['ip']) }}"
+          {#- Today's device page left at 7.8 (P7-22): Manage opens the device's page on v2,
+              in this list. -#}
+          <a id="btn-{{ d['ip'] }}" href="{{ url_for('device_v2.device', name=d['hostname'], list=current_list) }}"
              class="btn btn-sm btn-primary" target="_blank" rel="noopener">Manage</a>
         {% else %}
           <button id="btn-{{ d['ip'] }}" class="btn btn-sm btn-secondary" disabled>Offline</button>

@@ -1354,7 +1354,7 @@ def authorisation_source(counts=None) -> dict:
                        f"{e.get('last_at') or 'an unrecorded time'}, stated reason: "
                        f"{e.get('last_reason')}. An exception authorised again and again "
                        "is a routine, not an exception"),
-                action={"label": "Read the stated reasons on the device's Changes tab: a line "
+                action={"label": "Read the stated reasons on the device's History tab: a line "
                                  "authorised routinely belongs in intent, or its cause does"},
                 devices=[device], since=_ts(e.get("first_at")),
                 event=f"{e['count']} authorisations, the last at {e.get('last_at') or 'an unrecorded time'}",

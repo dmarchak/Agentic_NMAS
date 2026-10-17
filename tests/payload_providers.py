@@ -212,17 +212,6 @@ def onboard_pending(mp, tmp_path):
     return _ok(_client().get("/onboard/pending?list_name=probe"))
 
 
-def deploy_receipts(mp):
-    """The receipt store read back (7.1 step 3): a real apply writes the
-    receipts (into this test's own file, conftest), then the reader answers
-    for s4. The deployed row, not a hand-built one."""
-    deploy_apply(mp)
-    # Unfiltered, so the batch carries the refused s3 as well as the deployed
-    # s4 and "what did not happen" has an item to examine. The Device page
-    # filters by device; the filtered summary is tested in test_deploy_receipts.
-    return _ok(_client().get("/deploy/receipts"))
-
-
 def capture_preview(mp, tmp):
     """7.1 step 4: r2's real config with the host's exact break, so the
     preview carries a golden diff AND a departure from committed intent."""

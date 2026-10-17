@@ -913,8 +913,7 @@ def saved_startup_words(saved) -> dict:
     return {"state": saved.get("state", ""), "words": words + (f": {detail}" if detail else "")}
 
 
-def operation_result(rows: list, report: dict, receipt_status: dict, action: str,
-                     from_receipt: dict = None) -> dict:
+def operation_result(rows: list, report: dict, receipt_status: dict, action: str) -> dict:
     """A deploy's or restore's result, built FROM THE RECEIPT ROWS the apply
     has just written, so the screen and the record are one computation.
     Every field is already masked in the rows (`receipts.rows_for`)."""
@@ -1031,29 +1030,14 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
         statement += (" RECEIPT NOT WRITTEN: " + str((receipt_status or {}).get("error") or
                                                      "no receipt was reported")
                       + ". The change happened and its record did not.")
-    if from_receipt:
-        # Read back LATER from the receipt store (step 3): the receipt names
-        # the commit and not its tags, so the record says where it was read
-        # from rather than claiming no baseline was taken.
-        statement = (f"Read back from the receipt recorded {from_receipt.get('at', '?')} by "
-                     f"{from_receipt.get('actor') or 'an unrecorded actor'}"
-                     + (f", golden commit {commit[:12]}" if commit else ", no golden commit")
-                     + ". Its tags are in the golden history.")
-    record = {"commit": commit, "tags": tags, "baseline": baseline,
+    record ={"commit": commit, "tags": tags, "baseline": baseline,
               "receipt": {"ok": receipt_ok, "written": (receipt_status or {}).get("written", 0),
                           "error": (receipt_status or {}).get("error", "")},
               "statement": statement}
 
     done = sum(1 for r in rows if r.get("outcome") == "deployed" and not is_pending(r))
-    if from_receipt and from_receipt.get("device"):
-        # One device's row of a batch: never "every device appears here".
-        summary = (f"{from_receipt['device']}: "
-                   + (OUTCOME_WORDS.get(rows[0].get("outcome", ""), "") if rows else "no row")
-                   + f". One row of batch {from_receipt.get('batch_id') or '?'}; the other "
-                     "devices in it are in their own histories.")
-    else:
-        summary = (f"{done} of {len(rows)} device(s) {verb}. {len(rows)} device(s) accounted "
-                   "for: every device in the batch appears here.")
+    summary = (f"{done} of {len(rows)} device(s) {verb}. {len(rows)} device(s) accounted "
+               "for: every device in the batch appears here.")
     level = result_level(rows, receipt_ok, bool(report.get("breaker_tripped")))
     if golden_refused and level == "success":
         level = "partial"
@@ -1948,38 +1932,6 @@ def onboard_abandon_result(row: dict, record_status: dict = None) -> dict:
 def onboard_run_result(row: dict, record_status: dict = None) -> dict:
     return (onboard_verify_result if row.get("kind") == "verify"
             else onboard_abandon_result)(row, record_status)
-
-
-def receipt_history(rows: list, device: str = "") -> list:
-    """The receipt store read back as results (7.1 step 3): one per batch,
-    newest first, each drawn by the same component as the result shown at
-    apply. ``rows`` come from `receipts.read()` and are already masked."""
-    batches, order = {}, []
-    for r in rows:
-        # A row written as its device finished carries its run's id: its batch id (or none,
-        # when nothing was committed) arrives later, and its `at` is its own device's.
-        key = (r.get("batch_id") or r.get("run_id")
-               or f"{r.get('at', '')}|{r.get('action', '')}")
-        if key not in batches:
-            batches[key] = []
-            order.append(key)
-        batches[key].append(r)
-    out = []
-    for key in order:
-        group = batches[key]
-        first = group[0]
-        commit = next((r.get("golden_commit") for r in group if r.get("golden_commit")), "")
-        report = {"golden": {"commit": commit,
-                             "devices": [r.get("device") for r in group if r.get("golden_commit")]}}
-        meta = {"at": first.get("at", ""), "actor": first.get("actor", ""),
-                "batch_id": first.get("batch_id", ""), "device": device}
-        out.append({"batch_id": first.get("batch_id", ""), "at": first.get("at", ""),
-                    "action": first.get("action", ""), "actor": first.get("actor", ""),
-                    "source_ref": first.get("source_ref", ""),
-                    "result": operation_result(group, report, {"ok": True, "written": len(group)},
-                                               "deploy" if first.get("action") == "deploy"
-                                               else "restore", from_receipt=meta)})
-    return out
 
 
 def _nb_skipped(groups) -> list:

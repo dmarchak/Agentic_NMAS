@@ -284,9 +284,11 @@ class TestABusyDevice:
 
 class TestTheDevicePageOffersIt:
     def test_the_button_and_the_client_are_shipped(self):
-        page = open(os.path.join(ROOT, "templates", "device.html")).read()
-        assert 'onclick="openRotate(this.dataset.hostname)"' in page
-        assert "js/nmas_rotate.js" in open(os.path.join(ROOT, "templates", "base.html")).read()
+        """v2's device page's Actions menu (today's device page's Rotate credential… button
+        until it left at 7.8, P7-22)."""
+        menu = open(os.path.join(ROOT, "templates", "v2", "_actions_menu.html"),
+                    encoding="utf-8").read()
+        assert "('Rotate credential…', 'rotate', 'rotation')" in menu
 
 
 def shown_strings_naming(text: str, phrase: str) -> list:

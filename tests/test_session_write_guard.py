@@ -9,8 +9,8 @@ config or save call, is sent only while this thread holds that device. A
 writer that forgets fails on first use, loudly. The lock's refusal also says
 how long the holder has held the device and whether it is still moving.
 
-Netmiko is faked at its boundary, so `open_ssh`, the guard and each route
-run for real.
+Netmiko is faked at its boundary, so `open_ssh` and the guard run for real. (`/run_command`
+left at 7.8 with today's device page, 2026-10-17; its two route tests became the opener's.)
 """
 
 import os
@@ -149,67 +149,22 @@ class TestTheGuardAtTheOpener:
             conn.send_command_timing("username admin secret SEKRETVALUE99")
         assert "'username'" in str(exc.value) and "SEKRETVALUE99" not in str(exc.value)
 
+    # Today's /run_command drove these two through its route until it left at 7.8 with today's
+    # device page (P7-22, 2026-10-17); v2's Ask refuses a write before any device and does not
+    # read a held device (tests/test_ask_the_device.py). The session's own rule stays here.
 
-def _device_row():
-    from modules import config, device
-
-    enc = device.fernet.encrypt(b"pw").decode()
-    path = os.path.join(config.get_list_data_dir(LIST), "devices.csv")
-    device.write_devices_csv([{"hostname": HOST, "ip": IP, "device_type": "cisco_xe",
-                               "username": "u", "password": enc, "secret": enc}], path)
-
-
-def _flashes(client) -> str:
-    with client.session_transaction() as s:
-        return " ".join(m for _cat, m in s.get("_flashes", []))
-
-
-@pytest.fixture
-def client(monkeypatch):
-    """The real app with r2 in the Default list's inventory, which this fixture writes into the
-    run's shared data directory and PUTS BACK after: left behind, the row gave Default a device
-    for every later test in the process (CI #516: Needs attention's break-glass row, and a
-    script run bare connecting to 192.0.2.12; order-dependent, so #514 passed)."""
-    import app as A
-    from modules import config
-
-    path = os.path.join(config.get_list_data_dir(LIST), "devices.csv")
-    before = open(path, "rb").read() if os.path.exists(path) else None
-    _device_row()
-    monkeypatch.setattr("modules.config.get_current_list_name", lambda: LIST)
-    A.connections.clear()
-    yield A.app.test_client()
-    A.connections.clear()
-    if before is None:
-        os.remove(path)
-    else:
-        with open(path, "wb") as fh:
-            fh.write(before)
-
-
-class TestEveryWriterNowHoldsTheDevice:
-    def test_run_command_a_read_never_waits(self, client):
+    def test_a_read_never_waits_for_another_threads_hold(self):
+        conn = C.open_ssh(_params(), owner="test")
         with Holder():
-            r = client.post(f"/run_command/{IP}", data={"command": "show clock"},
-                            headers={"X-Requested-With": "XMLHttpRequest"})
-        assert r.status_code == 200 and "show clock" in FakeConn.sent
+            conn.send_command("show clock")
+        assert FakeConn.sent == ["show clock"]
 
-    def test_run_command_a_write_is_refused_held_or_free(self, client):
-        """C570 (2026-10-08): the route reads only. A write is refused by the allowlist,
-        whether or not another operation holds the device, and is never sent."""
+    def test_a_write_is_refused_while_another_thread_holds_the_device(self):
+        conn = C.open_ssh(_params(), owner="test")
         with Holder():
-            r = client.post(f"/run_command/{IP}", data={"command": "clear counters"},
-                            headers={"X-Requested-With": "XMLHttpRequest"})
-        assert r.status_code == 400 and "Not run on r2" in r.get_json()["error"]
-        r = client.post(f"/run_command/{IP}", data={"command": "clear counters"},
-                        headers={"X-Requested-With": "XMLHttpRequest"})
-        assert r.status_code == 400
+            with pytest.raises(C.UnheldDeviceWrite):
+                conn.send_command("clear counters")
         assert "clear counters" not in FakeConn.sent
-
-    # Today's bulk commands (/bulk_execute) left at 7.8 (2026-10-15), and their two tests here
-    # with them: Show commands refuses a write before any device (tests/test_show_commands.py,
-    # TestARun), and a read on a held device is the session guard's, run above through
-    # /run_command.
 
 
 class TestTheRefusalSaysHowLongAndWhetherItMoves:
@@ -257,7 +212,9 @@ def test_the_steps_that_take_long_report_progress():
 HELD_BY_CALLER = {
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
     "scripts/nmas-tier2-probe:measure": "the probe's main(), which holds the device for the run",
-    "modules/commands.py:_run": "run_device_command's body (C272); its callers: /run_command holds a non-read",
+    "modules/commands.py:_run": "run_device_command's body (C272); its callers send reads (its "
+                                "one caller that held a non-read, /run_command, left at 7.8), "
+                                "and the opener refuses an unheld non-read",
     "modules/device_reload.py:reload_device": "reload_op.run, which holds the device for the reload (P.14; app.bulk_reload left at 7.8)",
     # Found when the scan was widened to config mode and the scripts (C191,
     # 2026-09-29); each caller verified in the code. (The bulk worker's two, in

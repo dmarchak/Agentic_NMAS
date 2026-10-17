@@ -104,5 +104,7 @@ class TestTheControls:
 
     def test_a_stage_with_no_reason_is_found(self, app):
         stages = dict(S.STAGES)
-        stages["run_command"] = S.STAGES["run_command"]._replace(verify="n/a:")
-        assert "run_command.verify: says 'n/a:' with no reason" in problems(stages, app, population())
+        # Its example was today's /run_command until it left at 7.8 (P7-22, 2026-10-17).
+        stages["persist.apply"] = S.STAGES["persist.apply"]._replace(verify="n/a:")
+        assert "persist.apply.verify: says 'n/a:' with no reason" in problems(
+            stages, app, population())

@@ -22,7 +22,6 @@ from flask import (
     redirect, # for HTTP redirects
     url_for, # to build URLs for routes
     flash, # to show one-time messages to users
-    session, # for user session management
     jsonify # to return JSON responses
 )
 
@@ -42,7 +41,6 @@ from modules.device import (
     load_saved_devices,
     save_device,
     write_devices_csv,
-    get_device_context,
     get_device_lists,
     get_current_device_list,
     set_current_device_list,
@@ -63,11 +61,10 @@ from modules.config import (
     get_user_setting,
     save_user_settings,
 )
-from modules.connection import session_reaper, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
+from modules.connection import session_reaper
 from modules import route_gates
 from modules.identity import request_actor
 from modules.utils import make_device_filename
-from modules.commands import run_device_command
 
 # Device status cache and ping worker setup
 #
@@ -441,12 +438,6 @@ def handle_exception(error):
     app.logger.error(f'Unhandled Exception: {error}', exc_info=True)
     return _error_response(error, 500, None)
 
-# Reintroduce persistent connections container for status checks
-
-connections = {}  # ip -> Netmiko connection (status-only)
-lock = threading.Lock()
-_device_lock = get_device_send_lock  # serialises SSH commands per device
-
 
 # The break-glass terminal's socket handlers were removed (R39, the operator,
 # 2026-10-05), after the console drill proved the emergency path without it
@@ -483,127 +474,10 @@ def index():
     )
 
 
-# Add device
-# Manage device (no persistent use; only builds context via temp connection)
-@app.route("/device/<ip>")
-def manage_device(ip):
-    # Device management page: show filesystems, files, quick actions
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    dev = next((d for d in devices if d["ip"] == ip), None)
-    if not dev:
-        flash("Device not found", "danger")
-        return redirect(url_for("index"))
-
-    # Get active tab from query parameter
-    active_tab = request.args.get("active_tab", "utilities")
-
-    try:
-        filesystems, file_list, selected_fs = get_device_context(dev)
-        return render_template(
-            "device.html",
-            device=dev,
-            filesystems=filesystems,
-            files=file_list,
-            selected_fs=selected_fs,
-            active_tab=active_tab,
-        )
-    except Exception as e:
-        flash(f"Failed to connect to {dev.get('hostname', ip)} ({ip}): {e}", "danger")
-        return redirect(url_for("index"))
-
-
-# Run command (temporary connection)
-@app.route("/run_command/<ip>", methods=["POST"])
-def run_command(ip):
-    # Run a command on the device and show output.
-    #
-    # POST, and gated `confirm` (register B16, 2026-09-26). It was a GET: any
-    # exec-mode command (reload, delete, copy, clear) from a URL, with no
-    # identity check, because the gate table covers mutating METHODS, and a
-    # link an operator logged in to Access followed would have run it. The
-    # Access cookie is not sent on a cross-site POST, so a link cannot.
-    command = request.form.get("command")
-    filesystem = request.form.get("filesystem")
-
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    dev = next((d for d in devices if d["ip"] == ip), None)
-    if not dev:
-        flash("Device not found", "danger")
-        return redirect(url_for("index"))
-
-    if not command:
-        flash("No command provided.", "warning")
-        return redirect(url_for("manage_device", ip=ip))
-
-    # READS ONLY (C570, the operator, 2026-10-08): this route ran ANY exec command (reload,
-    # write erase, delete, copy), holding the device first so the session guard let it
-    # through. A change to a device is an operation with a preview, a confirm and a record,
-    # never free text here: anything the read-only allowlist refuses is refused, naming why,
-    # before any device is asked.
-    from modules.readonly_commands import refusal as _read_refusal
-    _why = _read_refusal(command)
-    if _why:
-        app.logger.warning("run_command: refused for %s: %s", dev["hostname"], _why)
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"ok": False, "error": f"Not run on {dev['hostname']}: {_why}"}), 400
-        flash(f"Not run on {dev['hostname']}: {_why}", "danger")
-        return redirect(url_for("manage_device", ip=ip))
-
-    try:
-        output = None
-        # Attempt persistent connection first
-        try:
-            conn = get_persistent_connection(dev, connections, lock)
-            output = run_device_command(conn, command)
-        except Exception:
-            # Fallback to temporary connection
-            output = with_temp_connection(dev, lambda conn: run_device_command(conn, command))
-
-        # Save output for download
-        session["last_output"] = output
-        session["last_filename"] = f"{dev['hostname']}_{command.replace(' ', '_')}.txt"
-
-        # If AJAX request, return JSON with output only to avoid full page render
-        is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        if is_ajax:
-            return jsonify({"output": output, "filename": session["last_filename"]})
-
-        # Non-AJAX: refresh device context and render template as before
-        filesystems, file_list, selected_fs = get_device_context(dev, filesystem)
-
-        return render_template(
-            "device.html",
-            device=dev,
-            filesystems=filesystems,
-            files=file_list,
-            selected_fs=selected_fs,
-            output=output,
-            filename=session["last_filename"],
-            active_tab="utilities",
-        )
-    except Exception as e:
-        flash(
-            f"Failed to run command on {dev.get('hostname', ip)} ({dev['ip']}): {e}",
-            "danger",
-        )
-        return redirect(url_for("index"))
-
-
-# Download last output
-
-
-# File upload (TFTP or SCP based on configuration)
-
-
-# Delete file (temporary connection)
-
-
-# Download file to TFTP server (temporary connection)
-
-
-# Refresh files (temporary connection via get_device_context)
+# Today's device page (GET /device/<ip>) and its command box (POST /run_command/<ip>) left at
+# 7.8 on 2026-10-17 (P7-22): a device's page is v2's /v2/device/<name>, and a read a person
+# types is its Ask tab, from the same allowlist. The app's own session pool went with them:
+# /run_command was its only user.
 
 
 # ---------------------------------------------------------------------------

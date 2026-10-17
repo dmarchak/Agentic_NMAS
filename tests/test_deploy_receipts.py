@@ -17,6 +17,7 @@ import pytest
 
 from modules.nsot import receipts
 from modules.nsot.deploy import command_fingerprint
+from tests.test_device_v2 import lab  # noqa: F401 (the fixture, for the History read-back)
 
 PROGRAM = ["interface GigabitEthernet0/2", " shutdown", "exit",
            "snmp-server community Sup3rS3cretCommunity RO"]
@@ -265,69 +266,94 @@ class TestTheRestorePathWritesThemToo:
 
 
 class TestTheReceiptsReadBack:
-    """7.1 step 3: the result can be read again LATER, from the receipt
-    store, drawn by the same component as at apply. None of the 41 gated
-    actions had that (the result survey, 2026-09-27)."""
+    """7.1 step 3: a deploy's receipt is read again LATER, on the device's v2 History tab
+    (`history_sources.receipts`), on test_device_v2's lab. Today's device page's Changes tab
+    read it through GET /deploy/receipts until both left at 7.8 (P7-22, 2026-10-17). That an
+    unreadable store is said, and an absent one is not an error, is
+    tests/test_device_history_v2.py's (an unreadable record, nothing recorded)."""
 
-    def _draw(self, payload):
-        import json as _json
+    def test_a_deploy_reads_back_as_that_devices_row(self, lab):  # noqa: F811
+        from tests.test_device_v2 import _get, _text
+        fp = command_fingerprint(PROGRAM, AUTHORISED)
+        rows = _rows([_sent(), _sent(device="r9")], command_hashes={"r3": fp, "r9": fp})
+        assert receipts.write("Lab", rows)["ok"]
+        _r, html = _get(lab, "/v2/device/r3/history")
+        text = _text(html)
+        assert "Deployed: deployed" in text and "Matches what was confirmed yes" in text
+        assert "shutdown: planned maintenance, port unused" in text
+        devices = re.findall(r'<span class="hist-dev[^"]*">([^<]*)</span>', html)
+        assert devices and "r9" not in devices, devices        # filtered to the device
 
-        import dukpy
-
-        from tests.payload_render import shipped
-
-        component = shipped("nmas_preview_confirm.js")
-        page = shipped("partials__device_changes.1.js")
-        return dukpy.evaljs(
-            "var window = {}; var document = {addEventListener: function () {}};\n"
-            + component + "\nvar previewConfirmResultHtml = window.previewConfirmResultHtml;\n"
-            + page + f"\ndeviceChangesHtml({_json.dumps(payload)})")
-
-    def test_a_deploy_reads_back_as_that_devices_row(self, monkeypatch):
-        from tests import payload_providers as P
-
-        P.deploy_apply(monkeypatch)
-        d = P._ok(P._client().get("/deploy/receipts?device=s4"))
-        assert d["state"] == "ok" and len(d["changes"]) == 1
-        result = d["changes"][0]["result"]
-        # One device's row: never "every device in the batch appears here".
-        assert result["happened"]["summary"].startswith("s4: done. One row of batch")
-        assert "every device in the batch" not in result["happened"]["summary"]
-        assert result["record"]["statement"].startswith("Read back from the receipt recorded")
-        html = self._draw(d)
-        assert 'data-pr-target="s4"' in html and "matches the program you confirmed" in html
-        assert "s3" not in html.split("data-pr-result")[1], "filtered to the device"
-
-    def test_a_secret_in_the_store_is_masked_on_the_way_out(self, monkeypatch, tmp_path):
-        """A row written before masking, or by hand: the reader is the second
-        layer, so a planted community never leaves."""
-        import json as _json
-
-        from modules.nsot import receipts
-        from tests import payload_providers as P
-
-        path = tmp_path / "planted.jsonl"
-        monkeypatch.setattr(receipts, "path_for", lambda list_name: str(path))
-        row = {"device": "s4", "action": "deploy", "batch_id": "b1", "at": "t", "actor": "a",
-               "outcome": "deployed", "sent": True, "program_hash": "x", "matches_confirmed": None,
-               "program": ["snmp-server community PLANTEDREC99 RO"],
+    def test_a_secret_in_the_store_is_masked_on_the_way_out(self, lab):  # noqa: F811
+        """A row written before masking, or by hand: the History tab is the second layer, as
+        GET /deploy/receipts was (its `mask_payload`), so a planted community never leaves in
+        the fields it draws: the reason, an authorised line and its reason, a removed line."""
+        from tests.test_device_v2 import _get
+        line = "snmp-server community PLANTEDREC99 RO"
+        row = {"id": "p1", "device": "r3", "action": "deploy", "batch_id": "b1",
+               "at": "2026-10-17T00:00:00Z", "actor": "a", "outcome": "failed",
+               "reason": f"verify failed after {line}", "program_lines": 1,
+               "program_hash": "x", "matches_confirmed": None, "program": [line],
+               "authorised": [{"line": line, "reason": f"because {line}"}],
+               "removals": [{"id": "u1", "chain": [], "line": line}],
                "checks": {"ran": False, "why": "planted"}, "rollback": {}}
-        path.write_text(_json.dumps(row) + "\n", encoding="utf-8")
-        body = P._client().get("/deploy/receipts?device=s4").get_data(as_text=True)
-        assert "PLANTEDREC99" not in body and "snmp-server community <redacted" in body
+        assert receipts.write("Lab", [row])["ok"]
+        _r, html = _get(lab, "/v2/device/r3/history")
+        assert "verify failed after snmp-server community" in html, "the row is drawn"
+        assert "PLANTEDREC99" not in html
+        assert "snmp-server community &lt;redacted:snmp_community&gt; RO" in html
 
-    def test_absent_and_unreadable_are_different_sentences(self, monkeypatch, tmp_path):
-        from modules.nsot import receipts
-        from tests import payload_providers as P
+    def test_needs_attention_s_recent_changes_mask_on_the_way_out_too(self, lab):  # noqa: F811
+        """C1128 (found 2026-10-17 with P7-22): Needs attention's Recent changes drew the
+        receipts' reasons as stored, with no second layer; a planted community never leaves."""
+        from tests.test_device_v2 import _get
+        line = "snmp-server community PLANTEDREC98 RO"
+        row = {"id": "p2", "device": "r3", "action": "deploy", "batch_id": "b2",
+               "at": "2026-10-17T00:00:00Z", "actor": "a", "outcome": "failed",
+               "reason": f"verify failed after {line}", "program_lines": 1,
+               "program_hash": "x", "matches_confirmed": None, "program": [line],
+               "checks": {"ran": False, "why": "planted"}, "rollback": {}}
+        assert receipts.write("Lab", [row])["ok"]
+        _r, html = _get(lab, "/v2/?list=Lab")
+        assert "verify failed after snmp-server community" in html, "the row is drawn"
+        assert "PLANTEDREC98" not in html
 
-        path = tmp_path / "r.jsonl"
-        monkeypatch.setattr(receipts, "path_for", lambda list_name: str(path))
-        absent = P._client().get("/deploy/receipts?device=s4").get_json()
-        assert absent["ok"] is True and absent["state"] == "absent"
-        assert 'data-changes-state="none"' in self._draw(absent)
-        path.write_text("{not json\n", encoding="utf-8")
-        resp = P._client().get("/deploy/receipts?device=s4")
-        bad = resp.get_json()
-        assert resp.status_code == 500 and bad["ok"] is False and bad["state"] == "unreadable"
-        html = self._draw(bad)
-        assert 'data-changes-state="unreadable"' in html and "not the same as no change" in html
+
+#: Words that send a person to a device's Changes tab, which no page has since today's device
+#: page left at 7.8 (P7-22, 2026-10-17; v2 never had one, C908): the receipts are its History.
+CHANGES_TAB = re.compile(r"device(?:'|\\')s (?:page, )?Changes\b|each device's Changes\b")
+
+
+def _shipped_text_files():
+    from tests.source_index import tracked
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return [p for p in tracked(*(os.path.join(root, d) for d in
+                                 ("modules", "routes", "templates", "static/js")), root=root)
+            if p.endswith((".py", ".html", ".js")) and "/vendor/" not in p]
+
+
+#: Each sentence still naming one, by its file, with why it waits. Only shrinks, compared
+#: exactly both ways.
+STILL_NAMED = {
+    # The batch Apply's "no record of that batch" notice: its template is compared with its
+    # boards (docs/fidelity/apply.md, C650), so its words change with that record's next
+    # comparison, not here.
+    ("_apply_job.html", "each device's Changes"): "awaits docs/fidelity/apply.md's next compare",
+}
+
+
+class TestNothingSendsAPersonToAChangesTab:
+    def test_no_shipped_text_names_one(self):
+        files = _shipped_text_files()
+        assert len(files) >= 400, len(files)            # 497 measured 2026-10-17
+        named = {(os.path.basename(p), m.group(0)) for p in files
+                 for m in CHANGES_TAB.finditer(open(p, encoding="utf-8").read())}
+        assert named == set(STILL_NAMED), sorted(named ^ set(STILL_NAMED))
+
+    def test_the_words_it_found_are_found(self):
+        """The control: the three sentences it found on 2026-10-17, as they were written."""
+        for old in ("Read the stated reasons on the device's Changes tab: a line",
+                    " min</strong>. Each receipt is on its device\\'s page, Changes tab:",
+                    "is in its receipts (each device's Changes) and in the golden history."):
+            assert CHANGES_TAB.search(old), old
+        assert not CHANGES_TAB.search("today's device page's Changes tab left at 7.8")

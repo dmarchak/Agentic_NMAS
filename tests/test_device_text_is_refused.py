@@ -6,23 +6,30 @@ mode did the same on every selected device and answered `reload`'s prompts itsel
 file routes spliced form fields into commands (`delete {filesystem}{filename}`), where a line
 break is a second command. Now:
 
-- a free-form command passes the read-only allowlist whole, or nothing is sent (`/run_command`;
-  today's `/bulk_execute`, which checked every `;`-separated part, left at 7.8, 2026-10-15);
+- a free-form command passes the read-only allowlist whole, or nothing is sent (v2's Ask tab,
+  through the reads engine; today's `/run_command` did the same until it left at 7.8 with
+  today's device page, 2026-10-17, and today's `/bulk_execute`, which checked every
+  `;`-separated part, left on 2026-10-15);
 - a field spliced into a command is one token of its shape (`modules/cli_tokens.py`);
 - each refusal comes BEFORE any device is contacted: netmiko's connect is recorded here, and a
   refused request records none.
 
 The population: every route in `app.py` and `routes/` whose body reads the request and calls a
-device sender. Each is named below with its check; a new one fails until it is.
+device sender. Each is named below with its check; a new one fails until it is. Since today's
+device page left there is none: every route that reaches a device hands the request to a
+module (the reads engine, a job), and the planted route below is what shows the scan can still
+find one.
 """
 
 import ast
-import io
 import os
+import re
 
 import pytest
 
-from tests.test_session_write_guard import IP, FakeConn, client  # noqa: F401 (the fixture)
+from tests.test_ask_the_device import ask  # noqa: F401 (the fixture)
+from tests.test_device_v2 import lab  # noqa: F401 (the fixture under `ask`)
+from tests.test_session_write_guard import IP, FakeConn
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WRITES = ["reload", "write erase", "write memory", "delete flash:x.bin",
@@ -52,21 +59,40 @@ def contacts(monkeypatch):
     return Contacts.made
 
 
-AJAX = {"X-Requested-With": "XMLHttpRequest"}
+@pytest.fixture
+def client():
+    import app as A
+    return A.app.test_client()
 
 
 class TestTheDevicePageCommand:
-    @pytest.mark.parametrize("command", WRITES)
-    def test_a_write_is_refused_before_any_device_is_contacted(self, client, contacts, command):
-        r = client.post(f"/run_command/{IP}", data={"command": command}, headers=AJAX)
-        assert r.status_code == 400, r.get_data(as_text=True)[:300]
-        assert r.get_json()["error"].startswith("Not run on r2: REFUSED")
-        assert contacts == [] and FakeConn.sent == []
+    """v2's Ask tab, the one place a person types a command for one device (today's
+    /run_command until 7.8), on test_device_v2's lab: every write in WRITES is refused, the
+    refusal recorded, and nothing reaches r3 or netmiko."""
 
-    def test_a_read_runs(self, client, contacts):
-        """The control: the route still reads."""
-        r = client.post(f"/run_command/{IP}", data={"command": "show clock"}, headers=AJAX)
-        assert r.status_code == 200 and contacts == [IP] and "show clock" in FakeConn.sent
+    def _post(self, lab, command):
+        from modules.nsot import capture_job
+        r = lab["client"].post("/v2/device/r3/ask", data={"list": "Lab", "command": command},
+                               headers={"HX-Request": "true"})
+        assert r.status_code == 200, r.get_data(as_text=True)[:300]
+        body = r.get_data(as_text=True)
+        job = re.search(r"job=([0-9a-f]{32})", body)
+        if job:
+            assert capture_job.wait(job.group(1), 30)
+        return body
+
+    def test_a_write_is_refused_before_any_device_is_contacted(self, ask, contacts):  # noqa: F811
+        from modules.nsot import reads
+        for command in WRITES:
+            self._post(ask, command)
+        assert ask["device"].sent == [] and contacts == [] and FakeConn.sent == []
+        runs = reads.runs("Lab")["runs"]
+        assert sorted(r["state"] for r in runs) == ["refused"] * len(WRITES), runs
+
+    def test_a_read_runs(self, ask, contacts):  # noqa: F811
+        """The control: the tab still reads."""
+        self._post(ask, "show running-config")
+        assert ask["device"].sent == ["show running-config"]
 
 
 class TestTheBulkRoutesAreGone:
@@ -115,26 +141,30 @@ class TestTheShapes:
         assert "\n" not in why and "\r" not in why          # the refusal never echoes a break
 
 
-#: Every route whose body reads the request and calls a device sender, with its check.
-CHECKED = {
-    "run_command": "readonly_commands.refusal, before any device",
-}
+#: Every route whose body reads the request and calls a device sender, with its check. Empty
+#: since today's /run_command left at 7.8 (2026-10-17, P7-22); its entry was
+#: "readonly_commands.refusal, before any device", which v2's Ask keeps through the reads engine.
+CHECKED = {}
 SENDERS = {"run_device_command", "send_command", "send_command_timing", "send_config_set",
-           "with_temp_connection", "get_persistent_connection",
-           "get_device_context"}
+           "with_temp_connection", "get_persistent_connection"}
 
 
-def _routes_that_send_request_text():
-    found = {}
-    files = [os.path.join(ROOT, "app.py")] + [
+def _route_files():
+    return [os.path.join(ROOT, "app.py")] + [
         os.path.join(ROOT, "routes", f) for f in os.listdir(os.path.join(ROOT, "routes"))
         if f.endswith(".py")]
-    for path in files:
+
+
+def _routes_that_send_request_text(files=None):
+    """``(found, routed)``: ``{function: file}`` for each routed function that reads the request
+    and calls a device sender, and how many routed functions the walk read."""
+    found, routed = {}, 0
+    for path in files or _route_files():
         tree = ast.parse(open(path, encoding="utf-8").read())
         for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
-            routed = any("route" in ast.unparse(d) for d in fn.decorator_list)
-            if not routed:
+            if not any("route" in ast.unparse(d) for d in fn.decorator_list):
                 continue
+            routed += 1
             src = ast.unparse(fn)
             reads = "request.form" in src or "request.files" in src or "request.args" in src \
                 or "request.get_json" in src or "request.json" in src
@@ -142,12 +172,14 @@ def _routes_that_send_request_text():
                      if isinstance(c, ast.Call)}
             if reads and calls & SENDERS:
                 found[fn.name] = os.path.relpath(path, ROOT)
-    return found
+    return found, routed
 
 
 def test_every_route_sending_request_text_is_checked():
-    found = _routes_that_send_request_text()
-    assert len(found) >= 2, found                # a floor; measured 2026-10-08: 16; 15 since 7.8 removed /bulk_reload, 13 since Configure, 12 since Topology (2026-10-12), 8 since Device files, 4 since Bulk file actions (2026-10-13), 3 since Backups (2026-10-14), 2 since today's bulk commands (2026-10-15)
+    found, routed = _routes_that_send_request_text()
+    # The floor is on the routes read, not on the offenders: measured 2026-10-17, 348 routed
+    # functions (the offenders fell from 16 on 2026-10-08 to 0 when today's device page left).
+    assert routed >= 300, routed
     unchecked = sorted(set(found) - set(CHECKED) - set(NOT_REQUEST_TEXT))
     assert not unchecked, (
         "a route reads the request and sends to a device with no declared check: "
@@ -155,22 +187,18 @@ def test_every_route_sending_request_text_is_checked():
 
 
 #: Routes the scan finds whose request fields choose a DEVICE or a fixed command, never text
-#: sent to it: each named with what it reads.
-NOT_REQUEST_TEXT = {
-    "manage_device": "active_tab picks a tab; get_device_context with no filesystem",
-}
+#: sent to it: each named with what it reads. Empty since today's device page (manage_device,
+#: its `active_tab`) left at 7.8, 2026-10-17.
+NOT_REQUEST_TEXT = {}
 
 
 def test_the_scan_finds_a_planted_route(tmp_path):
-    """The control: the population check names a routed function that reads the form and
-    sends to a device."""
-    planted = ("@app.route('/x', methods=['POST'])\n"
-               "def planted():\n"
-               "    c = request.form.get('c')\n"
-               "    return run_device_command(conn, c)\n")
-    tree = ast.parse(planted)
-    fn = tree.body[0]
-    src = ast.unparse(fn)
-    calls = {getattr(c.func, "attr", getattr(c.func, "id", "")) for c in ast.walk(fn)
-             if isinstance(c, ast.Call)}
-    assert "request.form" in src and calls & SENDERS and "planted" not in CHECKED
+    """The control: the walk itself names a routed function, in a file beside the real ones,
+    that reads the form and sends to a device."""
+    planted = tmp_path / "planted.py"
+    planted.write_text("@app.route('/x', methods=['POST'])\n"
+                       "def planted():\n"
+                       "    c = request.form.get('c')\n"
+                       "    return run_device_command(conn, c)\n", encoding="utf-8")
+    found, _routed = _routes_that_send_request_text(_route_files() + [str(planted)])
+    assert list(found) == ["planted"] and "planted" not in CHECKED

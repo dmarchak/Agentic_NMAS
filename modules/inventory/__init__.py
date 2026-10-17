@@ -372,8 +372,10 @@ def _record_stale_devices(list_name: str, current_devices: list,
         os.replace(tmp, path)
     except OSError as exc:
         log.warning("inventory: could not record stale devices for '%s': %s", list_name, exc)
-
-    _close_stale_sessions(list(known))
+    # No pooled session is swept here any more: the one long-lived pool, app.py's for today's
+    # /run_command, left with that route at 7.8 (P7-22, 2026-10-17). drift_check, the
+    # pipeline and NetBox's cable read build theirs per run, and every other session is opened
+    # per operation, so a stale device holds no session past the run that opened it.
 
 
 def _previous_ips(list_name: str) -> dict:
@@ -428,43 +430,3 @@ def stale_message(device_ip: str, list_name: str = "") -> str:
     return (f"{hostname} ({device_ip}) is no longer in NetBox for this list, so Mercury "
             "will not act on it. Its golden configs and backups are still available. "
             "Re-add it in NetBox, or adjust the list's filters, to make it active again.")
-
-
-#: Module-level connection pools to sweep, as ``(module, pool_attr, lock_attr)``.
-#: Only app.py holds a long-lived pool. drift_check and pipeline build theirs as
-#: function locals that die with the run, so a stale device cannot keep a session
-#: alive there and there is nothing to sweep.
-_POOLS = (
-    ("app", "connections", "lock"),
-)
-
-
-def _close_stale_sessions(stale_ips: list) -> None:
-    """Close pooled SSH sessions for stale devices (amendment 4).
-
-    A stale device must not keep an open session: it is no longer part of the
-    list, and holding the socket would let background workers keep talking to it.
-    """
-    if not stale_ips:
-        return
-    import importlib
-
-    from modules.connection import close_persistent_connection
-
-    for module_name, pool_attr, lock_attr in _POOLS:
-        try:
-            module = importlib.import_module(module_name)
-        except Exception:                      # noqa: BLE001 - module may not be loaded
-            continue
-        pool = getattr(module, pool_attr, None)
-        lock = getattr(module, lock_attr, None)
-        if not isinstance(pool, dict) or lock is None:
-            continue
-        for ip in stale_ips:
-            if ip in pool:
-                try:
-                    close_persistent_connection(ip, pool, lock)
-                    log.info("inventory: closed %s session for stale device %s",
-                             module_name, ip)
-                except Exception as exc:       # noqa: BLE001
-                    log.debug("inventory: could not close session for %s: %s", ip, exc)

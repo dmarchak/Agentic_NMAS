@@ -267,5 +267,8 @@ class TestTheShippedClient:
         assert out["disabled"] and "refused" in out["text"]
 
     def test_the_device_page_offers_it(self):
-        page = open(os.path.join(ROOT, "templates", "device.html"), encoding="utf-8").read()
-        assert 'onclick="openRetire(this.dataset.hostname)"' in page
+        """v2's device page's Actions menu (today's device page's Retire… button until it
+        left at 7.8, P7-22)."""
+        menu = open(os.path.join(ROOT, "templates", "v2", "_actions_menu.html"),
+                    encoding="utf-8").read()
+        assert "hx-get=\"{{ url_for('device_v2.retire'," in menu
