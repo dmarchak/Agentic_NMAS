@@ -441,7 +441,12 @@ Wait until it is Established again. **What it decides:**
 - Down at about 180 s: exactly C178's case. A verify reading at 10 s would have passed, and the
   hold watch exists for this.
 
-**5.3 Deploy 2: the break that rolls back (C117).** Edit intent again: add `shutdown` under
+**5.3 Deploy 2: the break that rolls back (C117).** *Superseded 2026-10-17 (C1122): since C506,
+shutting Loopback1 is an expected effect of the program and the BGP session sourced from it is
+derived as an expected drop, so verify passes it and nothing rolls back. A break that still
+rolls back is a session shut by a line verify does not expect, `neighbor <peer> shutdown` under
+`router bgp`: docs/walks/W4.md section K walks it. The steps below are the 2026-10-05 run's, as
+it ran.* Edit intent again: add `shutdown` under
 `interface Loopback1`. Commit. **Plan a deploy…**:
 - the program is `interface Loopback1` / ` shutdown`;
 - the line is dangerous, so authorise it with a reason (at least three words, for example

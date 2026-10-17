@@ -1293,7 +1293,12 @@ button[data-refused]::after { content: " (" attr(data-refused) ")"; font-weight:
 .set-checks { margin-top: 12px; }
 .set-steps, .set-order { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column;
   gap: 5px; font-size: 13px; }
-.set-steps li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+/* A row is its badge, then its words: the badge's column is 76 px and grows to a wider badge
+   ("not established" overlapped its text at 76 px: C1116). A row with no badge (a program's
+   plain lines, NetBox's plans) is one block: in the badge column it was a word wide (C1115). */
+.set-steps li { display: grid; grid-template-columns: minmax(76px, max-content) minmax(0, 1fr);
+  gap: 10px; align-items: baseline; }
+.set-steps li:not(:has(> .badge)) { display: block; }
 .set-order { list-style: decimal; padding-left: 20px; }
 @media (max-width: 640px) {
   .scope-item { border-right: none; border-bottom: 1px solid var(--line-2); flex: 1 1 100%; }

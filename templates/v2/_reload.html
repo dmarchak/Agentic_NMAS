@@ -81,7 +81,13 @@
     <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
     {%- if c.alerts %}<p class="notice notice-warn" id="reload-not-silenced">{{ icon('warn', 16) }} {{ c.alerts }}. Its alerts fired as for an outage: tell whoever they page that this was the planned reload.</p>{% endif %}
-    <ol class="set-steps">{% for s in r.steps %}<li>{{ badge('done' if s.ok else 'stopped', 'ok' if s.ok else 'danger') }} <span>{{ s.step }}: {{ s.detail }}</span></li>{% endfor %}</ol>
+    <ol class="set-steps">{% for s in r.steps %}<li>{{ badge('done' if s.ok else 'stopped', 'ok' if s.ok else 'danger') }} <span>{{ s.step }}: {{ s.detail }}</span></li>{% endfor %}
+      {#- The record, the stepper's sixth step (C1067), with its commit or why it has none
+          (C1105: a record written and not committed was not said). -#}
+      {%- if r.record %}{% set rc = r.record %}<li>
+      {%- if not rc.ok %}{{ badge('stopped', 'danger') }} <span>record: not written: {{ rc.error }}</span>
+      {%- elif rc.commit_error %}{{ badge('NOT committed', 'warn') }} <span>record: written, NOT committed: {{ rc.commit_error }}</span>
+      {%- else %}{{ badge('done', 'ok') }} <span>record: written and committed{% if rc.commit %} (commit <span class="mono">{{ rc.commit[:7] }}</span>){% endif %}</span>{% endif %}</li>{% endif %}</ol>
     {%- if r.error %}<p>{{ r.error }}</p>{% endif %}
     <p>By {{ r.by or 'nobody recorded' }}, {% if r.at %}{{ stamp(r.at) }}, {% endif %}because &ldquo;{{ r.reason }}&rdquo;.{% if r.window %} The planned-restart window ran from {{ stamp(r.window['from']) }} to {{ stamp(r.window['until']) }}.{% endif %}</p>
     {%- if r.record and not r.record.ok %}<p class="notice notice-warn">{{ icon('warn', 16) }} The reload's record was not written ({{ r.record.error }}): the restart is still in History.</p>{% endif %}</div></div>

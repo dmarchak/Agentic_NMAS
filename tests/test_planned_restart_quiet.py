@@ -642,6 +642,37 @@ class TestASilenceThatFailsNeverStopsTheReload:
         assert "Grafana's alerts were NOT silenced during this reload" in words, words
         assert why in words, words
 
+    def test_what_happened_draws_the_record_step_as_the_stepper_has_it(self, run_lab):
+        """C1067 (W2 and W3: What happened listed 5 lines against the stepper's 6, no record)
+        and C1105 (a record written and NOT committed was not said): the record is the last
+        line, with its commit, or why it was not committed."""
+        import html as html_mod
+
+        import flask
+
+        import app as A
+        from modules import device_actions
+        from modules.nsot import listref, reload_op
+        out = _run(run_lab)
+
+        def words(p):
+            card = device_actions.reload_job_card(
+                listref.resolve("Lab"), "r2", "job-1",
+                {"state": "done", "kind": "reload", "payload": p})
+            with A.app.test_request_context("/v2/device/r2"):
+                page = flask.render_template("v2/_reload.html", c=card)
+            items = re.findall(r"<li>(.*?)</li>", re.search(
+                r'<ol class="set-steps">(.*?)</ol>', page, re.S).group(1), re.S)
+            return [html_mod.unescape(re.sub(r"<[^>]+>", " ", i)).split() for i in items]
+        lines = words(out)
+        assert len(lines) == len(reload_op.STEPS), lines
+        assert " ".join(lines[-1]).startswith("done record: written and committed"), lines[-1]
+        assert out["record"]["commit"][:7] in " ".join(lines[-1])
+        lines = words(dict(out, record={"ok": True, "commit": "",
+                                        "commit_error": "the repository lock was held"}))
+        assert " ".join(lines[-1]) == ("NOT committed record: written, NOT committed: the "
+                                       "repository lock was held"), lines[-1]
+
     def test_the_control_a_silence_set_keeps_the_card_green_and_says_nothing(self, run_lab):
         from modules import device_actions
         from modules.nsot import listref
