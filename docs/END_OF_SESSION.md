@@ -1,5 +1,34 @@
 # End of session: where Phase 7 stands
 
+## NIGHT, 2026-10-17 (to about 03:40 UTC; 21:40 UTC−6): W2's A1 and B1 to B9 fixed and deployed
+
+**The host runs cef98d32** (deployed 03:22:25 UTC after the hold check, CI #875; before it
+ae8175bd). Every fix the operator's W2 report named is committed, CI green, deployed:
+
+| Item | Register | Commit |
+|---|---|---|
+| A1: a page's network lost after its first render | C1022 (and C873, C874, C1077) | ed75c7ec |
+| B2: read-only operations recorded "unauthenticated" | C1024 | 202ecb26 |
+| B3 to B5: a planned reload quiet, its restart found, its record committed | C1025 to C1027 | 977006fa |
+| B6, B7: History is the network's own; a deleted network stays deleted | C1028, C1029, C1074 | b9fe9c42 |
+| B8, B9: NetBox on History; Remove only over an established reach | C1030, C932 | 24bf6922 |
+| B1: a form's submit button busy on itself | C1023 | cef98d32 |
+
+Read on the host after the deploy, by GETs through the app's test client (nothing sent to a
+device or NetBox): the deleted W2 walk's Settings page answers 410 with when, by whom and
+`lists_removed/w2_walk-20261016T234131Z`; `data/lists/w2_walk` (the empty folder C1074's read
+made) removed with `rmdir`, and not made again by the reads; History's addresses carry
+`list=` but for the network-free six (picker, label, help panels); the remote header reads
+"not committed" beside W2's uncommitted `.nsot/reloads.jsonl` (the next reload's record
+commits it); the NetBox import d0d4031f77 is a row of the timeline's NetBox kind; the served
+`nmas_v2.js` holds a form's submitter.
+
+**Cutover-blocking rows left: 4.** A 2: C553, C650. B 2: C148; C1097 (new: Remove from NetBox
+is never offered on this lab until six types' cascades are measured, writes on the lab's
+NetBox). **Waiting on the operator:** CLAUDE.md's busy rule names only Update and About's
+test; paste-ready lines are in the night's report. **Next:** W3, written from
+docs/walks/W3-NOTES.md ("What W3 must walk from W2's fixes" first); the C items of W2 batched.
+
 ## EVENING, 2026-10-15: PRIORITY RESET, Phase 7 first (the operator)
 
 - **Mutation testing is PARKED** once the coverage-map freshness commit lands (the last
