@@ -1,5 +1,18 @@
 # End of session: where Phase 7 stands
 
+## NIGHT, 2026-10-17, later (to about 04:30 UTC; 22:30 UTC−6): the W2 follow-up, W3 written
+
+**The host runs fecab2f7** (deployed 04:13:07 UTC after the hold check, CI #876): Mercury's
+Grafana writes recorded and drawn under History's "Grafana writes", silences read back and
+expired by id, and a reload whose silence fails badged amber and saying so. C1089 measured and
+closed (the operator raised the token's account to Editor; set, read, expired, read again on the
+host as the operator). C1097 demoted to C by the operator. CLAUDE.md's busy rule committed.
+**Cutover-blocking rows: 3** (A: C553, C650; B: C148). **W3's script is ready:**
+docs/walks/W3.md, 49 steps, about 2 h 30 min, the release fecab2f7 or later; the agent's
+read-only host read is owed the day of the sitting. It does not walk the burn-down's other W3
+items (onboarding, adopt, revert and retry: CUTOVER rows 52, 58, 59 and C148): a sitting of
+their own.
+
 ## NIGHT, 2026-10-17 (to about 03:40 UTC; 21:40 UTC−6): W2's A1 and B1 to B9 fixed and deployed
 
 **The host runs cef98d32** (deployed 03:22:25 UTC after the hold check, CI #875; before it
