@@ -80,6 +80,7 @@
   <div class="op-hd"><h2 id="op-title">Reload {{ c.host }} {{ badge(c.chip, c.level) }}</h2>
     <div class="op-hd-actions">{{ how('reload') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
+    {%- if c.alerts %}<p class="notice notice-warn" id="reload-not-silenced">{{ icon('warn', 16) }} {{ c.alerts }}. Its alerts fired as for an outage: tell whoever they page that this was the planned reload.</p>{% endif %}
     <ol class="set-steps">{% for s in r.steps %}<li>{{ badge('done' if s.ok else 'stopped', 'ok' if s.ok else 'danger') }} <span>{{ s.step }}: {{ s.detail }}</span></li>{% endfor %}</ol>
     {%- if r.error %}<p>{{ r.error }}</p>{% endif %}
     <p>By {{ r.by or 'nobody recorded' }}, {% if r.at %}{{ stamp(r.at) }}, {% endif %}because &ldquo;{{ r.reason }}&rdquo;.{% if r.window %} The planned-restart window ran from {{ stamp(r.window['from']) }} to {{ stamp(r.window['until']) }}.{% endif %}</p>

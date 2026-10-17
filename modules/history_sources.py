@@ -908,6 +908,42 @@ def credential_profiles(ctx):
                  for r in reversed(got["rows"]) if _recent(ctx, r.get("at"))])
 
 
+#: A Grafana write's action, as a row says it.
+_GRAFANA_VERBS = {"silence_set": "set", "silence_moved": "moved", "silence_expired": "expired"}
+
+
+def grafana_writes(ctx):
+    """Each write Mercury sent to Grafana (a silence set, moved or expired, C1089): who it was
+    for, the silence, its matchers and Grafana's answer, a refused one in danger. A row names
+    the network whose Grafana client sent it (a planned-restart window's); one naming none is
+    the installation's own, drawn on every network as app updates are. Never one device's."""
+    from modules import grafana_writes as gw
+    if ctx["device"]:
+        return _out()
+    got = gw.entries()
+    if got["error"]:
+        return _out(errors=[f"the Grafana write record could not be read: {got['error']}"])
+
+    def what(r):
+        verb = _GRAFANA_VERBS.get(r.get("action"), r.get("action") or "?")
+        target = ", ".join(r.get("matchers") or []) or r.get("silence_id") or "?"
+        until = (f" until {r['ends_at']}" if r.get("ends_at")
+                 and r.get("action") != "silence_expired" else "")
+        return (f"Grafana silence {verb}: {target}{until}" if r.get("ok") else
+                f"Grafana silence NOT {verb}: {target}: {r.get('error') or 'no reason recorded'}")
+    return _out([_event(r.get("at"), "grafana", what(r), [],
+                        who=_who(r.get("by", ""), r.get("verified", "")),
+                        outcome="done" if r.get("ok") else "failed",
+                        record=[("Silence", r.get("silence_id")),
+                                ("Matchers", ", ".join(r.get("matchers") or [])),
+                                ("Ends", r.get("ends_at")), ("Asked by", r.get("via")),
+                                ("Reason", r.get("comment")),
+                                ("Network", r.get("network") or "the installation's"),
+                                ("Grafana's answer", r.get("error") or "taken")])
+                 for r in reversed(got["rows"])
+                 if r.get("network") in (ctx["ref"].name, None, "") and _recent(ctx, r.get("at"))])
+
+
 def topology_expected(ctx):
     """Each island declared expected on Topology, or withdrawn: who, which device, why."""
     from modules import topology_expected as TE
@@ -1353,7 +1389,7 @@ SOURCES = {
     "reloads": reloads, "credential_profiles": credential_profiles,
     "topology_expected": topology_expected, "topology_layout": topology_layout,
     "saved_views": saved_views, "reveals": reveals, "host_keys": host_keys,
-    "netbox": netbox,
+    "netbox": netbox, "grafana_writes": grafana_writes,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -1382,6 +1418,7 @@ KIND_GROUPS = (
                                ("decisions", "Baseline decisions", ("decision",)),
                                ("updates", "App updates", ("update",)),
                                ("netbox", "NetBox imports and removals", ("netbox",)),
+                               ("grafana", "Grafana writes", ("grafana",)),
                                ("show_commands", "Show commands", ("show_commands",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}

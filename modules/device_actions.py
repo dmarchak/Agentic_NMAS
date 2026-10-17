@@ -372,7 +372,19 @@ def reload_job_card(ref, host: str, job_id: str, got, may: dict = None) -> dict:
                     can=bool(may.get("may")) and not p.get("failing"))
     chip, level = RELOAD_WORDS.get(p.get("outcome", ""),
                                    (f"Not reloaded: {p.get('outcome') or 'no outcome'}", "warn"))
-    return dict(card, state="result", r=p, chip=chip, level=level)
+    # A window whose Grafana silence could not be set (the token refused, Grafana down): the
+    # reload went ahead and its alerts fired as an outage's would, so the card says so plainly
+    # and is never green over it (the operator, 2026-10-17).
+    window = p.get("window") or {}
+    alerts = ""
+    if (window.get("silence") or {}).get("state") == "failed":
+        words = window.get("silence_words") or ""
+        alerts = ("Grafana's alerts were NOT silenced during this reload: "
+                  + (words.split(": ", 1)[1] if words.startswith("Grafana's alerts are NOT "
+                                                                  "silenced: ") else
+                     words or "no reason was recorded"))
+        level = "warn" if level == "ok" else level
+    return dict(card, state="result", r=p, chip=chip, level=level, alerts=alerts)
 
 
 def _iso(epoch: float) -> str:

@@ -20,7 +20,7 @@ Shots: the board at 1280; the tab at 1280, 1440 and 390, its rows closed (`tab-h
 and the newest opened (`tab-history-open`).
 Compared 2026-10-16.
 Templates compared: templates/v2/_history.html, templates/v2/_timeline.html
-Templates sha256: `c0c9a64a192770fc1acd61e1b3536e3c9ee893b2dbd8dac60a41ed10f2c9591c`
+Templates sha256: `f31a10073c4d25bda457f183ae439b3ae1f1860d9a8b290e25bda3504ff17756`
 
 Compared again 2026-10-16 (C957) after `_timeline.html` gained one state: on a network with no
 repository yet, the tab draws one muted notice above the rows, "No repository yet: the
@@ -37,6 +37,13 @@ rendered from `timeline_rows` as they were and as they are, for 648 rows (every 
 before, each with eight outcomes and three marks, half with a device): every byte the same.
 No region's verdict changed.
 Templates sha256 before: `db142f8ca85199c4ea2711c17bbd123ae0f2abceb54ff78158b9d7e4fb3a434e`.
+
+Compared again 2026-10-17 (C1089) after `_timeline.html` gained the Grafana kind: "Grafana" in
+words, a refused write in danger. Mercury's Grafana writes are the network's or the
+installation's record, so no device's tab draws one (`history_sources.grafana_writes` reads
+nothing for a device). The rows rendered from `timeline_rows` as they were and as they are, for
+672 rows (every kind drawn before, NetBox among them, each with eight outcomes and three marks,
+half with a device): every byte the same. No region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

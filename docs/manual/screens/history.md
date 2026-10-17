@@ -61,7 +61,9 @@ Filters:
     runs cut off midway, and authorised retries.
   - **What happened to a device:** restarts and planned windows.
   - **Decisions and records:** approvals, acknowledgements, break-glass exports, reveals,
-    baseline decisions, app updates, and NetBox imports and removals.
+    baseline decisions, app updates, NetBox imports and removals, and Grafana writes (each
+    silence Mercury set, moved or expired in Grafana, for whom, with Grafana's answer; one
+    Grafana refused is drawn in red).
 - **Since.**
 
 **Every kind** and **Commits only** are one click away. Each filter is part of the page's

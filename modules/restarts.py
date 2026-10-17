@@ -60,6 +60,11 @@ ATTENTION_DAYS = 7
 #: Grafana alert history gives the clear time itself.
 SETTLE_SECONDS = 1140
 
+#: How a window's silence names its person in Mercury's Grafana write record (C1089): the
+#: window keeps who declared it, not how they were established, so the record says whose
+#: window it is rather than guess a verification.
+WINDOW_PERSON = "the planned-restart window's declarer"
+
 _REASON = re.compile(r"^\s*Last reload reason:\s*(.+?)\s*$", re.M | re.I)
 _RETURNED = re.compile(r"^\s*System returned to ROM by\s+(.+?)\s*$", re.M | re.I)
 _CRASH = re.compile(r"check\s+((?:bootflash|flash|harddisk|crashinfo):\S*crashinfo\S*)", re.I)
@@ -296,7 +301,9 @@ def silence_window(p: dict, now: float = None) -> dict:
     done, errors = [], []
     for matchers in sets:
         got = client.put_silence(matchers=matchers, starts_at=starts_at, ends_at=_iso(end),
-                                 created_by=p.get("by", ""), comment=comment)
+                                 created_by=p.get("by", ""), comment=comment,
+                                 via=f"planned-restart window ({p.get('via') or 'declared'})",
+                                 verified=WINDOW_PERSON)
         words = f"{matchers[0]['name']}=~{matchers[0]['value']}"
         if got.get("ok"):
             done.append({"id": got["id"], "matcher": words, "starts_at": starts_at,
@@ -353,6 +360,7 @@ def _move_silences(p: dict, ends: float, why: str) -> list:
         got = client.put_silence(matchers=[{"name": name, "value": value, "isRegex": True}],
                                  starts_at=s.get("starts_at", ""), ends_at=ends_at,
                                  created_by=p.get("by", ""), silence_id=s.get("id", ""),
+                                 via="planned-restart window ended", verified=WINDOW_PERSON,
                                  comment=f"Mercury planned-restart window: {p.get('why', '')}"
                                          f" ({why})")
         out.append({"id": got.get("id") or s.get("id"), "was": s.get("id"),

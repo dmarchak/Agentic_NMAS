@@ -29,6 +29,7 @@ record is committed through the one commit path, which publishes, and the header
 
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -66,6 +67,32 @@ class _Alertmanager(BaseHTTPRequestHandler):
         srv.silences[sid] = body
         self._answer(202, {"silenceID": sid})
 
+    _ONE = "/api/alertmanager/grafana/api/v2/silence/"
+
+    def do_GET(self):                                # noqa: N802
+        """One silence by its id, as Alertmanager's v2 API answers it (C1089's read)."""
+        srv, sid = self.server, self.path[len(self._ONE):]
+        if not self.path.startswith(self._ONE) or sid not in srv.silences:
+            self._answer(404, {"message": "silence not found"})
+            return
+        body = srv.silences[sid]
+        self._answer(200, dict(body, id=sid, status={
+            "state": "expired" if sid in srv.expired else "active"}))
+
+    def do_DELETE(self):                             # noqa: N802
+        """Expire one silence by its id (C1089's second write); a set *status* refuses."""
+        srv, sid = self.server, self.path[len(self._ONE):]
+        srv.calls.append({"path": self.path, "method": "DELETE",
+                          "auth": self.headers.get("Authorization", "")})
+        if srv.status != 200:
+            self._answer(srv.status, {"message": "permissions to expire silences"})
+            return
+        if not self.path.startswith(self._ONE) or sid not in srv.silences:
+            self._answer(404, {"message": "silence not found"})
+            return
+        srv.expired.add(sid)
+        self._answer(200, {})
+
     def _answer(self, status, doc):
         data = json.dumps(doc).encode()
         self.send_response(status)
@@ -83,7 +110,7 @@ def grafana(monkeypatch, tmp_path):
 
     monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _Alertmanager)
-    srv.calls, srv.silences, srv.status = [], {}, 200
+    srv.calls, srv.silences, srv.status, srv.expired = [], {}, 200, set()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{srv.server_address[1]}"
 
@@ -352,6 +379,172 @@ class TestTheReloadEndsItsWindow:
         assert len(run_lab["grafana"].calls) == 2, "a silence moved for a reload not back"
         (p,) = R.planned_rows()
         assert R.window_end(p, R.ends()) == R._epoch(p["until"])
+
+
+class TestMercurysGrafanaWritesAreRecorded:
+    """C1089 (the operator, 2026-10-17): every write Mercury sends to Grafana is recorded,
+    whoever it was for and whatever Grafana answered, and History draws it under "Grafana
+    writes"; a silence can be read back by its id and expired by it, as a person with a
+    reason."""
+
+    class Ref:
+        name = "Default"
+
+    def _drawn(self, network="Default"):
+        from modules import history_sources as H
+        ref = type("Ref", (), {"name": network})
+        return H.grafana_writes({"ref": ref, "limit": 50, "device": "", "since": None})
+
+    def test_a_windows_silences_are_recorded_as_its_person_and_drawn(self, grafana):
+        from modules import grafana_writes as gw
+        _declare(time.time())
+        rows = gw.entries()["rows"]
+        assert [r["action"] for r in rows] == ["silence_set", "silence_set"], rows
+        assert all(r["by"] == OPERATOR and r["ok"] and r["silence_id"] for r in rows)
+        assert all(r["via"] == "planned-restart window (reload)" for r in rows)
+        assert sorted(r["matchers"][0] for r in rows) == [
+            r"device=~r6", r"instance=~(192\.0\.2\.32)(:[0-9]+)?"]
+        events = self._drawn()["events"]
+        assert len(events) == 2 and all(e["kind"] == "grafana"
+                                        and e["who"].startswith(OPERATOR)
+                                        and e["outcome"] == "done" for e in events), events
+        assert all(e["what"].startswith("Grafana silence set: ") for e in events)
+
+    def test_a_refused_write_is_recorded_and_drawn_as_failed(self, grafana):
+        from modules import grafana_writes as gw
+        grafana.status = 403
+        _declare(time.time())
+        rows = gw.entries()["rows"]
+        assert len(rows) == 2 and not any(r["ok"] for r in rows), rows
+        assert all("HTTP 403" in r["error"] for r in rows)
+        events = self._drawn()["events"]
+        assert all(e["outcome"] == "failed" and e["what"].startswith("Grafana silence NOT set:")
+                   for e in events), events
+
+    def test_set_read_back_and_expired_by_its_id_each_recorded(self, grafana):
+        """The C1089 probe's shape: a silence on a label value no alert carries, read back,
+        expired, read again."""
+        from modules import grafana_writes as gw
+        client = R._grafana("")
+        now = time.time()
+        made = client.put_silence(
+            matchers=[{"name": "device", "value": "nmas-probe-matches-no-device",
+                       "isRegex": False}],
+            starts_at=R._iso(now), ends_at=R._iso(now + 600), created_by=OPERATOR,
+            comment="the token's write permission, checked", verified="instructed",
+            via="the C1089 check")
+        assert made["ok"], made
+        read = client.get_silence(made["id"])
+        assert read["ok"] and read["silence"]["state"] == "active", read
+        assert read["silence"]["matchers"] == ["device=nmas-probe-matches-no-device"]
+        gone = client.expire_silence(made["id"], by=OPERATOR, reason="the check is done",
+                                     verified="instructed", via="the C1089 check")
+        assert gone["ok"], gone
+        assert client.get_silence(made["id"])["silence"]["state"] == "expired"
+        rows = gw.entries()["rows"]
+        assert [(r["action"], r["silence_id"], r["by"], r["ok"]) for r in rows] == [
+            ("silence_set", made["id"], OPERATOR, True),
+            ("silence_expired", made["id"], OPERATOR, True)]
+        whats = [e["what"] for e in self._drawn("Any network")["events"]]
+        assert whats[0].startswith("Grafana silence expired: ") and \
+            whats[1].startswith("Grafana silence set: device=nmas-probe-matches-no-device"), \
+            "the installation's own writes are drawn on every network"
+
+    def test_an_expire_without_a_person_a_reason_or_an_id_sends_nothing(self, grafana):
+        from modules import grafana_writes as gw
+        client = R._grafana("")
+        for kw in ({"by": "", "reason": "r"}, {"by": OPERATOR, "reason": " "}):
+            got = client.expire_silence("sil-1", **kw)
+            assert got["error"].startswith("refused before sending"), got
+        got = client.expire_silence("../silences", by=OPERATOR, reason="r")
+        assert got["error"].startswith("refused before sending"), got
+        assert grafana.calls == [] and gw.entries()["rows"] == []
+
+    def test_a_refused_expire_is_recorded_as_not_done(self, grafana):
+        from modules import grafana_writes as gw
+        grafana.status = 403
+        got = R._grafana("").expire_silence("sil-9", by=OPERATOR, reason="the check is done")
+        assert not got["ok"] and "HTTP 403" in got["error"]
+        (row,) = gw.entries()["rows"]
+        assert row["action"] == "silence_expired" and not row["ok"] and row["by"] == OPERATOR
+
+    def test_a_window_of_another_network_is_not_drawn_here(self, grafana, monkeypatch):
+        from modules import grafana_writes as gw
+        gw.record(action="silence_set", by=OPERATOR, ok=True, silence_id="s-x",
+                  network="Branch")
+        assert self._drawn("Default")["events"] == []
+        assert len(self._drawn("Branch")["events"]) == 1
+
+
+class TestASilenceThatFailsNeverStopsTheReload:
+    """The operator, 2026-10-17: if the silence cannot be set at a reload (the token revoked,
+    Grafana down, its role lowered), the reload still goes ahead, and its card and its record
+    say plainly that the alerts were not silenced and why. Never green over it."""
+
+    def _down(self, monkeypatch):
+        """Grafana not answering: the window's client pointed at a loopback port nothing
+        listens on."""
+        import socket
+
+        from modules.integrations.grafana import GrafanaIntegration
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        url = f"http://127.0.0.1:{sock.getsockname()[1]}"
+        sock.close()
+
+        class Down(GrafanaIntegration):
+            @property
+            def url(self):
+                return url
+
+            def _secret(self, key, default=""):
+                return "test-token"
+        monkeypatch.setattr(R, "_grafana", lambda list_name: Down(list_name=""))
+
+    @pytest.mark.parametrize("failure, why", [("refused", "HTTP 403"),
+                                              ("down", "Grafana did not answer")])
+    def test_the_reload_runs_and_its_card_and_record_say_the_alerts_were_not_silenced(
+            self, run_lab, monkeypatch, failure, why):
+        import flask
+
+        import app as A
+        from modules import device_actions
+        from modules.nsot import listref, reload_op
+        if failure == "refused":
+            run_lab["grafana"].status = 403
+        else:
+            self._down(monkeypatch)
+        out = _run(run_lab)
+        assert run_lab["sent"] == ["reload"], "the reload did not go ahead"
+        assert out["outcome"] == "reloaded", out
+        # The record: the reload's row keeps the window's silence, failed, and why.
+        rows = [json.loads(line) for line in open(reload_op.records_path(
+            reload_op._repo("Lab")), encoding="utf-8")]
+        assert rows[-1]["window"]["silence"]["state"] == "failed", rows[-1]
+        assert rows[-1]["window"]["silence_words"].startswith(
+            "Grafana's alerts are NOT silenced: ") and why in rows[-1]["window"]["silence_words"]
+        # The card: never green over it, and it says so in words, with why.
+        card = device_actions.reload_job_card(
+            listref.resolve("Lab"), "r2", "job-1",
+            {"state": "done", "kind": "reload", "payload": out})
+        assert card["level"] == "warn", card
+        with A.app.test_request_context("/v2/device/r2"):
+            html = flask.render_template("v2/_reload.html", c=card)
+        notice = re.search(r'<p class="notice notice-warn"[^>]*>.*?</p>', html, re.S)
+        assert notice, html
+        import html as html_mod
+        words = html_mod.unescape(re.sub(r"<[^>]+>", "", notice.group(0)))
+        assert "Grafana's alerts were NOT silenced during this reload" in words, words
+        assert why in words, words
+
+    def test_the_control_a_silence_set_keeps_the_card_green_and_says_nothing(self, run_lab):
+        from modules import device_actions
+        from modules.nsot import listref
+        out = _run(run_lab)
+        card = device_actions.reload_job_card(
+            listref.resolve("Lab"), "r2", "job-1",
+            {"state": "done", "kind": "reload", "payload": out})
+        assert card["level"] == "ok" and not card.get("alerts"), card
 
 
 def _run_not_back(run_lab):

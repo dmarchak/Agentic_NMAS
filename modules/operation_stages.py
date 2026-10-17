@@ -451,6 +451,9 @@ HISTORY = {
 #: and the break-glass export's reveal route. Each says which.
 WRITTEN_ELSEWHERE = {
     "interrupted": "a process that ended while it held the device (device_ops)",
+    "grafana_writes": "every write Mercury sends to Grafana, recorded by the integration that "
+                      "sends it (modules/integrations/grafana.py: a silence set, moved or "
+                      "expired), whoever it was for",
     "breakglass": "the break-glass export, a reveal route (routes/breakglass.py)",
     # The fleet's own records (C369, board D): about no one device, read by the one timeline.
     "commits": "a commit touching no device's golden or intent: the monitoring profile, the "

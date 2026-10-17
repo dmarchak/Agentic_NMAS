@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `4ce66ade2512e836f3ae655a186363fe65f562c3d3caaf84cd9589c029e81611`
+Templates sha256: `1853be7cc70b37fa4be36ddfb37c0e0f6750031f7123944642454ea817765cd5`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -90,6 +90,15 @@ deviation). The rows rendered from `timeline_rows` and the card as they were and
 for 648 rows (every kind drawn before, each with eight outcomes and three marks, half with a
 device, with an error line): every byte the same, but the card's `hx-trigger`, which gains
 `nmas:netbox from:body`. No region's verdict changed.
+
+Compared again 2026-10-17 (C1089) after `_timeline.html` gained one kind, Mercury's Grafana
+writes: "Grafana" in words (muted), and a write Grafana refused in danger, as every other kind's
+failure; the Kind menu gains "Grafana writes" under Decisions and records
+(`history_sources.KIND_GROUPS`, not a template). No board or shot draws a Grafana row, as none
+drew a NetBox row (the Kind menu's deviation). The rows rendered from `timeline_rows` and the card
+with the template as it was and as it is, for 672 rows (every kind drawn before, NetBox now
+among them, each with eight outcomes and three marks, half with a device, with an error line):
+every byte the same. No region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).
