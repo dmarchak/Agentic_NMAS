@@ -55,9 +55,9 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 |---|---|---|
 | ~~C794: Loki's own `detected_level` off~~ | H | **done by the operator, 2026-10-16 ~19:36 UTC: PASS (10 of 10)**; and C964's `nmas-device` re-import done, its JSON model free of lab names, r1's panels drawn with data in Grafana and on Mercury's Monitoring page |
 | ~~C553: `clab-sync.path`~~ | H | **installed** on the NMAS host (read 2026-10-16: active, enabled, identical to a fresh render); the walk showing the sync start remains (W2's script did not carry it: W3) |
-| C549 (3): the Update confirm, in the root-owned updater | H | waits on the operator's reading of what the page drew (the row) |
-| C663: move `scripts/nmas-host` | CLAUDE.md paste | the operator's file |
-| C296: batch preview empty bullets | — | recommended: close as not reproduced |
+| C549 (3): the Update confirm, in the root-owned updater | H | **decided 2026-10-17:** closes at the operator's next Update from the page |
+| ~~C663: move `scripts/nmas-host`~~ | — | **closed 2026-10-17**, the operator's decision: it stays where it is |
+| ~~C296: batch preview empty bullets~~ | — | **closed 2026-10-17** as not reproduced, the operator's decision |
 
 ## 2. The agent's items, in order (independent ones in parallel)
 
@@ -126,8 +126,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C1136~~ | ~~History's header names uncommitted paths without what each means~~ **done 2026-10-17** (each path with what it is and what clears it; history.md compared again) | | | | |
 | ~~P7-22~~ | ~~(7) today's device page (`/device/<ip>`, `/run_command`, `/deploy/receipts`)~~ **removed 2026-10-17** (restore tag `pre-remove/v1-device`; run_command's MISSING, HISTORY_MISSING and PENDING entries gone; C1127 and C1128, receipts masked on the way out, fixed with it; walked by GETs on the host after its deploy) | | | | |
 | ~~P7-23~~ | ~~(8a) template and intent editors~~ **removed 2026-10-17** (restore tag `pre-remove/v1-editors`; the vendored CodeMirror with them; C33 closed, the last GET that wrote; walked by GETs on the host after its deploy) | | | | |
-| P7-24 | (8b) device-action JSON (capture, seed, revert, retry, profile, persist, rotate, retire) | removed | M | W4 (the operator, 2026-10-17: waits on W4 and the operator), P7-22 | — |
-| P7-25 | (8c) deploy wizard, onboarding, inventory source | removed | M–L | W1, W4 (waits on W4 and the operator) | — |
+| P7-24 | (8b) device-action JSON (capture, seed, revert, retry, profile, persist, rotate, retire) | removed | M | W4 passing its steps for these actions (the operator's go, 2026-10-17, conditional on that), P7-22; prepared as a tagged branch during W4, merged after it | — |
+| P7-25 | (8c) deploy wizard, onboarding, inventory source | removed | M–L | W1, W4 passing its onboarding and adopt steps (the operator's go, 2026-10-17, conditional on that); prepared as a tagged branch during W4, merged after it | — |
 | ~~P7-26~~ | ~~(8d) networks; the global active list frozen~~ **removed 2026-10-17** (restore tag `pre-remove/v1-networks`; nothing sets the installation's `current_list` now; C1138, v2's delete guarding NetBox's record, fixed with it; walked by GETs on the host after its deploy) | | | | |
 | P7-27 | (9) the pages: `/` (302 to `/v2/`), `/attention`, `index.html`, `base.html`, the last partials and scripts, vendored Bootstrap; `test_no_new_v1_capability` becomes "nothing outside templates/v2" | criteria 1, 2, 16 close; the v1 ceilings at 0 | M | all above | — |
 
@@ -146,7 +146,9 @@ the four W4 screens' records: W4, then the agent); C148 (B, onboarding through d
 rollback: W4 sections G to L). **Left:** P7-21, P7-22, P7-23, P7-26 (the agent, tonight); W4 (the
 operator); after W4, P7-24 and P7-25 (waiting on W4 and the operator), then P7-27; the
 closing entries of 7.3, 7.4, 7.D and 7.8. The operator's three: C549 (3), C663, C296 (section
-1c).
+1c). **Decided 2026-10-17 (morning):** C663, C296 and C1126 closed; C549 (3) closes at the
+operator's next Update from the page; C1142 and C1130 after cutover; P7-24 and P7-25 go,
+conditional on W4 passing their steps; P7-27 waits for the operator's word.
 
 ## 3. The shrinking lists (distance to cutover)
 
