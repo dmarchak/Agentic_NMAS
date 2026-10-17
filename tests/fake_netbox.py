@@ -56,6 +56,40 @@ _SCOPE_STORE = {"dcim.site": "dcim/sites", "dcim.region": "dcim/regions",
                 "dcim.sitegroup": "dcim/site-groups", "dcim.location": "dcim/locations"}
 
 
+#: A cable filter on one end -> the field holding that end's terminations. NetBox 4.x's
+#: ``CableFilterSet`` matches ``termination_a_id`` against any termination on end A, whatever its
+#: type; a cable is stored with ``a_terminations``/``b_terminations``, each a list of
+#: ``{object_type, object_id}``, as it is POSTed and as NetBox returns it (C1220). Kept apart
+#: from the product's matcher (`netbox_guard.params_match`) on purpose: this is NetBox's answer,
+#: the expectation the product's dry run is compared with.
+CABLE_ENDS = {"termination_a_id": "a_terminations", "termination_b_id": "b_terminations"}
+
+_NEGATIVE = re.compile(r"^-\d+$")
+
+
+def _is_negative_id(value) -> bool:
+    """A negative id in any shape a request can carry it: an int, a numeric string, or a member
+    of a list (C1223)."""
+    if isinstance(value, (list, tuple, set)):
+        return any(_is_negative_id(v) for v in value)
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return value < 0
+    return isinstance(value, str) and bool(_NEGATIVE.match(value.strip()))
+
+
+def _negative_id_answer(where: str, value) -> "FakeResponse":
+    """NetBox 4.6.9's answer to a negative id in a filter (C1179, measured in W4 step 29:
+    ``400 Client Error: Bad Request`` for ``dcim/devices/?name=s6&site_id=-3``): an object
+    filter is a choice of existing objects, and no object has a negative id. The fake answers
+    a negative id in a PATH the same way (C1223): NetBox's answer there was not measured (its
+    router's lookup would likely answer 404, which a caller reads as "gone"); a 400 makes a
+    placeholder sent by path fail loudly in a test instead of reading as a deleted object."""
+    return FakeResponse({where: [f"Select a valid choice. {value} is not one of the available "
+                                 "choices."]}, 400)
+
+
 class FakeNetBox:
     """A minimal NetBox. ``store`` maps endpoint -> list of object dicts."""
 
@@ -113,9 +147,21 @@ class FakeNetBox:
         """Split an API url into (endpoint, object_id|None)."""
         path = re.sub(r"^.*?/api/", "", url).strip("/")
         parts = path.split("/")
-        if parts and parts[-1].isdigit():
+        # A negative segment is an id too (C1223), so it is answered as one, never read as a
+        # list endpoint named "dcim/devices/-3" holding nothing.
+        if parts and (parts[-1].isdigit() or _NEGATIVE.match(parts[-1])):
             return "/".join(parts[:-1]), int(parts[-1])
         return path, None
+
+    @staticmethod
+    def _negative(obj_id, params):
+        """NetBox's 400 when the request carries a negative id, in its path or a filter."""
+        if obj_id is not None and obj_id < 0:
+            return _negative_id_answer("id", obj_id)
+        for key, value in (params or {}).items():
+            if _is_negative_id(value):
+                return _negative_id_answer(key, value)
+        return None
 
     @staticmethod
     def _matches(obj, params):
@@ -124,6 +170,12 @@ class FakeNetBox:
                 continue
             if key == "q":                       # fuzzy search: substring on name
                 if str(value).lower() not in str(obj.get("name", "")).lower():
+                    return False
+                continue
+            if key in CABLE_ENDS:                # a cable by either of its ends (C1220)
+                held = obj.get(CABLE_ENDS[key])
+                if not isinstance(held, list) or not any(
+                        str(t.get("object_id")) == str(value) for t in held):
                     return False
                 continue
             if key == "device_id" and "assigned_object" in obj:
@@ -171,6 +223,9 @@ class FakeNetBox:
 
     def get(self, url, params=None, timeout=None):
         endpoint, obj_id = self._parse(url)
+        refused = self._negative(obj_id, params)
+        if refused is not None:
+            return refused
         items = self.store.get(endpoint, [])
         if obj_id is not None:
             for obj in items:
@@ -183,6 +238,16 @@ class FakeNetBox:
     def post(self, url, json=None, timeout=None):
         endpoint, _ = self._parse(url)
         payload = dict(json or {})
+        if endpoint == "dcim/cables":
+            # NetBox refuses a second cable on a termination already cabled (C1220): each
+            # termination belongs to one cable.
+            for end in ("a_terminations", "b_terminations"):
+                for t in payload.get(end) or []:
+                    held = self._cable_on(t)
+                    if held is not None:
+                        return FakeResponse({"__all__": [
+                            f"Duplicate termination found for {t.get('object_type')}:"
+                            f"{t.get('object_id')}: cable {held['id']}"]}, 400)
         self.posts.append((endpoint, dict(payload)))
         obj = dict(payload)
         obj["id"] = self._take_id()
@@ -194,8 +259,21 @@ class FakeNetBox:
         self.store.setdefault(endpoint, []).append(obj)
         return FakeResponse(obj, 201)
 
+    def _cable_on(self, termination):
+        """The stored cable holding *termination* on either end, or None."""
+        for cable in self.store.get("dcim/cables", []):
+            for end in ("a_terminations", "b_terminations"):
+                for t in cable.get(end) or []:
+                    if (t.get("object_type") == termination.get("object_type")
+                            and str(t.get("object_id")) == str(termination.get("object_id"))):
+                        return cable
+        return None
+
     def patch(self, url, json=None, timeout=None):
         endpoint, obj_id = self._parse(url)
+        refused = self._negative(obj_id, None)
+        if refused is not None:
+            return refused
         payload = dict(json or {})
         self.patches.append((endpoint, obj_id, dict(payload)))
         for obj in self.store.get(endpoint, []):
@@ -207,6 +285,9 @@ class FakeNetBox:
 
     def delete(self, url, timeout=None):
         endpoint, obj_id = self._parse(url)
+        refused = self._negative(obj_id, None)
+        if refused is not None:
+            return refused
         self.deletes.append((endpoint, obj_id))
         if (endpoint, obj_id) in self.refuse_delete:
             return FakeResponse({"detail": "Not found."}, 404)

@@ -128,3 +128,92 @@ def test_outside_a_dry_run_a_negative_id_is_still_sent():
     with pytest.raises(Exception):
         nb._nb_first(s, BASE, "dcim/devices/", name="x", site_id=-3)
     assert s.asked and s.asked[0][1]["site_id"] == -3
+
+
+class TestTheSharedFakeAnswersANegativeIdAsNetBoxDoes:
+    """C1223: tests/fake_netbox.py, which 28 test files share, answered a negative id with an
+    empty 200, so none of them would catch a new path that sends a placeholder (C1179's class).
+    It answers 400 now, in every shape a request can carry one: an int, a numeric string, a list
+    member, and a path segment (whose real answer was not measured; refused loudly, never read
+    as "gone"). Only the two fakes above modelled it before."""
+
+    URL = "http://nb.invalid/api/dcim/devices/"
+
+    @pytest.mark.parametrize("value", [-3, "-3", [7, -3], ("-3",)])
+    def test_a_negative_id_in_a_filter_is_a_400(self, value):
+        from tests.fake_netbox import FakeNetBox
+
+        fake = FakeNetBox()
+        fake.seed("dcim/devices", {"name": "r1", "site": {"id": 7}})
+        got = fake.get(self.URL, params={"name": "r1", "site_id": value})
+        assert got.status_code == 400, (value, got.json())
+        assert "site_id" in got.json()
+
+    @pytest.mark.parametrize("verb", ["get", "patch", "delete"])
+    def test_a_negative_id_in_the_path_is_a_400(self, verb):
+        from tests.fake_netbox import FakeNetBox
+
+        fake = FakeNetBox()
+        kwargs = {"json": {"name": "x"}} if verb == "patch" else {}
+        got = getattr(fake, verb)(self.URL + "-3/", **kwargs)
+        assert got.status_code == 400, (verb, got.json())
+        assert fake.patches == [] and fake.deletes == [], "a refused request changed nothing"
+
+    def test_a_real_id_is_answered_as_before(self):
+        """The control: a positive id, as an int or a string, in a filter or a path."""
+        from tests.fake_netbox import FakeNetBox
+
+        fake = FakeNetBox()
+        dev = fake.seed("dcim/devices", {"name": "r1", "site": {"id": 7}})
+        for value in (7, "7"):
+            got = fake.get(self.URL, params={"site_id": value})
+            assert got.status_code == 200 and [d["name"] for d in got.json()["results"]] == ["r1"]
+        assert fake.get(f"{self.URL}{dev['id']}/").json()["name"] == "r1"
+        assert fake.get(f"{self.URL}999/").status_code == 404
+
+    def _import(self, monkeypatch):
+        import modules.netbox_client as nbc
+        from tests.fake_netbox import FakeNetBox
+
+        class Counting(FakeNetBox):
+            """The shared fake, unchanged, counting the requests it answered 400."""
+
+            def __init__(self):
+                super().__init__()
+                self.refused = []
+
+            def get(self, url, params=None, **k):
+                got = super().get(url, params=params, **k)
+                if got.status_code == 400:
+                    self.refused.append((url, dict(params or {})))
+                return got
+
+        fake = Counting()
+        monkeypatch.setattr(nbc, "get_netbox_config", lambda: {"url": "http://127.0.0.1:9",
+                                                               "token": "t"})
+        monkeypatch.setattr(nbc, "_session_from_config", lambda cfg: fake)
+        monkeypatch.setattr(nbc, "_managed_tag_ids", {})
+        monkeypatch.setattr(netbox_guard, "writes_allowed", lambda: True)
+        out = nbc.sync_list_to_netbox(
+            "probe-fresh", [{"hostname": "s6", "ip": "192.0.2.61", "platform": "cisco_iosxe",
+                             "role": "router",
+                             "preview_config": "hostname s6\ninterface GigabitEthernet2\n"
+                                               " ip address 192.0.2.61 255.255.255.0\n!\nend\n"}],
+            dry_run=True)
+        return out, fake
+
+    def test_the_whole_import_preview_on_the_shared_fake_sends_no_placeholder(self, monkeypatch):
+        out, fake = self._import(monkeypatch)
+        assert out.get("ok") and not out.get("failed"), (out.get("error"), out.get("failed"))
+        assert (out.get("plan") or {}).get("creates_by_type", {}).get("dcim/sites") == 1, \
+            "floor: the network's site is planned, so its placeholder id exists to be sent"
+        assert fake.refused == [], fake.refused
+
+    def test_the_shared_fake_catches_a_placeholder_sent(self, monkeypatch):
+        """The planted case: with the plan-only answer turned off (C1179's defect put back), the
+        same preview on the shared fake is answered 400 and does not pass as a clean preview."""
+        monkeypatch.setattr(nb, "_planned_only", lambda params: False)
+        out, fake = self._import(monkeypatch)
+        assert fake.refused, "a placeholder reached the shared fake and it answered 200"
+        assert any(isinstance(v, int) and v < 0 for _u, p in fake.refused for v in p.values())
+        assert not out.get("ok") or out.get("failed"), "the preview read a 400 as success"

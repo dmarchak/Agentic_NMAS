@@ -37,8 +37,12 @@
 {#- The result component's parts (preview_confirm.build_result): what happened, then what did not,
     each item with its lines as the preview's What it does not do draws them (a NetBox removal's
     refused objects, each with NetBox's reason, C121: today's result dialog drew them, and v2's
-    card drew the item's sentence alone until today's NetBox tab left at 7.8, 2026-10-17). -#}
+    card drew the item's sentence alone until today's NetBox tab left at 7.8, 2026-10-17). A
+    record that was not written (`record.written` false: onboarding's Verify and Abandon, NetBox's
+    Remove and Stop tracking) is said in the result, with why, and the result is not drawn as
+    done (`build_result` lowers its level; C1221, C1222). -#}
 {%- macro result_parts(r) -%}
 <div class="notice notice-{{ {'success': 'muted', 'nothing': 'muted', 'partial': 'warn'}.get(r.level, 'danger') }} set-result" role="status">{{ icon('tick' if r.level in ('success', 'nothing') else 'warn', 16) }}<div><strong>{{ r.happened.summary }}</strong>
+  {%- if r.record and r.record.written is sameas false %}<p class="small" data-record-not-written>{{ r.record.statement }}</p>{% endif %}
   {%- if r.did_not['items'] %}<ul class="small">{% for d in r.did_not['items'] %}<li>{{ d.text if d.text is defined else d }}{% if d.lines is defined and d.lines %}<ul class="mono">{% for l in d.lines %}<li>{{ l }}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}</ul>{% endif %}</div></div>
 {%- endmacro -%}

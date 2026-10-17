@@ -164,14 +164,35 @@ def assert_writes_allowed(operation: str = "write") -> None:
 PLAN_EXCLUDED_ENDPOINTS = ("extras/tags",)
 
 
+#: A cable filter on one end -> the field holding that end's terminations (NetBox 4.x's
+#: ``CableFilterSet``: ``termination_a_id`` matches a termination on end A, whatever its type).
+CABLE_END_FILTERS = {"termination_a_id": "a_terminations",
+                     "termination_b_id": "b_terminations"}
+
+
 def params_match(obj: dict, params: dict) -> bool:
     """Approximate NetBox's list filtering against a locally-held object.
 
     Only needs to be good enough for the get-or-create pattern, which filters on
     ``slug``, ``name``, or a foreign key like ``device_id``.
+
+    A cable is filtered by one of its ends (``termination_a_id``/``termination_b_id``, as
+    `netbox_client._ensure_cable` looks one up) and holds its ends as ``a_terminations`` and
+    ``b_terminations``, each a list of ``{object_type, object_id}``, as NetBox's cable filter
+    matches any termination on that end (C1220: a planned cable was never found by its ends, so
+    a dry run planned a second cable for the reciprocal CDP/LLDP pass the real run finds).
     """
     for key, value in (params or {}).items():
         if key in ("limit", "offset", "brief", "depth"):
+            continue
+        end = CABLE_END_FILTERS.get(key)
+        if end is not None:
+            held = obj.get(end)
+            if not isinstance(held, list):
+                return False        # not a cable: the object carries no such end
+            if not any(isinstance(t, dict) and str(t.get("object_id")) == str(value)
+                       for t in held):
+                return False
             continue
         candidates = [key]
         if key.endswith("_id"):

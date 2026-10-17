@@ -852,6 +852,12 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
         raise ResultIncomplete("part 5 (record) has no statement")
     if not not_watched:
         raise ResultIncomplete("part 6 (not_watched) is empty")
+    # AN OPERATION WHOSE OWN RECORD WAS NOT WRITTEN IS NEVER DRAWN AS DONE (C1221, C1222): its
+    # record (``written`` False, set by an operation that writes one) is all that would hold it
+    # later, so a result that would be success or nothing is partial, and the result component
+    # draws the record's statement saying why.
+    if (record or {}).get("written") is False and level in ("success", "nothing"):
+        level = "partial"
     return {"action": action, "parts": list(RESULT_PARTS), "level": level,
             **({"titles": dict(titles)} if titles else {}),
             "happened": {"summary": summary,
@@ -1259,7 +1265,8 @@ def _netbox_forget_result(row: dict, record_status: dict = None) -> dict:
                   "text": "Nothing was deleted from NetBox: every object stays there with its "
                           "nmas-managed tag. Delete them in NetBox itself if they should go."}],
         nothing_left_out="",
-        record={"commit": "", "tags": [], "baseline": "", "statement": statement},
+        record={"commit": "", "tags": [], "baseline": "", "statement": statement,
+                "written": _record_written(record_status)},
         not_watched="NetBox is not read: what it holds is unchanged by this.",
         titles={"sent": "What Mercury forgot", "checks": "What was read back"})
 
@@ -1318,7 +1325,8 @@ def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
     return build_result(
         action="netbox_remove", level=level, summary=summary, targets=[target],
         did_not=did_not, nothing_left_out="Nothing: every object Mercury created was removed.",
-        record={"commit": "", "tags": [], "baseline": "", "statement": statement},
+        record={"commit": "", "tags": [], "baseline": "", "statement": statement,
+                "written": _record_written(record_status)},
         not_watched=("NetBox cascades a delete through relationships: the preview named "
                      "what else would go, and nothing re-reads NetBox after the removal."),
         titles={"sent": "What was deleted from NetBox", "checks": "What NetBox answered"})
@@ -1767,6 +1775,13 @@ def onboard_create_result(run: dict, plan) -> dict:
                 "checks": "What was checked on the device"})
 
 
+def _record_written(record_status: dict = None) -> bool:
+    """Whether the operation's own record was written (``{"ok", "error"}`` from the recorder;
+    None when the result is read back from a row already recorded). `build_result` lowers a
+    result whose record was not written, and the result component draws why (C1221, C1222)."""
+    return bool((record_status or {"ok": True}).get("ok"))
+
+
 def _run_record_statement(row: dict, rs: dict, tail: str) -> str:
     if not (rs or {"ok": True}).get("ok"):
         return (f"THE RUN RECORD WAS NOT WRITTEN: {(rs or {}).get('error') or 'no reason'}. "
@@ -1866,7 +1881,8 @@ def onboard_verify_result(row: dict, record_status: dict = None) -> dict:
         action="onboard_verify", level=level, summary=summary, targets=[target],
         did_not=did_not, nothing_left_out="Nothing: every step of phase 2 ran.",
         record={"commit": row.get("golden_commit", ""), "tags": [], "baseline": "",
-                "statement": _run_record_statement(row, record_status, tail)},
+                "statement": _run_record_statement(row, record_status, tail),
+                "written": _record_written(record_status)},
         not_watched=("Nothing re-reads the device after promotion except what watches every "
                      "device: drift and heartbeats." if row.get("ok") else
                      "Nothing retries: the device stays pending until Verify is pressed again "
@@ -1923,7 +1939,8 @@ def onboard_abandon_result(row: dict, record_status: dict = None) -> dict:
         record={"commit": "", "tags": [], "baseline": "",
                 "statement": _run_record_statement(
                     row, record_status, "The removal of its intent is a commit in the list's "
-                                        "repository.")},
+                                        "repository."),
+                "written": _record_written(record_status)},
         not_watched=("Nothing re-reads NetBox, Kea or the credential store after the abandon; "
                      "the steps above are what each answered."),
         titles={"sent": "What abandon did", "checks": "Whether the name was released"})

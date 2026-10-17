@@ -42,7 +42,6 @@
   {%- elif mode in ('verified', 'abandoned') and done %}
   {%- if done.run %}{{ run_stepper(done.run) }}{% endif %}
   {{ result_parts(done.result) }}
-  {%- if done.result.record_error is defined and done.result.record_error %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>{{ done.result.record_error }}</span></p>{% endif %}
   {#- Board M (canvas v113): first boot was the management plane only; its intent follows as
       an ordinary deploy, previewed, confirmed, verified and rolled back on failure. -#}
   {%- if mode == 'verified' and nxt and nxt.state == 'seed' %}

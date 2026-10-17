@@ -244,12 +244,15 @@ PAGE_RECORD = {
                          "v2.history_page"),
     # Onboarding on v2 (cutover blocker 3): Create's result in place, the device's pending
     # page its record read again; Verify's and Abandon's results in place on the pending
-    # page, each run's row read back on the network's History.
+    # page, each run's row read back on the network's History. Verify's mark was
+    # `record_error`, a key nothing set (C1221): the record not written is drawn by
+    # `result_parts` itself, held through the real route by tests/test_record_not_written_is_drawn.py.
     "onboard_v2.create": ("templates/v2/_onboard_add.html", ("result_parts(done.result)",
                                                              "Open {{ f.hostname }}"),
                           "device_v2.device"),
     "onboard_v2.verify": ("templates/v2/_onboard_pending.html",
-                          ("result_parts(done.result)", "record_error"), "v2.history_page"),
+                          ("result_parts(done.result)", "run_stepper(done.run)"),
+                          "v2.history_page"),
     "onboard_v2.abandon": ("templates/v2/_onboard_pending.html",
                            ("result_parts(done.result)", "Back to Devices"), "v2.history_page"),
     "remote_v2.connect": ("templates/v2/_remote_setup.html", ("Connected:", "r.owner_repo"),
