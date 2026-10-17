@@ -423,6 +423,110 @@ def unknown_interface_keys(host_vars: dict) -> list:
     return found
 
 
+#: The keys each section of intent holds whose keys intent knows (C1183, the operator, W4 step
+#: 48, 2026-10-17: a BGP block one level up, `routing.asn` with `routing.bgp: null`, passed
+#: every check and rendered nothing). A section is a dotted path from the top, `[]` for each
+#: item of a list; "" is the top level (`known_top_level`). Each set is what the parsers emit
+#: there (`BaseParser.parse` and its handlers; `tests/test_authoring_schema.py` reads every real
+#: capture's parse against it) and what the shipped templates read there. A section not named
+#: is open: its keys are data (`flags`, `http`, `source_interfaces`) or another reader's
+#: (`bootstrap`, `profile_exclude`, `unmodeled_ack`), and nothing beneath it is judged here.
+INTENT_SECTIONS = {
+    "interfaces[]": frozenset(INTERFACE_DEFAULTS),
+    "interfaces[].vrrp_groups[]": frozenset({"group", "family", "settings", "terminator"}),
+    "routing": frozenset({"ospf", "ospfv3", "ripng", "rip", "bgp"}),
+    "routing.bgp": frozenset({"asn", "settings", "neighbors", "networks",
+                              "address_families"}),
+    "routing.bgp.address_families[]": frozenset({"afi", "settings", "neighbors", "networks"}),
+    "routing.rip": frozenset({"settings", "networks", "neighbors"}),
+    "routing.ospf[]": frozenset({"process", "settings", "networks", "neighbors"}),
+    "routing.ospfv3[]": frozenset({"process", "raw"}),
+    "routing.ripng[]": frozenset({"name", "raw"}),
+    "logging": frozenset({"console", "settings", "hosts", "syslog"}),
+    "logging.syslog": frozenset({"trap", "origin_id", "source_interface", "hosts",
+                                 "heartbeat"}),
+    "snmp": frozenset({"communities", "settings", "hosts"}),
+    "snmp.communities[]": frozenset({"ref", "access"}),
+    "snmp.hosts[]": frozenset({"address", "options"}),
+    "spanning_tree": frozenset({"lines"}),
+    "redundancy": frozenset({"settings"}),
+    "control_plane": frozenset({"settings"}),
+    "call_home": frozenset({"body"}),
+    "vlans[]": frozenset({"id", "name", "extra"}),
+    "users[]": frozenset({"name", "privilege", "secret_ref", "secret_kind"}),
+    "tracks[]": frozenset({"id", "spec"}),
+    "static_routes[]": frozenset({"family", "spec"}),
+    "acls[]": frozenset({"type", "name", "entries"}),
+    "lines[]": frozenset({"spec", "settings"}),
+    "prefix_lists[]": frozenset({"name", "entries"}),
+    "ip_sla[]": frozenset({"id", "settings"}),
+    "telemetry[]": frozenset({"subscription", "settings"}),
+    "pki_trustpoints[]": frozenset({"name", "settings"}),
+    "vrfs[]": frozenset({"name", "settings", "address_families"}),
+    "vrfs[].address_families[]": frozenset({"family", "settings", "terminator"}),
+    "unmodeled[]": frozenset({"line", "children", "lineno"}),
+}
+
+
+def known_top_level() -> frozenset:
+    """Every top-level key intent holds: what the parsers emit (`bulk_intent.known_top_level`,
+    the schema's own list), what Mercury itself reads (`config_check.MERCURY_KEYS`), and
+    `secrets`, which the secret guard refuses by name rather than this check."""
+    from modules.nsot import bulk_intent, config_check
+    return frozenset(bulk_intent.known_top_level() | set(config_check.MERCURY_KEYS)
+                     | {"secrets"})
+
+
+def _section_keys(section: str):
+    return known_top_level() if section == "" else INTENT_SECTIONS.get(section)
+
+
+def _read_under(key: str, near: str = "") -> list:
+    """Every section that reads *key*, the top level as ``""``: those inside *near* (where the
+    key was found) first, since a key one level up belongs there most often."""
+    inside = (near + ".") if near else ""
+    found = [s for s in [""] + sorted(INTENT_SECTIONS) if key in (_section_keys(s) or ())]
+    return sorted(found, key=lambda s: (not (inside and s.startswith(inside)), s))
+
+
+def unknown_keys(host_vars: dict, reads=None) -> list:
+    """``[(path, key, read_under)]``, in document order, for every key of a known section that
+    nothing reads THERE (C1183). *path* is the key's parent as a tuple (a list item by its
+    index); *read_under* lists the sections that do read the key (a misplaced key), empty for
+    a key no section reads. *reads*, the names the device's own template reads, lets a key no
+    section knows through (a person's template may read a key the shipped one does not); a
+    key the schema reads ELSEWHERE is refused whatever a template names."""
+    found = []
+
+    def walk(node, path, section):
+        known = _section_keys(section)
+        if known is None or not isinstance(node, dict):
+            return
+        for key, value in node.items():
+            if key not in known:
+                where = _read_under(key, section)
+                if where or not (reads and key in reads):
+                    found.append((path, key, where))
+                continue
+            child = f"{section}.{key}" if section else str(key)
+            if isinstance(value, dict):
+                walk(value, path + (key,), child)
+            elif isinstance(value, list):
+                for index, item in enumerate(value):
+                    walk(item, path + (key, index), child + "[]")
+
+    walk(host_vars if isinstance(host_vars, dict) else {}, (), "")
+    return found
+
+
+def dotted(path: tuple, key: str = "") -> str:
+    """*path* (and *key*) as a person reads it: ``routing.bgp.address_families[0].asn``."""
+    out = ""
+    for part in tuple(path) + ((key,) if key != "" else ()):
+        out += f"[{part}]" if isinstance(part, int) else (f".{part}" if out else str(part))
+    return out
+
+
 #: `vs_intent` answers *"what does my edit change"*, and "what is committed"
 #: has to mean **committed**. See :func:`committed_at_head`.
 NEVER_COMMITTED = "never_committed"

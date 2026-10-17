@@ -425,6 +425,33 @@ class TestAbandon:
         assert manifest.find_by_name(repo, "bp1")[0], "removed on a plan nobody was shown"
         assert os.path.exists(os.path.join(repo, "host_vars", "bp1.yml"))
 
+    def test_the_fingerprint_binds_every_part_of_the_dry_run(self):
+        """Lab 7 (b)'s mutation sample (2026-10-17): the Abandon fingerprint ignoring a
+        step's NAME, a step's ok, whether the dry run finishes, or its error survived every
+        test, since the route tests move a step's detail alone. Each part, changed alone, must
+        move the fingerprint the confirm is bound to: "would remove the reservation: ok" and
+        "...: fails" are two different things to have been shown."""
+        from modules.nsot.onboard import abandon_fingerprint
+
+        base = {"ok": True, "error": "",
+                "steps": [{"step": "intent", "ok": True, "detail": "would remove it"},
+                          {"step": "reservation", "ok": True, "detail": "would release it"}]}
+
+        def moved(**change):
+            dry = json.loads(json.dumps(base))
+            step = change.pop("step", None)
+            if step:
+                dry["steps"][1].update(step)
+            dry.update(change)
+            return abandon_fingerprint(dry)
+
+        was = abandon_fingerprint(base)
+        assert moved(step={"step": "netbox"}) != was, "a step's name is not bound"
+        assert moved(step={"ok": False}) != was, "a step's ok is not bound"
+        assert moved(step={"detail": "would keep it"}) != was, "a step's words are not bound"
+        assert moved(ok=False) != was, "whether it finishes is not bound"
+        assert moved(error="NetBox could not be read") != was, "its error is not bound"
+
     def test_an_unbound_confirm_is_refused(self, client, person):
         r = client.post("/v2/onboard/bp1/abandon", data={"list_name": "probe"})
         assert r.status_code == 400 and "no preview fingerprint" in r.get_data(as_text=True)

@@ -139,13 +139,31 @@ def _netbox_held(name: str) -> str:
                 "the record can be read")
     if not held:
         return ""
+    from modules.netbox_cascade import CASCADES
+
     named = ", ".join(f"{ep}/{oid} {label}".strip() for ep, oid, label in held[:8])
     more = f" and {len(held) - 8} more" if len(held) > 8 else ""
-    return (f"Mercury's record says it created {len(held)} NetBox object"
-            f"{'' if len(held) == 1 else 's'} for {name} ({named}{more}). Deleting a network "
-            "never deletes NetBox objects, and forgetting them would leave them out of Remove's "
-            f"reach: remove them first on Source of truth › NetBox ({name}'s Remove from "
-            "NetBox…, or Stop tracking instead…), then delete the network")
+    objects = f"{len(held)} NetBox object{'' if len(held) == 1 else 's'}"
+    head = (f"Mercury's record says it created {objects} for {name} ({named}{more}). Deleting a "
+            "network never deletes NetBox objects, and forgetting them would leave them out of "
+            "Remove's reach")
+    stop = ("deletes nothing in NetBox: Mercury forgets the "
+            f"{'object' if len(held) == 1 else str(len(held)) + ' objects'} it created for "
+            f"{name}, and NetBox keeps every one, with its nmas-managed tag (delete them in "
+            "NetBox itself if they should go)")
+    # C1191 (W4 step 69): Remove is offered only when what NetBox takes with every delete is
+    # established (C1097, `netbox_cascade`); a type with no measured cascade withholds it, so
+    # for such a record Stop tracking is the only way through, and the card says so plainly.
+    unmeasured = sorted({ep for ep, _oid, _label in held if ep not in CASCADES})
+    if unmeasured:
+        return (f"{head}. On this NetBox the way through is Stop tracking: on Source of truth "
+                f"› NetBox, {name}'s Remove from NetBox…, then Stop tracking instead…, which "
+                f"{stop}. Remove from NetBox… cannot delete them here: what NetBox takes with a "
+                f"delete of {', '.join(unmeasured)} has not been measured. Then delete the "
+                "network")
+    return (f"{head}: remove them first on Source of truth › NetBox ({name}'s Remove from "
+            f"NetBox…), or forget them there with Stop tracking instead…, which {stop}; then "
+            "delete the network")
 
 
 def delete(name: str, typed: str, fingerprint: str, actor: str, verified: str) -> dict:

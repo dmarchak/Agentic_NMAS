@@ -57,10 +57,49 @@ def _line_of(text: str, starts: str, contains: str = "") -> int:
                  if l.strip().startswith(starts) and contains in l), 1)
 
 
-def validate(hostname: str, text: str) -> dict:
+def _section_words(section: str) -> str:
+    return section or "the top level"
+
+
+def _key_mark(text: str, path: tuple, key: str) -> tuple:
+    """``(line, column)``, 1-based, of *key* inside the mapping at *path* (a list item by its
+    index), read from the YAML's own node marks; ``(1, 1)`` when it cannot be found."""
+    import yaml
+
+    try:
+        node = yaml.compose(text)
+        for part in path:
+            if isinstance(part, int):
+                node = node.value[part]
+            else:
+                node = next(v for k, v in node.value if k.value == part)
+        mark = next(k for k, _v in node.value if k.value == key).start_mark
+        return mark.line + 1, mark.column + 1
+    except Exception:                          # noqa: BLE001 - the refusal still names it
+        return 1, 1
+
+
+def _template_reads(list_name: str, hostname: str):
+    """The names *hostname*'s own template (and every template it includes) reads, or None
+    when they cannot be read (then no unknown key is let through on a template's word)."""
+    try:
+        from modules.nsot import templates_repo
+        from modules.nsot.config_check import template_reads
+        from routes.templates import _platform_for
+
+        platform = _platform_for(hostname, list_name)
+        src = templates_repo.render_source(_repo_for(list_name), hostname, platform)
+        return template_reads(src["root"], platform, src["name"])
+    except Exception as exc:                   # noqa: BLE001
+        log.debug("intent_edit: %s's template reads unreadable: %s", hostname, exc)
+        return None
+
+
+def validate(hostname: str, text: str, list_name: str = "") -> dict:
     """``{"ok": True, "parsed"}`` or a refusal ``{"ok": False, "status": 400, "stage",
     "line", "column", "error"}``: the editor's checks, run by the preview AND the save (R2:
-    a check only the preview ran was skipped by a save never previewed)."""
+    a check only the preview ran was skipped by a save never previewed). *list_name* names
+    the device's network, whose template's reads may let through a key no section knows."""
     import yaml
 
     from modules.nsot import hostvars
@@ -99,6 +138,27 @@ def validate(hostname: str, text: str) -> dict:
             "silently ignored — the line simply does not render — so it is refused here "
             "rather than at the device. Omitting a key is fine and needs no action; "
             "misspelling one does."), _line_of(text, f"{unknown[0][1]}:"), 1)
+
+    # 2b'. Every key of every section intent knows is one it reads THERE (C1183, W4 step 48:
+    #      a BGP block one level up passed the interface check and rendered nothing).
+    #      A key no section reads anywhere may be one the device's own template reads.
+    unknown = hostvars.unknown_keys(parsed)
+    if list_name and any(not where for _p, _k, where in unknown):
+        unknown = hostvars.unknown_keys(parsed, reads=_template_reads(list_name, hostname))
+    if unknown:
+        line, column = _key_mark(text, *unknown[0][:2])
+        names = "; ".join(
+            f"{hostvars.dotted(path, key)} (line {_key_mark(text, path, key)[0]}): "
+            + (f"intent reads {key!r} under "
+               + ", ".join(_section_words(s) for s in where[:4])
+               + (f" and {len(where) - 4} more" if len(where) > 4 else "")
+               if where else f"no section reads {key!r}")
+            for path, key, where in unknown[:6])
+        more = f"; and {len(unknown) - 6} more" if len(unknown) > 6 else ""
+        return refuse("schema", (
+            f"nothing reads {names}{more}. A key where intent does not read it renders "
+            "nothing — its lines simply do not appear — so it is refused here rather than at "
+            "the device. Move it to where it is read, or remove it."), line, column)
 
     # 2c. The syslog block is whole or absent (NSOT_PLAN P.1).
     problems = hostvars.syslog_block_problems(parsed)
@@ -141,7 +201,7 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
     if not isinstance(text, str) or not text.strip():
         return {"status": 400, "ok": False, "error": "No host_vars document sent"}
     repo = _repo_for(list_name)
-    checked = validate(hostname, text)
+    checked = validate(hostname, text, list_name)
     if not checked["ok"]:
         return checked
     parsed = checked["parsed"]
@@ -462,7 +522,7 @@ def commit(list_name: str, hostname: str, text: str, summary: str, base: str,
             f"Not saved: this editor did not say which version of {hostname}'s intent it "
             "opened, so the save could replace a commit made since. Nothing was written. "
             "Reload the page, open the editor again and make the edit there.")}
-    checked = validate(hostname, text)
+    checked = validate(hostname, text, list_name)
     if not checked["ok"]:
         return checked
 

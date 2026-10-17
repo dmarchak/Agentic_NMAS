@@ -84,10 +84,21 @@ def _page_network():
     try:
         from modules.nsot import listref
 
-        return {"list_name": listref.active_name()}
+        return {"list_name": listref.active_name(), "deleted_network": _deleted_network()}
     except Exception:                                 # noqa: BLE001 (a page still draws)
         log.warning("network_v2: the page's network could not be read", exc_info=True)
         return {"list_name": "(unreadable)"}
+
+
+def _deleted_network() -> str:
+    """The network a page reached from a deleted network's address names (C1190,
+    `list_param.DELETED_KEY`), when that network WAS deleted; else "". A name typed into the
+    address that was never a network, or is one now, says nothing."""
+    from modules import network_admin
+    from routes.list_param import DELETED_KEY
+
+    name = (request.args.get(DELETED_KEY) or "").strip()
+    return name if name and network_admin.is_deleted(name) else ""
 
 
 def _viewer_actor() -> str:

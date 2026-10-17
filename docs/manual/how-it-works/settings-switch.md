@@ -58,7 +58,12 @@ it has one, and where its data goes. To delete it, type its name.
    network refuses, naming it, and nothing changes. So does a network the tool created NetBox
    objects for, naming them, or one whose record cannot be read: deleting a network never
    deletes NetBox objects, and with the network gone nothing could remove them. Remove them
-   first on Source of truth › NetBox (Remove from NetBox…, or Stop tracking instead…).
+   first on Source of truth › NetBox (Remove from NetBox…), or forget them there with Stop
+   tracking instead…, which deletes nothing in NetBox: the tool forgets what it created for the
+   network, and NetBox keeps every object with its nmas-managed tag. When the record holds a
+   type whose cascade has not been measured (a region, a site, a VRF, a prefix, a VLAN, a
+   tunnel), Remove cannot delete them, and the refusal says the way through is Stop tracking:
+   the network's Remove from NetBox…, then Stop tracking instead…, then delete the network.
 2. `move`: its folder is moved to `lists_removed/<folder>-<UTC time>` beside the networks,
    inside its repository's lock. **Nothing is erased:** its goldens, intent, receipts and
    history survive there, and its remote, if it has one, keeps its copy.

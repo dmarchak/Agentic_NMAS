@@ -149,6 +149,81 @@ class TestAutoInstallsClientId:
         assert line.rstrip() in normalize.strip_for_roundtrip(text)
 
 
+#: The fleet's IOS-XE captures that run BGP (measured 2026-10-17: r3, r4 and r5 of the five).
+BGP_XE = [n for n in NAMES if SELF_SIGNED.search(_text(n)) and "\nrouter bgp " in _text(n)]
+LOG_CHANGES = " bgp log-neighbor-changes"
+
+
+def _intent_without_it(name):
+    """The device's real capture parsed as intent, with `bgp log-neighbor-changes` left out of
+    its BGP settings: the intent W4's person wrote (step 48), which never sent the line."""
+    from modules.nsot.parsers import get_parser
+    hv = get_parser("cisco_iosxe").parse(_text(name))
+    bgp = dict(hv["routing"]["bgp"])
+    bgp["settings"] = [s for s in bgp.get("settings") or [] if s != LOG_CHANGES.strip()]
+    return dict(hv, routing=dict(hv["routing"], bgp=bgp))
+
+
+class TestBgpLogNeighborChanges:
+    """C1182 (the operator, W4 after step 50, 2026-10-17): after s5's first deploy its intent
+    departed by "- bgp log-neighbor-changes". IOS-XE writes the line under `router bgp` on its
+    own: every IOS-XE capture that runs BGP holds it, and s5's intent never sent it. It is the
+    device's own, as AutoInstall's client-id is: never intent, never sent, never residue,
+    never a departure. Only that exact line directly under `router bgp`; its negation, a
+    person's choice, stays configuration."""
+
+    def test_every_ios_xe_bgp_capture_holds_it(self):
+        """The measurement the declaration stands on, kept as a floor."""
+        assert BGP_XE == ["r3", "r4", "r5"], BGP_XE
+        for n in BGP_XE:
+            assert f"\n{LOG_CHANGES}\n" in _text(n), n
+
+    @pytest.mark.parametrize("name", BGP_XE)
+    def test_intent_without_it_matches_the_device_that_added_it(self, name):
+        from modules.nsot.render_artifact import build_artifact
+        hv = _intent_without_it(name)
+        assert LOG_CHANGES.strip() not in _render(hv, "cisco_iosxe")
+        a = build_artifact(name, _text(name), "cisco_iosxe", host_vars=hv)
+        missing = (a.report or {}).get("details", {}).get("missing") or []
+        assert not [m for m in missing if "log-neighbor" in m.get("line", "")], missing
+        assert not a.intent_drift["differs"], a.report.get("details")
+
+    @pytest.mark.parametrize("name", BGP_XE)
+    def test_it_is_in_no_parse_never_sent_and_never_residue(self, name):
+        from modules.nsot import normalize
+        from modules.nsot.deploy import merge_commands, merge_diff
+        from modules.nsot.parsers import get_parser
+        hv = get_parser("cisco_iosxe").parse(_text(name))
+        assert LOG_CHANGES.strip() not in (hv["routing"]["bgp"].get("settings") or [])
+        # Intent committed before this, seeded with the line, still renders it: not sent.
+        old = dict(hv, routing=dict(hv["routing"], bgp=dict(
+            hv["routing"]["bgp"], settings=[LOG_CHANGES.strip()]
+            + list(hv["routing"]["bgp"].get("settings") or []))))
+        for intent in (old, _intent_without_it(name)):
+            rendered = _render(intent, "cisco_iosxe")
+            assert not [l for l in merge_commands(rendered, _text(name)) if "log-neighbor" in l]
+            assert not [r for r in merge_diff(rendered, _text(name))["residue"]
+                        if "log-neighbor" in str(r)]
+        asn = re.search(r"^router bgp (\d+)$", _text(name), re.M).group(1)
+        assert f"router bgp {asn}: bgp log-neighbor-changes" in \
+            normalize.device_owned(_text(name))
+
+    @pytest.mark.parametrize("line", [" no bgp log-neighbor-changes",
+                                      "  bgp log-neighbor-changes"])
+    def test_its_negation_and_any_other_depth_stay_configuration(self, line):
+        from modules.nsot import normalize
+        text = _text("r3").replace(f"\n{LOG_CHANGES}\n", f"\n{line}\n", 1)
+        assert line in normalize.strip_for_roundtrip(text)
+        assert not [h for h in normalize.device_owned(text) if "log-neighbor" in h]
+
+    def test_outside_router_bgp_it_stays_configuration(self):
+        from modules.nsot import normalize
+        text = _text("r3").replace("\nrouter bgp ", "\nrouter ospf 9\n" + LOG_CHANGES
+                                   + "\n!\nrouter bgp ", 1)
+        kept = normalize.strip_for_roundtrip(text)
+        assert kept[kept.index("router ospf 9") + 1] == LOG_CHANGES, kept
+
+
 def test_device_owned_names_the_devices_own_blocks_and_nothing_else():
     from modules.nsot import normalize
     text = _text("r2").replace("\nend", "\nbanner motd ^C\nAuthorised use only\n^C\nend", 1)

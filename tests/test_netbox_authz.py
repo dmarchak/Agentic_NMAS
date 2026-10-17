@@ -68,6 +68,34 @@ class TestPlanHash:
     def test_empty_plan_is_stable(self):
         assert compute_plan_hash({}) == compute_plan_hash({"creates": []})
 
+    def test_every_field_of_an_entry_is_bound(self):
+        """Lab 7 (b)'s mutation sample (2026-10-17): the hash ignoring an entry's NAME
+        (`entry.get(None, "")`) or its ENDPOINT survived every test, since each test that
+        changed a plan also changed its length. Changed alone, each must move the hash: a
+        create of R2 is not the approval a create of R1 was, and a device is not an
+        interface."""
+        base = {"creates": [{"endpoint": "dcim/devices", "name": "R1", "id": -1,
+                             "payload": {"name": "x"}}]}
+        renamed = {"creates": [dict(base["creates"][0], name="R2")]}
+        moved = {"creates": [dict(base["creates"][0], endpoint="dcim/interfaces")]}
+        assert compute_plan_hash(base) != compute_plan_hash(renamed)
+        assert compute_plan_hash(base) != compute_plan_hash(moved)
+
+    def test_a_list_in_a_payload_is_bound_by_its_contents(self):
+        """Lab 7 (b): a list inside a payload (tags, tagged VLANs) normalised to a list of
+        placeholders (`_normalize(None)` for each item) survived: a changed tag list would
+        have passed the confirm. Only the synthetic ids inside it collapse."""
+        a = {"updates": [{"endpoint": "dcim/devices", "name": "R1", "id": 5,
+                          "payload": {"tags": [1, 2]}}]}
+        b = {"updates": [{"endpoint": "dcim/devices", "name": "R1", "id": 5,
+                          "payload": {"tags": [1, 3]}}]}
+        assert compute_plan_hash(a) != compute_plan_hash(b)
+        c = {"updates": [{"endpoint": "dcim/devices", "name": "R1", "id": 5,
+                          "payload": {"tags": [1, -4]}}]}
+        d = {"updates": [{"endpoint": "dcim/devices", "name": "R1", "id": 5,
+                          "payload": {"tags": [1, -9]}}]}
+        assert compute_plan_hash(c) == compute_plan_hash(d)
+
 
 class TestTokenLifecycle:
     def test_token_works_once(self):
@@ -104,6 +132,15 @@ class TestTokenLifecycle:
         # Both operands: how long ago it expired, and the window.
         assert err.startswith("This confirmation expired 3540 s ago. The window is 60 s")
         assert "computed 3600 s ago" in err
+
+    def test_a_token_is_expired_at_its_expiry_instant(self, monkeypatch):
+        """Lab 7 (b): the purge's `expires_at <= now` read as `<` survived; the window is
+        `ttl` seconds and not one instant more."""
+        monkeypatch.setattr(netbox_authz.time, "time", lambda: 1000.0)
+        token = issue_token("import", "Lab", "hash1", ttl=60)["token"]
+        monkeypatch.setattr(netbox_authz.time, "time", lambda: 1060.0)
+        ok, err, _ = consume_token(token, "import", "Lab")
+        assert ok is False and err.startswith("This confirmation expired 0 s ago")
 
     def test_token_bound_to_operation(self):
         """A remove token must not authorize an import."""

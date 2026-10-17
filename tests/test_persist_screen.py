@@ -300,6 +300,56 @@ class TestTheApply:
     # in tests/test_device_persist_v2.py (TestTheConfirm.test_a_write_naming_no_list_or_no_plan_
     # is_refused).
 
+    def test_the_confirmed_device_s_own_account_is_what_is_sent(self, lab, tmp_path):
+        """Lab 7 (b)'s mutation sample (2026-10-17): the apply reading ANOTHER device's row
+        (`d.get("hostname") != hostname`), and sending no username or no enable secret,
+        survived every test, since both rows here held one password. Each device's account
+        is its own: the save signs in to r2 with r2's username, password and enable secret,
+        and never with the next row's."""
+        from modules import device
+
+        f = device.fernet
+        rows = [{"hostname": "r2", "device_type": "cisco_xe", "ip": "192.0.2.12",
+                 "username": "r2-user", "password": f.encrypt(b"r2-Pw-4k8s2m").decode(),
+                 "secret": f.encrypt(b"r2-En-6j1d9p").decode(), "platform": "cisco_iosxe"},
+                {"hostname": "r3", "device_type": "cisco_ios", "ip": "192.0.2.13",
+                 "username": "r3-user", "password": f.encrypt(b"r3-Pw-0v5c7t").decode(),
+                 "secret": f.encrypt(b"r3-En-2w8b4n").decode(), "platform": "cisco_ios"}]
+        device.write_devices_csv(rows, str(tmp_path / "lists" / "lab" / "devices.csv"))
+        got = []
+
+        def persist(ip, username, password, secret, device_type):
+            got.append((ip, username, password, secret, device_type))
+            return {"ok": True, "state": "persisted", "detail": "matched"}
+
+        out = PO.apply("Lab", "r2", actor="ops@example.com",
+                       confirmed_hash=PO.plan("Lab", "r2")["hash"], persist=persist,
+                       record=lambda *a, **k: None)
+        assert out["state"] == "persisted", out
+        assert got == [("192.0.2.12", "r2-user", "r2-Pw-4k8s2m", "r2-En-6j1d9p", "cisco_xe")]
+
+    def test_the_hash_binds_the_driver(self, lab, tmp_path):
+        """Lab 7 (b): the persist hash ignoring the device's `device_type` survived. The
+        driver decides how the save is sent; a row whose driver changed after the preview
+        is not the device the person confirmed, so the confirm is refused with nothing sent
+        (and the refusal's `ok` is False, never True beside "refused")."""
+        from modules import device
+
+        before = PO.plan("Lab", "r2")["hash"]
+        f = device.fernet
+        device.write_devices_csv([{
+            "hostname": "r2", "device_type": "cisco_ios", "ip": "192.0.2.12",
+            "username": "admin", "password": f.encrypt(PW.encode()).decode(),
+            "secret": f.encrypt(b"").decode(), "platform": "cisco_iosxe"}],
+            str(tmp_path / "lists" / "lab" / "devices.csv"))
+        assert PO.plan("Lab", "r2")["hash"] != before
+        out = PO.apply("Lab", "r2", actor="ops@example.com", confirmed_hash=before,
+                       record=lambda *a, **k: None)
+        assert out["ok"] is False and out["state"] == "refused"
+        assert "the plan changed since the preview" in out["detail"]
+        assert lab["sent"] == []
+
+
 
 class TestTheDevicePageOffersIt:
     def test_the_button_and_the_client_are_shipped(self):

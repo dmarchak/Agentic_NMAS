@@ -141,6 +141,59 @@ class TestTheGates:
         assert _gate(j, "drift")["state"] == "ack" and j["departs"] is True
         assert not j["failing"], "a departure is acknowledged by the reason, never a refusal"
 
+    def test_a_device_as_its_golden_and_intent_say_passes_the_drift_gate(self, lab):  # noqa: F811
+        """Lab 7 (b)'s mutation sample (2026-10-17): the drift gate's `pass` side was never
+        asserted, so `departs` computed as always True (the golden comparison skipped, the
+        intent's state misread, `"ack" if departs or True`) survived. r2 running its
+        golden and its committed intent departs from nothing."""
+        j = reload_op.judge("Lab", "r2", "cisco_iosxe", _reads(lab))
+        g = _gate(j, "drift")
+        assert j["departs"] is False and g["state"] == "pass"
+        assert g["detail"] == "it matches its golden and its committed intent"
+
+    def test_no_golden_is_a_departure(self, lab, monkeypatch):  # noqa: F811
+        """Lab 7 (b): with no golden, `drift` read as EQUAL (`{"equal": True}`), or `departs`
+        needing the golden AND the intent to differ, survived: a device whose golden is gone
+        would reload with no reason asked. Running what its intent says is not enough."""
+        monkeypatch.setattr("modules.nsot.repo.golden_at", lambda *a, **k: None)
+        j = reload_op.judge("Lab", "r2", "cisco_iosxe", _reads(lab))
+        g = _gate(j, "drift")
+        assert j["departs"] is True and g["state"] == "ack"
+        assert g["detail"].startswith("its running configuration differs from its golden; ")
+
+    def test_a_startup_without_mercury_s_credential_fails(self, lab):  # noqa: F811
+        """Lab 7 (b): the credential gate's `"pass" if carries.get("ok") or True` survived: no
+        test planted a startup config missing the running config's `username` lines, the
+        lockout a reload would boot into. It fails, and is among the failing gates."""
+        startup = "\n".join(l for l in lab["captured"].splitlines()
+                            if not l.startswith("username "))
+        assert startup != lab["captured"], "the capture holds no username line to remove"
+        j = reload_op.judge("Lab", "r2", "cisco_iosxe", _reads(lab, startup=startup))
+        g = _gate(j, "credential")
+        assert g["state"] == "fail" and "does not carry" in g["detail"]
+        assert g in j["failing"]
+
+    def test_the_fingerprint_binds_what_the_preview_read(self, lab):  # noqa: F811
+        """Lab 7 (b): the fingerprint the confirm is bound to ignoring the running config
+        (`_h(None)`), the startup config, or the booted image survived every test: the run's
+        "moved" test sends a made-up fingerprint, never a real one of a changed device. Each,
+        changed alone, moves it; the same reads give the same one."""
+        was = _fp(lab)
+        assert _fp(lab) == was
+        # The running config alone: a device ALREADY departing that changes again departs
+        # still, so only the running config's own hash can say it moved.
+        from tests.test_intent_match import _broken
+        broken = _broken(lab["captured"])
+        departing = _fp(lab, running=broken, startup=broken)
+        assert _fp(lab, running=broken + "\nbanner motd ^changed^\n",
+                   startup=broken) != departing
+        assert _fp(lab, startup=lab["captured"] + "\nbanner motd ^changed^\n") != was
+        other = VERSION.replace("packages.conf", "other.bin")
+        assert _fp(lab, version=other,
+                   dirs={"bootflash:other.bin": DIR_OK.replace("packages.conf",
+                                                               "other.bin"),
+                         "bootflash:packages.conf": DIR_OK}) != was
+
 
 @pytest.fixture
 def run_lab(lab, monkeypatch):  # noqa: F811
@@ -216,6 +269,122 @@ class TestTheRun:
                             reader=lambda d: _reads(run_lab), reloader=run_lab["reloader"],
                             wait=run_lab["back"])
         assert out["outcome"] == "no_window" and run_lab["sent"] == []
+
+    def test_a_reload_that_raised_is_not_reloaded(self, run_lab):
+        """Lab 7 (b)'s mutation sample (2026-10-17): the reload's exception read as SENT
+        (`"ok": True` in its stand-in answer) survived, so a reload that never left would have
+        waited for a return and could be recorded `reloaded`. It ends `error`, naming the
+        exception, and nothing waits for a device that was not reloaded."""
+        def _raises(d):
+            raise OSError("the session dropped before reload was sent")
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab), reason="r e a s",
+                            reader=lambda d: _reads(run_lab), reloader=_raises,
+                            wait=lambda ip, b: pytest.fail("waited for a reload not sent"))
+        assert out["ok"] is False and out["outcome"] == "error", out
+        step = out["steps"][-1]
+        assert step["step"] == "reload" and step["ok"] is False
+        assert "the session dropped" in step["detail"]
+
+
+class TestTheRunJudgesAgain:
+    def test_a_gate_failing_at_the_run_refuses_with_nothing_sent(self, run_lab, monkeypatch):
+        """Lab 7 (b): the run's own "a gate fails now" refusal was reached by no test, so
+        every mutant of it survived (the join of the failing gates, its outcome, its step's
+        `ok`). The boot image is not in the fingerprint (`dir` is not), so an image deleted
+        between the preview and the run reaches exactly this gate: the run refuses, sends
+        nothing, declares no window, and its read step is not drawn as passed."""
+        from modules import restarts
+        monkeypatch.setattr(restarts, "record_planned",
+                            lambda *a, **k: pytest.fail("a window for a reload not sent"))
+        fp = _fp(run_lab)
+        gone = _reads(run_lab, dirs={"bootflash:packages.conf": "%Error opening"})
+        assert reload_op.judge("Lab", "r2", "cisco_iosxe", gone)["fingerprint"] == fp
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=fp, reason="r e a s",
+                            reader=lambda d: gone, reloader=run_lab["reloader"],
+                            wait=run_lab["back"])
+        assert out["ok"] is False and out["outcome"] == "refused", out
+        assert run_lab["sent"] == []
+        (step,) = out["steps"]
+        assert step["step"] == "read" and step["ok"] is False
+        assert step["detail"].startswith("a gate fails now: the boot image: it booted "
+                                         "bootflash:packages.conf")
+
+    def test_a_refusal_s_steps_are_never_drawn_as_passed(self, run_lab, monkeypatch):
+        """Lab 7 (b): the moved run's and the unrecorded window's step `ok` read as True
+        survived (the tests checked the outcome, not the step): a refusal drawn with a green
+        step is a wrong thing that looks right."""
+        from modules import restarts
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint="0" * 16, reason="r e a s",
+                            reader=lambda d: _reads(run_lab), reloader=run_lab["reloader"],
+                            wait=run_lab["back"])
+        assert [(s["step"], s["ok"]) for s in out["steps"]] == [("read", False)]
+        monkeypatch.setattr(restarts, "record_planned",
+                            lambda *a, **k: {"ok": False, "error": "unreadable"})
+        out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab),
+                            reason="r e a s", reader=lambda d: _reads(run_lab),
+                            reloader=run_lab["reloader"], wait=run_lab["back"])
+        assert [(s["step"], s["ok"]) for s in out["steps"]] == [("read", True),
+                                                               ("window", False)]
+        assert out["steps"][1]["detail"] == "unreadable: nothing was sent"
+
+    def test_a_held_device_is_not_reloaded_and_not_ok(self, run_lab):
+        """Lab 7 (b): the run's answer starting `"ok": True` survived, and a device held by
+        another operation returns that answer before any `finish`: a refusal that said ok."""
+        import threading
+
+        from modules.nsot import device_ops
+        held, done = threading.Event(), threading.Event()
+
+        def _other():
+            with device_ops.hold("Lab", "r2", "deploy", "someone@example.com"):
+                held.set()
+                done.wait(10)
+        worker = threading.Thread(target=_other)
+        worker.start()
+        try:
+            assert held.wait(10)
+            out = reload_op.run("Lab", "r2", actor="a", fingerprint=_fp(run_lab),
+                                reason="r e a s", reader=lambda d: _reads(run_lab),
+                                reloader=run_lab["reloader"], wait=run_lab["back"])
+        finally:
+            done.set()
+            worker.join(10)
+        assert out["ok"] is False and out["outcome"] == "busy", out
+        assert "someone@example.com" in out["error"] and run_lab["sent"] == []
+
+
+class TestTheConfirmStartsTheBoundRun:
+    def test_the_job_runs_what_was_confirmed_as_the_person(self, monkeypatch):
+        """Lab 7 (b): every argument of the job's own call to `run` (the fingerprint, the
+        list, the device, the actor, the reason), the identity it carries, and the masking of
+        its answer survived: the route tests stop at the job's start. The job runs the run
+        bound to the confirmed fingerprint, as the verified person, and its answer leaves
+        masked."""
+        from modules import identity
+        from modules.nsot import capture_job
+
+        started, ran = {}, {}
+        monkeypatch.setattr(capture_job, "start", lambda *a, **k: started.update(
+            work=a[3], list=a[0], actor=a[2], kw=k) or "job-1")
+        ident = object()
+
+        def fake_run(list_name, host, *, actor, fingerprint, reason, **kw):
+            ran.update(list=list_name, host=host, actor=actor, fingerprint=fingerprint,
+                       reason=reason, carried=identity._CARRIED.ident)
+            return {"ok": True, "steps": [{"detail": "snmp-server community Planted-Comm-7 RO"}]}
+        monkeypatch.setattr(reload_op, "run", fake_run)
+        got = reload_op.confirm_and_start("Lab", "r2", "ab" * 8,
+                                          "  a line card   swap needs a cold start ",
+                                          actor="ana@example.invalid", ident=ident)
+        assert got == {"job": "job-1"}
+        assert started["list"] == "Lab" and started["actor"] == "ana@example.invalid"
+        assert started["kw"]["device"] == "r2" and started["kw"]["card"] == "reload"
+        answer = started["work"]("job-1")
+        assert ran == {"list": "Lab", "host": "r2", "actor": "ana@example.invalid",
+                       "fingerprint": "ab" * 8,
+                       "reason": "a line card swap needs a cold start", "carried": ident}
+        assert "Planted-Comm-7" not in repr(answer)
+        assert answer["ok"] is True
 
 
 def test_the_wait_asks_until_it_answers_within_the_bound():

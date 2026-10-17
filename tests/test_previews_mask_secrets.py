@@ -81,6 +81,30 @@ class TestNoPreviewCarriesASecret:
         assert "snmp-server community <redacted" in text
 
 
+class TestABareValueIsMaskedByItsKey:
+    def test_a_secret_under_a_secret_key_never_leaves(self):
+        """Lab 7 (b)'s mutation sample (2026-10-17): `mask_payload`'s key rule switched off
+        (`... and False`) survived all 601 tests measured to run it, since every planted
+        secret was in config syntax, which positional redaction masks anyway. A BARE value
+        (the NetBox import preview's `snmp.communities[].community`, C77's sweep) is caught
+        only by its key: one this installation never stored, under every SECRET_FIELDS key, at
+        any depth. Names and flags beside it (`secret_refs`, `password_set`) are not values
+        and pass, and an empty value says nothing."""
+        from modules.outbound import SECRET_FIELDS, mask_payload
+
+        bare = "BarePlant-C77-k3y"
+        payload = {"snmp": {"communities": [{"community": bare, "access": "ro"}]},
+                   "items": [{k: bare for k in sorted(SECRET_FIELDS)}],
+                   "secret_refs": ["snmp_ro"], "password_set": True, "token": ""}
+        out = mask_payload(payload)
+        assert bare not in json.dumps(out)
+        assert out["snmp"]["communities"][0] == {"community": "<redacted:community>",
+                                                 "access": "ro"}
+        assert out["items"][0] == {k: f"<redacted:{k}>" for k in SECRET_FIELDS}
+        assert out["secret_refs"] == ["snmp_ro"] and out["password_set"] is True
+        assert out["token"] == ""
+
+
 class TestTheHashIsStillOfWhatIsSent:
     def test_the_deploy_command_hash_is_of_the_truthful_program(self, monkeypatch):
         from modules.nsot.deploy import command_fingerprint, merge_commands

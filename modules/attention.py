@@ -33,6 +33,7 @@ cache, rather than a guess.
 import logging
 import re
 import time
+from urllib.parse import urlencode
 
 log = logging.getLogger(__name__)
 
@@ -728,8 +729,14 @@ def drift_source(status=None, now=None) -> dict:
         no_golden = d.get("reason") == "no golden config saved"
         add(f"skipped:{d['hostname']}", f"{d['hostname']} was not checked for drift",
             d.get("reason") or "no reason recorded",
-            {"label": "Capture its golden from its Device page, or with Save All's "
-                      "no-golden scope"} if no_golden else
+            # C1153: v2's way, never today's index's no-golden capture scope. Devices filtered
+            # to the state "no golden" lists every device without one; ticked, Actions › Save
+            # records each as golden (and saves it to startup).
+            {"label": "Capture it from its device page (Actions › Capture), or on Devices "
+                      "choose the state \"no golden\", tick the devices and choose Actions › "
+                      "Save…",
+             "href": "/v2/devices?" + urlencode({"state": "no_golden", "list": lst})}
+            if no_golden else
             {"label": "Clear what the reason names, then " + _CHECK_NOW[0].lower()
                       + _CHECK_NOW[1:], "href": _DRIFT_HOME, "known": False},
             "warning", devices=[d["hostname"]], operands={"coverage": coverage})

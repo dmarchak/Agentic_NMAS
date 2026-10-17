@@ -96,6 +96,57 @@ class TestTheDeletedNetwork_sPage:
         assert r.status_code == 404 and r.get_json()["unknown_list"] == "Nowhere"
 
 
+def _sidebar(html):
+    m = re.search(r'<nav class="sidebar".*?</nav>', html, re.S)
+    assert m, "no sidebar"
+    return m.group(0)
+
+
+class TestALinkNamingItLeadsToDefault:
+    """C1190 (the operator, W4 step 69, 2026-10-17): after W4 walk's delete, every sidebar link
+    the page had drawn still named it (`?list=W4 walk`), and Devices answered raw JSON ("There
+    is no device list named 'W4 walk'"). A v2 page asked for a deleted network now goes to the
+    same page for Default, which says the network was deleted, and every link it draws names
+    Default; a name that never was a network keeps the refusal."""
+
+    def test_devices_naming_it_redirects_to_default_s_devices_with_a_note(self, gone):
+        c = gone["client"]
+        r = c.get("/v2/devices?list=Branch")
+        assert r.status_code == 302, (r.status_code, r.get_data(as_text=True)[:300])
+        assert r.headers["Location"] == "/v2/devices?list=Default&deleted=Branch", \
+            r.headers["Location"]
+        page = c.get(r.headers["Location"])
+        html = _flat(page)
+        assert page.status_code == 200 and "<h1>Devices" in html
+        assert "Branch was deleted" in html, "the page says why it shows Default"
+        side = _sidebar(html)
+        assert "list=Branch" not in side and "Branch" not in side, side[:600]
+        assert 'href="/v2/devices?list=Default"' in side
+
+    def test_a_device_page_of_it_leads_to_default_s_devices(self, gone):
+        r = gone["client"].get("/v2/device/r1?list=Branch")
+        assert r.status_code == 302
+        assert r.headers["Location"] == "/v2/devices?list=Default&deleted=Branch"
+
+    def test_the_note_is_said_only_for_a_network_that_was_deleted(self, gone):
+        """A hand-typed `deleted=` naming a live or never-existing network says nothing."""
+        for name in ("Default", "Nowhere"):
+            html = _flat(gone["client"].get(f"/v2/devices?list=Default&deleted={name}"))
+            assert f"{name} was deleted" not in html, name
+
+    def test_an_htmx_part_naming_it_is_still_refused_in_place(self, gone):
+        """A part swaps into the page that asked: a whole page redirected into it would be
+        drawn inside a card, so a part keeps its refusal (drawn "Couldn't load" in place)."""
+        r = gone["client"].get("/v2/devices/table?list=Branch", headers={"HX-Request": "true"})
+        assert r.status_code == 404 and r.get_json()["unknown_list"] == "Branch"
+
+    def test_a_name_that_never_was_a_network_keeps_today_s_refusal(self, gone):
+        """The control: a mistyped network is not a deleted one."""
+        r = gone["client"].get("/v2/devices?list=Nowhere")
+        assert r.status_code == 404 and r.get_json()["unknown_list"] == "Nowhere"
+        assert "There is no device list named 'Nowhere'" in r.get_json()["error"]
+
+
 def _writes(app):
     """Every v2 write whose PATH names a network (`<list_name>`), filled: the population a
     page drawn before the delete can still send. Found from the app's routes, not listed."""

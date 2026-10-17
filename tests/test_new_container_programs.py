@@ -72,12 +72,12 @@ class TestANewContainerIsEmittedOnce:
     def test_a_new_two_level_stanza_does_not_exit_and_re_enter(self):
         """The worse shape: the parent was closed and re-opened mid-stanza."""
         commands = merge_commands(
-            "hostname r6\nrouter bgp 65010\n bgp log-neighbor-changes\n"
+            "hostname r6\nrouter bgp 65010\n bgp router-id 10.255.1.16\n"
             " address-family ipv4\n  network 10.255.1.16 mask 255.255.255.255\n"
             "end\n", BARE)
         assert commands == [
             "router bgp 65010",
-            " bgp log-neighbor-changes",
+            " bgp router-id 10.255.1.16",
             " address-family ipv4",
             "  network 10.255.1.16 mask 255.255.255.255",
             "exit",
@@ -103,7 +103,7 @@ class TestNoProgramHasAdjacentDuplicates:
     CASES = [
         ("new interface", "interface Loopback0\n description x\n ip address 10.0.0.1 255.255.255.0\n"),
         ("new ospf", "router ospf 1\n router-id 10.255.1.16\n network 10.0.0.0 0.0.0.255 area 0\n"),
-        ("new bgp two-level", "router bgp 65010\n bgp log-neighbor-changes\n address-family ipv4\n  network 10.255.1.16 mask 255.255.255.255\n"),
+        ("new bgp two-level", "router bgp 65010\n bgp router-id 10.255.1.16\n address-family ipv4\n  network 10.255.1.16 mask 255.255.255.255\n"),
         ("new vlan", "vlan 99\n name MGMT\n"),
         ("new line", "line vty 0 4\n login local\n transport input ssh\n"),
     ]

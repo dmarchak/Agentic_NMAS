@@ -146,4 +146,249 @@ EQUIVALENT = [
             'return sorted(d.get("hostname", "XXXX") for d in rows'),
            "the same comprehension keeps a row only `if d.get(\"hostname\")`, so every row it "
            "keeps has a hostname and the default is never returned"),
+    # ── Lab 7 (b)'s mutation sample (2026-10-17, the laptop, serial, canary killed): the
+    # confirm-by-hash and one-shot binding. Its survivors that matter are killed by the tests
+    # whose docstrings name "Lab 7 (b)"; these cannot be observed. A plan or preview hash is
+    # compared only with one the same code computes in the same release (the NetBox tokens
+    # live in one process's memory; the persist and reload hashes are recomputed at apply), so
+    # a change that alters every hash alike, and decides nothing, is not a behaviour.
+    *_each("modules.netbox_authz.compute_plan_hash",
+           "}, sort_keys=True))",
+           ("}, sort_keys=None))", "}, ))", "}, sort_keys=False))"),
+           "the dict is a literal whose keys are written in one fixed order, and every dict "
+           "inside it passes through `_normalize`, which rebuilds it sorted: unsorted, the "
+           "text is still one function of the plan"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           '"kind":     kind,', ('"XXkindXX":     kind,', '"KIND":     kind,'),
+           "a key's spelling is a constant of the hashed text: every plan's hash moves alike"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           '"endpoint": entry.get("endpoint", ""),',
+           ('"XXendpointXX": entry.get("endpoint", ""),',
+            '"ENDPOINT": entry.get("endpoint", ""),'),
+           "a key's spelling is a constant of the hashed text: every plan's hash moves alike"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           '"endpoint": entry.get("endpoint", ""),',
+           ('"endpoint": entry.get("endpoint", None),', '"endpoint": entry.get("endpoint", ),',
+            '"endpoint": entry.get("endpoint", "XXXX"),'),
+           "the stand-in for an entry with no endpoint is one constant either way, so two plans "
+           "hash apart exactly when they did"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           '"name":     entry.get("name", ""),',
+           ('"XXnameXX":     entry.get("name", ""),', '"NAME":     entry.get("name", ""),'),
+           "a key's spelling is a constant of the hashed text: every plan's hash moves alike"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           '"name":     entry.get("name", ""),',
+           ('"name":     entry.get("name", None),', '"name":     entry.get("name", ),',
+            '"name":     entry.get("name", "XXXX"),'),
+           "the stand-in for an entry with no name is one constant either way, so two plans "
+           "hash apart exactly when they did"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           '"id":       _normalize(entry.get("id")),',
+           ('"XXidXX":       _normalize(entry.get("id")),',
+            '"ID":       _normalize(entry.get("id")),'),
+           "a key's spelling is a constant of the hashed text: every plan's hash moves alike"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           '"payload":  _normalize(entry.get("payload") or {}),',
+           ('"XXpayloadXX":  _normalize(entry.get("payload") or {}),',
+            '"PAYLOAD":  _normalize(entry.get("payload") or {}),'),
+           "a key's spelling is a constant of the hashed text: every plan's hash moves alike"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           'digest.update(item.encode("utf-8"))', ('digest.update(item.encode("UTF-8"))',),
+           "codec names are case-insensitive: the same codec, the same bytes"),
+    *_each("modules.netbox_authz.compute_plan_hash",
+           'digest.update(b"\\x1e")', ('digest.update(b"XX\\x1eXX")', 'digest.update(b"\\x1E")'),
+           "`\\x1E` is the same byte; a longer constant separates the entries as well, since "
+           "each entry is JSON text, which never holds a raw 0x1e"),
+    *_each("modules.netbox_authz._normalize",
+           'return "<new>"', ('return "XX<new>XX"', 'return "<NEW>"'),
+           "the placeholder is one constant for every synthetic id either way"),
+    *_each("modules.netbox_authz.consume_token",
+           "_remember(_spent, token, dict(entry, used_at=now))",
+           ("_remember(_spent, token, dict(used_at=now))",),
+           "a spent entry is read only by `_refusal`, for its `used_at`"),
+    *_each("modules.netbox_authz.consume_token",
+           'return False, _refusal(now, spent, expired), ""',
+           ('return False, _refusal(now, spent, expired), "XXXX"',),
+           "the plan hash of a refusal is read by nothing: `netbox_ops.authorize`, the one "
+           "caller, raises on `not ok` before it reads the hash"),
+    *_each("modules.netbox_authz.consume_token",
+           'return False, "This confirmation was issued for a different operation.", ""',
+           ('return False, "This confirmation was issued for a different operation.", "XXXX"',),
+           "the plan hash of a refusal is read by nothing: `netbox_ops.authorize`, the one "
+           "caller, raises on `not ok` before it reads the hash"),
+    *_each("modules.netbox_authz.consume_token",
+           'return False, "This confirmation was issued for a different device list.", ""',
+           ('return False, "This confirmation was issued for a different device list.", '
+            '"XXXX"',),
+           "the plan hash of a refusal is read by nothing: `netbox_ops.authorize`, the one "
+           "caller, raises on `not ok` before it reads the hash"),
+    *_each("modules.netbox_authz.consume_token",
+           'return True, "", entry["plan_hash"]', ('return True, "XXXX", entry["plan_hash"]',),
+           "the error of a token that passed is read by nothing: `netbox_ops.authorize` reads "
+           "it only when `ok` is False"),
+    *_each("modules.netbox_authz.issue_token",
+           "token = secrets.token_urlsafe(32)",
+           ("token = secrets.token_urlsafe(None)", "token = secrets.token_urlsafe(33)"),
+           "`token_urlsafe(None)` takes `secrets.DEFAULT_ENTROPY`, 32 bytes (CPython 3.12); 33 "
+           "bytes is one byte MORE entropy: neither weakens the token"),
+    *_each("modules.netbox_authz.issue_token",
+           '"issued_at":  now,', ('"XXissued_atXX":  now,', '"ISSUED_AT":  now,'),
+           "`_refusal`, the only reader, falls back to `expires_at - ttl`, the same instant"),
+    *_each("modules.netbox_authz.issue_token",
+           'return {"token": token, "expires_in": ttl, "plan_hash": plan_hash}',
+           ('return {"token": token, "expires_in": ttl, "XXplan_hashXX": plan_hash}',
+            'return {"token": token, "expires_in": ttl, "PLAN_HASH": plan_hash}'),
+           "`netbox_ops.authorization_for`, the one caller, reads only `token` and "
+           "`expires_in`; it computed the plan hash itself"),
+    *_each("modules.netbox_authz.verify_plan_unchanged",
+           'return True, ""', ('return True, "XXXX"',),
+           "`netbox_ops.authorize`, the one caller, reads the error only when the plan moved"),
+    *_each("modules.nsot.deploy.plan_batch",
+           'fresh_hash = hashlib.sha256(fresh.encode("utf-8")).hexdigest()[:16]',
+           ('fresh_hash = hashlib.sha256(fresh.encode("UTF-8")).hexdigest()[:16]',),
+           "codec names are case-insensitive: the same codec, the same bytes"),
+    *_each("modules.nsot.onboard.abandon_fingerprint",
+           'shown = [[s.get("step", ""), bool(s.get("ok")), s.get("detail", "")]',
+           ('shown = [[s.get("step", None), bool(s.get("ok")), s.get("detail", "")]',
+            'shown = [[s.get("step", ), bool(s.get("ok")), s.get("detail", "")]',
+            'shown = [[s.get("step", "XXXX"), bool(s.get("ok")), s.get("detail", "")]',
+            'shown = [[s.get("step", ""), bool(s.get("ok")), s.get("detail", None)]',
+            'shown = [[s.get("step", ""), bool(s.get("ok")), s.get("detail", )]',
+            'shown = [[s.get("step", ""), bool(s.get("ok")), s.get("detail", "XXXX")]'),
+           "the stand-in for a step with no name or no words is one constant either way, and "
+           "the preview and the confirm compute it alike (every step `_abandon_onboarding` "
+           "writes carries both)"),
+    *_each("modules.nsot.onboard.abandon_fingerprint",
+           'return hashlib.sha256(json.dumps([shown, bool(dry.get("ok")), dry.get("error", "")])',
+           ('return hashlib.sha256(json.dumps([shown, bool(dry.get("ok")), '
+            'dry.get("error", None)])',
+            'return hashlib.sha256(json.dumps([shown, bool(dry.get("ok")), dry.get("error", )])',
+            'return hashlib.sha256(json.dumps([shown, bool(dry.get("ok")), '
+            'dry.get("error", "XXXX")])'),
+           "the stand-in for a dry run with no error is one constant either way, so two dry "
+           "runs fingerprint apart exactly when they did"),
+    *_each("modules.nsot.persist_op.row_checks",
+           '"username": row.get("username", "admin")}, sort_keys=True).encode()).hexdigest()[:16]',
+           ('"username": row.get("username", "admin")}, sort_keys=None).encode())'
+            '.hexdigest()[:16]',
+            '"username": row.get("username", "admin")}, ).encode()).hexdigest()[:16]',
+            '"username": row.get("username", "admin")}, sort_keys=False).encode())'
+            '.hexdigest()[:16]'),
+           "the hashed dict is a literal whose keys are written in one fixed order: unsorted, "
+           "the text is still one function of the row"),
+    *_each("modules.nsot.persist_op.row_checks",
+           '"username": row.get("username", "admin")}, sort_keys=True).encode()).hexdigest()[:16]',
+           ('"XXusernameXX": row.get("username", "admin")}, sort_keys=True).encode())'
+            '.hexdigest()[:16]',
+            '"USERNAME": row.get("username", "admin")}, sort_keys=True).encode())'
+            '.hexdigest()[:16]',
+            '"username": row.get("username", None)}, sort_keys=True).encode()).hexdigest()[:16]',
+            '"username": row.get("username", )}, sort_keys=True).encode()).hexdigest()[:16]',
+            '"username": row.get("username", "XXadminXX")}, sort_keys=True).encode())'
+            '.hexdigest()[:16]',
+            '"username": row.get("username", "ADMIN")}, sort_keys=True).encode())'
+            '.hexdigest()[:16]',
+            '"username": row.get("username", "admin")}, sort_keys=True).encode())'
+            '.hexdigest()[:17]'),
+           "a key's spelling, and the stand-in for a row with no username, are constants of "
+           "the hashed text; one more hex digit is the same hash, longer: persist and Save "
+           "recompute it with the same code, so every hash moves alike and none decides "
+           "differently"),
+    *_each("modules.nsot.persist_op.row_checks",
+           '"list": list_name, "device": hostname, "ip": row.get("ip", ""),',
+           ('"XXlistXX": list_name, "device": hostname, "ip": row.get("ip", ""),',
+            '"LIST": list_name, "device": hostname, "ip": row.get("ip", ""),',
+            '"list": list_name, "XXdeviceXX": hostname, "ip": row.get("ip", ""),',
+            '"list": list_name, "DEVICE": hostname, "ip": row.get("ip", ""),',
+            '"list": list_name, "device": hostname, "XXipXX": row.get("ip", ""),',
+            '"list": list_name, "device": hostname, "IP": row.get("ip", ""),',
+            '"list": list_name, "device": hostname, "ip": row.get("ip", None),',
+            '"list": list_name, "device": hostname, "ip": row.get("ip", ),',
+            '"list": list_name, "device": hostname, "ip": row.get("ip", "XXXX"),'),
+           "a key's spelling, and the stand-in for a row with no address, are constants of the "
+           "hashed text: every hash moves alike"),
+    *_each("modules.nsot.persist_op.row_checks",
+           '"device_type": row.get("device_type", ""),',
+           ('"XXdevice_typeXX": row.get("device_type", ""),',
+            '"DEVICE_TYPE": row.get("device_type", ""),',
+            '"device_type": row.get("device_type", None),',
+            '"device_type": row.get("device_type", ),',
+            '"device_type": row.get("device_type", "XXXX"),'),
+           "a key's spelling, and the stand-in for a row with no driver (which the plan "
+           "refuses anyway), are constants of the hashed text: every hash moves alike"),
+    *_each("modules.nsot.reload_op.judge",
+           '"departs": departs}, sort_keys=True)',
+           ('"departs": departs}, sort_keys=None)', '"departs": departs}, )',
+            '"departs": departs}, sort_keys=False)', '"XXdepartsXX": departs}, sort_keys=True)',
+            '"DEPARTS": departs}, sort_keys=True)'),
+           "the fingerprinted dict is a literal whose keys are written in one fixed order, and "
+           "a key's spelling is a constant of its text: preview and run compute it alike"),
+    *_each("modules.nsot.reload_op.judge",
+           'shown = json.dumps({"running": _h(running), "startup": _h(startup),',
+           ('shown = json.dumps({"XXrunningXX": _h(running), "startup": _h(startup),',
+            'shown = json.dumps({"RUNNING": _h(running), "startup": _h(startup),',
+            'shown = json.dumps({"running": _h(running), "XXstartupXX": _h(startup),',
+            'shown = json.dumps({"running": _h(running), "STARTUP": _h(startup),'),
+           "a key's spelling is a constant of the fingerprinted text: preview and run compute "
+           "it alike"),
+    *_each("modules.nsot.reload_op.judge",
+           '"image": _IMAGE.search(reads.get("version", "") or "") and',
+           ('"XXimageXX": _IMAGE.search(reads.get("version", "") or "") and',
+            '"IMAGE": _IMAGE.search(reads.get("version", "") or "") and',
+            '"image": _IMAGE.search(reads.get("version", None) or "") and',
+            '"image": _IMAGE.search(reads.get("version", ) or "") and',
+            '"image": _IMAGE.search(reads.get("version", "XXXX") or "") and',
+            '"image": _IMAGE.search(reads.get("version", "") or "XXXX") and'),
+           "a key's spelling is a constant of the fingerprinted text; with no `show version` "
+           "read, every stand-in (None, '', 'XXXX') names no image, as '' does"),
+    *_each("modules.nsot.reload_op.judge",
+           '"running_hash": _h(running)}',
+           ('"XXrunning_hashXX": _h(running)}', '"RUNNING_HASH": _h(running)}',
+            '"running_hash": _h(None)}'),
+           "`running_hash` is read by nothing (no module, route or template names it); the "
+           "running config is bound through the fingerprint"),
+    *_each("modules.nsot.reload_op.run",
+           'step("read", False, f"it could not be read: {exc}")',
+           ('step("read", None, f"it could not be read: {exc}")',),
+           "`step` stores `bool(ok)`, and bool(None) is False"),
+    *_each("modules.nsot.reload_op.run",
+           'step("read", False, f"it moved since the preview (previewed {fingerprint}, "',
+           ('step("read", None, f"it moved since the preview (previewed {fingerprint}, "',),
+           "`step` stores `bool(ok)`, and bool(None) is False"),
+    *_each("modules.nsot.reload_op.run",
+           'step("read", False, "a gate fails now: " + "; ".join(',
+           ('step("read", None, "a gate fails now: " + "; ".join(',),
+           "`step` stores `bool(ok)`, and bool(None) is False"),
+    *_each("modules.nsot.reload_op.run",
+           'step("window", False, got.get("error", "not recorded") + ": nothing was sent")',
+           ('step("window", None, got.get("error", "not recorded") + ": nothing was sent")',),
+           "`step` stores `bool(ok)`, and bool(None) is False"),
+    *_each("modules.nsot.reload_op.run",
+           'step("verify", False, f"it answers on SSH\'s port and could not be read: {exc}")',
+           ('step("verify", None, f"it answers on SSH\'s port and could not be read: {exc}")',),
+           "`step` stores `bool(ok)`, and bool(None) is False"),
+    *_each("modules.nsot.reload_op.run",
+           'step("verify", False, f"it runs something else: {len(same.get(\'only_left\') or [])} "',
+           ('step("verify", None, f"it runs something else: '
+            '{len(same.get(\'only_left\') or [])} "',),
+           "`step` stores `bool(ok)`, and bool(None) is False"),
+    # ── Lab 7 (b): masking. Its survivors that matter are killed by the tests whose
+    # docstrings name "Lab 7 (b)" in tests/test_provider_redaction.py and
+    # tests/test_previews_mask_secrets.py.
+    *_each("modules.redact._compile",
+           "ordered = sorted(values, key=len, reverse=True)",
+           ("ordered = sorted(values, key=None, reverse=True)",
+            "ordered = sorted(values, reverse=True)"),
+           "the order matters only between two secrets one of which is a PREFIX of the other "
+           "(literal alternatives can both match at one position only then), and reverse "
+           "lexicographic order puts every extension before its prefix, as longest-first "
+           "does; shown on the planted `!` extension, which kills the shortest-first mutants"),
+    *_each("modules.redact.redact_text",
+           'lambda m: PLACEHOLDER.format(label=table.get(m.group(1), "secret")), text)',
+           ('lambda m: PLACEHOLDER.format(label=table.get(m.group(1), None)), text)',
+            'lambda m: PLACEHOLDER.format(label=table.get(m.group(1), )), text)',
+            'lambda m: PLACEHOLDER.format(label=table.get(m.group(1), "XXsecretXX")), text)',
+            'lambda m: PLACEHOLDER.format(label=table.get(m.group(1), "SECRET")), text)'),
+           "the pattern is the alternation of the table's own keys, escaped, so what it "
+           "matched is always a key and the default label is never used"),
 ]

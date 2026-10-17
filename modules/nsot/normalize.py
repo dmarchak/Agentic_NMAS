@@ -396,11 +396,29 @@ def _autoinstall_client_id(line: str, interface: str) -> bool:
     return bool(m and interface and m.group(1) == ifnames.abbreviate(interface))
 
 
+#: BGP's neighbour-change logging (C1182, the operator, W4 after step 50, 2026-10-17): IOS-XE
+#: writes ` bgp log-neighbor-changes` under `router bgp` on its own. Measured: every IOS-XE
+#: capture that runs BGP holds it (r3, r4, r5 of tests/fixtures/configs/fleet/), and s5, whose
+#: intent never sent it, held it after its first deploy, so its intent departed by
+#: "- bgp log-neighbor-changes" at once. It is the device's own, as AutoInstall's client-id is:
+#: never intent, never sent, never residue, never a departure. Only that exact line, directly
+#: under `router bgp`: its negation is a person's choice and stays configuration. The rule is
+#: in IOS syntax and keyed on that shape, not on the platform (no comparison here knows it);
+#: classic IOS documents the same default (on since 15.0(1)M), its print not yet measured on
+#: this fleet (no IOS device runs BGP).
+_BGP_LOG_NEIGHBOR_CHANGES = " bgp log-neighbor-changes"
+
+
+def _bgp_own(line: str, section: str) -> bool:
+    """Whether *line*, a child of the top-level *section*, is BGP's own neighbour logging."""
+    return section.startswith("router bgp ") and line.rstrip() == _BGP_LOG_NEIGHBOR_CHANGES
+
+
 def device_owned(text: str) -> list:
     """The header of every block in *text* the device generates for itself, in order: what a
     screen lists as the device's own, never as unmodelled and never as blocking."""
     return [h for h in excluded_unrenderable(text)
-            if _opens_device_owned(h, h) or h.startswith("interface ")]
+            if _opens_device_owned(h, h) or h.startswith(("interface ", "router bgp "))]
 
 
 #: The line `show startup-config` prints above the configuration, on both platforms (measured,
@@ -546,7 +564,7 @@ def excluded_unrenderable(text: str) -> list:
     Information, never a gate. ``template_report`` decides deployability;
     this says what the figure beside it did not examine.
     """
-    found, in_block, in_banner, interface = [], False, False, ""
+    found, in_block, in_banner, interface, section = [], False, False, "", ""
 
     for line in (text or "").splitlines():
         stripped = line.strip()
@@ -572,9 +590,12 @@ def excluded_unrenderable(text: str) -> list:
             continue
 
         if not line[:1].isspace():
+            section = stripped
             interface = stripped[len("interface "):] if stripped.startswith("interface ") else ""
         elif _autoinstall_client_id(line, interface):
             found.append(f"interface {interface}: {stripped}")
+        elif _bgp_own(line, section):
+            found.append(f"{section}: {stripped}")
 
     return found
 
@@ -583,7 +604,8 @@ def strip_for_roundtrip(text: str) -> list:
     """Remove lines a template cannot render, for round-trip comparison.
 
     Removes certificate chains and their hex bodies, the device's own
-    self-signed trustpoint (C397), banner blocks, boot markers, licence UDI
+    self-signed trustpoint (C397), AutoInstall's client-id (C485), IOS-XE's
+    own ``bgp log-neighbor-changes`` (C1182), banner blocks, boot markers, licence UDI
     lines, and the ``show version`` preamble NMAS prefixes
     to a golden config. Everything else is left alone — including lines the
     parser does not yet model, which must stay visible so coverage is honest.
@@ -591,7 +613,7 @@ def strip_for_roundtrip(text: str) -> list:
     out = []
     in_block = False
     in_banner = False
-    interface = ""
+    interface = section = ""
 
     for line in (text or "").splitlines():
         stripped = line.strip()
@@ -618,9 +640,12 @@ def strip_for_roundtrip(text: str) -> list:
             continue
 
         if not line[:1].isspace():
+            section = stripped
             interface = stripped[len("interface "):] if stripped.startswith("interface ") else ""
         elif _autoinstall_client_id(line, interface):
             continue                        # AutoInstall's own (C485): never intent, never sent
+        elif _bgp_own(line, section):
+            continue                        # IOS-XE's own (C1182): never intent, never sent
 
         if _matches(stripped, line, UNRENDERABLE_LINE_PREFIXES):
             continue

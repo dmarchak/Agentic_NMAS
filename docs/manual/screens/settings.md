@@ -25,7 +25,11 @@ is (`lists_removed/<folder>-<UTC time>`, kept, never erased). It has no mode ban
 cards and no buttons; the scope bar above it leads to Installation, Default or another network.
 A tab drawn before the delete keeps its cards on screen, but each Save, switch, preview or
 Delete there answers in place, refused, naming the network and where its data went, and nothing
-is written anywhere. A folder that something left at the deleted network's path since does not
+is written anywhere. Any other page whose address names the deleted network (a sidebar link,
+a bookmark or a device's page drawn before the delete) opens the same page for Default instead,
+a device's page opening Default's Devices, and the top bar says so: **"Default · Branch was
+deleted"**; every link on it then names Default. A name that never was a network is still
+refused, naming it. A folder that something left at the deleted network's path since does not
 bring it back. To use the name again, create a network of that name (see
 [Create a network](settings-switch#create)): it starts empty, inheriting from Default.
 

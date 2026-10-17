@@ -62,6 +62,52 @@ def test_a_network_that_still_owns_recorded_objects_is_refused_naming_them(nb):
     assert json.loads(nb["record"].read_text())["branch"], "the record was kept, not forgotten"
 
 
+#: W4 walk's record as its delete card named it (the operator, W4 step 69, 2026-10-17, screenshot
+#: 89): a region, a site and a VRF (types whose cascade is unmeasured, C1097) with devices,
+#: interfaces and addresses.
+W4_RECORD = {"branch": {
+    "dcim/regions": [{"id": 10, "name": "W4 walk"}], "dcim/sites": [{"id": 8, "name": "W4 walk"}],
+    "ipam/vrfs": [{"id": 9, "name": "W4 walk"}],
+    "dcim/devices": [{"id": 16, "name": "s6"}, {"id": 17, "name": "s5"}],
+    "dcim/interfaces": [{"id": 73, "name": "GigabitEthernet1"}]}}
+
+
+class TestTheRefusalSaysTheWayThrough:
+    """C1191 (the operator, W4 step 69, 2026-10-17): a network that ever created NetBox objects
+    can be deleted on this lab only by Stop tracking first (C1138's guard here, with Remove
+    withheld while a cascade is unmeasured, C1097), and the card sent the person to "Remove
+    from NetBox…, or Stop tracking instead…" as if Remove would do. It says the way plainly:
+    where Stop tracking is, what it forgets, that NetBox keeps the objects, and why Remove
+    cannot delete them here."""
+
+    def test_unmeasured_types_name_stop_tracking_as_the_way_and_say_remove_cannot(self, nb):
+        nb["record"].write_text(json.dumps(W4_RECORD))
+        _r, pv = _post(nb, "/v2/settings/network/Branch/delete/preview")
+        text = re.sub(r"<[^>]+>", " ", pv)
+        assert "the way through is Stop tracking" in text, text
+        assert "Source of truth › NetBox, Branch&#39;s Remove from NetBox…, then Stop tracking " \
+               "instead…" in pv, pv
+        assert "deletes nothing in NetBox" in text
+        assert "Mercury forgets the 6 objects it created for Branch" in text
+        assert "NetBox keeps every one, with its nmas-managed tag" in text
+        assert ("Remove from NetBox… cannot delete them here: what NetBox takes with a delete "
+                "of dcim/regions, dcim/sites, ipam/vrfs has not been measured") in text
+        assert 'name="typed"' not in pv, "still refused: no confirm is offered"
+
+    def test_measured_types_keep_remove_as_a_way(self, nb):
+        """The control: a record of devices and interfaces only (cascades measured) names
+        Remove from NetBox… as the first way, Stop tracking as the other."""
+        nb["record"].write_text(json.dumps(
+            {"branch": {"dcim/devices": [{"id": 14, "name": "probe-r1a"}]}}))
+        _r, pv = _post(nb, "/v2/settings/network/Branch/delete/preview")
+        text = re.sub(r"<[^>]+>", " ", pv)
+        assert "cannot delete them here" not in text and "the way through is Stop" not in text
+        assert "remove them first on Source of truth › NetBox (Branch&#39;s Remove from " \
+               "NetBox…)" in pv, pv
+        assert "or forget them there with Stop tracking instead…" in text
+        assert "NetBox keeps every one" in text
+
+
 def test_objects_recorded_after_the_preview_refuse_the_confirm(nb):
     """The confirm checks again: an import between the preview and the confirm is not lost."""
     _r, pv = _post(nb, "/v2/settings/network/Branch/delete/preview")

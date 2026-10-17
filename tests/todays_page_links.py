@@ -25,3 +25,14 @@ OTHER_GAPS = {
 #: The list's count; it may only fall, and it falls with the gap that closes (C629: closing
 #: installation_settings left it at 8 over 7, room for one gap to come back unseen).
 CEILING = 0
+
+#: C1153: the names of controls only today's pages have, as words a v2 instruction could use.
+#: Needs attention's words never name one (`tests/test_v2_links_stay_on_v2.py`,
+#: `TestNeedsAttentionWordsNameNoTodaysControl`); the scan also derives every multi-word button
+#: or link label today's templates draw and v2's do not. Each entry: the words -> where they
+#: live on today's page.
+TODAYS_ONLY_CONTROLS = {
+    "no-golden scope": "today's index toolbar, Capture devices with no golden (a capture "
+                       "scope v2's Devices has no control for)",
+    "Save All Configs": "today's index toolbar",
+}

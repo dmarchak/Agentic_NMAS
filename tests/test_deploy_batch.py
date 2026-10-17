@@ -96,6 +96,20 @@ class TestPlanning:
         plan = plan_batch([FakeArtifact("R5")], {"R5": _hash("e")}, {})
         assert plan["skipped"][0]["outcome"] == FAILED
 
+    def test_a_skipped_device_never_ends_the_plan(self):
+        """Lab 7 (b)'s mutation sample (2026-10-17): `continue` read as `break` after a device
+        not selected, and after one with no fresh capture, survived every test, since each
+        skip here was the batch's last device. A break would drop every device after it from
+        BOTH lists: not deployed, and never said. Each device that follows is still decided."""
+        artifacts = [FakeArtifact("R1"), FakeArtifact("R2"), FakeArtifact("R3"),
+                     FakeArtifact("R4")]
+        confirmed = {"R2": _hash("b"), "R3": _hash("c"), "R4": _hash("d")}
+        fresh = {"R1": "a", "R2": "b", "R4": "CHANGED"}
+        plan = plan_batch(artifacts, confirmed, fresh)
+        assert [e["artifact"].device for e in plan["to_deploy"]] == ["R2"]
+        assert [(s["device"], s["outcome"]) for s in plan["skipped"]] == [
+            ("R1", SKIPPED_NOT_SELECTED), ("R3", FAILED), ("R4", SKIPPED_DRIFTED)]
+
 
 class TestFullAccounting:
     def _plan(self, n=9, drifted=(), refused=()):

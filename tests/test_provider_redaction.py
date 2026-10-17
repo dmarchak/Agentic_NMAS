@@ -72,6 +72,20 @@ class TestTheBoundaryRedacts:
         out = redact.redact_text("community Str0ngC0mmunityValue-LONGER\n")
         assert out.strip() == "community <redacted:overlap>"
 
+    def test_the_longest_secret_wins_past_a_character_that_ends_a_token(self, store):
+        """Lab 7 (b)'s mutation sample (2026-10-17): `_compile` ordering its alternation
+        SHORTEST first (`reverse=False`, or no `reverse`) survived, because the test above
+        extends its secret with `-`, a token character, so the shorter one's whole-token
+        lookahead refuses it whatever the order. A secret extended past a character that ends
+        a token (`!`, common in passwords) is where the order decides: shortest first masks
+        the shared prefix under the wrong label and leaves `!Ext9` of the longer secret in
+        clear."""
+        from modules import credentials
+        credentials.set_template_secret("campus:r1:overlap", "Str0ngC0mmunityValue!Ext9",
+                                        list_name="campus")
+        out = redact.redact_text("seen Str0ngC0mmunityValue!Ext9 here\n")
+        assert out == "seen <redacted:overlap> here\n"
+
     def test_secrets_from_every_list_are_redacted(self, store):
         """A payload is redacted for what it holds, not for the active list."""
         from modules import credentials
@@ -79,6 +93,21 @@ class TestTheBoundaryRedacts:
                                         "BranchOnlyCommunity", list_name="branch")
         out = redact.redact_text("snmp-server community BranchOnlyCommunity RO")
         assert "BranchOnlyCommunity" not in out
+
+
+class TestATransientSecret:
+    def test_one_at_the_floor_is_redacted_under_its_label_for_the_block_only(self, store):
+        """Lab 7 (b): `transient_secret` taking a value only ABOVE the floor (`>`), and
+        storing it under no label, survived: adopt's supplied credential (never stored) of
+        exactly MIN_REDACTABLE characters would have reached a log in clear. The floor is the
+        stores' own (`>=`); the label is the one given; outside the block it is not held."""
+        value = "Ab3dE5g7"
+        assert len(value) == redact.MIN_REDACTABLE
+        text = f"login as admin with {value} failed\n"
+        with redact.transient_secret(value, "adopt:supplied"):
+            assert redact.redact_text(text) == \
+                "login as admin with <redacted:adopt:supplied> failed\n"
+        assert redact.redact_text(text) == text
 
 
 class TestPayloadWalking:

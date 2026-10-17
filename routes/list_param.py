@@ -26,6 +26,8 @@ drew must not let the write fall through to another network.
 
 import logging
 
+from urllib.parse import quote
+
 from flask import jsonify, request
 
 log = logging.getLogger(__name__)
@@ -141,6 +143,33 @@ DRAWS_ITS_DELETED_NETWORK = {
 }
 
 
+#: The query key a page reached from a deleted network's address carries, naming it, so its top
+#: bar can say why it shows Default (C1190; drawn only when that network was deleted).
+DELETED_KEY = "deleted"
+
+
+def _to_default(name: str):
+    """A v2 PAGE asked for *name*, a DELETED network (C1190, W4 step 69: every link the page
+    drew before the delete still named it, and Devices answered raw JSON): the same page for
+    Default (`network_v2.target`, which sends a device's page to Devices), naming the deleted
+    network so the page says so. None for a request that is not a page navigation: an htmx part
+    swaps into the page that asked, and keeps its refusal, drawn in place."""
+    if not request.path.startswith("/v2/") or request.headers.get("HX-Request"):
+        return None
+    from flask import redirect
+
+    from modules import network_admin
+    from modules.list_settings import DEFAULT_LIST
+    from routes.network_v2 import target
+
+    if not network_admin.is_deleted(name):
+        return None
+    to = target(request.path, DEFAULT_LIST)
+    to += ("&" if "?" in to else "?") + f"{DELETED_KEY}={quote(name, safe='')}"
+    log.info("list_param: %s names deleted network %r: to Default (%s)", request.path, name, to)
+    return redirect(to, code=302)
+
+
 def install(app) -> None:
     @app.before_request
     def _refuse_a_read_of_an_unknown_list():
@@ -157,6 +186,9 @@ def install(app) -> None:
 
             if network_admin.is_deleted(name):
                 return None
+        moved = _to_default(name)
+        if moved is not None:
+            return moved
         log.info("list_param: refused a read of unknown list %r (%s)",
                  name, request.path)
         return jsonify({

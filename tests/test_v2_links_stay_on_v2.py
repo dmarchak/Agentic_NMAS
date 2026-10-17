@@ -120,6 +120,86 @@ class TestEveryV2Template:
         assert "does not say" in got[2][1] and "<form>" in got[3][1]
 
 
+#: The modules whose words Needs attention draws as a row's cause and action (C1153).
+ATTENTION_WORDS = ("modules/attention.py", "modules/job_health.py")
+
+
+def _todays_only_labels() -> set:
+    """Every multi-word button or link label today's templates draw and v2's templates do not
+    contain anywhere, with the listed names of today's-only controls (C1153)."""
+    v2 = " ".join(open(f, encoding="utf-8").read()
+                  for f in tracked("templates/v2", suffix=".html")).lower()
+    out = {w.lower() for w in T.TODAYS_ONLY_CONTROLS}
+    for f in tracked("templates", suffix=".html"):
+        if os.path.relpath(f, ROOT).startswith(os.path.join("templates", "v2")):
+            continue
+        for m in re.finditer(r"<(button|a)\b[^>]*>(.*?)</\1>", open(f, encoding="utf-8").read(),
+                             re.S):
+            w = " ".join(re.sub(r"<[^>]+>|\{[{%#].*?[}%#]\}", " ", m.group(2)).split())
+            if len(w.split()) >= 2 and w.lower() not in v2:
+                out.add(w.lower())
+    return out
+
+
+def _string_literals(text: str) -> list:
+    """``[(line, words)]`` for every string the module holds, an f-string's literal parts
+    joined (adjacent literals are already one constant)."""
+    import ast
+    out = []
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            out.append((node.lineno, node.value))
+        elif isinstance(node, ast.JoinedStr):
+            out.append((node.lineno, "".join(v.value for v in node.values
+                                             if isinstance(v, ast.Constant))))
+    return out
+
+
+def scan_words(text: str, labels: set, path: str = "") -> list:
+    """``[(path, line, label)]`` for every string in *text* naming a today's-only control."""
+    return [(path, n, lab) for n, s in _string_literals(text) for lab in sorted(labels)
+            if lab in s.lower()]
+
+
+class TestNeedsAttentionWordsNameNoTodaysControl:
+    """C1153: the "skipped, no golden" row told a person to use "Save All's no-golden scope",
+    a control only today's index has. A row's words are v2's instruction: they name v2's way."""
+
+    def test_no_row_names_a_control_only_today_s_pages_have(self):
+        labels, problems, strings = _todays_only_labels(), [], 0
+        for rel in ATTENTION_WORDS:
+            text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+            strings += len(_string_literals(text))
+            problems += [f"{p}:{n}: names {lab!r}, a control only today's pages have"
+                         for p, n, lab in scan_words(text, labels, rel)]
+        assert strings >= 3000, strings      # a floor; measured 2026-10-17: 5650
+        # The declared two plus at least one label read from today's templates (3 measured
+        # 2026-10-17 after P7-24 and P7-25 took today's wizards' labels; it only shrinks
+        # toward P7-27, so a floor of one read label keeps the reading itself proved).
+        assert len(labels) >= len(T.TODAYS_ONLY_CONTROLS) + 1, sorted(labels)
+        assert not problems, "\n".join(problems)
+
+    def test_the_scan_names_a_planted_case(self):
+        """The control: a planted label naming the no-golden scope is found; v2's words pass."""
+        planted = ('A = {"label": "Capture it, or with Save All\'s "\n'
+                   '           "no-golden scope"}\n'
+                   'B = {"label": "On Devices, tick it and choose Actions › Save…"}\n')
+        got = scan_words(planted, _todays_only_labels())
+        assert [(n, lab) for _p, n, lab in got] == [(1, "no-golden scope")], got
+
+    def test_the_no_golden_row_names_v2_s_devices_save(self):
+        """The row itself: Devices filtered to the devices with no golden, ticked, Actions ›
+        Save, its href v2's Devices page so the row draws Open…."""
+        from modules import attention as A
+        st = {"list": "Lab", "last_ts": 1.0e9, "last_run": {
+            "checked": 1, "inventory": 2,
+            "skipped": [{"hostname": "r9", "reason": "no golden config saved"}]}}
+        rows = A.drift_source(status=lambda: st, now=1.0e9 + 60)["rows"]
+        row = next(r for r in rows if r["kind"] == "skipped")
+        assert "Actions › Save" in row["action"]["label"], row["action"]
+        assert row["action"]["href"] == "/v2/devices?state=no_golden&list=Lab", row["action"]
+
+
 def test_the_sidebar_s_logs_and_dhcp_say_what_is_there():
     """C633: today's page had neither screen. C652 (the operator, 2026-10-10): Logs opens the
     queryable logs, the network's syslog by device, never Mercury's own log (that stays in
