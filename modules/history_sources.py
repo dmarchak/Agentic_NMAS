@@ -84,10 +84,61 @@ def about(event: dict, device: str) -> bool:
 
 
 def _mine(ctx, device: str) -> bool:
-    """A row about *device* belongs to this read: the device asked for, or any of the list's."""
+    """A row about *device*, from a store that is the NETWORK'S OWN (its repository, its receipts,
+    its runs), belongs to this read: the device asked for, or any of the list's. *members* None
+    (a caller that passed none) filters no device out of the network's own records."""
     if ctx["device"]:
         return device == ctx["device"]
     return ctx["members"] is None or device in ctx["members"]
+
+
+#: The stores every network SHARES whose rows name a device and no network (each with why), so
+#: the network's own devices are the only way to tell its rows (C1028). Their sources ask
+#: `_ours`, never `_mine`: an empty network has none of their rows, never everyone's.
+SHARED_BY_DEVICE = {
+    "rotation": "the rotation and save record (`rotation_audit.jsonl`): one file for the "
+                "installation, each row naming its device and no network (C361)",
+    "acknowledgements": "the acknowledgement record: one file for the installation, a row "
+                        "naming its devices (or an alert's address) and no network",
+    "reveals": "the reveal record: a row recorded before reveals named their network names "
+               "only its device",
+    "restart_windows": "the planned-restart windows: a window declared with no network names "
+                       "only its devices (one naming every device, `*`, is every network's)",
+    "host_keys": "the host-key windows' summaries: one closed with no network names only its "
+                 "devices",
+}
+
+
+def _ours(ctx, device: str) -> bool:
+    """A row about *device* from a store every network shares (`SHARED_BY_DEVICE`), naming no
+    network: the network's only when *device* is one of its own (`inventory`, always a set:
+    an empty network has none, and an inventory that could not be read has none, said as an
+    error). C1028: W2 walk, with no devices, drew Default's persists and rotations."""
+    if ctx["device"]:
+        return device == ctx["device"]
+    # A source called alone, with no `timeline` context: the members it was given, else none.
+    inventory = ctx["inventory"] if "inventory" in ctx else ctx.get("members")
+    return device in (inventory or ())
+
+
+def _inventory(ref, members, device: str) -> tuple:
+    """``(names, error)``: the network's devices, for `_ours`. The *members* its caller read,
+    else the device asked for (a device's own view), else its inventory read once here. An
+    inventory that cannot be read is no devices, and says so: never every network's."""
+    if members is not None:
+        return set(members), ""
+    if device:
+        return {device}, ""
+    try:
+        from modules.device import load_saved_devices
+
+        return {d.get("hostname", "") for d in load_saved_devices(ref.csv_path)
+                if d.get("hostname")}, ""
+    except Exception as exc:                          # noqa: BLE001 (said on the page)
+        return set(), (f"the network's inventory could not be read ({type(exc).__name__}: "
+                       f"{exc}): the records every network shares (rotations, saves, "
+                       "acknowledgements) are not drawn, since which are this network's "
+                       "cannot be told")
 
 
 def _recent(ctx, at) -> bool:
@@ -539,9 +590,11 @@ def restart_windows(ctx):
         devices = w.get("devices") or []
         if w.get("list") not in (ctx["ref"].name, None, ""):
             continue
+        # A window naming this network is its own; one naming none is told by its devices.
+        mine = _mine if w.get("list") else _ours
         if "*" in devices:
             devices = ["*"]
-        elif not any(_mine(ctx, d) for d in devices):
+        elif not any(mine(ctx, d) for d in devices):
             continue
         events.append(_event(w.get("recorded_at") or w.get("from"), "window",
                              "Planned-restart window declared"
@@ -577,7 +630,7 @@ def rotation(ctx):
     recorded and why."""
     from modules.nsot import credential_rotation as cr
     try:
-        rows = [r for r in cr.rotation_records_as_known() if _mine(ctx, r.get("device", ""))]
+        rows = [r for r in cr.rotation_records_as_known() if _ours(ctx, r.get("device", ""))]
     except OSError as exc:
         return _out(errors=[f"the rotation record could not be read: {exc}"])
     events = []
@@ -681,7 +734,7 @@ def acknowledgements(ctx):
             continue
         if hosts is None and not r.get("devices") and row_id.startswith("grafana:"):
             hosts = _hosts_by_address(ctx["ref"])
-        devices = [d for d in _acks.devices_of(r, hosts) if _mine(ctx, d)]
+        devices = [d for d in _acks.devices_of(r, hosts) if _ours(ctx, d)]
         if devices:
             rows.append((devices, r))
     events = []
@@ -989,7 +1042,7 @@ def reveals(ctx):
         net = _reveal_network(r)
         if net and net != ctx["ref"].name:
             continue
-        if not net and not (dev and _mine(ctx, dev)):
+        if not net and not (dev and _ours(ctx, dev)):
             continue
         if (ctx["device"] and dev != ctx["device"]) or not _recent(ctx, r.get("at")):
             continue
@@ -1112,8 +1165,9 @@ def _host_key_window_summaries(ctx, hk) -> tuple:
         keys = s.get("keys") or []
         devices = sorted({k.get("device") for k in keys if k.get("device")}) or \
             list(s.get("devices") or [])
+        mine = _mine if s.get("list") else _ours      # one naming no network: by its devices
         if not _recent(ctx, s.get("closed_at")) or not (
-                "*" in devices or any(_mine(ctx, d) for d in devices)):
+                "*" in devices or any(mine(ctx, d) for d in devices)):
             continue
         out.append(_event(
             s.get("closed_at", ""), "hostkey", hk.summary_words(s), devices,
@@ -1277,15 +1331,18 @@ def timeline(ref, device: str = "", person: str = "", kinds=None, since_days: st
     "counts"}``, newest first. Both the History page and a device's History tab call it; the
     tab with *device* set. *kinds*: KIND_FILTERS keys to keep (None or empty: every kind);
     *since_days*: "" for all time. *people* and *counts* are of the rows before the person and
-    kind filters, for the filters' choices. *members*: the list's devices, for a store whose
-    rows name no list (the rotation record); None reads them all. *unborn*: the records that
+    kind filters, for the filters' choices. *members*: the list's devices as its caller read
+    them (an empty network's is ``[]``, which keeps none of another network's rows); None
+    reads the inventory here, for the stores every network shares (`SHARED_BY_DEVICE`, C1028),
+    and filters no device out of the network's own. *unborn*: the records that
     live in the network's repository, for a network with no repository yet (C957): drawn as
     that state, once, never as errors."""
     limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
     since = (time.time() - int(since_days) * 86400) if str(since_days or "").isdigit() else None
+    inventory, inventory_error = _inventory(ref, members, device or "")
     ctx = {"ref": ref, "device": device or "", "limit": limit, "since": since,
-           "members": set(members) if members is not None else None}
-    events, errors, cut, unborn = [], [], [], []
+           "members": set(members) if members is not None else None, "inventory": inventory}
+    events, errors, cut, unborn = [], [inventory_error] if inventory_error else [], [], []
     for name, source in SOURCES.items():
         try:
             got = source(ctx)

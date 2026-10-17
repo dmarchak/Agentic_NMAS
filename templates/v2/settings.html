@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, info -%}
+{%- from "v2/_macros.html" import icon, info, stamp -%}
 {#- Settings per network (P.8 step 7; boards A to J, approved 2026-10-05): the scope bar (H),
     a network's mode with its switch (I, J1), and one card per group, each saying where its
     values come from, with its own three-way choice (A, I) whose preview opens in place of the
@@ -7,6 +7,25 @@
     modules/settings_page.py over list_settings, so the screen and the resolver agree. -#}
 {% block title %}Settings · {{ v.network }} · {{ brand.short }}{% endblock %}
 {% block main %}
+{%- if v.deleted is defined %}
+{#- C1029 (board B7, docs/STANDING_APPROVAL_LOG.md): a DELETED network's page, reached by a
+    link or a page drawn before the delete. When, by whom and where its data is, from
+    `network_admin.deletion`; the scope bar to go elsewhere; nothing else: every write naming
+    it is refused before its view (`list_param`). -#}
+{%- set d = v.deleted -%}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Settings · {{ v.network }} {{ info('settings') }}</h1>
+    <p class="sub">{{ v.network }} is no longer a network: it has no settings to show or change.</p>
+  </div>
+</div>
+{% include "v2/_settings_scope.html" %}
+<div class="notice notice-muted" role="status" id="network-deleted">{{ icon('warn', 16) }}<div>
+  {%- if d %}<strong>{{ v.network }} was deleted</strong> {{ stamp(d.at, note='when it was deleted') }}{% if d.at %} ({{ d.at[:19] | replace('T', ' ') }} UTC){% endif %}{% if d.by %} by {{ d.by }}{% endif %}. Its data is at <code>{{ d.folder }}</code>, kept, never erased.
+  {%- if not d.recorded %} The installation's settings record names no delete of it, so who is not known: the time is its folder's.{% endif %}
+  {%- else %}<strong>{{ v.network }} is not a network.</strong> No network has this name and none was deleted under it.{% endif %}
+  Nothing here can be changed: a save, a switch or a preview naming {{ v.network }} is refused. Choose a network above, or make a new one.</div></div>
+{%- else %}
 <div class="page-head">
   <div class="page-title">
     <h1>Settings · {{ v.network }} {{ info('settings') }}</h1>
@@ -36,4 +55,5 @@
 {%- endif %}
 {%- endif %}
 </div>
+{%- endif %}
 {% endblock %}

@@ -708,8 +708,9 @@ def test_history_names_a_scheduled_rotation(data, monkeypatch):
 
     class Ref:
         name = "Lab"
-    monkeypatch.setattr(H, "_mine", lambda ctx, device: True)
-    (e,) = H.rotation({"ref": Ref, "limit": 50, "device": ""})["events"]
+    # r1 is the network's own device: the rotation record names no network, so History keeps
+    # its row only for the network's own devices (C1028).
+    (e,) = H.rotation({"ref": Ref, "limit": 50, "device": "", "members": ["r1"]})["events"]
     assert e["what"].startswith(f"Scheduled rotation (policy set by {SETTER}): rotation:")
     # The credential age reads the same record.
     assert "r1" in SR.last_rotations()

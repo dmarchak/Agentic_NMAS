@@ -69,9 +69,9 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C1025~~ | ~~B3: a declared planned-restart window silences nothing~~ **done** (two Grafana silences per window; no row inside it, "restarting as planned" under What was checked and in the header; walked at W3's reload) | | | | |
 | ~~C1026~~ | ~~B4: no "Restarted as planned" on r6's History after its reload~~ **done** (a restart between two minute reads is found; walked at W3's reload) | | | | |
 | ~~C1027~~ | ~~B5: the reload record is never committed~~ **done** (committed through `repo.commit()`; "not committed" in the header; walked at W3's reload) | | | | |
-| C1028 | B6: a network's History draws another's rotation and persist rows (an empty network's members read as "no filter") | every source filtered by network; an empty or unreadable inventory keeps no other network's row, and says which; a test | S | — | W |
-| C1074 | a read re-creates a deleted network's folder (23:41:34Z, 3 s after W2 walk's delete): no read path creates a network's folder; the folder made removed by a host step | a test that a read after delete creates nothing; the host step | S | with C1029 | — |
-| C1029 | B7: a deleted network's Settings page stays live, with Save | "deleted at <time>, data at lists_removed/…" with no actions; every write refusing a deleted network by name; a test | S | — | W |
+| ~~C1028~~ | ~~B6: a network's History draws another's rotation and persist rows~~ **done** (every shared store told by the network's own devices; an unreadable inventory said; walked at W3 on a non-default network) | | | | |
+| ~~C1074~~ | ~~a read re-creates a deleted network's folder~~ **done** (the accessor never makes a deleted network's folder; the host's empty `lists/w2_walk` removed after the deploy) | | | | |
+| ~~C1029~~ | ~~B7: a deleted network's Settings page stays live, with Save~~ **done** (410, when, by whom, where its data is, no actions; every write naming it refused; walked at W3) | | | | |
 | C1030 | B8: the NetBox import is missing from History | a NetBox source in the timeline (import, removal, stop tracking); a test | S | — | W |
 | C932 | B9: Remove from NetBox offered over a `not_reached` reach (raised from UNKNOWN by W2's step 19) | Remove drawn only when the preview can be confirmed, the unread reach said in words; a test | S | — | W |
 | **From W1 (the operator's sequence, 2026-10-16)** | | | | | |

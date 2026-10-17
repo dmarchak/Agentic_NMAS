@@ -65,7 +65,10 @@ _SKIP_STARTSWITH = (
 # ---------------------------------------------------------------------------
 
 def _state_file(list_name: str = "") -> str:
-    """Per list, not per installation.
+    """Per list, not per installation. Resolved through the folder accessor, which makes the
+    network's folder, and never a DELETED network's (C1074: Needs attention's drift row read
+    W2 walk's state 3 s after its delete and made its folder again, empty; the accessor now
+    refuses that, `config.get_list_data_dir`, whoever asks).
 
     **What this file is, and is not.** It is a record plus two inputs, and
     the two are read at different times:

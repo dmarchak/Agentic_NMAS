@@ -11,7 +11,14 @@ settings from Default; its own settings page offers the rest.
 commits, its remote) and says where the data goes; the confirm takes the network's name typed and
 the preview's fingerprint. Its folder is MOVED to ``lists_removed/<folder>-<UTC>``, never erased,
 inside its repository lock, refused while any of its devices is held or its drift run is in
-progress (R38). Default, the base layer, is never deleted.
+progress (R38). Default, the base layer, is never deleted. Its record names the folder the data
+went to.
+
+**Deleted stays deleted** (C1029, C1074): `is_deleted` is the one answer to "was this network
+deleted, and is it not one now" (unregistered, its folder moved aside), and `deletion` is what
+its page says (when, by whom, where the data is). `listref.exists` and the folder accessor
+(`config.get_list_data_dir`) ask it, so a folder something leaves at a deleted network's path
+neither makes it a network again nor is made by the accessor.
 """
 
 import hashlib
@@ -130,6 +137,71 @@ def delete(name: str, typed: str, fingerprint: str, actor: str, verified: str) -
     ok, msg = device.delete_device_list(pv["name"])                           # move, unregister
     if not ok:
         raise Refused(msg)
+    from modules.config import list_slug
+
+    moved = device.removed_folders(list_slug(pv["name"]))
     entry = IS._record({"kind": "network_delete", "actor": actor, "actor_verified": verified,
-                        "fields": [pv["name"]]})                              # record
+                        "fields": [pv["name"]],                               # record
+                        "folder": _data_relative(moved[-1]) if moved else ""})
     return dict(entry, ok=True, name=pv["name"], said=msg)
+
+
+def _data_relative(path: str) -> str:
+    """*path* as the delete's own words name it: relative to the folder holding ``lists/``
+    (``lists_removed/<folder>-<UTC>``)."""
+    from modules import config
+
+    return os.path.relpath(path, os.path.dirname(config.LISTS_DIR))
+
+
+def is_deleted(name: str) -> bool:
+    """Is *name* a network that was deleted and is not one now: not registered, its folder
+    moved aside under ``lists_removed/``? Reads the registry and the names of the moved-aside
+    folders, nothing else, and creates nothing: the folder accessor asks it
+    (`config.get_list_data_dir`), and so does `listref.exists`, so a folder a read or a write
+    left at a deleted network's path since (C1074) never brings the network back."""
+    from modules import device
+    from modules.config import list_slug
+    from modules.nsot import listref
+
+    name = str(name or "").strip()
+    # The moved-aside folders first: the registry's reader makes Default's folder on a fresh
+    # install through the accessor that asks this, and a name never deleted (Default's) has
+    # none, so the registry is read only for a name that was.
+    if not name or not device.removed_folders(list_slug(name)):
+        return False
+    registry = listref._registry()
+    return not (name in registry or list_slug(name) in registry.values())
+
+
+def deletion(name: str) -> dict:
+    """``{}``, unless *name* is a network that was DELETED and is not one now (C1029): not
+    registered, and its folder moved aside under ``lists_removed/`` (the delete's own act, by
+    either interface). Then ``{"name", "folder", "at", "by", "recorded"}``: *folder* the newest
+    one moved aside for its folder's name, relative to the data folder; *at* the delete's time
+    (its record's, else the folder's UTC stamp); *by* who, from the installation's settings
+    record (``""`` when the delete recorded none, as today's page's did not). Creates nothing."""
+    import re
+
+    from modules import device
+    from modules import installation_settings as IS
+    from modules.config import list_slug
+
+    name = str(name or "").strip()
+    if not is_deleted(name):
+        return {}
+    folder = _data_relative(device.removed_folders(list_slug(name))[-1])
+    stamp = re.search(r"-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z(?:-\d+)?$", folder)
+    out = {"name": name, "folder": folder, "by": "", "recorded": False,
+           "at": "{}-{}-{}T{}:{}:{}Z".format(*stamp.groups()) if stamp else ""}
+    got = IS.changes(kinds=("network_delete",))
+    for r in got.get("rows") or []:                                       # newest first
+        if (r.get("fields") or [""])[0] != name:
+            continue
+        # The record of THIS delete: it names the folder (since C1029), or, written before it
+        # named one, it is the newest delete of this name.
+        if r.get("folder") in (None, "", folder):
+            out.update(by=r.get("actor_label") or r.get("actor") or "", recorded=True,
+                       at=r.get("at_iso") or out["at"])
+        break
+    return out

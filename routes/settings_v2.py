@@ -633,8 +633,20 @@ def diag_log():
 
 @bp.route("/network/<list_name>", methods=["GET"])
 def network(list_name):
+    from modules import network_admin
     from modules import settings_page
+    from modules.nsot import listref
 
+    if not listref.exists(list_name):
+        # C1029: a DELETED network's page (`list_param` lets only this one through) says when
+        # it was deleted and where its data is, and offers nothing: every write naming it is
+        # refused before its view. It drew every card with Save and Preview, live.
+        gone = network_admin.deletion(list_name)
+        v = {"network": list_name, "deleted": gone,
+             "scope": settings_page.scope_bar(list_name),
+             "mode_words": "deleted: it has left every page"}
+        return _strict(render_template("v2/settings.html", who=_who(), active_nav="settings",
+                                       v=v), 410)
     v = settings_page.network_view(list_name, request.args.get("tab") or "integrations")
     src = None
     if v.get("tab") == "network" and not v.get("error"):

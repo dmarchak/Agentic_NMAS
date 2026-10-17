@@ -578,6 +578,27 @@ def removed_path(slug: str, now: float = None) -> str:
     return path
 
 
+def removed_folders(slug: str) -> list:
+    """Where the networks whose folder was *slug* went when they were deleted
+    (`removed_path`'s ``lists_removed/<slug>-<UTC>[-n]``), oldest first, ``[]`` for none.
+    Reads the folder's names only: no registry, no record, and it creates nothing (the folder
+    accessor asks it, `config.get_list_data_dir`)."""
+    import re
+
+    base = os.path.join(os.path.dirname(_lists_dir()), REMOVED_DIR)
+    shape = re.compile(re.escape(slug) + r"-(\d{8}T\d{6}Z)(?:-(\d+))?$")
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return []
+    found = []
+    for name in names:
+        m = shape.match(name)
+        if m and os.path.isdir(os.path.join(base, name)):
+            found.append((m.group(1), int(m.group(2) or 1), name))
+    return [os.path.join(base, name) for _s, _n, name in sorted(found)]
+
+
 def list_name_refusal(list_name: str, lists: dict = None) -> str:
     """Why *list_name* cannot be a new network, or "". Its folder is DERIVED from its name
     (`list_slug`), as every reader derives it, so a name whose folder another network has or

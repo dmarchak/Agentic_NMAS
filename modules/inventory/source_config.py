@@ -71,8 +71,15 @@ DEFAULT_CONFIG = {
 }
 
 
-def _path(list_name: str) -> str:
-    return os.path.join(get_list_data_dir(list_name), _FILE)
+def _path(list_name: str, create: bool = False) -> str:
+    """The network's source file. *create* makes its folder: `save`'s, a write. A read leaves
+    it (C1074: `load` runs under every read of a network's inventory, and made a deleted
+    network's folder again; a read creates no list, C51)."""
+    if create:
+        return os.path.join(get_list_data_dir(list_name), _FILE)
+    from modules.config import list_data_path
+
+    return os.path.join(list_data_path(list_name), _FILE)
 
 
 def load(list_name: str) -> dict:
@@ -122,7 +129,7 @@ def save(list_name: str, cfg: dict) -> dict:
     merged["schema_version"] = SCHEMA_VERSION
 
     with _lock:
-        path = _path(list_name)
+        path = _path(list_name, create=True)
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(merged, fh, indent=2)

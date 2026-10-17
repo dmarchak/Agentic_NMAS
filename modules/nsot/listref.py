@@ -165,7 +165,13 @@ def exists(name) -> bool:
     directory on disk (a list can exist on disk before the registry catches
     up, which is why `resolve()` derives)? Creates nothing (register C51):
     `resolve()` itself cannot answer this, because building a ref calls the
-    accessor that creates the directory it was asked about."""
+    accessor that creates the directory it was asked about.
+
+    A network that was DELETED (`network_admin.is_deleted`: unregistered, its
+    folder moved aside) is not one, whatever folder is at its path now: a read
+    re-created W2 walk's folder, empty, 3 s after its delete (C1074), and with
+    that folder every guard asking this let its Settings page draw live and
+    its writes through (C1029)."""
     import os
 
     from modules.config import list_data_path, list_slug
@@ -174,10 +180,13 @@ def exists(name) -> bool:
     if not text:
         return False
     registry = _registry()
-    if text in registry or text in registry.values():
+    if text in registry or text in registry.values() or list_slug(text) in registry.values():
         return True
-    return os.path.isdir(list_data_path(text)) or \
-        list_slug(text) in registry.values()
+    from modules.network_admin import is_deleted
+
+    if is_deleted(text):
+        return False
+    return os.path.isdir(list_data_path(text))
 
 
 def active() -> ListRef:

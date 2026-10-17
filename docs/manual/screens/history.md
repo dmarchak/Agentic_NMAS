@@ -70,6 +70,13 @@ histories, the measured saves, the other commits, the baseline decisions), never
 read"; a repository git cannot read keeps each of those as could not be read, with git's own
 error. A commit whose record is known to be wrong says so in its row.
 
+**Only this network's records.** Some records are kept once for every network and name a device
+but no network: rotations and persists, acknowledgements, older reveals and planned windows
+declared with no network. The timeline draws one of those only when its device is one of this
+network's, so a network with no devices draws none of them, never another network's. When the
+network's inventory cannot be read, the page says so above the list and draws none of them,
+since which are this network's cannot be told.
+
 **Who changed it, and can it be trusted.** Under the filters, one line counts the commits in the
 window the filters draw by how their person was identified: signed in through the access proxy
 (verified), a host login, not verified, or made before the tool recorded how. For example,

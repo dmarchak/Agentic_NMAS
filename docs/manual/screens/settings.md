@@ -17,6 +17,18 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
   size, naming the first step that fails with what the server answered.
 - **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group not configured has **Configure…**, which takes its values in the card; a group that is its own takes its fields in place, with **Save** and **Test** (see [Save a card](settings-switch#save) and [Test a connection](settings-switch#test)).
 
+## A deleted network's page {#deleted}
+
+A link, a bookmark or a tab drawn before a network was deleted leads to its page, which says
+only that: **"Branch was deleted"**, when (its time on hover) and by whom, and where its data
+is (`lists_removed/<folder>-<UTC time>`, kept, never erased). It has no mode banner, no tabs, no
+cards and no buttons; the scope bar above it leads to Installation, Default or another network.
+A tab drawn before the delete keeps its cards on screen, but each Save, switch, preview or
+Delete there answers in place, refused, naming the network and where its data went, and nothing
+is written anywhere. A folder that something left at the deleted network's path since does not
+bring it back. To use the name again, create a network of that name (see
+[Create a network](settings-switch#create)): it starts empty, inheriting from Default.
+
 ## Default's page {#default}
 
 Default's cards show its values and, on each, who takes them: "inherited by 12 · own Grafana in 4 · not configured in 2 · not applicable in 1", counting only the networks that chose to inherit, with the names one click down. Each card takes its fields in place, with **Save** and **Test**; a secret shows only as set, with **Replace…**. A change to Default changes every network counted there, and the result says so.

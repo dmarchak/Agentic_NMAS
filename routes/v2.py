@@ -302,23 +302,28 @@ def _history_remote(ref) -> dict:
     return out
 
 
-def _history_members(ref) -> list:
+def _history_members(ref):
+    """The network's devices, ``[]`` for a network with none, or None when its inventory
+    cannot be read (absent and unreadable are different: the timeline then says so)."""
     from modules.device import load_saved_devices
     try:
         return sorted(d.get("hostname", "") for d in load_saved_devices(ref.csv_path)
                       if d.get("hostname"))
     except Exception as exc:                          # noqa: BLE001
         log.warning("v2 history: the inventory could not be read: %s", exc)
-        return []
+        return None
 
 
 def _history_timeline(ref, f, members) -> dict:
-    """THE timeline (C369), filtered as the address says."""
+    """THE timeline (C369), filtered as the address says. *members* as `_history_members`
+    read them, passed AS READ: an empty network's ``[]`` keeps none of another network's rows
+    (C1028: ``members or None`` made it "every network's"), and None (unreadable) lets the
+    timeline read it again and say why it cannot."""
     from modules import history_sources as HS
     h = HS.timeline(ref, device=f["device"], person=f["person"], kinds=f["kinds"],
                     since_days=f["since"],
                     limit=int(f["limit"]) if str(f["limit"]).isdigit() else HS.DEFAULT_LIMIT,
-                    members=members or None, unverified=f.get("identity") == "unverified")
+                    members=members, unverified=f.get("identity") == "unverified")
     if f["error"]:
         h["errors"] = [f["error"]] + h["errors"]
     return h
@@ -340,8 +345,9 @@ def _history_ctx(request) -> dict:
            "remote": _history_remote(ref), "since_choices": HS.SINCE_CHOICES,
            "kind_groups": HS.KIND_GROUPS}
     if tab == "timeline":
-        ctx["devices"] = _history_members(ref)
-        ctx["h"] = _history_timeline(ref, f, ctx["devices"])
+        members = _history_members(ref)
+        ctx["devices"] = members or []
+        ctx["h"] = _history_timeline(ref, f, members)
     elif tab == "query":
         from modules import history_query
         ctx["lib"] = history_query.library(ref.name)

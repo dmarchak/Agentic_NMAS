@@ -60,8 +60,14 @@ it has one, and where its data goes. To delete it, type its name.
    history survive there, and its remote, if it has one, keeps its copy.
 3. `unregister`: the network leaves every page and every scheduled job. A person who had chosen
    it in the Network picker sees the installation's network instead.
-4. `record`: who, how that was established, when and the name, in the installation's settings
-   record. No device is contacted, and NetBox is not touched.
+4. `record`: who, how that was established, when, the name and the folder its data went to,
+   in the installation's settings record. No device is contacted, and NetBox is not touched.
+
+A deleted network stays deleted: its Settings page says when it was deleted and where its data
+is, with no actions (see [A deleted network's page](settings#deleted)); every write naming it
+is refused by name; and the one place the tool makes a network's folder never makes a deleted
+network's under `lists/` again, for a page's read or a job's, so a later network of the same
+name starts empty.
 
 ## Where a network's devices come from {#source}
 

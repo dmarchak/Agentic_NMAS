@@ -278,11 +278,14 @@ class TestAfterTheNetworkIsDeleted:
         picker = _ask(c, _drawn(page, "hx-get", "/v2/network/picker"))
         assert picker.status_code == 200 and _marked(picker.get_data(as_text=True)) == []
 
-    def test_a_settings_path_naming_it_is_refused_whatever_the_query_names(self, two):
+    def test_a_settings_path_naming_it_draws_it_deleted_whatever_the_query_names(self, two):
+        """Never Default's, nor Branch's live cards: its deleted page (C1029,
+        tests/test_deleted_network.py), with nothing to act on."""
         c = two["client"]
         _delete(c, "Branch")
         r = c.get("/v2/settings/network/Branch?list=Default")
-        assert r.status_code == 404 and r.get_json()["unknown_list"] == "Branch"
+        assert r.status_code == 410 and "<strong>Branch was deleted</strong>" in _flat(r)
+        assert "set-card" not in _flat(r) and "hx-post" not in _flat(r).split("<main", 1)[1]
 
 
 class TestThePickerOnANetworkSSettingsPath:

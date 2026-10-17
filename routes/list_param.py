@@ -104,19 +104,41 @@ def _refuse_a_v2_write_on_a_network_that_is_gone():
 
     if not (request.path.startswith("/v2/") or request.endpoint in PAGE_ROUTES_OUTSIDE_V2):
         return None
-    name = (request.args.get("list") or "").strip()
-    if not name:
-        return None
     from modules.nsot.listref import exists
 
-    if exists(name):
+    # The address's network, and the network a v2 PATH names (C1029: Settings' cards post to
+    # `/v2/settings/network/<list_name>/...`, whose path names the network and so carries no
+    # `?list=`; a deleted network's switch and mode wrote its folder again).
+    names = [(request.args.get("list") or "").strip()]
+    if request.path.startswith("/v2/"):
+        names += [str((request.view_args or {}).get(k) or "").strip() for k in PATH_KEYS]
+    name = next((n for n in names if n and not exists(n)), "")
+    if not name:
         return None
     log.info("list_param: refused a write naming unknown network %r (%s)", name, request.path)
     return jsonify({
         "ok": False, "unknown_list": name,
-        "error": (f"There is no network named {name!r}, the one this page was drawn for "
-                  "(deleted since?): nothing was changed, here or in any other network."),
+        "error": _gone_words(name) + " Nothing was changed, here or in any other network.",
     }), 404
+
+
+def _gone_words(name: str) -> str:
+    """Why *name* is no network: deleted (when, and where its data is), or never one."""
+    from modules import network_admin
+
+    gone = network_admin.deletion(name)
+    if gone:
+        return (f"{name!r} was deleted{' at ' + gone['at'] if gone.get('at') else ''}; its "
+                f"data is at {gone['folder']}.")
+    return f"There is no network named {name!r}, the one this page was drawn for."
+
+
+#: GET pages that draw a DELETED network themselves, rather than being refused here (C1029):
+#: endpoint -> why. Each says when it was deleted and where its data is, with no actions.
+DRAWS_ITS_DELETED_NETWORK = {
+    "settings_v2.network": "a network's Settings page: where its delete was done, and where a "
+                           "page drawn before it, or a link to it, leads",
+}
 
 
 def install(app) -> None:
@@ -129,6 +151,12 @@ def install(app) -> None:
         name = next((n for n in named_lists(request) if not exists(n)), "")
         if not name:
             return None
+        if request.endpoint in DRAWS_ITS_DELETED_NETWORK and \
+                name == str((request.view_args or {}).get("list_name") or "").strip():
+            from modules import network_admin
+
+            if network_admin.is_deleted(name):
+                return None
         log.info("list_param: refused a read of unknown list %r (%s)",
                  name, request.path)
         return jsonify({

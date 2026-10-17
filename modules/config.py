@@ -243,9 +243,25 @@ def get_list_data_dir(list_name: str) -> str:
     """Return (and create) the data directory for a specific device list.
 
     Derived through `list_data_path()`, so the resolver that creates and the
-    one that only asks cannot disagree about where a list lives."""
+    one that only asks cannot disagree about where a list lives.
+
+    **A deleted network's folder is never made again** (C1074): when the
+    folder is absent and the network was deleted (`network_admin.is_deleted`:
+    unregistered, its folder moved aside under ``lists_removed/``), the path
+    is returned and NOT created, whoever asks, a read or a write. W2 walk's
+    folder was made again, empty, by a drift read 3 s after its delete; a
+    write that reaches here for a deleted network then fails on the missing
+    folder rather than bringing the network back. Asked only when the folder
+    is absent, so a network's every later call costs one `isdir`."""
     path = list_data_path(list_name)
-    os.makedirs(path, exist_ok=True)
+    if not os.path.isdir(path):
+        from modules.network_admin import is_deleted
+
+        if is_deleted(list_name):
+            log.warning("config: not creating %s: the network %r was deleted (its data is "
+                        "under lists_removed/)", path, list_name)
+            return path
+        os.makedirs(path, exist_ok=True)
     return path
 
 
