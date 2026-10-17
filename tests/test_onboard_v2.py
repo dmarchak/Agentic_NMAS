@@ -144,6 +144,25 @@ class TestAddDevice:
         assert "hostname r6" in html                           # the config it will boot
         assert 'hx-post="/v2/onboard/create?list=Default"' in html
 
+    def test_a_clean_review_draws_the_create_button(self, client, person, monkeypatch):
+        """C1148: the review drew its summary and Change the fields, never Create, because the
+        template read `selectable` where the preview does not carry it. The form's action alone
+        (above) cannot say a person can press anything."""
+        from modules.nsot import onboard as O
+
+        monkeypatch.setattr(O, "build_plan", lambda **k: _plan())
+        html = client.post("/v2/onboard/preview", data=FORM).get_data(as_text=True)
+        assert '<span class="op-idle">Create r6</span>' in html
+
+    def test_a_blocked_review_draws_no_create_button(self, client, person, monkeypatch):
+        """The control: a plan with a blocking reason is not selectable, so no Create."""
+        from modules.nsot import onboard as O
+
+        monkeypatch.setattr(O, "build_plan",
+                            lambda **k: _plan(blocking_reasons=["192.0.2.6 is in use"]))
+        html = client.post("/v2/onboard/preview", data=FORM).get_data(as_text=True)
+        assert '<span class="op-idle">Create r6</span>' not in html
+
     def test_a_refused_review_says_why_and_keeps_the_fields(self, client):
         html = client.post("/v2/onboard/preview",
                            data=dict(FORM, list_name="")).get_data(as_text=True)
