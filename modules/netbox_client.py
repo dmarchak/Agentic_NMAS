@@ -246,12 +246,28 @@ def _slug(name: str) -> str:
     return s or "unnamed"
 
 
+def _planned_only(params: dict) -> bool:
+    """True when a dry run's query filters by one of its own placeholder ids (C1179).
+
+    A dry run gives each object it plans a negative id (`_DryRunPlan.synthetic_id`). Nothing in
+    NetBox can be filed under an object that does not exist, and NetBox 4.6.9 answers a negative
+    id with 400 (W4, 2026-10-17: Adopt's preview for a network with no site yet), so such a query
+    is answered from the plan alone and never sent."""
+    from modules import netbox_guard as _guard
+
+    return _guard.is_dry_run() and any(
+        isinstance(v, int) and not isinstance(v, bool) and v < 0 for v in params.values())
+
+
 def _nb_get(session: requests.Session, base: str, path: str, **params) -> list[dict]:
     """GET a NetBox list endpoint, following pagination. Returns all results.
 
     During a dry run the results also include objects the dry run has already
     pretended to create, so get-or-create behaves as it would in a real run.
     """
+    if _planned_only(params):
+        from modules import netbox_guard as _guard
+        return list(_guard.current_plan().find_virtual(path, params))
     results: list[dict] = []
     url: Optional[str] = f"{base}/api/{path.lstrip('/')}"
     first = True
@@ -275,6 +291,10 @@ def _nb_first(session: requests.Session, base: str, path: str, **params) -> Opti
     During a dry run, falls back to objects the dry run already pretended to
     create — see :func:`_nb_get`.
     """
+    if _planned_only(params):
+        from modules import netbox_guard as _guard
+        hits = _guard.current_plan().find_virtual(path, params)
+        return hits[0] if hits else None
     r = session.get(f"{base}/api/{path.lstrip('/')}", params=params, timeout=15)
     r.raise_for_status()
     data = r.json()
