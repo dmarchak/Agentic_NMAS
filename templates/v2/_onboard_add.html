@@ -12,6 +12,13 @@
   {%- endif %}
   {%- if done %}
   {{ result_parts(done.result) }}
+  {#- What Create wrote (on no device) and its record: today's wizard drew both through the
+      result component until it left at 7.8 (2026-10-17, P7-25). -#}
+  {%- for t in (done.result or {}).targets or [] if t.sent and t.sent.lines %}
+  <h3 class="set-label">{{ ((done.result.titles or {}).get('sent')) or 'What was created' }}</h3>
+  <ul class="mono small" data-onboard-created>{% for l in t.sent.lines %}<li>{{ l }}</li>{% endfor %}</ul>
+  {%- endfor %}
+  {%- if (done.result or {}).record and done.result.record.statement %}<p class="small">{{ done.result.record.statement }}</p>{% endif %}
   <div class="set-foot">{% if done.ok %}<a class="btn btn-primary btn-small" href="{{ url_for('device_v2.device', name=f.hostname, list=f.list_name) }}">Open {{ f.hostname }}'s page</a> {% endif %}<a class="btn btn-small" href="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-get="{{ url_for('onboard_v2.new', list=f.list_name) }}" hx-target="#onboard-add" hx-swap="outerHTML">Add another</a></div>
   {%- elif pv %}
   {{ preview_parts(pv.preview) }}

@@ -290,13 +290,22 @@ class TestAPendingDevice:
         assert "its record could not be read: bad line" in html
 
     def test_verify_s_preview_carries_its_fingerprint_to_the_confirm(self, client, monkeypatch):
+        """C1150: the preview is `preview_confirm.build`'s own output, which carries
+        `select_data` only under `what.targets`. The earlier mock put it under `targets`, a
+        shape build() never returns, so the test passed while the real hand-off sent an empty
+        fingerprint and every Verify was refused."""
+        from modules import preview_confirm as P
         from routes import onboard
 
-        pv = {"what": {"summary": "Verify bp1: it answered."}, "confirm": {
-            "may": True, "statement": "You are confirming as x."}, "what_not": {"items": []},
-              "targets": [{"name": "bp1", "program": {"lines": ["no snmp-server community"]},
-                           "operands": [], "gates": [],
-                           "select_data": {"fingerprint": "f" * 64}}]}
+        pv = P.build(action="verify", summary="Verify bp1: it answered.",
+                     targets=[{"name": "bp1", "state": "ready", "selectable": True,
+                               "select_data": {"fingerprint": "f" * 64},
+                               "program": {"lines": ["no snmp-server community"]},
+                               "operands": [{"name": "address", "value": "192.0.2.9"}],
+                               "gates": [P.gate("reached", "pass", "it answered")]}],
+                     what_not=[], nothing_left_out="Nothing left out.",
+                     confirm={"may": True, "statement": "You are confirming as x."})
+        assert "select_data" not in pv["targets"][0]       # the shape the route must read
         monkeypatch.setattr(onboard, "verify_preview_of",
                             lambda name, data, req: ({"ok": True, "preview": pv}, 200))
         html = client.post("/v2/onboard/bp1/verify/preview",
@@ -473,3 +482,31 @@ def test_the_binding_is_canonical_json():
 
     assert json.loads(plan_shown(_plan()))["summary"]["mgmt_ip"] == "192.0.2.6"
     assert plan_shown(_plan()) == plan_shown(_plan())
+
+
+class TestCreateDrawsWhatItCreated:
+    """C1149: Create's result names what it wrote, each on no device, and its record (W4 step
+    9 reads these lines). v2's card drew only the summary and what did not happen; today's
+    wizard drew the result component's created lines and record statement."""
+
+    def test_the_created_lines_and_the_record_are_drawn(self, client, person, monkeypatch,
+                                                        tmp_path):
+        from modules.nsot import onboard as O
+
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path))
+        monkeypatch.setattr(O, "build_plan", lambda **k: _plan())
+        monkeypatch.setattr(O, "real_steps", lambda repo, actor="": {})
+        monkeypatch.setattr(O, "run_onboarding", lambda plan, repo, **k: {
+            "ok": True, "completed": ["credentials", "commit", "render"], "commit": "a" * 40})
+        shown = O.plan_shown(_plan())
+        r = client.post("/v2/onboard/create", data=dict(
+            FORM, shown=shown, fingerprint=O.plan_fingerprint(shown)))
+        html = " ".join(r.get_data(as_text=True).split())
+        assert r.status_code == 200 and "PENDING" in html
+        created = re.search(r"What was created \(on no device\)</h3> "
+                            r'<ul class="mono small" data-onboard-created>(.*?)</ul>', html)
+        assert created, html[-1500:]
+        lines = re.findall(r"<li>(.*?)</li>", created.group(1))
+        assert [l.split(":")[0] for l in lines] == ["credentials", "commit", "render"], lines
+        assert "(aaaaaaaaaaaa)" in lines[1]
+        assert "Commit aaaaaaaaaaaa records r6 as pending." in html

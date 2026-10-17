@@ -12,7 +12,7 @@
     {%- if mode %}<a class="btn btn-small" href="{{ url_for('device_v2.device', name=name, list=list_name) }}" hx-get="{{ url_for('onboard_v2.actions', name=name, list_name=list_name) }}" hx-target="#pending-actions" hx-swap="outerHTML">{{ 'Close' if mode in ('verified', 'abandoned', 'bootstrap') else 'Cancel' }}</a>{% endif %}</div>
   {%- if refused %}
   <div class="notice notice-danger set-result" role="alert">{{ icon('warn', 16) }}<div><strong>{{ {'bootstrap': 'Not revealed', 'abandon': 'Not abandoned'}.get(mode, 'Not verified') }}:</strong> {{ refused }}
-    {%- if causes %}<p class="small">The likely causes, the most worth checking first:</p><ol class="small">{% for c in causes %}<li>{{ c.text if c.text is defined else c }}</li>{% endfor %}</ol>{% endif %}</div></div>
+    {%- if causes %}<p class="small">The likely causes, the most worth checking first:</p><ol class="small">{% for c in causes %}<li>{% if c.text is defined %}{{ c.text }}{% elif c.cause is defined %}{{ c.cause }}{% if c.why %}: {{ c.why }}{% endif %}{% if c.command %}. Settled by <span class="mono">{{ c.command }}</span>{% if c.where %} ({{ c.where }}){% endif %}{% endif %}{% else %}{{ c }}{% endif %}</li>{% endfor %}</ol>{% endif %}</div></div>
   {%- endif %}
 
   {%- if mode == 'verify' and pv %}

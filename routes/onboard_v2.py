@@ -164,7 +164,9 @@ def verify_preview(name):
         return _pending(name, status, mode="verify", refused=out.get("error", ""),
                         causes=out.get("causes") or [])
     pv = out["preview"]
-    fp = ((pv.get("targets") or [{}])[0].get("select_data") or {}).get("fingerprint", "")
+    # `select_data` is carried under `what.targets` only (`preview_confirm.build`; C1150).
+    fp = ((((pv.get("what") or {}).get("targets")) or [{}])[0].get("select_data")
+          or {}).get("fingerprint", "")
     return _pending(name, mode="verify", pv=pv, fingerprint=fp)
 
 
