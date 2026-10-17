@@ -181,6 +181,12 @@ blocks cutover or is a security issue (B).
   (`docs/BRINGUP_FROM_DOCUMENTS.md`), C1008 offline operation (`docs/OFFLINE_OPERATION.md`);
   C1013, Phase 8 offline-first and the disconnected operator assistant (`docs/PHASE8_PLAN.md`
   section 12).
+- **FUTURE designs (the operator, 2026-10-17), documents only, post-cutover (Phase 8 or
+  later):** C1146 config to intent, a partner's configuration block added to a device's intent
+  through the existing extractor, not-modelled lines reviewed, secrets moved to the store, the
+  normal intent commit and deploy (`docs/CONFIG_TO_INTENT.md`); C1147 runbooks and procedures,
+  saved parameterised reads, saved sequences of Mercury's own gated actions, and Ansible for
+  interoperability only, Mercury never running playbooks (`docs/RUNBOOKS_PROCEDURES.md`).
   Found with them, measured the same day read-only and now C at the tail: C1009 (no device
   outside its network's site) and C1010 (Mercury's prefixes carry no site at all); with them,
   C1011 and C1012.
