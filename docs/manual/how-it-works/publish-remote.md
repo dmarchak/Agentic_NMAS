@@ -27,7 +27,8 @@ refused by name and nothing is recorded. A network that already has a remote is 
 
 **Run the write probe** runs the read-only checks (below) and one more, which pushes an empty
 commit holding no files to a scratch ref and removes the ref. It publishes no content, but it
-is a write, so it needs a person. Each check is drawn with its answer, and a failed one with
+is a write, so it needs a person. The button says **Probing…**, and cannot be pressed again,
+until the checks are drawn. Each check is drawn with its answer, and a failed one with
 **To fix:** and what to do (a read-only deploy key, for example, needs write access allowed on
 it in the repository's settings). **Push refuses until this has passed once.**
 

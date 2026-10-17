@@ -27,7 +27,14 @@ region below.
 Shots: the boards at 1440; the page at rest at 1440, 1280 and 390 (and its first screen); the
 export, the check and the result at 1440 and 390. Compared 2026-10-16.
 Templates compared: templates/v2/credentials.html, templates/v2/_breakglass_record.html, templates/v2/_breakglass_export.html, templates/v2/_breakglass_check.html, templates/v2/_breakglass_done.html, templates/v2/_breakglass_drill.html
-Templates sha256: `cbb8233faeb68853f5c22c54a7850aa36a1fe5d4f109ed5f4d1cfa9528b89239`
+Templates sha256: `d28e1d85aba799219ad2cfa2c89f614f6d993d15204315ab124cd38abbe6c524`
+
+Compared again 2026-10-17 (C1023) after Check it (`_breakglass_check.html`) and Record the drill
+(`_breakglass_drill.html`) declared themselves busy (`hx-disabled-elt="this"`): their busy words
+were already in the templates and never shown, because each is a form's submit button. At rest
+the page draws the same words; the busy words show only while the request is out. Compared by
+the template and the page the tests draw (tests/test_v2_busy_on_itself.py), not a new shot; no
+region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

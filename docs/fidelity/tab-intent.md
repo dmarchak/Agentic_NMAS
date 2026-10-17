@@ -27,7 +27,13 @@ Shots: each board at 1440; the page at 1440, 1280 and 390 in six states (`tab-in
 `tab-intent-departs` (C884) at 1440.
 Compared 2026-10-16.
 Templates compared: templates/v2/_intent.html, templates/v2/_intent_edit.html, templates/v2/_intent_check.html
-Templates sha256: `a44a26693226c656effb48d8c386bbf4058c3ffcc52b4dfbd330dc2e2531f2fc`
+Templates sha256: `5f031cd1606d366b6d41d2f97beeda3250dc19fd44cee44a1a584f56e26451b7`
+
+Compared again 2026-10-17 (C1023) after "Open (commit) with your edit on it" (`_intent_edit.html`)
+and Write the ticked lines into the document (`_intent_check.html`) became busy on themselves
+while their request is out ("Placing your edit…", "Writing them in…"). At rest the page draws
+the same words. Compared by the template and the page the tests draw
+(tests/test_v2_busy_on_itself.py), not a new shot; no region's verdict changed.
 
 Compared again 2026-10-16 (C522) after `_intent_edit.html` gave each of its cards one "How does
 this work?" in words, in its head (C503's rule): editing (before Discard the edit, where board H

@@ -333,13 +333,13 @@ class TestTheLoggingPath:
     def test_the_button_is_off_and_says_why_without_loki(self, sc):
         _r, html = _get(sc, "/v2/show-commands?list=Lab")
         assert re.search(r'<button type="submit" class="btn" data-op="logging-path"[^>]* disabled '
-                         r'title="Loki is not configured[^"]*">Test the logging path on 2 '
-                         r'devices</button>', html), html[:200]
+                         r'title="Loki is not configured[^"]*"><span class="op-idle">Test the '
+                         r'logging path on 2 devices</span>', html), html[:200]
 
     def test_on_with_loki_on_the_card_s_devices(self, lp):
         _r, html = _get(lp, "/v2/show-commands?list=Lab")
-        assert re.search(r'data-op="logging-path"[^>]*>Test the logging path on 2 devices</button>',
-                         html)
+        assert re.search(r'data-op="logging-path"[^>]*><span class="op-idle">Test the logging '
+                         r'path on 2 devices</span>', html)
         assert not re.search(r'data-op="logging-path"[^>]* disabled', html)
 
     def test_sent_watched_and_drawn_act_first(self, lp):
@@ -581,7 +581,7 @@ class TestAReasonForLevelsZeroToThree:
         assert "Why send at level 2? Recorded with the run, at least three words" in html
         assert "Level 2 is <strong>critical (2)</strong>" in html
         assert "The line says TEST, which it must." in html
-        assert re.search(r'data-op="show-commands" disabled', html), "Run stays off"
+        assert re.search(r'data-op="show-commands" hx-disabled-elt="this" disabled', html), "Run stays off"
 
     def test_typing_the_reason_redraws_the_verdicts_and_run_never_the_field(self, sc):
         _r, html = _get(sc, f"/v2/show-commands/reason?list=Lab&command={URGENT}"
@@ -589,13 +589,13 @@ class TestAReasonForLevelsZeroToThree:
         assert 'id="sc-check-0" aria-live="polite" hx-swap-oob="true"' in html
         assert ">allowed, with your reason</span>" in html
         assert 'id="sc-reason"' not in html, "the field being typed in is never replaced (C573)"
-        assert not re.search(r'data-op="show-commands" disabled', html), "Run is on"
+        assert not re.search(r'data-op="show-commands" hx-disabled-elt="this" disabled', html), "Run is on"
 
     def test_two_words_are_not_a_reason(self, sc):
         _r, html = _get(sc, f"/v2/show-commands/reason?list=Lab&command={URGENT}"
                             "&reason=just testing")
         assert ">needs a reason</span>" in html
-        assert re.search(r'data-op="show-commands" disabled', html)
+        assert re.search(r'data-op="show-commands" hx-disabled-elt="this" disabled', html)
 
     def test_a_line_without_test_is_said_not_a_test(self, sc):
         _r, html = _get(sc, "/v2/show-commands/reason?list=Lab&command=send log 2 MERCURY "
@@ -632,7 +632,8 @@ class TestAReasonForLevelsZeroToThree:
         _r, html = _get(sc, f"/v2/device/r3/ask/check?command={URGENT}&reason={REASON}"
                             "&part=run")
         assert 'id="ask-reason"' not in html, "its own typing never redraws it"
-        assert "disabled" not in html.split('id="ask-check"', 1)[1].split("</button>", 1)[0]
+        run = html.split('id="ask-check"', 1)[1].split("</button>", 1)[0]
+        assert not re.search(r"\sdisabled\b", run), run
         from modules.nsot import capture_job
         r = sc["client"].post("/v2/device/r3/ask", data={"list": "Lab", "command": URGENT,
                                                           "reason": REASON},

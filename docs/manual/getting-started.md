@@ -101,6 +101,11 @@ Every operation that changes a device or the record works the same way:
 3. **Result.** What happened, device by device, drawn from the record the operation wrote,
    so you can find it again later in History.
 
+A button that asks for something says so on itself from the moment you press it: it greys out
+and its words change to what is running (**Starting the dry run…**, **Probing…**,
+**Approving…**) until its answer is drawn in place, and then it is itself again. While it says
+it is working it cannot be pressed a second time, so one press starts one run.
+
 Nothing you click goes quiet. When an answer cannot be drawn (the server refused without a
 card, did not answer, or answered with nothing for that place), the place it would have
 appeared says what could not be loaded, for example **Couldn't load the 6-hour view.**, and

@@ -29,8 +29,9 @@ green over a partial) and how many removals are recorded for it (each opens as i
 its apply).
 
 - **Import into NetBox…** starts a dry run of the real import against the real NetBox, writing
-  nothing. It takes about a minute on a lab, so it runs as a job: its card, below the table, says
-  what it is doing, and fills in with the preview when it is ready (every object to create or
+  nothing. From your press until its card draws, the button says **Starting the dry run…** and
+  cannot be pressed again. It takes about a minute on a lab, so it runs as a job: its card, below
+  the table, says what it is doing, and fills in with the preview when it is ready (every object to create or
   change, what is not done, and the checks at your confirm).
 - **Remove from NetBox…** does the same for a removal: every object it would delete, and what
   each deletion takes with it. Its card also offers **Stop tracking instead…** (below). When an

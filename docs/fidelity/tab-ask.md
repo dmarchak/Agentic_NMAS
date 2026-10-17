@@ -31,7 +31,13 @@ Shots: `tab-ask-board-1440`, `-1280` beside `tab-ask-page-1440`, `-1280` (idle);
 `tab-ask-t2-preview-page-*`, `tab-ask-t2-result-page-*` and `tab-ask-t2-nothing-page-1440`.
 Compared 2026-10-16.
 Templates compared: templates/v2/_ask.html, templates/v2/_ask_check.html, templates/v2/_ask_reason.html, templates/v2/_privileged.html
-Templates sha256: `cb110432bfd244b55e3504a5913469bde729a73c3eb3f70328b99eb4cb61a54d`
+Templates sha256: `c426a916faa1e2b5045208103d630a2761263f6045f436b7a5d2339e9b8ac3f7`
+
+Compared again 2026-10-17 (C1023) after Run (`_ask_check.html`) became busy on itself from the
+press until the run's card draws ("Starting the read…"); the card's own running state, "Reading…"
+and disabled, is unchanged. At rest the page draws the same words. Compared by the template and
+the page the tests draw (tests/test_v2_busy_on_itself.py, tests/test_show_commands.py), not a
+new shot; no region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

@@ -31,7 +31,13 @@ Shots: `show-commands-run` (C beside the page at 1440 and 1280, E beside it at 3
 1440, the page at 1440 and 390), `show-commands-run-logpath` (F at 1440, the page at 1440 and 390).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands_run.html, templates/v2/_sc_result.html, templates/v2/_lp_result.html, templates/v2/_run_stepper.html
-Templates sha256: `9335dac22f07efa99ec27c654fb1b80b39268997886993b15908abcc95136d4d`
+Templates sha256: `f2f90f7d588b3e264fd8dc963bd4977390c0bba2606f6a10f4cdcb23c00dd9e1`
+
+Compared again 2026-10-17 (C1023) after Group again (`_sc_result.html`) and Test again and "Test (device)
+again" (`_lp_result.html`) became busy on themselves while their request is out
+("Grouping again…", "Starting the test…"). At rest the page draws the same words. Compared by
+the template and the page the tests draw (tests/test_v2_busy_on_itself.py), not a new shot; no
+region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

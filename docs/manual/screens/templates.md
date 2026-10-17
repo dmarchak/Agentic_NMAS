@@ -47,7 +47,8 @@ that failed: lines the render misses, lines it invents, sections it reorders, an
 parser does not model that the device's committed intent has not acknowledged, with a link to
 acknowledge them on that device's Intent tab. A device's own lines (certificates, the licence
 UDI, its self-signed trustpoint, AutoInstall's DHCP client-id) are listed apart and never
-count. See [Approve a template](approve-template).
+count. The check's **Approve**, named for the template, says **Approving…**, and cannot be pressed again,
+until the approval is drawn. See [Approve a template](approve-template).
 
 The confirm is bound to the fingerprint and the check you read: if either moved before you
 confirm, nothing is approved and the card says what moved. The result replaces the card, and

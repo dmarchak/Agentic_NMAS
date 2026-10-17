@@ -40,7 +40,7 @@
       <td>{% if n.state == 'unreadable' %}<span class="muted">paused</span>{% elif n.next_iso %}{{ stamp(n.next_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="set-row-acts">
         {%- if n.state in ('idle', 'disabled') %}
-        <span class="op-act"><button type="button" class="btn btn-small" data-op="drift-check" hx-post="{{ url_for('settings_v2.diag_drift_check', network=n.name) }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Check now</span><span class="op-busy">Starting…</span></button>{{ how('drift-check', compact=True, op='a drift check') }}</span>
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="drift-check" hx-post="{{ url_for('settings_v2.diag_drift_check', network=n.name) }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Check now</span><span class="op-busy">Starting the check…</span></button>{{ how('drift-check', compact=True, op='a drift check') }}</span>
         {%- endif %}
         {%- if n.state == 'disabled' %}
         <span class="op-act"><button type="button" class="btn btn-small" data-op="installation-settings" hx-post="{{ url_for('settings_v2.diag_drift_switch', network=n.name, to='on') }}" hx-target="#diag-drift" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Turn on</span><span class="op-busy">Turning on…</span></button>{{ how('installation-settings', 'drift', compact=True, op='turning drift checks on') }}</span>

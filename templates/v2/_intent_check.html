@@ -70,7 +70,7 @@
       <label class="ie-ack"><input type="checkbox" name="ack" value="{{ u.line }}" form="ie-ack-form"{% if u.acknowledged %} checked{% endif %}> <span class="mono">{{ u.line }}</span>{% if u.acknowledged %} {{ badge('acknowledged', 'ok') }}{% endif %}</label>
       {%- endfor %}
     </div>
-    <button type="submit" class="btn btn-small" form="ie-ack-form">Write the ticked lines into the document</button>
+    <button type="submit" class="btn btn-small" form="ie-ack-form" hx-disabled-elt="this"><span class="op-idle">Write the ticked lines into the document</span><span class="op-busy">Writing them in…</span></button>
   </div>
   {%- endif %}
 </div>

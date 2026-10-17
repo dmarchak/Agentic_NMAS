@@ -71,7 +71,7 @@
     <input type="hidden" name="command" value="{{ c.command }}">
     <fieldset><legend>Ignore when grouping (from the answers' header line)</legend>
       {%- for name in c.columns %}<label class="mono"><input type="checkbox" name="column" value="{{ name }}"{% if name in c.ignore %} checked{% endif %}> {{ name }}</label>{% endfor %}
-      <button type="submit" class="btn btn-small" data-op="show-commands"{{ gate('configure') }}>Group again</button>{{ how('show-commands', 'grouping', compact=True, op='grouping') }}
+      <button type="submit" class="btn btn-small" data-op="show-commands" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Group again</span><span class="op-busy">Grouping again…</span></button>{{ how('show-commands', 'grouping', compact=True, op='grouping') }}
       <span class="muted small">Recorded with the run, as you. The answers are kept whole; only the grouping changes. Nothing is asked of any device.</span></fieldset>
   </form>
   {%- endif %}

@@ -64,7 +64,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 |---|---|---|---|---|---|
 | **From W2, first (the operator's order, 2026-10-17: A1 first, then the Bs, each with a test that fails before the fix)** | | | | | |
 | ~~C1022~~ | ~~A1: a page's network is lost after its first render~~ **done** (every request a v2 page makes carries its network, `routes/page_network.py`; C873, C874 and C1077 with it; W3 walks it) | | | | |
-| C1023 | B1: buttons that start slow work show nothing until the result (NetBox's Import, which caused a second run; the write probe; Approve) | every such button (a population by the property) busy on itself, disabled, with a line naming what runs; a browser test over the population | M | — | W |
+| ~~C1023~~ | ~~B1: buttons that start slow work show nothing until the result~~ **done** (a form's submit button held busy and disabled until its answer draws; 117 pressed controls that post, each with its busy words; walked at W3) | | | | |
 | ~~C1024~~ | ~~B2: read-only operations record "unauthenticated"~~ **done** (every recorder names its verified person; the first commit and NetBox job records too) | | | | |
 | ~~C1025~~ | ~~B3: a declared planned-restart window silences nothing~~ **done** (two Grafana silences per window; no row inside it, "restarting as planned" under What was checked and in the header; walked at W3's reload) | | | | |
 | ~~C1026~~ | ~~B4: no "Restarted as planned" on r6's History after its reload~~ **done** (a restart between two minute reads is found; walked at W3's reload) | | | | |

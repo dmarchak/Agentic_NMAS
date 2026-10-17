@@ -12,7 +12,7 @@
     {%- if cov.state != 'running' %}
     <form method="post" action="{{ url_for('templates_v2.coverage_check') }}" hx-post="{{ url_for('templates_v2.coverage_check') }}" hx-target="#tpl-coverage" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ list_name }}">
-      <span class="op-act"><button type="submit" class="btn btn-small" data-op="templates" hx-disabled-elt="this"><span class="op-idle">Check coverage now</span><span class="op-busy">Starting…</span></button>{{ how('templates', 'coverage', compact=True, op='the coverage check') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="templates" hx-disabled-elt="this"><span class="op-idle">Check coverage now</span><span class="op-busy">Starting the check…</span></button>{{ how('templates', 'coverage', compact=True, op='the coverage check') }}</span>
     </form>
     {%- endif %}</div>
   {%- if cov.state == 'running' %}

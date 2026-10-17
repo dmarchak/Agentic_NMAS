@@ -180,6 +180,9 @@ a { color: var(--accent); }
   cursor: pointer; }
 .net-row:hover, .net-row:focus-visible { background: var(--hover); }
 .net-row.on { background: var(--accent-soft); }
+/* The row's idle words keep the row's own layout (C1023: they are its op-idle). */
+.net-row-words { display: contents; }
+.net-row.htmx-request { cursor: progress; }
 /* At phone width the name is cut, never the list: the menu is the page's width (board N). */
 @media (max-width: 640px) {
   .net.net-pick { overflow: visible; max-width: none; }
@@ -1164,6 +1167,9 @@ select { max-width: 100%; }
 .htmx-request > .op-idle { display: none; }
 .htmx-request > .op-busy { display: inline; }
 .op-confirm[disabled] { opacity: .7; cursor: progress; }
+/* A button waiting for its answer reads as working, not as refused (C1023: a form's submit
+   button is marked by nmas_v2.js's holdSubmitter, one posting itself by htmx). */
+.btn.htmx-request:disabled { opacity: .7; cursor: progress; }
 /* A gated control the viewer may not use (criterion 13, `preview_confirm.gate`): disabled,
    and its reason drawn on it, never hidden and never only on hover. */
 button[data-refused] { cursor: not-allowed; opacity: 1; }

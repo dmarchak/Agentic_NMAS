@@ -90,8 +90,8 @@ class TestTheOpenedListHearsIt:
         r = _choose(networks, "Remote")
         assert r.headers[I.HEADER] == "active_list"
         _r, html = _get(networks, "/v2/network/picker/items?next=/v2/devices")
-        on = re.findall(r'class="net-row on" aria-current="true"[^>]*><span class="grow">(.*?)</span>',
-                        html)
+        on = re.findall(r'class="net-row on" aria-current="true"[^>]*>'
+                        r'(?:<span class="op-idle[^"]*">)?<span class="grow">(.*?)</span>', html)
         assert on == ["Remote"]
 
 

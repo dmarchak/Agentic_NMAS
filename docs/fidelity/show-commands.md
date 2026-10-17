@@ -30,7 +30,13 @@ screen), `show-commands-logpath` (board F and the page at 1440), `show-commands-
 C582 and the page at 1440 and 390), `show-commands-reason-given` (the page at 1440).
 Compared 2026-10-16.
 Templates compared: templates/v2/show_commands.html, templates/v2/_sc_pick.html, templates/v2/_sc_devices.html, templates/v2/_sc_check.html, templates/v2/_sc_reason.html, templates/v2/_sc_run.html
-Templates sha256: `f86d1a8d93e9b401619b81286d40c96218ed014c83621fe39a016cfcdee95b3f`
+Templates sha256: `efad9e2480c155d7a4cc54f4df7c4bd45a89c04ca4de009b12ff544c976e5882`
+
+Compared again 2026-10-17 (C1023) after Run, Test the logging path (`_sc_run.html`) and Save the
+set (`_sc_pick.html`) became busy on themselves while their request is out ("Starting the run…",
+"Starting the test…", "Saving the set…"). At rest the page draws the same words. Compared by the
+template and the page the tests draw (tests/test_v2_busy_on_itself.py,
+tests/test_show_commands.py), not a new shot; no region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

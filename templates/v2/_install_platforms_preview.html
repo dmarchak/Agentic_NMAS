@@ -35,7 +35,7 @@
         hx-post="{{ url_for('settings_v2.platforms_test') }}" hx-target="#platforms-test" hx-swap="outerHTML">
     <label for="f-platforms-test" class="muted small">Test with</label>
     <select id="f-platforms-test" name="target">{% for c in pv.testable %}<option value="{{ c.network }}|{{ c.device }}|{{ c.driver_to }}">{{ c.device }} ({{ c.network }}) through {{ c.driver_to }}</option>{% endfor %}</select>
-    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Test</span><span class="op-busy">Starting…</span></button>{{ how('installation-settings', 'platforms', compact=True, op='testing the new driver') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-small" data-op="installation-settings" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Test</span><span class="op-busy">Starting the test…</span></button>{{ how('installation-settings', 'platforms', compact=True, op='testing the new driver') }}</span>
   </form>
   {%- endif %}
   <div id="platforms-test"></div>

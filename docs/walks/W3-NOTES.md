@@ -1,5 +1,43 @@
 # Lessons from W2 for W3's script
 
+## What W3 must walk from W2's fixes
+
+W2's A1 and B1 to B9 were fixed on 2026-10-17 (commits ed75c7ec, 202ecb26, 977006fa, b9fe9c42,
+24bf6922 and C1023's). Each is closed in the register by its tests and walked here, on the host,
+as the first thing W3 does after its "Before you start".
+
+- **A1 (C1022), on a network that is not Default.** Every request a v2 page makes after its
+  first render carries the page's network: on a second network, Templates' Approve, NetBox's
+  previews, History's tabs and Settings act on that network and name it. W2's baseline and drift
+  rows at about 23:42Z were Default's, drawn on W2 walk's pages.
+- **B1 (C1023).** NetBox's Import into NetBox…, the remote's write probe and Templates' Approve:
+  each button reads its busy words ("Starting the dry run…", "Approving…") and is disabled from
+  the press until its result draws. Press once.
+- **B2 (C1024).** After a NetBox preview, Verify the remote and an import: History and the job
+  record name the walker, never "unverified"; the import's record names the confirmer, with the
+  preview's caller as "previewed by". A new network's first commit carries `Actor:` and
+  `Source: init`.
+- **B3 to B5 (C1025 to C1027), at a reload of r6 (never s3).** The window step's words name both
+  Grafana silences (or a 403, which measures C1089: the token is Viewer-only). While r6 reloads:
+  no Needs attention row for r6, What was checked reading "r6 is restarting as planned (until
+  …, by …)", r6's header chip "Restarting as planned (until …, by …)". After: History's
+  "Restarted as planned" within about a minute of the first SNMP sample; History's header never
+  "in sync" beside an uncommitted path, and a reload commit pushed. Read r6's `sysUpTime` around
+  2026-10-09 18:29Z for C677, and the telemetry `no_data` clear time, to tighten
+  `SETTLE_SECONDS`.
+- **B6 (C1028).** A network with no devices: its History draws none of Default's rows.
+- **B7 (C1029) and C1074.** Delete a throwaway network: its Settings address draws the deleted
+  page (when, by whom, where its data is, no control); creating a network of the same name
+  again works.
+- **B8 (C1030).** History's Kind menu has "NetBox imports and removals"; the import is a row
+  naming its confirmer and its result.
+- **B9 (C932).** Remove from NetBox… on a network with Mercury-created objects: "Remove is not
+  offered:" naming the comparison and both operands, with Read again and Stop tracking
+  instead…. On this lab every removal stops there until six types' cascades are measured
+  (C1097, B): the step expects that line and names C1097.
+- **Still open from W2, for W3:** C1018 (a Reload or Persist preview cancelled before it draws:
+  read the In progress chip after it), and the telemetry read on Show commands described below.
+
 **This is not W3's script.** W3 (onboarding and recovery: docs/PHASE7_BURNDOWN.md section 1b)
 is written later, after the fixes it must walk have landed and been deployed, from the code and
 a read-only look at the host the day it is written. These notes are the rules that writing

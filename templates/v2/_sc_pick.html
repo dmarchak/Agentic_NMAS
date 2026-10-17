@@ -45,7 +45,7 @@
         <div class="sc-save-row">
           <label class="sc-f">Name<input type="text" name="set_name" value="" placeholder="Routing health"></label>
           <label class="sc-f">Description<input type="text" name="set_description" value=""></label>
-          <button type="button" class="btn" data-op="show-commands" hx-post="{{ url_for('reads_v2.show_commands_save_set') }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML"{{ gate('configure') }}>Save the set</button>{{ how('show-commands', 'saved-sets', compact=True, op='saved sets') }}
+          <button type="button" class="btn" data-op="show-commands" hx-post="{{ url_for('reads_v2.show_commands_save_set') }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Save the set</span><span class="op-busy">Saving the set…</span></button>{{ how('show-commands', 'saved-sets', compact=True, op='saved sets') }}
         </div>
         <p class="faint small">Committed in {{ p.list }}'s repository as you; each command checked when saved and again when run.</p>
       </details>

@@ -30,7 +30,7 @@
     <form class="bg-receipt" method="post" action="{{ url_for('v2.credentials_drill') }}" hx-post="{{ url_for('v2.credentials_drill') }}" hx-target="#bg-drill" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ list_name }}">
       <input type="text" name="receipt" placeholder="nmas-drill v1 … (the receipt line)" required aria-label="The drill's receipt line">
-      <button type="submit" class="btn op-confirm" data-op="breakglass-export"{{ gate('configure') }}><span class="op-idle">Record the drill</span><span class="op-busy">Checking it against the exports…</span></button>{{ how('breakglass-export', 'drill', compact=True, op='the drill') }}
+      <button type="submit" class="btn op-confirm" data-op="breakglass-export" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Record the drill</span><span class="op-busy">Checking it against the exports…</span></button>{{ how('breakglass-export', 'drill', compact=True, op='the drill') }}
     </form>
     {%- if error %}<p class="bg-refused">{{ error }}</p>{% endif %}</div></div>
   <div class="op-part"><h3>When overdue</h3><div><p class="muted">Needs attention: "{{ list_name }}'s break-glass record has not been opened offline for 90 days: run the drill where the file is kept." It clears when a drill is recorded.</p></div></div>

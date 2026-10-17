@@ -95,8 +95,9 @@ class TestTheTab:
     def test_a_picked_command_is_filled_and_checked(self, ask):
         _r, html = _get(ask, "/v2/device/r3/ask?command=show ip route")
         assert 'value="show ip route"' in html and "read-only" in html
-        assert re.search(r'<button type="submit" class="btn btn-primary" data-op="show-commands">Run',
-                         html)
+        attrs, words = _run_button(html)
+        assert attrs.get("type") == "submit" and "disabled" not in attrs, attrs
+        assert words.startswith("Run"), words
 
 
 class TestCheckedAsTyped:
@@ -107,17 +108,44 @@ class TestCheckedAsTyped:
     def test_a_write_says_why_and_run_stays_off(self, ask, command, words):
         _r, html = _get(ask, f"/v2/device/r3/ask/check?command={command}")
         assert words in html and ("Nothing will be sent" in html or "Nothing was sent" in html)
-        assert re.search(r'<button[^>]*data-op="show-commands" disabled', html), html
+        assert "disabled" in _run_button(html)[0], html
         assert ask["device"].sent == []
 
     def test_a_heavy_read_says_what_it_costs(self, ask):
         _r, html = _get(ask, "/v2/device/r3/ask/check?command=sh tech")
         assert "runs for minutes and loads the device's CPU" in html
-        assert not re.search(r'data-op="show-commands" disabled', html)
+        assert "disabled" not in _run_button(html)[0]
 
     def test_a_read_says_read_only(self, ask):
         _r, html = _get(ask, "/v2/device/r3/ask/check?command=show ip route")
-        assert "read-only" in html and not re.search(r'data-op="show-commands" disabled', html)
+        assert "read-only" in html and "disabled" not in _run_button(html)[0]
+
+
+def _run_button(html: str) -> tuple:
+    """Ask's Run button, parsed: ``(attributes, its idle words)``. Its attributes are read as
+    attributes, never by substring: `hx-disabled-elt` holds the word "disabled" (C1101)."""
+    from html.parser import HTMLParser
+
+    class Find(HTMLParser):
+        attrs, words, inside = None, "", False
+
+        def handle_starttag(self, tag, attrs):
+            d = dict(attrs)
+            if tag == "button" and d.get("data-op") == "show-commands" and self.attrs is None:
+                self.attrs, self.inside = d, True
+
+        def handle_endtag(self, tag):
+            if tag == "button":
+                self.inside = False
+
+        def handle_data(self, data):
+            if self.inside and not self.words.strip():
+                self.words += data
+
+    f = Find()
+    f.feed(html)
+    assert f.attrs is not None, "no Run button drawn"
+    return f.attrs, f.words.strip()
 
 
 class TestRun:

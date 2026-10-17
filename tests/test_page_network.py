@@ -93,8 +93,8 @@ def _label(text: str) -> str:
 
 
 def _marked(text: str) -> list:
-    return re.findall(r'class="net-row on" aria-current="true"[^>]*><span class="grow">(.*?)'
-                      r'</span>', text)
+    return re.findall(r'class="net-row on" aria-current="true"[^>]*>'
+                      r'(?:<span class="op-idle[^"]*">)?<span class="grow">(.*?)</span>', text)
 
 
 REMOTES = {"Default": "example/default-config", "Branch": "example/branch-config"}

@@ -81,9 +81,9 @@
         {%- else %}<span class="muted small">not checked yet: the check runs every 5 minutes</span>{% endif %}</td>
       <td>
         {%- if s.backend == 'postgres' %}
-        <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_store_preview', direction='back') }}" hx-target="#records-stores" hx-swap="outerHTML" hx-disabled-elt="this">Move back to files…</button>{{ how('records-database', 'back', op='moving a store back') }}</span>
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_store_preview', direction='back') }}" hx-target="#records-stores" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Move back to files…</span><span class="op-busy">Previewing the move…</span></button>{{ how('records-database', 'back', op='moving a store back') }}</span>
         {%- else %}
-        <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_store_preview', direction='move') }}" hx-target="#records-stores" hx-swap="outerHTML" hx-disabled-elt="this">Move to the database…</button>{{ how('records-database', 'move', op='moving a store') }}</span>
+        <span class="op-act"><button type="button" class="btn btn-small" data-op="records-database" hx-post="{{ url_for('settings_v2.records_store_preview', direction='move') }}" hx-target="#records-stores" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Move to the database…</span><span class="op-busy">Previewing the move…</span></button>{{ how('records-database', 'move', op='moving a store') }}</span>
         {%- endif %}</td>
     </tr>
     {%- endfor %}

@@ -2,7 +2,7 @@
 {#- The command as typed (board A, 2): Run, and beside it why it cannot run or what it costs.
     Redrawn on every keystroke's pause by reads_v2.ask_check; the run checks it again. -#}
 <div class="ask-check" id="ask-check" aria-live="polite">
-  <button type="submit" class="btn btn-primary" data-op="show-commands"{% if not c.check.ok or c.state == 'running' %} disabled{% endif %}{% if c.state == 'running' %} aria-busy="true"{% endif %}>{{ 'Reading…' if c.state == 'running' else 'Run' }}</button>{{ how('show-commands', op='show-commands') }}
+  <button type="submit" class="btn btn-primary" data-op="show-commands" hx-disabled-elt="this"{% if not c.check.ok or c.state == 'running' %} disabled{% endif %}{% if c.state == 'running' %} aria-busy="true"{% endif %}><span class="op-idle">{{ 'Reading…' if c.state == 'running' else 'Run' }}</span><span class="op-busy">Starting the read…</span></button>{{ how('show-commands', op='show-commands') }}
   {%- if c.check.needs_reason %}
   <p class="ask-heavy">{{ icon('warn', 14) }} A send log at level {{ c.check.urgent }} needs a reason of three words or more, below; Run stays off until then.</p>
   {%- elif c.check.why %}

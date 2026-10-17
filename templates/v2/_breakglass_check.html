@@ -37,7 +37,7 @@
       <label><span class="muted small">Its passphrase</span><input type="password" name="passphrase" autocomplete="off" required></label>
       <p class="muted small">The tool opens it in memory, compares each credential with the one in use now, and discards both. Recorded: who, when, the file's sha256, and the verdict per device; no credential.</p></div></div>
     <div class="op-ft"><p class="op-note">Nothing on a device or in the stores changes.</p>
-      <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="breakglass-export"{{ gate('configure') }}><span class="op-idle">Check it</span><span class="op-busy">Opening it in memory and comparing…</span></button>{{ how('breakglass-export', 'check', compact=True, op='the check') }}</span></div>
+      <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="breakglass-export" hx-disabled-elt="this"{{ gate('configure') }}><span class="op-idle">Check it</span><span class="op-busy">Opening it in memory and comparing…</span></button>{{ how('breakglass-export', 'check', compact=True, op='the check') }}</span></div>
   </form>
   {%- endif %}
 </section>

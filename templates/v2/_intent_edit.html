@@ -123,7 +123,7 @@
     {%- if m.merged %}
     <input type="hidden" name="yaml" value="{{ m.merged }}">
     <span class="muted small ie-why">The two touch different lines, so yours is placed on theirs: you see the result and its diffs before you commit, and nothing is committed for you.</span>
-    <span class="op-act"><button type="submit" class="btn btn-primary" data-op="edit-intent">Open {{ (m.current or '')[:7] }} with your edit on it</button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
+    <span class="op-act"><button type="submit" class="btn btn-primary" data-op="edit-intent" hx-disabled-elt="this"><span class="op-idle">Open {{ (m.current or '')[:7] }} with your edit on it</span><span class="op-busy">Placing your edit…</span></button>{{ how('edit-intent', compact=True, op='editing intent') }}</span>
     {%- else %}
     <details class="ie-mine" data-keep="ie-mine"><summary>Your whole document, to copy from</summary><pre class="op-diff">{{ c.text }}</pre></details>
     <span class="muted small ie-why">Both change the same lines, so yours is not placed on theirs. Open what is committed now and make your edit again; your document stays here to copy from.</span>

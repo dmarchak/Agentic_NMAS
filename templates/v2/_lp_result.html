@@ -9,7 +9,7 @@
   {%- if v.state != 'done' and not v.lost %} aria-busy="true" hx-get="{{ url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list, job=r.job) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
   <div class="sc-hd"><h2 id="sc-result-h">Logging path on {{ v.total }} device{{ 's' if v.total != 1 }}
     {% if v.state == 'done' %}{{ badge('done', 'ok' if v.counts | length == 1 and v.counts[0].state == 'received' else 'muted') }}{% elif v.lost %}{{ badge('stopped', 'danger') }}{% else %}{{ badge('running', 'warn') }}{% endif %}</h2>
-    <div class="sc-devs">{% if v.state == 'done' %}<button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run) }}" hx-target="#sc-result" hx-swap="outerHTML"{{ gate('reveal') }}>Test again</button>{{ how('logging-path', op='logging-path') }}{% else %}{{ how('logging-path', op='logging-path') }}{% endif %}</div></div>
+    <div class="sc-devs">{% if v.state == 'done' %}<button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run) }}" hx-target="#sc-result" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Test again</span><span class="op-busy">Starting the test…</span></button>{{ how('logging-path', op='logging-path') }}{% else %}{{ how('logging-path', op='logging-path') }}{% endif %}</div></div>
   <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}. The line: <span class="mono">send log {{ v.level }} {{ v.token }}</span>. Recorded in History.</p>
   {%- if r.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ r.error }}</p></div>{% endif %}
   {%- if v.lost %}
@@ -47,7 +47,7 @@
         {%- elif g.state == 'unknown' %}
         <p class="muted small">The line was sent; whether it arrived is not known. Nothing here says the path is broken. Test again when Loki answers (Settings, Integrations, Test).</p>
         {%- endif %}
-        <div class="sc-devs"><a class="btn btn-small" href="{{ url_for('device_v2.device', name=x.host, tab='logs', list=r.list) }}">Open {{ x.host }}'s Logs</a><button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run, host=x.host) }}" hx-target="#sc-result" hx-swap="outerHTML"{{ gate('reveal') }}>Test {{ x.host }} again</button>{{ how('logging-path', compact=True, op='logging-path') }}</div>
+        <div class="sc-devs"><a class="btn btn-small" href="{{ url_for('device_v2.device', name=x.host, tab='logs', list=r.list) }}">Open {{ x.host }}'s Logs</a><button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run, host=x.host) }}" hx-target="#sc-result" hx-swap="outerHTML" hx-disabled-elt="this"{{ gate('reveal') }}><span class="op-idle">Test {{ x.host }} again</span><span class="op-busy">Starting the test…</span></button>{{ how('logging-path', compact=True, op='logging-path') }}</div>
       </div>
       {%- endfor %}
       {%- endif %}

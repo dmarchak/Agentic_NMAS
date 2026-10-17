@@ -59,7 +59,7 @@
   <form class="set-form" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
     <input type="hidden" name="operation" value="forget"><input type="hidden" name="list" value="{{ job.list }}">
     <div class="set-foot set-form-note">
-      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">{{ forget_control }}</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'stop-tracking', compact=True, op='stopping tracking') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"><span class="op-idle">{{ forget_control }}</span><span class="op-busy">Reading Mercury's record…</span></button>{{ how('netbox-import', 'stop-tracking', compact=True, op='stopping tracking') }}</span>
       <span class="muted small">Deletes nothing in NetBox: Mercury forgets what it created for {{ job.list }}. Previewed on its own before anything changes.</span>
     </div>
   </form>

@@ -26,7 +26,7 @@
   <div class="card-head"><h2 id="h-netbox-networks">Networks</h2>{{ badge(v.networks | length ~ ' network' ~ ('' if v.networks | length == 1 else 's'), 'neutral') }}
     <form method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
       <input type="hidden" name="operation" value="import_all">
-      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured %} disabled title="NetBox is not configured"{% endif %}><span class="op-idle">Import every network…</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'preview', op='importing every network') }}</span>
+      <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured %} disabled title="NetBox is not configured"{% endif %}><span class="op-idle">Import every network…</span><span class="op-busy">Starting the dry run…</span></button>{{ how('netbox-import', 'preview', op='importing every network') }}</span>
     </form></div>
   <div class="table-wrap">
   <table class="table">
@@ -41,11 +41,11 @@
       <td class="nowrap">
         <form class="inline" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
           <input type="hidden" name="operation" value="import"><input type="hidden" name="list" value="{{ n.name }}">
-          <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured or not n.devices %} disabled title="{{ 'NetBox is not configured' if not v.configured else ('no devices read from NetBox for this network yet' if n.from_netbox else 'no devices to import') }}"{% endif %}><span class="op-idle">Import into NetBox…</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'preview', compact=True, op='importing a network') }}</span>
+          <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured or not n.devices %} disabled title="{{ 'NetBox is not configured' if not v.configured else ('no devices read from NetBox for this network yet' if n.from_netbox else 'no devices to import') }}"{% endif %}><span class="op-idle">Import into NetBox…</span><span class="op-busy">Starting the dry run…</span></button>{{ how('netbox-import', 'preview', compact=True, op='importing a network') }}</span>
         </form>
         <form class="inline" method="post" action="{{ url_for('netbox_v2.preview') }}" hx-post="{{ url_for('netbox_v2.preview') }}" hx-target="#netbox-job" hx-swap="outerHTML">
           <input type="hidden" name="operation" value="remove"><input type="hidden" name="list" value="{{ n.name }}">
-          <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured %} disabled title="NetBox is not configured"{% endif %}><span class="op-idle">Remove from NetBox…</span><span class="op-busy">Starting…</span></button>{{ how('netbox-import', 'remove-preview', compact=True, op='removing from NetBox') }}</span>
+          <span class="op-act"><button type="submit" class="btn btn-small" data-op="netbox-import" hx-disabled-elt="this"{% if not v.configured %} disabled title="NetBox is not configured"{% endif %}><span class="op-idle">Remove from NetBox…</span><span class="op-busy">Starting the dry run…</span></button>{{ how('netbox-import', 'remove-preview', compact=True, op='removing from NetBox') }}</span>
         </form>
       </td>
     </tr>

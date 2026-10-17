@@ -464,6 +464,64 @@
     NMAS.subscribe('in_progress', 'v2InProgress', relayInProgress);
   }
 
+  /* A form's submit button is busy on itself (C1023, the operator's B1 on walk W2). htmx
+     reads `hx-disabled-elt`, and puts its `htmx-request` class, on the element that ISSUES the
+     request: for a <form hx-post> that is the form, so the button's own
+     `hx-disabled-elt="this"` was never read and its `op-busy` words never showed. NetBox's
+     Import looked dead, and a second run was started. The button that submitted the form is
+     held as htmx holds a button that posts itself: disabled, `htmx-request` and aria-busy,
+     from the send until the answer has been drawn (htmx fires afterRequest after the swap,
+     and on an error, an abort or a timeout). No timer. Only a button declaring
+     `hx-disabled-elt="this"` is held; tests/test_v2_busy_on_itself.py requires it of every
+     button that posts. */
+  function declaresBusy(el) {
+    return !!(el && el.tagName === 'BUTTON' && el.getAttribute('hx-disabled-elt') === 'this');
+  }
+  function submitterOf(form, evt) {
+    if (!form || form.tagName !== 'FORM') return null;
+    var s = evt && evt.submitter;
+    if (s) return declaresBusy(s) ? s : null;
+    // No submitter (a script submitted the form): its one declaring submit button, or none
+    // when two could have sent it, rather than a guess.
+    var found = null, els = form.elements || [];
+    for (var i = 0; i < els.length; i++) {
+      if (!declaresBusy(els[i]) || (els[i].type && els[i].type !== 'submit')) continue;
+      if (found) return null;
+      found = els[i];
+    }
+    return found;
+  }
+  var heldSubmitters = [];
+  function holdSubmitter(e) {
+    var d = (e && e.detail) || {};
+    var b = submitterOf(d.elt, (d.requestConfig || {}).triggeringEvent);
+    if (!b || b.disabled) return;
+    b.disabled = true;
+    b.classList.add('htmx-request');
+    b.setAttribute('aria-busy', 'true');
+    heldSubmitters.push({xhr: d.xhr, el: b});
+  }
+  function releaseSubmitter(e) {
+    var xhr = e && e.detail && e.detail.xhr, keep = [];
+    // An answer that sends the browser to another page (the network picker's choice): the
+    // answer is that page, so the button stays busy until it replaces this one.
+    if (xhr && xhr.getResponseHeader && (xhr.getResponseHeader('HX-Redirect')
+                                         || xhr.getResponseHeader('HX-Refresh') === 'true')) return;
+    for (var i = 0; i < heldSubmitters.length; i++) {
+      var h = heldSubmitters[i];
+      // Its own answer, or one whose answer came while its form was off the page (htmx then
+      // fires afterRequest where this listener may not hear it).
+      if (h.xhr === xhr || !h.xhr || h.xhr.readyState === 4) {
+        h.el.disabled = false;
+        h.el.classList.remove('htmx-request');
+        h.el.removeAttribute('aria-busy');
+      } else {
+        keep.push(h);
+      }
+    }
+    heldSubmitters = keep;
+  }
+
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
   function markTab(e) {
     var tab = e.target;
@@ -842,6 +900,8 @@
     root.document.addEventListener('htmx:beforeSwap', rememberOpen);
     root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);
+    root.document.addEventListener('htmx:beforeSend', holdSubmitter);
+    root.document.addEventListener('htmx:afterRequest', releaseSubmitter);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);
     root.document.addEventListener('htmx:beforeSwap', holdWhileEditing);  // after: the last word on a swap
     root.document.addEventListener('focusout', function () { root.setTimeout(releaseHeld, 0); });
@@ -863,5 +923,5 @@
                   ackAnswer: ackAnswer,
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
-                  rewrittenWords: rewrittenWords, openKeys: openKeys};
+                  rewrittenWords: rewrittenWords, openKeys: openKeys, submitterOf: submitterOf};
 })(typeof window !== 'undefined' ? window : this);
