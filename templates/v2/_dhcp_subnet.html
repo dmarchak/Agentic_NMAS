@@ -78,6 +78,9 @@
   {%- endif %}
   <form class="op-ft" method="post" action="{{ url_for('dhcp_v2.subnet_confirm', list=g.list) }}" hx-post="{{ url_for('dhcp_v2.subnet_confirm', list=g.list) }}" hx-target="#dhcp" hx-swap="outerHTML">
     {%- for k in ('op', 'family', 'id', 'prefix', 'pool', 'gateway', 'dns', 'domain', 'valid', 'preferred') %}<input type="hidden" name="{{ k }}" value="{{ s[k] }}">{% endfor %}
+    {#- The pool's description goes with the confirm when the preview had one (C1121: it was in
+        the preview's hash and never in the confirm's); none sent keeps the pool's own. -#}
+    {%- if s.pool_note is not none %}<input type="hidden" name="pool_note" value="{{ s.pool_note }}">{% endif %}
     <input type="hidden" name="list" value="{{ g.list }}"><input type="hidden" name="hash" value="{{ p.hash }}">
     {%- if p.ack %}
     <label class="op-ack"><input type="checkbox" name="ack" value="1" required> I understand that the clients above lose DHCP service on {{ p.prefix }} from their next renewal, and its reservations are removed.</label>

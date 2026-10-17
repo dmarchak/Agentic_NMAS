@@ -479,6 +479,56 @@ def _ok_test(path):
     return True, "ok"
 
 
+class TestTheConfirmCarriesWhatThePreviewHashed:
+    """C1121 (found 2026-10-17 writing W4): board C's confirm form carried `op`, `family`,
+    `id`, `prefix`, `pool`, the options and the lease times, and never `pool_note`, so a
+    description typed on Add or Edit was in the preview's hash and not in the confirm's, and
+    every such confirm was refused ("what the preview showed has changed"). The confirm is
+    rendered from the real template, its hidden fields posted back as the browser posts them."""
+
+    def _confirm(self, moved, values):
+        import html
+
+        import flask
+
+        import app as A
+        p = S.plan("Lab", values, kea=moved["kea"])
+        assert p["ok"], p["refused"]
+        sop = {"state": "preview", "ask": S.ask(values), "plan": p, "run": None, "said": ""}
+
+        class G(dict):
+            list = "Lab"
+
+            @staticmethod
+            def qs(extra):
+                return "?tab=sub"
+        with A.app.test_request_context("/v2/dhcp?list=Lab"):
+            page = flask.render_template("v2/_dhcp_subnet.html", sop=sop, g=G(),
+                                         may={"may": True}, gate=lambda _k: "")
+        form = re.search(r'<form class="op-ft".*?</form>', page, re.S).group(0)
+        posted = {k: html.unescape(v) for k, v in
+                  re.findall(r'<input type="hidden" name="([^"]+)" value="([^"]*)"', form)}
+        return S.apply_edit("Lab", dict(posted, reason="describe the pool"), posted["hash"],
+                            actor="p@example.invalid", reason="describe the pool",
+                            kea=moved["kea"], run_test=_ok_test,
+                            record=lambda l, plan, **k: {"ok": True, "commit": "abc1234"}), posted
+
+    def test_a_description_typed_on_edit_is_confirmed(self, moved):
+        got, posted = self._confirm(moved, dict(EDIT, pool_note="lab hosts, VLAN 10"))
+        assert posted.get("pool_note") == "lab hosts, VLAN 10", posted
+        assert got["ok"], got["error"]
+
+    def test_a_description_cleared_is_confirmed(self, moved):
+        got, posted = self._confirm(moved, dict(EDIT, pool_note=""))
+        assert posted.get("pool_note") == "", posted
+        assert got["ok"], got["error"]
+
+    def test_the_control_a_request_without_the_field_carries_none(self, moved):
+        got, posted = self._confirm(moved, dict(EDIT))
+        assert "pool_note" not in posted, "an untouched description is kept, never cleared"
+        assert got["ok"], got["error"]
+
+
 class TestTheSubnetApply:
     def _apply(self, moved, h=None, **kw):
         p = S.plan("Lab", EDIT, kea=moved["kea"])
