@@ -63,6 +63,30 @@ class TestTheIntentRow:
         row = device_page.intent_check(_ref(), _dev("r9"))
         assert row["state"] == "unknown"
 
+    def test_a_first_boot_intent_names_seed_intent_not_a_template_error(  # noqa: F811
+            self, lab, monkeypatch):
+        """C1188 (W4 step 43, 2026-10-17): s5's Intent check printed the template's raw
+        exception (`_common.j2` line 6, `services`, the intent's 35 keys) and never named
+        Actions › Seed intent…. A device whose committed intent is onboarding's bootstrap
+        (`hostvars.is_bootstrap_only`, the plan's own test) says so, and what to do."""
+        from modules import device_page
+        from modules.nsot import hostvars
+        real = hostvars.read_committed
+
+        def committed(repo, host, *a, **k):
+            if host == "r6":
+                return {"hostname": "r6", "bootstrap": {"source": "ztp"},
+                        "secret_refs": {}, "unmodeled": []}
+            return real(repo, host, *a, **k)
+
+        monkeypatch.setattr(hostvars, "read_committed", committed)
+        row = device_page.intent_check(_ref(), _dev("r6"))
+        assert row["state"] == "unknown", row
+        assert row["text"] == ("Intent can't be checked yet: r6's intent is its first-boot "
+                               "config. Next: Actions › Seed intent…"), row
+        # The control: a device with its full intent is checked as before.
+        assert device_page.intent_check(_ref(), _dev("r2"))["state"] == "ok"
+
 
 class TestTheProfileItInherits:
     def test_the_profile_commit_is_drawn_beside_the_intent_commit(self, lab, monkeypatch):  # noqa: F811

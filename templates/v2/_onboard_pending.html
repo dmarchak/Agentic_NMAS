@@ -45,10 +45,15 @@
   {%- if done.result.record_error is defined and done.result.record_error %}<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>{{ done.result.record_error }}</span></p>{% endif %}
   {#- Board M (canvas v113): first boot was the management plane only; its intent follows as
       an ordinary deploy, previewed, confirmed, verified and rolled back on failure. -#}
-  {%- if mode == 'verified' and nxt %}
+  {%- if mode == 'verified' and nxt and nxt.state == 'seed' %}
+  {#- C1188: its intent is onboarding's bootstrap, so nothing can be compared yet; the next step
+      is Seed intent, and the comparison's own words wait behind Details. -#}
+  <div class="notice ob-next" role="status" id="ob-next">{{ icon('info', 16) }}<div><p><strong>Intent can't be checked yet:</strong> {{ name }}'s intent is its first-boot config. Next: <a data-op="seed" href="{{ url_for('device_v2.device', name=name, list=list_name, op='seed') }}">Actions › Seed intent…</a>{{ how('seed', compact=True, op='seeding') }}</p>
+    {%- if nxt.why %}<details class="drift-open" data-keep="ob-next-why"><summary>Details</summary><p class="muted small">{{ nxt.why }}</p></details>{% endif %}</div></div>
+  {%- elif mode == 'verified' and nxt %}
   <div class="notice ob-next" role="status" id="ob-next">{{ icon('info', 16) }}<p><strong>Next, its intent.</strong>
     {%- if nxt.state == 'deploy' %} What {{ name }} runs now is its first-boot config; its committed intent says more: {{ nxt.adds }} line{{ 's' if nxt.adds != 1 }} it does not run. <a class="btn btn-small btn-primary" data-op="deploy" href="{{ url_for('device_v2.device', name=name, list=list_name, op='deploy') }}">Deploy its intent…</a>{{ how('deploy', compact=True, op='deploy') }} opens its Deploy: the exact program previewed and masked, confirmed by its hash, applied holding {{ name }}, verified, rolled back on failure, recorded.
-    {%- elif nxt.state == 'write' %} {{ name }}'s committed intent is its first-boot config, so there is nothing more to deploy. Write its intent first: <a href="{{ url_for('device_v2.device', name=name, list=list_name, tab='intent') }}">Intent › Edit</a>, or bulk intent for many; then Deploy.
+    {%- elif nxt.state == 'write' %} {{ name }} already runs everything its committed intent says, so there is nothing more to deploy. Write what it should run first: <a href="{{ url_for('device_v2.device', name=name, list=list_name, tab='intent') }}">Intent › Edit</a>, or bulk intent for many; then Deploy.
     {%- else %} Whether its intent says more than it runs could not be read ({{ nxt.why }}); its page's Deploy… says, from its committed intent.
     {%- endif %}</p></div>
   {%- endif %}

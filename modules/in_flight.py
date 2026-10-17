@@ -186,6 +186,52 @@ def running_row(row: dict, viewer: str) -> dict:
             "card": False, "page": False, "stalled": False}
 
 
+def pending_step(d) -> str:
+    """A pending onboarding's wait in words, from the onboarding-progress reader's last read
+    of it (*d*, or None when it holds none yet)."""
+    if not d:
+        return "waiting for it to boot (not read yet)"
+    if d.get("answering"):
+        return "answering: ready to Verify"
+    if d.get("stop"):
+        return "no fetch 15 minutes after its Create: stop"
+    if d.get("stage"):
+        return d["stage"].replace("_", " ")
+    return "waiting for it to boot" + (": not answering yet" if d.get("answering") is False
+                                       else "")
+
+
+def pending_rows(networks) -> tuple:
+    """Every network's pending onboardings as In progress rows (C1193: the wait for a device to
+    boot is an operation in progress, and nothing listed it): ``(rows, unread)``. Read from the
+    onboarding-progress reader's store alone, which holds only the pending onboardings (it
+    reads the manifests every 10 s): the chip is on every page, so walking each network's
+    manifest here was work per fleet device per request (tests/test_scale.py). A store that
+    cannot be read is named in *unread*."""
+    from modules import reader_job
+    from modules.readers import onboarding_progress as OP
+
+    got = reader_job.read_cached(OP.READER_NAME)
+    good = ((got.get("doc") or {}).get("last_good") or {})
+    if got.get("state") != "ok" or not good:
+        why = got.get("why") or "the reader has not stored a value yet"
+        # Absent: the reader has not run yet, so nothing is known pending (said nowhere);
+        # unreadable: said, for every network at once.
+        return [], ([("every network", f"its pending onboardings: {why}")]
+                    if got.get("state") == "unreadable" else [])
+    wanted = set(networks)
+    rows = []
+    for d in ((good.get("value") or {}).get("devices") or {}).values():
+        if d.get("list") not in wanted:
+            continue
+        rows.append({"device": d.get("name", ""), "list": d.get("list", ""),
+                     "name": "Onboarding: waiting for it",
+                     "step": pending_step(d), "who": "waiting on the device",
+                     "since": _clock(d.get("onboarded_at", "")), "card": False,
+                     "page": True, "stalled": bool(d.get("stop"))})
+    return rows, []
+
+
 #: A finished card's level -> how the chip counts it ("never green over a partial").
 OUTCOMES = {"ok": "done", "warn": "partial", "danger": "failed"}
 
@@ -238,6 +284,9 @@ def chip(networks, viewer: str, now: float = None) -> dict:
     jobs = capture_job.card_jobs(now)
     running = [running_row(r, viewer)
                for r in merge(holds, op_progress.running(now), jobs)]
+    waits, unread_pending = pending_rows(networks)
+    running += waits
+    unread += unread_pending
     finished = [f for f in (finished_row(j, viewer) for j in jobs
                             if j["state"] != "running" and viewer not in j["opened"]) if f]
     counts = {k: sum(1 for f in finished if f["outcome"] == k) for k in OUTCOMES.values()}

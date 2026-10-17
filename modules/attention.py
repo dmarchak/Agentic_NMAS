@@ -421,6 +421,9 @@ _JOB_STATES = {
     "unread_persisting": ("has not read a device for hours", "warning"),
     # Devices reporting one serial: information, said under What was checked (EXPECTED).
     "shared": ("is reported by more than one device", "unknown"),
+    # A pending onboarding's bootstrap credential, staged until Verify or Abandon clears
+    # it (C1159): expected, said under What was checked (EXPECTED), never a rotation.
+    "onboarding_staged": ("holds a pending onboarding's bootstrap credential", "unknown"),
     "not_recorded": ("was rotated and not recorded", "danger"),
     "revert_failed": ("failed a rotation and its revert", "danger"),
     "neither_accepted": ("accepts neither its staged nor its recorded credential", "danger"),
@@ -499,7 +502,9 @@ JOB_HEALTH_READER = "job-health"
 #: Job-health states that are expected and need nothing yet: the startup check
 #: missing a device for one run (it is booting, or slow; a warning once it
 #: persists, as `unread_persisting`). Said in the source's finding, not a row.
-EXPECTED_JOB_STATES = ("unread", "shared")
+#: A pending onboarding's staged bootstrap credential (C1159) likewise: Verify or
+#: Abandon clears it, and the pending device's own page names both.
+EXPECTED_JOB_STATES = ("unread", "shared", "onboarding_staged")
 
 
 def _install_rows_asked_again(jobs: list) -> list:

@@ -1061,6 +1061,43 @@ def clear_bootstrap_credential(repo: str, hostname: str) -> None:
     clear_staged(repo, hostname)
 
 
+def pending_bootstrap_staged(repo: str, hostname: str):
+    """Is *hostname*'s staged credential its PENDING onboarding's bootstrap one (C1159)?
+
+    ``{"onboarded_at", "key"}`` when it is, else ``None``. Both are measured from what
+    is recorded, never guessed from the file: the manifest has the device pending
+    (`onboarded_at` set, `verified_at` not), and the staged value is the one the
+    store holds as its device override (`bind_credentials_step` stages and records the
+    same value at Create). Verify's rotation stages its NEW password over it before the
+    push, so a Verify that died between the push and the record leaves a staged value
+    the override is not, and that one is a rotation not recorded (``None``). Never
+    raises and never returns a value: an unreadable store answers ``None``, the loud
+    reading. The comparison is constant-time, in memory."""
+    import hmac
+
+    try:
+        from modules import credentials
+        from modules.nsot import manifest as _m
+
+        _identity, entry = _m.find_by_name(repo, hostname)
+        if not entry or not entry.get("onboarded_at") or entry.get("verified_at"):
+            return None
+        staged = staged_bootstrap_credential(repo, hostname)
+        if not staged:
+            return None
+        for key in dict.fromkeys([entry.get("mgmt_ip", ""), entry.get("reserved_address", "")]):
+            if not key:
+                continue
+            held = credentials.resolve(key)
+            if (held.get("source") == "device-override"
+                    and hmac.compare_digest(str(held.get("password") or ""), str(staged))):
+                return {"onboarded_at": entry["onboarded_at"], "key": key}
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("onboard: whether %s's staged credential is its onboarding's could not "
+                    "be read (%s); it is read as a rotation's", hostname, type(exc).__name__)
+    return None
+
+
 def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
                      confirmed_fingerprint: str, actor: str = "",
                      actor_kind: str = "", rotate=None,
@@ -1953,6 +1990,15 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             f"an onboarding that finished.")
         return result
 
+    # WHAT THIS RUN'S OWN STEPS WOULD REMOVE (C1165): a dry run's identity step
+    # counts the references left after them, as `manifest.references` words each
+    # ((kind, what)). Counting against the store as it stands said every device with
+    # intent "would refuse: 1 reference(s) remain", the reference being the intent
+    # its own step above said it would remove, while the real run released the name.
+    # Only a step that WOULD remove a reference adds it; a reference no step removes
+    # (a golden, a NetBox device the remover leaves) still refuses.
+    would_remove = set()
+
     def _step(name, ok, detail, how=""):
         result["steps"].append({"step": name, "ok": bool(ok),
                                 "detail": detail})
@@ -1997,6 +2043,7 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
         _step("intent", True, f"{rel} was not present")
     elif dry_run:
         _step("intent", True, f"would remove {rel}")
+        would_remove.add(("intent", rel))
     else:
         try:
             from modules.nsot import repo as _repo
@@ -2053,6 +2100,9 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                   f"{len(nb.get('skipped') or [])} left alone"
                   + (f": {nb['message']}" if nb.get("message") else ""))
             result["netbox"] = nb
+            would_remove.update(("netbox", f"dcim/devices id {d.get('id')}")
+                                for d in nb.get("deleted") or []
+                                if d.get("endpoint") == "dcim/devices")
         else:
             _step("netbox", False, nb.get("error", "removal refused"),
                   "resolve the reason above, then run abandon again")
@@ -2087,6 +2137,7 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                 if not dry_run:
                     credentials.clear_device_override(key)
                 cleared.append(f"override {key}")
+                would_remove.add(("credential", f"device override {key}"))
         if staged_bootstrap_credential(repo, hostname):
             if not dry_run:
                 clear_bootstrap_credential(repo, hostname)
@@ -2142,10 +2193,13 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
 
     # 4. IDENTITY, last, and it re-derives the references itself.
     if dry_run:
-        outstanding = _m.references(repo, identity, list_name)
+        outstanding = [r for r in _m.references(repo, identity, list_name)
+                       if (r["kind"], r["what"]) not in would_remove]
         _step("identity", not outstanding,
               "would release" if not outstanding
-              else f"would refuse: {len(outstanding)} reference(s) remain")
+              else (f"would refuse: {len(outstanding)} reference(s) remain: "
+                    + ", ".join(f"{r['kind']} ({r['what']})" for r in outstanding)),
+              "clear the artefacts named above, then run abandon again")
         result["ok"] = not outstanding and all(s["ok"] for s in result["steps"])
         return result
 

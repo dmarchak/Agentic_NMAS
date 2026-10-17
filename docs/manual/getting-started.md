@@ -54,7 +54,10 @@ for you, the top bar shows nothing. Otherwise it shows the **In progress** chip:
   Opening the chip lists each one: the device, the operation, the step it is on (in its
   stepper's own words, "step 6 of 6"), who started it, and since when. **Open its card** opens
   the device's page, which shows that operation's card where it runs; an operation that holds
-  no device (a NetBox preview, a Save of many devices) is listed without one.
+  no device (a NetBox preview, a Save of many devices) is listed without one. A device being
+  onboarded is listed too, as **Onboarding: waiting for it**, from its Create until Verify or
+  Abandon ends it, with where it has got to ("leased not fetched", "answering: ready to
+  Verify"); **Open** goes to its pending page.
 - **A cross, a warning sign or a tick, with a count**: an operation a device's page started
   that finished while you were elsewhere, with its outcome in its card's own words. Red wins:
   one failed operation makes the chip red, a partial one amber, and it is green only when every

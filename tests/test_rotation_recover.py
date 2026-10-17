@@ -171,6 +171,76 @@ class TestJobHealthNamesIt:
         assert "nmas-rotation-recover r2" in row["action"]["command"]
 
 
+BOOT = "Bootstrap-Pass-2345678"
+BOOT_ADDR = "192.0.2.66"
+
+
+@pytest.fixture
+def pending(lab, tmp_path, monkeypatch):
+    """C1159: a pending ZTP onboarding, s6, as Create leaves it: a manifest
+    entry with `onboarded_at` and no `verified_at`, the bootstrap credential
+    staged (`onboard.stage_bootstrap_credential`, the rotation's store) and
+    held as the device override at its reserved address."""
+    from modules import credentials
+    from modules.nsot import manifest as M
+    from modules.nsot import onboard
+
+    monkeypatch.setattr("modules.credentials._FILE", str(tmp_path / "creds.json"))
+    M.upsert_device(lab["repo"], "uid:s6", "s6", pending=True, address_source="ztp",
+                    mgmt_mac="02:00:00:00:00:66", reserved_address=BOOT_ADDR)
+    credentials.set_device_override(BOOT_ADDR, "nmas", BOOT, BOOT)
+    onboard.stage_bootstrap_credential(lab["repo"], "s6", BOOT)
+    return lab
+
+
+class TestAPendingOnboardingIsNotARotation:
+    """C1159 (W4, 2026-10-17): a pending onboarding's staged bootstrap credential
+    read as Needs attention's CRITICAL "rotation-staged … was rotated and not
+    recorded", whose advice said not to reboot, for the whole of the boot the
+    onboarding needs. It is said as what it is: expected until Verify or
+    Abandon clears it, under What was checked, never a row. A rotation's staged
+    credential (r2, the fixture's) stays the row it is."""
+
+    @staticmethod
+    def _by_device():
+        return {r["device"]: r for r in job_health.staged_rotation_rows(holder=lambda l, h: None)}
+
+    def test_it_reads_as_the_onboardings_own_and_the_rotation_stays(self, pending):
+        rows = self._by_device()
+        s6 = rows["s6"]
+        assert s6["state"] == "onboarding_staged", s6
+        assert s6["unit"] == "onboarding-staged:Lab/s6"
+        text = " ".join(str(s6.get(k, "")) for k in ("what", "detail", "headline"))
+        assert "rotated" not in text and "reboot" not in text, text
+        assert "Verify or Abandon" in s6["detail"], s6
+        assert BOOT not in str(s6)
+        assert rows["r2"]["state"] == "not_recorded"                  # the control
+
+    def test_needs_attention_says_it_under_what_was_checked_not_as_a_row(self, pending):
+        from modules import attention
+
+        src = attention.job_health_source(
+            health=lambda: {"jobs": job_health.staged_rotation_rows(holder=lambda l, h: None)})
+        assert [r["id"] for r in src["rows"]] == ["job_health:rotation-staged:Lab/r2"], \
+            src["rows"]
+        assert "s6" in src["checked"] and "Verify or Abandon" in src["checked"], src["checked"]
+
+    def test_a_verify_rotation_that_died_still_reads_as_a_rotation(self, pending):
+        """Control: Verify's rotation stages its NEW password over the bootstrap
+        one; a process that dies before the record leaves a staged value the
+        held override is not, and that IS a rotation not recorded."""
+        cr.stage_plaintext(pending["repo"], "s6", "Rotated-N3w-Value-5678")
+        assert self._by_device()["s6"]["state"] == "not_recorded"
+
+    def test_a_promoted_device_reads_as_a_rotation(self, pending):
+        """Control: only a PENDING onboarding's staged credential is its own; a
+        device Verify promoted (`verified_at` set) has no bootstrap left."""
+        from modules.nsot import manifest as M
+
+        M.mark_verified(pending["repo"], "uid:s6", actor="op")
+        assert self._by_device()["s6"]["state"] == "not_recorded"
+
+
 class TestTheCommand:
     def test_it_prints_the_state_and_never_a_credential(self, lab, monkeypatch, capsys):
         import importlib.machinery

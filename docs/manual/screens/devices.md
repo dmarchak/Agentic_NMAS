@@ -118,7 +118,22 @@ the break-glass record…**. See [Adopt a device](adopt).
 ## A pending device's page {#pending}
 
 A device created and not yet reached has no tabs: its page shows its onboarding state, its
-address and how it gets it, and three actions, each answered in place:
+address and how it gets it, and three actions, each answered in place.
+
+**<device> onboarding progress**, with a ZTP, DHCP or static badge, says when to press Verify.
+Its five steps (identity, first-boot config, confirmed, waiting for it, arrival) are on the one
+stepper, and the time on Waiting for it counts from the device's Create. The card draws itself
+again whenever Mercury's onboarding-progress reader sees something move (it reads every 10
+seconds: a ZTP device's stage, and whether the device answers), and when anyone creates,
+verifies or abandons an onboarding; nothing on the page polls. Once a ZTP device has fetched
+its configuration (a static or DHCP device at once), the reader probes its address the way the
+online dot does, ICMP and then a TCP connection to port 22, sending nothing and trying no
+login: **Answering: ready to Verify** says it accepted, with which probe and when; **Not
+answering yet** says it did not. For ZTP the card states the stop rule, "no fetch 15 minutes
+after boot: stop", and marks it in amber once 15 minutes have passed since the Create with no
+fetch of its own (the tool cannot see the boot, only the Create before it). The wait is also
+listed in the top bar's In progress chip ([What is running now](getting-started#in-progress)),
+until Verify or Abandon ends it.
 
 - **Verify…** reaches the device and reads it (sending nothing), then shows what Verify will
   send; **Verify** confirms that preview. See [Onboard a device](onboard#phase-two-verify).

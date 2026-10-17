@@ -941,6 +941,27 @@ def staged_rotation_rows(lists=None, holder=None) -> list:
                                "command": f"nmas-adopt-recover {s['device']} "
                                           f"--list {item['name']}"}})
                 continue
+            # A PENDING ONBOARDING'S bootstrap credential (C1159): onboarding stages it
+            # in this store at Create, and it is expected until Verify or Abandon clears
+            # it. Read as a rotation, it raised a CRITICAL telling the person not to
+            # reboot, for the whole of the boot the onboarding needs. Measured, never
+            # guessed: the manifest has the device pending and the staged value is the
+            # one the store holds for it (`onboard.pending_bootstrap_staged`).
+            from modules.nsot import onboard as _onboard
+
+            boot = _onboard.pending_bootstrap_staged(repo, s["device"])
+            if boot:
+                said = (f"{s['device']}'s onboarding (created {boot['onboarded_at']}) holds "
+                        f"its one-time bootstrap credential, staged at {since}, the one "
+                        f"the store holds for {boot['key']}: expected until Verify or "
+                        "Abandon clears it")
+                rows.append({
+                    "unit": f"onboarding-staged:{item['name']}/{s['device']}",
+                    "what": "a pending onboarding's one-time bootstrap credential",
+                    "device": s["device"], "list": item["name"],
+                    "state": "onboarding_staged", "max_age_minutes": 0,
+                    "headline": said, "detail": said})
+                continue
             rows.append({
                 "unit": f"rotation-staged:{item['name']}/{s['device']}", "what": _ROTATION_WHAT,
                 "device": s["device"], "list": item["name"], "state": "not_recorded",

@@ -420,7 +420,7 @@ def _redact(text: str) -> str:
     try:
         from modules.redact import redact_text
         return redact_text(text)
-    except Exception as exc:               # pragma: no cover - defensive
+    except Exception as exc:               # noqa: BLE001 - fails closed; tested (C1167)
         log.warning("netbox_guard: could not redact a recorded value: %s", exc)
         return "<unredactable — not recorded>"
 

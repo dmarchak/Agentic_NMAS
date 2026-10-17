@@ -787,7 +787,18 @@ def progress(entry: dict, *, kea=None, fetches=None) -> dict:
     # it is still this device asking.
     # Only an UNATTRIBUTED row matches by address: a row naming another
     # device is that device's, whatever address it came from.
+    # ONLY THIS ONBOARDING'S (C1187). A name re-created after an Abandon is a new
+    # onboarding with a new credential, and the first one's fetch is still in the
+    # record under the same name and address: the second s6 drew the first one's
+    # "fetched", so Verify would have met a device holding the old credential. A
+    # fetch counts from this onboarding's Create (`onboarded_at`, stamped before the
+    # reservation is written, so nothing of its own can precede it); the responder
+    # renders each serve from the credential staged at that Create. Both stamps are
+    # `%Y-%m-%dT%H:%M:%SZ`, compared as text. An entry with no `onboarded_at` (none
+    # is pending without one) is not bounded.
+    since = entry.get("onboarded_at") or ""
     rows = [f for f in fetches if str(f.get("actor", "")).startswith("ztp:")
+            and str(f.get("at") or "") >= since
             and (f.get("target") == name
                  or (f.get("target") in ("?", "", None)
                      and _peer_host(f.get("peer", "")) == want))]

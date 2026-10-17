@@ -344,3 +344,88 @@ class TestAReferenceAtHEADCountsToo:
                   "commit", "-m", "remove intent")
         assert not any(r["kind"] == "intent"
                        for r in _m.references(repo, identity, "probe"))
+
+
+class TestThePreviewCountsWhatItsOwnStepsRemove:
+    """C1165 (W4 step 27, 2026-10-17): every Abandon of a device with intent
+    previewed "would fail: would refuse: 1 reference(s) remain", the reference
+    being the `host_vars/<name>.yml` its own intent step above said it "would
+    remove", while the real run finished. The dry run now counts references
+    minus what its earlier steps would remove; a reference no step removes
+    still refuses."""
+
+    NB_ID = 77
+
+    def _dry(self, repo, **kw):
+        from modules.nsot.onboard import abandon_onboarding
+
+        kw.setdefault("remove_netbox",
+                      lambda lst, host, dry_run=False, **k: {"ok": True, "deleted": [],
+                                                             "skipped": []})
+        return abandon_onboarding(repo, "bp1", "probe", actor="t", dry_run=True, **kw)
+
+    @staticmethod
+    def _identity(out):
+        (step,) = [s for s in out["steps"] if s["step"] == "identity"]
+        return step
+
+    def test_a_device_with_intent_previews_as_finishing(self, repo):
+        _onboard(repo)
+        out = self._dry(repo)
+        assert self._identity(out) == {"step": "identity", "ok": True,
+                                       "detail": "would release"}, out["steps"]
+        assert out["ok"] is True, out
+
+    def test_its_override_and_netbox_device_are_counted_as_removed(self, repo, monkeypatch):
+        import modules.credentials as creds
+
+        _onboard(repo)
+        creds.set_device_override("203.0.113.31", "admin", "s3cret", "s3cret")
+        monkeypatch.setattr("modules.netbox_guard.get_created", lambda lst: {
+            "dcim/devices": [{"id": self.NB_ID, "name": "bp1"}]})
+        out = self._dry(repo, remove_netbox=lambda lst, host, dry_run=False, **k: {
+            "ok": True, "skipped": [],
+            "deleted": [{"endpoint": "dcim/devices", "id": self.NB_ID, "name": "bp1"}]})
+        assert self._identity(out)["detail"] == "would release", out["steps"]
+
+    def test_a_reference_no_step_removes_still_refuses(self, repo):
+        """The control: a golden (no Abandon step removes one) still refuses,
+        named, as the real run's release would."""
+        from modules.nsot import repo as _repo
+
+        _onboard(repo)
+        os.makedirs(os.path.join(repo, "golden"), exist_ok=True)
+        with open(os.path.join(repo, "golden", "bp1.cfg"), "w") as fh:
+            fh.write("hostname bp1\n")
+        _repo.git(repo, "add", "-A")
+        _repo.git(repo, "-c", "user.email=n@l", "-c", "user.name=N", "commit", "-m", "golden")
+        step = self._identity(self._dry(repo))
+        assert step["ok"] is False
+        assert step["detail"].startswith("would refuse: 1 reference(s) remain"), step
+        assert "golden" in step["detail"], step
+
+    def test_a_netbox_device_the_remover_leaves_still_refuses(self, repo, monkeypatch):
+        """The control for NetBox: a device the remover would not delete is not
+        counted as removed."""
+        _onboard(repo)
+        monkeypatch.setattr("modules.netbox_guard.get_created", lambda lst: {
+            "dcim/devices": [{"id": self.NB_ID, "name": "bp1"}]})
+        step = self._identity(self._dry(repo))
+        assert step["ok"] is False and "netbox" in step["detail"], step
+
+    def test_the_confirm_bound_to_this_preview_finishes(self, repo):
+        """The fingerprint the preview shows is the one the confirm recomputes
+        under the hold, and the real run then releases the name."""
+        from modules.nsot import manifest as _m
+        from modules.nsot.onboard import abandon_fingerprint, abandon_onboarding
+
+        _onboard(repo)
+
+        def nb(lst, host, dry_run=False, **k):
+            return {"ok": True, "deleted": [], "skipped": []}
+
+        shown = abandon_fingerprint(self._dry(repo, remove_netbox=nb))
+        out = abandon_onboarding(repo, "bp1", "probe", actor="t", remove_netbox=nb,
+                                 confirmed=shown)
+        assert out["ok"] is True and out["released"] == "bp1", out
+        assert _m.find_by_name(repo, "bp1") == (None, None)

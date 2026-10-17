@@ -103,11 +103,10 @@ class TestTheBinding:
                     mgmt_ip="192.0.2.6", mgmt_mask="255.255.255.0",
                     manager_interface="GigabitEthernet2", domain="example.net", role="router",
                     ztp_check=lambda *a, **k: None, kea=None)
-        try:
-            a = build_plan(secret="PLACEHOLDER-not-the-real-credential", **args)
-            b = build_plan(secret="", **args)
-        except Exception as exc:                 # noqa: BLE001 (the stores this test lacks)
-            pytest.skip(f"build_plan needs a store here: {exc}")
+        # No skip (C1171, Lab 7's history audit): it once turned ANY exception from build_plan
+        # into a skip, so a broken build_plan would have passed this secrecy check unseen.
+        a = build_plan(secret="PLACEHOLDER-not-the-real-credential", **args)
+        b = build_plan(secret="", **args)
         assert plan_shown(a) == plan_shown(b)
         assert "PLACEHOLDER" not in plan_shown(a)
 

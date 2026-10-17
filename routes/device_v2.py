@@ -220,11 +220,66 @@ def _pending_facts(ref, p) -> dict:
     # Where it has got to, on the one stepper (board M's five steps; 2026-10-12).
     from modules import run_stepper
     from modules.nsot import onboard
+    from modules.readers import onboarding_progress as OP
+    out.update(_pending_answer(ref, p, (out["ztp"] or {}).get("stage", "")))
     waits = (out["ztp"] or {}).get("summary") or "boot it with its bootstrap config"
-    out["run"] = run_stepper.at_step(p.get("name", ""), "Onboarding progress",
+    if out["answer"]["state"] == "answering":
+        waits = "answering: ready to Verify"
+    out["run"] = run_stepper.at_step(p.get("name", ""), f"{p.get('name', '')} onboarding progress",
                                      onboard.LIFECYCLE, onboard.LIFECYCLE_NOW, note=waits)
     out["run"]["rows"][0]["device"] = False      # not in the inventory yet: its page is this one
+    # The wait's time counts from its Create, live (C1193; the stepper's own clock).
+    out["run"]["rows"][0]["steps"][onboard.LIFECYCLE_NOW]["since"] = p.get("onboarded_at", "")
+    out["run"]["rows"][0]["steps"][onboard.LIFECYCLE_NOW]["took_s"] = p.get("age_seconds")
+    # The operator's stop rule (W4): a ZTP device past 15 minutes since its Create with no
+    # fetch of its own (the Create is the nearest the tool sees to the boot).
+    out["stop"] = bool(p.get("address_source") == "ztp" and out["ztp"]
+                       and out["ztp"].get("stage") in OP.NOT_FETCHED
+                       and (p.get("age_seconds") or 0) >= OP.STOP_AFTER_S)
+    out["way"] = {"ztp": "ZTP", "dhcp": "DHCP"}.get(p.get("address_source"), "static")
     return out
+
+
+def _pending_answer(ref, p, stage: str = "") -> dict:
+    """Whether a pending device answers (C1193), from the onboarding-progress reader's store,
+    never asked here: ``{"answer": {"state": answering|silent|unread|none, ...}}``. Asked only
+    where there is something to answer: a ZTP device that fetched its config, else the
+    device's address."""
+    from modules.readers import onboarding_progress as OP
+
+    name = p.get("name", "")
+    ztp = p.get("address_source") == "ztp"
+    if not OP.address(p) or (ztp and stage != "fetched_not_reached"):
+        # Nothing to answer yet: no address, or it has not fetched its config (its stage, read
+        # now; an answer the reader kept from before it is not this fetch's).
+        return {"answer": {"state": "none"}}
+    d, why = OP.stored(ref.name, name)
+    if d and d.get("answering") is not None:
+        return {"answer": {"state": "answering" if d["answering"] else "silent",
+                           "address": d.get("address", ""), "claim": d.get("claim", ""),
+                           "at": d.get("probed_at", ""), "every": OP.INTERVAL_SECONDS}}
+    return {"answer": {"state": "unread", "why": why or (
+        f"its first probe is on the reader's next read (every {OP.INTERVAL_SECONDS} s)")}}
+
+
+@bp.route("/device/<name>/pending/progress", methods=["GET"])
+def pending_progress(name):
+    """A pending device's facts and onboarding progress alone (C1193), read again when
+    `pending` is announced. A device no longer pending says so, with where it went."""
+    try:
+        ref = _page_ref()
+        pending = device_page.find_pending(name, ref=ref)
+    except Exception as exc:                          # noqa: BLE001 (said in place)
+        log.warning("device_v2: pending onboardings could not be read for %s: %s", name, exc)
+        return _strict(render_template(
+            "v2/_pending_gone.html", name=name, list_name="",
+            error=f"the pending onboardings could not be read ({type(exc).__name__})"))
+    if not pending:
+        return _strict(render_template("v2/_pending_gone.html", name=name, list_name=ref.name,
+                                       error=""))
+    ref, p = pending
+    return _strict(render_template("v2/_pending_progress.html", p=p, list_name=ref.name,
+                                   **_pending_facts(ref, p)))
 
 
 @bp.route("/device/<name>", methods=["GET"])

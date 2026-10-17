@@ -258,7 +258,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.logs_tail",
                            "modules.readers.dhcp",
                            "modules.readers.ztp_discovery",
-                           "modules.readers.host_key_windows")
+                           "modules.readers.host_key_windows",
+                           "modules.readers.onboarding_progress")
 
 #: Readers switched OFF, each with why: not imported, never started, no job-health row, no
 #: Needs attention source. Removed with their system (the operator decides when).
@@ -388,6 +389,10 @@ CHANGE_ONLY = {
                       "announcement; the page draws each device's last request, its age only "
                       "on hover: a range where nobody asked anew redraws nothing (its 600 s "
                       "keepalive proves it alive)"),
+    "onboarding-progress": ("it reads every 10 s and a pending device's page and the In "
+                            "progress chip redraw on its announcement; a probe's time is drawn "
+                            "as an age, so a device whose stage and answer stand still redraws "
+                            "nothing (its 600 s keepalive proves it alive)"),
 }
 
 

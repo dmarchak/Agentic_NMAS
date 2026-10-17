@@ -241,3 +241,26 @@ class TestRemoveNeverDeletesItsOwnTag:
         # held: a tag Remove deleted would now be a REMOVED object in a census compare.
         assert ("tags", "extras/tags/") in census.ENDPOINTS
         assert "extras/tags" not in _REMOVAL_ORDER
+
+
+class TestARecordedValueFailsClosed:
+    """C1167 (Lab 7's history audit): when redaction cannot run, the modification record keeps a
+    marker, never the value. The branch was `pragma: no cover`, reached by no test."""
+
+    SECRET = "snmp-server community Wr1te-S3cret RW"
+
+    def test_a_value_redaction_cannot_read_is_recorded_as_a_marker(self, monkeypatch):
+        import modules.redact as R
+
+        def broken(*_a, **_k):
+            raise RuntimeError("the secret store could not be read")
+
+        monkeypatch.setattr(R, "redact_text", broken)
+        got = netbox_guard.record_value({"config": self.SECRET, "lines": [self.SECRET]})
+        assert got == {"config": "<unredactable — not recorded>",
+                       "lines": ["<unredactable — not recorded>"]}, got
+        assert "Wr1te-S3cret" not in repr(got)
+
+    def test_the_control_a_value_redaction_reads_is_masked_not_marked(self):
+        got = netbox_guard.record_value({"config": self.SECRET})
+        assert "Wr1te-S3cret" not in repr(got) and "unredactable" not in repr(got), got

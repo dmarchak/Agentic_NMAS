@@ -91,6 +91,14 @@ RECORDS_CARD = ("the whole records card handed to the Replace form, which reads 
                 "password rule; every one of these is drawn by `_records_db_card.html`")
 
 #: {route: [(keys, reason), ...]}: carried, drawn by no template of the same response.
+#: The pending page and its fragment (C1193): measured first on 2026-10-17, when a provider
+#: reached them (both were UNREACHED). The manifest's pending row and the ZTP stage are
+#: passed whole; these keys feed the route's own reckoning (the stepper's took_s, the stop
+#: rule) and are drawn through it, not by name (C1219: trim them or draw them).
+PENDING_UNDRAWN = ("the pending row's and the ZTP stage's own reckoning (age, counts, "
+                   "elapsed, identity), drawn through the stepper and the stop rule, not "
+                   "by name; C1219")
+
 UNDRAWN = {
     "GET /v2/": [("attach_to headline triage ways", ATTENTION)],
     "GET /v2/attention": [("attach_to headline triage ways", ATTENTION),
@@ -116,7 +124,10 @@ UNDRAWN = {
         ("drawn seconds", PANELS), ("is_default", DEFAULT_BADGE), ("value_from", VALUE_FROM),
         ("checked not_reporting", COVERAGE_ROW), ("reporting sections", COVERAGE_FACTS),
         ("identity people", HISTORY_SHELL), ("verified", EVENT_VERIFIED),
-        ("proto", "the neighbour protocol's id: its words are drawn")],
+        ("proto", "the neighbour protocol's id: its words are drawn"),
+        ("age_seconds counts elapsed_s total", PENDING_UNDRAWN)],
+    "GET /v2/device/<name>/pending/progress": [
+        ("age_seconds counts elapsed_s identity total", PENDING_UNDRAWN)],
     "GET /v2/device/<name>/actions": [("device_type ip username", DEVICE_ROW)],
     "GET /v2/device/<name>/deploy": [("ip", CARD_IP)],
     "GET /v2/device/<name>/drained": [("device_type ip username", DEVICE_ROW)],
@@ -329,7 +340,10 @@ UNDRAWN = {
 #: +5 2026-10-16: P7-05's two fragments, the same plumbing as their pages. -4 2026-10-16:
 #: C868 (the restore chooser draws each moment's `subject`, on both routes) and C869 (the
 #: profile proposal draws `devices_read` and `skipped`).
-UNDRAWN_CEILING = 358
+#: +9 2026-10-17: the pending page and its fragment measured for the first time (C1193's
+#: provider took them off UNREACHED, -2 there); their nine keys were carried and undrawn
+#: before, unmeasured (C1219).
+UNDRAWN_CEILING = 367
 
 #: {route: [(keys, reason), ...]}: in the preview a card is built from, read by neither its
 #: adapter nor its template.
@@ -366,8 +380,6 @@ UNREACHED = {
     "v2/_lp_result.html": _A_JOB + " (the logging-path test's result, inside a run's part)",
     "v2/_netbox_job.html": _A_JOB + " (a NetBox sync)",
     "v2/_netbox_removals.html": _A_STATE + "NetBox objects tagged and recorded as created",
-    "v2/_onboard_pending.html": _A_STATE + "a device pending onboarding",
-    "v2/pending.html": _A_STATE + "a device pending onboarding",
     "v2/retired.html": _A_STATE + "a retired device",
     "v2/_retry.html": _A_STATE + "a deploy blocked by a rolled-back change",
     "v2/_revert.html": _A_STATE + "a change to revert (a rolled-back deploy's way out)",
@@ -377,7 +389,8 @@ UNREACHED = {
     "v2/_template_check.html": _A_POST + " (a template edit checked; the lab has no library)",
     "v2/_topology_result.html": _A_JOB + " (a topology read)",
 }
-UNREACHED_CEILING = 23
+#: -2 2026-10-17: the pending page and _onboard_pending.html, reached by C1193's provider.
+UNREACHED_CEILING = 21
 
 
 def _flat(table):

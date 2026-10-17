@@ -625,7 +625,22 @@ def _in_progress(client, _lab, mp):
     assert r.status_code == 200 and "ip-chip" in r.get_data(as_text=True), r.status_code
 
 
+def _pending(client, lab, _mp):
+    """A device pending onboarding (C1193's page and fragment): recorded the way Create records
+    it (`manifest.upsert_device(pending=True)`), so the product's own `find_pending` finds it;
+    then its page, its progress fragment, and the fragment for a device that is not pending."""
+    from modules.nsot import manifest
+
+    manifest.upsert_device(lab["repo"], manifest.identity_for(device_uid="ctx-pending-s9"),
+                           "s9", platform="cisco_iosxe", pending=True, address_source="static",
+                           mgmt_ip="192.0.2.9", role="router")
+    for url in ("/v2/device/s9?list=Lab", "/v2/device/s9/pending/progress?list=Lab",
+                "/v2/device/r3/pending/progress?list=Lab"):
+        r = client.get(url, headers={"Accept": "text/html"})
+        assert r.status_code == 200, (url, r.status_code)
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
-                   _in_progress, _deploy]
+                   _in_progress, _pending, _deploy]

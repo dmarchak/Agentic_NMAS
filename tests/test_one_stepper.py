@@ -40,7 +40,8 @@ OPERATION_PAGES = {
     "_adopt.html": "Adopt",
     "_update.html": "Update",
     "_capture.html": "Capture",
-    "pending.html": "Onboarding and first boot",
+    # pending.html draws it through its progress fragment, read again on `pending` (C1193).
+    "_pending_progress.html": "Onboarding and first boot",
     "_onboard_pending.html": "Verify, onboarding's arrival",
     "_netbox_job.html": "NetBox import and removal",
     "_sc_result.html": "Show commands runs",

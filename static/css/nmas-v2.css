@@ -406,6 +406,9 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .notice-danger { background: var(--danger-soft); border-color: var(--danger-line); }
 .notice-danger > .ico { color: var(--danger); }
 .notice-muted { background: var(--surface-2); color: var(--ink-2); }
+/* An answer to act on now (C1193: a pending device answering, ready to Verify). */
+.notice-ok { background: var(--ok-soft); border-color: var(--ok); }
+.notice-ok > .ico { color: var(--ok); }
 
 /* ---- Monitoring ---- */
 .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -1816,6 +1819,8 @@ a.topo-ent:hover { background: var(--hover); }
 .dv-pick { white-space: nowrap; }
 /* Board M: a pending device's five steps, and Verify's next step (its intent). */
 .ob-where h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.ob-where .ob-answer, .ob-where .ob-stop { margin: 0 0 10px; }
+.ob-where .ob-elapsed { margin: 8px 0 0; }
 .ob-steps-say { margin: 12px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
 .ob-next { margin-top: 8px; }
 .dh-find input, .dh-find select { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line);

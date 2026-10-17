@@ -235,10 +235,12 @@ DECLARED = {
     # Onboarding on v2 (cutover blocker 3). Verify runs phase 2, which PROMOTES: the device list
     # is the first of the three measured cases. Today's onboarding routes and its deploy wizard
     # (onboard.*, deploy.plan, deploy.apply) left at 7.8 (2026-10-17, P7-25).
-    "onboard_v2.create": ("pending", "intent", "credentials", "remote"),
+    # A pending onboarding is a wait the In progress chip lists (C1193), so each also says
+    # `in_progress`.
+    "onboard_v2.create": ("pending", "intent", "credentials", "remote", "in_progress"),
     "onboard_v2.verify": ("pending", "inventory", "credentials", "netbox",
-                          "device_state", "baselines") + _COMMIT,
-    "onboard_v2.abandon": ("pending", "intent", "credentials", "remote"),
+                          "device_state", "baselines", "in_progress") + _COMMIT,
+    "onboard_v2.abandon": ("pending", "intent", "credentials", "remote", "in_progress"),
     # NetBox. Today's NetBox tab's import and removal routes (/netbox/safety/*) left at 7.8
     # (2026-10-17); v2's NetBox page's confirm (`netbox_v2.confirm`) is declared with v2's routes.
     # Today's NetBox Test (/netbox/test_connection), which persisted the auth scheme that

@@ -296,6 +296,31 @@ class TestThePendingRow:
         other = dict(SERVED, target="bp-ztp-b")
         assert ztp.progress(ENTRY, kea=_ProgressKea(), fetches=[other])["stage"] == "leased_not_fetched"
 
+    # C1187 (W4, 2026-10-17): the second s6, re-created at 19:27, showed the first
+    # one's 19:17:38 fetch (sha ce0f3ae2debd) as its own "fetched", so Verify would
+    # have run against a device holding the old credential. Only a fetch after THIS
+    # onboarding's Create (its `onboarded_at`) is its own: the responder renders from
+    # the credential staged at that Create, so a serve after it carries that one.
+    RECREATED = dict(ENTRY, onboarded_at="2026-10-17T19:27:00Z")
+    OLD = dict(SERVED, at="2026-10-17T19:17:38Z", sha256="ce0f3ae2debd" + "0" * 52)
+    OLD_REFUSED = dict(REFUSED, at="2026-10-17T19:17:30Z")
+    NEW = dict(SERVED, at="2026-10-17T19:36:27Z", sha256="f08b7c39893a" + "0" * 52)
+
+    def test_a_fetch_before_this_onboardings_create_does_not_count(self):
+        from modules.nsot import ztp
+        out = ztp.progress(self.RECREATED, kea=_ProgressKea(), fetches=[self.OLD,
+                                                                         self.OLD_REFUSED])
+        assert out["stage"] == "leased_not_fetched", out
+        assert out["fetch"] == {"state": "none"} and "ce0f3ae2debd" not in out["summary"]
+
+    def test_a_fetch_after_create_still_counts(self):
+        """The control: the same device's fetch after its Create is its own."""
+        from modules.nsot import ztp
+        out = ztp.progress(self.RECREATED, kea=_ProgressKea(), fetches=[self.NEW, self.OLD])
+        assert out["stage"] == "fetched_not_reached", out
+        assert out["fetch"]["count"] == 1 and "f08b7c39893a" in out["summary"], out
+        assert "ce0f3ae2debd" not in out["summary"]
+
     @pytest.mark.parametrize("kea", [_ProgressKea(reservation="unknown"), _ProgressKea(lease="unknown")])
     def test_kea_that_cannot_be_asked_is_unknown_not_a_stage(self, kea):
         from modules.nsot import ztp

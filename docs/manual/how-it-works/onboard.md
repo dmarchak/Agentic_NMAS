@@ -10,7 +10,7 @@ Only IOS-XE can be onboarded today. Classic IOS is listed and refused at the pla
 
 On Devices, **Add device…** (in the network the top bar names): the device's name, platform and role, the interface the tool will reach it on, the DNS domain, and how it gets its address: static, a DHCP reservation, or ZTP (the tool writes the reservation and serves the configuration on first boot). The review shows the plan and the bootstrap configuration with a placeholder password in place of the real one; the plan refuses at once anything that would fail later, every reason together. Create builds the plan again from the form, holding the device's name, and refuses if it no longer passes, or if it is not the plan you reviewed: the review's fingerprint covers the plan and the intent it commits, and a refusal names each value that moved, previewed and now. It needs a verified person. Then, in order:
 
-1. **Credentials** (`credentials`). Read: nothing. Sent: nothing. Recorded: a generated 24-character one-time password, staged encrypted in the list's repository folder (never committed), and then stored as the device's credential override in the credential store, keyed on its management address (the reserved address, for DHCP and ZTP), for the account `admin`. Staged first, so a crash between the two leaves something that can be recovered.
+1. **Credentials** (`credentials`). Read: nothing. Sent: nothing. Recorded: a generated 24-character one-time password, staged encrypted in the list's repository folder (never committed), and then stored as the device's credential override in the credential store, keyed on its management address (the reserved address, for DHCP and ZTP), for the account `admin`. Staged first, so a crash between the two leaves something that can be recovered. The staged copy stays until Verify or Abandon clears it, and Needs attention says so under What was checked (job health's `onboarding-staged` reading), never as a rotation that was not recorded: it tells the two apart by the device being pending in the manifest and the staged value being the one the credential store holds for it. A Verify whose rotation died between its push and its record leaves a different value staged, and that one is the rotation's row.
 2. **Commit** (`commit`). Read: nothing. Sent: nothing. Recorded: the device in the list's manifest, marked PENDING (its name, platform, role, address source, MAC and reserved address), and its initial intent: the bootstrap parameters (address, mask, interface, gateway, domain, platform, address source, MAC) and the network's syslog block, committed as you with `Source: onboarding`. The device is now known to the tool and not in the inventory, so nothing polls it, backs it up or offers it in bulk actions.
 3. **Reserve** (`reserve`, ZTP only). Read: Kea's running configuration and leases, to check again that the MAC and address are free and that no route or resolver option would reach the device. Sent: nothing to the device. Recorded: the DHCP reservation, in the fragment file the tool owns in Kea's configuration: the file is written as a candidate, tested with Kea's own configuration test, swapped in, Kea is told to reload, and the reservation is read back from the running server. It is last among the steps that can fail, because it is what the device will see.
 4. **Render** (`render`). Read: nothing. Sent: nothing. Recorded: nothing: the bootstrap configuration is never stored. It is rendered again whenever it is needed, from the committed intent and the staged credential, so it exists exactly while that credential does.
@@ -69,6 +69,8 @@ Where the credential travels: over TFTP, which is cleartext, on the ZTP segment,
 
 Timing, measured in the lab on IOS-XE 17.6: the fetch is a few blocks and takes seconds; AutoInstall retries roughly every 8 seconds and gives up after about 2.5 minutes and nine unanswered requests, after which the device needs a reload to ask again. So a responder that is down or refusing during that window fails the onboarding rather than delaying it.
 
+Mercury's onboarding-progress reader reads each stage below again every 10 seconds and the pending page draws itself again when one moves. After `fetched_not_reached` it probes the reserved address (ICMP, then a TCP connection to port 22; nothing sent, no login), and the page says **Answering: ready to Verify** once the device accepts. The stop rule is the operator's: no fetch 15 minutes after boot: stop; the page marks it 15 minutes after the Create with no fetch of its own.
+
 How to tell where it is: the device's pending page shows its ZTP stage, each from its own source (Kea's running configuration, Kea's lease table, the responder's reveal rows):
 
 - `reservation_missing`: the reservation is not in Kea's running configuration; abandon and re-create;
@@ -76,6 +78,8 @@ How to tell where it is: the device's pending page shows its ZTP stage, each fro
 - `leased_not_fetched`: it has an address and has not asked for its file;
 - `asked_not_served`: it asked and was refused, with how many times and the last reason; act within AutoInstall's window or reload it;
 - `fetched_not_reached`: it fetched its file; Verify must now reach it over SSH.
+
+Only requests recorded from this onboarding's Create on count. A name abandoned and created again is a new onboarding with a new credential, and the first one's fetch is still in the responder's record under the same name; it is not this one's.
 
 The responder has its own row on Needs attention (`nmas-ztp-responder`): its socket down, not installed, or failing since it last started.
 
@@ -117,5 +121,9 @@ confirmed, waiting (with Kea's and the config server's view of it) and arrival.
 Verify's result then names the next step. When its committed intent says more than it runs,
 **Deploy its intent…** opens its Deploy: an ordinary deploy, the exact program previewed and
 masked, confirmed by its hash, verified and rolled back on failure. When its intent is still
-only its first-boot config, write it first (Intent › Edit, bulk intent for many, or
-[Seed intent](seed) from what it runs), then deploy. From then on, change it by deploys.
+only its first-boot config, nothing can be compared with it yet: the result says "Intent can't
+be checked yet: <device>'s intent is its first-boot config. Next: Actions › Seed intent…", with
+the comparison's own words behind **Details**, and the device page's Intent check says the same.
+Run [Seed intent](seed) from what it runs, then deploy. When its intent is full and the device
+already runs all of it, there is nothing to deploy: write what it should run first (Intent ›
+Edit, bulk intent for many). From then on, change it by deploys.

@@ -77,6 +77,9 @@ WOKEN_BY = {
     "dhcp": ("settings", "dhcp"),
     # A reservation or a subnet change can make a discovered device a picked one.
     "ztp-discovery": ("settings", "dhcp"),
+    # Create, Verify and Abandon add or end a pending onboarding; a reservation moves a ZTP
+    # device's stage (C1193).
+    "onboarding-progress": ("pending", "settings", "dhcp"),
     # HEAD against the remote: also re-read by its own post-commit hook.
     "remote-publication": ("goldens", "intent", "templates", "remote"),
 }

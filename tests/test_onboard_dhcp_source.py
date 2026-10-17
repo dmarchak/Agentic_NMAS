@@ -812,7 +812,12 @@ class TestAnUnfindableStagedCredentialIsFlaggedBeforeVerify:
         import os
 
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        page = open(os.path.join(root, "templates", "v2", "pending.html"),
+        # The pending page draws its facts and progress from one fragment since C1193
+        # (2026-10-17), re-read on `pending`; the page includes it.
+        shell = open(os.path.join(root, "templates", "v2", "pending.html"),
+                     encoding="utf-8").read()
+        assert '{% include "v2/_pending_progress.html" %}' in shell
+        page = open(os.path.join(root, "templates", "v2", "_pending_progress.html"),
                     encoding="utf-8").read()
         assert "p.credential_findable == false" in page
         assert "Abandon and re-create" in page

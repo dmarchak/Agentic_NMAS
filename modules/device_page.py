@@ -540,7 +540,13 @@ def intent_check(ref, dev: dict) -> dict:
                 "text": "no committed golden to compare with its intent"}
     r = intent_match(ref.repo_dir, ref.name, host, golden["text"],
                      platform=(dev.get("platform") or "").strip())
-    on_device = [redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("- ")]
+    from modules.nsot.intent_match import first_boot, first_boot_words
+    if r["state"] == "unknown" and first_boot(ref.repo_dir, host):
+        # Its intent is onboarding's bootstrap (C1188): the next step, never the template's
+        # exception (W4: `_common.j2` line 6 and the intent's 34 keys, as the row's words).
+        return {"name": "Intent", "state": "unknown", "text": first_boot_words(host),
+                "on_device": [], "in_intent": [], "commit": (golden.get("commit") or "")[:7]}
+    on_device =[redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("- ")]
     in_intent = [redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("+ ")]
     return {"name": "Intent", "state": {"match": "ok", "differs": "warn"}.get(r["state"], "unknown"),
             "text": explain(r), "on_device": on_device, "in_intent": in_intent,

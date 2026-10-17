@@ -1,0 +1,12 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- The pending page's progress fragment (`device_v2.pending_progress`, C1193) when there is no
+    longer a pending onboarding to draw: Verify promoted it or Abandon released its name, or the
+    read failed (said, never drawn as nothing). It keeps its id, so the next `pending`
+    announcement asks again. -#}
+<div id="pending-progress" hx-get="{{ url_for('device_v2.pending_progress', name=name, list=list_name) if list_name else url_for('device_v2.pending_progress', name=name) }}" hx-trigger="nmas:pending from:body" hx-swap="outerHTML">
+{%- if error %}
+<p class="notice notice-warn" role="status">{{ icon('warn', 16) }}<span>Couldn't load: {{ error }}. What this card showed may be out of date.</span></p>
+{%- else %}
+<p class="notice" role="status">{{ icon('info', 16) }}<span>{{ name }} is no longer pending: Verify added it to the inventory, or Abandon released its name. <a href="{{ url_for('device_v2.device', name=name, list=list_name) }}">Open {{ name }}'s page</a> to see which.</span></p>
+{%- endif %}
+</div>

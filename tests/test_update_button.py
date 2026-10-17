@@ -361,6 +361,38 @@ class TestEveryProgramByAbsolutePath:
         _root_files_read_as_root()
         assert _updater().self_test() == []
 
+    def test_the_self_test_judges_each_property_wherever_it_runs(self, tmp_path, monkeypatch):
+        """C1166 (Lab 7's history audit): the root updater refuses a program that is not
+        absolute, not root's, writable by others, or not executable. The tests of the real table
+        skip inside the confined runner (root's files read as another uid there), so CI never
+        ran them; this one fakes only the OWNER of its own files, and runs everywhere."""
+        U = _updater()
+        ok, group_w, mine, noexec = (tmp_path / n for n in ("ok", "group_w", "mine", "noexec"))
+        for p, mode in ((ok, 0o755), (group_w, 0o775), (mine, 0o755), (noexec, 0o644)):
+            p.write_text("#!/bin/sh\n")
+            p.chmod(mode)
+        real_stat = os.stat
+
+        def stat(path, *a, **k):
+            st = real_stat(path, *a, **k)
+            if str(path).startswith(str(tmp_path)) and os.path.basename(str(path)) != "mine":
+                return os.stat_result((st.st_mode, st.st_ino, st.st_dev, st.st_nlink, 0,
+                                       st.st_gid, st.st_size, st.st_atime, st.st_mtime,
+                                       st.st_ctime))
+            return st
+
+        monkeypatch.setattr(U.os, "stat", stat)
+        got = U.self_test({"ok": str(ok), "group_w": str(group_w), "mine": str(mine),
+                           "noexec": str(noexec), "rel": "runuser",
+                           "dir": str(tmp_path)})
+        text = "; ".join(got)
+        assert not [g for g in got if g.startswith("ok:")], got
+        assert "group_w: " in text and "lets others write it" in text
+        assert "mine: " in text and "not owned by root" in text
+        assert "noexec: " in text and "not executable" in text
+        assert "rel: 'runuser' is not an absolute path" in text
+        assert "dir: " in text and "not a regular file" in text
+
     def test_the_self_test_names_each_problem(self, tmp_path):
         _root_files_read_as_root()
         U = _updater()

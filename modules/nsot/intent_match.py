@@ -73,6 +73,26 @@ def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
             "reordered": drift.get("reordered", 0), "lines": lines[:LINE_CAP], "why": ""}
 
 
+def first_boot(repo: str, hostname: str) -> bool:
+    """Is *hostname*'s committed intent still its first-boot config, onboarding's bootstrap
+    only (C1188)? `hostvars.is_bootstrap_only`, the plan's own test (C148, C154), on the
+    COMMITTED document. Such an intent has nothing to compare a device with, and its render
+    fails on the first section the role's template reads; the next step is Seed intent, never
+    a template's exception. False when the intent cannot be read (that is its own words)."""
+    from modules.nsot import hostvars
+
+    try:
+        return hostvars.is_bootstrap_only(hostvars.read_committed(repo, hostname))
+    except Exception:                          # noqa: BLE001
+        return False
+
+
+def first_boot_words(hostname: str) -> str:
+    """The one short form a first-boot intent is said in, wherever it is checked (C1188)."""
+    return (f"Intent can't be checked yet: {hostname}'s intent is its first-boot config. "
+            "Next: Actions › Seed intent…")
+
+
 def _unknown(why: str) -> dict:
     return {"state": "unknown", "adds": 0, "removes": 0, "reordered": 0,
             "lines": [], "why": why}
