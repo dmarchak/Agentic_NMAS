@@ -40,9 +40,9 @@ written from the sitting's results. Screens no walk touches move to Stage 7's ta
 | Sitting | Walks | Clears | Ready |
 |---|---|---|---|
 | **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **WALKED 2026-10-16** (23:20Z to 01:12Z): CUTOVER rows 42, 44 (Capture, Save All), 45, 46, 53, 54, 69 and C588, C547, C587, C444, C539 closed; section I (row 68) blocked by C881 and C691 held by C882, both into W2 |
-| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68), C881's Reload… preview with no reload sent, a C691 drag re-check, and B1 to B5 (C882 to C886) walked on v2**; the host keys (C906); C532's intent state, C342's Drift row, C537's In progress chip, C954's Stop tracking preview | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; W1's A1 and B1 to B5 by the operator's eyes; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | **WRITTEN: docs/walks/W2.md** (62 steps in 14 sections), brought up to date 2026-10-16 against the deployed release, now a967f21466 (C1010's prefix scope and C1016's "To fix:" deployed 20:49 UTC; step 18 written); **ready** |
+| W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68), C881's Reload… preview with no reload sent, a C691 drag re-check, and B1 to B5 (C882 to C886) walked on v2**; the host keys (C906); C532's intent state, C342's Drift row, C537's In progress chip, C954's Stop tracking preview | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; W1's A1 and B1 to B5 by the operator's eyes; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | **WALKED 2026-10-16** (21:12Z to 2026-10-17 00:22Z, against ae8175bdbc): CUTOVER rows 49, 50, 56, 57, 61, 62, 68 and 70 and C691, C667, C941 closed; C881, C882, C884, C931, C811 and W1's B1 to B5 confirmed; P7-07 walked; rows 48 and 60 walked, closing with C1024, C1023 and C932; C1010's backfill confirmed (read-back pending). Found: A1 C1022, B1 to B8 C1023 to C1030, B9 C932 (section 2), and C1031 to C1073 (section 4) |
 | W3 Onboarding and recovery | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs) | CUTOVER rows 52, 58, 59; C148; their screens' records; unblocks P7-24, P7-25 | after W2 |
-| (in any sitting) | ~~C539, C587, C588~~ (walked in W1); snap-to-grid (C691, into W2 after C882); DHCP confirms (C529) | those rows | W2 |
+| (in any sitting) | ~~C539, C587, C588~~ (walked in W1); ~~snap-to-grid (C691)~~ (walked in W2); DHCP confirms (C529) | those rows | W3 |
 
 ### 1c. Host steps and small acts (re-checked against the host's Update data, 2026-10-15)
 
@@ -53,7 +53,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | Item | Op | State |
 |---|---|---|
 | ~~C794: Loki's own `detected_level` off~~ | H | **done by the operator, 2026-10-16 ~19:36 UTC: PASS (10 of 10)**; and C964's `nmas-device` re-import done, its JSON model free of lab names, r1's panels drawn with data in Grafana and on Mercury's Monitoring page |
-| ~~C553: `clab-sync.path`~~ | H | **installed** on the NMAS host (read 2026-10-16: active, enabled, identical to a fresh render); the walk showing the sync start remains (W2) |
+| ~~C553: `clab-sync.path`~~ | H | **installed** on the NMAS host (read 2026-10-16: active, enabled, identical to a fresh render); the walk showing the sync start remains (W2's script did not carry it: W3) |
 | C549 (3): the Update confirm, in the root-owned updater | H | waits on the operator's reading of what the page drew (the row) |
 | C663: move `scripts/nmas-host` | CLAUDE.md paste | the operator's file |
 | C296: batch preview empty bullets | — | recommended: close as not reproduced |
@@ -62,7 +62,19 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 
 | ID | Item | Done means | Size | Deps | Op |
 |---|---|---|---|---|---|
-| **From W1, first (the operator's sequence, 2026-10-16)** | | | | | |
+| **From W2, first (the operator's order, 2026-10-17: A1 first, then the Bs, each with a test that fails before the fix)** | | | | | |
+| C1022 | A1: a page's network is lost after its first render (`?list=` sets it for the first render only; later requests follow the stored choice), so buttons act on another network; with it C873 and C874 | every request a page makes carries its network (or `?list=` sets the stored choice); the top bar, the picker and the page never disagree; a test that refreshes, expands a commit and presses a button on a non-default network fails before the fix | M | — | W |
+| C1023 | B1: buttons that start slow work show nothing until the result (NetBox's Import, which caused a second run; the write probe; Approve) | every such button (a population by the property) busy on itself, disabled, with a line naming what runs; a browser test over the population | M | — | W |
+| C1024 | B2: read-only operations record "unauthenticated"; a network's first commit reads "nobody recorded" | every recorded operation names its verified actor; the first commit carries `Actor:`; a test per recorded read-only route through the real gate | S–M | — | W |
+| C1025 | B3: a declared planned-restart window silences nothing (CRITICAL not answering, SNMP unreachable, telemetry `no_data`, critical syslog; the header's plain "Not answering") | on declare, a Grafana silence per device until the window ends, recorded as the person with the reason; Mercury's row information ("restarting as planned, until …, by …"), critical only if still down at the window's end; the header the same; a test | M | — | W |
+| C1026 | B4: no "Restarted as planned" on r6's History after its reload | the planned restart recorded and drawn; a test from a reload to History | S | — | W |
+| C1027 | B5: the reload record (`.nsot/reloads.jsonl`) is never committed, and the header says "in sync" beside it | committed through `repo.commit()`; the header not "in sync" while anything is uncommitted; a test | S | — | W |
+| C1028 | B6: a network's History draws another's rotation and persist rows (an empty network's members read as "no filter") | every source filtered by network; an empty or unreadable inventory keeps no other network's row, and says which; a test | S | — | W |
+| C1074 | a read re-creates a deleted network's folder (23:41:34Z, 3 s after W2 walk's delete): no read path creates a network's folder; the folder made removed by a host step | a test that a read after delete creates nothing; the host step | S | with C1029 | — |
+| C1029 | B7: a deleted network's Settings page stays live, with Save | "deleted at <time>, data at lists_removed/…" with no actions; every write refusing a deleted network by name; a test | S | — | W |
+| C1030 | B8: the NetBox import is missing from History | a NetBox source in the timeline (import, removal, stop tracking); a test | S | — | W |
+| C932 | B9: Remove from NetBox offered over a `not_reached` reach (raised from UNKNOWN by W2's step 19) | Remove drawn only when the preview can be confirmed, the unread reach said in words; a test | S | — | W |
+| **From W1 (the operator's sequence, 2026-10-16)** | | | | | |
 | ~~C881~~ | ~~A1: Reload's startup gate on IOS-XE~~ **done, verified on r6** (see Checked off) | | | | |
 | ~~C882~~ | ~~B1: Topology drag jumps~~ **done** (see Checked off); C691 re-checked in W2 | | | | |
 | ~~C883, C888, C905~~ | ~~B2, C2 and R4: the batch preview's note, client-side order, drag and drop~~ **done** (see Checked off) | | | | |
@@ -76,7 +88,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | ~~C957~~ | ~~History's timeline says "no repository yet"~~ **done** (see Checked off) | | | | |
 | ~~C933 to C936~~ | ~~From writing W2 (B)~~ **done** (see Checked off) | | | | |
 | ~~C1016~~ | ~~a failed Verify of the remote draws no fix~~ **done** (B, security; each failed check's own fix drawn under "To fix:") | | | | |
-| C1010 | Mercury's prefixes in NetBox carry no site: **built and deployed** (2f5bac88, in a967f21466); on the host the import's dry-run preview proposes exactly the 3 scope updates (#55, #56, #57, "changes scope_id, scope_type"), and NetBox stores Mercury's content types as `dcim.interface`, so `dcim.site` is the form | the backfill confirmed in W2 step 17 (the operator's) and each prefix read back by the agent | S | W2 | — |
+| ~~C1010~~ | ~~Mercury's prefixes in NetBox carry no site~~ **done, read back 2026-10-17: #55, #56, #57 each `dcim.site` / 1 / Default** (see Checked off) | | | | |
 | ~~C954~~ | ~~v2's "stop tracking" for a NetBox removal~~ **done, built** (the operator's decision; see Checked off) | | | | |
 | ~~C955~~ | ~~Retire's preview counts live approvals only~~ **done** (see Checked off) | | | | |
 | ~~C906~~ | ~~Mercury checks each device's SSH host key~~ **done: deployed 1222a3f102, all nine devices' keys kept on the host** (see Checked off); the next redeploy declares `--new-host-keys` (lab/REDEPLOY.md) | | | | |
@@ -84,7 +96,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **Harness: the checks on v2** | | | | | |
 | ~~P7-04~~ | ~~Criterion 4, payloads drawn on v2~~ **done** (see Checked off); its gaps are C867 to C869 below | | | | |
 | ~~P7-05~~ | ~~Criterion 5, invalidation~~ **done** (see Checked off) | | | | |
-| P7-07 | Criterion 10, the sidebar: ~~an order test~~ (done); the 37 findability questions walked | the walk, in W2 | walk | W1 | W |
+| ~~P7-07~~ | ~~Criterion 10, the sidebar: an order test (done); the 37 findability questions walked~~ **walked in W2** (steps 8 to 11, 2026-10-16): 23 within the brief, 9 over it (C1070), 4 not found (Q23 in C759; Q24, Q32, Q37: C1071 to C1073), Q31 by design | | | | |
 | **v2 gaps cutover needs** | | | | | |
 | ~~C855~~ | ~~criterion 11: the v2 device page's per-device work~~ **done** to 19 (see Checked off) | | | | |
 | ~~C876~~ | ~~the manifest's name lookup~~ **measured**: quadratic but 0.43 s at 900 devices inside requests whose per-device git reads cost more (C912); resolved to C, moved to the tail | | | | |
@@ -121,7 +133,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 their sittings clear. **Recomputed 2026-10-16 after W1:** done since: P7-04, P7-05, P7-07's
 test, C730, C855, C860, C867, C868, C869 (about 1 L, 4 M, 5 S); added by W1: C881, C882 with
 C888 and C905, C906 (3 M), C883 to C886 (5 S). Left: about 2 L (C850's `applyConfirm`, C537),
-12 M and 14 S, plus W2 and W3.
+12 M and 14 S, plus W2 and W3. **Added by W2 (2026-10-17):** C1022, C1023, C1025 (3 M), C1024
+(S to M), C1026 to C1030 and C932 (6 S); W2 itself done, W3 left.
 
 ## 3. The shrinking lists (distance to cutover)
 
@@ -178,9 +191,23 @@ blocks cutover or is a security issue (B).
     words and rows), C899 (Devices' footer), C900 (reveals' reasons), C901 (W1's copy and
     fidelity notes), C902 to C904 (R1 to R3), C907 (Fields mode). C888 and C905 go with C882,
     before cutover.
-  - C939 (NETCONF's undecrypted password, dormant), C941 (UNKNOWN: whether a reload keeps a
-    key; W2's r6 reload measures it), C942 (the re-key card's board).
-  - C932, C937 (UNKNOWN), C938 (W2's wording; each checked where W2 walks it).
+  - **From W2 (2026-10-17; the operator's severities, C after cutover unless they share an A or
+    B fix):** host keys, devices and topology: C1031 (the startup check's "Who"), C1032
+    ("Answering since" resets), C1033 (Trace already running; C1023's population), C1034 (the
+    Path… popover), C1035 ("Apart on purpose" empty); C208 and C901 seen again. NetBox: C1036
+    (the preview's values), C1037 (about 600 requests), C1038 (two operations at once), C1039
+    (r6's mask), C1040 (Left alone), C1041 (a no-op plan), C1042, C1043 (layout); C759 and C133
+    seen again. History and Query: C1044 (question-first), C1045 (Show), C1046 (the Kind
+    select), C1047 (the diff box); C534 (known noise on Syslog by device) and C895 seen again.
+    Settings: C1048 to C1056 (the refused card, "unset", keys and labels, the settle windows'
+    JSON, back to inherited, the scope bar's label, the inventory source's fields, Connect's
+    cleared fields). Devices and Needs attention: C1057 to C1059. Templates and intent: C1060
+    to C1065 (C1065, a put-back read as changed, beside C977); C938 confirmed twice. Reload:
+    C1066 to C1069. Findability (P7-07): C1070 (nine longer paths), C1071 to C1073 (not
+    found).
+  - C939 (NETCONF's undecrypted password, dormant), ~~C941~~ (closed: W2 measured a C8000v
+    keeping its key across a reload), C942 (the re-key card's board).
+  - C937 (UNKNOWN), C938 (W2's wording; two confirmed in W2). C932 moved to section 2 as W2's B9.
   - C922 (UNKNOWN, an answer set aside mid-drag), C924 (UNKNOWN, the partial operation's row
     beside a usable baseline), C925 (Persist's read on each draw), C926 (a raw exception).
   - C921 (UNKNOWN): "Partly done" over 2 of 2 deployed with no verify result; C920 and C851
@@ -189,8 +216,8 @@ blocks cutover or is a security issue (B).
     file path on the Overview, raw operands, the phone menu, the tagged regions).
   - C876 (the manifest's name lookup, measured), C912 (Coverage Apply's preview reads per
     device, with C450), C908 to C911 (Needs attention's edges found fixing C543).
-  - C872 (the scope bar and `settings`), C873 (the top bar after a delete), C874 (the picker's
-    mark; UNKNOWN): the network picker and scope bar's edges; choosing and deleting work.
+  - C872 (the scope bar and `settings`): the scope bar's edge; choosing and deleting work.
+    C873 and C874 moved to section 2 with C1022 (W2's A1 measured them).
   - The board comparisons of screens no walk touches (C650's remainder).
   - D3's plan items: 7.10, P.12 (with C322, heartbeat and ip_sla), P.7, P.8 step 9, P.9, P.11
     step 3, P.15's rest.
@@ -394,3 +421,11 @@ blocks cutover or is a security issue (B).
   it began on ad769e08, and the agent deployed three times during it (dc3a051f at 23:54Z,
   cb2864ce at 00:28Z, d2d5778a at 00:41Z), each a restart with nothing in flight. The agent's
   deploy helper now refuses during a sitting and within 30 minutes of a person's operation.
+- **W2 walked by the operator** (2026-10-16 21:12Z to 2026-10-17 00:22Z, against ae8175bdbc;
+  evidence in the operator's report folder, `W2-2026-10-16/`): CUTOVER rows
+  49, 50, 56, 57, 61, 62, 68 and 70 walked; C691, C667 and C941 closed (C941 measured: r6, a
+  C8000v, kept its SSH host key across the reload); C881 by the operator's eyes, C882, C884,
+  C931, C811 and W1's B1 to B5 confirmed; P7-07's 37 questions walked; C1010's backfill
+  confirmed by the import. Rows 48 and 60 walked and held open by C1024, C1023 and C932. 52
+  findings registered (A1 C1022; B1 to B8 C1023 to C1030; B9 is C932, raised; C1031 to C1073),
+  sequenced above: C1022 first, then the Bs; the Cs to the tail.
