@@ -397,9 +397,6 @@ HISTORY = {
     "v2.credentials_drill": ("breakglass",),
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
-    "create_device_list_route": NOT_A_DEVICE,
-    "delete_device_list_route": NOT_A_DEVICE,
-    "select_device_list_route": NOT_A_DEVICE,
     "settings_v2.group_switch": NOT_A_DEVICE,
     "settings_v2.mode_switch": NOT_A_DEVICE,
     "settings_v2.group_save": NOT_A_DEVICE,

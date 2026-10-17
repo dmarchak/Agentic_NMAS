@@ -106,7 +106,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 |---|---|---|---|---|---|---|---|---|---|
 | R1 | h | git | Every commit to a list's repository (`save_golden`, `_commit_paths`, renames, migrate); abandon and retire stage outside | index, commits, tags | `threading.Lock` per repo; `stage_exactly` checks once; `commit()` takes the whole index | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Cross-process lock held from first write to last tag, holder recorded; commit explicit paths; every stager inside |
 | R2 | h | intent | Intent editor save | `host_vars/<dev>.yml`, one commit | none: no base, write before the lock, save not bound to preview | no | FIXED 2026-10-02 (was UNSAFE; tests/test_intent_editor_concurrency.py) | yes | Base blob from the open; compare at HEAD under the lock; 409 with three-way diff |
-| R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | STORE HALF FIXED 2026-10-04 (tests/test_list_registry_store.py); the per-session half UNSAFE, DECIDED 2026-10-04 (the URL is authoritative; built with P.8) | yes | Active list per session; every write carries its list; locked atomic registry |
+| R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | STORE HALF FIXED 2026-10-04 (tests/test_list_registry_store.py); the per-session half UNSAFE, DECIDED 2026-10-04 (the URL is authoritative; built with P.8); **the switch REMOVED 2026-10-17** (7.8, P7-26: `/select_device_list` and `set_current_device_list` left with today's list bar; `current_list` is frozen, moved only by deleting the network it names, so no person's switch retargets another's derived write) | yes | Active list per session; every write carries its list; locked atomic registry |
 | R4 | h | approvals | Approval queue store | `approval_queue.json` | none; GETs write it; unreadable reads as `[]`; `resolve` saves a stale list twice | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approval_queue_store.py) | yes | PathLock, atomic write, refuse unreadable, pure reads, compare-and-set; SQLite WAL candidate |
 | R5 | h | locks, live | An operation interrupted by a process exit, including the two restart routes (added on review) | devices already pushed; no receipt, no golden, no rollback | none: Update gates and the restart routes ignore held devices; crash staging unread; leftover lock file unread | n/a | FIXED 2026-10-02 (was UNSAFE; tests/test_interrupted_operations.py, tests/test_pending_receipts.py): Update and `nmas-deploy` refuse while a device is held, both restart routes removed, an interrupted operation kept and drawn on Needs attention, each device's receipt written as it finishes, commit pending; not built: the per-device step under `deploy_max_workers > 1`, and the gunicorn half (9.S) | yes | Refuse Update, restarts and `nmas-deploy` while any device is held (or retire the restart routes); per-device receipts; draw the interrupted state |
 | R6 | h (m today) | git, stores, locks | Manifest store | `.nsot/manifest.json` | `threading.Lock`, shared `.tmp`, unreadable becomes empty; rename rollback writes blind | no | FIXED 2026-10-04 (was UNSAFE; tests/test_manifest_store.py) | yes (CLI; rename rollback) | PathLock, `write_atomic`, `read_json_for_write`, inside the repo lock |
@@ -235,6 +235,18 @@ network is carried in its URL. The session only remembers the last network, as t
 when a URL names none, so two tabs on two networks never collide. This is (A) with the URL
 over the session, and (B) on every write. It is built with P.8 (NSOT_P8_DESIGN, section 5,
 build step 8), not before.
+
+*The switch REMOVED 2026-10-17 (7.8, P7-26; tests/test_list_registry_store.py,
+tests/test_jobs_run_for_every_network.py).* Today's list bar, `/select_device_list` and
+`device.set_current_device_list` left; v2's network is the address's, else each verified
+person's own choice (`network_choice`). The server-wide `current_list` is frozen: nothing sets
+it, and only deleting the network it names moves it (`delete_device_list`, to the earliest-registered
+network left). So the hazard this row names, one person's switch retargeting another's derived write,
+has no switch left to cause it. The readers that derive their list from it read the frozen
+value: a v2 request with no network named and no choice made, today's index and the routes of
+P7-23 to P7-25 a client sends no list (they leave at 7.8), the start-up template-secret
+migration and the host scripts given no list. The registry's lock and atomic replace stay for
+create and delete.
 
 **R4. The approval queue store loses and erases decisions** (approvals-1, approvals-2,
 stores-1, live-12, confirms-22). `_save_queue` truncates in place with no lock
@@ -1434,7 +1446,7 @@ l. "Today" is yes when two users, two tabs or a host CLI already reach it.
 | id | Path | Writes | Protection | Cross-process | Verdict | Risk | Today |
 |---|---|---|---|---|---|---|---|
 | stores-1 | approval queue | `approval_queue.json` | none | no | UNSAFE | h | yes |
-| stores-2 | list registry and `current_list` | `device_lists.json` | none | no | UNSAFE | h | yes |
+| stores-2 | list registry and `current_list` (the switch REMOVED 2026-10-17 with today's list bar, P7-26: frozen; create and delete remain, under R3's store-half fix) | `device_lists.json` | none | no | UNSAFE | h | yes |
 | stores-3 | intent editor | `host_vars` | none | no | UNSAFE | h | yes |
 | stores-4 | drift state | `drift_state.json` | RLock in one function | no | UNSAFE | m | yes |
 | stores-5 | publication record | `remote.json` | none | no | UNSAFE | m | yes |
@@ -1573,7 +1585,7 @@ l. "Today" is yes when two users, two tabs or a host CLI already reach it.
 | live-10 | SSH session budget | vty lines | per process | no | UNSAFE | m | yes |
 | live-11 | drift state | `drift_state.json` | unlocked | no | UNSAFE | m | yes |
 | live-12 | approval queue | queue | none | no | UNSAFE | m | yes |
-| live-13 | installation-wide active list | `device_lists.json` | none | no | UNSAFE | h | yes |
+| live-13 | installation-wide active list (its switch REMOVED 2026-10-17 with today's list bar, P7-26: frozen; each person's network is their own) | `device_lists.json` | none | no | UNSAFE | h | yes |
 | live-14 | no live holder on v2 | n/a | plan-time busy text | partly | UNSAFE | m | yes |
 | live-15 | NetBox tokens | memory | per process | no | UNSAFE-MULTI-PROCESS | m | no |
 | live-16 | NetBox inventory cache | memory, cache file | in-process; Refresh unguarded | no | UNSAFE | l | yes (dormant) |

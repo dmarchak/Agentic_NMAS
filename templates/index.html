@@ -1,32 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 
-<!-- Device List Selector -->
-<div class="card mb-3">
-  <div class="card-body py-2">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div class="d-flex align-items-center gap-2">
-        <label class="form-label mb-0 fw-bold">Device List:</label>
-        <select class="form-select form-select-sm" id="deviceListSelect" style="width: auto; min-width: 200px;">
-          {% for list in device_lists %}
-          <option value="{{ list.name }}" {% if list.is_current %}selected{% endif %}>
-            {{ list.name }} ({{ list.device_count }} devices)
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="d-flex gap-2">
-        <button class="btn btn-outline-primary btn-sm" onclick="showCreateListModal()">
-          + New List
-        </button>
-        <button class="btn btn-outline-danger btn-sm" onclick="deleteCurrentList()" id="deleteListBtn"
-                {% if device_lists|length <= 1 %}disabled{% endif %}>
-          Delete List
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
+{#- Today's list bar (its Device List select, + New List and Delete List) and the New List dialog
+    left at 7.8 (2026-10-17, P7-26): a network is created and deleted in Settings (New network…,
+    Delete this network…), and each person chooses theirs with the top bar's Network ▾. The
+    installation's list this page shows is frozen; the line below says which it is. -#}
+<p class="text-muted small mb-3" id="installationList">Devices of <strong>{{ current_list }}</strong>,
+  the installation's network. Another network, and creating or deleting one, are on the new
+  interface: the top bar's Network ▾ and Settings.</p>
 
 <!-- Page Tabs -->
 <ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
@@ -105,31 +86,7 @@
 
 </div><!-- end tab-content -->
 
-<!-- Create Device List Modal -->
-<div class="modal fade" id="createListModal" tabindex="-1" aria-labelledby="createListModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="createListModalLabel">Create New Device List</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-          <label for="newListName" class="form-label">List Name</label>
-          <input type="text" class="form-control" id="newListName" placeholder="e.g., Production Network"
-                 maxlength="50" required>
-          <div class="form-text">Use letters, numbers, spaces, hyphens, or underscores (max 50 characters)</div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="createDeviceList()">Create List</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Device List Management Scripts -->
+<!-- The device list's search and Save All -->
 <script src="{{ url_for('static', filename='js/gen/index.1.js') }}"></script>
 
 {% endblock %}

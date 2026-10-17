@@ -21,8 +21,17 @@ from tests.test_device_page_network import twin  # noqa: F401 (the fixture)
 
 
 def _activate(name):
+    """The installation's active list set to *name*. Nothing in the product sets it since 7.8
+    froze it (2026-10-17, P7-26: `/select_device_list` and its setter left), so the registry is
+    written as a host whose list was switched before the freeze holds it: the property, that no
+    job follows the active list, still matters for that host."""
     from modules import device
-    assert device.set_current_device_list(name)
+    config = device._load_device_lists_config()
+    assert name in config["lists"], (name, config)
+    config["current_list"] = name
+    device._save_device_lists_config(config)
+    from modules.config import get_current_list_name
+    assert get_current_list_name() == name, "the active list every job could have followed"
 
 
 class TestTheDriftScheduler:

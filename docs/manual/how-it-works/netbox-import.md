@@ -183,7 +183,7 @@ unverified caller is refused before anything is read.
   created and tagged.
 - Remove never deletes the `nmas-managed` tag itself, or every object carrying it would become
   unremovable.
-- Deleting a device list never deletes NetBox objects: a list that still owns recorded objects
-  is refused, naming them, until they are removed here.
+- Deleting a network never deletes NetBox objects: Settings' Delete this network… refuses a
+  network that still owns recorded objects, naming them, until they are removed here.
 - The confirm checks that NetBox has not changed the planned writes. What NetBox would take
   with a delete is asked at the preview, not again at the confirm.

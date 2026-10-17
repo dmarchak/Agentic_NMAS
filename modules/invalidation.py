@@ -164,9 +164,6 @@ _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's
 DECLARED = {
     # Inventory and lists.
     "inventory.refresh": ("inventory",),
-    "create_device_list_route": ("lists",),
-    "delete_device_list_route": ("lists", "active_list"),
-    "select_device_list_route": ("active_list",),
     # Credentials.
     "v2.history_view_save": ("saved_views",),
     "v2.history_view_pin": ("saved_views",),

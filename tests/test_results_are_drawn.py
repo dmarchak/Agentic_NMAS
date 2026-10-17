@@ -318,7 +318,10 @@ FALSE_GREEN = {
 #: green and on no list: the class was not zero, the list was. Keyed by
 #: (file, a literal from the call); a scan finds them all, both ways.
 GREEN_TOASTS = {
-    ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create and delete); the bulk run's STARTED and its finished toast left with today's bulk commands (7.8, 2026-10-15)",
+    # Today's list bar's two (index.1.js, create and delete a list) left with it at 7.8
+    # (2026-10-17, P7-26): Settings' New network… and Delete this network… draw their results in
+    # place. The bulk run's STARTED and finished toasts had left with today's bulk commands
+    # (7.8, 2026-10-15).
     ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
     ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
     # Today's Settings modal's "Settings saved" and its posture panel's ratification left with
@@ -477,7 +480,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 6, len(calls)           # the scan can see them (6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        assert len(calls) >= 4, len(calls)           # the scan can see them (4 since today's list bar's create and delete left, 7.8, P7-26, 2026-10-17; 6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

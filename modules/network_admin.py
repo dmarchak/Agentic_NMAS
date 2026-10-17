@@ -11,8 +11,10 @@ settings from Default; its own settings page offers the rest.
 commits, its remote) and says where the data goes; the confirm takes the network's name typed and
 the preview's fingerprint. Its folder is MOVED to ``lists_removed/<folder>-<UTC>``, never erased,
 inside its repository lock, refused while any of its devices is held or its drift run is in
-progress (R38). Default, the base layer, is never deleted. Its record names the folder the data
-went to.
+progress (R38), and while Mercury's record says it created NetBox objects for it, or that record
+cannot be read (C155, carried over from today's delete route when it left at 7.8): NetBox is never
+touched, and a network gone would leave those objects out of Remove's reach. Default, the base
+layer, is never deleted. Its record names the folder the data went to.
 
 **Deleted stays deleted** (C1029, C1074): `is_deleted` is the one answer to "was this network
 deleted, and is it not one now" (unregistered, its folder moved aside), and `deletion` is what
@@ -113,11 +115,37 @@ def delete_preview(name: str) -> dict:
     from modules.inventory.source_config import lists_depending_on
     dependents = lists_depending_on(name)
     out = {"name": name, "devices": devices, "goldens": goldens, "commits": commits,
-           "remote": remote, "busy": busy, "refused": busy, "dependents": dependents,
+           "remote": remote, "busy": busy, "refused": busy or _netbox_held(name),
+           "dependents": dependents,
            "goes_to": f"lists_removed/{os.path.basename(folder)}-<the time of the delete>"}
     out["fingerprint"] = _fp(["delete", name, devices, goldens, commits, remote, bool(busy),
                               dependents])
     return out
+
+
+def _netbox_held(name: str) -> str:
+    """Why *name* cannot be deleted for what Mercury recorded creating in NetBox for it, or "".
+
+    C155, carried over from today's DELETE /device_lists/<name> when it left at 7.8 (2026-10-17,
+    P7-26; v2's delete had no such guard): deleting a network never deletes NetBox objects, and
+    forgetting them would leave them out of every Remove's reach, the network gone. So a network
+    whose created-object record holds anything is refused, naming what; a record that cannot be
+    read is refused too, never read as holding nothing."""
+    from modules import netbox_guard
+
+    held, why = netbox_guard.recorded_objects(name)
+    if why:
+        return (f"{why}, so whether {name} still owns NetBox objects is unknown; delete it once "
+                "the record can be read")
+    if not held:
+        return ""
+    named = ", ".join(f"{ep}/{oid} {label}".strip() for ep, oid, label in held[:8])
+    more = f" and {len(held) - 8} more" if len(held) > 8 else ""
+    return (f"Mercury's record says it created {len(held)} NetBox object"
+            f"{'' if len(held) == 1 else 's'} for {name} ({named}{more}). Deleting a network "
+            "never deletes NetBox objects, and forgetting them would leave them out of Remove's "
+            f"reach: remove them first on Source of truth › NetBox ({name}'s Remove from "
+            "NetBox…, or Stop tracking instead…), then delete the network")
 
 
 def delete(name: str, typed: str, fingerprint: str, actor: str, verified: str) -> dict:
@@ -137,7 +165,10 @@ def delete(name: str, typed: str, fingerprint: str, actor: str, verified: str) -
     ok, msg = device.delete_device_list(pv["name"])                           # move, unregister
     if not ok:
         raise Refused(msg)
+    from modules import netbox_guard
     from modules.config import list_slug
+
+    netbox_guard.forget_created(pv["name"])          # its entry, empty (the check refused any other)
 
     moved = device.removed_folders(list_slug(pv["name"]))
     entry = IS._record({"kind": "network_delete", "actor": actor, "actor_verified": verified,

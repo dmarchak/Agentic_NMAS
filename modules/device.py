@@ -417,8 +417,9 @@ def _ensure_devices_csv(list_dir: str) -> None:
 
 def _lists_lock():
     """The list registry's lock, across processes (CONCURRENCY_AUDIT R3, its store half): held
-    from a mutation's read to its write, so two people creating, renaming or switching lists
-    at once do not erase each other's change."""
+    from a mutation's read to its write, so two people creating or deleting networks at once
+    do not erase each other's change (the switch left at 7.8, 2026-10-17: the active list is
+    frozen)."""
     from modules.filestore import PathLock
     return PathLock(lambda: DEVICE_LISTS_CONFIG)
 
@@ -463,23 +464,17 @@ def get_device_lists() -> list[dict]:
 
 
 def get_current_device_list() -> tuple[str, str]:
-    """Return (list_name, full_path_to_devices.csv) for the active list."""
+    """Return (list_name, full_path_to_devices.csv) for the installation's active list.
+
+    FROZEN since 7.8 (2026-10-17, P7-26): its setter left with today's list bar and
+    /select_device_list, so `current_list` changes only when the network it names is deleted
+    (`delete_device_list`). It is the default for what runs outside a v2 request (today's index,
+    the host scripts) and for a v2 page with no network named and no choice of its person's."""
     config  = _load_device_lists_config()
     current = config.get("current_list", "Default")
     slug    = config.get("lists", {}).get(current, list_slug(current))
     csv_path = os.path.join(LISTS_DIR, slug, "devices.csv")
     return current, csv_path
-
-
-@_holding_lists_lock
-def set_current_device_list(list_name: str) -> bool:
-    """Set the current device list by name. Returns True on success."""
-    config = _load_device_lists_config()
-    if list_name not in config.get("lists", {}):
-        return False
-    config["current_list"] = list_name
-    _save_device_lists_config(config)
-    return True
 
 
 REMOVED_DIR = "lists_removed"

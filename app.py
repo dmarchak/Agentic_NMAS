@@ -21,7 +21,6 @@ from flask import (
     request, # to handle incoming requests
     redirect, # for HTTP redirects
     url_for, # to build URLs for routes
-    flash, # to show one-time messages to users
     jsonify # to return JSON responses
 )
 
@@ -41,11 +40,7 @@ from modules.device import (
     load_saved_devices,
     save_device,
     write_devices_csv,
-    get_device_lists,
     get_current_device_list,
-    set_current_device_list,
-    create_device_list,
-    delete_device_list as delete_device_list_func
 )
 import modules.device as device_module
 from modules.config import (
@@ -463,13 +458,9 @@ def index():
     for d in devices:
         d["online"] = device_status_cache.get(d["ip"], False)
 
-    # Get all device lists for the dropdown
-    device_lists = get_device_lists()
-
     return render_template(
         "index.html",
         devices=devices,
-        device_lists=device_lists,
         current_list=current_list_name,
     )
 
@@ -480,139 +471,14 @@ def index():
 # /run_command was its only user.
 
 
-# ---------------------------------------------------------------------------
-# Device List Management Routes
-# ---------------------------------------------------------------------------
-
-# GET /device_lists (the list of lists as JSON) left at 7.8 on 2026-10-15: no page called it;
-# today's page renders the lists server-side and v2's Network picker draws its own.
-
-@app.route("/device_lists", methods=["POST"])
-def create_device_list_route():
-    """Create a new device list."""
-    try:
-        data = request.get_json()
-        list_name = data.get("name", "").strip() if data else ""
-
-        if not list_name:
-            return jsonify({"status": "error", "message": "List name is required"}), 400
-
-        success, message = create_device_list(list_name)
-
-        if success:
-            app.logger.info(f"Created device list: {list_name}")
-            return jsonify({"status": "success", "message": message})
-        else:
-            return jsonify({"status": "error", "message": message}), 400
-
-    except Exception as e:
-        app.logger.error(f"Failed to create device list: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@app.route("/device_lists/<list_name>", methods=["DELETE"])
-def delete_device_list_route(list_name):
-    """Delete a device list and all associated external data."""
-    cleanup_log = []
-    # Optional body: {"acknowledge_credential_dependents": true} (step 0). The
-    # NetBox cascade and its `remove_from_netbox` flag are gone (C155, step 2).
-    data = request.get_json(silent=True) or {}
-
-    # ── 0. Warn if NetBox lists inherit credentials from this one ──────────
-    # Amendment 2: credentials are inherited from ONE designated list, so
-    # deleting it strands every NetBox list pointing at it. Refuse unless the
-    # caller acknowledges, and point at the "copy into overrides" escape hatch.
-    try:
-        from modules.inventory.source_config import lists_depending_on
-        dependents = lists_depending_on(list_name)
-        if dependents and not data.get("acknowledge_credential_dependents"):
-            return jsonify({
-                "status": "error",
-                "needs_acknowledgement": True,
-                "dependents": dependents,
-                "message": (
-                    f"{len(dependents)} NetBox-sourced list(s) inherit credentials from "
-                    f"'{list_name}': {', '.join(dependents)}. Deleting it will leave those "
-                    "devices without credentials. Use 'Copy inherited credentials into "
-                    "device overrides' on each list first, or confirm to delete anyway."
-                ),
-            }), 409
-        if dependents:
-            cleanup_log.append(
-                f"Credential dependents acknowledged: {', '.join(dependents)}")
-    except Exception as exc:
-        app.logger.warning("list delete: dependent check failed: %s", exc)
-
-    # ── 2. NetBox: NEVER touched from here (C155, the operator's decision) ──
-    # This branch deleted NMAS-created objects with no preview and no
-    # confirmation when a setting was on (the one-shot token is consumed by
-    # the NetBox tab's routes, not at the write), and its "forget" branch
-    # dropped the record while the objects stayed, leaving them tagged but
-    # unrecorded, out of Remove's reach for good (C59's class). Removal has
-    # ONE home: the NetBox tab's previewed, confirmed Remove. So a list that
-    # still owns recorded objects is refused, naming them; nothing here writes
-    # to NetBox, and the record is dropped only when it holds nothing.
-    from modules import netbox_guard as _nbg
-    held, why = _nbg.recorded_objects(list_name)
-    if why:
-        return jsonify({"status": "error", "message": (
-            f"'{list_name}' was not deleted: {why}, so whether it still owns "
-            "NetBox objects is unknown. Nothing was changed.")}), 409
-    if held:
-        named = ", ".join(f"{ep}/{oid} {name}".strip() for ep, oid, name in held[:8])
-        more = f" and {len(held) - 8} more" if len(held) > 8 else ""
-        return jsonify({"status": "error", "held": [
-            {"endpoint": ep, "id": oid, "name": name} for ep, oid, name in held],
-            "message": (
-                f"'{list_name}' was not deleted: Mercury's record says it created "
-                f"{len(held)} NetBox object(s) for this list ({named}{more}). Deleting a "
-                "list never deletes NetBox objects, and forgetting them would leave them "
-                "out of Remove's reach. Remove them first from the NetBox tab (previewed "
-                "and confirmed), then delete the list. Nothing was changed.")}), 409
-    _nbg.forget_created(list_name)          # an empty entry, if any
-    cleanup_log.append("NetBox: nothing recorded for this list; NetBox not touched")
-
-    # ── 3. Delete the list directory and config entry ──────────────────────
-    try:
-        success, message = delete_device_list_func(list_name)
-        if success:
-            app.logger.info("Deleted device list '%s'. Cleanup: %s", list_name,
-                            " | ".join(cleanup_log))
-            flash(message, "success")
-            return jsonify({
-                "status":  "success",
-                "message": message,
-                "cleanup": cleanup_log,
-            })
-        else:
-            return jsonify({"status": "error", "message": message}), 400
-    except Exception as e:
-        app.logger.error("Failed to delete device list '%s': %s", list_name, e)
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@app.route("/select_device_list", methods=["POST"])
-def select_device_list_route():
-    """Select a device list as the current list."""
-    try:
-        data = request.get_json()
-        list_name = data.get("name", "").strip() if data else ""
-
-        if not list_name:
-            return jsonify({"status": "error", "message": "List name is required"}), 400
-
-        success = set_current_device_list(list_name)
-
-        if success:
-            app.logger.info(f"Selected device list: {list_name}")
-            return jsonify({"status": "success", "message": f"Switched to '{list_name}'"})
-        else:
-            return jsonify({"status": "error", "message": f"List '{list_name}' not found"}), 404
-
-    except Exception as e:
-        app.logger.error(f"Failed to select device list: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
+# Today's network management (POST /device_lists, DELETE /device_lists/<name> and POST
+# /select_device_list, with the index page's list bar, its New List dialog and Delete List) left
+# at 7.8 on 2026-10-17 (P7-26). A network is created and deleted on Settings (New network… on the
+# scope bar's Choose a network, and a network's Delete this network…, `modules/network_admin`),
+# each previewed, confirmed and recorded; the network a person sees is their own choice, the top
+# bar's Network ▾ (`routes/network_v2`). The installation's active list is FROZEN: nothing sets it
+# (`set_current_device_list` went with its route); it stays the default that jobs, today's index
+# and a v2 page opened with no network named and no choice made read.
 
 # Today's Settings modal's routes (GET and POST /settings, and its NetBox Test,
 # POST /netbox/test_connection) left with the modal at 7.8 (2026-10-15). NetBox's connection is

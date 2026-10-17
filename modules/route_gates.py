@@ -206,9 +206,6 @@ GATES = {
     "settings_v2.network_delete_preview": _g(N, "counts what a network holds and says where its data would go; writes nothing"),
     "settings_v2.records_store_preview": _g(N, "counts every network's receipts lines in the files and the records database for a move's preview; writes nothing"),
     "settings_v2.install_writes_off": _g(K, "turns NetBox's master write switch off for every network, recorded; never turns it on"),
-    "create_device_list_route": _g(K, "creates a device list"),
-    "delete_device_list_route": _g(K, "deletes a device list"),
-    "select_device_list_route": _g(K, "changes the active list, which every derived read and the ping worker follow"),
     "topology_v2.expected_declare": _g(K, "declares a device an expected island of its "
                                           "network, with a reason, recorded (P.11)"),
     "topology_v2.expected_withdraw": _g(K, "withdraws an expected-island declaration, "

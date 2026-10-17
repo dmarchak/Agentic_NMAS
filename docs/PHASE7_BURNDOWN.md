@@ -128,7 +128,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | P7-23 | (8a) template and intent editors | removed | M | W2, C444 | — |
 | P7-24 | (8b) device-action JSON (capture, seed, revert, retry, profile, persist, rotate, retire) | removed | M | W4 (the operator, 2026-10-17: waits on W4 and the operator), P7-22 | — |
 | P7-25 | (8c) deploy wizard, onboarding, inventory source | removed | M–L | W1, W4 (waits on W4 and the operator) | — |
-| P7-26 | (8d) networks; the global active list frozen | removed | S | W2 | — |
+| ~~P7-26~~ | ~~(8d) networks; the global active list frozen~~ **removed 2026-10-17** (restore tag `pre-remove/v1-networks`; nothing sets the installation's `current_list` now; C1138, v2's delete guarding NetBox's record, fixed with it; walked by GETs on the host after its deploy) | | | | |
 | P7-27 | (9) the pages: `/` (302 to `/v2/`), `/attention`, `index.html`, `base.html`, the last partials and scripts, vendored Bootstrap; `test_no_new_v1_capability` becomes "nothing outside templates/v2" | criteria 1, 2, 16 close; the v1 ceilings at 0 | M | all above | — |
 
 **Rough total after the trim:** about 3 L (C850's `applyConfirm`, C537, P7-04 at its upper end),
@@ -159,7 +159,7 @@ closing entries of 7.3, 7.4, 7.D and 7.8. The operator's three: C549 (3), C663, 
 | tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | **1** (C850, 2026-10-16) | 1, IP SLA's `ipslaPost` with P.12 (D3); 0 after |
 | tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | **0** (P7-05, 2026-10-16) | 0 |
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | **0** (C522, 2026-10-16) | 0 (met) |
-| tests/test_no_new_v1_capability.py controls / handlers / functions / fields | **23 / 16 / 281 / 17** (P7-21, 2026-10-17; 25 / 18 / 312 / 17 after P7-22; 36 / 26 / 314 / 19 after P7-20; 43 / 31 / 333 / 20 before) | 0 (P7-27) |
+| tests/test_no_new_v1_capability.py controls / handlers / functions / fields | **19 / 13 / 281 / 15** (P7-26, 2026-10-17; 23 / 16 / 281 / 17 after P7-21; 25 / 18 / 312 / 17 after P7-22; 36 / 26 / 314 / 19 after P7-20; 43 / 31 / 333 / 20 before) | 0 (P7-27) |
 | tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | **64 / 3 / 21** (v1 routes; P7-21, 2026-10-17; 84 / 14 / 23 after P7-22; 90 / 14 / 26 after P7-20) | 0 at P7-27 (the v1 check goes with today's pages) |
 | tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | **358** (C868, C869's GAP gone) / **11** (C867) / 23 (2026-10-16) | met: the GAP entries cutover needs gone; `UPSTREAM` 11; the rest reasoned or the tail's |
 | tests/signed_off_screens.py `UNSIGNED` | 3 | 1 (not_found stays; heartbeat and ip_sla go with P.12, D3) |

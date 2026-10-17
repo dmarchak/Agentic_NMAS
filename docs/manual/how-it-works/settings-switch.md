@@ -52,14 +52,21 @@ base layer), opens a preview: the devices, committed goldens and commits it hold
 it has one, and where its data goes. To delete it, type its name.
 
 1. `check`: the preview is read again and compared. Read: the network's inventory, its
-   repository and its remote record, and whether any of its devices is held or its drift run is
-   in progress. Sent: nothing. A name typed differently, a preview out of date, or an operation
-   running on the network refuses, naming it, and nothing changes.
+   repository and its remote record, whether any of its devices is held or its drift run is in
+   progress, and the tool's record of the NetBox objects it created for the network. Sent:
+   nothing. A name typed differently, a preview out of date, or an operation running on the
+   network refuses, naming it, and nothing changes. So does a network the tool created NetBox
+   objects for, naming them, or one whose record cannot be read: deleting a network never
+   deletes NetBox objects, and with the network gone nothing could remove them. Remove them
+   first on Source of truth › NetBox (Remove from NetBox…, or Stop tracking instead…).
 2. `move`: its folder is moved to `lists_removed/<folder>-<UTC time>` beside the networks,
    inside its repository's lock. **Nothing is erased:** its goldens, intent, receipts and
    history survive there, and its remote, if it has one, keeps its copy.
 3. `unregister`: the network leaves every page and every scheduled job. A person who had chosen
-   it in the Network picker sees the installation's network instead.
+   it in the Network picker sees the installation's network instead: the one a page shows when
+   its address names none and its person has chosen none. Nothing sets the installation's
+   network (it is Default unless chosen before the old interface's list bar left); deleting the
+   network it is makes it the earliest-registered network left.
 4. `record`: who, how that was established, when, the name and the folder its data went to,
    in the installation's settings record. No device is contacted, and NetBox is not touched.
 

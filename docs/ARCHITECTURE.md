@@ -1000,6 +1000,17 @@ left at 7.8 (P7-22, 2026-10-17): a device's page is `templates/v2/device.html`.
   (Fernet-encrypted creds), golden_configs/, backups/, approval_queue.json,
   config_repo/ (variables.json, the agent's, has had no writer since the AI family's
   removal, D15, 2026-10-14)
+- **Networks are created and deleted on Settings, and the installation's active list is
+  frozen** (7.8, P7-26, 2026-10-17). `modules/network_admin.py` previews, confirms and records
+  New network… and Delete this network… (refused while a device is held, its drift run is in
+  progress, or Mercury's record holds NetBox objects it created for the network, C155). Which
+  network a person sees is their own choice (`network_choice`, the top bar's Network ▾), read by
+  `listref.active()` on a v2 request after the network its address names. The registry's
+  `current_list` is set by nothing since today's list bar and `/select_device_list` left with
+  `device.set_current_device_list`; it moves only when the network it names is deleted. It is
+  the default where a v2 request names no network and its person has chosen none, and what
+  today's index, the start-up template-secret migration and the host scripts given no list
+  read; no scheduled job reads it (each runs every network, C491).
 - **Migration is one-directional and runs once.** `config_repo/golden/` is the
   golden store; `golden_configs/` survives as a deprecated **read-only**
   fallback, consulted by `_find_golden_config_file()` only when the manifest has
