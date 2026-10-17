@@ -1,5 +1,21 @@
 # End of session: where Phase 7 stands
 
+## OVERNIGHT, 2026-10-17 (06:20 to 10:00 UTC; 00:20 to 04:00 UTC−6): W3 recorded, W4 written, five removals
+
+**The host runs ac53abf2** (deployed 09:54:21 UTC, CI #891), every release walked by GETs on the
+host (P7-20: 10 paths; P7-22, P7-21, P7-26: 35; P7-23: 12; each as expected). W3 (the operator,
+05:16 to 06:18 UTC) recorded: CUTOVER rows 48 and 60 closed, C1018, C677, C1108 closed; its B,
+C1109 (the settle period), fixed (5c181256). W4's script written (docs/walks/W4.md, 73 steps and
+three lab steps, about 2 h). P7-20, P7-21, P7-22, P7-23 and P7-26 removed, each tagged
+(`pre-remove/v1-netbox`, `-git`, `-device`, `-editors`, `-networks`); the v1 controls, handlers,
+functions and fields 43 / 31 / 333 / 20 to 12 / 8 / 259 / 12. Bs found and fixed on the way:
+C1121, C1123, C1127, C1128, C1132, C1133, C1135, C1136, C1138. C650's W1 to W3 records (UNCHECKED
+20 to 15); P7-09's entries. **Cutover-blocking rows: 3** (A: C553, C650; B: C148), each W4's.
+**Left:** W4 (the operator); after it P7-24, P7-25 (waiting on W4 and the operator), P7-27, the
+four W4 screens' records and the closing writeup entries. **Waiting on the operator:** C549 (3),
+C663, C296, C1126; W4's two answers before its step 1 (NetBox keeps what adopt creates; "H yes"
+or "H no"). The morning report: `<home>/Documents/nmas-reports/2026-10-17-overnight.md`.
+
 ## NIGHT, 2026-10-17, later (to about 04:30 UTC; 22:30 UTC−6): the W2 follow-up, W3 written
 
 **The host runs fecab2f7** (deployed 04:13:07 UTC after the hold check, CI #876): Mercury's
