@@ -1549,31 +1549,47 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
     drained, drained_why = _drained_devices()
     planned_hold, planned_why = _planned_alert_hold()
     held, held_planned = [], []
-    for group in _incidents(alerting):
+    def parts_of(group):
+        """The rows one onset group makes: ``[(instances, members, whole_pipeline)]``.
+
+        Each member is judged by its OWN device, never by what began beside it (W3, the
+        operator 2026-10-17: r6's alerts in its settle period were raised CRITICAL because
+        s3's live discards alert began within the same 360 s). A device a person marked
+        drained (modules/drained.py, the operator 2026-10-06): its traffic falling is the
+        drain, so its alerts are said under What was checked, naming the drain. A device
+        restarting as planned (B3): its alerts are the restart, inside its window and the
+        settle margin after it, said under What was checked with the window, whose Grafana
+        silence keeps them from paging anyone; after that, a row again. What is left is
+        split in two: a silenced alert is never grouped with a live one, so the live one
+        keeps a row of its own and the silenced one says who silenced it."""
         members = [_member(i, inv) for i in group]
+        heartbeats = {i.get("rule_uid") for i in group} & heartbeat_rules
+        if bool(heartbeat_rules) and heartbeats == heartbeat_rules:
+            return [(group, members, True)]
+        drained_here, planned_here, keep = {}, {}, []
+        for inst, m in zip(group, members):
+            d = m["device"]
+            if d and d in drained:
+                drained_here.setdefault(d, []).append(m)
+            elif d and planned_hold(d):
+                planned_here.setdefault(d, []).append(m)
+            else:
+                keep.append((inst, m))
+        for d, ms in sorted(drained_here.items()):
+            held.append(f"{', '.join(sorted({m['rule'] for m in ms}))} on {d} ({drained[d]})")
+        for d, ms in sorted(planned_here.items()):
+            held_planned.append(f"{len(ms)} alert(s) ("
+                                + ", ".join(sorted({m['rule'] for m in ms})) + ") on "
+                                + f"{d}: {planned_hold(d)}")
+        live = [p for p in keep if not p[1]["silences"]]
+        quiet = [p for p in keep if p[1]["silences"]]
+        return [([p[0] for p in part], [p[1] for p in part], False)
+                for part in (live, quiet) if part]
+
+    for group, members, whole_pipeline in (p for g in _incidents(alerting)
+                                           for p in parts_of(g)):
         devices = sorted({m["device"] for m in members if m["device"]})
         first = group[0]
-        heartbeats = {i.get("rule_uid") for i in group} & heartbeat_rules
-        whole_pipeline = bool(heartbeat_rules) and heartbeats == heartbeat_rules
-        # A device a person marked drained (modules/drained.py, the operator 2026-10-06): its
-        # traffic falling is the drain, not a surprise, so an alert on drained devices only is
-        # said under What was checked, naming the drain, and raises no row. An alert naming
-        # any device in service is still a row.
-        if devices and not whole_pipeline and all(d in drained for d in devices):
-            held.append(f"{first.get('rule')} on {', '.join(devices)} ("
-                        + "; ".join(drained[d] for d in devices) + ")")
-            continue
-        # A device restarting as planned (B3, the operator 2026-10-17): its alerts are the
-        # restart, inside its window and the settle margin after it (the telemetry no-data
-        # alerts outlast the return), said under What was checked with the window; the
-        # window's Grafana silence keeps them from paging anyone. After that, a row again.
-        if devices and not whole_pipeline:
-            restarting = [planned_hold(d) for d in devices]
-            if all(restarting):
-                held_planned.append(f"{len(members)} alert(s) ("
-                            + ", ".join(sorted({m['rule'] for m in members})) + ") on "
-                            + ", ".join(devices) + ": " + "; ".join(sorted(set(restarting))))
-                continue
         if whole_pipeline:
             what = "Every device's syslog heartbeat stopped at once"
             cause = ("all " + str(len(heartbeat_rules)) + " heartbeat rules are alerting with "
@@ -1604,14 +1620,21 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
         # A silence set in Grafana hides nothing here (the operator,
         # 2026-09-30): the row keeps its level and says who silenced it and
         # until when, so a silence is a visible decision, never a quiet one.
+        # Each silence is said ONCE, naming the members it covers (W3: one silence printed
+        # once per member it matched).
         silenced = [m for m in members if m["silences"]]
         if silenced:
             what += (" (silenced in Grafana)" if len(silenced) == len(members) else
                      f" ({len(silenced)} of {len(members)} silenced in Grafana)")
+            covers = {}
+            for m in silenced:
+                for s in m["silences"]:
+                    key = s.get("id") or silence_words([s])
+                    covers.setdefault(key, (s, []))[1].append(
+                        f"{m['rule']}" + (f" on {m['device']}" if m["device"] else ""))
             cause += ". " + "; ".join(
-                (f"{m['rule']}" + (f" on {m['device']}" if m["device"] else "") + ": "
-                 if len(members) > 1 else "") + silence_words(m["silences"])
-                for m in silenced)
+                (", ".join(dict.fromkeys(names)) + ": " if len(members) > 1 else "")
+                + silence_words([s]) for s, names in covers.values())
         level = "danger" if any(m["kind"] == "condition" for m in members) else "unknown"
         operands = {"members": members, "grouped_within_seconds": INCIDENT_GAP_SECONDS,
                     "onset_basis": first["onset_basis"]}

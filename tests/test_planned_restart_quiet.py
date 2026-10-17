@@ -326,6 +326,111 @@ class TestNeedsAttention:
         assert row["devices"] == ["r6"]
 
 
+SILENCE = {"id": "1558974d-8bc0-40cd-8f25-babbdad0acaf", "created_by": OPERATOR,
+           "ends_at": "2026-10-17T06:17:03.000Z", "matchers": [],
+           "comment": "Mercury planned-restart window: W3 walk: r6 reloaded"}
+
+
+class TestTheSettlePeriodIsQuiet:
+    """W3's B (the operator, 2026-10-17): after r6's reload returned (05:58:03Z) its alerts
+    were still firing, silenced until 06:17:03Z, and Needs attention raised them CRITICAL,
+    grouped by onset with s3's live discards alert ("4 alerts began together (3 of 4
+    silenced)"), each silence printed once per member. A device restarting as planned is held
+    through the settle period whatever began beside it; a silenced alert is never grouped with
+    a live one; a silence is said once."""
+
+    @pytest.fixture
+    def fire(self, monkeypatch):
+        """Several alerts of the captured rules view made to fire together (one onset, 5 min
+        ago), each optionally carrying silences as the reader resolves them."""
+        from modules import attention as A
+        from modules import device
+        from tests.test_grafana_reader import INVENTORY, cached, load, parse, rule
+        monkeypatch.setattr(device, "load_saved_devices", lambda *a, **k: list(INVENTORY))
+        monkeypatch.setattr(device, "get_device_lists",
+                            lambda: [{"name": "Default", "filename": "default"}])
+
+        def go(*alerts):
+            view = load("rules_view")
+            onset = R._iso(time.time() - 300)
+            for title, match, _s in alerts:
+                inst = next(a for a in rule(view, title)["alerts"] if match(a["labels"]))
+                inst["state"], inst["activeAt"] = "Alerting", onset
+            value = parse(view)
+            for title, match, silences in alerts:
+                for inst in value["instances"]:
+                    if inst.get("rule") == title and match(inst.get("labels") or {}) \
+                            and silences:
+                        inst["silences"] = [dict(s) for s in silences]
+                        inst["silenced_by"] = [s["id"] for s in silences]
+            return A.grafana_source(cached=cached(value))
+        return go
+
+    R6 = ("NMAS heartbeat missing: r6", lambda labels: True)
+
+    @staticmethod
+    def snmp(address):
+        return ("Device unreachable (SNMP)", lambda labels: labels.get("instance") == address)
+
+    # Two condition alerts of one rule whose onsets fall together, as W3's were (r6's SNMP and
+    # s3's discards): r2 restarting as planned, r1 live. (The capture holds no SNMP instance
+    # for r6; a heartbeat no-data alert is not grouped by condition onset.)
+    def test_a_restarting_device_s_alerts_are_held_beside_another_device_s_live_one(
+            self, grafana, fire):
+        now = time.time()
+        got = _declare(now - 10 * 60, devices=("r2",))     # r2's window, from 10 min ago
+        R.end_window(got["record"], now - 60, "the reload is back: r2 answered after 350 s",
+                     by=OPERATOR)                          # back a minute ago: in the margin
+        res = fire((*self.snmp("10.255.1.12"), [SILENCE]), (*self.snmp("10.255.1.11"), []))
+        assert [r["devices"] for r in res["rows"]] == [["r1"]], res["rows"]
+        (row,) = res["rows"]
+        assert "began together" not in row["what"] and "r2" not in row["cause"], row
+        assert "silenced" not in row["what"], row
+        assert ("restarting as planned, not raised: 1 alert(s) (Device unreachable (SNMP)) "
+                "on r2: r2 is restarting as planned") in res["checked"], res["checked"]
+
+    def test_the_control_with_no_window_they_are_one_group(self, grafana, fire):
+        res = fire((*self.snmp("10.255.1.12"), []), (*self.snmp("10.255.1.11"), []))
+        (row,) = res["rows"]
+        assert row["what"] == "2 alerts began together" and row["devices"] == ["r1", "r2"]
+
+    def test_a_silenced_alert_is_never_grouped_with_a_live_one(self, grafana, fire):
+        res = fire((*self.snmp("10.255.1.12"), []), (*self.snmp("10.255.1.11"), [SILENCE]))
+        rows = sorted(res["rows"], key=lambda r: r["devices"])
+        assert [r["devices"] for r in rows] == [["r1"], ["r2"]], rows
+        assert "silenced in Grafana" in rows[0]["what"], rows[0]
+        assert "silenced" not in rows[1]["what"] + rows[1]["cause"], rows[1]
+        assert all(r["level"] == "danger" for r in rows), "a silence keeps its level"
+
+    def test_a_silence_covering_several_members_is_said_once(self, grafana, fire):
+        res = fire((*self.snmp("10.255.1.11"), [SILENCE]),
+                   (*self.snmp("10.255.1.12"), [SILENCE]))
+        (row,) = res["rows"]
+        assert row["what"] == "2 alerts began together (silenced in Grafana)", row["what"]
+        assert row["cause"].count(SILENCE["id"]) + row["cause"].count(
+            f"by {OPERATOR} until {SILENCE['ends_at']}") == 1, row["cause"]
+
+    def test_the_device_page_says_its_alerts_are_held_for_the_planned_restart(
+            self, grafana, monkeypatch):
+        from modules import device_page
+        now = time.time()
+        got = _declare(now - 10 * 60)
+        R.end_window(got["record"], now - 60, "back", by=OPERATOR)
+        value = {"instances": [{"kind": "condition", "device": "r6", "address": "",
+                                "rule": "Critical syslog received", "labels": {}},
+                               {"kind": "no_data", "device": "r6", "address": "",
+                                "rule": "NMAS heartbeat missing: r6", "labels": {}}],
+                 "bands": {}}
+        monkeypatch.setattr(device_page, "_cached", lambda reader, *a, **k: (
+            value, "2026-10-17T05:59:00Z", ""))
+        check = device_page.alerts_check("r6", "192.0.2.32", "Default")
+        assert check["state"] == "warn", check
+        assert "Critical syslog received" in check["text"]
+        assert "held: r6 is restarting as planned" in check["text"], check["text"]
+        assert f"its alerts held {R.SETTLE_SECONDS // 60} min after it to settle" \
+            in check["text"]
+
+
 # --------------------------------------------------------------------------- the reload's end
 
 @pytest.fixture

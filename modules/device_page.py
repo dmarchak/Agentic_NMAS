@@ -454,21 +454,42 @@ def checks(ref, dev: dict) -> list:
                     "at": cs["rotated_at"] or None,
                     "text": f"{cs['age_words']}; {cs['words']}"})
 
-    # Alerts: Grafana's instances naming this device, by label, line or address.
+    out.append(alerts_check(host, ip, ref.name))
+    return out
+
+
+def alerts_check(host: str, ip: str, list_name: str) -> dict:
+    """The Alerts check: Grafana's instances naming this device, by label, line or address.
+    Inside its planned-restart window and the settle margin after it, the firing alerts are
+    the restart: amber, and said as held for it (W3, the operator 2026-10-17: r6's page listed
+    "Critical syslog received; NMAS heartbeat missing: r6" with no word of the restart)."""
+    from modules import restarts as R
+
     value, at, why = _cached("grafana-alerts")
     if value is None:
-        out.append({"name": "Alerts", "state": "unknown", "text": why})
-    else:
-        mine = [i for i in value.get("instances") or []
-                if i.get("kind") in ("condition", "no_data", "error")
-                and (i.get("device") == host or i.get("address") == ip)]
-        acked, open_ = _acknowledged_alerts(mine, value.get("bands") or {})
-        words = [f"{i.get('rule') or '?'} (acknowledged by {a.get('by')}, within its band: "
-                 f"{reading:.3g} at or under {float(a['band']):.3g})" for i, a, reading in acked]
-        out.append({"name": "Alerts", "state": "danger" if open_ else "ok", "at": at,
-                    "text": ("; ".join(sorted({i.get("rule") or "?" for i in open_}
-                                              | set(words))) if mine else "none firing")})
-    return out
+        return {"name": "Alerts", "state": "unknown", "text": why}
+    mine = [i for i in value.get("instances") or []
+            if i.get("kind") in ("condition", "no_data", "error")
+            and (i.get("device") == host or i.get("address") == ip)]
+    acked, open_ = _acknowledged_alerts(mine, value.get("bands") or {})
+    words = [f"{i.get('rule') or '?'} (acknowledged by {a.get('by')}, within its band: "
+             f"{reading:.3g} at or under {float(a['band']):.3g})" for i, a, reading in acked]
+    text = ("; ".join(sorted({i.get("rule") or "?" for i in open_} | set(words)))
+            if mine else "none firing")
+    state = "danger" if open_ else "ok"
+    if open_:
+        try:
+            got = R.holding(host, list_name, time.time(), margin=R.SETTLE_SECONDS)
+        except RuntimeError:
+            got = None
+        if got:
+            state = "warn"
+            set_ = ((got["window"].get("silence") or {}).get("state") == "set")
+            text += (f"; held: {got['words']}, its alerts held {R.SETTLE_SECONDS // 60} min "
+                     "after it to settle, "
+                     + ("and silenced in Grafana for it" if set_ else
+                        "but NOT silenced in Grafana: its alerts page as an outage's would"))
+    return {"name": "Alerts", "state": state, "at": at, "text": text}
 
 
 def _acknowledged_alerts(instances: list, bands: dict):

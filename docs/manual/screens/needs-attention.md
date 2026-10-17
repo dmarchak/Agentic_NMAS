@@ -145,6 +145,14 @@ window also sets a Grafana silence on those alerts, as the person who declared i
 pages nobody. If the device is still not answering when the window ends, it is a critical row
 again, naming the window that ended; an alert still firing after the margin is a row again.
 
+Each alert is judged by its own device, never by what began beside it. Alerts whose onsets fall
+within six minutes of each other are grouped into one row ("3 alerts began together"), but an
+alert on a device restarting as planned (or drained) is taken out of the group first and said
+under *What was checked*, so another device's live alert that began at the same moment is a row
+of its own. A silenced alert is never grouped with a live one either: it keeps its level in a
+row of its own, saying who silenced it and until when, each silence said once. The device's own
+page says the same in its Alerts check, in amber: "held: r6 is restarting as planned …".
+
 ### A chronic alert, within its band {#acknowledging-a-chronic-alert}
 
 An alert that fires on one series nearly all the time (a port that always discards a little,
