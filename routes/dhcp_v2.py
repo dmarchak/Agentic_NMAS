@@ -30,6 +30,36 @@ def _ctx() -> dict:
     return {"g": dhcp_page.view(_list_name(), request.args)}
 
 
+def _not_owner() -> str:
+    """``""`` when the page's network owns the Kea a change here would write; otherwise the
+    refusal, naming both networks (C1181, the operator's design 2026-10-17: a Kea has one
+    owning network, where it is set; a network inheriting it changes nothing in it). Asked by
+    every preview and confirm, before Kea or any file is read."""
+    from modules import list_settings as L
+
+    page = _list_name()
+    try:
+        owner, why = L.kea_owner(page)
+    except L.ListSettingsUnreadable as exc:
+        return (f"whose Kea {page}'s DHCP page shows could not be read ({exc}), so the change "
+                "could not be recorded in its owner's repository. Nothing was written")
+    if L.same_network(owner, page):
+        return ""
+    return (f"{page} uses {owner}'s Kea ({why}): a change to it is made on {owner}'s DHCP "
+            f"page and recorded in {owner}'s repository, never from {page}'s. Nothing was "
+            "written")
+
+
+def _refused_plan(why: str) -> dict:
+    """A preview refused before it was planned: the card draws why, and no confirm."""
+    return {"ok": False, "refused": why}
+
+
+def _refused_result(why: str) -> dict:
+    """A confirm refused before anything ran (no step reached, so no stepper)."""
+    return {"ok": False, "error": why}
+
+
 @bp.route("", methods=["GET"])
 def page():
     """The page. A read: the reader's stored value, drawn."""
@@ -73,9 +103,13 @@ def reservation_preview():
     s = D.ask(request.args)
     filled = s["op"] == "remove" or (s["family"] and s["subnet"] and s["identity"] and
                                      s["address"])
-    p = D.plan(_list_name(), request.args) if filled else None
-    return _op_region({"state": "preview" if filled else "form", "ask": s, "plan": p,
-                       "subnets": _op_subnets()})
+    refused = _not_owner()
+    if refused:
+        p = _refused_plan(refused)
+    else:
+        p = D.plan(_list_name(), request.args) if filled else None
+    return _op_region({"state": "preview" if filled or refused else "form", "ask": s,
+                       "plan": p, "subnets": _op_subnets()})
 
 
 @bp.route("/reservation", methods=["POST"])
@@ -86,8 +120,10 @@ def reservation_confirm():
     from modules import identity
 
     actor = identity.request_actor()
-    got = D.apply(_list_name(), request.form, request.form.get("hash", ""), actor=actor,
-                  reason=request.form.get("reason", ""))
+    refused = _not_owner()
+    got = _refused_result(refused) if refused else D.apply(
+        _list_name(), request.form, request.form.get("hash", ""), actor=actor,
+        reason=request.form.get("reason", ""))
     s = D.ask(request.form)
     if not got["ok"]:
         return _op_region({"state": "refused", "ask": s, "plan": got.get("plan"),
@@ -138,8 +174,13 @@ def subnet_preview():
                                          # C709: the description is always sent once the form
                                          # is submitted; unchanged, the plan says nothing moves.
                                          or s["pool_note"] is not None)))
-    p = S.plan(_list_name(), request.args, intent=_intent()) if filled else None
-    return _sop_region({"state": "preview" if filled else "form", "ask": s, "plan": p})
+    refused = _not_owner()
+    if refused:
+        p = _refused_plan(refused)
+    else:
+        p = S.plan(_list_name(), request.args, intent=_intent()) if filled else None
+    return _sop_region({"state": "preview" if filled or refused else "form", "ask": s,
+                        "plan": p})
 
 
 @bp.route("/subnet", methods=["POST"])
@@ -151,8 +192,10 @@ def subnet_confirm():
     from modules import identity
 
     actor = identity.request_actor()
-    got = S.apply_edit(_list_name(), request.form, request.form.get("hash", ""), actor=actor,
-                       reason=request.form.get("reason", ""), intent=_intent())
+    refused = _not_owner()
+    got = _refused_result(refused) if refused else S.apply_edit(
+        _list_name(), request.form, request.form.get("hash", ""), actor=actor,
+        reason=request.form.get("reason", ""), intent=_intent())
     s = S.ask(request.form)
     if not got["ok"]:
         return _sop_region({"state": "refused", "ask": s, "plan": got.get("plan"),
@@ -191,9 +234,13 @@ def exclusion_preview():
     s = E.ask(request.args)
     filled = (s["op"] == "remove" and s["was"]) or (s["op"] == "add" and s["family"] and
                                                      s["id"] and s["range"] and s["reason"])
-    p = E.plan(_list_name(), request.args, intent=_intent()) if filled else None
-    return _xop_region({"state": "preview" if filled else "form", "ask": s, "plan": p,
-                        "subnets": _op_subnets()})
+    refused = _not_owner()
+    if refused:
+        p = _refused_plan(refused)
+    else:
+        p = E.plan(_list_name(), request.args, intent=_intent()) if filled else None
+    return _xop_region({"state": "preview" if filled or refused else "form", "ask": s,
+                        "plan": p, "subnets": _op_subnets()})
 
 
 @bp.route("/exclusion", methods=["POST"])
@@ -206,9 +253,11 @@ def exclusion_confirm():
     from modules import identity
 
     actor = identity.request_actor()
-    got = S.apply_edit(_list_name(), request.form, request.form.get("hash", ""), actor=actor,
-                       reason=request.form.get("why", "") or request.form.get("reason", ""),
-                       intent=_intent(), planner=E.plan, record=E.record_commit)
+    refused = _not_owner()
+    got = _refused_result(refused) if refused else S.apply_edit(
+        _list_name(), request.form, request.form.get("hash", ""), actor=actor,
+        reason=request.form.get("why", "") or request.form.get("reason", ""),
+        intent=_intent(), planner=E.plan, record=E.record_commit)
     s = E.ask(request.form)
     if not got["ok"]:
         return _xop_region({"state": "refused", "ask": s, "plan": got.get("plan"),

@@ -33,6 +33,30 @@ So each setting is in one of three states, visible in the posture panel:
 | **chosen** | present, different from the default; somebody decided otherwise |
 | **retired** | declared in the schema, defaulted, and read by NOTHING (the operator's name for the fourth state, 2026-09-28). Kept only because `write_settings()` refuses a key the schema does not declare, and an install's file may hold it; listed below with why it was retired. Not "not applicable", which is for a guard-gating setting whose default is empty |
 
+### One owning network per Kea (C1181)
+
+The operator's design, 2026-10-17. A Kea server has **one owning network: the one where its
+connection is set**, never one that inherits it. No setting declares the owner: it is measured
+from the settings layers by `list_settings.kea_owner(list_name)`. A network whose Kea group is
+its own (set here, its own and not configured, or not applicable) owns its own; a network that
+inherits Kea is owned by Default, whose layer every inheriting network reads.
+
+- **Every DHCP change records in the owner's repository** (`dhcp/reservations.yml`,
+  `dhcp/subnets.yml`, `dhcp/exclusions.yml`) and so publishes with the owner's remote. When it
+  was made from another network, the commit says which in a `From-Network:` trailer.
+  Exclusions are read from the owner's record, on the owner's page and on every page that
+  inherits it.
+- **A DHCP preview or confirm on a network that does not own its Kea is refused**, naming both
+  networks: the change is made on the owner's DHCP page.
+- **Two networks may not each set the same Kea as their own.** Saving a Kea URL (a card's Save,
+  or the switch to "its own" with the URL entered) is refused when another network already sets
+  the same one, naming that network; Default included. The same Kea is the Control Agent's URL
+  normalised: host (lower case, an IP address in its canonical form), port (the scheme's
+  default when none is written) and path, with the scheme, any user part, query and trailing
+  slash dropped. A hostname and an address of one machine are not measured as the same Kea,
+  because that would need a DNS read on a save. A network whose settings cannot be read
+  refuses the save, rather than being read as owning nothing.
+
 ---
 
 ## Surfaced in the UI

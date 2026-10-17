@@ -850,13 +850,20 @@ def write_subnets_record(list_name: str, repo: str) -> None:
 
 
 def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
-    """Write `dhcp/subnets.yml` and commit it as *actor*, the reason in its body."""
+    """Write `dhcp/subnets.yml` and commit it as *actor*, the reason in its body, in the Kea
+    owner's repository (`dhcp_reservations.record_home`, C1181)."""
+    from modules import dhcp_reservations as D
     from modules.config import get_list_data_dir
+    from modules.list_settings import ListSettingsUnreadable
     from modules.nsot import repo as R
 
-    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+    try:
+        owner, extra = D.record_home(list_name)
+    except ListSettingsUnreadable as exc:
+        return {"ok": False, "error": f"whose Kea this is could not be read: {exc}"}
+    repo = os.path.join(get_list_data_dir(owner), "config_repo")
     with R.repo_lock(repo):
-        write_subnets_record(list_name, repo)
+        write_subnets_record(owner, repo)
         subject = p.get("subject") or "dhcp: subnet changed"
-        return R._commit_paths(list_name, [RECORD], f"{subject}\n\n{reason.strip()}",  # noqa: SLF001
-                               [f"Actor: {actor}"], "dhcp")
+        return R._commit_paths(owner, [RECORD], f"{subject}\n\n{reason.strip()}",  # noqa: SLF001
+                               [f"Actor: {actor}", *extra], "dhcp")

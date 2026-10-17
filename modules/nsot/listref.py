@@ -160,6 +160,18 @@ def resolve(name: str) -> ListRef:
     return _build(text, derived)
 
 
+def names() -> list:
+    """Every registered network's display name, sorted. A deleted network is unregistered, so
+    it is not one of them. Unlike :func:`_registry`, a registry that cannot be read RAISES:
+    a check over every network (C1181: two networks may not own one Kea) must never read an
+    unreadable registry as "no other network"."""
+    from modules.device import _load_device_lists_config
+
+    lists = (_load_device_lists_config() or {}).get("lists") or {}
+    return sorted((name for name, slug in lists.items()
+                   if isinstance(slug, str) and not slug.endswith(".csv")), key=str.lower)
+
+
 def exists(name) -> bool:
     """Is there a list answering to *name*: registered by name or slug, or a
     directory on disk (a list can exist on disk before the registry catches

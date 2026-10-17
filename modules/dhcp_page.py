@@ -172,6 +172,21 @@ def _families(value: dict) -> list:
     return [(svc, f) for svc, f in (value.get("families") or {}).items()]
 
 
+def _owner(list_name: str) -> dict:
+    """Whose Kea the page's network uses (C1181: one owning network per Kea, the one where it
+    is set): ``{"owner", "owner_why", "writable"}``. Only the owner's page changes Kea; an
+    unreadable settings store writes nothing and says why."""
+    from modules import list_settings
+
+    try:
+        owner, why = list_settings.kea_owner(list_name)
+    except Exception as exc:                          # noqa: BLE001 (said on the page)
+        return {"owner": "", "owner_why": f"whose Kea it is could not be read ({exc})",
+                "writable": False}
+    return {"owner": owner, "owner_why": why,
+            "writable": list_settings.same_network(owner, list_name)}
+
+
 def view(list_name: str, values, now: float = None) -> dict:
     """Everything the DHCP page draws for one network and question."""
     s = ask(values)
@@ -179,6 +194,7 @@ def view(list_name: str, values, now: float = None) -> dict:
     out = {"list": list_name, "s": s, "qs": lambda over=None: qs(list_name, s, over),
            "tabs": TABS, "shows": SHOWS, "duration": duration, "pool_words": pool_words,
            "held_words": HELD, "tee_words": tee_words}
+    out.update(_owner(list_name))
     st = stored(list_name)
     out.update(state=st["state"], why=st.get("why", ""), failed=st.get("failed", ""),
                value_at=st.get("value_at", ""))

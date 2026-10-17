@@ -664,25 +664,56 @@ def apply(list_name: str, values, confirmed_hash: str, *, actor: str, reason: st
         return out
 
 
+#: The trailer a DHCP record carries when the change was made from another network than the
+#: Kea's owner (C1181): the page network it was confirmed from.
+FROM_TRAILER = "From-Network"
+
+
+def record_home(list_name: str) -> tuple:
+    """``(owner, trailers)``: the network whose repository records a change to *list_name*'s
+    Kea (`list_settings.kea_owner`: where Kea is SET, never a network inheriting it), and the
+    trailers saying the network the change was made from when that is another (C1181: W4
+    walk's eight DHCP commits for the installation's one Kea were recorded in W4 walk's
+    repository, and left with it). Raises `list_settings.ListSettingsUnreadable`."""
+    from modules.list_settings import kea_owner, same_network
+
+    owner, _why = kea_owner(list_name)
+    return owner, ([] if same_network(owner, list_name) else
+                   [f"{FROM_TRAILER}: {list_name}"])
+
+
+def record_repo(list_name: str) -> str:
+    """The repository that records *list_name*'s Kea: its owner's (:func:`record_home`)."""
+    from modules.config import get_list_data_dir
+
+    return os.path.join(get_list_data_dir(record_home(list_name)[0]), "config_repo")
+
+
 def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
     """Write `dhcp/reservations.yml` (every reservation in Mercury's subnet files, both families)
-    and commit it as *actor*, the reason in its body."""
+    and commit it as *actor*, the reason in its body, in the Kea owner's repository
+    (:func:`record_home`)."""
     import yaml
 
     from modules.config import get_list_data_dir
     from modules.filestore import write_atomic
+    from modules.list_settings import ListSettingsUnreadable
     from modules.nsot import repo as R
 
-    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
-    doc = {"reservations": held_by_mercury(list_name)}
+    try:
+        owner, extra = record_home(list_name)
+    except ListSettingsUnreadable as exc:
+        return {"ok": False, "error": f"whose Kea this is could not be read: {exc}"}
+    repo = os.path.join(get_list_data_dir(owner), "config_repo")
+    doc = {"reservations": held_by_mercury(owner)}
     with R.repo_lock(repo):
         path = os.path.join(repo, RECORD)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         write_atomic(path, "# Kea reservations Mercury holds in its subnet files (C529); "
                            "written on each change.\n" + yaml.safe_dump(doc, sort_keys=False))
         subject = p.get("subject") or "dhcp: reservation changed"
-        return R._commit_paths(list_name, [RECORD], f"{subject}\n\n{reason.strip()}",  # noqa: SLF001
-                               [f"Actor: {actor}"], "dhcp")
+        return R._commit_paths(owner, [RECORD], f"{subject}\n\n{reason.strip()}",  # noqa: SLF001
+                               [f"Actor: {actor}", *extra], "dhcp")
 
 
 def held_by_mercury(list_name: str) -> list:

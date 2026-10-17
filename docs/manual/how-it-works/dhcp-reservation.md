@@ -66,8 +66,9 @@ than interleaving:
 5. `read-back`: every reservation Kea holds is read again, in every subnet, shared network and at
    its global level: exactly the change shown, and nothing else moved, nothing newly stranded.
    Anything else puts the previous file back, reloads, and says what Kea held.
-6. `record`: `dhcp/reservations.yml` in the network's repository (every reservation in
-   Mercury's files) is committed as you, with your reason in its body. It shows on History.
+6. `record`: `dhcp/reservations.yml` in the repository of the network that owns this Kea
+   ([Whose Kea](dhcp#whose-kea); every reservation in Mercury's files) is committed as you,
+   with your reason in its body. It shows on History.
 
 ## When it goes wrong
 

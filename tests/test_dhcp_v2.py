@@ -47,6 +47,13 @@ def _store(value, ok=True, error=""):
 def web(tmp_path, monkeypatch):
     (tmp_path / "lab").mkdir()
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path / "lab"))
+    # C1181: Lab sets its own Kea, so it owns the Kea its page changes (a network inheriting
+    # Kea is refused its changes: tests/test_kea_owner.py).
+    lab_settings = tmp_path / "lists" / "lab"
+    lab_settings.mkdir(parents=True)
+    (lab_settings / "settings.json").write_text(
+        json.dumps({"values": {"kea_url": "http://192.0.2.53:8000"}}), encoding="utf-8")
+    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
     monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     monkeypatch.setattr("modules.dhcp_page._devices", lambda name: set())
     # The network's store, as Logs' tests do: Kea's group resolves to the plain store here.

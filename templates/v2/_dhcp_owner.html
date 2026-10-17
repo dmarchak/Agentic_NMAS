@@ -1,0 +1,7 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- Whose Kea this network uses (C1181: one owning network per Kea, the one where it is set).
+    On a network that inherits Kea the page is read-only: every Add, Edit and Remove is the
+    owner's, and its record is in the owner's repository. -#}
+{%- if not g.writable %}
+<div class="notice notice-muted dh-owner" role="status">{{ icon('info', 16) }}<p>{%- if g.owner %}<strong>{{ g.list }} uses {{ g.owner }}'s Kea</strong>; changes are made on <a href="{{ url_for('dhcp_v2.page', list=g.owner) }}">{{ g.owner }}'s DHCP page</a> and recorded in {{ g.owner }}'s repository. This page shows the same Kea and changes nothing.<span class="muted small"> {{ g.owner_why }}</span>{%- else %}<strong>This page changes nothing</strong>: {{ g.owner_why }}.{% endif %}</p></div>
+{%- endif %}

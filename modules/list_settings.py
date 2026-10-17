@@ -215,6 +215,139 @@ def default_layer_secret(key: str) -> str:
     return secret(DEFAULT_LIST, key)
 
 
+# ---------------------------------------------------------------------------
+# One owner per outside service (C1181; the operator's design, 2026-10-17)
+# ---------------------------------------------------------------------------
+
+#: The groups whose outside service has ONE owning network: the network where its connection
+#: is SET, never one inheriting it. Its changes are recorded in the owner's repository (and so
+#: publish with the owner's remote), and two networks may not each set the same one as their
+#: own. Kea only: a DHCP server's configuration is the one such service Mercury writes to.
+OWNED_GROUPS = ("kea",)
+
+
+def service_identity(url) -> str:
+    """What identifies one outside service from its URL: ``host:port/path``, the host
+    lower-cased (an IP address in its canonical form), the port the scheme's default when none
+    is written, the path without a trailing slash; the scheme, any user part, query and fragment
+    dropped (a user part may carry a secret, and http and https on one host and port are one
+    listener). ``""`` for no URL. Two names for one machine (a hostname and its address) are
+    NOT measured the same: telling them apart would need a DNS read, and this runs on a save."""
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    text = str(url or "").strip()
+    if not text:
+        return ""
+    try:
+        u = urlsplit(text if "://" in text else "http://" + text)
+        place = (u.hostname or "").lower().rstrip(".")
+        port = u.port or {"http": 80, "https": 443}.get((u.scheme or "").lower(), 0)
+    except ValueError:
+        return text.lower().rstrip("/")
+    try:
+        addr = ipaddress.ip_address(place)
+        place = f"[{addr.compressed}]" if addr.version == 6 else addr.compressed
+    except ValueError:
+        pass
+    return f"{place}:{port}{u.path.rstrip('/')}"
+
+
+def group_owner(list_name: str, group: str) -> tuple:
+    """``(owner network, why)`` of *group*'s service for the network *list_name*, measured from
+    the settings layers: the network itself when the group is its own (set here, or its own and
+    not configured, or declared not applicable: it then has none to share); Default when the
+    network inherits it, as every inheriting network reads Default's layer. The Default network
+    owns its own. Raises :class:`ListSettingsUnreadable` when the network's store cannot be
+    read: whose service it is cannot then be said."""
+    from modules.settings_scope import group_label
+
+    label = group_label(group)
+    if is_default(list_name):
+        return list_name or DEFAULT_LIST, f"{label} is set on {list_name or DEFAULT_LIST}"
+    choice = group_choice(load(list_name), group)
+    if choice == INHERIT:
+        return DEFAULT_LIST, f"{list_name} inherits {label} from {DEFAULT_LIST}"
+    if choice == NA:
+        return list_name, f"{label} is not applicable on {list_name}"
+    return list_name, f"{label} is set on {list_name}"
+
+
+def kea_owner(list_name: str) -> tuple:
+    """``(owner network, why)``: the network whose Kea *list_name*'s DHCP page shows, and whose
+    repository records every change to it (C1181)."""
+    return group_owner(list_name, "kea")
+
+
+def same_network(a: str, b: str) -> bool:
+    from modules.config import list_slug
+
+    return list_slug(a or DEFAULT_LIST) == list_slug(b or DEFAULT_LIST)
+
+
+def service_taken(list_name: str, group: str, url) -> str:
+    """The network, other than *list_name*, that already SETS *group*'s service at the same
+    place as *url* (:func:`service_identity`), or ``""``. A network inheriting the group sets
+    nothing, so it is never the one named. Raises :class:`SwitchRefused` when another network's
+    store or the network registry cannot be read: a check that did not run has not passed."""
+    from modules.settings_schema import load_user_settings
+    from modules.settings_scope import URL_KEYS
+
+    key = URL_KEYS.get(group)
+    want = service_identity(url)
+    if group not in OWNED_GROUPS or not key or not want:
+        return ""
+    if not same_network(list_name, DEFAULT_LIST) and \
+            service_identity(load_user_settings().get(key)) == want:
+        return DEFAULT_LIST
+    from modules.nsot import listref
+    try:
+        others = listref.names()
+    except Exception as exc:                   # noqa: BLE001 - named in the refusal
+        raise SwitchRefused(f"the networks could not be listed ({type(exc).__name__}: {exc}), "
+                            f"so whether another already owns this {key} cannot be said. "
+                            "Nothing was saved") from exc
+    for other in others:
+        if is_default(other) or same_network(other, list_name):
+            continue
+        try:
+            store = load(other)
+        except ListSettingsUnreadable as exc:
+            raise SwitchRefused(f"{other}'s settings could not be read ({exc}), so whether it "
+                                f"already owns this {key} cannot be said. Nothing was saved"
+                                ) from exc
+        if group_choice(store, group) == OWN and \
+                service_identity(store["values"].get(key)) == want:
+            return other
+    return ""
+
+
+def taken_words(list_name: str, group: str, url, other: str) -> str:
+    """The refusal of a second owner, naming both networks and the service, never its URL's
+    user part."""
+    from modules.settings_scope import group_label
+
+    label = group_label(group)
+    return (f"{label} at {service_identity(url)} is already {other}'s own: {list_name} may not "
+            f"set the same {label} as its own too, because each {label} has one owning network "
+            f"and its changes are recorded in that network's repository. Use {other}'s, or set "
+            f"a different {label} here. Nothing was saved")
+
+
+def refuse_taken(list_name: str, updates: dict) -> str:
+    """The refusal for *updates* that would make *list_name* a second owner of a service, or
+    ``""``."""
+    from modules.settings_scope import URL_KEYS
+
+    for group in OWNED_GROUPS:
+        key = URL_KEYS.get(group)
+        if key and updates.get(key):
+            other = service_taken(list_name, group, updates[key])
+            if other:
+                return taken_words(list_name, group, updates[key], other)
+    return ""
+
+
 def write(list_name: str, updates: dict, actor: str = "") -> dict:
     """Set network-scoped keys for *list_name*. The Default network writes the global file
     (`settings_schema.write_settings`, the one write path there); any other list writes its own
@@ -231,6 +364,12 @@ def write(list_name: str, updates: dict, actor: str = "") -> dict:
         return {"ok": False, "refused": refused, "written": [], "error": (
             "not a network setting: " + ", ".join(refused) + ". A host-wide or undeclared key "
             "is set once for the installation, never per list")}
+    try:
+        taken = refuse_taken(list_name, updates)
+    except SwitchRefused as exc:
+        taken = str(exc)
+    if taken:
+        return {"ok": False, "error": taken, "written": [], "refused": []}
     if is_default(list_name):
         return write_settings(updates, actor=actor)
     candidate = dict(DEFAULTS)
@@ -421,7 +560,16 @@ def plan_group(list_name: str, group: str, choice: str, values: dict = None,
             f"not {label}'s settings: {', '.join(stray)}" if stray else f"invalid: {why}")})
     elif values:
         gates.append({"gate": "valid values", "state": "pass", "why": "checked by the schema"})
-    moves = before["choice"] != choice or any(r["today"] != r["after"] or
+    if choice == OWN and group in OWNED_GROUPS:
+        # C1181: one owning network per service, judged on the URL entered (the confirm card's
+        # values reach here at apply, which plans again).
+        try:
+            taken = refuse_taken(list_name, {k: v for k, v in values.items() if v})
+        except SwitchRefused as exc:
+            taken = str(exc)
+        if taken:
+            gates.append({"gate": "one owner", "state": "fail", "why": taken})
+    moves =before["choice"] != choice or any(r["today"] != r["after"] or
                                               r["today_origin"] != r["after_origin"]
                                               for r in rows)
     if entering and choice == OWN and before["choice"] == OWN:

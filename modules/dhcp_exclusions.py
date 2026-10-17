@@ -49,8 +49,15 @@ class Refused(Exception):
 
 
 def _repo(list_name: str) -> str:
-    from modules.config import get_list_data_dir
-    return os.path.join(get_list_data_dir(list_name), "config_repo")
+    """The Kea owner's repository (C1181): where *list_name*'s Kea's exclusions are recorded,
+    and so where they are read from, on the owner's page and on every page inheriting it."""
+    from modules import dhcp_reservations as D
+    from modules.list_settings import ListSettingsUnreadable
+
+    try:
+        return D.record_repo(list_name)
+    except ListSettingsUnreadable as exc:
+        raise Refused(f"whose Kea this is could not be read: {exc}") from None
 
 
 def read_committed(list_name: str) -> dict:
@@ -300,20 +307,28 @@ def record_commit(list_name: str, p: dict, *, actor: str, reason: str) -> dict:
     from modules.filestore import write_atomic
     from modules.nsot import repo as R
 
+    from modules import dhcp_reservations as D
+    from modules.config import get_list_data_dir
+    from modules.list_settings import ListSettingsUnreadable
+
     doc = json.loads(json.dumps(p["record"]))
     for e in doc["exclusions"]:
         if not e.get("by"):
             e["by"] = actor
-    repo = _repo(list_name)
+    try:
+        owner, extra = D.record_home(list_name)          # C1181: the Kea owner's repository
+    except ListSettingsUnreadable as exc:
+        return {"ok": False, "error": f"whose Kea this is could not be read: {exc}"}
+    repo = os.path.join(get_list_data_dir(owner), "config_repo")
     with R.repo_lock(repo):
         target = os.path.join(repo, RECORD)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         write_atomic(target, "# DHCP exclusions and each subnet's pool as set (C529, board D); "
                              "Kea is given the pieces.\n" + yaml.safe_dump(doc, sort_keys=False))
-        S.write_subnets_record(list_name, repo)
-        return R._commit_paths(list_name, [RECORD, S.RECORD],                    # noqa: SLF001
+        S.write_subnets_record(owner, repo)
+        return R._commit_paths(owner, [RECORD, S.RECORD],                        # noqa: SLF001
                                f"{p.get('subject')}\n\n{reason.strip()}",
-                               [f"Actor: {actor}"], "dhcp")
+                               [f"Actor: {actor}", *extra], "dhcp")
 
 
 def conflicts(value: dict, record: dict) -> list:

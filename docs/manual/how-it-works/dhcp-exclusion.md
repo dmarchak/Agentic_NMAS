@@ -15,7 +15,8 @@ You set a subnet's pool as **one range** (on DHCP › Subnets). Kea is given the
 range the exclusions leave: excluding `10.10.10.120 - 10.10.10.129` from the pool
 `10.10.10.100 - 10.10.10.199` gives Kea `10.10.10.100 - 10.10.10.119` and
 `10.10.10.130 - 10.10.10.199`. The range as set and the exclusions are Mercury's record in the
-network's repository (`dhcp/exclusions.yml`, beside `dhcp/subnets.yml`), read as committed, so a
+repository of the network that owns this Kea ([Whose Kea](dhcp#whose-kea);
+`dhcp/exclusions.yml`, beside `dhcp/subnets.yml`), read as committed, so a
 person edits the range and the reason and never the arithmetic. An exclusion outside the pool
 today is kept: it stays out if the pool grows. A reservation for an excluded address is allowed,
 and said: a fixed address kept out of the pool is the usual way to give one out.

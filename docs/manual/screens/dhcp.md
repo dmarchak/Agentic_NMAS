@@ -12,6 +12,22 @@ Seeing which address a host holds and why: a lease is a fact about a client; a r
 a statement of intent. Onboarding by DHCP or ZTP writes a reservation; see
 [Onboard a device](onboard).
 
+## Whose Kea {#whose-kea}
+
+A Kea server has one owning network: the network where its connection is set in
+[Settings](settings), never a network that inherits it. A network that inherits Kea shows
+Default's Kea, and Default owns it. Every change to a Kea, a reservation, a subnet or an
+exclusion, is recorded in its owner's repository and published with the owner's remote, so its
+history stays in one place whichever network you look from, and deleting a network that only
+inherited Kea takes none of it away.
+
+Changes are made on the owner's DHCP page. On a network that inherits Kea, the page says so
+under its heading ("Branch uses Default's Kea"), links to the owner's DHCP page, and draws Kea's
+subnets, leases, reservations and exclusions with no Add, Edit, Remove or Exclude. Preview and
+Confirm reached there by address are refused, naming both networks ("Branch uses Default's Kea …: a change to it is made on
+Default's DHCP page"), and nothing is written. Settings refuses a second network setting the
+same Kea as its own, naming the network that already has it.
+
 ## The read {#read}
 
 Under the counts, the page says which of Kea's services were read (`dhcp4` for IPv4, `dhcp6` for

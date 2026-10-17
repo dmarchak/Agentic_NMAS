@@ -79,8 +79,9 @@ interleaving:
 5. `read-back`: Kea's configuration is read again: exactly this subnet changed (or, for an add,
    is there; for a removal, is gone), and every other subnet and setting as before. Anything
    else puts the previous file back, reloads, and says what moved.
-6. `record`: `dhcp/subnets.yml` in the network's repository (every subnet as Mercury's files
-   hold them) is committed as you, with your reason in its body. It shows on History.
+6. `record`: `dhcp/subnets.yml` in the repository of the network that owns this Kea
+   ([Whose Kea](dhcp#whose-kea); every subnet as Mercury's files hold them) is committed as
+   you, with your reason in its body. It shows on History.
 
 ## When it goes wrong
 
