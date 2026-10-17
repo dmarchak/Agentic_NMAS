@@ -200,20 +200,9 @@ class TestTheTagCarriesTheClaim:
         assert old["claim"] == gs.CONFIGURED and "before baselines recorded" in old["claim_detail"]
 
 
-class TestTheBaselineRowDrawsTheClaim:
-    def test_the_shipped_badge(self):
-        import dukpy
-
-        from tests.payload_render import lift, shipped
-
-        src = shipped("partials__golden_repo.1.js")
-        fn = lift(src, "_gEsc") + "\n" + lift(src, "_gBaselineClaim")
-        strong = dukpy.evaljs(fn + "\n_gBaselineClaim(" + json.dumps(
-            {"claim": gs.WORKING, "claim_detail": gs.WORKING}) + ")")
-        weak = dukpy.evaljs(fn + "\n_gBaselineClaim(" + json.dumps(
-            {"claim": gs.CONFIGURED, "claim_detail": "configuration only"}) + ")")
-        assert 'data-baseline-claim="working"' in strong and "bg-success" in strong
-        assert 'data-baseline-claim="configured"' in weak and "bg-success" not in weak
+# The Baselines panel's claim badge left with the panel at 7.8 (2026-10-17, P7-21): History ›
+# Baselines draws each claim (tests/test_history_v2.py,
+# `test_the_baselines_tab_draws_each_claim_never_the_stronger`).
 
 
 class TestTheCli:

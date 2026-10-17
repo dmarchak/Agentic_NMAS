@@ -7,7 +7,8 @@ AND staged; the Git tab's manual commit then committed it under whatever
 message was typed ("tidy up"), `Source: manual`, with no Intent-Match
 trailer, no Device-Id, no tag and no push. The manual commit is removed (never
 used on the host, in 100 commits); each writer undoes what it wrote when its
-commit fails; the status bar names anything left uncommitted and what to do.
+commit fails; History's header names anything left uncommitted (today's Git tab's
+status bar did, with what to do, until it left at 7.8, 2026-10-17).
 """
 
 import ast
@@ -15,7 +16,6 @@ import json
 import os
 import subprocess
 
-import dukpy
 import pytest
 
 from modules.nsot import repo as R
@@ -113,75 +113,62 @@ class TestTheManualCommitIsGone:
         rules = {(r.rule, m) for r in app_module.app.url_map.iter_rules()
                  for m in r.methods}
         assert ("/git/commit", "POST") not in rules
-        assert any(rule.startswith("/git/commit/") for rule, _m in rules), (
-            "the commit DIFF view stays; a floor that the scan saw the git routes")
+        # The commit view stays, on v2 (today's /git/commit/<sha> left with the Git tab at 7.8,
+        # 2026-10-17): a floor that the scan saw the routes.
+        assert any(rule.startswith("/v2/history/commit/") for rule, _m in rules)
 
     def test_no_page_offers_it(self):
-        from tests.js_source import read_shipped
-        page = read_shipped("templates/index.html")
-        assert "gitCommitCard" not in page and "gitDoCommit" not in page
-        # The request itself, not only the names around it: the first removal
-        # cut the function at an inner `};` and left its fetch behind, which
-        # the name checks passed and the page's parse check caught.
-        assert "'/git/commit'" not in page and '"/git/commit"' not in page
-        assert "_renderGitStatus" in page
+        """No template of either interface asks for a manual commit; History's header is where
+        a path left uncommitted is said (today's Git tab's status bar said it until 7.8)."""
+        from tests.source_index import tracked as _tracked
+        pages = [p for p in _tracked("templates", suffix=".html")]
+        assert len(pages) > 50 and any(p.endswith("_history_remote.html") for p in pages)
+        for path in pages:
+            page = open(os.path.join(ROOT, path) if not os.path.isabs(path) else path,
+                        encoding="utf-8").read()
+            assert "gitDoCommit" not in page and "'/git/commit'" not in page, path
+            assert '"/git/commit"' not in page, path
 
 
 class TestTheStatusNamesWhatIsLeft:
-    def test_an_uncommitted_golden_is_reported_with_its_remedy(self, lab):
-        from modules import config_git
+    """History's header (`routes/v2._history_remote`), driven on the real repository: what is
+    left uncommitted is named, and the remote's sentence is never "in sync" beside it. Today's
+    Git tab's status bar named each path with what it meant until it left at 7.8 (2026-10-17);
+    the header names the paths, not yet what each means (the removal's report)."""
+
+    @staticmethod
+    def _header(lab, monkeypatch):
+        import types
+
+        import app as A
+        from modules.nsot import remote as NR
+        from modules.readers import remote_publication as RP
+        from routes.v2 import _history_remote
+
+        monkeypatch.setattr(RP, "status_for", lambda name: {"state": "in_sync",
+                                                             "remote": "a/b"})
+        monkeypatch.setattr(NR, "config_or_refusal", lambda name: ({}, ""))
+        with A.app.test_request_context("/v2/history"):
+            return _history_remote(types.SimpleNamespace(name="lab", repo_dir=lab))
+
+    def test_an_uncommitted_golden_is_named(self, lab, monkeypatch):
         path = _seed(lab)
         with open(path, "a") as fh:
             fh.write(" edited on the host\n")
-        st = config_git.get_repo_status("lab")
-        assert st["ok"] and st["uncommitted"], st
-        row = st["uncommitted"][0]
-        assert row["path"] == "golden/r1.cfg"
-        assert "Capture the device" in row["means"]
+        h = self._header(lab, monkeypatch)
+        assert h["dirty"] == 1 and h["dirty_paths"] == ["golden/r1.cfg"], h
+        assert h["d"]["state"] == "uncommitted" and h["d"]["level"] == "warning", h["d"]
 
-    def test_clean_is_clean(self, lab):
-        from modules import config_git
+    def test_clean_is_clean(self, lab, monkeypatch):
         _seed(lab)
-        assert config_git.get_repo_status("lab")["uncommitted"] == []
+        h = self._header(lab, monkeypatch)
+        assert h["dirty"] == 0 and h["dirty_paths"] == [] and h["d"]["state"] == "in_sync"
 
-    def _render(self, payload):
-        from tests.js_source import read_shipped
-        from tests.payload_render import lift
-        page = read_shipped("templates/index.html")
-        js = """
-        var els = {gitStatusBar: {className: '', classList: {remove: function () {}}},
-                   gitStatusText: {textContent: '', innerHTML: ''}};
-        var document = {getElementById: function (id) { return els[id] || null; }};
-        """ + lift(page, "escHtml") + "\n" + lift(page, "gitLevel") + "\n" + lift(page, "_renderGitStatus") + f"""
-        _renderGitStatus({json.dumps(payload)});
-        [els.gitStatusBar.className, els.gitStatusText.innerHTML || els.gitStatusText.textContent];
-        """
-        return dukpy.evaljs(js)
-
-    def test_the_shipped_bar_draws_each_path_and_what_it_means(self):
-        cls, html = self._render({"initialised": True, "ok": True, "last_commit": "abc",
-                                  "uncommitted": [{"path": "golden/r1.cfg", "state": "M",
-                                                   "means": "Capture the device"}]})
-        assert "alert-warning" in cls
-        assert "golden/r1.cfg" in html and "Capture the device" in html
-        assert "Nothing on this page commits them" in html
-
-    def test_the_bar_never_says_clean_over_an_uncommitted_path(self):
-        _cls, html = self._render({"initialised": True, "ok": True,
-                                   "uncommitted": [{"path": "golden/r1.cfg", "state": "M",
-                                                    "means": "x"}]})
-        assert "committed." not in html.split("uncommitted")[0]
-        # Green needs the remote too since C223: committed AND pushed.
-        cls, html = self._render({"initialised": True, "ok": True, "last_commit": "abc",
-                                  "uncommitted": [], "publication": {
-                                      "level": "success", "state": "in_sync",
-                                      "clause": "and pushed to a/b", "detail": ""}})
-        assert "alert-success" in cls and "Everything is committed" in html
-
-    def test_a_status_that_could_not_be_read_says_so(self):
-        cls, html = self._render({"initialised": True, "ok": False,
-                                  "error": "could not read the repository's status: x"})
-        assert "alert-danger" in cls and "could not read" in html
+    def test_a_status_that_could_not_be_read_says_so(self, lab, monkeypatch):
+        _seed(lab)
+        monkeypatch.setattr(R, "git", lambda repo, *a, **k: (128, "", "fatal: x"))
+        h = self._header(lab, monkeypatch)
+        assert h["dirty"] is None and "fatal: x" in h["unreadable"], h
 
 
 class TestTheSourceIsRecordedAsGiven:

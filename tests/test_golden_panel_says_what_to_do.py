@@ -5,14 +5,14 @@
    now carries its state and ONE action, decided from the record: a retired
    device (a `Retired-Device:` commit) has residue to delete; a device in the
    inventory is captured; anything else is neither, and is not called safe.
-2. The Baselines table collapses to the newest row that can be re-applied,
-   the rest behind a toggle, never cut (it stopped at ten, silently, and the
-   host has twelve).
-3. Each row says what its commit recorded it EARNED, and the twelve that
+2. Today's Baselines table collapsed to the newest row that could be re-applied,
+   never cut (it had stopped at ten, silently, and the host has twelve). It left
+   at 7.8 (2026-10-17): History › Baselines draws every baseline the
+   `baseline-usability` reader judged, one line each.
+3. Each baseline says what its commit recorded it EARNED, and the twelve that
    predate that say "not recorded", never implying fine. A WITHDRAWN baseline
    (the newest on the host held r2 broken by hand for C70) is refused by the
-   restore wherever the ref is read, drawn with its reason and the commands
-   that delete it, and drawn as deleted once its tag is gone.
+   restore wherever the ref is read, and judged with its reason.
 """
 
 import json
@@ -122,49 +122,53 @@ def lab(tmp_path, monkeypatch):
 
 
 def _baselines(lab):
-    d = lab["client"].get("/golden/baselines").get_json()
-    assert d["ok"], d
-    return {b["tag"]: b for b in d["baselines"]}
+    """Each baseline as History › Baselines draws it: the `baseline-usability` reader's
+    judgement (today's /golden/baselines, which the Baselines panel read, left at 7.8)."""
+    from modules.readers import baseline_usability as BU
+
+    v = BU.read(lists=[LIST], previous={})["lists"][LIST]
+    assert "error" not in v, v
+    return {b["tag"]: b for b in v["baselines"]}
 
 
 class TestEachBaselineSaysWhatItEarned:
     def test_the_decision_is_read_from_its_commit(self, lab):
         b = _baselines(lab)
         assert b["baseline/20260926T000000Z"]["decision"] == "earned"
-        assert b["baseline/20260926T000000Z"]["intent_match"] == "yes (2 of 2)"
         old = b["baseline/20260921T000000Z"]
         assert old["decision"] == "unrecorded"
         assert "nothing says every device was at its committed intent" in old["decision_detail"]
 
     def test_every_baseline_is_carried_none_cut(self, lab):
-        assert len(_baselines(lab)) == 4, "three tags and one deletion"
+        assert set(_baselines(lab)) == {"baseline/20260921T000000Z", "baseline/20260926T000000Z",
+                                        "baseline/20260927T000000Z"}, "three tags, none cut"
 
 
 class TestAWithdrawnBaseline:
-    def test_it_is_drawn_withdrawn_with_the_commands_that_delete_it(self, lab):
+    def test_it_is_judged_withdrawn_with_its_reason_and_never_usable(self, lab):
         w = _baselines(lab)["baseline/20260927T000000Z"]
-        assert w["withdrawn"]["why"] == "it records r2 broken by hand" and not w["deleted"]
-        (cmd,) = w["delete_commands"]
-        assert "tag -d baseline/20260927T000000Z && " in cmd
-        assert "push origin --delete refs/tags/baseline/20260927T000000Z" in cmd
+        assert w["withdrawn"] and w["withdrawn_why"] == "it records r2 broken by hand"
+        assert not w["usable"]
 
-    def test_a_deleted_one_is_drawn_where_it_was(self, lab):
-        d = _baselines(lab)["baseline/20260922T000000Z"]
-        assert d["deleted"] and d["commit"] == lab["shas"]["deleted"]
+    def test_the_restore_refuses_it_wherever_the_ref_is_read_and_sends_nothing(self, lab):
+        """THE restore plan (every preview: a device's Restore from…, History's Re-apply…) and
+        the apply's own targets (`restore.build_targets`, which the restore job runs) each refuse
+        it by name. Today's two routes over them left at 7.8 (2026-10-17)."""
+        from modules.nsot.restore import WithdrawnBaseline, build_targets
+        from routes.golden import restore_plan
 
-    @pytest.mark.parametrize("route", ["/golden/restore/preview", "/golden/restore/apply"])
-    def test_both_restore_routes_refuse_it_and_send_nothing(self, lab, route):
-        r = lab["client"].post(route, json={"ref": "baseline/20260927T000000Z",
-                                            "devices": ["r2"], "confirmations": {"r2": "x"}})
-        assert r.status_code == 409, r.get_data(as_text=True)[:300]
-        out = r.get_json()
-        assert out["withdrawn"]["tag"] == "baseline/20260927T000000Z"
-        assert "nothing was sent" in out["error"]
+        for call in (lambda: restore_plan(LIST, "baseline/20260927T000000Z", ["r2"]),
+                     lambda: build_targets(LIST, "baseline/20260927T000000Z", ["r2"])):
+            with pytest.raises(WithdrawnBaseline) as got:
+                call()
+            assert got.value.record["tag"] == "baseline/20260927T000000Z"
+            assert "nothing was sent" in str(got.value)
 
     def test_the_control_a_current_baseline_is_not_refused(self, lab):
-        r = lab["client"].post("/golden/restore/preview",
-                               json={"ref": "baseline/20260926T000000Z", "devices": ["r2"]})
-        assert r.status_code != 409, r.get_data(as_text=True)[:300]
+        from routes.golden import restore_plan
+
+        plan = restore_plan(LIST, "baseline/20260926T000000Z", ["r2"])   # raises nothing
+        assert plan["preview"]["what"], plan
 
     def test_the_device_chooser_does_not_offer_it(self, lab):
         refs = [p["ref"] for p in R.device_restore_points(lab["repo"], "r2")]
@@ -219,73 +223,10 @@ class TestTheLegacySurvivalCheck:
         assert r9["state"] == "lost" and "never held golden/r9.cfg" in r9["words"]
 
 
-def _js(fn_names):
-    from tests.payload_render import lift, shipped
-    src = shipped("partials__golden_repo.1.js")
-    return "\n".join(lift(src, n) for n in fn_names)
-
-
-FNS = ("_gEsc", "_gWhen", "_gBaselineClaim", "_gBaselineCoverage", "_gCredWarning",
-       "_gBaselineDecision", "_gBaselineRow", "_gBaselineUsable", "_gToggle",
-       "_gBaselinesHtml")
-
-
-class TestTheShippedTable:
-    def _draw(self, lab):
-        import dukpy
-        payload = lab["client"].get("/golden/baselines").get_json()["baselines"]
-        return dukpy.evaljs(_js(FNS) + "\n_gBaselinesHtml(" + json.dumps(payload) + ")")
-
-    def test_it_collapses_to_the_newest_usable_row_and_hides_the_rest(self, lab):
-        html = self._draw(lab)
-        shown, older = html.split("data-baselines-older", 1)
-        # The withdrawn newest row is SHOWN beside the one that would be used.
-        assert "baseline/20260927T000000Z" in shown and "baseline/20260926T000000Z" in shown
-        assert "baseline/20260921T000000Z" in older and "baseline/20260922T000000Z" in older
-        assert "Show 1 older baseline(s)" in html and "Show withdrawn (1)" in html
-        # The deleted row sits behind the withdrawn toggle, not among the older.
-        withdrawn = html[html.index("data-baselines-withdrawn>"):]
-        assert "baseline/20260922T000000Z" in withdrawn
-        assert "baseline/20260922T000000Z" not in html[:html.index("data-baselines-withdrawn>")]
-
-    def test_the_rows_say_what_they_are(self, lab):
-        html = self._draw(lab)
-        assert 'data-baseline-row="withdrawn"' in html and "not offered for re-apply" in html
-        assert "push origin --delete" in html
-        assert 'data-baseline-row="deleted"' in html and "stays in history" in html
-        assert 'data-baseline-decision="earned"' in html
-        assert 'data-baseline-decision="unrecorded"' in html and "decision not recorded" in html
-        # The credential column stays on every re-applicable row.
-        assert html.count("credentials current") == 2
-        # A withdrawn row offers no re-apply.
-        withdrawn = html[html.index('data-baseline-row="withdrawn"'):]
-        withdrawn = withdrawn[:withdrawn.index("</tr>")]
-        assert "confirmBaselineRestore" not in withdrawn
-
-    def test_a_withdrawn_row_is_one_line_with_its_reasoning_on_hover(self, lab):
-        html = self._draw(lab)
-        row = html[html.index('data-baseline-row="withdrawn"'):]
-        row = row[:row.index("</tr>")]
-        visible = row.split('title="Withdrawn by the operator: it records r2 broken by hand"', 1)[1]
-        assert "withdrawn</span> 2026-09-28 (C70)" in visible
-        assert "it records r2 broken by hand" not in visible, "the reasoning is on hover only"
-        assert "loses only the restore point" in row and "<details" in row
-
-    def test_when_none_can_be_reapplied_it_is_said_once(self, lab):
-        import dukpy
-        payload = lab["client"].get("/golden/baselines").get_json()["baselines"]
-        for b in payload:
-            if not b.get("deleted") and not b.get("withdrawn"):
-                b["credential_stale"] = ["s1"]
-        html = dukpy.evaljs(_js(FNS) + "\n_gBaselinesHtml(" + json.dumps(payload) + ")")
-        assert html.count("No stored baseline can be re-applied") == 1
-        head = html[:html.index("data-baselines-older")]
-        # The newest kept row is shown, with the withdrawn row above it.
-        assert "baseline/20260926T000000Z" in head and "baseline/20260921T000000Z" not in head
-
-    def test_the_panel_no_longer_cuts_at_ten(self):
-        from tests.payload_render import shipped
-        assert ".slice(0, 10)" not in shipped("partials__golden_repo.3.js")
+# Today's Baselines panel and its renderer (the collapsed table, the withdrawn and deleted rows,
+# "said once") left at 7.8 (2026-10-17, P7-21), with their tests. History › Baselines draws the
+# reader's rows, one line each with why under it (tests/test_history_v2.py), and Needs
+# attention says "no stored baseline can be re-applied" once (below).
 
 
 class TestNoUsableBaselineIsANeedsAttentionRow:

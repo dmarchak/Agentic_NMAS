@@ -211,9 +211,10 @@ def age_words(seconds) -> str:
 
 
 def describe(pub: dict, now: float = None, uncommitted: int = 0) -> dict:
-    """The ONE sentence about publication, and its level, for the Git tab's
-    status line, the Remote card and Needs attention (C223). Computed here, so
-    no screen composes its own and none decides a colour.
+    """The ONE sentence about publication, and its level, for History's header
+    and Needs attention (C223; today's Git tab and Remote card drew it until
+    7.8). Computed here, so no screen composes its own and none decides a
+    colour.
 
     ``{"level", "state", "clause", "detail"}``: *clause* follows "Everything
     is committed ·"; *detail* is the evidence (both heads, the read's age).
@@ -276,7 +277,7 @@ def _describe(pub: dict, now: float = None) -> dict:
             why = ("publication was acknowledged since, so Push now sends them"
                    if pub.get("acknowledged_since_hold") else
                    f"{held.get('reason') or 'what would be published grew'}; a person "
-                   "acknowledges publication on the Remote card, then pushes")
+                   "acknowledges publication in History's Remote set-up…, then pushes")
             return {"level": "danger", "state": "held",
                     "clause": f"{head_clause}: auto-push is HELD, {why}" + record,
                     "detail": detail}

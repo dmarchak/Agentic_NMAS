@@ -101,9 +101,11 @@ class TestEveryRenderHelperIsCalled:
         # pattern has drifted away from the thing it was built for.
         # (nbCascadeHtml, the third, was removed in 7.1: the cascade is drawn
         # by the preview component from the server's adapter now; driftDetailHtml
-        # left with today's drift panel at 7.8, 2026-10-15.)
-        for known in ("_gBaselineCoverage", "pendingBannerHtml"):
+        # left with today's drift panel at 7.8, 2026-10-15; _gBaselineCoverage, the fourth, with
+        # today's Baselines panel at 7.8, 2026-10-17: its NAME is still pinned to the pattern.)
+        for known in ("pendingBannerHtml", "templateRowHtml"):
             assert known in helpers, f"{known} is no longer recognised"
+        assert _HELPER.match("_gBaselineCoverage") and _HELPER.match("nbCascadeHtml")
 
     def test_none_is_defined_and_never_used(self):
         helpers = declared_helpers()
@@ -131,25 +133,8 @@ class TestEveryRenderHelperIsCalled:
         assert uncalled({"sharedHtml": "a.html"}, corpus) == []
 
 
-class TestTheOneThatMotivatedIt:
-    """`_gBaselineCoverage`, pinned by name as well as by the sweep.
+# TestTheOneThatMotivatedIt pinned `_gBaselineCoverage`'s call in today's Baselines row, and the
+# row's bare count gone; both left with the panel at 7.8 (2026-10-17, P7-21). The sweep above
+# keeps the class; History's Re-apply… states a baseline's coverage (tests/test_reapply_v2.py).
 
-    The sweep is the general answer; this is the specific one, because a
-    pattern-based scan can stop matching a name without anybody noticing and
-    the general test would then pass by finding nothing.
-    """
 
-    def test_it_is_called_from_the_baseline_row(self):
-        page = read_shipped(os.path.join(TEMPLATES, "partials", "golden_repo.html"))
-        assert "${_gBaselineCoverage(b)}" in page
-
-    def test_and_the_bare_count_is_gone_from_that_row(self):
-        """The row rendered `${b.device_count} device(s)` directly. If that
-        string returns to the baselines table, the call site was replaced
-        rather than added to."""
-        page = read_shipped(os.path.join(TEMPLATES, "partials", "golden_repo.html"))
-        # The row is ONE function since the table collapses (2026-09-28).
-        block = page[page.index("function _gBaselineRow"):]
-        block = block[:block.index("function _gBaselinesHtml")]
-        assert "device_count" not in block, \
-            "the baseline row renders the count directly again"

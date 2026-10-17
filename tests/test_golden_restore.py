@@ -157,24 +157,20 @@ class TestTheInventoryIsThePopulation:
         cov = restore.coverage("Lab", ["R1", "R9"], skipped)
         assert cov["partial"] is False and cov["denominator"] == 2
 
-    def test_the_route_says_n_of_the_inventory_and_names_the_device(self, lab, monkeypatch):
+    def test_the_plan_says_n_of_the_inventory_and_names_the_device(self, lab, monkeypatch):
         """What the operator READS. Control for C23: this is the sentence that
-        read '3 of 3' while the inventory held 4."""
-        import flask
-
+        read '3 of 3' while the inventory held 4. THE restore plan, which every preview
+        runs (today's /golden/restore/preview did until it left at 7.8, 2026-10-17)."""
         import routes.golden as golden
 
         monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
         monkeypatch.setattr("modules.device.load_saved_devices", lambda p=None: DEVICES + [R9])
         monkeypatch.setattr("routes.deploy._captured_config", lambda r, h: "hostname x\n")
-        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
         monkeypatch.setattr(golden, "_intent_preview", lambda ln, t: {"action": "none"})
         monkeypatch.setattr("modules.nsot.deploy.prepare_restore",
                             lambda target: {"config": target.target_config})
-        app = flask.Flask(__name__)
-        app.register_blueprint(golden.bp)
-        body = app.test_client().post("/golden/restore/preview", json={
-            "ref": lab["baseline"], "un_onboard": ["R1", "R2", "R7"]}).get_json()
+        body = golden.restore_plan("Lab", lab["baseline"], None,
+                                   un_onboard=["R1", "R2", "R7"])
         assert body["ok"], body
         assert "of 4 device(s) in this list" in body["summary"], body["summary"]
         assert "PARTIAL" in body["summary"] and "R9" in body["summary"]
@@ -531,87 +527,17 @@ class TestTheQueuedDiffNeverReachesADevice:
                             lambda *a: [dict(self.ENTRY, status="approved")])
         assert approval_queue.mark_done("q1")["ok"] is False
 
-    def test_the_restore_closes_the_item_only_on_success(self, monkeypatch):
-        """An item closed on a failed push is the queue claiming work that
-        did not happen."""
-        import flask
-
-        import routes.golden as golden
-        from modules.nsot.deploy import DEPLOYED
-
-        closed = {}
-
-        def _mark_done(entry_id, note="", actor="", list_name=""):
-            closed["id"] = entry_id
-            closed["list"] = list_name          # its own network's queue (C487)
-            return {"ok": True}
-        monkeypatch.setattr("modules.approval_queue.mark_done", _mark_done)
-        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
-        monkeypatch.setattr("modules.nsot.restore.build_targets",
-                            lambda *a, **k: ([object()], []))
-
-        app = flask.Flask(__name__)
-        app.register_blueprint(golden.bp)
-
-        # Failure first: nothing may be closed.
-        monkeypatch.setattr("routes.deploy.run_targets",
-                            lambda *a, **k: {"results": [
-                                {"device": "R1", "outcome": "failed"}]})
-        body = app.test_client().post("/golden/restore/apply", json={
-            "ref": "HEAD", "confirmations": {"R1": "h"},
-            "approval_id": "q1"}).get_json()
-        assert body["approval_closed"] is False
-        assert "no device completed" in body["approval_note"]
-        assert closed == {}
-
-        # Then success.
-        monkeypatch.setattr("routes.deploy.run_targets",
-                            lambda *a, **k: {"results": [
-                                {"device": "R1", "outcome": DEPLOYED}]})
-        body = app.test_client().post("/golden/restore/apply", json={
-            "ref": "HEAD", "confirmations": {"R1": "h"},
-            "approval_id": "q1"}).get_json()
-        assert body["approval_closed"] is True
-        assert closed["id"] == "q1" and closed["list"] == "Lab"
-
-    def test_no_approval_id_means_no_queue_interaction(self, monkeypatch):
-        """An ordinary restore must not touch the queue."""
-        import flask
-
-        import routes.golden as golden
-        from modules.nsot.deploy import DEPLOYED
-
-        def _boom(*a, **k):
-            raise AssertionError("mark_done called without an approval_id")
-        monkeypatch.setattr("modules.approval_queue.mark_done", _boom)
-        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
-        # build_targets is stubbed with a made-up list, so coverage() is too: it
-        # reads that list's inventory, and resolving a list that does not exist
-        # creates it (get_list_data_dir). Coverage is tested on a real repo in
-        # TestTheInventoryIsThePopulation.
-        monkeypatch.setattr("modules.nsot.restore.coverage",
-                            lambda ln, devices=None, skipped=None: {
-                                "inventory_size": 0, "partial": False,
-                                "denominator": 0, "scope_words": "in this list"})
-        monkeypatch.setattr("modules.nsot.restore.build_targets",
-                            lambda *a, **k: ([object()], []))
-        monkeypatch.setattr("routes.deploy.run_targets",
-                            lambda *a, **k: {"results": [
-                                {"device": "R1", "outcome": DEPLOYED}]})
-
-        app = flask.Flask(__name__)
-        app.register_blueprint(golden.bp)
-        body = app.test_client().post("/golden/restore/apply", json={
-            "ref": "HEAD", "confirmations": {"R1": "h"}}).get_json()
-        assert "approval_closed" not in body
+    # Today's re-apply route closed a handed-off item only on success (and touched no queue
+    # without an approval id); the hand-off left with the AI family (D15) and the route at 7.8
+    # (2026-10-17, P7-21). A capture still closes one (`golden._close_handed_off`).
 
 
 class TestTheHandoffScopesToOneDevice:
     """Approving one device's item must not preview a fleet-wide re-apply."""
 
     def test_the_preview_honours_the_devices_list(self, monkeypatch):
-        import flask
-
+        """THE restore plan, which every preview runs (today's /golden/restore/preview did until
+        it left at 7.8, 2026-10-17)."""
         import routes.golden as golden
 
         seen = {}
@@ -621,7 +547,6 @@ class TestTheHandoffScopesToOneDevice:
             seen["devices"] = devices
             return [], []
 
-        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
         # build_targets is stubbed with a made-up list, so coverage() is too: it
         # reads that list's inventory, and resolving a list that does not exist
         # creates it (get_list_data_dir). Coverage is tested on a real repo in
@@ -632,16 +557,13 @@ class TestTheHandoffScopesToOneDevice:
                                 "denominator": 0, "scope_words": "in this list"})
         monkeypatch.setattr("modules.nsot.restore.build_targets", _build)
 
-        app = flask.Flask(__name__)
-        app.register_blueprint(golden.bp)
-        body = app.test_client().post("/golden/restore/preview", json={
-            "ref": "HEAD", "devices": ["R1"],
-            "advisory_diff": "--- golden\n+++ running\n-a\n+b\n",
-            "approval_id": "q1"}).get_json()
+        body = golden.restore_plan("Lab", "HEAD", ["R1"],
+                                   advisory_diff="--- golden\n+++ running\n-a\n+b\n",
+                                   approval_id="q1")
 
         assert seen["ref"] == "HEAD"
         assert seen["devices"] == ["R1"]
-        # Echoed for the confirm dialog, never an input to anything.
+        # Echoed, never an input to anything.
         assert body["advisory_diff"].startswith("--- golden")
         assert body["approval_id"] == "q1"
 
@@ -651,11 +573,8 @@ class TestTheHandoffScopesToOneDevice:
 
         import routes.golden as golden
 
-        # The route hands it to THE restore plan (`restore_plan`, shared with the v2 device
-        # page), and the only thing done with it there is echoing it back.
-        source = inspect.getsource(golden.restore_preview)
-        uses = [l.strip() for l in source.splitlines() if "advisory_diff" in l]
-        assert uses == ['advisory_diff=data.get("advisory_diff") or "",'], uses
+        # THE restore plan (`restore_plan`, the v2 device page's and History's Re-apply's), and
+        # the only thing done with it there is echoing it back.
         source = inspect.getsource(golden.restore_plan)
         uses = [l.strip() for l in source.splitlines() if "advisory_diff" in l]
         assert uses == ['authorise: dict = None, req=None, advisory_diff: str = "",',

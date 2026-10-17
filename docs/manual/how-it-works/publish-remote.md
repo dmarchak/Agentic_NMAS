@@ -101,7 +101,7 @@ while a push is held, or while the remote has no branch yet. It needs a signed-i
 1. **The push is checked**. Read: the remote record and the history scan. Sent: nothing.
    Recorded: nothing. It refuses, saying why, unless the write probe has passed and the
    acknowledgement still covers what would go out. A held push stays held until somebody
-   acknowledges on the Remote card.
+   acknowledges in [Remote set-up…](#setup).
 2. **The remote's refs are read**. Read: every ref the remote holds. Sent: nothing. Recorded:
    nothing.
 3. **The branch is pushed, with its tags**. Read: nothing. Sent: the commits, to the
@@ -114,7 +114,8 @@ while a push is held, or while the remote has no branch yet. It needs a signed-i
    Recorded: the reader's answer, which redraws the header.
 
 The button says **Pushed**, or **Not pushed** with the reason. Automatic pushing can then be
-turned on from the Remote card.
+turned on in [Remote set-up…](#auto-push), whose Last push says how it went (manual or auto)
+and what went out: the commit and its tags, or a tag only.
 
 ## Verify the remote {#verify}
 
@@ -137,7 +138,7 @@ verification. The button says **Verified: 4 of 4 checks passed**, or names each 
 failed with **To fix:** and what to do, the same words the write probe draws (a public
 repository, for example: "Make it private before pushing"). History's card keeps that answer
 under the remote line, so a redraw does not lose it. The write probe is not among these; it is
-on the Remote card.
+[Remote set-up…](#write-probe)'s.
 
 ## What the reader measures {#reader}
 
@@ -157,13 +158,13 @@ repository's HEAD with the remote's branch (`git ls-remote`, through the reposit
 - **could not ask**: the remote did not answer within 10 seconds, or the read failed, with the
   reason. This is never read as in sync.
 
-Its one sentence is what History's header, the Remote card and
-[Needs attention](needs-attention) all draw. Commits not pushed are a warning, and danger once
+Its one sentence is what History's header and
+[Needs attention](needs-attention) both draw. Commits not pushed are a warning, and danger once
 the oldest has waited ten minutes, or at once when the push is held. Remote ahead and
 diverged are danger. A remote record that cannot be read is named on every state, because
 the push refuses every commit of that list until the record is repaired. It is never read as
 "no remote": Verify, Push now and the acknowledgement refuse naming the file, History's header
-and the Remote card say it cannot be read, and the file is left as it is.
+and Remote set-up… say it cannot be read, and the file is left as it is.
 
 ## What it does not do {#not-done}
 
@@ -175,5 +176,3 @@ and the Remote card say it cannot be read, and the file is left as it is.
   or hold is recorded, and the screens say so.
 - It never pushes a list that has no remote of its own. There is no fallback to a shared
   address, so one network's history cannot land in another's repository.
-- History does not yet carry the acknowledgement, the write probe or the automatic-push
-  switch: those are on today's Remote card.

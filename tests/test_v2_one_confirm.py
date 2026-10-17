@@ -48,8 +48,9 @@ XDATA = re.compile(r'\bx-data="(\w+)"')
 #: population measured 53: today's NetBox tab's import, import-all and removal applies (each
 #: in it by its served preview in `operation_stages`) left at 7.8. 53 -> 52 the same day, the
 #: population measured 52: today's /run_command (gated confirm) left with today's device page
-#: (7.8, P7-22).
-POPULATION_FLOOR = 52
+#: (7.8, P7-22). 52 -> 51 the same day (P7-21): today's re-apply (`golden.restore_apply`, a
+#: confirm) left at 7.8.
+POPULATION_FLOOR = 51
 PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
@@ -79,7 +80,6 @@ BOUND_ON_THE_SERVER = {
 LEGACY_HOMES = {
     "deploy.apply": "device_v2.deploy_confirm",
     "golden.capture_apply": "device_v2.capture_confirm",
-    "golden.restore_apply": "device_v2.restore_confirm",
     "onboard.abandon": "onboard_v2.abandon",
     "onboard.create": "onboard_v2.create",
     "onboard.verify": "onboard_v2.verify",

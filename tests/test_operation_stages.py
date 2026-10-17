@@ -79,8 +79,9 @@ def test_the_gaps_only_shrink():
 
 
 def test_the_operations_that_change_a_device_have_every_stage(app):
-    """The deploy pipeline's three entry points, persist and rotate carry all five, no gap."""
-    for ep in ("deploy.apply", "golden.restore_apply", "v2.profile_apply_confirm",
+    """The deploy pipeline's entry points and rotate carry all five, no gap. A restore is the
+    v2 device page's (today's golden.restore_apply left at 7.8, 2026-10-17)."""
+    for ep in ("deploy.apply", "device_v2.restore_confirm", "v2.profile_apply_confirm",
                "rotate.apply"):
         assert not any(v.startswith(("MISSING", "n/a")) for v in S.STAGES[ep]), ep
 

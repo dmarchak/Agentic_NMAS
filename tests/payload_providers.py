@@ -154,20 +154,8 @@ def deploy_apply(mp):
     }))
 
 
-def restore_preview(mp):
-    """test_p3_restore_is_guarded's targets, with r1's ref also holding an SNMP
-    community the device lacks: C79's case, authorised by its masked line with
-    a reason, so `secret_readded` and the program's `secret` are REACHED."""
-    from tests.test_p3_restore_is_guarded import TARGET, _preview_for, _target
-
-    return _preview_for(
-        mp, [_target("r1", target_config=TARGET + "snmp-server community RESTORECOMM1 RO\n"),
-             _target("r2", target_config="")],
-        [{"hostname": "r9", "reason": "stale"}],
-        {"ref": "HEAD", "devices": ["r1", "r2"], "authorise": {"r1": [
-            {"line": "shutdown", "reason": "new interface, left down for now"},
-            {"line": "snmp-server community <redacted:snmp_community> RO",
-             "reason": "restoring the pre-rotation community on purpose"}]}})
+# The restore preview's, the golden panel's (GET /golden/baselines) and the restore points'
+# providers left at 7.8 (2026-10-17, P7-21) with their routes and the payload check's entries.
 
 
 def onboard_pending(mp, tmp_path):
@@ -239,18 +227,6 @@ def capture_preview_start(mp, tmp):
     return d
 
 
-def golden_panel(mp, tmp, path):
-    """The golden panel's reads against a repository with baselines in every
-    state and a legacy store holding a retired device and an unknown one."""
-    from tests.test_golden_panel_says_what_to_do import build_golden_panel_lab, rotate_r1
-
-    lab = build_golden_panel_lab(mp, tmp)
-    # r1 rotated after every baseline, so each carries a stale credential the
-    # restore's own guard refuses (C315: the lists were empty in every row).
-    rotate_r1(lab["repo"])
-    return _ok(lab["client"].get(path))
-
-
 def seed_preview(mp, tmp):
     """C148: r2's real golden with only onboarding's bootstrap committed as
     its intent, so the preview carries a whole document against it, and one
@@ -272,20 +248,6 @@ def seed_apply(mp, tmp):
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
     return _ok(lab["client"].post("/templatize/seed/apply",
                                   json={"list_name": LIST, "confirmations": {"r2": h}}))
-
-
-def restore_points(mp, tmp):
-    """7.1 step 5 (C80): r2's restore points, from a real repository holding
-    its onboarding golden, its own golden tag and a baseline earned by a
-    whole-fleet capture at intent. Not a hand-built list."""
-    from tests.test_capture import build_capture_lab, run_capture_preview
-
-    lab = build_capture_lab(mp, tmp)
-    d = _ok(run_capture_preview(lab["client"], {"devices": []}))
-    h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    _ok(lab["client"].post("/golden/capture/apply",
-                           json={"confirmations": {"r2": h}, "fleet": True}))
-    return _ok(lab["client"].get("/golden/restore_points/r2"))
 
 
 def capture_apply(mp, tmp):

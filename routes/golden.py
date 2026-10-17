@@ -104,116 +104,19 @@ def diff(hostname):
                     "changed": bool(lines)}), status
 
 
-@bp.route("/baselines", methods=["GET"])
-def baselines():
-    """Network-wide restore points."""
-    from modules.nsot.repo import devices_at, list_baselines
-
-    repo = _repo_for(_active_list())
-    try:
-        from modules.nsot.restore import baseline_credential_gaps
-
-        list_name = _active_list()
-        entries = list_baselines(repo)
-        # The population, read ONCE for all baselines.
-        from modules.device import load_saved_devices
-        from modules.config import get_list_data_dir
-        inventory = {d.get("hostname", "") for d in load_saved_devices(
-            os.path.join(get_list_data_dir(list_name), "devices.csv"))}
-
-        for entry in entries:
-            if entry.get("deleted"):
-                continue        # no tag to read: drawn from its record
-            if entry.get("withdrawn"):
-                # Both halves, local and the remote the tags are pushed to,
-                # chained so the second runs only if the first did. The
-                # person runs them: a write to the record and to the remote.
-                entry["delete_commands"] = [
-                    f"git -C {repo} tag -d {entry['tag']} && "
-                    f"git -C {repo} push origin --delete refs/tags/{entry['tag']}"]
-            devices = devices_at(repo, entry["tag"])
-            entry["device_count"] = len(devices)
-            # The scope chooser (C80) lists these, none ticked.
-            entry["devices"] = sorted(devices)
-            # PARTIAL RELATIVE TO TODAY'S FLEET, named rather than left to
-            # arithmetic. The count alone made an older baseline read "9"
-            # and a newer one "10" with nothing saying the first covers less
-            # than the network does now -- visible as a number, and a number
-            # is not a statement. A device onboarded after the tag has no
-            # golden at it, so re-applying leaves that device untouched:
-            # correct, and not what "restore the network" sounds like.
-            entry["inventory_size"] = len(inventory)
-            entry["missing_devices"] = sorted(inventory - set(devices))
-            entry["partial"] = bool(entry["missing_devices"])
-            # Which devices' credentials this ref predates, computed here so
-            # it can be shown BESIDE the re-apply button rather than after
-            # the operator has committed to the operation.
-            gaps = baseline_credential_gaps(repo, entry["tag"], list_name,
-                                            devices)
-            entry["credential_stale"] = sorted(gaps["stale"])
-            entry["credential_detail"] = gaps["stale"]
-            # Stale AND refused by neither guard. Since C75 nothing that
-            # rewrites a held credential passes, so these would only ADD an
-            # account the baseline has and the device lacks.
-            entry["credential_silent"] = gaps["silent"]
-            entry["credential_refused"] = gaps["refused"]
-            # The restore's own credential guard refuses these (C75).
-            entry["credential_guarded"] = gaps["guarded"]
-            entry["no_intent"] = gaps["no_golden"]
-        return jsonify({"ok": True, "baselines": entries,
-                        "last_decision": _last_baseline_decision(repo)})
-    except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-
-def _last_baseline_decision(repo: str) -> dict:
-    """The newest `Baseline:` decision the history records (a changing save's
-    commit, or, since 2026-09-28, an empty decision commit when nothing
-    changed): what the panel's remedy must name, so it never recommends an
-    action the last attempt showed would be refused. ``{}`` when none."""
-    from modules.nsot.repo import git
-
-    rc, out, _err = git(repo, "log", "-1", "-E", "--grep=^Baseline: ",
-                        "--format=%H%x1f%cI%x1f%B")
-    if rc != 0 or not (out or "").strip():
-        return {}
-    sha, at, body = out.split("\x1f", 2)
-    line = next((l[len("Baseline: "):].strip() for l in body.splitlines()
-                 if l.startswith("Baseline: ")), "")
-    return {"commit": sha[:12], "at": at.strip(),
-            "state": "earned" if line == "earned" else "denied",
-            "reasons": line.split(":", 1)[1].strip() if line.startswith("denied:") else ""}
-
-
-@bp.route("/restore_points/<path:hostname>", methods=["GET"])
-def restore_points(hostname):
-    """Where one device can be restored from (C80, 7.1 step 5): the Device
-    page's "Restore from…" chooser. Reads only.
-
-    Each point carries this device's credential state at that ref, measured
-    the way the Baselines panel measures it, so the chooser warns BEFORE the
-    click: ``current``, ``refused`` (the restore's own guards stop it),
-    ``silent`` (an account the ref has and the device lacks would be ADDED
-    back) or ``no_golden``. The username lines themselves never leave."""
-
-    list_name = _active_list()
-    try:
-        points = restore_points_for(list_name, hostname)
-        for point in points:
-            # Drawn by the v2 chooser only: today's pages gain no capability (they shrink
-            # until cutover), so it is not carried to a page that would not draw it.
-            point.pop("same_as_now", None)
-        return jsonify({"ok": True, "hostname": hostname, "list": list_name,
-                        "points": points})
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("golden: restore points failed for %s", hostname)
-        return jsonify({"ok": False, "error": str(exc)}), 500
+# Today's Baselines panel and its routes (GET /golden/baselines, GET /golden/restore_points/<host>,
+# POST /golden/restore/preview and /golden/restore/apply) left at 7.8 (2026-10-17, P7-21) with
+# today's Git tab, as did today's device page's Restore from… that bounced to the panel's restore
+# dialog. History › Baselines draws the network's baselines from the `baseline-usability` reader
+# and Re-apply… restores every device a baseline holds as one batch (`routes/v2.py`), and a
+# device's Restore from… (`routes/device_v2.py`) chooses its moment, previews and confirms; both
+# through THE restore plan below and a restore job (`deploy_job.start_restore`).
 
 
 def restore_points_for(list_name: str, hostname: str, checked: int = None) -> list:
     """Where *hostname* can be restored from, newest first, each with its credential state at
     that moment (``current``, ``refused``, ``silent``: an account added back, ``no_golden``).
-    ONE reading for today's chooser and the v2 device page's (board 9). Reads only.
+    ONE reading for the v2 device page's chooser (board 9). Reads only.
 
     *checked*: check the credential of only the newest so many moments (the v2 chooser draws
     five; checking all 32 of r2's took 5.5 to 7.3 s on the host, C399); the rest are
@@ -753,52 +656,20 @@ def apply_captures(list_name: str, confirmations: dict, *, fleet: bool, acknowle
         device_ops.release_many(list_name, held)
 
 
-@bp.route("/restore/preview", methods=["POST"])
-def restore_preview():
-    """What re-applying a ref would do, per device, before anything is sent.
-
-    **Additive.** This re-applies stored configuration; it does not remove
-    lines a device has gained since. The three categories exist so that
-    distinction is visible rather than implied:
-
-    * ``add``     — in the stored config, absent from the device
-    * ``replace`` — in the stored config, the device sets it to something else
-    * ``residue`` — on the device, the stored config does not mention it
-
-    Only ``residue`` is left behind, so only ``residue`` is reported as "will
-    not be removed". The previous report listed every device line absent from
-    the target, which included lines about to be overwritten.
-    """
-    from modules.nsot.restore import WithdrawnBaseline
-    from modules.outbound import mask_payload
-
-    data = request.get_json(silent=True) or {}
-    ref = (data.get("ref") or "").strip()
-    if not ref:
-        return jsonify({"ok": False, "error": "ref is required"}), 400
-    try:
-        plan = restore_plan(_active_list(data), ref, data.get("devices"),
-                            un_onboard=data.get("un_onboard"),
-                            authorise=data.get("authorise") or {}, req=request,
-                            advisory_diff=data.get("advisory_diff") or "",
-                            approval_id=data.get("approval_id") or "")
-    except WithdrawnBaseline as exc:
-        return jsonify({"ok": False, "withdrawn": exc.record, "error": str(exc)}), 409
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("golden: restore preview failed")
-        return jsonify({"ok": False, "error": str(exc)}), 500
-    # Masked on the way out, AFTER every hash is computed from the truthful
-    # program (C77): stored config lines (the program, residue, what a line
-    # replaces) came back verbatim.
-    return jsonify(mask_payload(plan))
-
-
 def restore_plan(list_name: str, ref: str, devices_asked, *, un_onboard=None,
                  authorise: dict = None, req=None, advisory_diff: str = "",
                  approval_id: str = "") -> dict:
     """THE restore preview, unmasked: every device's program, gates and intent half, and the
-    six parts. One computation for `/golden/restore/preview` and the v2 device page's restore
-    (board 9); raises `WithdrawnBaseline` for a withdrawn restore point."""
+    six parts. One computation for the v2 device page's restore (board 9) and History's
+    Re-apply… (today's /golden/restore/preview, its JSON caller, left at 7.8, 2026-10-17);
+    raises `WithdrawnBaseline` for a withdrawn restore point. Each caller masks what it draws,
+    AFTER every hash is computed from the truthful program (C77).
+
+    **Additive.** A restore re-applies stored configuration; it does not remove lines a device
+    has gained since. Three categories keep that visible rather than implied: ``add`` (in the
+    stored config, absent from the device), ``replace`` (in the stored config, the device sets
+    it to something else) and ``residue`` (on the device, the stored config does not mention
+    it). Only ``residue`` is left behind, so only it is reported as "will not be removed"."""
     from modules.nsot.deploy import (NotAuthorised, assert_authorised,
                                      command_fingerprint, dangerous_in,
                                      merge_diff, prepare_restore,
@@ -995,72 +866,7 @@ def _intent_preview(list_name: str, target) -> dict:
             "had_intent": bool(current)}
 
 
-@bp.route("/restore/apply", methods=["POST"])
-def restore_apply():
-    """Re-apply a ref through the confirmed deploy path.
-
-    Not the approval queue, whose old executor pushed whole-config text with
-    none of the guarantees built since. That executor is gone: approving a
-    queued revert now hands off to THIS route (`_exec_revert_golden`), so a
-    queued item is a request for this operation, never a payload. Until C326
-    (2026-10-02) this route still rejected every pending revert on each use,
-    the one being acted on included, so an approved revert ended "rejected"
-    with no person and no reason, and any restore rejected other devices'.
-    """
-    from modules.identity import request_actor
-    from modules.nsot.restore import WithdrawnBaseline, build_targets
-    from routes.deploy import run_targets
-
-    data = request.get_json(silent=True) or {}
-    ref = (data.get("ref") or "").strip()
-    if not ref:
-        return jsonify({"ok": False, "error": "ref is required"}), 400
-    confirmations = data.get("confirmations") or {}
-    if not confirmations:
-        return jsonify({"ok": False,
-                        "error": "Nothing confirmed — re-apply refused"}), 400
-
-    list_name = _active_list(data)
-    try:
-        targets, skipped = build_targets(list_name, ref, list(confirmations),
-                                         un_onboard=data.get("un_onboard"),
-                                         authorise=data.get("authorise") or {})
-    except WithdrawnBaseline as exc:
-        return jsonify({"ok": False, "withdrawn": exc.record, "error": str(exc)}), 409
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("golden: restore apply failed")
-        return jsonify({"ok": False, "error": str(exc)}), 500
-
-    report = run_targets(list_name, targets, data,
-                         label=f"re-apply {ref}", source_ref=ref, skipped=skipped)
-    report.update({"ref": ref, "mode": "re-apply", "skipped": skipped})
-
-    # Close the queue item that handed off to this, but ONLY for devices that
-    # actually succeeded. An item left pending for ever teaches the operator to
-    # clear the queue by rejecting things, which is the habit that makes an
-    # approval queue worthless; an item closed on a failed push would be the
-    # queue claiming work that did not happen.
-    approval_id = (data.get("approval_id") or "").strip()
-    if approval_id:
-        from modules.approval_queue import mark_done
-        from modules.nsot.deploy import DEPLOYED
-
-        succeeded = [r.get("device") for r in (report.get("results") or [])
-                     if r.get("outcome") == DEPLOYED]
-        if succeeded:
-            closed = mark_done(approval_id,
-                               f"Re-applied {ref} to {', '.join(succeeded)} "
-                               "through the confirmed deploy path", actor=request_actor(),
-                               list_name=list_name)         # its own network's queue (C487)
-            report["approval_closed"] = closed.get("ok", False)
-        else:
-            report["approval_closed"] = False
-            report["approval_note"] = (
-                "left pending: no device completed successfully")
-
-    # Masked on the way out (C77's apply side, measured 2026-09-27: a planted
-    # community came back in `results[].commands`). The receipts and the
-    # golden commit are written above from the truthful report; nothing
-    # reads this response back into a confirm.
-    from modules.outbound import mask_payload
-    return jsonify(mask_payload({"ok": True, "list": list_name, **report}))
+# Today's re-apply (POST /golden/restore/apply) left at 7.8 (2026-10-17, P7-21): a restore is
+# confirmed on v2 and run as a job, `deploy_job.start_restore`, over the same `restore.
+# build_targets` and `routes.deploy.run_targets` (the device page's Restore from… and History's
+# Re-apply…). The approval queue's hand-off it closed left with the AI family (D15).

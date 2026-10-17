@@ -232,7 +232,8 @@ CLEARS = {
     ("pushed", "ci_failed"): (("resolves",), "a newer commit is pushed (its update is offered "
                               "once CI passes it), or the host runs this one"),
     ("remote", "publication"): (("resolves",), "the remote holds the list's history: pushed, "
-                                "after a held push is acknowledged on the Remote card"),
+                                "after a held push is acknowledged in History's Remote "
+                                "set-up"),
     ("templates", "behind_drops"): (("resolves",), "the template is brought to the shipped version, or "
                                     "the profile no longer has the section it drops"),
     ("host_steps", "owed"): (("resolves", "acknowledge"), "its check finds it done, or a person "
@@ -2600,8 +2601,8 @@ def remote_source(cached=None) -> dict:
     reader: HEAD against the remote's own branch, asked by `git ls-remote`,
     never the push hook's record (C223: abandon's commit never reached the
     hook, and the hook's record said nothing). Its sentence is
-    `remote_publication.describe()`, the one the Git tab and the Remote card
-    draw. An unreadable remote record (C172) is named on the row."""
+    `remote_publication.describe()`, the one History's header draws. An
+    unreadable remote record (C172) is named on the row."""
     from modules import reader_job
     from modules.readers import remote_publication as P
 
@@ -2627,37 +2628,42 @@ def remote_source(cached=None) -> dict:
         if said["state"] == "no_remote":
             continue
         remote = pub.get("remote") or "its remote"
+        # Every act here is History's (its header's Push now and Verify the remote, and its
+        # Remote set-up…), for this row's own network. Today's Remote card, which these rows
+        # named until it left at 7.8 (2026-10-17), was on today's Devices tab.
+        from urllib.parse import quote
+
+        history = "/v2/history?list=" + quote(name)
         if said["state"] == "held":
             what = (f"{pub.get('ahead', 0)} commit(s) on {name} held back from {remote}: "
                     "auto-push needs a person")
             since = _ts((pub.get("held") or {}).get("since")) or pub.get("oldest_at")
             action = {"label": (
-                "Push now, on the Remote card (the Devices tab, below the device list): "
-                "publication was acknowledged since the hold"
+                "Push now, in History's header: publication was acknowledged since the hold"
                 if pub.get("acknowledged_since_hold") else
-                "On the Remote card (the Devices tab, below the device list), read what "
-                "would be published, acknowledge it, then Push now. Until then nothing is "
-                "pushed, by design: auto-push never widens what is published")}
+                "In History's Remote set-up…, read what would be published, acknowledge it, "
+                "then Push now in History's header. Until then nothing is pushed, by design: "
+                "auto-push never widens what is published"), "href": history}
         elif said["state"] == "tags_not_pushed":
             what = f"{len(pub.get('tags_not_pushed') or [])} tag(s) on {name} not on {remote}"
             since = None
-            action = {"label": "Push now, on the Remote card (the Devices tab, below the "
-                               "device list): it sends every tag with the branch"}
+            action = {"label": "Push now, in History's header: it sends every tag with the "
+                               "branch", "href": history}
         elif said["state"] == "ahead":
             what = f"{pub.get('ahead', 0)} commit(s) on {name} not pushed to {remote}"
             since = pub.get("oldest_at")
-            action = {"label": "Push now, on the Remote card: the Devices tab, below the "
-                               "device list, in the golden repository section. The next "
-                               "commit's push also sends every commit before it. If it does "
-                               "not go, the card names the failure"}
+            action = {"label": "Push now, in History's header. The next commit's push also "
+                               "sends every commit before it. If it does not go, the header "
+                               "names the failure", "href": history}
         elif said["state"] == "in_sync":
             # In step today, and the record the push hook reads cannot be read,
             # so the NEXT commit will not be pushed (C172).
             what = f"{name}'s remote record cannot be read, so its next commit will not be pushed"
             since = None
-            action = {"label": "Repair or re-adopt the list's remote from the Remote card (the "
-                               "Devices tab, below the device list); the record is "
-                               "data/lists/<list>/remote.json on the host"}
+            action = {"label": "Repair the list's remote record on the host "
+                               "(data/lists/<list>/remote.json), or connect the remote again "
+                               "in History's Remote set-up…, which names why it cannot be "
+                               "read", "href": history}
         elif said["state"] in ("remote_ahead", "diverged"):
             what = f"{name}'s history and {remote} do not match"
             since = None
@@ -2668,7 +2674,7 @@ def remote_source(cached=None) -> dict:
             since = None
             action = {"label": "Verify the remote from History's header: it names what "
                                "could not be asked. A remote that cannot be asked also "
-                               "cannot be pushed to"}
+                               "cannot be pushed to", "href": history}
         rows.append(row(
             source="remote", kind="publication", key=f"{name}:{said['state']}", level=(
                 "danger" if said["level"] == "danger" else "warning"),

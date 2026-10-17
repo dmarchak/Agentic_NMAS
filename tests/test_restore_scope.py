@@ -2,34 +2,23 @@
 
 From the interface a baseline could be re-applied only to the whole fleet,
 and the scoped paths all restored at HEAD, so restoring one device from a
-baseline needed the browser console. Now:
-
-* the Device page's "Restore from…" lists this device's golden now, its own
-  golden tags and every baseline that holds it, each with its credential
-  state, and a chosen point opens the guarded preview for this device alone;
-* the Baselines panel's "Re-apply" asks for a scope that starts EMPTY, with
-  the whole fleet as its own explicit choice.
+baseline needed the browser console. Now the device's restore points are its
+golden now, its own golden tags and every baseline that holds it, each with its
+credential state, read by the v2 device page's Restore from…, which opens the
+guarded preview for this device alone. (Today's chooser and the Baselines
+panel's empty-scope Re-apply left at 7.8, 2026-10-17.)
 
 The repository is real: r2's real configuration, its onboarding golden, and
 a baseline earned by a whole-fleet capture at intent (`build_capture_lab`).
-The shipped component runs in duktape against the route's real response.
 """
 
 from tests.test_capture import run_capture_preview
 import json
 import os
 
-import dukpy
 import pytest
 
-from tests.payload_render import lift, shipped
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RS = "nmas_restore_scope.js"
-
-
-def _js(expr: str):
-    return dukpy.evaljs("var window = {};\n" + shipped(RS) + "\n" + expr)
 
 
 @pytest.fixture
@@ -48,9 +37,12 @@ def lab(tmp_path, monkeypatch):
 
 
 def _points(lab, host="r2"):
-    r = lab["client"].get(f"/golden/restore_points/{host}")
-    assert r.status_code == 200, r.get_data(as_text=True)[:300]
-    return r.get_json()
+    """*host*'s restore points as the v2 device page's chooser reads them
+    (`routes.golden.restore_points_for`; today's /golden/restore_points returned the same until
+    it left at 7.8, 2026-10-17)."""
+    from routes.golden import restore_points_for
+
+    return {"hostname": host, "points": restore_points_for("Lab", host)}
 
 
 class TestTheDevicesRestorePoints:
@@ -120,82 +112,12 @@ class TestTheDevicesRestorePoints:
         assert by_ref[lab["baseline"]] == "refused", by_ref
 
 
-class TestTheChooserDrawsIt:
-    def test_one_row_per_point_each_opening_its_own_ref(self, lab):
-        d = _points(lab)
-        html = _js("window.restorePointsHtml(" + json.dumps(d) + ")")
-        for p in d["points"]:
-            assert f'data-rs-ref="{p["ref"]}"' in html
-            assert f'data-ref="{p["ref"]}"' in html
-        assert "Nothing is sent from this list" in html
-        assert "in list <strong>Lab</strong>" in html
-
-    def test_every_value_is_escaped(self, lab):
-        d = _points(lab)
-        d["points"][1]["subject"] = "<img src=x onerror=alert(1)>"
-        html = _js("window.restorePointsHtml(" + json.dumps(d) + ")")
-        assert "<img" not in html and "&lt;img" in html
-
-    def test_a_failed_read_is_not_an_empty_list(self):
-        html = _js("window.restorePointsHtml({ok: false, error: 'boom'})")
-        assert "not the same as there being none" in html and "boom" in html
-
-    def test_a_point_that_would_add_back_an_account_says_so(self, lab):
-        d = _points(lab)
-        d["points"][1]["credential"] = "silent"
-        html = _js("window.restorePointsHtml(" + json.dumps(d) + ")")
-        assert "would ADD BACK an account" in html
-
-    def test_choosing_goes_to_the_guarded_preview_for_this_device_alone(self):
-        url = _js("window.restoreFromUrl('r2', 'baseline/20260927T154517Z')")
-        assert url == "/?restore_head=r2&restore_ref=baseline%2F20260927T154517Z"
-
-
-class TestTheHandoffReachesThePreview:
-    """The seam: the URL the chooser builds, read by the index page."""
-
-    def test_the_ref_and_the_device_arrive_at_previewBaselineRestore(self):
-        fn = lift(shipped("partials__golden_repo.3.js"), "_restoreHeadFromUrl")
-        calls = dukpy.evaljs(
-            "var calls = [];"
-            "var window = {location: {search: '?restore_head=r2&restore_ref=baseline%2FX',"
-            " pathname: '/'}};"
-            "var history = {replaceState: function () {}};"
-            "function URLSearchParams(s) { var m = {};"
-            "  s.replace(/^\\?/, '').split('&').forEach(function (kv) {"
-            "    var p = kv.split('='); m[p[0]] = decodeURIComponent(p[1]); });"
-            "  this.get = function (k) { return k in m ? m[k] : null; };"
-            "  this.delete = function (k) { delete m[k]; };"
-            "  this.toString = function () { return Object.keys(m).join('&'); }; }"
-            "function previewBaselineRestore(ref, un, from) { calls.push([ref, un, from]); }"
-            + fn + "; _restoreHeadFromUrl(); calls")
-        assert calls == [["baseline/X", None, {"devices": ["r2"]}]]
-
-
-class TestTheBaselineScopeStartsEmpty:
-    B = {"tag": "baseline/X", "devices": ["r1", "r2", "s1"],
-         "credential_stale": ["s1"], "credential_silent": [], "missing_devices": ["r6"]}
-
-    def test_every_device_is_offered_and_none_is_ticked(self):
-        html = _js("window.baselineScopeHtml(" + json.dumps(self.B) + ")")
-        for host in self.B["devices"]:
-            assert f'data-rs-device="{host}"' in html
-        assert "checked" not in html
-        assert "data-rs-fleet" in html and "predates r6" in html
-
-    @pytest.mark.parametrize("devices,fleet,expected", [
-        ([], False, None),
-        ([("r1", True), ("r2", False)], False, {"devices": ["r1"]}),
-        ([("r1", True), ("r2", True)], False, {"devices": ["r1", "r2"]}),
-        ([], True, {"devices": None}),
-        ([("r1", True)], True, {"devices": None}),
-    ])
-    def test_the_selection(self, devices, fleet, expected):
-        boxes = [{"checked": c, "dataset": {"rsDevice": h}} for h, c in devices]
-        got = _js("window.baselineScopeSelection(" + json.dumps(boxes) + ", "
-                  + json.dumps({"checked": fleet}) + ")")
-        assert got == expected
-
+# Today's chooser (nmas_restore_scope.js: the device page's Restore from…, its rows and its
+# hand-off to the index page's preview) and the Baselines panel's empty-scope Re-apply, with
+# /golden/restore_points and /golden/baselines, left at 7.8 (2026-10-17, P7-21), and their
+# tests here with them. The v2 device page's Restore from… draws these points and opens the
+# preview for this device alone (tests/test_device_restore_v2.py); History's Re-apply… restores
+# the devices a baseline holds, naming each it leaves as it is (tests/test_reapply_v2.py).
 
 class TestTheScreensReachIt:
     def test_the_device_page_has_restore_from(self):
@@ -204,20 +126,3 @@ class TestTheScreensReachIt:
         menu = open(os.path.join(ROOT, "templates", "v2", "_actions_menu.html"),
                     encoding="utf-8").read()
         assert "('Restore from…', 'restore', 'restore')" in menu
-
-    def test_the_component_is_loaded_on_every_page(self):
-        base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
-        assert "filename='js/nmas_restore_scope.js'" in base
-
-    def test_re_apply_asks_for_a_scope_before_the_preview(self):
-        body = lift(shipped("partials__golden_repo.1.js"), "confirmBaselineRestore")
-        assert body.index("chooseBaselineScope(b)") < body.index("previewBaselineRestore(")
-        assert "if (!scope) return;" in body
-        assert "previewBaselineRestore(tag, null, {devices: scope.devices})" in body
-        # The acknowledgement names the CHOSEN devices only.
-        assert ".filter(inScope)" in body
-
-    def test_the_baselines_route_carries_the_devices_to_offer(self, lab):
-        d = lab["client"].get("/golden/baselines").get_json()
-        b = next(x for x in d["baselines"] if x["tag"] == lab["baseline"])
-        assert b["devices"] == ["r2"]

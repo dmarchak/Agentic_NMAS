@@ -13,24 +13,21 @@ never the lines to be ADDED. `commands` was computed by the route, carried to
 the browser, and drawn nowhere, while the confirm hash covered it.
 
 Stage 7.1 moved the preview onto THE preview-then-confirm component: the
-route builds the six parts (`modules/preview_confirm.restore_preview`) and
-`previewConfirmHtml` draws them, executed here against the route's real
+plan builds the six parts (`modules/preview_confirm.restore_preview`) and
+`previewConfirmHtml` draws them, executed here against the plan's real
 payload over REAL `RestoreTarget`s (a stub target could not exhibit the
-restore's own gates, and C75 lived there).
+restore's own gates, and C75 lived there). Today's route and dialog left at 7.8
+(2026-10-17); THE restore plan (`routes.golden.restore_plan`) is what the v2
+device page's Restore from… and History's Re-apply… draw.
 """
 
 import html as _html
 import json
-import os
 import re
 
 import pytest
 
-from tests.js_source import shipped_js
 from tests.payload_render import render_preview
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GOLDEN_JS = os.path.join(ROOT, "static", "js", "gen", "partials__golden_repo.3.js")
 
 # The device carries a line the ref does not mention INSIDE a section (the
 # description under Gi3), so the residue part can show whether it names the
@@ -65,13 +62,15 @@ def _target(device, target_config=TARGET, captured=CAPTURED):
 
 
 def _preview_for(monkeypatch, targets, skipped=(), body=None):
-    """What POST /golden/restore/preview returns for *targets*, with the real
-    merge_diff, merge_commands, prepare_restore and adapter."""
-    import flask
+    """THE restore plan for *targets* as each of its callers draws it, masked on the way out
+    (`mask_payload`, as the v2 device page's restore card and History's Re-apply… apply it),
+    with the real merge_diff, merge_commands, prepare_restore and adapter. Today's
+    /golden/restore/preview returned exactly this until it left at 7.8 (2026-10-17); *body*
+    keeps its shape (ref, devices, un_onboard, authorise, advisory_diff, approval_id)."""
+    from modules.outbound import mask_payload
 
     import routes.golden as golden
 
-    monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
     # build_targets is stubbed with a made-up list, so coverage() is too: it
     # reads that list's inventory, and resolving a list that does not exist
     # creates it (get_list_data_dir). Coverage is tested on a real repo in
@@ -93,10 +92,11 @@ def _preview_for(monkeypatch, targets, skipped=(), body=None):
                 list(skipped))
 
     monkeypatch.setattr("modules.nsot.restore.build_targets", _built)
-    app = flask.Flask(__name__)
-    app.register_blueprint(golden.bp)
-    out = app.test_client().post("/golden/restore/preview",
-                                 json=body or {"ref": "HEAD"}).get_json()
+    body = body or {"ref": "HEAD"}
+    out = mask_payload(golden.restore_plan(
+        "Lab", body["ref"], body.get("devices"), un_onboard=body.get("un_onboard"),
+        authorise=body.get("authorise") or {}, advisory_diff=body.get("advisory_diff") or "",
+        approval_id=body.get("approval_id") or ""))
     assert out["ok"], out
     return out
 
@@ -112,20 +112,6 @@ def _real_payload(monkeypatch):
                          "authorise": {"r1": [{"line": "shutdown",
                                                "reason": "new interface, left down for now"}]}})
 
-
-def _lift(page: str, name: str) -> str:
-    start = page.index(f"function {name}(")
-    depth, i, seen = 0, page.index("{", start), False
-    while i < len(page):
-        if page[i] == "{":
-            depth += 1
-            seen = True
-        elif page[i] == "}":
-            depth -= 1
-            if seen and depth == 0:
-                break
-        i += 1
-    return page[start:i + 1]
 
 
 def _html_of(payload) -> str:
@@ -268,62 +254,10 @@ class TestARestoreMayNotChangeACredential:
         assert _gates(payload, "s4")["credential unchanged"]["state"] == "pass"
 
 
-class TestTheWiring:
-    """The flow draws the component and confirms what it drew."""
+# Today's re-apply dialog (partials__golden_repo.3.js: previewBaselineRestore, its modal, what it
+# confirmed, and the index page opening it from the device page's Restore from…) left at 7.8
+# (2026-10-17, P7-21), and its wiring tests with it. The v2 restore card confirms the program it
+# drew, bound to its hash, and a program that moved is refused with nothing sent
+# (tests/test_device_restore_v2.py).
 
-    def test_the_restore_flow_confirms_on_the_drawn_preview(self):
-        src = open(GOLDEN_JS, encoding="utf-8").read()
-        flow = _lift(src, "previewBaselineRestore")
-        assert "_confirmRestorePreview(`Re-apply ${tag}`, d, from)" in flow
-        assert "_restoreSelected(d.preview)" in flow
-        assert "x.deployable).forEach" not in flow, "confirms what the preview selects"
-        # The only confirm() left is the un-onboard question, which has no program.
-        assert flow.count("confirm(") == 1, flow.count("confirm(")
 
-    def test_the_modal_draws_the_component(self):
-        modal = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "_confirmRestorePreview")
-        assert "previewConfirmHtml(d.preview, {})" in modal
-        assert "previewConfirmButton(d.preview" in modal
-
-    def test_the_agents_diff_is_labelled_context_and_goes_in_as_text(self):
-        modal = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "_confirmRestorePreview")
-        assert "NOT what will be sent" in modal
-        assert "pre.textContent = from.advisoryDiff" in modal
-        assert modal.index("data-advisory") < modal.index("data-restore-preview")
-
-    def test_the_old_renderers_are_gone(self):
-        src = open(GOLDEN_JS, encoding="utf-8").read()
-        for gone in ("function restorePreviewText", "function _confirmProgram"):
-            assert gone not in src, gone
-
-    def test_what_is_confirmed_is_what_the_preview_selects(self, monkeypatch):
-        """Executed against the real preview: r1 (restorable) and not r2
-        (blocked), with the hashes the preview drew."""
-        dukpy = pytest.importorskip("dukpy")
-        payload = _real_payload(monkeypatch)
-        src = _lift(open(GOLDEN_JS, encoding="utf-8").read(), "_restoreSelected")
-        chosen = dukpy.evaljs(src + f"\n_restoreSelected({json.dumps(payload['preview'])})"
-                                    ".map(function (t) { return [t.name, t.select_data]; })")
-        r1 = next(d for d in payload["devices"] if d["device"] == "r1")
-        assert chosen == [["r1", {"hash": r1["capture_hash"],
-                                  "command-hash": r1["command_hash"]}]]
-
-    # The two "Restore Golden Config" controls (the bulk panel's and today's device page's)
-    # left at 7.8 (2026-10-15), and their two tests with them. The device page's Restore
-    # from… (its first point the golden now) still reaches the index through the URL.
-
-    def test_the_index_page_opens_it_from_the_url(self):
-        index = open(os.path.join(ROOT, "templates", "index.html"), encoding="utf-8").read()
-        assert "{% include 'partials/golden_repo.html' %}" in index
-        page = shipped_js("partials", "golden_repo.html")
-        assert "document.addEventListener('DOMContentLoaded', _restoreHeadFromUrl)" in page
-        fn = _lift(page, "_restoreHeadFromUrl")
-        assert "history.replaceState" in fn.split("previewBaselineRestore")[0], (
-            "the parameter must be removed BEFORE the preview opens, or a "
-            "reload re-opens a preview nobody asked for")
-        # HEAD unless "Restore from…" (7.1 step 5, C80) names a ref; both
-        # parameters go before the preview opens.
-        assert "const ref = params.get('restore_ref') || 'HEAD';" in fn
-        before = fn.split("history.replaceState")[0]
-        assert "params.delete('restore_head')" in before and "params.delete('restore_ref')" in before
-        assert "previewBaselineRestore(ref, null, {devices})" in fn

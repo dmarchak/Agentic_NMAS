@@ -190,13 +190,12 @@ DECLARED = {
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items
     "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # the same apply
-    "golden.restore_apply": ("device_state", "intent", "baselines", "drift",
-                             "approvals", "rolled_back") + _COMMIT,
-    "remote.acknowledge": ("remote",),
-    "remote.auto_push": ("remote",),
+    # Today's re-apply (golden.restore_apply) and the Remote card's acknowledge, auto-push and
+    # write probe (remote.acknowledge, remote.auto_push, remote.verify_write) left at 7.8
+    # (2026-10-17, P7-21): v2's restore and re-apply confirms and History › Remote set-up's
+    # acts (remote_v2.*) are declared here and below.
     "remote.push": ("remote",),
     "remote.verify": ("remote",),
-    "remote.verify_write": ("remote",),
     "remote_v2.connect": ("remote",),
     # An import, a removal, or Stop tracking (C954: Mercury's created and removal records and
     # the network's last import, which the NetBox page draws); settings when writes come on.
@@ -354,7 +353,6 @@ DECLARED = {
                                          "would send; it writes nothing"),
     "onboard_v2.abandon_preview": Nothing("Abandon's dry run: names what it would remove and "
                                           "removes nothing"),
-    "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
     "intent_v2.check": Nothing("checks and renders an intent edit as it is typed"),

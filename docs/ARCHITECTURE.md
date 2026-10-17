@@ -685,12 +685,13 @@ and others have left since too.
   and the tool's tags the remote lacks. A push the hook HELD at the publication gate
   (C278) is recorded (`remote.record_push_held`) and drawn red at once with its reason and
   "acknowledge, then push". The gate holds only for a NEW secret value or kind (C280:
-  each live secret by a salted fingerprint, listed with its devices on the Remote card;
-  another copy of an acknowledged value is never held). An unpushed commit with no hold is red past 10 min; a tag
+  each live secret by a salted fingerprint, listed with its devices on History ›
+  Remote set-up…; another copy of an acknowledged value is never held). An unpushed commit with no hold is red past 10 min; a tag
   a hook call named and could not send is kept (`pending_tags`) and sent by the next push,
   never computed from what the remote lacks (a withdrawn baseline would ride along);
-  its one sentence, `describe()`, is drawn by the Git tab ("Everything is
-  committed · N commit(s) not pushed…"), the Remote card and Needs attention.
+  its one sentence, `describe()`, is drawn by History's header ("Everything is
+  committed · N commit(s) not pushed…") and Needs attention (today's Git tab and Remote
+  card drew it until they left at 7.8, 2026-10-17).
   `readers/reachability.py` (C92) probes every list's devices every 5 s and
   judges "answering" over consecutive misses against ONE
   `miss_threshold()` (3, measured); it OWNS `STATUS`, which the app hands
@@ -962,9 +963,11 @@ and others have left since too.
   device page at 7.8 (P7-22, 2026-10-17)
   Capture's client (7.1 step 4, Save All on today's index):
   **[static/js/nmas_capture.js](static/js/nmas_capture.js)**. Restore scope
-  (7.1 step 5, C80: today's device page's "Restore from…", its one opener until
-  that page left at 7.8, and the Baselines panel's scope, which starts empty):
-  **[static/js/nmas_restore_scope.js](static/js/nmas_restore_scope.js)**
+  (7.1 step 5, C80): today's chooser (`nmas_restore_scope.js`, the Device
+  page's "Restore from…" and the Baselines panel's empty scope) left at 7.8
+  (2026-10-17, P7-21); the v2 device page's Restore from… and History's
+  Re-apply… plan through `routes/golden.restore_plan` and
+  `restore_points_for`, which stay
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
   `inventory.py`, `golden.py`, `templatize.py`,
   `templates.py`, `deploy.py`, `freshness.py`, `devices_view.py` (the device
@@ -1239,8 +1242,9 @@ to it since.)
   commit carries no `Source:` (the save path's trailer, on all nine on the
   host) is refused naming the path and the commit. So the next writer that
   fails in a new way cannot make its file authoritative.
-  **Visible too:** the Git tab's status lists every uncommitted path with
-  what it means (it said "working tree clean" whenever nothing was STAGED),
+  **Visible too:** History's header names every uncommitted path (today's Git
+  tab's status listed each with what it meant until it left at 7.8,
+  2026-10-17; it had said "working tree clean" whenever nothing was STAGED),
   and each writer that stages undoes it when its commit fails. The manual
   commit is removed: it was used three times on the host (30 Aug, 1 Sep,
   15 Sep, before saves committed in their own call), and since then it had

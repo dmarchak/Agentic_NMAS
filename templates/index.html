@@ -36,12 +36,6 @@
       Devices
     </button>
   </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="git-tab" data-bs-toggle="tab" data-bs-target="#gitPane"
-            type="button" role="tab" aria-controls="gitPane" aria-selected="false">
-      Git
-    </button>
-  </li>
 </ul>
 
 <div class="tab-content" id="mainTabContent">
@@ -81,6 +75,8 @@
 </div>
 
 {% include 'partials/inventory_source.html' %}
+{#- The golden timeline the device table's History opens (its Remote card and Baselines panel
+    left at 7.8, 2026-10-17: History's header and History › Baselines). -#}
 {% include 'partials/golden_repo.html' %}
 {% include 'partials/template_editor.html' %}
 {% include 'partials/intent_editor.html' %}
@@ -103,75 +99,11 @@
 
 </div><!-- end Devices tab pane -->
 
-<!-- ================================================================== -->
-<!-- GIT TAB -->
-<!-- ================================================================== -->
-<div class="tab-pane fade" id="gitPane" role="tabpanel" aria-labelledby="git-tab">
-
-<div class="d-flex align-items-center gap-2 mb-3">
-  <h2 class="text-primary mb-0 me-auto">Git Config History</h2>
-  <button class="btn btn-outline-secondary btn-sm" onclick="loadGitTab()">↻ Refresh</button>
-</div>
-<details class="small text-muted mb-3">
-  <summary>How this works</summary>
-  <p class="mt-2 mb-0">
-  <strong>Save All Configs reads every device, shows what each golden would become and how it
-  compares with its committed intent, and commits once you confirm</strong> — one commit for the whole batch,
-  with per-device <code>golden/&lt;device&gt;/&lt;timestamp&gt;</code> tags and a
-  <code>baseline/&lt;timestamp&gt;</code> only when it covers the inventory AND every capture
-  matches its committed intent (a capture that departs is recorded, marked
-  <code>Intent-Match: no</code>, and earns no baseline). Nothing is left
-  staged, and a device whose config has not changed produces no commit but is still
-  reported. Every commit is handed to the push hook; whether the history is on the
-  remote is measured by asking the remote for its branch, never taken from the hook's
-  own record.
-  </p>
-</details>
-
-<!-- Status bar -->
-<div id="gitStatusBar" class="alert alert-secondary small mb-3 d-none">
-  <span id="gitStatusText"></span>
-</div>
-
-<!-- Commit log -->
-<div id="gitLogWrap">
-  <div class="text-muted small py-4 text-center" id="gitLogPlaceholder">Loading Git history…</div>
-  <table class="table table-sm table-dark" id="gitLogTable" style="display:none;font-size:.82rem">
-    <thead>
-      <tr>
-        <th style="width:6em">Hash</th>
-        <th>Message</th>
-        <th style="width:12em">Date</th>
-      </tr>
-    </thead>
-    <tbody id="gitLogBody"></tbody>
-  </table>
-</div>
-
-</div><!-- end Git tab pane -->
+{#- Today's Git tab (its log, status line and commit dialog) left at 7.8 (2026-10-17, P7-21):
+    History (/v2/history) draws the log, each commit's change masked, and in its header what is
+    not committed and whether the remote holds the history. -#}
 
 </div><!-- end tab-content -->
-
-<!-- Git Commit Diff Modal -->
-<div class="modal fade" id="gitDiffModal" tabindex="-1" aria-labelledby="gitDiffModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="gitDiffModalLabel">Commit</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div id="gitDiffLoading" class="text-muted small">Loading…</div>
-        <div id="gitDiffError" class="text-danger small"></div>
-        <pre id="gitDiffStat" class="small text-muted mb-3" style="white-space:pre-wrap"></pre>
-        <pre id="gitDiffContent" class="small" style="white-space:pre-wrap;max-height:60vh;overflow-y:auto"></pre>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Create Device List Modal -->
 <div class="modal fade" id="createListModal" tabindex="-1" aria-labelledby="createListModalLabel" aria-hidden="true">
@@ -203,163 +135,12 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="{{ url_for('static', filename='js/gen/index.4.js') }}"></script>
 
 {#- Today's Settings modal (NetBox, Integrations, the general block, Security posture) and its
     Logs tab left at 7.8 (2026-10-15): Settings › Default and each network's cards, Settings ›
     Installation (Connections, Access and identity, Diagnostics and its app log). Today's NetBox
-    tab and its import and removal dialog left at 7.8 (2026-10-17): Source of truth › NetBox. -#}
-
-<script>
-/* ── Git tab ──────────────────────────────────────────────────────────────── */
-(function () {
-  'use strict';
-
-  // ── load tab data ──────────────────────────────────────────────────────────
-  window.loadGitTab = async function () {
-    // A failed/rejected fetch here used to throw silently (unhandled promise
-    // rejection, nothing rendered) -- from the UI that looked exactly like
-    // "the Refresh button does nothing". Surface it instead.
-    try {
-      const [statusResp, logResp] = await Promise.all([
-        fetch('/git/status',              { cache: 'no-store' }),
-        fetch('/git/log?limit=40',        { cache: 'no-store' }),
-      ]);
-      const [status, logData] = await Promise.all([
-        statusResp.json(), logResp.json(),
-      ]);
-
-      _renderGitStatus(status);
-      _renderGitLog(logData.commits || []);
-    } catch (e) {
-      if (typeof showToast === 'function') {
-        showToast('Could not load Git tab: ' + e.message, 'danger');
-      }
-    }
-  };
-
-  // ── status bar ─────────────────────────────────────────────────────────────
-  function _renderGitStatus(s) {
-    const bar = document.getElementById('gitStatusBar');
-    const txt = document.getElementById('gitStatusText');
-    if (!bar || !txt) return;
-    bar.classList.remove('d-none');
-
-    if (!s.initialised) {
-      bar.className = 'alert alert-secondary small mb-3';
-      txt.textContent = 'No Git repository yet. Press "Save All Configs" to initialise one.';
-      return;
-    }
-    if (s.ok === false) {
-      bar.className = 'alert alert-danger small mb-3';
-      txt.textContent = s.error || 'Could not read the repository status.';
-      return;
-    }
-    const left = s.uncommitted || [];
-    // Committed is a fact about THIS repository; published is a fact about the
-    // remote, measured by asking it (C223): "Everything is committed" alone
-    // read as done while GitHub was a commit behind.
-    const pub = s.publication || {level: 'warning', state: 'not_read',
-                                  clause: 'whether it is pushed was not reported', detail: ''};
-    const last = `<div class="text-muted">Last commit: ${escHtml(s.last_commit || '(none)')}</div>`;
-    const pubLine = `<span title="${escHtml(pub.detail || '')}">${escHtml(pub.clause)}</span>`;
-    if (!left.length) {
-      bar.className = 'alert alert-' + gitLevel(pub.level) + ' small mb-3';
-      txt.innerHTML = (pub.state === 'in_sync'
-          ? `<strong>Everything is committed</strong> ${pubLine}.`
-          : `<strong>Everything is committed</strong> · ${pubLine}.`) + last;
-      return;
-    }
-    // Nothing here commits these: every write commits in its own call, so a
-    // path left over is a finding, with what it means and what to do.
-    const onlyNsot = left.every(u => u.path.startsWith('.nsot/'));
-    const worst = pub.level === 'danger' ? 'danger' : (onlyNsot ? gitLevel(pub.level) : 'warning');
-    bar.className = 'alert alert-' + worst + ' small mb-3';
-    txt.innerHTML = `<strong>${left.length} uncommitted path(s).</strong> Nothing on this page commits them.`
-      + '<ul class="mb-0 mt-1">' + left.map(u =>
-          `<li><code>${escHtml(u.path)}</code> (${escHtml(u.state)}): ${escHtml(u.means)}</li>`).join('')
-      + '</ul>'
-      + `<div>What is committed: ${pubLine}.</div>` + last;
-  }
-
-  // The level is decided on the server (remote_publication.describe); this
-  // only maps it to a Bootstrap class, and an unknown one is never green.
-  function gitLevel(level) {
-    return ({success: 'success', warning: 'warning', danger: 'danger',
-             secondary: 'secondary'})[level] || 'warning';
-  }
-
-  // ── commit log table ───────────────────────────────────────────────────────
-  function _renderGitLog(commits) {
-    const placeholder = document.getElementById('gitLogPlaceholder');
-    const table       = document.getElementById('gitLogTable');
-    const tbody       = document.getElementById('gitLogBody');
-    if (!tbody) return;
-
-    if (commits.length === 0) {
-      if (placeholder) { placeholder.textContent = 'No commits yet.'; placeholder.style.display = ''; }
-      if (table)       table.style.display = 'none';
-      return;
-    }
-    if (placeholder) placeholder.style.display = 'none';
-    if (table)       table.style.display = '';
-
-    tbody.innerHTML = commits.map(c => {
-      return `<tr style="cursor:pointer" onclick="viewGitCommit('${escHtml(c.hash)}')" title="View files changed in this commit">
-        <td><code>${escHtml(c.short_hash)}</code></td>
-        <td>${escHtml(c.message)}</td>
-        <td class="text-muted">${escHtml((c.date || '').slice(0,16))}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  // ── view files changed in one commit ───────────────────────────────────────
-  window.viewGitCommit = async function (hash) {
-    const modalEl   = document.getElementById('gitDiffModal');
-    const titleEl   = document.getElementById('gitDiffModalLabel');
-    const loadingEl = document.getElementById('gitDiffLoading');
-    const errorEl   = document.getElementById('gitDiffError');
-    const statEl    = document.getElementById('gitDiffStat');
-    const diffEl    = document.getElementById('gitDiffContent');
-    if (!modalEl) return;
-
-    titleEl.textContent = `Commit ${hash.slice(0, 7)}`;
-    loadingEl.style.display = '';
-    errorEl.textContent = '';
-    statEl.textContent = '';
-    diffEl.innerHTML = '';
-
-    new bootstrap.Modal(modalEl).show();
-
-    try {
-      const resp = await fetch(`/git/commit/${hash}`, { cache: 'no-store' });
-      const data = await resp.json();
-      loadingEl.style.display = 'none';
-      if (!data.ok) {
-        errorEl.textContent = data.error || 'Could not load commit.';
-        return;
-      }
-      titleEl.textContent = `${hash.slice(0, 7)} — ${data.message || ''}`;
-      statEl.textContent = data.stat || '';
-      diffEl.innerHTML = (data.diff || '(no changes)').split('\n').map(line => {
-        const cls = line.startsWith('+') && !line.startsWith('+++') ? 'color:#4ade80'
-                  : line.startsWith('-') && !line.startsWith('---') ? 'color:#f87171'
-                  : line.startsWith('@@') ? 'color:#60a5fa'
-                  : line.startsWith('diff --git') || line.startsWith('index ') ? 'color:#94a3b8;font-weight:600'
-                  : '';
-        return `<div${cls ? ` style="${cls}"` : ''}>${escHtml(line) || '&nbsp;'}</div>`;
-      }).join('');
-    } catch (e) {
-      loadingEl.style.display = 'none';
-      errorEl.textContent = 'Request failed: ' + e.message;
-    }
-  };
-
-  function escHtml(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
-                          .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-})();
-</script>
+    tab and its import and removal dialog left at 7.8 (2026-10-17): Source of truth › NetBox.
+    Today's Git tab's script and its load on switch (index.4.js) left at 7.8 (2026-10-17):
+    History. -#}
 
 {% endblock %}

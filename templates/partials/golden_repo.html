@@ -1,41 +1,12 @@
-{# Golden config repository UI: per-device timeline, network baselines, and the
-   migration report.
+{# Golden config repository UI: the per-device timeline the device table's History opens.
 
    Included from templates/index.html. Bootstrap 5 only, matching the existing
    card / badge / table / modal patterns.
 
-   The migration is **dry-run by default** — the report renders first and the
-   apply button stays disabled until the operator has seen it. #}
-
-{# The remote card's container is SERVER-RENDERED, with text in it.
-
-   It used to be created by loadGoldenRepoPanel()'s innerHTML, and the call
-   into the card ran earlier in that same function — so getElementById found
-   nothing, the card returned quietly, and the result was a blank space with a
-   clean console and no request in the log.
-
-   Default text turns every failure mode into something visible. An empty div
-   can only ever look like success. #}
-<div id="remotePanel" class="mb-2">
-  <div class="alert alert-warning py-2 px-3 small mb-0" id="remotePanelDefault">
-    Remote card did not load — see the browser console.
-  </div>
-</div>
-
-{# The output area is a SIBLING of the card, not a child of it.
-
-   Every action ends by refreshing the card, and the output used to live
-   inside the markup that refresh replaces — so a result appeared and was
-   wiped a moment later. A verification failure that shows its reason for a
-   split second is worse than one that shows nothing: the operator knows
-   something was said and cannot read it.
-
-   Outside the re-rendered region, it simply persists until the next action
-   or until dismissed. #}
-<div id="remoteOut" class="small mb-3"></div>
-
-<div id="goldenRepoPanel" class="mb-3" data-list-name="{{ current_list }}"></div>
-
+   Today's Remote card and Baselines panel, with the Baselines panel's re-apply dialog that
+   today's device page's Restore from… also opened, left at 7.8 (2026-10-17, P7-21): History's
+   header (Verify the remote, Push now, Remote set-up…), History › Baselines (Re-apply…), and
+   the v2 device page's Restore from…. #}
 <div class="modal fade" id="goldenTimelineModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
@@ -49,7 +20,3 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/gen/partials__golden_repo.1.js') }}"></script>
-
-<script src="{{ url_for('static', filename='js/gen/partials__golden_repo.2.js') }}"></script>
-
-<script src="{{ url_for('static', filename='js/gen/partials__golden_repo.3.js') }}"></script>

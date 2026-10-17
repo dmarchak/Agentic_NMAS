@@ -121,10 +121,8 @@ def _bodies(v):
         "device_v2.capture_start": (200, ("form", {"list": LIST}),
                                     "starts the same job reading r1 NOW; FOLLOWED to its card "
                                     "(JOB_RESULTS): the golden diff and the intent departure"),
-        "golden.restore_preview": (200, ("json", {"ref": v["_first_golden"],
-                                                  "devices": ["r1"]}),
-                                   "the first golden against HEAD: a program that adds its "
-                                   "community, and HEAD's as residue"),
+        # Today's restore preview (golden.restore_preview) left at 7.8 (2026-10-17): the v2
+        # device page's restore preview is a GET, read in `swept` below with this body's moment.
         "inventory.refresh": (200, ("json", {}), "a local list: refused as not NetBox-sourced"),
         "onboard.plan": (200, ("json", {"list_name": LIST, "hostname": "r8",
                                         "platform": "cisco_ios"}),
@@ -186,8 +184,10 @@ def _bodies(v):
 #: answers with counts and queues the diff as an approval item, which the GET sweep covers;
 #: its result is held to no planted value by `TestTheDriftRun` below.
 REACHES = {"deploy.plan", "device_v2.capture_start",
-           "golden.capture_preview", "golden.restore_preview",
-           "templatize.preview_committed_edit"}
+           "golden.capture_preview", "templatize.preview_committed_edit"}
+# `golden.restore_preview` LEFT this set 2026-10-17 with the route (7.8, P7-21): THE restore plan
+# is drawn by the v2 device page's restore preview, a GET, read by the fixture below and held by
+# `test_the_v2_restore_preview_drew_the_masked_slot_and_no_value`.
 # `templates.preview` LEFT this set 2026-10-15: its POST half left at 7.8; its GET is read by
 # the fixture below and held by `test_the_template_preview_drew_the_masked_slot_and_no_value`.
 # `netbox_safety.preview_import` LEFT this set in 7.1: its response no longer
@@ -421,9 +421,19 @@ def swept():
             # Today's template preview, a GET since its POST half left at 7.8 (2026-10-15),
             # read here because only this fixture seeds the templates it renders.
             got = A.app.test_client().get(f"/templates/preview/r1?list_name={LIST}")
+            # The v2 restore preview (a GET, the device page's Restore from…), at the first
+            # golden against HEAD: a program that adds its community, and HEAD's as residue.
+            # Today's POST /golden/restore/preview was in the population until it left at 7.8
+            # (2026-10-17); read here because only this fixture builds that moment.
+            with pytest.MonkeyPatch.context() as rp_mp:
+                rp_mp.setattr(identity, "identify", lambda _r: who)
+                rp = A.app.test_client().get(
+                    f"/v2/device/r1/restore/preview?list={LIST}"
+                    f"&moment={values['_first_golden']}")
             yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
                    "person": person, "tests": tests, "drift_run": drift_run,
-                   "template_preview": (got.status_code, got.get_data(as_text=True))}
+                   "template_preview": (got.status_code, got.get_data(as_text=True)),
+                   "restore_preview": (rp.status_code, rp.get_data(as_text=True))}
     finally:
         mp.undo()
 
@@ -476,8 +486,9 @@ class TestThePopulation:
         assert len(population) >= 30, len(population)
 
     def test_the_known_computing_posts_are_in_it(self):
-        """The anchor: C77's two are in the population the gate table gives."""
-        assert {"deploy.plan", "golden.restore_preview"} <= set(_population())
+        """The anchor: C77's deploy plan is in the population the gate table gives (its
+        restore preview, the other, left at 7.8 and is read as v2's GET in `swept`)."""
+        assert {"deploy.plan", "golden.capture_preview"} <= set(_population())
 
     def test_every_integration_is_driven_or_named(self, swept):
         from modules.integrations import REGISTRY
@@ -502,7 +513,18 @@ class TestEveryRouteReachedItsState:
         missing = sorted(k for k in REACHES
                          if not any(m in swept["person"][k][1] for m in MASKS))
         assert missing == [], missing
-        assert len(REACHES) >= 5   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632); 6 -> 5: templates.preview's POST left (7.8, 2026-10-15), its GET held below
+        assert len(REACHES) >= 4   # 8 -> 7: the import preview left it (7.1); 7 -> 6: compare_backups left with today's Backups (7.8, C632); 6 -> 5: templates.preview's POST left (7.8, 2026-10-15), its GET held below; 5 -> 4: golden.restore_preview left (7.8, 2026-10-17), the v2 restore preview held below
+
+    def test_the_v2_restore_preview_drew_the_masked_slot_and_no_value(self, swept):
+        """THE restore plan as the v2 device page draws it (`device_v2.restore_preview`), held
+        as REACHES held today's POST: the plan at the first golden reached the planted
+        community and drew it masked, and no planted value. (The card refuses that moment,
+        naming the community lines its intent no longer reproduces, masked.)"""
+        status, text = swept["restore_preview"]
+        assert status == 200, text[:300]
+        assert 'id="device-op"' in text and "snmp-server community" in text, text[:300]
+        assert any(m in text for m in MASKS), text[:300]
+        assert [s for v, s in swept["planted"].items() if v in text] == []
 
     def test_the_template_preview_drew_the_masked_slot_and_no_value(self, swept):
         """Today's template preview, held as REACHES held its POST half: the render against

@@ -14,7 +14,7 @@ acknowledgement raises the row again.
 
 Which kinds a person acknowledges here is `attention.ACKNOWLEDGED_HERE`; every other kind
 clears when its condition resolves, or by its own control (a host step said done, a held
-push acknowledged on the Remote card), as `attention.CLEARS` says on the row.
+push acknowledged in History's Remote set-up), as `attention.CLEARS` says on the row.
 
 Store: `acknowledgements.jsonl` in the data folder, append-only, 0600 (a person's name and
 reason are in it).

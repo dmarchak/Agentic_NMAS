@@ -69,7 +69,12 @@ from fixtures.fleet_scale import (STATE_MIX, build_fleet, expected_counts,
 #: 132,580 extracted since 2026-10-17: today's NetBox tab left (7.8): index.4.js's NetBox
 #: section and the import and removal dialog's script (about 19 kB). It had been about
 #: 151 kB, inside the 25% tolerance of 199,435, and fell outside it here.
-EXTRACTED_SCRIPT_BYTES = 132_580
+#:
+#: 83,689 extracted since 2026-10-17 (P7-21): today's Git tab, Remote card and Baselines left
+#: (7.8): index.4.js, the Remote card's and the Baselines panel's scripts
+#: (partials__golden_repo.2.js and .3.js) and the panel's rows in partials__golden_repo.1.js
+#: (about 49 kB).
+EXTRACTED_SCRIPT_BYTES = 83_689
 TOLERANCE = 0.25
 
 #: v2's pages, measured 2026-10-15 (P7-19) at 9 and 900 devices: {page: (fixed bytes, bytes
@@ -375,10 +380,11 @@ class TestTheExtractedScript:
         total = sum(_os.path.getsize(f)
                     for f in tracked("static/js/gen", suffix=".js", recursive=False,
                                      root="."))
-        # The floor is the extraction's, not a size target: 125 kB, below the 132,580 left
-        # after today's NetBox tab (7.8, 2026-10-17; 150 kB below the 199,435 left after the AI
+        # The floor is the extraction's, not a size target: 75 kB, below the 83,689 left after
+        # today's Git tab, Remote card and Baselines (7.8, P7-21, 2026-10-17; 125 kB below the
+        # 132,580 left after today's NetBox tab, and 150 kB below the 199,435 left after the AI
         # family's tabs, D15) and far above what one template's inline block was.
-        assert total > 125_000, (
+        assert total > 75_000, (
             f"only {total} bytes are extracted — the inline script has "
             "returned to the templates")
         assert abs(total - EXTRACTED_SCRIPT_BYTES) < EXTRACTED_SCRIPT_BYTES * TOLERANCE

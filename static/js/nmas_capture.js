@@ -228,7 +228,6 @@
                    + (q.left_pending || []).length + ' left pending (their device was not recorded).';
         }
         showToast(summary, previewConfirmResultLevel(ad.result));
-        if (typeof loadGoldenRepoPanel === 'function') loadGoldenRepoPanel();
       });
     }
   }

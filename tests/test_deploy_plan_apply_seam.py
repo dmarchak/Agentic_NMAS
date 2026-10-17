@@ -205,10 +205,14 @@ class TestTheClientSendsWhatTheRouteReads:
     def test_the_restore_path_does_send_them(self):
         """The positive anchor: the payload is not impossible to build, and
         one client already builds it."""
-        from tests.js_source import read_shipped
+        # Today's re-apply dialog (partials__golden_repo.3.js) built it until it left at 7.8
+        # (2026-10-17); v2's restore confirm carries the program's hash it drew.
+        import os
 
-        source = read_shipped("static/js/gen/partials__golden_repo.3.js")
-        assert "command_hashes: hashes" in source
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "templates", "v2", "_restore.html"), encoding="utf-8") as fh:
+            source = fh.read()
+        assert '"command_hash": c.confirm.command_hash' in source
 
 
 class TestTheRefusalNamesWhatItCompared:

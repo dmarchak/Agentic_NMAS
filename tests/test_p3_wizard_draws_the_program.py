@@ -20,7 +20,6 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WIZARD = os.path.join(ROOT, "static", "js", "gen", "partials__deploy_wizard.1.js")
-GOLDEN_JS = os.path.join(ROOT, "static", "js", "gen", "partials__golden_repo.3.js")
 
 CAPTURE = ("hostname s4\n"
            "interface GigabitEthernet0/1\n"
@@ -235,13 +234,12 @@ class TestTheWizardSendsTheAuthorisationItsHashCovers:
 class TestTheRestorePathCanAuthorise:
     @staticmethod
     def _stub(monkeypatch):
-        """A REAL RestoreTarget through the real route and prepare_restore."""
+        """A REAL RestoreTarget through the real plan and prepare_restore."""
         import routes.golden as golden
         from modules.nsot.deploy import RestoreTarget
 
         t = RestoreTarget(device="s4", platform="cisco_ios", target_config=INTENT,
                           captured=CAPTURE, ref="HEAD")
-        monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
         # build_targets is stubbed with a made-up list, so coverage() is too: it
         # reads that list's inventory, and resolving a list that does not exist
         # creates it (get_list_data_dir). Coverage is tested on a real repo in
@@ -253,42 +251,35 @@ class TestTheRestorePathCanAuthorise:
         monkeypatch.setattr(golden, "_intent_preview", lambda ln, x: {"action": "none"})
         monkeypatch.setattr("modules.nsot.restore.build_targets", lambda *a, **k: ([t], []))
 
-    def test_the_preview_folds_the_authorisation_into_the_hash(self, monkeypatch):
-        import flask
-
+    @staticmethod
+    def _plan(authorise=None):
+        """THE restore plan, masked as its v2 callers draw it (today's /golden/restore/preview
+        returned it until it left at 7.8, 2026-10-17)."""
         import routes.golden as golden
+        from modules.outbound import mask_payload
 
+        return mask_payload(golden.restore_plan("Lab", "HEAD", None, authorise=authorise or {}))
+
+    def test_the_preview_folds_the_authorisation_into_the_hash(self, monkeypatch):
         self._stub(monkeypatch)
-        app = flask.Flask(__name__)
-        app.register_blueprint(golden.bp)
-        c = app.test_client()
-        plain = c.post("/golden/restore/preview", json={"ref": "HEAD"}).get_json()["devices"][0]
-        authed = c.post("/golden/restore/preview",
-                        json={"ref": "HEAD", "authorise": {"s4": [SHUT]}}).get_json()["devices"][0]
+        plain = self._plan()["devices"][0]
+        authed = self._plan({"s4": [SHUT]})["devices"][0]
         assert plain["dangerous"] == ["shutdown"] and plain["authorisation_ok"] is False
         assert authed["authorisation_ok"] is True and authed["authorised"] == [SHUT]
         assert plain["command_hash"] != authed["command_hash"]
 
-    def test_the_client_asks_then_sends_it_on_both_calls(self):
-        src = open(GOLDEN_JS, encoding="utf-8").read()
-        flow = _lift(src, "previewBaselineRestore")
-        assert flow.count("authorise: from.authorise || {}") == 2, "preview AND apply"
-        assert flow.index("_authoriseDangerous(") < flow.index("_confirmRestorePreview(")
+    # Today's re-apply dialog asked for each line's reason in its own modal and sent it on the
+    # preview and the apply; it left at 7.8 (2026-10-17, P7-21; C140 (2): one home, the
+    # component). The v2 restore card asks in place, plans again, and its confirm carries the
+    # reasons (tests/test_device_restore_v2.py).
 
     def test_the_restore_preview_marks_authorised_and_refused_lines(self, monkeypatch):
         """Drawn by the component from the real restore preview, both ways."""
-        import flask
-
-        import routes.golden as golden
         from tests.payload_render import render_preview
 
         self._stub(monkeypatch)
-        app = flask.Flask(__name__)
-        app.register_blueprint(golden.bp)
-        c = app.test_client()
-        refused = c.post("/golden/restore/preview", json={"ref": "HEAD"}).get_json()
-        authed = c.post("/golden/restore/preview",
-                        json={"ref": "HEAD", "authorise": {"s4": [SHUT]}}).get_json()
+        refused = self._plan()
+        authed = self._plan({"s4": [SHUT]})
         a_html, r_html = render_preview(authed["preview"]), render_preview(refused["preview"])
         assert "dangerous: AUTHORISED, stated reason" in a_html
         assert "dangerous: authorise this exact line with your reason" in r_html

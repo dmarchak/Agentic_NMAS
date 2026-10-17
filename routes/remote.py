@@ -1,13 +1,22 @@
-"""Per-list git remote: status, verify, preview, acknowledge, push (adopt left at 7.8).
+"""Per-list git remote: Verify the remote and Push now, History's header's two buttons.
 
 Publishing a network's configuration history — including the credentials in
 it — is gated on ``publish_remote``: a verified PERSON, by default. Its own
 operation kind rather than ``confirm``, so the audit reads "published" and so
 a service grant written for some other operation cannot reach this one.
 
-Read-only endpoints (status, verify, preview) are not gated. Verification and
-the preview exist to be read *before* deciding, and a gate on them would mean
-asking someone to authorise the thing they are trying to evaluate.
+Verify is not gated: verification exists to be read *before* deciding, and a
+gate on it would mean asking someone to authorise the thing they are trying to
+evaluate.
+
+Today's Remote card and its five other routes (/remote/status, /verify-write,
+/preview, /acknowledge, /auto-push) left at 7.8 (2026-10-17, P7-21; /adopt on
+2026-10-15). Their home is History: the header draws the remote's state from
+the `remote-publication` reader and the list's record (`routes/v2._history_remote`),
+and History › Remote set-up… (`routes/remote_v2.py` over `modules/remote_setup.py`)
+connects, runs the write probe, reads what a first push publishes, takes its
+typed acknowledgement and turns on automatic pushing, through the same
+`modules/nsot/remote.py` functions those routes called.
 """
 
 import logging
@@ -29,140 +38,23 @@ def _list_name() -> str:
         or get_current_list_name()
 
 
-@bp.route("/status", methods=["GET"])
-def status():
-    """What this list's remote is, and whether it may be pushed to."""
-    from modules.config_git import publication
-
-    list_name = _list_name()
-    # Whether the history is ON the remote, measured by asking it (C223), on
-    # every branch: an unreadable remote.json is its own answer below (C172),
-    # and the comparison still says what the repository's own origin holds.
-    published = publication(list_name)
-    config, unreadable = R.config_or_refusal(list_name)
-    if unreadable:
-        return jsonify({"ok": False, "list": list_name, "configured": None,
-                        "error": unreadable, "publication": published})
-    if not config:
-        return jsonify({"ok": True, "list": list_name, "configured": False,
-                        "publication": published})
-
-    covers = R.acknowledgement_covers(list_name)
-    return jsonify({
-        "ok": True, "list": list_name, "configured": True,
-        "owner_repo": f"{config['owner']}/{config['repo']}",
-        "ssh_alias": config["ssh_alias"], "branch": config.get("branch"),
-        "managed_by_nmas": config.get("managed_by_nmas"),
-        "read_verified_at": config.get("read_verified_at"),
-        "verified_at": config.get("verified_at"),
-        "auto_push": config.get("auto_push"),
-        "last_push": config.get("last_push"),
-        # Its own field, never folded into last_push: a timestamp on a push
-        # that did not happen reads as durability that does not exist.
-        "last_push_failure": config.get("last_push_failure"),
-        "acknowledged": config.get("acknowledged_secrets"),
-        "acknowledgement_covers": covers,
-        "publication": published,
-    })
-
-
-# Recording an existing setup (POST /adopt) left at 7.8 on 2026-10-15: no page called it. Its
-# home is v2's History › Remote set-up (`routes/remote_v2.py` over `modules/remote_setup.py`,
-# which calls `remote.adopt`).
-
-
 @bp.route("/verify", methods=["POST"])
 def verify():
     """The READ-ONLY pre-push checks. Ungated: this is how you decide.
 
     An SSH greeting, a ls-remote, two anonymous HTTPS requests. The write
-    probe is deliberately not among them — see /remote/verify-write.
+    probe is deliberately not among them: it is History › Remote set-up…'s
+    Run the write probe (`remote_v2.write_probe`), gated.
     """
     out = R.verify(_list_name(), with_write_probe=False, actor=identity.request_actor())
     return jsonify(out)
 
 
-@bp.route("/verify-write", methods=["POST"])
-def verify_write():
-    """The write probe. GATED, because it writes to an external system.
-
-    It publishes no content — an orphan commit with an empty tree, whose ref
-    is then removed — but it is a push to GitHub, and "reads may be ungated"
-    does not stretch to cover a write just because what it writes is small.
-    """
-    ident, refusal = identity.require(request, "publish_remote")
-    if refusal:
-        return refusal
-    out = R.verify(_list_name(), with_write_probe=True, actor=ident.actor)
-    log.info("remote: write probe for '%s' by %s (%s) — ok=%s",
-             _list_name(), ident.actor, ident.kind, out.get("ok"))
-    return jsonify(out)
-
-
-@bp.route("/preview", methods=["GET"])
-def preview():
-    """What a first push would publish. Counts and modes, never values."""
-    list_name = _list_name()
-    out = R.first_push_preview(list_name)
-    if out.get("ok"):
-        out["gated"] = R.gated_summary(out["secrets"])
-    return jsonify(out)
-
-
-@bp.route("/acknowledge", methods=["POST"])
-def acknowledge():
-    """A person accepts publishing the gated material.
-
-    The typed confirmation must name the gated kinds, so that acknowledging
-    is an act of reading rather than of clicking. It is checked against what
-    the scan says NOW, not against what the client was shown — a stale page
-    must not be able to acknowledge something that has since grown.
-    """
-    ident, refusal = identity.require(request, "publish_remote")
-    if refusal:
-        return refusal
-
-    list_name = _list_name()
-    payload = request.get_json(silent=True) or {}
-    typed = (payload.get("typed") or "").strip()
-
-    out = R.first_push_preview(list_name)
-    if not out.get("ok"):
-        return jsonify(out), 400
-    gated = R.gated_summary(out["secrets"])
-    if not gated["kinds"]:
-        return jsonify({"ok": False,
-                        "error": "nothing requires acknowledgement"}), 400
-
-    expected = " ".join(gated["kinds"])
-    if typed != expected:
-        return jsonify({
-            "ok": False,
-            "error": "the typed acknowledgement must name the gated kinds",
-            "expected": expected,
-            "counts": gated["counts"],
-        }), 400
-
-    # The fingerprints the card showed (R41): the acknowledgement covers those or none.
-    shown = payload.get("shown")
-    if not isinstance(shown, list):
-        return jsonify({"ok": False, "error": (
-            "Not acknowledged: this page did not say which values it showed, so the "
-            "acknowledgement could cover a secret nobody saw. Reload the panel and "
-            "acknowledge again.")}), 400
-    result = R.acknowledge(list_name, actor=ident.actor,
-                           actor_kind=ident.kind, shown=shown)
-    log.info("remote: publish acknowledged for '%s' by %s (%s)",
-             list_name, ident.actor, ident.kind)
-    return jsonify(result), (200 if result["ok"] else 400)
-
-
 def _reread_publication() -> None:
     """A manual push goes around the post-commit hooks, so it re-reads the
-    remote itself (C223): otherwise the Remote card, the Git tab and Needs
-    attention kept "1 commit(s) not pushed" for up to a reader cycle after
-    the push had sent it. On a thread, so the answer does not wait on the
-    remote."""
+    remote itself (C223): otherwise History's header and Needs attention kept
+    "1 commit(s) not pushed" for up to a reader cycle after the push had sent
+    it. On a thread, so the answer does not wait on the remote."""
     import threading
 
     from modules.readers.remote_publication import refresh_hook
@@ -185,13 +77,3 @@ def push():
         return jsonify(out), 409
     out["auto_push_offered"] = True
     return jsonify(out)
-
-
-@bp.route("/auto-push", methods=["POST"])
-def auto_push():
-    """Enable auto-push. Offered only after a successful push."""
-    ident, refusal = identity.require(request, "publish_remote")
-    if refusal:
-        return refusal
-    out = R.enable_auto_push(_list_name(), actor=ident.actor)
-    return jsonify(out), (200 if out["ok"] else 409)

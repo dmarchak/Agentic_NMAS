@@ -231,8 +231,9 @@ class TestItIsAToolbarActionNotATab:
         # 7 since 2026-10-12: Configure, Monitoring and Topology left (7.8); 5 since 2026-10-14:
         # the Ansible and Agent tabs left with the AI family (D15), Approvals became Drift; 4
         # since 2026-10-15: the Drift tab left (7.8); 3 the same day: the Logs tab left (7.8);
-        # 2 since 2026-10-17: the NetBox tab left (7.8).
-        assert len(set(panes)) == 2, sorted(set(panes))
+        # 2 since 2026-10-17: the NetBox tab left (7.8); 1 the same day: the Git tab left (7.8,
+        # P7-21), Devices alone.
+        assert len(set(panes)) == 1, sorted(set(panes))
 
     def test_the_toolbar_button_exists(self, page):
         assert 'onclick="openOnboardWizard()"' in page

@@ -201,7 +201,8 @@ exception, a torn read included, to "Default" (modules/config.py:163-169). Write
 their list from it: the intent editor and template routes (routes/templatize.py:27-30,
 routes/templates.py:28-31), the deploy and restore previews and applies when the client
 sends no list (routes/deploy.py:31-34; static/js/gen/partials__golden_repo.3.js:209-214,
-278-283; static/js/nmas_capture.js:207-212), the approval queue (approval_queue.py:28-36),
+278-283, today's re-apply dialog, which left with its routes at 7.8, 2026-10-17, v2's restore
+confirms carrying their list; static/js/nmas_capture.js:207-212), the approval queue (approval_queue.py:28-36),
 `/reorder` (app.py:1050-1061), the collector config (collector_config.py:25-27), variables
 (ai_assistant.py:866-868), and `device_ops.hold_device` (device_ops.py:374-384). A template
 save while another person switches lists always lands in the other list. An intent save
@@ -591,7 +592,8 @@ the hook's sha (archive.py:226-236).
   an unreadable record read as none, the hook saying "no remote" for one, no publish lock, the
   working file uploaded.
 - **Not this row.** The Remote card's route still reads an unreadable record as "no remote":
-  that is C172, already registered.
+  that is C172, already registered. (The route and the card left at 7.8, 2026-10-17; History's
+  header and Remote set-up… say an unreadable record is unreadable.)
 
 *FIXED 2026-10-02 (tests/test_drift_state_concurrency.py):* every read-modify-write of a
 list's state holds a cross-process `PathLock` and replaces the file atomically; only an
@@ -710,7 +712,8 @@ plausible, not reproduced.
 **R24. git's own locks surface as raw failures** (git-2, git-5). `git()` runs once with no
 retry (repo.py:164-181). `_git_env` does not set `GIT_OPTIONAL_LOCKS=0` (repo.py:105-118), so
 GET handlers running `git status` outside the lock (routes/v2.py:185;
-modules/config_git.py:245-246; routes/templates.py:167) can hold `index.lock` while a save
+modules/config_git.py:245-246, today's Git tab's status, which left at 7.8, 2026-10-17;
+routes/templates.py:167) can hold `index.lock` while a save
 needs it. The save fails with git's "File exists" text. `commit()` reads HEAD in a separate
 call after committing (repo.py:1270-1273), and `save_golden` tags it (:1083, 1093-1111).
 Abandon commits without the lock (onboard.py:1802-1806), so in one process `save_golden` can
@@ -981,6 +984,11 @@ values moved, naming the new ones.
 - Controls, each failing its aimed test: the values not compared; the route accepting none;
   the card sending none.
 - **The list:** carried once P.8 makes the URL authoritative (R3, decided 2026-10-04).
+- **2026-10-17 (7.8, P7-21):** today's `/remote/acknowledge` and its Remote card left. History ›
+  Remote set-up…'s Acknowledge (`remote_v2.acknowledge` over `remote_setup.acknowledge`) is the
+  one caller: its form carries one `shown` per fingerprint it drew and its network, and a form
+  sending none is refused with nothing recorded (tests/test_ack_binds_values.py,
+  tests/test_remote_setup_v2.py). SAFE.
 
 ### Low findings
 

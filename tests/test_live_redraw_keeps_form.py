@@ -139,7 +139,10 @@ def test_an_htmx_write_relays_its_keys_to_its_own_page(served, monkeypatch):  # 
     b.js("htmx.ajax('GET', '/v2/who', {target: '#nmas-strip', swap: 'none'}); return 1")
     b.wait_for(f"return {SETTLED}", 10)
     assert b.js("return window.__heard") == 0
-    b.js("htmx.ajax('POST', '/remote/auto-push', {swap: 'none', values: {}}); return 1")
+    # v2's Remote set-up… turns automatic pushing on (today's /remote/auto-push left with the
+    # Remote card at 7.8, P7-21); it declares `remote` as the removed route did.
+    b.js("htmx.ajax('POST', '/v2/history/remote/setup/auto-push',"
+         " {swap: 'none', values: {list: 'Default'}}); return 1")
     assert b.wait_for("return window.__heard", 10) == 1
 
 

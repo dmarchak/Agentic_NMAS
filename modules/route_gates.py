@@ -77,7 +77,8 @@ C, A, K, R, P, N = ("confirm", "approve", "configure", "reveal",
 GATES = {
     # ---- confirm: sends to a device -------------------------------------
     "deploy.apply": _g(C, "pushes a confirmed program to devices"),
-    "golden.restore_apply": _g(C, "re-applies a ref to devices through the deploy path"),
+    # Today's re-apply (golden.restore_apply) left at 7.8 (2026-10-17, P7-21): v2's
+    # device_v2.restore_confirm and v2.history_reapply_confirm run the same restore as a job.
     "onboard.verify": _g(C, "reaches the device and rotates its credential",
                          "onboard_verify"),
     "onboard.abandon": _g(C, "deletes the device's records from NetBox and the repository",
@@ -238,10 +239,10 @@ GATES = {
                                         "line, the reason), never the value", "log_line"),
 
     # ---- publish_remote --------------------------------------------------
-    "remote.push": _g(P, "publishes the repository"),
-    "remote.auto_push": _g(P, "switches automatic publishing"),
-    "remote.acknowledge": _g(P, "acknowledges the history scan before first publication"),
-    "remote.verify_write": _g(P, "writes a probe to the remote"),
+    "remote.push": _g(P, "publishes the repository, from History's header"),
+    # Today's Remote card's auto-push, acknowledge and write probe (remote.auto_push,
+    # remote.acknowledge, remote.verify_write) left at 7.8 (2026-10-17, P7-21): History ›
+    # Remote set-up… (remote_v2.*, below) does each.
     "remote_v2.connect": _g(P, "binds the network to its existing remote, from History's set-up card (C631)"),
     "remote_v2.write_probe": _g(P, "writes a probe to the remote, from History's set-up card (C631)"),
     "remote_v2.acknowledge": _g(P, "acknowledges the history scan before first publication, from History's set-up card (C631)"),
@@ -249,7 +250,6 @@ GATES = {
 
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
     "deploy.plan": _g(N, "computes a program; sends nothing"),
-    "golden.restore_preview": _g(N, "computes a restore program; sends nothing"),
     "device_v2.rotate_preview": _g(N, "reads the device's account line live for the rotation's plan, from the v2 device page (the same plan as rotate.preview); changes nothing"),
     "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (the same job as golden.capture_preview); records nothing"),
     "golden.capture_preview": _g(N, "reads each device's running config and computes a "

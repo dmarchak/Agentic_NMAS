@@ -160,6 +160,25 @@ class TestPublication:
         ack = R.load_remote("Branch")["acknowledged_secrets"]
         assert ack["kinds"] == ["snmp_community"] and FP in ack["values"]
 
+    def test_the_card_lists_each_acknowledged_secret_by_fingerprint(self, networks, scan):
+        """The acknowledgement stays reviewable (the operator, 2026-10-01): each value by kind,
+        fingerprint and the devices it is in, escaped, never the value. Today's Remote card drew
+        them; it left at 7.8 (2026-10-17), and the set-up card had drawn the kinds alone. One
+        recorded before fingerprints says so rather than reading as nothing acknowledged."""
+        _connected(networks)
+        _post(networks, f"{BASE}/acknowledge",
+              {"list": "Branch", "typed": "snmp_community", "shown": FP})
+        R.update_remote("Branch", lambda c: c["acknowledged_secrets"]["values"][FP].__setitem__(
+            "devices", ["r1", "<r2>"]))
+        _r, card = _get(networks, f"{BASE}?list=Branch")
+        acked = card.split("<dt>Acknowledged</dt>", 1)[1].split("</dd>", 1)[0]
+        assert "snmp_community" in acked and FP in acked, acked
+        assert "r1, &lt;r2&gt;" in acked and "<r2>" not in acked, acked
+        R.update_remote("Branch", lambda c: c["acknowledged_secrets"].pop("values"))
+        _r, card = _get(networks, f"{BASE}?list=Branch")
+        acked = card.split("<dt>Acknowledged</dt>", 1)[1].split("</dd>", 1)[0]
+        assert "recorded before secrets had fingerprints" in acked, acked
+
     def test_a_value_not_shown_is_refused(self, networks, scan):
         _connected(networks)
         r, html = _post(networks, f"{BASE}/acknowledge",

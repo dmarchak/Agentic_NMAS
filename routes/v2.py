@@ -298,7 +298,13 @@ def _history_remote(ref) -> dict:
     if rc != 0:
         out["unreadable"] = redact_text(err or f"git status exited {rc}")
         return out
-    paths = [l[3:].strip() for l in (text or "").splitlines() if l.strip()]
+    # Parsed, never sliced: `repo.git` strips its output, so the first line's leading space
+    # (" M golden/r1.cfg") is gone and a fixed column slice ate the path's first letter
+    # ("olden/r1.cfg"). Today's Git tab's status (`config_git.get_repo_status`) had fixed it
+    # there; found here rebasing its tests onto this header (7.8, 2026-10-17).
+    paths = [m.group(2).split(" -> ")[-1].strip('"')
+             for m in (re.match(r"^\s*(\S{1,2})\s+(.*)$", l) for l in (text or "").splitlines())
+             if m]
     out["dirty"] = len(paths)
     # Named here, never "see today's Git tab" (C637): the first five, and how many more.
     out["dirty_paths"] = paths[:5]

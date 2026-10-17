@@ -129,7 +129,8 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
     return job
 
 
-#: What a restore changes (`/golden/restore/apply`'s declaration), announced at its end.
+#: What a restore changes, announced at its end (the declaration today's /golden/restore/apply
+#: carried until it left at 7.8, 2026-10-17).
 RESTORE_DONE_KEYS = ("deploy_job", "device_state", "intent", "baselines", "drift", "approvals",
                      "rolled_back", "goldens", "remote")
 
@@ -138,7 +139,7 @@ def start_restore(list_name: str, ref: str, confirmations: dict, command_hashes:
                   authorise: dict, un_onboard: list, actor: str, actor_kind: str,
                   ident, card: str = "") -> str:
     """A restore (re-apply *ref*) run as a JOB, as the v2 device page's deploy is (board 10):
-    the same apply as `/golden/restore/apply` (`restore.build_targets`, `routes.deploy.
+    the apply today's /golden/restore/apply ran until 7.8 (`restore.build_targets`, `routes.deploy.
     run_targets`: the program computed again and refused alone if its hash moved, the device
     held, verify, rollback, ONE commit of the golden and the intent half, the receipts), in
     the LIST the preview was drawn in (C396), as the person who confirmed. Returns the job's

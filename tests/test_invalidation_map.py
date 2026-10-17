@@ -121,10 +121,14 @@ class TestEveryMutatingRouteDeclares:
             assert len(value.reason) >= 30, endpoint
 
     def test_the_three_measured_cases_are_declared(self):
+        from modules import deploy_job
+
         assert "inventory" in I.keys_for("onboard.verify")
-        for endpoint in ("deploy.apply", "golden.capture_apply",
-                         "golden.restore_apply"):
+        for endpoint in ("deploy.apply", "golden.capture_apply"):
             assert "remote" in I.keys_for(endpoint), endpoint
+        # A restore is a job (today's golden.restore_apply left at 7.8, 2026-10-17): the job
+        # announces what it changed as it finishes.
+        assert "remote" in deploy_job.RESTORE_DONE_KEYS
         assert "drift" in I.keys_for("settings_v2.diag_drift_check")   # /drift/check/sync until 7.8
 
 
@@ -137,25 +141,30 @@ def client():
     return A.app.test_client()
 
 
+def _push_answers(monkeypatch):
+    """Push now (`POST /remote/push`, History's header): a mutating route with one key and a JSON
+    answer, its push replaced at its edge (today's /remote/auto-push was the example until it
+    left at 7.8, 2026-10-17)."""
+    from routes import remote as RR
+
+    monkeypatch.setattr(R, "push", lambda name, actor="": {"ok": True, "pushed": "main"})
+    monkeypatch.setattr(RR, "_reread_publication", lambda: None)
+
+
 class TestTheResponseCarriesIt:
     def test_header_and_body(self, client, monkeypatch):
-        import app as A
-
-        monkeypatch.setattr(R, "enable_auto_push",
-                            lambda name, actor="": {"ok": True, "enabled": True})
-        r = client.post("/remote/auto-push", json={})
+        _push_answers(monkeypatch)
+        r = client.post("/remote/push", json={})
         assert r.headers.get(I.HEADER) == "remote"
         body = r.get_json()
         assert body["invalidates"] == ["remote"] and body["ok"] is True
 
     def test_the_response_is_otherwise_unchanged(self, client, monkeypatch):
         """Acceptance 7: nothing about a route changes but the added field."""
-        import app as A
-
-        monkeypatch.setattr(R, "enable_auto_push",
-                            lambda name, actor="": {"ok": True, "enabled": True})
-        body = client.post("/remote/auto-push", json={}).get_json()
-        assert body == {"ok": True, "enabled": True, "invalidates": ["remote"]}
+        _push_answers(monkeypatch)
+        body = client.post("/remote/push", json={}).get_json()
+        assert body == {"ok": True, "pushed": "main", "auto_push_offered": True,
+                        "invalidates": ["remote"]}
 
     @pytest.mark.real_identity
     def test_an_identity_refusal_carries_no_header(self, client):
@@ -211,7 +220,7 @@ class TestSubscriptions:
         since today's in-place redraw left at 7.8)."""
         subs = {(k, loader) for k, _, loader, _ in shipped_subscriptions()}
         assert ("inventory", "relayInventory") in subs
-        assert ("remote", "loadRemotePanel") in subs
+        assert ("remote", "relayRemote") in subs   # today's loadRemotePanel until 7.8
         assert ("drift", "relayDrift") in subs   # today's loadDriftStatus until 7.8
 
     def test_every_subscription_names_a_declared_key(self):
@@ -281,11 +290,8 @@ class TestTheClientExecutes:
 
     def test_a_response_naming_a_key_runs_the_subscriber(self, client, monkeypatch):
         """Against a REAL response's header, not a hand-typed one."""
-        import app as A
-
-        monkeypatch.setattr(R, "enable_auto_push",
-                            lambda name, actor="": {"ok": True, "enabled": True})
-        header = client.post("/remote/auto-push", json={}).headers[I.HEADER]
+        _push_answers(monkeypatch)
+        header = client.post("/remote/push", json={}).headers[I.HEADER]
         out = _run("""
           var calls = 0;
           NMAS.subscribe('remote', 'card', function () { calls++; return true; });
@@ -303,16 +309,13 @@ class TestTheClientExecutes:
         """C474 (2026-10-05): htmx asks by XHR, which the fetch wrapper never sees, so a v2
         confirm's keys never reached its own page. Its answer's header now reaches the same
         registry, against a REAL response's header."""
-        import app as A
-
-        monkeypatch.setattr(R, "enable_auto_push",
-                            lambda name, actor="": {"ok": True, "enabled": True})
-        header = client.post("/remote/auto-push", json={}).headers[I.HEADER]
+        _push_answers(monkeypatch)
+        header = client.post("/remote/push", json={}).headers[I.HEADER]
         out = _run("""
           var calls = 0;
           NMAS.subscribe('remote', 'card', function () { calls++; return true; });
           NMAS.subscribe('drift', 'badge', function () { calls += 100; return true; });
-          NMAS.onHtmxResponse({detail: {xhr: {responseURL: '/remote/auto-push',
+          NMAS.onHtmxResponse({detail: {xhr: {responseURL: '/remote/push',
             getResponseHeader: function (h) {
               return h === 'X-NMAS-Invalidates' ? dukpy['header'] : null; }}}});
           NMAS.onHtmxResponse({detail: {}});

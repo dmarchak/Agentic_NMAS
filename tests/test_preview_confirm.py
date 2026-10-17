@@ -182,7 +182,8 @@ class TestTheCaptureGateSaysWhatItCompares:
         assert "skipped as drifted, with nothing sent" in gate["detail"]
 
     def test_no_screen_claims_the_device_is_re_read(self):
-        for f in ("partials__deploy_wizard.1.js", "partials__golden_repo.3.js"):
+        # Today's re-apply dialog (partials__golden_repo.3.js) left at 7.8 (2026-10-17).
+        for f in ("partials__deploy_wizard.1.js",):
             assert "Each device is re-read" not in shipped(f), f
         src = open(os.path.join(ROOT, "modules", "preview_confirm.py"), encoding="utf-8").read()
         assert "a changed device is skipped" not in src
@@ -233,8 +234,10 @@ class TestConfirmSaysWho:
 #: Screens moved onto the component, and the ones still to move, in the
 #: approved order. RETROFIT_PENDING only shrinks.
 RETROFITTED = {"deploy": "partials__deploy_wizard.1.js",
-               "restore": "partials__golden_repo.3.js",
                "onboarding": "partials__onboard_wizard.1.js"}
+# "restore" (partials__golden_repo.3.js, today's re-apply dialog) left at 7.8 (2026-10-17,
+# P7-21): the v2 device page's restore card (board 9, `templates/v2/_restore.html`) and
+# History's Re-apply… page draw THE restore plan server-side.
 # "netbox import/remove" (partials__netbox_safety_modal.1.js) left with today's NetBox tab at
 # 7.8 (2026-10-17): v2's NetBox page draws its previews with `preview_parts`.
 RETROFIT_PENDING = {

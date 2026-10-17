@@ -99,22 +99,9 @@ class TestAnotherListsDamagedRecord:
 
 
 class TestTheScreensSayIt:
-    def test_the_status_route_is_not_configured_false(self, store, monkeypatch):  # noqa: F811
-        import app as A
-        monkeypatch.setattr("routes.remote._list_name", lambda: LIST)
-        monkeypatch.setattr("modules.config_git.publication", lambda name: {"state": "not_read"})
-        _damage(store)
-        body = A.app.test_client().get("/remote/status").get_json()
-        assert body["ok"] is False and body["configured"] is None
-        assert body["error"].startswith("remote.json could not be read")
-
-    def test_the_v1_panel_draws_the_error_not_no_remote(self):
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        js = open(os.path.join(root, "static", "js", "gen", "partials__golden_repo.2.js"),
-                  encoding="utf-8").read()
-        branch = js.index("if (s.configured === null && s.error)")
-        assert branch < js.index("if (!s.configured)")
-        assert "The remote record cannot be read." in js[branch:js.index("if (!s.configured)")]
+    # Today's /remote/status and its Remote card, each saying the record could not be read
+    # rather than "no remote", left at 7.8 (2026-10-17, P7-21), with their two tests. History's
+    # header (below) and Remote set-up… (`remote_setup.view`'s `unreadable`) say it on v2.
 
     def test_the_history_card_draws_it(self, monkeypatch):
         from modules.nsot import remote as NR

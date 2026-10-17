@@ -120,23 +120,22 @@ class TestTheResultAndTheRecord:
         assert "Baseline: denied: r2 does not match its committed intent" in body
         assert "load-interval 30" in body
 
-    def test_the_panel_then_names_the_blocker_not_save_all(self, cap):
+    def test_needs_attention_then_names_the_blocker_not_save_all(self, cap, monkeypatch):
+        """With no stored baseline usable, the remedy is the denial's, never "Save All" again.
+        Today's Baselines panel said it from /golden/baselines' last decision until both left at
+        7.8 (2026-10-17); Needs attention's baseline row reads the same decision from the
+        history (`attention.baseline_source`)."""
+        from modules import attention as A
+        from tests.test_baseline_partial_operation import _usable_none
+
         self._apply_fleet(cap)
-        d = cap["client"].get("/golden/baselines").get_json()
-        last = d["last_decision"]
-        assert last["state"] == "denied" and "load-interval 30" in last["reasons"]
-        import dukpy
-        from tests.payload_render import lift, shipped
-        src = shipped("partials__golden_repo.1.js")
-        fns = ("_gEsc", "_gWhen", "_gBaselineClaim", "_gBaselineCoverage", "_gCredWarning",
-               "_gBaselineDecision", "_gBaselineRow", "_gBaselineUsable", "_gToggle",
-               "_gBaselinesHtml")
-        rows = [{"tag": "baseline/x", "created": "2026-09-25T00:00:00Z",
-                 "credential_stale": ["s1"], "deleted": False, "withdrawn": None}]
-        html = dukpy.evaljs("\n".join(lift(src, f) for f in fns)
-                            + f"\n_gBaselinesHtml({json.dumps(rows)}, {json.dumps(last)})")
-        assert "A new one cannot be earned yet" in html and "load-interval 30" in html
-        assert "Take a current one with Save All" not in html
+        _usable_none(monkeypatch)
+        (r,) = A.baseline_source()["rows"]
+        assert r["what"] == ("No stored baseline can be re-applied, and a new one cannot be "
+                             "earned yet")
+        assert "the last Save All was denied" in r["cause"] and "load-interval 30" in r["cause"]
+        assert r["action"]["label"].startswith("Resolve each departure")
+        assert "Take a current baseline" not in r["action"]["label"]
 
 
 class TestTheWorkIsNamedAsWellAsTheOutcome:

@@ -206,10 +206,45 @@ class TestNeedsAttention:
         (r,) = out["rows"]
         assert r["what"] == "1 commit(s) on Default not pushed to acct/nsot"
         assert "oldest: 7a72258" in r["cause"] and "Push now" in r["action"]["label"]
-        # The button is on the Devices tab; the first text sent the operator to
-        # the Git tab, which has no Push (2026-09-29).
-        assert "Devices tab" in r["action"]["label"] and "Git tab" not in r["action"]["label"]
+        # The button is History's header's; the first text sent the operator to the Git tab,
+        # which had no Push (2026-09-29), and the next to today's Remote card, which left at
+        # 7.8 (2026-10-17).
+        assert "History's header" in r["action"]["label"]
+        assert r["action"]["href"] == "/v2/history?list=Default"
         assert r["level"] == "warning" and r["since"]
+
+    #: Each state a row is drawn for, as the reader stores it.
+    ROWS = {
+        "held": {"state": "ahead", "ahead": 2, "remote": "acct/nsot", "record": "ok",
+                 "held": {"since": "2026-10-01T01:11:00Z", "reason": "more snmp_community"}},
+        "held, acknowledged since": {"state": "ahead", "ahead": 2, "remote": "acct/nsot",
+                                     "record": "ok", "acknowledged_since_hold": True,
+                                     "held": {"since": "2026-10-01T01:11:00Z", "reason": "r"}},
+        "tags not pushed": {"state": "in_sync", "ahead": 0, "remote": "acct/nsot",
+                            "record": "ok", "tags_not_pushed": ["baseline/1"]},
+        "ahead": {"state": "ahead", "ahead": 1, "remote": "acct/nsot", "record": "ok",
+                  "oldest_sha": "7a72258", "oldest_at": time.time() - 60},
+        "record unreadable": {"state": "in_sync", "ahead": 0, "record": "unreadable",
+                              "record_detail": "unreadable: x"},
+        "diverged": {"state": "diverged", "remote": "acct/nsot", "record": "ok"},
+        "not known": {"state": "unreachable", "remote": "acct/nsot", "record": "ok"},
+    }
+
+    @pytest.mark.parametrize("case", sorted(ROWS))
+    def test_every_action_is_on_v2_never_today_s_pages(self, case):
+        """Needs attention is a v2 screen, so its actions name v2's places (no v1/v2 mixing in
+        instructions): History's header for Push now and Verify, History › Remote set-up… for
+        reading what a push publishes, acknowledging it and connecting; a row whose act is
+        History's links there, for the row's own network."""
+        from modules.attention import remote_source
+
+        (r,) = remote_source(cached=self._cached({"Default": self.ROWS[case]}))["rows"]
+        label = r["action"]["label"]
+        for v1 in ("Remote card", "Devices tab", "device list", "Git tab"):
+            assert v1 not in label, (case, label)
+        if r["action"].get("href") is not None or "History" in label:
+            assert r["action"].get("href") == "/v2/history?list=Default", (case, r["action"])
+        assert "History" in label or "by hand on the host" in label, (case, label)
 
     def test_published_lists_are_counted_not_rows(self):
         from modules.attention import remote_source
@@ -232,63 +267,6 @@ class TestNeedsAttention:
 
         out = remote_source(cached={"state": "absent", "why": "no store yet", "doc": None})
         assert out.get("error") or out.get("rows"), out
-
-
-class TestTheScreensDrawTheOneSentence:
-    def test_the_shipped_remote_card_draws_the_level_and_escapes(self):
-        import dukpy
-        from tests.payload_render import lift, shipped
-
-        src = shipped("partials__golden_repo.2.js")
-        esc = lift(shipped("partials__golden_repo.1.js"), "_gEsc")
-        js = esc + "\n" + lift(src, "remotePublicationHtml")
-        said = P.describe({"state": "ahead", "ahead": 1, "remote": "a/<b>",
-                           "oldest_sha": "7a72258", "oldest_at": 100}, now=400)
-        html = dukpy.evaljs(js + f"\nremotePublicationHtml({json.dumps(said)})")
-        assert "alert-warning" in html and "1 commit(s) not pushed to a/&lt;b&gt;" in html
-        assert "<b>" not in html
-        unknown = dukpy.evaljs(js + "\nremotePublicationHtml({level: 'weird', clause: 'x'})")
-        assert "alert-warning" in unknown and "success" not in unknown
-        assert "not reported" in dukpy.evaljs(js + "\nremotePublicationHtml(null)")
-
-    def test_the_git_tab_says_committed_and_whether_pushed(self):
-        """The line the operator read, 'Everything is committed', now carries
-        the remote: the shipped renderer, executed."""
-        import dukpy
-        from tests.payload_render import lift
-
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        page = open(os.path.join(root, "templates", "index.html"), encoding="utf-8").read()
-        js = "\n".join(lift(page, n) for n in ("escHtml", "gitLevel", "_renderGitStatus"))
-        stub = ("var els = {gitStatusBar: {className: '', classList: {remove: function(){}}},"
-                " gitStatusText: {innerHTML: '', textContent: ''}};"
-                "var document = {getElementById: function(i){ return els[i]; }};")
-
-        def draw(status):
-            return dukpy.evaljs(stub + js + f"\n_renderGitStatus({json.dumps(status)});"
-                                "[els.gitStatusBar.className, els.gitStatusText.innerHTML]")
-        ahead = P.describe({"state": "ahead", "ahead": 1, "remote": "acct/nsot",
-                            "branch": "main", "head": "7a72258", "remote_head": "cf4d96d",
-                            "oldest_sha": "7a72258", "oldest_at": 100}, now=400)
-        cls, html = draw({"initialised": True, "ok": True, "uncommitted": [],
-                          "last_commit": "7a72258 abandon: R10", "publication": ahead})
-        assert "alert-warning" in cls
-        assert "<strong>Everything is committed</strong> · <span title=" in html
-        assert ">1 commit(s) not pushed to acct/nsot (oldest: 7a72258, 5 min)</span>." in html
-        assert "HEAD 7a72258, acct/nsot main at cf4d96d" in html, "the evidence, on hover"
-        synced = P.describe({"state": "in_sync", "remote": "acct/nsot"})
-        cls, html = draw({"initialised": True, "ok": True, "uncommitted": [],
-                          "publication": synced})
-        assert "alert-success" in cls and "Everything is committed</strong> <span" in html
-        assert "and pushed to acct/nsot" in html
-        cls, _ = draw({"initialised": True, "ok": True, "uncommitted": []})
-        assert "alert-success" not in cls, "no publication reported is never green"
-
-    def test_the_git_log_has_no_pipeline_column(self):
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        page = open(os.path.join(root, "templates", "index.html"), encoding="utf-8").read()
-        assert "Pipeline (before P.4)" not in page and "c.pipeline" not in page
-        assert "<summary>How this works</summary>" in page
 
 
 class TestAManualPushReReads:
@@ -426,16 +404,9 @@ class TestAHeldPushIsSaidAndItsTagsFollow:
         assert late["level"] == "danger" and "auto-push has not sent it" in late["clause"]
 
 
-def test_the_shipped_card_lists_each_acknowledged_secret_by_fingerprint():
-    """The acknowledgement stays reviewable: kind, fingerprint and devices,
-    escaped; an acknowledgement before fingerprints says so (2026-10-01)."""
-    import dukpy
-    from tests.payload_render import lift, shipped
-
-    js = (lift(shipped("partials__golden_repo.1.js"), "_gEsc") + "\n"
-          + lift(shipped("partials__golden_repo.2.js"), "remoteAckValuesHtml"))
-    html = dukpy.evaljs(js + "\nremoteAckValuesHtml({'a1b2c3d4e5f6': {kind: 'snmp_community', "
-                             "devices: ['r1', '<r6>']}})")
-    assert "snmp_community" in html and "a1b2c3d4e5f6" in html and "r1, &lt;r6&gt;" in html
-    old = dukpy.evaljs(js + "\nremoteAckValuesHtml(undefined)")
-    assert "before secrets had fingerprints" in old
+# Today's Git tab's status line, its Remote card's publication line and its list of each
+# acknowledged secret left at 7.8 (2026-10-17, P7-21), and their renderer tests with them.
+# History's header draws the one sentence (tests/test_history_v2.py,
+# `test_the_header_draws_the_one_sentence_its_level_and_escapes`), and History › Remote
+# set-up… lists each acknowledged secret by fingerprint (tests/test_remote_setup_v2.py,
+# `test_the_card_lists_each_acknowledged_secret_by_fingerprint`).

@@ -16,29 +16,20 @@ under any message, without its Intent-Match trailer. Measured on the
 deployment host: used three times (30 Aug, 1 Sep, 15 Sep), before saves
 committed in their own call, and since then it had nothing to commit but
 residue. (First recorded as "never used": the search looked for a trailer
-the tab wrote only from D10.) What this module keeps is
-reading: the log, a commit's diff, and the status, which names anything left
-uncommitted and what to do about it.
+the tab wrote only from D10.) Its reading (the log, a commit's diff, and the
+status) left with today's Git tab at 7.8 (2026-10-17): History is their home.
 
 Jenkins validation pipelines were removed in P.4 (docs/NSOT_CI.md). The
 per-list `pipeline_commits.json` linked a commit to a pipeline before then;
 since 2026-09-29 nothing reads it either, and the Git tab's "Pipeline (before
 P.4)" column is gone (the operator: it meant nothing outside the project's
 history and was populated only for commits older than P.4).
-
-The status also says whether the repository is PUBLISHED (C223): the
-`remote-publication` reader's comparison of HEAD with the remote's own
-branch, in the one sentence `remote_publication.describe()` makes.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import re
-import time
-from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -50,16 +41,6 @@ _GIT_AUTHOR_EMAIL = "nmas@localhost"
 # part of config_git's surface. The tuple is byte-identical to the one that
 # lived here — see tests/test_normalize_equivalence.py.
 from modules.nsot.normalize import REPO_PREFIXES as _VOLATILE_PREFIXES
-
-
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-
-def _repo_dir(list_name: str) -> str:
-    from modules.config import LISTS_DIR, list_slug
-    return os.path.join(LISTS_DIR, list_slug(list_name), "config_repo")
-
 
 
 # ---------------------------------------------------------------------------
@@ -123,132 +104,8 @@ def write_and_stage(list_name: str, hostname: str, config_text: str,
     return True
 
 
-# ---------------------------------------------------------------------------
-# Git log / status
-# ---------------------------------------------------------------------------
-
-def get_commit_log(list_name: str, limit: int = 40) -> list[dict]:
-    """Return recent git commits."""
-    repo = _repo_dir(list_name)
-    if not os.path.isdir(os.path.join(repo, ".git")):
-        return []
-
-    fmt = "%H|%h|%s|%ai|%an"
-    rc, out, _ = _git(repo, "log", f"--max-count={limit}", f"--format={fmt}")
-    if rc != 0 or not out:
-        return []
-
-    entries = []
-    for line in out.splitlines():
-        parts = line.split("|", 4)
-        if len(parts) < 5:
-            continue
-        full_hash, short_hash, subject, date, author = parts
-        entries.append({
-            "hash":            full_hash,
-            "short_hash":      short_hash,
-            "message":         subject,
-            "date":            date,
-            "author":          author,
-        })
-
-    return entries
-
-
-def get_commit_diff(list_name: str, commit_hash: str) -> Optional[dict]:
-    """Return the changed-file list and full diff for one commit.
-
-    Returns None if the repo doesn't exist or commit_hash isn't a plausible
-    git hash (defends against argument injection into the git subprocess —
-    e.g. a hash-shaped string starting with '-' being read as an option).
-    """
-    repo = _repo_dir(list_name)
-    if not os.path.isdir(os.path.join(repo, ".git")):
-        return None
-    if not re.fullmatch(r"[0-9a-fA-F]{4,40}", commit_hash):
-        return None
-
-    rc, subject, _ = _git(repo, "show", "--no-patch", "--format=%s", commit_hash)
-    if rc != 0:
-        return None
-
-    rc2, stat_out, _ = _git(repo, "show", "--stat", "--format=", commit_hash)
-    rc3, diff_out, _ = _git(repo, "show", "--format=", commit_hash)
-
-    return {
-        "hash":    commit_hash,
-        "message": subject,
-        "stat":    stat_out if rc2 == 0 else "",
-        "diff":    diff_out if rc3 == 0 else "",
-    }
-
-
-#: What an uncommitted path means, by where it is. Every writer in the
-#: program commits in the same call, so anything here outside `.nsot/` was
-#: left by an operation that failed or was interrupted, or edited on the host.
-_UNCOMMITTED_MEANS = {
-    "golden": ("a golden that no save committed. Readers of the working tree "
-               "(drift, the NetBox import, the agent) treat it as the approved "
-               "golden. Capture the device to record what it holds now through "
-               "the save path, or discard it on the host (git checkout)."),
-    "host_vars": ("intent that was not committed. Deploy reads committed intent "
-                  "only; open the intent editor for this device to commit it."),
-    "templates": ("a template that was not committed. Its approval is already "
-                  "refused while it differs; save it again in the template "
-                  "editor."),
-    ".nsot": ("identity changes recorded by an inventory refresh or a save; "
-              "committed with the next golden save, by design."),
-}
-_UNCOMMITTED_ELSE = ("nothing in Mercury writes here, so it was changed on the "
-                     "host. Commit or discard it there.")
-
-
-def get_repo_status(list_name: str) -> dict:
-    """The branch, the last commit, and EVERY uncommitted path with what it
-    means. It used to report only STAGED changes and call everything else
-    "working tree clean": a golden rewritten and left uncommitted is
-    unstaged, so the one state this bar exists to show read as clean."""
-    repo = _repo_dir(list_name)
-    if not os.path.isdir(os.path.join(repo, ".git")):
-        return {"initialised": False}
-
-    _, branch,      _ = _git(repo, "branch", "--show-current")
-    _, last_commit, _ = _git(repo, "log", "-1", "--format=%h %s (%ai)")
-    rc, porcelain, err = _git(repo, "status", "--porcelain=v1",
-                              "--untracked-files=all")
-    if rc != 0:
-        return {"initialised": True, "ok": False, "branch": branch or "main",
-                "last_commit": last_commit, "publication": publication(list_name),
-                "error": f"could not read the repository's status: {err}"}
-    uncommitted = []
-    for line in porcelain.splitlines():
-        # Parsed, never sliced: `_git` strips its output, so the first line's
-        # leading space (" M golden/r1.cfg") is gone and a fixed column
-        # slice ate the path's first letter (found by the exact-path test).
-        m = re.match(r"^\s*(\S{1,2})\s+(.*)$", line)
-        if not m:
-            continue
-        path = m.group(2).split(" -> ")[-1].strip('"')
-        top = path.split("/", 1)[0]
-        uncommitted.append({"path": path, "state": m.group(1),
-                            "means": _UNCOMMITTED_MEANS.get(top, _UNCOMMITTED_ELSE)})
-    return {
-        "initialised":  True,
-        "ok":           True,
-        "branch":       branch or "main",
-        "last_commit":  last_commit,
-        "uncommitted":  uncommitted,
-        "publication":  publication(list_name),
-    }
-
-
-def publication(list_name: str) -> dict:
-    """Is this list's history on its remote: the reader's stored comparison
-    of HEAD with the remote's own branch, as the one sentence (C223)."""
-    from modules.readers import remote_publication as P
-
-    try:
-        return P.describe(P.status_for(list_name))
-    except Exception as exc:                   # noqa: BLE001
-        return {"level": "warning", "state": "not_read", "detail": "",
-                "clause": f"whether it is pushed could not be read: {exc}"}
+# Today's Git tab's readers (`get_commit_log`, `get_commit_diff`, `get_repo_status` with what
+# each uncommitted path meant, and `publication`, which the Remote card's /remote/status read)
+# left with the tab and the card at 7.8 (2026-10-17, P7-21). History reads the log and each
+# commit through `modules/nsot/repo.py`, masked, and its header (`routes/v2._history_remote`)
+# runs `git status` and asks `remote_publication.describe` for the remote's sentence.

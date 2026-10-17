@@ -91,9 +91,7 @@ PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "removableHt
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 CAP = "nmas_capture.js"
 SEED = "nmas_seed.js"
-RS = "nmas_restore_scope.js"
-DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js",
-                     "partials__golden_repo.2.js", "partials__golden_repo.3.js")
+DW, GR1 = "partials__deploy_wizard.1.js", "partials__golden_repo.1.js"
 
 RENDERS = {
     "GET /attention": Render(
@@ -173,24 +171,15 @@ RENDERS = {
         ((SEED, "previewSeed", "ad"),),
         adapters={"modules/preview_confirm.py": ("seed_result", "_fidelity_words",
                                                  "build_result")}),
-    "GET /golden/restore_points/<host>": Render(
-        lambda mp, tmp: P.restore_points(mp, tmp),
-        {RS: ("openRestoreFrom", "restorePointsHtml", "credBadge")},
-        ((RS, "restorePointsHtml", "d"),)),
     # GET /deploy/receipts left this table at 7.8 (2026-10-17, P7-22) with today's device
     # page's Changes tab, its renderer; a device's receipts are its v2 History tab's rows.
-    "POST /golden/restore/preview": Render(
-        lambda mp, tmp: P.restore_preview(mp),
-        {GR3: ("previewBaselineRestore", "_authoriseDangerous", "_confirmRestorePreview",
-               "_restoreSelected"), PC: PC_FNS},
-        ((GR3, "previewBaselineRestore", "d"), (GR3, "_confirmRestorePreview", "d")),
-        maps=("select_data",),
-        adapters={"modules/preview_confirm.py": ("restore_preview", "_restore_gates")}),
-    "GET /remote/status": Render(
-        _get("/remote/status"),
-        # remotePublicationHtml draws `publication` (C223).
-        {GR2: ("loadRemotePanel", "remotePublicationHtml"), GR3: ("_gLastPush",)},
-        ((GR2, "loadRemotePanel", "s"),)),
+    # Today's re-apply dialog's preview (POST /golden/restore/preview), the device page's
+    # restore points (GET /golden/restore_points/<host>), the Remote card's GET /remote/status
+    # and the Baselines panel's GET /golden/baselines left this table at 7.8 (2026-10-17,
+    # P7-21) with their routes and renderers. v2 draws each server-side: the device page's
+    # restore card from THE restore plan, History's header and Remote set-up… from the list's
+    # record, History › Baselines from the `baseline-usability` reader
+    # (tests/test_v2_context_is_drawn.py).
     # GET /identity/posture, GET /settings/integrations/status and GET
     # /settings/integrations/general left this table at 7.8 (2026-10-15) with their renderers,
     # today's Settings modal's posture panel, Integrations strip and general block, and the
@@ -207,13 +196,6 @@ RENDERS = {
         {"partials__template_editor.1.js": ("_loadApproval", "approvalCellHtml",
                                             "approvalEvidenceText")},
         (("partials__template_editor.1.js", "approvalCellHtml", "d"),)),
-    "GET /golden/baselines": Render(
-        lambda mp, tmp: P.golden_panel(mp, tmp, "/golden/baselines"),
-        {GR3: ("loadGoldenRepoPanel",), GR1: ("_gBaselineCoverage", "_gCredWarning",
-                                               "_gBaselineClaim", "_gBaselineDecision",
-                                               "_gBaselineRow", "_gBaselinesHtml"),
-         RS: ("baselineScopeHtml",)},
-        ((GR3, "loadGoldenRepoPanel", "bRes"),)),
     "GET /golden/history/<host>": Render(
         _get("/golden/history/r1"),
         {GR1: ("showGoldenHistory",)},
@@ -281,23 +263,8 @@ UNDRAWN = {
         ("hostname", "the request's own echo; the dialog is titled from the "
                      "caller's argument"),
         ("list", LIST)],
-    # Carried since before 2026-09-28 and never EXAMINED: the fixture had no
-    # baseline tag until the panel's own fixture reached one.
-    "GET /golden/baselines": [
-        ("credential_detail credential_guarded credential_refused",
-         "the per-device detail and the two subsets behind the stale list; the row "
-         "draws the stale devices and the ones an account would be added back on, "
-         "and the restore preview names each refusal. 7.5 (Versions) draws them"),
-        # C315 (2026-10-02): reached once the provider rotated r1 after every
-        # baseline. `credential_detail` is keyed by DEVICE, so `r1` is a
-        # device name read as a field; inside it, the credential's FORM at the
-        # ref and at HEAD (`secret 9`), never a value.
-        ("at_head at_ref r1",
-         "credential_detail's contents: the account's form at the ref and at HEAD, keyed "
-         "by device. The row names the stale device and not the forms; 7.5 (Versions) "
-         "draws them"),
-        ("subject", "the tag's subject; the row is named by its tag"),
-        ("list", "the list the withdrawal record belongs to; the panel is that list's")],
+    # GET /golden/baselines' eight (credential_detail and its forms, credential_guarded,
+    # credential_refused, subject, list) left with the route at 7.8 (2026-10-17).
     "GET /inventory/source/<list>": [
         ("config credential_list device_order filters refresh_interval role "
          "schema_version site tag",
@@ -319,7 +286,6 @@ UNDRAWN = {
     "GET /onboard/platforms": [
         ("dialect", "the config dialect beside the slug; the wizard offers slugs"),
         ("ok", OK)],
-    "GET /remote/status": [("list", LIST)],
     "GET /templates": [
         ("bindings overrides", "which template each device uses: 7.6 draws "
                                "and edits bindings (reachability group a)"),
@@ -362,15 +328,6 @@ UNDRAWN = {
          "C506 phase 4, What verify checks: drawn by the v2 deploy card (templates/v2/_deploy.html, "
          "#expected, its table, from preview_confirm.expected_part) and reached in "
          "tests/test_verify_checks.py; the v1 deploy page gains no capability")],
-    "POST /golden/restore/preview": [
-        ("add intent_restored inventory_size mode partial ref un_onboarding",
-         "structured forms of claims the drawn `summary` sentence makes (C23's "
-         "coverage included); the component draws the per-device ones as parts"),
-        ("advisory_diff approval_id", "the echo of an approval handoff; the "
-                                      "client draws its own copy of what it sent"),
-        ("scope", "drawn as the preview's `scope` what-not item; the adapter "
-                  "takes it as an argument, so no `.get` reads it"),
-        ("list", LIST)],
     "POST /onboard/plan": [
         ("host_vars", "the intent phase 1 will commit; the review draws the "
                       "bootstrap config, and 7.4 draws the intent too"),
@@ -383,11 +340,8 @@ UNDRAWN = {
 #: does not carry. Each is a branch the fixture cannot reach; a provider
 #: that reaches it lets the entry leave.
 PHANTOM = {
-    "GET /remote/status": [
-        ("acknowledged acknowledgement_covers auto_push branch last_push "
-         "last_push_failure managed_by_nmas owner_repo read_verified_at "
-         "ssh_alias verified_at",
-         "carried only when a remote is configured; the fixture has none")],
+    # GET /remote/status's eleven (the configured remote's fields the Remote card read) left
+    # with the route and the card at 7.8 (2026-10-17).
     "GET /templates/approval/<path>": [
         ("actor approved_at evidence", "carried only for an approved template; "
                                        "the fixture's is unapproved")],
@@ -476,9 +430,6 @@ EMPTY_IN_FIXTURE = {
     "POST /deploy/apply result.targets[].rollback.commands": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
     "POST /deploy/apply result.targets[].rollback.remaining": (S_, "no rollback in the fixture; an incomplete rollback's remaining lines are drawn in test_pipeline (TestARollbackSaysWhatItAchieved)"),
     "POST /deploy/apply result.targets[].rollback.not_undone": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
-    "POST /golden/restore/preview devices[].excluded_unrenderable": (S_, _STRINGS),
-    "POST /golden/restore/preview intent_restored": (S_, _STRINGS),
-    "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
     "POST /onboard/plan host_vars": (R_, "the plan carries no intent for a device "
                                          "not yet onboarded; drawn in 7.4"),
     "GET /onboard/pending runs.finished[].result.did_not.items": (R_, "the finished runs "
@@ -507,8 +458,6 @@ EMPTY_IN_FIXTURE = {
     "POST /deploy/plan preview.targets[].program.secret": (S_, "a deploy never flags a "
         "secret line: an account added from intent is additive (C75); only a restore "
         "does (C79), and the restore provider reaches it"),
-    "POST /golden/restore/preview preview.targets[].program.prior.lines": (R_, "the "
-        "preview's copy of the aggregate; reached in test_authorised_lines.py"),
     # C315 (2026-10-02): eighteen more the first-item-then-intersection walker
     # hid, each empty in one row and ABSENT from another, never held.
     **{f"{route} {base}.{k}": (S_, _DEPLOY_CHECKS)
@@ -517,21 +466,8 @@ EMPTY_IN_FIXTURE = {
                  "unreadable")},
     "POST /deploy/apply results[].pending_convergence": (S_, _DEPLOY_CHECKS),
     "POST /deploy/apply results[].verify.issues": (S_, _DEPLOY_CHECKS),
-    "GET /golden/baselines baselines[].credential_silent": (S_, "device names; empty by "
-        "design on every path since C75 and C79 (a stale account is guarded, which this "
-        "provider reaches for r1), and asserted empty on the real fleet configs"),
-    "GET /golden/baselines baselines[].credential_refused": (S_, "device names; the intent "
-        "guard refuses a ref whose intent names a secret the store lost, and no ref in "
-        "this lab commits intent"),
-    "GET /golden/baselines baselines[].missing_devices": (S_, "device names; every baseline "
-        "here holds the whole inventory. A partial one is drawn in test_restore_scope.py"),
-    "GET /golden/baselines baselines[].no_intent": (S_, "device names; every device here "
-        "has a golden at every baseline it is counted in"),
     "GET /onboard/pending pending[].last_run.result.record.tags": (S_, "an onboarding run "
         "makes no tag"),
-    "POST /golden/restore/preview devices[].prior_authorised.lines": (R_, "the restore "
-        "plan's per-device copy of the aggregate, the state the deploy plan's own entry "
-        "declares; reached through real receipts in test_authorised_lines.py"),
 }
 # 14 -> 13: `GET /netbox/status status` is reached (a stored import, C85).
 # 13 -> 15: the onboarding review on the component (7.1) has no concept to
@@ -578,7 +514,9 @@ EMPTY_IN_FIXTURE = {
 # `select_data`).
 # 26 -> 23: 7.8 (2026-10-17, P7-22): GET /deploy/receipts left with today's device page, and
 # its three records (a receipt's checks' `declared_moves`, `expected_effects`, `interfaces`).
-EMPTY_RECORDS_CEILING = 23
+# 23 -> 21: 7.8 (2026-10-17, P7-21): POST /golden/restore/preview left with today's re-apply
+# dialog, and its two records (the per-device and the preview's copy of C140's aggregate).
+EMPTY_RECORDS_CEILING = 21
 
 
 def _empty_paths(obj, path=""):
@@ -657,8 +595,8 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 84  # -6: today's device page (7.8, 2026-10-17, P7-22), /deploy/receipts's expected_effects, failed_at_once, interfaces, unexpected_settle, declared_moves and notes, with the route. Before: -4: today's NetBox tab (7.8, 2026-10-17), /netbox/status's filename, config_template_id, last_sync and list, with the route. Before: +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
-PHANTOM_CEILING = 14  # 2026-10-15: /identity/posture's config_withheld_reason left with the route (7.8). Before: 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
+UNDRAWN_CEILING = 64  # -6: today's device page (7.8, 2026-10-17, P7-22), /deploy/receipts's expected_effects, failed_at_once, interfaces, unexpected_settle, declared_moves and notes, with the route. Before: -20: today's Git tab, Remote card and Baselines (7.8, P7-21, 2026-10-17), with their routes: /golden/baselines' eight, /remote/status's list, and /golden/restore/preview's eleven. Before: -4: today's NetBox tab (7.8, 2026-10-17), /netbox/status's filename, config_template_id, last_sync and list, with the route. Before: +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+PHANTOM_CEILING = 3  # 2026-10-17: /remote/status's eleven left with the route and today's Remote card (7.8, P7-21). Before: 2026-10-15: /identity/posture's config_withheld_reason left with the route (7.8). Before: 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
 
 
 @pytest.fixture(scope="module")
@@ -754,8 +692,11 @@ def _reverse(measured):
 
 class TestThePopulation:
     def test_floors(self, measured):
-        # 19 since 2026-10-17: GET /deploy/receipts left with today's device page (7.8, P7-22).
-        assert len(RENDERS) >= 19
+        # 16 since 2026-10-17: today's four Git tab, Remote card and Baselines payloads left
+        # (7.8, P7-21); the table shrinks with today's pages (v2's contexts are
+        # tests/test_v2_context_is_drawn.py's).
+        # 15 since GET /deploy/receipts left the same day with today's device page (P7-22).
+        assert len(RENDERS) >= 15
         total = sum(len(_keys(r, p)) for r, (p, _, _) in measured.items())
         assert total >= 150, total
 
@@ -786,8 +727,9 @@ class TestAnchors:
         # 7.1: the program reaches the screen THROUGH the preview; the adapter
         # reads `commands` and the renderer draws `lines` and the split.
         ("POST /deploy/plan", "preview"), ("POST /deploy/plan", "lines"),
-        ("POST /deploy/plan", "from_this_edit"),
-        ("POST /golden/restore/preview", "commands")])
+        # The restore preview's `commands` (C27) left with POST /golden/restore/preview at 7.8
+        # (2026-10-17): the v2 restore card draws the program server-side.
+        ("POST /deploy/plan", "from_this_edit")])
     def test_carried_and_read(self, measured, route, key):
         payload, names, _ = measured[route]
         assert key in _keys(route, payload), f"the fixture cannot carry {key}"

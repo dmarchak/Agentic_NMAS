@@ -60,8 +60,8 @@ KINDS = ("confirm", "approve", "publish_remote")
 RESULT_COMPONENT = {
     "deploy.apply": ("static/js/gen/partials__deploy_wizard.1.js", "_renderDeployResult",
                      "device_v2.history"),
-    "golden.restore_apply": ("static/js/gen/partials__golden_repo.3.js", "_showRestoreResult",
-                             "device_v2.history"),
+    # Today's re-apply (golden.restore_apply) left at 7.8 (2026-10-17, P7-21): v2's
+    # device_v2.restore_confirm and History's Re-apply… draw a restore's result (PAGE_RECORD).
     # The import runs on a thread; its result is the stored summary, drawn on
     # the sync card whenever the NetBox tab is read (C85).
     # Capture (7.1 step 4): Save All is its whole-fleet form, and the one-click
@@ -219,6 +219,12 @@ PAGE_RECORD = {
     # History › Remote set-up (C631): each act's answer drawn in place on the card, and its
     # record (the network's remote.json) read back by the card; the write probe's by
     # History's header, which draws the last Verify.
+    # History's header's Push now: its answer said beside the button, and a failure drawn from
+    # the record (`last_push_failure`), which every redraw of the header reads again. Today's
+    # Remote card's output box held it (PENDING) until the card left at 7.8 (2026-10-17).
+    "remote.push": ("templates/v2/_history_remote.html",
+                    ('id="remote-push-failed"', "remote.push_failure.reason"),
+                    "v2.history_remote"),
     # The result component's parts are one macro (templates/v2/_preview_parts.html) every
     # card that confirms a 7.1 preview draws its result through.
     "netbox_v2.confirm": ("templates/v2/_netbox_job.html", ("result_parts(r)", "job.removal"),
@@ -287,13 +293,12 @@ PAGE_RECORD = {
 PENDING = {
     # -- drawn in place, gone when the window closes or the page moves on --
     "templatize.edit_committed": "the editor's status line names the commit",
-    "remote.push": "the remote panel's output box",
-    "remote.auto_push": "the remote panel's output box",
-    "remote.acknowledge": "the remote panel's output box",
     # -- a toast, gone in seconds --
     "templates.approve": "a toast carrying the per-device evidence",
     "templates.write_template": "a toast",
-    "remote.verify_write": "a toast, then the panel reloads",
+    # Today's Remote card's four (remote.push, auto_push, acknowledge, verify_write) left this
+    # list at 7.8 (2026-10-17, P7-21): Push now is History's header's (PAGE_RECORD); the other
+    # three left with the card, History › Remote set-up… doing each.
 }
 
 #: No page sends these (test_route_reachability.KNOWN_UNREACHABLE). Empty since 2026-10-15:
@@ -330,7 +335,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 7, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 7 since today's /run_command left with today's device page (7.8, 2026-10-17, P7-22); 8 since today's bulk commands left (7.8, 2026-10-15); 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
+CEILINGS = {"PENDING": 3, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 3 since today's /run_command left with today's device page (7.8, P7-22, 2026-10-17); 4 since today's Remote card left (7.8, P7-21, 2026-10-17: its push, auto-push, acknowledge and write probe); 8 since today's bulk commands left (7.8, 2026-10-15); 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
 
 
 def _population():
@@ -396,7 +401,7 @@ class TestTheToastBar:
 
     def test_the_bar_refuses_a_gated_action(self):
         """Control: the bar is live, not an empty dict passing vacuously."""
-        refused = toast_refusals({"golden.restore_apply": "the toast says how many devices"})
+        refused = toast_refusals({"deploy.apply": "the toast says how many devices"})
         assert refused and "never enough" in refused[0]
 
 
@@ -515,8 +520,5 @@ class TestTheComponentDrawsTheseResults:
             assert all(m in src for m in marks), (ep, [m for m in marks if m not in src])
             assert reader in endpoints, (ep, reader)
 
-    def test_the_restore_flow_draws_its_apply_result(self):
-        from tests.payload_render import lift
-
-        flow = lift(_read("static/js/gen/partials__golden_repo.3.js"), "previewBaselineRestore")
-        assert "_showRestoreResult(" in flow and "ad.result" in flow
+    # Today's re-apply dialog drawing its apply's result left at 7.8 (2026-10-17, P7-21): the
+    # v2 restore card's (`device_v2.restore_confirm` in PAGE_RECORD) is held above.

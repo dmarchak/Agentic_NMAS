@@ -122,7 +122,8 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | **C650, during the walks** | each walked screen's fidelity record written from its sitting; `UNCHECKED` shrinks by the walked screens; the rest to the tail. **W1 to W3 done 2026-10-17** (W1's twelve; W2 and W3's netbox, templates, settings, batch Apply, the device Logs tab). Left for W4: save, pending, retired, about (its pre-flight; a screenshot asked). To Stage 7's tail, no walk touching them: monitoring, help, monitoring_profile, coverage, coverage_deploy, update, settings_installation, reapply (walked in W1 with no screenshot or board), the device Monitoring, Neighbours and NetBox tabs | the four W4 screens' records, from its sitting | S per screen | W4 | W |
 | **The v1 removals (each tagged first, walked, ceilings lowered, the ratchet run)** | | | | | |
 | ~~P7-20~~ | ~~(4) the NetBox tab and `/netbox/safety/*`, `/netbox/status`~~ **removed 2026-10-17** (restore tag `pre-remove/v1-netbox`; walked by GETs on the host after its deploy) | | | | |
-| P7-21 | (5) Git, the Remote card, Baselines | removed, walked | M | W1, W2 | — |
+| ~~P7-21~~ | ~~(5) Git, the Remote card, Baselines~~ **removed 2026-10-17** (restore tag `pre-remove/v1-git`; today's re-apply and restore routes with it; C1132, C1133, C1135 (B) and C1134 fixed with it; walked by GETs on the host after its deploy) | | | | |
+| C1136 | History's header names uncommitted paths without what each means or what to do (today's Git tab did): found removing it | each path said with what it is and what clears it; history.md compared again | S | — | — |
 | ~~P7-22~~ | ~~(7) today's device page (`/device/<ip>`, `/run_command`, `/deploy/receipts`)~~ **removed 2026-10-17** (restore tag `pre-remove/v1-device`; run_command's MISSING, HISTORY_MISSING and PENDING entries gone; C1127 and C1128, receipts masked on the way out, fixed with it; walked by GETs on the host after its deploy) | | | | |
 | P7-23 | (8a) template and intent editors | removed | M | W2, C444 | — |
 | P7-24 | (8b) device-action JSON (capture, seed, revert, retry, profile, persist, rotate, retire) | removed | M | W4 (the operator, 2026-10-17: waits on W4 and the operator), P7-22 | — |
@@ -153,13 +154,13 @@ closing entries of 7.3, 7.4, 7.D and 7.8. The operator's three: C549 (3), C663, 
 |---|---|---|
 | tests/test_board_fidelity.py `UNCHECKED` | **15** (W2 and W3's five recorded 2026-10-17; 20 before, W1's twelve recorded 2026-10-16): 4 for W4, 11 to the tail | the walked screens out; the rest to the tail |
 | modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | **10 / 1** (P7-22, 2026-10-17: run_command's gone; only `v2.heartbeat_apply` lacks a history; 17 / 2 before) | run_command's go with v1; the rest stay until built (not a cutover condition) |
-| tests/test_results_are_drawn.py `PENDING` | **7** (P7-22, 2026-10-17; 8 before) | 0 (all v1 handlers) |
+| tests/test_results_are_drawn.py `PENDING` | **3** (P7-21, 2026-10-17; 7 after P7-22; 8 before) | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
 | tests/test_v2_one_confirm.py `SECOND_IMPLEMENTATIONS` | **1** (C850, 2026-10-16) | 1, IP SLA's `ipslaPost` with P.12 (D3); 0 after |
 | tests/test_invalidation_map.py `NOT_YET_SUBSCRIBED` | **0** (P7-05, 2026-10-16) | 0 |
 | tests/test_v2_layout_in_a_browser.py `C503_KNOWN_GAPS` | **0** (C522, 2026-10-16) | 0 (met) |
-| tests/test_no_new_v1_capability.py controls / handlers / functions / fields | **25 / 18 / 312 / 17** (P7-22, 2026-10-17; 36 / 26 / 314 / 19 after P7-20; 43 / 31 / 333 / 20 before) | 0 (P7-27) |
-| tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | **84 / 14 / 23** (v1 routes; P7-22, 2026-10-17; 90 / 14 / 26 after P7-20) | 0 at P7-27 (the v1 check goes with today's pages) |
+| tests/test_no_new_v1_capability.py controls / handlers / functions / fields | **23 / 16 / 281 / 17** (P7-21, 2026-10-17; 25 / 18 / 312 / 17 after P7-22; 36 / 26 / 314 / 19 after P7-20; 43 / 31 / 333 / 20 before) | 0 (P7-27) |
+| tests/test_payload_is_rendered.py `UNDRAWN` / `PHANTOM` / `EMPTY` | **64 / 3 / 21** (v1 routes; P7-21, 2026-10-17; 84 / 14 / 23 after P7-22; 90 / 14 / 26 after P7-20) | 0 at P7-27 (the v1 check goes with today's pages) |
 | tests/test_v2_context_is_drawn.py `UNDRAWN` (GAP) / `UPSTREAM` / `UNREACHED` | **358** (C868, C869's GAP gone) / **11** (C867) / 23 (2026-10-16) | met: the GAP entries cutover needs gone; `UPSTREAM` 11; the rest reasoned or the tail's |
 | tests/signed_off_screens.py `UNSIGNED` | 3 | 1 (not_found stays; heartbeat and ip_sla go with P.12, D3) |
 | modules/manual.py `ON_TODAYS_APP` | **0** (P7-19) | 0 |

@@ -21,10 +21,6 @@ person looks at.
 
 import os
 
-import pytest
-
-from tests.js_source import read_shipped
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -50,7 +46,8 @@ class TestTheSurvey:
       `devices_at()` with no reference to the inventory, so an older
       baseline read *9* and a newer one *10* with nothing saying the first
       covers less than the network does now. **A number is not a
-      statement.**
+      statement.** (Fixed in the route; the panel and its route left at 7.8,
+      2026-10-17, and a restore's coverage is `restore.coverage`'s.)
 
     Correct as they are, and listed so the next survey does not re-check
     them:
@@ -73,16 +70,18 @@ class TestTheSurvey:
     * `ai_assistant`'s copies are Stage 8 and already recorded as deferred.
     """
 
-    def test_the_panel_reports_coverage_against_the_inventory(self):
+    def test_the_restore_reports_coverage_against_the_inventory(self):
+        """Today's Baselines panel computed it in /golden/baselines until both left at 7.8
+        (2026-10-17); a restore's coverage (`restore.coverage`, which THE restore plan and
+        History's Re-apply… state) reads the list's inventory, never the ref's devices."""
         import inspect
 
-        from routes import golden
+        from modules.nsot import restore
 
-        src = inspect.getsource(golden)
-        assert "missing_devices" in src
-        assert '"partial"' in src
-        assert "load_saved_devices" in src, \
-            "the panel computes coverage without reading the inventory"
+        src = inspect.getsource(restore.coverage)
+        assert "inventory = _devices_of(list_name)" in src, \
+            "the restore computes coverage without reading the inventory"
+        assert '"partial"' in src and "not_at_ref" in src
 
 
     def test_baseline_earned_still_reads_the_current_inventory(self):
@@ -96,90 +95,10 @@ class TestTheSurvey:
         assert "not targeted" in src
 
 
-class TestThePanelDRAWSTheCoverage:
-    """**I computed it and drew nothing.**
-
-    Step 1 taught `/golden/baselines` to return `partial`, `inventory_size`
-    and `missing_devices`, and the panel rendered `${b.device_count}
-    device(s)` exactly as before — a value carried to the browser and drawn
-    nowhere, **in the commit whose whole purpose was to fix a
-    coverage-reporting gap**.
-
-    That is `loadOnboardPending` having no caller and `nbCascadeHtml` never
-    being called, for the fourth time in this session, and the first where I
-    introduced it rather than found it.
-    """
-
-    @staticmethod
-    def _source():
-        path = os.path.join(ROOT, "templates", "partials", "golden_repo.html")
-        page = read_shipped(path)
-        out = []
-        for name in ("_gEsc", "_gBaselineCoverage"):
-            start = page.index(f"function {name}(")
-            depth, i, seen = 0, page.index("{", start), False
-            while i < len(page):
-                if page[i] == "{":
-                    depth += 1
-                    seen = True
-                elif page[i] == "}":
-                    depth -= 1
-                    if seen and depth == 0:
-                        break
-                i += 1
-            out.append(page[start:i + 1])
-        return "\n".join(out)
-
-    def _render(self, baseline):
-        import json
-
-        dukpy = pytest.importorskip("dukpy")
-        return dukpy.evaljs(self._source()
-                            + f"\n_gBaselineCoverage({json.dumps(baseline)})")
-
-    def test_a_partial_baseline_says_partial_and_names_what_it_predates(self):
-        html = self._render({"device_count": 9, "inventory_size": 10,
-                             "partial": True, "missing_devices": ["r6"]})
-
-        assert "partial" in html
-        assert "9 of 10" in html
-        assert "r6" in html, "it does not say WHICH device"
-        assert "warning" in html, "it renders as an ordinary count"
-
-    def test_a_complete_baseline_is_a_plain_count(self):
-        """**The floor.** A renderer that always warned would satisfy the
-        test above and train the operator to ignore the badge."""
-        html = self._render({"device_count": 10, "inventory_size": 10,
-                             "partial": False, "missing_devices": []})
-
-        assert "10 device(s)" in html
-        assert "partial" not in html
-        assert "warning" not in html
-
-    def test_many_missing_devices_are_summarised_not_dumped(self):
-        html = self._render({"device_count": 2, "inventory_size": 10,
-                             "partial": True,
-                             "missing_devices": [f"d{i}" for i in range(8)]})
-
-        assert "+4 more" in html
-        assert "2 of 10" in html
-
-    def test_an_OLD_payload_without_the_fields_still_renders(self):
-        """A cached response from before step 1 carries no `partial`."""
-        html = self._render({"device_count": 9})
-        assert "9 device(s)" in html
-
-    def test_the_renderer_is_actually_CALLED_by_the_table(self):
-        """The check that caught this class last time. Counted excluding the
-        definition, so existing is not mistaken for being used."""
-        path = os.path.join(ROOT, "templates", "partials", "golden_repo.html")
-        page = read_shipped(path)
-
-        defs = page.count("function _gBaselineCoverage(")
-        calls = page.count("_gBaselineCoverage(") - defs
-        assert defs == 1
-        assert calls >= 1, "computed, carried to the browser, drawn nowhere"
-        assert "${_gBaselineCoverage(b)}" in page
+# TestThePanelDRAWSTheCoverage (today's Baselines panel's "N of M, partial, predates …", drawn
+# from /golden/baselines) left with the panel at 7.8 (2026-10-17, P7-21). History's Re-apply…
+# names each device the baseline predates and counts them, "left as they are"
+# (tests/test_reapply_v2.py).
 
 
 class TestABootstrapConfigRoundTripsCleanly:

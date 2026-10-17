@@ -407,7 +407,6 @@
   "tests/test_rekey_v2.py": 0.3,
   "tests/test_reload_certificate_storage.py": 1.2,
   "tests/test_reload_v2.py": 5.7,
-  "tests/test_remote_panel_renders.py": 0.3,
   "tests/test_remote_publication.py": 1.2,
   "tests/test_remote_record_unreadable.py": 0.3,
   "tests/test_remote_relatedness.py": 1.3,

@@ -668,36 +668,10 @@ def select_device_list_route():
 # /golden/capture/preview and /golden/capture/apply), previewed and confirmed.
 
 
-# ---------------------------------------------------------------------------
-# Git configuration versioning routes
-# ---------------------------------------------------------------------------
-
-@app.route("/git/status")
-def git_status():
-    """Return the git repo status for the current device list."""
-    from modules.config_git import get_repo_status
-    list_name, _ = get_current_device_list()
-    return jsonify(get_repo_status(list_name))
-
-
-@app.route("/git/log")
-def git_log():
-    """Return the commit log for the current device list."""
-    from modules.config_git import get_commit_log
-    list_name, _ = get_current_device_list()
-    limit = min(int(request.args.get("limit", 30)), 100)
-    return jsonify({"ok": True, "commits": get_commit_log(list_name, limit)})
-
-
-@app.route("/git/commit/<commit_hash>")
-def git_commit_diff(commit_hash):
-    """Return the changed-file list and full diff for one commit."""
-    from modules.config_git import get_commit_diff
-    list_name, _ = get_current_device_list()
-    result = get_commit_diff(list_name, commit_hash)
-    if result is None:
-        return jsonify({"ok": False, "error": "Commit not found"}), 404
-    return jsonify({"ok": True, **result})
+# Today's Git tab and its three routes (/git/status, /git/log, /git/commit/<sha>) left at 7.8
+# (2026-10-17, P7-21): History (/v2/history, routes/v2.py) draws the log with its filters, each
+# commit's change masked (/v2/history/commit/<sha>; today's diff came back unmasked), and in its
+# header what is not committed and whether the remote holds the history.
 
 
 # Today's Logs tab's route (/logs/server) left with the tab at 7.8 (2026-10-15): the app's log is

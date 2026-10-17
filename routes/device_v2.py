@@ -1422,7 +1422,7 @@ def restore_preview(name):
 @bp.route("/device/<name>/restore/confirm", methods=["POST"])
 def restore_confirm(name):
     """Re-apply the confirmed moment as the verified person, as a job holding the device
-    (`deploy_job.start_restore`, the same apply as `/golden/restore/apply`) in the list the
+    (`deploy_job.start_restore`, the apply today's /golden/restore/apply ran) in the list the
     preview was drawn in, which the confirm CARRIES (C396): the program is computed again and a
     different hash refuses with nothing sent. Answers with the card that follows the job."""
     import json

@@ -147,11 +147,20 @@ class TestTheApplyResponsesAreMaskedToo:
                             for c in rows[0].get("commands") or []), rows
         assert ADDED not in json.dumps(body)
 
-    def test_the_restore_apply_masks_its_response(self):
-        """The same one line, pinned at the route (it shares `run_targets`)."""
+    def test_the_restore_job_masks_its_result(self):
+        """The same one line, pinned where a restore's result is made: the restore job
+        (`deploy_job.start_restore`, which shares `run_targets`; the v2 device page's Restore
+        from… and History's Re-apply… run it). Today's /golden/restore/apply carried it until
+        it left at 7.8 (2026-10-17)."""
+        import ast
         import inspect
+        import textwrap
 
-        import routes.golden as golden
+        from modules import deploy_job
 
-        src = inspect.getsource(golden.restore_apply)
-        assert "mask_payload(" in src and src.count("jsonify(") >= 1
+        tree = ast.parse(textwrap.dedent(inspect.getsource(deploy_job.start_restore)))
+        work = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+                    and n.name == "work")
+        (ret,) = [n for n in ast.walk(work) if isinstance(n, ast.Return)]
+        assert isinstance(ret.value, ast.Call) and getattr(ret.value.func, "id", "") == \
+            "mask_payload", ast.dump(ret.value)[:200]

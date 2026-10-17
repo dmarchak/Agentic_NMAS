@@ -534,7 +534,7 @@ class TestPublishIsItsOwnOperationKind:
         assert DEFAULTS["require_person_for_publish_remote"] is True
 
     def test_every_writing_route_is_gated(self):
-        """status/verify/preview are not: they are how you decide."""
+        """Verify and reading what a push publishes are not: they are how you decide."""
         import ast
         import io as _io
 
@@ -545,12 +545,17 @@ class TestPublishIsItsOwnOperationKind:
                 continue
             body = ast.dump(node)
             (gated if "publish_remote" in body else ungated).add(node.name)
-        # `adopt` left this file at 7.8 (2026-10-15, no page called it); v2's Connect,
-        # `remote_v2.connect`, is gated publish_remote in modules/route_gates.py.
-        assert {"acknowledge", "push", "auto_push"} <= gated
-        assert {"status", "verify", "preview"} <= ungated
+        # `adopt` left this file at 7.8 (2026-10-15, no page called it), and today's Remote
+        # card's acknowledge, auto_push, status, preview and verify_write on 2026-10-17
+        # (P7-21): History › Remote set-up… does each (remote_v2.*), gated publish_remote in
+        # modules/route_gates.py except reading what a push publishes.
+        assert {"push"} <= gated
+        assert {"verify"} <= ungated
         from modules.route_gates import GATES
-        assert GATES["remote_v2.connect"].kind == "publish_remote"
+        for ep in ("remote_v2.connect", "remote_v2.write_probe", "remote_v2.acknowledge",
+                   "remote_v2.auto_push", "remote.push"):
+            assert GATES[ep].kind == "publish_remote", ep
+        assert GATES["remote_v2.publication"].kind == "not_device"
 
 
 class TestTheAcknowledgementIsBoundToWhatItAcknowledged:
@@ -881,16 +886,17 @@ class TestTheWriteProbeIsNotAReadOnlyCheck:
         assert (rec["ok"], rec["by"], rec["failed"]) == (True, "c@d", [])
 
     def test_the_write_probe_route_is_gated(self):
+        """History › Remote set-up…'s Run the write probe (today's /remote/verify-write until
+        7.8, 2026-10-17): gated publish_remote before input, and the probe is its act."""
         import ast
-        import io as _io
+        import inspect
 
-        tree = ast.parse(_io.open("routes/remote.py", encoding="utf-8").read())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == "verify_write":
-                assert "publish_remote" in ast.dump(node)
-                break
-        else:
-            raise AssertionError("no verify_write route")
+        from modules import remote_setup
+        from modules.route_gates import GATES
+
+        assert GATES["remote_v2.write_probe"].kind == "publish_remote"
+        dumped = ast.dump(ast.parse(inspect.getsource(remote_setup.write_probe)))
+        assert "with_write_probe" in dumped and "True" in dumped
 
     def test_the_ungated_verify_route_does_not_probe(self):
         import ast

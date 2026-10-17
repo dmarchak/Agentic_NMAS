@@ -27,9 +27,8 @@ STAGES = {
     "deploy.apply": Stages(
         "deploy.plan", "command_hashes", "modules.pipeline._stage_verify",
         "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
-    "golden.restore_apply": Stages(
-        "golden.restore_preview", "confirmations", "modules.pipeline._stage_verify",
-        "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
+    # Today's re-apply (golden.restore_apply, its preview golden.restore_preview) left at 7.8
+    # (2026-10-17, P7-21): device_v2.restore_confirm below and v2.history_reapply_confirm.
     "v2.profile_apply_confirm": Stages(
         "v2.profile_apply_preview", "command_hashes", "modules.pipeline._stage_verify",
         "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
@@ -316,7 +315,6 @@ PROFILE = "n/a: changes the network's monitoring profile, which no device's reco
 HISTORY = {
     # ---- confirm: sends to a device
     "deploy.apply": ("receipts", "golden"),
-    "golden.restore_apply": ("receipts", "golden"),
     "v2.profile_apply_confirm": ("receipts", "golden"),
     "device_v2.deploy_confirm": ("receipts", "golden"),
     "device_v2.restore_confirm": ("receipts", "golden"),

@@ -42,12 +42,12 @@ and built.
 | Deploy | `/deploy/plan`, `/deploy/apply` | BUILT, 7.4; **WALKED 2026-10-16** (W1 steps 13 to 18: s1 and s2 in one batch, Done, verified) | One device: the device page's Deploy (walked, C428). Several ticked devices: Devices › Plan a deploy for the ticked devices… (board B), the batch Apply's page with scope `intent` (the whole committed intent): one preview in a rollout order, one confirm, the run a job on the one stepper (the `deploy_plan` gap closed) |
 | Deploy receipts | (no route of today's; /deploy/receipts removed 2026-10-17 with today's device page, restore tag `pre-remove/v1-device`) | **REMOVED 2026-10-17** (7.8, P7-22; under Removed at 7.8). BUILT, walked before it | The device page's History tab (`history_sources.receipts`), which masks each row's texts again on the way out, as the removed route did; the receipts can move to the records database (Phase 4) |
 | Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | BUILT; **Capture and Save All WALKED 2026-10-16** (W1 section E: s2's card, "Nothing to confirm"; section J: Save All earned baseline/20261016T010219Z); the shrink's reason not producible on this fleet, proven by its tests | Device Actions › Capture (walked) and Devices › Save (C593); the card takes the reason for recording a structural shrink (C486, C310; the `acknowledge` gap closed), and its What next follows the departure's direction |
-| Restore, baselines | `/golden/restore/preview`, `/apply`, `/golden/restore_points/<host>`, `/golden/baselines` | BUILT, History; **Re-apply WALKED 2026-10-16** (W1 steps 40 and 41: all nine "already as the baseline holds it", nothing to re-apply); a re-apply that sends lines proven by its tests | Device Actions › Restore from… (walked) offers the baselines; History › Baselines › Re-apply… restores every device a baseline holds as one batch, through THE restore plan and a device Restore's job (the `reapply` gap closed) |
+| Restore, baselines | (no route of today's; its four, /golden/restore/preview and /apply, /golden/restore_points/<host> and /golden/baselines, removed 2026-10-17, restore tag `pre-remove/v1-git`) | **REMOVED 2026-10-17** (7.8, P7-21; under Removed at 7.8). BUILT, History; **Re-apply WALKED 2026-10-16** (W1 steps 40 and 41: all nine "already as the baseline holds it", nothing to re-apply); a re-apply that sends lines proven by its tests | Device Actions › Restore from… (walked) offers the baselines; History › Baselines › Re-apply… restores every device a baseline holds as one batch, through THE restore plan (`routes/golden.restore_plan`, which stays) and a device Restore's job (the `reapply` gap closed). Today's device page's Restore from…, which sent the device to the index page's re-apply dialog, went with them |
 | Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | BUILT, History; **the reveal WALKED 2026-10-16** (W1 steps 7 and 8, s2) | The History tab and `/v2/history/commit/<sha>` (walked); a golden row's Reveal <device>'s version… draws it unmasked in place, a person, recorded first (decided 2026-10-05) |
-| Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT, walked | History › Commits: the log, its filters and each commit's masked change |
-| Remote | `/remote/push`, `/remote/verify`, `/remote/status` | BUILT; **WALKED 2026-10-17** (W3, steps 24 and 25, ~05:50Z on fecab2f79e: Verify the remote "Last verified just now (<operator>)", every check passed, C1024 walked; the write probe busy "Probing…", all 5 checks passed, its ref removed clean; the reload's record commit c4f55e0 pushed by automatic pushing, the header "in sync"). Before it, **run on the host in W2, not closed** (2026-10-16, steps 21 and 22: Verify the remote ran ~23:02Z and every check passed, but its record names "unauthenticated", C1024, the operator's B2; Push now is not drawn while auto-push leaves nothing to push, and the push itself ran by auto-push, row 49). Closes with C1024 | History's header (Push now, Verify) and `/v2/history/remote` |
-| Remote, auto-push | `/remote/auto-push` | BUILT (C631, 2026-10-10); **WALKED 2026-10-17** (W2 step 53, ~00:04Z: after sections J and K's commits History's header read "Last push 2 min ago by auto-push"; screenshot 61) | History › Remote set-up…: Turn on automatic pushing, offered after a successful push |
-| Remote, connect and the rest | `/remote/verify-write`, `/preview`, `/acknowledge` | BUILT (C631, 2026-10-10); **WALKED 2026-10-16** (W2 steps 23 to 25 and 38, the operator's PASS: What a first push publishes ~23:05Z gated only `snmp_community` (af5580a277e2), acknowledged as the operator; the write probe passed all 5 checks, its ref removed clean (shown nothing while it ran: C1023, the operator's B1); Connect's shape check refused the alias "-probe" on W2 walk ~23:35Z, though it cleared every field, C1056) | History › Remote set-up…: Connect, Run the write probe, What a first push publishes and its typed Acknowledge, each a verified person's (`routes/remote_v2.py`). They were to stay CLI-only through a command that never existed; a host command cannot carry the verified person they need. Today's connect route (/remote/adopt), which no page called, was removed 2026-10-15 (7.8); Connect calls the same `remote.adopt` |
+| Git | (no route of today's; its three, /git/status, /git/log and /git/commit/<sha>, removed 2026-10-17, restore tag `pre-remove/v1-git`) | **REMOVED 2026-10-17** (7.8, P7-21; under Removed at 7.8). BUILT, walked | History › Commits: the log, its filters and each commit's masked change (today's commit view returned it unmasked); History's header names what is not committed |
+| Remote | `/remote/push`, `/remote/verify` | BUILT; **STAYS for History's header**, which posts to both (Push now, Verify the remote; `templates/v2/_history_remote.html`, each answering for the page's network, `listref.PAGE_ROUTES_OUTSIDE_V2`). Today's Remote card's /remote/status, which only the card read, **REMOVED 2026-10-17** (7.8, P7-21). **WALKED 2026-10-17** (W3, steps 24 and 25, ~05:50Z on fecab2f79e: Verify the remote "Last verified just now (<operator>)", every check passed, C1024 walked; the write probe busy "Probing…", all 5 checks passed, its ref removed clean; the reload's record commit c4f55e0 pushed by automatic pushing, the header "in sync"). Before it, **run on the host in W2, not closed** (2026-10-16, steps 21 and 22: Verify the remote ran ~23:02Z and every check passed, but its record names "unauthenticated", C1024, the operator's B2; Push now is not drawn while auto-push leaves nothing to push, and the push itself ran by auto-push, row 49). Closes with C1024 | History's header (Push now, Verify) and `/v2/history/remote` |
+| Remote, auto-push | (no route of today's; /remote/auto-push removed 2026-10-17, restore tag `pre-remove/v1-git`) | **REMOVED 2026-10-17** (7.8, P7-21). BUILT (C631, 2026-10-10); **WALKED 2026-10-17** (W2 step 53, ~00:04Z: after sections J and K's commits History's header read "Last push 2 min ago by auto-push"; screenshot 61) | History › Remote set-up…: Turn on automatic pushing, offered after a successful push |
+| Remote, connect and the rest | (no route of today's; its three, /remote/verify-write, /remote/preview and /remote/acknowledge, removed 2026-10-17, restore tag `pre-remove/v1-git`) | **REMOVED 2026-10-17** (7.8, P7-21). BUILT (C631, 2026-10-10); **WALKED 2026-10-16** (W2 steps 23 to 25 and 38, the operator's PASS: What a first push publishes ~23:05Z gated only `snmp_community` (af5580a277e2), acknowledged as the operator; the write probe passed all 5 checks, its ref removed clean (shown nothing while it ran: C1023, the operator's B1); Connect's shape check refused the alias "-probe" on W2 walk ~23:35Z, though it cleared every field, C1056) | History › Remote set-up…: Connect, Run the write probe, What a first push publishes and its typed Acknowledge, each a verified person's (`routes/remote_v2.py`). They were to stay CLI-only through a command that never existed; a host command cannot carry the verified person they need. Today's connect route (/remote/adopt), which no page called, was removed 2026-10-15 (7.8); Connect calls the same `remote.adopt`. Carried over from today's Remote card before it left (2026-10-17): the card lists each acknowledged secret by kind, fingerprint and devices, and its Last push says how (manual or auto) and what went out (the commit and its tags, or tag only) |
 | Persist, rotate, retire | `/persist/*` (2), `/rotate/*` (3), `/retire/*` (2) | BUILT, walked | The device page's Actions: Persist (C359), Rotate (C370), Retire (r5); the routes go with today's pages |
 | Seed, revert, retry | `/templatize/seed/*` (2), `/templatize/revert/*` (2), `/templatize/retry/*` (2) | BUILT | Device Actions; seed walked, revert and retry not yet run. The retry record's JSON read (/templatize/rolled-back/retries), which no page called, was removed 2026-10-15 (7.8): each retry is a row on the device's History |
 | Intent editing | `/templatize/committed/<host>`, `/templatize/committed/<host>/preview` | BUILT (board H's Document mode); **WALKED 2026-10-16** (W1 steps 20 to 27, C444 closed); Fields mode C907 | The Intent tab's Edit (`/v2/device/<name>/intent/*`), one code path with today's routes (`modules/nsot/intent_edit.py`); Fields mode (board J) is not built. The list of devices with committed intent (/templatize/committed), which no page called, was removed 2026-10-15 (7.8) |
@@ -255,7 +255,8 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   Kept then: `modules/topology.py`, whose `discover_topology` today's agent still called; it
   went with the AI agent's family (D15, 2026-10-14). Four invalidation-map tests that used the layout save as their
   example mutating route now use `POST /remote/auto-push` (one key, a JSON answer), shown
-  able to fail by moving that route's key. Proved before removal: nothing outside the tab's
+  able to fail by moving that route's key (and `POST /remote/push` since auto-push left at
+  7.8, 2026-10-17). Proved before removal: nothing outside the tab's
   pane and script named its functions or ids; after it, no `/topology` path of today's is in
   the url_map.
 - **Reachability** (/status/<ip>, /connection_status/<ip>), 2026-10-12: the reachability
@@ -420,13 +421,44 @@ date (the order is the 7.8 survey's, 2026-10-11: no caller first, the smallest c
   Proved before removal: index.html's device table (Manage) was the page's one link, the
   page's own form was /run_command's one caller, and its Changes partial was /deploy/receipts'
   one caller; no v2 template, host script, updater or monitoring config calls any of them.
+- **Today's Git tab, its Remote card and its Baselines** (/git/status, /git/log,
+  /git/commit/<sha>; /remote/status, /remote/verify-write, /remote/preview,
+  /remote/acknowledge, /remote/auto-push; /golden/baselines, /golden/restore_points/<host>,
+  /golden/restore/preview and /golden/restore/apply), 2026-10-17 (P7-21; restore point tag
+  `pre-remove/v1-git`; CUTOVER's rows walked in W1 to W3, row 48 closed 2026-10-17). Their
+  home is History: Commits and each commit's change, masked (today's commit view returned
+  it unmasked); the header's sentence, what is not committed, Push now and Verify the remote
+  (`POST /remote/push` and `POST /remote/verify`, which STAY: the header posts to them);
+  Remote set-up… (connect, the write probe, what a first push publishes and its
+  acknowledgement, automatic pushing); Baselines and Re-apply…; and each device's Restore
+  from…. The tab's button, pane, commit dialog and inline script, `index.4.js` (its load on
+  switch), the Remote card and the Baselines panel (`partials__golden_repo.2.js`, `.3.js`
+  and the panel's rows in `.1.js`), the re-apply dialog, and `nmas_restore_scope.js` went
+  with the routes, as did today's device page's Restore from…, which only sent the device
+  to that dialog, and their gate, invalidation and operation-stage entries. Code whose only
+  caller left with them: `config_git`'s log, diff, status and publication readers, and
+  `golden._last_baseline_decision`. Kept: `partials/golden_repo.html`'s per-device timeline (today's
+  device table's History; /golden/history, /version and /diff are row 46's), THE restore
+  plan and `restore_points_for` (`routes/golden.py`, the v2 device page's and Re-apply's),
+  `remote.verify` and `remote.push`. Carried over first, found by rebasing the removed
+  paths' tests onto v2: Needs attention's remote rows sent a person to "the Remote card (the
+  Devices tab, below the device list)", and the held clause to acknowledge "on the Remote
+  card": both name History's header and Remote set-up… now, and link to History for the
+  row's network; the set-up card lists each acknowledged secret by kind, fingerprint and
+  devices, and says how and what the last push published (today's card drew both); and
+  History's header named an uncommitted tracked path without its first letter
+  (`olden/r1.cfg`: a fixed-column slice of stripped `git status` output, the defect
+  `config_git.get_repo_status` had fixed), now parsed. Proved before removal: index.html's
+  inline Git script and `index.4.js`, the two `golden_repo` scripts, the panel's rows and
+  `nmas_restore_scope.js` were the routes' only callers; no v2 template, host script,
+  updater or monitoring config calls any of them.
 
 ## Legacy actions that are not routes
 
 | Action | Status | Home or reason |
 |---|---|---|
 | The terminal (socket events) | **REMOVED 2026-10-05** (R39, brought forward from 7.8 on the operator's decision, after the console drill proved the emergency path: docs/CONSOLE_DRILL.md) | The Device page's allowlisted Ask tab is the one way to ask a device. Kept: the `break_glass` gate kind and its two settings, until they retire |
-| Today's Git tab, Remote card, Baselines panel | BUILT | History: Commits, the remote's sentence, Baselines |
+| Today's Git tab, Remote card, Baselines panel | **REMOVED 2026-10-17** (7.8, P7-21; under Removed at 7.8) | History: Commits, the remote's sentence and its header's Push now and Verify, Remote set-up…, Baselines and Re-apply… |
 | The AI chat panel (every page) | **REMOVED 2026-10-14** (D15, with the AI family; the "AI agent" row above) | Stage 8 redesigns it (docs/PHASE8_PLAN.md) |
 
 ## Decided 2026-10-02

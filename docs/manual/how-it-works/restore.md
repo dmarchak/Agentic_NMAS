@@ -9,15 +9,12 @@ and startup configuration, its golden, and its committed intent, which moves bac
 
 ## The preview
 
-You start a restore from one of four places: the device page's **Actions › Restore from…**,
+You start a restore from one of two places: the device page's **Actions › Restore from…**,
 which opens the restore in place of the tab, listing that device's restore points (pick one,
-then **Preview** it); the Baselines panel's **Re-apply this baseline**, which asks for
-a scope first (no device is ticked, and the whole fleet is a box of its own); **Restore Golden
-Config**, on the Device page for that device or on today's device list for the ticked devices,
-at their golden now (HEAD); or an
-approved revert in the approval queue, which opens this preview for its device at HEAD. The
-browser posts the moment (`ref`) and the devices to `/golden/restore/preview`, and the server
-answers from git and the credential store. The preview opens no device session:
+then **Preview** it); or [History](history) › Baselines' **Re-apply…**, which plans every
+device the baseline holds as one batch on its own page. Each asks the server for the one
+restore plan at that moment for those devices, and the server answers from git and the
+credential store. The preview opens no device session:
 
 1. **Choose the moment and the scope.** Read: the device's golden now, its own
    `golden/<device>/<time>` tags, and every baseline that holds a golden for it, from git;
@@ -42,8 +39,9 @@ answers from git and the credential store. The preview opens no device session:
 4. **Authorise the lines that need a reason.** Read: the program's dangerous lines, and any
    line in a secret position the moment would add that the device does not hold (an old
    community, an account removed since). Sent: nothing. Recorded: nothing. Each such line asks
-   for your stated reason beside it (on today's pages, a dialog before the program is drawn);
-   the preview runs again with them, and the reasons go into the hash. An account added back is
+   for your stated reason beside it on the device's restore card (Re-apply… sends such a
+   device to its own page, and restores the others); the preview runs again with them, and
+   the reasons go into the hash. An account added back is
    never typed past: it is a line with its reason, like a dangerous one, and an account the
    device holds is never changed.
 5. **Compute the program.** Read: the moment's golden and the device's golden as committed at
@@ -79,12 +77,11 @@ only a [removal](removal) takes away.
 On the device page, the confirm starts the restore as a job holding the device, in the list
 the card was drawn in (never whichever list is active), and the card shows the pipeline's
 stages as they run, then the result from the receipt. It answers at once, so a restore that
-waits out BGP's hold time is never cut off by a proxy's time limit. From the Baselines panel,
-you tick the devices and confirm. The browser posts the capture and command hashes it was
-shown to `/golden/restore/apply`, which needs a verified person (the request's Cloudflare
-Access assertion, from a trusted peer). Before anything else, any revert the old path queued in
-the approval queue is rejected with a reason, because it carries whole-config text that path
-pushed with none of these guards. Then, as for a deploy: the targets are built again, each
+waits out BGP's hold time is never cut off by a proxy's time limit. From History's
+Re-apply…, the confirm starts one such job for the devices that can go as they are, carrying
+the capture and command hashes the page drew. Either confirm needs a verified person (the
+request's Cloudflare Access assertion, from a trusted peer). Then, as for a deploy: the
+targets are built again, each
 program and its hash recomputed and compared (a mismatch refuses that device, nothing sent),
 the devices are held, and a device with nothing to send is read once over SSH and its
 pipeline does not run.

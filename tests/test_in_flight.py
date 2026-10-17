@@ -144,7 +144,8 @@ class TestTheWiring:
     APPLIES = {
         "static/js/nmas_capture.js": "/golden/capture/apply",
         "static/js/gen/partials__deploy_wizard.1.js": "/deploy/apply",
-        "static/js/gen/partials__golden_repo.3.js": "/golden/restore/apply",
+        # Today's re-apply dialog (partials__golden_repo.3.js, /golden/restore/apply) left at
+        # 7.8 (2026-10-17): v2's restore is a job its card follows on the one stepper.
         "static/js/gen/partials__onboard_wizard.2.js": "/onboard/verify/",
     }
 

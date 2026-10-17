@@ -99,7 +99,7 @@ class TestEveryMutatingEndpointIsDeclared:
 
     @pytest.mark.parametrize("endpoint,kind", [
         ("deploy.apply", "confirm"),
-        ("golden.restore_apply", "confirm"),
+        ("device_v2.restore_confirm", "confirm"),   # today's golden.restore_apply until 7.8
         ("golden.capture_apply", "approve"),
         ("bulk_intent_v2.apply", "approve"),
         ("settings_v2.install_save", "configure"),     # today's /settings save until 7.8
@@ -193,7 +193,7 @@ class TestTheTableAgreesWithEveryInRouteGate:
 
 REFUSED_WITHOUT_IDENTITY = [
     "/deploy/apply",
-    "/golden/restore/apply",
+    "/v2/history/reapply/confirm",   # today's /golden/restore/apply until 7.8 (2026-10-17)
     "/golden/capture/apply",
     "/v2/show-commands/run",        # many devices' reads: today's /bulk_execute left at 7.8
     "/v2/settings/installation/card/netbox/save",   # today's /settings until 7.8

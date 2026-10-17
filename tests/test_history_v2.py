@@ -257,6 +257,28 @@ class TestThePage:
         assert "it records r2 broken by hand" in details[1]
         assert "predates a credential change on s1" in details[2]
 
+    def test_the_baselines_tab_draws_each_claim_never_the_stronger(self, client, monkeypatch):
+        """Register E7: a baseline without an operational snapshot claims "configured" and is
+        drawn as that, saying it does not say the network was working; one that claims
+        "configured and working" says so and no more. Today's Baselines panel drew it as a
+        badge until it left at 7.8 (2026-10-17, tests/test_golden_state.py held it)."""
+        from modules import reader_job
+        from modules.nsot import golden_state as gs
+        monkeypatch.setattr(reader_job, "read_cached", lambda name: {"doc": {"last_good": {
+            "value_at": "2026-10-02T03:00:00Z", "value": {"lists": {"Lab": {"baselines": [
+                {"tag": "baseline/20261002T000000Z", "created": "2026-10-02T00:00:00Z",
+                 "decision": "earned", "usable": True, "withdrawn": False, "stale": [],
+                 "claim": gs.WORKING, "claim_detail": gs.WORKING},
+                {"tag": "baseline/20261001T000000Z", "created": "2026-10-01T00:00:00Z",
+                 "decision": "earned", "usable": True, "withdrawn": False, "stale": [],
+                 "claim": gs.CONFIGURED, "claim_detail": "configuration only"}]}}}}}})
+        _summaries, details = _rows(client.get("/v2/history?tab=baselines").get_data(
+            as_text=True))
+        assert f"It claims: {gs.WORKING}." in details[0]
+        assert "does not say the network was working" not in details[0]
+        assert "It claims: configuration only." in details[1]
+        assert "Configuration only: it does not say the network was working" in details[1]
+
     def test_the_baselines_tab_before_any_read_says_so(self, client, monkeypatch):
         from modules import reader_job
         monkeypatch.setattr(reader_job, "read_cached", lambda name: {})
@@ -277,6 +299,30 @@ class TestThePage:
         assert 'id="hist-remote"' in html and "Everything is committed" in html
         assert "not yet compared with the remote" in html
         assert "remote-push-failed" not in html and "remote-last-verify" not in html
+
+    def test_the_header_draws_the_one_sentence_its_level_and_escapes(self, client, monkeypatch):
+        """C223: the one sentence `remote_publication.describe` makes, drawn as made, its level
+        the server's, the evidence on hover, every value escaped; a level the header does not
+        know is never drawn as in sync. Today's Git tab and Remote card drew it until they left
+        at 7.8 (2026-10-17, tests/test_remote_publication.py held them to it)."""
+        import time
+
+        from modules.readers import remote_publication as P
+        pub = {"state": "ahead", "ahead": 1, "remote": "a/<b>", "branch": "main",
+               "head": "7a72258" + "0" * 33, "remote_head": "cf4d96d" + "0" * 33,
+               "oldest_sha": "7a72258", "oldest_at": time.time() - 300, "asked_at": time.time(),
+               "value_at": "2026-10-17T05:00:00Z"}
+        monkeypatch.setattr(P, "status_for", lambda name: pub)
+        html = client.get("/v2/history/remote").get_data(as_text=True)
+        words = re.search(r'<p class="hist-remote-words">(.*?)</p>', html, re.S).group(1)
+        assert '<span class="badge badge-warn">not pushed</span>' in words, words
+        assert "1 commit(s) not pushed to a/&lt;b&gt;" in words and "a/<b>" not in html
+        assert "HEAD 7a72258, a/&lt;b&gt; main at cf4d96d" in words, "the evidence, on hover"
+        monkeypatch.setattr(P, "describe", lambda pub, now=None, uncommitted=0: {
+            "level": "weird", "state": "weird", "clause": "x", "detail": ""})
+        words = re.search(r'<p class="hist-remote-words">(.*?)</p>',
+                          client.get("/v2/history/remote").get_data(as_text=True), re.S).group(1)
+        assert "badge-ok" not in words and "in sync" not in words, words
 
     def test_the_card_draws_the_last_failed_push_and_verify_from_the_record(
             self, client, monkeypatch):

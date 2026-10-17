@@ -64,7 +64,10 @@ def test_the_resolver_can_say_no():
 
     assert not rr.resolves(A, "/git/commit", "POST")
     assert not rr.resolves(A, "/device/192.0.2.1/delete", "POST")
-    assert rr.resolves(A, "/git/commit/${hash}", "GET")
+    # The assembled form resolving, on v2's commit view (today's /git/commit/<sha> left at 7.8,
+    # 2026-10-17, and is now a removed route the resolver must refuse).
+    assert rr.resolves(A, "/v2/history/commit/${hash}", "GET")
+    assert not rr.resolves(A, "/git/commit/${hash}", "GET")
     assert rr.resolves(A, "/v2/settings/installation/diagnostics/drift/${n}/${to}", "POST")
     assert not rr.resolves(A, "/v2/settings/installation/diagnostics/drift/${n}/${to}",
                            "DELETE")

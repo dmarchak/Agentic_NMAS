@@ -11,60 +11,31 @@ commit push showed exactly the timestamp and the actor: the same misleading
 reading the whole fix existed to end. Recording a fact and not showing it
 leaves the card saying the same wrong thing.
 
-These tests **execute** the helper with dukpy rather than inspecting its
-source. A structural assertion is what let the `--write` crash ship: it can
-confirm the shape of code that cannot run.
+Today's Remote card, which these tests executed, left at 7.8 (2026-10-17, P7-21), and
+History › Remote set-up… had drawn the last push's when and who alone. The card now carries
+it (`remote_setup._last_push`), and these tests render the real card through the app on a
+temporary store, reading its Last push fact.
 """
 
-import os
 import re
 
 import pytest
 
-from tests.js_source import read_shipped
-
-# NOT importorskip: dukpy is pinned in requirements.txt, and a test that
-# skips wherever its dependency is missing protects nothing -- the same
-# reasoning `test_inline_javascript.py` records for its node check, which is
-# why that file carries a scanner that always runs alongside it.
-import dukpy
-
-PARTIAL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "templates", "partials", "golden_repo.html")
+from modules.nsot import remote as R
+from tests.test_remote_setup_v2 import BASE, _connected, _get
+from tests.test_settings_v2 import networks  # noqa: F401 (the fixture: a temporary store)
 
 
-def _slice_function(text, name):
-    """One top-level function declaration, cut at the NEXT declaration.
-
-    Slicing to `text.index("function loadGoldenRepoPanel")` was pinned to a
-    bug: the real text is `async function loadGoldenRepoPanel`, and while an
-    edit had wrongly stolen that `async`, the naive index worked. Restoring
-    the keyword left the slice ending in a dangling `async `, and the helper
-    failed to parse — the test broke *because* the code was fixed.
-    """
-    start = re.search(r"(?m)^(?:async )?function " + re.escape(name) + r"\b",
-                      text)
-    assert start, name
-    nxt = re.search(r"(?m)^(?:async )?function \w+", text[start.end():])
-    end = start.end() + nxt.start() if nxt else len(text)
-    return text[start.start():end]
-
-
-def _helper_source():
-    text = read_shipped(PARTIAL)
-    return _slice_function(text, "_gEsc") + _slice_function(text, "_gLastPush")
-
-
-def render(payload):
-    """Run the real helper and return its HTML."""
-    import json
-
-    script = _helper_source() + "\n_gLastPush(%s);" % json.dumps(payload)
-    return dukpy.evaljs(script)
+def render(networks, last_push):  # noqa: F811
+    """The card's Last push fact for *last_push* as recorded, as its HTML."""
+    _connected(networks)
+    R.update_remote("Branch", lambda c: c.__setitem__("last_push", last_push))
+    _r, card = _get(networks, f"{BASE}?list=Branch")
+    return card.split("<dt>Last push</dt><dd>", 1)[1].split("</dd>", 1)[0]
 
 
 def text_of(html):
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html or "")).strip()
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html or "")).strip()
 
 
 MANUAL_COMMIT = {"at": "2026-09-22T18:50:32Z", "by": "operator@example.com",
@@ -80,69 +51,59 @@ AUTO_COMMIT = {"at": "2026-09-22T10:00:00Z", "by": "auto-push",
 
 
 class TestItSaysWhatWasPublished:
-    def test_a_commit_push_names_its_commit(self):
+    def test_a_commit_push_names_its_commit(self, networks):  # noqa: F811
         """The case that showed only a timestamp and an actor."""
-        out = text_of(render(MANUAL_COMMIT))
-        assert "24438924" in out, out
-        assert "commit" in out
+        out = text_of(render(networks, MANUAL_COMMIT))
+        assert "commit 24438924" in out, out
 
-    def test_a_tag_only_push_says_tag_only(self):
-        out = text_of(render(AUTO_TAG_ONLY))
-        assert "tag only" in out
+    def test_a_tag_only_push_says_tag_only_and_names_the_tag(self, networks):  # noqa: F811
+        out = text_of(render(networks, AUTO_TAG_ONLY))
+        assert "tag only: baseline/20260922T172405Z" in out, out
 
-    def test_a_tag_only_push_names_the_tag(self):
-        assert "baseline/20260922T172405Z" in text_of(render(AUTO_TAG_ONLY))
+    def test_a_commit_push_also_names_its_tags(self, networks):  # noqa: F811
+        out = text_of(render(networks, AUTO_COMMIT))
+        assert "commit abcdef12 + golden/s1/20260922T100000Z" in out, out
 
-    def test_a_commit_push_also_names_its_tags(self):
-        out = text_of(render(AUTO_COMMIT))
-        assert "abcdef12" in out
-        assert "golden/s1/20260922T100000Z" in out
-
-    def test_a_commit_with_no_tags_says_nothing_about_tags(self):
-        """A host_vars commit creates no tags by design; an empty list must
-        not render as an empty code block."""
-        out = render(MANUAL_COMMIT)
-        assert "<code></code>" not in out
+    def test_a_commit_with_no_tags_says_nothing_about_tags(self, networks):  # noqa: F811
+        """A host_vars commit creates no tags by design; an empty list must not render as an
+        empty addition."""
+        out = text_of(render(networks, MANUAL_COMMIT))
+        assert out.endswith("commit 24438924"), out
 
 
 class TestItSaysHowItWasPublished:
     """"who last clicked" versus "what was last published" is the distinction
     that made this field misleading."""
 
-    def test_a_person_reads_as_manual(self):
-        assert "manual" in text_of(render(MANUAL_COMMIT))
+    def test_a_person_reads_as_manual(self, networks):  # noqa: F811
+        assert '<span class="badge badge-neutral">manual</span>' in render(networks, MANUAL_COMMIT)
 
-    def test_the_hook_reads_as_auto(self):
-        assert "auto" in text_of(render(AUTO_TAG_ONLY))
+    def test_the_hook_reads_as_auto(self, networks):  # noqa: F811
+        assert '<span class="badge badge-neutral">auto</span>' in render(networks, AUTO_TAG_ONLY)
 
-    def test_the_two_are_distinguishable(self):
-        assert text_of(render(MANUAL_COMMIT)).split()[1] != \
-            text_of(render(AUTO_TAG_ONLY)).split()[1]
-
-    def test_the_actor_is_still_named(self):
-        assert "operator@example.com" in text_of(render(MANUAL_COMMIT))
+    def test_the_actor_is_still_named(self, networks):  # noqa: F811
+        assert "by operator@example.com" in text_of(render(networks, MANUAL_COMMIT))
 
 
 class TestEdges:
-    def test_never_pushed(self):
-        assert text_of(render(None)) == "never"
+    def test_never_pushed(self, networks):  # noqa: F811
+        _connected(networks)
+        _r, card = _get(networks, f"{BASE}?list=Branch")
+        assert "<dt>Last push</dt><dd>none yet</dd>" in card
 
-    def test_a_record_with_no_kind_or_commit_says_so(self):
-        """Older records predate 1.2b. They must not render as a confident
-        blank."""
-        out = text_of(render({"at": "2026-09-21T19:57:47Z",
-                              "by": "operator@example.com"}))
-        assert "2026-09-21T19:57:47Z" in out
-        assert "unknown" in out
+    def test_a_record_with_no_kind_or_commit_says_so(self, networks):  # noqa: F811
+        """Older records predate 1.2b. They must not render as a confident blank."""
+        out = render(networks, {"at": "2026-09-21T19:57:47Z", "by": "operator@example.com"})
+        assert "2026-09-21T19:57:47Z" in out and text_of(out).endswith(": unknown"), out
 
-    def test_the_timestamp_is_always_shown(self):
-        for payload in (MANUAL_COMMIT, AUTO_TAG_ONLY, AUTO_COMMIT):
-            assert payload["at"] in text_of(render(payload))
+    @pytest.mark.parametrize("payload", (MANUAL_COMMIT, AUTO_TAG_ONLY, AUTO_COMMIT))
+    def test_the_timestamp_is_always_shown(self, networks, payload):  # noqa: F811
+        assert payload["at"] in render(networks, payload)
 
-    def test_values_are_escaped(self):
-        """The actor comes from a verified claim, but the tag list comes from
-        the repository and the commit from git output."""
-        out = render({"at": "x", "by": "a<script>b", "kind": "commit",
-                      "commit": "deadbeef", "tags": []})
-        assert "<script>" not in out
-        assert "&lt;script&gt;" in out
+    def test_values_are_escaped(self, networks):  # noqa: F811
+        """The actor comes from a verified claim, but the tag list comes from the repository
+        and the commit from git output."""
+        out = render(networks, {"at": "x", "by": "a<script>b", "kind": "commit",
+                                "commit": "deadbeef", "tags": ["<t>"]})
+        assert "<script>" not in out and "<t>" not in out
+        assert "a&lt;script&gt;b" in out and "&lt;t&gt;" in out

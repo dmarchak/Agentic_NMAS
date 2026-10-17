@@ -49,9 +49,12 @@
     <dt>SSH alias</dt><dd class="mono">{{ r.ssh_alias }}{% if r.key_path %} <span class="muted small">({{ r.key_path }})</span>{% endif %}</dd>
     <dt>Recorded</dt><dd>{{ 'set up by Mercury' if r.managed else 'adopted' }}{% if r.adopted_at %} {{ stamp(r.adopted_at) }}{% endif %}{% if r.adopted_by %} by {{ r.adopted_by }}{% endif %}</dd>
     <dt>Write probe</dt><dd>{% if r.verified_at %}passed {{ stamp(r.verified_at) }}{% else %}{{ badge('never passed', 'warn') }} Push refuses until it has{% endif %}</dd>
-    <dt>Acknowledged</dt><dd>{% if s.acknowledged %}{{ s.acknowledged.kinds | join(', ') or 'nothing gated' }} by {{ s.acknowledged.by }} {{ stamp(s.acknowledged.at) }}{% else %}nothing yet{% endif %}</dd>
+    <dt>Acknowledged</dt><dd>{% if s.acknowledged %}{{ s.acknowledged.kinds | join(', ') or 'nothing gated' }} by {{ s.acknowledged.by }} {{ stamp(s.acknowledged.at) }}
+      {%- if s.acknowledged['values'] is none %}<br><span class="muted small">recorded before secrets had fingerprints: acknowledge once more to list each one here</span>
+      {%- elif s.acknowledged['values'] %}<ul class="small">{% for v in s.acknowledged['values'] %}<li><code>{{ v.kind }}</code> <span class="mono">{{ v.fingerprint }}</span> in {{ v.devices | join(', ') or '?' }}</li>{% endfor %}</ul>{% endif %}
+      {%- else %}nothing yet{% endif %}</dd>
     <dt>Automatic pushing</dt><dd>{% if r.auto_push %}on{% elif r.last_push %}off{% else %}off: offered after a successful push{% endif %}</dd>
-    <dt>Last push</dt><dd>{% if r.last_push %}{{ stamp(r.last_push.at) }}{% if r.last_push.by %} by {{ r.last_push.by }}{% endif %}{% else %}none yet{% endif %}</dd>
+    <dt>Last push</dt><dd>{% if r.last_push %}{{ stamp(r.last_push.at) }} {{ badge(r.last_push.how, 'neutral') }}{% if r.last_push.by %} by {{ r.last_push.by }}{% endif %}: {{ r.last_push.what }}{% else %}none yet{% endif %}</dd>
   </dl>
   <div class="set-foot">
     <form method="post" action="{{ url_for('remote_v2.write_probe') }}" hx-post="{{ url_for('remote_v2.write_probe') }}" hx-target="#remote-setup" hx-swap="outerHTML">

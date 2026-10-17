@@ -47,26 +47,24 @@ def test_a_value_committed_after_the_card_was_drawn_is_refused_naming_it(adopted
     assert not (R.load_remote("default") or {}).get("acknowledged_secrets")
 
 
-def test_the_route_refuses_an_acknowledgement_that_names_nothing_it_was_shown(adopted):
-    import app as nmas
-    from routes import remote as routes_remote
+def test_an_acknowledgement_that_names_nothing_it_was_shown_is_refused(adopted):
+    """History › Remote set-up…'s acknowledge (`remote_setup.acknowledge`, over the same
+    `remote.acknowledge`): a form that sent no fingerprint covers nothing, so it is refused and
+    nothing is recorded; the same words with the value shown are recorded. Today's
+    /remote/acknowledge refused it with "did not say which values"; it left at 7.8
+    (2026-10-17), and the card's one hidden `shown` per drawn fingerprint is held by
+    tests/test_remote_setup_v2.py."""
+    from modules import remote_setup as S
 
-    adopted.setattr(routes_remote.identity, "require",
-                    lambda *a, **k: (type("I", (), {"actor": "a@b", "kind": "person"})(),
-                                     None))
-    adopted.setattr(routes_remote, "_list_name", lambda: "default")
-    adopted.setattr(R, "first_push_preview",
-                    lambda name: {"ok": True, "secrets": _scan(["fp-a"])})
     adopted.setattr(R, "scan_history_secrets", lambda *a, **k: _scan(["fp-a"]))
-    client = nmas.app.test_client()
-    r = client.post("/remote/acknowledge", json={"typed": "snmp_community"})
-    assert r.status_code == 400 and "did not say which values" in r.get_json()["error"]
-    r = client.post("/remote/acknowledge", json={"typed": "snmp_community", "shown": ["fp-a"]})
-    assert r.status_code == 200, r.get_json()
+    adopted.setattr(R, "_blobs_of_golden", lambda *a, **k: {})
+    adopted.setattr(R, "snmp_access_modes", lambda *a, **k: {})
+    adopted.setattr(R, "_run", lambda *a, **k: type(       # git's counts, as the scan reads them
+        "P", (), {"stdout": "7\n", "stderr": "", "returncode": 0})())
+    with pytest.raises(S.Refused, match="fp-a"):
+        S.acknowledge("default", "snmp_community", [], "a@b", "person")
+    assert not (R.load_remote("default") or {}).get("acknowledged_secrets")
+    out = S.acknowledge("default", "snmp_community", ["fp-a"], "a@b", "person")
+    assert out["ok"] is True and list(out["acknowledged"]["values"]) == ["fp-a"]
 
 
-def test_the_card_sends_the_fingerprints_it_showed():
-    from tests.payload_render import lift, shipped
-
-    ack = lift(shipped("partials__golden_repo.2.js"), "remoteAcknowledge")
-    assert "body: JSON.stringify({typed: typed, shown: Object.keys(values)})});" in ack

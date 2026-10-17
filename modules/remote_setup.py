@@ -46,12 +46,36 @@ def view(list_name: str) -> dict:
             "adopted_at": config.get("adopted_at", ""), "adopted_by": config.get("adopted_by", ""),
             "verified_at": config.get("verified_at", ""),
             "auto_push": bool(config.get("auto_push")),
-            "last_push": {"at": last.get("at", ""), "by": last.get("by", "")} if last else None},
+            "last_push": _last_push(last) if last else None},
+        # Each acknowledged value by kind, fingerprint and devices, so the acknowledgement stays
+        # reviewable (the operator, 2026-10-01; today's Remote card drew them until 7.8). None
+        # for one recorded before fingerprints, which the card says.
         "acknowledged": None if not ack else {
             "at": ack.get("at", ""), "by": ack.get("by", ""), "kinds": list(ack.get("kinds") or []),
-            "counts": dict(ack.get("counts") or {})},
+            "counts": dict(ack.get("counts") or {}),
+            "values": None if ack.get("values") is None else [
+                {"fingerprint": fp, "kind": (v or {}).get("kind", ""),
+                 "devices": list((v or {}).get("devices") or [])}
+                for fp, v in sorted((ack.get("values") or {}).items())]},
         "shapes": {k: words for k, (_shape, words) in R.SETUP_SHAPES.items()},
     }
+
+
+def _last_push(last: dict) -> dict:
+    """The last push as the card draws it: when, who, how (``auto`` for the push hook, else
+    ``manual``) and WHAT went out (Stage 1.2b recorded `kind`, `commit` and `tags` so the card
+    could say it; today's Remote card drew them until 7.8, 2026-10-17). A record from before
+    1.2b names neither, and says ``unknown`` rather than a confident blank."""
+    tags = [str(t) for t in (last.get("tags") or [])]
+    if last.get("kind") == "tags":
+        what = "tag only" + (f": {', '.join(tags)}" if tags else "")
+    elif last.get("commit"):
+        what = f"commit {str(last['commit'])[:8]}" + (f" + {', '.join(tags)}" if tags else "")
+    else:
+        what = str(last.get("kind") or "unknown")
+    by = last.get("by", "")
+    return {"at": last.get("at", ""), "by": by,
+            "how": "auto" if by == "auto-push" else "manual", "what": what}
 
 
 def connect(list_name: str, form: dict, actor: str) -> dict:
