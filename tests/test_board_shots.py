@@ -1023,6 +1023,32 @@ def test_device_page(tmp_path, monkeypatch):
                     p.click("#device-op .op-confirm",
                             f"{_DEVICE_CARD} && /op-warn/.test({_DEVICE_CARD}.className)")
                     p.shot("device-capture-moved")
+        # Inside a planned-restart window (C1025): the reachability reader's row for r2 says
+        # not answering and a window covers it, so the real `answering` draws the header's
+        # "Restarting as planned" chip (its words: tests/test_planned_restart_quiet.py).
+        from modules import device_page
+
+        cached = device_page._cached
+        down = {"answering": False, "last_result": "missed", "since": "2026-10-17T00:08:02Z",
+                "checked_at": "2026-10-17T00:09:02Z", "list": "Default"}   # the reader's row
+
+        class _Every(dict):
+            def __bool__(self):
+                return True
+
+            def get(self, key, default=None):
+                return down
+
+        monkeypatch.setattr(device_page, "_cached", lambda reader, *a, **k: (
+            ({"devices": _Every()}, "2026-10-17T00:09:02Z", "") if reader == "reachability"
+            else cached(reader, *a, **k)))
+        monkeypatch.setattr(device_page, "_restarting", lambda host, list_name: {
+            "words": "Restarting as planned (until 2026-10-17T00:27:47Z, by "
+                     "person@example.invalid)", "until": "2026-10-17T00:27:47Z"})
+        for width, scale in _DEVICE_WIDTHS:
+            with _DevicePage(served, width, scale) as p:
+                p.open("/v2/device/r2")
+                p.shot("device-planned")
 
 
 def test_device_deploy(tmp_path, monkeypatch):

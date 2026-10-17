@@ -2,6 +2,7 @@
 <span class="status" id="dev-status" hx-get="{{ url_for('device_v2.status', name=device.hostname) }}" hx-trigger="nmas:reachability from:body" hx-swap="outerHTML">
 {%- if answer.state == 'ok' %}{{ badge('Answering', 'ok', 'check') }}
 {%- elif answer.state == 'danger' %}{{ badge('Not answering', 'danger', 'warn') }}
+{%- elif answer.state == 'planned' %}{{ badge(answer.text, 'warn', 'history', 'Inside its planned-restart window: Needs attention raises it only if it is still down when the window ends') }}
 {%- else %}{{ badge('Not probed yet', 'muted') }}{% endif -%}
 {%- if answer.since %}<span class="status-since" title="checked {{ answer.checked_at }}">since <time data-age="{{ answer.since }}" datetime="{{ answer.since }}">{{ answer.since }}</time></span>{% endif -%}
 </span>

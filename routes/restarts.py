@@ -66,4 +66,7 @@ def planned():
     if not got["ok"]:
         return jsonify({"ok": False, "error": got["error"]}), 409
     log.info("planned restart recorded through the API by %s: %s", actor, got["record"])
-    return jsonify({"ok": True, "record": got["record"], "covered": len(got["covered"])})
+    # The window's Grafana silence, said on the answer either way (B3): a silence that could
+    # not be set is the caller's to know before the restart, never a log line only.
+    return jsonify({"ok": True, "record": got["record"], "covered": len(got["covered"]),
+                    "silence": got.get("silence"), "said": got.get("silence_words", "")})

@@ -110,10 +110,34 @@ def answering(dev: dict) -> dict:
     row = (value.get("devices") or {}).get(dev.get("ip"))
     if not row:
         return {"state": "unknown", "text": "not probed yet", "why": "the reader has no row for it"}
+    if not row.get("answering"):
+        # Inside its planned-restart window it is restarting as planned (B3, the operator
+        # 2026-10-17), never plain "Not answering"; once the window ends, it is that again.
+        planned = _restarting(dev.get("hostname", ""), row.get("list") or "")
+        if planned:
+            return {"state": "planned", "text": planned["words"], "since": row.get("since"),
+                    "checked_at": row.get("checked_at"), "until": planned["until"],
+                    "last_result": row.get("last_result"), "value_at": at}
     return {"state": "ok" if row.get("answering") else "danger",
             "text": "Answering" if row.get("answering") else "Not answering",
             "since": row.get("since"), "checked_at": row.get("checked_at"),
             "last_result": row.get("last_result"), "value_at": at}
+
+
+def _restarting(host: str, list_name: str):
+    """``{"words", "until"}`` when *host* of *list_name* is inside a planned-restart window
+    now, else None (an unreadable record holds nothing: it reads as not answering)."""
+    from modules import restarts as R
+
+    try:
+        got = R.holding(host, list_name, time.time())
+    except RuntimeError:
+        return None
+    if not got:
+        return None
+    return {"words": "Restarting as planned (until " + R._iso(got["end"]) + ", by "
+                     + (got["window"].get("by") or "an unrecorded person") + ")",
+            "until": R._iso(got["end"])}
 
 
 def _last_commit(repo: str, rel: str) -> dict:

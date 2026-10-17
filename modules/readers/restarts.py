@@ -8,6 +8,17 @@ seen before is recorded (`restarts.jsonl`), judged planned against the planned w
 its reason read from the device once. The first read looks back `FIRST_LOOKBACK_SECONDS`,
 so restarts from before the reader existed are found too; a read after a gap looks back
 over the gap, at most `MAX_LOOKBACK_SECONDS`, and says when it was cut.
+
+**A restart longer than the read's window is found across reads** (B4 of the W2 walk,
+2026-10-17; C677). A device that is down is not scraped, so the samples around a restart
+have a GAP as long as the restart: 720 s in s3's real capture
+(`tests/fixtures/heartbeat/s3_reboot.json`), about 450 s and more for r6's reload. Read
+each minute, the window is 300 s, so no window ever held a sample from both sides of a gap
+longer than that, and `resets()` found nothing: r6's reload of 2026-10-17 and its fall of
+2026-10-09 were never recorded, and every restart the record holds was found by the
+reader's first, 48-hour read. So each read also keeps every device's NEWEST sample
+(`latest`, one query), and a device whose newest sample is lower than the one the previous
+read kept restarted between them, however long it was gone.
 """
 
 import logging
@@ -26,6 +37,9 @@ FIRST_LOOKBACK_SECONDS = 48 * 3600
 MAX_LOOKBACK_SECONDS = 48 * 3600
 #: The range query's step: the SNMP scrape interval measured on the host (60 s), halved.
 STEP_SECONDS = 30
+#: How far back the newest-sample query looks: two and a half SNMP scrape intervals (60 s),
+#: so a device scraped on time always has a sample in it and one not scraped has none.
+LATEST_SECONDS = 150
 _NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -33,15 +47,36 @@ def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
+def _newest(rows: list) -> dict:
+    """``{device: [ts, ticks]}``: each device's newest sample, from a range-vector answer
+    (raw samples with their own timestamps, never the evaluation time)."""
+    out = {}
+    for row in rows or []:
+        dev = (row.get("metric") or {}).get("device", "")
+        pts = [(float(t), float(v)) for t, v in row.get("values") or [] if v is not None]
+        if not dev or not _NAME.match(dev) or not pts:
+            continue
+        t, v = max(pts)
+        if dev not in out or t > out[dev][0]:
+            out[dev] = [t, v]
+    return out
+
+
 def prometheus_series(window: int, now: float, list_name: str = "") -> tuple:
-    """``(configured, {device: [[[ts, ticks], ...] per series]})`` for every device whose
-    counter fell inside *window*. Raises when Prometheus is configured and cannot be read,
-    so the failure is a job-health row, never "nothing restarted"."""
+    """``(configured, {device: [[[ts, ticks], ...] per series]}, {device: [ts, ticks]})``:
+    every device whose counter fell inside *window*, and every device's newest sample (for
+    a fall across a gap longer than the window). Raises when Prometheus is configured and
+    cannot be read, so the failure is a job-health row, never "nothing restarted"."""
     from modules.integrations.prometheus import PrometheusIntegration
 
     prom = PrometheusIntegration(list_name=list_name) if list_name else PrometheusIntegration()
     if not prom.is_configured():
-        return False, {}
+        return False, {}, {}
+    q = prom._get("api/v1/query", query=f"sysUpTime[{LATEST_SECONDS}s]")
+    if not q.get("ok"):
+        raise RuntimeError(f"Prometheus could not be asked for the newest uptimes: "
+                           f"{q.get('error')}")
+    latest = _newest((q["response"].json().get("data") or {}).get("result") or [])
     r = prom._get("api/v1/query", query=f"resets(sysUpTime[{int(window)}s]) > 0")
     if not r.get("ok"):
         raise RuntimeError(f"Prometheus could not be asked for restarts: {r.get('error')}")
@@ -57,7 +92,7 @@ def prometheus_series(window: int, now: float, list_name: str = "") -> tuple:
             raise RuntimeError(f"Prometheus could not be asked for {dev}'s uptime: {q.get('error')}")
         out[dev] = [row.get("values") or []
                     for row in (q["response"].json().get("data") or {}).get("result") or []]
-    return True, out
+    return True, out, latest
 
 
 def population() -> dict:
@@ -88,8 +123,11 @@ def read(previous=None, clock=time.time, source=None, devices=None, reason=None)
     # P.8 step 5: every network's Prometheus, once per configuration, merged by device.
     from modules import integration_groups as IG
 
-    configured, series = ((source or (lambda w, n: IG.merged(
+    got = tuple((source or (lambda w, n: IG.merged(
         "prometheus", lambda list_name: prometheus_series(w, n, list_name))))(window, now))
+    configured = bool(got and got[0])
+    series = (got[1] if len(got) > 1 else None) or {}
+    latest = (got[2] if len(got) > 2 else None) or {}
     if not configured:
         return {"configured": False, "last_read_at": _iso(now), "new": [], "window": window}
     managed = (devices or population)()
@@ -100,41 +138,56 @@ def read(previous=None, clock=time.time, source=None, devices=None, reason=None)
     if planned["state"] == "unreadable":
         raise RuntimeError(f"the planned-restart record could not be read: {planned.get('error')}")
     rows, new, unmanaged = list(stored["rows"]), [], []
-    for host, all_series in sorted(series.items()):
+    # Where each device's counter fell: inside this read's window (`resets`), and between
+    # the newest sample the previous read kept and the newest now (a gap longer than the
+    # window, B4). One restart found both ways is one row (`known`).
+    kept = previous.get("latest") or {}
+    falls = {host: [(d, "sysUpTime reset") for values in all_series for d in R.drops(values)]
+             for host, all_series in series.items()}
+    for host, now_pt in latest.items():
+        before = kept.get(host)
+        if before and float(now_pt[0]) > float(before[0]):
+            for d in R.drops([before, now_pt]):
+                falls.setdefault(host, []).append((d, "sysUpTime fell between two reads"))
+    for host, found in sorted(falls.items()):
         list_name, dev = managed.get(host, ("", None))
         if dev is None:
             unmanaged.append(host)
             continue
-        for values in all_series:
-            for d in R.drops(values):
-                if R.known(host, d["at"], rows, list_name):
-                    continue
-                p = R.planned_for(host, d["at"], planned["rows"], list_name, seen=now)
-                why = (reason or R.read_reason)(dev)
-                row = {"device": host, "list": list_name, "at": _iso(d["at"]),
-                       "last_seen": _iso(d["last_seen"]),
-                       "seen_at": _iso(d["seen_at"]), "planned": bool(p),
-                       "planned_by": (p or {}).get("by", ""), "planned_why": (p or {}).get("why", ""),
-                       "reason": why.get("reason", ""), "crash_file": why.get("crash_file", ""),
-                       "reason_error": why.get("error", ""), "found_by": "sysUpTime reset",
-                       "recorded_at": _iso(now)}
-                R.append(row)
-                rows.append(row)
-                new.append(row)
-                log.warning("restarts: %s", R.words(row))
+        for d, how in found:
+            if R.known(host, d["at"], rows, list_name):
+                continue
+            p = R.planned_for(host, d["at"], planned["rows"], list_name, seen=now)
+            why = (reason or R.read_reason)(dev)
+            row = {"device": host, "list": list_name, "at": _iso(d["at"]),
+                   "last_seen": _iso(d["last_seen"]),
+                   "seen_at": _iso(d["seen_at"]), "planned": bool(p),
+                   "planned_by": (p or {}).get("by", ""), "planned_why": (p or {}).get("why", ""),
+                   "reason": why.get("reason", ""), "crash_file": why.get("crash_file", ""),
+                   "reason_error": why.get("error", ""), "found_by": how,
+                   "recorded_at": _iso(now)}
+            R.append(row)
+            rows.append(row)
+            new.append(row)
+            log.warning("restarts: %s", R.words(row))
+    # Each managed device's newest sample, kept for the next read; a device not scraped now
+    # keeps the one from before its gap, which is what the fall is measured against.
+    keep = {h: list(pt) for h, pt in kept.items() if h in managed}
+    keep.update({h: [float(pt[0]), float(pt[1])] for h, pt in latest.items() if h in managed})
     horizon = now - R.ATTENTION_DAYS * 86400
     recent = [r for r in R.judged(rows, planned["rows"])
               if not r.get("planned") and R._epoch(r.get("at", "")) >= horizon]
     recent.sort(key=lambda r: R._epoch(r.get("at", "")), reverse=True)
     return {"configured": True, "last_read_at": _iso(now), "window": window, "cut": cut,
             "new": new, "recent_unplanned": recent, "unmanaged": sorted(set(unmanaged)),
-            "devices": len(managed)}
+            "devices": len(managed), "latest": keep}
 
 
 READER = reader_job.register(reader_job.Reader(
     name="restarts",
     what="whether a device restarted, planned or not (the operator, 2026-10-02)",
-    endpoints=("Prometheus: GET /api/v1/query resets(sysUpTime[window]) > 0, then "
+    endpoints=("Prometheus: GET /api/v1/query sysUpTime[150s] (each device's newest sample) "
+               "and resets(sysUpTime[window]) > 0, then "
                "/api/v1/query_range sysUpTime for each device that restarted",
                "the device that restarted, once: `" + "show version | include reason|returned to"
                "|uptime is` (read-only)",

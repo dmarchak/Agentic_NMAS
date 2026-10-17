@@ -306,20 +306,42 @@ def records_path(repo_dir: str) -> str:
     return os.path.join(repo_dir, ".nsot", "reloads.jsonl")
 
 
-def record(list_name: str, row: dict) -> dict:
-    """Append one reload's row: ``{"ok", "error"}``. Never raises: the reload happened
-    whether or not its record could be written, and the result says which."""
-    from modules.config import open_secure
+#: The record's path inside the network's repository, as a commit names it.
+RECORDS_REL = ".nsot/reloads.jsonl"
 
-    path = records_path(_repo(list_name))
+
+def record(list_name: str, row: dict) -> dict:
+    """Append one reload's row and COMMIT it (B5 of the W2 walk, 2026-10-17: the row sat
+    uncommitted, so the remote never held it and History's header read "in sync" beside
+    it), through `repo._commit_paths`, the one commit path, which publishes. ``{"ok",
+    "error", "commit", "commit_error"}``. Never raises: the reload happened whether or not
+    its record could be written or committed, and the result says which. The file is
+    written under the repository lock, so the commit carries exactly this row and any row
+    an earlier version left uncommitted."""
+    from modules.config import open_secure
+    from modules.nsot import repo as R
+
+    repo = _repo(list_name)
+    path = records_path(repo)
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open_secure(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True) + "\n")
-        return {"ok": True, "error": ""}
+        with R.repo_lock(repo):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open_secure(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+            subject = (f"reload: {row.get('device')} "
+                       f"{'reloaded and verified' if row.get('ok') else row.get('outcome')}")
+            got = R._commit_paths(list_name, [RECORDS_REL],              # noqa: SLF001
+                                  f"{subject}\n\n{(row.get('reason') or '').strip()}",
+                                  [f"Actor: {row.get('by') or 'unknown'}",
+                                   f"Reload-Device: {row.get('device')}"], "reload")
     except Exception as exc:                          # noqa: BLE001
         log.error("reload: the record was NOT written for %s: %s", row.get("device"), exc)
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc), "commit": "", "commit_error": ""}
+    if not got.get("ok"):
+        log.error("reload: the record for %s was written and NOT committed: %s",
+                  row.get("device"), got.get("error"))
+    return {"ok": True, "error": "", "commit": got.get("commit", ""),
+            "commit_error": "" if got.get("ok") else (got.get("error") or "not committed")}
 
 
 def read_records(repo_dir: str) -> dict:
@@ -348,6 +370,7 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
 
     device = _device(list_name, host)
     steps = []
+    window = {}
     out = {"ok": False, "device": host, "list": list_name, "by": actor, "reason": reason,
            "outcome": "", "steps": steps}
 
@@ -391,8 +414,14 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
                 step("window", False, got.get("error", "not recorded") + ": nothing was sent")
                 return finish("no_window")
             out["window"] = {"from": _iso(started),
-                             "until": _iso(started + now["bound_s"] + 300)}
-            step("window", True, f"declared until {out['window']['until']}")
+                             "until": _iso(started + now["bound_s"] + 300),
+                             "silence": got.get("silence"),
+                             "silence_words": got.get("silence_words", "")}
+            window = got.get("record") or {}
+            # Said on the step, never only logged: a silence that could not be set is the
+            # one fact a person needs before the alerts arrive (B3).
+            step("window", True, f"declared until {out['window']['until']}"
+                 + (f"; {got['silence_words']}" if got.get("silence_words") else ""))
             try:
                 sent = (reloader or (lambda d: with_temp_connection(d, reload_device)))(device)
             except Exception as exc:                  # noqa: BLE001
@@ -406,6 +435,15 @@ def run(list_name: str, host: str, *, actor: str, fingerprint: str, reason: str,
                  else back.get("detail", "it did not answer"))
             if not back.get("ok"):
                 return finish("not_back")
+            # It is back: the window ends now, not at its declared end, so a fall after this
+            # is raised at once; its Grafana silence ends a settle margin later, since the
+            # alerts outlast the return (B3).
+            if window:
+                ended = restarts.end_window(window, time.time(),
+                                            f"the reload is back: {host} answered after "
+                                            f"{back.get('after_s')} s", by=actor)
+                out["window"]["ended"] = ended.get("ended_at")
+                out["window"]["end_words"] = ended.get("words", "")
             try:
                 after = (reader or read_device)(device)
             except Exception as exc:                  # noqa: BLE001

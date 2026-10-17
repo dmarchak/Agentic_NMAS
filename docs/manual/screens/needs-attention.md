@@ -135,6 +135,16 @@ name, how your identity was established and the time, and the row leaves the pag
   correction with its own reason: a restart that really was planned and only recorded late.
   History then says the window was a correction, and why.
 
+### A device restarting as planned {#restarting-as-planned}
+
+A device inside a planned-restart window (its Reload, or a window declared beforehand) is not
+something wrong, so it raises no row: *What was checked* says "r6 is restarting as planned
+(until …, by …)" under Reachability, and its Grafana alerts are said there too, held until the
+window's end plus a settle margin (19 minutes: its telemetry alerts outlast its return). The
+window also sets a Grafana silence on those alerts, as the person who declared it, so Grafana
+pages nobody. If the device is still not answering when the window ends, it is a critical row
+again, naming the window that ended; an alert still firing after the margin is a row again.
+
 ### A chronic alert, within its band {#acknowledging-a-chronic-alert}
 
 An alert that fires on one series nearly all the time (a port that always discards a little,

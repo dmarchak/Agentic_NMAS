@@ -210,13 +210,28 @@ def age_words(seconds) -> str:
     return f"{s // 86400} d {s % 86400 // 3600} h"
 
 
-def describe(pub: dict, now: float = None) -> dict:
+def describe(pub: dict, now: float = None, uncommitted: int = 0) -> dict:
     """The ONE sentence about publication, and its level, for the Git tab's
     status line, the Remote card and Needs attention (C223). Computed here, so
     no screen composes its own and none decides a colour.
 
     ``{"level", "state", "clause", "detail"}``: *clause* follows "Everything
-    is committed ·"; *detail* is the evidence (both heads, the read's age)."""
+    is committed ·"; *detail* is the evidence (both heads, the read's age).
+
+    *uncommitted* is how many paths the working tree holds that no commit does (History's
+    header counts them): with any, the repository is never "in sync" (B5 of the W2 walk,
+    2026-10-17: "in sync · 1 path(s) are not committed" read as both). Its commits may all
+    be on the remote; what is not committed is on this host only, and the state says so."""
+    d = _describe(pub, now)
+    if uncommitted and d["state"] == "in_sync" and d["level"] != "danger":
+        remote = (pub or {}).get("remote") or "the remote"
+        return dict(d, level="warning", state="uncommitted",
+                    clause=(f"its commits are on {remote}, and what is not committed is on "
+                            "this host only"))
+    return d
+
+
+def _describe(pub: dict, now: float = None) -> dict:
     now = time.time() if now is None else now
     if not pub:
         return {"level": "secondary", "state": "not_read", "clause":

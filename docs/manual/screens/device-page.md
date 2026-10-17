@@ -114,7 +114,10 @@ subtraction places a restart hours from where it was. Each shows the device's ow
 its last reload and the crash file it saved, if any, and whether it was planned: the tool's own
 reload is, and so is a window the tool was told about beforehand
 (`scripts/nmas-planned-restart` on the host). Anything else is unplanned, and is also on Needs
-attention for seven days.
+attention for seven days. A device that is down is not read, so its readings around a restart
+have a gap as long as the restart; the restart is found by comparing its newest reading with
+the one read before the gap, however long it was gone. While a planned window lasts, the
+header reads "Restarting as planned (until …, by …)" in place of "Not answering".
 
 ## Monitoring {#monitoring-tab}
 

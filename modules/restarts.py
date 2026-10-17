@@ -19,8 +19,20 @@ told.
 reason|returned|uptime`, the read-only allowlist's command), with the crash file IOS-XE names
 when it saved one. A reason that could not be read is said, never guessed.
 
-Stores, both in the data folder, append-only, 0600 (a person's name and reason are in them):
-`restarts.jsonl` (every restart seen, planned or not) and `planned_restarts.jsonl`.
+**A planned window quiets what it covers, and only while it lasts** (the operator's B3, W2
+walk, 2026-10-17: r6's reload raised "r6 is not answering" CRITICAL and four Grafana alerts
+inside its own declared window). Declaring one sets a Grafana silence on its devices' alerts
+(`put_silence`: the `device` label and the polled `instance` address), as the person who
+declared it and with their reason, until the window's end plus `SETTLE_SECONDS`; its id is
+kept on the window, and a silence that could not be set is said on the result, never
+dropped. While it lasts, Needs attention says the device is restarting as planned instead of
+raising a row (`holding`); once it ends with the device still down, the row is raised, naming
+the window. A reload that is back ends its window early (`end_window`), which moves the
+silence's end to then plus the settle margin.
+
+Stores, all in the data folder, append-only, 0600 (a person's name and reason are in them):
+`restarts.jsonl` (every restart seen, planned or not), `planned_restarts.jsonl`, and
+`planned_restart_ends.jsonl` (a window ended early, and by what).
 """
 
 import json
@@ -40,6 +52,13 @@ PLANNED_SLACK_SECONDS = 900
 SAME_RESTART_SECONDS = 600
 #: How long an unplanned restart stays a Needs attention row, said on the row.
 ATTENTION_DAYS = 7
+#: How long after a planned window ends its devices' Grafana alerts stay silenced and held:
+#: the alerts outlast the device's return. MEASURED on r6's reload (W2, 2026-10-17): verified
+#: at about 00:14:26Z, its telemetry no_data alerts (101, 102) still firing at 00:16Z
+#: (screenshot 69) and nothing firing at 00:22Z (75), so they cleared within 454 s of the
+#: return, an upper bound. 2.5 times it, rounded up to the minute. Tightened once a reload's
+#: Grafana alert history gives the clear time itself.
+SETTLE_SECONDS = 1140
 
 _REASON = re.compile(r"^\s*Last reload reason:\s*(.+?)\s*$", re.M | re.I)
 _RETURNED = re.compile(r"^\s*System returned to ROM by\s+(.+?)\s*$", re.M | re.I)
@@ -183,11 +202,246 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
                                            f"{MIN_WORDS} words and {MIN_CHARS} characters "
                                            "saying why the window was recorded late")}
         row["correction"] = correction.strip()
+    # The silence, before the row is written, so the row carries its id (B3). A window that
+    # has already ended (a correction for the past) silences nothing.
+    silence = silence_window(row)
+    row["silence"] = silence
     path = _data("planned_restarts.jsonl")
-    with PathLock(path):
-        with open_secure(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True) + "\n")
-    return {"ok": True, "record": row, "covered": covered}
+    try:
+        with PathLock(path):
+            with open_secure(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+    except Exception:
+        # The window was not recorded, so its silence must not outlive it unrecorded.
+        _move_silences(row, time.time(), "the window could not be recorded")
+        raise
+    return {"ok": True, "record": row, "covered": covered, "silence": silence,
+            "silence_words": silence_words(silence)}
+
+
+# ---------------------------------------------------------------------------
+# A window's Grafana silence, and what it holds on Needs attention (B3)
+# ---------------------------------------------------------------------------
+
+def _grafana(list_name: str):
+    """The Grafana client FOR *list_name* (its own, or the one it inherits): the one place a
+    window reaches Grafana, so a test replaces it here."""
+    from modules.integrations.grafana import GrafanaIntegration
+
+    return GrafanaIntegration(list_name=list_name) if list_name else GrafanaIntegration()
+
+
+def _inventory_of(list_name: str) -> list:
+    """*list_name*'s devices, read without creating its folder."""
+    from modules.config import list_data_path
+    from modules.device import load_saved_devices
+
+    return load_saved_devices(os.path.join(list_data_path(list_name), "devices.csv"))
+
+
+def _targets(p: dict) -> tuple:
+    """``(names, addresses)`` the window's silence matches: its devices (every device of its
+    network for ``"*"``) and each one's management address, the `instance` an SNMP rule
+    carries."""
+    devices = list(p.get("devices") or [])
+    inventory = _inventory_of(p.get("list", "")) if p.get("list") else []
+    if "*" in devices:
+        names = sorted(d["hostname"] for d in inventory if d.get("hostname"))
+    else:
+        names = sorted(set(devices))
+    ips = sorted({d["ip"] for d in inventory if d.get("hostname") in names and d.get("ip")})
+    return names, ips
+
+
+def _matchers(names: list, ips: list) -> list:
+    """One matcher set per silence: Alertmanager ANDs the matchers in one silence, so the
+    `device` label and the `instance` address are two silences, each a regular expression
+    over every name (Grafana anchors it)."""
+    out = []
+    if names:
+        out.append([{"name": "device", "isRegex": True,
+                     "value": "|".join(re.escape(n) for n in names)}])
+    if ips:
+        out.append([{"name": "instance", "isRegex": True,
+                     "value": "(" + "|".join(re.escape(i) for i in ips) + ")(:[0-9]+)?"}])
+    return out
+
+
+def silence_window(p: dict, now: float = None) -> dict:
+    """Set the window's Grafana silences: ``{"state": "set"|"failed"|"not_configured"|
+    "not_needed", "silences": [{"id", "matcher", "starts_at", "ends_at"}], "ends_at",
+    "error"}``. Never raises: a window is recorded whether or not Grafana took the silence,
+    and the result says which."""
+    now = time.time() if now is None else now
+    start, end = _epoch(p["from"]), _epoch(p["until"]) + SETTLE_SECONDS
+    if end <= now:
+        return {"state": "not_needed", "silences": [], "ends_at": _iso(end),
+                "error": "the window and its settle margin have already passed"}
+    try:
+        client = _grafana(p.get("list", ""))
+        if not client.is_configured():
+            return {"state": "not_configured", "silences": [], "ends_at": "",
+                    "error": "Grafana is not configured for this network"}
+        names, ips = _targets(p)
+    except Exception as exc:                     # noqa: BLE001 - said on the window
+        return {"state": "failed", "silences": [], "ends_at": "",
+                "error": f"{type(exc).__name__}: {exc}"}
+    sets = _matchers(names, ips)
+    if not sets:
+        return {"state": "failed", "silences": [], "ends_at": "",
+                "error": f"no device of {p.get('list') or 'the network'} to name"}
+    starts_at = _iso(min(start, now))
+    comment = (f"Mercury planned-restart window ({p.get('via', '')}): {p.get('why', '')}"
+               f" (until {p['until']}, plus {SETTLE_SECONDS // 60} min to settle)")
+    done, errors = [], []
+    for matchers in sets:
+        got = client.put_silence(matchers=matchers, starts_at=starts_at, ends_at=_iso(end),
+                                 created_by=p.get("by", ""), comment=comment)
+        words = f"{matchers[0]['name']}=~{matchers[0]['value']}"
+        if got.get("ok"):
+            done.append({"id": got["id"], "matcher": words, "starts_at": starts_at,
+                         "ends_at": _iso(end)})
+        else:
+            errors.append(f"{words}: {got.get('error')}")
+    if errors:
+        log.warning("restarts: a planned window's Grafana silence was not set: %s",
+                    "; ".join(errors))
+    return {"state": "failed" if errors else "set", "silences": done, "ends_at": _iso(end),
+            "error": "; ".join(errors)}
+
+
+def silence_words(s: dict) -> str:
+    """The window's result, said: what Grafana's alerts are doing."""
+    s = s or {}
+    state = s.get("state")
+    if state == "set":
+        return (f"Grafana's alerts on its devices are silenced until {s.get('ends_at')} "
+                f"(silence {', '.join(x['id'] for x in s.get('silences') or [])})")
+    if state == "not_configured":
+        return "Grafana is not configured for this network, so no alert of its was silenced"
+    if state == "not_needed":
+        return "no Grafana silence: the window and its settle margin have already passed"
+    set_ = [x["id"] for x in s.get("silences") or []]
+    return ("Grafana's alerts are NOT silenced: " + (s.get("error") or "no reason recorded")
+            + (f" (silence {', '.join(set_)} was set for the rest)" if set_ else ""))
+
+
+def window_id(p: dict) -> str:
+    """A window's identity: what it declared and when, never its silence."""
+    import hashlib
+
+    key = {k: p.get(k) for k in ("devices", "list", "from", "until", "by", "why",
+                                 "recorded_at")}
+    return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def _move_silences(p: dict, ends: float, why: str) -> list:
+    """Move the end of every silence the window set to *ends*: ``[{"id", "ends_at", "ok",
+    "error"}]``. The same start and matchers keep it the same silence in Grafana."""
+    out = []
+    silences = ((p.get("silence") or {}).get("silences")) or []
+    if not silences:
+        return out
+    try:
+        client = _grafana(p.get("list", ""))
+    except Exception as exc:                     # noqa: BLE001
+        return [{"id": s.get("id"), "ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                for s in silences]
+    for s in silences:
+        name, _sep, value = (s.get("matcher") or "").partition("=~")
+        ends_at = _iso(max(ends, _epoch(s.get("starts_at", "")) + 1))
+        got = client.put_silence(matchers=[{"name": name, "value": value, "isRegex": True}],
+                                 starts_at=s.get("starts_at", ""), ends_at=ends_at,
+                                 created_by=p.get("by", ""), silence_id=s.get("id", ""),
+                                 comment=f"Mercury planned-restart window: {p.get('why', '')}"
+                                         f" ({why})")
+        out.append({"id": got.get("id") or s.get("id"), "was": s.get("id"),
+                    "ends_at": ends_at, "ok": bool(got.get("ok")), "error": got.get("error", "")})
+    return out
+
+
+def end_window(p: dict, at: float, why: str, by: str = "") -> dict:
+    """End window *p* early, at *at* (a reload that is back): recorded in
+    `planned_restart_ends.jsonl`, and its silences moved to end `SETTLE_SECONDS` later, since
+    the alerts outlast the return. ``{"ok", "ended_at", "silences", "words", "error"}``."""
+    from modules.config import open_secure
+    from modules.filestore import PathLock
+
+    moved = _move_silences(p, at + SETTLE_SECONDS, why)
+    row = {"window": window_id(p), "ended_at": _iso(at), "why": why, "by": by,
+           "silences": moved, "recorded_at": _iso(time.time())}
+    path = _data("planned_restart_ends.jsonl")
+    try:
+        with PathLock(path):
+            with open_secure(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+    except Exception as exc:                     # noqa: BLE001 - said on the result
+        log.error("restarts: the window's end was NOT recorded: %s", exc)
+        return {"ok": False, "ended_at": row["ended_at"], "silences": moved,
+                "error": f"the end was not recorded: {exc}",
+                "words": f"the window's end was NOT recorded ({exc})"}
+    bad = [m for m in moved if not m["ok"]]
+    words = (f"window ended {row['ended_at']} ({why})"
+             + (f"; Grafana's silence now ends {moved[0]['ends_at']}" if moved and not bad else "")
+             + (f"; Grafana's silence was NOT moved: "
+                + "; ".join(f"{m['was']}: {m['error']}" for m in bad) if bad else ""))
+    return {"ok": True, "ended_at": row["ended_at"], "silences": moved, "words": words,
+            "error": ""}
+
+
+def ends() -> dict:
+    """``{window id: ended_at epoch}``: every window ended early. An unreadable record ends
+    none, so a window is held to its declared end, never cut short by a guess."""
+    got = _read_jsonl(_data("planned_restart_ends.jsonl"))
+    out = {}
+    for r in got["rows"]:
+        at = _epoch(r.get("ended_at", ""))
+        if r.get("window") and at:
+            out[r["window"]] = min(at, out.get(r["window"], at))
+    return out
+
+
+def window_end(p: dict, ended: dict) -> float:
+    """When window *p* ends: its declared end, or earlier when it was ended early."""
+    until = _epoch(p.get("until", ""))
+    early = (ended or {}).get(window_id(p))
+    return min(until, early) if early else until
+
+
+def _names(p: dict, device: str, list_name: str) -> bool:
+    """Whether window *p* names *device* of *list_name* (by name, or ``"*"`` for its list)."""
+    return device in p.get("devices", []) or (
+        "*" in p.get("devices", []) and (not p.get("list") or p.get("list") == list_name))
+
+
+def holding(device: str, list_name: str, now: float, *, margin: float = 0,
+            planned: list = None, ended: dict = None):
+    """The planned window *device* of *list_name* is inside at *now* (its start to its end,
+    plus *margin*), newest first, or None. ``{"window", "end", "words"}``: the end is the
+    window's own (declared, or ended early)."""
+    planned = planned_rows() if planned is None else planned
+    ended = ends() if ended is None else ended
+    for p in reversed(planned):
+        if not _names(p, device, list_name):
+            continue
+        end = window_end(p, ended)
+        if _epoch(p.get("from", "")) - 60 <= now <= end + margin:
+            return {"window": p, "end": end,
+                    "words": f"{device} is restarting as planned (until {_iso(end)}, by "
+                             f"{p.get('by') or 'an unrecorded person'})"}
+    return None
+
+
+def ended_while_down(device: str, list_name: str, now: float, since: float, *,
+                     planned: list = None, ended: dict = None):
+    """The newest window for *device* that ENDED while it was down (after *since*, before
+    *now*), or None: the one a not-answering row names."""
+    planned = planned_rows() if planned is None else planned
+    ended = ends() if ended is None else ended
+    for p in reversed(planned):
+        if _names(p, device, list_name) and since <= window_end(p, ended) < now:
+            return p
+    return None
 
 
 def _read_jsonl(path: str) -> dict:
@@ -205,8 +459,7 @@ def _read_jsonl(path: str) -> dict:
 
 
 def _window_covers(p: dict, device: str, at: float, list_name: str) -> bool:
-    if device not in p.get("devices", []) and not (
-            "*" in p.get("devices", []) and (not p.get("list") or p.get("list") == list_name)):
+    if not _names(p, device, list_name):
         return False
     return _epoch(p["from"]) - 60 <= at <= _epoch(p["until"]) + PLANNED_SLACK_SECONDS
 

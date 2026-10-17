@@ -91,7 +91,7 @@ GATES = {
     "v2.history_reapply_confirm": _g(C, "re-applies a baseline to every device it holds, as one batch job (History › Baselines)"),
     "adopt_v2.confirm": _g(C, "adds the tool's account to a device the tool did not build and "
                               "brings it under management (board G)", "adopt"),
-    "device_v2.reload_confirm": _g(C,"reloads the device, its planned-restart window declared first (P.14, cutover blocker 6)", "reload"),
+    "device_v2.reload_confirm": _g(C,"reloads the device, its planned-restart window declared first (P.14, cutover blocker 6), which sets a Grafana silence on its alerts as the person, with their reason (B3)", "reload"),
     "dhcp_v2.exclusion_confirm": _g(C, "adds or removes a DHCP exclusion: writes the subnet's "
                                        "pools as the pieces through the subnet's write, reloads "
                                        "Kea and reads it back, as a verified person with a "
@@ -293,7 +293,7 @@ GATES = {
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
     "attention.acknowledge": _g(K, "records that a person acknowledged one event row on Needs attention, with a reason; the row leaves the page and the event stays in its record"),
-    "restarts.planned": _g(K, "records a planned-restart window, so the restarts it covers are not reported as unexpected; a window covering a restart already seen needs a correction with its reason", operation="planned_restart"),
+    "restarts.planned": _g(K, "records a planned-restart window, so the restarts it covers are not reported as unexpected, and sets a Grafana silence on its devices' alerts as the caller, with the reason (B3); a window covering a restart already seen needs a correction with its reason", operation="planned_restart"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
     "jobs.job_finished": _g(N, "a host job ended: runs the job-health reader now; reads systemd and the stores, moves nothing, and accepts only a declared job's unit"),
     "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),

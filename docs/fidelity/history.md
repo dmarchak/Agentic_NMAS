@@ -32,7 +32,7 @@ the fixture's counts unfiltered); the Baselines tab (`history-baselines`, 1280 a
 real records (`history-real`, 1280).
 Compared 2026-10-16.
 Templates compared: templates/v2/history.html, templates/v2/_history_body.html, templates/v2/_history_remote.html, templates/v2/_history_timeline.html, templates/v2/_timeline.html
-Templates sha256: `3430aaeaa23b3f79a8d67a92b5467a6870bab538f714b5c3f01152854ddf6203`
+Templates sha256: `a1685bce90b41b6190f37b13f0e044f3b979cae20bf47e93afd16e4d6eb02085`
 
 Compared again 2026-10-16 (C522) after `_history_body.html`'s Baselines card gained a heading
 row: the count of baselines ("2 baselines") and "How does this work?" in words (to the restore's
@@ -69,6 +69,16 @@ no board or shot: board D draws the remote line in sync, and no shot has a faile
 header rendered from the template as it was and as it is, in six states (in sync and clean, 7
 paths uncommitted, ahead with a failed push, Verify passed read-only, Verify passed with the
 write probe, no remote): every byte the same. No region's verdict changed.
+
+Compared again 2026-10-17 (C1027, the operator's B5 from W2) after `_history_remote.html`'s
+chip gained the state `uncommitted` (`remote_publication.describe` now answers it, a warning,
+when the working tree holds anything uncommitted, where it answered "in sync" beside "1 path(s)
+are not committed", W2's screenshot 76): the chip reads "not committed" in warn. The state is on
+no board or shot: board D draws the remote line in sync and committed. The header rendered from
+the template as it was and as it is, in six states (in sync and clean, in sync with 7 paths
+uncommitted as the old `describe` drew it, ahead with a failed push, no remote, Verify passed,
+and the new uncommitted state): every byte the same but the new state's chip ("not pushed" as
+it was, "not committed" now). No region's verdict changed.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step, named).

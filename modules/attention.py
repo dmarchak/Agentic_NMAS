@@ -1547,7 +1547,8 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
     heartbeat_rules = {r.get("uid") for r in v.get("rules") or []
                        if (r.get("labels") or {}).get("nmas") == "heartbeat"}
     drained, drained_why = _drained_devices()
-    held = []
+    planned_hold, planned_why = _planned_alert_hold()
+    held, held_planned = [], []
     for group in _incidents(alerting):
         members = [_member(i, inv) for i in group]
         devices = sorted({m["device"] for m in members if m["device"]})
@@ -1562,6 +1563,17 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
             held.append(f"{first.get('rule')} on {', '.join(devices)} ("
                         + "; ".join(drained[d] for d in devices) + ")")
             continue
+        # A device restarting as planned (B3, the operator 2026-10-17): its alerts are the
+        # restart, inside its window and the settle margin after it (the telemetry no-data
+        # alerts outlast the return), said under What was checked with the window; the
+        # window's Grafana silence keeps them from paging anyone. After that, a row again.
+        if devices and not whole_pipeline:
+            restarting = [planned_hold(d) for d in devices]
+            if all(restarting):
+                held_planned.append(f"{len(members)} alert(s) ("
+                            + ", ".join(sorted({m['rule'] for m in members})) + ") on "
+                            + ", ".join(devices) + ": " + "; ".join(sorted(set(restarting))))
+                continue
         if whole_pipeline:
             what = "Every device's syslog heartbeat stopped at once"
             cause = ("all " + str(len(heartbeat_rules)) + " heartbeat rules are alerting with "
@@ -1662,8 +1674,45 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
                  f"{c.get('normal_no_data', 0)} reading no data as healthy by decision"
                  + (f"; {len(held)} alert(s) on drained devices, not raised: "
                     + "; ".join(held) if held else "")
+                 + ("; restarting as planned, not raised: " + "; ".join(held_planned)
+                    if held_planned else "")
                  + (f"; {drained_why}" if drained_why else "")
+                 + (f"; {planned_why}" if planned_why else "")
                  + (f"; {inv_why}" if inv is None else "")))
+
+
+def _planned_alert_hold(now: float = None) -> tuple:
+    """``(hold, problem)``: *hold(device)* is the words of the planned window the device is
+    inside, in any of its networks, counting `restarts.SETTLE_SECONDS` after its end, or "".
+    An unreadable planned record, or inventories that cannot be read, hold nothing, and
+    *problem* says so: a record that cannot be read never hides an alert."""
+    from modules import restarts as R
+
+    now = time.time() if now is None else now
+    try:
+        planned, ended = R.planned_rows(), R.ends()
+    except RuntimeError as exc:
+        return (lambda _d: ""), f"{exc}, so no alert was held for a planned restart"
+    # Only a window open now (with its settle margin) holds anything: the record keeps every
+    # window ever declared, and the inventories are read only when one is open.
+    planned = [p for p in planned if R._epoch(p.get("from", "")) - 60 <= now
+               <= R.window_end(p, ended) + R.SETTLE_SECONDS]
+    if not planned:
+        return (lambda _d: ""), ""
+    where = _device_networks()
+    if where is None:
+        return (lambda _d: ""), ("the networks' inventories could not be read, so no alert "
+                                 "was held for a planned restart")
+
+    def hold(device: str) -> str:
+        for net in where.get(device) or [""]:
+            got = R.holding(device, net, now, margin=R.SETTLE_SECONDS,
+                            planned=planned, ended=ended)
+            if got:
+                return (got["words"] + f", its alerts held {R.SETTLE_SECONDS // 60} min "
+                        "after it to settle")
+        return ""
+    return hold, ""
 
 
 def _drained_devices() -> tuple:
@@ -1888,6 +1937,11 @@ def reachability_source(cached=None) -> dict:
     v = good.get("value") or {}
     down = sorted((d for d in (v.get("devices") or {}).values() if not d.get("answering")),
                   key=lambda d: d.get("since") or "")
+    # A device inside its planned-restart window is restarting as planned (the operator's
+    # B3, W2 walk 2026-10-17): said under What was checked, as a drained device's alert is,
+    # never a row. Once the window ends with it still down, it is a row naming the window.
+    held, planned_why, ended_words = _planned_down(down)
+    down = [d for d in down if (d.get("hostname"), d.get("list")) not in held]
     rows = []
     if down:
         names = [d.get("hostname") or d.get("address") for d in down]
@@ -1898,7 +1952,9 @@ def reachability_source(cached=None) -> dict:
             devices=names, since=_ts(down[0].get("since")),
             cause="; ".join(f"{d.get('hostname') or d.get('address')} ({d.get('address')}): "
                             f"{d.get('consecutive_misses')} consecutive misses, the threshold is "
-                            f"{d.get('threshold')}; {d.get('claim')}" for d in down)
+                            f"{d.get('threshold')}; {d.get('claim')}"
+                            + ended_words.get((d.get("hostname"), d.get("list")), "")
+                            for d in down)
                   + (". Several at once is more often the path from Mercury than each device"
                      if len(down) > 1 else ""),
             operands={"probe": "ICMP, then TCP 22"},
@@ -1912,7 +1968,42 @@ def reachability_source(cached=None) -> dict:
         reader="reachability",
         checked=(f"{c.get('answering', 0)} answering, {c.get('not_answering', 0)} not answering"
                  + (f", {c.get('missed_last_probe', 0)} missed only the last probe"
-                    if c.get("missed_last_probe") else "")))
+                    if c.get("missed_last_probe") else "")
+                 + "".join(f"; {w}" for w in held.values())
+                 + (f"; {planned_why}" if planned_why else "")))
+
+
+def _planned_down(down: list, now: float = None) -> tuple:
+    """``(held, problem, ended)`` for the devices not answering: *held* maps ``(hostname,
+    list)`` to the words of the planned window each is inside ("r6 is restarting as planned
+    (until T, by X): open its reload on its page"); *ended* maps a device whose window ended
+    while it was down to the clause its row adds. An unreadable planned record holds
+    nothing, and *problem* says so."""
+    from modules import restarts as R
+
+    if not down:
+        return {}, "", {}
+    now = time.time() if now is None else now
+    try:
+        planned, ended = R.planned_rows(), R.ends()
+    except RuntimeError as exc:
+        return {}, f"{exc}, so no device was held as restarting as planned", {}
+    held, after = {}, {}
+    for d in down:
+        key = (d.get("hostname"), d.get("list"))
+        got = R.holding(key[0], key[1] or "", now, planned=planned, ended=ended)
+        if got:
+            held[key] = (got["words"] + (": open its reload on its page"
+                                         if got["window"].get("via") == "reload" else
+                                         f": {got['window'].get('why', '')}"))
+            continue
+        p = R.ended_while_down(key[0], key[1] or "", now, _ts(d.get("since")) or 0,
+                               planned=planned, ended=ended)
+        if p:
+            after[key] = (f"; its planned-restart window (by {p.get('by') or 'an unrecorded '
+                          'person'}) ended at {R._iso(R.window_end(p, ended))} and it is still "
+                          "not answering")
+    return held, "", after
 
 
 def credential_health_source(cached=None) -> dict:

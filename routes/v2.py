@@ -296,6 +296,9 @@ def _history_remote(ref) -> dict:
     out["dirty"] = len(paths)
     # Named here, never "see today's Git tab" (C637): the first five, and how many more.
     out["dirty_paths"] = paths[:5]
+    # Never "in sync" beside paths no commit holds (B5): the sentence says what is on the
+    # remote and what is on this host only.
+    out["d"] = RP.describe(pub, uncommitted=len(paths))
     return out
 
 

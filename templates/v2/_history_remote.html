@@ -4,7 +4,7 @@
     busy on itself. Redrawn when the remote is re-read. -#}
 {%- set LEVEL = {'success': ('in sync', 'ok'), 'warning': ('not pushed', 'warn'),
                  'danger': ('attention', 'danger'), 'secondary': ('no remote', 'muted')} -%}
-{%- set lv = LEVEL.get(remote.d.level, (remote.d.state, 'muted')) -%}
+{%- set lv = ('not committed', 'warn') if remote.d.state == 'uncommitted' else LEVEL.get(remote.d.level, (remote.d.state, 'muted')) -%}
 <section class="card hist-remote" id="hist-remote" hx-get="{{ url_for('v2.history_remote') }}"
          hx-trigger="nmas:remote from:body, nmas:goldens from:body" hx-swap="outerHTML">
   <div class="hist-remote-row">

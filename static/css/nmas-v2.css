@@ -275,7 +275,10 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .sub { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
 .page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.status { display: inline-flex; align-items: center; gap: 8px; }
+.status { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: 100%; }
+/* A long state ("Restarting as planned (until …, by …)", C1025) wraps inside the page at phone
+   width rather than widening it. */
+.status .badge { white-space: normal; max-width: 100%; }
 .status-since { font-size: 12px; color: var(--ink-2); }
 
 .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface);

@@ -398,7 +398,9 @@ def fleet_commits(ctx):
     unborn = _unborn(ctx, "the repository's other commits")
     if unborn:
         return unborn
-    rows, err = _log(ctx, [".", ":(exclude)golden", ":(exclude)host_vars"])
+    # A reload's record commit is drawn as its reload (`reloads`), never a second row.
+    rows, err = _log(ctx, [".", ":(exclude)golden", ":(exclude)host_vars",
+                           ":(exclude).nsot/reloads.jsonl"])
     if err:
         return _out(errors=[f"the repository's other commits could not be read: {err}"])
     events = [_from_commit(r, "commit", r["subject"], [],
@@ -548,7 +550,9 @@ def restart_windows(ctx):
                              marks=["correction"] if w.get("correction") else [],
                              record=[("From", iso(w.get("from"))), ("Until", iso(w.get("until"))),
                                      ("Devices", ", ".join(w.get("devices") or [])),
-                                     ("Via", w.get("via")), ("Correction", w.get("correction"))]))
+                                     ("Via", w.get("via")), ("Correction", w.get("correction")),
+                                     ("Grafana", _restarts.silence_words(w["silence"])
+                                      if w.get("silence") else "")]))
         if len(events) >= ctx["limit"]:
             break
     return _out(events)
@@ -1086,7 +1090,8 @@ def reloads(ctx):
                              marks=[] if r.get("ok") else ["stopped"],
                              record=[("Reason", r.get("reason")), ("Outcome", r.get("outcome")),
                                      ("Steps", "; ".join(f"{s.get('step')}: {s.get('detail')}"
-                                                         for s in r.get("steps") or []))]))
+                                                         for s in r.get("steps") or [])),
+                                     ("Window", (r.get("window") or {}).get("end_words"))]))
         if len(events) >= ctx["limit"]:
             break
     return _out(events)

@@ -56,7 +56,7 @@ page 1440, 1280, 390), `device-restore-before`, `device-restore-running`,
 `device-retire` (board 1440; page 1440, 390), `device-retire-result` (1440).
 Compared 2026-10-16.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `9225c83d85f1cb618e875eb88c3e8797a4d143114dda346f47be6c54cd54c5ca`
+Templates sha256: `92e8fffcc7c61512fc0824590007d4ae9e55284ae614001e5b8ed15814d56f24`
 
 Compared again 2026-10-16 (C537, C540) after `device.html` gained the line a reopened card
 carries and `_rotate.html` its running card's and held preview's changes (C540's words, and
@@ -86,6 +86,16 @@ gains and losses with two files, gains only, losses only, a missing file only) b
 after: every byte the same. `device-persist` shot again at 1440 and 390 beside
 PersistRunningHelp: the part as its region says. No region's verdict changed.
 
+Compared again 2026-10-17 (C1025, the operator's B3 from W2) after `_status.html` gained a
+third state: inside a planned-restart window a device that is not answering reads "Restarting as
+planned (until …, by …)" (warn, the history icon, its title saying Needs attention raises it only
+if it is still down when the window ends), drawn by the real `device_page.answering` from a
+reader row that says not answering and a window covering it. Shots: `device-planned` at 1440,
+1280 and 390 (tests/test_board_shots.py `test_device_page`) beside `Device` and `DevicePhone`,
+and `device` again. At 390 the long chip ran past the screen's edge; `.status` now wraps and its
+badge may break its line, inside the page, and a short chip draws as before (`device` at 390 the
+same as before). One region added below; no other region's verdict changed.
+
 The running cards draw the one stepper, compared with its boards in docs/fidelity/stepper.md.
 Reload… (`_reload.html`; the walk's section I, capture 30) and Run a privileged command…
 (`_privileged.html`, compared in tab-ask.md) are cards of later sign-offs: Reload has no board
@@ -98,6 +108,7 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 |---|---|---|---|
 | Crumbs | Devices / r3 | Devices / r2; Devices / s1 (capture 02) | **same** |
 | Header's chips | the name, then "Answering · 4 s ago" and the intent state ("At intent", "Departs (+1)", "Change blocked: rolled back"), or "Busy: deploy, 3 min 4 s" while held, on every board | the name and the answering chip alone ("Answering since 18 h ago", capture 02; "Not probed yet" here); no intent-state chip, and no Busy chip while another operation holds the device (shot `device-rotate-held`) | **deviation** (log: Device: the header draws no intent-state or Busy chip (a defect, register C650 follow-up)) |
+| Header's chip inside a planned-restart window (C1025) | not drawn (every board's device answers) | "Restarting as planned (until 2026-10-17T00:27:47Z, by person@example.invalid)" in warn with the history icon, then "since 2 h ago"; the Overview's Answering row the same words; at 390 the chip breaks its line inside the page (shot `device-planned`) | **deviation** (log: C1025: the header's chip inside a planned-restart window) |
 | Header's sub line | platform (model), the network, the address, "signs in as nmas, from its device override"; the action boards add "last measured 2 h ago" | model and platform each with its source on hover, the address, "signs in as admin", the network (capture 02); no credential source and no last-measured age (the Overview tab's table carries the age) | **deviation** (log: Device: the header's sub line names no credential source or last-measured age (a defect, register C650 follow-up)) |
 | Header's controls | "Plan a deploy…" a primary button, "How does this work?", then "Actions ▾" | one primary "Actions", Plan a deploy… its first row, as board 6's revision draws it ("Plan a deploy… is its first row") | **deviation** (log: Device: Plan a deploy… is the Actions menu's first row) |
 | Header's help | "How does this work?" beside the buttons | the (i) beside Actions, "How the Actions menu works", as on every v2 page | **deviation** (log: Device: the header's help is the info mark beside Actions) |

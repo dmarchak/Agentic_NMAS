@@ -17,7 +17,9 @@ operator, 2026-10-02); acknowledge such a restart on Needs attention instead. A 
 restarts devices declares its window through the product's API instead
 (POST /restarts/planned), so the record names a verified person. `*` covers every device of the list. The record
 (planned_restarts.jsonl, 0600) names who (the login on this host unless --by names the
-person), why, and that it came from this command. Nothing else is written, and no device is
+person), why, and that it came from this command. Where the list's Grafana is configured, the
+window also sets a Grafana silence on its devices' alerts until its end plus the settle
+margin, as that person (`restarts.silence_window`), and says whether it did. No device is
 contacted.
 
 Exit 0: recorded; 1: refused (named).
@@ -81,6 +83,7 @@ def main(argv=None) -> int:
     if r.get("correction"):
         print(f"as a correction, covering {len(out['covered'])} restart(s) already seen: "
               f"{r['correction']}")
+    print(out.get("silence_words") or "no Grafana silence was recorded")
     if r.get("new_host_keys"):
         print("expecting new SSH host keys: Mercury keeps one new key per device it meets "
               "inside the window, each in History; once the window closes, Needs attention "
