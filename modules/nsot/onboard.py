@@ -2691,6 +2691,41 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
     }
 
 
+#: The record commit's words, per operation source (C1180).
+_RECORD_SUBJECT = "{source}: {host} verified and recorded in NetBox"
+
+
+def commit_record(list_name: str, hostname: str, actor: str, *, source: str) -> dict:
+    """Commit what an operation's last steps wrote to the manifest: the NetBox id and the
+    promotion's `verified_at`, both after the operation's golden commit (C1180). One
+    commit carries both, as the person who ran the operation; nothing is committed when
+    the manifest did not change. ``{"ok", "commit", "error"}``; a failure is the caller's
+    to say in its result, and undoes nothing."""
+    from modules.nsot import repo as R
+
+    got = R.save_manifest(list_name, _RECORD_SUBJECT.format(source=source, host=hostname),
+                          actor=actor, source=source, devices=[hostname])
+    if not got.get("ok"):
+        log.error("%s: %s's manifest change was NOT committed: %s", source, hostname,
+                  got.get("error"))
+    return got
+
+
+def record_detail(kept: dict, base: str) -> str:
+    """A finished step's detail, naming the record's commit when one was made."""
+    if not kept.get("commit"):
+        return base
+    return "; ".join(p for p in (base, f"recorded in commit {kept['commit'][:8]}") if p)
+
+
+def record_unkept(hostname: str, done: str, kept: dict) -> str:
+    """Why a run that did everything still is not `ok`: its record is not committed."""
+    return (f"{hostname} is {done} and in the inventory, and its manifest change (the NetBox "
+            f"id and verified time) was NOT committed: {kept.get('error') or 'no reason'}. "
+            "Nothing was undone. Until .nsot/manifest.json is committed, an operation that "
+            "needs a clean repository, such as Retire, refuses")
+
+
 def verify_and_promote(repo: str, hostname: str, list_name: str, *,
                        actor: str = "", **kw) -> dict:
     """Phase 2 end to end: reach the device, and promote it if it answered.
@@ -2740,6 +2775,11 @@ def verify_and_promote(repo: str, hostname: str, list_name: str, *,
         if identity:
             _m.upsert_device(repo, identity, hostname,
                              netbox_id=out["netbox"]["device_id"])
+    # The promotion's `verified_at` and the NetBox id, committed (C1180); a failure is
+    # said, and undoes nothing.
+    out["record_commit"] = commit_record(list_name, hostname, actor, source="onboarding")
+    if not out["record_commit"]["ok"]:
+        out["error"] = record_unkept(hostname, "promoted", out["record_commit"])
     return out
 
 
@@ -3571,7 +3611,17 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
                                        device_type=device_type, username=user,
                                        password=pw, secret=sec)
     result["promote"] = prom
-    if not _step("promote", prom.get("ok"), prom.get("error", "")):
+    # The NetBox id and the promotion's `verified_at` are the manifest's last writes, after
+    # the golden's commit: committed here, as the person who ran Verify, or the repository
+    # is left dirty and the next operation needing a clean one refuses (C1180).
+    kept = (commit_record(list_name, hostname, actor, source="onboarding")
+            if prom.get("ok") else {"ok": True, "commit": "", "error": ""})
+    result["record_commit"] = kept
+    if not _step("promote", prom.get("ok") and kept["ok"],
+                 prom.get("error", "") or record_detail(kept, "")):
+        if prom.get("ok"):
+            result["promoted"] = True
+            return _stop("promote", record_unkept(hostname, "promoted", kept))
         return _stop("promote", prom.get("error") or "promotion failed")
 
     result["promoted"] = True

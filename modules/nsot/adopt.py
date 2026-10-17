@@ -1406,7 +1406,17 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
                                                device_type=device_type, username=user,
                                                password=pw, secret="")
     result["promote"] = prom
-    if not _step("promote", prom.get("ok"), prom.get("error", "") or "in the inventory"):
+    # The NetBox id and the promotion's `verified_at` are the manifest's last writes, after
+    # the golden's commit: committed here, as the person who adopted, or the repository is
+    # left dirty and the next operation needing a clean one refuses (C1180).
+    kept = (onboard.commit_record(list_name, hostname, actor, source="adopt")
+            if prom.get("ok") else {"ok": True, "commit": "", "error": ""})
+    result["record_commit"] = kept
+    if not _step("promote", prom.get("ok") and kept["ok"],
+                 prom.get("error", "") or onboard.record_detail(kept, "in the inventory")):
+        if prom.get("ok"):
+            result["state"] = "adopted"
+            return _stop("promote", onboard.record_unkept(hostname, "adopted", kept))
         return _stop("promote", prom.get("error") or "promotion failed")
 
     result["state"] = "adopted"

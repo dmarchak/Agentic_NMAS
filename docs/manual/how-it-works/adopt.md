@@ -135,8 +135,14 @@ moved since the preview:
    What existed is read before the import, so it is never mistaken for something created.
 8. **Into the inventory** (`promote`). Read: the manifest. Sent: nothing. Recorded: the
    device's row in the list's inventory, with the tool's account and its password
-   (encrypted). Last, because the row is the claim "this device is managed". On a
-   NetBox-sourced list no row is written; the device arrives at the next refresh.
+   (encrypted), and the manifest marks it verified. Last, because the row is the claim
+   "this device is managed". On a NetBox-sourced list no row is written; the device arrives
+   at the next refresh. Then the manifest's two changes since the golden's commit, the
+   NetBox id and the verified time, are committed together as you, `Source: adopt`
+   (`adopt: <device> verified and recorded in NetBox`), so the list's repository is left
+   clean and the next operation that needs it clean (Retire) is not refused. A manifest
+   that did not change makes no commit. A commit that fails undoes nothing: the step fails
+   and says so, naming git's reason.
 
 Adoption adds nothing to Oxidized: its step went with Oxidized's retirement (2026-10-08). The
 first golden's commit is the device's backup.

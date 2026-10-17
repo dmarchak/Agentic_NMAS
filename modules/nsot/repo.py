@@ -1695,6 +1695,38 @@ def save_host_vars(list_name: str, devices: list, actor: str = "user",
                          subject, trailers, source)
 
 
+def save_manifest(list_name: str, subject: str, *, actor: str, source: str,
+                  devices=()) -> dict:
+    """Commit the identity map (`.nsot/manifest.json`), and nothing else, as *actor*.
+
+    For an operation whose LAST writes are to the manifest, after its last golden commit:
+    adopt and onboarding's Verify record the device's NetBox id and then promote it
+    (`verified_at`). Left uncommitted, those two fields made the repository dirty, and
+    the next operation that needs a clean one (Retire) refused (C1180, W4 2026-10-17).
+
+    ``{"ok", "commit", "error"}``; ``commit`` is empty when the manifest did not change,
+    and then nothing is committed. Through `_commit_paths`, the one non-golden commit
+    path, which stages exactly this file and publishes."""
+    from modules.config import get_list_data_dir
+
+    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+    trailers = [f"Actor: {actor or 'unknown'}"]
+    if devices:
+        trailers.append(f"Devices: {','.join(devices)}")
+    try:
+        with repo_lock(repo):
+            _rc, dirty, _err = git(repo, "status", "--porcelain", "--", MANIFEST_REL)
+            if not (dirty or "").strip():
+                return {"ok": True, "commit": "", "error": ""}
+            got = _commit_paths(list_name, [MANIFEST_REL], subject, trailers, source)
+    except Exception as exc:                   # noqa: BLE001 - named in the result
+        log.exception("repo: the manifest could not be committed in '%s'", list_name)
+        return {"ok": False, "commit": "", "error": f"{type(exc).__name__}: {exc}"}
+    if not got.get("ok"):
+        return {"ok": False, "commit": "", "error": got.get("error") or "not committed"}
+    return {"ok": True, "commit": got.get("commit", ""), "error": ""}
+
+
 def _prune_device_tags(repo: str, hostnames: list, list_name: str) -> None:
     """Amendment 4: keep the last N per-device tags; baselines are never pruned.
 

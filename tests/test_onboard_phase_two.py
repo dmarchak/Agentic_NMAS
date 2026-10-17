@@ -266,16 +266,20 @@ class TestTheFirstGoldenIsATrueRecord:
         assert "snmp-server community public RO" in text
 
     def test_it_is_one_commit(self, world):
+        """One commit of the golden, one true record. The run makes one more, after it:
+        the manifest's NetBox id and `verified_at`, which promotion writes last (C1180,
+        tests/test_operations_leave_the_repository_clean.py)."""
         import subprocess
 
-        before = subprocess.run(["git", "-C", world["repo"], "rev-list",
-                                 "--count", "HEAD"], capture_output=True,
-                                text=True).stdout.strip()
+        def count(*path):
+            return int(subprocess.run(["git", "-C", world["repo"], "rev-list", "--count",
+                                       "HEAD", "--", *path], capture_output=True,
+                                      text=True).stdout.strip())
+
+        before, golden_before = count(), count("golden/bp1.cfg")
         self._run(world)
-        after = subprocess.run(["git", "-C", world["repo"], "rev-list",
-                                "--count", "HEAD"], capture_output=True,
-                               text=True).stdout.strip()
-        assert int(after) == int(before) + 1, "one commit, one true record"
+        assert count("golden/bp1.cfg") == golden_before + 1, "one commit, one true record"
+        assert count() == before + 2, "the golden's commit, then the record's"
 
 
 class TestAfterASuccessfulRun:
