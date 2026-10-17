@@ -213,9 +213,13 @@ class TestNothingIsDefinedWithoutACaller:
 class TestTheThreeGradedPathsAreReachable:
     """Objective 1.3 (applying templates) and 1.4 (per-device golden history)
     are graded on GUI demonstration. All three had working backends and no
-    button."""
+    button.
 
-    GRADED = ("showRenderPreview", "openDeployPlan", "showGoldenHistory")
+    The first, today's template preview (`showRenderPreview`), left with today's template
+    editor at 7.8 (2026-10-17, P7-23): a device's render against its golden is its Intent
+    tab's check and its Deploy… plan on v2. The other two stay until P7-25 and P7-27."""
+
+    GRADED = ("openDeployPlan", "showGoldenHistory")
 
     def test_each_is_defined(self, todays_page):
         _html, scripts = todays_page

@@ -28,14 +28,6 @@
    "licence_sha256": "08b7502da6e7aa1d0bbdc97d220fbf669b9366c61bd0f072238283c89bc4773a",
    "notice": "the published @alpinejs/csp and alpinejs 3.17.4 tarballs hold no licence file (measured 2026-10-05), so its text comes from Alpine's own repository at the release's tag, the operator's decision the same day; not in MANIFEST.json, whose entries are registry-verified, and held to its sha256 here instead"
   },
-  "static/js/vendor/codemirror/*": {
-   "component": "CodeMirror",
-   "version": "5.65.16",
-   "licence": "MIT",
-   "source": "https://registry.npmjs.org/codemirror/-/codemirror-5.65.16.tgz",
-   "licence_file": "static/js/vendor/codemirror/LICENSE",
-   "notice": "codemirror.js's header names the MIT licence and its URL. Measured 2026-10-05: codemirror.js, codemirror.css and mode/jinja2/jinja2.js are byte-identical to that tarball's lib/ and mode/ files (its sha512 verified), and the LICENSE is vendored from it (nmas-vendor)"
-  },
   "static/js/vendor/bootstrap/*": {
    "component": "Bootstrap (its licence, for the CSS and JS under static/css and static/js)",
    "version": "5.3.3",

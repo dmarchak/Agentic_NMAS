@@ -1,35 +1,31 @@
-"""The template editor's client halves (CONCURRENCY_AUDIT R12 and R14, the operator's
+"""The template editor's and Approve's bindings (CONCURRENCY_AUDIT R12 and R14, the operator's
 decision of 2026-10-04: "take your recommendations, unless either changes what a screen
 shows").
 
 R14: the editor's open hands out the template's blob at HEAD as its BASE, and the save sends
-it back. A save whose base is no longer HEAD's is refused (409), naming both blobs and who
-moved it, and nothing is written. Before this, the last writer won silently: a person who
-opened the template before another person's commit put their whole text back over it.
+it back. A save whose base is no longer HEAD's is refused (409), naming both blobs, and
+nothing is written. Before this, the last writer won silently: a person who opened the
+template before another person's commit put their whole text back over it.
 
-R12: the approval state the library row loads carries the closure's fingerprint, and Approve
-sends it. A template that moved after the row was drawn is refused, naming both
-fingerprints. The server's own snapshot check (validation against one fingerprint) covered
-an edit DURING validation; this covers one between looking and pressing.
+R12: what the person was shown carries the closure's fingerprint, and Approve sends it. A
+template that moved after it was drawn is refused, naming both fingerprints. The server's own
+snapshot check (validation against one fingerprint) covered an edit DURING validation; this
+covers one between looking and pressing.
 
-Both refusals are drawn where the editor already draws a refusal: the save's status line and
-the approve's "Cannot approve" alert. The shipped client is checked as R2's was, by lifting
-the functions and anchoring on the assignments."""
+Today's template editor (its file read and save, its approval read and Approve) left at 7.8 on
+2026-10-17 (P7-23). The bindings are held here on its home, Source of truth › Templates: Edit…
+(`templates_v2.edit_form` and `edit_commit`, the base a hidden field) and Approve… (the
+check's card, its fingerprint a hidden field), through the real routes. Expected values come
+from git directly.
+"""
 
 import os
 import subprocess
 
 from modules.nsot import approval
-from tests.payload_render import lift, shipped
 from tests.test_approvals_record import REL, lab  # noqa: F401  (the fixture)
 from tests.test_template_approval import _devices
-
-FILE = f"/templates/file/{REL}"
-
-
-def _client():
-    import app as nmas
-    return nmas.app.test_client()
+from tests.test_templates_v2 import _get, _hidden, tl  # noqa: F401  (the fixture)
 
 
 def _git(repo, *args):
@@ -37,106 +33,99 @@ def _git(repo, *args):
                           check=True).stdout
 
 
-def _opened(client):
-    body = client.get(FILE).get_json()
-    return body["content"], body["base"]
+def _opened(tl):  # noqa: F811
+    import html as H
+    import re
+
+    _r, html = _get(tl, f"/v2/templates/edit?list=Lab&path={REL}")
+    text = H.unescape(re.search(r'<textarea id="te-text"[^>]*>(.*?)</textarea>', html,
+                                re.S).group(1))
+    return text, _hidden(html, "base")
 
 
-def _save(client, content, base, **extra):
-    return client.post(FILE, json={"content": content, "base": base, **extra})
+def _save(tl, content, base, summary="an edit"):  # noqa: F811
+    return tl["client"].post("/v2/templates/edit", data={
+        "list": "Lab", "path": REL, "text": content, "base": base, "summary": summary})
 
 
 class TestTheSaveIsBoundToWhatWasOpened:
-    def test_the_base_is_heads_blob_and_the_text_is_that_blob(self, lab):
-        text, base = _opened(_client())
-        assert base == _git(lab, "rev-parse", f"HEAD:templates/{REL}").strip()
-        assert text == _git(lab, "show", f"HEAD:templates/{REL}")
+    def test_the_base_is_heads_blob_and_the_text_is_that_blob(self, tl):  # noqa: F811
+        text, base = _opened(tl)
+        assert base == _git(tl["repo"], "rev-parse", f"HEAD:templates/{REL}").strip()
+        assert text == _git(tl["repo"], "show", f"HEAD:templates/{REL}")
 
-    def test_a_save_on_the_current_base_commits(self, lab):
-        client = _client()
-        text, base = _opened(client)
-        before = _git(lab, "rev-parse", "HEAD").strip()
-        r = _save(client, text + "{# an edit #}\n", base)
-        assert r.status_code == 200 and r.get_json()["ok"] is True
-        assert _git(lab, "rev-parse", "HEAD").strip() != before
+    def test_a_save_on_the_current_base_commits(self, tl):  # noqa: F811
+        text, base = _opened(tl)
+        before = _git(tl["repo"], "rev-parse", "HEAD").strip()
+        r = _save(tl, text + "{# an edit #}\n", base)
+        assert r.status_code == 200, r.get_data(as_text=True)[:400]
+        assert _git(tl["repo"], "rev-parse", "HEAD").strip() != before
 
-    def test_a_save_over_another_persons_commit_is_refused_and_writes_nothing(self, lab):
-        a, b = _client(), _client()
-        text_a, base_a = _opened(a)
-        text_b, base_b = _opened(b)
-        assert _save(b, text_b + "{# B's edit #}\n", base_b).get_json()["ok"] is True
-        head = _git(lab, "rev-parse", "HEAD").strip()
-        on_disk = open(os.path.join(lab, "templates", REL), encoding="utf-8").read()
+    def test_a_save_over_another_persons_commit_is_refused_and_writes_nothing(self, tl):  # noqa: F811
+        text_a, base_a = _opened(tl)
+        text_b, base_b = _opened(tl)
+        assert _save(tl, text_b + "{# B's edit #}\n", base_b, "B's edit").status_code == 200
+        head = _git(tl["repo"], "rev-parse", "HEAD").strip()
+        on_disk = open(os.path.join(tl["repo"], "templates", REL), encoding="utf-8").read()
 
-        r = _save(a, text_a + "{# A's edit #}\n", base_a)
-        body = r.get_json()
-        assert r.status_code == 409 and body["ok"] is False and body["stage"] == "moved"
-        now = _git(lab, "rev-parse", f"HEAD:templates/{REL}").strip()
-        assert base_a[:8] in body["error"] and now[:8] in body["error"]
-        assert "Nothing was written" in body["error"]
-        assert _git(lab, "rev-parse", "HEAD").strip() == head
-        assert open(os.path.join(lab, "templates", REL), encoding="utf-8").read() == on_disk
+        r = _save(tl, text_a + "{# A's edit #}\n", base_a, "A's edit")
+        out = r.get_data(as_text=True)
+        assert r.status_code == 409 and "not saved" in out
+        now = _git(tl["repo"], "rev-parse", f"HEAD:templates/{REL}").strip()
+        assert base_a[:7] in out and now[:7] in out
+        assert _git(tl["repo"], "rev-parse", "HEAD").strip() == head
+        assert open(os.path.join(tl["repo"], "templates", REL), encoding="utf-8").read() == \
+            on_disk
         assert "B's edit" in on_disk and "A's edit" not in on_disk
 
-    def test_a_save_that_names_no_base_is_refused(self, lab):
-        client = _client()
-        text, _base = _opened(client)
-        head = _git(lab, "rev-parse", "HEAD").strip()
-        r = client.post(FILE, json={"content": text + "{# x #}\n"})
-        assert r.status_code == 400 and r.get_json()["stage"] == "base"
-        assert _git(lab, "rev-parse", "HEAD").strip() == head
+    def test_a_save_that_names_no_base_is_refused(self, tl):  # noqa: F811
+        text, _base = _opened(tl)
+        head = _git(tl["repo"], "rev-parse", "HEAD").strip()
+        r = tl["client"].post("/v2/templates/edit", data={
+            "list": "Lab", "path": REL, "text": text + "{# x #}\n", "summary": "no base"})
+        assert r.status_code == 409 and "not saved" in r.get_data(as_text=True)
+        assert _git(tl["repo"], "rev-parse", "HEAD").strip() == head
 
 
 class TestTheApproveIsBoundToWhatWasShown:
     def _golden(self, monkeypatch):
-        # The approval's one capture read (`approve_op._capture`, which today's route and v2
-        # share).
+        # The approval's one capture read (`approve_op._capture`).
         monkeypatch.setattr("modules.nsot.approve_op._capture",
                             lambda _repo, name: _devices([name])[0]["running_config"])
 
-    def test_the_rows_state_carries_the_fingerprint_and_approve_takes_it(self, lab,
-                                                                         monkeypatch):
+    def _shown(self, tl):  # noqa: F811
+        _r, card = _get(tl, f"/v2/templates/approve?list=Lab&path={REL}")
+        return _hidden(card, "fingerprint"), _hidden(card, "seen")
+
+    def _approve(self, tl, fingerprint, seen):  # noqa: F811
+        data = {"list": "Lab", "path": REL, "seen": seen}
+        if fingerprint is not None:
+            data["fingerprint"] = fingerprint
+        return tl["client"].post("/v2/templates/approve", data=data)
+
+    def test_the_card_carries_the_fingerprint_and_approve_takes_it(self, tl, monkeypatch):  # noqa: F811
         self._golden(monkeypatch)
-        client = _client()
-        shown = client.get(f"/templates/approval/{REL}").get_json()["fingerprint"]
-        r = client.post(f"/templates/approve/{REL}", json={"fingerprint": shown})
-        assert r.status_code == 200 and r.get_json()["ok"] is True
-        assert approval.is_approved(lab, REL) is True
+        shown, seen = self._shown(tl)
+        assert shown == approval.template_fingerprint(tl["repo"], REL)["fingerprint"]
+        r = self._approve(tl, shown, seen)
+        assert r.status_code == 200, r.get_data(as_text=True)[:400]
+        assert approval.is_approved(tl["repo"], REL) is True
 
-    def test_a_template_that_moved_after_the_row_was_drawn_is_not_approved(self, lab,
-                                                                          monkeypatch):
+    def test_a_template_that_moved_after_it_was_shown_is_not_approved(self, tl, monkeypatch):  # noqa: F811
         self._golden(monkeypatch)
-        client = _client()
-        shown = client.get(f"/templates/approval/{REL}").get_json()["fingerprint"]
-        text, base = _opened(client)
-        assert _save(client, text + "{# moved #}\n", base).get_json()["ok"] is True
-        now = approval.template_fingerprint(lab, REL)["fingerprint"]
-        r = client.post(f"/templates/approve/{REL}", json={"fingerprint": shown})
-        body = r.get_json()
-        assert r.status_code == 400 and body["ok"] is False
-        assert shown[:12] in body["error"] and now[:12] in body["error"]
-        assert approval.is_approved(lab, REL) is False
+        shown, seen = self._shown(tl)
+        text, base = _opened(tl)
+        assert _save(tl, text + "{# moved #}\n", base).status_code == 200
+        now = approval.template_fingerprint(tl["repo"], REL)["fingerprint"]
+        r = self._approve(tl, shown, seen)
+        out = r.get_data(as_text=True)
+        assert r.status_code in (400, 409), out[:400]
+        assert shown[:12] in out and now[:12] in out
+        assert approval.is_approved(tl["repo"], REL) is False
 
-    def test_an_approve_that_names_no_fingerprint_is_refused(self, lab, monkeypatch):
+    def test_an_approve_that_names_no_fingerprint_is_refused(self, tl, monkeypatch):  # noqa: F811
         self._golden(monkeypatch)
-        r = _client().post(f"/templates/approve/{REL}", json={})
-        assert r.status_code == 400 and "did not say which version" in r.get_json()["error"]
-        assert approval.is_approved(lab, REL) is False
-
-
-class TestTheShippedClient:
-    SRC = shipped("partials__template_editor.1.js")
-
-    def test_the_editor_keeps_the_base_it_opened_and_sends_it(self):
-        assert "_tplBase = d.base;" in lift(self.SRC, "openTemplate")
-        assert "JSON.stringify({content, base: _tplBase})" in lift(self.SRC, "saveTemplate")
-
-    def test_the_row_keeps_the_fingerprint_it_drew_and_approve_sends_it(self):
-        assert "_tplShown[path] = d.fingerprint;" in lift(self.SRC, "_loadApproval")
-        assert "JSON.stringify({fingerprint: _tplShown[path] || ''})" in \
-            lift(self.SRC, "approveTemplate")
-
-    def test_both_refusals_land_where_a_refusal_is_already_drawn(self):
-        save = lift(self.SRC, "saveTemplate")
-        assert "status.textContent = d.error;" in save
-        assert "alert(`Cannot approve ${path}\\n\\n${d.error}" in lift(self.SRC, "approveTemplate")
+        _shown, seen = self._shown(tl)
+        r = self._approve(tl, None, seen)
+        assert r.status_code == 400 and "did not say which version" in r.get_data(as_text=True)
+        assert approval.is_approved(tl["repo"], REL) is False

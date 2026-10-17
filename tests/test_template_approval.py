@@ -826,8 +826,8 @@ class TestOnboardingNoLongerRevokesItsPlatformsApproval:
         assert approval.is_approved(repo, "cisco_ios/base.j2")
 
     def test_a_bound_device_with_no_capture_is_evidence_not_a_refusal(self):
-        """The route records it as not validated; it never answers 400 for it (the one code
-        path today's route and v2 share, `approve_op.bound_captures`)."""
+        """The approval records it as not validated; it never refuses for it (v2's Approve…'s
+        code path, `approve_op.bound_captures`)."""
         import inspect
 
         from modules.nsot import approve_op
@@ -840,24 +840,31 @@ class TestOnboardingNoLongerRevokesItsPlatformsApproval:
 
 class TestTheApproveRouteRecordsWhatItCouldNotValidate:
     def test_a_bound_device_with_no_capture_does_not_refuse(self, repo, monkeypatch):
-        """Through the route: s1 has a capture, s2 and s3 have none (say, mid-
-        onboarding). Scheme 2 answered 400 naming them; scheme 3 approves on s1
-        and records the others as not validated."""
-        import app as nmas
-        from routes import templates as troutes
+        """Through Templates › Approve… (today's /templates/approve left at 7.8, P7-23): s1
+        has a capture, s2 and s3 have none (say, mid-onboarding). Scheme 2 answered 400 naming
+        them; scheme 3 approves on s1 and records the others as not validated."""
+        import re
 
-        monkeypatch.setattr(troutes, "_active_list", lambda *a: "Lab")
-        monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
+        import app as nmas
+
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
         monkeypatch.setattr("modules.nsot.approve_op.repo_for", lambda *_a: repo)
         monkeypatch.setattr("modules.nsot.approve_op._capture",
                             lambda _repo, name: _config(name) if name == "s1" else None)
         monkeypatch.setattr("modules.nsot.repo.save_templates",
                             lambda *a, **k: (_commit_approvals(repo), {"ok": True})[1])
         client = nmas.app.test_client()
-        shown = client.get("/templates/approval/cisco_ios/base.j2").get_json()["fingerprint"]
-        r = client.post("/templates/approve/cisco_ios/base.j2", json={"fingerprint": shown})
-        body = r.get_json()
-        assert r.status_code == 200, body
-        assert body["evidence"]["validated"] == ["s1"]
-        assert [d["device"] for d in body["evidence"]["not_validated"]] == ["s2", "s3"]
+        card = client.get("/v2/templates/approve?list=Lab&path=cisco_ios/base.j2").get_data(
+            as_text=True)
+
+        def hidden(name):
+            return re.search(rf'name="{name}" value="([^"]*)"', card).group(1)
+
+        r = client.post("/v2/templates/approve", data={
+            "list": "Lab", "path": "cisco_ios/base.j2", "fingerprint": hidden("fingerprint"),
+            "seen": hidden("seen")})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200, html[:400]
+        assert "Validated: s1." in html, html[:400]
+        assert re.search(r"Not validated: s2 \([^)]*\), s3 \([^)]*\)\.", html), html[:400]
         assert approval.is_approved(repo, "cisco_ios/base.j2")

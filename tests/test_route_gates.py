@@ -346,12 +346,9 @@ def _actor_sites(src: str) -> list:
 #: Named, with the reason, and capped. Growing this list is the scan being
 #: switched off one site at a time.
 ACTOR_EXEMPTIONS = {
-    ("routes/templates.py", "list_templates"): (
-        "seeds the shipped template library on the first READ of it, from a "
-        "GET no gate covers: nobody decided it, so a person's name would be a "
-        "claim. 'nmas' is not one of ACTOR_CONVENTION's three kinds either "
-        "(recorded under B12). The literal moved here from _seed_and_commit on "
-        "2026-10-10, when v2's Seed the library… began passing the verified person."),
+    # Its one entry, today's library listing (routes/templates.py `list_templates`, which
+    # seeded the shipped library on a READ as 'nmas'), left with the route at 7.8 (2026-10-17,
+    # P7-23): v2's Seed the library… seeds as the verified person.
 }
 
 
@@ -373,7 +370,7 @@ class TestTheActorIsTheVerifiedOne:
         assert exempted == set(ACTOR_EXEMPTIONS), (
             "an exemption that matches nothing is a ghost; remove it",
             set(ACTOR_EXEMPTIONS) - exempted)
-        assert len(ACTOR_EXEMPTIONS) <= 2
+        assert len(ACTOR_EXEMPTIONS) <= 0   # 2 -> 0 2026-10-17: its one entry left (P7-23)
 
     def test_the_scan_can_see_one(self):
         """Control, on the exact shape that was there."""

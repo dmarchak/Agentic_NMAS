@@ -1,8 +1,9 @@
 """nsot/template_write.py — write one template into a network's library and commit it, with the
 approvals it ends (C566).
 
-The one code path today's template editor (`routes/templates.py`, `write_template`) and v2's
-Templates › Bring in the shipped version (`template_bring.bring`) share. Called under the
+The one code path v2's Templates › Edit… (`template_edit.commit`) and Bring in the shipped
+version (`template_bring.bring`) share (today's template editor's save, which shared it too,
+left at 7.8 on 2026-10-17, P7-23). Called under the
 repository's lock by the caller, which has already compared the version it was shown.
 
 Editing a template changes its content hash, so every approval whose import closure holds the

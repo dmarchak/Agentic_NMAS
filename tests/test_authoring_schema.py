@@ -158,14 +158,17 @@ class TestTheAuthoringGateReportsIt:
         return nmas.app.test_client()
 
     def test_a_misspelled_key_is_refused_with_a_line(self, client):
+        """The intent editor's check, as the Intent tab runs it (`intent_edit.preview`; today's
+        /templatize/committed/<host>/preview, this test's vehicle before, left at 7.8 on
+        2026-10-17, P7-23)."""
+        from modules.nsot import intent_edit
+
         document = ("hostname: r6\n"
                     "interfaces:\n"
                     "- name: Loopback0\n"
                     "  descripton: branch site identity\n")
-        response = client.post("/templatize/committed/r6/preview",
-                               json={"yaml": document})
-        assert response.status_code == 400
-        body = response.get_json()
+        body = intent_edit.preview("lab", "r6", document)
+        assert body["status"] == 400
         assert body["stage"] == "schema"
         assert body["line"] == 4, body
         assert "descripton" in body["error"]

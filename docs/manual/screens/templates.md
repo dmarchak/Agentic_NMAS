@@ -35,7 +35,7 @@ shipped version. Then one row per template:
   it.
 
 The table redraws itself whenever anyone approves, revokes, edits a template or changes a
-binding, here, in another tab or on today's Templates tab. A card you have open below it stays
+binding, here or in another tab. A card you have open below it stays
 as it is; its confirm checks again.
 
 ## Approve… {#approve}

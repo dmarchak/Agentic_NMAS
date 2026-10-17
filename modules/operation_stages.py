@@ -187,10 +187,9 @@ STAGES = {
         "bulk_intent_v2.preview", "hash", NO_DEVICE,
         "n/a: a failed commit puts every file back; one device reverts alone",
         "modules.nsot.bulk_intent.apply"),
-    "templatize.edit_committed": Stages(
-        "templatize.preview_committed_edit",
-        "MISSING: the save is not bound to the version the person opened (CONCURRENCY_AUDIT R2)",
-        NO_DEVICE, FORWARD, "modules.nsot.repo.save_host_vars"),
+    # Today's intent editor (templatize.edit_committed, its preview
+    # templatize.preview_committed_edit) left at 7.8 (2026-10-17, P7-23) with its hash gap: the
+    # Intent tab's commit below binds the base.
     "intent_v2.commit": Stages(
         "intent_v2.check",
         "base",   # the blob the editor opened; a moved intent is refused naming both
@@ -230,11 +229,8 @@ STAGES = {
     "v2.ip_sla_policy_set": Stages(
         "v2.ip_sla", "profile_hash", NO_DEVICE, FORWARD, "modules.nsot.ip_sla_policy.set_policy"),
     # ---- Templates
-    "templates.approve": Stages(
-        "templates.validate",
-        "MISSING: the approval records the closure's fingerprint, but no hash binds the confirm "
-        "to the validation the person saw", NO_DEVICE, "modules.nsot.approval.revoke",
-        "modules.nsot.approval.approve"),
+    # Today's Approve and template save (templates.approve, its preview templates.validate, and
+    # templates.write_template) left at 7.8 (2026-10-17, P7-23) with their three gaps.
     # The v2 Templates page (7.6, boards A to C): the check is the preview, and the confirm is
     # bound to the fingerprint it showed AND the check's outcome as read (`seen`).
     "templates_v2.approve": Stages(
@@ -268,10 +264,6 @@ STAGES = {
     "templates_v2.seed": Stages(
         "templates_v2.seed_form", "signature", NO_DEVICE, FORWARD,
         "modules.nsot.repo.save_templates"),
-    "templates.write_template": Stages(
-        "MISSING: the editor saves with no preview of what the change revokes",
-        "MISSING: no hash binds the save to the version opened (CONCURRENCY_AUDIT R14)",
-        NO_DEVICE, FORWARD, "modules.nsot.repo.save_templates"),
     # ---- NetBox
     # v2's NetBox page (cutover blocker 2), its preview a job, over `modules/netbox_ops.py`
     # (today's NetBox tab's three apply routes, the same core, left at 7.8, 2026-10-17).
@@ -285,6 +277,8 @@ STAGES = {
 }
 
 #: The gaps, counted: the test pins this number, so it can only go down.
+# 10 -> 6 2026-10-17, measured: today's template editor took its three gaps (Approve's hash, the
+# save's preview and hash) and today's intent editor its hash gap with them (7.8, P7-23).
 # 17 -> 10 2026-10-17, measured: today's /run_command took its four LEGACY gaps with it (7.8,
 # P7-22), and the ceiling had not followed today's NetBox tab's three (14 measured before this).
 # 21 -> 17 2026-10-15, measured: today's /bulk_execute took its four LEGACY gaps with it (7.8).
@@ -295,7 +289,7 @@ STAGES = {
 # +1 2026-10-10: v2's Create shares today's Create's missing run record (one core); v2's
 # Create and Abandon bind their confirms, so today's two hash gaps and Abandon's preview gap
 # leave with today's routes at 7.8.
-MISSING_CEILING = 10
+MISSING_CEILING = 6
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +341,6 @@ HISTORY = {
     "onboard.create": ("intent",),
     "onboard_v2.create": ("intent",),
     "templatize.seed_apply": ("intent",),
-    "templatize.edit_committed": ("intent",),
     "intent_v2.commit": ("intent",),
     "bulk_intent_v2.apply": ("intent",),
     "templatize.revert_apply": ("intent",),
@@ -365,7 +358,6 @@ HISTORY = {
     "netbox_v2.confirm": ("netbox",),
     "templatize.profile_propose_apply": PROFILE,
     "v2.ip_sla_policy_set": PROFILE,
-    "templates.approve": TEMPLATE,
     "templates_v2.approve": TEMPLATE,
     "templates_v2.revoke": TEMPLATE,
     "templates_v2.bring": TEMPLATE,
@@ -373,7 +365,6 @@ HISTORY = {
     "templates_v2.bindings_apply": TEMPLATE,
     "templates_v2.seed": TEMPLATE,
     "v2.profile_propose_commit": PROFILE,
-    "templates.write_template": TEMPLATE,
     # ---- configure
     # A saved command set (C548, R3): a commit as the person, read as one of the fleet's commits.
     "reads_v2.show_commands_save_set": ("commits",),

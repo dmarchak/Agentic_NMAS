@@ -4,8 +4,8 @@
 Edit turns the read-only card into H's editor: the committed document in a text area, checked
 as you type (the checks, the render of the edit against what is committed, what a deploy would
 send, the lines the parser does not model and whether each is acknowledged), then one commit
-with its reason, bound to the version opened. Every step is `modules/nsot/intent_edit.py`'s,
-the code today's editor uses too. The device's own list is carried on every call (a write
+with its reason, bound to the version opened. Every step is `modules/nsot/intent_edit.py`'s
+(today's editor, which used it too, left at 7.8 on 2026-10-17, P7-23). The device's own list is carried on every call (a write
 path carries its list), never the installation's active one. Nothing here contacts a device.
 """
 

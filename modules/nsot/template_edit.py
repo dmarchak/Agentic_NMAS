@@ -6,8 +6,9 @@ devices it governs and its last commit. Check, as typed: the syntax, then the ed
 every device it governs against that device's COMMITTED golden (`approve_op.bound_captures`, the
 approval's own inputs; never a backup, C632), each failing line named, in a copy of the library
 outside the repository, so a check writes nothing. Commit: bound to the base under the
-repository's lock, through `template_write.commit`, the one path today's editor and Bring in
-the shipped version share, which revokes every approval over the file in the same commit.
+repository's lock, through `template_write.commit`, the one path this editor and Bring in the
+shipped version share (today's editor shared it until it left at 7.8, 2026-10-17, P7-23),
+which revokes every approval over the file in the same commit.
 
 A shared file (`_common.j2`) governs every device bound to a template that imports it, so its
 check renders each importer. Nothing here contacts a device.

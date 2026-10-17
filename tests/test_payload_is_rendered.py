@@ -186,16 +186,10 @@ RENDERS = {
     # status bar. The posture and the integrations' state are drawn on v2 by the server
     # (Settings › Installation › Access and identity; every page's strip); /identity/posture
     # and the general block's route left too.
-    "GET /templates": Render(
-        _get("/templates"),
-        {"partials__template_editor.1.js": ("loadTemplateLibrary", "templateRowHtml")},
-        (("partials__template_editor.1.js", "loadTemplateLibrary", "d"),),
-        maps=("platforms",)),
-    "GET /templates/approval/<path>": Render(
-        _get("/templates/approval/cisco_ios/base.j2"),
-        {"partials__template_editor.1.js": ("_loadApproval", "approvalCellHtml",
-                                            "approvalEvidenceText")},
-        (("partials__template_editor.1.js", "approvalCellHtml", "d"),)),
+    # GET /templates and GET /templates/approval/<path> left this table at 7.8 (2026-10-17,
+    # P7-23) with today's template library, its renderer. v2 draws each server-side: Source of
+    # truth › Templates' table from `approve_op.library`, and Approve…'s card from
+    # `approve_op.check` (tests/test_templates_v2.py).
     "GET /golden/history/<host>": Render(
         _get("/golden/history/r1"),
         {GR1: ("showGoldenHistory",)},
@@ -286,15 +280,8 @@ UNDRAWN = {
     "GET /onboard/platforms": [
         ("dialect", "the config dialect beside the slug; the wizard offers slugs"),
         ("ok", OK)],
-    "GET /templates": [
-        ("bindings overrides", "which template each device uses: 7.6 draws "
-                               "and edits bindings (reachability group a)"),
-        ("platforms", "the per-platform map; the library draws the flat list"),
-        ("size", "the file size; the library lists names")],
-    "GET /templates/approval/<path>": [
-        ("path", "the path an approval covers; the badge states what it covers in words "
-                 "(the fingerprint is READ: the row keeps it and Approve sends it, R12)"),
-        ("ok", OK)],
+    # GET /templates' four and GET /templates/approval/<path>'s two left with the routes and
+    # today's template library (7.8, 2026-10-17, P7-23).
     "POST /deploy/apply": [
         ("capture_confirmed capture_current current_hash moved",
          "a refusal's operands: its `reason` sentence names them and which "
@@ -341,10 +328,9 @@ UNDRAWN = {
 #: that reaches it lets the entry leave.
 PHANTOM = {
     # GET /remote/status's eleven (the configured remote's fields the Remote card read) left
-    # with the route and the card at 7.8 (2026-10-17).
-    "GET /templates/approval/<path>": [
-        ("actor approved_at evidence", "carried only for an approved template; "
-                                       "the fixture's is unapproved")],
+    # with the route and the card at 7.8 (2026-10-17). GET /templates/approval/<path>'s three
+    # (actor, approved_at, evidence) left with the route and today's template library (7.8,
+    # 2026-10-17, P7-23).
 }
 
 
@@ -377,9 +363,6 @@ EMPTY_IN_FIXTURE = {
     "GET /inventory/source/<list> config.device_order": (S_, _STRINGS),
     "GET /inventory/source/<list> stale_devices": (R_, "a local list has no stale "
                                                        "NetBox devices; a map of records"),
-    "GET /templates bindings.overrides": (R_, "no binding override in the fixture"),
-    "GET /templates templates[].bound_devices": (S_, _STRINGS),
-    "GET /templates/approval/<path> changes": (S_, _STRINGS),
     "POST /deploy/plan devices[].blocking_reasons": (S_, _STRINGS),
     "POST /deploy/plan devices[].expected_effects.up": (S_, _STRINGS),
     "POST /deploy/plan devices[].expected_effects.adjacencies_drop": (
@@ -516,7 +499,9 @@ EMPTY_IN_FIXTURE = {
 # its three records (a receipt's checks' `declared_moves`, `expected_effects`, `interfaces`).
 # 23 -> 21: 7.8 (2026-10-17, P7-21): POST /golden/restore/preview left with today's re-apply
 # dialog, and its two records (the per-device and the preview's copy of C140's aggregate).
-EMPTY_RECORDS_CEILING = 21
+# 21 -> 20: 7.8 (2026-10-17, P7-23): GET /templates left with today's template library, and its
+# one record (the bindings' `overrides`).
+EMPTY_RECORDS_CEILING = 20
 
 
 def _empty_paths(obj, path=""):
@@ -595,8 +580,8 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 64  # -6: today's device page (7.8, 2026-10-17, P7-22), /deploy/receipts's expected_effects, failed_at_once, interfaces, unexpected_settle, declared_moves and notes, with the route. Before: -20: today's Git tab, Remote card and Baselines (7.8, P7-21, 2026-10-17), with their routes: /golden/baselines' eight, /remote/status's list, and /golden/restore/preview's eleven. Before: -4: today's NetBox tab (7.8, 2026-10-17), /netbox/status's filename, config_template_id, last_sync and list, with the route. Before: +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
-PHANTOM_CEILING = 3  # 2026-10-17: /remote/status's eleven left with the route and today's Remote card (7.8, P7-21). Before: 2026-10-15: /identity/posture's config_withheld_reason left with the route (7.8). Before: 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
+UNDRAWN_CEILING = 58  # -6: today's template library (7.8, 2026-10-17, P7-23), /templates' bindings, overrides, platforms and size and /templates/approval's path and ok, with the routes. Before: -6: today's device page (7.8, 2026-10-17, P7-22), /deploy/receipts's expected_effects, failed_at_once, interfaces, unexpected_settle, declared_moves and notes, with the route. Before: -20: today's Git tab, Remote card and Baselines (7.8, P7-21, 2026-10-17), with their routes: /golden/baselines' eight, /remote/status's list, and /golden/restore/preview's eleven. Before: -4: today's NetBox tab (7.8, 2026-10-17), /netbox/status's filename, config_template_id, last_sync and list, with the route. Before: +1: C493, the attention rows' networks, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-16). Before: -4: today's posture panel (7.8, 2026-10-15), /identity/posture's action, actor_kind, certs_url and config_revealed, with the route. Before: -6: today's drift panel (7.8, 2026-10-15), /drift/status's interval_h, last_ts, next_ts, next_from, state and list. Before: -11: the AI family (D15, 2026-10-14), the agent log's and the agent timers' undrawn fields. Before: -1: 7.8 (2026-10-13), the TFTP setting's tftp_server_ip, no longer carried by the integrations payload. Before: -3: 7.8 (2026-10-12), the topology service panel's status fields. Before: -1: the monitoring stack card's `name`. Before: -8: 7.8 (2026-10-12), the legacy store's and the migration's routes left with their undrawn fields. Before: +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+PHANTOM_CEILING = 0  # 2026-10-17 (P7-23): /templates/approval's actor, approved_at and evidence left with the route and today's template library (7.8). Before: 2026-10-17: /remote/status's eleven left with the route and today's Remote card (7.8, P7-21). Before: 2026-10-15: /identity/posture's config_withheld_reason left with the route (7.8). Before: 2026-10-12: the monitoring stack card's detail, link and metrics left with it (7.8)
 
 
 @pytest.fixture(scope="module")
@@ -696,7 +681,8 @@ class TestThePopulation:
         # (7.8, P7-21); the table shrinks with today's pages (v2's contexts are
         # tests/test_v2_context_is_drawn.py's).
         # 15 since GET /deploy/receipts left the same day with today's device page (P7-22).
-        assert len(RENDERS) >= 15
+        # 13 since today's template library's two payloads left the same day (P7-23).
+        assert len(RENDERS) >= 13
         total = sum(len(_keys(r, p)) for r, (p, _, _) in measured.items())
         assert total >= 150, total
 

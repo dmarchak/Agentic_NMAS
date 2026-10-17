@@ -192,19 +192,21 @@ class TestItStillFiltersWhatATemplateCannotRender:
 
 
 class TestTheRouteUsesIt:
+    """Today's template preview left at 7.8 (2026-10-17, P7-23); the intent editor's check,
+    which diffs the edited render against the device's golden, is held to the same."""
+
     def test_preview_calls_canonical_diff(self):
-        import inspect
+        from tests.astcheck import calls_in
 
-        from routes import templates as route_module
+        from modules.nsot import intent_edit
 
-        assert "canonical_diff" in inspect.getsource(route_module.preview)
+        assert calls_in(intent_edit.preview, "canonical_diff") >= 1
 
     def test_the_route_no_longer_diffs_raw_lines(self):
-        import inspect
+        from tests.astcheck import calls_in
 
-        from routes import templates as route_module
+        from modules.nsot import intent_edit
 
-        source = inspect.getsource(route_module.preview)
-        assert "difflib.unified_diff" not in source, (
+        assert calls_in(intent_edit.preview, "unified_diff") == 0, (
             "a flat diff is what reported ordering and whitespace as "
             "configuration differences")

@@ -211,11 +211,13 @@ class TestCommittedIntentIsWhatIsCommitted:
         assert hostvars.read_committed(lab["repo"], "r8") is None
 
     def test_the_editor_opens_what_is_committed(self, lab, intent, monkeypatch):
-        import app as A
+        """The Intent tab's Edit opens through `intent_edit.open_doc` (today's GET
+        /templatize/committed/<host>, this test's vehicle before, left at 7.8 on 2026-10-17,
+        P7-23)."""
+        from modules.nsot import intent_edit
 
-        monkeypatch.setattr("routes.templatize._repo_for", lambda name: lab["repo"])
-        monkeypatch.setattr("routes.templatize._active_list", lambda *a, **k: "lab")
-        body = A.app.test_client().get("/templatize/committed/r1").get_json()
+        monkeypatch.setattr("modules.nsot.intent_edit._repo_for", lambda name: lab["repo"])
+        body = intent_edit.open_doc("lab", "r1")
         assert body["ok"] and "HANDEDIT" not in body["yaml"], body
 
 

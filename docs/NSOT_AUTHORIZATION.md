@@ -73,7 +73,8 @@ names.** Where the groups come from is a separate, replaceable part.
 The gate kinds were chosen for AUDIT meaning, and `approve` covers both
 AUTHORING and APPROVING. Measured from the table: 23 endpoints, including
 `templates.write_template` (editing a template) and `templates.approve`
-(approving it). **Any role granted `approve` could edit a template and
+(approving it); since those left at 7.8 (2026-10-17, P7-23) the pair is
+`templates_v2.edit_commit` and `templates_v2.approve`, both still `approve`. **Any role granted `approve` could edit a template and
 approve its own edit.** No role map built on the current kinds can express
 separation of duties.
 

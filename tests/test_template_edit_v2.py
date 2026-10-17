@@ -13,7 +13,8 @@ not model, s2 and s3 with none.
   <reason>`, the approvals over it revoked in the same commit and Approve… offered; a template
   moved since it was opened is refused naming both versions, nothing written; no reason, a
   syntax error, refused; unchanged text commits nothing;
-- one code path: today's `write_template` and this share `template_write.commit`.
+- one code path: this and Bring in the shipped version share `template_write.commit` (today's
+  `write_template`, which shared it, left at 7.8 on 2026-10-17, P7-23).
 """
 
 import re
@@ -272,13 +273,15 @@ def test_a_real_browser_edits_checks_and_commits_in_place(tl):  # noqa: F811
         f"template: {REL} drop the interfaces for a test\n"
 
 
-def test_one_code_path_with_today_s_editor():
+def test_one_code_path_with_bring_in_the_shipped_version():
+    """Today's editor's save, which shared `template_write.commit`, left at 7.8 (2026-10-17,
+    P7-23); Edit… and Bring in the shipped version still write through it."""
     from tests.astcheck import calls_in
 
-    from modules.nsot import template_edit
-    from routes import templates as v1, templates_v2 as v2
+    from modules.nsot import template_bring, template_edit
+    from routes import templates_v2 as v2
 
     assert calls_in(template_edit.commit, "commit") >= 1
-    assert "template_write" in open(template_edit.__file__, encoding="utf-8").read()
-    assert calls_in(v1._write_template_locked, "commit") == 1
+    assert "template_write.commit" in open(template_edit.__file__, encoding="utf-8").read()
+    assert "template_write.commit" in open(template_bring.__file__, encoding="utf-8").read()
     assert calls_in(v2.edit_commit, "commit") == 1

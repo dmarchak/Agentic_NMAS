@@ -49,8 +49,9 @@ XDATA = re.compile(r'\bx-data="(\w+)"')
 #: in it by its served preview in `operation_stages`) left at 7.8. 53 -> 52 the same day, the
 #: population measured 52: today's /run_command (gated confirm) left with today's device page
 #: (7.8, P7-22). 52 -> 51 the same day (P7-21): today's re-apply (`golden.restore_apply`, a
-#: confirm) left at 7.8.
-POPULATION_FLOOR = 51
+#: confirm) left at 7.8. 51 -> 49 the same day (P7-23), the population measured 49: today's
+#: Approve (`templates.approve`) and intent editor save (`templatize.edit_committed`) left at 7.8.
+POPULATION_FLOOR = 49
 PATTERN_FLOOR = 34
 V2_SCRIPTS_FLOOR = 12
 
@@ -86,8 +87,8 @@ LEGACY_HOMES = {
     "persist.apply": "device_v2.persist_confirm",
     "retire.apply": "device_v2.retire_confirm",
     "rotate.apply": "device_v2.rotate_confirm",
-    "templates.approve": "templates_v2.approve",
-    "templatize.edit_committed": "intent_v2.commit",
+    # templates.approve (templates_v2.approve) and templatize.edit_committed (intent_v2.commit)
+    # left at 7.8 (2026-10-17, P7-23).
     "templatize.profile_propose_apply": "v2.profile_propose_commit",
     "templatize.retry_apply": "device_v2.retry_confirm",
     "templatize.revert_apply": "device_v2.revert_confirm",

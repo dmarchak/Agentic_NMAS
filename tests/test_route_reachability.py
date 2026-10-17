@@ -262,4 +262,7 @@ class TestTailWordsAfterAConverter:
         for rule in ("/queue/<entry_id>/approve", "/queue/<entry_id>/reject"):
             assert path_references(corpus, rule, True) == {"POST"}, rule
         assert path_references(corpus, "/queue/<entry_id>/revert", True) == set()
-        assert reach["POST /templatize/committed/<path:hostname>"] is True
+        # Its shipped anchor, today's intent editor's POST /templatize/committed/<path:hostname>,
+        # left at 7.8 (2026-10-17, P7-23). No v2 page assembles a URL from pieces, so the planted
+        # corpus above is the control; the Intent tab's commit, in its place, read as reached
+        # even with its form's url_for removed (measured at P7-23), so it is no anchor.

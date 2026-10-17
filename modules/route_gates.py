@@ -122,8 +122,10 @@ GATES = {
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
 
     # ---- approve: a decision a later device change acts on ---------------
-    "templates.approve": _g(A, "approves a template for deployment"),
-    "templates.write_template": _g(A, "edits a template, which revokes every approval over it"),
+    # Today's template editor (templates.approve, templates.write_template, templates.validate)
+    # and intent editor (templatize.edit_committed, templatize.preview_committed_edit) left at
+    # 7.8 (2026-10-17, P7-23): Templates › Approve… and Edit… (templates_v2) and each device's
+    # Intent tab (intent_v2).
     "retire.apply": _g(A, "retires a device: removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row, the only stored copy of its credential"),
     "templatize.seed_apply": _g(A, "commits a device's first full intent, parsed from its committed golden"),
     "templatize.profile_propose_apply": _g(A, "commits the network's monitoring profile, intent every device inherits (P.9 step b)"),
@@ -134,7 +136,6 @@ GATES = {
     "v2.credentials_check": _g(K, "opens a kept break-glass file in memory and records the verdict per device; no value is shown, kept or logged (board 7, C)"),
     "v2.credentials_intact": _g(K, "records the browser's word on a break-glass download: its sha256 of the bytes received against the server's (board 7)"),
     "v2.heartbeat_apply": _g(K, "writes the re-measured heartbeat alert rules file (P.7); a person installs it on the host"),
-    "templatize.edit_committed": _g(A, "commits an edit to intent"),
     "templates_v2.approve": _g(A, "approves a template (7.6, board B), bound to the fingerprint and the check shown"),
     "templates_v2.revoke": _g(A, "withdraws a template approval with the person's reason (7.6, board C)"),
     "templates_v2.seed": _g(A, "commits the shipped template library into a network that lacks it, bound to the library previewed (cutover blocker 5)"),
@@ -275,7 +276,6 @@ GATES = {
                                     "send (P.9 step c); sends nothing"),
     "bulk_intent_v2.preview": _g(N, "computes the change's preview for the ticked devices; "
                                     "writes nothing"),
-    "templatize.preview_committed_edit": _g(N, "renders an edit; writes nothing"),
     "intent_v2.check": _g(N, "checks and renders an edit as it is typed; writes nothing"),
     "intent_v2.acknowledge": _g(N, "rewrites the document in the editor (its unmodeled_ack block); writes nothing"),
     "intent_v2.reopen": _g(N, "opens the editor on what is committed now with the person's edit on it; writes nothing"),
@@ -291,7 +291,6 @@ GATES = {
     "templatize.profile_propose_preview": _g(N, "reads committed intent and compares stored values in memory; writes nothing"),
     "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),
     "templatize.retry_preview": _g(N, "reads the rollback record and the retry log; writes nothing"),
-    "templates.validate": _g(N, "validates; writes nothing"),
     "netbox_v2.preview": _g(N, "starts a dry run of an import or removal, or a read of what Stop tracking would forget, on a thread; writes nothing"),
     "remote.verify": _g(N, "read-only checks against the remote"),
     "remote_v2.publication": _g(N, "reads what a first push would publish: counts, kinds and fingerprints, never a value; writes nothing"),

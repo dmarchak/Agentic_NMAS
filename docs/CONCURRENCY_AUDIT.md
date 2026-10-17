@@ -192,6 +192,11 @@ unknown-interface-key refusal runs only in the preview route (routes/templatize.
 not in `write_committed_text` (hostvars.py:557-575). One concrete loss: a stale editor save
 after a rotation puts back the old `secret_kind` and `secret_ref`, naming a secret the store
 no longer holds (modules/nsot/credential_rotation.py:1761-1780). There is no device hold.
+*2026-10-17 (7.8, P7-23):* today's intent editor and its three routes left. Its fix lives in
+the editor's core, `modules/nsot/intent_edit.py` (the base blob handed out by `open_doc`, the
+compare under the lock and the refusal with both changes in `commit`), which the Intent tab
+runs, its base a hidden field (tests/test_intent_editor_concurrency.py, rebased onto the core
+and the tab). SAFE.
 
 **R3. One person's list switch retargets everybody** (stores-2, intent-4, live-13,
 confirms-7, approvals-3, locks-7). `current_list` is one value in `data/device_lists.json`.
@@ -199,7 +204,8 @@ confirms-7, approvals-3, locks-7). `current_list` is one value in `data/device_l
 truncate in place (device.py:481-484) and no lock. `get_current_list_name()` maps any
 exception, a torn read included, to "Default" (modules/config.py:163-169). Writes that derive
 their list from it: the intent editor and template routes (routes/templatize.py:27-30,
-routes/templates.py:28-31), the deploy and restore previews and applies when the client
+routes/templates.py:28-31; today's editors' routes left at 7.8, 2026-10-17, P7-23, and v2's
+Templates and Intent tab carry their network), the deploy and restore previews and applies when the client
 sends no list (routes/deploy.py:31-34; static/js/gen/partials__golden_repo.3.js:209-214,
 278-283, today's re-apply dialog, which left with its routes at 7.8, 2026-10-17, v2's restore
 confirms carrying their list; static/js/nmas_capture.js:207-212), the approval queue (approval_queue.py:28-36),
@@ -432,6 +438,11 @@ control, function or element, so no mockup. **BUILT 2026-10-04
   re-approval passes none and keeps the snapshot check.
 - Controls, each failing its aimed test: the shown check removed, the missing-fingerprint
   refusal removed, the row's fingerprint not kept.
+- **2026-10-17 (7.8, P7-23):** today's template editor and its approve route left. Templates ›
+  Approve… is the one caller of `approve_op.approve`: its confirm carries the fingerprint and
+  the check as read (`seen`), and one naming no fingerprint, or a template that moved since it
+  was shown, is refused naming both (tests/test_template_editor_binds.py, rebased onto it).
+  SAFE.
 
 *FIXED 2026-10-02 (tests/test_approvals_record.py):* every approve and revoke is a locked
 read-modify-write (`<repo>.approvals.lock`, beside the repository) with a temp file per write;
@@ -489,6 +500,13 @@ changes what a screen shows"):*
 - A save naming no base is refused (400). A base that moved is refused (409), naming both blobs
   and who moved it, with nothing written.
 - Controls, each failing its aimed test: the comparison removed, the editor's base not kept.
+- **2026-10-17 (7.8, P7-23):** today's template editor and its routes left (the listing, a
+  file's read and save, the preview, the approval read, Approve and Validate). Templates ›
+  Edit… (`template_edit.commit`, through `template_write.commit`) binds its commit to the blob
+  it opened under the repository lock and draws a moved file with both versions (409); a save
+  naming no base is refused the same way, nothing written; an unreadable `bindings.yml` is
+  said on Source of truth › Templates, no row drawn (tests/test_template_editor_binds.py,
+  tests/test_template_store_writes.py, rebased onto v2). SAFE.
 
 **R15. Intent writers that check a hash do not hold it to the commit** (git-10, intent-5,
 intent-11, intent-12, intent-13, confirms-9, confirms-10). Bulk intent recomputes its plan

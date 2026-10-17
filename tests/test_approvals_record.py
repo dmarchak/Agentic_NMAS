@@ -168,13 +168,17 @@ class TestTheRoutesCommitAndSayWhenTheyCannot:
         return nmas.app.test_client()
 
     def test_a_template_edit_commits_its_revocation_with_the_template(self, lab):
+        """Through `template_edit`, the code path v2's Templates › Edit… takes (today's
+        /templates/file save, this test's vehicle before, left at 7.8 on 2026-10-17, P7-23)."""
+        from modules.config import get_current_list_name
+        from modules.nsot import template_edit
+
         approval.approve(lab, REL, _devices(["s1"]), actor="p@example.invalid")
         _commit_approvals(lab)
-        opened = self._client().get(f"/templates/file/{REL}").get_json()
-        body = self._client().post(f"/templates/file/{REL}",
-                                   json={"content": opened["content"] + "{# an edit #}\n",
-                                         "base": opened["base"],
-                                         "message": "template: an edit"}).get_json()
+        opened = template_edit.open_doc(get_current_list_name(), REL)
+        body = template_edit.commit(get_current_list_name(), REL,
+                                    opened["text"] + "{# an edit #}\n", "an edit",
+                                    opened["base"], "p@example.invalid")
         assert body["ok"] is True and body["revoked"] == [REL]
         names = subprocess.run(["git", "-C", lab, "show", "--name-only", "--format=", "HEAD"],
                                capture_output=True, text=True).stdout.split()
@@ -186,15 +190,27 @@ class TestTheRoutesCommitAndSayWhenTheyCannot:
 
     def test_the_approve_route_reports_a_failed_commit_as_not_approved(self, lab,
                                                                       monkeypatch):
+        """Through Templates › Approve… (today's /templates/approve, this test's vehicle
+        before, left at 7.8 on 2026-10-17, P7-23)."""
+        import re
+
+        from modules.config import get_current_list_name
+
+        name = get_current_list_name()
+        monkeypatch.setattr("modules.nsot.listref.exists", lambda n: n == name)
         monkeypatch.setattr("modules.nsot.approve_op._capture",
                             lambda _repo, name: _devices([name])[0]["running_config"])
+        card = self._client().get(f"/v2/templates/approve?list={name}&path={REL}").get_data(
+            as_text=True)
+        shown = re.search(r'name="fingerprint" value="([^"]*)"', card).group(1)
+        seen = re.search(r'name="seen" value="([^"]*)"', card).group(1)
         monkeypatch.setattr("modules.nsot.repo.save_templates",
                             lambda *a, **k: {"ok": False, "error": "disk full"})
-        shown = self._client().get(f"/templates/approval/{REL}").get_json()["fingerprint"]
-        r = self._client().post(f"/templates/approve/{REL}", json={"fingerprint": shown})
-        body = r.get_json()
-        assert r.status_code == 500 and body["ok"] is False
-        assert "Not approved yet" in body["error"] and "disk full" in body["error"]
+        r = self._client().post("/v2/templates/approve", data={
+            "list": name, "path": REL, "fingerprint": shown, "seen": seen})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 500, html[:400]
+        assert "Not approved yet" in html and "disk full" in html
         assert approval.is_approved(lab, REL) is False
 
     def test_the_revoke_says_the_gate_refuses_but_history_lacks_it(self, lab, monkeypatch):

@@ -970,7 +970,10 @@ and others have left since too.
   `restore_points_for`, which stay
 - **[routes/](routes/)** — Flask blueprints: `settings_integrations.py`,
   `inventory.py`, `golden.py`, `templatize.py`,
-  `templates.py`, `deploy.py`, `freshness.py`, `devices_view.py` (the device
+  `templates.py` (no blueprint since today's template editor's routes left at 7.8, P7-23,
+  2026-10-17: the render's pairing with its approval, `artifact_for`, the golden and
+  platform reads the intent editor and bulk intent share, and Seed the library…'s
+  `_seed_and_commit`), `deploy.py`, `freshness.py`, `devices_view.py` (the device
   list's regions, redrawn in place), `list_param.py` (a read of an unknown
   list refused, C51), `retire.py` (7.3: retire, previewed and confirmed), `templatize.py` (seed, revert and retry among the intent routes),
   `persist.py` (7.3: persist, previewed and confirmed),
@@ -991,7 +994,10 @@ today's bulk commands, 7.8, 2026-10-15)
 `base.html` (2,442 — layout + AI chat panel, the panel removed with the AI family, D15,
 2026-10-14), `index.html` (8,045 — main
 dashboard), and `templates/partials/` for new UI. Today's per-device page, `device.html`,
-left at 7.8 (P7-22, 2026-10-17): a device's page is `templates/v2/device.html`.
+left at 7.8 (P7-22, 2026-10-17): a device's page is `templates/v2/device.html`. Today's
+template editor and intent editor (`partials/template_editor.html`,
+`partials/intent_editor.html`) left at 7.8 (P7-23, 2026-10-17), and with them the vendored
+CodeMirror they loaded: Source of truth › Templates and each device's Intent tab.
 
 
 ### Key Architecture Decisions
@@ -1479,8 +1485,10 @@ belongs in `host_vars`, with an explicit `bindings.yml` override as the
 exception.
 
 - **Nothing in 3b opens a socket.** Previews diff against captured artifacts
-  only — a golden config and the newest stored backup, each labelled with its
-  capture time. "Refresh capture" delegates to the existing backup route.
+  only: the device's committed golden, labelled with its commit time (the newest
+  stored backup and "Refresh capture" went with the backup store, C632, 2026-10-14;
+  today's template preview itself left at 7.8, P7-23, 2026-10-17: a device's render
+  against its golden is its Intent tab's check and its Deploy… plan).
 - **`deployable` is a computed property on a frozen dataclass.** A device with
   unmodelled constructs cannot reach a deployable render by any code path.
   `build_artifact()` is the only constructor and always validates.

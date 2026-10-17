@@ -229,8 +229,6 @@ EXEMPT = {
     ('tests/test_import_skips_are_named.py', '4899db25f29d'): ('INVENTED', ('address',)),
     # tests/test_intent_editor.py
     ('tests/test_intent_editor.py', 'c606ebc87650'): ('INVENTED', ('address',)),
-    ('tests/test_intent_editor.py', 'ddbc6e00bfc7'): ('INVENTED', ('address',)),
-    ('tests/test_intent_editor.py', '2ee4e949feb2'): ('INVENTED', ('address',)),
     ('tests/test_intent_editor.py', 'bbdc66ceec96'): ('INVENTED', ('address',)),
     ('tests/test_intent_editor.py', 'e82fb2805790'): ('INVENTED', ('address',)),
     ('tests/test_intent_editor.py', 'ef1b919ddf87'): ('INVENTED', ('address',)),
@@ -416,6 +414,4 @@ EXEMPT = {
     ('tests/test_store_integrity_c158_c160.py', '7b0cdff27a72'): ('INVENTED', ('address',)),
     # tests/test_syslog_block.py
     ('tests/test_syslog_block.py', 'caed4d780f5d'): ('INVENTED', ('address',)),
-    # static/js/vendor/codemirror/LICENSE (vendored 2026-10-05)
-    ('static/js/vendor/codemirror/LICENSE', 'fcd59f69f685'): ('LICENCE', ('email',)),
 }

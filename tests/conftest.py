@@ -596,12 +596,10 @@ def _fresh_redaction_cache():
 #: Tests allowed to create paths in the store, each with the finding that
 #: makes it so. Capped, and each one must still create something (no ghosts):
 #: an exemption that outlives its reason is the check switched off quietly.
-STORE_WRITERS_EXEMPT = {
-    "tests/test_p3_secrets_write_only.py::TestNoGetReturnsASecret::"
-    "test_no_argument_free_get_carries_a_planted_secret":
-        "register C33: 10 of 80 argument-free GET routes write to the store; "
-        "this test calls all of them",
-}
+#: Empty since 2026-10-17 (P7-23): `GET /templates`, the last GET that wrote to the store,
+#: left with today's template editor, so the test that calls every argument-free GET creates
+#: nothing (C33 closed).
+STORE_WRITERS_EXEMPT: dict = {}
 assert len(STORE_WRITERS_EXEMPT) <= 3
 
 #: Tests allowed to REWRITE or delete a file already in the store (C571), each with its reason;

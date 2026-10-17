@@ -17,21 +17,20 @@ Now, through the real routes against a real repository:
 - the save runs the preview's checks (an unknown interface key is refused);
 - the compare, the write and the commit happen under the repository lock: a save waits while
   another holder has it;
-- the shipped client sends its base and draws the refusal with both changes.
+- the v2 card draws an unchanged save as nothing committed.
+
+Today's editor and its routes (/templatize/committed/<host>) left at 7.8 on 2026-10-17 (P7-23):
+these are the core's (`modules/nsot/intent_edit.py`), which the Intent tab runs, so the tests
+call it as the tab does; the tab's moved card, with both changes and the edit placed on
+theirs, is tests/test_intent_editor_v2.py's.
 
 Expected values come from git directly, never from the helpers under test.
 """
 
-import json
 import subprocess
 import threading
 
-import dukpy
-
-from tests.payload_render import lift, shipped
-from tests.test_intent_editor import world  # noqa: F401  (the fixture)
-
-URL = "/templatize/committed/s4"
+from tests.test_intent_editor import _Answer, world  # noqa: F401  (the fixture)
 
 
 def _git(repo, *args):
@@ -44,12 +43,14 @@ def _head(world):
 
 
 def _opened(world):
-    body = world["client"].get(URL).get_json()
+    from modules.nsot import intent_edit
+    body = intent_edit.open_doc("lab", "s4")
     return body["yaml"], body["base"]
 
 
 def _save(world, text, base, summary="an edit"):
-    return world["client"].post(URL, json={"yaml": text, "summary": summary, "base": base})
+    from modules.nsot import intent_edit
+    return _Answer(intent_edit.commit("lab", "s4", text, summary, base, "test"))
 
 
 class TestTheGetHandsOutWhatItOpened:
@@ -91,8 +92,7 @@ class TestAStaleSaveIsRefused:
     def test_a_save_that_names_no_base_is_refused(self, world):
         text, _ = _opened(world)
         before = _head(world)
-        out = world["client"].post(URL, json={"yaml": text.replace("uplink", "x"),
-                                              "summary": "no base"})
+        out = _save(world, text.replace("uplink", "x"), "", "no base")
         assert out.status_code == 400 and out.get_json()["stage"] == "base"
         assert _head(world) == before
 
@@ -161,30 +161,32 @@ class TestTheSaveIsUnderTheRepositoryLock:
         assert result["out"]["ok"] is True and _head(world) != before
 
 
-class TestTheShippedClient:
-    SRC = shipped("partials__intent_editor.1.js")
+class TestTheTabDrawsIt:
+    """Today's client (its base kept and sent, the refusal drawn with both changes, "Nothing
+    to commit") left with today's editor at 7.8 (2026-10-17, P7-23); the Intent tab sends the
+    base it opened as a hidden field and draws each answer."""
 
-    def test_it_keeps_the_base_it_opened_and_sends_it(self):
-        opened = lift(self.SRC, "showIntentEditor")
-        assert "_intentBase = d.base" in opened
-        save = lift(self.SRC, "commitIntentEdit")
-        assert "base: _intentBase" in save and "_intentBase = d.base" in save
+    def _client(self, world, monkeypatch):
+        from types import SimpleNamespace
 
-    def test_it_draws_the_refusal_with_both_changes(self, world):
-        text_a, base_a = _opened(world)
-        text_b, base_b = _opened(world)
-        _save(world, text_b.replace("uplink", "uplink <B>"), base_b, "B")
-        refused = _save(world, text_a.replace("uplink", "uplink A"), base_a).get_json()
-        js = lift(self.SRC, "_iEsc") + "\n" + lift(self.SRC, "_intentSaveHtml")
-        drawn = dukpy.evaljs(js + f"\n_intentSaveHtml({json.dumps(refused)})")
-        assert "text-danger" in drawn["status"] and "Not saved" in drawn["status"]
-        assert "What changed since you opened it" in drawn["diff"]
-        assert "uplink &lt;B&gt;" in drawn["diff"] and "<B>" not in drawn["diff"]
-        assert "Your edit, not saved" in drawn["diff"] and "uplink A" in drawn["diff"]
+        dev = {"hostname": "s4", "ip": "192.0.2.14", "platform": "cisco_ios",
+               "device_type": "cisco_ios"}
+        monkeypatch.setattr("routes.intent_v2._device_or_404",
+                            lambda name: ((SimpleNamespace(name="lab"), dev), None))
+        return world["client"]
 
-    def test_it_says_nothing_was_committed_for_an_unchanged_save(self, world):
+    def test_it_keeps_the_base_it_opened_and_sends_it(self, world, monkeypatch):
+        _text, base = _opened(world)
+        html = self._client(world, monkeypatch).get("/v2/device/s4/intent/edit").get_data(
+            as_text=True)
+        assert f'name="base" value="{base}"' in html
+
+    def test_it_says_nothing_was_committed_for_an_unchanged_save(self, world, monkeypatch):
         text, base = _opened(world)
-        body = _save(world, text, base).get_json()
-        js = lift(self.SRC, "_iEsc") + "\n" + lift(self.SRC, "_intentSaveHtml")
-        drawn = dukpy.evaljs(js + f"\n_intentSaveHtml({json.dumps(body)})")
-        assert "Nothing to commit" in drawn["status"] and "Committed" not in drawn["status"]
+        before = _head(world)
+        r = self._client(world, monkeypatch).post("/v2/device/s4/intent/commit", data={
+            "yaml": text, "base": base, "summary": "nothing"})
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200, html[:400]
+        assert '<h2 id="done-h">Nothing to commit' in html, html[:400]
+        assert "Committed to s4" not in html and _head(world) == before

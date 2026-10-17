@@ -33,9 +33,8 @@ OPENERS = {
     # The overdue drill's row (board 7, D): the drill's receipt field on Credentials.
     "breakglass_drill": ("location.pathname === '/v2/credentials' && "
                          "document.querySelector('#bg-drill input[name=receipt]')"),
-    "intent_editor": ("document.querySelector('#intentEditorModal.show') && "
-                      "document.getElementById('intentEditorTitle').textContent"
-                      ".indexOf('r2') >= 0"),
+    # Today's intent editor (`intent_editor`, today's index's `open=intent_editor`) left at 7.8
+    # (2026-10-17, P7-23): the v2 Intent tab's editor is `intent_edit` below.
     "deploy_plan": "document.querySelector('#deployPlanModal.show #deployPlanBody')",
     # C566 board A: Propose on v2, the card open in place on Monitoring › Profile.
     # C566 board C: Bring in the shipped version, its card open in place on Templates.
@@ -160,7 +159,6 @@ def _open_index(served, query):
 class TestEachOpenerActsInARealBrowser:
     @pytest.mark.parametrize("name, query", [
         ("breakglass_export", "open=breakglass_export&list=Lab"),
-        ("intent_editor", "open=intent_editor&device=r2&list=Lab"),
         ("deploy_plan", "open=deploy_plan&device=r2&list=Lab"),
         ("profile_propose", "/v2/monitoring/profile?propose=1"),
         ("template_bring", "/v2/templates?bring=_common.j2"),
@@ -197,11 +195,13 @@ class TestEachOpenerActsInARealBrowser:
         from modules import config
         monkeypatch.setattr(A, "get_current_device_list", lambda: (
             "Other", os.path.join(config.get_list_data_dir("Lab"), "devices.csv")))
-        b = _open_index(page, "open=intent_editor&device=r2&list=Lab")
+        # Today's deploy plan (P7-25's) since today's intent editor, this test's vehicle before,
+        # left at 7.8 (2026-10-17, P7-23).
+        b = _open_index(page, "open=deploy_plan&device=r2&list=Lab")
         b.wait_for("var t = document.getElementById('toastContainer'); "
                    "return t && t.textContent.indexOf('Other') >= 0 && "
                    "t.textContent.indexOf('Lab') >= 0", 10)
-        assert not b.js("return !!document.querySelector('#intentEditorModal.show')")
+        assert not b.js("return !!document.querySelector('#deployPlanModal.show')")
 
     def test_the_rotate_results_export_opens_the_export(self, page):
         from tests.test_device_rotate_v2 import CARD, SETTLED, TestInARealBrowser

@@ -208,7 +208,6 @@ DECLARED = {
     "v2.ip_sla_commit": ("intent", "remote"),
     "v2.decline_confirm": ("intent", "remote"),
     "v2.heartbeat_apply": Nothing("writes the generated heartbeat rules file, which no panel reads; the page redraws itself, and nothing alerts differently until a person installs it on the host"),
-    "templatize.edit_committed": ("intent", "remote"),
     "intent_v2.commit": ("intent", "remote"),
     # A read writes only its run's record; its end is the job's announcement (`reads`).
     "reads_v2.ask_run": ("reads",),
@@ -225,6 +224,8 @@ DECLARED = {
     "templates_v2.edit_commit": ("templates", "remote"),
     "templates_v2.bindings_apply": ("templates", "remote"),
     "templates_v2.seed": ("templates", "remote"),
+    # Today's template editor's save and Approve (templates.write_template, templates.approve)
+    # and intent editor's commit (templatize.edit_committed) left at 7.8 (2026-10-17, P7-23).
     "v2.profile_propose_commit": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "bulk_intent_v2.apply": ("intent", "remote"),
@@ -233,8 +234,6 @@ DECLARED = {
     "device_v2.retry_confirm": ("rolled_back",),
     "device_v2.seed_confirm": ("intent", "remote"),
     "device_v2.retire_confirm": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
-    "templates.write_template": ("templates", "remote"),
-    "templates.approve": ("templates", "remote"),
     "deploy.apply": ("device_state", "baselines", "drift", "rolled_back") + _COMMIT,
     # Onboarding. Verify runs phase 2, which PROMOTES: the device list is the
     # first of the three measured cases.
@@ -350,8 +349,6 @@ DECLARED = {
                                          "would send; it writes nothing"),
     "onboard_v2.abandon_preview": Nothing("Abandon's dry run: names what it would remove and "
                                           "removes nothing"),
-    "templates.validate": Nothing("validates a template against captures and reports"),
-    "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
     "intent_v2.check": Nothing("checks and renders an intent edit as it is typed"),
     "intent_v2.acknowledge": Nothing("rewrites the editor's document; the commit writes it"),
     "intent_v2.reopen": Nothing("opens the editor again; writes nothing"),

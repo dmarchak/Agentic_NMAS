@@ -1,9 +1,10 @@
 """Editing a device's committed intent: ONE code path for every editor (board H, 7.3).
 
-Today's page (`routes/templatize.py`, `/templatize/committed/<host>`) and the v2 device page's
-Intent tab (`routes/intent_v2.py`) both call these, so the checks, the two diffs, the save
-bound to the version opened and the refusal when intent moved are one implementation. Each
-function returns a plain dict with an HTTP ``status``; a route draws it as JSON or as a card.
+The v2 device page's Intent tab (`routes/intent_v2.py`) calls these, so the checks, the two
+diffs, the save bound to the version opened and the refusal when intent moved are one
+implementation (today's editor, `/templatize/committed/<host>`, which called them too, left at
+7.8 on 2026-10-17, P7-23). Each function returns a plain dict with an HTTP ``status``; the tab
+draws it as a card.
 
 - :func:`open_doc`: the committed document and the blob it was read from (the ``base`` the
   save sends back, CONCURRENCY_AUDIT R2).
@@ -517,9 +518,3 @@ def acknowledge(text: str, lines) -> str:
         out += yaml.safe_dump({"unmodeled_ack": {"lines": chosen}}, sort_keys=False,
                               default_flow_style=False, allow_unicode=False, width=4096)
     return out
-
-
-def strip_status(result: dict) -> tuple:
-    """``(body, status)`` for a JSON route: the dict without its ``status``."""
-    body = {k: v for k, v in result.items() if k not in ("status", "parsed")}
-    return body, result.get("status", 200)

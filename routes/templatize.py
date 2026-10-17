@@ -1,11 +1,12 @@
-"""Templatize blueprint: SEED INTENT, committed intent and bulk intent (its coverage report went
-at 7.8; Templates › Coverage is its home).
+"""Templatize blueprint: SEED INTENT and bulk intent (its coverage report went at 7.8; Templates ›
+Coverage is its home; today's committed-intent editor went at 7.8 on 2026-10-17, P7-23: each
+device's Intent tab).
 
 Phase 3a made it read-only (extractions to a gitignored staging area) and 3b
 added a reviewed commit. Both halves had no screen, and the commit refused
 anything without a verified person, so seeding a device's first intent had no
 working path (C148). Seed intent replaces them as one previewed, confirmed
-operation; the intent editor, revert and retry commit here too, and bulk intent's core
+operation; revert and retry commit here too, and bulk intent's core
 (`bulk_plan_of`, `bulk_apply_of`) lives here for v2's Change a setting.
 """
 
@@ -186,52 +187,10 @@ def profile_read():
                    else None)}))
 
 
-# ---------------------------------------------------------------------------
-# Committed intent (the list of devices with committed intent, GET /committed, left at
-# 7.8 on 2026-10-15: no page called it; Devices draws each device's intent state)
-# ---------------------------------------------------------------------------
-
-@bp.route("/committed/<path:hostname>", methods=["GET"])
-def read_committed(hostname):
-    """The committed host_vars document, verbatim, for editing, and the blob it was read
-    from (``base``, CONCURRENCY_AUDIT R2). `modules/nsot/intent_edit.py` is the one code
-    path today's editor and the v2 Intent tab (board H) share."""
-    from modules.nsot import intent_edit
-
-    body, status = intent_edit.strip_status(
-        intent_edit.open_doc(_active_list(), hostname))
-    return jsonify(body), status
-
-
-@bp.route("/committed/<path:hostname>/preview", methods=["POST"])
-def preview_committed_edit(hostname):
-    """Validate edited intent and show what it would DO. Writes nothing.
-
-    A text editor is honest: the bytes reviewed in the diff are the bytes committed, and an
-    ``unmodeled:`` block cannot vanish on the way through. A YAML or schema error is refused
-    with a line and column; ``vs_intent`` (the edit against what is committed) and
-    ``vs_device`` (against the device's capture: what a deploy would push) are shown before
-    committing. The checks and both diffs are `intent_edit.preview`'s."""
-    from modules.nsot import intent_edit
-
-    data = request.get_json(silent=True) or {}
-    body, status = intent_edit.strip_status(
-        intent_edit.preview(_active_list(data), hostname, data.get("yaml")))
-    return jsonify(body), status
-
-
-@bp.route("/committed/<path:hostname>", methods=["POST"])
-def edit_committed(hostname):
-    """Edit committed intent and commit the edit, saved against the version the person
-    opened (R2): a HEAD that moved since is refused with both blobs, who moved it and both
-    changes, nothing written (`intent_edit.commit`)."""
-    from modules.nsot import intent_edit
-
-    data = request.get_json(silent=True) or {}
-    body, status = intent_edit.strip_status(intent_edit.commit(
-        _active_list(data), hostname, data.get("yaml"), data.get("summary") or "",
-        data.get("base") or "", request_actor()))
-    return jsonify(body), status
+# Committed intent: today's intent editor's three routes (GET and POST /committed/<host>, POST
+# /committed/<host>/preview) left at 7.8 on 2026-10-17 (P7-23; restore point tag
+# `pre-remove/v1-editors`). Their home is each device's Intent tab (`routes/intent_v2.py`),
+# over the same `modules/nsot/intent_edit.py`.
 
 
 # ---------------------------------------------------------------------------

@@ -110,39 +110,36 @@ class TestTheNeutralisedLineSaysWhatHappened:
 
 
 class TestThePanelSaysTheComparisonWasIncomplete:
-    """A gap that is named is a finding; one implied by masking is a trap."""
+    """A gap that is named is a finding; one implied by masking is a trap.
+
+    Today's template preview panel, which said it, left at 7.8 (2026-10-17, P7-23). The diff a
+    person reads against the golden now is the Intent tab's check (`intent_edit.preview`,
+    drawn by `_intent_check.html`): it returns the count and draws it, and only when there is
+    one. Today's panel also said the consequence (a value changed by hand on the device would
+    not show) and where the real comparison happens (the drift check); the tab's sentence
+    does not (registered at P7-23: its template is held by docs/fidelity/tab-intent.md)."""
 
     def _partial(self):
         import os
 
         path = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "templates", "partials",
-            "template_editor.html")
+            os.path.abspath(__file__))), "templates", "v2", "_intent_check.html")
         return read_shipped(path)
 
     def test_the_route_returns_the_count(self):
         from tests.astcheck import code_of
 
-        from routes import templates as route_module
+        from modules.nsot import intent_edit
 
-        assert "masked_not_compared" in code_of(route_module.preview)
+        assert "masked_not_compared" in code_of(intent_edit.preview)
 
     def test_the_panel_renders_it(self):
         source = self._partial()
-        assert "masked_not_compared" in source
+        assert "p.masked_not_compared" in source
         assert "could not be compared" in source
-
-    def test_it_says_a_hand_change_would_not_show(self):
-        """The specific consequence, not a vague caveat."""
-        assert "changed by hand on" in self._partial()
-
-    def test_it_names_where_the_real_comparison_happens(self):
-        """Otherwise the note reads as "nothing checks this", which is worse
-        than the truth and equally misleading."""
-        assert "Drift check compares the real values" in self._partial()
 
     def test_it_is_silent_when_nothing_was_masked(self):
         source = self._partial()
-        note = source[source.index("const _tMaskedNote"):]
-        note = note[:note.index("};")]
-        assert "!obj.masked_not_compared" in note
+        note = source[source.index("could not be compared") - 400:
+                      source.index("could not be compared")]
+        assert "{% if p.masked_not_compared %}" in note

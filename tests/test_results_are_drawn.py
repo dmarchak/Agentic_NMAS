@@ -80,18 +80,21 @@ RESULT_COMPONENT = {
     # Rotate (7.3): a job; its result is read by id, and its record is the
     # rotation record job health's `rotation:<device>` row reads, on the device's History.
     "rotate.apply": ("static/js/nmas_rotate.js", "runApply", "device_v2.history"),
-    "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
-                              "templatize.read_committed"),
+    # A seed's record is the intent commit it wrote, drawn on the device's History (its
+    # `intent` source); today's intent editor's read, the reader before, left at 7.8
+    # (2026-10-17, P7-23).
+    "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed", "device_v2.history"),
     # The monitoring profile's proposal (P.9 step b): its record is the profile
     # commit, read back by the committed-profile reader the modal offers.
     "templatize.profile_propose_apply": ("static/js/nmas_profile.js", "previewProfilePropose",
                                          "templatize.profile_read"),
     # Revert and retry (7.3): drawn by the component. A revert's record is
-    # the intent commit it wrote, which the intent editor reads back from
-    # HEAD; a retry's is the retry log, drawn on the device's History
-    # (`history_sources`; its JSON reader left at 7.8, 2026-10-15).
+    # the intent commit it wrote, drawn on the device's History (its `intent` source; today's
+    # intent editor, which read it back from HEAD, left at 7.8, 2026-10-17, P7-23); a retry's
+    # is the retry log, drawn on the device's History (`history_sources`; its JSON reader left
+    # at 7.8, 2026-10-15).
     "templatize.revert_apply": ("static/js/nmas_intent_ops.js", "runApply",
-                                "templatize.read_committed"),
+                                "device_v2.history"),
     "templatize.retry_apply": ("static/js/nmas_intent_ops.js", "runApply",
                                "device_v2.history"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read
@@ -291,11 +294,9 @@ PAGE_RECORD = {
 
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.
 PENDING = {
-    # -- drawn in place, gone when the window closes or the page moves on --
-    "templatize.edit_committed": "the editor's status line names the commit",
-    # -- a toast, gone in seconds --
-    "templates.approve": "a toast carrying the per-device evidence",
-    "templates.write_template": "a toast",
+    # Today's template editor's save and Approve (a toast each) and today's intent editor's
+    # commit (its status line) left this list at 7.8 (2026-10-17, P7-23): Templates › Edit… and
+    # Approve… and the Intent tab draw each result in place, and History reads each commit.
     # Today's Remote card's four (remote.push, auto_push, acknowledge, verify_write) left this
     # list at 7.8 (2026-10-17, P7-21): Push now is History's header's (PAGE_RECORD); the other
     # three left with the card, History › Remote set-up… doing each.
@@ -318,14 +319,11 @@ FALSE_GREEN = {
 #: green and on no list: the class was not zero, the list was. Keyed by
 #: (file, a literal from the call); a scan finds them all, both ways.
 GREEN_TOASTS = {
-    # Today's list bar's two (index.1.js, create and delete a list) left with it at 7.8
-    # (2026-10-17, P7-26): Settings' New network… and Delete this network… draw their results in
-    # place. The bulk run's STARTED and finished toasts had left with today's bulk commands
-    # (7.8, 2026-10-15).
-    ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
-    ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
     # Today's Settings modal's "Settings saved" and its posture panel's ratification left with
-    # the modal at 7.8 (2026-10-15).
+    # the modal at 7.8 (2026-10-15). Today's list bar's two (index.1.js, a list created and
+    # deleted) left with it (P7-26), and today's template editor's two (a save's and an
+    # approval's) with it (P7-23), both at 7.8 on 2026-10-17: Settings' New network… and Delete
+    # this network…, and Templates' Edit… and Approve…, draw their results in place.
     ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
     ("templates/partials/onboard_wizard.html", ".cfg downloaded"): "a file download",
 }
@@ -338,7 +336,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 3, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 3 since today's /run_command left with today's device page (7.8, P7-22, 2026-10-17); 4 since today's Remote card left (7.8, P7-21, 2026-10-17: its push, auto-push, acknowledge and write probe); 8 since today's bulk commands left (7.8, 2026-10-15); 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
+CEILINGS = {"PENDING": 0, "FALSE_GREEN": 0, "UNESCAPED": 0}  # 0 since today's template editor and intent editor left (7.8, P7-23, 2026-10-17: its save, Approve and the intent commit); 3 since today's /run_command left with today's device page (7.8, P7-22, 2026-10-17); 4 since today's Remote card left (7.8, P7-21, 2026-10-17: its push, auto-push, acknowledge and write probe); 8 since today's bulk commands left (7.8, 2026-10-15); 9 since the AI family left (D15, 2026-10-14: the chat, agent run, approve and reject); 13 since Bulk file actions left; 15 since Device files (7.8, D16, 2026-10-13)
 
 
 def _population():
@@ -480,7 +478,7 @@ class TestEveryGreenToastIsDeclared:
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
         calls = self._calls()
-        assert len(calls) >= 4, len(calls)           # the scan can see them (4 since today's list bar's create and delete left, 7.8, P7-26, 2026-10-17; 6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
+        assert len(calls) >= 2, len(calls)           # the scan can see them (2 since today's list bar's create and delete (P7-26) and today's template editor's save and approval toasts (P7-23) left, 7.8, 2026-10-17; 6 since today's device page's "Output copied to clipboard" left, 7.8, P7-22, 2026-10-17; 7 since today's NetBox dialog's "Import started for" left, 7.8, 2026-10-17; 8 since today's Settings modal left, 7.8, 2026-10-15; 10 since today's drift panel's Check Now left, 7.8, 2026-10-15; 13 since the AI family left, D15; 18 before the file actions left at 7.8)
         undeclared = [(rel, call[:90]) for rel, call in calls
                       if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
         assert undeclared == [], undeclared

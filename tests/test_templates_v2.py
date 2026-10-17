@@ -222,12 +222,35 @@ def test_a_real_browser_approves_after_the_acknowledgement_then_revokes(tl):
     assert not approval.is_approved(tl["repo"], REL)
 
 
-def test_todays_routes_and_v2_share_one_code_path():
+def test_the_page_approves_and_revokes_through_the_one_code_path():
+    """Today's /templates/approve and /templates/validate, which shared `approve_op`, left at
+    7.8 (2026-10-17, P7-23); the page's confirm and Revoke… still call it, and its check reads
+    the bound devices' captures through `bound_captures`, as today's Validate did."""
     from tests.astcheck import calls_in
 
-    from routes import templates, templates_v2
+    from modules.nsot import approve_op
+    from routes import templates_v2
 
-    assert calls_in(templates.approve, "approve") >= 1
-    assert calls_in(templates.validate, "bound_captures") >= 1
     assert calls_in(templates_v2.approve, "approve") >= 1
     assert calls_in(templates_v2.revoke, "revoke") >= 1
+    assert calls_in(approve_op.check, "bound_captures") >= 1
+
+
+def test_a_shared_file_is_a_row_with_its_importers_and_edit(tl):
+    """Carried from today's library listing (P7-23): `_common.j2`, whose macros every base
+    template renders through, is listed, flagged shared, with the templates importing it
+    computed from the import closure (never a constant), no approval of its own, and Edit…
+    (the shell was once the only way to edit it)."""
+    from modules.nsot import approve_op
+
+    lib = approve_op.library("Lab")
+    by_path = {r["path"]: r for r in lib["rows"]}
+    shared = by_path["_common.j2"]
+    assert shared["kind"] == "shared" and shared["status"] == {}
+    assert sorted(shared["importers"]) == ["cisco_ios/base.j2", "cisco_iosxe/base.j2"]
+    assert by_path[REL]["kind"] == "template"
+    _r, html = _get(tl, "/v2/templates?list=Lab")
+    row = html[html.index(">_common.j2"):]
+    row = row[:row.index("</tr>")]
+    assert "no approval of its own: imported by 2 templates" in row
+    assert 'data-op="edit-template"' in row and 'data-op="approve-template"' not in row

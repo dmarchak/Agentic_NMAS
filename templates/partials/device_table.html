@@ -34,19 +34,14 @@
         {% else %}
           <button id="btn-{{ d['ip'] }}" class="btn btn-sm btn-secondary" disabled>Offline</button>
         {% endif %}
-        {# NSoT actions. NOT gated on `online`: all three read captured
-           artifacts -- a golden config, a stored backup, committed intent --
-           and open no socket, so an unreachable device is exactly when its
-           history is most worth looking at. #}
-          <button class="btn btn-sm btn-outline-info"
-                  title="Render from committed intent; round-trip coverage and host_vars"
-                  onclick="nsotAction('showRenderPreview', '{{ d['hostname'] }}')">Template preview</button>
+        {# NSoT actions. NOT gated on `online`: both read captured artifacts
+           (a golden config, committed intent) and open no socket, so an
+           unreachable device is exactly when its history is most worth looking
+           at. Template preview and Edit intent left at 7.8 (2026-10-17, P7-23):
+           Source of truth › Templates and the device's Intent tab. #}
           <button class="btn btn-sm btn-outline-warning"
                   title="Build the deploy plan for this device. Shows the exact commands; sends nothing."
                   onclick="nsotAction('openDeployPlan', '{{ d['hostname'] }}', true)">Deploy plan</button>
-          <button class="btn btn-sm btn-outline-success"
-                  title="Edit what this device is SUPPOSED to look like, and commit it"
-                  onclick="nsotAction('showIntentEditor', '{{ d['hostname'] }}')">Edit intent</button>
           <button class="btn btn-sm btn-outline-secondary"
                   title="Every golden commit for this device"
                   onclick="nsotAction('showGoldenHistory', '{{ d['hostname'] }}')">Golden history</button>

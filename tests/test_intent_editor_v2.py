@@ -11,7 +11,8 @@
 - The commit: as the verified person, with the reason as its subject, bound to the version
   opened; when intent moved, nothing is written and both changes are shown, the edit placed
   on theirs only when they touch different lines.
-- Today's routes and these share one code path (`modules/nsot/intent_edit.py`).
+- These run the one code path (`modules/nsot/intent_edit.py`); today's routes, which shared
+  it, left at 7.8 (2026-10-17, P7-23).
 """
 
 import re
@@ -215,12 +216,17 @@ def test_a_real_browser_acknowledges_a_line_and_commits(tmp_path, monkeypatch):
     assert "unmodeled_ack:" in committed and UNMODELLED in committed.split("unmodeled_ack:")[1]
 
 
-def test_todays_routes_and_v2_share_one_code_path():
+def test_the_tab_runs_the_one_code_path():
+    """Today's editor routes, which shared `intent_edit`, left at 7.8 (2026-10-17, P7-23); the
+    tab's check, acknowledge, commit and opening still run it, and no route outside it
+    commits intent edits by another path."""
     from tests.astcheck import calls_in
 
     from routes import intent_v2, templatize
 
-    assert calls_in(templatize.edit_committed, "commit") >= 1
-    assert calls_in(templatize.preview_committed_edit, "preview") >= 1
     assert calls_in(intent_v2.commit, "commit") >= 1
     assert calls_in(intent_v2.check, "preview") >= 1
+    assert calls_in(intent_v2.acknowledge, "acknowledge") >= 1
+    assert "intent_edit.open_doc" in open(intent_v2.__file__, encoding="utf-8").read()
+    assert not any(hasattr(templatize, f) for f in
+                   ("read_committed", "preview_committed_edit", "edit_committed"))

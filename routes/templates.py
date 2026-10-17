@@ -1,23 +1,24 @@
-"""Template library blueprint — Phase 3b. Read-mostly.
+"""The template library's shared helpers (Phase 3b). **Nothing here opens a socket to a
+device.** Every comparison is against the device's committed golden, the store deploy and
+restore read (C632: the backup store, and the "Refresh capture" that wrote to it, retired at
+7.8).
 
-Lists, reads, edits, renders, diffs, and approves templates. **Nothing here
-opens a socket to a device.** Every comparison is against the device's
-committed golden, the store deploy and restore read (C632: the backup store,
-and the "Refresh capture" that wrote to it, retired at 7.8).
-
-Deploy is Phase 3c and lives elsewhere.
+Today's template editor and its routes (the library's listing, a file's read and save, the
+render preview, the approval read, Approve and Validate under /templates) left at 7.8 on
+2026-10-17 (P7-23; restore point tag `pre-remove/v1-editors`). Their home is Source of truth ›
+Templates (`routes/templates_v2.py`). Kept, each with its callers: `artifact_for`, the one
+pairing of a render with its approval, with `_captured_golden`, `_platform_for` and
+`unknown_platform_words` (the intent editor's core, `modules/nsot/intent_edit.py`, and bulk
+intent's render, `routes/templatize._bulk_render_and_eligible`); and `_seed_and_commit` (v2's
+Seed the library…, `templates_v2.seed`).
 """
 
 import logging
 import os
 
-from flask import Blueprint, jsonify, request
-
-from modules.identity import request_actor
+from flask import request
 
 log = logging.getLogger(__name__)
-
-bp = Blueprint("templates", __name__, url_prefix="/templates")
 
 
 def _repo_for(list_name: str) -> str:
@@ -55,8 +56,9 @@ def _captured_golden(hostname: str, list_name: str = ""):
     rest. A view whose correctness varies per device by which of two stores
     answers first is the two-stores problem, not a date bug.
 
-    That mattered beyond the diff, because whatever this returns is what
-    `preview()`'s artifact is BUILT from, so the render, its coverage and its
+    That mattered beyond the diff, because whatever this returns is what the
+    render's artifact is BUILT from (today's template preview's then; the intent
+    editor's and bulk intent's now), so the render, its coverage and its
     deployability all rest on it. Reading one store, through the path deploy
     and restore use, removes the question rather than answering it (C632: the
     fallback to the newest file in `backups/` went with the backup store).
@@ -218,8 +220,8 @@ def _seed_and_commit(list_name: str, repo: str, actor: str = "nmas") -> dict:
     seeding's doing — and sweeping it into a commit labelled "seed library"
     would mislabel it exactly the way this function exists to prevent.
 
-    *actor*: who seeds: ``nmas`` when today's page seeds on its read, the verified person on
-    v2's Seed the library… (cutover blocker 5).
+    *actor*: who seeds: the verified person on v2's Seed the library… (cutover blocker 5;
+    today's library listing, which seeded as ``nmas`` on its read, left at 7.8, P7-23).
 
     **A failure is said, never "nothing to add"** (C931): ``result["error"]`` names it when
     the status could not be read or the commit failed. The repository is made first, by the
@@ -269,241 +271,3 @@ def _seed_and_commit(list_name: str, repo: str, actor: str = "nmas") -> dict:
                            f"{len(untracked)} untracked file(s) it had just listed")
     return result
 
-
-@bp.route("", methods=["GET"])
-def list_templates():
-    from modules.nsot import templates_repo
-
-    list_name = _active_list()
-    repo = _repo_for(list_name)
-    _seed_and_commit(list_name, repo, actor="nmas")
-    from modules.nsot import approval
-
-    entries = []
-    listed = templates_repo.list_templates(repo)
-    try:
-        bindings = templates_repo.load_bindings(repo)
-    except templates_repo.BindingsUnreadable as exc:            # R14: said, never a guess
-        return jsonify({"ok": False, "error": str(exc),
-                        "templates": [dict(t, bound_devices=[]) for t in listed]}), 409
-    platform_templates = [t["path"] for t in listed
-                          if not t["path"].split("/")[-1].startswith("_")]
-    for tpl in listed:
-        bound = templates_repo.devices_for_template(repo, tpl["path"])
-        entry = {**tpl, "bound_devices": [b["device"] for b in bound]}
-        # A SHARED file (`_common.j2`) has no bindings and no approval of its
-        # own, and was hidden from the panel -- so the only way to edit the
-        # macros every template renders through was the shell, bypassing the
-        # editor's syntax check and its recorded revocation. It is listed
-        # now, with what editing it would revoke.
-        if tpl["path"].split("/")[-1].startswith("_"):
-            entry["shared"] = True
-            entry["imported_by"] = [p for p in platform_templates
-                                    if tpl["path"] in approval.template_closure(repo, p)]
-        entries.append(entry)
-    # NO approval state here, deliberately: `/templates/approval/<path>` is
-    # the one answer. An `approved` key read from this listing is a missing
-    # key, not a verdict.
-    return jsonify({"ok": True, "templates": entries, "bindings": bindings})
-
-
-@bp.route("/file/<path:rel_path>", methods=["GET"])
-def read_template(rel_path):
-    from modules.nsot import templates_repo
-
-    from modules.nsot import hostvars
-
-    repo = _repo_for(_active_list())
-    # The text is read FROM the blob handed out as the BASE, the version the save sends back
-    # (CONCURRENCY_AUDIT R14, as R2 for intent); a template not yet committed opens from its
-    # file with an empty base.
-    base = templates_repo.committed_blob(repo, rel_path)
-    content = hostvars.blob_text(repo, base) if base else \
-        templates_repo.read_template(repo, rel_path)
-    if content is None:
-        return jsonify({"ok": False, "error": "Template not found"}), 404
-    bound = templates_repo.devices_for_template(repo, rel_path)
-    return jsonify({"ok": True, "path": rel_path, "content": content, "base": base,
-                    "bound_devices": [b["device"] for b in bound]})
-
-
-def _template_moved(repo: str, rel_path: str, base: str, current: str):
-    """The refusal when the template's committed version moved after the editor opened it:
-    both blobs named, and who moved it. 409."""
-    from modules.nsot import templates_repo
-
-    last = templates_repo.last_commit(repo, rel_path)
-    by = (f"{last.get('by') or 'someone'} in {last.get('commit')} "
-          f"(\"{last.get('subject')}\", {last.get('at')})") if last else "a commit"
-    return jsonify({
-        "ok": False, "stage": "moved", "path": rel_path, "base": base, "current": current,
-        "last_commit": last,
-        "error": (f"Not saved: {rel_path} changed after you opened it. You opened "
-                  f"{base[:8] or 'a version not yet committed'}; committed now is "
-                  f"{current[:8] or 'nothing'}, by {by}. Nothing was written. Open the "
-                  "template again to make your edit on their version.")}), 409
-
-
-@bp.route("/file/<path:rel_path>", methods=["POST"])
-def write_template(rel_path):
-    """Save a template and commit it, bound to the version the editor opened (R14). Saving
-    revokes any approval."""
-    from modules.nsot import repo as repo_service, templates_repo
-
-    data = request.get_json(silent=True) or {}
-    content = data.get("content", "")
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
-    if not isinstance(data.get("base"), str):
-        return jsonify({"ok": False, "stage": "base", "error": (
-            f"Not saved: this editor did not say which version of {rel_path} it opened, so "
-            "the save could replace a commit made since. Nothing was written. Reload the "
-            "page, open the template again and make the edit there.")}), 400
-    # Compared, written, revoked and committed under ONE hold of the repository (R14).
-    with repo_service.repo_lock(repo):
-        current = templates_repo.committed_blob(repo, rel_path)
-        if current != data["base"].strip():
-            return _template_moved(repo, rel_path, data["base"].strip(), current)
-        return _write_template_locked(repo, list_name, rel_path, content, data)
-
-
-def _write_template_locked(repo: str, list_name: str, rel_path: str, content: str,
-                           data: dict):
-    """The edit, its revocations and their commit: `template_write.commit`, the one path
-    v2's Bring in the shipped version shares (C566)."""
-    from modules.nsot import template_write
-
-    got = template_write.commit(list_name, repo, rel_path, content, actor=request_actor(),
-                                message=data.get("message", ""))
-    status = got.pop("status", 200)
-    return jsonify(got), status
-
-
-# Withdrawing an approval (POST /revoke/<path>) and saving the bindings (POST /bindings) left
-# at 7.8 on 2026-10-15: no page called them. Their homes are v2's Templates › Revoke… and
-# Bindings… (`routes/templates_v2.py`), over `approve_op.revoke` and `template_bindings`.
-
-
-# ---------------------------------------------------------------------------
-# Preview
-# ---------------------------------------------------------------------------
-
-@bp.route("/preview/<path:hostname>", methods=["GET"])
-def preview(hostname):
-    """Render a device and diff it against its committed golden.
-
-    The golden is the only input (C632: never the backup store, which retired
-    at 7.8). This endpoint opens no session. (Its POST half, the same read with a
-    JSON body, left at 7.8 on 2026-10-15: nothing sent it.)
-    """
-    from modules.nsot import roundtrip, templates_repo
-
-    list_name = _active_list()
-    repo = _repo_for(list_name)
-
-    golden, golden_at = _captured_golden(hostname, list_name)
-    if not golden:
-        return jsonify({"ok": False, "error": (
-            f"No golden config is recorded for {hostname} yet, so there is nothing "
-            "to render against. Capture the device first on its device page "
-            "(Capture…); this view never reads from the device.")}), 404
-
-    platform = _platform_for(hostname, list_name)
-    from modules.nsot.platform import is_dialect
-    if not is_dialect(platform):
-        return jsonify({"ok": False,
-                        "error": unknown_platform_words(hostname, list_name)}), 409
-    template = templates_repo.template_for_device(repo, hostname, platform)
-
-    artifact = artifact_for(hostname, golden, repo, platform, template)
-
-    def _diff(other, label):
-        # `canonical_diff` is section-aware: it sorts children only where the
-        # device does not care about order, and keeps the sequence in an ACL,
-        # prefix-list, route-map or `ip sla`, where reordering changes what
-        # the device does.
-        #
-        # The previous version normalised both sides and then compared them
-        # with a flat `difflib`, which reported two things that are not
-        # configuration differences: order in sections IOS reorders itself,
-        # and indentation. The machinery to answer both already existed in
-        # `roundtrip`; the preview simply was not using it, so a correct
-        # render read as a broken one.
-        diff, masked = roundtrip.canonical_diff(
-            other, artifact.rendered_masked,
-            fromfile=f"{label} ({hostname})", tofile=f"rendered ({hostname})",
-            report_masked=True)
-        return {"available": True, "diff": diff, "changed": bool(diff),
-                # Counted, not merely absent. "Three lines could not be
-                # compared" is a fact the operator can act on; silence about
-                # them is a clean preview that quietly means less than it
-                # appears to.
-                "masked_not_compared": masked}
-
-    return jsonify({
-        "ok": True,
-        **artifact.summary(),
-        "rendered": artifact.rendered_masked,     # masked: never a deploy source
-        "secrets_masked": True,
-        "diff_vs_golden": {**_diff(golden, "golden"), "captured_at": golden_at},
-    })
-
-
-# ---------------------------------------------------------------------------
-# Approval
-# ---------------------------------------------------------------------------
-
-@bp.route("/approval/<path:rel_path>", methods=["GET"])
-def approval_status(rel_path):
-    from modules.nsot import approval, templates_repo
-    from modules.nsot.parsers import get_parser
-
-    list_name = _active_list()
-    repo = _repo_for(list_name)
-    host_vars = {}
-    for entry in templates_repo.devices_for_template(repo, rel_path):
-        golden, _ = _captured_golden(entry["device"], list_name)
-        if golden:
-            host_vars[entry["device"]] = get_parser(entry["platform"]).parse(golden)
-    return jsonify({"ok": True, "path": rel_path,
-                    **approval.approval_status(repo, rel_path, host_vars)})
-
-
-@bp.route("/approve/<path:rel_path>", methods=["POST"])
-def approve(rel_path):
-    """Approve a template (scheme 3): it must round-trip against AT LEAST ONE
-    bound device, and every bound device's result is recorded as evidence.
-
-    A bound device with no captured config is recorded as NOT VALIDATED
-    instead of refusing the whole approval. Under scheme 2 the refusal was
-    load-bearing, because the stored fingerprint covered the device set. Under
-    scheme 3 it covers only the template, and the device is checked at its own
-    deploy, so the refusal only kept a never-reached device's whole platform
-    offline (D2)."""
-    from modules.nsot import approve_op
-
-    data = request.get_json(silent=True) or {}
-    # What the person was SHOWN (CONCURRENCY_AUDIT R12): the row's approval state carries the
-    # closure's fingerprint and Approve sends it back; one that moved since is refused.
-    result = approve_op.approve(_active_list(data), rel_path, data.get("fingerprint"),
-                                request_actor())
-    status = result.pop("status")
-    result.pop("actor", None)
-    return jsonify(result), status
-
-
-@bp.route("/validate/<path:rel_path>", methods=["POST"])
-def validate(rel_path):
-    """Dry-run the approval gate without approving."""
-    from modules.nsot import approval, approve_op
-
-    repo = _repo_for(_active_list())
-    devices, _not_validated = approve_op.bound_captures(repo, rel_path)
-    result = approval.validate_template(repo, rel_path, devices)
-    result.pop("host_vars_by_device", None)     # internal; large
-    return jsonify(result)
-
-
-# Seed status (GET /seed_status, C6) left at 7.8 on 2026-10-15: no page called it. Its home
-# is v2's Templates, the Against the shipped version column (`approve_op`, over
-# `templates_repo.seed_status`), and `scripts/nmas-seed-status` asks the same on the host.

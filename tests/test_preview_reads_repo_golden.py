@@ -189,9 +189,10 @@ class TestBothSidesAreNormalisedTheWayRoundTripDoes:
         """
         import inspect
 
-        from modules.nsot import roundtrip
-        from routes import templates as route_module
+        from modules.nsot import intent_edit, roundtrip
 
-        assert "canonical_diff" in inspect.getsource(route_module.preview)
+        # Today's template preview left at 7.8 (2026-10-17, P7-23); the intent editor's
+        # check (the Intent tab's) diffs a render against the golden the same way.
+        assert "canonical_diff" in inspect.getsource(intent_edit.preview)
         composed = inspect.getsource(roundtrip.canonical_lines)
         assert "strip_for_diff" in composed and "strip_for_roundtrip" in composed

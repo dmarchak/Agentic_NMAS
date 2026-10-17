@@ -95,17 +95,22 @@ class TestEveryRenderHelperIsCalled:
         files = _template_files()
         assert len(files) >= 10, f"only {len(files)} templates found"
         helpers = declared_helpers()
-        assert len(helpers) >= 8, \
+        # 8 -> 5 2026-10-17 (P7-23), 5 measured: the helpers today's template editor and
+        # intent editor declared left with them at 7.8.
+        assert len(helpers) >= 5, \
             f"the helper pattern matched only {sorted(helpers)}"
         # The five that motivated this sweep must be among them, or the
         # pattern has drifted away from the thing it was built for.
         # (nbCascadeHtml, the third, was removed in 7.1: the cascade is drawn
         # by the preview component from the server's adapter now; driftDetailHtml
         # left with today's drift panel at 7.8, 2026-10-15; _gBaselineCoverage, the fourth, with
-        # today's Baselines panel at 7.8, 2026-10-17: its NAME is still pinned to the pattern.)
-        for known in ("pendingBannerHtml", "templateRowHtml"):
+        # today's Baselines panel at 7.8, 2026-10-17; templateRowHtml, the fifth, with today's
+        # template editor at 7.8, 2026-10-17, P7-23: their NAMES are still pinned to the
+        # pattern.)
+        for known in ("pendingBannerHtml",):
             assert known in helpers, f"{known} is no longer recognised"
         assert _HELPER.match("_gBaselineCoverage") and _HELPER.match("nbCascadeHtml")
+        assert _HELPER.match("templateRowHtml")
 
     def test_none_is_defined_and_never_used(self):
         helpers = declared_helpers()

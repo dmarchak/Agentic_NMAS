@@ -17,15 +17,6 @@
   "tarball": "https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.3.tgz",
   "version": "5.3.3"
  },
- "codemirror/LICENSE": {
-  "bytes": 1113,
-  "from": "LICENSE",
-  "integrity": "sha512-br21LjYmSlVL0vFCPWPfhzUCT34FM/pAdK7rRIZwa0rrtrIdotvP4Oh4GUHsu2E3IrQMCfRkL/fN3ytMNxVQvg==",
-  "package": "codemirror",
-  "sha256": "168a4becc968f5001e2ee2e0291b6e4daabafc1894a11ade1e11d56e96096e07",
-  "tarball": "https://registry.npmjs.org/codemirror/-/codemirror-5.65.16.tgz",
-  "version": "5.65.16"
- },
  "fontsource-ibm-plex-mono/LICENSE": {
   "bytes": 5299,
   "from": "LICENSE",

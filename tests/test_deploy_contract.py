@@ -460,8 +460,12 @@ class TestEveryReferencedHelperExists:
     """
 
     ROUTE_MODULES = ["routes.deploy", "routes.golden", "routes.templatize",
-                     "routes.templates", "routes.inventory",
+                     "routes.inventory",
                      "routes.netbox_v2", "routes.settings_integrations"]
+    #: Route files that serve nothing since their routes left, kept for the helpers the deploy
+    #: path calls: `routes.templates` (today's template editor's routes left at 7.8,
+    #: 2026-10-17, P7-23; its `artifact_for` and golden and platform reads stay).
+    HELPER_MODULES = ["routes.templates"]
 
     @pytest.mark.parametrize("module_name", ROUTE_MODULES)
     def test_module_imports(self, module_name):
@@ -472,7 +476,13 @@ class TestEveryReferencedHelperExists:
         assert mod.__name__ == module_name
         assert any(type(v).__name__ == "Blueprint" for v in vars(mod).values()), module_name
 
-    @pytest.mark.parametrize("module_name", ROUTE_MODULES)
+    def test_a_helper_module_serves_nothing(self):
+        import importlib
+        for name in self.HELPER_MODULES:
+            mod = importlib.import_module(name)
+            assert not any(type(v).__name__ == "Blueprint" for v in vars(mod).values()), name
+
+    @pytest.mark.parametrize("module_name", ROUTE_MODULES + HELPER_MODULES)
     def test_every_name_it_calls_is_defined(self, module_name):
         """Catches a deleted helper that nothing happens to exercise."""
         import ast

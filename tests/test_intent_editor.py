@@ -15,6 +15,12 @@ reviewed in the diff are the bytes committed.
 Honest is not usable on its own, which is what the other two requirements are
 for: a line and column on every refusal, and the render diff before the
 commit.
+
+Today's editor and its routes (/templatize/committed/<host>, its preview and its save) left at
+7.8 on 2026-10-17 (P7-23). These properties are the editor's CORE's
+(`modules/nsot/intent_edit.py`), which the v2 device page's Intent tab runs
+(`routes/intent_v2.py`; its routes and card in tests/test_intent_editor_v2.py), so the tests
+call the core directly, as the tab does, with the status it answers.
 """
 
 import json
@@ -108,14 +114,34 @@ def world(tmp_path, monkeypatch):
             "hostvars": hostvars}
 
 
+class _Answer:
+    """The core's answer as the tab reads it: its ``status`` and the rest."""
+
+    def __init__(self, result: dict):
+        self.status_code = result.get("status", 200)
+        self._body = {k: v for k, v in result.items() if k not in ("status", "parsed")}
+
+    def get_json(self):
+        return self._body
+
+
 def _base(world):
-    """The version the editor opened, as its GET hands it out (CONCURRENCY_AUDIT R2)."""
-    return world["client"].get("/templatize/committed/s4").get_json()["base"]
+    """The version the editor opened, as Edit hands it out (CONCURRENCY_AUDIT R2)."""
+    from modules.nsot import intent_edit
+    return intent_edit.open_doc("lab", "s4")["base"]
 
 
-def _preview(world, text):
-    return world["client"].post("/templatize/committed/s4/preview",
-                                json={"yaml": text})
+def _preview(world, text, host="s4"):
+    """The check the Intent tab runs as the document is typed (`intent_v2.check`)."""
+    from modules.nsot import intent_edit
+    return _Answer(intent_edit.preview("lab", host, text))
+
+
+def _commit(world, text, summary, base=None):
+    """The Intent tab's Commit (`intent_v2.commit`), bound to the version opened."""
+    from modules.nsot import intent_edit
+    return _Answer(intent_edit.commit("lab", "s4", text, summary,
+                                      _base(world) if base is None else base, "test"))
 
 
 class TestValidationRefusesWithLineAndColumn:
@@ -206,8 +232,7 @@ class TestTextPreservesWhatAModelWouldDrop:
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         assert "unmodeled" in text
         edited = text.replace("uplink", "uplink to core")
-        world["client"].post("/templatize/committed/s4",
-                             json={"base": _base(world), "yaml": edited, "summary": "retitle uplink"})
+        _commit(world, edited, "retitle uplink")
         after = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         assert "some-construct nobody modelled" in after, (
             "the unmodeled block vanished -- the failure it was built to "
@@ -216,8 +241,7 @@ class TestTextPreservesWhatAModelWouldDrop:
     def test_the_committed_bytes_are_the_reviewed_bytes(self, world):
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         edited = text.replace("uplink", "uplink to core")
-        world["client"].post("/templatize/committed/s4",
-                             json={"base": _base(world), "yaml": edited, "summary": "retitle"})
+        _commit(world, edited, "retitle")
         after = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         assert after == edited, "the text was translated on the way through"
 
@@ -230,10 +254,7 @@ class TestTheLoopCloses:
         import subprocess
 
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
-        out = world["client"].post(
-            "/templatize/committed/s4",
-            json={"base": _base(world), "yaml": text.replace("uplink", "uplink to core"),
-                  "summary": "retitle the uplink"})
+        out = _commit(world, text.replace("uplink", "uplink to core"), "retitle the uplink")
         assert out.get_json()["ok"] is True
         subject = subprocess.run(
             ["git", "-C", world["repo"], "log", "-1", "--format=%s"],
@@ -242,8 +263,7 @@ class TestTheLoopCloses:
 
     def test_a_summary_is_required(self, world):
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
-        out = world["client"].post("/templatize/committed/s4",
-                                   json={"base": _base(world), "yaml": text, "summary": "  "})
+        out = _commit(world, text, "  ")
         assert out.status_code == 400
         assert "says nothing in a log" in out.get_json()["error"]
 
@@ -254,39 +274,15 @@ class TestTheLoopCloses:
         from modules.nsot import hostvars
 
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
-        world["client"].post("/templatize/committed/s4",
-                             json={"base": _base(world), "yaml": text.replace("uplink", "uplink to core"),
-                                   "summary": "retitle"})
+        _commit(world, text.replace("uplink", "uplink to core"), "retitle")
         committed = hostvars.read_committed(world["repo"], "s4")
         descriptions = [i.get("description") for i in committed["interfaces"]]
         assert descriptions == ["uplink to core"]
 
 
-class TestItShipsWithItsEntryPoint:
-    def test_the_device_row_has_an_edit_intent_button(self):
-        import re
-
-        import app as nmas
-        from flask import render_template
-
-        with nmas.app.test_request_context("/"):
-            html = render_template("index.html", devices=[
-                {"ip": "10.0.0.14", "hostname": "s4", "online": True},
-                {"ip": "10.0.0.11", "hostname": "r1", "online": False}])
-        hits = re.findall(r"nsotAction\('showIntentEditor', '([^']+)'", html)
-        assert sorted(hits) == ["r1", "s4"]
-
-    def test_commit_is_disabled_until_a_preview_passes(self):
-        """A text editor is safe for someone who does not remember the schema
-        only if the consequence is on screen before the commit."""
-        path = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "templates", "partials",
-            "intent_editor.html")
-        source = read_shipped(path)
-        assert 'id="intentCommitBtn"' in source and "disabled" in source
-        assert "_intentArm(true)" in source
-        armed = source[source.index("_intentArm(true)"):]
-        assert "previewIntentEdit" in source[:source.index("_intentArm(true)")]
+# Its entry point, today's device row's Edit intent and the modal's Commit armed by a passing
+# check, left with today's editor at 7.8 (2026-10-17, P7-23): the Intent tab's Edit, checked as
+# typed, its commit refused while the document is invalid (tests/test_intent_editor_v2.py).
 
 
 class TestApprovalIsConsultedNotAssumed:
@@ -307,15 +303,16 @@ class TestApprovalIsConsultedNotAssumed:
     confident, wrong statement about something it never looked at.
     """
 
-    def test_the_route_does_not_build_artifacts_directly(self):
+    def test_the_editor_does_not_build_artifacts_directly(self):
         from tests.astcheck import calls_in
 
-        from routes import templatize
+        from modules.nsot import intent_edit
+        from routes import intent_v2
 
-        assert calls_in(templatize.preview_committed_edit,
-                        "build_artifact") == 0, (
-            "building directly defaults template_approved to False, which is "
-            "reported as 'not approved' without asking")
+        for fn in (intent_edit.preview, intent_v2.check):
+            assert calls_in(fn, "build_artifact") == 0, (
+                "building directly defaults template_approved to False, which is "
+                "reported as 'not approved' without asking")
 
     def test_it_uses_the_helper_that_resolves_approval(self):
         from tests.astcheck import calls_in
@@ -350,14 +347,15 @@ class TestApprovalIsConsultedNotAssumed:
         assert body["deployable"] is False
         assert any("not approved" in r for r in body["blocking_reasons"])
 
-    def test_the_helper_is_shared_with_the_template_preview(self):
-        """Two routes asking the same question must ask it the same way; the
-        divergence is what produced this."""
+    def test_the_helper_is_shared_with_bulk_intent(self):
+        """Two renders asking the same question must ask it the same way; the
+        divergence is what produced this. (Today's template preview, which shared it,
+        left at 7.8, P7-23; bulk intent's render shares it now.)"""
         from tests.astcheck import calls_in
 
-        from routes import templates
+        from routes import templatize
 
-        assert calls_in(templates.preview, "artifact_for") >= 1
+        assert calls_in(templatize._bulk_render_and_eligible, "artifact_for") >= 1
 
 
 
@@ -461,40 +459,19 @@ class TestTheUnchangedDocumentSaysSo:
         assert body["document_changed"] is True
 
     def test_the_ui_has_three_branches(self):
+        """The Intent tab's check (today's modal left at 7.8, P7-23): the edit's changes; the
+        document changed and its render did not; nothing changed at all."""
         path = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "templates", "partials",
-            "intent_editor.html")
+            os.path.abspath(__file__))), "templates", "v2", "_intent_check.html")
         source = read_shipped(path)
-        assert "d.document_changed" in source
-        assert "byte-identical to what is committed" in source
+        assert "d.edit_changes" in source
+        assert "p.document_changed" in source and "its render did not" in source
+        assert "the document is what is committed" in source
 
 
-class TestTheEditorReMeasuresWhenTheModalIsShown:
-    """CodeMirror measures character and gutter widths at initialisation.
-    Inside a modal that is still opening those come back zero, and the gutter
-    is laid out on top of the text."""
-
-    def _source(self):
-        path = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "templates", "partials",
-            "intent_editor.html")
-        return read_shipped(path)
-
-    def test_it_refreshes_on_shown(self):
-        source = self._source()
-        assert "shown.bs.modal" in source
-        assert "_intentRefresh" in source
-
-    def test_it_refreshes_after_the_document_loads(self):
-        """Either can be the later of the two, so both trigger it."""
-        source = self._source()
-        assert source.count("_intentRefresh()") >= 2
-
-    def test_refresh_is_guarded(self):
-        source = self._source()
-        body = source[source.index("function _intentRefresh"):]
-        body = body[:body.index("}")]
-        assert "if (_intentCM)" in body
+# Today's modal re-measured CodeMirror when it was shown; the modal and the vendored
+# CodeMirror left with today's editor at 7.8 (2026-10-17, P7-23). The Intent tab edits in a
+# plain text area, in place.
 
 
 class TestVsIntentReadsGitNotTheWorkingTree:
@@ -582,8 +559,7 @@ class TestNeverCommittedIsItsOwnState:
         from modules.nsot import hostvars
 
         text = self._uncommitted(world)
-        body = world["client"].post("/templatize/committed/s9/preview",
-                                    json={"yaml": text}).get_json()
+        body = _preview(world, text, host="s9").get_json()
         assert body["intent_state"] == hostvars.NEVER_COMMITTED
 
     def test_the_committed_device_is_NOT_in_that_state(self, world):
@@ -598,8 +574,7 @@ class TestNeverCommittedIsItsOwnState:
 
     def test_it_carries_a_note_a_reader_can_act_on(self, world):
         text = self._uncommitted(world)
-        body = world["client"].post("/templatize/committed/s9/preview",
-                                    json={"yaml": text}).get_json()
+        body = _preview(world, text, host="s9").get_json()
         note = body["intent_note"]
         assert note and "no committed intent" in note["note"].lower()
         assert "Extract" in note["note"], \
@@ -674,14 +649,18 @@ class TestNoBackupStore:
         with pytest.raises(RuntimeError, match="no golden is recorded for it yet"):
             render("s9", {"hostname": "s9"})
 
-    def test_todays_template_preview_says_no_golden_for_a_device_with_only_a_backup(self, world):
-        """C632: it rendered from the newest file in `backups/` when a device had no golden."""
+    def test_todays_template_preview_is_gone(self, world):
+        """C632: it rendered from the newest file in `backups/` when a device had no golden,
+        then from the golden alone; it left with today's template editor at 7.8 (2026-10-17,
+        P7-23), and `_captured_golden`, the read it rendered from, reads the golden alone."""
+        import inspect
+
+        from routes import templates
+
         self._backup_only(world)
-        r = world["client"].get("/templates/preview/s9")
-        body = r.get_json()
-        assert r.status_code == 404 and body["ok"] is False, body
-        assert "No golden config is recorded for s9 yet" in body["error"], body
-        assert "Capture" in body["error"] and "backup" not in body["error"].lower(), body
+        assert world["client"].get("/templates/preview/s9").status_code == 404
+        assert templates._captured_golden("s9", "lab") == (None, "")
+        assert "backups" not in inspect.getsource(templates._captured_golden).split('"""')[-1]
 
     def test_todays_refresh_capture_is_gone(self, world):
         """C632: it delegated to today's backup route, which left with Backups at 7.8."""
