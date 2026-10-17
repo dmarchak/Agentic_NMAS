@@ -119,7 +119,7 @@ rotation, the ai-leftovers delete, the Backups archive and delete, said done by 
 | P7-09 | Criterion 14, the writeup: entries for 7.4 to 7.8, P.11, Show commands, Ask, Logs, DHCP, Update; 7.3 and 7.D closed | an entry per sub-task, forecasts checked | M | — | — |
 | ~~P7-16 (rest)~~ | ~~C705, C765, C176; the Scheduled section's 7.x rows read once~~ **done** (see Checked off) | | | | |
 | ~~C981~~ | ~~Retire clears the override before its commit (C106 (3))~~ **closed, measured: deliberate** (see Checked off) | | | | |
-| **C650, during the walks** | each walked screen's fidelity record written from its sitting; `UNCHECKED` shrinks by the walked screens; the rest to the tail | records from W1 to W3 | S per screen | the sittings | W |
+| **C650, during the walks** | each walked screen's fidelity record written from its sitting; `UNCHECKED` shrinks by the walked screens; the rest to the tail. **W1 to W3 done 2026-10-17** (W1's twelve; W2 and W3's netbox, templates, settings, batch Apply, the device Logs tab). Left for W4: save, pending, retired, about (its pre-flight; a screenshot asked). To Stage 7's tail, no walk touching them: monitoring, help, monitoring_profile, coverage, coverage_deploy, update, settings_installation, reapply (walked in W1 with no screenshot or board), the device Monitoring, Neighbours and NetBox tabs | the four W4 screens' records, from its sitting | S per screen | W4 | W |
 | **The v1 removals (each tagged first, walked, ceilings lowered, the ratchet run)** | | | | | |
 | ~~P7-20~~ | ~~(4) the NetBox tab and `/netbox/safety/*`, `/netbox/status`~~ **removed 2026-10-17** (restore tag `pre-remove/v1-netbox`; walked by GETs on the host after its deploy) | | | | |
 | P7-21 | (5) Git, the Remote card, Baselines | removed, walked | M | W1, W2 | — |
@@ -142,7 +142,7 @@ C888 and C905, C906 (3 M), C883 to C886 (5 S). Left: about 2 L (C850's `applyCon
 
 | List | Now | At cutover |
 |---|---|---|
-| tests/test_board_fidelity.py `UNCHECKED` | **20** (W1's twelve recorded 2026-10-16) | the walked screens out; the rest to the tail |
+| tests/test_board_fidelity.py `UNCHECKED` | **15** (W2 and W3's five recorded 2026-10-17; 20 before, W1's twelve recorded 2026-10-16): 4 for W4, 11 to the tail | the walked screens out; the rest to the tail |
 | modules/operation_stages.py `MISSING` / `HISTORY_MISSING` | 17 / 2 | run_command's go with v1; the rest stay until built (not a cutover condition) |
 | tests/test_results_are_drawn.py `PENDING` | 8 | 0 (all v1 handlers) |
 | tests/test_concepts_are_taught.py `PENDING` | **0** (P7-03) | 0 |
