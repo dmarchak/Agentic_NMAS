@@ -82,6 +82,18 @@ Each states its selection rule and what could not be recovered. It also records
 why 7.3 and 7.D are not closed. The rule had required each entry at its close,
 and it was not applied for these.
 
+A third pass, on 2026-10-17 (the same burn-down item, after the walks W2 and W3),
+wrote the Stage 7 rows that still had no entry of their own:
+- 7.3's Reload, walked in W2 and again, quiet, in W3;
+- 7.4's several-device deploy, Change a setting and Adopt (boards B, D and G);
+- 7.5 (History), 7.6 (Source of truth) and 7.7 (Settings), each as one entry over
+  its sub-tasks, pointing to the entries already written for its parts;
+- what moved since 2026-10-16 for P.11, DHCP and 7.8;
+- where 7.3, 7.4 and 7.D stand, and section 11's forecast checked as far as the
+  record allows.
+Each is marked *written 2026-10-17*. It also corrects one claim of the second
+pass: revert and retry had run on the host on v2, on 2026-10-05 and 06.
+
 ### Conventions
 
 - **Dates and times.** Git records commit times in local time (UTC−6). The
@@ -110,12 +122,12 @@ and it was not applied for these.
 | P-items | P.1 to P.6 | Backfilled below |
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | P.7 partly built and P.8 steps 1 to 8 built by 2026-10-05 (NSOT_STAGE7_PLAN.md section 11); no entry written for either. P.8's design document written 2026-10-04 (NSOT_P8_DESIGN.md) |
 | | P.9 step (d) | Backfilled 2026-10-16: built through (d4)'s add path. C290's change path waits on staged run 9, after cutover (D3) |
-| | P.11 (Topology) | Backfilled 2026-10-16: steps 1 and 2 and the operator's reviews. The page's walk is in W2; time travel and the wall are after cutover (D3) |
+| | P.11 (Topology) | Backfilled 2026-10-16: steps 1 and 2 and the operator's reviews. The page was walked in W2 (2026-10-16, CUTOVER row 70 closed; added 2026-10-17). Time travel and the wall are after cutover (D3) |
 | | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28), then a second batch across processes (R6, R3's store half, R11, R12, R14, R15, R16); the audit's medium rows, three decisions and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open (reread 2026-10-16). Sub-tasks written below: seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, and every device action on v2. Ask the device with Show commands was backfilled 2026-10-16, with where 7.3 stands. Left: Reload's walk (W2); the first real runs of adopt, revert and retry (W3) |
-| | 7.4 to 7.10 | Written: Devices › Save (7.4), Remote set-up (7.5), Logs (C652), DHCP (C529, open), the fleet Monitoring page, Monitoring › Profile (C566), criterion 13 (C738), the 7.8 removals of 2026-10-11 to 15 (open: today's two pages), and the Update operation. 7.6 and 7.7 have entries only where their sub-tasks closed inside 7.D (Settings › Installation, the six cutover blockers). 7.9 was removed at 7.8 (Configure). 7.10 is after cutover (D3) |
-| | 7.D | Open (reread 2026-10-16). Left: C650's board comparisons (20 UNCHECKED), C342's mockup, and P.12's mockups (after cutover) |
+| | 7.3 | Open (reread 2026-10-17). Sub-tasks written below: seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, every device action on v2, Ask the device with Show commands, and Reload (walked in W2 and W3, written 2026-10-17). Left: adopt's first real run and C148's loop on v2, both in W4 |
+| | 7.4 to 7.10 | Written: Devices › Save (7.4); the several-device deploy, Change a setting and Adopt (7.4, 2026-10-17), with where 7.4 stands (open: W4); History (7.5, 2026-10-17) and its Remote set-up; Source of truth (7.6, 2026-10-17); Settings (7.7, 2026-10-17); Logs (C652); DHCP (C529, open); the fleet Monitoring page; Monitoring › Profile (C566); criterion 13 (C738); the 7.8 removals (open: P7-21 to P7-27); the Update operation. 7.9 was removed at 7.8 (Configure). 7.10 is after cutover (D3) |
+| | 7.D | Open (reread 2026-10-17). Left: C650's four screens for W4 (save, pending, retired, about); the other eleven unchecked go to Stage 7's tail. C342's panel was built 2026-10-16. P.12's mockups are after cutover |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
 
@@ -2220,6 +2232,22 @@ cutover (D3).*
    topology service and today's Topology tab were removed (7.8, 2026-10-12), and Neighbours
    reads RIP through Topology's adjacency code (C735). The page is walked in W2.
 
+**Added 2026-10-17: the page's walk.** The operator walked it in W2, steps 12 to 16, from about
+22:36Z to 22:41Z on 2026-10-16 [CUTOVER row 70]:
+- the map was drawn at desktop and phone width;
+- the path trace from r1 to r3 was delivered;
+- with Snap to grid on, rapid re-grabs landed on the grid, one layout row per drop and no jump.
+  So C882's fix held, and C691 closed [OPEN_FINDINGS C691].
+
+CUTOVER row 70 is closed. The walk found three C rows, each kept for after cutover:
+- C1033: a trace held r1 for 53 s or more, and a second Trace press was refused by that hold
+  instead of being told one was running;
+- C1034: the Path… popover runs off the right edge;
+- C1035: "Apart on purpose (1)" has nothing under it.
+
+Point 4's "C691 … stays open until … W2" is resolved by that walk. Steps 1 and 2 are done. Board
+C (time travel and the wall) is after cutover (D3), so P.11 is not closed.
+
 ### P.15 — Several people at once (open): the decided fixes
 
 *Written 2026-10-02, when the last of the fixes the operator ordered closed (R5's per-device
@@ -3392,10 +3420,106 @@ the device was walked by the operator in W1 on 2026-10-16 (C547 closed).*
    agent asks a device, refused, held, masked, capped and recorded the same way. Today's bulk
    commands left at 7.8 (2026-10-15). `/run_command` goes with today's device page (P7-22).
 
+#### 7.3 — Reload (P.14): walked on r6 in W2, and quiet in W3
+
+*Written 2026-10-17, the turn after W3's results were recorded (5c181256), from git, CUTOVER row
+68 and the register. The build is in 7.D's six cutover blockers entry (below); this entry is its
+real runs and what they found. Host times are UTC; commit times are local (UTC−6).*
+
+1. **What it was.** P.14's plain form, decided 2026-10-01 (8ce8f973): a device boots the startup
+   it holds, gated, from the device page's Actions. It was built 2026-10-10 as the sixth cutover
+   blocker (4cf33e02). This sub-task is its first real runs on the host and the fixes they
+   forced.
+2. **How it was implemented.** As built:
+   - a preview job reads the device and judges six gates by name: running against startup, its
+     golden and intent, startup carrying Mercury's credential, the boot image, no holder, and the
+     blast radius from committed intent and this host's subnets;
+   - the run declares its planned-restart window before it sends anything, reloads, waits within
+     the platform's measured bound, verifies the device runs what it ran, and records it (History's
+     Reloads) [CUTOVER row 68].
+
+   The walks then changed four things:
+   - **The startup gate** (C881, 4e670a36): `roundtrip.startup_is_running` strips `show
+     startup-config`'s "Using N out of M bytes" header, and reconciles certificate storage
+     through the one device-owned definition. `dir nvram:` is read only when startup holds a
+     pointer.
+   - **A planned window is quiet** (C1025, 977006fa):
+     - `GrafanaIntegration.put_silence` is Mercury's one Grafana write;
+     - declaring a window sets two silences until its end plus `SETTLE_SECONDS`, 1140 (W2's
+       measured 454 s for telemetry's no-data to clear, times 2.5);
+     - inside the window Needs attention draws no row, and the header reads "restarting as
+       planned".
+   - **The restart is found, and the record committed** (C1026, C1027, 977006fa):
+     - each restarts read also keeps the newest `sysUpTime` sample per device, so a restart
+       between two reads is found;
+     - the reload record is committed through `repo.commit()` (`Source: reload`).
+   - **Grafana's writes are recorded and drawn** (fecab2f7): a silence is read back and expired
+     by id, and drawn under History's "Grafana writes". A reload whose silence failed is never
+     green. **Each alert is judged by its own device** (C1109, 5c181256), so another device's
+     live alert no longer raises a restarting device's silenced ones.
+3. **Issues encountered.**
+   - **W1, section I (2026-10-16):** the reload was refused on r6 by C881 (A). Startup keeps a
+     C8000v's PKI certificates as `nvram:` pointers, so "4 line(s) differ" followed a successful
+     Persist [OPEN_FINDINGS C881].
+   - **W2, steps 54 to 58, on r6** [CUTOVER row 68]:
+     - the preview at about 00:05Z on 2026-10-17, every gate passing;
+     - the reload pressed at about 00:06:47Z, its window declared before it, until 00:27:47Z;
+     - the device answered after 452 s, and "Reloaded and verified" at about 00:14:26Z;
+     - the host key was kept, which measured C941: a C8000v keeps its SSH host key across a
+       reload.
+
+     The walk found three B rows: C1025 (the window silenced nothing, so Needs attention raised
+     CRITICAL "r6 is not answering" and Grafana fired four alerts); C1026 (no "Restarted as
+     planned" on History); C1027 (the reload's record was never committed while the header said
+     "in sync").
+   - **Fixing them:** C1089 (UNKNOWN): Mercury's Grafana service account was a Viewer, and a
+     silence needs an Editor. And C1088, C1090 and C1091 (C).
+   - **W3, 2026-10-17, 05:16Z to 06:18Z on fecab2f79e:** r6 returned at 05:58:03Z, its restart
+     in the record, planned, at 05:57. That explained C677's missing restart of 2026-10-09 as
+     C1026's cause. But during the settle period Needs attention raised CRITICAL "2 alerts began
+     together (1 of 2 silenced)", then "4 alerts (3 of 4 silenced)", until 06:05: C1109 (B). s3's
+     live discards alert began within the same 360 s, and the hold was judged per onset group
+     [OPEN_FINDINGS C1109, C677].
+4. **How they were resolved.**
+   - C881 was fixed and verified on r6 (4e670a36).
+   - C1025 to C1027 were fixed (977006fa) and walked at W3's reload.
+   - C1089 was measured: the operator raised the account to Editor. A silence was set, read back,
+     expired and read again on the host at 04:13Z, after fecab2f7's deploy.
+   - C1109 was fixed (5c181256). Its first real run is the next planned reload.
+   - C941 and C677 were closed by measurement. C1018 was measured in W3, step 7: a Reload preview
+     cancelled before it draws leaves no In progress entry.
+   - C1088, C1090 and C1091 are C, after cutover.
+5. **Numbers.**
+   - Commits (rule: subjects naming Reload, P.14, or a finding above, from the build on): five.
+     4cf33e02 (00:29 local, 2026-10-10), 4e670a36 (20:00, 2026-10-15), 977006fa (20:40,
+     2026-10-16), fecab2f7 (22:04) and 5c181256 (00:37, 2026-10-17). Today's bulk reload left
+     with 3c3b1c78, which is counted under 7.8.
+   - Tests (`def test` functions): `tests/test_reload_v2.py` 24 at 4cf33e02 and at 6ce34f13;
+     `tests/test_reload_certificate_storage.py` 15 at 4e670a36; `tests/test_planned_restart_quiet.py`
+     24 at 977006fa, 32 at fecab2f7, 37 at 6ce34f13.
+   - Measured on the host: r6 answered 452 s after the reload (W2); telemetry's no-data cleared
+     within 454 s, the basis of the 1140 s settle margin.
+   - Findings: C881, C941, C1025, C1026, C1027, C1089 and C1109, plus C1088, C1090 and C1091.
+     That is ten for five commits, against section 11's "a finding per commit" for operations
+     made whole.
+   - **Estimate versus actual.**
+     - The build's forecast was 2 to 3 h a blocker. It took about 1 h 40 min (the six blockers
+       entry).
+     - Section 11 forecast about 11 commits an operation, from 7.1. Reload took one commit to
+       build and four to make its real runs right: five.
+     - The findings rate matched the forecast's. They came from the walks, not the build.
+6. **Where it left the product.** A reload on v2 is gated, declared before it acts, silent in
+   Needs attention and Grafana through its window and settle period, found in the restart
+   record, and committed. It was walked twice on r6. C1109's fix awaits its first real reload.
+
 #### 7.3 — Where it stands, 2026-10-16 (not closed)
 
 *Written 2026-10-16 for the burn-down's P7-09, from the plan's section 11, CUTOVER's rows and the
-walk W1's record.* 7.3 does not close yet.
+walk W1's record.* 7.3 does not close yet. **Corrected 2026-10-17:** the sentence below that
+revert and retry have not run on the host is wrong. They ran on v2 on 2026-10-05 and 06
+(docs/THROWAWAY_SESSION.md, Part 6: Retry lifted the block, sending nothing; Revert committed
+93e788b, `Source: revert`). The sentence followed CUTOVER row 52, which still reads "revert and
+retry not yet run"; the burn-down's W4 row reconciles it.
 - **What section 11 listed as left:**
   - Ask the device: built and walked (above).
   - Reload (P.14): built 2026-10-10 as one of the six cutover blockers (7.D, below). In W1 it was
@@ -3407,6 +3531,22 @@ walk W1's record.* 7.3 does not close yet.
   (CUTOVER).
 - **7.3 closes** when W2's reload and W3's adopt, revert and retry have run.
 
+#### 7.3 — Where it stands, 2026-10-17 (not closed)
+
+*Written 2026-10-17 from CUTOVER's rows, docs/walks/W4.md, the burn-down and the register.*
+- **Done since 2026-10-16:**
+  - Reload was walked in W2 and again, quiet, in W3 (the entry above).
+  - C342's Drift row was built from its board (ef1ea30e, 2026-10-16).
+- **Revert and retry:** run on v2 on 2026-10-05 and 06 (the correction above). W4, section L,
+  runs them again on a fresh throwaway, to close CUTOVER row 52 on the same evidence as C148.
+- **Left, all in W4** (its script written 2026-10-17, 6ce34f13; not yet walked):
+  - adopt's first real run (section E, CUTOVER row 59);
+  - C148's acceptance on v2 (sections I to L): onboard, seed, deploy, a deliberate break, its
+    rollback, then retry and revert. C148 is one of the three cutover-blocking rows.
+- C1122 (C), found writing W4: THROWAWAY_SESSION Part 5.3's break no longer breaks since C506.
+  W4 breaks the change a different way.
+- **7.3 closes** when W4's sections E and I to L pass.
+
 ### 7.4 — Devices › Save (C593; the first of 7.4's fleet actions)
 
 1. **What it was.** Today's Devices page offered Save All, a whole-network capture that can earn a baseline. v2 had none (C593, raised by the operator walking C553). Board C ("one Save does both", approved 2026-10-04) made it one operation: each chosen device saves its running config to startup, the startup is read back, and the running config is recorded as its golden, one commit for the batch. Board A gave the Devices page a selection bar whose Actions carry it.
@@ -3417,6 +3557,213 @@ walk W1's record.* 7.3 does not close yet.
 6. **Where it left the product.** Devices › Save replaces today's Save All on v2, and a record without a save is offered only by the device page's Capture. Next are the C553 walk on v2 (the operator's) and the capture C596 needs. 7.4's other rows on board A (Edit intent for N, Apply the profile to N) are not drawn until their operations exist on v2.
 
 **Added 2026-10-09: C601.** The operator found the whole network's Save took no baseline. It committed `Source: save`, and the baseline decision wants one only for `save_all` (or two changed goldens), so the claim in point 1 above was false as built; the tests had asserted the commit and every outcome and never a baseline. Fixed the same day: the whole network saved together is `Source: save_all`, judged by measurement as today's Save All is, and the result card says earned or why not.
+
+### 7.4 — Several devices from the Devices list: Plan a deploy, Change a setting, Adopt (boards B, D and G)
+
+*Written 2026-10-17 from git, CUTOVER's rows 42, 54 and 59, and the register. Built 2026-10-10 in
+four commits within 73 minutes, after the six cutover blockers. Two were walked in W1.
+Adopt's first real run is W4's.*
+
+1. **What it was.** Three of 7.4's rows had no v2 screen. Boards B, D and G were signed off on
+   2026-10-04 (canvas v32):
+   - deploying several ticked devices opened today's wizard (the `deploy_plan` gap);
+   - bulk intent was reached only by curl and `scripts/nmas-bulk-intent`;
+   - adopting a device the tool did not build had a backend (7.3's adopt, steps 1 and 2) and no
+     screen.
+2. **How it was implemented.** Each screen is drawn over a core that already existed:
+   - **Plan a deploy for the ticked devices** [git d8651d0a]: the batch Apply's page gains the
+     scope `intent`, the whole committed intent. There is one rollout order, one confirm bound
+     to every device's capture and command hashes, and the one deploy job, which stops after
+     repeated failures. The Devices selection bar opens it. Mode B removals are not offered in a
+     batch (merge-only, said on the page).
+   - **Change a setting on (N)…** [git 8250677d]: the change is typed as settings (path, holds
+     now, becomes).
+     - The preview leads with counts, draws the refused devices with both operands, and groups
+       the accepted by rendered effect, each device's intent diff inside.
+     - The apply is one commit as a verified person, bound to the preview's hash, and offers
+       Plan a deploy for exactly the changed devices.
+     - `routes/templatize.bulk_plan_of` and `bulk_apply_of` are the one core for the JSON
+       routes and the page.
+   - **Adopt a device…** [git f09ac7c9, 83fbb5ad]:
+     - the preview reads the device over the supplied login and sends nothing;
+     - the confirm is a verified person's, bound to the preview's fingerprint, with the password
+       typed again and never carried from the preview;
+     - `adopt.apply` runs as a job on the one stepper;
+     - the result finishes as board G does: Seed <device>'s intent…, then Export the
+       break-glass record….
+3. **Issues encountered.**
+   - **Found building:**
+     - C643 (A): Adopt's first card ended at "adopted", short of board G's finish.
+     - C644 (A): Help's index still marked thirteen operations built on v2 as today's.
+   - **Found by W1** (2026-10-16, CUTOVER rows 42 and 54):
+     - C883 (B): Plan a deploy said "The batch is running…" before any confirm. A CSS rule
+       overrode `hidden`, and C602's browser test had read the class.
+     - C888 (C): Earlier and Later took about 6 s a press, and the rollout order was in no
+       hash, so a device missing from `order` was silently not deployed.
+     - C905 (R4): a request for drag and drop.
+     - C887 and C891 (C), and C904 (R3): Change a setting should pick its path from a list.
+   - **Found fixing C881 and C886:**
+     - C913 (B): Adopt's persist preview showed C881's false differences on a C8000v.
+     - C923 (B): Adopt's card drew no lines.
+     - C930 (B): Adopt's sentence left out the monitoring profile's lines.
+   [OPEN_FINDINGS, by ID]
+4. **How they were resolved.**
+   - C643 and C644 were fixed the same night (83fbb5ad).
+   - C883, C888 and C905 were fixed together (12a1a310). One global `[hidden]` rule was added.
+     The confirm now refuses any order that is not exactly the confirmed devices, each once,
+     naming both sides, and the order is recorded in the job and the receipts. C883 was
+     confirmed in W2, step 6.
+   - C913 (7cd6b266), and C923 with C930 (f208e393), were fixed before Adopt's walk.
+   - C887, C891 and C904 are kept for after cutover. Two board B deviations are logged in
+     STANDING_APPROVAL_LOG (the order is in no hash; a grip the board does not draw).
+5. **Numbers.**
+   - Commits (rule: the build commits named above and the fixes that name their findings):
+     - the build: four, d8651d0a (00:39 local, UTC−6, 2026-10-10) to 8250677d (01:52), 73
+       minutes of commit time. 8250677d is shared with Templates › Coverage.
+     - the fixes: three more, 12a1a310, 7cd6b266 (shared with C884 to C886) and f208e393, on
+       2026-10-15.
+   - Tests (`def test` functions at the commit): `tests/test_adopt_v2.py` 10 at f09ac7c9 and 11
+     at 6ce34f13; `tests/test_bulk_intent_v2.py` 8 at 8250677d. The batch deploy's tests were
+     added to `tests/test_devices_v2.py`. f09ac7c9's message counts Adopt's as 11, by case.
+   - Walked on the host in W1:
+     - steps 13 to 15: Change a setting on s1 and s2;
+     - steps 13 to 18: one batch deploy to both, Done, verified [CUTOVER rows 42, 54].
+     Adopt has not run on the host.
+   - Findings: C643 and C644 in the build. C883, C887, C888, C891, C904 and C905 from W1. C913,
+     C923 and C930 from later fixes.
+   - **Estimate versus actual.** Section 11 forecast operations made whole on a screen at about
+     11 commits each, from 7.1, and "between half and all" of that because most were whole on
+     the server.
+     - Measured: three operations in four build commits, and seven with the fixes the walk and
+       later builds forced. That is about 2.3 commits an operation, under the forecast's low end
+       of about 5.5.
+     - The forecast's own reason holds: each screen drew a core that already ran. The 7.1
+       multiplier, taken from operations being made whole on the server, overstates screens
+       over finished cores.
+6. **Where it left the product.** Several ticked devices are deployed, changed as settings, or
+   adopted from the Devices list on v2, each through the core today's routes used. Adopt's first
+   real run is W4's (section E).
+
+#### 7.4 — Where it stands, 2026-10-17 (not closed)
+
+*Written 2026-10-17 from section 8's 7.4 row, CUTOVER and the burn-down.* 7.4's row asks for nine
+things. Each is built on v2:
+
+| 7.4's row | Where it is written | Run on the host |
+|---|---|---|
+| The bounded list and selection | 7.D step 4, part one (2026-10-01); the selection bar with Save (C593) | yes |
+| Batch deploy | the entry above; the batch Apply as P.9 (d2) | W1 |
+| Bulk intent | the entry above | W1 |
+| Save All | Devices › Save (C593, C601) | W1 (Save All earned `baseline/20261016T010219Z`, CUTOVER row 44) |
+| Onboard (static, DHCP, ZTP by MAC) | 7.D's six cutover blockers | **no** (CUTOVER row 58: W4, sections C and I) |
+| Adopt | the entry above | **no** (CUTOVER row 59: W4, section E) |
+| Retire | 7.3 | yes (r5, 2026-10-04) |
+| Networks | 7.D's six cutover blockers | W2 (CUTOVER row 62) |
+| The inventory source | 7.D's six cutover blockers | W2 (CUTOVER row 61) |
+
+- The pending device's page and Save's screen go to W4 for their board comparisons (C650; the
+  burn-down).
+- The 900-device screens and the inventory-source switch are 7.10, after cutover (D3).
+- **7.4 closes** when W4 has run onboarding and adopt.
+
+### 7.5 — History: the record, read and acted on in one place
+
+*Written 2026-10-17 from git, CUTOVER, the register and the plan's sections 11 and 13. History's
+parts closed over sixteen days without an entry of their own. Its one timeline (C369, board D)
+and the break-glass record have entries in Part I. Remote set-up has its own entry, below.*
+
+1. **What it was.** Section 8's 7.5 row: commits by actor and source, with how many carry a
+   verified identity and the record's known misstatements drawn beside that claim; baselines
+   with their reasons; re-applying one; the remote. Section 13 (the operator, 2026-10-04) added
+   historical querying, History › Query, with mockups first. Today's Git tab, Baselines and
+   Remote card were to retire behind it (P7-21).
+2. **How it was implemented.**
+   - **The page** [git 984a0d3c, 2026-10-01]:
+     - the remote's one sentence and Verify and Push now, each busy on itself;
+     - Commits from one bounded `git log`, filtered by git, each row saying who, how that was
+       established, and what the commit earned, with a known record exception drawn beside it;
+     - Baselines from the baseline-usability reader, with what each earned or why it was
+       withdrawn.
+   - **Every per-device record** declared and read [git 5f373de4, C359], then one timeline
+     (C369) [git 7acf692e].
+   - **Re-apply a baseline** [git ec1f11b3, 2026-10-10]: the page is the preview, through the one
+     restore plan. The confirm starts a device Restore's job with exactly the devices it
+     confirmed, each computed again.
+   - **Reveal a version** [git 74b50a3d]: drawn unmasked in place for a person, recorded before
+     the text is drawn. Later, one Reveals view for every reveal (C837) [git fcd1e4f6].
+   - **The identity line** [git dbc423cf, ba4c158a, 2026-10-11]: "N of M commits in this window
+     carry a verified identity", counted by each commit's `Actor-Verified` trailer, once per
+     sha, with a filter keeping the others (board HistoryIdentity, under the Phase 7 mode).
+   - **The Authorisations tab removed** [git 19010c2e, C708]: the Oxidized freshness gate it
+     recorded had gone in Phase 3, and no network held a record.
+   - **History › Query** (section 13; C667, steps 5a to 5f, 2026-10-11) [git 67d52bf7, 55793c01,
+     c6725809, 7f56d12b, 2e45ab91, 482ad26d]:
+     - the questions of boards A to C: syslog by device, metrics, CPU and memory, routing
+       neighbour changes, restarts, telemetry rates;
+     - each question's query editable;
+     - saved views with pinning, shared by a network's people.
+     The builders for asking your own came on 2026-10-15: logs (board F3) [git 1665062d] and
+     metrics (board E3) [git cd0d499a].
+   - **Remote set-up** (C631): its own entry, below.
+3. **Issues encountered.** The main ones [OPEN_FINDINGS, by ID]:
+   - The identity line's walk on the host (2026-10-11):
+     - C685 (B): a Save All's commit was counted twice, once for each of its two History events;
+     - C686 (B): three Save All commits of 2026-10-09 read as not verified. Save's job ran on a
+       thread with no identity.
+   - C708: a tab that could only ever say none.
+   - C720: Ask your own did not fit half a screen.
+   - Building F3 and E3: C817 to C822, C825 to C827 (Save refused every logs view, a 500 on a
+     network without Loki, the brand word) and C828 to C831.
+   - C837 (B): reveals were recorded and drawn nowhere.
+   - C944, C945 and C957: History's words when a network has no repository yet.
+   - **From W2**, the operator's B2, B6 and B8:
+     - C1024: read-only operations recorded "unauthenticated";
+     - C1028: a network's History drew another network's records;
+     - C1030: the NetBox import was missing from History.
+4. **How they were resolved.**
+   - C685 was fixed: each commit is counted once. The walk then read 42 commits in 7 days, 38
+     of them verified.
+   - C686 was fixed in `capture_job.start`, which now carries the starting request's identity.
+     The three commits stay as they are, and the line counts them as not verified, which they
+     are.
+   - C708, C720, C817 to C821, C825 to C827, C837, C944, C945 and C957 were fixed.
+   - C1024, C1028 and C1030 were fixed (202ecb26, b9fe9c42, 24bf6922) and walked in W3.
+   - Open: C822 and C828 (B; outside the burn-down's three cutover-blocking rows), and C829 to
+     C831 (C).
+5. **Numbers.**
+   - Commits (rule: the commits named in point 2, Remote set-up's excluded, and the W2 fixes in
+     point 4): 23. They run from 984a0d3c (21:44 local, UTC−6, 2026-10-01) to 24bf6922 (21:01,
+     2026-10-16). c6725809, fcd1e4f6, 202ecb26 and 24bf6922 are shared with other work.
+     **Not recoverable:** the hours. The commits interleave with everything else in those
+     sixteen days.
+   - Tests (`def test` functions):
+     - `tests/test_history_v2.py`: 21 at 984a0d3c, 26 at 6ce34f13;
+     - `tests/test_reapply_v2.py`: 8 at ec1f11b3 (its message counts 11, by case);
+     - `tests/test_golden_reveal_v2.py`: 4 at 74b50a3d;
+     - `tests/test_history_identity.py`: 5 at dbc423cf.
+   - **Walked on the host:**
+     - W1: the reveal (steps 7 and 8, CUTOVER row 46) and Re-apply (steps 40 and 41: all nine
+       devices "already as the baseline holds it", row 45);
+     - W2: saved views (steps 26 to 29, C667 closed), and the remote (rows 49 and 50);
+     - W3: the remote (row 48 closed), and History as the network's own.
+   - Fidelity records exist for History, its Query tab, the metric view and both Ask your own
+     builders. Re-apply's page goes to Stage 7's tail (5e1413d0).
+   - **Estimate versus actual.** Section 11 was written on 2026-10-02, after the page's first
+     commit. It listed two items left for 7.5: C83's subjects and the remote's connect.
+     - The connect took one commit (Remote set-up).
+     - History › Query was required two days later and was never forecast, nor were the v2
+       homes for Re-apply and the reveal.
+     - So most of this entry's work had no forecast to check against.
+6. **Where it left the product.** History is where the record is read (commits with their
+   identity, baselines, reloads, NetBox, Grafana writes, reveals) and where it is acted on
+   (Re-apply, reveal, the remote). Its Query tab answers the questions of section 13 from
+   Prometheus and Loki.
+   - **Left:** section 11's "C83's subjects". The register fixed C83's producers on 2026-09-27.
+     History draws what each commit earned from its tag and decision trailer, not from its
+     subject (984a0d3c). `modules/nsot/record_exceptions.py` lists no C83 entry for the older
+     "golden: baseline" subjects (read 2026-10-17).
+   - Whether that meets the row is not recorded, and no burn-down item carries it. P7-21 removes
+     today's Git tab, Remote card and Baselines.
 
 ### 7.5 — History › Remote set-up… (C631)
 
@@ -3569,6 +3916,14 @@ are a person's, in W2, and four NetBox parts are not built.*
    and the confirms are the operator's (W2). Boards L and M (discovery and serial
    pre-provisioning) and the lease lifetimes (E19) followed as separate items.
 
+**Added 2026-10-17.** The confirms were not in W2 or W3. They are W4's section D, on a test
+subnet. Writing that section found C1121 (B): board C's confirm never carried the pool's
+description, which the preview's hash includes, so every Add or Edit with a description typed
+was refused as "moved since". No route test had posted that confirm.
+- Fixed in 6ce34f13. A test now renders the real confirm form and posts its hidden fields back.
+- The five DHCP test files hold 124 `def test` functions at 6ce34f13, against 95 at 67b9f60.
+- C529 stays open until W4's section D passes.
+
 ### Monitoring on v2 — the fleet page
 
 *Backfilled 2026-10-16 from git, the register and docs/TESTING.md. The page's own commits ran
@@ -3692,6 +4047,195 @@ operator the next day (UTC).*
    Every person may in today's mode, so the refused state is drawn only for an unverified or
    service caller.
 
+### 7.6 — Source of truth: Templates, NetBox and Credentials on v2
+
+*Written 2026-10-17 from git, CUTOVER rows 56, 57 and 60, the register and the fidelity records
+committed in 5e1413d0. Several parts have their own entries: DHCP (above); Templates › Bring in
+the shipped version (Monitoring › Profile); template Edit…, Bindings…, Seed the library… and
+NetBox's import and remove (7.D's six cutover blockers); the break-glass record and P.21 (Part
+I). This entry is the rest, and the row as a whole.*
+
+1. **What it was.** Section 8's 7.6 row covers four things. Its Templates boards A to C were
+   approved on 2026-10-05 (canvas v47).
+   - **Templates:** the approval badge saying what it covers and what it does not, revoke,
+     bindings, coverage and seed status.
+   - **NetBox.**
+   - **Credentials.**
+   - **Freshness authorisations.**
+2. **How it was implemented.**
+   - **Templates A to C** [git 58dee3f7, 2026-10-05]:
+     - one code path, `modules/nsot/approve_op.py`, which today's routes delegate to;
+     - the counts by state, each committed template with its imports, bound devices and
+       approval;
+     - Approve…, which runs the check on every bound device's captured configuration and names
+       every failing line, with the device's own lines apart. Its confirm is bound to the
+       fingerprint and to the check as read.
+     - Revoke… with its reason.
+     - Since then: the table re-reads when anyone approves, revokes, edits or binds, in any tab
+       (C516) [git e76b87ec]. Edit…, Bindings… and Seed the library… (7e6efead, 2e89ffc6), and
+       Coverage, as a job ranking what to model next (8250677d).
+   - **NetBox** [git 65f87c33, 2026-10-09]: import and remove as preview jobs through one core
+     with today's routes (`modules/netbox_ops.py`). The confirm may turn writes on (C619).
+     Then:
+     - Stop tracking instead…, with its own preview and confirm (C954) [git e63dbe57];
+     - Remove offered only over an established reach (C932) [git 24bf6922];
+     - Mercury's prefixes carry their site (C1010) [git 2f5bac88].
+   - **Credentials:**
+     - the break-glass record (board 7) and P.21's expiry and health (Part I);
+     - Profiles [git 3c582e0f, 2026-10-10]: what each name covers in the resolver's order;
+       Add, Edit and Delete, each a verified person's and recorded, never a value;
+     - scheduled rotation per profile (C724) [git 8e8c799d, 2026-10-12], through the Rotate
+       button's own path, one device at a time, never in the backup window.
+   - **Freshness authorisations:** removed, not built. The Oxidized gate they recorded left in
+     Phase 3 (C708, under 7.5).
+3. **Issues encountered.**
+   - C481 (found by the approval build): approval asked the fresh parse for an acknowledgement
+     it never carries, so a device with any unmodelled line failed approval, whatever a person
+     had acknowledged.
+   - C502 and C509: a table's first column, and selects, running past their cards.
+   - C645 (A): v2's Delete network did not name the networks taking their logins from it
+     (found with Profiles).
+   - Writing W2: C933 to C936, NetBox's import count, the write probe's remedy, the removal's
+     choices, and a revoked template's edit.
+   - W2 (the operator's B1 and B9):
+     - C1023: the import showed nothing while it ran, and a second run started;
+     - C932: Remove was offered over a `not_reached` reach.
+   - C1097: Remove from NetBox is never offered on this lab until six types' cascades are
+     measured.
+   - Found removing today's NetBox tab [git f764fafd, 2026-10-17]: C1123 (B), v2's removal
+     result did not show which objects NetBox refused, nor why.
+   [OPEN_FINDINGS, by ID]
+4. **How they were resolved.**
+   - C481 was fixed in `approval.validate_template`, which now reads each device's committed
+     acknowledgement.
+   - Fixed, with their commits:
+     - C502 and C509 (68cefa45);
+     - C516 (e76b87ec) and C645 (3c582e0f);
+     - C932 (24bf6922) and C933 to C936 (7981132c);
+     - C1010 (2f5bac88);
+     - C1023 (cef98d32, every form's submit button) and C1123 (f764fafd, with 7.8's removal).
+   - C1097 was demoted to C by the operator: cutover does not need NetBox Remove, and Stop
+     tracking covers it.
+   - CUTOVER rows 56, 57 and 60 are walked and closed.
+5. **Numbers.**
+   - Commits (rule: the commits named in points 2 and 4, without cef98d32 and f764fafd, which
+     belong to every v2 form and to 7.8): 13. They run from 58dee3f7 (16:02 local, UTC−6,
+     2026-10-05) to 24bf6922 (21:01, 2026-10-16). 7981132c, 8250677d and 24bf6922 are shared.
+     **Not recoverable:** the hours. The commits interleave.
+   - Tests (`def test` functions at the commit):
+     - `tests/test_templates_v2.py`: 12 at 58dee3f7;
+     - `tests/test_template_edit_v2.py` 16, `tests/test_template_bindings_v2.py` 10 and
+       `tests/test_template_seed_v2.py` 5;
+     - `tests/test_netbox_v2.py`: 9 at 65f87c33, 28 at 6ce34f13;
+     - `tests/test_credential_profiles_v2.py`: 10;
+     - `tests/test_scheduled_rotation.py`: 28 at 8e8c799d.
+   - **Walked on the host:**
+     - Templates, W2 steps 38 and 41 to 50: `cisco_ios/base.j2` revoked and approved again;
+       an edit committed, approved, removed and approved back to fingerprint 3036f36bcf76;
+       Bindings… committed and undone; Seed the library… on the walk's network [CUTOVER rows 56,
+       57].
+     - NetBox, W2 steps 16 to 20: create 0, change 13, complete 9 of 9.
+     - NetBox again in W3, steps 13 and 20 to 23: "NetBox already matches", confirmed once
+       05:43:33Z to 05:45:25Z; Remove not offered, in words; Stop tracking previewed and not
+       confirmed [CUTOVER row 60].
+     - Credentials › Profiles was opened in W2's findability questions (question 20). No profile
+       was changed on the host.
+   - Fidelity: Templates 12 same, 8 deviations; NetBox 11 same, 9 deviations [git 5e1413d0].
+   - **Estimate versus actual.** Section 11 split this row across both kinds:
+     - the NetBox, Templates and Credentials views were "read-only screens", at 4 to 8 commits
+       each;
+     - the Source of truth writers were "operations made whole", at about 11 each.
+     - Measured: Templates took seven commits for a view and five operations (approve, revoke,
+       edit, bindings, seed the library), with Coverage. NetBox took four for import, remove and
+       Stop tracking. Profiles took one for three operations, and scheduled rotation one.
+     - Every part fell under its forecast. The findings came mostly from W2 and from writing its
+       script, not from the builds.
+6. **Where it left the product.** Every Source of truth task is on v2: templates approved,
+   revoked, edited, bound, seeded and measured; NetBox imported, removed or stopped tracking;
+   credentials profiled, rotated on a schedule and kept in a break-glass record. Today's NetBox
+   tab left at 7.8 (f764fafd). Only DHCP's confirms (C529, W4) are unwalked.
+
+### 7.7 — Settings: each network's own, and the installation's
+
+*Written 2026-10-17 from git, the register, CUTOVER, and the fidelity record committed in
+5e1413d0. Settings › Installation (boards F2 to F4) has its own entry under 7.D.*
+
+1. **What it was.** Section 8's 7.7 row: the settings split; the settings held only in files,
+   listed; diagnostics. P.8 gave each network its own settings, with Default as the layer the
+   others inherit. Boards A to J were approved on 2026-10-05. Today's Settings modal and status
+   bar were to retire behind it.
+2. **How it was implemented.**
+   - **A network's page** [git 837aa81c, 2026-10-05; P.8 step 7a]:
+     - each card shows every field with where its value came from;
+     - a secret is only "set" or "unset";
+     - each group's three-way choice (inherit, its own, not applicable) is previewed key by key,
+       confirmed against the preview's fingerprint, and recorded with how the actor was
+       verified;
+     - Default's cards count who takes their values.
+   - **A card's Save and Test** [git fda0c4ee, 2026-10-08]:
+     - only changed fields are written;
+     - an empty secret keeps the stored one;
+     - a group the network inherits is refused, naming its state;
+     - the Test draws the service's own answer.
+   - **The installation's settings** (F2 to F4, 2026-10-09; 7.D, below). The settings held only
+     in files are now listed: Access and identity is read-only, with Record this decision;
+     Platforms and roles has a preview, Test and a bound confirm. Diagnostics shows redaction,
+     drift checks, what is in flight, and the app's log.
+   - **The network picker and Delete this network** (board N, 2026-10-10): 7.D's six cutover
+     blockers.
+   - **What the modal's removal carried over** (C811, with 18605333, 2026-10-15):
+     - each card carries what it drew and refuses a field another person moved since, naming
+       both values (R17);
+     - the NetBox Test asks with its own auth scheme (C468);
+     - the top bar's integrations item says "stale" past its promise;
+     - the Monitoring profile card gained its Test.
+3. **Issues encountered.**
+   - C811 (A for its first two parts): found removing today's modal, by rebasing its property
+     tests onto v2.
+   - C664 and C666: Installation's empty rows, and the drift check's Last without its age.
+     C710: card grids not filling the width. C672: SETTINGS.md gave a false reason for keeping a
+     deprecated key.
+   - **From W2** (the operator's A1, B7, and a read):
+     - C1022: a page's network was lost after its first render;
+     - C1029: a deleted network's Settings page stayed live, with Save;
+     - C1074: a read re-created a deleted network's folder.
+   - From F2 to F4: C615 to C628 (the Installation entry).
+   [OPEN_FINDINGS, by ID]
+4. **How they were resolved.**
+   - C811 was fixed with the modal's removal and walked in W2 (section H, steps 30 to 32).
+   - C664, C666, C672 and C710 were fixed (d1d2dec5, f7218646, 065ae214).
+   - C1022 (ed75c7ec), C1029 and C1074 (b9fe9c42) were fixed and walked in W3. A deleted
+     network's Settings now answers 410, saying when, by whom, and where its data is.
+   - Not built: board G's warning on a Default change, drawn as "later" in the fidelity record.
+   - P.8 step 9, folding the per-list files, is after cutover (D3).
+5. **Numbers.**
+   - Commits (rule: the commits named in points 2 and 4, without F2 to F4's seven and without
+     18605333, counted under 7.8): seven. They run from 837aa81c (14:22 local, UTC−6,
+     2026-10-05) to b9fe9c42 (20:52, 2026-10-16). Four are shared with other work:
+     - 837aa81c, with the lab runbook and the throwaway's records;
+     - d1d2dec5, with Topology's card;
+     - ed75c7ec and b9fe9c42, with every v2 page and History.
+     With F2 to F4, 14. **Not recoverable:** the hours.
+   - Tests (`def test` functions): `tests/test_settings_v2.py` 15 at 837aa81c and 25 at
+     6ce34f13; `tests/test_installation_settings.py` 47 (the Installation entry).
+   - **Walked on the host:**
+     - W2, section H: C811's Save from two tabs;
+     - W2, steps 33 to 40: a network created, chosen, its inventory source set and put back,
+       deleted [CUTOVER rows 61, 62];
+     - W3, steps 5, 8 to 15 and 38 to 43: a network's page as its own, and a deleted network
+       read as deleted.
+   - Fidelity: the network page, with the top bar's picker: 9 same, 13 deviations, 1 later.
+     Installation's page goes to Stage 7's tail [git 5e1413d0].
+   - **Estimate versus actual.**
+     - Section 11 named P.8 as "no finished stage of its kind … stated as unknown", so there was
+       no forecast for the network page to check.
+     - Settings as an operation made whole was forecast at about 11 commits. The network page
+       took two (the page, then Save and Test), and the installation's page seven.
+6. **Where it left the product.** Every setting is on v2, a network's own or the installation's,
+   each change previewed or bound to what it drew and recorded. Today's Settings modal and
+   status bar left at 7.8 (2026-10-15). Board G's Default warning and P.8 step 9 are what is left
+   of the row.
+
 ### 7.8 — The removals, 2026-10-11 to 15 (open: today's two pages)
 
 *Backfilled 2026-10-16 from git, CUTOVER's "Removed at 7.8" and the register. 7.8 is open: today's
@@ -3754,6 +4298,24 @@ two pages (`/`, `/device/<ip>`) go last, by rule, once their walks clear (P7-20 
 6. **Where it left the product.** What remains of today's interface is `templates/index.html`
    (its Devices, NetBox and Git tabs), `templates/device.html`, `base.html`, 14 partials and 13
    generated scripts (docs/PHASE7_BURNDOWN.md, "Where it stands").
+
+**Added 2026-10-17: the burn-down's removals begin (7.8 stays open).** The burn-down orders the
+rest as P7-20 to P7-27, each tagged first, walked, its ceilings lowered and the coverage ratchet
+run. As of 5e1413d0:
+- **P7-20 is done** (f764fafd, 01:17 local, UTC−6, 2026-10-17; restore tag
+  `pre-remove/v1-netbox`). Today's NetBox tab went, with `/netbox/status` and all of
+  `routes/netbox_safety.py`. Its v2 home had been walked and closed in W3 (CUTOVER row 60).
+  - Rebasing the tests found C1123 (B): v2's removal result did not say which objects NetBox
+    refused, nor why. Fixed in the same commit. C1124 (C) was opened.
+  - The v1 ceilings fell: controls 43 to 36, handlers 31 to 26, functions 333 to 314, fields 20
+    to 19, templates 17 to 15, scripts 33 to 31.
+- **P7-21** (Git, the Remote card, Baselines): its restore tag `pre-remove/v1-git` is set on
+  f764fafd. It had not been removed when this was written.
+- **P7-22 to P7-27** are open. P7-24 and P7-25 wait on W4. P7-27 (`/`, `index.html`,
+  `base.html`, vendored Bootstrap) is last, and closes criteria 1, 2 and 16.
+
+The forecast check above now reads 36 commits, against "about 35", over 32 removals. 7.8's
+closing entry is owed at P7-27.
 
 ### The Update operation — the app updates itself from v2
 
@@ -3965,6 +4527,68 @@ page drew (docs/PHASE7_BURNDOWN.md section 1c).*
 - **7.D closes** when C650's walked screens are recorded and the remainder is placed in the
   tail. C342's mockup and P.12's go with whichever stage builds them.
 
+#### 7.D — Where it stands, 2026-10-17 (not closed)
+
+*Written 2026-10-17 from `tests/test_board_fidelity.py` as 5e1413d0 left it, the register and the
+burn-down.*
+- **C342's panel is built** (ef1ea30e, 2026-10-16), from board C342Drift, which the agent drew and
+  which counts as signed off under the Phase 7 mode. The line above that its mockup is owed is
+  superseded.
+- **C650: W1 to W3 are recorded.**
+  - W1's twelve screens were recorded on 2026-10-16.
+  - W2 and W3's five were recorded on 2026-10-17 (5e1413d0): NetBox, Templates, a network's
+    Settings, the batch Apply and the device's Logs tab. Their deviations are logged in
+    STANDING_APPROVAL_LOG, and seven new board differences are C1125 (C).
+  - `UNCHECKED` fell from 20 to 15, its ceiling 15. Four are W4's screens: Save, the pending
+    device, a retired device and About.
+  - The other eleven go to Stage 7's tail by the burn-down's rule: Monitoring, Help, the
+    monitoring profile, Coverage and its deploy, Update, Installation, Re-apply, and the
+    device's Monitoring, Neighbours and NetBox tabs.
+- **P.12's mockups** are after cutover (D3).
+- **7.D closes** when W4's four screens are recorded and the eleven are placed in the tail.
+
+#### Stage 7's forecast (section 11, 2026-10-02), checked as far as the record allows
+
+*Written 2026-10-17. Stage 7 has not finished, so this checks a forecast for a stage still
+running. It is not a basis for a new forecast, and none is made here.*
+
+**The forecast.** Section 11 was written at 01859223 (16:27 local, UTC−6, 2026-10-02). It forecast
+the rest of Stage 7, before P.8, by kind:
+- operations made whole on a screen: 100 to 200 commits and 30 to 60 h;
+- read-only screens: 30 to 60 commits and 8 to 16 h;
+- 7.8's removals: about 35 commits for 17;
+- in all, 165 to 295 commits and 90 to 230 findings.
+
+**What happened, in total** [git; OPEN_FINDINGS]:
+- From 01859223 to 6ce34f13 (01:09 local, 2026-10-17), 701 commits landed.
+- The register's highest row went from C344 to C1122, so 778 new C rows.
+- That is 2.4 times the forecast's top for commits, and 3.4 times for findings.
+
+As section 11 said of its own 266, how many of these were Stage 7's is **not recoverable**
+without a classification nobody recorded. The window also holds work the forecast excluded or
+did not know of, each visible in commit subjects: P.8 (excluded by name), section 13's querying
+(required 2026-10-04), Phase 3's Oxidized removal, Phase 4's receipts, mutation testing, Phase 8's
+design, and the walks.
+
+**What happened, by kind**, from the entries above that state a selection rule:
+
+| Kind | Forecast | Measured |
+|---|---|---|
+| Operations made whole | about 11 commits each, at half to all of 7.1's cost | Save 1 (+1 fix); several-device deploy, Change a setting and Adopt 7 for three; the six cutover blockers 10 for six; Remote set-up 1; Monitoring › Profile 7 for two; Reload 5 (1 to build); Templates 7 for five with a view; credential profiles 1 for three. Every one under the low end |
+| Read-only screens | 4 to 8 commits each | fleet Monitoring 6 and Logs 5, inside it. DHCP 13 and Topology 23, about two and three times the top, each having become writes and device reads after the forecast |
+| 7.8's removals | about 35 for 17 | 36 so far for 32 removals, with P7-21 to P7-27 to come |
+| Findings | a finding per commit for operations; one per two for read-only screens | most of these entries' findings came from the walks and from writing their scripts, not from the builds. W1 registered 27 (41c218bf), W2 53 (C1022 to C1074, 0e471e22), W3 12 (C1109 to C1120, 5c181256) |
+
+**What it says.**
+- 7.1's per-operation cost came from operations being made whole on the server. The screens
+  built since drew cores that already ran, so the forecast's "half" was still too high for every
+  operation measured. It ranged from about 1.1 times too high (Reload) to about 16 times
+  (credential profiles).
+- The findings moved from building to the walks. A forecast of build commits would have looked
+  right while the findings, and the fixes they forced, came at the sittings.
+- **Not recoverable:** the hours. No sub-task since 7.2 recorded a start, and the commits
+  interleave.
+
 #### Sources read (P.9 (d), P.11, and the Stage 7 entries backfilled 2026-10-16)
 
 - `git log` subjects and bodies, with each entry's selection rule stated in it. Test counts are
@@ -3984,6 +4608,32 @@ page drew (docs/PHASE7_BURNDOWN.md section 1c).*
 - When the reads engine's build began, before its first commit.
 - Whether and when the fleet dashboard's key was set on the host.
 - Which real run of the Update button first completed an update.
+
+#### Sources read (the entries written 2026-10-17)
+
+- `git log` subjects and bodies to 6ce34f13, and on the main branch to 5e1413d0 (f764fafd,
+  5e1413d0). Each entry states its selection rule.
+- Test counts are `def test` functions at the commit named (`git show <sha>:<path>`). Where a
+  commit message counts by case, the entry says so.
+- docs/CUTOVER.md: rows 42 to 70.
+- docs/OPEN_FINDINGS.md: the rows named, and its Count of 2026-10-17. The highest row number at
+  01859223 and at 6ce34f13 was read from each version's file.
+- docs/walks/W1.md to W4.md, and docs/walks/README.md.
+- docs/THROWAWAY_SESSION.md: the parts table, and Part 6's measurements.
+- docs/PHASE7_BURNDOWN.md: sections 1b and 2. docs/END_OF_SESSION.md, to 2026-10-17.
+- NSOT_STAGE7_PLAN.md: section 8's rows 7.4 to 7.7, and section 11.
+- `tests/test_board_fidelity.py` at 6ce34f13 and as 5e1413d0 describes it.
+- `modules/nsot/record_exceptions.py`.
+- docs/NSOT_WRITEUP_NOTES.md: no section after 2026-10-02, so nothing was drawn from it.
+
+#### Could not recover (the entries written 2026-10-17)
+
+- The hours of 7.5, 7.6 and 7.7, and of Stage 7 since section 11's forecast. No start or stop was
+  recorded, and the commits interleave.
+- How many of the 701 commits and 778 register rows since 01859223 are Stage 7's own.
+- Whether History's drawing of each commit's earned tag meets section 11's "C83's subjects". No
+  decision on it is recorded.
+- Adopt's, onboarding's and C529's confirms on the host: not yet run (W4).
 
 ## Part III. Side campaigns
 
