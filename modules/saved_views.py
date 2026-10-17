@@ -18,6 +18,8 @@ import secrets
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+from modules.identity import UNVERIFIED as _UNVERIFIED
+
 log = logging.getLogger(__name__)
 
 STORE = "saved_views.json"
@@ -118,7 +120,7 @@ def save(list_name: str, title: str, text: str, actor: str) -> dict:
     if error:
         return {"ok": False, "error": error}
     view = {"id": secrets.token_hex(6), "title": title, "address": where,
-            "by": actor or "unauthenticated", "pinned": False,
+            "by": actor or _UNVERIFIED, "pinned": False,
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
     def change(views):
@@ -174,7 +176,7 @@ def _change(list_name: str, actor: str, action: str, view: dict, change) -> dict
     log.info("saved_views: %s %s view %s in %s", actor, action, view["id"], list_name)
     entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "action": action,
              "id": view["id"], "title": full.get("title", ""), "address": full.get("address", ""),
-             "actor": actor or "unauthenticated", "list": list_name}
+             "actor": actor or _UNVERIFIED, "list": list_name}
     out = {"ok": True, "error": "", "view": full, "action": action, "recorded": True,
            "record_error": ""}
     try:

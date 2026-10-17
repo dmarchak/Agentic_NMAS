@@ -604,8 +604,9 @@ def list_name_refusal(list_name: str, lists: dict = None) -> str:
 
 
 @_holding_lists_lock
-def create_device_list(list_name: str) -> tuple[bool, str]:
-    """Create a new device list, its folder derived from its name. Returns (success, message)."""
+def create_device_list(list_name: str, actor: str = "") -> tuple[bool, str]:
+    """Create a new device list, its folder derived from its name. Returns (success, message).
+    *actor* is who its repository's first commit names (B2); empty, `init_repo` resolves it."""
     config = _load_device_lists_config()
     lists  = config.get("lists", {})
     why = list_name_refusal(list_name, lists)
@@ -623,7 +624,7 @@ def create_device_list(list_name: str) -> tuple[bool, str]:
     # read the APPLICATION's status, committed nothing and said the network had every file.
     from modules.nsot.repo import init_repo
     repo = os.path.join(list_dir, "config_repo")
-    init_repo(repo)
+    init_repo(repo, actor=actor)
     if not os.path.isdir(os.path.join(repo, ".git")):
         import shutil
         shutil.rmtree(list_dir, ignore_errors=True)      # this call made it, holding nothing

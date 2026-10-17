@@ -48,7 +48,11 @@ EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
 #: Recorded as the actor when no verified identity accompanied the request.
 #: A NAME, not an empty string: an audit row whose actor is "" reads as a bug,
 #: and the reader cannot tell "nobody was identified" from "we forgot to look".
-UNAUTHENTICATED = "unauthenticated"
+#: "unverified" (B2, W2 2026-10-16), never the "unauthenticated" it was: that word was
+#: recorded for a verified person's own click on every route whose gate did not run, so it
+#: read as a fact about the person when it was a fact about where the code looked. What it
+#: says now is exactly what is known: the request carried no assertion this code verified.
+UNVERIFIED = "unverified"
 
 _jwks_lock = threading.Lock()
 _jwks_client = None
@@ -59,7 +63,7 @@ _jwks_for = ("", 0.0)
 class Identity:
     """The outcome of asking who is making a request."""
 
-    actor: str = UNAUTHENTICATED
+    actor: str = UNVERIFIED
     email: str = ""
     #: ``person`` | ``service`` | ``""``. Cloudflare issues the same *shape* of
     #: assertion for both, so this is derived from the claims — see
@@ -348,7 +352,7 @@ def identify(request) -> Identity:
     if not peer_trusted:
         log.warning("identity: valid %s assertion from an untrusted peer %s",
                     kind, peer)
-        return Identity(actor=UNAUTHENTICATED, email="", kind="", verified=True,
+        return Identity(actor=UNVERIFIED, email="", kind="", verified=True,
                         outcome="untrusted_peer", peer=peer,
                         peer_trusted=False, header_present=True,
                         reason=(f"the assertion is valid but arrived from {peer}, "
@@ -400,22 +404,24 @@ GATED_ACTIONS = ("reveal", "approve", "confirm", "publish_remote",
 def actor_verification(actor: str) -> str:
     """How *actor* on a commit was established (register D10, P.3 step 10).
 
-    - ``access``: inside a request whose gate VERIFIED this same actor;
+    - ``access``: inside a request whose access assertion VERIFIED this same
+      actor (`request_identity()`: the gate's verification, or the same
+      `identify()` made for a route whose gate did not run, B2);
     - ``host-shell``: a CLI on the host, where SSH to the host is the
       authentication (the process never installed the gate);
     - ``none``: anything else, including the app's background threads and a
-      request whose recorded actor is not the one the gate verified.
+      request whose recorded actor is not the one its assertion verified.
 
     Decided by what the code knows at the moment of the commit, never by date:
     the host ran old code after c5a34c1 was pushed, so a commit's date does not
     say which code wrote it.
     """
     try:
-        from flask import g, has_request_context
+        from flask import has_request_context
         if has_request_context():
-            ident = getattr(g, "nmas_identity", None)
-            ok = (ident is not None and ident.is_identified and actor
-                  and actor != UNAUTHENTICATED and ident.actor == actor)
+            ident = request_identity()
+            ok = (ident.is_identified and actor
+                  and actor != UNVERIFIED and ident.actor == actor)
             return "access" if ok else "none"
     except Exception:                                   # noqa: BLE001
         return "none"
@@ -425,7 +431,7 @@ def actor_verification(actor: str) -> str:
     # the gate had verified the person who confirmed it.
     ident = getattr(_CARRIED, "ident", None)
     if ident is not None:
-        ok = (ident.is_identified and actor and actor != UNAUTHENTICATED
+        ok = (ident.is_identified and actor and actor != UNVERIFIED
               and ident.actor == actor)
         return "access" if ok else "none"
     from modules import route_gates
@@ -439,14 +445,14 @@ _CARRIED = _threading.local()
 
 
 def verified_identity():
-    """The identity THIS request's gate verified, to hand to a job it starts,
-    or None. Only a request can produce one: outside a request there is
-    nothing verified to carry."""
+    """The identity THIS request's assertion verified (`request_identity()`, whatever its
+    gate), to hand to a job it starts, or None. Only a request can produce one: outside a
+    request there is nothing verified to carry."""
     try:
-        from flask import g, has_request_context
+        from flask import has_request_context
         if has_request_context():
-            ident = getattr(g, "nmas_identity", None)
-            return ident if ident is not None and ident.is_identified else None
+            ident = request_identity()
+            return ident if ident.is_identified else None
     except Exception:                                   # noqa: BLE001
         return None
     return None
@@ -469,8 +475,8 @@ def carried(ident):
 def viewer(request=None) -> "Identity":
     """Who is LOOKING at this request's page or fragment: the identity to draw.
 
-    `request_actor()` answers only inside a gated request, because the gate is
-    what puts the verified identity on ``flask.g``, and a GET page is never
+    `request_actor()` answered only inside a gated request (until B2), because the gate
+    is what puts the verified identity on ``flask.g``, and a GET page is never
     gated. So the redesign's first page drew every person as
     ``unauthenticated`` while today's pages, which ask ``/identity/status``,
     drew them correctly (the operator, 2026-09-30). This is the same
@@ -496,24 +502,67 @@ def viewer(request=None) -> "Identity":
         return Identity(outcome="error", reason="the identity could not be resolved")
 
 
+def request_identity() -> "Identity":
+    """The identity the current request's access assertion establishes, WHATEVER its gate:
+    the gate's own verification when it ran (``flask.g.nmas_identity``), else the same
+    `identify()` made once for this request (`viewer()`). The one answer every recorder
+    reads: `request_actor()`, `actor_verification()` and `verified_identity()`.
+
+    B2 (W2, 2026-10-16): these three read only ``flask.g.nmas_identity``, which the gate
+    sets only for a gated kind (`route_gates.enforce`, which returns before it for
+    ``not_device``). A verified person's NetBox import preview, Verify the remote and every
+    other ungated route that records therefore recorded ``unauthenticated``. A gate of N
+    means no person is REQUIRED, never that none is NAMED. This verifies; it authorises
+    nothing: whether a gated request may proceed is still `require()`'s, in the gate."""
+    return viewer()
+
+
 def request_actor() -> str:
     """The VERIFIED actor of the current request, never one the client named.
 
     The gate (`route_gates.enforce`) puts the identity it verified on
     ``flask.g``. Fourteen routes used to record ``data.get("actor", "user")``,
     a name the client typed, beside a gate that had just verified a different
-    one; the audit then says whatever the request body said. Outside a gated
-    request this answers ``unauthenticated``, which is what it was.
+    one; the audit then says whatever the request body said. Read through
+    `request_identity()`, so a route whose gate did not run (a preview, a read)
+    names its verified person too (B2). A request whose assertion was not
+    verified answers `UNVERIFIED`, which is what it was.
+
+    Outside a request, a job a verified request started (`carried()`) answers that
+    request's person; anything else answers `UNVERIFIED`. A caller outside any request
+    that records names itself (`recorded_actor`).
     """
     try:
-        from flask import g, has_request_context
+        from flask import has_request_context
         if has_request_context():
-            ident = getattr(g, "nmas_identity", None)
-            if ident is not None and ident.is_identified:
-                return ident.actor
+            ident = request_identity()
+            return ident.actor if ident.is_identified else UNVERIFIED
     except Exception:                                   # noqa: BLE001
-        pass
-    return UNAUTHENTICATED
+        return UNVERIFIED
+    ident = getattr(_CARRIED, "ident", None)
+    if ident is not None and ident.is_identified:
+        return ident.actor
+    return UNVERIFIED
+
+
+#: How Mercury names itself as the actor of what it does with nobody's request behind it.
+MERCURY_ACTOR = "Mercury: {job}"
+
+
+def recorded_actor(job: str) -> str:
+    """Who a record names, wherever it is made: inside a request, `request_actor()` (its
+    verified person or service, or `UNVERIFIED`); in a job a verified request started, that
+    person; with neither, Mercury itself, naming *job* ("Mercury: repository init"). Never
+    "unauthenticated" or an empty actor for something somebody did (B2)."""
+    try:
+        from flask import has_request_context
+        in_request = has_request_context()
+    except Exception:                                   # noqa: BLE001
+        in_request = False
+    carried_ident = getattr(_CARRIED, "ident", None)
+    if in_request or (carried_ident is not None and carried_ident.is_identified):
+        return request_actor()
+    return MERCURY_ACTOR.format(job=job)
 
 
 def may(ident: "Identity", action: str, operation: str = "") -> tuple:

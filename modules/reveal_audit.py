@@ -22,6 +22,8 @@ import os
 import threading
 import time
 
+from modules.identity import UNVERIFIED as _UNVERIFIED
+
 log = logging.getLogger(__name__)
 
 _lock = threading.Lock()
@@ -42,7 +44,7 @@ def record(*, actor: str, kind: str, what: str, target: str, detail: str = "",
     """
     entry = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "actor": actor or "unauthenticated",
+        "actor": actor or _UNVERIFIED,
         "kind": kind or "",          # person | service
         "what": what,                # e.g. "golden_config"
         "target": target,            # e.g. "r1"

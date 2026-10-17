@@ -55,7 +55,7 @@ def create(name: str, fingerprint: str, actor: str, verified: str) -> dict:
     if fingerprint != pv["fingerprint"]:
         raise Refused(f"the preview is out of date (preview {fingerprint}, now "
                       f"{pv['fingerprint']}): preview again")
-    ok, msg = device.create_device_list(pv["name"])                           # create
+    ok, msg = device.create_device_list(pv["name"], actor=actor)              # create
     if not ok:
         raise Refused(msg)
     entry = IS._record({"kind": "network_create", "actor": actor, "actor_verified": verified,

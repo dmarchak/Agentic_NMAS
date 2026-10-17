@@ -393,12 +393,15 @@ class TestTheActorIsTheVerifiedOne:
                                    verified=True, outcome="ok",
                                    peer_trusted=True)
         with _app().test_request_context("/"):
-            assert identity.request_actor() == identity.UNAUTHENTICATED
-            g.nmas_identity = identity.Identity()          # not verified
-            assert identity.request_actor() == identity.UNAUTHENTICATED
+            # No gate ran: the request's own verification (B2), the harness's person.
+            from tests.conftest import TEST_PERSON
+            assert identity.request_actor() == TEST_PERSON
+        with _app().test_request_context("/"):
+            g.nmas_identity = identity.Identity()          # the gate's: not verified
+            assert identity.request_actor() == identity.UNVERIFIED
             g.nmas_identity = person
             assert identity.request_actor() == "p@example.invalid"
-        assert identity.request_actor() == identity.UNAUTHENTICATED
+        assert identity.request_actor() == identity.UNVERIFIED
 
     def test_a_gated_request_puts_the_person_on_g(self, monkeypatch):
         from flask import g

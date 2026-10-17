@@ -209,7 +209,7 @@ def who(owner: str, ip: str) -> str:
     try:
         from modules import identity
         actor = identity.request_actor()
-        if actor and actor != identity.UNAUTHENTICATED:
+        if actor and actor != identity.UNVERIFIED:
             return f"{actor} ({owner})"
     except Exception:                     # noqa: BLE001
         pass

@@ -104,7 +104,7 @@ class TestTheEmailHeaderIsNotEvidence:
         ident = identity.identify(_Req(email_header="forged@example.com"))
 
         assert ident.verified is False
-        assert ident.actor == identity.UNAUTHENTICATED
+        assert ident.actor == identity.UNVERIFIED
         assert ident.email == ""
         assert ident.outcome == "no_header"
 
@@ -195,7 +195,7 @@ class TestThePeerCheckIsIndependent:
         assert ident.verified is True          # the token really is valid
         assert ident.peer_trusted is False
         assert ident.is_identified is False    # but nobody is identified
-        assert ident.actor == identity.UNAUTHENTICATED
+        assert ident.actor == identity.UNVERIFIED
         assert ident.outcome == "untrusted_peer"
         assert "replayed" in ident.reason
 
@@ -296,7 +296,7 @@ class TestFailClosedAndHonestMessages:
         ident, refusal = identity.require(_Req(), action="reveal")
         assert refusal is not None
         assert refusal["requires_identity"] is True
-        assert ident.actor == identity.UNAUTHENTICATED
+        assert ident.actor == identity.UNVERIFIED
 
     def test_reveal_proceeds_with_a_verified_identity(self, configured, keys):
         private, _ = keys
@@ -324,7 +324,7 @@ class TestFailClosedAndHonestMessages:
         monkeypatch.setattr(identity, "_setting", lambda key, default=None: default)
         ident = identity.identify(_Req(token="anything"))
         assert ident.outcome == "not_configured"
-        assert ident.actor == identity.UNAUTHENTICATED
+        assert ident.actor == identity.UNVERIFIED
 
 
 class TestNothingLogsAValue:
@@ -353,8 +353,9 @@ class TestNothingLogsAValue:
         assert row["kind"] == "person"
 
     def test_the_unidentified_actor_has_a_name(self):
-        """An audit row with actor "" reads as a bug, not as an absence."""
-        assert identity.UNAUTHENTICATED == "unauthenticated"
+        """An audit row with actor "" reads as a bug, not as an absence. "unverified", never
+        "unauthenticated" (B2): it says what is known, that no assertion was verified."""
+        assert identity.UNVERIFIED == "unverified"
 
 
 class TestTheOutcomeNamesTheRightCause:
@@ -428,7 +429,7 @@ class TestTheStatusRoute:
         assert body["verified"] is False
         assert body["is_identified"] is False
         assert body["email"] == ""
-        assert body["actor"] == identity.UNAUTHENTICATED
+        assert body["actor"] == identity.UNVERIFIED
 
     def test_a_verified_request_reports_the_email_to_the_requester(self, client, keys):
         private, _ = keys

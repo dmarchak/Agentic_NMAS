@@ -717,8 +717,9 @@ and others have left since too.
   provenance in a row unless it changes what the person should do (the cause and duration
   on hover and in the record), words only for a refusal, a failure or a late answer.
   Every v2 page and fragment draws the viewer through `identity.viewer()`, the same
-  `identify()` as `/identity/status`; never `request_actor()`, which answers only inside a
-  gated request (C233). **Step 4 began the same day** in **[routes/v2.py](routes/v2.py)**: the
+  `identify()` as `/identity/status` (C233: `request_actor()` then answered only inside a
+  gated request; since B2 it reads the same verification, `identity.request_identity()`, so
+  every route that records names its verified person whatever its gate). **Step 4 began the same day** in **[routes/v2.py](routes/v2.py)**: the
   landing page (`/v2/`, Needs attention drawn from `attention.needs_attention()`, masked as
   `/attention` masks it, with its evidence one level down and the recent deploys and restores)
   and Help > About (`/v2/help/about`: the running commit, its CI verdict, whether it is what

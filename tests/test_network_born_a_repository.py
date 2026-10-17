@@ -120,7 +120,7 @@ class TestANetworkIsBornARepository:
     def test_a_repository_git_could_not_make_refuses_the_network(self, store, monkeypatch):
         """No network without its repository: the folder this call made is removed (so the
         name stays free, C639) and nothing is registered."""
-        monkeypatch.setattr("modules.nsot.repo.init_repo", lambda repo: True)
+        monkeypatch.setattr("modules.nsot.repo.init_repo", lambda repo, actor="": True)
         c = store["client"]
         pv = _flat(c.post("/v2/settings/networks/new/preview", data={"name": "Site East"},
                           headers={"HX-Request": "true"}))

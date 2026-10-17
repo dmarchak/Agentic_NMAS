@@ -61,9 +61,9 @@ class TestTheVerdict:
     def test_an_unverified_request_is_none(self):
         with Flask(__name__).test_request_context("/"):
             assert identity.actor_verification("unauthenticated") == "none"
-            g.nmas_identity = Identity(actor=identity.UNAUTHENTICATED, email="",
+            g.nmas_identity = Identity(actor=identity.UNVERIFIED, email="",
                                        kind="", verified=True)
-            assert identity.actor_verification(identity.UNAUTHENTICATED) == "none"
+            assert identity.actor_verification(identity.UNVERIFIED) == "none"
 
     def test_a_cli_is_host_shell(self, cli):
         assert identity.actor_verification("operator") == "host-shell"

@@ -241,6 +241,34 @@ class TestAnInterruptedOperationIsKeptAndSaid:
         finally:
             ops.release(LIST, "r3")
 
+    def test_a_record_left_in_the_lock_file_is_kept_by_the_next_hold(self, ops):
+        """In one process: the record a dead holder leaves is planted in the lock file, as
+        its exit leaves it, and the next hold keeps it before overwriting it. The spawning
+        test above measures the real death; this one reaches the keeping on its own, never
+        through what an earlier test in the worker left."""
+        from modules import config
+
+        path = ops._path(LIST, "r2")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        left = {"device": "r2", "operation": "deploy", "actor": "gone@example.invalid",
+                "started": 1700000000.0, "pid": 999999999, "progress": {"step": "push"}}
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(left))
+        ops.acquire(LIST, "r2", "capture", "next@example.invalid")
+        try:
+            log = os.path.join(config.DATA_DIR, "device_ops", LIST.lower(),
+                               ops.INTERRUPTED_LOG)
+            assert os.path.exists(log), "the next hold kept nothing"
+            kept = [json.loads(l) for l in open(log, encoding="utf-8")]
+            mine = [k for k in kept if k["record"].get("pid") == 999999999]
+            assert len(mine) == 1
+            assert mine[0]["record"]["actor"] == "gone@example.invalid"
+            assert mine[0]["found_by"] == {"operation": "capture",
+                                           "actor": "next@example.invalid"}
+            assert stat.S_IMODE(os.stat(log).st_mode) == 0o600
+        finally:
+            ops.release(LIST, "r2")
+
     def test_a_released_hold_is_not_an_interruption(self, ops):
         ops.acquire(LIST, "r1", "deploy", "a@example.invalid")
         ops.release(LIST, "r1")

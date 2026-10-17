@@ -42,9 +42,10 @@ socket peer it arrived from.
 | `REQUIRED_ACCESS_VALUES`, `missing_access_values()`, `is_configured()` | All three of team, AUD and peers must be set, or every request is `not_configured`, naming what is unset. |
 | `Identity` | `actor`, `email`, `kind` (person or service), `service_id`, `verified`, `outcome`, `reason`, `peer`, `peer_trusted`; `is_identified` = verified AND peer trusted; `audit()` for a record. |
 | `may(ident, action, operation)`, `require(request, action, operation)` | The two gates: `require_identity_for_<action>` and `require_person_for_<action>` (both default True), with `service_may()` reading `service_allowed_operations`. |
-| `request_actor()` | The gate-verified actor on `flask.g`, else `unauthenticated`. |
+| `request_identity()`, `request_actor()` | The request's verified identity whatever its gate (B2): the gate's on `flask.g` when it ran, else `viewer()`'s one `identify()`; the actor is its person or service, else `unverified`. Outside a request, a carried job's person, else `unverified`. |
+| `recorded_actor(job)` | `request_actor()` in a request or a carried job; with nobody's request behind it, `Mercury: <job>` (a repository's first commit). |
 | `viewer(request)` | Who is LOOKING (a GET is never gated): the gate's identity, else one `identify()` per request kept on `flask.g`. Draws; authorises nothing. |
-| `actor_verification(actor)` | The value of the `Actor-Verified:` trailer: `access` when a gate verified this same actor in this request (or a job carried it), `host-shell` for a CLI on the host (the gate was never installed), `none` otherwise. |
+| `actor_verification(actor)` | The value of the `Actor-Verified:` trailer: `access` when this request's assertion verified this same actor, gated or not (or a job carried it), `host-shell` for a CLI on the host (the gate was never installed), `none` otherwise. |
 | `verified_identity()`, `carried(ident)` | Carry a request's verified identity into a job's thread, so the job's commits read `access`. |
 | `service_label()`, `posture()`, `_setting_origin()` | The audit's label for a service token; the Security posture panel (every gate, its value and where it came from). |
 

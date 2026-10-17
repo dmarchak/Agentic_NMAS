@@ -409,15 +409,24 @@ def unstage(repo: str, paths: list) -> None:
         git(repo, "reset", "-q", "--", *[_rel(p) for p in paths])
 
 
-def init_repo(repo: str) -> bool:
+def init_repo(repo: str, actor: str = "") -> bool:
     """Create the repo and its NSoT layout. Idempotent. Under the repository lock (it
-    commits; re-entrant, so a caller already holding it holds it still)."""
+    commits; re-entrant, so a caller already holding it holds it still).
+
+    The first commit names who made the repository (B2, W2 2026-10-16: a network created on
+    v2 had a first commit reading "nobody recorded"): *actor* when the caller knows it (Create
+    passes the person it verified), else `identity.recorded_actor`: the request's verified
+    person, or Mercury naming what it was doing."""
     os.makedirs(repo, exist_ok=True)
     with repo_lock(repo):
-        return _init_repo_locked(repo)
+        return _init_repo_locked(repo, actor)
 
 
-def _init_repo_locked(repo: str) -> bool:
+#: The first commit's subject; its trailers name who and what (`init_repo`).
+INIT_SUBJECT = "Initialize NSoT configuration repository"
+
+
+def _init_repo_locked(repo: str, actor: str = "") -> bool:
     if not os.path.isdir(os.path.join(repo, ".git")):
         rc, _, _ = git(repo, "init", "-b", "main")
         if rc != 0:
@@ -440,9 +449,11 @@ def _init_repo_locked(repo: str) -> bool:
     rc, out, _ = git(repo, "rev-parse", "--verify", "HEAD")
     if rc != 0:
         git(repo, "add", ".gitattributes", ".gitignore")
+        from modules import identity
+        who = (actor or "").strip() or identity.recorded_actor("repository init")
         # Not published here: init_repo runs only on a write path, whose own
         # commit follows and pushes the branch, carrying this one with it.
-        commit(repo, "Initialize NSoT configuration repository", allow_empty=True,
+        commit(repo, f"{INIT_SUBJECT}\n\nActor: {who}\nSource: init\n", allow_empty=True,
                publish_now=False)
         return True
 

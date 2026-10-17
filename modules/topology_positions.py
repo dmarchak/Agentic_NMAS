@@ -19,6 +19,8 @@ import math
 import os
 import time
 
+from modules.identity import UNVERIFIED as _UNVERIFIED
+
 log = logging.getLogger(__name__)
 
 #: Its own names: today's (v1) Topology page keeps ITS layout as `topology_positions.json` in
@@ -130,12 +132,12 @@ def _change(list_name: str, positions, actor: str, action: str, moved: str = "")
             os.remove(path)
         else:
             filestore.write_atomic(path, json.dumps(
-                {"positions": positions, "by": actor or "unauthenticated", "at": at},
+                {"positions": positions, "by": actor or _UNVERIFIED, "at": at},
                 indent=1, sort_keys=True))
     log.info("topology_positions: %s %s %s (%s places)", actor, action, list_name,
              len(positions or {}))
     entry = {"at": at, "action": action, "places": len(positions or {}),
-             "actor": actor or "unauthenticated", "list": list_name}
+             "actor": actor or _UNVERIFIED, "list": list_name}
     if moved:
         entry["device"] = moved
         entry["to"] = (positions or {}).get(moved)

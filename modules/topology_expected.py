@@ -14,6 +14,8 @@ import logging
 import os
 import time
 
+from modules.identity import UNVERIFIED as _UNVERIFIED
+
 log = logging.getLogger(__name__)
 
 STORE = "topology_expected.json"
@@ -78,13 +80,13 @@ def _change(list_name: str, device: str, actor: str, reason) -> dict:
                                               "withdraw"}
             islands.pop(device)
         else:
-            islands[device] = {"reason": reason, "by": actor or "unauthenticated",
+            islands[device] = {"reason": reason, "by": actor or _UNVERIFIED,
                                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
         filestore.write_atomic(path, json.dumps({"islands": islands}, indent=1, sort_keys=True))
     action = "withdrew" if reason is None else "declared"
     log.info("topology_expected: %s %s %s in %s", actor, action, device, list_name)
     entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "action": action,
-             "device": device, "reason": reason or "", "actor": actor or "unauthenticated",
+             "device": device, "reason": reason or "", "actor": actor or _UNVERIFIED,
              "list": list_name}
     try:
         with open(os.path.join(os.path.dirname(path), LOG), "a", encoding="utf-8") as fh:

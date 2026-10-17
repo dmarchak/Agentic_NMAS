@@ -164,15 +164,26 @@ def start_preview(operation: str, list_name: str, actor: str, confirm: dict) -> 
     return job_id
 
 
+def _confirmed(job: dict, actor: str) -> dict:
+    """The job's record from its confirm on: ``actor`` is who CONFIRMED (the gate verified
+    them), the preview's kept as ``previewed_by``. B2 (W2, 2026-10-16): the confirm carried
+    the preview's record forward whole, so all 8 job records of the sitting, the import
+    d0d4031f77 among them, named the preview's actor ("unauthenticated") though every write
+    the import made named the person."""
+    return dict(job, actor=actor, previewed_by=job.get("actor", ""))
+
+
 def start_import(job_id: str, data: dict, actor: str) -> dict:
     """Confirm the previewed import *job_id* and start it; its stored state. Raises
     `netbox_ops.Refused`."""
     from modules import netbox_ops, op_progress
 
-    job = read(job_id)
-    if job.get("state") != "previewed" or job.get("operation") not in ("import", "import_all"):
+    previewed = read(job_id)
+    if previewed.get("state") != "previewed" or previewed.get("operation") not in (
+            "import", "import_all"):
         raise netbox_ops.Refused({"ok": False, "error": "that preview is not one ready to "
                                   "confirm: preview again"}, 409)
+    job = _confirmed(previewed, actor)
     operation, list_name = job["operation"], job["list"]
     op_progress.start(job_id, "re-checked, then imported",
                       f"NetBox ({'every network' if operation == 'import_all' else list_name})",
@@ -199,7 +210,7 @@ def start_import(job_id: str, data: dict, actor: str) -> dict:
                                 netbox_ops.ALL_LISTS, payload, actor, progress_id=job_id,
                                 where="v2's NetBox page", on_end=on_end)
     except netbox_ops.Refused:
-        _write(job_id, job)
+        _write(job_id, previewed)                    # the preview back, as it was
         raise
     return read(job_id)
 
@@ -218,7 +229,8 @@ def remove(job_id: str, data: dict, actor: str) -> dict:
                                where="v2's NetBox page")
     status = netbox_guard.record_removal(job["list"], actor, result)
     drawn = netbox_removal_result(status["row"], status)
-    _write(job_id, dict(job, state="imported" if result.get("ok") else "failed", token="",
+    _write(job_id, dict(_confirmed(job, actor), state="imported" if result.get("ok") else
+                        "failed", token="",
                         removal=drawn))
     _announce()
     return read(job_id)
@@ -239,7 +251,8 @@ def forget(job_id: str, data: dict, actor: str) -> dict:
     result = netbox_ops.forget(job["list"], dict(data, token=job.get("token", "")), actor)
     status = netbox_guard.record_removal(job["list"], actor, result, forget_only=True)
     drawn = netbox_removal_result(status["row"], status)
-    _write(job_id, dict(job, state="imported" if result.get("ok") else "failed", token="",
+    _write(job_id, dict(_confirmed(job, actor), state="imported" if result.get("ok") else
+                        "failed", token="",
                         removal=drawn))
     _announce()
     return read(job_id)

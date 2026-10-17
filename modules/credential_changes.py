@@ -15,6 +15,8 @@ import os
 import threading
 import time
 
+from modules.identity import UNVERIFIED as _UNVERIFIED
+
 log = logging.getLogger(__name__)
 
 LOG = "credential_changes.jsonl"
@@ -36,7 +38,7 @@ def record(*, action: str, profile: str, fields: list, actor: str, verified: str
     rotation policy set (action ``rotation_policy``, C724), in words; never a value."""
     entry = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "action": action,
              "profile": profile, "fields": [f for f in FIELDS if f in (fields or [])],
-             "actor": actor or "unauthenticated", "verified": verified}
+             "actor": actor or _UNVERIFIED, "verified": verified}
     if policy:
         entry["policy"] = policy
     try:

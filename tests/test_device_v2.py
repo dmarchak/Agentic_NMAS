@@ -833,16 +833,18 @@ class TestTheViewerIsTheVerifiedIdentity:
         html = self._ask(lab, "/v2/who", _assertion(signing_key), peer="192.0.2.99")
         assert 'data-identified="no"' in html and "operator@example.com" not in html
 
-    def test_the_old_path_would_have_drawn_unauthenticated(self, lab, access, signing_key):
-        """The control: on the same verified request, `request_actor()` still
-        answers `unauthenticated`, which is exactly what the chip showed."""
+    def test_the_recorded_actor_agrees_with_the_viewer_on_an_ungated_request(
+            self, lab, access, signing_key):
+        """`request_actor()` answered `unauthenticated` here, on the same verified request,
+        which is exactly what the chip showed (C233) and what every ungated route recorded
+        (B2, W2 2026-10-16). It now reads the same verification the viewer draws."""
         import app as A
         from modules import identity
 
         with A.app.test_request_context("/v2/who", headers={
                 "Cf-Access-Jwt-Assertion": _assertion(signing_key)},
                 environ_base={"REMOTE_ADDR": TUNNEL}):
-            assert identity.request_actor() == identity.UNAUTHENTICATED
+            assert identity.request_actor() == "operator@example.com"
             assert identity.viewer().actor == "operator@example.com"
 
     def test_no_v2_route_reads_the_gate_only_actor(self):
