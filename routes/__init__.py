@@ -38,6 +38,12 @@ def register_blueprints(app) -> list:
     from routes import list_param
     list_param.install(app)
 
+    # Every request a v2 page makes after its first render names the network the page was
+    # drawn for (W2's A1): written into its HTML as it leaves, in one place. Outside the try:
+    # without it a page's redraws and buttons follow the person's stored choice instead.
+    from routes import page_network
+    page_network.install(app)
+
     # Every mutating route's response names the data it changed, so the
     # panels showing that data re-fetch (Stage 7.0, NSOT_STAGE7_GUI 6b).
     from modules import invalidation

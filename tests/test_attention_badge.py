@@ -81,7 +81,7 @@ class TestOneCount:
 class TestItKeepsListening:
     def test_the_fragment_is_the_whole_badge_with_its_listener_and_no_load(self, state):
         html = _client().get("/v2/attention-count").get_data(as_text=True)
-        assert 'id="attention-count"' in html and 'hx-get="/v2/attention-count"' in html
+        assert 'id="attention-count"' in html and 'hx-get="/v2/attention-count?list=Default"' in html
         trigger = re.search(r'hx-trigger="([^"]*)"', html).group(1)
         assert "load" not in trigger                 # a response never re-loads itself
         for key in attention.ATTENTION_KEYS + (attention.DUE_EVENT,):

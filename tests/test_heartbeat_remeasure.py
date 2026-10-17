@@ -155,7 +155,7 @@ class TestThePage:
         # Never a tab (the operator, 2026-10-02): the page belongs to the
         # heartbeat check's Needs attention row, its one way in.
         assert 'class="tabs"' not in page and 'aria-label="Monitoring"' not in page
-        assert re.search(r'class="nav-item active" href="/v2/"', page), \
+        assert re.search(r'class="nav-item active" href="/v2/\?list=Default"', page), \
             "drawn under Needs attention, where it is reached"
 
     def test_after_the_confirm_the_page_names_the_host_step_with_real_values(self, lab):

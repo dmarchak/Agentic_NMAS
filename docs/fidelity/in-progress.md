@@ -15,8 +15,14 @@ the boards' rotation and deploy, so one row runs and one finishes; the chip at i
 running, one failed, one done) is measured beside every other item of the bar at 320 to 1280 px
 by tests/test_v2_layout_in_a_browser.py (`test_the_in_progress_chip_fits_and_its_list_opens_on_the_screen`).
 Compared 2026-10-16.
+Compared again 2026-10-16 for W2's A1, by reading `base.html`'s change against the regions
+below, not from new shots: the top bar's network label is now its own element
+(`templates/v2/_network_label.html`, the same `<strong>` and the same words; it reads
+**deleted** in the warning colour once the page's network is deleted), and the picker's request
+also sends the network the label names. No region of the chip, its list or the bar's layout
+moves, so every verdict below stands; the picker at phone width (B5) is still unchanged.
 Templates compared: templates/v2/_in_progress.html, templates/v2/base.html
-Templates sha256: `0ce6a41bdebd944b5ae7d222bb3056a3bd741d8a27e9f551a1c5d0dfcf26208e`
+Templates sha256: `159d6c7695fea332a950e714239459271f4795d689d801dc1d8a1dd7b805a088`
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).

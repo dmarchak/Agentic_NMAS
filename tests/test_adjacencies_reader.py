@@ -213,7 +213,7 @@ class TestDrawn:
                             lambda list_name, device="", limit=50: {"state": "absent", "rows": []})
         html = _client().get("/v2/").get_data(as_text=True)
         assert "OSPF between r3 and r4 is not up" in html
-        assert '<a class="btn btn-small btn-outline" href="/v2/device/r3?tab=neighbours">Open…</a>' in html
+        assert '<a class="btn btn-small btn-outline" href="/v2/device/r3?tab=neighbours&amp;list=Default">Open…</a>' in html
 
     def test_todays_renderer_draws_the_link_and_only_to_v2(self):
         import json as _json

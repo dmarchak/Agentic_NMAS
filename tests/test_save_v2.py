@@ -549,13 +549,13 @@ class TestTheDevicesPage:
         html = lab["client"].get("/v2/devices").get_data(as_text=True)
         bar = html[html.index('id="dev-bar"'):html.index('class="table-wrap"')]
         assert 'x-data="deviceSelect"' in html
-        assert 'formaction="/v2/devices/save"' in bar and 'data-op="save"' in bar
+        assert 'formaction="/v2/devices/save?list=Lab"' in bar and 'data-op="save"' in bar
         assert 'x-bind:disabled="nonePicked"' in bar
         assert 'href="/v2/devices/save?list=Lab&amp;all=1"' in bar
         assert "Save every device of Lab (4)" in bar
         # The deploy is on v2 since 2026-10-10 (board B): the bar's form opens it.
         assert "Plan a deploy for the ticked devices…" in bar and "today" not in bar
-        assert 'action="/v2/devices/deploy"' in html
+        assert 'action="/v2/devices/deploy?list=Lab"' in html
 
     def test_the_startup_column_says_what_the_check_compares(self, lab, monkeypatch):
         from modules.nsot import listref
@@ -565,7 +565,7 @@ class TestTheDevicesPage:
                               "detail": "the startup config does not carry username nmas"},
                              {"list": "Lab", "device": "r3", "state": "persisted"}])
         html = lab["client"].get("/v2/devices").get_data(as_text=True)
-        cells = dict(re.findall(r'<a href="/v2/device/(\w+)">.*?data-label="Startup:">(.*?)</td>',
+        cells = dict(re.findall(r'<a href="/v2/device/(\w+)\?list=Lab">.*?data-label="Startup:">(.*?)</td>',
                                 html, re.S))
         assert "accounts not saved" in cells["r2"] and "does not carry username nmas" in cells["r2"]
         assert "accounts saved" in cells["r3"] and "it compares accounts only" in cells["r3"]

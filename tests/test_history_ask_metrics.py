@@ -528,7 +528,7 @@ class TestThePage:
         html = _page(web, **BOARD)
         assert "/v2/history/query/metric/ask?" in html and "lang=promql" in html
         code = web.get("/v2/history/query/metric/ask?list=Lab&lang=promql").get_data(as_text=True)
-        assert 'href="/v2/history/query/ask/metrics"' in code and "lq-later" not in code
+        assert 'href="/v2/history/query/ask/metrics?list=Lab"' in code and "lq-later" not in code
 
     def test_the_server_reads_nothing_the_page_cannot_send(self, web):
         """Every key the builder reads, some control on its page sends (a link's address, a

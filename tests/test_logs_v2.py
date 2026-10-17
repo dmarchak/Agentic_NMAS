@@ -199,12 +199,13 @@ def test_syslog_by_device_is_history_s_and_the_sidebar_s_logs_is_the_tail(web):
     every link in it leads to the home. C675: the sidebar's Logs is the live tail
     (tests/test_logs_tail.py), Logs active."""
     tail = web.get("/v2/logs?list=Lab").get_data(as_text=True)
-    assert re.search(r'<a class="nav-item active" href="/v2/logs"', tail)
+    assert re.search(r'<a class="nav-item active" href="/v2/logs\?list=Lab"', tail)
     assert 'id="logs-tail"' in tail and "<h2>Syslog by device" not in tail
     for path in ("/v2/history/query/syslog?list=Lab",):
         html = web.get(path).get_data(as_text=True)
-        assert re.search(r'<a class="nav-item active" href="/v2/history"', html), path
-        assert re.search(r'<a class="tab on" href="/v2/history\?tab=query" aria-current="page">'
+        assert re.search(r'<a class="nav-item active" href="/v2/history\?list=Lab"', html), path
+        assert re.search(r'<a class="tab on" href="/v2/history\?tab=query&amp;list=Lab" '
+                         r'aria-current="page">'
                          r'Query</a>', html), path
         assert "the app&#39;s own" not in html and "<h2>Syslog by device" in html
         assert ">Query</a> › Syslog by device" in html

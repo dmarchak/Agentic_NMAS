@@ -166,6 +166,7 @@ a { color: var(--accent); }
   gap: 16px; padding: 0 24px; position: sticky; top: 0; z-index: 10; }
 .net { font-size: 13px; white-space: nowrap; }
 .net-label { color: var(--ink-2); }
+.net-gone { color: var(--warn); }  /* the page's network was deleted since it drew (W2's A1) */
 /* Board N: the picker. A <details>, so it opens and closes with no script. */
 .net-pick > summary { cursor: pointer; list-style: none; }
 .net-pick > summary::-webkit-details-marker { display: none; }

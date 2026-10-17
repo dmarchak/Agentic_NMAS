@@ -228,7 +228,8 @@ class TestTheLanding:
         html = _client().get("/v2/").get_data(as_text=True)
         text = _text(html)
         assert "Critical" in text and "s3 is not answering" in text and "Three probes" in text
-        assert 'href="/v2/device/s3"' in html and "Open s3" in text
+        # s3 is in no network's inventory: its button opens it in the page's (W2's A1).
+        assert 'href="/v2/device/s3?list=Default"' in html and "Open s3" in text
         assert 'x-data="copy" data-label="Copy" data-copy="nmas-host clab -- uptime"' in html
         assert 'class="att att-danger"' in html
 
@@ -271,7 +272,8 @@ class TestTheLanding:
 
     def test_the_sidebar_leads_to_the_landing_and_help(self, landing):
         html = _client().get("/v2/").get_data(as_text=True)
-        assert re.search(r'class="nav-item active" href="/v2/" aria-current="page"', html)
+        assert re.search(r'class="nav-item active" href="/v2/\?list=Default" aria-current="page"',
+                         html)
         # Help opens the manual (2026-10-02); About is a page within it.
         assert 'href="/v2/help/getting-started"' in html
 

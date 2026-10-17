@@ -17,7 +17,11 @@ rather than assumed away.
 
 Writes are not this hook's business. A POST naming a list that does not
 exist is judged by its own route: onboarding refuses through
-`_target_list()`, and creating a list is a write that SHOULD make one.
+`_target_list()`, and creating a list is a write that SHOULD make one. The
+one exception is a v2 write whose ADDRESS names its page's network (W2's A1,
+`_refuse_a_v2_write_on_a_network_that_is_gone`): that name is the page's,
+written in by `routes/page_network`, and a network deleted since the page
+drew must not let the write fall through to another network.
 """
 
 import logging
@@ -73,17 +77,57 @@ def submitted_list(req) -> tuple:
     return name, ""
 
 
+def named_lists(req) -> list:
+    """EVERY list a request names, its query's then its path's, each once. `named_list` returns
+    the first only, and the guard that asked it alone let ``/v2/settings/network/<deleted>
+    ?list=Default`` draw a deleted network's settings, the query's name passing for both (W2,
+    2026-10-16: the picker had reloaded that path with Default's name)."""
+    out = []
+    for value in [req.args.get(k) for k in QUERY_KEYS] + \
+            [(req.view_args or {}).get(k) for k in PATH_KEYS]:
+        value = str(value or "").strip()
+        if value and value not in out:
+            out.append(value)
+    return out
+
+
+def _refuse_a_v2_write_on_a_network_that_is_gone():
+    """A v2 write whose ADDRESS names a network nobody has is refused before its view (W2's A1).
+
+    Every request a v2 page makes names the page's network in its address
+    (`routes/page_network`), and `listref.active()` reads it there. A network deleted since the
+    page drew would otherwise read as no network at all, and the write would land on the
+    person's own choice or the installation's: a different network from the one the page
+    showed. A write's FORM is still its own route's business (C838's `submitted_list`, and
+    creating a network names one that does not exist yet)."""
+    from modules.nsot.listref import PAGE_ROUTES_OUTSIDE_V2
+
+    if not (request.path.startswith("/v2/") or request.endpoint in PAGE_ROUTES_OUTSIDE_V2):
+        return None
+    name = (request.args.get("list") or "").strip()
+    if not name:
+        return None
+    from modules.nsot.listref import exists
+
+    if exists(name):
+        return None
+    log.info("list_param: refused a write naming unknown network %r (%s)", name, request.path)
+    return jsonify({
+        "ok": False, "unknown_list": name,
+        "error": (f"There is no network named {name!r}, the one this page was drawn for "
+                  "(deleted since?): nothing was changed, here or in any other network."),
+    }), 404
+
+
 def install(app) -> None:
     @app.before_request
     def _refuse_a_read_of_an_unknown_list():
         if request.method not in ("GET", "HEAD"):
-            return None
-        name = named_list(request)
-        if not name:
-            return None
+            return _refuse_a_v2_write_on_a_network_that_is_gone()
         from modules.nsot.listref import exists
 
-        if exists(name):
+        name = next((n for n in named_lists(request) if not exists(n)), "")
+        if not name:
             return None
         log.info("list_param: refused a read of unknown list %r (%s)",
                  name, request.path)

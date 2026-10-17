@@ -128,7 +128,7 @@ def _rows(html):
 class TestThePage:
     def test_the_sidebar_s_logs_is_the_tail(self, web):
         html = web["client"].get("/v2/logs?list=Lab").get_data(as_text=True)
-        assert re.search(r'<a class="nav-item active" href="/v2/logs"', html)
+        assert re.search(r'<a class="nav-item active" href="/v2/logs\?list=Lab"', html)
         assert 'hx-trigger="nmas:logs from:body"' in html and 'id="logs-tail"' in html
         assert "Live · checked every 5 s" in html and "Pause</a>" in html
 

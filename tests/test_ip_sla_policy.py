@@ -266,7 +266,8 @@ def _page(lab, devices=("s4",)):
 
 
 def _commit_body(page_html):
-    m = re.search(r"data-url=\"/v2/monitoring/ip-sla/commit\" data-body='([^']*)'", page_html)
+    m = re.search(r"data-url=\"/v2/monitoring/ip-sla/commit\?list=Lab\" data-body='([^']*)'",
+                  page_html)
     assert m, "the commit carries its body"
     return json.loads(html_mod.unescape(m.group(1)))
 
@@ -340,7 +341,7 @@ class TestTheSuggestionsPage:
 class TestTheCommit:
     def _commit(self, lab, page, picked=None, **over):
         body = {**_commit_body(page), "picked": _keys(page) if picked is None else picked, **over}
-        return lab["client"].post("/v2/monitoring/ip-sla/commit", json=body)
+        return lab["client"].post("/v2/monitoring/ip-sla/commit?list=Lab", json=body)
 
     def test_one_intent_commit_of_the_ticked_probes_then_the_scoped_apply(self, lab):
         from modules.nsot import hostvars
@@ -643,8 +644,9 @@ class TestTheWayIn:
         """The operator, 2026-10-02: IP SLA was a tab nobody signed off. It is
         reached from Coverage's cells until it folds into the profile."""
         _r, page = _page(lab)
-        assert re.search(r'<a class="tab on" href="/v2/monitoring/coverage" aria-current="page">'
-                         r'Coverage</a>', page), "drawn under Coverage, where it is reached"
+        assert re.search(r'<a class="tab on" href="/v2/monitoring/coverage\?list=Lab" '
+                         r'aria-current="page">Coverage</a>', page), (
+            "drawn under Coverage, where it is reached")
         assert "IP SLA" not in _nav(page)
 
     def test_no_monitoring_page_carries_an_ip_sla_tab(self, lab, monkeypatch):

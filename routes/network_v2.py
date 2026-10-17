@@ -52,14 +52,23 @@ def rows(viewer_actor: str, q: str = "") -> list:
             for n in ordered if needle in n.lower()]
 
 
+#: A page whose PATH names its network: choosing another opens the chosen one's page, since the
+#: same path with another network's ``?list=`` names two networks (W2, 2026-10-16: the picker on
+#: ``/v2/settings/network/W2 walk`` reloaded it with ``?list=Default``, and the label kept
+#: naming W2 walk while the picker had Default).
+_NETWORK_PATH = "/v2/settings/network/"
+
+
 def target(next_path: str, name: str) -> str:
-    """Where a choice goes: the same v2 page for *name* (a device's page: its Devices), only
-    ever a path on this app."""
+    """Where a choice goes: the same v2 page for *name* (a device's page: its Devices; a
+    network's settings: the chosen network's), only ever a path on this app."""
     path = urlsplit(next_path or "").path
     if not path.startswith("/v2/") or path.startswith("//"):
         path = "/v2/"
     if path.startswith(_DEVICE_PAGES):
         path = "/v2/devices"
+    if path.startswith(_NETWORK_PATH):
+        return f"{_NETWORK_PATH}{quote(name, safe='')}"
     return f"{path}?list={quote(name)}"
 
 
@@ -73,7 +82,9 @@ def _page_network():
     if not has_request_context() or not request.path.startswith("/v2/"):
         return {}
     try:
-        return {"list_name": _current()}
+        from modules.nsot import listref
+
+        return {"list_name": listref.active_name()}
     except Exception:                                 # noqa: BLE001 (a page still draws)
         log.warning("network_v2: the page's network could not be read", exc_info=True)
         return {"list_name": "(unreadable)"}
@@ -104,11 +115,26 @@ def picker_items():
                                    current=_current()))
 
 
-def _current() -> str:
-    """The page's network by NAME: drawing it builds no ref, so it creates no folder."""
+@bp.route("/label", methods=["GET"])
+def label():
+    """The top bar's label alone, read again when a network is created or deleted (`lists`):
+    *shown* is the network the page was drawn for. A network deleted since is said as deleted,
+    never named as the one the page shows (W2, 2026-10-16: after W2 walk's delete the top bar
+    still read "W2 walk")."""
     from modules.nsot import listref
 
-    return listref.active_name()
+    name = _current()
+    return _strict(render_template("v2/_network_label.html", list_name=name,
+                                   gone=not listref.exists(name)))
+
+
+def _current() -> str:
+    """The network the picker's PAGE shows, by name: the ``shown`` its top bar sends (the
+    label's own value, so the picker marks what the label names, C874), else this request's
+    (`listref.active_name`). Drawing it builds no ref, so it creates no folder."""
+    from modules.nsot import listref
+
+    return (request.args.get("shown") or "").strip() or listref.active_name()
 
 
 @bp.route("/choose", methods=["POST"])

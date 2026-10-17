@@ -154,8 +154,9 @@ class TestThePageCarriesItsNetwork:
         fleet = html.split('id="fleet"', 1)[1]
         links = re.findall(r'(?:href|hx-get|hx-push-url|data-panel-src)="(/v2/monitoring[^"]*)"', fleet)
         menu = re.findall(r'data-what="the \w+ network"[^>]*\s+href="([^"]+)"', fleet)
-        # The range form's request is bare; its hidden field carries the network.
-        form = ["/v2/monitoring/dashboard"]
+        # The range form's request names the network, and so does its hidden field (a GET
+        # form's fields are its whole query).
+        form = ["/v2/monitoring/dashboard?list=Lab"]
         assert re.search(r'<input type="hidden" name="list" value="Lab">', fleet)
         assert links.count(form[0]) == 1 and menu == ["/v2/monitoring?list=Default&amp;range=1h",
                                                       "/v2/monitoring?list=Lab&amp;range=1h"]
@@ -205,9 +206,9 @@ class _Unreachable:
 class TestTheTabsAndTheSidebar:
     def test_monitoring_opens_on_dashboards_with_coverage_beside_it(self, lab):
         _r, html = _get(lab, "/v2/monitoring")
-        assert re.search(r'<a class="tab on" href="/v2/monitoring" aria-current="page">Dashboards</a>', html)
-        assert '<a class="tab" href="/v2/monitoring/coverage">Coverage</a>' in html
-        assert re.search(r'<a class="nav-item active" href="/v2/monitoring" aria-current="page">', html)
+        assert re.search(r'<a class="tab on" href="/v2/monitoring\?list=Lab" aria-current="page">Dashboards</a>', html)
+        assert '<a class="tab" href="/v2/monitoring/coverage?list=Lab">Coverage</a>' in html
+        assert re.search(r'<a class="nav-item active" href="/v2/monitoring\?list=Lab" aria-current="page">', html)
 
     def test_coverage_is_the_other_tab_and_keeps_monitoring_active(self, lab, monkeypatch):
         from modules import monitoring_coverage
@@ -216,8 +217,8 @@ class TestTheTabsAndTheSidebar:
                                                       "sections": []},
             "devices": [], "covered": 0, "total": 0})
         _r, html = _get(lab, "/v2/monitoring/coverage")
-        assert re.search(r'<a class="tab on" href="/v2/monitoring/coverage" aria-current="page">Coverage</a>', html)
-        assert re.search(r'<a class="nav-item active" href="/v2/monitoring" aria-current="page">', html)
+        assert re.search(r'<a class="tab on" href="/v2/monitoring/coverage\?list=Lab" aria-current="page">Coverage</a>', html)
+        assert re.search(r'<a class="nav-item active" href="/v2/monitoring\?list=Lab" aria-current="page">', html)
 
     def test_no_note_sits_under_the_controls(self, lab):
         """The operator, 2026-10-02: the retention and step note under the range controls

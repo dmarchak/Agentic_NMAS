@@ -223,7 +223,7 @@ class TestThePage:
         assert 'href="/v2/device/r2?tab=monitoring&list=Lab">diagnose it on r2</a>' in idle
         # The bound statement, Back and the one confirm in the board's words.
         assert "Bound to these programs: if a device or a template changes before you confirm" in text
-        assert '<a class="btn" href="/v2/monitoring/coverage">Back</a>' in text
+        assert '<a class="btn" href="/v2/monitoring/coverage?list=Lab">Back</a>' in text
         assert ">Deploy to 1 device, in this order</span>" in text
         from tests.v2_confirm import confirm_body
         body = confirm_body(page)

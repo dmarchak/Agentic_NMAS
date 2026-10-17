@@ -76,7 +76,8 @@ class TestThePage:
         r = networks["client"].get("/v2/netbox")
         html = re.sub(r"\s+", " ", r.get_data(as_text=True))
         assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
-        assert re.search(r'class="nav-item active" href="/v2/netbox" aria-current="page"', html)
+        assert re.search(r'class="nav-item active" href="/v2/netbox\?list=Default" aria-current="page"',
+                         html)
         for name in ("Default", "Branch", "Lab-3", "Remote"):
             assert f"<td>{name}</td>" in html, name
         assert "Writes are <strong>off</strong>" in html and "Import every network…" in html
@@ -195,7 +196,8 @@ class TestRemove:
                 "every object (with its nmas-managed tag) and Remove can never act on them "
                 "again.") in card
         # The control the words name is on the card: a preview of its own, never a confirm.
-        form = re.search(r'<form[^>]*hx-post="/v2/netbox/preview"[^>]*>(.*?)</form>', card).group(1)
+        form = re.search(r'<form[^>]*hx-post="/v2/netbox/preview\?list=Default"[^>]*>(.*?)</form>',
+                         card).group(1)
         assert '<input type="hidden" name="operation" value="forget">' in form
         assert '<input type="hidden" name="list" value="Branch">' in form
         assert '<span class="op-idle">Stop tracking instead…</span>' in form
@@ -273,7 +275,7 @@ class TestStopTracking:
         # Its confirm: one button, no writes switch (nothing is sent to NetBox).
         assert '<span class="op-idle">Stop tracking</span>' in card
         assert "turn NetBox writes on with this confirm" not in card
-        assert f'hx-post="/v2/netbox/job/{job}/confirm"' in card
+        assert f'hx-post="/v2/netbox/job/{job}/confirm?list=Default"' in card
         # A preview changes nothing anywhere.
         assert _held("Branch") == before and _sent_nothing(tracked["fake"])
 

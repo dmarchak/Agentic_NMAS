@@ -41,7 +41,8 @@ def _choose(n, name, nxt="/v2/settings"):
 
 
 def _shown(html):
-    m = re.search(r'<details class="net net-pick menu-wrap"[^>]*>.*?<strong>(.*?)</strong>', html)
+    m = re.search(r'<details class="net net-pick menu-wrap"[^>]*>.*?<strong[^>]*>(.*?)</strong>',
+                  html)
     assert m, "no network picker in the top bar"
     return m.group(1)
 
@@ -51,7 +52,7 @@ class TestThePicker:
         for path in ("/v2/", "/v2/devices", "/v2/history", "/v2/settings/installation"):
             _r, html = _get(networks, path)
             assert _shown(html) == "Default", path
-            assert f'hx-get="/v2/network/picker?next={path}"' in html, path
+            assert f'hx-get="/v2/network/picker?next={path}&amp;shown=Default"' in html, path
 
     def test_it_lists_every_network_with_its_mode(self, networks, as_person):
         _r, html = _get(networks, "/v2/network/picker?next=/v2/devices")
@@ -79,7 +80,7 @@ class TestTheOpenedListHearsIt:
             _r, html = _get(networks, path)
             ul = re.search(r'<ul class="net-pick-items"[^>]*>', html).group(0)
             assert 'hx-trigger="nmas:lists from:body, nmas:active_list from:body"' in ul, path
-            assert 'hx-get="/v2/network/picker/items?next=/v2/devices"' in ul, path
+            assert 'hx-get="/v2/network/picker/items?next=/v2/devices&amp;shown=Default"' in ul, path
             assert 'hx-include="previous .net-pick-search"' in ul, path
             assert 'hx-disinherit="*"' in ul, "each row's choose keeps its own swap"
 

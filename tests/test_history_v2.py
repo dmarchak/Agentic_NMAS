@@ -200,7 +200,7 @@ class TestThePage:
         summaries, details = _rows(html)
         assert any("Golden recorded (rotation)" in s and " r2 " in f" {s} " for s in summaries)
         assert any("Baseline earned (save_all)" in s and "fleet" in s for s in summaries)
-        assert 'class="nav-item active" href="/v2/history"' in html
+        assert 'class="nav-item active" href="/v2/history?list=' in html   # the page's (A1)
         assert 'data-manual="history#timeline"' in html and 'data-manual="history"' in html
         assert COMMUNITY not in html
 

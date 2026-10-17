@@ -189,10 +189,14 @@ def active() -> ListRef:
     calling it is obviously wrong.
 
     **On a v2 request it is the page's network** (board N, 2026-10-05): the
-    network its address names (``?list=``, refused before any view when there
-    is none), else the verified person's own choice (`network_choice`), else
-    the installation's current list. Anywhere else (a background job, today's
-    pages) it is the installation's current list, as before.
+    network its address names (a settings path's ``<list_name>``, else
+    ``?list=``; refused before any view when there is none), else the verified
+    person's own choice (`network_choice`), else the installation's current
+    list. Anywhere else (a background job, today's pages) it is the
+    installation's current list, as before. Every request a v2 page makes after
+    its first render names the page's network in its address
+    (`routes/page_network`, W2's A1), so the person's choice decides only a
+    page opened with no network named.
     """
     from modules.config import get_current_list_name
 
@@ -207,17 +211,29 @@ def active_name() -> str:
     return _request_choice() or get_current_list_name()
 
 
+#: Routes outside /v2/ that v2 pages call and that answer for the page's network, read from the
+#: address as a v2 route reads it (`routes/page_network` writes it in, W2's A1): History's
+#: Verify the remote and Push now (each read only the installation's list, so on any other
+#: network's History they verified and PUSHED the installation's), and Needs attention's
+#: Acknowledge (it finds the row again among the page's network's sources).
+PAGE_ROUTES_OUTSIDE_V2 = ("remote.verify", "remote.push", "attention.acknowledge")
+
+
 def _request_choice() -> str:
     """The network a v2 request is about, or "": read once per request."""
     try:
         from flask import g, has_request_context, request
     except ImportError:
         return ""
-    if not has_request_context() or not request.path.startswith("/v2/"):
+    if not has_request_context() or not (request.path.startswith("/v2/")
+                                         or request.endpoint in PAGE_ROUTES_OUTSIDE_V2):
         return ""
     if "network_choice" in g:
         return g.network_choice
-    name = (request.args.get("list") or "").strip()
+    # A settings path names its network (`/v2/settings/network/<list_name>`), and the page draws
+    # that one in its top bar: so it is the page's network, whatever the query says (W2's A1).
+    name = str((request.view_args or {}).get("list_name") or "").strip() or \
+        (request.args.get("list") or "").strip()
     if not name:
         from modules import network_choice
 

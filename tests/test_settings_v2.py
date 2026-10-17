@@ -80,7 +80,8 @@ class TestThePage:
         assert r.status_code == 200 and "<h1>Settings · Default" in html, "opens on the active list"
         r, html = _get(networks, "/v2/settings/network/Branch")
         assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
-        assert re.search(r'class="nav-item active" href="/v2/settings"', html)
+        # The page's network is the one its path names (W2's A1, routes/page_network).
+        assert re.search(r'class="nav-item active" href="/v2/settings\?list=Branch"', html)
         assert 'data-manual="settings"' in html
 
     def test_each_card_says_where_its_values_come_from_and_never_a_secret(self, networks):

@@ -52,7 +52,7 @@ class TestThePage:
         from modules import csp
         r, html = _get(page, f"/v2/credentials?list={LIST}")
         assert r.status_code == 200 and r.headers["Content-Security-Policy"] == csp.STRICT_POLICY
-        assert re.search(r'class="nav-item active" href="/v2/credentials"', html)
+        assert re.search(rf'class="nav-item active" href="/v2/credentials\?list={LIST}"', html)
         assert 'data-manual="credentials"' in html
         assert "Lab's break-glass record" in html and "none exported" in html
         assert 'id="bg-export"' not in html, "the export opens only when asked"

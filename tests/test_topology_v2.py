@@ -372,7 +372,7 @@ def test_path_offers_the_routing_devices_and_r5_by_each_peering(web):
         in to
     frm = re.search(r'<select id="topo-a"[^>]*>(.*?)</select>', form, re.S).group(1)
     assert "<option>r1</option>" in frm and "<option>r6</option>" not in frm
-    assert 'hx-post="/v2/topology/path"' in form and "Trace the path" in form
+    assert 'hx-post="/v2/topology/path?list=Lab"' in form and "Trace the path" in form
 
 
 def test_a_trace_is_the_path_packets_take_read_hop_by_hop(web, monkeypatch):

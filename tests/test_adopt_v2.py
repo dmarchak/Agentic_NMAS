@@ -77,7 +77,8 @@ def test_the_preview_draws_the_plan_and_never_the_password(lab, planned):  # noq
                   "username nmas privilege 15 secret", "Saving makes 1 running line",
                   "No intent is committed"):
         assert words in html, words
-    confirm = re.search(r'<form[^>]*action="/v2/adopt/confirm".*?</form>', html, re.S).group(0)
+    confirm = re.search(r'<form[^>]*action="/v2/adopt/confirm\?list=Lab".*?</form>', html,
+                        re.S).group(0)
     assert f'name="fingerprint" value="{FP}"' in confirm
     assert 'name="mgmt_ip" value="192.0.2.29"' in confirm
     pw = re.search(r'<input[^>]*name="supplied_password"[^>]*>', confirm).group(0)

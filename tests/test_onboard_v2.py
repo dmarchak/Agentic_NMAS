@@ -131,7 +131,7 @@ class TestAddDevice:
         assert '<input type="hidden" name="list_name" value="Default">' in html
         sent = set(re.findall(r'\bname="([a-z_]+)"', html))
         assert set(FIELDS) <= sent, set(FIELDS) - sent
-        assert 'hx-post="/v2/onboard/preview"' in html
+        assert 'hx-post="/v2/onboard/preview?list=Default"' in html
 
     def test_a_review_carries_the_binding_and_the_create(self, client, person, monkeypatch):
         from modules.nsot import onboard as O
@@ -142,7 +142,7 @@ class TestAddDevice:
         assert f'name="fingerprint" value="{O.plan_fingerprint(shown)}"' in html
         assert 'name="shown" value="' in html and "Change the fields" in html
         assert "hostname r6" in html                           # the config it will boot
-        assert 'hx-post="/v2/onboard/create"' in html
+        assert 'hx-post="/v2/onboard/create?list=Default"' in html
 
     def test_a_refused_review_says_why_and_keeps_the_fields(self, client):
         html = client.post("/v2/onboard/preview",
@@ -243,7 +243,7 @@ class TestAPendingDevice:
         html = client.get("/v2/device/bp1").get_data(as_text=True)
         assert 'id="pending-actions"' in html
         for route in ("verify/preview", "bootstrap", "abandon/preview"):
-            assert f'hx-post="/v2/onboard/bp1/{route}"' in html, route
+            assert f'hx-post="/v2/onboard/bp1/{route}?list=Default"' in html, route
         assert len(re.findall(r'<input type="hidden" name="list_name" value="[^"]+">',
                               html)) == 3
 
@@ -283,7 +283,7 @@ class TestAPendingDevice:
         html = client.post("/v2/onboard/bp1/verify/preview",
                            data={"list_name": "probe"}).get_data(as_text=True)
         assert f'name="fingerprint" value="{"f" * 64}"' in html
-        assert 'hx-post="/v2/onboard/bp1/verify"' in html and "Verify bp1" in html
+        assert 'hx-post="/v2/onboard/bp1/verify?list=Default"' in html and "Verify bp1" in html
 
     def test_verify_s_preview_refused_names_the_causes(self, client, monkeypatch):
         from routes import onboard
@@ -353,7 +353,7 @@ class TestAbandon:
         assert manifest.find_by_name(repo, "bp1")[0], "a preview released the name"
         fps = re.findall(r'name="fingerprint" value="([0-9a-f]{64})"', html)
         assert len(fps) == 1
-        assert 'hx-post="/v2/onboard/bp1/abandon"' in html
+        assert 'hx-post="/v2/onboard/bp1/abandon?list=Default"' in html
         assert abandon_fingerprint  # imported: the value is checked against the run below
 
     def test_the_confirm_runs_what_was_shown(self, client, repo, person, monkeypatch):

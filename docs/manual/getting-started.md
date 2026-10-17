@@ -29,11 +29,20 @@ The top bar names the network every page shows: **Network** and its name. Openin
 network, your recent ones first, each with its mode (Default the base; standalone; inheriting;
 differing from Default), and a box to find one by name. Choosing one opens the same kind of page
 for that network, its address carrying `?list=`, so a copied link shows the same network to
-whoever opens it; from a device's page it opens that network's Devices.
+whoever opens it; from a device's page it opens that network's Devices, and from a network's
+settings it opens the chosen network's settings.
 
 The choice is yours alone. It is remembered for you, as the verified person you signed in as,
 and never moves anyone else's pages: two people can look at two networks at once. A page whose
 address names a network shows that one, whatever you chose.
+
+A page keeps the network it was opened on. Everything it does after it is drawn names that
+network: each part it redraws when something changes, each row you expand, each button, each
+link and each filter. So the label, the network the picker marks and what the page shows are
+always the same one, and choosing another network in a second tab changes nothing on this one
+until you open a page there again. If the network is deleted while its page is open, the label
+reads **deleted** (its name on hover), and anything the page then asks for is refused, naming
+that network: nothing on it is answered for another network. Choose a network to go on.
 
 ## What is running now {#in-progress}
 

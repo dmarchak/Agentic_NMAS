@@ -1,0 +1,9 @@
+{#- The top bar's network label (board N): the network the page was drawn for, `list_name`, the
+    one value every request the page makes names (routes/page_network) and the picker marks
+    (it is sent as `shown`). Read again when a network is created or deleted (`lists`): a
+    network deleted since the page drew is said as deleted, never named as the one shown
+    (W2, 2026-10-16), its name on hover. From base.html and routes/network_v2.label. -#}
+<strong id="net-pick-label" hx-get="{{ url_for('network_v2.label', shown=list_name) }}" hx-trigger="nmas:lists from:body" hx-swap="outerHTML"
+  {%- if gone %} class="net-gone" title="{{ list_name }} was deleted since this page was drawn: choose a network"{% endif %}>
+  {%- if gone %}deleted{% else %}{{ list_name }}{% endif -%}
+</strong>

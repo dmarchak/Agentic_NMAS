@@ -130,7 +130,9 @@ class TestEveryDeviceRowNamesItsNetwork:
                              lambda: attention.reachability_source(_reachability(HOST_A)))
         art = _article(text, "reachability:not-answering")
         assert _meta(art).startswith(f"{HOST_A} (Branch or Default) "), _meta(art)
-        assert f'/v2/device/{HOST_A}">Open {HOST_A}' in art, art
+        # The row picks neither: its button opens r1 in the PAGE's network, as every request a
+        # page makes does (W2's A1, routes/page_network); this page is Default's.
+        assert f'/v2/device/{HOST_A}?list=Default">Open {HOST_A}' in art, art
 
     def test_the_sources_own_network_decides_a_name_two_networks_hold(self, two, monkeypatch):
         """Coverage knows which network's r1 it judged: the row says that one, never "either"."""

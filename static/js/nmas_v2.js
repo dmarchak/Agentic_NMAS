@@ -123,10 +123,19 @@
             failed: 'Live updates could not connect'}[state] || 'Connecting';
   }
 
-  /* PURE: where the jump box goes, from its base path and what was typed. */
-  function jumpTarget(base, typed) {
+  /* PURE: where the jump box goes, from its base path, what was typed, and the query its form's
+     address carries (the page's network, written in by routes/page_network: a device opened
+     from a page about one network is that network's device, W2's A1). */
+  function jumpTarget(base, typed, query) {
     var name = String(typed || '').replace(/^\s+|\s+$/g, '');
-    return name ? base + encodeURIComponent(name) : '';
+    return name ? base + encodeURIComponent(name) + (query || '') : '';
+  }
+
+  /* The query of a form's drawn address ('?list=…'), or ''. */
+  function addressQuery(form) {
+    var action = (form && form.getAttribute && form.getAttribute('action')) || '';
+    var at = action.indexOf('?');
+    return at < 0 ? '' : action.slice(at);
   }
 
   /* A LIVE REDRAW NEVER REPLACES WHAT A PERSON IS EDITING (C459, the operator, 2026-10-05: on
@@ -509,7 +518,8 @@
         jump: function () {
           var form = this.$el.closest ? this.$el.closest('form') : this.$el;
           var box = form.querySelector('input[name="name"]');
-          var target = jumpTarget(form.getAttribute('data-base'), box && box.value);
+          var target = jumpTarget(form.getAttribute('data-base'), box && box.value,
+                                  addressQuery(form));
           if (target) root.location.assign(target);
         }
       };

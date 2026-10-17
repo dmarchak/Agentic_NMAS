@@ -470,7 +470,7 @@ class TestTheShippedClient:
         assert 'x-data="applyConfirm"' not in page and "applyConfirm" not in self._js()
         from tests.v2_confirm import button
         tag = button(page)
-        assert 'hx-post="/v2/monitoring/apply/confirm"' in tag
+        assert 'hx-post="/v2/monitoring/apply/confirm?list=Lab"' in tag
         assert 'hx-target="#apply-result"' in tag and 'hx-disabled-elt="this"' in tag
         assert _body(page)["command_hashes"].keys() == {"r6", "r2"}
 
@@ -677,7 +677,7 @@ class TestClickingTheShippedPage:
             b.click("#apply-confirm")
             assert "2 of 2 device(s) deployed" in _wait_done(b)
             assert b.js("return window.__seen") == [
-                'POST /v2/monitoring/apply/confirm ["r2","r6"]']
+                'POST /v2/monitoring/apply/confirm?list=Lab ["r2","r6"]']
             assert spied["reached"] == ["r2", "r6"]
             # The confirm drawn again by the answer (C850), never offered twice.
             assert b.js("return document.querySelector('#apply-confirm').disabled") is True
@@ -721,7 +721,7 @@ class TestClickingTheShippedPage:
             b.click("#apply-confirm")
             assert "2 of 2 device(s) deployed" in _wait_done(b)
             assert b.js("return window.__seen") == [
-                'POST /v2/monitoring/apply/confirm ["r2","r6"]']
+                'POST /v2/monitoring/apply/confirm?list=Lab ["r2","r6"]']
             assert spied["reached"] == ["r2", "r6"]
         finally:
             b._call("DELETE", f"/session/{b.session}/actions")

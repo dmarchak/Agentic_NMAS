@@ -156,7 +156,7 @@ class TestEndToEnd:
         frag = lab["client"].get(out["url"]).get_data(as_text=True)
         assert "Watched for 15 min after the batch" in frag
         assert "IP SLA: not arrived in 15 min" in frag
-        assert 'href="/v2/device/r6?tab=monitoring">Diagnose on its Monitoring tab</a>' in frag
+        assert 'href="/v2/device/r6?tab=monitoring&amp;list=Lab">Diagnose on its Monitoring tab</a>' in frag
         assert 'hx-trigger="nmas:deploy_job from:body"' not in frag, "no re-read once ended"
 
 

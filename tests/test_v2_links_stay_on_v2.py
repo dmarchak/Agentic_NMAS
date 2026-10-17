@@ -130,11 +130,12 @@ def test_the_sidebar_s_logs_and_dhcp_say_what_is_there():
     side = html[html.index('<nav class="sidebar"'):html.index("</nav>", html.index("sidebar"))]
     logs = re.search(r'<a class="nav-item" href="([^"]+)"[^>]*>(?:(?!</a>).)*<span>Logs</span>'
                      r'</a>', side, re.S)
-    assert logs and logs.group(1) == "/v2/logs"
+    # Each sidebar link names the page's network (W2's A1, routes/page_network).
+    assert logs and logs.group(1) == "/v2/logs?list=Default"
     assert "diag-log" not in side and "the app&#39;s own" not in side
     dhcp = re.search(r'<a class="nav-item" href="([^"]+)"[^>]*>(?:(?!</a>).)*<span>DHCP</span>'
                      r'</a>', side, re.S)
-    assert dhcp and dhcp.group(1) == "/v2/dhcp"
+    assert dhcp and dhcp.group(1) == "/v2/dhcp?list=Default"
     assert side.index("SOURCE OF TRUTH") < side.index("<span>NetBox</span>") < \
         side.index("<span>DHCP</span>") < side.index("<span>Credentials</span>")
     assert "not built yet" not in side
@@ -162,7 +163,7 @@ class TestAFailedV2RequestStaysOnV2:
         assert "Location" not in r.headers
         assert "Couldn't load: GET /v2/monitoring/coverage failed with an unexpected " \
                "error: ValueError: no reporting rule for &#x27;planted&#x27;" in html, html
-        assert 'href="/v2/"' in html
+        assert 'href="/v2/?list=Default"' in html   # the page's network (W2's A1)
         assert "'unsafe-inline'" not in r.headers["Content-Security-Policy"]
 
     def test_an_htmx_part_gets_the_notice_alone(self, failing):
