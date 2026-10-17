@@ -42,7 +42,7 @@ written from the sitting's results. Screens no walk touches move to Stage 7's ta
 | **W1 Devices and the device page** | several-device deploy (s3.2); Re-apply (s3.4); bulk intent (s3.3); a golden reveal (s2.6); the Ask tab reading a device (C547); Capture's shrink reason (s2.5); Reload on r6 (s4); intent edit on v2 (C444, THROWAWAY Part 5) | CUTOVER rows 42, 44 to 46, 53, 54, 68, 69; C547, C444; the fidelity records of the screens it touches; unblocks P7-22, P7-24 | **WALKED 2026-10-16** (23:20Z to 01:12Z): CUTOVER rows 42, 44 (Capture, Save All), 45, 46, 53, 54, 69 and C588, C547, C587, C444, C539 closed; section I (row 68) blocked by C881 and C691 held by C882, both into W2 |
 | W2 Templates, NetBox, networks, remote | Templates approve, edit, bindings and seed (s2.7); NetBox (s2.10); networks new and delete (s2.9); Remote push, verify, set-up and auto-push (s2.11); inventory source; topology page; saved views (C667); the settings Save (C811); the 37 findability questions, clicks counted (P7-07; docs/NSOT_GUI_BRIEF.md 2.3's H column and 16); **from W1: r6's Reload (section I, CUTOVER row 68), C881's Reload… preview with no reload sent, a C691 drag re-check, and B1 to B5 (C882 to C886) walked on v2**; the host keys (C906); C532's intent state, C342's Drift row, C537's In progress chip, C954's Stop tracking preview | CUTOVER rows 48 to 50, 56, 57, 60 to 62, 68, 70; C667, C691; W1's A1 and B1 to B5 by the operator's eyes; their screens' records; unblocks P7-20, P7-21, P7-23, P7-26 | **WALKED 2026-10-16** (21:12Z to 2026-10-17 00:22Z, against ae8175bdbc): CUTOVER rows 49, 50, 56, 57, 61, 62, 68 and 70 and C691, C667, C941 closed; C881, C882, C884, C931, C811 and W1's B1 to B5 confirmed; P7-07 walked; rows 48 and 60 walked, closing with C1024, C1023 and C932; C1010's backfill confirmed (read-back pending). Found: A1 C1022, B1 to B8 C1023 to C1030, B9 C932 (section 2), and C1031 to C1073 (section 4) |
 | ~~W3 W2's fixes~~ | **done 2026-10-17** (W4's script written the same day, docs/walks/W4.md) (05:16 to 06:18 UTC on fecab2f79e, docs/walks/W3.md): A1 and B1 to B9 walked on the host; CUTOVER rows 48 and 60 closed; C1018 and C677 settled; one B found (C1109, the settle period) | | |
-| W4 Onboarding and recovery | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs); C553's clab-sync start; C529's DHCP confirms (docs/walks/W4.md) | CUTOVER rows 52, 58, 59; C148; their screens' records; unblocks P7-24, P7-25 | after W3 |
+| ~~W4 Onboarding and recovery~~ **DONE 2026-10-17 18:34 to 21:22 UTC** | onboard a throwaway on v2 (s5) through deploy, break, roll back (C148); adopt's first real run (board G); revert and retry (row 52 reconciled with THROWAWAY's 2026-10-05/06 runs); C553's clab-sync start; C529's DHCP confirms (docs/walks/W4.md) | CUTOVER rows 52, 58, 59 walked; C148, C553, C529 closed; their screens' records (C650) owed from the evidence folder; P7-24, P7-25 unblocked; six defects fixed forward in the sitting (C1148 to C1151, C1179, C1180) | after W3 |
 | (in any sitting) | ~~C539, C587, C588~~ (walked in W1); ~~snap-to-grid (C691)~~ (walked in W2); DHCP confirms (C529, in W4) | those rows | W4 |
 
 ### 1c. Host steps and small acts (re-checked against the host's Update data, 2026-10-15)
@@ -149,6 +149,13 @@ closing entries of 7.3, 7.4, 7.D and 7.8. The operator's three: C549 (3), C663, 
 1c). **Decided 2026-10-17 (morning):** C663, C296 and C1126 closed; C549 (3) closes at the
 operator's next Update from the page; C1142 and C1130 after cutover; P7-24 and P7-25 go,
 conditional on W4 passing their steps; P7-27 waits for the operator's word.
+**After W4 (2026-10-17 21:22 UTC, the operator's "W4 done"):** W4 passed P7-24's and P7-25's
+steps, so both are go. **Cutover-blocking rows: C650 (A, the four W4 screens' records) and the
+Bs registered 2026-10-17:** C1153 (an instruction naming today's Save All scope), C1159
+(a pending onboarding raises rotation-staged), C1160 and C1161 (P7-25's merge), C1165
+(Abandon's preview), C1166, C1167 and C1171 (the Lab 7 audit's), C1181 (one Kea, one owning
+network), C1182 (`bgp log-neighbor-changes`), C1183 (misplaced intent keys), C1187 to C1193
+(W4's part 2). C148 and C553 closed.
 
 ## 3. The shrinking lists (distance to cutover)
 
