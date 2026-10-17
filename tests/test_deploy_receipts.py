@@ -320,6 +320,53 @@ class TestTheReceiptsReadBack:
         assert "PLANTEDREC98" not in html
 
 
+class TestRecentChangesShowsTheDeployItMissed:
+    """C1189 (the operator, W4, 2026-10-17): Recent changes on W4 walk read "No deploy or restore
+    recorded" after two deploys to s5, while the list above it drew the failed deploy from the
+    same receipts (W4's step 55 capture). Both read `receipts.read` of the page's network; the
+    list re-fetches when a reader announces and Recent changes was drawn once, when the page
+    opened, before the deploys. A page open before a deploy now redraws it when the deploy
+    announces (`deploy_job`), and the redraw holds the receipt the deploy path wrote."""
+
+    @staticmethod
+    def _deploy():
+        """The deploy path's own writers: the device's row as it finishes, commit pending,
+        then its completion after the batch's commit (`routes.deploy`)."""
+        from routes.deploy import _pending_receipts, _write_receipts
+        hashes = {"r3": command_fingerprint(PROGRAM, AUTHORISED)}
+        record, pending = _pending_receipts("Lab", "deploy", {}, hashes,
+                                            actor="test-person@example.invalid",
+                                            actor_kind="person")
+        result = record(_sent())
+        report = {"results": [result], "golden": {"commit": "abc123", "batch_id": "b-1",
+                                                  "devices": ["r3"]}}
+        assert _write_receipts("Lab", report, "deploy", {}, hashes,
+                               actor="test-person@example.invalid", actor_kind="person",
+                               pending=pending)["ok"]
+
+    def test_a_page_open_before_a_deploy_redraws_recent_changes_when_it_announces(self, lab):  # noqa: F811
+        from tests.test_device_v2 import _get, _text
+        _r, html = _get(lab, "/v2/?list=Lab")
+        assert "No deploy or restore recorded for Lab yet" in _text(html)
+        card = re.search(r'<section\b[^>]*\bid="recent"[^>]*>', html)
+        assert card, "Recent changes is a part the page can redraw"
+        assert 'hx-trigger="nmas:deploy_job from:body"' in card.group(0), card.group(0)
+        url = re.search(r'hx-get="([^"]+)"', card.group(0)).group(1).replace("&amp;", "&")
+        self._deploy()
+        _r, part = _get(lab, url)
+        assert "Deploy r3 · deployed · 4 lines" in _text(part), _text(part)
+        assert "by test-person@example.invalid" in _text(part)
+        assert "No deploy or restore recorded" not in part
+
+    def test_a_page_opened_after_the_deploy_draws_it(self, lab):  # noqa: F811
+        """The control: the read itself was right (a fresh page draws the deploy path's
+        receipt, as Needs attention's list did on W4)."""
+        from tests.test_device_v2 import _get, _text
+        self._deploy()
+        _r, html = _get(lab, "/v2/?list=Lab")
+        assert "Deploy r3 · deployed · 4 lines" in _text(html)
+
+
 #: Words that send a person to a device's Changes tab, which no page has since today's device
 #: page left at 7.8 (P7-22, 2026-10-17; v2 never had one, C908): the receipts are its History.
 CHANGES_TAB = re.compile(r"device(?:'|\\')s (?:page, )?Changes\b|each device's Changes\b")

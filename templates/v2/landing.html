@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import stamp, badge, info -%}
+{%- from "v2/_macros.html" import info -%}
 {% block title %}Needs attention · {{ brand.short }}{% endblock %}
 {% block main %}
 <div class="page-head">
@@ -9,22 +9,5 @@
   </div>
 </div>
 {% include "v2/_attention.html" %}
-<section class="card">
-  <div class="card-head"><h2>Recent changes</h2></div>
-  {%- if recent.state == 'unreadable' %}
-  <p class="warn-text">The receipts of {{ recent.list }} could not be read. This is not the same as no changes.</p>
-  {%- elif not recent.rows %}
-  <p class="muted">No deploy or restore recorded for {{ recent.list }} yet.</p>
-  {%- else %}
-  <ul class="recent">
-    {%- for r in recent.rows %}
-    <li>
-      <span class="grow"><strong>{{ r.action|capitalize }} {{ r.device }}</strong> · {{ r.outcome }}{% if r.commit_state == 'pending' %} {{ badge('commit pending', 'warn', title='Its batch has not recorded its commit yet: still running, or its process ended (then Needs attention names it)') }}{% endif %}{% if r.program_lines %} · {{ r.program_lines }} line{{ '' if r.program_lines == 1 else 's' }}{% endif %}{% if r.reason %}<span class="muted"> · {{ r.reason }}</span>{% endif %}</span>
-      <span class="muted small">{{ stamp(r.at) }}{% if r.actor %}, by {{ r.actor }}{% endif %}</span>
-    </li>
-    {%- endfor %}
-  </ul>
-  {%- endif %}
-  <p class="card-foot">Deploys and restores, from their receipts. A capture's record is its commit, in the golden history.</p>
-</section>
+{% include "v2/_recent.html" %}
 {% endblock %}

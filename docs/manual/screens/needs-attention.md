@@ -23,7 +23,8 @@ The landing page answers one question: does anything need you?
   take. Something true that needs nothing, such as a new release being available, or a
   check that missed a booting device once, is
   said under "What was checked", beside the source that found it, or on its own page.
-- **Recent changes**: the last deploys and restores, from their receipts.
+- **Recent changes**: the last deploys and restores, from their receipts. It reads itself again
+  when a deploy or restore finishes, so a page left open shows the new one without a reload.
 
 ## The count in the sidebar {#count}
 

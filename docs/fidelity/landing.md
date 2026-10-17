@@ -34,8 +34,18 @@ and `-1280` (What was checked opened); `landing-brand-board-*-1440` beside `land
 `landing-dark-page-1440`; `landing-phone-board-LandingPhone-390` and `-NavPhone-390` beside
 `landing-phone-page-390` and `landing-phone-drawer-page-390` (the menu button clicked).
 Compared 2026-10-16.
-Templates compared: templates/v2/landing.html, templates/v2/_attention.html
-Templates sha256: `624b6da04de1115dab2df2f30d993b629f0d8d04d7a62e3fb026986fe8839df0`
+Templates compared: templates/v2/landing.html, templates/v2/_attention.html, templates/v2/_recent.html
+Templates sha256: `c2ab03194601a99f05425b336b572be08be42cc158e1c3347ea11081a15346dd`
+
+Compared again 2026-10-17 (C1189, W4): Recent changes moved, byte for byte, from `landing.html`
+into its own part, `_recent.html`, so it re-reads itself when a deploy or restore announces
+(`nmas:deploy_job`); drawn once at the page's opening, it had read "No deploy or restore
+recorded" on a page open before two deploys while the list above it drew them. Compared by the
+template text, not a new shot: the card's markup is identical but for its opening tag, which
+gains `id="recent"` and the re-read's three attributes (`hx-get`, `hx-swap`, `hx-trigger`), none
+drawn; `landing.html` lost the card and its two macro imports and includes the part. The part
+joins this record's templates, so a later change to the card is held here. No region's verdict
+changed.
 
 Compared again 2026-10-16 after C543 and C544 changed `_attention.html` (an unsaved deploy's
 row opens Persist with its network; the rolled-back row draws Revert intent… and Retry with a

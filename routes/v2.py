@@ -123,6 +123,12 @@ def landing():
     return _page("v2/landing.html", a=_attention(), recent=_recent(), active_nav="attention")
 
 
+@bp.route("/recent", methods=["GET"])
+def recent():
+    """Recent changes alone, redrawn when a deploy or restore announces (C1189)."""
+    return _strict(render_template("v2/_recent.html", recent=_recent()))
+
+
 @bp.route("/attention", methods=["GET"])
 def attention_list():
     """The list alone, re-fetched when a source's reader announces."""
