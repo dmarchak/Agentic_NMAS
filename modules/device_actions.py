@@ -1025,6 +1025,15 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
     rollback = target.get("rollback") or {}
     outcome = happened.get("outcome", "unknown")
     rolled_back = bool(rollback.get("performed"))
+    # C1268: the headline says "Rolled back" only when the rollback restored the device
+    # (pipeline.ROLLBACK_OK); one that was sent and left lines, could not be read back, or
+    # failed names its state there, never under a headline that reads as restored.
+    rollback_badge = {"restored": "Rolled back", "nothing_to_undo": "Rolled back",
+                      "incomplete": "Rollback incomplete",
+                      "sent_unverified": "Rollback not read back",
+                      "failed": "Rollback failed",
+                      "not_attempted": "Rollback not attempted"}.get(
+        rollback.get("state", ""), "Rollback state unknown")
     words = happened.get("words", outcome.replace("_", " "))
     # C506 phase 3: each declared move as verify found it, and verify's notes (an adjacency
     # nobody declared beside the expected ones; a declared route change), from the receipt.
@@ -1062,7 +1071,8 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
                 checks=list(checks.get("statements") or ([checks["why"]]
                                                          if checks.get("why") else []))
                 + declared_lines,
-                rolled_back=rolled_back, rollback_state=rollback.get("state", ""),
+                rolled_back=rolled_back, rollback_badge=rollback_badge,
+                rollback_state=rollback.get("state", ""),
                 rollback_detail=rollback.get("detail", ""),
                 # The save to startup after verify (C511), said once: `saved` here, so the
                 # not-saved item is left out of the list below.

@@ -177,7 +177,7 @@
 </section>
 {%- elif c.state == 'result' %}
 <section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
-  <div class="op-hd"><h2 id="op-title">Deploy to {{ c.host }} {{ badge('Rolled back' if c.rolled_back else c.words, c.level) }}</h2>
+  <div class="op-hd"><h2 id="op-title">Deploy to {{ c.host }} {{ badge(c.rollback_badge if c.rolled_back else c.words, c.level) }}</h2>
     <div class="op-hd-actions">{{ how('deploy') }}{{ close_button('Close') }}</div></div>
   <div class="op-part"><h3>What happened</h3><div>
     <p>{{ c.host }}: {{ c.words }}.{% if c.sent %} It received {{ c.sent | length }} line(s); {{ c.match_words }}.{% else %} {{ c.none }}{% endif %}</p>

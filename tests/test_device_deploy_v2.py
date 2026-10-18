@@ -357,6 +357,28 @@ class TestTheConfirm:
         assert 'hx-get="/v2/device/r2/revert?back=' in out and 'hx-get="/v2/device/r2/retry?back=' in out
         assert "op=revert" in out and "op=retry" in out
 
+    @pytest.mark.parametrize("state, badge", [
+        ("restored", "Rolled back"),
+        ("nothing_to_undo", "Rolled back"),
+        ("incomplete", "Rollback incomplete"),
+        ("sent_unverified", "Rollback not read back"),
+        ("failed", "Rollback failed"),
+    ])
+    def test_the_headline_says_rolled_back_only_when_the_rollback_restored(
+            self, deploy, monkeypatch, state, badge):
+        """C1268: a rollback that did not restore the device (incomplete, sent but not read back,
+        failed) was headed "Rolled back", its state only in the line beneath, so a device left
+        half-changed read as restored at a glance. The headline names the state."""
+        from modules.nsot import capture_job
+        _spy(monkeypatch, outcome="failed", rollback={"state": state, "detail": "as recorded"})
+        _r, card = _get(deploy, "/v2/device/r2/deploy?" + _reasons()[1:])
+        r = self._confirm(deploy, _vals(card))
+        job = re.search(r"/deploy/job/([0-9a-f]+)", r.get_data(as_text=True)).group(1)
+        assert capture_job.wait(job, 20)
+        _r, out = _get(deploy, f"/v2/device/r2/deploy/job/{job}")
+        head = re.search(r'<h2 id="op-title">(.*?)</h2>', out, re.S).group(1)
+        assert re.sub(r"<[^>]+>", " ", head).split("Deploy to r2", 1)[1].strip() == badge, head
+
     @pytest.mark.parametrize("change, words", [
         ({"list": ""}, "names no list"),
         ({"list": "Nowhere"}, "names no list"),

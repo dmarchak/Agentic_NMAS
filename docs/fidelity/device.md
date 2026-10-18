@@ -55,8 +55,16 @@ page 1440, 1280, 390), `device-restore-before`, `device-restore-running`,
 1440, 390), `device-revert-result`, `device-retry-none` (1440); `device-retire-refused`,
 `device-retire` (board 1440; page 1440, 390), `device-retire-result` (1440).
 Compared 2026-10-16.
+Compared again 2026-10-18 (C1268, an A): the Deploy and Re-apply cards' result headline badge
+draws `c.rollback_badge` where it drew the literal "Rolled back"; for a rollback that restored
+the device (`restored`, `nothing_to_undo`) the words are the same, so the boards' rolled-back
+result (board 11) is drawn as before; for one that did not, the badge names its state
+("Rollback incomplete", "Rollback not read back", "Rollback failed", "Rollback not
+attempted"), which no board draws: the deviation is a line in STANDING_APPROVAL_LOG.md. Every
+other region unchanged: one expression in each of `_deploy.html` and `_restore.html`, read
+from the diff.
 Templates compared: templates/v2/device.html, templates/v2/_actions_menu.html, templates/v2/_status.html, templates/v2/_drained_badge.html, templates/v2/_capture.html, templates/v2/_deploy.html, templates/v2/_attribution.html, templates/v2/_rotate.html, templates/v2/_persist.html, templates/v2/_persist_effect.html, templates/v2/_startup_effect.html, templates/v2/_seed.html, templates/v2/_restore.html, templates/v2/_revert.html, templates/v2/_retry.html, templates/v2/_retire.html
-Templates sha256: `92e8fffcc7c61512fc0824590007d4ae9e55284ae614001e5b8ed15814d56f24`
+Templates sha256: `7dbf73e139c967c7dc143312b7a7a4953669ec56d4ac7d5b35cd8f9b1a53b251`
 
 Compared again 2026-10-16 (C537, C540) after `device.html` gained the line a reopened card
 carries and `_rotate.html` its running card's and held preview's changes (C540's words, and
