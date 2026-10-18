@@ -162,6 +162,10 @@ def test_superseded_runs_are_cancelled_except_on_main_and_every_push_runs(path):
     doc, _ = _load(path)
     assert (doc.get("concurrency") or {}).get("cancel-in-progress") == \
         "${{ github.ref != 'refs/heads/main' }}"
+    # C1294 (the operator, 2026-10-18): on main every commit is its own group, so no main run
+    # waits pending behind another and is cancelled when a third queues.
+    assert (doc.get("concurrency") or {}).get("group") == \
+        "ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}"
     triggers = doc.get(True) or doc.get("on")      # YAML 1.1 reads `on` as True
     assert "push" in triggers and "pull_request" in triggers, triggers
     for event in ("push", "pull_request"):

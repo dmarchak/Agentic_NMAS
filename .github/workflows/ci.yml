@@ -26,8 +26,11 @@ permissions:
 # Update button offers the newest commit CI PASSED (C436), and a cancelled
 # run is no verdict, so cancelling there left only a batch's last commit
 # installable. Public repository, standard runner: the runs cost nothing.
+# On main each commit is its own group (C1294, the operator, 2026-10-18): GitHub keeps one
+# running and one PENDING run per group and cancels a pending one when a newer one queues,
+# whatever cancel-in-progress says, so a shared main group lost #930's verdict.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
