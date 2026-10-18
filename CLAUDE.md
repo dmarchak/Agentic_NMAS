@@ -36,8 +36,8 @@ rendered through templates, previewed as an exact program, confirmed by hash, pu
 verified, rolled back on failure, and recorded. Single host; identity comes from an access
 proxy's verified assertion. **Stack:** Python 3.10+ (CI 3.12.3), Flask, Flask-SocketIO, Netmiko,
 NetBox, Grafana/Prometheus/Loki, Kea. The v2 interface
-(`templates/v2/`, vendored htmx and Alpine, strict CSP) replaces today's Bootstrap pages at
-cutover. Jenkins was removed in P.4.
+(`templates/v2/`, vendored htmx and Alpine, strict CSP) is the interface; today's Bootstrap
+pages were removed at cutover (7.8, P7-27). Jenkins was removed in P.4.
 
 **Governing documents** (read the one for the area before starting work there):
 [MERCURY_CHARTER](docs/MERCURY_CHARTER.md) (the governing definition: what Mercury is, its sources of truth; read it first, and where another document disagrees, the charter governs) ·
@@ -161,8 +161,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   and control the built screen will have.** [every v2 page and device tab named with its sign-off,
   the unsigned list only shrinking: tests/signed_off_screens.py, tests/test_signed_off_screens.py;
   that the mockup drew every control: not mechanised]
-- **No new capability on a v1 page: today's interface only shrinks until cutover; a v1 control,
-  handler or function count may fall and never rise.** [tests/test_no_new_v1_capability.py]
+- **Nothing outside templates/v2: today's interface left at cutover (P7-27); no template,
+  script, control or route outside v2 but the declared non-GUI endpoints.**
+  [tests/test_no_new_v1_capability.py]
 - **Never send the operator to today's (v1) pages for an operation: no v1/v2 mixing in instructions.** If v2 cannot do what the operator needs, say so plainly and treat it as a Stage 7 cutover gap to build first. A v2 link to a v1 route says "today's" and names its gap. [tests/test_v2_links_stay_on_v2.py; tests/todays_page_links.py; instructions: not mechanised]
 - **An element carrying `hx-select` disinherits it; a v2 action that cannot draw its answer says
   "Couldn't load: <why>" in place.** [tests/test_v2_swaps_never_silent.py]
@@ -312,6 +313,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   test's premise is wrong and correct the premise; never weaken, skip or delete a test to get
   through a gate. Every test holds one stated purpose.** [the operator, 2026-10-18, Lab 7
   closed; mechanised in part: scripts/nmas-test-weakening-check]
+  [why](docs/LESSONS.md#lab-7s-lessons-kept)
 - **New code that parses, formats, validates, compares or stores an address is tested with an
   IPv6 case beside its IPv4 one** (IPv6 parity, the operator's decision of 2026-10-17: a feature
   that works only over IPv4 management is unfinished). [not mechanised; the audit and its
@@ -377,7 +379,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   `device_netbox.py`, `history_sources.py`).
 - **Interface:** `routes/` blueprints (`routes.register_blueprints(app)`), v2 in `routes/v2.py` and
   `routes/device_v2.py`, `templates/v2/`, `static/js/nmas_*.js`, `static/css/nmas-v2.css`. Legacy
-  pages retire at cutover; the break-glass terminal was removed (R39, 2026-10-05). `telnetlib.py`
+  pages retired at cutover (7.8, P7-27); the break-glass terminal was removed (R39, 2026-10-05). `telnetlib.py`
   in the root is a Python 3.13+ shim.
 
 ## Key architecture (narratives in docs/ARCHITECTURE.md)
@@ -518,7 +520,7 @@ pytest                    # unconfined; says so in its header
 
 ## Conventions
 
-- New routes in `routes/`; `app.py` and `index.html` grow only by registration and include. New
+- New routes in `routes/`; `app.py` grows only by registration. New
   screens in `templates/v2/`, after a signed-off mockup.
 - A new mutating route is declared in `modules/route_gates.py` and `modules/invalidation.py`.
   [tests/test_route_gates.py; tests/test_invalidation_map.py]

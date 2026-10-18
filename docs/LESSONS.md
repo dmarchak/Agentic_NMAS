@@ -4978,6 +4978,66 @@ Dates, counts and statuses below are as they were written. Where a later entry o
   a language behaviour can remove a control without a trace, a mechanical
   scan is the only review that works.
 
+### Lab 7's lessons, kept
+
+Lab 7 (unit testing and code coverage, closed by the operator on 2026-10-18) measured whether the
+suite guards what matters, and found where it did not. The operator made its practices standing
+the day it closed, with one rule over them: **a failing test reports a real problem.** Fix the
+code, or show with evidence that the test's premise is wrong and correct the premise. Never
+weaken, skip or delete a test to get through a gate; a failure that cannot be fixed is stopped
+and told, never routed around. The practices, each with the incident behind it:
+
+#### 1. Every bug fix starts with a test that fails first
+
+C1148 (v2's Add device drew no Create button for eight days), C1150 (every v2 Verify refused)
+and C1179 (every NetBox preview for a new network failed) each passed every test: the tests fed
+shapes the real producers never return, or asserted beside the defect. Each fix began with a
+test that failed on the code as it was and passed after; a test that passes on the defect is
+not a test of the fix.
+
+#### 2. A safety function gets a mutation sample before its row closes
+
+The samples found what coverage could not. `mask_payload`'s key masking switched off survived
+all 601 tests that ran it; a NetBox network's designated credential list read the password
+still encrypted, and ten survivors there could be killed by no test that passed on the code as
+it was (C1263, a product defect); `apply_batch` dropped every device after one without its hash
+from the result with no outcome (mutant 264); the credential store's first profile on a fresh
+install raised (12 survivors). Coverage reached each line; no assertion held its property. So a
+new or changed function in the safety areas (deploy gates, credentials, masking,
+confirm-by-hash, rotation) is sampled on demand before its row closes, and every VERDICT
+survivor is killed by a test shown to fail on the mutant.
+
+#### 3. A fake of an external service is measured against the real one
+
+The fake NetBox answered an unknown id, slug or filter with an empty 200 where the real NetBox
+answers 400 (C1223, C1240, C1248). The tests therefore ran a path production never takes: a
+deleted site read as "every device gone" in every test, while production kept the devices and
+read the list as unreadable, a path no test held (C1258). Measured per endpoint on the lab's
+NetBox (49 filter pairs, status only), the fake now answers the same. A new fake is measured
+once against the real service, per endpoint it fakes, and the measurement is recorded beside
+it.
+
+#### 4. A defect found by walking is surveyed for its shape
+
+C1148 and C1150 were green but wrong. The survey that followed (tests feeding a hand-built
+shape, templates reading a key no producer sets, fakes more permissive than the service,
+confirm buttons never asserted drawn) found C1220 (an A: an import preview planned two cables
+per link and the run made one), C1221 and C1222 (a failed record drawn nowhere), and 52
+confirm controls never seen drawn. One walked defect is a sample of a shape; the survey is how
+the rest are found.
+
+#### 5. A flaky test is fixed, never silently retried
+
+The gate's 5 s probe bound failed five times across four gates in one night under load (C1260).
+A verdict that follows the machine's load says nothing about the code. Until it is fixed, each
+occurrence is retried once, openly, and recorded on its row and in its commit; it is fixed the
+week it was ranked B.
+
+#### 6. The samples continue as budget allows
+
+`apply_batch` has 250 of its 398 mutants unrun. A sample cut by its budget says what it did not
+run, and runs the rest on demand, one mutant at a time, with nothing heavy beside it.
+
 ## Other lessons
 
 ### From the conventions
