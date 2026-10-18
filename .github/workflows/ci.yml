@@ -11,11 +11,12 @@
 # virtualenv is built (section 8.3). Coverage is REPORTED, never a threshold.
 name: ci
 
+# Every push and pull request runs, whatever it touches (C1287, the operator, 2026-10-18): a
+# path filter skipped Markdown and docs/ commits, so a CLAUDE.md change (ac0c3847) ran neither
+# tests/test_claude_md.py nor job a's range checks, and the next push's range began after it.
 on:
   push:
-    paths-ignore: ["docs/**", "**/*.md"]
   pull_request:
-    paths-ignore: ["docs/**", "**/*.md"]
 
 permissions:
   contents: read

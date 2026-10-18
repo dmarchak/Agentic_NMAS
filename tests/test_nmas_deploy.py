@@ -437,6 +437,19 @@ class TestTheIgnoreRuleComesFromAGreenCommit:
         code, _, _ = _run(world, {}, passed=[green])
         assert code == 2
 
+    def test_with_no_filter_at_the_green_commit_a_docs_commit_needs_its_own_run(self, world):
+        """C1287 (2026-10-18): ci.yml filters no path, so every push has a run of its own. A
+        commit with none, whose green ancestor filters nothing, is refused even when it
+        changes only docs; with its own passing run it deploys."""
+        unfiltered = CI_YML.replace('    paths-ignore: ["docs/**", "**/*.md"]\n', "")
+        assert "paths-ignore" not in unfiltered
+        green = world.advance({".github/workflows/ci.yml": unfiltered}, "green, no filter")
+        sha = world.advance({"docs/x.md": "y\n"}, "docs only")
+        code, _, _ = _run(world, {}, passed=[green])
+        assert code == 2 and _head(world) == world.base
+        code, _, _ = _run(world, {}, passed=[sha, green])
+        assert code == 0 and _head(world) == sha
+
     def test_the_floor_a_docs_change_still_passes(self, world):
         yml_ignored = CI_YML.replace('["docs/**", "**/*.md"]', '["docs/**", "**/*.md", "**/*.yml"]')
         green = world.advance({".github/workflows/ci.yml": yml_ignored}, "green")

@@ -3402,6 +3402,11 @@ Stage 7.
   - "No run" is never a pass. The one legitimate no-run case, a docs-only push,
     passes only when every change since the last green commit matches the
     workflow's own `paths-ignore`, read from `ci.yml`.
+    **Since C1287 (2026-10-18) `ci.yml` filters no path:** every push has a run
+    of its own, because a Markdown-only CLAUDE.md commit had escaped
+    `tests/test_claude_md.py` and job a's range checks. With no filter at the
+    green commit, a commit without a run is refused, docs or not; only a tree
+    identical to a green commit's still passes without one.
   - Every run is a row in `data/deploy_audit.jsonl` (0600).
   - `test_nmas_deploy.py` drives it against a real bare origin and clone, and
     asserts HEAD unmoved on every refusal. Six controls, each failing its
