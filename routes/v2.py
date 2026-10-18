@@ -1628,7 +1628,9 @@ def profile_apply_confirm():
         return _apply_answer("", 400, refused=f"Nothing confirmed: {exc}. Nothing was sent.")
     order = [d for d in data["order"] if isinstance(d, str) and d]
     confirmations, hashes = data["confirmations"], data["command_hashes"]
-    if not order or any(d not in confirmations or not hashes.get(d) for d in order):
+    # A device in the order with no confirmation is refused by the order check below, which
+    # names both sides (C1265: a second check of it here could not be observed).
+    if not order or any(not hashes.get(d) for d in order):
         return _apply_answer("", 400, refused=(
             "Nothing confirmed: every device needs the capture and command hashes its preview "
             "showed. Nothing was sent."))

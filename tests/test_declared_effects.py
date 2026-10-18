@@ -218,7 +218,7 @@ class TestTheApply:
         assert entry["declared"] and entry.get("deployable") is not False
         report = rd.apply_batch("Lab", {"r2": entry["capture_hash"]},
                                 {"r2": entry["command_hash"]}, authorise={"r2": auth},
-                                declare={"r2": [MOVE]}, actor="t")
+                                declare={"r2": [MOVE]}, actor="t", actor_kind="person")
         assert [r.get("outcome") for r in report["results"]] == ["deployed"], report["results"]
         assert reached == [{"r2": [MOVE]}]
 
@@ -228,7 +228,7 @@ class TestTheApply:
         entry, auth = self._plan([MOVE])
         report = rd.apply_batch("Lab", {"r2": entry["capture_hash"]},
                                 {"r2": entry["command_hash"]}, authorise={"r2": auth},
-                                actor="t")
+                                actor="t", actor_kind="person")
         (r,) = report["results"]
         assert r["outcome"] == "refused" and "changed since you confirmed" in r["reason"]
 
@@ -238,7 +238,8 @@ class TestTheApply:
         entry, auth = self._plan([MOVE])
         report = rd.apply_batch("Lab", {"r2": entry["capture_hash"]},
                                 {"r2": entry["command_hash"]}, authorise={"r2": auth},
-                                declare={"r2": [dict(MOVE, to="GigabitEthernet9")]}, actor="t")
+                                declare={"r2": [dict(MOVE, to="GigabitEthernet9")]}, actor="t",
+                                actor_kind="person")
         (r,) = report["results"]
         assert r["outcome"] == "refused"
         assert "a declared effect no longer fits the program" in r["reason"]

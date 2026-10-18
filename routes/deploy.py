@@ -637,7 +637,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
 
 def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 authorise: dict = None, remove: dict = None, scope: str = "",
-                actor: str, actor_kind: str = "", on_device=None,
+                actor: str, actor_kind: str, on_device=None,
                 declare: dict = None) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
