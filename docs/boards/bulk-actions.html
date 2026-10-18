@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Bulk actions board</title>
+<!-- Board for C1307 (docs/BULK_ACTIONS.md): A, Devices with a filter-built selection and the bulk
+     Actions menu; B, a bulk Reload's preview; C, the run, stopped at its first failure.
+     Self-contained: no external fonts or scripts. Example names and 192.0.2.x addresses only. -->
+<style>
+:root{--ground:#F4F5F2;--surface:#FFFFFF;--surface-2:#F9FAF8;--ink:#15191E;--ink-2:#4A5260;--ink-3:#9AA3AE;--line:#DADDE2;--line-2:#EEF0EC;
+--accent:#1E5E8C;--accent-ink:#14476B;--accent-soft:#E6EFF6;--ok:#0B6B45;--ok-soft:#E7F5EE;--warn:#9A4B00;--warn-soft:#FDF1E2;
+--danger:#B42318;--danger-soft:#FDECEA;--muted-soft:#E9EBE7;--side:#14202B;--side-ink:#C9D2DB;--side-ink-2:#8FA1B2;--side-on:#22384A;--on-accent:#FFFFFF;
+--sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;--mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace}
+body{margin:0;background:#D9DCD6;font-family:var(--sans);color:var(--ink);font-size:14px;line-height:1.45}
+.boardhead{width:1440px;margin:0 auto;padding:22px 0 8px;font-size:13px;color:#333}
+.boardhead h1{font-size:18px;margin:0 0 4px}
+.artlabel{width:1440px;margin:28px auto 8px;font-size:13px;color:#333}
+.artlabel strong{font-size:15px}
+.art{width:1440px;margin:0 auto;background:var(--ground);display:flex;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+a{color:var(--accent)}
+.side{width:216px;flex-shrink:0;background:var(--side);color:var(--side-ink);padding:18px 10px;display:flex;flex-direction:column;gap:2px}
+.side .brand{font-weight:600;color:#FFFFFF;padding:4px 10px 14px;font-size:15px}
+.side .h{font-size:11px;letter-spacing:.08em;color:var(--side-ink-2);padding:14px 10px 4px}
+.side a{color:var(--side-ink);text-decoration:none;padding:7px 10px;border-radius:6px;display:block}
+.side a.on{background:var(--side-on);color:#FFFFFF}
+main{flex:1;min-width:0;padding:24px 32px;display:flex;flex-direction:column;gap:14px}
+h1.page{margin:0;font-size:24px;font-weight:600}
+h2{margin:0;font-size:16px;font-weight:600}
+h3{margin:0;font-size:14px;font-weight:600}
+.mono{font-family:var(--mono);font-size:12.5px}
+.chip{white-space:nowrap;display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--muted-soft);color:var(--ink-2)}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.bad{background:var(--danger-soft);color:var(--danger)}.chip.at{background:var(--accent-soft);color:var(--accent-ink)}
+.btn{white-space:nowrap;display:inline-block;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:8px 14px;font:inherit;text-decoration:none;cursor:pointer;min-height:36px;box-sizing:border-box}
+.btn.sm{min-height:30px;padding:3px 10px;font-size:13px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.dangerous{background:var(--danger);border-color:var(--danger);color:#FFFFFF}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.muted{color:var(--ink-2)}.faint{color:var(--ink-3)}
+.how{font-size:12.5px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.how .i{display:inline-flex;width:15px;height:15px;border-radius:50%;border:1.4px solid currentColor;font-size:10px;font-weight:700;align-items:center;justify-content:center;font-style:normal}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.card.warnb{border-color:var(--warn)}.card.badb{border-color:var(--danger);border-width:1.5px}
+.sum{display:flex;gap:10px;flex-wrap:wrap}
+.sum .n{background:var(--surface-2);border:1px solid var(--line-2);border-radius:8px;padding:8px 14px;min-width:120px}
+.sum .n strong{display:block;font-size:22px;font-weight:600}
+.sum .n.bad strong{color:var(--danger)}.sum .n.warn strong{color:var(--warn)}.sum .n.ok strong{color:var(--ok)}
+details.grp{border:1px solid var(--line-2);border-radius:8px}
+details.grp > summary{padding:9px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;align-items:center;list-style:none}
+details.grp > summary::-webkit-details-marker{display:none}
+details.grp[open] > summary{border-bottom:1px solid var(--line-2)}
+details.grp .body{padding:8px 14px;display:flex;flex-direction:column;gap:8px}
+details.sub{border-top:1px solid var(--line-2)}
+details.sub > summary{padding:7px 14px;cursor:pointer;list-style:none;display:flex;gap:10px;align-items:center}
+details.sub > summary::-webkit-details-marker{display:none}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--line-2);vertical-align:top}
+thead th{font-size:12px;color:var(--ink-2);font-weight:500;background:var(--surface-2)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.filters input,.filters select,.field input,.field select,.field textarea{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.filters label.f{display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--ink-2)}
+.selbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;background:var(--side);color:#FFFFFF;border-radius:8px;position:relative}
+.selbar .clear{color:#C9D2DB;font-size:13px}
+.banner{background:var(--accent-soft);color:var(--accent-ink);border-radius:8px;padding:8px 14px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.menu{position:absolute;right:14px;top:52px;z-index:2;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(20,32,43,.22);width:520px;padding:6px 0}
+.menu .row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:8px 14px}
+.menu .row .act{color:var(--ink);text-decoration:none;font-weight:500}
+.menu .row .act.danger{color:var(--danger)}
+.menu .row .sub{font-size:12px;color:var(--ink-2);font-weight:400;display:block}
+.menu hr{border:0;border-top:1px solid var(--line-2);margin:4px 0}
+.menu .note{font-size:12px;color:var(--ink-2);padding:6px 14px 8px;margin:0}
+.gr{display:grid;grid-template-columns:200px 1fr auto;gap:6px 16px;align-items:start;padding:9px 0;border-bottom:1px solid var(--line-2)}
+.gr:last-child{border-bottom:0}
+.gr .what{font-weight:600}
+.cols{display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start}
+.field{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.field .hint{font-size:12px;color:var(--ink-2)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;display:flex}
+.bar span{display:block;height:100%}
+.steps{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}
+.steps span{padding:2px 8px;border-radius:10px;background:var(--ok-soft);color:var(--ok)}
+.steps span.fail{background:var(--danger-soft);color:var(--danger)}
+.steps span.no{background:var(--muted-soft);color:var(--ink-3)}
+.pager{display:flex;gap:6px;align-items:center;font-size:13px}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;font-size:13px}
+.callout{font-size:12px;color:#5b3d00;background:#FFF6D6;border:1px dashed #C9A23A;border-radius:6px;padding:6px 10px}
+</style>
+</head>
+<body>
+
+<div class="boardhead">
+<h1>Bulk actions on Devices (C1307): board for sign-off</h1>
+<div>Design: docs/BULK_ACTIONS.md. Three artboards at 1440 wide. Yellow dashed notes are the board's annotations, not part of the screen. Every other link and control is one the built screen will have.</div>
+</div>
+
+<!-- ============================================================ A -->
+<div class="artlabel"><strong>A · Devices: a filter-built selection of 640 and the bulk Actions menu</strong> — the selection is the filter, resolved by the server at the preview and again at the confirm; no names are sent from the page.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a>
+<a href="#" class="on">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+<div><h1 class="page">Devices <span class="muted" style="font-weight:400">· 2,184</span> <a href="#" class="how" aria-label="About this page"><i class="i">i</i></a></h1>
+<p class="muted" style="margin:4px 0 0;font-size:13px">Every device of the network <span class="mono">example-net</span>, from what Mercury already keeps.</p></div>
+<div style="display:flex;gap:10px;align-items:center"><a class="btn" href="#">Onboard devices…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a><a class="btn" href="#">Adopt a device…</a><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+</div>
+
+<form class="filters" onsubmit="return false" aria-label="Filter">
+<label class="f">Search<input type="search" placeholder="Name or address" style="width:170px"></label>
+<label class="f">Site<select><option>east-dc (702)</option><option>Every site</option><option>west-dc (688)</option><option>branch-north (794)</option></select></label>
+<label class="f">Role<select><option>access, distribution (640)</option><option>Every role</option><option>core</option><option>wan</option></select></label>
+<label class="f">Platform<select><option>cisco_iosxe</option><option>Every platform</option><option>cisco_ios</option></select></label>
+<label class="f">Status (NetBox)<select><option>active</option><option>Every status</option><option>planned</option><option>offline</option></select></label>
+<label class="f">Reachability<select><option>Either</option><option>answering</option><option>not answering</option></select></label>
+<label class="f">Intent state<select><option>Every state</option><option>at intent</option><option>departs</option><option>intent changed since measured</option><option>no intent</option></select></label>
+<a href="#" style="font-size:13px;align-self:flex-end;padding-bottom:7px">Clear filters</a>
+</form>
+
+<div class="sum" aria-label="The devices this filter matches">
+<div class="n"><strong>640</strong><span class="muted">match this filter</span></div>
+<div class="n ok"><strong>631</strong><span class="muted">answering</span></div>
+<div class="n bad"><strong>9</strong><span class="muted">not answering</span></div>
+<div class="n"><strong>588</strong><span class="muted">at intent</span></div>
+<div class="n warn"><strong>41</strong><span class="muted">depart from intent</span></div>
+<div class="n"><strong>11</strong><span class="muted">other intent states</span></div>
+</div>
+
+<div class="banner"><span>All 50 on this page are ticked.</span><strong>All 640 devices matching this filter are selected</strong><span>· across 13 pages · the server resolves the filter when you preview, and again when you confirm</span><a href="#">Select only this page's 50</a></div>
+
+<div class="selbar" role="region" aria-label="Selection">
+<strong>640 selected</strong>
+<span style="color:#C9D2DB;font-size:13px">by filter: site east-dc · role access or distribution · cisco_iosxe · NetBox status active · untick a row to leave it out (up to 50)</span>
+<span style="flex-grow:1"></span>
+<button class="btn primary" type="button" aria-haspopup="menu" aria-expanded="true">Actions for 640 &#9662;</button>
+<a href="#" class="clear">Clear selection</a>
+<div class="menu" role="menu" aria-label="Actions for the 640 selected">
+<div class="row"><a class="act" role="menuitem" href="#">Plan a deploy for 640…<span class="sub">each device's program from its committed intent, in batches, one confirm</span></a><a href="#" class="how" aria-label="How a bulk deploy works"><i class="i">i</i></a></div>
+<div class="row"><a class="act" role="menuitem" href="#">Save 640…<span class="sub">to startup (write memory) and as golden, together; 212 of 640 not saved now</span></a><a href="#" class="how" aria-label="How saving works"><i class="i">i</i></a></div>
+<div class="row"><a class="act" role="menuitem" href="#">Change a setting on 640…<span class="sub">one change to their committed intent, one commit; nothing is sent</span></a><a href="#" class="how" aria-label="How a bulk change works"><i class="i">i</i></a></div>
+<hr>
+<div class="row"><a class="act danger" role="menuitem" href="#B">Reload 640…<span class="sub">disruptive: in batches, a canary first; redundant peers apart; the management path alone and last; stops at the first failure</span></a><a href="#" class="how" aria-label="How a bulk reload works"><i class="i">i</i></a></div>
+<hr>
+<div class="row"><a class="act" role="menuitem" href="#">Save every device of example-net (2,184)…</a><a href="#" class="how" aria-label="How saving works"><i class="i">i</i></a></div>
+<div class="row"><a class="act" role="menuitem" href="#">Save the devices of example-net with no golden…<span class="sub">decided from the network's repository; the plan names the ones left out</span></a><a href="#" class="how" aria-label="How saving works"><i class="i">i</i></a></div>
+<hr>
+<p class="note">Not offered in bulk (one device at a time, from its page; <a href="#">why</a>): Capture (Save records in bulk) · Seed intent · Restore from… (a baseline across the network: History › Re-apply) · Remove lines · Revert · Retry · Run a privileged command · Re-key · Retire. Rotate credential runs by policy: <a href="#">Credentials › Profiles</a>.</p>
+</div>
+</div>
+
+<section class="card" style="padding:0;gap:0" aria-label="Devices">
+<table>
+<thead><tr><th scope="col"><input type="checkbox" checked aria-label="Every device on this page"></th><th scope="col">Device</th><th scope="col">Site</th><th scope="col">Status</th><th scope="col">Address</th><th scope="col">Platform</th><th scope="col">Intent</th><th scope="col">Startup</th><th scope="col">Last measured</th></tr></thead>
+<tbody>
+<tr><td><input type="checkbox" checked aria-label="Select dist-r021"></td><th scope="row"><a href="#">dist-r021</a> <span class="muted">· distribution</span></th><td>east-dc</td><td><span class="chip ok">answering</span></td><td class="mono">192.0.2.21</td><td>cisco_iosxe</td><td><span class="chip ok">at intent</span></td><td><span class="chip ok">saved</span></td><td>14 min ago</td></tr>
+<tr><td><input type="checkbox" checked aria-label="Select dist-r022"></td><th scope="row"><a href="#">dist-r022</a> <span class="muted">· distribution</span></th><td>east-dc</td><td><span class="chip ok">answering</span></td><td class="mono">192.0.2.22</td><td>cisco_iosxe</td><td><span class="chip ok">at intent</span></td><td><span class="chip ok">saved</span></td><td>14 min ago</td></tr>
+<tr><td><input type="checkbox" checked aria-label="Select rtr-acc-0001"></td><th scope="row"><a href="#">rtr-acc-0001</a> <span class="muted">· access</span></th><td>east-dc</td><td><span class="chip ok">answering</span></td><td class="mono">192.0.2.101</td><td>cisco_iosxe</td><td><span class="chip warn">departs</span></td><td><span class="chip warn" title="startup check 00:00 UTC: running differs by 3 lines">not saved</span></td><td>14 min ago</td></tr>
+<tr><td><input type="checkbox" checked aria-label="Select rtr-acc-0002"></td><th scope="row"><a href="#">rtr-acc-0002</a> <span class="muted">· access</span></th><td>east-dc</td><td><span class="chip bad">not answering</span> <span class="muted">since 23:41</span></td><td class="mono">192.0.2.102</td><td>cisco_iosxe</td><td><span class="chip">unknown</span></td><td><span class="chip">unknown</span></td><td>3 h ago</td></tr>
+<tr><td><input type="checkbox" checked aria-label="Select rtr-acc-0003"></td><th scope="row"><a href="#">rtr-acc-0003</a> <span class="muted">· access</span> <span class="chip warn" title="NetBox status: drained, set 2026-10-17 by a person in NetBox">Drained</span></th><td>east-dc</td><td><span class="chip ok">answering</span></td><td class="mono">192.0.2.103</td><td>cisco_iosxe</td><td><span class="chip ok">at intent</span></td><td><span class="chip ok">saved</span></td><td>14 min ago</td></tr>
+<tr><td colspan="9" class="muted">45 more on this page</td></tr>
+</tbody>
+</table>
+<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;gap:12px;flex-wrap:wrap">
+<span class="muted" style="font-size:12.5px">Showing 1–50 of 640 matching (2,184 in the network). Startup is the hourly startup check's last reading. A device pending onboarding has no tick.</span>
+<span class="pager"><button class="btn sm" disabled>Previous</button><span>Page 1 of 13</span><button class="btn sm">Next</button></span>
+</div>
+</section>
+<p class="callout">The Drained badge is NetBox's status (the charter; C551's custom status); the measured badge stays off (C552). "Untick a row" keeps at most one page of exceptions; more than that is a narrower filter.</p>
+</main>
+</div>
+
+<!-- ============================================================ B -->
+<div class="artlabel" id="B"><strong>B · Reload 640: the preview</strong> — counts first, the guardrails named with what each found, the batches, each device's six gates one level down, and a confirm bound by hash to the set, every device's plan and the batch plan.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a>
+<a href="#" class="on">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div class="faint" style="font-size:13px"><a href="#">Devices</a> › Reload</div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px">
+<h1 class="page">Reload 640 devices: the preview</h1>
+<a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+
+<section class="card" aria-labelledby="b-answer">
+<h2 id="b-answer" style="font-size:17px">611 of the 640 will reload, in 106 batches, about 14 h at 6 a batch. 17 are refused and 12 left out, each named below.</h2>
+<div class="kv">
+<span class="muted">Selection</span><span>site east-dc · role access or distribution · cisco_iosxe · NetBox status active: 640 devices, resolved 00:24 UTC <span class="mono faint" title="sha256 over the sorted names">set 3f9a0c1e</span> · <a href="#">Change the filter</a></span>
+<span class="muted">Read</span><span>every device read at 00:12 to 00:24 UTC (running, startup, show version, show boot, dir), 16 at a time · a job: this page can close</span>
+<span class="muted">Cannot be undone</span><span>a reload has no rollback. Each device is read again at its turn; one that moved since this preview is refused alone, nothing sent.</span>
+</div>
+<div class="sum" aria-label="The plan, by outcome">
+<div class="n ok"><strong>611</strong><span class="muted">will reload</span></div>
+<div class="n bad"><strong>17</strong><span class="muted">refused: a gate fails</span></div>
+<div class="n warn"><strong>12</strong><span class="muted">left out by a guardrail</span></div>
+<div class="n"><strong>23</strong><span class="muted">depart from golden or intent: your reason acknowledges each</span></div>
+</div>
+</section>
+
+<div class="cols">
+<div style="display:flex;flex-direction:column;gap:14px">
+
+<section class="card" aria-labelledby="b-guard">
+<h2 id="b-guard">The guardrails, and what each found</h2>
+<div class="gr"><span class="what">Redundant peers apart</span><span>212 groups found in committed intent (VRRP 180, HSRP 32): every member is in a different batch from its peers, and the second starts only after the first is back and verified. Example: <a href="#">dist-r021</a> (batch 7) and <a href="#">dist-r022</a> (batch 8), VRRP 10 on 192.0.2.0/26.<br><span class="faint" style="font-size:12px">Intent shows first-hop groups only; redundancy without one (route reflectors, stacks) is not seen.</span></span><a href="#" style="font-size:13px">All 212</a></div>
+<div class="gr"><span class="what">The management path alone, last</span><span>3 devices carry Mercury's path to others (from committed intent's subnets and this host's addresses): <a href="#">sw-acc-0907</a> (cuts 2) batch 104, <a href="#">rtr-wan-03</a> (cuts 18) batch 105, <a href="#">sw-mgmt-01</a> (cuts 412) batch 106. Each runs alone, after every other batch.<br><span class="faint" style="font-size:12px">A switch carrying a subnet at layer 2 with no address in it is not seen. Your reason should name the repair route (console, out-of-band) for these three.</span></span><a href="#" style="font-size:13px">Each one's cut</a></div>
+<div class="gr"><span class="what">Left out</span><span>12: drained in NetBox 4 · a redundancy peer is down now 3 · inside another planned-restart window 2 · held by another operation 3. Nothing is sent to them.</span><a href="#b-left" style="font-size:13px">Show</a></div>
+<div class="gr"><span class="what">Windows and silences</span><span>Each device's planned-restart window is declared before its reload, with a Grafana silence (Grafana is configured: a silence that fails stops the run after its batch). No-change window 02:00 to 02:40 UTC (Settings): no batch starts that would run into it.</span><a href="#" style="font-size:13px">Settings</a></div>
+<div class="gr"><span class="what">Per batch, at most</span><span>a canary of 1, then 6 (a placeholder: no bulk reload has been measured; up to 16) · a quarter of any site-and-role group · the path devices alone.</span><span></span></div>
+</section>
+
+<section class="card" aria-labelledby="b-batches">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 id="b-batches">The batches: 106, in order</h2>
+<form class="filters" onsubmit="return false"><input type="search" placeholder="Find a device" aria-label="Find a device"><select aria-label="Outcome"><option>Every outcome</option><option>will reload (611)</option><option>refused (17)</option><option>left out (12)</option><option>departs (23)</option></select></form></div>
+<details class="grp"><summary><span><span class="chip at">canary</span> <strong>Batch 1</strong> <span class="muted">· rtr-acc-0001 · about 8 min · measures the boot on this network first</span></span><span class="muted">show</span></summary></details>
+<details class="grp"><summary><span><strong>Batches 2–6</strong> <span class="muted">· 30 devices · 6 each</span></span><span class="muted">show</span></summary></details>
+<details class="grp" open><summary><span><strong>Batch 7</strong> <span class="muted">· 6 devices · about 8 min</span></span><span class="muted">hide</span></summary>
+<table><tbody>
+<tr><th scope="row"><a href="#">dist-r021</a></th><td class="mono">192.0.2.21</td><td><span class="chip ok">6 gates pass</span></td><td>VRRP 10 peer dist-r022 in batch 8</td></tr>
+<tr><th scope="row"><a href="#">rtr-acc-0037</a></th><td class="mono">192.0.2.137</td><td><span class="chip warn">departs: acknowledged</span></td><td><details class="sub" style="border:0"><summary style="padding:0">its six gates</summary>
+<table style="margin-top:6px"><tbody>
+<tr><td>running against startup</td><td><span class="chip ok">pass</span></td><td>the same</td></tr>
+<tr><td>its golden and its intent</td><td><span class="chip warn">acknowledged</span></td><td>running differs from its golden by 2 lines (<a href="#">the difference</a>); your reason is recorded as acknowledging it</td></tr>
+<tr><td>startup carries Mercury's credential</td><td><span class="chip ok">pass</span></td><td>the account line is in startup</td></tr>
+<tr><td>the image it booted exists</td><td><span class="chip ok">pass</span></td><td class="mono">bootflash:example-17.09.bin</td></tr>
+<tr><td>no other operation holds it</td><td><span class="chip">at its turn</span></td><td>checked again when its batch takes it</td></tr>
+<tr><td>blast radius</td><td><span class="chip ok">none</span></td><td>Mercury loses reach to no other device</td></tr>
+</tbody></table></details></td></tr>
+<tr><td colspan="4" class="muted">4 more · <a href="#">show all 6</a></td></tr>
+</tbody></table></details>
+<details class="grp" open><summary><span><strong>Batch 8</strong> <span class="muted">· 6 devices · starts after batch 7 is back and verified</span></span><span class="muted">hide</span></summary>
+<table><tbody>
+<tr><th scope="row"><a href="#">dist-r022</a></th><td class="mono">192.0.2.22</td><td><span class="chip ok">6 gates pass</span></td><td>VRRP 10 peer dist-r021 in batch 7</td></tr>
+<tr><td colspan="4" class="muted">5 more · <a href="#">show all 6</a></td></tr>
+</tbody></table></details>
+<details class="grp"><summary><span><strong>Batches 9–103</strong> <span class="muted">· 565 devices · 6 each, the last 1</span></span><span class="muted">show</span></summary></details>
+<details class="grp"><summary><span><span class="chip warn">alone</span> <strong>Batches 104–106</strong> <span class="muted">· the management path: sw-acc-0907, rtr-wan-03, sw-mgmt-01</span></span><span class="muted">show</span></summary></details>
+
+<details class="grp" open><summary><span><span class="chip bad">refused</span> <strong>17</strong> <span class="muted">· unsaved changes 9 · redundancy unreadable 5 · image not found 2 · startup lacks the credential 1</span></span><span class="muted">hide</span></summary>
+<div class="body">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><span><strong>Unsaved changes: 9</strong> <span class="muted">running differs from startup; a reload would lose it</span></span><a class="btn sm" href="#">Save these 9 first…</a></div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><span><strong>Redundancy unreadable: 5</strong> <span class="muted">e.g. rtr-acc-0211: a <span class="mono">standby</span> line in Vlan30 could not be parsed, so whether it has a peer is not known</span></span><a href="#">Show the 5</a></div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><span><strong>Image not found: 2</strong> <span class="muted">the boot variable names a file <span class="mono">dir</span> does not list</span></span><a href="#">Show the 2</a></div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><span><strong>Startup lacks Mercury's credential: 1</strong> <span class="muted">rtr-acc-0450: Mercury could not log in after the reload</span></span><a href="#">Open rtr-acc-0450</a></div>
+</div></details>
+<details class="grp" open id="b-left"><summary><span><span class="chip warn">left out</span> <strong>12</strong> <span class="muted">· nothing is sent to them</span></span><span class="muted">hide</span></summary>
+<table><tbody>
+<tr><th scope="row">Drained in NetBox: 4</th><td>rtr-acc-0003, rtr-acc-0118, rtr-acc-0119, rtr-acc-0302: out of service on purpose. Clears when NetBox's status is active again.</td><td><a href="#">Include them…</a></td></tr>
+<tr><th scope="row">A peer is down now: 3</th><td>rtr-acc-0201 (VRRP 30 peer rtr-acc-0202 not answering since 23:41 UTC) and 2 more: reloading it would take the group's last member down.</td><td><a href="#">Show the 3</a></td></tr>
+<tr><th scope="row">Another window: 2</th><td>rtr-acc-0333, rtr-acc-0334: restarting as planned until 01:30 UTC, by operator2@example.com.</td><td><a href="#">The window</a></td></tr>
+<tr><th scope="row">Held: 3</th><td>a deploy by operator2@example.com since 00:20 UTC holds rtr-acc-0510 and 2 more.</td><td><a href="#">Show the 3</a></td></tr>
+</tbody></table></details>
+<p class="muted" style="margin:0;font-size:12.5px">A device that joins this filter after the preview is not added; one that leaves is named at the confirm, which then refuses.</p>
+</section>
+</div>
+
+<aside class="card" aria-labelledby="b-confirm" style="position:sticky;top:12px">
+<h2 id="b-confirm">Confirm</h2>
+<label class="field">Why <textarea rows="3" placeholder="Three words or more">Clear the memory leak in 17.09 on east-dc access and distribution; console server cs-east-01 is the repair route for the path devices.</textarea><span class="hint">Recorded on every device's reload and on the run; it acknowledges the 23 departures.</span></label>
+<label class="field">Devices a batch, after the canary <select><option>6 (placeholder, not measured)</option><option>1</option><option>4</option><option>8</option><option>12</option><option>16</option></select><span class="hint">Changing it redraws the batches and their hash.</span></label>
+<label class="field">Start batches until (UTC) <input type="time" value="05:00"><span class="hint">Batches 1–34 (199 devices) start by then; the run stops there and names the rest, for Plan the rest….</span></label>
+<div class="kv" style="grid-template-columns:110px 1fr">
+<span class="muted">Estimate</span><span>about 8 min a batch: 2.5 × the measured boot (6 min 30 s, cisco_iosxe) is the wait's bound, 16 min 15 s</span>
+<span class="muted">Stops</span><span>at the first device that does not end reloaded and verified; that batch's others finish</span>
+<span class="muted">One run</span><span>no other bulk reload, deploy or re-apply may start in example-net while this runs</span>
+<span class="muted">Plan</span><span class="mono" title="sha256 over the filter, the set, every device's fingerprint, the batches, the options, the reason and you">b71e5d02c9a4f310</span>
+</div>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn dangerous" type="button">Reload 611 devices in 106 batches</button><a href="#" class="how"><i class="i">i</i>How does this work?</a></div>
+<a class="btn" href="#" style="align-self:flex-start">Back to Devices</a>
+<p class="faint" style="margin:0;font-size:12px">As operator@example.com (verified).</p>
+</aside>
+</div>
+<p class="callout">Counts on this board add up: 611 + 17 + 12 = 640; 1 + 102 + 3 = 106 batches; 1 + 33 × 6 = 199 devices start by 05:00 from a 00:30 start.</p>
+</main>
+</div>
+
+<!-- ============================================================ C -->
+<div class="artlabel"><strong>C · The run: in progress, then stopped at its first failure</strong> — the answer first (what failed, what it left exposed), then counts, then the batches; per-device steps on expand.</div>
+<div class="art">
+<nav class="side" aria-label="Main">
+<div class="brand">Mercury</div>
+<a href="#">Needs attention</a>
+<a href="#" class="on">Devices</a>
+<a href="#">History</a>
+<div class="h">OBSERVE</div>
+<a href="#">Monitoring</a>
+<a href="#">Show commands</a>
+<a href="#">Logs</a>
+<a href="#">DHCP</a>
+<div class="h">SOURCE OF TRUTH</div>
+<a href="#">Templates</a>
+<a href="#">NetBox</a>
+<a href="#">Credentials</a>
+<div style="flex-grow:1"></div>
+<a href="#">Help</a>
+<a href="#">Settings</a>
+</nav>
+<main>
+<div class="faint" style="font-size:13px"><a href="#">Devices</a> › Reload</div>
+<h1 class="page">Reload 611 devices</h1>
+
+<h3 class="muted">While it runs (01:40 UTC), the card's head:</h3>
+<section class="card" aria-label="Running">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+<span><strong>Batch 9 of 106: 6 reloading</strong> <span class="chip at">running</span> <span class="muted">· 41 reloaded and verified · 2 refused at their turn · 562 waiting</span></span>
+<span style="display:flex;gap:10px;align-items:center"><button class="btn" type="button">Stop after this batch</button><a href="#" class="how"><i class="i">i</i>How does this work?</a></span>
+</div>
+<div class="bar" aria-hidden="true"><span style="width:7%;background:var(--ok)"></span><span style="width:1%;background:var(--accent)"></span></div>
+<p class="muted" style="margin:0;font-size:12.5px">Started 00:31 UTC by operator@example.com · a job: this page can close · each device's own window is declared before its reload</p>
+</section>
+
+<h3 class="muted">When it stops:</h3>
+<section class="card badb" aria-labelledby="c-answer">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+<h2 id="c-answer" style="font-size:17px">Stopped at batch 9 of 106: rtr-edg-0117 did not answer on SSH's port within 16 min 15 s. Its VRRP peer rtr-edg-0118 carries VRRP 20 on 192.0.2.64/26 alone.</h2>
+<span class="chip bad">stopped</span></div>
+<p style="margin:0">Batch 9's other 5 finished (reloaded and verified); no further batch started. rtr-edg-0117's planned-restart window runs until 01:57 UTC and its Grafana silence until 02:16 UTC: after that its alerts raise. rtr-edg-0118 was in batch 10 and was not attempted.</p>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<a class="btn primary" href="#">Open rtr-edg-0117</a>
+<a class="btn" href="#">Plan the rest… (562)</a><a href="#" class="how"><i class="i">i</i>How does this work?</a>
+<a href="#">This run in History</a>
+</div>
+<div class="sum" aria-label="Outcomes">
+<div class="n ok"><strong>46</strong><span class="muted">reloaded and verified</span></div>
+<div class="n bad"><strong>1</strong><span class="muted">failed</span></div>
+<div class="n warn"><strong>2</strong><span class="muted">refused at their turn, nothing sent</span></div>
+<div class="n"><strong>562</strong><span class="muted">not attempted</span></div>
+<div class="n"><strong>29</strong><span class="muted">not in the run: refused or left out at the preview</span></div>
+</div>
+<div class="bar" aria-hidden="true"><span style="width:7.5%;background:var(--ok)"></span><span style="width:.4%;background:var(--danger)"></span><span style="width:.4%;background:var(--warn)"></span></div>
+
+<form class="filters" onsubmit="return false"><input type="search" placeholder="Find a device" aria-label="Find a device"><select aria-label="Outcome"><option>Every outcome</option><option>failed (1)</option><option>refused at their turn (2)</option><option>not attempted (562)</option><option>reloaded and verified (46)</option></select></form>
+
+<details class="grp" open><summary><span><span class="chip bad">stopped</span> <strong>Batch 9</strong> <span class="muted">· 01:35 to 01:52 UTC · 5 reloaded and verified, 1 failed</span></span><span class="muted">hide</span></summary>
+<table><tbody>
+<tr><th scope="row"><a href="#">rtr-edg-0117</a></th><td class="mono">192.0.2.117</td><td><span class="chip bad">not back</span></td><td>
+<div class="steps"><span>Read it again</span><span>Declare the window · until 01:57, silence set</span><span>Reload · 01:36</span><span class="fail">Wait for it · no answer in 16 min 15 s</span><span class="no">Verify</span><span>Record · <a href="#" class="mono">4c1d09e</a></span></div>
+</td></tr>
+<tr><th scope="row"><a href="#">rtr-edg-0109</a></th><td class="mono">192.0.2.109</td><td><span class="chip ok">reloaded</span></td><td>back after 6 min 41 s; runs what it ran</td></tr>
+<tr><td colspan="4" class="muted">4 more reloaded and verified · <a href="#">show all 6</a></td></tr>
+</tbody></table></details>
+<details class="grp"><summary><span><span class="chip ok">done</span> <strong>Batches 1–8</strong> <span class="muted">· 00:31 to 01:35 UTC · 41 reloaded and verified, 2 refused at their turn</span></span><span class="muted">show</span></summary></details>
+<details class="grp" open><summary><span><span class="chip warn">refused at their turn</span> <strong>2</strong> <span class="muted">· nothing sent</span></span><span class="muted">hide</span></summary>
+<table><tbody>
+<tr><th scope="row"><a href="#">rtr-acc-0144</a></th><td>batch 4</td><td>moved since the preview (previewed <span class="mono">91c0aa3e</span>, now <span class="mono">5d7e2b10</span>): nothing was sent</td></tr>
+<tr><th scope="row"><a href="#">rtr-acc-0188</a></th><td>batch 6</td><td>held by a capture by operator2@example.com since 01:02 UTC: nothing was sent</td></tr>
+</tbody></table></details>
+<details class="grp"><summary><span><span class="chip">not attempted</span> <strong>562</strong> <span class="muted">· batches 10–106 · the run stops at its first failure, which was on rtr-edg-0117</span></span><span class="muted">show</span></summary></details>
+<p class="muted" style="margin:0;font-size:12.5px">Each device's reload is its own committed record; the run's record (who, why, the filter, the plan <span class="mono">b71e5d02c9a4f310</span>, every outcome, where it stopped) is commit <a href="#" class="mono">e08a77c</a>, as operator@example.com (verified).</p>
+</section>
+<p class="callout">Counts: batches 1–9 hold 1 + 8 × 6 = 49 devices: 46 reloaded, 1 failed, 2 refused; 611 − 49 = 562 not attempted. Red, never green, while anything failed or was left out; "Plan the rest…" opens a new preview of the run's not-attempted devices by the run's id, never by names.</p>
+</main>
+</div>
+
+<div style="height:40px"></div>
+</body>
+</html>
