@@ -283,6 +283,11 @@ DEFAULTS: dict = {
     #: Profiles by a verified person and recorded. Empty: no policy, nothing rotates on a
     #: schedule (the behaviour before it existed).
     "credential_rotation_policies": {},
+    #: C1317 (the operator, 2026-10-18): the installation's no-change windows, daily spans in
+    #: UTC, ``[{"start": "HH:MM", "end": "HH:MM", "reason": "..."}]``, in which no scheduled
+    #: change starts (`modules/change_windows.py`). None by default: nothing is held. What an
+    #: installation sets is its own; nothing in the product names one.
+    "no_change_windows": [],
     #: All three default ON. Reveal exposes a secret; approve and confirm are
     #: the two actions that put configuration **on a device**. An audit entry
     #: for any of them is worthless without a name attached to it, and the two
@@ -748,6 +753,20 @@ SCHEMA: dict = {
                     "max_per_run": {"type": "integer", "minimum": 1, "maximum": 1000},
                     "devices": {"type": "array", "items": _STR},
                     "set_by": _STR, "set_at": _STR, "verified": _STR,
+                },
+            },
+        },
+        "no_change_windows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["start", "end"],
+                "additionalProperties": False,
+                "properties": {
+                    # change_windows.HHMM: 00:00 to 23:59, UTC.
+                    "start": {"type": "string", "pattern": r"^([01][0-9]|2[0-3]):[0-5][0-9]$"},
+                    "end": {"type": "string", "pattern": r"^([01][0-9]|2[0-3]):[0-5][0-9]$"},
+                    "reason": _STR,
                 },
             },
         },

@@ -158,9 +158,9 @@ def rotate_due_confirm():
         return _region(409, op={"state": "rotate_preview", "p": p, "refused": (
             f"the due devices changed since the preview you confirmed ({confirmed or 'none'} "
             f"-> {p['hash']}): nothing was sent; read them again and confirm")})
-    if p["backup_window"]:
+    if p["no_change"]:
         return _region(409, op={"state": "rotate_preview", "p": p, "refused": (
-            "inside the nightly backup window, 08:30 to 09:10 UTC: no run starts then; "
+            f"inside {p['no_change']}: no run starts then; "
             "nothing was sent")})
     job, run_id = SR.start_now(actor=identity.request_actor(), confirmed=confirmed)
     return _region(202, op={"state": "rotating", "job": job, "run": run_id,

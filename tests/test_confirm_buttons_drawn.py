@@ -975,10 +975,10 @@ class TestRotateDueCards(_Cards):
     CASES = {
         "rotate_due": ("_credential_profiles.html", "Rotate {{ p.chosen | length }} device"
                        "{{ '' if p.chosen | length == 1 else 's' }}", r"Rotate 2 devices",
-                       "data: inside the nightly backup window"),
+                       "data: inside a no-change window"),
     }
 
-    def _card(self, request, monkeypatch, backup_window):
+    def _card(self, request, monkeypatch, blocked):
         """test_scheduled_rotation's due devices (`_states`: r1 and r3 due under role:router's
         policy), the window declared as the test's run declares it."""
         import time
@@ -987,7 +987,8 @@ class TestRotateDueCards(_Cards):
         client = request.getfixturevalue("client")
         states = _states(now=time.time())
         monkeypatch.setattr(SR, "device_states", lambda now=None, **_k: states)
-        monkeypatch.setattr(SR, "in_backup_window", lambda now=None: backup_window)
+        window = {"start": "22:00", "end": "23:00", "reason": "a freeze"} if blocked else None
+        monkeypatch.setattr(SR, "in_no_change_window", lambda now=None: window)
         return _text(client.get("/v2/credentials/profiles/rotate-due"))
 
     def drawn_rotate_due(self, request):

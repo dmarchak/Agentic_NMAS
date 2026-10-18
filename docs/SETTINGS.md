@@ -113,7 +113,7 @@ installation that wants today's behaviour never needs to.
 
 | Setting | Waits for |
 |---|---|
-| (none now) | The records database's settings reached their screen on 2026-10-09 (Settings › Installation, above). |
+| `no_change_windows` | C1317 (the operator, 2026-10-18): the installation's daily spans, in UTC, in which no scheduled change starts, `[{"start": "HH:MM", "end": "HH:MM", "reason": "..."}]` (`modules/change_windows.py`; the schema refuses any other shape). **None by default: nothing is held**; what an installation sets is its own (a nightly hypervisor backup, a freeze), and nothing in the product names one. A window is `[start, end)`; a start after its end wraps past midnight; a start equal to its end holds nothing and says so. The scheduled credential rotation reads it today: no run starts inside a window, a run that reaches one stops there, and Credentials › Profiles names each window set. It waits for a Settings › Installation card, drawn with the bulk actions' windows (docs/BULK_ACTIONS.md, question 5); until then it is written through `write_settings` on the host. |
 
 ## File-only, deliberately
 

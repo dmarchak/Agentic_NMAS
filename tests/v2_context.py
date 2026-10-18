@@ -905,8 +905,28 @@ def _profile_versions(client, _lab, _mp):
         mp.undo()
 
 
+def _no_change_window(client, _lab, _mp):
+    """Credentials › Profiles with a no-change window set (C1317; none by default, so the
+    walk's lab has none): `change_windows.windows` answers one, as the installation's setting
+    would, and the summary names it. Its patch is undone before the next provider."""
+    import pytest
+
+    from modules import change_windows
+
+    mp = pytest.MonkeyPatch()
+    try:
+        mp.setattr(change_windows, "windows",
+                   lambda: [{"start": "22:00", "end": "23:00", "reason": "a freeze"}])
+        r = client.get("/v2/credentials/profiles?list=Lab", headers={"Accept": "text/html"})
+        assert r.status_code == 200 and ("No run starts inside the no-change window 22:00 to "
+                                         "23:00 UTC (a freeze).") in r.get_data(as_text=True), \
+            r.status_code
+    finally:
+        mp.undo()
+
+
 #: What no followed GET reaches, each on the lab's own state: a POST's card, a script's GET,
 #: a state the lab's walk does not hold. In order: `_deploy` changes r3, so it is last.
 PROVIDERS: list = [_reveal, _intent_check, _persist_read, _unlinked, _rekey, _drift,
                    _in_progress, _pending, _netbox_source, _silenced_alert, _save_no_golden, _profile_versions,
-                   _deploy]
+                   _no_change_window, _deploy]

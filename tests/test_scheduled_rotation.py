@@ -9,7 +9,9 @@ the run.
 - the timer picks exactly the due devices: older than the policy, or never rotated by
   Mercury; not a device whose profile's policy is off, nor one no profile covers;
 - the preferred window, the per-run limit (oldest first), and once in any 24 hours;
-- never in the nightly backup window (08:30 to 09:10 UTC), and a run that reaches it stops;
+- never in a no-change window the installation set (C1317: none by default, and then none
+  applies; one set holds a run exactly as the lab's backup window did), and a run that
+  reaches one stops;
 - a held device, one mid-restart (a planned window) and one off its intent are skipped with
   the reason, and the rest still run;
 - the first failure stops the run, raises the CRITICAL row naming the device and the stage,
@@ -193,37 +195,70 @@ def test_the_per_run_limit_takes_the_oldest_first():
     assert [w["device"] for w in waiting] == ["r1"] and "limit of 2" in waiting[0]["why"]
 
 
-# ---------------------------------------------------------------------------- the backup window
+# ---------------------------------------------------------------------------- no-change windows
+
+#: A window as an installation sets one (C1317), through the settings' own write path. The
+#: tests that follow held the lab's backup window before it left the product; the same span,
+#: configured as a backup's, shows a configured window holds a run exactly as that constant
+#: did, so they keep their names.
+WINDOW = {"start": "08:30", "end": "09:10", "reason": "a nightly backup"}
+SAID = "the no-change window 08:30 to 09:10 UTC (a nightly backup)"
+
+
+def _set_window(*windows):
+    from modules.settings_schema import write_settings
+    assert write_settings({"no_change_windows": list(windows)})["ok"]
+
 
 @pytest.mark.parametrize("at,inside", [("08:29:59", False), ("08:30:00", True),
                                        ("09:09:59", True), ("09:10:00", False)])
-def test_the_backup_window_bounds(at, inside):
-    assert SR.in_backup_window(_at(f"2026-10-12T{at}Z")) is inside
+def test_the_backup_window_bounds(data, at, inside):
+    _set_window(WINDOW)
+    assert (SR.in_no_change_window(_at(f"2026-10-12T{at}Z")) == WINDOW) is inside
 
 
-def test_no_run_starts_in_the_backup_window(data, monkeypatch):
+@pytest.mark.parametrize("at", ["08:29:59", "08:30:00", "08:45:00", "09:09:59", "12:00:00"])
+def test_with_no_window_set_none_applies(data, at):
+    from modules.settings_schema import get_setting
+    assert get_setting("no_change_windows") == [], "floor: the default is none"
+    assert SR.in_no_change_window(_at(f"2026-10-12T{at}Z")) is None
+
+
+def test_with_no_window_set_a_run_at_0845_runs(data, monkeypatch):
+    """The span the lab's constant held is nothing to an installation that set none."""
     rot = Rotations()
     got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot,
                now=_at("2026-10-12T08:45:00Z"))
-    assert got["state"] == "refused" and "backup window" in got["error"]
+    assert got["state"] == "done", got
+    assert [c["device"] for c in rot.calls] == ["r3", "r1"]
+
+
+def test_no_run_starts_in_the_backup_window(data, monkeypatch):
+    _set_window(WINDOW)
+    rot = Rotations()
+    got = _run(monkeypatch, _states(), trigger="scheduled", rotate=rot,
+               now=_at("2026-10-12T08:45:00Z"))
+    assert got["state"] == "refused" and f"inside {SAID}: no run starts then" in got["error"]
     assert rot.calls == []
     assert SR.runs()["rows"][-1]["state"] == "refused"
 
 
 def test_a_run_that_reaches_the_backup_window_stops_there(data, monkeypatch):
+    _set_window(WINDOW)
     rot = Rotations()
     times = iter([_at("2026-10-12T08:29:00Z")] * 4 + [_at("2026-10-12T08:31:00Z")] * 20)
     got = _run(monkeypatch, _states(), trigger="request", actor=SETTER, rotate=rot,
                clock=lambda: next(times))
     assert [c["device"] for c in rot.calls] == ["r3"]
     assert [n["device"] for n in got["not_reached"]] == ["r1"]
-    assert "backup window" in got["error"]
+    assert f"stopped at {SAID}" in got["error"]
 
 
 def test_the_run_s_own_clock_moves_and_stops_at_the_backup_window(data, monkeypatch):
     """C727: the run's clock was frozen at the tick that started it (the host, 2026-10-13: the
     run's finish read its start), so with no clock passed in, a run reaching 08:30 UTC would
     not stop. Here the wall clock moves two minutes a rotation, from 08:28:30."""
+    _set_window(WINDOW)
     wall = {"t": 1_000_000.0}
     monkeypatch.setattr(SR.time, "time", lambda: wall["t"])
 
@@ -240,7 +275,7 @@ def test_the_run_s_own_clock_moves_and_stops_at_the_backup_window(data, monkeypa
                  checks=CLEAN)
     assert [c["device"] for c in rot.calls] == ["r3"]
     assert [n["device"] for n in got["not_reached"]] == ["r1"]
-    assert "backup window" in got["error"]
+    assert f"stopped at {SAID}" in got["error"]
     assert got["finished"] != got["started"], "the run's finish is its own time"
 
 
@@ -260,9 +295,8 @@ def test_a_held_device_is_skipped_and_the_rest_run(data, monkeypatch):
 def test_a_device_mid_restart_is_skipped(data, monkeypatch):
     from modules import restarts
     now = time.time()
-    # The planned window is real time (restarts reads the clock); outside the backup window
-    # by declaration, so the test never skips at 08:30 to 09:10 UTC (C982).
-    monkeypatch.setattr(SR, "in_backup_window", lambda now=None: False)
+    # The planned window is real time (restarts reads the clock); the test's store sets no
+    # no-change window, so none applies at any hour (C982, C1317).
     assert restarts.record_planned(["r1"], now - 60, now + 600, by=SETTER,
                                    why="a planned reload for this test", via="test",
                                    list_name="Lab")["ok"]
@@ -593,7 +627,8 @@ def test_the_timer_runs_only_when_a_policy_is_due_in_its_window(data, monkeypatc
     monkeypatch.setattr(SR, "policies", lambda: {})
     assert SR.tick(NOW)["state"] == "idle" and ran == []          # no policy: nothing
     monkeypatch.setattr(SR, "policies", lambda: {"role:router": _policy(start=13, end=15)})
-    assert SR.tick(_at("2026-10-12T08:45:00Z"))["state"] == "idle"  # the backup window
+    _set_window({"start": "13:30", "end": "13:50"})
+    assert SR.tick(_at("2026-10-12T13:40:00Z"))["state"] == "idle"  # a no-change window
     assert SR.tick(_at("2026-10-12T16:00:00Z"))["state"] == "idle"  # outside its window
     assert ran == []
     SR.tick(NOW)
@@ -746,9 +781,8 @@ def test_rotate_due_now_runs_as_a_job_through_rotate_op(data, monkeypatch):
     monkeypatch.setattr(SR, "off_intent", lambda _l, _h: "")
     states = _states(now=time.time())
     monkeypatch.setattr(SR, "device_states", lambda now=None, **_k: states)
-    # The run reads the real clock; outside the backup window by declaration, so the test
-    # never skips at 08:30 to 09:10 UTC (and the coverage it gives never falls then: C982).
-    monkeypatch.setattr(SR, "in_backup_window", lambda now=None: False)
+    # The run reads the real clock; the test's store sets no no-change window, so it never
+    # skips at any hour (and the coverage it gives never falls then: C982, C1317).
     job, run_id = SR.start_now(actor=SETTER, confirmed="")
     assert capture_job.wait(job, 20)
     assert capture_job.get(job)["payload"]["result"]["state"] == "done"
@@ -772,13 +806,36 @@ def test_the_forms_and_cards_draw(client, data):
     assert "Scheduled rotation" in html and "Rotation policy…" in html
 
 
+def test_the_profiles_page_names_each_window_set(client, data):
+    """C1317: the summary says which window holds runs, and says none when none is set."""
+    _profile()
+    html = client.get("/v2/credentials/profiles?list=Lab").get_data(as_text=True)
+    assert "Scheduled rotation" in html, "floor: the rotation part is drawn"
+    assert "No run starts inside" not in html
+    _set_window(WINDOW)
+    html = client.get("/v2/credentials/profiles?list=Lab").get_data(as_text=True)
+    assert f"No run starts inside {SAID}." in html
+
+
+def test_inside_a_window_the_confirm_is_refused_naming_it(client, data, monkeypatch):
+    started = []
+    monkeypatch.setattr(SR, "start_now", lambda **kw: started.append(kw) or ("j", "r"))
+    monkeypatch.setattr(SR, "preview", lambda now=None: {
+        "chosen": [{"list": "Lab", "device": "r1", "profile": "role:router",
+                    "age_words": "never rotated by Mercury"}], "waiting": [],
+        "hash": "abc", "no_change": SAID, "covered": 1, "total": 1})
+    r = client.post("/v2/credentials/profiles/rotate-due", data={"hash": "abc"})
+    assert r.status_code == 409 and started == []
+    assert f"inside {SAID}: no run starts then" in r.get_data(as_text=True)
+
+
 def test_the_confirm_is_bound_to_the_previewed_list(client, data, monkeypatch):
     started = []
     monkeypatch.setattr(SR, "start_now", lambda **kw: started.append(kw) or ("j", "r"))
     monkeypatch.setattr(SR, "preview", lambda now=None: {
         "chosen": [{"list": "Lab", "device": "r1", "profile": "role:router",
                     "age_words": "never rotated by Mercury"}], "waiting": [],
-        "hash": "abc", "backup_window": False, "covered": 1, "total": 1})
+        "hash": "abc", "no_change": "", "covered": 1, "total": 1})
     r = client.post("/v2/credentials/profiles/rotate-due", data={"hash": "stale"})
     assert r.status_code == 409 and "(stale -&gt; abc)" in r.get_data(as_text=True)
     assert started == []

@@ -6,11 +6,12 @@ with MDT (UTC−6) beside where it helps.
 
 ## Where it stands
 
-*Updated 2026-10-18 22:5x UTC, after the operator's P7-27 walk.*
+*Updated 2026-10-18 23:2x UTC, after the operator's decisions of the evening.*
 
-**The host runs fd1ec370** (CI #945), deployed 2026-10-18 at 22:51:54 UTC. Its GET walk passed 23
+**The host runs 3a2d19be** (CI #946), deployed 2026-10-18 at 23:08:20 UTC. Its GET walk passed 23
 of 23 paths: `/` answers 302 to `/v2/`, keeping `?list=`; today's old addresses answer 404, drawn
-in v2's look for a browser; every v2 page answers 200.
+in v2's look for a browser; every v2 page answers 200. 0e02403b (C1316) deploys when its CI run
+passes, and this change after it; each is walked the same way.
 
 **Done:**
 - P7-27 is merged (4e631168), deployed and walked by you; steps 1 to 12 PASS.
@@ -18,8 +19,54 @@ in v2's look for a browser; every v2 page answers 200.
 - C650 (About) and C1267 are closed.
 - Your walk's four fixes are deployed: C1303, C1304, C1305 and C1306.
 
-**Phase 7 now waits only on your decisions** (below): C1192, built or deferred; and two new Bs,
-C1315 (a GitHub edit) and C1317 (the backup window in code), each waiting on a rule from you.
+**Your decisions of 2026-10-18 (evening), each done or answered:**
+- **C1192, split.** The record is estimated at 2.5 to 3.5 h, over your ~2 h line. So it is
+  registered on C1192 and not built, as you said. The "Recently cleared" screen and its board
+  are C1319, deferred to Stage 7's tail, with the cost on the row.
+- **C1315, the rule stands.** Mercury is the only writer. Your account's ruleset question is
+  answered below. Adopting the remote's commits is deferred to after Phase 7, with the edge
+  kit's offline sync. C1315 is re-ranked B to C, with that reason on the row.
+- **C1317, fixed.** No-change windows are now the installation's setting, none by default. The
+  product names no window. This installation's 08:30 to 09:10 UTC is written to the host's
+  settings once the change is deployed.
+- **C472, C822, C828:** one line each, in the B table below, for your acceptance.
+- **C1316, fixed.** s3's tail follows the lab host's load, not its CPU or its rate. The check
+  now says JITTER. What raised that load is C1318 (UNKNOWN, LAB).
+
+**Phase 7 is not closed. Two things still block it, both yours:**
+1. **C1192's record:** build it in Phase 7 at 2.5 to 3.5 h, or defer it.
+2. **Accepting C472's, C822's and C828's deferral** on their lines below.
+
+Nothing else in Phase 7 is open.
+
+## C1315: can your account block every push but Mercury's?
+
+**It depends on your plan, which an anonymous read cannot see.** The network's configuration
+repository, `<account>/<repo>`, answers 404 to an anonymous API read, so it is private. It is on a personal account. GitHub's
+rulesets and branch protection on a private repository need GitHub Pro (or a Team
+organisation).
+- **On GitHub Free:** no. GitHub does not enforce a ruleset on a private repository of a Free
+  personal account.
+- **On GitHub Pro,** the clicks are:
+  1. Open the repository, then **Settings**, then **Rules**, then **Rulesets**.
+  2. Click **New ruleset**, then **New branch ruleset**.
+  3. Name it `mercury-only`.
+  4. Set **Enforcement status** to **Active**.
+  5. Under **Bypass list**, click **Add bypass** and choose **Deploy keys**. Mercury pushes
+     with one. **If the list offers no Deploy keys entry, stop here:** the ruleset would refuse
+     Mercury's pushes too.
+  6. Under **Target branches**, click **Add target** and choose **Include all branches**.
+  7. Under **Branch rules**, tick **Restrict creations**, **Restrict updates**, **Restrict
+     deletions** and **Block force pushes**.
+  8. Click **Create**.
+- **After that:** a push from any other key or token is refused by GitHub. Mercury's
+  deploy-key push still lands.
+- **Your own account is refused too.** As the repository's admin you can still edit or
+  disable the ruleset.
+- **Check it both ways:**
+  - Push a new branch named `ruleset-check` from the laptop. It should be refused, naming the
+    ruleset.
+  - Mercury's next push should land. History's remote card says pushed.
 
 ## What is done today (2026-10-18), on main
 
@@ -61,12 +108,17 @@ The branch `p7-27` (e2f27b84, 078c1bd0) is in main through the merge 4e631168.
 
 ## What only you can do, in order
 
-1. **Decide C1192**: build it now, or defer it explicitly (the agent's three-line account is in
-   the session).
-2. **Choose C1315's rule** (an edit on GitHub): the remote refuses every writer but Mercury (a
-   GitHub branch protection, yours), or v2 adopts the remote's commits by a confirmed operation.
-3. ~~Paste the replacement for CLAUDE.md's v1-pages bullet~~ **done** (the operator's paste,
-   2026-10-18: "Instructions name only v2's screens and controls").
+1. **C1192's record**: build it in Phase 7 (2.5 to 3.5 h), or defer it. This is the last
+   decision Phase 7 waits on, with item 2.
+2. **Accept, or not, the deferral of C472, C822 and C828** on their one-line accounts in the B
+   table below.
+3. **C1315's ruleset** on GitHub, if your plan allows one: the clicks are above (outside the
+   lab, yours; it does not block the close).
+4. ~~Decide C1192~~ split by you; ~~choose C1315's rule~~ it stands; ~~C1317~~ fixed;
+   ~~paste the replacement for CLAUDE.md's v1-pages bullet~~ **done** (the operator's paste,
+   2026-10-18: "Instructions name only v2's screens and controls"), committed in be204be2.
+5. docs/BULK_ACTIONS.md's eight questions stay open for you after the close; C1312's six board
+   redraws follow it.
 
 Done since: your P7-27 walk (steps 1 to 12 PASS, the six divergences kept), and About's
 screenshot.
@@ -81,9 +133,8 @@ Done since this was first written: the CLAUDE.md script ran and its lines are co
 - Your walk's four fixes, each gated and deployed: C1303 History's Kind filter (9205ba01); C1304
   Devices' select-all (fd1ec370); C1305 Coverage never blank; C1306 the failure page (e5cc8840).
 
-The burn-down's last items are done: P7-09's 7.D, C650 and P7-27. **Phase 7 closes when C1192
-is built or deferred by your word.** C1315 is a new B, waiting on your rule; say whether it is
-in Phase 7 or after.
+The burn-down's last items are done: P7-09's 7.D, C650 and P7-27. **Phase 7 closes when C1192's
+record is built or deferred by your word, and C472, C822 and C828's deferral is accepted.**
 
 ## Every A and B: how each was resolved
 
@@ -115,11 +166,11 @@ was opened since.
 | C1160 | **Closed: 11b0a1ef** (the Inventory source card names what NetBox left out). |
 | C1168 | **Closed: 898d1bad** (the rotation halt takes the operator's two-strikes rule). |
 | C1259 | **Closed: 2b78a931** (an unreadable NetBox-sourced list is a Needs attention row; deployed in 898d1bad). |
-| C1192 | **Open, for the operator's decision:** build now, or defer explicitly, on the agent's three-line account (2026-10-18). |
+| C1192 | **Split by the operator (2026-10-18); the record open, for the operator's go:** estimated at 2.5 to 3.5 h, over the ~2 h line, so registered and not built, as decided. The screen and its board are C1319, deferred to Stage 7's tail by the operator. |
 | C7 | **Deferred, by the operator (the triage):** FUTURE (7.7). Burn-down section 4: after cutover. |
 | C60 | **Deferred, by the operator (the triage):** FUTURE (Stage 8's follow-up window). Burn-down section 4: "Phase 8 / Stage 8". |
 | C230 | **Deferred, by the operator (the triage):** FUTURE; the operator's one-time step. Burn-down section 4: "Stage 9, security" (D4). |
-| C472 | **Deferred:** the triage placed it CORE, Stage 7. The burn-down placed it "multi-user, after cutover", Stage 7's tail: the agent's placement under the operator's D3. |
+| C472 | **Deferred:** the triage placed it CORE, Stage 7. The burn-down placed it "multi-user, after cutover", Stage 7's tail: the agent's placement under the operator's D3. **In one line (for the operator's acceptance, asked 2026-10-18):** when another person's write is broadcast, three live regions still redraw over this person's state (History's loaded diff closes to its row, the remote card's Push or Verify answer is replaced, Coverage scrolls back to its left edge); deferred because it needs two people on one screen at once, which the lab's single operator never is; lost meanwhile: that view state only, never a record, a result or a confirm (each is kept and readable again). |
 | C531 | **Deferred, by the operator (the triage):** FUTURE. Burn-down section 4: "After Phase 7". |
 | C554 | **Deferred, by the operator (the triage):** FUTURE, with the parked removal work. Burn-down section 4: "After Phase 7". |
 | C556 | **Deferred, by the operator (the triage):** CORE, NetBox Phase 1, after cutover. |
@@ -129,8 +180,8 @@ was opened since.
 | C618 | **Deferred, by the operator (the triage):** CORE, Phase 2. |
 | C792 | **Deferred, by the operator:** mutation parked (C835). |
 | C834 | **Deferred, by the operator:** mutation parked (C835). |
-| C822 | **Deferred:** burn-down section 4, "Harness and measurement only". The agent's placement under the operator's D5. |
-| C828 | **Deferred:** burn-down section 4, "Stage 9, functional or minor". The agent's placement under the operator's D4. |
+| C822 | **Deferred:** burn-down section 4, "Harness and measurement only". The agent's placement under the operator's D5. **In one line (for the operator's acceptance, asked 2026-10-18):** a test that patches `<module>.time.time` patches the one shared `time` module, so while it runs every wait in that process (the app's threads it started among them) reads the fake clock; deferred because it is the test harness only and touches nothing Mercury runs; lost meanwhile: a hang inside such a test is not stopped by its own bound, only later by faulthandler's 120 s and nmas-test's process bound, both real-time timers outside `time.time`. |
+| C828 | **Deferred:** burn-down section 4, "Stage 9, functional or minor". The agent's placement under the operator's D4. **In one line (for the operator's acceptance, asked 2026-10-18):** History › Query's Code mode does not read a PromQL query back into the metrics builder, and board E3's notice "can't read this back" is not drawn; deferred as Stage 9, functional and minor (a convenience of the query screen, no record or device touched); lost meanwhile: a person who edits a query as code cannot return to the builder with it, and is not told so (they keep editing as code, or build it again). |
 
 ### Opened since 318cf42f
 
@@ -151,18 +202,22 @@ was opened since.
 | C1313 | B | **Closed: ee1f85f7.** About's footer claimed a host behind is always a row (found by your question 7). |
 | C1303 | B | **Closed: 9205ba01.** History's Kind filter, goldens one click away (your walk). |
 | C1304 | B | **Closed with C902: fd1ec370.** Devices' select-all; all matching is resolved by each action on the server (your walk). |
-| C1315 | B | **Open, for your rule:** an edit on GitHub has no v2 path. Mercury never fetches, and the divergence row sends a person to a terminal. Either the remote refuses every writer but Mercury (GitHub branch protection, outside the lab, yours), or v2 adopts the remote's commits by a confirmed operation (found by your question 9). |
-| C1317 | B | **Open, for your answer:** this lab's backup window (08:30 to 09:10 UTC) is a constant in product code (`scheduled_rotation.BACKUP_WINDOW`), against "nothing lab-specific in the product". The fix is no-change windows as a setting, empty by default, its shape the bulk design's question 5 (found by C1307's design). |
+| C1315 | B, now C | **Re-ranked B to C and deferred by the operator (2026-10-18):** the rule stands (Mercury the only writer); held on GitHub by a ruleset where the plan allows (above); adopting the remote's commits after Phase 7, designed with the edge kit's offline sync (docs/EDGE_ARCHITECTURE.md). |
+| C1317 | B | **Closed: fixed in Phase 7 by the operator's decision.** No-change windows the installation's setting, none by default; the product names no window; this installation's value written on the host after its deploy. |
+| C1316 | UNKNOWN | **Closed: 0e02403b.** Measured: s3's tail follows the lab host's load; the check says JITTER where the spread widened and STALE RATE only where the rate alone breaks the window. |
+| C1318 | UNKNOWN | **Open, LAB:** what raised the lab host's load on 10-18 (each VM's CPU by hour is the measurement); s3's rule reads JITTER until then. Not Phase 7's: a lab VM's contention, the product's check reporting it rightly. |
+| C1319 | B | **Deferred to Stage 7's tail by the operator (2026-10-18):** C1192's "Recently cleared" screen and its board, about 2.5 to 3.5 h after the record. |
 
 ### In all
 
 - **Of the 6 A:** C650 is closed (ee1f85f7). 5 are deferred by your decisions: the triage, and
   mutation parked.
-- **Of the 19 B:** 3 are closed. 1 waits on your call (C1192). 12 are deferred by the triage or
-  the parked mutation. 3 are deferred by the agent's placement under your D-categories (C472,
-  C822, C828).
-- **Since then:** 17 opened, 1 A and 16 B. 15 are closed. 2 are open: C1315, waiting on
-  your rule, and C1317, waiting on your answer to the bulk design's question 5. One UNKNOWN may become a B: C1316, s3's heartbeat tail, waiting on one measurement.
+- **Of the 19 B:** 3 are closed. 1 waits on your go (C1192's record, 2.5 to 3.5 h). 12 are
+  deferred by the triage or the parked mutation. 3 wait on your acceptance of their deferral
+  (C472, C822, C828, one line each above).
+- **Since then:** 18 B-or-A rows opened (1 A, 17 B with C1319). 16 are closed (C1317 among
+  them). C1315 is re-ranked C and deferred by you. C1319 is deferred by you to Stage 7's tail.
+  The UNKNOWN C1316 is closed. C1318 is a new UNKNOWN, a LAB one.
 
 ## The inferences, as the operator decided them (2026-10-18, by 21:20 UTC)
 
@@ -174,8 +229,8 @@ was opened since.
 6. **C1294:** confirmed, and built: 305bdcbf. Shown by two quick pushes running at once, #940
    and #941, both green, neither cancelled.
 7. **About's record from the walk:** confirmed.
-8. **C1192:** the operator decides build now or an explicit deferral, on the agent's three-line
-   account. It stays in Phase 7 until then.
+8. **C1192:** split by the operator, 2026-10-18 evening: the record now if under ~2 h, the screen
+   deferred (C1319). Estimated 2.5 to 3.5 h, so registered and waiting on the operator's go.
 9. **C1260's 30 s:** a guess, said the operator. The finishing probes are measured under the
    reproduced load (a gate beside a mutation run, load average to 28.5), and the bound is set
    at 2.5 times the slowest measured.
@@ -184,10 +239,12 @@ Each is a line in docs/STANDING_APPROVAL_LOG.md (c9b263d8).
 
 ## Not done, and why
 
-- **docs/LESSONS.md's "Lab 7's lessons, kept"**: written, waiting for CLAUDE.md's `[why]` link
-  (your script, step 2 above); tests/test_claude_md.py needs both in one commit.
 - **Lab 7's mechanisations** C1289 to C1293 (about 12 to 15 h in all), after Phase 7 (inference 4).
-- **C1265's rest**: 250 of `apply_batch`'s mutants unrun (1 h 40 min to 4 h of runner time).
-- **C1294's fix** (the CI workflow: inference 6); **C1288** (a test reading the checkout's real
-  log); the seven C defects C650's records found (C1295 to C1301), each a fidelity-held template.
-- **CLAUDE.md's four post-merge lines**: your script.
+- **C1265's rest**: mutants 129 to 131 not yet judged (mutation parked).
+- **C1288** (a test reading the checkout's real log); the seven C defects C650's records found
+  (C1295 to C1301), each a fidelity-held template.
+- **C1192's record** (your go) and **C1319** (Stage 7's tail); **C1318** (the lab host's load).
+- **s3's heartbeat window** is not re-measured: the check reads JITTER s3 until the lab host's
+  load falls or you choose to fit the window to it (C1318).
+- Done since this list was first written: "Lab 7's lessons, kept" and CLAUDE.md's post-merge
+  lines (350fd6cd); C1294's fix (305bdcbf); the v1-pages bullet (be204be2).

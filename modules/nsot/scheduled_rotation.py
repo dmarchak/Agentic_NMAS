@@ -15,8 +15,9 @@ its stages, records and History rows are a manual rotation's, named "scheduled r
 
 What it refuses, and what it skips (each with its reason, kept in the run's record):
 
-* never inside the nightly backup window, 08:30 to 09:10 UTC (the whole run; a run that
-  reaches it stops, the rest not reached);
+* never inside a no-change window (`modules/change_windows.py`, the installation's setting;
+  none by default): no run starts in one, and a run that reaches one stops, the rest not
+  reached;
 * the timer runs a policy only inside its preferred window, once in any 24 hours; a person's "Rotate
   due devices now" runs every due device now (outside the preferred window too);
 * a device another operation holds (`device_ops`), or one mid-restart (a planned-restart
@@ -55,8 +56,6 @@ DEFAULT_DAYS = 30
 DEFAULT_MAX = 5
 #: A device name as an inventory holds it (a policy's "only these devices").
 _DEVICE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
-#: The nightly backup window, UTC (CLAUDE.md, standing facts): no run inside it.
-BACKUP_WINDOW = ((8, 30), (9, 10))
 #: The timer's tick. The preferred window is whole hours, so five minutes is at most a
 #: twelfth of the shortest window; a tick does no device work unless a policy is due.
 TICK_SECONDS = 300
@@ -65,7 +64,7 @@ TICK_SECONDS = 300
 RESTART_RECENT_SECONDS = 600
 #: A run's steps, as the manual names them (docs/manual/how-it-works/rotate.md, "On a
 #: schedule"): each device then runs Rotate's own steps (`rotate_op.STEPS`).
-STEPS = (("refuse", "Refuse the backup window and a second run"),
+STEPS = (("refuse", "Refuse a no-change window and a second run"),
          ("select", "Select the due devices"),
          ("check", "Check each device before it"),
          ("rotate", "Rotate it, one at a time"),
@@ -105,12 +104,18 @@ def _epoch(iso: str):
         return None
 
 
-def in_backup_window(now=None) -> bool:
-    """Is *now* inside 08:30 to 09:10 UTC?"""
-    t = time.gmtime(_now(now))
-    minute = t.tm_hour * 60 + t.tm_min
-    (h0, m0), (h1, m1) = BACKUP_WINDOW
-    return h0 * 60 + m0 <= minute < h1 * 60 + m1
+def in_no_change_window(now=None):
+    """The installation's no-change window covering *now* (`change_windows.holding`), or
+    None: none is set by default, so none applies."""
+    from modules import change_windows
+    return change_windows.holding(_now(now))
+
+
+def _no_change_words(now=None) -> str:
+    """The window covering *now* in words, or "" when none does."""
+    from modules import change_windows
+    w = in_no_change_window(now)
+    return change_windows.words(w) if w else ""
 
 
 def in_window(policy: dict, now=None) -> bool:
@@ -555,7 +560,7 @@ def preview(now=None) -> dict:
         if why:
             c["now"] = f"{why}: skipped when its turn comes unless that has ended"
     return {"chosen": chosen, "waiting": waiting, "hash": selection_hash(chosen),
-            "backup_window": in_backup_window(now),
+            "no_change": _no_change_words(now),
             "covered": sum(1 for s in states if s["on"]), "total": len(states)}
 
 
@@ -654,7 +659,7 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
     from modules.nsot import device_ops, rotate_op
 
     # The run's clock MOVES from its start (C727: it read the tick's moment throughout, so the
-    # run's finish was its start and a run reaching 08:30 UTC would not have stopped).
+    # run's finish was its start and a run reaching a no-change window would not have stopped).
     t0 = time.time()
     clock = clock or (lambda: _now(now) + (time.time() - t0))
     plan = plan or rotate_op.plan
@@ -676,10 +681,9 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
         _announce()
         return dict(record, ok=state in ("done", "nothing_due"))
 
-    if in_backup_window(started):
-        return finish("refused", "inside the nightly backup window, 08:30 to 09:10 UTC: no "
-                                 "run starts then, so a measurement does not measure the "
-                                 "backup; nothing was sent")
+    if in_no_change_window(started):
+        return finish("refused", f"inside {_no_change_words(started)}: no run starts then; "
+                                 "nothing was sent")
     try:
         lock = RunLock(actor or "the timer", trigger)
         lock.__enter__()
@@ -731,13 +735,14 @@ def run(*, trigger: str, actor: str = "", now=None, run_id: str = "", confirmed:
         hold.__enter__()
         for i, s in enumerate(chosen):
             key, lst, host = f"{s['list']}/{s['device']}", s["list"], s["device"]
-            if in_backup_window(clock()):
+            at = clock()
+            if in_no_change_window(at):
                 record["not_reached"] = [{"list": c["list"], "device": c["device"]}
                                          for c in chosen[i:]]
                 for c in chosen[i:]:
                     _row_progress(run_id, f"{c['list']}/{c['device']}", group="not_reached",
-                                  detail="not reached: the backup window began")
-                return finish("done", "stopped at the nightly backup window, 08:30 UTC: "
+                                  detail="not reached: a no-change window began")
+                return finish("done", f"stopped at {_no_change_words(at)}: "
                                       "the rest wait for the next run")
             reason = ""
             try:
@@ -869,6 +874,7 @@ def page_view(now=None) -> dict:
     """Credentials › Profiles' rotation part: each profile's policy and what it covers (devices,
     due, the next due), every device's credential age and next due (grouped by state), the
     last run, and whether the timer is stopped. Files only."""
+    from modules import change_windows
     now = _now(now)
     try:
         states = device_states(now)
@@ -911,7 +917,8 @@ def page_view(now=None) -> dict:
             "covered": sum(1 for s in states if s["on"]), "error": error,
             "runs_error": got.get("error", ""), "last": last,
             "stopped": halted(got["rows"]) is not None,      # the same rule as the timer
-            "backup_window": in_backup_window(now), "now": _iso(now)}
+            "no_change": _no_change_words(now), "now": _iso(now),
+            "no_change_set": [change_windows.words(w) for w in change_windows.windows()]}
 
 
 # ------------------------------------------------------------------ the timer
@@ -924,7 +931,7 @@ def tick(now=None) -> dict:
     otherwise nothing, and nothing recorded."""
     now = _now(now)
     pols = {k: v for k, v in policies().items() if (v or {}).get("state") == "on"}
-    if not pols or in_backup_window(now) or not any(in_window(p, now) for p in pols.values()):
+    if not pols or in_no_change_window(now) or not any(in_window(p, now) for p in pols.values()):
         return {"ok": True, "state": "idle"}
     states = device_states(now)
     today = now - 86400                    # a scheduled run per policy in any 24 h (C724)

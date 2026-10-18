@@ -68,6 +68,8 @@ SCOPES: dict = {
     **_group(HOST, "platforms", "platform_map", "platform_default_netmiko_type"),
     # C724: keyed by credential profile, which is the installation's (as the profiles are).
     **_group(HOST, "credential_rotation", "credential_rotation_policies"),
+    # C1317: the installation's (a nightly backup or a freeze is the host's, not a network's).
+    **_group(HOST, "no_change_windows", "no_change_windows"),
     **_group(HOST, "web_server", "flask_host", "flask_port"),
     **_group(HOST, "git_author", "nsot_git_author_name", "nsot_git_author_email"),
     # Mercury's records database: one for the installation (P4-2), never a network's.
