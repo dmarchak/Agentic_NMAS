@@ -9,7 +9,15 @@ the lab having no IP SLA policy), then the Decline… card opened as its button 
 reason typed. The board draws no phone width; at 390 the rows stack (label, why, then the
 controls) and the card's parts sit one above the other, as every op card does.
 Templates compared: templates/v2/_decline.html, templates/v2/_coverage.html, templates/v2/ip_sla.html
-Templates sha256: `8a7ceabf2b09ce70cdbff184170f9c7dd79503e80850061994741ed3b5422690`
+Templates sha256: `84ce2f1faaaa7256d6cfea6d885210c3eda005457d2eab1d26afc3c101d73b44`
+
+Compared again 2026-10-18 (C1305, the operator's walk): Coverage's grid draws a declined cell as
+its own "declined" mark (who, when and why on hover) linking its row in this table, which now
+carries the anchor `decl-<host>-<section>`; a not-applicable cell draws "n/a"; the legend
+names both, no "blank". The board's rows are unchanged; the grid is C603's, and the link from
+cell to row is a new region, a deviation (below). Compared by the template and
+tests/test_decline.py's `test_coverage_draws_every_cell_s_meaning_and_the_profile_counts_the_decline`,
+not a new shot: words and a link.
 
 A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md, named) or
 **later** (a later step of the plan).
@@ -28,4 +36,5 @@ A verdict is **same**, **deviation** (its line in docs/STANDING_APPROVAL_LOG.md,
 | The confirm | "Bound to r6's intent as previewed: if it moves before you confirm, nothing is committed." "Record the decline in r6's intent" | the same, after who is confirming | **same** |
 | Declined on Coverage | "Declined", the section, "Declined by <operator>, <date> UTC: "<reason>". Not a gap: the summary counts it as declined, never as covered or missing." Undo decline… | the same words and control | **same** |
 | Declined on the IP SLA page | a row of its probe table: "Declined by …" · Undo decline…, "no probe" | a line of the page's Not suggested list: Declined, who, when, why, Undo decline… | **deviation** (log: C718: the IP SLA page's declined device in its Not suggested list) |
+| A declined cell on the grid (C1305) | not drawn: the board draws the rows | its own "declined" mark, who and why on hover, linking its row here | **deviation** (log: Coverage: a declined cell is its own mark, linking its Undo decline row (the operator's walk, 2026-10-18)) |
 | Undo decline… | the same preview with the entry removed, "Afterwards r6's IP SLA reads Not in intent again", the decline's commit kept, "Remove the decline from r6's intent" | the same | **same** |

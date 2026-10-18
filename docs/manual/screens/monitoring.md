@@ -59,7 +59,12 @@ Each cell is an icon. Hover over it to see why:
 - **A red warning mark:** not rendered. The profile supplies the section, but the device's
   template renders none of it (an older shipped template), so Apply cannot send it. It links
   to Templates, where the shipped version is brought in.
-- **Blank:** not applicable to the device or its platform.
+- **n/a:** not applicable: the profile scopes the section away from the device's platform or
+  role (telemetry on an IOS switch), or the network has no connector for it. Hover the cell for
+  which. A cell is never blank.
+- **declined:** a person declined the section on this device. Hover the cell for who, when and
+  why; click it to reach its **Undo decline…** row under the grid. On Monitoring › Profile, the
+  section's count says it too ("8 of 9 hold it · 1 declined").
 
 Under the grid, **What is not covered, and why** lists each device whose IP SLA is not in its
 intent, with the IP SLA page's own words for it: the probe it would suggest, or why it suggests

@@ -552,7 +552,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
                 from modules.nsot.decline import declines
                 d = declines(intent or {}).get(section) or {}
                 if d.get("by"):
-                    cell = {"state": "declined", "declined": d,
+                    cell = {"state": "declined", "declined": d, "section": section,
                             "words": (f"declined by {d['by']}, {d['at'][:16].replace('T', ' ')} "
                                       f"UTC: \"{d['reason']}\"")}
                 else:

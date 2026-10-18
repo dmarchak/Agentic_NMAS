@@ -83,11 +83,13 @@ class TestTheCells:
         nr = _cell(html, "r2", "SNMP")
         assert 'href="/v2/device/r2?tab=monitoring"' in nr and '<span class="m-nr"' in nr
         assert "a deploy does not fix this" in nr
-        # Not applicable: blank, its why on hover and for a screen reader.
-        blank = re.findall(r'<td class="gc" data-state="(?:unused|not_applicable|excluded)" '
-                           r'title="[^"]+">(.*?)</td>', html, re.S)
-        assert blank, "the lab draws no not-applicable cell (the floor)"
-        assert all('class="m-' not in td and td.startswith('<span class="sr-only">') for td in blank)
+        # Not applicable: "n/a", never blank (C1305, the operator's walk, 2026-10-18; it was
+        # blank until then), its why on hover and for a screen reader.
+        na = re.findall(r'<td class="gc" data-state="(?:unused|not_applicable|excluded)" '
+                        r'title="[^"]+">(.*?)</td>', html, re.S)
+        assert na, "the lab draws no not-applicable cell (the floor)"
+        assert all(td.startswith('<span class="sr-only">')
+                   and '<span class="m-na" aria-hidden="true">n/a</span>' in td for td in na), na[:2]
 
     def test_not_configured_that_the_profile_cannot_supply_offers_no_deploy(self, lab, monkeypatch):
         html = _table(lab, monkeypatch)

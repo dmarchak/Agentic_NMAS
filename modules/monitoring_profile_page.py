@@ -40,7 +40,8 @@ def _held(c: dict, section: str) -> dict:
     """How the devices stand on *section*, from Coverage's cells: ``{"hold", "of", "missing",
     "not_rendered", "measured"}`` with the hosts missing it."""
     cols = COLUMNS_OF.get(section, ())
-    out = {"hold": 0, "of": 0, "missing": [], "not_rendered": [], "measured": bool(cols)}
+    out = {"hold": 0, "of": 0, "missing": [], "not_rendered": [], "declined": [],
+           "measured": bool(cols)}
     if not cols:
         return out
     for d in c.get("devices") or []:
@@ -52,6 +53,10 @@ def _held(c: dict, section: str) -> dict:
             out["not_rendered"].append(d["host"])
         elif any(s in ("gap", "gap_open") for s in states):
             out["missing"].append(d["host"])
+        elif "declined" in states:
+            # C1305: a person declined it: counted, and said ("8 of 9 hold it · 1 declined"),
+            # never the ninth left unnamed.
+            out["declined"].append(d["host"])
         elif all(s in ("ok", "not_reporting", "not_applicable", "excluded", "unused")
                  for s in states):
             out["hold"] += 1

@@ -27,11 +27,14 @@ def answer(message: str, status: int):
     if request.headers.get("HX-Request"):
         body = notice
     else:
+        # `body.v2` is where v2's type and colours apply, and the theme script sets dark mode
+        # as on every v2 page (C1306: without them it drew in the browser's serif).
         body = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width, initial-scale=1">'
                 "<title>Couldn't load</title>"
                 f'<link rel="stylesheet" href="{url_for("static", filename="css/nmas-v2.css")}">'
-                f'</head><body><main class="v2-failure">{notice}'
+                f'<script src="{url_for("static", filename="js/nmas_theme.js")}"></script>'
+                f'</head><body class="v2"><main class="v2-failure">{notice}'
                 f'<p><a href="{url_for("v2.landing")}">Needs attention</a></p></main>'
                 '</body></html>')
     response = make_response(body, status)

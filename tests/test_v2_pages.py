@@ -432,3 +432,33 @@ class TestTheToastRule:
         assert TOAST_CALL.search("showToast('Saved', 'success');")
         assert TOAST_CALL.search("NMAS.toast (msg)")
         assert not TOAST_CALL.search("the toast rule, written in a comment")
+
+
+class TestTheFailurePageHasV2sLook:
+    """C1306 (the operator's walk, 2026-10-18): "Couldn't load: Page not found" drew in the
+    browser's serif. The page loaded nmas-v2.css, whose type and colours apply to `body.v2`,
+    and its body carried no class; nor did it load the theme, so a dark-mode viewer got it
+    light. A navigation's failure is a v2 page: `body.v2`, the theme script, the strict
+    policy, the words."""
+
+    def _get(self):
+        import app as A
+        return A.app.test_client().get(
+            "/no-such-page-c1306", headers={"Accept": "text/html,application/xhtml+xml"})
+
+    def test_a_browser_s_404_is_drawn_in_v2_s_look(self):
+        r = self._get()
+        body = r.get_data(as_text=True)
+        assert r.status_code == 404
+        assert re.search(r'<body class="v2"', body), body[:400]
+        assert "nmas-v2.css" in body and "js/nmas_theme.js" in body, body[:400]
+        assert "Couldn&#x27;t load: Page not found" in body or "Couldn't load: Page not found" in body
+        from modules.csp import STRICT_POLICY
+        assert r.headers.get("Content-Security-Policy") == STRICT_POLICY
+
+    def test_an_htmx_part_still_gets_the_notice_alone(self):
+        import app as A
+        r = A.app.test_client().get("/no-such-page-c1306", headers={
+            "Accept": "text/html", "HX-Request": "true"})
+        body = r.get_data(as_text=True)
+        assert r.status_code == 404 and "<body" not in body and "notice-danger" in body

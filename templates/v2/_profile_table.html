@@ -25,8 +25,8 @@
       <td class="muted small">{{ r.applies }}</td>
       <td>{%- if not h.measured %}<span class="muted small">not measured on Coverage</span>
         {%- elif h.not_rendered %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ': not rendered', 'danger') }} <span class="muted small">the device's template renders none of it ({{ h.not_rendered | length }} device{{ '' if h.not_rendered | length == 1 else 's' }}). <a href="{{ url_for('templates_v2.page', list=p.list) }}">Bring in the shipped version on Templates</a></span>
-        {%- elif h.missing %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ' hold it', 'warn') }} <span class="muted small">{% if h.missing | length <= 3 %}{{ h.missing | join(', ') }} lack{{ 's' if h.missing | length == 1 else '' }} it{% else %}{{ h.missing | length }} devices lack it{% endif %}: <a href="{{ url_for('v2.coverage') }}">Coverage</a> offers it, and Apply sends it</span>
-        {%- elif h.of %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ' hold it', 'ok') }}
+        {%- elif h.missing %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ' hold it' ~ (' · ' ~ (h.declined | length) ~ ' declined' if h.declined else ''), 'warn') }} <span class="muted small">{% if h.missing | length <= 3 %}{{ h.missing | join(', ') }} lack{{ 's' if h.missing | length == 1 else '' }} it{% else %}{{ h.missing | length }} devices lack it{% endif %}: <a href="{{ url_for('v2.coverage') }}">Coverage</a> offers it, and Apply sends it</span>
+        {%- elif h.of %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ' hold it' ~ (' · ' ~ (h.declined | length) ~ ' declined' if h.declined else ''), 'ok') }}
         {%- else %}<span class="muted small">no device it applies to</span>{% endif %}</td>
     </tr>
     {%- endfor %}

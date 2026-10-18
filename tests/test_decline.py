@@ -191,6 +191,56 @@ def test_ip_sla_suggests_nothing_for_a_declined_device():
     assert k["why"].startswith("declined by op@example.invalid, 2026-10-13:")
 
 
+def test_coverage_draws_every_cell_s_meaning_and_the_profile_counts_the_decline(
+        lab, monkeypatch):
+    """C1305 (the operator's walk, 2026-10-18): a Coverage cell is never blank. A section the
+    profile scopes away from the device says "n/a" with why on hover; a declined one draws its
+    own mark, who and why on hover, and links its Undo decline row; the legend has no
+    "blank"; the Profile tab's chip counts the declined ("8 of 9 hold it · 1 declined"), where
+    it said "8 of 9" and nothing of the ninth."""
+    import app as A
+    import routes.v2 as v2
+    from modules import monitoring_coverage as MC
+    from modules import monitoring_profile_page as MP
+    from modules.nsot import decline, listref, profile
+
+    ref = listref.resolve(LIST)
+
+    def fleet():
+        return MC.fleet(ref, devices=[(ref, dict(lab["device"]))],
+                        report=(None, "", "no reporting reader in this test"))
+
+    row = next(r for r in fleet()["devices"] if r["host"] == HOST)
+    col = next(k for k, _w in MC.COLUMNS
+               if MC._SECTION_OF_COLUMN.get(k) in profile.SECTIONS            # noqa: SLF001
+               and row["cells"][k]["state"] not in ("ok", "not_reporting", "unknown"))
+    section = MC._SECTION_OF_COLUMN[col]                                       # noqa: SLF001
+    e = decline.entry(LIST, HOST, section, reason=WHY, actor=TEST_PERSON)
+    assert decline.apply(LIST, HOST, section, e["hash"], actor=TEST_PERSON, reason=WHY,
+                         at=e["at"])["outcome"] == "declined"
+    c = fleet()
+    c["not_covered"] = []
+    monkeypatch.setattr(v2, "_coverage", lambda: c)
+    html = A.app.test_client().get(f"/v2/monitoring/coverage?list={LIST}").get_data(as_text=True)
+    cells = re.findall(r'<td class="gc" data-state="([a-z_]+)"[^>]*>(.*?)</td>', html, re.S)
+    assert cells, html[:400]
+    for state, inner in cells:
+        if state in ("declined", "not_applicable", "excluded", "unused"):
+            seen = re.sub(r'<span class="sr-only">.*?</span>', "", inner, flags=re.S)
+            assert re.sub(r"<[^>]+>|\s", "", seen) or "<svg" in seen, \
+                f"a {state} cell draws nothing visible: {inner!r}"
+    declined = re.search(r'<td class="gc" data-state="declined"[^>]*>(.*?)</td>', html, re.S)
+    assert declined, "the declined cell is drawn as its own state"
+    anchor = f"decl-{HOST}-{section}"
+    assert f'href="#{anchor}"' in declined.group(1) and TEST_PERSON in declined.group(1) \
+        and WHY in html_mod.unescape(declined.group(1)), declined.group(1)
+    assert f'id="{anchor}"' in html, "the Undo decline row is what the mark links"
+    legend = re.search(r'<p class="cov-legend[^"]*">(.*?)</p>', html, re.S).group(1)
+    assert "blank" not in legend and "n/a" in legend and "declined" in legend, legend
+    held = MP._held(c, section)                                                # noqa: SLF001
+    assert held.get("declined") == [HOST], held
+
+
 def test_coverage_reads_a_decline_as_declined_with_who_when_and_why(lab):
     """Board C: on Coverage the declined section is its own state, counted as declined, with
     who, when and why; never a gap. The section is one r2's golden does not configure (a
