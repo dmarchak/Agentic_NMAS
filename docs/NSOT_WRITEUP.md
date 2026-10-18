@@ -4276,7 +4276,7 @@ I). This entry is the rest, and the row as a whole.*
    status bar left at 7.8 (2026-10-15). Board G's Default warning and P.8 step 9 are what is left
    of the row.
 
-### 7.8 — The removals, 2026-10-11 to 15 (open: today's two pages)
+### 7.8 — The removals, 2026-10-11 to 18 (closed 2026-10-18)
 
 *Backfilled 2026-10-16 from git, CUTOVER's "Removed at 7.8" and the register. 7.8 is open: today's
 two pages (`/`, `/device/<ip>`) go last, by rule, once their walks clear (P7-20 to P7-27).*
@@ -4356,6 +4356,58 @@ run. As of 5e1413d0:
 
 The forecast check above now reads 36 commits, against "about 35", over 32 removals. 7.8's
 closing entry is owed at P7-27.
+
+#### 7.8 — Closed, 2026-10-18: the last of today's pages removed (P7-21 to P7-27)
+
+*Written 2026-10-18 UTC, the turn 7.8 closed: P7-27 merged into main (4e631168) and deployed at 17:56:08 UTC (CI #931), its GET walk on the host 23 paths as expected (`/` 302 to `/v2/`, the old addresses 404, every v2 page 200).
+The operator's walk of it (docs/walks/P7-27.md) follows; its findings, if any, are new rows.*
+
+1. **What it was.** The burn-down's removals after P7-20: today's Git tab with its Remote card
+   and Baselines (P7-21), the device page with `/run_command` and `/deploy/receipts` (P7-22),
+   the template and intent editors (P7-23), the device actions' JSON (P7-24), the deploy and
+   onboarding wizards with the pending banner (P7-25), network management (P7-26), and last the
+   pages themselves (P7-27): `index.html`, `base.html`, the partials, the remaining scripts and
+   the vendored Bootstrap; `/` answers 302 to `/v2/`.
+2. **How it was implemented.** As before: each removal tagged first, its tests rebased onto the
+   core or the v2 route that does the work now, its ceilings lowered, the coverage ratchet run.
+   P7-27 was built overnight and gated on a branch, `p7-27`, because it removed four things v2
+   could not yet do. The operator ordered those built first (C1274, C1160, C1269, C1232), and
+   its first branch gate found two more (C1277, C1278). It was merged only after all were on
+   main.
+3. **Issues encountered** [OPEN_FINDINGS; git]:
+   - The gaps cutover would have opened: v2 could not choose a profile's version (C1269), had
+     no no-golden scope (C1232), drew no Grafana silence per alert (C1277), and its loops were
+     held to no test data (C1274); the Inventory source card did not name what NetBox left out
+     (C1160).
+   - Moving the tests off today's renderers showed what v2's cards did not draw: verify's
+     scope and the lines not read back (C1270), a source past its promise (C1271), green over a
+     departing capture (C1273), and a rollback badge that said "Rolled back" over one that did
+     not restore (C1268, an A).
+   - The removed tests needed 31 `Test-Weakened:` trailers, each naming the register row and the
+     reason, and the merge repeated them: the check reads the merge's diff against main.
+4. **How they were resolved.** Each gap was built on main with a test that failed first,
+   gated and pushed, before the merge; the A (C1268) was deployed the same morning (a09c6e4d).
+   The branch was rebased by fast-forward onto main and re-gated; nothing pushed was rewritten.
+5. **Numbers.**
+   - The removal commits after the backfill's 36: P7-21 (8e064a55), P7-22 (b9025ea9), P7-23
+     (aa3b3503), P7-24 (f60cd16e), P7-25 (9bfc0eb4), P7-26 (958aeaa4), P7-27 (e2f27b84), from
+     2026-10-17 08:21 UTC to 2026-10-18 09:02 UTC: 7, so **43 commits for 39 removals**. Beside
+     them, the walk's section D (078c1bd0) and the merge (4e631168).
+   - P7-27 alone: 160 files, 1,646 lines added and 64,756 removed.
+   - Route decorators in `app.py` and `routes/`: 360 before P7-20, 289 at the merge (net:
+     v2 routes added in the same days are inside it).
+   - The v1 ceilings (controls, handlers, functions, fields): 0, 0, 0, 0; `templates/` holds
+     only `v2/`; `test_no_new_v1_capability` is "nothing outside templates/v2".
+   - **Estimate versus actual.** Section 11 forecast "about 35 commits for 17" families. It
+     came to 43 commits for 39 removals: the commit count about a fifth over, the removals more
+     than twice, at about one commit per removal, half the forecast's rate, as the backfill
+     found at 36.
+   - **Not recoverable:** the hours; the commits interleave with the gaps and the walks.
+6. **Where it left the product.** One interface: v2, under the strict policy, its libraries
+   vendored. Today's pages are gone; their addresses answer 404, and `/` sends a person to v2
+   keeping the network they named. Criteria 1, 2 and 16 of Stage 7 are met. CLAUDE.md's four
+   lines that still describe today's pages as leaving are the operator's to paste
+   (`<home>/Documents/nmas-reports/claude-md-p7-27-merge.py`).
 
 ### The Update operation — the app updates itself from v2
 
@@ -4593,6 +4645,15 @@ burn-down.*
 device, a retired device and About) are recordable; their records wait on the sitting's
 screenshots being matched to each board, and About's on one screenshot the operator takes
 (C650). The eleven tail screens are unchanged. **7.D closes** when the four are recorded.
+
+**Later the same day (2026-10-18, ~18:00 UTC):** three of the four are recorded, from local
+board shots read beside W4's captures (be578a3c): Save against board C, 17 regions (9 same, 8
+deviation); the pending page against `OnboardPanel` and board M, 16 regions (7 same, 9
+deviation; board E's own page was built while the canvas was unreadable); the retired record
+against `DevRetire`'s last card, 13 regions (7 same, 6 deviation). The comparison found seven
+defects, each a C row (C1295 to C1301), none fixed under the fidelity hold. `UNCHECKED` fell from
+15 to 12. **About** is the fourth: its record is taken from the screenshot the operator takes in
+the P7-27 walk (step 12), and 7.D's closing entry is written the turn that record lands.
 
 #### Stage 7's forecast (section 11, 2026-10-02), checked as far as the record allows
 
